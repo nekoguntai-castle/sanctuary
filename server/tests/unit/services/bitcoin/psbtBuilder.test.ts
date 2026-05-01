@@ -5,7 +5,6 @@ import {
   buildMultisigBip32Derivations,
   buildMultisigWitnessScript,
   parseMultisigScript,
-  finalizeMultisigInput,
   witnessStackToScriptWitness,
   generateDecoyAmounts,
 } from "../../../../src/services/bitcoin/psbtBuilder";
@@ -33,20 +32,18 @@ describe("PSBT Builder", () => {
       scriptPubKey: testWitnessScriptPubKey,
     };
 
-    it("adds the input but skips multisig metadata when cosigner keys are missing", () => {
+    it("throws when multisig cosigner keys are missing", () => {
       const psbt = new bitcoin.Psbt({ network });
-      const inputPaths = addInputsWithBip32(psbt, [baseUtxo], {
-        sequence: 0xfffffffd,
-        isLegacy: false,
-        rawTxCache: new Map(),
-        addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/2'/0/0"]]),
-        signingInfo: { isMultisig: true },
-        networkObj: network,
-      });
-
-      expect(inputPaths).toEqual(["m/48'/1'/0'/2'/0/0"]);
-      expect(psbt.inputCount).toBe(1);
-      expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
+      expect(() =>
+        addInputsWithBip32(psbt, [baseUtxo], {
+          sequence: 0xfffffffd,
+          isLegacy: false,
+          rawTxCache: new Map(),
+          addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/2'/0/0"]]),
+          signingInfo: { isMultisig: true },
+          networkObj: network,
+        })
+      ).toThrow("missing multisig keys");
     });
 
     it("adds multisig BIP32 metadata and witness script when cosigner keys are available", () => {
@@ -735,265 +732,4 @@ describe("PSBT Builder", () => {
     });
   });
 
-  // ========================================
-  // finalizeMultisigInput
-  // ========================================
-  describe("finalizeMultisigInput", () => {
-    it("should throw when witnessScript is missing", () => {
-      const psbt = new bitcoin.Psbt({ network });
-
-      // Add a dummy input/output so PSBT is valid
-      const key = ECPair.makeRandom({ network });
-      const p2wpkh = bitcoin.payments.p2wpkh({
-        pubkey: Buffer.from(key.publicKey),
-        network,
-      });
-      psbt.addInput({
-        hash: Buffer.alloc(32, 0xaa),
-        index: 0,
-        witnessUtxo: { script: p2wpkh.output!, value: BigInt(100000) },
-      });
-      psbt.addOutput({ address: p2wpkh.address!, value: BigInt(90000) });
-
-      expect(() => finalizeMultisigInput(psbt, 0)).toThrow(
-        "missing witnessScript",
-      );
-    });
-
-    it("should throw when no partial signatures exist", () => {
-      const psbt = new bitcoin.Psbt({ network });
-      const keys = Array.from({ length: 2 }, () =>
-        ECPair.makeRandom({ network }),
-      );
-      const pubkeys = keys
-        .map((k) => Buffer.from(k.publicKey))
-        .sort(Buffer.compare);
-
-      const p2ms = bitcoin.payments.p2ms({ m: 1, pubkeys, network });
-      const p2wsh = bitcoin.payments.p2wsh({ redeem: p2ms, network });
-
-      psbt.addInput({
-        hash: Buffer.alloc(32, 0xbb),
-        index: 0,
-        witnessUtxo: { script: p2wsh.output!, value: BigInt(100000) },
-        witnessScript: p2ms.output!,
-      });
-      psbt.addOutput({ address: p2wsh.address!, value: BigInt(90000) });
-
-      expect(() => finalizeMultisigInput(psbt, 0)).toThrow(
-        "no partial signatures",
-      );
-    });
-
-    it("should throw when witnessScript is not a valid multisig script", () => {
-      const psbt = new bitcoin.Psbt({ network });
-      const key = ECPair.makeRandom({ network });
-      const pubkey = Buffer.from(key.publicKey);
-
-      // Use a P2PK script as witnessScript (valid for P2WSH but not multisig)
-      const p2pkScript = bitcoin.script.compile([
-        pubkey,
-        bitcoin.opcodes.OP_CHECKSIG,
-      ]);
-      const p2wsh = bitcoin.payments.p2wsh({
-        redeem: { output: p2pkScript, network },
-        network,
-      });
-
-      psbt.addInput({
-        hash: Buffer.alloc(32, 0xcc),
-        index: 0,
-        witnessUtxo: { script: p2wsh.output!, value: BigInt(100000) },
-        witnessScript: p2pkScript,
-      });
-      psbt.addOutput({ address: p2wsh.address!, value: BigInt(90000) });
-
-      // Manually add a fake partial sig
-      psbt.data.inputs[0].partialSig = [
-        {
-          pubkey,
-          signature: Buffer.alloc(72, 0x30),
-        },
-      ];
-
-      expect(() => finalizeMultisigInput(psbt, 0)).toThrow(
-        "not a valid multisig script",
-      );
-    });
-
-    it("should throw when signature count does not match quorum", () => {
-      const psbt = new bitcoin.Psbt({ network });
-      const keys = Array.from({ length: 3 }, () =>
-        ECPair.makeRandom({ network }),
-      );
-      const pubkeys = keys
-        .map((k) => Buffer.from(k.publicKey))
-        .sort(Buffer.compare);
-
-      const p2ms = bitcoin.payments.p2ms({ m: 2, pubkeys, network });
-      const p2wsh = bitcoin.payments.p2wsh({ redeem: p2ms, network });
-
-      psbt.addInput({
-        hash: Buffer.alloc(32, 0xdd),
-        index: 0,
-        witnessUtxo: { script: p2wsh.output!, value: BigInt(100000) },
-        witnessScript: p2ms.output!,
-      });
-      psbt.addOutput({ address: p2wsh.address!, value: BigInt(90000) });
-
-      // Only 1 signature for a 2-of-3 (need 2)
-      // Build a dummy DER sig
-      const dummySig = Buffer.concat([
-        Buffer.from("3045022100", "hex"),
-        Buffer.alloc(32, 0x01), // r
-        Buffer.from("0220", "hex"),
-        Buffer.alloc(32, 0x02), // s
-        Buffer.from([0x01]), // sighash
-      ]);
-
-      psbt.data.inputs[0].partialSig = [
-        {
-          pubkey: pubkeys[0],
-          signature: dummySig,
-        },
-      ];
-
-      expect(() => finalizeMultisigInput(psbt, 0)).toThrow(
-        "has 1 signatures but needs exactly 2",
-      );
-    });
-
-    it("should throw when partial signatures do not match witnessScript pubkeys", () => {
-      const psbt = new bitcoin.Psbt({ network });
-      const scriptKey = ECPair.makeRandom({ network });
-      const wrongKey = ECPair.makeRandom({ network });
-      const scriptPubkey = Buffer.from(scriptKey.publicKey);
-      const wrongPubkey = Buffer.from(wrongKey.publicKey);
-
-      const p2ms = bitcoin.payments.p2ms({
-        m: 1,
-        pubkeys: [scriptPubkey],
-        network,
-      });
-      const p2wsh = bitcoin.payments.p2wsh({ redeem: p2ms, network });
-
-      psbt.addInput({
-        hash: Buffer.alloc(32, 0xef),
-        index: 0,
-        witnessUtxo: { script: p2wsh.output!, value: BigInt(100000) },
-        witnessScript: p2ms.output!,
-      });
-      psbt.addOutput({ address: p2wsh.address!, value: BigInt(90000) });
-
-      const derLikeSig = Buffer.concat([
-        Buffer.from("30440220", "hex"),
-        Buffer.alloc(32, 0x01),
-        Buffer.from("0220", "hex"),
-        Buffer.alloc(32, 0x02),
-        Buffer.from([0x01]),
-      ]);
-      psbt.data.inputs[0].partialSig = [
-        { pubkey: wrongPubkey, signature: derLikeSig },
-      ];
-
-      expect(() => finalizeMultisigInput(psbt, 0)).toThrow(
-        "no matching signatures found",
-      );
-    });
-
-    it("continues finalization when witnessUtxo is missing and signature verification errors", () => {
-      const key = ECPair.makeRandom({ network });
-      const pubkey = Buffer.from(key.publicKey);
-      const p2ms = bitcoin.payments.p2ms({ m: 1, pubkeys: [pubkey], network });
-
-      const fakePsbt = {
-        data: {
-          inputs: [
-            {
-              witnessScript: p2ms.output!,
-              partialSig: [{ pubkey, signature: Buffer.from([0x01]) }],
-              // witnessUtxo intentionally omitted to hit warning branch
-            },
-          ],
-          globalMap: {
-            unsignedTx: {
-              toBuffer: () => new bitcoin.Transaction().toBuffer(),
-            },
-          },
-        },
-        updateInput: vi.fn(),
-      } as unknown as bitcoin.Psbt;
-
-      expect(() => finalizeMultisigInput(fakePsbt, 0)).not.toThrow();
-      expect((fakePsbt as any).updateInput).toHaveBeenCalledTimes(1);
-    });
-
-    it("handles DER signatures with s values longer than 32 bytes during verification", () => {
-      const key = ECPair.makeRandom({ network });
-      const pubkey = Buffer.from(key.publicKey);
-      const p2ms = bitcoin.payments.p2ms({ m: 1, pubkeys: [pubkey], network });
-      const p2wsh = bitcoin.payments.p2wsh({ redeem: p2ms, network });
-
-      // Build DER-like signature where s has 33 bytes (leading zero + 32-byte value)
-      const derSig = Buffer.concat([
-        Buffer.from([0x30, 0x26, 0x02, 0x01, 0x01, 0x02, 0x21, 0x00]),
-        Buffer.alloc(32, 0x02),
-      ]);
-      const signatureWithHashType = Buffer.concat([
-        derSig,
-        Buffer.from([0x01]),
-      ]);
-
-      const fakePsbt = {
-        data: {
-          inputs: [
-            {
-              witnessScript: p2ms.output!,
-              witnessUtxo: { script: p2wsh.output!, value: BigInt(100000) },
-              partialSig: [{ pubkey, signature: signatureWithHashType }],
-            },
-          ],
-          globalMap: {
-            unsignedTx: {
-              toBuffer: () => new bitcoin.Transaction().toBuffer(),
-            },
-          },
-        },
-        updateInput: vi.fn(),
-      } as unknown as bitcoin.Psbt;
-
-      expect(() => finalizeMultisigInput(fakePsbt, 0)).not.toThrow();
-      expect((fakePsbt as any).updateInput).toHaveBeenCalledTimes(1);
-    });
-
-    it("should finalize when signature count matches quorum", () => {
-      const psbt = new bitcoin.Psbt({ network });
-      const key = ECPair.makeRandom({ network });
-      const pubkey = Buffer.from(key.publicKey);
-
-      const p2ms = bitcoin.payments.p2ms({ m: 1, pubkeys: [pubkey], network });
-      const p2wsh = bitcoin.payments.p2wsh({ redeem: p2ms, network });
-
-      psbt.addInput({
-        hash: Buffer.alloc(32, 0xee),
-        index: 0,
-        witnessUtxo: { script: p2wsh.output!, value: BigInt(100000) },
-        witnessScript: p2ms.output!,
-      });
-      psbt.addOutput({ address: p2wsh.address!, value: BigInt(90000) });
-
-      const derLikeSig = Buffer.concat([
-        Buffer.from("30440220", "hex"),
-        Buffer.alloc(32, 0x01),
-        Buffer.from("0220", "hex"),
-        Buffer.alloc(32, 0x02),
-        Buffer.from([0x01]), // SIGHASH_ALL
-      ]);
-
-      psbt.data.inputs[0].partialSig = [{ pubkey, signature: derLikeSig }];
-
-      expect(() => finalizeMultisigInput(psbt, 0)).not.toThrow();
-      expect(psbt.data.inputs[0].finalScriptWitness).toBeInstanceOf(Buffer);
-    });
-  });
 });

@@ -279,7 +279,7 @@ export class BitcoinCoreImplementation implements PsbtImplementation {
           txid: tx.txid,
           inputs: tx.vin.length,
           outputs: tx.vout.length,
-          fee: analyzed.fee || 0,
+          fee: analyzed.fee ? Math.round(analyzed.fee * 100_000_000) : 0,
           vsize: analyzed.estimated_vsize || 0,
           complete: analyzed.next === 'extractor',
         },

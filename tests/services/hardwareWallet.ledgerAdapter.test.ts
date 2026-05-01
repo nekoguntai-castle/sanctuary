@@ -180,7 +180,7 @@ describe("LedgerAdapter", () => {
     mockGetMasterFingerprint.mockResolvedValue("f00dbabe");
     mockGetExtendedPubkey.mockResolvedValue("xpub-mock");
     mockGetWalletXpub.mockResolvedValue("xpub-mock");
-    mockGetWalletPublicKey.mockResolvedValue({});
+    mockGetWalletPublicKey.mockResolvedValue({ bitcoinAddress: "bc1qabc" });
     mockPsbtFromBase64.mockReturnValue({
       data: { inputs: [] },
       toBase64: () => "psbt",
@@ -539,6 +539,11 @@ describe("LedgerAdapter", () => {
       adapter.verifyAddress("m/84'/0'/0'/0/0", "bc1qabc"),
     ).resolves.toBe(true);
 
+    mockGetWalletPublicKey.mockResolvedValueOnce({ bitcoinAddress: "bc1qmismatch" });
+    await expect(
+      adapter.verifyAddress("m/84'/0'/0'/0/0", "bc1qabc"),
+    ).resolves.toBe(false);
+
     mockGetWalletPublicKey.mockRejectedValueOnce(new Error("denied by user"));
     await expect(
       adapter.verifyAddress("m/84'/0'/0'/0/0", "bc1qabc"),
@@ -719,6 +724,14 @@ describe("LedgerAdapter", () => {
     });
 
     expect(MockDefaultWalletPolicy).toHaveBeenCalledTimes(1);
+    expect(MockDefaultWalletPolicy).toHaveBeenCalledWith(
+      "wpkh(@0/**)",
+      "[aabbccdd/84'/0'/0']xpub-abc",
+    );
+    expect(mockSignPsbt.mock.calls[0][1]).toMatchObject({
+      template: "wpkh(@0/**)",
+      keyInfo: "[aabbccdd/84'/0'/0']xpub-abc",
+    });
     expect(mockSignPsbt).toHaveBeenCalledWith(
       "updated-psbt",
       expect.any(Object),

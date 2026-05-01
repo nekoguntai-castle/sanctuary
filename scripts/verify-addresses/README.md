@@ -14,39 +14,68 @@ The verification script derives addresses using the same inputs across multiple 
 | bip_utils | Python | Independent Python implementation |
 | btcd/btcutil | Go | Powers Lightning Network |
 
-Only addresses where **all implementations agree** are considered verified.
+Only addresses where **all available implementations agree** are considered verified. A vector is rejected unless Bitcoin Core, `bitcoinjs-lib`, and at least one independent non-JavaScript implementation successfully derive the same address payload.
 
 ## Prerequisites
 
 ### Required
 - Node.js 18+
 - Docker (for Bitcoin Core)
+- Python 3 with bip_utils: `python -m pip install bip_utils`
 
 ### Optional (for more implementations)
-- Python 3 with bip_utils: `pip install bip_utils`
 - Go 1.21+ (for btcd verification)
 
 ## Quick Start
 
-### Option A: Use existing beacon-bitcoind (Recommended)
+### Option A: Repeatable Local/CI Verification
 
-If you're already running Sanctuary, you have a trusted Bitcoin Core instance:
+This is the preferred path before committing vector changes. It installs the
+Node verifier dependencies, creates an isolated Python venv with pinned
+`bip_utils`, starts the pinned Bitcoin Core 27.0 container, waits for RPC, and
+fails if regenerated vectors differ from the committed fixtures.
+
+```bash
+npm run verify:repeatable
+```
+
+Regenerate fixtures with the same pinned stack:
+
+```bash
+npm run generate:repeatable
+```
+
+Set `VERIFY_ADDRESSES_KEEP_BITCOIND=1` to leave the container running after the
+script exits, or `VERIFY_ADDRESSES_SKIP_DOCKER=1` when pointing at an already
+running Core node through `BITCOIN_RPC_URL`, `BITCOIN_RPC_USER`, and
+`BITCOIN_RPC_PASS`.
+
+### Option B: Local Bitcoin Core Container
 
 ```bash
 # Install dependencies
-npm install
+npm ci
 
-# Generate verified vectors (uses beacon-bitcoind on localhost:18443)
+# Install Python verifier
+python -m pip install bip_utils
+
+# Start Bitcoin Core 27.0 on localhost:18443
+docker compose up -d
+
+# Generate verified vectors
 npm run generate
 ```
 
-### Option B: Self-built Bitcoin Core (Most Secure)
+### Option C: Self-built Bitcoin Core (Most Secure)
 
 Build Bitcoin Core from verified official source:
 
 ```bash
 # Install dependencies
-npm install
+npm ci
+
+# Install Python verifier
+python -m pip install bip_utils
 
 # Build Bitcoin Core from verified source
 cd ../bitcoin-core-docker
@@ -56,7 +85,7 @@ cd ../bitcoin-core-docker
 cd ../verify-addresses
 docker compose -f docker-compose.self-built.yml up -d
 
-# Set environment to use this container
+# docker-compose.self-built.yml exposes RPC on localhost:18553
 export BITCOIN_RPC_URL=http://127.0.0.1:18553
 export BITCOIN_RPC_USER=verify
 export BITCOIN_RPC_PASS=verify
@@ -65,27 +94,15 @@ export BITCOIN_RPC_PASS=verify
 npm run generate
 ```
 
-### Option C: Third-party Docker image (Quick Start)
+### Option D: Verify Existing Fixtures Manually
 
-Use a third-party Docker image (convenient but requires trusting the image maintainer):
+Use this mode in CI or before committing fixture changes:
 
 ```bash
-# Install dependencies
-npm install
-
-# Start Bitcoin Core container
+npm ci
 docker compose up -d
-
-# Set environment to use this container
-export BITCOIN_RPC_URL=http://127.0.0.1:18553
-export BITCOIN_RPC_USER=verify
-export BITCOIN_RPC_PASS=verify
-
-# Wait for Bitcoin Core to be ready
-sleep 5
-
-# Generate verified vectors
-npm run generate
+python -m pip install bip_utils
+npm run verify
 ```
 
 ## Output
@@ -162,9 +179,9 @@ docker compose down && docker compose up -d
 
 ### Python bip_utils not found
 ```bash
+python -m venv /tmp/sanctuary-address-venv
+source /tmp/sanctuary-address-venv/bin/activate
 pip install bip_utils
-# or
-pip3 install bip_utils
 ```
 
 ### Go modules not found
@@ -187,6 +204,8 @@ This will:
 3. Verify all cases across implementations
 4. Output only cases with consensus
 5. Write to both output/ and server/tests/fixtures/
+
+`npm run verify` performs the same cross-implementation derivation but does not rewrite files. It fails if the checked-in fixtures differ from freshly generated output, ignoring only the `Last verified` date line.
 
 ## Why This Matters
 

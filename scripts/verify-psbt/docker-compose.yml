@@ -12,7 +12,7 @@
 
 services:
   bitcoin-core:
-    image: ruimarinho/bitcoin-core:27
+    image: bitcoin/bitcoin:27.0
     container_name: bitcoin-core
     restart: unless-stopped
     ports:

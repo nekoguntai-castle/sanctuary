@@ -18,6 +18,7 @@ import type {
 } from '../../types';
 import type { TrezorConnection } from './types';
 import { signPsbtWithTrezor } from './signPsbt';
+import { getTrezorScriptType } from './pathUtils';
 
 const log = createLogger('TrezorAdapter');
 
@@ -71,6 +72,14 @@ const createConnectError = (message: string): Error => {
   }
 
   return new Error(`Failed to connect Trezor: ${message}`);
+};
+
+const getCoinForPath = (path: string): 'Bitcoin' | 'Testnet' => {
+  return path.includes("/1'/") || path.includes('/1h/') ? 'Testnet' : 'Bitcoin';
+};
+
+const isUserRejectedAddressDisplay = (message: string): boolean => {
+  return /cancelled|denied|rejected/i.test(message);
 };
 
 /**
@@ -246,12 +255,10 @@ export class TrezorAdapter implements DeviceAdapter {
     }
 
     try {
-      const isTestnet = path.includes("/1'/") || path.includes("/1h/");
-
       const result = await TrezorConnect.getPublicKey({
         path,
         showOnTrezor: false,
-        coin: isTestnet ? 'Testnet' : 'Bitcoin',
+        coin: getCoinForPath(path),
       });
 
       if (!result.success) {
@@ -287,6 +294,40 @@ export class TrezorAdapter implements DeviceAdapter {
       }
 
       throw new Error(`Failed to get xpub from Trezor: ${message}`);
+    }
+  }
+
+  /**
+   * Verify an address on the Trezor display.
+   */
+  async verifyAddress(path: string, address: string): Promise<boolean> {
+    if (!this.connection.connected) {
+      throw new Error('Trezor not connected');
+    }
+
+    try {
+      const result = await TrezorConnect.getAddress({
+        path,
+        address,
+        showOnTrezor: true,
+        coin: getCoinForPath(path),
+        scriptType: getTrezorScriptType(path),
+      });
+
+      if (!result.success) {
+        const errorMsg = 'error' in result.payload ? result.payload.error : 'Failed to verify address';
+        throw new Error(errorMsg);
+      }
+
+      return result.payload.address === address;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+
+      if (isUserRejectedAddressDisplay(message)) {
+        return false;
+      }
+
+      throw new Error(`Failed to verify address on Trezor: ${message}`);
     }
   }
 

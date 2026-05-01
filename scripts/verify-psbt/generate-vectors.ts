@@ -2,207 +2,388 @@
 /**
  * PSBT Test Vector Generator
  *
- * Generates verified PSBT test vectors by cross-checking against Bitcoin Core.
- * These vectors are used to ensure our PSBT implementation matches the reference.
- *
- * Prerequisites:
- * - Bitcoin Core running in regtest mode (use docker-compose up -d)
- * - Node.js with tsx installed
- *
- * Usage:
- *   npm run generate
- *   # or
- *   tsx generate-vectors.ts
+ * Builds deterministic walletless PSBTs and verifies them with Bitcoin Core
+ * before writing fixtures consumed by the server PSBT verification tests.
  */
 
+import * as bitcoin from 'bitcoinjs-lib';
+import * as ecc from '@bitcoinerlab/secp256k1';
+import { writeFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { BitcoinCoreImplementation, createRpcBitcoinCore } from './implementations/bitcoincore';
 import { SanctuaryImplementation } from './implementations/sanctuary';
 import type { ExtendedPsbtTestVector } from '../../server/tests/fixtures/bip174-test-vectors';
-import * as fs from 'fs';
-import * as path from 'path';
 
-// Configuration
+bitcoin.initEccLib(ecc);
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 const BITCOIN_CORE_RPC = {
-  host: 'localhost',
-  port: 18443,
-  user: 'sanctuary',
-  password: 'sanctuary-verify',
+  host: process.env.BITCOIN_RPC_HOST ?? '127.0.0.1',
+  port: Number(process.env.BITCOIN_RPC_PORT ?? '18443'),
+  user: process.env.BITCOIN_RPC_USER ?? 'sanctuary',
+  password: process.env.BITCOIN_RPC_PASS ?? 'sanctuary-verify',
 };
 
-const OUTPUT_FILE = path.join(__dirname, '../../server/tests/fixtures/generated-psbt-vectors.ts');
+const OUTPUT_FILE = join(__dirname, '../../server/tests/fixtures/generated-psbt-vectors.ts');
+const NETWORK = bitcoin.networks.testnet;
+const FINGERPRINT_A = Buffer.from('d90c6a4f', 'hex');
+const FINGERPRINT_B = Buffer.from('c21b2c3d', 'hex');
+const PUBKEY_A = Buffer.from('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798', 'hex');
+const PUBKEY_B = Buffer.from('03f028892bad7ed57d2fb57bf33081d5cfcf6f9ed3d3d7f159c2e2fff579dc341a', 'hex');
+const X_ONLY_PUBKEY_A = PUBKEY_A.subarray(1);
+const DESTINATION_HASH = Buffer.from('5eb9b5e445db673f0ed8935d18cd205b214e5187', 'hex');
 
-interface GeneratedVector {
+type GeneratedVector = ExtendedPsbtTestVector;
+
+interface DraftVector {
   description: string;
-  scriptType: ExtendedPsbtTestVector['scriptType'];
-  network: 'testnet' | 'mainnet';
+  scriptType: GeneratedVector['scriptType'];
+  network: GeneratedVector['network'];
   psbtBase64: string;
+}
+
+interface Verification {
+  verifiedBy: string[];
   expectedFee: number;
   expectedVsize: number;
   isComplete: boolean;
-  verifiedBy: string[];
 }
 
-/**
- * Generate P2WPKH test PSBTs using Bitcoin Core wallet
- *
- * This requires:
- * 1. Bitcoin Core running with a loaded wallet
- * 2. Funded addresses (mine some blocks in regtest)
- * 3. Create transactions using Bitcoin Core's walletcreatefundedpsbt
- */
-async function generateP2wpkhPsbts(
-  _bitcoinCore: BitcoinCoreImplementation
-): Promise<GeneratedVector[]> {
-  const vectors: GeneratedVector[] = [];
-
-  try {
-    // Check if we can create PSBTs via Bitcoin Core
-    // This requires a wallet with funds
-    console.log('  Checking for wallet funds...');
-
-    // Try to get wallet info - this will fail if no wallet is loaded
-    // In a real implementation, we would:
-    // 1. Use listunspent to find UTXOs
-    // 2. Use walletcreatefundedpsbt to create PSBTs
-    // 3. Decode and verify them
-
-    // For now, we document the process
-    console.log('  To generate real vectors:');
-    console.log('    1. docker compose up -d');
-    console.log('    2. docker exec bitcoin-core bitcoin-cli -regtest createwallet "test"');
-    console.log('    3. docker exec bitcoin-core bitcoin-cli -regtest -generate 101');
-    console.log('    4. Then use walletcreatefundedpsbt to create PSBTs');
-
-    return vectors;
-  } catch (error) {
-    console.error('Failed to generate P2WPKH PSBTs:', error);
-    return vectors;
-  }
+interface PartitionedVectors {
+  p2wpkh: GeneratedVector[];
+  p2shP2wpkh: GeneratedVector[];
+  p2tr: GeneratedVector[];
+  p2wsh: GeneratedVector[];
+  p2shP2wsh: GeneratedVector[];
 }
 
-/**
- * Generate P2WSH multisig test PSBTs
- */
-async function generateP2wshMultisigPsbts(
-  _bitcoinCore: BitcoinCoreImplementation
-): Promise<GeneratedVector[]> {
-  const vectors: GeneratedVector[] = [];
-
-  try {
-    // Similar to P2WPKH, but with multisig setup
-    // Would need to:
-    // 1. Create multiple keypairs
-    // 2. Create a multisig descriptor
-    // 3. Fund the multisig address
-    // 4. Create PSBT spending from it
-
-    return vectors;
-  } catch (error) {
-    console.error('Failed to generate P2WSH PSBTs:', error);
-    return vectors;
+function p2wpkhScript(pubkey: Buffer): Buffer {
+  const payment = bitcoin.payments.p2wpkh({ pubkey, network: NETWORK });
+  if (!payment.output) {
+    throw new Error('Failed to build P2WPKH script');
   }
+  return Buffer.from(payment.output);
 }
 
-/**
- * Verify a PSBT against Bitcoin Core
- */
-async function verifyWithBitcoinCore(
-  psbtBase64: string,
-  bitcoinCore: BitcoinCoreImplementation
-): Promise<{ valid: boolean; fee?: number; vsize?: number }> {
-  try {
-    const result = await bitcoinCore.validatePsbt(psbtBase64);
-    if (result.valid && result.decoded) {
-      return {
-        valid: true,
-        fee: result.decoded.fee,
-        vsize: result.decoded.vsize,
-      };
-    }
-    return { valid: false };
-  } catch (error) {
-    console.error('Bitcoin Core verification failed:', error);
-    return { valid: false };
+function destinationAddress(): string {
+  const payment = bitcoin.payments.p2wpkh({ hash: DESTINATION_HASH, network: NETWORK });
+  if (!payment.address) {
+    throw new Error('Failed to build deterministic destination address');
   }
+  return payment.address;
 }
 
-/**
- * Verify a PSBT with our Sanctuary implementation
- */
-async function verifyWithSanctuary(
-  psbtBase64: string,
-  sanctuary: SanctuaryImplementation
-): Promise<{ valid: boolean; fee?: number; vsize?: number }> {
-  try {
-    const result = await sanctuary.validatePsbt(psbtBase64);
-    if (result.valid && result.decoded) {
-      return {
-        valid: true,
-        fee: result.decoded.fee,
-        vsize: result.decoded.vsize,
-      };
-    }
-    return { valid: false };
-  } catch (error) {
-    console.error('Sanctuary verification failed:', error);
-    return { valid: false };
-  }
+function buildSortedMultisigWitnessScript(pubkeys: Buffer[]): Buffer {
+  const sortedPubkeys = [...pubkeys].sort(Buffer.compare);
+  return Buffer.from(bitcoin.script.compile([
+    bitcoin.opcodes.OP_2,
+    ...sortedPubkeys,
+    bitcoin.opcodes.OP_2,
+    bitcoin.opcodes.OP_CHECKMULTISIG,
+  ]));
 }
 
-/**
- * Cross-verify a PSBT with multiple implementations
- */
-async function crossVerify(
-  psbtBase64: string,
-  bitcoinCore: BitcoinCoreImplementation,
-  sanctuary: SanctuaryImplementation
-): Promise<{
-  allAgree: boolean;
-  verifiedBy: string[];
-  fee?: number;
-  vsize?: number;
-}> {
-  const results: { name: string; valid: boolean; fee?: number; vsize?: number }[] = [];
+function buildP2wpkhVector(): DraftVector {
+  const inputValue = 50_000n;
+  const outputValue = 49_000n;
+  const psbt = new bitcoin.Psbt({ network: NETWORK });
 
-  // Verify with Bitcoin Core
-  const coreResult = await verifyWithBitcoinCore(psbtBase64, bitcoinCore);
-  if (coreResult.valid) {
-    results.push({ name: `Bitcoin Core ${bitcoinCore.version}`, ...coreResult });
-  }
-
-  // Verify with Sanctuary
-  const sanctuaryResult = await verifyWithSanctuary(psbtBase64, sanctuary);
-  if (sanctuaryResult.valid) {
-    results.push({ name: `Sanctuary ${sanctuary.version}`, ...sanctuaryResult });
-  }
-
-  // Check if all implementations agree
-  const allAgree = results.length >= 2;
-  const verifiedBy = results.map((r) => r.name);
-
-  // Use Bitcoin Core's values as the canonical source
-  const coreValues = results.find((r) => r.name.includes('Bitcoin Core'));
+  psbt.addInput({
+    hash: '01'.repeat(32),
+    index: 0,
+    sequence: 0xfffffffd,
+    witnessUtxo: {
+      script: p2wpkhScript(PUBKEY_A),
+      value: inputValue,
+    },
+    bip32Derivation: [{
+      masterFingerprint: FINGERPRINT_A,
+      path: "m/84'/1'/0'/0/0",
+      pubkey: PUBKEY_A,
+    }],
+  });
+  psbt.addOutput({
+    address: destinationAddress(),
+    value: outputValue,
+  });
 
   return {
-    allAgree,
-    verifiedBy,
-    fee: coreValues?.fee,
-    vsize: coreValues?.vsize,
+    description: 'Bitcoin Core verified testnet P2WPKH (1 input, 1 output)',
+    scriptType: 'p2wpkh',
+    network: 'testnet',
+    psbtBase64: psbt.toBase64(),
   };
 }
 
-/**
- * Generate the output TypeScript file
- */
-function generateOutputFile(vectors: { p2wpkh: GeneratedVector[]; p2wsh: GeneratedVector[] }): void {
+function buildP2shP2wpkhVector(): DraftVector {
+  const inputValue = 75_000n;
+  const outputValue = 73_500n;
+  const p2wpkh = bitcoin.payments.p2wpkh({ pubkey: PUBKEY_A, network: NETWORK });
+  const p2sh = bitcoin.payments.p2sh({ redeem: p2wpkh, network: NETWORK });
+  if (!p2wpkh.output || !p2sh.output) {
+    throw new Error('Failed to build P2SH-P2WPKH scripts');
+  }
+
+  const psbt = new bitcoin.Psbt({ network: NETWORK });
+  psbt.addInput({
+    hash: '03'.repeat(32),
+    index: 0,
+    sequence: 0xfffffffd,
+    witnessUtxo: {
+      script: p2sh.output,
+      value: inputValue,
+    },
+    redeemScript: p2wpkh.output,
+    bip32Derivation: [{
+      masterFingerprint: FINGERPRINT_A,
+      path: "m/49'/1'/0'/0/0",
+      pubkey: PUBKEY_A,
+    }],
+  });
+  psbt.addOutput({
+    address: destinationAddress(),
+    value: outputValue,
+  });
+
+  return {
+    description: 'Bitcoin Core verified testnet P2SH-P2WPKH nested SegWit (1 input, 1 output)',
+    scriptType: 'p2sh-p2wpkh',
+    network: 'testnet',
+    psbtBase64: psbt.toBase64(),
+  };
+}
+
+function buildP2trVector(): DraftVector {
+  const inputValue = 120_000n;
+  const outputValue = 117_500n;
+  const p2tr = bitcoin.payments.p2tr({
+    internalPubkey: X_ONLY_PUBKEY_A,
+    network: NETWORK,
+  });
+  if (!p2tr.output) {
+    throw new Error('Failed to build P2TR script');
+  }
+
+  const psbt = new bitcoin.Psbt({ network: NETWORK });
+  psbt.addInput({
+    hash: '04'.repeat(32),
+    index: 0,
+    sequence: 0xfffffffd,
+    witnessUtxo: {
+      script: p2tr.output,
+      value: inputValue,
+    },
+    tapInternalKey: X_ONLY_PUBKEY_A,
+    tapBip32Derivation: [{
+      masterFingerprint: FINGERPRINT_A,
+      path: "m/86'/1'/0'/0/0",
+      pubkey: X_ONLY_PUBKEY_A,
+      leafHashes: [],
+    }],
+  });
+  psbt.addOutput({
+    address: destinationAddress(),
+    value: outputValue,
+  });
+
+  return {
+    description: 'Bitcoin Core verified testnet P2TR key-path draft (1 input, 1 output)',
+    scriptType: 'p2tr',
+    network: 'testnet',
+    psbtBase64: psbt.toBase64(),
+  };
+}
+
+function buildP2wshVector(): DraftVector {
+  const inputValue = 100_000n;
+  const outputValue = 98_000n;
+  const witnessScript = buildSortedMultisigWitnessScript([PUBKEY_A, PUBKEY_B]);
+  const p2wsh = bitcoin.payments.p2wsh({
+    redeem: { output: witnessScript, network: NETWORK },
+    network: NETWORK,
+  });
+  if (!p2wsh.output) {
+    throw new Error('Failed to build P2WSH script');
+  }
+
+  const psbt = new bitcoin.Psbt({ network: NETWORK });
+  psbt.addInput({
+    hash: '02'.repeat(32),
+    index: 1,
+    sequence: 0xfffffffd,
+    witnessUtxo: {
+      script: p2wsh.output,
+      value: inputValue,
+    },
+    witnessScript,
+    bip32Derivation: [
+      {
+        masterFingerprint: FINGERPRINT_A,
+        path: "m/48'/1'/0'/2'/0/0",
+        pubkey: PUBKEY_A,
+      },
+      {
+        masterFingerprint: FINGERPRINT_B,
+        path: "m/48'/1'/0'/2'/0/0",
+        pubkey: PUBKEY_B,
+      },
+    ],
+  });
+  psbt.addOutput({
+    address: destinationAddress(),
+    value: outputValue,
+  });
+
+  return {
+    description: 'Bitcoin Core verified testnet P2WSH 2-of-2 multisig (1 input, 1 output)',
+    scriptType: 'p2wsh',
+    network: 'testnet',
+    psbtBase64: psbt.toBase64(),
+  };
+}
+
+function buildP2shP2wshVector(): DraftVector {
+  const inputValue = 150_000n;
+  const outputValue = 147_000n;
+  const witnessScript = buildSortedMultisigWitnessScript([PUBKEY_A, PUBKEY_B]);
+  const p2wsh = bitcoin.payments.p2wsh({
+    redeem: { output: witnessScript, network: NETWORK },
+    network: NETWORK,
+  });
+  if (!p2wsh.output) {
+    throw new Error('Failed to build P2WSH redeem script');
+  }
+
+  const p2sh = bitcoin.payments.p2sh({
+    redeem: { output: p2wsh.output, network: NETWORK },
+    network: NETWORK,
+  });
+  if (!p2sh.output) {
+    throw new Error('Failed to build P2SH-P2WSH script');
+  }
+
+  const psbt = new bitcoin.Psbt({ network: NETWORK });
+  psbt.addInput({
+    hash: '05'.repeat(32),
+    index: 0,
+    sequence: 0xfffffffd,
+    witnessUtxo: {
+      script: p2sh.output,
+      value: inputValue,
+    },
+    redeemScript: p2wsh.output,
+    witnessScript,
+    bip32Derivation: [
+      {
+        masterFingerprint: FINGERPRINT_A,
+        path: "m/48'/1'/0'/1'/0/0",
+        pubkey: PUBKEY_A,
+      },
+      {
+        masterFingerprint: FINGERPRINT_B,
+        path: "m/48'/1'/0'/1'/0/0",
+        pubkey: PUBKEY_B,
+      },
+    ],
+  });
+  psbt.addOutput({
+    address: destinationAddress(),
+    value: outputValue,
+  });
+
+  return {
+    description: 'Bitcoin Core verified testnet P2SH-P2WSH 2-of-2 multisig (1 input, 1 output)',
+    scriptType: 'p2sh-p2wsh',
+    network: 'testnet',
+    psbtBase64: psbt.toBase64(),
+  };
+}
+
+function requireDecoded(result: Awaited<ReturnType<BitcoinCoreImplementation['validatePsbt']>>) {
+  if (!result.valid || !result.decoded) {
+    throw new Error(`Bitcoin Core rejected PSBT: ${result.error ?? 'unknown error'}`);
+  }
+  return result.decoded;
+}
+
+async function crossVerify(
+  draft: DraftVector,
+  bitcoinCore: BitcoinCoreImplementation,
+  sanctuary: SanctuaryImplementation,
+): Promise<Verification> {
+  const coreResult = requireDecoded(await bitcoinCore.validatePsbt(draft.psbtBase64));
+  const sanctuaryResult = await sanctuary.validatePsbt(draft.psbtBase64);
+  if (!sanctuaryResult.valid || !sanctuaryResult.decoded) {
+    throw new Error(`Sanctuary rejected PSBT: ${sanctuaryResult.error ?? 'unknown error'}`);
+  }
+
+  if (coreResult.inputs !== sanctuaryResult.decoded.inputs) {
+    throw new Error(`Input count mismatch for ${draft.description}`);
+  }
+  if (coreResult.outputs !== sanctuaryResult.decoded.outputs) {
+    throw new Error(`Output count mismatch for ${draft.description}`);
+  }
+  if (coreResult.fee !== sanctuaryResult.decoded.fee) {
+    throw new Error(
+      `Fee mismatch for ${draft.description}: Core=${coreResult.fee}, Sanctuary=${sanctuaryResult.decoded.fee}`
+    );
+  }
+
+  return {
+    verifiedBy: [
+      `Bitcoin Core ${bitcoinCore.version}`,
+      `${sanctuary.name} ${sanctuary.version}`,
+    ],
+    expectedFee: coreResult.fee,
+    expectedVsize: coreResult.vsize,
+    isComplete: coreResult.complete,
+  };
+}
+
+async function verifyDrafts(
+  drafts: DraftVector[],
+  bitcoinCore: BitcoinCoreImplementation,
+  sanctuary: SanctuaryImplementation,
+): Promise<GeneratedVector[]> {
+  const generated: GeneratedVector[] = [];
+  for (const draft of drafts) {
+    const verification = await crossVerify(draft, bitcoinCore, sanctuary);
+    generated.push({ ...draft, ...verification });
+    console.log(`  verified: ${draft.description}`);
+  }
+  return generated;
+}
+
+function partitionVectors(vectors: GeneratedVector[]): PartitionedVectors {
+  return {
+    p2wpkh: vectors.filter(vector => vector.scriptType === 'p2wpkh'),
+    p2shP2wpkh: vectors.filter(vector => vector.scriptType === 'p2sh-p2wpkh'),
+    p2tr: vectors.filter(vector => vector.scriptType === 'p2tr'),
+    p2wsh: vectors.filter(vector => vector.scriptType === 'p2wsh'),
+    p2shP2wsh: vectors.filter(vector => vector.scriptType === 'p2sh-p2wsh'),
+  };
+}
+
+function assertCompleteVectorSet(vectors: PartitionedVectors): void {
+  const missingGroups = Object.entries(vectors)
+    .filter(([, group]) => group.length === 0)
+    .map(([group]) => group);
+  if (missingGroups.length > 0) {
+    throw new Error(`Generated PSBT vector set is incomplete: missing ${missingGroups.join(', ')}`);
+  }
+}
+
+function generateOutputFile(vectors: PartitionedVectors): void {
   const content = `/**
  * Generated PSBT Test Vectors
  *
  * AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
  * Generated by: scripts/verify-psbt/generate-vectors.ts
- * Generated at: ${new Date().toISOString()}
  *
- * These vectors have been verified against multiple implementations.
+ * These vectors have been decoded and analyzed by Bitcoin Core and parsed by
+ * Sanctuary's bitcoinjs-lib wrapper before being written.
  */
 
 import type { ExtendedPsbtTestVector } from './bip174-test-vectors';
@@ -214,113 +395,79 @@ import type { ExtendedPsbtTestVector } from './bip174-test-vectors';
 export const GENERATED_P2WPKH_VECTORS: ExtendedPsbtTestVector[] = ${JSON.stringify(vectors.p2wpkh, null, 2)};
 
 /**
+ * P2SH-P2WPKH (Nested SegWit) Test Vectors
+ * Verified by: Bitcoin Core, Sanctuary (bitcoinjs-lib)
+ */
+export const GENERATED_P2SH_P2WPKH_VECTORS: ExtendedPsbtTestVector[] = ${JSON.stringify(vectors.p2shP2wpkh, null, 2)};
+
+/**
+ * P2TR (Taproot) Test Vectors
+ * Verified by: Bitcoin Core, Sanctuary (bitcoinjs-lib)
+ */
+export const GENERATED_P2TR_VECTORS: ExtendedPsbtTestVector[] = ${JSON.stringify(vectors.p2tr, null, 2)};
+
+/**
  * P2WSH Multisig Test Vectors
  * Verified by: Bitcoin Core, Sanctuary (bitcoinjs-lib)
  */
 export const GENERATED_P2WSH_VECTORS: ExtendedPsbtTestVector[] = ${JSON.stringify(vectors.p2wsh, null, 2)};
+
+/**
+ * P2SH-P2WSH Nested Multisig Test Vectors
+ * Verified by: Bitcoin Core, Sanctuary (bitcoinjs-lib)
+ */
+export const GENERATED_P2SH_P2WSH_VECTORS: ExtendedPsbtTestVector[] = ${JSON.stringify(vectors.p2shP2wsh, null, 2)};
 `;
 
-  fs.writeFileSync(OUTPUT_FILE, content);
+  writeFileSync(OUTPUT_FILE, content);
   console.log(`\nGenerated vectors written to: ${OUTPUT_FILE}`);
 }
 
-/**
- * Main entry point
- */
 async function main(): Promise<void> {
   console.log('PSBT Test Vector Generator');
   console.log('==========================\n');
 
-  // Initialize implementations
   const bitcoinCore = createRpcBitcoinCore(
     BITCOIN_CORE_RPC.host,
     BITCOIN_CORE_RPC.port,
     BITCOIN_CORE_RPC.user,
     BITCOIN_CORE_RPC.password,
-    'regtest'
+    'regtest',
   );
-
   const sanctuary = new SanctuaryImplementation();
 
-  // Check Bitcoin Core availability
   console.log('Checking Bitcoin Core availability...');
-  const coreAvailable = await bitcoinCore.isAvailable();
-
-  if (!coreAvailable) {
-    console.error('\nError: Bitcoin Core is not available.');
-    console.error('Please start Bitcoin Core with: docker compose up -d');
-    console.error('Then wait for it to be ready and run this script again.\n');
-
-    // Generate placeholder file
-    console.log('Generating placeholder file with empty vectors...');
-    generateOutputFile({ p2wpkh: [], p2wsh: [] });
-    return;
+  if (!(await bitcoinCore.isAvailable())) {
+    throw new Error(
+      'Bitcoin Core is not available. Start regtest Core on 127.0.0.1:18443 before generating PSBT vectors.'
+    );
   }
 
   console.log(`Bitcoin Core version: ${bitcoinCore.version}`);
   console.log(`Sanctuary version: ${sanctuary.version}\n`);
 
-  // Collect generated vectors
-  const p2wpkhVectors: GeneratedVector[] = [];
-  const p2wshVectors: GeneratedVector[] = [];
+  const drafts = [
+    buildP2wpkhVector(),
+    buildP2shP2wpkhVector(),
+    buildP2trVector(),
+    buildP2wshVector(),
+    buildP2shP2wshVector(),
+  ];
+  const generated = await verifyDrafts(drafts, bitcoinCore, sanctuary);
+  const partitioned = partitionVectors(generated);
 
-  // Generate P2WPKH vectors
-  console.log('Generating P2WPKH vectors...');
-  const generatedP2wpkh = await generateP2wpkhPsbts(bitcoinCore);
-  for (const vector of generatedP2wpkh) {
-    const verification = await crossVerify(vector.psbtBase64, bitcoinCore, sanctuary);
-    if (verification.allAgree) {
-      vector.verifiedBy = verification.verifiedBy;
-      vector.expectedFee = verification.fee || 0;
-      vector.expectedVsize = verification.vsize || 0;
-      p2wpkhVectors.push(vector);
-      console.log(`  ✓ ${vector.description} verified`);
-    } else {
-      console.log(`  ✗ ${vector.description} - implementations disagree`);
-    }
-  }
-  if (generatedP2wpkh.length === 0) {
-    console.log('  - No P2WPKH vectors generated (requires funded Bitcoin Core wallet)');
-  }
+  assertCompleteVectorSet(partitioned);
 
-  // Generate P2WSH multisig vectors
-  console.log('\nGenerating P2WSH multisig vectors...');
-  const generatedP2wsh = await generateP2wshMultisigPsbts(bitcoinCore);
-  for (const vector of generatedP2wsh) {
-    const verification = await crossVerify(vector.psbtBase64, bitcoinCore, sanctuary);
-    if (verification.allAgree) {
-      vector.verifiedBy = verification.verifiedBy;
-      vector.expectedFee = verification.fee || 0;
-      vector.expectedVsize = verification.vsize || 0;
-      p2wshVectors.push(vector);
-      console.log(`  ✓ ${vector.description} verified`);
-    } else {
-      console.log(`  ✗ ${vector.description} - implementations disagree`);
-    }
-  }
-  if (generatedP2wsh.length === 0) {
-    console.log('  - No P2WSH vectors generated (requires funded Bitcoin Core wallet)');
-  }
-
-  // Generate output file
-  generateOutputFile({ p2wpkh: p2wpkhVectors, p2wsh: p2wshVectors });
-
-  console.log('\nVector generation complete!');
-  console.log(`  P2WPKH vectors: ${p2wpkhVectors.length}`);
-  console.log(`  P2WSH vectors: ${p2wshVectors.length}`);
-
-  if (p2wpkhVectors.length === 0 && p2wshVectors.length === 0) {
-    console.log('\nNote: No vectors were generated.');
-    console.log('To generate real vectors, you need to:');
-    console.log('  1. Start Bitcoin Core: docker compose up -d');
-    console.log('  2. Create a wallet: bitcoin-cli -regtest createwallet "test"');
-    console.log('  3. Generate blocks: bitcoin-cli -regtest generatetoaddress 101 $(bitcoin-cli -regtest getnewaddress)');
-    console.log('  4. Run this script again');
-  }
+  generateOutputFile(partitioned);
+  console.log('\nVector generation complete.');
+  console.log(`  P2WPKH vectors: ${partitioned.p2wpkh.length}`);
+  console.log(`  P2SH-P2WPKH vectors: ${partitioned.p2shP2wpkh.length}`);
+  console.log(`  P2TR vectors: ${partitioned.p2tr.length}`);
+  console.log(`  P2WSH vectors: ${partitioned.p2wsh.length}`);
+  console.log(`  P2SH-P2WSH vectors: ${partitioned.p2shP2wsh.length}`);
 }
 
-// Run the generator
 main().catch((error) => {
-  console.error('Fatal error:', error);
+  console.error('Fatal error:', error instanceof Error ? error.message : String(error));
   process.exit(1);
 });

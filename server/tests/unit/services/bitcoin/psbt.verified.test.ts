@@ -14,6 +14,70 @@ import {
   P2WPKH_VECTORS,
   P2WSH_MULTISIG_VECTORS,
 } from '@fixtures/bip174-test-vectors';
+import {
+  GENERATED_P2WPKH_VECTORS,
+  GENERATED_P2SH_P2WPKH_VECTORS,
+  GENERATED_P2TR_VECTORS,
+  GENERATED_P2WSH_VECTORS,
+  GENERATED_P2SH_P2WSH_VECTORS,
+} from '@fixtures/generated-psbt-vectors';
+
+const P2WPKH_TEST_VECTORS = [...P2WPKH_VECTORS, ...GENERATED_P2WPKH_VECTORS];
+const P2SH_P2WPKH_TEST_VECTORS = [...GENERATED_P2SH_P2WPKH_VECTORS];
+const P2TR_TEST_VECTORS = [...GENERATED_P2TR_VECTORS];
+const P2WSH_TEST_VECTORS = [...P2WSH_MULTISIG_VECTORS, ...GENERATED_P2WSH_VECTORS];
+const P2SH_P2WSH_TEST_VECTORS = [...GENERATED_P2SH_P2WSH_VECTORS];
+const ALL_EXTENDED_TEST_VECTORS = [
+  ...P2WPKH_TEST_VECTORS,
+  ...P2SH_P2WPKH_TEST_VECTORS,
+  ...P2TR_TEST_VECTORS,
+  ...P2WSH_TEST_VECTORS,
+  ...P2SH_P2WSH_TEST_VECTORS,
+];
+const GENERATED_SCRIPT_GROUPS = [
+  GENERATED_P2WPKH_VECTORS,
+  GENERATED_P2SH_P2WPKH_VECTORS,
+  GENERATED_P2TR_VECTORS,
+  GENERATED_P2WSH_VECTORS,
+  GENERATED_P2SH_P2WSH_VECTORS,
+];
+
+function expectP2shScript(script: Uint8Array | undefined): void {
+  expect(script).toBeDefined();
+  expect(script![0]).toBe(bitcoin.opcodes.OP_HASH160);
+  expect(script![1]).toBe(0x14);
+  expect(script![22]).toBe(bitcoin.opcodes.OP_EQUAL);
+}
+
+function expectWitnessProgram(script: Uint8Array | undefined, byteLength: number): void {
+  expect(script).toBeDefined();
+  expect(script![0]).toBe(0x00);
+  expect(script![1]).toBe(byteLength);
+  expect(script!.length).toBe(byteLength + 2);
+}
+
+describe('Generated Bitcoin Core-backed PSBT Vectors', () => {
+  it('has non-empty generated vectors for every required script family', () => {
+    GENERATED_SCRIPT_GROUPS.forEach((group) => {
+      expect(group.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('records Bitcoin Core and Sanctuary verification provenance', () => {
+    const generatedVectors = GENERATED_SCRIPT_GROUPS.flat();
+
+    generatedVectors.forEach((vector) => {
+      expect(vector.verifiedBy.some((impl) => impl.includes('Bitcoin Core'))).toBe(true);
+      expect(vector.verifiedBy.some((impl) => impl.includes('Sanctuary'))).toBe(true);
+    });
+  });
+
+  it('covers the nested SegWit, Taproot, and nested multisig script families', () => {
+    expect(GENERATED_SCRIPT_GROUPS.flat().map((vector) => vector.scriptType)).toEqual(
+      expect.arrayContaining(['p2sh-p2wpkh', 'p2tr', 'p2sh-p2wsh'])
+    );
+  });
+});
 
 describe('PSBT BIP-174 Compliance', () => {
   describe('Valid PSBT Parsing', () => {
@@ -61,10 +125,10 @@ describe('PSBT BIP-174 Compliance', () => {
 describe('PSBT Structure Validation', () => {
   describe('P2WPKH Vectors', () => {
     it('has P2WPKH vectors', () => {
-      expect(P2WPKH_VECTORS.length).toBeGreaterThan(0);
+      expect(P2WPKH_TEST_VECTORS.length).toBeGreaterThan(0);
     });
 
-    P2WPKH_VECTORS.forEach((vector) => {
+    P2WPKH_TEST_VECTORS.forEach((vector) => {
       describe(vector.description, () => {
         let psbt: bitcoin.Psbt;
 
@@ -102,10 +166,10 @@ describe('PSBT Structure Validation', () => {
 
   describe('P2WSH Multisig Vectors', () => {
     it('has P2WSH multisig vectors', () => {
-      expect(P2WSH_MULTISIG_VECTORS.length).toBeGreaterThan(0);
+      expect(P2WSH_TEST_VECTORS.length).toBeGreaterThan(0);
     });
 
-    P2WSH_MULTISIG_VECTORS.forEach((vector) => {
+    P2WSH_TEST_VECTORS.forEach((vector) => {
       describe(vector.description, () => {
         let psbt: bitcoin.Psbt;
 
@@ -141,10 +205,58 @@ describe('PSBT Structure Validation', () => {
       });
     });
   });
+
+  describe('Generated Nested SegWit and Taproot Vectors', () => {
+    it('has P2SH-P2WPKH, P2TR, and P2SH-P2WSH vectors', () => {
+      expect(P2SH_P2WPKH_TEST_VECTORS.length).toBeGreaterThan(0);
+      expect(P2TR_TEST_VECTORS.length).toBeGreaterThan(0);
+      expect(P2SH_P2WSH_TEST_VECTORS.length).toBeGreaterThan(0);
+    });
+
+    P2SH_P2WPKH_TEST_VECTORS.forEach((vector) => {
+      it(`has nested P2WPKH redeemScript and P2SH witnessUtxo: ${vector.description}`, () => {
+        const psbt = bitcoin.Psbt.fromBase64(vector.psbtBase64);
+
+        psbt.data.inputs.forEach((input) => {
+          expectP2shScript(input.witnessUtxo?.script);
+          expectWitnessProgram(input.redeemScript, 20);
+          expect(input.witnessScript).toBeUndefined();
+        });
+      });
+    });
+
+    P2TR_TEST_VECTORS.forEach((vector) => {
+      it(`has Taproot key-path metadata: ${vector.description}`, () => {
+        const psbt = bitcoin.Psbt.fromBase64(vector.psbtBase64);
+
+        psbt.data.inputs.forEach((input) => {
+          expect(input.witnessUtxo?.script[0]).toBe(bitcoin.opcodes.OP_1);
+          expect(input.witnessUtxo?.script[1]).toBe(0x20);
+          expect(input.tapInternalKey?.length).toBe(32);
+          expect(input.tapBip32Derivation).toBeDefined();
+          expect(input.tapBip32Derivation![0].pubkey.length).toBe(32);
+          expect(input.tapBip32Derivation![0].leafHashes).toEqual([]);
+        });
+      });
+    });
+
+    P2SH_P2WSH_TEST_VECTORS.forEach((vector) => {
+      it(`has nested multisig redeemScript, witnessScript, and signer derivations: ${vector.description}`, () => {
+        const psbt = bitcoin.Psbt.fromBase64(vector.psbtBase64);
+
+        psbt.data.inputs.forEach((input) => {
+          expectP2shScript(input.witnessUtxo?.script);
+          expectWitnessProgram(input.redeemScript, 32);
+          expect(input.witnessScript).toBeDefined();
+          expect(input.bip32Derivation?.length).toBeGreaterThanOrEqual(2);
+        });
+      });
+    });
+  });
 });
 
 describe('PSBT Fee Calculation', () => {
-  const allVectors = [...P2WPKH_VECTORS, ...P2WSH_MULTISIG_VECTORS];
+  const allVectors = ALL_EXTENDED_TEST_VECTORS;
 
   it('has vectors for fee calculation tests', () => {
     expect(allVectors.length).toBeGreaterThan(0);
@@ -173,7 +285,7 @@ describe('PSBT Fee Calculation', () => {
 });
 
 describe('PSBT Invariants (Property-Based)', () => {
-  const allVectors = [...P2WPKH_VECTORS, ...P2WSH_MULTISIG_VECTORS];
+  const allVectors = ALL_EXTENDED_TEST_VECTORS;
 
   it('has vectors for invariant tests', () => {
     expect(allVectors.length).toBeGreaterThan(0);
@@ -245,7 +357,7 @@ describe('PSBT Invariants (Property-Based)', () => {
 });
 
 describe('PSBT BIP32 Derivation', () => {
-  const allVectors = [...P2WPKH_VECTORS, ...P2WSH_MULTISIG_VECTORS];
+  const allVectors = ALL_EXTENDED_TEST_VECTORS;
 
   it('has vectors for BIP32 derivation tests', () => {
     expect(allVectors.length).toBeGreaterThan(0);
@@ -294,17 +406,32 @@ describe('PSBT BIP32 Derivation', () => {
       });
     });
   });
+
+  it('tapBip32Derivation pubkey should be valid x-only BIP340 keys', () => {
+    P2TR_TEST_VECTORS.forEach((vector) => {
+      const psbt = bitcoin.Psbt.fromBase64(vector.psbtBase64);
+
+      psbt.data.inputs.forEach((input) => {
+        expect(input.tapBip32Derivation).toBeDefined();
+        input.tapBip32Derivation!.forEach((derivation) => {
+          expect(derivation.masterFingerprint.length).toBe(4);
+          expect(derivation.path).toMatch(/^m(\/\d+'?)+$/);
+          expect(derivation.pubkey.length).toBe(32);
+        });
+      });
+    });
+  });
 });
 
 describe('PSBT Sequence Numbers (RBF)', () => {
   it('has P2WPKH vectors for RBF tests', () => {
-    expect(P2WPKH_VECTORS.length).toBeGreaterThan(0);
+    expect(P2WPKH_TEST_VECTORS.length).toBeGreaterThan(0);
   });
 
   it('should detect RBF-enabled transactions', () => {
     const RBF_SEQUENCE = 0xfffffffd;
 
-    P2WPKH_VECTORS.forEach((vector) => {
+    P2WPKH_TEST_VECTORS.forEach((vector) => {
       const psbt = bitcoin.Psbt.fromBase64(vector.psbtBase64);
 
       psbt.txInputs.forEach((input) => {

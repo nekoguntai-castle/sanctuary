@@ -14,6 +14,9 @@ const log = createLogger('BITCOIN:SVC_PSBT_MULTISIG');
 
 type PsbtInput = bitcoin.Psbt['data']['inputs'][number];
 type PartialSignature = NonNullable<PsbtInput['partialSig']>[number];
+type Bip32Derivation = NonNullable<PsbtInput['bip32Derivation']>[number];
+
+const BIP32_PATH_PATTERN = /^m(\/\d+'?)+$/;
 
 interface MultisigInputState {
   input: PsbtInput;
@@ -25,24 +28,6 @@ interface MultisigInputState {
   partialSigPubkeys: string[];
   scriptPubkeyHexes: string[];
 }
-
-const compactDerSignature = (signature: Uint8Array): { compactSig: Buffer; sighashType: number } => {
-  const sigBuf = Buffer.from(signature);
-  const sighashType = sigBuf[sigBuf.length - 1];
-  const derSig = sigBuf.slice(0, -1);
-
-  let offset = 2;
-  const rLen = derSig[offset + 1];
-  const r = derSig.slice(offset + 2, offset + 2 + rLen);
-  offset = offset + 2 + rLen;
-  const sLen = derSig[offset + 1];
-  const s = derSig.slice(offset + 2, offset + 2 + sLen);
-
-  const rPadded = r.length > 32 ? r.slice(-32) : Buffer.concat([Buffer.alloc(32 - r.length), r]);
-  const sPadded = s.length > 32 ? s.slice(-32) : Buffer.concat([Buffer.alloc(32 - s.length), s]);
-
-  return { compactSig: Buffer.concat([rPadded, sPadded]), sighashType };
-};
 
 const getUnsignedTransaction = (psbt: bitcoin.Psbt): bitcoin.Transaction => {
   const tx = psbt.data.globalMap.unsignedTx as unknown as { toBuffer(): Buffer };
@@ -58,7 +43,9 @@ const verifyPartialSignature = (
 ): void => {
   const pubkeyHex = Buffer.from(partialSig.pubkey).toString('hex');
   try {
-    const { compactSig, sighashType } = compactDerSignature(partialSig.signature);
+    const { signature: compactSig, hashType: sighashType } = bitcoin.script.signature.decode(
+      Buffer.from(partialSig.signature)
+    );
     const sighash = getUnsignedTransaction(psbt).hashForWitnessV0(
       inputIndex,
       witnessScript,
@@ -67,19 +54,20 @@ const verifyPartialSignature = (
     );
 
     if (!ecc.verify(sighash, partialSig.pubkey, compactSig)) {
-      log.error('Invalid signature detected during multisig finalization', {
-        inputIndex,
-        pubkey: pubkeyHex,
-        sighashHex: Buffer.from(sighash).toString('hex'),
-        sigHex: Buffer.from(partialSig.signature).toString('hex'),
-      });
+      throw new Error('invalid ECDSA signature');
     }
   } catch (verifyError) {
-    log.warn('Signature verification error', {
+    const error = verifyError as Error;
+    log.error('Signature verification failed during multisig finalization', {
       inputIndex,
-      pubkey: pubkeyHex.substring(0, 16) + '...',
-      error: (verifyError as Error).message,
+      pubkey: pubkeyHex,
+      sigHex: Buffer.from(partialSig.signature).toString('hex'),
+      error: error.message,
     });
+    throw new Error(
+      `Input #${inputIndex} signature verification failed for pubkey ` +
+      `${pubkeyHex.substring(0, 16)}...: ${error.message}`
+    );
   }
 };
 
@@ -91,11 +79,57 @@ const verifyPartialSignatures = (
   partialSig: PartialSignature[]
 ): void => {
   if (!input.witnessUtxo) {
-    log.warn('Missing witnessUtxo for input', { inputIndex });
+    throw new Error(`Input #${inputIndex} missing witnessUtxo for signature verification`);
   }
 
   for (const ps of partialSig) {
     verifyPartialSignature(psbt, inputIndex, input, witnessScript, ps);
+  }
+};
+
+const pubkeyHex = (pubkey: Uint8Array): string => Buffer.from(pubkey).toString('hex');
+
+const assertValidSignerDerivation = (
+  inputIndex: number,
+  derivation: Bip32Derivation,
+  signerPubkeyHex: string
+): void => {
+  if (derivation.masterFingerprint.length !== 4) {
+    throw new Error(`Input #${inputIndex} signer metadata has invalid master fingerprint for pubkey ${signerPubkeyHex}`);
+  }
+
+  // Signer metadata must name a concrete BIP32 path, including hardened account
+  // components and non-hardened receive/change suffixes. Without this invariant,
+  // a partial signature could be accepted without proving which wallet key path
+  // produced the signing pubkey.
+  if (!BIP32_PATH_PATTERN.test(derivation.path)) {
+    throw new Error(`Input #${inputIndex} signer metadata has invalid BIP32 path for pubkey ${signerPubkeyHex}`);
+  }
+};
+
+const assertSignerMetadataMatchesPartialSignatures = (
+  inputIndex: number,
+  input: PsbtInput,
+  partialSig: PartialSignature[]
+): void => {
+  if (!input.bip32Derivation || input.bip32Derivation.length === 0) {
+    throw new Error(`Input #${inputIndex} missing BIP32 derivation metadata for signer verification`);
+  }
+
+  // Finalization is the last software boundary before extraction/broadcast.
+  // Missing signer metadata is treated as a funds-safety failure instead of a
+  // warning because hardware wallets and auditors rely on this pubkey/path link.
+  const derivationsByPubkey = new Map(
+    input.bip32Derivation.map((derivation) => [pubkeyHex(derivation.pubkey), derivation])
+  );
+
+  for (const signature of partialSig) {
+    const signerPubkeyHex = pubkeyHex(signature.pubkey);
+    const derivation = derivationsByPubkey.get(signerPubkeyHex);
+    if (!derivation) {
+      throw new Error(`Input #${inputIndex} missing BIP32 derivation metadata for signer pubkey ${signerPubkeyHex}`);
+    }
+    assertValidSignerDerivation(inputIndex, derivation, signerPubkeyHex);
   }
 };
 
@@ -154,11 +188,7 @@ const buildSignatureMap = (partialSig: PartialSignature[]): Map<string, Buffer> 
   return sigMap;
 };
 
-const orderSignatures = (
-  inputIndex: number,
-  partialSig: PartialSignature[],
-  scriptPubkeys: Buffer[]
-): Buffer[] => {
+const orderSignatures = (partialSig: PartialSignature[], scriptPubkeys: Buffer[]): Buffer[] => {
   const sigMap = buildSignatureMap(partialSig);
   const orderedSigs: Buffer[] = [];
 
@@ -214,6 +244,7 @@ const applyFinalWitness = (
   psbt: bitcoin.Psbt,
   inputIndex: number,
   witnessScript: Uint8Array,
+  redeemScript: Uint8Array | undefined,
   orderedSigs: Buffer[]
 ): void => {
   const witnessStack: Buffer[] = [
@@ -222,9 +253,14 @@ const applyFinalWitness = (
     Buffer.from(witnessScript),
   ];
 
-  psbt.updateInput(inputIndex, {
+  const finalInput: Parameters<bitcoin.Psbt['updateInput']>[1] = {
     finalScriptWitness: witnessStackToScriptWitness(witnessStack),
-  });
+  };
+  if (redeemScript) {
+    finalInput.finalScriptSig = bitcoin.script.compile([Buffer.from(redeemScript)]);
+  }
+
+  psbt.updateInput(inputIndex, finalInput);
 };
 
 /**
@@ -238,9 +274,8 @@ const applyFinalWitness = (
 export function finalizeMultisigInput(psbt: bitcoin.Psbt, inputIndex: number): void {
   const state = readMultisigInputState(psbt, inputIndex);
   logSignaturePubkeyMismatches(inputIndex, state.partialSigPubkeys, state.scriptPubkeyHexes);
-  verifyPartialSignatures(psbt, inputIndex, state.input, state.witnessScript, state.partialSig);
 
-  const orderedSigs = orderSignatures(inputIndex, state.partialSig, state.scriptPubkeys);
+  const orderedSigs = orderSignatures(state.partialSig, state.scriptPubkeys);
   assertSignatureCount(
     inputIndex,
     orderedSigs,
@@ -249,6 +284,8 @@ export function finalizeMultisigInput(psbt: bitcoin.Psbt, inputIndex: number): v
     state.partialSigPubkeys,
     state.scriptPubkeyHexes
   );
+  assertSignerMetadataMatchesPartialSignatures(inputIndex, state.input, state.partialSig);
+  verifyPartialSignatures(psbt, inputIndex, state.input, state.witnessScript, state.partialSig);
 
   log.debug('Multisig ordered signatures', {
     inputIndex,
@@ -256,7 +293,7 @@ export function finalizeMultisigInput(psbt: bitcoin.Psbt, inputIndex: number): v
     orderedSigCount: orderedSigs.length,
   });
 
-  applyFinalWitness(psbt, inputIndex, state.witnessScript, orderedSigs);
+  applyFinalWitness(psbt, inputIndex, state.witnessScript, state.input.redeemScript, orderedSigs);
 
   log.info('Multisig input finalized', {
     inputIndex,

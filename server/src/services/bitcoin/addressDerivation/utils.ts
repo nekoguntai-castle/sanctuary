@@ -81,12 +81,11 @@ export function validateXpub(xpub: string, network: 'mainnet' | 'testnet' | 'reg
 
     // Detect script type from original prefix
     let scriptType: 'native_segwit' | 'nested_segwit' | 'legacy' = 'native_segwit';
+    // zpub/Zpub/vpub/Vpub prefixes intentionally keep the default native SegWit classification.
     if (xpub.startsWith('ypub') || xpub.startsWith('Ypub') || xpub.startsWith('upub') || xpub.startsWith('Upub')) {
       scriptType = 'nested_segwit';
     } else if (xpub.startsWith('xpub') || xpub.startsWith('tpub')) {
       scriptType = 'legacy'; // Could be either, but default to legacy
-    } else if (xpub.startsWith('zpub') || xpub.startsWith('Zpub') || xpub.startsWith('vpub') || xpub.startsWith('Vpub')) {
-      scriptType = 'native_segwit';
     }
 
     return { valid: true, scriptType };

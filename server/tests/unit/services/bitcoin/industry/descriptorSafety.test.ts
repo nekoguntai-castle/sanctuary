@@ -38,14 +38,12 @@ describe('Descriptor & Wallet Import Safety', () => {
       // Descriptor with intentionally wrong checksum
       const result = validateAndRemoveChecksum("wpkh([d34db33f/84'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)#aaaaaaaa");
 
-      // CRITICAL: Current implementation returns { valid: false } but
-      // still strips the checksum and returns the descriptor.
-      // The caller can still use the descriptor despite invalid checksum.
+      // The low-level parser returns the stripped descriptor with valid=false.
+      // Callers must enforce valid=false before using the descriptor.
       expect(result.descriptor).toBeDefined();
       expect(result.descriptor.length).toBeGreaterThan(0);
 
       // The valid field should be false for wrong checksums
-      // (This tests the current behavior — descriptor is accepted with warning)
       expect(result.valid).toBe(false);
     });
 
@@ -56,10 +54,16 @@ describe('Descriptor & Wallet Import Safety', () => {
       expect(result.descriptor).toBe("wpkh(xpub6ERApfZwUNrhL/0/*)");
     });
 
-    it('removeChecksum helper should work', () => {
+    it('removeChecksum helper should reject invalid checksums', () => {
       const descriptor = "wpkh(xpub/0/*)#checksum";
+      expect(() => removeChecksum(descriptor)).toThrow('Invalid descriptor checksum');
+    });
+
+    it('removeChecksum helper should strip valid checksums', () => {
+      const descriptor = "raw(deadbeef)#zyusn96d";
       const stripped = removeChecksum(descriptor);
       expect(stripped).not.toContain('#');
+      expect(stripped).toBe('raw(deadbeef)');
     });
 
     it('should handle descriptor with no checksum separator', () => {
@@ -73,18 +77,17 @@ describe('Descriptor & Wallet Import Safety', () => {
       expect(result.descriptor).toBe("");
     });
 
-    it('should document the tampered descriptor attack', () => {
+    it('should reject the tampered descriptor attack at the stripping boundary', () => {
       // Attack scenario:
       // 1. User exports descriptor from hardware wallet: wpkh([fingerprint/path]xpubABC...)#validchecksum
       // 2. Attacker modifies the xpub to their own: wpkh([fingerprint/path]xpubATTACKER...)#wrongchecksum
       // 3. User imports the tampered descriptor
       //
-      // Current behavior: Wallet logs a warning but ACCEPTS the descriptor.
-      // This means the wallet will derive addresses from the attacker's xpub.
-      //
-      // RECOMMENDATION: Reject descriptors with invalid checksums.
-      // The valid field in the return value should cause the import to fail.
-      expect(true).toBe(true);
+      expect(() =>
+        removeChecksum(
+          "wpkh([d34db33f/84'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)#aaaaaaaa"
+        )
+      ).toThrow('Invalid descriptor checksum');
     });
   });
 

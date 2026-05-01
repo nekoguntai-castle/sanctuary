@@ -90,7 +90,7 @@ export function registerBatchFeeAndConstantContracts() {
       ).rejects.toThrow("No change address available");
     });
 
-    it("uses an unused receive address when no change address is available", async () => {
+    it("rejects change output creation when only receive-chain addresses are unused", async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
         { ...sampleUtxos[0], walletId, spent: false },
       ]);
@@ -102,19 +102,15 @@ export function registerBatchFeeAndConstantContracts() {
         ],
       });
 
-      const result = await createBatchTransaction(
-        [{ address: testnetAddresses.nativeSegwit[0], amount: 50_000 }],
-        5,
-        walletId,
-        undefined,
-        "testnet",
-      );
-
-      expect(result.changeAmount).toBeGreaterThan(546);
-      expect(result.psbt.txOutputs).toHaveLength(2);
-      expect(result.psbt.txOutputs[1].address).toBe(
-        testnetAddresses.nativeSegwit[1],
-      );
+      await expect(
+        createBatchTransaction(
+          [{ address: testnetAddresses.nativeSegwit[0], amount: 50_000 }],
+          5,
+          walletId,
+          undefined,
+          "testnet",
+        ),
+      ).rejects.toThrow("No change address available");
     });
 
     it("throws when selected inputs cannot cover outputs plus fee", async () => {

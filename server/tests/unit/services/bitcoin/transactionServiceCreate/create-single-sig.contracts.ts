@@ -292,7 +292,10 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
         inputRows: [
           inputAddressRow(walletId, 0, { address: sampleUtxos[2].address }),
         ],
-        unusedRows: [changeAddressRow(walletId)],
+        unusedRows: [
+          changeAddressRow(walletId),
+          receiveAddressRow(walletId, 10),
+        ],
       });
 
       await expect(
@@ -436,7 +439,7 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
       expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
     });
 
-    it("should fall back to receiving address when no dedicated change address exists", async () => {
+    it("should reject change output creation when only receive-chain addresses are unused", async () => {
       mockAddressFindManyByQuery({
         inputRows: [
           inputAddressRow(walletId, 0, { address: sampleUtxos[2].address }),
@@ -444,10 +447,9 @@ export function registerTransactionServiceCreateSingleSigTests(): void {
         unusedRows: [receiveAddressRow(walletId, 10)],
       });
 
-      const result = await createTransaction(walletId, recipient, 50_000, 10);
-
-      expect(result.changeAddress).toBe(testnetAddresses.legacy[1]);
-      expect(result.changeAmount).toBeGreaterThan(0);
+      await expect(
+        createTransaction(walletId, recipient, 50_000, 10),
+      ).rejects.toThrow("No change address available");
     });
 
     it("should continue when single-sig account xpub parsing fails", async () => {

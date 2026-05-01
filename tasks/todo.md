@@ -1,3 +1,317 @@
+# Active Task: Merge Queue Date Filter Recovery 2026-05-01
+
+Status: in progress
+
+Goal: fix the PR #237 merge-queue frontend coverage failure without broadening the wallet-safety PR.
+
+## Plan
+
+- [x] Identify the failing merge-queue job and root cause.
+- [x] Make the date-filter test deterministic across runner timezones and month boundaries.
+- [x] Re-run the focused test and merge-queue frontend coverage shard locally.
+- [ ] Commit, push, and re-queue PR #237.
+- [ ] Verify PR #237 merges before starting grade-output follow-up fixes.
+
+## Review
+
+- Root cause: `this_month` test created `startOfMonth + 1 day`, which is future-dated when CI runs on the first day of a month in UTC.
+- Fixed the month-preset tests by pinning them to a mid-month fake clock and restoring real timers after each test.
+- Verification passed: `npm run test:run -- tests/components/WalletDetail/hooks/useTransactionFilters.test.ts`; `env TZ=UTC npm run test:run -- tests/components/WalletDetail/hooks/useTransactionFilters.test.ts`; `npm run test:coverage:shard -- 1 2`; `npm run typecheck:tests`; `git diff --check`.
+
+---
+
+# Active Task: Software-Only Grade Recovery 2026-05-01
+
+Status: complete
+
+Goal: implement the non-hardware fixes that remove current grade hard caps and make wallet safety verification repeatable before physical hardware evidence.
+
+## Plan
+
+- [x] Fix `npm run typecheck:scripts` in the PSBT verification harness without changing wallet behavior.
+- [x] Make software address verification repeatable in local/CI setup without requiring manual host dependencies.
+- [x] Add a committed lockfile for `scripts/verify-psbt` and make its audit repeatable.
+- [x] Resolve or isolate the docs website high-severity audit findings.
+- [x] Restore quality gates for coverage, lizard, and large-file policy with focused tests/refactors.
+- [x] Re-run the focused wallet safety gates, audits, typechecks, coverage/quality checks, and update the grade report/history.
+
+## Review
+
+- Fixed the PSBT verification harness script type errors, added a committed PSBT verifier lockfile, and changed the vector workflow to use `npm ci` plus package scripts.
+- Added `scripts/verify-addresses/verify-repeatable.sh` so address verification provisions npm dependencies, Python `bip_utils`, and Bitcoin Core repeatably for local/CI runs.
+- Restored strict queue gates: frontend merged coverage passes at 100%, backend unit coverage passes at 100%, lizard passes, and large-file policy passes after splitting PSBT finalization tests from `psbtBuilder.test.ts`.
+- Cleared the docs website high-severity audit cap by updating Docusaurus to 3.10.1, pinning fixed Webpack/serialize-javascript overrides, and adding Mermaid's required `@mermaid-js/layout-elk` peer dependency. Moderate docs-site advisories remain in Docusaurus/Mermaid dev tooling.
+- Updated `docs/plans/codebase-health-assessment.md` and grade history to 97/100 A for the software-only state; remaining score gap is physical hardware-in-loop fixtures.
+- Verification passed: `npm run typecheck:scripts`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix scripts/verify-addresses run typecheck`; `bash -n scripts/verify-addresses/verify-repeatable.sh`; `npm --prefix scripts/verify-addresses run verify:repeatable`; `npm --prefix scripts/verify-psbt ci`; `npm --prefix scripts/verify-psbt audit --audit-level=high`; `npm --prefix scripts/verify-psbt run verify`; `npm --prefix website ci`; `npm --prefix website audit --audit-level=high`; `npm --prefix website run typecheck`; `npm --prefix website run build`; focused wallet/server tests; frontend coverage shards and merge; full backend unit coverage; `npm run quality:lizard`; `node scripts/quality/check-large-files.mjs --json`.
+
+---
+
+# Active Task: Full Codebase Grade 2026-05-01
+
+Status: complete
+
+Goal: produce an evidence-backed ISO/IEC 25010-aligned repository quality grade and update `docs/plans/codebase-health-assessment.md`.
+
+## Plan
+
+- [x] Read the grade skill standards and confirm the current worktree state.
+- [x] Run full repository mechanical signal collection and trend lookup.
+- [x] Inspect evidence for judged reliability, security, performance, maintainability, and test-quality criteria.
+- [x] Score domains, check hard-fail gates, append trend history, and write the report.
+- [x] Verify the report diff and summarize the result.
+
+## Review
+
+- Wrote `docs/plans/codebase-health-assessment.md` with a full-repository grade of 69/100 D, raw score 87/100, confidence High.
+- Appended grade trend history under `docs/plans/grade-history/sanctuary_.jsonl`.
+- Hard-fail blockers are `npm run typecheck:scripts` failure and 19 high advisories in the docs website audit.
+- Wallet software-vector tests passed, but physical hardware signed fixtures remain outstanding before this can be called hardware-in-loop funds-loss-grade.
+
+---
+
+# Active Task: Critical Mutation Gate Recovery 2026-05-01
+
+Status: complete
+
+Goal: restore PR #237 by adding the missing critical-path descriptor derivation tests that the mutation gate exposed.
+
+## Plan
+
+- [x] Identify the failing required check and the surviving high-weight mutants.
+- [x] Inspect descriptor derivation and the mutation-gated test suite.
+- [x] Add focused descriptor derivation assertions to the critical address verification suite.
+- [x] Run focused tests and the critical mutation gate.
+- [x] Commit, push, and re-check PR CI.
+
+## Review
+
+- Added mutation-gated descriptor derivation coverage in `server/tests/unit/services/bitcoin/addressDerivation.verified.test.ts` for all single-sig descriptor wrappers, default mainnet receive behavior, consecutive range indexing, and missing-xpub fail-closed handling.
+- Verification passed: focused address verification suite with 139 passing tests; local `npm run test:mutation:critical:gate` with raw score 54.95% and weighted score 50.13%; forced descriptor-only mutation pass with `descriptorDerivation.ts` at 100% mutation score; `npm --prefix server run typecheck:tests`; `git diff --check`.
+
+---
+
+# Active Task: Hardware-Signed Artifact Replay Harness 2026-04-30
+
+Status: complete
+
+Goal: prepare the software replay gate for future Ledger, Trezor, and BitBox signed artifacts so manual hardware captures can be committed and verified repeatably.
+
+## Plan
+
+- [x] Define a typed fixture schema for sanitized hardware-signed PSBT/raw transaction artifacts.
+- [x] Define the required Ledger, Trezor, and BitBox script-family row matrix plus explicit unsupported-row decisions.
+- [x] Build replay helpers that extract/finalize signed artifacts, verify txid/fee/vsize/output invariants, and report missing rows when hardware evidence is required.
+- [x] Add tests for fixture replay, missing-row detection, and malformed hardware artifact rejection.
+- [x] Link the replay harness from the hardware validation runbook.
+- [x] Run focused tests, typechecks, complexity checks, and commit/push only this continuation.
+
+## Review
+
+- Added `server/tests/fixtures/hardware-signed-psbt-vectors.ts` with a sanitized hardware artifact schema, the required Ledger/Trezor/BitBox script-family matrix, explicit unsupported-row decisions, and an intentionally empty fixture list until physical devices are used.
+- Added `server/tests/helpers/hardwareSignedPsbtReplay.ts` to replay signed PSBT or raw transaction artifacts, finalize when needed, and verify txid, fee, vsize, and output invariants.
+- Added `server/tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` covering the required matrix, pending/manual gate behavior, signed PSBT replay, Trezor raw transaction replay, missing-row accounting, malformed artifact rejection, and invariant mismatch failures.
+- Updated `docs/reference/hardware-wallet-validation.md` with the fixture location, replay test command, and `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` evidence gate for the physical-device phase.
+- Verification passed: hardware fixture replay test with 9 passing tests; combined signed-vector plus hardware replay suite with 20 passing tests; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Remaining queue requires physical hardware evidence: populate the fixture file with sanitized Ledger/Trezor/BitBox signed PSBT/raw transaction artifacts or explicit unsupported-row decisions, then run the replay harness with `REQUIRE_HARDWARE_SIGNED_FIXTURES=1`.
+
+---
+
+# Active Task: Hardware Wallet Manual Validation Runbook 2026-04-30
+
+Status: complete
+
+Goal: make the physical-device wallet safety phase repeatable by documenting exact hardware validation cases, required artifacts, pass/fail criteria, and replay commands before any manual signing work begins.
+
+## Plan
+
+- [x] Add no-device coverage for any remaining adapter-level address verification request gaps.
+- [x] Define the device, script-family, address, change-address, and signing matrix that must be run on real hardware.
+- [x] Define required capture artifacts without storing private seeds, mainnet-sensitive data, or screenshots that expose secrets.
+- [x] Define pass/fail criteria for address display, change-output classification, PSBT signing, final transaction replay, and negative controls.
+- [x] Link the manual hardware phase back to the deterministic software vector gates already built.
+- [x] Verify the documentation diff and commit only this runbook work.
+
+## Review
+
+- Added `docs/reference/hardware-wallet-validation.md`, a repeatable manual hardware wallet validation runbook for Ledger, Trezor, and BitBox physical-device release gates.
+- The runbook defines rerun triggers, software preflight gates, device and script-family matrices, address-display procedure, signing procedure, negative signing controls, sanitized artifact manifests, and acceptance criteria.
+- Linked the runbook from `docs/reference/hardware-wallet-integration.md`.
+- Added Trezor `verifyAddress` support through `TrezorConnect.getAddress({ showOnTrezor: true })`, including network/script-type mapping and user-rejection handling.
+- Tightened Ledger, BitBox, and Jade address verification so the adapter returns `true` only when the address returned by the device API exactly matches Sanctuary's expected address.
+- Added no-device tests for Trezor address display requests, returned-address mismatch handling, Ledger/BitBox/Jade returned-address mismatch handling, and existing rejection/error paths.
+- Verification passed: focused hardware wallet adapter suite with 107 passing tests; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Remaining queue still requires physical devices: real Ledger/Trezor/BitBox address display, change-output recognition, signing approval, multisig policy registration, vendor-signed artifact capture, and Core replay of those hardware-signed artifacts.
+
+---
+
+# Active Task: Pre-Hardware Wallet Safety Completion 2026-04-30
+
+Status: complete
+
+Goal: build all deterministic software-only wallet safety proof before any remaining confidence depends on physical hardware signing.
+
+## Plan
+
+- [x] Split outstanding wallet safety work into software-only and hardware-required queues.
+- [x] Build funded regtest signing/finalization vectors with local deterministic software keys and Bitcoin Core `testmempoolaccept`.
+- [x] Add negative software-only signing cases for bad signatures, wrong signer metadata, network mismatch, and tampered outputs.
+- [x] Regenerate address vectors with Bitcoin Core plus a non-JS verifier and keep CI fail-closed.
+- [x] Harden remaining change-chain/change-output policy tests.
+- [x] Add hardware-request golden payload tests that do not require devices.
+- [x] Stop when the only remaining open work is physical-device capture/validation.
+
+## Review
+
+- Added `Hardware Dependency Split` to `tasks/wallet-address-signing-hardening-plan-2026-04-30.md` so the outstanding queue is explicitly divided into deterministic software proof and hardware-in-loop proof.
+- Added `scripts/verify-psbt/generate-signed-vectors.ts` and `server/tests/fixtures/generated-signed-psbt-vectors.ts` for four funded regtest software-signed templates: P2WPKH, P2SH-P2WPKH, P2WSH sorted multisig, and P2SH-P2WSH sorted multisig.
+- The signed generator creates real regtest UTXOs with Bitcoin Core, signs with deterministic local keys, finalizes, extracts raw transactions, and writes vectors only after Core `testmempoolaccept` returns `allowed=true`.
+- Fixed a nested multisig finalization gap found by Core: `finalizeMultisigInput` now adds `finalScriptSig` for P2SH-P2WSH redeem scripts instead of producing a witness-only transaction that Core rejects as non-standard.
+- Added `tests/unit/services/bitcoin/psbt.signed-vectors.test.ts` to replay the committed signed fixtures, re-finalize signed PSBTs through Sanctuary finalization, compare final tx hex, and check txid/fee/vsize/mempool-acceptance invariants.
+- Added first negative signed-vector replay cases: corrupted multisig signatures fail verification, below-quorum multisig fails before finalization, and output mutation after signatures is rejected before extraction.
+- Tightened multisig finalization again so partial signatures must have matching well-formed BIP32 signer metadata before final witness construction.
+- Added wrong signer metadata coverage: mutated signer pubkey metadata and malformed derivation paths now fail before final extraction.
+- Added network-mismatch replay coverage so committed signed vectors must match their declared regtest network before signed-vector replay.
+- Updated PSBT verification and CI wiring so `npm run verify` requires both unsigned Core-backed vectors and signed Core-accepted vectors.
+- Regenerated the committed address vectors with Bitcoin Core 27.0.0, `bitcoinjs-lib`, Caravan, and Python `bip_utils` 2.12.1. The generator now rejects vectors unless all available implementations agree and the successful set includes Bitcoin Core, `bitcoinjs-lib`, and at least one independent non-JS implementation.
+- Fixed the address verifier's repeatability gap: `npm run verify` now recomputes vectors and fails on stale checked-in fixtures instead of rewriting them, ignoring only the timestamp line.
+- Fixed Bitcoin Core regtest descriptor verification for mainnet vectors by converting extended pubkey version bytes for the active Core chain while preserving canonical fixture addresses for the declared vector network.
+- Verification passed for this slice: signed generator against local Bitcoin Core; `server/node_modules/.bin/tsx scripts/verify-psbt/verify.ts`; signed fixture test with 11 passing tests; broader focused wallet suite with 335 passing tests; `npm --prefix server run typecheck:tests`; `npm --prefix scripts/verify-addresses run typecheck`; `npm run quality:lizard`; `git diff --check`.
+- Additional verification passed for address regeneration: `npm --prefix scripts/verify-addresses run verify` against local Bitcoin Core plus Python verifier with 122 verified vectors and 0 disagreements; focused address/multisig/xpub/descriptor suite with 198 passing tests.
+- Hardened change-chain policy so send, batch, and decoy/change flows no longer fall back to receive addresses when change inventory is missing; receive and change index advancement are covered independently.
+- Additional verification passed for change-chain hardening: focused transaction, batch, advanced transaction, and address route suites with 194 passing tests; `npm --prefix server run typecheck:tests`; targeted batch/address reruns.
+- Added no-device hardware signing payload proof for Ledger, Trezor, and BitBox. Ledger now asserts the exact wallet policy template and key origin string sent to `signPsbt`; Trezor asserts exact spend/change `address_n`, amount, and script-type payloads; BitBox asserts the full `btcSignSimple` payload for inputs, change, external output types, version, and locktime.
+- Fixed BitBox change-output detection so standard `m/...` PSBT output derivation paths are recognized against the account path instead of requiring a non-standard prefixless path.
+- Additional verification passed for hardware payload proof: focused Ledger/Trezor/BitBox suites with 87 passing tests; Trezor branch/path suites with 49 passing tests; `npm run typecheck:tests`; `npm run typecheck:app`; `npm run quality:lizard`; `git diff --check`.
+- Stopped the local `scripts/verify-addresses` Bitcoin Core container after verification.
+- Remaining queue now requires physical devices or hardware-in-loop fixtures: real Ledger/Trezor/BitBox signing, device-screen address/change recognition, real WebUSB/HID/bridge transport prompts, multisig wallet-policy registration flows, and committed vendor-signed PSBT fixture capture.
+
+---
+
+# Active Task: Expanded Bitcoin Core-Backed PSBT Vector Coverage 2026-04-30
+
+Status: complete
+
+Goal: extend the generated Bitcoin Core-backed PSBT corpus beyond native SegWit to cover nested SegWit, Taproot, and nested multisig script families before moving into signing/finalization proofs.
+
+## Plan
+
+- [x] Inspect the current PSBT generator, verifier, fixture types, and generated-vector tests.
+- [x] Add deterministic P2SH-P2WPKH, P2TR, and P2SH-P2WSH draft builders.
+- [x] Make fixture generation, verifier markers, and tests require all generated script families.
+- [x] Regenerate fixtures with local Bitcoin Core and Sanctuary parser agreement.
+- [x] Tighten multisig finalization so missing UTXO data or invalid partial signatures fail closed.
+- [x] Run focused PSBT tests, wallet safety tests, typechecks, lizard, and whitespace checks.
+- [x] Document results, remaining signing/finalization gaps, and next steps.
+
+## Review
+
+- Expanded `scripts/verify-psbt/generate-vectors.ts` from 2 generated PSBT families to 5: P2WPKH, P2SH-P2WPKH, P2TR, P2WSH, and P2SH-P2WSH. Each generated vector is decoded/analyzed by Bitcoin Core and parsed by Sanctuary's bitcoinjs-lib wrapper before fixture output.
+- Regenerated `server/tests/fixtures/generated-psbt-vectors.ts` with 5 Bitcoin Core-backed vectors and updated `scripts/verify-psbt/verify.ts` to fail unless all 5 generated families are present.
+- Extended `tests/unit/services/bitcoin/psbt.verified.test.ts` to require all generated groups, verify Bitcoin Core/Sanctuary provenance, and assert nested SegWit, Taproot x-only derivation, and nested multisig script metadata.
+- Hardened `finalizeMultisigInput` so it no longer finalizes PSBT inputs with missing `witnessUtxo`, malformed/unverifiable partial signatures, or invalid ECDSA signatures. The test now proves a real signed 2-of-2 P2WSH PSBT finalizes and extracts.
+- Verification passed: Bitcoin Core 27.0-backed generator; `server/node_modules/.bin/tsx scripts/verify-psbt/verify.ts`; focused generated PSBT test with 53 passing tests; broader wallet/broadcast suite with 324 passing tests; `npm --prefix server run typecheck:tests`; `npm --prefix scripts/verify-addresses run typecheck`; `npm run quality:lizard`; `git diff --check`.
+- Direct `.contracts.ts` Vitest paths are excluded by the server include pattern (`tests/**/*.test.ts`); the relevant broadcast contract coverage was exercised through `tests/unit/services/bitcoin/transactionService.broadcast.test.ts`.
+- Remaining gaps: generated PSBTs are still walletless unsigned drafts for Core analysis, not funded regtest spends accepted by `testmempoolaccept`; address fixture regeneration with Core plus a non-JS verifier and full change-chain policy hardening remain separate phases.
+
+---
+
+# Active Task: Bitcoin Core-Backed PSBT Vector Generation 2026-04-30
+
+Status: complete
+
+Goal: replace the placeholder PSBT vector generator with a deterministic Bitcoin Core-backed generator that produces non-empty fixtures the verifier and server tests can consume.
+
+## Plan
+
+- [x] Inspect current PSBT fixture types, tests, generator wrappers, and Bitcoin Core RPC helpers.
+- [x] Implement deterministic P2WPKH and P2WSH vector generation with Bitcoin Core validation metadata.
+- [x] Generate/update `server/tests/fixtures/generated-psbt-vectors.ts` and wire tests to consume it.
+- [x] Run the PSBT verifier, focused PSBT tests, typechecks, and complexity checks.
+- [x] Document results, residual gaps, and next phases.
+
+## Review
+
+- Replaced the placeholder generator with deterministic walletless P2WPKH and P2WSH PSBT generation. Each draft is decoded/analyzed by Bitcoin Core and parsed by Sanctuary's bitcoinjs-lib wrapper before the fixture is written.
+- Generated `server/tests/fixtures/generated-psbt-vectors.ts` with 2 Bitcoin Core-backed vectors: 1 P2WPKH and 1 P2WSH 2-of-2 multisig.
+- Wired `tests/unit/services/bitcoin/psbt.verified.test.ts` to require non-empty generated vectors and verify that generated vectors record Bitcoin Core and Sanctuary provenance.
+- Fixed the PSBT verifier and generator stack details: Bitcoin Core fees are normalized to sats, Sanctuary's bitcoinjs-lib version is resolved in ESM, the local compose file uses `bitcoin/bitcoin:27.0`, and the GitHub workflow starts Bitcoin Core with explicit `docker run` arguments instead of relying on a stale image tag/service env behavior.
+- Verification passed: `server/node_modules/.bin/tsx scripts/verify-psbt/generate-vectors.ts` against local Bitcoin Core 27.0; `server/node_modules/.bin/tsx scripts/verify-psbt/verify.ts`; focused server wallet suite with 279 passing tests; `npm --prefix server run typecheck:tests`; `npm --prefix scripts/verify-addresses run typecheck`; `npm run quality:lizard`; `git diff --check`.
+- Residual gaps: generated PSBT coverage now proves unsigned P2WPKH and P2WSH structure/fee/vsize against Core, but does not yet cover P2SH-P2WPKH, P2TR, P2SH-P2WSH, signing, finalization, extraction, or `testmempoolaccept`.
+
+---
+
+# Active Task: Wallet Address Signing Hardening Implementation 2026-04-30
+
+Status: complete
+
+Goal: implement the first high-impact tranche of the wallet hardening plan: make vector gates truthful, close the highest-risk fail-open import/signing behaviors, and verify the focused wallet safety suites.
+
+## Plan
+
+- [x] Harden vector workflow path filters and address verifier implementation requirements.
+- [x] Fix the PSBT verifier script so missing verification fails truthfully instead of appearing available.
+- [x] Reject private extended keys and invalid descriptor checksums at validation/import boundaries.
+- [x] Fail closed when multisig spend PSBT construction cannot attach required signing metadata.
+- [x] Run focused address, descriptor, transaction, PSBT, typecheck, and complexity checks.
+- [x] Document the result and remaining phases in this task review.
+
+## Review
+
+- Address verification no longer passes with only bitcoinjs-lib and Caravan. `scripts/verify-addresses` now requires Bitcoin Core, bitcoinjs-lib, and at least one independent non-JS implementation, and the workflow provisions Bitcoin Core plus Python `bip_utils`.
+- The address verifier workflow now runs for modular derivation, descriptor, transaction, PSBT, hardware signing, QR/USB signing, and send-action paths. It also runs the cross-implementation address verifier before server wallet tests.
+- PSBT verification is now fail-closed: `scripts/verify-psbt/verify.ts` fails when generated Bitcoin Core-backed vectors are missing, empty, or missing required markers, and CI now runs that verifier after PSBT vector generation.
+- Private extended keys are rejected by xpub conversion/validation, descriptor checksums fail closed when present but invalid, and multisig PSBT construction rejects missing keys, missing input paths, incomplete BIP32 metadata, missing witness scripts, missing redeem scripts, and unsupported multisig descriptor types instead of producing partially signable PSBTs.
+- Verification passed: `npm --prefix scripts/verify-addresses run typecheck`; focused server wallet suite `npm --prefix server run test -- --run ...` with 232 tests; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`.
+- Intentional fail-closed checks: `npm --prefix scripts/verify-addresses run verify` now fails locally because Bitcoin Core and Python/Go implementations are unavailable; `server/node_modules/.bin/tsx scripts/verify-psbt/verify.ts` fails because `server/tests/fixtures/generated-psbt-vectors.ts` is not generated yet.
+- Remaining phases: generate and commit non-empty Bitcoin Core-backed PSBT vectors, regenerate address fixtures with Bitcoin Core plus a non-JS verifier, add end-to-end signing/finalization/Core validation, and harden change-chain address policy.
+
+---
+
+# Active Task: Wallet Address And Signing Hardening Plan 2026-04-30
+
+Status: complete
+
+Goal: draft a concrete remediation plan to raise wallet address, change-address, PSBT, signing, and verification tests from the current C+ posture to funds-loss-grade confidence.
+
+## Plan
+
+- [x] Convert the audit findings into phased remediation work.
+- [x] Define acceptance criteria for each phase.
+- [x] Define verification commands and CI gates for each phase.
+- [x] Link the plan from this task tracker.
+
+## Review
+
+- Full plan: `tasks/wallet-address-signing-hardening-plan-2026-04-30.md`.
+- Recommendation: start with Phase 0 and Phase 1 before broader signing work. Those phases remove false confidence in CI and close the riskiest fail-open behaviors.
+- Readiness: ready to execute the plan in small PRs; not ready to claim the wallet testing posture is funds-loss-grade until the Phase 0, Phase 1, Phase 3, and Phase 4 acceptance criteria are met.
+
+---
+
+# Active Task: Wallet Address And Signing Test Research 2026-04-30
+
+Status: complete
+
+Goal: audit whether Sanctuary has adequate tests for wallet address generation, change address derivation, address verification, signing, and signature verification, with explicit comparison against industry-standard Bitcoin vectors and reference implementations.
+
+## Plan
+
+- [x] Inventory production code paths that derive wallet addresses, classify change addresses, verify address ownership, build/sign PSBTs, and verify signatures.
+- [x] Inventory existing unit, integration, script, and generated-vector tests that cover those paths.
+- [x] Research current industry-standard reference vectors and libraries for Bitcoin address, descriptor, PSBT, ECDSA, Schnorr, and message-signing behavior.
+- [x] Compare existing coverage against the risk model: wrong receive addresses, wrong change addresses, false-positive ownership verification, false-negative verification, invalid signatures, and cross-network confusion.
+- [x] Identify concrete test gaps and rank them by funds-loss risk.
+- [x] Document findings, recommendations, and verification evidence in this task review.
+
+## Review
+
+- Full report: `tasks/wallet-address-signing-test-research-2026-04-30.md`.
+- Verdict: the project has strong local standards coverage, but it is not yet funds-loss-grade because address-vector verification currently passes with only bitcoinjs-lib and Caravan, the dedicated vector workflow does not watch the actual modular address-derivation implementation directory, and PSBT cross-implementation verification is not currently executable as packaged.
+- Highest-risk gaps: require Bitcoin Core plus one non-JS verifier for address vectors; fix and gate PSBT cross-verification; add end-to-end signing/finalization/Bitcoin Core validation fixtures; fail closed on missing multisig signing metadata, invalid descriptor checksums, and private extended keys; tighten change-chain fallback behavior.
+- Verification: `npm --prefix scripts/verify-addresses run typecheck` passed; `npm --prefix scripts/verify-addresses run verify` passed with 122 vectors and 0 disagreements but only bitcoinjs-lib and Caravan available; `npm --prefix scripts/verify-psbt run verify` failed because its verifier is not currently runnable; focused server Bitcoin suites passed 570 tests; transaction/PSBT/hardware compatibility suites passed 327 tests; focused Ledger/Trezor/QR/USB signing suites passed 118 tests.
+
+---
+
 # Active Task: Architecture-First Large File Policy And Splits 2026-04-29
 
 Status: complete

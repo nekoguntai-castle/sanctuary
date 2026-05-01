@@ -1,30 +1,24 @@
 # Bitcoin Core container for address verification
 # Used to generate reference addresses via deriveaddresses RPC
 #
-# OPTIONS:
-# 1. Use this file (quick start, uses ruimarinho/bitcoin-core image)
-# 2. Use docker-compose.self-built.yml (builds from verified source - more secure)
-#
-# For maximum security, build your own image:
-#   cd ../bitcoin-core-docker && ./build.sh 27.0
-#   docker compose -f docker-compose.self-built.yml up -d
-#
 # See bitcoincore.ts for RPC configuration
 
 services:
   bitcoind:
-    image: ruimarinho/bitcoin-core:24-alpine
-    container_name: bitcoind-verify
+    image: bitcoin/bitcoin:27.0
+    container_name: bitcoin-core-address-verify
     command:
-      - -regtest
-      - -server
+      - -regtest=1
+      - -server=1
       - -rpcuser=verify
       - -rpcpassword=verify
       - -rpcallowip=0.0.0.0/0
       - -rpcbind=0.0.0.0
       - -fallbackfee=0.0001
+      - -txindex=1
+      - -printtoconsole=1
     ports:
-      - "18553:18443"  # Regtest RPC port (mapped to avoid conflict)
+      - "18443:18443"  # Regtest RPC
     volumes:
       - bitcoind-data:/home/bitcoin/.bitcoin
     healthcheck:

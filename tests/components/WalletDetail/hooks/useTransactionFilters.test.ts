@@ -1,5 +1,5 @@
 import { renderHook, act } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useTransactionFilters } from '../../../../components/WalletDetail/hooks/useTransactionFilters';
 import type { Transaction } from '../../../../types';
 
@@ -62,6 +62,8 @@ const allTransactions: Transaction[] = [
   txMultiLabel,
 ];
 
+const MID_MONTH_TEST_TIME = new Date(2026, 4, 15, 12).getTime();
+
 function renderFilters(
   transactions: Transaction[] = allTransactions,
   walletAddresses: string[] = WALLET_ADDRESSES,
@@ -77,6 +79,10 @@ function renderFilters(
     }),
   );
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -219,6 +225,8 @@ describe('useTransactionFilters', () => {
     });
 
     it('this_month: includes transactions from start of current month', () => {
+      vi.useFakeTimers({ now: MID_MONTH_TEST_TIME });
+
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
       const inMonth = makeTx({ id: 'tm', timestamp: startOfMonth + 86_400_000 });
@@ -233,6 +241,8 @@ describe('useTransactionFilters', () => {
     });
 
     it('last_month: includes transactions from previous month only', () => {
+      vi.useFakeTimers({ now: MID_MONTH_TEST_TIME });
+
       const now = new Date();
       const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
       const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();

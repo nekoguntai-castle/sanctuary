@@ -367,7 +367,7 @@ export class JadeAdapter implements DeviceAdapter {
   /**
    * Verify address on device
    */
-  async verifyAddress(path: string, _address: string): Promise<boolean> {
+  async verifyAddress(path: string, address: string): Promise<boolean> {
     if (!this.connection) {
       throw new Error('No device connected');
     }
@@ -387,13 +387,13 @@ export class JadeAdapter implements DeviceAdapter {
         variant = 'tr(k)';
       }
 
-      await this.sendRpc<string>('get_receive_address', {
+      const displayedAddress = await this.sendRpc<string>('get_receive_address', {
         network,
         path: pathArray,
         variant,
       });
 
-      return true;
+      return displayedAddress === address;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
 

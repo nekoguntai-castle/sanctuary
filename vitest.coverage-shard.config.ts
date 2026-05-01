@@ -31,6 +31,6 @@ export default defineConfig({
       },
     },
     outputFile: {},
-    reporters: ['blob'],
+    reporters: ['dot', 'blob'],
   },
 });

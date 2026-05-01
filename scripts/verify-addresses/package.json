@@ -4,8 +4,10 @@
   "description": "Cross-implementation address verification for Sanctuary",
   "type": "module",
   "scripts": {
-    "generate": "npx tsx generate-vectors.ts",
-    "verify": "npx tsx generate-vectors.ts --verify-only",
+    "generate": "tsx generate-vectors.ts",
+    "generate:repeatable": "./verify-repeatable.sh generate",
+    "verify": "tsx generate-vectors.ts --verify-only",
+    "verify:repeatable": "./verify-repeatable.sh verify",
     "typecheck": "tsc --noEmit",
     "start-bitcoind": "docker compose up -d",
     "stop-bitcoind": "docker compose down"

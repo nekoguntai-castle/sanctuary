@@ -334,14 +334,14 @@ export class LedgerAdapter implements DeviceAdapter {
   /**
    * Verify address on device
    */
-  async verifyAddress(path: string, _address: string): Promise<boolean> {
+  async verifyAddress(path: string, address: string): Promise<boolean> {
     if (!this.connection) {
       throw new Error('No device connected');
     }
 
     try {
-      await this.connection.app.getWalletPublicKey(path, { verify: true });
-      return true;
+      const result = await this.connection.app.getWalletPublicKey(path, { verify: true });
+      return result.bitcoinAddress === address;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
 

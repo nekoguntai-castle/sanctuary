@@ -27,6 +27,39 @@ const XPUB_VERSIONS: Record<string, { prefix: string; targetPrefix: string; targ
   'Vpub': { prefix: 'Vpub', targetPrefix: 'tpub', targetVersion: Buffer.from([0x04, 0x35, 0x87, 0xCF]) }, // Multisig native segwit
 };
 
+const PRIVATE_EXTENDED_KEY_PREFIXES = new Set([
+  'xprv',
+  'yprv',
+  'zprv',
+  'Yprv',
+  'Zprv',
+  'tprv',
+  'uprv',
+  'vprv',
+  'Uprv',
+  'Vprv',
+]);
+
+/**
+ * Detect private extended keys before any version-byte conversion.
+ *
+ * The wallet import and descriptor paths must never accept xprv/yprv/zprv
+ * material; converting those bytes would hide key custody risk behind an xpub
+ * shaped string instead of preserving Sanctuary's watch-only boundary.
+ */
+export function isPrivateExtendedKey(extendedKey: string): boolean {
+  return PRIVATE_EXTENDED_KEY_PREFIXES.has(extendedKey.slice(0, 4));
+}
+
+/**
+ * Enforce that callers pass public extended keys only.
+ */
+export function assertPublicExtendedKey(extendedKey: string): void {
+  if (isPrivateExtendedKey(extendedKey)) {
+    throw new Error('Private extended keys are not allowed. Provide an extended public key instead.');
+  }
+}
+
 /**
  * Version bytes for converting TO specific formats (reverse of XPUB_VERSIONS)
  */
@@ -45,6 +78,8 @@ const XPUB_TARGET_VERSIONS: Record<string, Buffer> = {
  * which use different version bytes but contain the same key material
  */
 export function convertToStandardXpub(extendedKey: string): string {
+  assertPublicExtendedKey(extendedKey);
+
   // Detect the prefix (first 4 characters)
   const prefix = extendedKey.slice(0, 4);
   const versionInfo = XPUB_VERSIONS[prefix];
@@ -77,6 +112,8 @@ export function convertToStandardXpub(extendedKey: string): string {
  * Used for exports that require consistent xpub format (like Coldcard)
  */
 export function convertXpubToFormat(extendedKey: string, targetFormat: 'xpub' | 'tpub' | 'Zpub' | 'Vpub' | 'Ypub' | 'Upub'): string {
+  assertPublicExtendedKey(extendedKey);
+
   const prefix = extendedKey.slice(0, 4);
 
   // If already in target format, return as-is

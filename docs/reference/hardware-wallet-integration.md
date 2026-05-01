@@ -2,6 +2,9 @@
 
 Technical documentation for Sanctuary's hardware wallet integration architecture.
 
+For physical-device release validation, use the
+[hardware wallet validation runbook](./hardware-wallet-validation.md).
+
 ## Architecture Overview
 
 Sanctuary uses a **registry pattern** with pluggable adapters to support multiple hardware wallet vendors. This design enables adding new device support without modifying the core service.

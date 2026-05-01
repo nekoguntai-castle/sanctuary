@@ -252,7 +252,7 @@ export function registerBitBoxSigningTests(): void {
       expect(mockGetKeypathFromString).toHaveBeenCalledWith("m/84'/0'/0'");
     });
 
-    it('handles non-witness inputs, keypath fallbacks, change outputs, and output type decoding', async () => {
+    it('builds a deterministic no-device BitBox signing payload for inputs, change, and external outputs', async () => {
       const adapter = createBitBoxAdapter();
       const mockBtcSignSimple = vi.fn().mockResolvedValue([new Uint8Array(64), new Uint8Array(64), new Uint8Array(64)]);
       seedSigningAdapter(adapter, mockBtcSignSimple);
@@ -290,7 +290,7 @@ export function registerBitBoxSigningTests(): void {
             },
           ],
           outputs: [
-            { bip32Derivation: [{ path: "84'/0'/0'/1/0" }] },
+            { bip32Derivation: [{ path: "m/84'/0'/0'/1/0" }] },
             {},
             {},
             {},

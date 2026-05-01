@@ -91,6 +91,11 @@ const logSkippedBip32Info = (
   });
 };
 
+const missingMultisigMetadataError = (
+  inputIndex: number,
+  reason: string
+): Error => new Error(`Cannot create multisig PSBT: ${reason} for input ${inputIndex}`);
+
 const addWitnessScript = (
   psbt: bitcoin.Psbt,
   inputIndex: number,
@@ -101,7 +106,9 @@ const addWitnessScript = (
 ): void => {
   const { multisigKeys, multisigQuorum, multisigScriptType } = signingInfo;
   /* v8 ignore next -- defensive guard for direct helper misuse */
-  if (!multisigKeys || multisigQuorum === undefined) return;
+  if (!multisigKeys || multisigQuorum === undefined) {
+    throw missingMultisigMetadataError(inputIndex, 'missing multisig key or quorum metadata');
+  }
 
   const witnessScript = buildMultisigWitnessScript(
     derivationPath,
@@ -110,14 +117,18 @@ const addWitnessScript = (
     networkObj,
     inputIndex
   );
-  if (!witnessScript) return;
+  if (!witnessScript) {
+    throw missingMultisigMetadataError(inputIndex, 'failed to build witnessScript');
+  }
 
   if (multisigScriptType === 'wsh-sortedmulti') {
     psbt.updateInput(inputIndex, { witnessScript });
     return;
   }
 
-  if (multisigScriptType !== 'sh-wsh-sortedmulti') return;
+  if (multisigScriptType !== 'sh-wsh-sortedmulti') {
+    throw missingMultisigMetadataError(inputIndex, 'unsupported multisig descriptor type');
+  }
 
   const p2wsh = bitcoin.payments.p2wsh({
     redeem: { output: witnessScript, network: networkObj },
@@ -145,7 +156,9 @@ const addMultisigBip32Info = (
   const { multisigKeys } = signingInfo;
 
   /* v8 ignore next -- defensive guard: caller already checks multisigKeys before invoking */
-  if (!multisigKeys) return;
+  if (!multisigKeys) {
+    throw missingMultisigMetadataError(inputIndex, 'missing multisig keys');
+  }
 
   const bip32Derivations = buildMultisigBip32Derivations(
     derivationPath,
@@ -153,10 +166,11 @@ const addMultisigBip32Info = (
     networkObj,
     inputIndex
   );
-  if (bip32Derivations.length > 0) {
-    psbt.updateInput(inputIndex, { bip32Derivation: bip32Derivations });
+  if (bip32Derivations.length !== multisigKeys.length) {
+    throw missingMultisigMetadataError(inputIndex, 'failed to build complete BIP32 derivation metadata');
   }
 
+  psbt.updateInput(inputIndex, { bip32Derivation: bip32Derivations });
   addWitnessScript(psbt, inputIndex, derivationPath, signingInfo, networkObj, logPrefix);
 };
 
@@ -230,6 +244,14 @@ const addBip32Info = (
   logPrefix: string
 ): void => {
   const hasMultisigKeys = Boolean(signingInfo.multisigKeys?.length);
+  if (signingInfo.isMultisig && !hasMultisigKeys) {
+    throw missingMultisigMetadataError(inputIndex, 'missing multisig keys');
+  }
+
+  if (signingInfo.isMultisig && !derivationPath) {
+    throw missingMultisigMetadataError(inputIndex, 'missing input derivation path');
+  }
+
   if (signingInfo.isMultisig && hasMultisigKeys && derivationPath) {
     addMultisigBip32Info(psbt, inputIndex, derivationPath, signingInfo, networkObj, logPrefix);
     return;

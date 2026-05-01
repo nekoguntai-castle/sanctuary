@@ -2,6 +2,32 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Pin Calendar-Boundary Tests To A Deterministic Clock
+
+**Rule:** Tests for "this month", "last month", week/month windows, or other relative calendar presets must set an explicit fake system time near the middle of the relevant period.
+
+**Why:** PR #237 passed locally in Hawaii time but failed in the merge queue on May 1 UTC because the test's "current month + 1 day" fixture was in the future relative to CI's clock.
+
+**How to apply:**
+
+- Use `vi.useFakeTimers({ now: new Date(year, month, day, hour).getTime() })` for date-preset tests.
+- Restore real timers in `afterEach`.
+- Avoid relative fixtures that become future-dated on the first day of a period.
+- When a CI-only date failure appears, rerun the focused test with `TZ=UTC` before changing production date logic.
+
+## Land Green Parent PRs Before Stacking Follow-Up Remediation
+
+**Rule:** When a green PR already contains the previous completed wallet-safety tranche, merge and verify that parent before continuing new remediation on top of the same branch.
+
+**Why:** The user caught that PR #237 was still open while follow-up fixes were being applied locally. Continuing on the same branch would turn a ready-to-merge proof tranche into a larger moving target.
+
+**How to apply:**
+
+- Check the PR state before adding follow-up commits to a branch with an open PR.
+- If the PR is green and clean, stash local follow-up work, queue/merge the PR, and verify `mergedAt` plus `origin/main`.
+- Resume new work from updated `main` or a follow-up branch, then reapply the stashed changes deliberately.
+- Do not delete the PR branch until merge completion is verified, especially on merge-queue repos.
+
 ## Do Not Chase Grade Points Without A Design Boundary
 
 **Rule:** In grade remediation, only split or classify a file when the change follows a real ownership, lifecycle, runtime, fixture, or proof-artifact boundary.

@@ -6,7 +6,30 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
+import { existsSync, readFileSync } from 'fs';
+import { createRequire } from 'module';
+import { dirname, join } from 'path';
 import type { Network, PsbtImplementation, PsbtInput, PsbtOutput, PsbtValidationResult } from '../types';
+
+const require = createRequire(import.meta.url);
+
+function getBitcoinjsVersion(): string {
+  try {
+    let currentDir = dirname(require.resolve('bitcoinjs-lib'));
+    for (let i = 0; i < 6; i++) {
+      const packageJsonPath = join(currentDir, 'package.json');
+      if (existsSync(packageJsonPath)) {
+        const parsed = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { version?: string };
+        return parsed.version ?? 'unknown';
+      }
+      currentDir = dirname(currentDir);
+    }
+  } catch {
+    return 'unknown';
+  }
+
+  return 'unknown';
+}
 
 /**
  * Get bitcoinjs-lib network from our network type
@@ -39,14 +62,7 @@ export class SanctuaryImplementation implements PsbtImplementation {
   version: string;
 
   constructor() {
-    // Get bitcoinjs-lib version from package.json if available
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pkg = require('bitcoinjs-lib/package.json');
-      this.version = pkg.version || 'unknown';
-    } catch {
-      this.version = 'unknown';
-    }
+    this.version = getBitcoinjsVersion();
   }
 
   /**

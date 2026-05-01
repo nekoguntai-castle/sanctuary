@@ -50,14 +50,20 @@ export function registerBitBoxXpubAddressTests(): void {
       mockIsErrorAbort.mockReturnValueOnce(false);
       await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Failed to get xpub: Unknown error');
 
+      mockDisplayAddressSimple.mockResolvedValueOnce('3abc');
       await expect(adapter.verifyAddress("m/49h/0h/0h/0/0", '3abc')).resolves.toBe(true);
       expect(mockDisplayAddressSimple).toHaveBeenLastCalledWith(31, expect.any(Array), 11, true);
 
+      mockDisplayAddressSimple.mockResolvedValueOnce('bc1pabc');
       await expect(adapter.verifyAddress("m/86h/0h/0h/0/0", 'bc1pabc')).resolves.toBe(true);
       expect(mockDisplayAddressSimple).toHaveBeenLastCalledWith(31, expect.any(Array), 12, true);
 
+      mockDisplayAddressSimple.mockResolvedValueOnce('1abc');
       await expect(adapter.verifyAddress("m/44'/0'/0'/0/0", '1abc')).resolves.toBe(true);
       expect(mockDisplayAddressSimple).toHaveBeenLastCalledWith(31, expect.any(Array), 10, true);
+
+      mockDisplayAddressSimple.mockResolvedValueOnce('bc1qmismatch');
+      await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).resolves.toBe(false);
 
       mockDisplayAddressSimple.mockRejectedValueOnce(abortErr);
       mockIsErrorAbort.mockImplementationOnce((err: unknown) => err === abortErr);

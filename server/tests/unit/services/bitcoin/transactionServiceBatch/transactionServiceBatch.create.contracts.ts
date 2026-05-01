@@ -224,7 +224,7 @@ export function registerCreateBatchTransactionContracts() {
       ).rejects.toThrow("Insufficient funds");
     });
 
-    it("should fall back to receiving address when no change branch address is available", async () => {
+    it("should reject batch change output creation when only receive-chain addresses are unused", async () => {
       mockAddressFindManyByQuery({
         inputRows: [
           inputAddressRow(walletId, 0, { address: sampleUtxos[2].address }),
@@ -236,12 +236,13 @@ export function registerCreateBatchTransactionContracts() {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
       ];
-      const result = await createBatchTransaction(walletId, outputs, 10);
 
-      expect(result.changeAddress).toBe(testnetAddresses.legacy[1]);
+      await expect(
+        createBatchTransaction(walletId, outputs, 10),
+      ).rejects.toThrow("No change address available");
     });
 
-    it("should throw when no change or receiving address is available for batch", async () => {
+    it("should throw when no change address is available for batch", async () => {
       mockAddressFindManyByQuery({
         inputRows: [
           inputAddressRow(walletId, 0, { address: sampleUtxos[2].address }),

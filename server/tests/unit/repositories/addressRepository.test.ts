@@ -396,6 +396,29 @@ describe("Address Repository", () => {
     });
   });
 
+  describe("findUnusedExcluding", () => {
+    it("queries unused addresses while excluding already selected outputs", async () => {
+      (prisma.address.findMany as Mock).mockResolvedValue([mockAddress]);
+
+      const result = await addressRepository.findUnusedExcluding(
+        "wallet-456",
+        ["bc1qalready-selected"],
+        2,
+      );
+
+      expect(result).toEqual([mockAddress]);
+      expect(prisma.address.findMany).toHaveBeenCalledWith({
+        where: {
+          walletId: "wallet-456",
+          used: false,
+          address: { notIn: ["bc1qalready-selected"] },
+        },
+        orderBy: { index: "asc" },
+        take: 2,
+      });
+    });
+  });
+
   describe("countByWalletId", () => {
     it("should count all addresses", async () => {
       (prisma.address.count as Mock).mockResolvedValue(200);
