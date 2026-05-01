@@ -1,3 +1,31 @@
+# Active Task: Agent Routes Test Split 2026-05-01
+
+Status: complete
+
+Goal: reduce the largest remaining warning-sized test file by splitting agent route funding-draft coverage from summary/address coverage without changing route behavior.
+
+## Plan
+
+- [x] Verify PR #240 merged and local `main` is fast-forwarded to the merge commit.
+- [x] Confirm post-merge `main` workflows are green and unrelated untracked task files remain untouched.
+- [x] Extract shared agent route test setup into a focused harness.
+- [x] Move funding-draft/signature/policy tests into a dedicated agent route funding test file.
+- [x] Run focused agent route tests, server test typecheck, lizard, large-file policy, and diff hygiene.
+- [x] Commit the branch-ready changes; push, PR, queue merge, and post-merge verification continue through the `pr-delivery` workflow.
+
+## Review
+
+- PR #240 merged at `2026-05-01T16:01:34Z` with merge commit `e05d3d7079b5ff2c2dfe61698848c2effb6fac91`; local `main` was fast-forwarded to that commit before this branch.
+- Post-merge `main` workflows for PR #240 passed: Test Suite, CodeQL, Architecture, Release, and Build Dev Images.
+- Selected `server/tests/unit/api/agent-routes.test.ts` because it is the largest remaining warning-sized test file at 999 lines and has a clear route boundary between summary/address behavior and funding-draft/signature/policy behavior.
+- Extracted shared agent route mocks/defaults into `server/tests/unit/api/agentRoutes.testHarness.ts`.
+- Split summary/address coverage into `server/tests/unit/api/agent-routes.test.ts` at 161 lines and funding draft/signature/policy coverage into `server/tests/unit/api/agent-routes.funding.test.ts` at 554 lines.
+- Large-file policy still passes and warning-sized test files dropped from 6 to 5.
+- Verification passed: `npm --prefix server run test -- tests/unit/api/agent-routes.test.ts tests/unit/api/agent-routes.funding.test.ts`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `node scripts/quality/check-large-files.mjs --json`; `git diff --check`.
+- Branch-ready split is complete; PR delivery continues through the queue verification workflow.
+
+---
+
 # Active Task: Address Repository Label Test Split 2026-05-01
 
 Status: complete
