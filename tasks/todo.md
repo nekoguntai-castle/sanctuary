@@ -1,3 +1,28 @@
+# Active Task: Address Repository Label Test Split 2026-05-01
+
+Status: complete
+
+Goal: reduce the next wallet-relevant warning-sized server test file without changing address repository behavior, then deliver it through the PR queue.
+
+## Plan
+
+- [x] Start a fresh branch from merged `main` and confirm unrelated untracked task files will stay untouched.
+- [x] Identify the cohesive address repository test boundary to split.
+- [x] Move `findByWalletIdWithLabels` chain-filter/label-hydration coverage into a dedicated test file.
+- [x] Run focused address repository tests, server test typecheck, lizard, large-file policy, and diff hygiene.
+- [x] Commit the branch-ready changes; push, PR, queue merge, and post-merge verification continue through the `pr-delivery` workflow.
+
+## Review
+
+- Selected `server/tests/unit/repositories/addressRepository.test.ts` because it is wallet address related and currently warning-sized.
+- The split boundary is `findByWalletIdWithLabels`: chain filtering, chunked pagination, skipped matches, empty-match behavior, and label hydration ordering are cohesive and separate from basic address repository CRUD/lookup coverage.
+- Split `server/tests/unit/repositories/addressRepository.test.ts` from 872 to 641 lines and added `server/tests/unit/repositories/addressRepository.labels.test.ts` at 265 lines.
+- Large-file policy still passes and warning-sized test files dropped from 7 to 6.
+- Verification passed: `npm --prefix server run test -- tests/unit/repositories/addressRepository.test.ts tests/unit/repositories/addressRepository.labels.test.ts`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `node scripts/quality/check-large-files.mjs --json`; `git diff --check`.
+- Branch-ready split is complete; PR delivery continues through the queue verification workflow.
+
+---
+
 # Active Task: Ledger Warning Test Split 2026-05-01
 
 Status: complete
