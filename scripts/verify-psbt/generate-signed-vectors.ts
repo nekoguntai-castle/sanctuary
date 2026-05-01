@@ -16,12 +16,9 @@ import * as ecc from '@bitcoinerlab/secp256k1';
 import { writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import psbtFinalization from '../../server/src/services/bitcoin/psbtBuilder/multisigFinalization';
+import { finalizeMultisigInput } from '../../server/src/services/bitcoin/psbtBuilder/multisigFinalization';
 
 bitcoin.initEccLib(ecc);
-const { finalizeMultisigInput } = psbtFinalization as {
-  finalizeMultisigInput: (psbt: bitcoin.Psbt, inputIndex: number) => void;
-};
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUTPUT_FILE = join(__dirname, '../../server/tests/fixtures/generated-signed-psbt-vectors.ts');
@@ -198,12 +195,12 @@ function requirePaymentAddress(payment: bitcoin.Payment, name: string): string {
 
 function buildMultisigScript(): Buffer {
   const pubkeys = [SIGNER_A.publicKey, SIGNER_B.publicKey].sort(Buffer.compare);
-  return bitcoin.script.compile([
+  return Buffer.from(bitcoin.script.compile([
     bitcoin.opcodes.OP_2,
     ...pubkeys,
     bitcoin.opcodes.OP_2,
     bitcoin.opcodes.OP_CHECKMULTISIG,
-  ]);
+  ]));
 }
 
 function buildTemplates(): SpendTemplate[] {

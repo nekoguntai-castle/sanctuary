@@ -64,7 +64,7 @@ function p2wpkhScript(pubkey: Buffer): Buffer {
   if (!payment.output) {
     throw new Error('Failed to build P2WPKH script');
   }
-  return payment.output;
+  return Buffer.from(payment.output);
 }
 
 function destinationAddress(): string {
@@ -77,12 +77,12 @@ function destinationAddress(): string {
 
 function buildSortedMultisigWitnessScript(pubkeys: Buffer[]): Buffer {
   const sortedPubkeys = [...pubkeys].sort(Buffer.compare);
-  return bitcoin.script.compile([
+  return Buffer.from(bitcoin.script.compile([
     bitcoin.opcodes.OP_2,
     ...sortedPubkeys,
     bitcoin.opcodes.OP_2,
     bitcoin.opcodes.OP_CHECKMULTISIG,
-  ]);
+  ]));
 }
 
 function buildP2wpkhVector(): DraftVector {

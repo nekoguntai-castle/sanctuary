@@ -1,3 +1,52 @@
+# Active Task: Software-Only Grade Recovery 2026-05-01
+
+Status: complete
+
+Goal: implement the non-hardware fixes that remove current grade hard caps and make wallet safety verification repeatable before physical hardware evidence.
+
+## Plan
+
+- [x] Fix `npm run typecheck:scripts` in the PSBT verification harness without changing wallet behavior.
+- [x] Make software address verification repeatable in local/CI setup without requiring manual host dependencies.
+- [x] Add a committed lockfile for `scripts/verify-psbt` and make its audit repeatable.
+- [x] Resolve or isolate the docs website high-severity audit findings.
+- [x] Restore quality gates for coverage, lizard, and large-file policy with focused tests/refactors.
+- [x] Re-run the focused wallet safety gates, audits, typechecks, coverage/quality checks, and update the grade report/history.
+
+## Review
+
+- Fixed the PSBT verification harness script type errors, added a committed PSBT verifier lockfile, and changed the vector workflow to use `npm ci` plus package scripts.
+- Added `scripts/verify-addresses/verify-repeatable.sh` so address verification provisions npm dependencies, Python `bip_utils`, and Bitcoin Core repeatably for local/CI runs.
+- Restored strict queue gates: frontend merged coverage passes at 100%, backend unit coverage passes at 100%, lizard passes, and large-file policy passes after splitting PSBT finalization tests from `psbtBuilder.test.ts`.
+- Cleared the docs website high-severity audit cap by updating Docusaurus to 3.10.1, pinning fixed Webpack/serialize-javascript overrides, and adding Mermaid's required `@mermaid-js/layout-elk` peer dependency. Moderate docs-site advisories remain in Docusaurus/Mermaid dev tooling.
+- Updated `docs/plans/codebase-health-assessment.md` and grade history to 97/100 A for the software-only state; remaining score gap is physical hardware-in-loop fixtures.
+- Verification passed: `npm run typecheck:scripts`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix scripts/verify-addresses run typecheck`; `bash -n scripts/verify-addresses/verify-repeatable.sh`; `npm --prefix scripts/verify-addresses run verify:repeatable`; `npm --prefix scripts/verify-psbt ci`; `npm --prefix scripts/verify-psbt audit --audit-level=high`; `npm --prefix scripts/verify-psbt run verify`; `npm --prefix website ci`; `npm --prefix website audit --audit-level=high`; `npm --prefix website run typecheck`; `npm --prefix website run build`; focused wallet/server tests; frontend coverage shards and merge; full backend unit coverage; `npm run quality:lizard`; `node scripts/quality/check-large-files.mjs --json`.
+
+---
+
+# Active Task: Full Codebase Grade 2026-05-01
+
+Status: complete
+
+Goal: produce an evidence-backed ISO/IEC 25010-aligned repository quality grade and update `docs/plans/codebase-health-assessment.md`.
+
+## Plan
+
+- [x] Read the grade skill standards and confirm the current worktree state.
+- [x] Run full repository mechanical signal collection and trend lookup.
+- [x] Inspect evidence for judged reliability, security, performance, maintainability, and test-quality criteria.
+- [x] Score domains, check hard-fail gates, append trend history, and write the report.
+- [x] Verify the report diff and summarize the result.
+
+## Review
+
+- Wrote `docs/plans/codebase-health-assessment.md` with a full-repository grade of 69/100 D, raw score 87/100, confidence High.
+- Appended grade trend history under `docs/plans/grade-history/sanctuary_.jsonl`.
+- Hard-fail blockers are `npm run typecheck:scripts` failure and 19 high advisories in the docs website audit.
+- Wallet software-vector tests passed, but physical hardware signed fixtures remain outstanding before this can be called hardware-in-loop funds-loss-grade.
+
+---
+
 # Active Task: Critical Mutation Gate Recovery 2026-05-01
 
 Status: complete

@@ -603,6 +603,14 @@ describe('TrezorAdapter class', () => {
       'Failed to verify address on Trezor: Bridge down'
     );
 
+    mockGetAddress.mockResolvedValueOnce({
+      success: false,
+      payload: {},
+    });
+    await expect(adapter.verifyAddress("m/86'/0'/0'/0/0", 'bc1pabc')).rejects.toThrow(
+      'Failed to verify address on Trezor: Failed to verify address'
+    );
+
     mockGetAddress.mockRejectedValueOnce('bridge-failed');
     await expect(adapter.verifyAddress("m/86'/0'/0'/0/0", 'bc1pabc')).rejects.toThrow(
       'Failed to verify address on Trezor: Unknown error'

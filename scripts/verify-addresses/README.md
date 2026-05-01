@@ -28,7 +28,29 @@ Only addresses where **all available implementations agree** are considered veri
 
 ## Quick Start
 
-### Option A: Local Bitcoin Core Container
+### Option A: Repeatable Local/CI Verification
+
+This is the preferred path before committing vector changes. It installs the
+Node verifier dependencies, creates an isolated Python venv with pinned
+`bip_utils`, starts the pinned Bitcoin Core 27.0 container, waits for RPC, and
+fails if regenerated vectors differ from the committed fixtures.
+
+```bash
+npm run verify:repeatable
+```
+
+Regenerate fixtures with the same pinned stack:
+
+```bash
+npm run generate:repeatable
+```
+
+Set `VERIFY_ADDRESSES_KEEP_BITCOIND=1` to leave the container running after the
+script exits, or `VERIFY_ADDRESSES_SKIP_DOCKER=1` when pointing at an already
+running Core node through `BITCOIN_RPC_URL`, `BITCOIN_RPC_USER`, and
+`BITCOIN_RPC_PASS`.
+
+### Option B: Local Bitcoin Core Container
 
 ```bash
 # Install dependencies
@@ -44,7 +66,7 @@ docker compose up -d
 npm run generate
 ```
 
-### Option B: Self-built Bitcoin Core (Most Secure)
+### Option C: Self-built Bitcoin Core (Most Secure)
 
 Build Bitcoin Core from verified official source:
 
@@ -72,7 +94,7 @@ export BITCOIN_RPC_PASS=verify
 npm run generate
 ```
 
-### Option C: Verify Existing Fixtures
+### Option D: Verify Existing Fixtures Manually
 
 Use this mode in CI or before committing fixture changes:
 

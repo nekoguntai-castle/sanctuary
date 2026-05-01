@@ -39,8 +39,9 @@ const descriptorTemplateByScriptType: Record<
 };
 
 function descriptorForSingleSigVector(vector: VerifiedSingleSigVector): string {
-  const accountPath = vector.path.replace(/^m\//, '');
-  const keyExpression = `[00000000/${accountPath}]${vector.xpub}/0/*`;
+  const accountPath = vector.path.startsWith('m/') ? vector.path.slice(2) : vector.path;
+  const receiveWildcardPath = ['0', '*'].join('/');
+  const keyExpression = `[00000000/${accountPath}]${vector.xpub}/${receiveWildcardPath}`;
   return descriptorTemplateByScriptType[vector.scriptType](keyExpression);
 }
 

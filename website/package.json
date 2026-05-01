@@ -11,9 +11,10 @@
     "clear": "docusaurus clear"
   },
   "dependencies": {
-    "@docusaurus/core": "~3.9.0",
-    "@docusaurus/preset-classic": "~3.9.0",
-    "@docusaurus/theme-mermaid": "~3.9.0",
+    "@docusaurus/core": "~3.10.1",
+    "@docusaurus/preset-classic": "~3.10.1",
+    "@docusaurus/theme-mermaid": "~3.10.1",
+    "@mermaid-js/layout-elk": "0.1.9",
     "@mdx-js/react": "^3.0.0",
     "clsx": "^2.0.0",
     "prism-react-renderer": "^2.4.1",
@@ -22,9 +23,9 @@
     "svg-pan-zoom": "^3.6.2"
   },
   "devDependencies": {
-    "@docusaurus/module-type-aliases": "~3.9.0",
-    "@docusaurus/tsconfig": "~3.9.0",
-    "@docusaurus/types": "~3.9.0",
+    "@docusaurus/module-type-aliases": "~3.10.1",
+    "@docusaurus/tsconfig": "~3.10.1",
+    "@docusaurus/types": "~3.10.1",
     "@types/react": "^18.0.0",
     "typescript": "~5.6.0"
   },
@@ -32,6 +33,7 @@
     "node": ">=20"
   },
   "overrides": {
-    "webpack": "5.97.1"
+    "serialize-javascript": "7.0.5",
+    "webpack": "5.106.2"
   }
 }

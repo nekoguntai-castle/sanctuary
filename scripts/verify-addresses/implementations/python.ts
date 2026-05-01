@@ -24,8 +24,9 @@ interface PythonResult {
 
 async function runPython(args: string[]): Promise<PythonResult> {
   return new Promise((resolve, reject) => {
-    // Try python3 first, then python
-    const pythonCommands = ['python3', 'python'];
+    // Prefer the repeatable verification venv when the wrapper provides it.
+    const configuredPython = process.env.VERIFY_ADDRESSES_PYTHON;
+    const pythonCommands = configuredPython ? [configuredPython] : ['python3', 'python'];
     let tried = 0;
 
     function tryCommand(cmd: string) {

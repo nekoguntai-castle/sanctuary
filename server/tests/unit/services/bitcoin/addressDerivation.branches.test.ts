@@ -278,4 +278,18 @@ describe('Address Derivation Service additional branch coverage', () => {
     expect(testnetResult.valid).toBe(true);
     expect(testnetResult.scriptType).toBe('native_segwit');
   });
+
+  it('validates lowercase native-segwit extended key variants', () => {
+    const zpub = 'zpub6qUQGY8YyN3ZxYEgf8J6KCQBqQAbdSWaT9RK54L5FWTTh8na8NkCkZpYHnWt7zEwNhqd6p9Utq562cSZsqGqFE87NNsUKnyZeJ5KvbhfC8E';
+    const vpub = 'vpub5Y6cjg78GGuNLsaPhmYsiw4gYX3HoQiRBiSwDaBXKUafCt9bNwWQiitDk5VZ5BVxYnQdwoTyXSs2JHRPAgjAvtbBrf8ZhDYe2jWAqvZVnsc';
+
+    expect(validateXpub(zpub, 'mainnet')).toMatchObject({
+      valid: true,
+      scriptType: 'native_segwit',
+    });
+    expect(validateXpub(vpub, 'testnet')).toMatchObject({
+      valid: true,
+      scriptType: 'native_segwit',
+    });
+  });
 });

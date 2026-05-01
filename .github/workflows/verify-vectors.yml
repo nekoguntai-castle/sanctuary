@@ -69,55 +69,13 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Start Bitcoin Core
-        run: |
-          docker run -d --name bitcoin-core \
-            -p 18443:18443 \
-            bitcoin/bitcoin:27.0 \
-            -regtest=1 \
-            -server=1 \
-            -rpcuser=verify \
-            -rpcpassword=verify \
-            -rpcallowip=0.0.0.0/0 \
-            -rpcbind=0.0.0.0 \
-            -fallbackfee=0.0001 \
-            -txindex=1 \
-            -printtoconsole=1
-
-      - name: Wait for Bitcoin Core
-        run: |
-          echo "Waiting for Bitcoin Core to be ready..."
-          for i in {1..30}; do
-            if curl -s --user verify:verify --data-binary '{"jsonrpc":"1.0","method":"getblockchaininfo","params":[]}' http://localhost:18443/ > /dev/null 2>&1; then
-              echo "Bitcoin Core is ready"
-              exit 0
-            fi
-            echo "Waiting... (attempt $i/30)"
-            sleep 2
-          done
-          docker logs bitcoin-core
-          exit 1
-
       - name: Install server dependencies
         working-directory: server
         run: npm ci
 
-      - name: Install address verification dependencies
-        working-directory: scripts/verify-addresses
-        run: npm ci
-
-      - name: Install Python address verifier
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install bip_utils
-
       - name: Run cross-implementation address verifier
         working-directory: scripts/verify-addresses
-        env:
-          BITCOIN_RPC_URL: http://127.0.0.1:18443
-          BITCOIN_RPC_USER: verify
-          BITCOIN_RPC_PASS: verify
-        run: npm run verify
+        run: npm run verify:repeatable
 
       - name: Run address derivation tests
         working-directory: server
@@ -167,28 +125,24 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Install verification script dependencies
-        working-directory: scripts/verify-addresses
-        run: npm ci
-        continue-on-error: true # May not exist yet
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
 
-      - name: Generate vectors with Bitcoin Core
+      - name: Generate address vectors with pinned verifier stack
         working-directory: scripts/verify-addresses
-        run: |
-          echo "Vector generation would run here"
-          echo "This requires the verify-addresses infrastructure to be set up"
-        continue-on-error: true
+        run: npm run generate:repeatable
 
       - name: Check for vector changes
         run: |
-          if git diff --quiet server/tests/fixtures/verified-address-vectors.ts; then
-            echo "✅ Vectors unchanged - all implementations agree"
+          if git diff --quiet scripts/verify-addresses/output/verified-vectors.ts server/tests/fixtures/verified-address-vectors.ts; then
+            echo "Vectors unchanged - all implementations agree"
           else
-            echo "⚠️ Vectors changed - review needed"
-            git diff server/tests/fixtures/verified-address-vectors.ts
+            echo "Vectors changed - review needed"
+            git diff scripts/verify-addresses/output/verified-vectors.ts server/tests/fixtures/verified-address-vectors.ts
             exit 1
           fi
-        continue-on-error: true
 
   # Optional: Regenerate PSBT vectors with Bitcoin Core
   regenerate-psbt-vectors:
@@ -234,23 +188,27 @@ jobs:
           docker logs bitcoin-core
           exit 1
 
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
       - name: Install PSBT verification dependencies
         working-directory: scripts/verify-psbt
-        run: npm install
+        run: npm ci
 
       - name: Generate PSBT vectors
         working-directory: scripts/verify-psbt
         env:
           BITCOIN_RPC_USER: sanctuary
           BITCOIN_RPC_PASS: sanctuary-verify
-        run: npx tsx generate-vectors.ts
+        run: npm run generate
 
       - name: Generate signed PSBT vectors
         working-directory: scripts/verify-psbt
         env:
           BITCOIN_RPC_USER: sanctuary
           BITCOIN_RPC_PASS: sanctuary-verify
-        run: npx tsx generate-signed-vectors.ts
+        run: npm run generate:signed
 
       - name: Verify generated PSBT vectors are non-empty
         working-directory: scripts/verify-psbt

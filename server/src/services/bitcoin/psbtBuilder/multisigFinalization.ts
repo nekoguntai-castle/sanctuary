@@ -188,11 +188,7 @@ const buildSignatureMap = (partialSig: PartialSignature[]): Map<string, Buffer> 
   return sigMap;
 };
 
-const orderSignatures = (
-  inputIndex: number,
-  partialSig: PartialSignature[],
-  scriptPubkeys: Buffer[]
-): Buffer[] => {
+const orderSignatures = (partialSig: PartialSignature[], scriptPubkeys: Buffer[]): Buffer[] => {
   const sigMap = buildSignatureMap(partialSig);
   const orderedSigs: Buffer[] = [];
 
@@ -279,7 +275,7 @@ export function finalizeMultisigInput(psbt: bitcoin.Psbt, inputIndex: number): v
   const state = readMultisigInputState(psbt, inputIndex);
   logSignaturePubkeyMismatches(inputIndex, state.partialSigPubkeys, state.scriptPubkeyHexes);
 
-  const orderedSigs = orderSignatures(inputIndex, state.partialSig, state.scriptPubkeys);
+  const orderedSigs = orderSignatures(state.partialSig, state.scriptPubkeys);
   assertSignatureCount(
     inputIndex,
     orderedSigs,
