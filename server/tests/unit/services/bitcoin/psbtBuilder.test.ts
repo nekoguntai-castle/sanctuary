@@ -33,20 +33,18 @@ describe("PSBT Builder", () => {
       scriptPubKey: testWitnessScriptPubKey,
     };
 
-    it("adds the input but skips multisig metadata when cosigner keys are missing", () => {
+    it("throws when multisig cosigner keys are missing", () => {
       const psbt = new bitcoin.Psbt({ network });
-      const inputPaths = addInputsWithBip32(psbt, [baseUtxo], {
-        sequence: 0xfffffffd,
-        isLegacy: false,
-        rawTxCache: new Map(),
-        addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/2'/0/0"]]),
-        signingInfo: { isMultisig: true },
-        networkObj: network,
-      });
-
-      expect(inputPaths).toEqual(["m/48'/1'/0'/2'/0/0"]);
-      expect(psbt.inputCount).toBe(1);
-      expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
+      expect(() =>
+        addInputsWithBip32(psbt, [baseUtxo], {
+          sequence: 0xfffffffd,
+          isLegacy: false,
+          rawTxCache: new Map(),
+          addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/2'/0/0"]]),
+          signingInfo: { isMultisig: true },
+          networkObj: network,
+        })
+      ).toThrow("missing multisig keys");
     });
 
     it("adds multisig BIP32 metadata and witness script when cosigner keys are available", () => {
@@ -901,7 +899,7 @@ describe("PSBT Builder", () => {
       );
     });
 
-    it("continues finalization when witnessUtxo is missing and signature verification errors", () => {
+    it("throws when witnessUtxo is missing before signature verification", () => {
       const key = ECPair.makeRandom({ network });
       const pubkey = Buffer.from(key.publicKey);
       const p2ms = bitcoin.payments.p2ms({ m: 1, pubkeys: [pubkey], network });
@@ -911,6 +909,11 @@ describe("PSBT Builder", () => {
           inputs: [
             {
               witnessScript: p2ms.output!,
+              bip32Derivation: [{
+                masterFingerprint: Buffer.alloc(4, 1),
+                path: "m/48'/1'/0'/2'/0/0",
+                pubkey,
+              }],
               partialSig: [{ pubkey, signature: Buffer.from([0x01]) }],
               // witnessUtxo intentionally omitted to hit warning branch
             },
@@ -924,11 +927,13 @@ describe("PSBT Builder", () => {
         updateInput: vi.fn(),
       } as unknown as bitcoin.Psbt;
 
-      expect(() => finalizeMultisigInput(fakePsbt, 0)).not.toThrow();
-      expect((fakePsbt as any).updateInput).toHaveBeenCalledTimes(1);
+      expect(() => finalizeMultisigInput(fakePsbt, 0)).toThrow(
+        "missing witnessUtxo",
+      );
+      expect((fakePsbt as any).updateInput).not.toHaveBeenCalled();
     });
 
-    it("handles DER signatures with s values longer than 32 bytes during verification", () => {
+    it("throws when matching partial signatures fail ECDSA verification", () => {
       const key = ECPair.makeRandom({ network });
       const pubkey = Buffer.from(key.publicKey);
       const p2ms = bitcoin.payments.p2ms({ m: 1, pubkeys: [pubkey], network });
@@ -950,6 +955,11 @@ describe("PSBT Builder", () => {
             {
               witnessScript: p2ms.output!,
               witnessUtxo: { script: p2wsh.output!, value: BigInt(100000) },
+              bip32Derivation: [{
+                masterFingerprint: Buffer.alloc(4, 1),
+                path: "m/48'/1'/0'/2'/0/0",
+                pubkey,
+              }],
               partialSig: [{ pubkey, signature: signatureWithHashType }],
             },
           ],
@@ -962,38 +972,47 @@ describe("PSBT Builder", () => {
         updateInput: vi.fn(),
       } as unknown as bitcoin.Psbt;
 
-      expect(() => finalizeMultisigInput(fakePsbt, 0)).not.toThrow();
-      expect((fakePsbt as any).updateInput).toHaveBeenCalledTimes(1);
+      expect(() => finalizeMultisigInput(fakePsbt, 0)).toThrow(
+        "signature verification failed",
+      );
+      expect((fakePsbt as any).updateInput).not.toHaveBeenCalled();
     });
 
-    it("should finalize when signature count matches quorum", () => {
+    it("should finalize and extract when valid signatures match quorum", () => {
       const psbt = new bitcoin.Psbt({ network });
-      const key = ECPair.makeRandom({ network });
-      const pubkey = Buffer.from(key.publicKey);
+      const keys = Array.from({ length: 2 }, () =>
+        ECPair.makeRandom({ network }),
+      );
+      const pubkeys = keys
+        .map((k) => Buffer.from(k.publicKey))
+        .sort(Buffer.compare);
 
-      const p2ms = bitcoin.payments.p2ms({ m: 1, pubkeys: [pubkey], network });
+      const p2ms = bitcoin.payments.p2ms({ m: 2, pubkeys, network });
       const p2wsh = bitcoin.payments.p2wsh({ redeem: p2ms, network });
+      const destination = bitcoin.payments.p2wpkh({
+        pubkey: Buffer.from(ECPair.makeRandom({ network }).publicKey),
+        network,
+      });
 
       psbt.addInput({
         hash: Buffer.alloc(32, 0xee),
         index: 0,
         witnessUtxo: { script: p2wsh.output!, value: BigInt(100000) },
         witnessScript: p2ms.output!,
+        bip32Derivation: pubkeys.map((pubkey, index) => ({
+          masterFingerprint: Buffer.alloc(4, index + 1),
+          path: `m/48'/1'/0'/2'/0/${index}`,
+          pubkey,
+        })),
       });
-      psbt.addOutput({ address: p2wsh.address!, value: BigInt(90000) });
+      psbt.addOutput({ address: destination.address!, value: BigInt(90000) });
 
-      const derLikeSig = Buffer.concat([
-        Buffer.from("30440220", "hex"),
-        Buffer.alloc(32, 0x01),
-        Buffer.from("0220", "hex"),
-        Buffer.alloc(32, 0x02),
-        Buffer.from([0x01]), // SIGHASH_ALL
-      ]);
-
-      psbt.data.inputs[0].partialSig = [{ pubkey, signature: derLikeSig }];
+      keys.forEach((key) => psbt.signInput(0, key));
+      expect(psbt.data.inputs[0].partialSig).toHaveLength(2);
 
       expect(() => finalizeMultisigInput(psbt, 0)).not.toThrow();
       expect(psbt.data.inputs[0].finalScriptWitness).toBeInstanceOf(Buffer);
+      expect(psbt.extractTransaction(true).ins[0].witness).toHaveLength(4);
     });
   });
 });

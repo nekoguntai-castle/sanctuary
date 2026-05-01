@@ -19,57 +19,57 @@ const CHECKSUM_TEST_VECTORS = [
   // BIP-380 examples
   {
     descriptor: 'wpkh(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)',
-    checksum: '8zl0zxma',
+    checksum: 'sxv6zkxu',
     description: 'Simple wpkh descriptor',
   },
   {
     descriptor:
       'wsh(multi(1,xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8/0/*,xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/0/*))',
-    checksum: 't2zpj2eu',
+    checksum: 'gg708xnq',
     description: 'wsh multi descriptor with xpubs',
   },
   // Standard single-sig descriptors
   {
     descriptor: 'pkh(02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5)',
-    checksum: '8fhd9pwu',
+    checksum: '4nvekhlu',
     description: 'Legacy P2PKH descriptor',
   },
   {
     descriptor:
       "pkh([d34db33f/44'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)",
-    checksum: 'ml40v0wf',
+    checksum: 'ta28885h',
     description: 'P2PKH with origin info',
   },
   // Segwit descriptors
   {
     descriptor:
       "wpkh([d34db33f/84'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)",
-    checksum: 'qwx6n9lj',
+    checksum: '9uf5mztn',
     description: 'Native segwit P2WPKH with origin',
   },
   {
     descriptor:
       "sh(wpkh([d34db33f/49'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*))",
-    checksum: 'pv7ef48p',
+    checksum: 'xy06fcn5',
     description: 'Nested segwit P2SH-P2WPKH with origin',
   },
   // Multisig descriptors
   {
     descriptor:
       'wsh(sortedmulti(2,xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8/0/*,xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/0/*))',
-    checksum: 'k7uzzltt',
+    checksum: 'r575gzg4',
     description: 'sortedmulti native segwit',
   },
   {
     descriptor:
       'sh(wsh(sortedmulti(2,xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8/0/*,xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/0/*)))',
-    checksum: '0lqhfpjx',
+    checksum: 'y6k0wzsy',
     description: 'sortedmulti nested segwit',
   },
   // Taproot descriptors
   {
     descriptor: 'tr(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)',
-    checksum: 'gwfvytfe',
+    checksum: '27lna9az',
     description: 'Simple taproot descriptor',
   },
 ];
@@ -108,7 +108,7 @@ describe('Descriptor Checksum Validation', () => {
   describe('Checksum Format Validation', () => {
     it('should accept 8-character lowercase alphanumeric checksum', () => {
       const descriptor = 'wpkh(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)';
-      const validChecksum = '8zl0zxma';
+      const validChecksum = 'sxv6zkxu';
 
       const error = validateDescriptor(`${descriptor}#${validChecksum}`);
 
@@ -121,7 +121,7 @@ describe('Descriptor Checksum Validation', () => {
     it('should handle descriptor with # separator correctly', () => {
       // The # is the standard separator for checksums
       const descriptor =
-        "wpkh([d34db33f/84'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)#qwx6n9lj";
+        "wpkh([d34db33f/84'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)#9uf5mztn";
 
       const error = validateDescriptor(descriptor);
 
@@ -129,6 +129,15 @@ describe('Descriptor Checksum Validation', () => {
       if (error) {
         expect(error.message).not.toContain('checksum');
       }
+    });
+
+    it('should reject a descriptor when a checksum is present but invalid', () => {
+      const descriptor =
+        "wpkh([d34db33f/84'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*)#aaaaaaaa";
+
+      const error = validateDescriptor(descriptor);
+
+      expect(error?.message).toContain('Invalid descriptor checksum');
     });
   });
 });
@@ -155,7 +164,7 @@ describe('Checksum Character Set (BIP-380)', () => {
 
 describe('Descriptor Type Detection with Checksums', () => {
   it('should detect wpkh type from descriptor with checksum', () => {
-    const descriptor = 'wpkh(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)#8zl0zxma';
+    const descriptor = 'wpkh(02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)#sxv6zkxu';
 
     // No error means valid descriptor
     const error = validateDescriptor(descriptor);
@@ -168,7 +177,7 @@ describe('Descriptor Type Detection with Checksums', () => {
 
   it('should detect wsh sortedmulti type from descriptor with checksum', () => {
     const descriptor =
-      'wsh(sortedmulti(2,xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8/0/*,xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/0/*))#k7uzzltt';
+      'wsh(sortedmulti(2,xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8/0/*,xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/0/*))#r575gzg4';
 
     const error = validateDescriptor(descriptor);
 

@@ -36,6 +36,7 @@ export interface VerificationResult {
   consensus: boolean;
   consensusAddress?: string;
   disagreements?: Array<{ impl: string; address: string }>;
+  errors?: string[];
 }
 
 export interface VerifiedSingleSigVector {

@@ -16,7 +16,7 @@
  *   - Go with btcd modules (go mod download)
  */
 
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -27,6 +27,7 @@ import type {
   VerifiedSingleSigVector,
   VerifiedMultisigVector,
   VerificationResult,
+  Network,
 } from './types.js';
 
 // Import implementations
@@ -46,14 +47,62 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/**
- * Minimum implementations required for a vector to be considered verified
- * Note: We use 2 as minimum because:
- * - Bitcoin Core (regtest) can't verify mainnet addresses
- * - Caravan's multisig API has compatibility issues
- * - 2 independent implementations (Bitcoin Core + bitcoinjs-lib) still provides strong verification
- */
-const MIN_IMPLEMENTATIONS = 2;
+const MIN_IMPLEMENTATIONS = 3;
+const BITCOIN_CORE_NAME = 'Bitcoin Core';
+const PRODUCTION_LIBRARY_NAME = 'bitcoinjs-lib';
+const INDEPENDENT_NON_JS_NAMES = new Set([
+  'bip_utils (Python)',
+  'btcd/btcutil (Go)',
+]);
+const VERIFY_ONLY = process.argv.includes('--verify-only');
+
+function hasImplementationResult(
+  results: Map<string, string>,
+  implementationName: string
+): boolean {
+  return [...results.keys()].some(name => name.startsWith(`${implementationName} `));
+}
+
+function hasIndependentNonJsResult(results: Map<string, string>): boolean {
+  return [...INDEPENDENT_NON_JS_NAMES].some(name => hasImplementationResult(results, name));
+}
+
+function hasRequiredResultImplementations(results: Map<string, string>): boolean {
+  return (
+    hasImplementationResult(results, BITCOIN_CORE_NAME) &&
+    hasImplementationResult(results, PRODUCTION_LIBRARY_NAME) &&
+    hasIndependentNonJsResult(results)
+  );
+}
+
+function isMainnetAddress(address: string): boolean {
+  return (
+    address.startsWith('1') ||
+    address.startsWith('3') ||
+    address.toLowerCase().startsWith('bc1')
+  );
+}
+
+function isTestnetAddress(address: string): boolean {
+  return (
+    address.startsWith('m') ||
+    address.startsWith('n') ||
+    address.startsWith('2') ||
+    address.toLowerCase().startsWith('tb1')
+  );
+}
+
+function isAddressForNetwork(address: string, network: Network): boolean {
+  return network === 'mainnet' ? isMainnetAddress(address) : isTestnetAddress(address);
+}
+
+function getCanonicalAddress(
+  testCase: SingleSigTestCase | MultisigTestCase,
+  results: Map<string, string>
+): string {
+  const addresses = [...results.values()];
+  return addresses.find(address => isAddressForNetwork(address, testCase.network)) ?? addresses[0];
+}
 
 // =============================================================================
 // Verification
@@ -89,14 +138,18 @@ async function verifySingleSig(
   const normalizedAddresses = addresses.map(normalizeAddress);
   const uniqueNormalized = new Set(normalizedAddresses);
 
-  if (uniqueNormalized.size === 1 && addresses.length >= MIN_IMPLEMENTATIONS) {
-    // Use the non-regtest address as the canonical one
-    const canonicalAddress = addresses.find(a => !a.startsWith('bcrt1')) || addresses[0];
+  if (
+    uniqueNormalized.size === 1 &&
+    addresses.length >= MIN_IMPLEMENTATIONS &&
+    hasRequiredResultImplementations(results) &&
+    errors.length === 0
+  ) {
     return {
       testCase,
       results,
       consensus: true,
-      consensusAddress: canonicalAddress,
+      consensusAddress: getCanonicalAddress(testCase, results),
+      errors,
     };
   }
 
@@ -138,6 +191,7 @@ async function verifySingleSig(
     consensus: false,
     consensusAddress: majorityOriginal,
     disagreements,
+    errors,
   };
 }
 
@@ -175,14 +229,18 @@ async function verifyMultisig(
   const normalizedAddresses = addresses.map(normalizeAddress);
   const uniqueNormalized = new Set(normalizedAddresses);
 
-  if (uniqueNormalized.size === 1 && addresses.length >= MIN_IMPLEMENTATIONS) {
-    // Use the non-regtest address as the canonical one
-    const canonicalAddress = addresses.find(a => !a.startsWith('bcrt1') && !a.startsWith('2')) || addresses[0];
+  if (
+    uniqueNormalized.size === 1 &&
+    addresses.length >= MIN_IMPLEMENTATIONS &&
+    hasRequiredResultImplementations(results) &&
+    errors.length === 0
+  ) {
     return {
       testCase,
       results,
       consensus: true,
-      consensusAddress: canonicalAddress,
+      consensusAddress: getCanonicalAddress(testCase, results),
+      errors,
     };
   }
 
@@ -224,6 +282,7 @@ async function verifyMultisig(
     consensus: false,
     consensusAddress: majorityOriginal,
     disagreements,
+    errors,
   };
 }
 
@@ -281,17 +340,35 @@ async function getAvailableImplementations(): Promise<AddressDeriver[]> {
 }
 
 function requireMinimumImplementations(availableImplementations: AddressDeriver[]): void {
+  const names = new Set(availableImplementations.map(impl => impl.name));
+  const hasBitcoinCore = names.has(BITCOIN_CORE_NAME);
+  const hasProductionLibrary = names.has(PRODUCTION_LIBRARY_NAME);
+  const hasIndependentNonJs = availableImplementations.some(impl => INDEPENDENT_NON_JS_NAMES.has(impl.name));
+
   if (availableImplementations.length < MIN_IMPLEMENTATIONS) {
     console.error(`\x1b[31mError: Need at least ${MIN_IMPLEMENTATIONS} implementations, only ${availableImplementations.length} available.\x1b[0m`);
-    console.log('\nTo enable more implementations:');
-    console.log('  - Bitcoin Core: docker compose up -d');
-    console.log('  - Python: pip install bip_utils');
-    console.log('  - Go: ensure Go is installed and modules are available');
+    logImplementationRequirements();
+    process.exit(1);
+  }
+
+  if (!hasBitcoinCore || !hasProductionLibrary || !hasIndependentNonJs) {
+    console.error('\x1b[31mError: Address verification requires Bitcoin Core, bitcoinjs-lib, and at least one independent non-JS implementation.\x1b[0m');
+    console.error(`  Bitcoin Core available: ${hasBitcoinCore ? 'yes' : 'no'}`);
+    console.error(`  bitcoinjs-lib available: ${hasProductionLibrary ? 'yes' : 'no'}`);
+    console.error(`  Independent non-JS implementation available: ${hasIndependentNonJs ? 'yes' : 'no'}`);
+    logImplementationRequirements();
     process.exit(1);
   }
 
   console.log(`Using ${availableImplementations.length} implementations for verification`);
   console.log();
+}
+
+function logImplementationRequirements(): void {
+  console.log('\nTo enable required implementations:');
+  console.log('  - Bitcoin Core: docker compose up -d, or expose BITCOIN_RPC_URL/BITCOIN_RPC_USER/BITCOIN_RPC_PASS');
+  console.log('  - Python: pip install bip_utils');
+  console.log('  - Go alternative: ensure Go is installed and modules are available');
 }
 
 function generateTestCases(): GeneratedTestCases {
@@ -309,6 +386,12 @@ function logDisagreement(result: VerificationResult): void {
   console.log(`\n  \x1b[31mDISAGREEMENT:\x1b[0m ${result.testCase.description}`);
   for (const [impl, addr] of result.results) {
     console.log(`    ${impl}: ${addr}`);
+  }
+  if (!hasRequiredResultImplementations(result.results)) {
+    console.log('    Missing required successful implementation group.');
+  }
+  for (const error of result.errors ?? []) {
+    console.log(`    ${error}`);
   }
 }
 
@@ -420,36 +503,89 @@ function verifyKeyOrdering(verifiedMultisig: VerifiedMultisigVector[]): number {
   return 0;
 }
 
-function writeOutputFiles(
+interface OutputPaths {
+  scriptOutputPath: string;
+  fixtureOutputPath: string;
+}
+
+function getOutputPaths(): OutputPaths {
+  return {
+    scriptOutputPath: join(__dirname, 'output', 'verified-vectors.ts'),
+    fixtureOutputPath: join(__dirname, '../../server/tests/fixtures/verified-address-vectors.ts'),
+  };
+}
+
+function buildOutputContent(
   verifiedSingleSig: VerifiedSingleSigVector[],
   verifiedMultisig: VerifiedMultisigVector[],
   availableImplementations: AddressDeriver[]
-): void {
-  console.log('Generating output files...');
-
+): string {
   const implementationNames = availableImplementations.map(i => `${i.name} ${i.version}`);
-  const outputContent = generateOutputFile(
+  return generateOutputFile(
     verifiedSingleSig,
     verifiedMultisig,
     implementationNames,
     TEST_MNEMONIC
   );
+}
+
+function normalizeGeneratedOutput(content: string): string {
+  return content.replace(/Last verified: \d{4}-\d{2}-\d{2}/, 'Last verified: <ignored>');
+}
+
+function readExistingOutput(path: string): string | null {
+  if (!existsSync(path)) {
+    return null;
+  }
+
+  return readFileSync(path, 'utf8');
+}
+
+function hasOutputDrift(expectedContent: string, existingContent: string | null): boolean {
+  if (existingContent === null) {
+    return true;
+  }
+
+  return normalizeGeneratedOutput(existingContent) !== normalizeGeneratedOutput(expectedContent);
+}
+
+function verifyOutputFiles(outputContent: string): void {
+  console.log('Checking generated vectors against committed fixtures...');
+  const paths = getOutputPaths();
+  const driftedPaths = [
+    paths.scriptOutputPath,
+    paths.fixtureOutputPath,
+  ].filter(path => hasOutputDrift(outputContent, readExistingOutput(path)));
+
+  if (driftedPaths.length > 0) {
+    console.error('\x1b[31mAddress vector fixtures are stale or missing.\x1b[0m');
+    for (const path of driftedPaths) {
+      console.error(`  Drift detected: ${path}`);
+    }
+    console.error('Regenerate with: cd scripts/verify-addresses && npm run generate');
+    process.exit(1);
+  }
+
+  console.log('\x1b[32mAddress vector fixtures match regenerated output.\x1b[0m');
+}
+
+function writeOutputFiles(outputContent: string): void {
+  console.log('Generating output files...');
 
   // Write to output directory
-  const outputDir = join(__dirname, 'output');
+  const paths = getOutputPaths();
+  const outputDir = dirname(paths.scriptOutputPath);
   if (!existsSync(outputDir)) {
     mkdirSync(outputDir, { recursive: true });
   }
 
-  const outputPath = join(outputDir, 'verified-vectors.ts');
-  writeFileSync(outputPath, outputContent);
-  console.log(`  Written: ${outputPath}`);
+  writeFileSync(paths.scriptOutputPath, outputContent);
+  console.log(`  Written: ${paths.scriptOutputPath}`);
 
   // Also write to server/tests/fixtures if it exists
-  const fixturesPath = join(__dirname, '../../server/tests/fixtures/verified-address-vectors.ts');
   try {
-    writeFileSync(fixturesPath, outputContent);
-    console.log(`  Written: ${fixturesPath}`);
+    writeFileSync(paths.fixtureOutputPath, outputContent);
+    console.log(`  Written: ${paths.fixtureOutputPath}`);
   } catch (error) {
     console.log(`  Note: Could not write to fixtures directory: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -491,8 +627,13 @@ async function main() {
   const multisig = await verifyMultisigCases(multisigCases, availableImplementations);
   const keyOrderingErrors = verifyKeyOrdering(multisig.vectors);
   const totalErrors = singleSig.errors + multisig.errors + keyOrderingErrors;
+  const outputContent = buildOutputContent(singleSig.vectors, multisig.vectors, availableImplementations);
 
-  writeOutputFiles(singleSig.vectors, multisig.vectors, availableImplementations);
+  if (VERIFY_ONLY) {
+    verifyOutputFiles(outputContent);
+  } else {
+    writeOutputFiles(outputContent);
+  }
   logSummary(singleSig.vectors, multisig.vectors, totalErrors);
   exitOnErrors(totalErrors);
 }

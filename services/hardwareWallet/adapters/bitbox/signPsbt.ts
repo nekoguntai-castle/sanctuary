@@ -113,7 +113,13 @@ const buildBitBoxInputs = (
 
 const isChangeOutput = (outputData: BitBoxOutputData | undefined, accountPath: string): boolean => {
   const derivationPath = outputData?.bip32Derivation?.[0]?.path;
-  return Boolean(derivationPath?.startsWith(accountPath.replace("m/", "")));
+  if (!derivationPath) {
+    return false;
+  }
+
+  const normalizedDerivationPath = derivationPath.replace(/^m\//, '');
+  const normalizedAccountPath = accountPath.replace(/^m\//, '');
+  return normalizedDerivationPath.startsWith(`${normalizedAccountPath}/`);
 };
 
 const decodeAddressPayload = (address: string): Uint8Array => {

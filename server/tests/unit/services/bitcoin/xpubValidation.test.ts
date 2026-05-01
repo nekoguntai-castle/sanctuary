@@ -14,6 +14,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import * as bitcoin from 'bitcoinjs-lib';
+import bip32 from '@/services/bitcoin/bip32';
 import {
   validateXpub,
   convertToStandardXpub,
@@ -84,6 +86,14 @@ describe('xpub Validation', () => {
     it('should reject truncated xpub', () => {
       const result = validateXpub(INVALID_XPUBS.truncated, 'mainnet');
       expect(result.valid).toBe(false);
+    });
+
+    it('should reject private extended keys', () => {
+      const xprv = bip32.fromSeed(Buffer.alloc(32, 1), bitcoin.networks.bitcoin).toBase58();
+      const result = validateXpub(xprv, 'mainnet');
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('Private extended keys are not allowed');
     });
   });
 

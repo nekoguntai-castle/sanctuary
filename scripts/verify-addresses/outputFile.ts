@@ -13,7 +13,7 @@ function getVerificationHeader(
  * VERIFIED ADDRESS VECTORS
  *
  * These vectors have been verified by multiple independent implementations:
- * ${implementations.map((i) => ` * - ${i}`).join("\n")}
+${implementations.map((i) => ` * - ${i}`).join("\n")}
  *
  * DO NOT MODIFY MANUALLY - regenerate using:
  *   cd scripts/verify-addresses && npm run generate

@@ -222,7 +222,7 @@ export function registerTransactionServiceMultisigTests(): void {
       expect(psbt.data.inputs[0].redeemScript).toBeDefined();
     });
 
-    it("should skip script wrappers when multisig descriptor type is unrecognized", async () => {
+    it("should reject spend creation when multisig descriptor type is unrecognized", async () => {
       mockParseDescriptor.mockImplementationOnce(
         () =>
           ({
@@ -245,15 +245,12 @@ export function registerTransactionServiceMultisigTests(): void {
           }) as any,
       );
 
-      const result = await createTransaction(walletId, recipient, 50_000, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
-
-      expect(psbt.data.inputs[0].bip32Derivation?.length).toBeGreaterThan(0);
-      expect(psbt.data.inputs[0].witnessScript).toBeUndefined();
-      expect(psbt.data.inputs[0].redeemScript).toBeUndefined();
+      await expect(
+        createTransaction(walletId, recipient, 50_000, 10),
+      ).rejects.toThrow("unsupported multisig descriptor type");
     });
 
-    it("should skip multisig derivation and witness script when derivation path is invalid", async () => {
+    it("should reject spend creation when multisig derivation path is invalid", async () => {
       mockAddressFindManyByQuery({
         inputRows: [
           inputAddressRow(walletId, 0, {
@@ -268,14 +265,12 @@ export function registerTransactionServiceMultisigTests(): void {
         ],
       });
 
-      const result = await createTransaction(walletId, recipient, 50_000, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
-
-      expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
-      expect(psbt.data.inputs[0].witnessScript).toBeUndefined();
+      await expect(
+        createTransaction(walletId, recipient, 50_000, 10),
+      ).rejects.toThrow("failed to build complete BIP32 derivation metadata");
     });
 
-    it("should skip multisig BIP32 attachment when input derivation path is empty", async () => {
+    it("should reject spend creation when input derivation path is empty", async () => {
       mockAddressFindManyByQuery({
         inputRows: [
           inputAddressRow(walletId, 0, {
@@ -290,13 +285,12 @@ export function registerTransactionServiceMultisigTests(): void {
         ],
       });
 
-      const result = await createTransaction(walletId, recipient, 50_000, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
-
-      expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
+      await expect(
+        createTransaction(walletId, recipient, 50_000, 10),
+      ).rejects.toThrow("missing input derivation path");
     });
 
-    it("should skip sh-wsh script attachments when witness script derivation fails", async () => {
+    it("should reject spend creation when sh-wsh witness script derivation fails", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         ...sampleWallets.multiSig2of3,
         id: walletId,
@@ -333,20 +327,19 @@ export function registerTransactionServiceMultisigTests(): void {
         ],
       });
 
-      const result = await createTransaction(walletId, recipient, 50_000, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
-
-      expect(psbt.data.inputs[0].witnessScript).toBeUndefined();
-      expect(psbt.data.inputs[0].redeemScript).toBeUndefined();
+      await expect(
+        createTransaction(walletId, recipient, 50_000, 10),
+      ).rejects.toThrow("failed to build complete BIP32 derivation metadata");
     });
 
-    it("should continue when multisig descriptor parsing fails", async () => {
+    it("should reject spend creation when multisig descriptor parsing fails", async () => {
       mockParseDescriptor.mockImplementationOnce(() => {
         throw new Error("descriptor parse failed");
       });
 
-      const result = await createTransaction(walletId, recipient, 50_000, 10);
-      expect(result.psbtBase64).toBeDefined();
+      await expect(
+        createTransaction(walletId, recipient, 50_000, 10),
+      ).rejects.toThrow("missing multisig keys");
     });
   });
 }

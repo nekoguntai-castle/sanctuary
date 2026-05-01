@@ -1,7 +1,10 @@
 import * as bitcoin from 'bitcoinjs-lib';
+import bs58check from 'bs58check';
 
 const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 const BECH32_PREFIXES = ['bcrt1', 'tb1', 'bc1'];
+const P2PKH_VERSIONS = new Set([0x00, 0x6f]);
+const P2SH_VERSIONS = new Set([0x05, 0xc4]);
 
 function getBitcoinjsWitnessProgram(address: string): string | null {
   try {
@@ -14,6 +17,29 @@ function getBitcoinjsWitnessProgram(address: string): string | null {
 
 function isKnownWitnessAddress(address: string): boolean {
   return BECH32_PREFIXES.some((prefix) => address.startsWith(prefix));
+}
+
+function normalizeBase58Address(address: string): string | null {
+  try {
+    const payload = Buffer.from(bs58check.decode(address));
+    if (payload.length !== 21) {
+      return null;
+    }
+
+    const version = payload[0];
+    const hash = payload.slice(1).toString('hex');
+
+    if (P2PKH_VERSIONS.has(version)) {
+      return `p2pkh:${hash}`;
+    }
+    if (P2SH_VERSIONS.has(version)) {
+      return `p2sh:${hash}`;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 function getBech32Data(address: string): string | null {
@@ -86,7 +112,7 @@ export function decodeBech32WitnessProgram(address: string): string | null {
   }
 
   const lowerAddress = address.toLowerCase();
-  if (!isKnownWitnessAddress(lowerAddress)) {
+  if (!lowerAddress.startsWith('bcrt1')) {
     return null;
   }
 
@@ -97,11 +123,17 @@ export function decodeBech32WitnessProgram(address: string): string | null {
  * Normalize an address to its core components for comparison.
  */
 export function normalizeAddress(address: string): string {
-  if (isKnownWitnessAddress(address)) {
-    const witnessProgram = decodeBech32WitnessProgram(address);
+  const lowerAddress = address.toLowerCase();
+  if (isKnownWitnessAddress(lowerAddress)) {
+    const witnessProgram = decodeBech32WitnessProgram(lowerAddress);
     if (witnessProgram) {
       return `wprog:${witnessProgram}`;
     }
+  }
+
+  const base58Address = normalizeBase58Address(address);
+  if (base58Address) {
+    return base58Address;
   }
 
   return address;

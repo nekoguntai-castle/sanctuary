@@ -18,7 +18,22 @@ on:
   pull_request:
     paths:
       - 'server/src/services/bitcoin/addressDerivation.ts'
+      - 'server/src/services/bitcoin/addressDerivation/**'
       - 'server/src/services/bitcoin/descriptorParser.ts'
+      - 'server/src/services/bitcoin/descriptorParser/**'
+      - 'server/src/services/bitcoin/transactions/**'
+      - 'server/src/services/bitcoin/psbtBuilder/**'
+      - 'services/hardwareWallet/**'
+      - 'tests/services/hardwareWallet**'
+      - 'tests/services/hardwareWallet/**'
+      - 'tests/services/hardwareWalletBitbox/**'
+      - 'hooks/send/useQrSigning.ts'
+      - 'hooks/send/useUsbSigning.ts'
+      - 'hooks/send/useSendTransactionActions.ts'
+      - 'tests/hooks/useQrSigning.test.tsx'
+      - 'tests/hooks/useUsbSigning.test.tsx'
+      - 'tests/hooks/useSendTransactionActions.test.tsx'
+      - 'tests/hooks/useSendTransactionActions/**'
       - 'server/src/services/scriptTypes/**'
       - 'server/tests/fixtures/verified-address-vectors.ts'
       - 'server/tests/fixtures/bip174-test-vectors.ts'
@@ -49,9 +64,60 @@ jobs:
           cache: 'npm'
           cache-dependency-path: server/package-lock.json
 
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.12'
+
+      - name: Start Bitcoin Core
+        run: |
+          docker run -d --name bitcoin-core \
+            -p 18443:18443 \
+            bitcoin/bitcoin:27.0 \
+            -regtest=1 \
+            -server=1 \
+            -rpcuser=verify \
+            -rpcpassword=verify \
+            -rpcallowip=0.0.0.0/0 \
+            -rpcbind=0.0.0.0 \
+            -fallbackfee=0.0001 \
+            -txindex=1 \
+            -printtoconsole=1
+
+      - name: Wait for Bitcoin Core
+        run: |
+          echo "Waiting for Bitcoin Core to be ready..."
+          for i in {1..30}; do
+            if curl -s --user verify:verify --data-binary '{"jsonrpc":"1.0","method":"getblockchaininfo","params":[]}' http://localhost:18443/ > /dev/null 2>&1; then
+              echo "Bitcoin Core is ready"
+              exit 0
+            fi
+            echo "Waiting... (attempt $i/30)"
+            sleep 2
+          done
+          docker logs bitcoin-core
+          exit 1
+
       - name: Install server dependencies
         working-directory: server
         run: npm ci
+
+      - name: Install address verification dependencies
+        working-directory: scripts/verify-addresses
+        run: npm ci
+
+      - name: Install Python address verifier
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install bip_utils
+
+      - name: Run cross-implementation address verifier
+        working-directory: scripts/verify-addresses
+        env:
+          BITCOIN_RPC_URL: http://127.0.0.1:18443
+          BITCOIN_RPC_USER: verify
+          BITCOIN_RPC_PASS: verify
+        run: npm run verify
 
       - name: Run address derivation tests
         working-directory: server
@@ -92,17 +158,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
-    services:
-      bitcoind:
-        image: ruimarinho/bitcoin-core:latest
-        ports:
-          - 18443:18443
-        options: >-
-          --health-cmd "bitcoin-cli -regtest -rpcuser=test -rpcpassword=test getblockchaininfo"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -141,19 +196,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
-    services:
-      bitcoind:
-        image: ruimarinho/bitcoin-core:27
-        ports:
-          - 18443:18443
-        options: >-
-          --health-cmd "bitcoin-cli -regtest -rpcuser=sanctuary -rpcpassword=sanctuary-verify getblockchaininfo"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-        env:
-          BITCOIN_ARGS: "-regtest -server -rpcuser=sanctuary -rpcpassword=sanctuary-verify -rpcallowip=0.0.0.0/0 -rpcbind=0.0.0.0 -fallbackfee=0.00001"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -163,35 +205,34 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Start Bitcoin Core
+        run: |
+          docker run -d --name bitcoin-core \
+            -p 18443:18443 \
+            bitcoin/bitcoin:27.0 \
+            -regtest=1 \
+            -server=1 \
+            -rpcuser=sanctuary \
+            -rpcpassword=sanctuary-verify \
+            -rpcallowip=0.0.0.0/0 \
+            -rpcbind=0.0.0.0 \
+            -fallbackfee=0.00001 \
+            -txindex=1 \
+            -printtoconsole=1
+
       - name: Wait for Bitcoin Core
         run: |
           echo "Waiting for Bitcoin Core to be ready..."
           for i in {1..30}; do
             if curl -s --user sanctuary:sanctuary-verify --data-binary '{"jsonrpc":"1.0","method":"getblockchaininfo","params":[]}' http://localhost:18443/ > /dev/null 2>&1; then
               echo "Bitcoin Core is ready"
-              break
+              exit 0
             fi
             echo "Waiting... (attempt $i/30)"
             sleep 2
           done
-
-      - name: Setup Bitcoin Core wallet
-        run: |
-          # Create wallet and generate initial blocks for funds
-          curl -s --user sanctuary:sanctuary-verify \
-            --data-binary '{"jsonrpc":"1.0","method":"createwallet","params":["test"]}' \
-            http://localhost:18443/
-
-          # Get new address and mine 101 blocks to it
-          ADDRESS=$(curl -s --user sanctuary:sanctuary-verify \
-            --data-binary '{"jsonrpc":"1.0","method":"getnewaddress","params":[]}' \
-            http://localhost:18443/ | jq -r '.result')
-
-          curl -s --user sanctuary:sanctuary-verify \
-            --data-binary "{\"jsonrpc\":\"1.0\",\"method\":\"generatetoaddress\",\"params\":[101,\"$ADDRESS\"]}" \
-            http://localhost:18443/
-
-          echo "Generated 101 blocks to $ADDRESS"
+          docker logs bitcoin-core
+          exit 1
 
       - name: Install PSBT verification dependencies
         working-directory: scripts/verify-psbt
@@ -199,7 +240,21 @@ jobs:
 
       - name: Generate PSBT vectors
         working-directory: scripts/verify-psbt
+        env:
+          BITCOIN_RPC_USER: sanctuary
+          BITCOIN_RPC_PASS: sanctuary-verify
         run: npx tsx generate-vectors.ts
+
+      - name: Generate signed PSBT vectors
+        working-directory: scripts/verify-psbt
+        env:
+          BITCOIN_RPC_USER: sanctuary
+          BITCOIN_RPC_PASS: sanctuary-verify
+        run: npx tsx generate-signed-vectors.ts
+
+      - name: Verify generated PSBT vectors are non-empty
+        working-directory: scripts/verify-psbt
+        run: npm run verify
 
       - name: Check for PSBT vector changes
         run: |
@@ -210,11 +265,20 @@ jobs:
             git diff server/tests/fixtures/generated-psbt-vectors.ts || true
           fi
 
+      - name: Check for signed PSBT vector changes
+        run: |
+          if git diff --quiet server/tests/fixtures/generated-signed-psbt-vectors.ts 2>/dev/null; then
+            echo "✅ Signed PSBT vectors unchanged"
+          else
+            echo "📝 Signed PSBT vectors updated"
+            git diff server/tests/fixtures/generated-signed-psbt-vectors.ts || true
+          fi
+
       - name: Run PSBT tests with new vectors
         working-directory: server
         run: |
           npm ci
-          npm run test -- tests/unit/services/bitcoin/psbt.verified.test.ts
+          npm run test -- tests/unit/services/bitcoin/psbt.verified.test.ts tests/unit/services/bitcoin/psbt.signed-vectors.test.ts
 
   # Summary job
   summary:

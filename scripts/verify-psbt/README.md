@@ -19,19 +19,31 @@ cd scripts/verify-psbt
 docker compose up -d
 ```
 
-### 2. Run BIP-174 Compliance Tests
-
-```bash
-cd server
-npm test -- --run tests/unit/services/bitcoin/psbt.verified.test.ts
-```
-
-### 3. Generate Extended Vectors (requires Bitcoin Core)
+### 2. Generate Extended Vectors
 
 ```bash
 cd scripts/verify-psbt
 npm install
 npm run generate
+npm run generate:signed
+npm run verify
+```
+
+The generator is walletless. It constructs deterministic P2WPKH,
+P2SH-P2WPKH, P2TR, P2WSH, and P2SH-P2WSH PSBTs locally, then requires
+Bitcoin Core `decodepsbt` and `analyzepsbt` to accept them before writing
+`server/tests/fixtures/generated-psbt-vectors.ts`.
+
+The signed-vector generator creates real regtest UTXOs with Bitcoin Core,
+spends them with deterministic local software keys, finalizes the PSBTs, and
+requires Core `testmempoolaccept` to accept the extracted transactions before
+writing `server/tests/fixtures/generated-signed-psbt-vectors.ts`.
+
+### 3. Run PSBT Verification Tests
+
+```bash
+cd server
+npm test -- --run tests/unit/services/bitcoin/psbt.verified.test.ts
 ```
 
 ## Directory Structure
@@ -43,14 +55,19 @@ scripts/verify-psbt/
 │   ├── bitcoincore.ts     # Bitcoin Core RPC wrapper
 │   └── sanctuary.ts       # Our bitcoinjs-lib wrapper
 ├── types.ts               # Type definitions
-├── generate-vectors.ts    # Vector generation script (TODO)
+├── generate-vectors.ts    # Bitcoin Core-backed vector generator
+├── generate-signed-vectors.ts # Funded Core-accepted signed vector generator
+├── verify.ts              # Fails if generated vectors are missing or empty
 └── README.md              # This file
 
 server/tests/
 ├── fixtures/
-│   └── bip174-test-vectors.ts  # BIP-174 official vectors
+│   ├── bip174-test-vectors.ts           # BIP-174 official vectors
+│   ├── generated-psbt-vectors.ts        # Bitcoin Core-backed unsigned vectors
+│   └── generated-signed-psbt-vectors.ts # Core-accepted signed vectors
 └── unit/services/bitcoin/
-    └── psbt.verified.test.ts   # PSBT verification tests
+    ├── psbt.verified.test.ts        # PSBT verification tests
+    └── psbt.signed-vectors.test.ts  # Signed/finalized vector tests
 ```
 
 ## Test Categories
@@ -77,14 +94,26 @@ Ensures we correctly reject malformed PSBTs:
 - Duplicate keys
 - Malformed structures
 
-### Extended Verification Tests (P2WPKH, P2WSH)
+### Extended Verification Tests
 
 Real-world scenarios verified against Bitcoin Core:
 
 - Single-sig native SegWit (P2WPKH)
+- Nested single-sig SegWit (P2SH-P2WPKH)
+- Taproot key-path draft metadata (P2TR)
 - Multisig SegWit (P2WSH)
+- Nested multisig SegWit (P2SH-P2WSH)
 - Fee calculation accuracy
 - Virtual size estimation
+
+### Signed Transaction Acceptance Tests
+
+Funded regtest spends verified with Bitcoin Core `testmempoolaccept`:
+
+- Native SegWit single-sig (P2WPKH)
+- Nested SegWit single-sig (P2SH-P2WPKH)
+- Native SegWit sorted multisig (P2WSH)
+- Nested SegWit sorted multisig (P2SH-P2WSH)
 
 ## Bitcoin Core RPC Commands
 
@@ -94,10 +123,10 @@ The verification uses these Bitcoin Core RPC methods:
 |---------|---------|
 | `decodepsbt` | Parse and display PSBT structure |
 | `analyzepsbt` | Get fee, vsize, completion status |
-| `createpsbt` | Create unsigned PSBT |
-| `combinepsbt` | Merge multiple PSBTs |
-| `finalizepsbt` | Create final scriptSig/witness |
-| `utxoupdatepsbt` | Update with UTXO data |
+| `sendtoaddress` | Fund deterministic regtest script templates |
+| `generatetoaddress` | Mature and confirm regtest funding UTXOs |
+| `testmempoolaccept` | Prove finalized signed transactions pass Core policy |
+| `getnetworkinfo` | Confirm Bitcoin Core availability and version |
 
 ## Implementation Details
 
@@ -119,12 +148,12 @@ Located at `implementations/sanctuary.ts`:
 
 ## Adding New Test Vectors
 
-1. Create the vector in `server/tests/fixtures/bip174-test-vectors.ts`
-2. Verify with Bitcoin Core:
-   ```bash
-   docker exec bitcoin-core bitcoin-cli -regtest decodepsbt "<psbt_base64>"
-   ```
-3. Add test case in `server/tests/unit/services/bitcoin/psbt.verified.test.ts`
+1. Add a deterministic draft vector in `scripts/verify-psbt/generate-vectors.ts`.
+2. Run `npm run generate` with Bitcoin Core running.
+3. Add a deterministic funded signed vector in `scripts/verify-psbt/generate-signed-vectors.ts` if the script family is spendable before hardware enters the loop.
+4. Run `npm run generate:signed`.
+5. Run `npm run verify`.
+6. Run `npm --prefix ../../server run test -- --run tests/unit/services/bitcoin/psbt.verified.test.ts tests/unit/services/bitcoin/psbt.signed-vectors.test.ts`.
 
 ## Troubleshooting
 

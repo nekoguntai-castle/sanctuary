@@ -238,7 +238,7 @@ export function registerCreateBatchTransactionMultisigContracts() {
       expect(psbt.data.inputs[0].redeemScript).toBeDefined();
     });
 
-    it("should skip batch multisig derivation and witness script when derivation path is invalid", async () => {
+    it("should reject batch multisig when derivation path is invalid", async () => {
       mockAddressFindManyByQuery({
         inputRows: [
           inputAddressRow(walletId, 0, {
@@ -260,14 +260,15 @@ export function registerCreateBatchTransactionMultisigContracts() {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
       ];
-      const result = await createBatchTransaction(walletId, outputs, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
 
-      expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
-      expect(psbt.data.inputs[0].witnessScript).toBeUndefined();
+      await expect(
+        createBatchTransaction(walletId, outputs, 10),
+      ).rejects.toThrow(
+        "Cannot create multisig PSBT: failed to build complete BIP32 derivation metadata for input 0",
+      );
     });
 
-    it("should skip sh-wsh batch script attachments when witness script derivation fails", async () => {
+    it("should reject sh-wsh batch when witness script derivation fails", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         ...sampleWallets.multiSig2of3,
         id: walletId,
@@ -307,14 +308,15 @@ export function registerCreateBatchTransactionMultisigContracts() {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
       ];
-      const result = await createBatchTransaction(walletId, outputs, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
 
-      expect(psbt.data.inputs[0].witnessScript).toBeUndefined();
-      expect(psbt.data.inputs[0].redeemScript).toBeUndefined();
+      await expect(
+        createBatchTransaction(walletId, outputs, 10),
+      ).rejects.toThrow(
+        "Cannot create multisig PSBT: failed to build complete BIP32 derivation metadata for input 0",
+      );
     });
 
-    it("should continue when batch multisig descriptor parsing fails", async () => {
+    it("should reject when batch multisig descriptor parsing fails", async () => {
       mockParseDescriptor.mockImplementationOnce(() => {
         throw new Error("descriptor parse failed");
       });
@@ -322,12 +324,15 @@ export function registerCreateBatchTransactionMultisigContracts() {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
       ];
-      const result = await createBatchTransaction(walletId, outputs, 10);
 
-      expect(result.psbtBase64).toBeDefined();
+      await expect(
+        createBatchTransaction(walletId, outputs, 10),
+      ).rejects.toThrow(
+        "Cannot create multisig PSBT: missing multisig keys for input 0",
+      );
     });
 
-    it("should build multisig batch PSBT when descriptor type is not a recognized script wrapper", async () => {
+    it("should reject multisig batch when descriptor type is not a recognized script wrapper", async () => {
       mockParseDescriptor.mockImplementationOnce(
         () =>
           ({
@@ -353,12 +358,12 @@ export function registerCreateBatchTransactionMultisigContracts() {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
       ];
-      const result = await createBatchTransaction(walletId, outputs, 10);
-      const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
 
-      expect(psbt.data.inputs[0].bip32Derivation?.length).toBeGreaterThan(0);
-      expect(psbt.data.inputs[0].witnessScript).toBeUndefined();
-      expect(psbt.data.inputs[0].redeemScript).toBeUndefined();
+      await expect(
+        createBatchTransaction(walletId, outputs, 10),
+      ).rejects.toThrow(
+        "Cannot create multisig PSBT: unsupported multisig descriptor type for input 0",
+      );
     });
   });
 }

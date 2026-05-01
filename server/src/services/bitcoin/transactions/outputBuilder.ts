@@ -186,17 +186,6 @@ async function buildDecoyChangeOutputs(
     numChangeOutputs,
   );
 
-  // Fallback to receiving addresses if not enough change addresses
-  if (changeAddresses.length < numChangeOutputs) {
-    const additionalNeeded = numChangeOutputs - changeAddresses.length;
-    const receivingAddresses = await addressRepository.findUnusedExcluding(
-      walletId,
-      changeAddresses.map((a) => a.address),
-      additionalNeeded,
-    );
-    changeAddresses.push(...receivingAddresses);
-  }
-
   if (changeAddresses.length < numChangeOutputs) {
     throw new Error(
       `Not enough change addresses for ${numChangeOutputs} decoy outputs`,
@@ -247,7 +236,6 @@ async function buildDecoyChangeOutputs(
 
 /**
  * Find an available change address for a wallet.
- * Prefers parsed change-chain addresses and falls back to a parsed receive-chain address.
  */
 export async function findChangeAddress(walletId: string): Promise<string> {
   const existingChangeAddress =
@@ -257,12 +245,5 @@ export async function findChangeAddress(walletId: string): Promise<string> {
     return existingChangeAddress.address;
   }
 
-  const receivingAddress =
-    await addressRepository.findNextUnusedReceive(walletId);
-
-  if (!receivingAddress) {
-    throw new Error("No change address available");
-  }
-
-  return receivingAddress.address;
+  throw new Error("No change address available");
 }

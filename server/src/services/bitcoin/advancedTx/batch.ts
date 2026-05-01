@@ -124,9 +124,7 @@ export async function createBatchTransaction(
 
   // Add change output
   if (changeAmount >= dustThreshold) {
-    const changeAddress =
-      (await addressRepository.findNextUnusedChange(walletId)) ??
-      (await addressRepository.findNextUnusedReceive(walletId));
+    const changeAddress = await addressRepository.findNextUnusedChange(walletId);
 
     if (!changeAddress) {
       throw new Error("No change address available");

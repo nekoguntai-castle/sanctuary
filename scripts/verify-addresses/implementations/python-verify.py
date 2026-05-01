@@ -18,28 +18,17 @@ import json
 from typing import List
 
 try:
+    import bip_utils
     from bip_utils import (
-        Bip32Slip10Secp256k1,
-        Bip44,
-        Bip49,
-        Bip84,
-        Bip86,
-        Bip44Coins,
-        Bip49Coins,
-        Bip84Coins,
-        Bip86Coins,
-        P2PKHAddr,
-        P2SHAddr,
-        P2WPKHAddr,
+        Base58Decoder,
+        Base58Encoder,
+        Bip32Secp256k1,
         P2TRAddr,
-        P2WSHAddr,
-        CoinsConf,
-        Secp256k1PublicKey,
-        WifDecoder,
+        SegwitBech32Encoder,
     )
-    from bip_utils.bip.bip32 import Bip32Base
     HAS_BIP_UTILS = True
 except ImportError:
+    bip_utils = None
     HAS_BIP_UTILS = False
 
 try:
@@ -53,64 +42,63 @@ except ImportError:
     HAS_PYTHON_BITCOINLIB = False
 
 
-def derive_single_sig_bip_utils(xpub: str, index: int, script_type: str, change: bool, network: str) -> str:
-    """Derive single-sig address using bip_utils"""
-    from bip_utils import Bip32Secp256k1, Base58Decoder, Base58Encoder
+def hash160(payload: bytes) -> bytes:
+    """Bitcoin HASH160: RIPEMD160(SHA256(payload))."""
     import hashlib
 
-    # Determine if mainnet or testnet from xpub prefix
+    return hashlib.new('ripemd160', hashlib.sha256(payload).digest()).digest()
+
+
+def network_params(network: str) -> tuple[bytes, bytes, str]:
+    """Return P2PKH version, P2SH version, and SegWit HRP for the network."""
+    if network == 'mainnet':
+        return bytes([0x00]), bytes([0x05]), 'bc'
+    if network == 'testnet':
+        return bytes([0x6F]), bytes([0xC4]), 'tb'
+    raise ValueError(f"Unsupported network: {network}")
+
+
+def standard_xpub(xpub: str, network: str) -> str:
+    """Convert extended pubkeys to xpub version bytes accepted by bip_utils."""
     prefix = xpub[:4]
-    is_mainnet = prefix in ['xpub', 'ypub', 'zpub', 'Ypub', 'Zpub']
+    if prefix == 'xpub':
+        return xpub
 
-    # Convert to standard xpub format if needed
-    if prefix not in ['xpub', 'tpub']:
-        # Need to convert version bytes
-        decoded = Base58Decoder.CheckDecode(xpub)
-        if is_mainnet:
-            new_version = bytes([0x04, 0x88, 0xB2, 0x1E])
-        else:
-            new_version = bytes([0x04, 0x35, 0x87, 0xCF])
-        converted = new_version + decoded[4:]
-        xpub = Base58Encoder.CheckEncode(converted)
+    decoded = Base58Decoder.CheckDecode(xpub)
+    new_version = bytes([0x04, 0x88, 0xB2, 0x1E])
+    return Base58Encoder.CheckEncode(new_version + decoded[4:])
 
-    # Parse the xpub
-    bip32_ctx = Bip32Secp256k1.FromExtendedKey(xpub)
 
-    # Derive: change / index
+def derive_pub_key(xpub: str, index: int, change: bool, network: str) -> bytes:
+    """Derive the compressed public key at change/index from an account xpub."""
+    bip32_ctx = Bip32Secp256k1.FromExtendedKey(standard_xpub(xpub, network))
     change_idx = 1 if change else 0
     derived = bip32_ctx.DerivePath(f"{change_idx}/{index}")
-    pub_key = derived.PublicKey().RawCompressed().ToBytes()
+    return derived.PublicKey().RawCompressed().ToBytes()
+
+
+def base58check_address(version: bytes, payload: bytes) -> str:
+    return Base58Encoder.CheckEncode(version + payload)
+
+
+def derive_single_sig_bip_utils(xpub: str, index: int, script_type: str, change: bool, network: str) -> str:
+    """Derive single-sig address using bip_utils primitives."""
+    p2pkh_version, p2sh_version, bech32_hrp = network_params(network)
+    pub_key = derive_pub_key(xpub, index, change, network)
 
     # Generate address based on script type
     if script_type == 'legacy':
-        if is_mainnet:
-            return P2PKHAddr.EncodeKey(pub_key, CoinsConf.BitcoinMainNet)
-        else:
-            return P2PKHAddr.EncodeKey(pub_key, CoinsConf.BitcoinTestNet)
+        return base58check_address(p2pkh_version, hash160(pub_key))
 
     elif script_type == 'nested_segwit':
-        # P2SH-P2WPKH
-        # First create the witness program (P2WPKH)
-        if is_mainnet:
-            p2wpkh = P2WPKHAddr.EncodeKey(pub_key, CoinsConf.BitcoinMainNet)
-            # Now wrap in P2SH
-            return P2SHAddr.EncodeKey(pub_key, CoinsConf.BitcoinMainNet, P2SHAddr.P2WPKH)
-        else:
-            return P2SHAddr.EncodeKey(pub_key, CoinsConf.BitcoinTestNet, P2SHAddr.P2WPKH)
+        witness_program = bytes([0x00, 0x14]) + hash160(pub_key)
+        return base58check_address(p2sh_version, hash160(witness_program))
 
     elif script_type == 'native_segwit':
-        if is_mainnet:
-            return P2WPKHAddr.EncodeKey(pub_key, CoinsConf.BitcoinMainNet)
-        else:
-            return P2WPKHAddr.EncodeKey(pub_key, CoinsConf.BitcoinTestNet)
+        return SegwitBech32Encoder.Encode(bech32_hrp, 0, hash160(pub_key))
 
     elif script_type == 'taproot':
-        # P2TR uses x-only pubkey (32 bytes)
-        x_only_pub = pub_key[1:33]  # Remove prefix byte
-        if is_mainnet:
-            return P2TRAddr.EncodeKey(x_only_pub, CoinsConf.BitcoinMainNet)
-        else:
-            return P2TRAddr.EncodeKey(x_only_pub, CoinsConf.BitcoinTestNet)
+        return P2TRAddr.EncodeKey(pub_key, hrp=bech32_hrp)
 
     else:
         raise ValueError(f"Unknown script type: {script_type}")
@@ -118,31 +106,15 @@ def derive_single_sig_bip_utils(xpub: str, index: int, script_type: str, change:
 
 def derive_multisig_bip_utils(xpubs: List[str], threshold: int, index: int,
                                script_type: str, change: bool, network: str) -> str:
-    """Derive multisig address using bip_utils"""
-    from bip_utils import Bip32Secp256k1, Base58Decoder, Base58Encoder
+    """Derive multisig address using bip_utils primitives."""
     import hashlib
 
-    is_mainnet = network == 'mainnet'
-    change_idx = 1 if change else 0
+    _, p2sh_version, bech32_hrp = network_params(network)
 
     # Derive public keys from each xpub
     pub_keys = []
     for xpub in xpubs:
-        prefix = xpub[:4]
-        # Convert to standard format
-        if prefix not in ['xpub', 'tpub']:
-            decoded = Base58Decoder.CheckDecode(xpub)
-            if is_mainnet:
-                new_version = bytes([0x04, 0x88, 0xB2, 0x1E])
-            else:
-                new_version = bytes([0x04, 0x35, 0x87, 0xCF])
-            converted = new_version + decoded[4:]
-            xpub = Base58Encoder.CheckEncode(converted)
-
-        bip32_ctx = Bip32Secp256k1.FromExtendedKey(xpub)
-        derived = bip32_ctx.DerivePath(f"{change_idx}/{index}")
-        pub_key = derived.PublicKey().RawCompressed().ToBytes()
-        pub_keys.append(pub_key)
+        pub_keys.append(derive_pub_key(xpub, index, change, network))
 
     # Sort public keys (BIP-67)
     pub_keys.sort()
@@ -161,17 +133,11 @@ def derive_multisig_bip_utils(xpubs: List[str], threshold: int, index: int,
 
     if script_type == 'p2sh':
         # P2SH: hash160 of redeem script
-        if is_mainnet:
-            return P2SHAddr.EncodeKey(script_hash_160, CoinsConf.BitcoinMainNet, net_ver=bytes([0x05]))
-        else:
-            return P2SHAddr.EncodeKey(script_hash_160, CoinsConf.BitcoinTestNet, net_ver=bytes([0xC4]))
+        return base58check_address(p2sh_version, script_hash_160)
 
     elif script_type == 'p2wsh':
         # P2WSH: SHA256 of witness script (same as redeem script for multisig)
-        if is_mainnet:
-            return P2WSHAddr.EncodeKey(script_hash, CoinsConf.BitcoinMainNet)
-        else:
-            return P2WSHAddr.EncodeKey(script_hash, CoinsConf.BitcoinTestNet)
+        return SegwitBech32Encoder.Encode(bech32_hrp, 0, script_hash)
 
     elif script_type == 'p2sh_p2wsh':
         # P2SH-P2WSH: P2SH wrapping P2WSH
@@ -179,10 +145,7 @@ def derive_multisig_bip_utils(xpubs: List[str], threshold: int, index: int,
         witness_program = bytes([0x00, 0x20]) + script_hash
         # Hash160 of the witness program
         wp_hash = hashlib.new('ripemd160', hashlib.sha256(witness_program).digest()).digest()
-        if is_mainnet:
-            return P2SHAddr.EncodeKey(wp_hash, CoinsConf.BitcoinMainNet, net_ver=bytes([0x05]))
-        else:
-            return P2SHAddr.EncodeKey(wp_hash, CoinsConf.BitcoinTestNet, net_ver=bytes([0xC4]))
+        return base58check_address(p2sh_version, wp_hash)
 
     else:
         raise ValueError(f"Unknown multisig script type: {script_type}")
@@ -199,7 +162,7 @@ def main():
         # Check if library is available
         print(json.dumps({
             "available": HAS_BIP_UTILS,
-            "version": "1.13.0" if HAS_BIP_UTILS else None,
+            "version": getattr(bip_utils, "__version__", "unknown") if HAS_BIP_UTILS else None,
             "name": "bip_utils"
         }))
         sys.exit(0)

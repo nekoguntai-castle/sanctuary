@@ -108,5 +108,9 @@ export function validateAndRemoveChecksum(descriptor: string): { descriptor: str
  * Checksums are appended as #xxxxxxxx
  */
 export function removeChecksum(descriptor: string): string {
-  return validateAndRemoveChecksum(descriptor).descriptor;
+  const result = validateAndRemoveChecksum(descriptor);
+  if (!result.valid) {
+    throw new Error('Invalid descriptor checksum');
+  }
+  return result.descriptor;
 }

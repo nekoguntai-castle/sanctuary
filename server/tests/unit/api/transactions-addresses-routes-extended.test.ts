@@ -464,6 +464,40 @@ describe("Transactions Addresses Routes (Extended)", () => {
     });
   });
 
+  it("generates change indexes independently when receive index is ahead", async () => {
+    mockPrismaClient.address.findMany.mockResolvedValue([
+      { derivationPath: "m/84'/1'/0'/0/9", index: 9 },
+      { derivationPath: "m/84'/1'/0'/1/2", index: 2 },
+    ] as any);
+
+    const response = await request(app)
+      .post("/api/v1/wallets/wallet-1/addresses/generate")
+      .send({ count: 2 });
+
+    expect(response.status).toBe(200);
+    expect(mockPrismaClient.address.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          derivationPath: "m/84'/1'/0'/0/10",
+          index: 10,
+        }),
+        expect.objectContaining({
+          derivationPath: "m/84'/1'/0'/0/11",
+          index: 11,
+        }),
+        expect.objectContaining({
+          derivationPath: "m/84'/1'/0'/1/3",
+          index: 3,
+        }),
+        expect.objectContaining({
+          derivationPath: "m/84'/1'/0'/1/4",
+          index: 4,
+        }),
+      ]),
+      skipDuplicates: true,
+    });
+  });
+
   it("ignores malformed and unsupported derivation paths when computing max indexes", async () => {
     mockPrismaClient.address.findMany.mockResolvedValue([
       { derivationPath: "malformed", index: 10 },

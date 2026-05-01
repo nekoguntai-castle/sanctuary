@@ -7,6 +7,7 @@
  * Requires Bitcoin Core running in regtest mode (see docker-compose.yml)
  */
 
+import bs58check from 'bs58check';
 import type { AddressDeriver, ScriptType, MultisigScriptType, Network } from '../types.js';
 
 // Default Bitcoin Core RPC settings for regtest (see docker-compose.yml)
@@ -14,6 +15,10 @@ import type { AddressDeriver, ScriptType, MultisigScriptType, Network } from '..
 const RPC_URL = process.env.BITCOIN_RPC_URL || 'http://127.0.0.1:18443';
 const RPC_USER = process.env.BITCOIN_RPC_USER || 'verify';
 const RPC_PASS = process.env.BITCOIN_RPC_PASS || 'verify';
+const MAINNET_XPUB_VERSION = Buffer.from('0488b21e', 'hex');
+const TESTNET_XPUB_VERSION = Buffer.from('043587cf', 'hex');
+
+let activeChain = 'regtest';
 
 interface RPCResponse<T> {
   result: T;
@@ -36,17 +41,38 @@ async function rpcCall<T>(method: string, params: unknown[] = []): Promise<T> {
     }),
   });
 
-  if (!response.ok) {
-    throw new Error(`RPC request failed: ${response.status} ${response.statusText}`);
-  }
+  const responseBody = await response.text();
+  const data = JSON.parse(responseBody) as RPCResponse<T>;
 
-  const data = await response.json() as RPCResponse<T>;
+  if (!response.ok) {
+    const message = data.error?.message ?? `${response.status} ${response.statusText}`;
+    throw new Error(`RPC request failed: ${message}`);
+  }
 
   if (data.error) {
     throw new Error(`RPC error: ${data.error.message} (code: ${data.error.code})`);
   }
 
   return data.result;
+}
+
+function getCoreXpubVersion(): Buffer {
+  return activeChain === 'main' ? MAINNET_XPUB_VERSION : TESTNET_XPUB_VERSION;
+}
+
+/**
+ * Bitcoin Core descriptor imports expect BIP32 extended public keys to use the
+ * canonical version bytes for Core's active chain. The payload key material is
+ * unchanged; only the 4-byte xpub/tpub prefix is swapped so regtest Core can
+ * validate descriptors for vectors declared on mainnet/testnet.
+ */
+function convertExtendedPubkeyForCore(xpub: string): string {
+  const decoded = Buffer.from(bs58check.decode(xpub));
+  if (decoded.length !== 78) {
+    throw new Error('Invalid extended public key payload length');
+  }
+
+  return bs58check.encode(Buffer.concat([getCoreXpubVersion(), decoded.subarray(4)]));
 }
 
 /**
@@ -60,16 +86,17 @@ function buildSingleSigDescriptor(
 ): string {
   const changeNum = change ? 1 : 0;
   const path = `${changeNum}/${index}`;
+  const coreXpub = convertExtendedPubkeyForCore(xpub);
 
   switch (scriptType) {
     case 'legacy':
-      return `pkh(${xpub}/${path})`;
+      return `pkh(${coreXpub}/${path})`;
     case 'nested_segwit':
-      return `sh(wpkh(${xpub}/${path}))`;
+      return `sh(wpkh(${coreXpub}/${path}))`;
     case 'native_segwit':
-      return `wpkh(${xpub}/${path})`;
+      return `wpkh(${coreXpub}/${path})`;
     case 'taproot':
-      return `tr(${xpub}/${path})`;
+      return `tr(${coreXpub}/${path})`;
     default:
       throw new Error(`Unknown script type: ${scriptType}`);
   }
@@ -88,7 +115,7 @@ function buildMultisigDescriptor(
   const changeNum = change ? 1 : 0;
 
   // Build key expressions with derivation path
-  const keyExprs = xpubs.map(xpub => `${xpub}/${changeNum}/${index}`);
+  const keyExprs = xpubs.map(xpub => `${convertExtendedPubkeyForCore(xpub)}/${changeNum}/${index}`);
 
   // sortedmulti ensures consistent key ordering
   const multisig = `sortedmulti(${threshold},${keyExprs.join(',')})`;
@@ -179,6 +206,8 @@ export const bitcoinCore: AddressDeriver = {
   async isAvailable(): Promise<boolean> {
     try {
       const info = await rpcCall<{ version: number; subversion: string }>('getnetworkinfo');
+      const blockchainInfo = await rpcCall<{ chain: string }>('getblockchaininfo');
+      activeChain = blockchainInfo.chain;
 
       // Update version string
       // Bitcoin Core version is encoded as MMNNPP (Major Minor Patch)

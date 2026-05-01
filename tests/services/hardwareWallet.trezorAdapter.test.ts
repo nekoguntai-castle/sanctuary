@@ -55,6 +55,10 @@ getTrezorScriptType,
 isBip48MultisigPath,
 validateSatoshiAmount,
 } from '../../services/hardwareWallet/adapters/trezor';
+import {
+  buildTrezorInputs,
+  buildTrezorOutputs,
+} from '../../services/hardwareWallet/adapters/trezor/signPsbtPayloads';
 
 describe('Trezor helper functions', () => {
   it('validates satoshi amounts for number and bigint', () => {
@@ -98,6 +102,67 @@ describe('Trezor helper functions', () => {
     expect(isBip48MultisigPath("m/48'/0'/0'/2'")).toBe(true);
     expect(isBip48MultisigPath('m/84/0/0')).toBe(false);
     expect(getAccountPathPrefix("m/48'/0'/0'/2'/0/5")).toBe("m/48'/0'/0'/2'");
+  });
+
+  it('builds a deterministic no-device Trezor signing payload for spend and change paths', () => {
+    const { psbt } = createSingleSigPsbt({
+      inputPath: "m/84'/0'/0'/0/7",
+      fingerprintHex: 'aabbccdd',
+    });
+    const changeScript = hexToBytes(`0014${'33'.repeat(20)}`);
+    psbt.addOutput({
+      script: changeScript,
+      value: BigInt(800),
+      bip32Derivation: [
+        {
+          masterFingerprint: hexToBytes('aabbccdd'),
+          path: "m/84'/0'/0'/1/2",
+          pubkey: hexToBytes(`02${'11'.repeat(32)}`),
+        },
+      ],
+    });
+
+    const request = { psbt: psbt.toBase64(), inputPaths: [] };
+    const deviceFingerprint = Buffer.from('aabbccdd', 'hex');
+    const inputs = buildTrezorInputs(
+      psbt,
+      request,
+      'SPENDWITNESS',
+      deviceFingerprint,
+      'aabbccdd'
+    );
+    const outputs = buildTrezorOutputs(
+      psbt,
+      request,
+      'SPENDWITNESS',
+      false,
+      deviceFingerprint,
+      'aabbccdd'
+    );
+
+    expect(inputs).toEqual([
+      {
+        address_n: [0x80000054, 0x80000000, 0x80000000, 0, 7],
+        amount: '60000',
+        prev_hash: '11'.repeat(32),
+        prev_index: 0,
+        sequence: 0xffffffff,
+        script_type: 'SPENDWITNESS',
+      },
+    ]);
+    expect(outputs[0]).toEqual({
+      address: bitcoin.address.fromOutputScript(
+        psbt.txOutputs[0].script,
+        bitcoin.networks.bitcoin
+      ),
+      amount: '59000',
+      script_type: 'PAYTOADDRESS',
+    });
+    expect(outputs[1]).toEqual({
+      address_n: [0x80000054, 0x80000000, 0x80000000, 1, 2],
+      amount: '800',
+      script_type: 'PAYTOWITNESS',
+    });
   });
 
   it('builds multisig structure and handles missing/invalid scripts', () => {

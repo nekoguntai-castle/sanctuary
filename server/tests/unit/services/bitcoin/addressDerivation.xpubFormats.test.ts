@@ -69,13 +69,13 @@ describe('Address Derivation Service validateXpub', () => {
     expect(result.scriptType).toBe('native_segwit');
   });
 
-  it('defaults script type when validating a non-public but structurally valid extended key prefix', () => {
+  it('rejects a non-public but structurally valid extended key prefix', () => {
     const xprv = bip32.fromSeed(Buffer.alloc(32, 1), bitcoin.networks.bitcoin).toBase58();
 
     const result = validateXpub(xprv, 'mainnet');
 
-    expect(result.valid).toBe(true);
-    expect(result.scriptType).toBe('native_segwit');
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Private extended keys are not allowed');
   });
 });
 

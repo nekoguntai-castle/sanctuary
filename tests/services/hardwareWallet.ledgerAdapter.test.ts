@@ -719,6 +719,14 @@ describe("LedgerAdapter", () => {
     });
 
     expect(MockDefaultWalletPolicy).toHaveBeenCalledTimes(1);
+    expect(MockDefaultWalletPolicy).toHaveBeenCalledWith(
+      "wpkh(@0/**)",
+      "[aabbccdd/84'/0'/0']xpub-abc",
+    );
+    expect(mockSignPsbt.mock.calls[0][1]).toMatchObject({
+      template: "wpkh(@0/**)",
+      keyInfo: "[aabbccdd/84'/0'/0']xpub-abc",
+    });
     expect(mockSignPsbt).toHaveBeenCalledWith(
       "updated-psbt",
       expect.any(Object),
