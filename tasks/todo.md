@@ -1,3 +1,25 @@
+# Active Task: Merge Queue Date Filter Recovery 2026-05-01
+
+Status: in progress
+
+Goal: fix the PR #237 merge-queue frontend coverage failure without broadening the wallet-safety PR.
+
+## Plan
+
+- [x] Identify the failing merge-queue job and root cause.
+- [x] Make the date-filter test deterministic across runner timezones and month boundaries.
+- [x] Re-run the focused test and merge-queue frontend coverage shard locally.
+- [ ] Commit, push, and re-queue PR #237.
+- [ ] Verify PR #237 merges before starting grade-output follow-up fixes.
+
+## Review
+
+- Root cause: `this_month` test created `startOfMonth + 1 day`, which is future-dated when CI runs on the first day of a month in UTC.
+- Fixed the month-preset tests by pinning them to a mid-month fake clock and restoring real timers after each test.
+- Verification passed: `npm run test:run -- tests/components/WalletDetail/hooks/useTransactionFilters.test.ts`; `env TZ=UTC npm run test:run -- tests/components/WalletDetail/hooks/useTransactionFilters.test.ts`; `npm run test:coverage:shard -- 1 2`; `npm run typecheck:tests`; `git diff --check`.
+
+---
+
 # Active Task: Software-Only Grade Recovery 2026-05-01
 
 Status: complete

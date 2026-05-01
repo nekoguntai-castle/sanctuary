@@ -2,6 +2,19 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Pin Calendar-Boundary Tests To A Deterministic Clock
+
+**Rule:** Tests for "this month", "last month", week/month windows, or other relative calendar presets must set an explicit fake system time near the middle of the relevant period.
+
+**Why:** PR #237 passed locally in Hawaii time but failed in the merge queue on May 1 UTC because the test's "current month + 1 day" fixture was in the future relative to CI's clock.
+
+**How to apply:**
+
+- Use `vi.useFakeTimers({ now: new Date(year, month, day, hour).getTime() })` for date-preset tests.
+- Restore real timers in `afterEach`.
+- Avoid relative fixtures that become future-dated on the first day of a period.
+- When a CI-only date failure appears, rerun the focused test with `TZ=UTC` before changing production date logic.
+
 ## Land Green Parent PRs Before Stacking Follow-Up Remediation
 
 **Rule:** When a green PR already contains the previous completed wallet-safety tranche, merge and verify that parent before continuing new remediation on top of the same branch.
