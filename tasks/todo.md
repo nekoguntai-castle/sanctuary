@@ -1,3 +1,28 @@
+# Active Task: PR 247 Render Regression Merge Recovery 2026-05-01
+
+Status: in progress
+
+Goal: clear the failing Quick Render Regression check on PR #247 and verify the PR merges into `main`.
+
+## Plan
+
+- [x] Identify the active PR, branch state, and failing CI check.
+- [x] Confirm the failure root cause from the GitHub Actions job log.
+- [x] Verify the local render-regression assertion update with the focused Playwright command.
+- [ ] Commit and push the render-regression fix and task tracker update.
+- [ ] Monitor PR #247 checks and merge queue state until merged.
+- [ ] Verify `origin/main` contains the merged PR and document results here.
+
+## Review
+
+- Active PR: #247, `testnet-signet-wallet-workflows` into `main`.
+- CI root cause: Quick Render Regression expected `Testnet node not configured`, but the updated dashboard now renders connected Testnet status.
+- Updated the render contract to assert connected Testnet status, block height, and Electrum pool count; refreshed `dashboard-testnet-shell-chromium-linux.png`.
+- Verification passed: `npx playwright test e2e/render-regression.spec.ts --project=chromium --grep "dashboard renders core cards"`; `npx playwright test e2e/render-regression.spec.ts --project=chromium`; `git diff --check`.
+- Local worktree has unrelated untracked task-note files; leave them unstaged.
+
+---
+
 # Active Task: Remaining API Module Test Split 2026-05-01
 
 Status: complete
