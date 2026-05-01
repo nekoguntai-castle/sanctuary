@@ -40,6 +40,7 @@ Run these before connecting hardware:
 npm --prefix scripts/verify-addresses run verify
 server/node_modules/.bin/tsx scripts/verify-psbt/verify.ts
 npx vitest run tests/services/hardwareWallet.trezorAdapter.test.ts tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.jadeAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts
+npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts
 npm run typecheck:app
 npm run typecheck:tests
 npm --prefix server run typecheck:tests
@@ -173,6 +174,19 @@ Record one sanitized manifest per run, for example
 
 Do not commit raw evidence that contains secrets. Testnet/regtest PSBTs, raw
 transactions, xpubs, and decoded summaries may be committed after review.
+
+Committed hardware-signed artifacts go in
+`server/tests/fixtures/hardware-signed-psbt-vectors.ts`. Each row must include
+exactly one signed PSBT or raw transaction, the total input value, expected fee,
+expected vsize, expected txid, expected outputs, signer metadata, and device/app
+versions. The replay harness is
+`server/tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts`.
+
+To turn the harness into a full hardware evidence gate after physical capture:
+
+```bash
+REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts
+```
 
 ## Acceptance Criteria
 

@@ -1,3 +1,29 @@
+# Active Task: Hardware-Signed Artifact Replay Harness 2026-04-30
+
+Status: complete
+
+Goal: prepare the software replay gate for future Ledger, Trezor, and BitBox signed artifacts so manual hardware captures can be committed and verified repeatably.
+
+## Plan
+
+- [x] Define a typed fixture schema for sanitized hardware-signed PSBT/raw transaction artifacts.
+- [x] Define the required Ledger, Trezor, and BitBox script-family row matrix plus explicit unsupported-row decisions.
+- [x] Build replay helpers that extract/finalize signed artifacts, verify txid/fee/vsize/output invariants, and report missing rows when hardware evidence is required.
+- [x] Add tests for fixture replay, missing-row detection, and malformed hardware artifact rejection.
+- [x] Link the replay harness from the hardware validation runbook.
+- [x] Run focused tests, typechecks, complexity checks, and commit/push only this continuation.
+
+## Review
+
+- Added `server/tests/fixtures/hardware-signed-psbt-vectors.ts` with a sanitized hardware artifact schema, the required Ledger/Trezor/BitBox script-family matrix, explicit unsupported-row decisions, and an intentionally empty fixture list until physical devices are used.
+- Added `server/tests/helpers/hardwareSignedPsbtReplay.ts` to replay signed PSBT or raw transaction artifacts, finalize when needed, and verify txid, fee, vsize, and output invariants.
+- Added `server/tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` covering the required matrix, pending/manual gate behavior, signed PSBT replay, Trezor raw transaction replay, missing-row accounting, malformed artifact rejection, and invariant mismatch failures.
+- Updated `docs/reference/hardware-wallet-validation.md` with the fixture location, replay test command, and `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` evidence gate for the physical-device phase.
+- Verification passed: hardware fixture replay test with 9 passing tests; combined signed-vector plus hardware replay suite with 20 passing tests; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Remaining queue requires physical hardware evidence: populate the fixture file with sanitized Ledger/Trezor/BitBox signed PSBT/raw transaction artifacts or explicit unsupported-row decisions, then run the replay harness with `REQUIRE_HARDWARE_SIGNED_FIXTURES=1`.
+
+---
+
 # Active Task: Hardware Wallet Manual Validation Runbook 2026-04-30
 
 Status: complete
