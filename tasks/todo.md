@@ -1,6 +1,31 @@
-# Active Task: Merge Queue Date Filter Recovery 2026-05-01
+# Active Task: Grade Output Software Follow-Ups 2026-05-01
 
 Status: in progress
+
+Goal: complete the remaining software-addressable grade follow-ups after PR #237, while leaving physical hardware evidence as the only unresolved wallet-safety gate.
+
+## Plan
+
+- [x] Verify PR #237 merged and fast-forward local `main` to the merge commit.
+- [x] Re-check the docs-site moderate audit advisories against current upstream package metadata.
+- [x] Split warning-sized test files only where there is a clean API or adapter boundary.
+- [x] Re-run large-file policy, focused split-test suites, docs audit checks, and diff hygiene.
+- [ ] Update the grade report/task review, commit, push, open the follow-up PR, and merge it through the queue.
+
+## Review
+
+- PR #237 merged at `2026-05-01T07:54:30Z` with merge commit `7c52263fa4bd4bcc1076e2188bac80db7e9d1e24`; local `main` was fast-forwarded to that commit before this branch.
+- Docs-site moderate audit remains tied to `uuid <14` through Docusaurus/Mermaid dev/build dependencies. Current upstream metadata still has `@docusaurus/core@3.10.1` as latest with `webpack-dev-server`, `webpack-dev-server@5.2.3` as latest with `sockjs@0.3.24`, `sockjs@0.3.24` as latest with `uuid@^8.3.2`, and `mermaid@11.14.0` as latest with `uuid@^11.1.0`. `uuid@14.0.0` is ESM-only, while `sockjs` requires `uuid` from CommonJS, so a lockfile override would be a risky forced major dependency substitution rather than a compatible fix.
+- Split `server/tests/unit/api/price.test.ts` into public/admin/history files backed by a shared price route harness; focused route coverage still passes with 63 tests.
+- Split Trezor helper-function coverage out of `tests/services/hardwareWallet.trezorAdapter.test.ts`; focused Trezor adapter/helper coverage still passes with 44 tests.
+- Large-file policy still passes and warning-sized test files dropped from 10 to 8. Remaining warning files are cohesive route/repository/e2e suites that should be split with domain-specific follow-up work, not a broad mechanical move.
+- Verification passed: `npm --prefix server run test -- tests/unit/api/price.test.ts tests/unit/api/price.admin.test.ts tests/unit/api/price.history.test.ts`; `npm run test:run -- tests/services/hardwareWallet.trezorAdapter.test.ts tests/services/hardwareWallet.trezorAdapter.helpers.test.ts`; `npm run typecheck:tests`; `npm run quality:lizard`; `node scripts/quality/check-large-files.mjs --json`; `npm --prefix website audit --audit-level=high`; `git diff --check`.
+
+---
+
+# Active Task: Merge Queue Date Filter Recovery 2026-05-01
+
+Status: complete
 
 Goal: fix the PR #237 merge-queue frontend coverage failure without broadening the wallet-safety PR.
 
@@ -9,14 +34,15 @@ Goal: fix the PR #237 merge-queue frontend coverage failure without broadening t
 - [x] Identify the failing merge-queue job and root cause.
 - [x] Make the date-filter test deterministic across runner timezones and month boundaries.
 - [x] Re-run the focused test and merge-queue frontend coverage shard locally.
-- [ ] Commit, push, and re-queue PR #237.
-- [ ] Verify PR #237 merges before starting grade-output follow-up fixes.
+- [x] Commit, push, and re-queue PR #237.
+- [x] Verify PR #237 merges before starting grade-output follow-up fixes.
 
 ## Review
 
 - Root cause: `this_month` test created `startOfMonth + 1 day`, which is future-dated when CI runs on the first day of a month in UTC.
 - Fixed the month-preset tests by pinning them to a mid-month fake clock and restoring real timers after each test.
 - Verification passed: `npm run test:run -- tests/components/WalletDetail/hooks/useTransactionFilters.test.ts`; `env TZ=UTC npm run test:run -- tests/components/WalletDetail/hooks/useTransactionFilters.test.ts`; `npm run test:coverage:shard -- 1 2`; `npm run typecheck:tests`; `git diff --check`.
+- Merge verification passed: PR #237 merge-group Test Suite, CodeQL, and Code Quality runs succeeded; PR state is `MERGED` with merge commit `7c52263fa4bd4bcc1076e2188bac80db7e9d1e24`.
 
 ---
 
