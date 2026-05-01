@@ -16,6 +16,8 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import {
   deriveAddress,
   deriveAddressFromDescriptor,
+  deriveAddressFromParsedDescriptor,
+  deriveAddressesFromDescriptor,
   validateXpub,
   convertToStandardXpub,
 } from '../../../../src/services/bitcoin/addressDerivation';
@@ -25,6 +27,43 @@ import {
   type VerifiedSingleSigVector,
   type VerifiedMultisigVector,
 } from '../../../fixtures/verified-address-vectors';
+
+const descriptorTemplateByScriptType: Record<
+  VerifiedSingleSigVector['scriptType'],
+  (keyExpression: string) => string
+> = {
+  legacy: (keyExpression: string) => `pkh(${keyExpression})`,
+  nested_segwit: (keyExpression: string) => `sh(wpkh(${keyExpression}))`,
+  native_segwit: (keyExpression: string) => `wpkh(${keyExpression})`,
+  taproot: (keyExpression: string) => `tr(${keyExpression})`,
+};
+
+function descriptorForSingleSigVector(vector: VerifiedSingleSigVector): string {
+  const accountPath = vector.path.replace(/^m\//, '');
+  const keyExpression = `[00000000/${accountPath}]${vector.xpub}/0/*`;
+  return descriptorTemplateByScriptType[vector.scriptType](keyExpression);
+}
+
+function getRequiredSingleSigVector(
+  scriptType: VerifiedSingleSigVector['scriptType'],
+  network: VerifiedSingleSigVector['network'],
+  change: boolean,
+  index: number
+): VerifiedSingleSigVector {
+  const vector = VERIFIED_SINGLESIG_VECTORS.find(
+    candidate =>
+      candidate.scriptType === scriptType &&
+      candidate.network === network &&
+      candidate.change === change &&
+      candidate.index === index
+  );
+
+  if (!vector) {
+    throw new Error(`Missing verified ${scriptType} ${network} change=${change} index=${index} vector`);
+  }
+
+  return vector;
+}
 
 describe('Address Derivation - Cross-Implementation Verification', () => {
   describe('Single-sig address verification', () => {
@@ -118,6 +157,78 @@ describe('Address Derivation - Cross-Implementation Verification', () => {
           expect(result.address).toBe(vector.expectedAddress);
         }
       );
+    });
+  });
+
+  describe('Descriptor derivation routing', () => {
+    const descriptorRoutingVectors = [
+      getRequiredSingleSigVector('legacy', 'mainnet', false, 0),
+      getRequiredSingleSigVector('nested_segwit', 'mainnet', false, 0),
+      getRequiredSingleSigVector('native_segwit', 'mainnet', false, 0),
+      getRequiredSingleSigVector('taproot', 'mainnet', false, 0),
+    ];
+
+    it.each(descriptorRoutingVectors.map(v => [v.description, v]))(
+      'routes %s through the descriptor script type map',
+      (_description: string, vector: VerifiedSingleSigVector) => {
+        const descriptor = descriptorForSingleSigVector(vector);
+        const result = deriveAddressFromDescriptor(descriptor, vector.index, {
+          network: vector.network,
+          change: vector.change,
+        });
+
+        expect(result.address).toBe(vector.expectedAddress);
+        expect(result.derivationPath).toBe(`${vector.path}/0/${vector.index}`);
+      }
+    );
+
+    it('defaults descriptor options to mainnet receive derivation', () => {
+      const receiveVector = getRequiredSingleSigVector('native_segwit', 'mainnet', false, 0);
+      const descriptor = descriptorForSingleSigVector(receiveVector);
+
+      const defaulted = deriveAddressFromDescriptor(descriptor, receiveVector.index);
+      const explicitReceive = deriveAddressFromDescriptor(descriptor, receiveVector.index, {
+        network: 'mainnet',
+        change: false,
+      });
+      const explicitChange = deriveAddressFromDescriptor(descriptor, receiveVector.index, {
+        network: 'mainnet',
+        change: true,
+      });
+
+      expect(defaulted.address).toBe(receiveVector.expectedAddress);
+      expect(defaulted.address).toBe(explicitReceive.address);
+      expect(defaulted.address).not.toBe(explicitChange.address);
+      expect(defaulted.derivationPath).toBe(`${receiveVector.path}/0/${receiveVector.index}`);
+    });
+
+    it('derives consecutive descriptor ranges from the requested start index', () => {
+      const firstVector = getRequiredSingleSigVector('native_segwit', 'testnet', false, 19);
+      const descriptor = descriptorForSingleSigVector(firstVector);
+
+      const addresses = deriveAddressesFromDescriptor(descriptor, firstVector.index, 3, {
+        network: firstVector.network,
+        change: firstVector.change,
+      });
+
+      expect(addresses).toHaveLength(3);
+      expect(addresses.map(({ index }) => index)).toEqual([19, 20, 21]);
+      expect(addresses[0].address).toBe(firstVector.expectedAddress);
+      expect(addresses.map(({ derivationPath }) => derivationPath)).toEqual([
+        `${firstVector.path}/0/19`,
+        `${firstVector.path}/0/20`,
+        `${firstVector.path}/0/21`,
+      ]);
+    });
+
+    it('fails closed when a parsed single-sig descriptor has no xpub', () => {
+      expect(() =>
+        deriveAddressFromParsedDescriptor(
+          { type: 'wpkh', path: '0/*' },
+          0,
+          { network: 'testnet' }
+        )
+      ).toThrow('No xpub found in descriptor');
     });
   });
 

@@ -1,3 +1,24 @@
+# Active Task: Critical Mutation Gate Recovery 2026-05-01
+
+Status: complete
+
+Goal: restore PR #237 by adding the missing critical-path descriptor derivation tests that the mutation gate exposed.
+
+## Plan
+
+- [x] Identify the failing required check and the surviving high-weight mutants.
+- [x] Inspect descriptor derivation and the mutation-gated test suite.
+- [x] Add focused descriptor derivation assertions to the critical address verification suite.
+- [x] Run focused tests and the critical mutation gate.
+- [x] Commit, push, and re-check PR CI.
+
+## Review
+
+- Added mutation-gated descriptor derivation coverage in `server/tests/unit/services/bitcoin/addressDerivation.verified.test.ts` for all single-sig descriptor wrappers, default mainnet receive behavior, consecutive range indexing, and missing-xpub fail-closed handling.
+- Verification passed: focused address verification suite with 139 passing tests; local `npm run test:mutation:critical:gate` with raw score 54.95% and weighted score 50.13%; forced descriptor-only mutation pass with `descriptorDerivation.ts` at 100% mutation score; `npm --prefix server run typecheck:tests`; `git diff --check`.
+
+---
+
 # Active Task: Hardware-Signed Artifact Replay Harness 2026-04-30
 
 Status: complete
