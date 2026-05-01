@@ -1,3 +1,30 @@
+# Active Task: Transaction Read Contract Test Split 2026-05-01
+
+Status: complete
+
+Goal: reduce the remaining warning-sized transaction read contract test by splitting export/streaming coverage from list, stats, and pending transaction reads without changing route behavior.
+
+## Plan
+
+- [x] Start from merged `origin/main` after PR #244.
+- [x] Identify the cohesive split boundary in `transactionsHttpRoutes.reads.contracts.ts`.
+- [x] Move `/transactions/export` JSON/CSV/stream pagination coverage into a dedicated contract file.
+- [x] Update the HTTP route test aggregator and grade/task docs.
+- [x] Run focused transaction HTTP route tests, server test typecheck, lizard, large-file policy, and diff hygiene.
+- [x] Commit the branch-ready changes; push, PR, queue merge, and post-merge verification continue through the `pr-delivery` workflow.
+
+## Review
+
+- PR #244 merged at `2026-05-01T17:33:53Z` with merge commit `01f91148b02d37e66e789855c8d4ca5133bbc8eb`; this branch started from that merged `origin/main`.
+- Selected `server/tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.reads.contracts.ts` because it was warning-sized at 916 lines and had a clean route boundary between read list/stats/pending coverage and export streaming/pagination coverage.
+- Split list/stats/pending read coverage into `transactionsHttpRoutes.reads.contracts.ts` at 565 lines and export coverage into `transactionsHttpRoutes.exports.contracts.ts` at 359 lines.
+- Updated `server/tests/unit/api/transactions-http-routes.test.ts` to register the export contract group separately.
+- Large-file policy still passes and warning-sized test files dropped from 3 to 2.
+- Verification passed: `npm --prefix server run test -- tests/unit/api/transactions-http-routes.test.ts`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `node scripts/quality/check-large-files.mjs --json`; `git diff --check`.
+- Branch-ready split is complete; PR delivery continues through the queue verification workflow.
+
+---
+
 # Active Task: Bitcoin Mining Address Helper 2026-05-01
 
 Status: complete
