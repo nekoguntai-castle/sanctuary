@@ -1,3 +1,31 @@
+# Active Task: Remaining API Module Test Split 2026-05-01
+
+Status: complete
+
+Goal: reduce the last broad frontend API module test warning by splitting admin API coverage from user-facing module coverage without changing API client behavior.
+
+## Plan
+
+- [x] Start from merged `origin/main` after PR #245.
+- [x] Identify the cohesive split boundary in `tests/api/remainingApiModules.test.ts`.
+- [x] Extract shared API client mocks into a focused test harness.
+- [x] Move admin backup/settings/monitoring/groups/users/feature-flag coverage into a dedicated test file.
+- [x] Update grade/task docs for the reduced warning-sized test count.
+- [x] Run focused API module tests, test typecheck, lizard, large-file policy, and diff hygiene.
+- [x] Commit the branch-ready changes; push, PR, queue merge, and post-merge verification continue through the `pr-delivery` workflow.
+
+## Review
+
+- PR #245 merged at `2026-05-01T18:23:32Z` with merge commit `a19979bb19807bcaa887dc3c242ffb167d48c38f`; this branch started from that merged `origin/main`.
+- Selected `tests/api/remainingApiModules.test.ts` because it is warning-sized at 837 lines and has a clean module boundary between user-facing API wrappers and admin-only API wrappers.
+- Extracted shared API client verb/fetch mocks into `tests/api/remainingApiModules.testHarness.ts`.
+- Split user-facing wrapper coverage into `tests/api/remainingApiModules.test.ts` at 410 lines and admin wrapper coverage into `tests/api/remainingAdminApiModules.test.ts` at 434 lines.
+- Large-file policy still passes and warning-sized test files dropped from 2 to 1.
+- Verification passed: `npm run test:run -- tests/api/remainingApiModules.test.ts tests/api/remainingAdminApiModules.test.ts`; `npm run typecheck:tests`; `npm run quality:lizard`; `node scripts/quality/check-large-files.mjs --json`; `git diff --check`.
+- Branch-ready split is complete; PR delivery continues through the queue verification workflow.
+
+---
+
 # Active Task: Transaction Read Contract Test Split 2026-05-01
 
 Status: complete
