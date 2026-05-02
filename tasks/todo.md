@@ -17,7 +17,8 @@ Goal: commit, push, open the PR for `sidebar-network-selector`, monitor required
 - Opened PR #248 for `sidebar-network-selector`: https://github.com/nekoguntai-castle/sanctuary/pull/248.
 - Fixed stale generated architecture output after the first CI run reported drift.
 - Fixed the local reproduction of the Quick Browser Smoke failure by covering the wallet shell's price call and the active-network preference PATCH in `e2e/admin-drafts-smoke.spec.ts`.
-- Local verification passed: `npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts --grep "wallet drafts" --workers=1`; `npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts`.
+- Fixed the Quick Render Regression failure by updating the device-list render contract for the network-aware header copy.
+- Local verification passed: `npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts --grep "wallet drafts" --workers=1`; `npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts`; `npm run build`; `CI=true NODE_ENV=test VITE_API_URL=http://localhost:3001 npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts --grep "device list route" --workers=1`; `CI=true NODE_ENV=test VITE_API_URL=http://localhost:3001 npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts`.
 
 ---
 
