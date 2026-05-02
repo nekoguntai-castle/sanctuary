@@ -1,3 +1,129 @@
+# Active Task: Offline Package Install And Upgrade Mechanism 2026-05-02
+
+Status: planning; awaiting approval before implementation
+
+Goal: let operators install or upgrade Sanctuary on airgapped or GitHub-blocked machines from a manually uploaded offline bundle, without weakening upgrade safety or relying on network access during bundle application.
+
+## Discovery
+
+- Current `install.sh` is online-first: it discovers the latest release from GitHub/GitLab, clones or fetches tags, checks out a release tag, preserves existing runtime secrets, then delegates setup/startup to `scripts/setup.sh`.
+- Current `scripts/setup.sh` always builds images before startup; offline mode must bypass build/pull paths and start only from already loaded images.
+- Core Compose builds local Sanctuary images for backend, worker, migrate, MCP, frontend, gateway, and AI proxy, but still needs external images: `postgres:16-alpine`, `redis:7-alpine`, and `tecnativa/docker-socket-proxy:latest`.
+- Optional profiles add more external images: monitoring (`jaegertracing/all-in-one:1.53`, `grafana/loki:2.9.0`, `grafana/promtail:3.5.0`, `prom/prometheus:v2.47.0`, `prom/alertmanager:v0.26.0`, `grafana/grafana:10.2.0`) and Tor (`dperson/torproxy:latest`).
+- Existing install/upgrade tests already cover fresh installs, ref-to-ref upgrades, runtime env preservation, optional profiles, and post-upgrade user traffic. Offline support should extend this harness instead of creating an unrelated path.
+- Current branch is `remove-unused-privacy-mixing-references` at `64f3c2e7`; worktree was clean before this plan edit. Open PR queue checked with `gh pr list --state open --limit 20`; no open PRs were returned.
+
+## Proposed Operator Contract
+
+- Connected/release machine creates a bundle:
+  - `./scripts/offline/create-bundle.sh --tag vX.Y.Z --platform linux/amd64 --output sanctuary-offline-vX.Y.Z-linux-amd64.tar.gz`
+  - Release bundles are full bundles by default: core Sanctuary services plus monitoring and Tor profile images. Optional flag: `--platform linux/arm64`.
+- Airgapped machine applies a bundle:
+  - Bundle-aware installed copy: `./install.sh --offline-bundle /path/to/sanctuary-offline-vX.Y.Z-linux-amd64.tar.gz`. This is the preferred operator command; `--offline` can be a shorter alias only if it does not make the bundle path ambiguous.
+  - Fresh or pre-offline-support install bootstrap: run a separately obtained trusted verifier/installer, or manually verify the bundle signature with the published Sanctuary offline-release public-key fingerprint before executing any script extracted from the bundle.
+- Offline application must make zero network calls: no release API lookup, no `git ls-remote`, no `docker pull`, no `docker compose build`, no `npm ci`, and no registry access.
+- Official offline bundles must be signed and verified before extraction side effects, `docker load`, or source checkout.
+- Runtime secrets and operator-owned files stay outside the bundle. The bundle supplies code and container images only.
+- Downgrades are rejected by default because database migrations may be irreversible; allow only with an explicit `--allow-downgrade` flag and backup warning.
+- Before upgrade application, offer to create a local offline-upgrade backup artifact on the installation machine, then require confirmation before modifying an existing install. In non-interactive mode, require an explicit `--yes`/`SANCTUARY_ASSUME_YES=true` style acknowledgement and either create the backup or explicitly skip it with `SANCTUARY_SKIP_UPGRADE_BACKUP=true`.
+
+## Bundle Format
+
+- Use a portable `tar.gz` bundle initially; avoid requiring `zstd`, `jq`, Python, or Node on the target host.
+- Bundle contents:
+  - `manifest.env` for shell-readable decisions: schema version, Sanctuary version, git commit, git tag, platform, included profiles, image count, and creation timestamp.
+  - `manifest.json` for provenance, release metadata, image metadata, and future automation.
+  - `checksums.sha256` covering every payload file.
+  - `checksums.sha256.sig` verified with a pinned Sanctuary release public key via OpenSSL. The signed checksum file covers `manifest.env`, `manifest.json`, the git bundle, image tar files, and bootstrap scripts.
+  - `keys/sanctuary-offline-release-public.pem` copied into the bundle for operator inspection, but verification must use the installer-pinned key from the installed checkout or a separately supplied trusted key path, not blindly trust a key shipped inside the same archive.
+  - `repo/sanctuary.git.bundle` containing the release tag and commit history needed for checkout.
+  - `images/core/*.tar` from `docker save`: Sanctuary backend/frontend/gateway/AI proxy images, plus Postgres, Redis, and Docker socket proxy.
+  - `images/monitoring/*.tar` and `images/tor/*.tar` included in official release bundles so existing optional-profile installs can upgrade without a second artifact.
+  - `install-offline.sh` as a convenience bootstrap entry point for machines whose installed copy predates offline support. It is not the trust anchor; operators must verify the bundle with a trusted public key before running it.
+  - `README-offline.md` with exact upload, public-key fingerprint, verification, install, upgrade, and troubleshooting commands.
+- First release artifact should be a signed full bundle by default. A smaller core-only/dev bundle can exist for local tests, but it should not be the normal operator artifact.
+
+## Implementation Plan
+
+- [ ] Add offline bundle creation scripts under `scripts/offline/`.
+  - Build or tag Sanctuary images for the requested release/platform.
+  - Pull required external images on the connected machine, including monitoring and Tor images for official release bundles.
+  - Save all images to tar files, generate checksums, generate manifests, and sign the checksum file with the Sanctuary offline-release private key.
+  - Refuse to create a release bundle without a signing key unless `--unsigned-for-dev` is explicitly set; unsigned bundles are only for local tests and must be rejected by normal install/upgrade commands.
+  - Permit any smaller `--core-only` output only as an explicit dev/test artifact, with manifest metadata that prevents operators from mistaking it for the release bundle.
+  - Keep bundle creation runnable outside GitHub Actions so a trusted connected workstation can build it if GitHub is unavailable.
+- [ ] Add offline bundle application helpers under `scripts/offline/`.
+  - Validate archive path and prevent path traversal during staging extraction.
+  - Verify the bundle signature against the pinned release public key, then verify checksums before loading images or changing source code.
+  - Allow unsigned bundles only behind an explicit developer/test flag such as `--allow-unsigned-dev-bundle`, with loud output and no mention in the normal operator quick path.
+  - Validate platform/architecture against Docker host architecture.
+  - Validate optional profile coverage before upgrade as a safety check. Official full bundles should satisfy monitoring/Tor coverage automatically; dev/core-only bundles must fail before modifying an install that has those profiles enabled unless every required target image is already present locally.
+  - When profile coverage is missing, fail with a specific message directing the operator to use the official full bundle instead of disabling the profile or attempting a network pull.
+  - Load images with `docker load`, retag Sanctuary images to the local tags expected by Compose, and verify all required images exist locally.
+- [ ] Add a localized pre-upgrade backup helper, usable by online and offline upgrades.
+  - Proposed path: `scripts/create-upgrade-backup.sh`, invoked by `install.sh` before any offline source checkout, image load, or setup/start changes.
+  - Default output directory: `${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}/backups/offline-upgrades/<timestamp>-<current-version>/`.
+  - Capture a PostgreSQL custom-format dump via the existing postgres container (`pg_dump --format=custom`) so rollback can restore the whole database state without relying on the app UI.
+  - Copy the resolved runtime env file, `ENCRYPTION_KEY`, `ENCRYPTION_SALT`, and TLS material when present. These are sensitive; create directories with `0700` and files/archives with `0600`.
+  - Record non-secret restore metadata: current git ref/version, target bundle version, Compose project name, enabled profiles, Docker image IDs/tags before upgrade, `docker compose ps`, volume names, backup command versions, and checksums.
+  - Package the backup as one owner-only file: `sanctuary-upgrade-backup-<timestamp>-from-<version>.tar.gz`. The archive contains `manifest.env`, `manifest.json`, `checksums.sha256`, the database dump, runtime env copy, TLS material, and restore metadata.
+  - Keep sidecar files out of the default operator path. Allow an explicit `--write-sidecar-checksum` only if future automation needs an external inventory file.
+  - Validate the backup before continuing: non-empty database dump, env copy exists when the install has one, the single archive can be listed and extracted to a temp validation directory, and the internal checksum file verifies against extracted contents.
+  - Print exact restore guidance after creation, but keep restore as a separate explicit command/script because it is destructive.
+- [ ] Extend `install.sh`.
+  - Add `--offline-bundle PATH` and `SANCTUARY_OFFLINE_BUNDLE=PATH`.
+  - In offline mode, skip release API lookup and remote git operations.
+  - Use the local git bundle for fresh clone or existing checkout fetch/checkout.
+  - Preserve existing upgrade behavior: runtime env detection, secret loading, optional feature flag pass-through, and setup delegation.
+  - Replace copy-only backup guidance with the localized pre-upgrade backup prompt for existing installs. Keep the plain `pg_dump` command as fallback guidance only if automatic backup creation cannot run.
+  - Keep Git as a phase-one host prerequisite for source checkout from the git bundle; consider a no-git source archive fallback later only if operator feedback requires it.
+- [ ] Extend `scripts/setup.sh`.
+  - Add `--offline` or `SANCTUARY_OFFLINE_MODE=yes`.
+  - In offline mode, skip `docker compose build` and use `docker compose up -d --no-build` after image presence validation.
+  - Persist enough runtime metadata to make future `start.sh` behavior clear, for example `SANCTUARY_INSTALL_MODE=offline` and `SANCTUARY_OFFLINE_VERSION=vX.Y.Z`.
+  - Preserve existing encryption material rules, especially legacy `ENCRYPTION_KEY` plus missing `ENCRYPTION_SALT` handling.
+- [ ] Extend `start.sh`.
+  - For offline installs, normal start should use existing images without attempting rebuilds or pulls.
+  - `./start.sh --rebuild` should refuse in offline mode with clear guidance to apply a newer offline bundle, unless an explicit override is provided.
+  - Keep online installs unchanged.
+- [ ] Update docs.
+  - Add README upgrade/install instructions for offline bundles.
+  - Add `docs/reference/offline-bundles.md` with bundle creation, transfer, trust-anchor bootstrapping, public-key fingerprint verification, apply, optional profiles, rollback, and troubleshooting.
+  - Call out that Docker and Docker Compose must already be installed on the airgapped machine, and that wallet sync still needs a reachable local node/Electrum path in truly airgapped deployments.
+- [ ] Add tests and release checks.
+  - Unit tests for installer argument parsing, manifest validation, checksum/signature failures, optional-profile mismatch, and offline no-network behavior with fake `curl`, `git`, and `docker` commands.
+  - Setup/start tests proving offline mode skips build and rejects offline rebuilds.
+  - Add an offline upgrade fixture to the existing install E2E harness: install an older ref, create/apply a current offline bundle, verify secrets/data/migrations/user traffic survive.
+  - Add a fresh offline install smoke with `--no-start` for fast CI and a Docker-backed lane for release/nightly if runtime is too high for every PR.
+  - Update `tests/install/README.md` and install scope classifier tests so offline script changes trigger the right lanes.
+
+## Failure Modes To Design Around
+
+- Bundle corruption or tampering: fail before image load or source checkout.
+- Wrong architecture: fail with expected/actual platform before modifying the installation.
+- Partial or dev bundle: fail if enabled profiles need images that are neither included nor already present locally for the target release.
+- Backup failure: fail before upgrade by default. Allow an explicit `--skip-upgrade-backup` only with a loud warning, and never skip automatically for interactive upgrades.
+- Existing installation too old for `--offline-bundle`: support the bundle's included `install-offline.sh`.
+- Deleted files between releases: use a git bundle checkout rather than overlaying an archive onto the old tree.
+- Database rollback expectations: document restore-from-backup as the rollback path, not code downgrade.
+- Disk pressure: warn before extraction and image load; bundles may be several GB with optional profiles.
+- Fully airgapped runtime: app startup can succeed, but external Electrum, price, AI cloud, and notification providers need local replacements or disabled configuration.
+
+## Open Decisions
+
+- Signature standard: use OpenSSL RSA-4096/SHA-256 detached signatures over `checksums.sha256` for the first implementation because OpenSSL is already part of setup prerequisites. Cosign/minisign can be added later as an additional release artifact, not as the target-host dependency.
+- Release artifact strategy: official CI-generated bundle once GitHub is available, plus operator-generated bundles from any trusted connected checkout for emergency use.
+- Bundle granularity: default to one signed full bundle that includes core, monitoring, and Tor image sets. Core-only artifacts are dev/test only unless a future release deliberately documents a smaller operator artifact.
+- Image tag strategy: keep Compose-compatible `:local` tags for minimal changes, while recording immutable source image digests in the manifest for audit.
+
+## Review
+
+- Planning only; no installer/setup/start implementation has been changed.
+- Verification performed for planning: read `install.sh`, `scripts/setup.sh`, `start.sh`, core/optional Compose files, install test docs, upgrade testing roadmap, package scripts, `tasks/lessons.md`, branch status, and open PR queue.
+- Next checkpoint: approve or revise this plan before implementation begins.
+
+---
+
 # Active Task: PR Delivery For Privacy-Mixing Reference Removal 2026-05-02
 
 Status: in progress
