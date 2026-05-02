@@ -489,6 +489,8 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-}
+    image: sanctuary-frontend:local
+    pull_policy: build # Always build locally, never pull
     restart: unless-stopped
     depends_on:
       backend:

@@ -204,7 +204,6 @@ export const LoggingConfigSchema = z.object({
 export const ExperimentalFeaturesSchema = z.object({
   taprootAddresses: z.boolean(),
   silentPayments: z.boolean(),
-  coinJoin: z.boolean(),
 });
 
 export const FeatureFlagsSchema = z.object({

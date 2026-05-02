@@ -125,7 +125,13 @@ main() {
   commit_file "$repo_dir" "install.sh" "#!/usr/bin/env bash" "installer"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "false" "true" "false" "false" "false" "false" "false" "false"
+  assert_scope "$output_file" "true" "true" "false" "true" "false" "false" "true" "true" "false" "false"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "scripts/offline/apply-bundle.sh" "#!/usr/bin/env bash" "offline bundle"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_scope "$output_file" "true" "true" "false" "true" "false" "false" "true" "true" "false" "false"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "docker-compose.yml" "services: {}" "compose"

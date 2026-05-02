@@ -2,6 +2,19 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Narrow Privacy-Feature Removals To The Approved Scope
+
+**Rule:** When the user narrows a removal from a broad privacy-feature sweep to one named feature, remove only that feature and explicitly leave adjacent implemented features untouched.
+
+**Why:** One privacy-mixing item was only an unused experimental flag and text references, while Payjoin is implemented across API, UI, persistence, and tests. Treating both the same would create unnecessary product and schema churn.
+
+**How to apply:**
+
+- Re-run a targeted search for the narrowed feature before editing.
+- Remove runtime toggles, schema entries, docs, and tests for that feature only.
+- Keep adjacent protocol names and code paths unchanged unless the user separately approves their removal.
+- Verify with a targeted `rg` scan that names only the removed feature.
+
 ## Remeasure Sliding Indicators After Layout Settles
 
 **Rule:** UI indicators that depend on `offsetLeft` or `offsetWidth` must remeasure after first paint and after container, tab, or font sizing changes.
@@ -1054,3 +1067,15 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Query `gh api repos/<owner>/<repo>/code-scanning/alerts?state=open` and `gh api repos/<owner>/<repo>/dependabot/alerts?state=open`.
 - Record alert numbers, severities, locations, and links in the security assessment.
 - Treat local tool output and GitHub's alert state as complementary; neither replaces the other.
+
+## Destructive Cleanup Requires Explicit Scope
+
+**Rule:** Before running commands or tests that delete files, state the exact cleanup scope and get permission unless the cleanup is limited to a self-created temporary directory the user has already approved.
+
+**Why:** The offline installer work involved scripts and tests with `rm -rf` cleanup. The user explicitly corrected the workflow to ask before deleting anything.
+
+**How to apply:**
+
+- Prefer `mktemp`-scoped cleanup for tests and generated staging directories.
+- Do not run broad cleanup commands or remove repo files without a fresh, one-off permission.
+- Mention self-temp cleanup before running tests that create and remove their own temporary directories.

@@ -231,7 +231,6 @@ export interface MonitoringConfig {
 export interface ExperimentalFeatures {
   taprootAddresses: boolean;
   silentPayments: boolean;
-  coinJoin: boolean;
 }
 
 /**

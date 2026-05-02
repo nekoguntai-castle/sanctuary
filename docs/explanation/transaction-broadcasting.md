@@ -387,7 +387,7 @@ The system logs important events:
 4. **Scheduled Transactions**: Time-delayed broadcasting
 5. **Multi-Signature Support**: Coordinate signing for multisig wallets
 6. **Lightning Integration**: Open channels, make LN payments
-7. **Privacy Features**: CoinJoin integration, PayJoin support
+7. **Privacy Features**: PayJoin support and address reuse warnings
 8. **Fee Market Analysis**: Show current mempool state
 9. **Mempool Replacement**: Cancel unconfirmed transactions
 10. **Watch-Only Wallets**: Create transactions without signing

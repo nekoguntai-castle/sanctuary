@@ -140,6 +140,12 @@ run_unit_suites() {
     if ! run_test_suite "Reset 2FA Script Unit Tests" "$SCRIPT_DIR/unit/reset-user-2fa-script.test.sh"; then
         suite_failed=true
     fi
+    if ! run_test_suite "Upgrade Backup Script Unit Tests" "$SCRIPT_DIR/unit/upgrade-backup-script.test.sh"; then
+        suite_failed=true
+    fi
+    if ! run_test_suite "Offline Bundle Script Unit Tests" "$SCRIPT_DIR/unit/offline-bundle-script.test.sh"; then
+        suite_failed=true
+    fi
     if ! run_test_suite "Upgrade Helper Unit Tests" "$SCRIPT_DIR/unit/upgrade-helpers.test.sh"; then
         suite_failed=true
     fi

@@ -17,6 +17,8 @@
 
 set -e
 
+INSTALL_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null || pwd)"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -90,6 +92,16 @@ INSTALL_DIR="${SANCTUARY_DIR:-$HOME/sanctuary}"
 SKIP_GIT_CHECKOUT="${SKIP_GIT_CHECKOUT:-false}"  # Set to 'true' in CI to skip version checkout
 DEFAULT_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}"
 DEFAULT_ENV_FILE="$DEFAULT_RUNTIME_DIR/sanctuary.env"
+OFFLINE_BUNDLE="${SANCTUARY_OFFLINE_BUNDLE:-}"
+OFFLINE_STAGE_DIR=""
+OFFLINE_PREPARED=false
+OFFLINE_PUBLIC_KEY="${SANCTUARY_OFFLINE_PUBLIC_KEY:-}"
+ALLOW_UNSIGNED_DEV_BUNDLE=false
+ALLOW_DOWNGRADE="${SANCTUARY_ALLOW_DOWNGRADE:-false}"
+ASSUME_YES="${SANCTUARY_ASSUME_YES:-false}"
+SKIP_UPGRADE_BACKUP="${SANCTUARY_SKIP_UPGRADE_BACKUP:-false}"
+OFFLINE_TARGET_VERSION=""
+OFFLINE_MODE=false
 
 resolve_runtime_env_file() {
     local candidate="${SANCTUARY_ENV_FILE:-$DEFAULT_ENV_FILE}"
@@ -101,6 +113,237 @@ resolve_runtime_env_file() {
         echo "$candidate"
     fi
 }
+
+parse_install_options() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --offline-bundle)
+                OFFLINE_BUNDLE="$2"
+                OFFLINE_MODE=true
+                shift 2
+                ;;
+            --offline-bundle=*)
+                OFFLINE_BUNDLE="${1#*=}"
+                OFFLINE_MODE=true
+                shift
+                ;;
+            --offline-prepared)
+                OFFLINE_PREPARED=true
+                OFFLINE_MODE=true
+                SKIP_GIT_CHECKOUT=true
+                shift
+                ;;
+            --offline-public-key)
+                OFFLINE_PUBLIC_KEY="$2"
+                shift 2
+                ;;
+            --offline-public-key=*)
+                OFFLINE_PUBLIC_KEY="${1#*=}"
+                shift
+                ;;
+            --allow-unsigned-dev-bundle)
+                ALLOW_UNSIGNED_DEV_BUNDLE=true
+                shift
+                ;;
+            --allow-downgrade)
+                ALLOW_DOWNGRADE=true
+                shift
+                ;;
+            --yes|-y)
+                ASSUME_YES=true
+                shift
+                ;;
+            --skip-upgrade-backup)
+                SKIP_UPGRADE_BACKUP=true
+                shift
+                ;;
+            --source)
+                shift 2
+                ;;
+            --source=*)
+                shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    if [ -n "$OFFLINE_BUNDLE" ]; then
+        OFFLINE_MODE=true
+    fi
+}
+
+prepare_offline_bundle() {
+    [ -n "$OFFLINE_BUNDLE" ] || return 0
+
+    local apply_script="$INSTALL_SCRIPT_DIR/scripts/offline/apply-bundle.sh"
+    if [ ! -x "$apply_script" ]; then
+        apply_script="$INSTALL_DIR/scripts/offline/apply-bundle.sh"
+    fi
+    [ -x "$apply_script" ] || {
+        echo -e "${RED}✗${NC} Offline bundle helper not found"
+        echo "Run this from a bundle-aware Sanctuary checkout, or use the bundle's install-offline.sh bootstrap after verifying the signature."
+        exit 1
+    }
+
+    OFFLINE_STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-offline-bundle.XXXXXX")"
+    trap 'rm -rf "$OFFLINE_STAGE_DIR"' EXIT
+
+    local args=(--bundle "$OFFLINE_BUNDLE" --stage-dir "$OFFLINE_STAGE_DIR" --prepare-only)
+    [ -n "$OFFLINE_PUBLIC_KEY" ] && args+=(--public-key "$OFFLINE_PUBLIC_KEY")
+    [ "$ALLOW_UNSIGNED_DEV_BUNDLE" = true ] && args+=(--allow-unsigned-dev-bundle)
+
+    "$apply_script" "${args[@]}"
+    # shellcheck disable=SC1091
+    source "$OFFLINE_STAGE_DIR/manifest.env"
+    RELEASE_TAG="${SANCTUARY_GIT_TAG:-}"
+    OFFLINE_TARGET_VERSION="${SANCTUARY_VERSION:-$RELEASE_TAG}"
+    [ -n "$RELEASE_TAG" ] || {
+        echo -e "${RED}✗${NC} Offline bundle manifest is missing SANCTUARY_GIT_TAG"
+        exit 1
+    }
+}
+
+apply_offline_bundle() {
+    [ -n "$OFFLINE_BUNDLE" ] || return 0
+
+    local apply_script="$INSTALL_SCRIPT_DIR/scripts/offline/apply-bundle.sh"
+    if [ ! -x "$apply_script" ]; then
+        apply_script="$INSTALL_DIR/scripts/offline/apply-bundle.sh"
+    fi
+
+    local args=(--staged-dir "$OFFLINE_STAGE_DIR" --install-dir "$INSTALL_DIR" --apply)
+    [ -n "$OFFLINE_PUBLIC_KEY" ] && args+=(--public-key "$OFFLINE_PUBLIC_KEY")
+    [ "$ALLOW_UNSIGNED_DEV_BUNDLE" = true ] && args+=(--allow-unsigned-dev-bundle)
+
+    "$apply_script" "${args[@]}"
+}
+
+semver_parts() {
+    local version="${1#v}"
+    if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([-+].*)?$ ]]; then
+        echo "${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[3]}"
+        return 0
+    fi
+    return 1
+}
+
+is_semver_downgrade() {
+    local current="$1"
+    local target="$2"
+    local current_parts target_parts current_major current_minor current_patch target_major target_minor target_patch
+
+    current_parts="$(semver_parts "$current")" || return 1
+    target_parts="$(semver_parts "$target")" || return 1
+
+    read -r current_major current_minor current_patch <<< "$current_parts"
+    read -r target_major target_minor target_patch <<< "$target_parts"
+
+    if [ "$target_major" -lt "$current_major" ]; then
+        return 0
+    elif [ "$target_major" -gt "$current_major" ]; then
+        return 1
+    fi
+
+    if [ "$target_minor" -lt "$current_minor" ]; then
+        return 0
+    elif [ "$target_minor" -gt "$current_minor" ]; then
+        return 1
+    fi
+
+    [ "$target_patch" -lt "$current_patch" ]
+}
+
+reject_downgrade_unless_allowed() {
+    local current_version="$1"
+    local target_version="$2"
+
+    if [ "$ALLOW_DOWNGRADE" = "true" ]; then
+        return 0
+    fi
+
+    if is_semver_downgrade "$current_version" "$target_version"; then
+        echo -e "${RED}✗${NC} Refusing downgrade from $current_version to $target_version."
+        echo "Database migrations may be irreversible. Restore from a backup or rerun with --allow-downgrade only for explicit recovery."
+        exit 1
+    fi
+}
+
+find_upgrade_backup_script() {
+    if [ -x "$INSTALL_SCRIPT_DIR/scripts/create-upgrade-backup.sh" ]; then
+        echo "$INSTALL_SCRIPT_DIR/scripts/create-upgrade-backup.sh"
+    elif [ -x "$INSTALL_DIR/scripts/create-upgrade-backup.sh" ]; then
+        echo "$INSTALL_DIR/scripts/create-upgrade-backup.sh"
+    else
+        echo ""
+    fi
+}
+
+has_existing_database() {
+    docker volume ls -q 2>/dev/null | grep -q "sanctuary.*postgres_data\|postgres_data"
+}
+
+create_upgrade_backup_or_prompt() {
+    local target_version="$1"
+
+    if ! has_existing_database; then
+        return 0
+    fi
+
+    echo ""
+    echo -e "${YELLOW}Existing database detected.${NC}"
+
+    if [ "$SKIP_UPGRADE_BACKUP" = "true" ]; then
+        echo -e "${YELLOW}Warning: skipping pre-upgrade backup by explicit request.${NC}"
+        return 0
+    fi
+
+    if [ "$ASSUME_YES" != "true" ] && [ ! -t 0 ]; then
+        echo -e "${RED}✗${NC} Non-interactive upgrade requires --yes or SANCTUARY_ASSUME_YES=true."
+        echo "To skip the local backup explicitly, also set SANCTUARY_SKIP_UPGRADE_BACKUP=true."
+        exit 1
+    fi
+
+    local make_backup=true
+    if [ -t 0 ]; then
+        echo ""
+        echo "Create a local pre-upgrade backup before continuing? [Y/n] "
+        read -r REPLY
+        if [[ $REPLY =~ ^[Nn]$ ]]; then
+            make_backup=false
+            echo ""
+            read -p "Continue without a backup? [y/N] " -n 1 -r
+            echo ""
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo "Upgrade cancelled. Run again after backing up."
+                exit 0
+            fi
+        fi
+    fi
+
+    if [ "$make_backup" = true ]; then
+        local backup_script
+        backup_script="$(find_upgrade_backup_script)"
+        if [ -n "$backup_script" ]; then
+            "$backup_script" --install-dir "$INSTALL_DIR" --target-version "$target_version"
+        else
+            echo -e "${YELLOW}Warning: automatic backup helper is not available.${NC}"
+            echo "Before upgrading, we recommend backing up your database:"
+            echo -e "  ${GREEN}docker exec \$(docker compose ps -q postgres) pg_dump -U sanctuary sanctuary > backup-\$(date +%Y%m%d).sql${NC}"
+            if [ -t 0 ]; then
+                read -p "Continue with upgrade? [Y/n] " -n 1 -r
+                echo ""
+                if [[ $REPLY =~ ^[Nn]$ ]]; then
+                    echo "Upgrade cancelled. Run again after backing up."
+                    exit 0
+                fi
+            fi
+        fi
+    fi
+}
+
+parse_install_options "$@"
 
 # Detect source platform
 SOURCE_PLATFORM=$(detect_source "$@")
@@ -118,6 +361,12 @@ case "$SOURCE_PLATFORM" in
         PLATFORM_NAME="GitHub"
         ;;
 esac
+
+if [ "$OFFLINE_MODE" = true ]; then
+    REPO_URL="${OFFLINE_BUNDLE:-preloaded offline bundle}"
+    API_URL=""
+    PLATFORM_NAME="Offline bundle"
+fi
 
 # ============================================
 # Get latest release tag
@@ -276,10 +525,35 @@ main() {
     # Track if this is an upgrade
     IS_UPGRADE=false
     SETUP_FLAGS="--from-install"
+    if [ "$OFFLINE_MODE" = true ]; then
+        SETUP_FLAGS="$SETUP_FLAGS --offline"
+    fi
     UPGRADE_ENV_FILE="$(resolve_runtime_env_file)"
 
     # Get the latest release tag (skip in CI to test current code)
-    if [ "$SKIP_GIT_CHECKOUT" = "true" ]; then
+    if [ -n "$OFFLINE_BUNDLE" ]; then
+        echo "Verifying offline bundle..."
+        prepare_offline_bundle
+        echo -e "${GREEN}✓${NC} Offline bundle target: ${RELEASE_TAG}"
+
+        if [ -d "$INSTALL_DIR" ] || [ -f "$UPGRADE_ENV_FILE" ]; then
+            IS_UPGRADE=true
+            echo -e "${YELLOW}Existing installation detected.${NC}"
+            if [ -d "$INSTALL_DIR/.git" ]; then
+                CURRENT_VERSION=$(git -C "$INSTALL_DIR" describe --tags 2>/dev/null || git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+                echo ""
+                echo "  Current version: $CURRENT_VERSION"
+                echo "  New version:     $RELEASE_TAG"
+                reject_downgrade_unless_allowed "$CURRENT_VERSION" "$RELEASE_TAG"
+            fi
+            create_upgrade_backup_or_prompt "$RELEASE_TAG"
+        fi
+
+        echo ""
+        echo "Applying offline bundle..."
+        apply_offline_bundle
+        cd "$INSTALL_DIR"
+    elif [ "$SKIP_GIT_CHECKOUT" = "true" ]; then
         echo -e "${GREEN}✓${NC} Skipping git checkout (SKIP_GIT_CHECKOUT=true)"
         RELEASE_TAG=""
         cd "$INSTALL_DIR"
@@ -310,23 +584,7 @@ main() {
                 echo "  New version:     $RELEASE_TAG"
             fi
 
-            # Check if database container exists with data
-            if docker volume ls -q 2>/dev/null | grep -q "sanctuary.*postgres_data\|postgres_data"; then
-                echo ""
-                echo -e "${YELLOW}Existing database detected.${NC}"
-                echo ""
-                echo "Before upgrading, we recommend backing up your database:"
-                echo -e "  ${GREEN}docker exec \$(docker compose ps -q postgres) pg_dump -U sanctuary sanctuary > backup-\$(date +%Y%m%d).sql${NC}"
-                echo ""
-                if [ -t 0 ]; then
-                    read -p "Continue with upgrade? [Y/n] " -n 1 -r
-                    echo ""
-                    if [[ $REPLY =~ ^[Nn]$ ]]; then
-                        echo "Upgrade cancelled. Run again after backing up."
-                        exit 0
-                    fi
-                fi
-            fi
+            create_upgrade_backup_or_prompt "${RELEASE_TAG:-latest}"
 
             echo ""
             echo "Updating existing installation..."
@@ -382,6 +640,10 @@ main() {
     # Export secrets so setup.sh can use them (but NOT feature flags - let setup.sh prompt)
     export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET REDIS_PASSWORD
     export HTTPS_PORT HTTP_PORT GATEWAY_PORT
+    if [ "$OFFLINE_MODE" = true ]; then
+        export SANCTUARY_INSTALL_MODE=offline
+        export SANCTUARY_OFFLINE_VERSION="${OFFLINE_TARGET_VERSION:-${SANCTUARY_OFFLINE_VERSION:-$RELEASE_TAG}}"
+    fi
 
     # Run setup.sh
     "$INSTALL_DIR/scripts/setup.sh" $SETUP_FLAGS

@@ -177,7 +177,7 @@ class FeatureFlagService {
     }
 
     // Experimental flags
-    const experimental = ['taprootAddresses', 'silentPayments', 'coinJoin'] as const;
+    const experimental = ['taprootAddresses', 'silentPayments'] as const;
     for (const key of experimental) {
       flags[`experimental.${key}`] = features.experimental[key];
     }

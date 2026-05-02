@@ -992,6 +992,25 @@ cd ~/sanctuary
 ./install.sh
 ```
 
+### Offline Bundle Upgrade
+
+For airgapped systems or machines that cannot reach GitHub/GHCR, upload a
+signed Sanctuary offline bundle to the machine and run:
+
+```bash
+cd ~/sanctuary
+./install.sh --offline-bundle /path/to/sanctuary-offline-vX.Y.Z-linux-amd64.tar.gz
+```
+
+Offline upgrades verify the bundle signature/checksums, offer to create a
+single local pre-upgrade backup archive, load bundled Docker images, check out
+the bundled release tag, and start without network pulls or builds.
+If the installed checkout does not already contain the pinned offline-release
+public key, pass `--offline-public-key /secure/path/sanctuary-offline-release-public.pem`.
+
+See [Offline Bundles](docs/reference/offline-bundles.md) for bundle creation,
+trust-anchor verification, backup behavior, and troubleshooting.
+
 ### Manual Upgrade
 
 If you prefer to upgrade manually:

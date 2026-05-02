@@ -251,9 +251,10 @@ while IFS= read -r file; do
       add_scope unit-only
       reason="Install unit/docs scope changed"
       ;;
-    install.sh|scripts/setup.sh|scripts/reset-user-2fa.sh|tests/install/e2e/install-script.test.sh)
+    install.sh|scripts/setup.sh|scripts/reset-user-2fa.sh|scripts/create-upgrade-backup.sh|scripts/offline/*|scripts/offline/**/*|tests/install/e2e/install-script.test.sh)
       enable_unit
       enable_install_script
+      enable_upgrade_baseline
       add_scope installer
       reason="Installer scope changed"
       ;;

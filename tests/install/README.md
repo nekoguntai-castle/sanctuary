@@ -11,6 +11,7 @@ This test suite covers:
 3. **Upgrade Tests** - Upgrading an existing installation
 4. **Container Health** - Verify all containers start and are healthy
 5. **Auth Flow** - Login, password change, and authentication flow
+6. **Offline/backup host helpers** - Verify local pre-upgrade backup behavior and offline install script wiring
 
 ## Quick Start
 
@@ -125,6 +126,8 @@ Tests setup/install behavior and host recovery helpers without requiring Docker:
 - Environment variable handling
 - Fresh installs generate a unique `ENCRYPTION_SALT`; legacy encrypted installs with existing `ENCRYPTION_KEY` plus missing `ENCRYPTION_SALT` keep the legacy default salt instead of rotating encryption material
 - `reset-user-2fa.sh` status/reset SQL generation, explicit confirmation, backup creation, file permissions, and abort behavior
+- `create-upgrade-backup.sh` single-file local upgrade backup creation, internal checksums, runtime secret/TLS capture, and explicit sidecar behavior
+- Offline bundle signature/checksum verification, unsigned-dev override behavior, and unsafe archive rejection
 - Script structure validation
 
 ### Fresh Install E2E (`e2e/fresh-install.test.sh`)
