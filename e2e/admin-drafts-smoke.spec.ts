@@ -38,6 +38,17 @@ const WALLET = {
   lastSyncStatus: null,
 };
 
+const PRICE_RESPONSE = {
+  price: 95000,
+  currency: 'USD',
+  sources: [],
+  median: 95000,
+  average: 95000,
+  timestamp: '2026-03-11T00:00:00.000Z',
+  cached: true,
+  change24h: -1.5,
+};
+
 type MockApiResponse = {
   status?: number;
   body: unknown;
@@ -56,10 +67,10 @@ function parseApiRoute(route: Route) {
 }
 
 const MOCK_API_RESPONSES: Record<string, MockApiResponse> = {
-  'GET /auth/me': mockResponse(ADMIN_USER),
   'POST /auth/refresh': mockResponse({ message: 'Unauthorized' }, 401),
   'POST /auth/logout': mockResponse({ success: true }),
   'GET /wallets': mockResponse([WALLET]),
+  'GET /price': mockResponse(PRICE_RESPONSE),
   'GET /devices': mockResponse([]),
   'GET /bitcoin/status': mockResponse({
     connected: true,
@@ -167,8 +178,26 @@ function getMockApiResponse(method: string, path: string): MockApiResponse | nul
 }
 
 function createApiRouteHandler() {
+  let preferences = { ...ADMIN_USER.preferences };
+
   const apiRouteHandler = async (route: Route) => {
     const { method, path } = parseApiRoute(route);
+    const requestKey = `${method} ${path}`;
+
+    if (requestKey === 'GET /auth/me') {
+      await json(route, { ...ADMIN_USER, preferences });
+      return;
+    }
+
+    if (requestKey === 'PATCH /auth/me/preferences') {
+      preferences = {
+        ...preferences,
+        ...(route.request().postDataJSON() as Partial<typeof ADMIN_USER.preferences>),
+      };
+      await json(route, { ...ADMIN_USER, preferences });
+      return;
+    }
+
     const response = getMockApiResponse(method, path);
 
     if (response) {

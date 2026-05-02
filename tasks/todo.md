@@ -1,16 +1,23 @@
 # Active Task: PR Delivery 2026-05-01
 
-Status: in progress
+Status: in progress; CI follow-up
 
 Goal: commit, push, open the PR for `sidebar-network-selector`, monitor required checks, and merge safely if allowed.
 
 ## Plan
 
-- [ ] Preflight branch, working tree, and existing PR state.
-- [ ] Commit the verified local changes with a focused delivery message.
-- [ ] Push `sidebar-network-selector` and open the GitHub PR.
+- [x] Preflight branch, working tree, and existing PR state.
+- [x] Commit the verified local changes with a focused delivery message.
+- [x] Push `sidebar-network-selector` and open the GitHub PR.
 - [ ] Monitor GitHub checks/review state and fix any actionable failures.
 - [ ] Merge through the repository's allowed path if the PR becomes mergeable, then verify the result.
+
+## Review
+
+- Opened PR #248 for `sidebar-network-selector`: https://github.com/nekoguntai-castle/sanctuary/pull/248.
+- Fixed stale generated architecture output after the first CI run reported drift.
+- Fixed the local reproduction of the Quick Browser Smoke failure by covering the wallet shell's price call and the active-network preference PATCH in `e2e/admin-drafts-smoke.spec.ts`.
+- Local verification passed: `npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts --grep "wallet drafts" --workers=1`; `npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts`.
 
 ---
 
