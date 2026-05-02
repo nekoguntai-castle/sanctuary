@@ -12,8 +12,9 @@ interface StatsTabProps {
   utxos: UTXO[];
   balance: number;
   transactions: Transaction[];
+  network?: string | null;
 }
 
-export const StatsTab: React.FC<StatsTabProps> = ({ utxos, balance, transactions }) => {
-  return <WalletStats utxos={utxos} balance={balance} transactions={transactions} />;
+export const StatsTab: React.FC<StatsTabProps> = ({ utxos, balance, transactions, network }) => {
+  return <WalletStats utxos={utxos} balance={balance} transactions={transactions} network={network} />;
 };

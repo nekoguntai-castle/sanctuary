@@ -171,6 +171,7 @@ function buildStatsTabProps({
     utxos: controller.utxoStats.length > 0 ? controller.utxoStats : controller.utxos,
     balance: wallet.balance,
     transactions: controller.transactions,
+    network: wallet.network || 'mainnet',
   };
 }
 

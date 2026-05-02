@@ -1,4 +1,5 @@
 import apiClient, { ApiError } from "./client";
+import type { TabNetwork } from "../app/networks";
 
 export type ConsoleSetupReason = "feature-disabled" | "provider-setup";
 export type ConsoleProviderSetupReason =
@@ -91,6 +92,7 @@ export type ConsoleScope =
 
 export interface ConsoleClientContext {
   mode: "auto";
+  selectedNetwork?: TabNetwork;
   routeWalletId?: string;
 }
 

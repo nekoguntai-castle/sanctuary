@@ -22,6 +22,7 @@ export interface User {
     contrastLevel?: number;
     patternOpacity?: number;
     flyoutOpacity?: number;
+    selectedNetwork?: 'mainnet' | 'testnet' | 'signet';
     unit?: string;
     fiatCurrency?: string;
     showFiat?: boolean;

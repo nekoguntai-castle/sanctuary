@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as devicesApi from '../../src/api/devices';
 import { Device, WalletType } from '../../types';
+import { useActiveNetwork } from '../../contexts/ActiveNetworkContext';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
 import { useCreateWallet } from '../../hooks/queries/useWallets';
 import { createLogger } from '../../utils/logger';
 import { logError } from '../../utils/errorHandler';
-import type { CreateWalletState, CreateWalletStep, Network, ScriptType } from './types';
+import type { CreateWalletState, CreateWalletStep, ScriptType } from './types';
 import {
   buildCreateWalletPayload,
   canAdvanceCreateWalletStep,
@@ -21,6 +22,7 @@ const log = createLogger('CreateWallet');
 
 export function useCreateWalletController() {
   const navigate = useNavigate();
+  const { selectedNetwork } = useActiveNetwork();
   const { handleError } = useErrorHandler();
   const createWalletMutation = useCreateWallet();
   const [step, setStep] = useState<CreateWalletStep>(1);
@@ -29,7 +31,6 @@ export function useCreateWalletController() {
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set());
   const [walletName, setWalletName] = useState('');
   const [scriptType, setScriptType] = useState<ScriptType>('native_segwit');
-  const [network, setNetwork] = useState<Network>('mainnet');
   const [quorumM, setQuorumM] = useState(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -60,17 +61,17 @@ export function useCreateWalletController() {
     selectedDeviceIds,
     walletName,
     scriptType,
-    network,
+    network: selectedNetwork,
     quorumM,
   };
 
   const compatibleDevices = useMemo(
-    () => getCompatibleDevices(availableDevices, walletType),
-    [availableDevices, walletType]
+    () => getCompatibleDevices(availableDevices, walletType, selectedNetwork),
+    [availableDevices, selectedNetwork, walletType]
   );
   const incompatibleDevices = useMemo(
-    () => getIncompatibleDevices(availableDevices, walletType),
-    [availableDevices, walletType]
+    () => getIncompatibleDevices(availableDevices, walletType, selectedNetwork),
+    [availableDevices, selectedNetwork, walletType]
   );
   const canContinue = canAdvanceCreateWalletStep(step, createWalletState);
 
@@ -79,6 +80,10 @@ export function useCreateWalletController() {
       setSelectedDeviceIds(current => getNextSelectedDeviceIds(current, walletType, deviceId));
     },
     [walletType]
+  );
+  const getDisplayAccountForNetwork = useCallback(
+    (device: Device, type: WalletType) => getDisplayAccount(device, type, selectedNetwork),
+    [selectedNetwork]
   );
 
   const handleBack = useCallback(() => {
@@ -128,15 +133,14 @@ export function useCreateWalletController() {
     setWalletName,
     scriptType,
     setScriptType,
-    network,
-    setNetwork,
+    network: selectedNetwork,
     quorumM,
     setQuorumM,
     compatibleDevices,
     incompatibleDevices,
     canContinue,
     isSubmitting,
-    getDisplayAccount,
+    getDisplayAccount: getDisplayAccountForNetwork,
     toggleDevice,
     handleBack,
     handleNext,

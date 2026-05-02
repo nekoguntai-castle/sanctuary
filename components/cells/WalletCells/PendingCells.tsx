@@ -50,16 +50,21 @@ function PendingBalanceDelta({
 function PendingFiatDelta({
   pending,
   formatFiat,
+  network,
 }: {
   pending: WalletWithPending['pendingData'];
   formatFiat: CurrencyFormatter['formatFiat'];
+  network?: string | null;
 }) {
   if (!pending || pending.net === 0) return null;
+
+  const fiatValue = formatFiat(pending.net, { network });
+  if (!fiatValue) return null;
 
   return (
     <span className={`ml-1 text-[10px] ${getPendingNetClass(pending.net)}`}>
       ({pending.net > 0 ? '+' : ''}
-      {formatFiat(pending.net)})
+      {fiatValue})
     </span>
   );
 }
@@ -73,7 +78,7 @@ export function BalanceCell({
 }) {
   const { format, formatFiat, showFiat } = currency;
   const pending = wallet.pendingData;
-  const fiatBalance = formatFiat(wallet.balance);
+  const fiatBalance = formatFiat(wallet.balance, { network: wallet.network });
 
   return (
     <>
@@ -84,7 +89,7 @@ export function BalanceCell({
       {showFiat && fiatBalance && (
         <div className="text-xs text-primary-500 dark:text-primary-400">
           {fiatBalance}
-          <PendingFiatDelta pending={pending} formatFiat={formatFiat} />
+          <PendingFiatDelta pending={pending} formatFiat={formatFiat} network={wallet.network} />
         </div>
       )}
     </>

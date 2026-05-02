@@ -44,7 +44,6 @@ const ConsoleSessionListQuerySchema = z.object({
 });
 
 router.use(authenticate);
-router.use(consoleRouteLimiter);
 router.use(requireFeature("sanctuaryConsole"));
 
 function actorFromRequest(
@@ -64,6 +63,7 @@ function auditContextFromRequest(req: Parameters<typeof getClientInfo>[0]) {
 
 router.get(
   "/tools",
+  consoleRouteLimiter,
   asyncHandler(async (req, res) => {
     res.json({ tools: listConsoleTools(actorFromRequest(req)) });
   }),
@@ -71,6 +71,7 @@ router.get(
 
 router.get(
   "/sessions",
+  consoleRouteLimiter,
   asyncHandler(async (req, res) => {
     const { limit, offset } = ConsoleSessionListQuerySchema.parse(req.query);
     const sessions = await listConsoleSessions(
@@ -84,6 +85,7 @@ router.get(
 
 router.post(
   "/sessions",
+  consoleRouteLimiter,
   consoleTurnLimiter,
   asyncHandler(async (req, res) => {
     const body = ConsoleCreateSessionBodySchema.safeParse(req.body);
@@ -101,6 +103,7 @@ router.post(
 
 router.get(
   "/sessions/:id/turns",
+  consoleRouteLimiter,
   asyncHandler(async (req, res) => {
     const turns = await listConsoleTurns(actorFromRequest(req), req.params.id);
     res.json({ turns });
@@ -109,6 +112,7 @@ router.get(
 
 router.delete(
   "/sessions/:id",
+  consoleRouteLimiter,
   asyncHandler(async (req, res) => {
     await deleteConsoleSession(actorFromRequest(req), req.params.id);
     res.json({ success: true });
@@ -117,6 +121,7 @@ router.delete(
 
 router.post(
   "/turns",
+  consoleRouteLimiter,
   consoleTurnLimiter,
   asyncHandler(async (req, res) => {
     const body = ConsoleRunTurnBodySchema.safeParse(req.body);
@@ -135,6 +140,7 @@ router.post(
 
 router.get(
   "/prompts",
+  consoleRouteLimiter,
   asyncHandler(async (req, res) => {
     const query = ConsolePromptListQuerySchema.safeParse(req.query);
     if (!query.success) {
@@ -148,6 +154,7 @@ router.get(
 
 router.patch(
   "/prompts/:id",
+  consoleRouteLimiter,
   asyncHandler(async (req, res) => {
     const body = ConsolePromptUpdateBodySchema.safeParse(req.body);
     if (!body.success) {
@@ -165,6 +172,7 @@ router.patch(
 
 router.delete(
   "/prompts/:id",
+  consoleRouteLimiter,
   asyncHandler(async (req, res) => {
     await deletePromptHistory(actorFromRequest(req), req.params.id);
     res.json({ success: true });
@@ -173,6 +181,7 @@ router.delete(
 
 router.delete(
   "/prompts",
+  consoleRouteLimiter,
   asyncHandler(async (req, res) => {
     const deleted = await clearPromptHistory(actorFromRequest(req));
     res.json({ success: true, deleted });
@@ -181,6 +190,7 @@ router.delete(
 
 router.post(
   "/prompts/:id/replay",
+  consoleRouteLimiter,
   consoleTurnLimiter,
   asyncHandler(async (req, res) => {
     const body = ConsolePromptReplayBodySchema.safeParse(req.body);

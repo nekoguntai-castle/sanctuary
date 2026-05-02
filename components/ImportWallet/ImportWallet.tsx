@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useActiveNetwork } from '../../contexts/ActiveNetworkContext';
 import { useImportWallet } from '../../hooks/queries/useWallets';
 import { useImportState } from './hooks/useImportState';
 import { ImportWalletFooter } from './ImportWalletFooter';
@@ -9,8 +10,9 @@ import { useImportWalletActions } from './useImportWalletActions';
 
 export const ImportWallet: React.FC = () => {
   const navigate = useNavigate();
+  const { selectedNetwork } = useActiveNetwork();
   const importWalletMutation = useImportWallet();
-  const state = useImportState();
+  const state = useImportState(selectedNetwork);
   const { handleBack, handleImport, handleNext } = useImportWalletActions({
     state,
     importWalletMutation,

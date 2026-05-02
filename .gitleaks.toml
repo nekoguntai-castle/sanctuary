@@ -55,6 +55,10 @@ paths = [
   # contain random-looking serialized metadata from local runs, but are not
   # source-controlled secrets.
   '''\.vitest-reports/''',
+  # Generated docs output is ignored and can contain copied prose/examples from
+  # source docs. Source-controlled docs remain scanned through tracked-tree
+  # gitleaks.
+  '''website/build/''',
   # Lock files are reproducible from package.json and have no secrets.
   '''package-lock\.json$''',
   '''.*/package-lock\.json$''',

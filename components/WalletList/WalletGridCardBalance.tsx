@@ -1,6 +1,6 @@
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import type { Wallet } from '../../src/api/wallets';
-import type { PendingData, WalletValueFormatter } from './types';
+import type { PendingData, WalletAmountFormatter, WalletFiatFormatter } from './types';
 import { pendingNetClass } from './walletGridCardStyles';
 
 export function WalletBalance({
@@ -12,11 +12,11 @@ export function WalletBalance({
 }: {
   wallet: Wallet;
   pendingData?: PendingData;
-  format: WalletValueFormatter;
-  formatFiat: WalletValueFormatter;
+  format: WalletAmountFormatter;
+  formatFiat: WalletFiatFormatter;
   showFiat: boolean;
 }) {
-  const fiatBalance = showFiat ? formatFiat(wallet.balance) : null;
+  const fiatBalance = showFiat ? formatFiat(wallet.balance, { network: wallet.network }) : null;
 
   return (
     <div className="mt-2 mb-4">
@@ -33,7 +33,11 @@ export function WalletBalance({
         <div className="text-sm text-primary-500 dark:text-primary-400">
           {fiatBalance}
           {pendingData && (
-            <PendingNetAmount pendingData={pendingData} format={formatFiat} className="ml-1 text-xs" />
+            <PendingNetAmount
+              pendingData={pendingData}
+              format={(value) => formatFiat(value, { network: wallet.network })}
+              className="ml-1 text-xs"
+            />
           )}
         </div>
       )}
@@ -60,7 +64,7 @@ function PendingNetAmount({
   className,
 }: {
   pendingData: PendingData;
-  format: WalletValueFormatter;
+  format: (value: number) => string | null;
   className: string;
 }) {
   if (pendingData.net === 0) return null;

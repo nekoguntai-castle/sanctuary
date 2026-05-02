@@ -53,6 +53,14 @@ vi.mock('../../hooks/queries/useWallets', () => ({
   useImportWallet: vi.fn(),
 }));
 
+vi.mock('../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: 'mainnet',
+    isMainnet: true,
+    setSelectedNetwork: vi.fn(),
+  }),
+}));
+
 // Mock QR Scanner
 vi.mock('@yudiel/react-qr-scanner', () => ({
   Scanner: ({ onScan }: any) => (

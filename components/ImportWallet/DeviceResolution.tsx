@@ -1,5 +1,6 @@
 import React from 'react';
 import { ImportValidationResult, DeviceResolution as DeviceResolutionType } from '../../src/api/wallets';
+import { networkConfigs, type TabNetwork } from '../../src/app/networks';
 import { SingleSigIcon, MultiSigIcon, getDeviceIcon } from '../ui/CustomIcons';
 import {
   CheckCircle,
@@ -36,8 +37,7 @@ interface DeviceResolutionProps {
   validationResult: ImportValidationResult;
   walletName: string;
   setWalletName: (name: string) => void;
-  network: 'mainnet' | 'testnet' | 'regtest';
-  setNetwork: (network: 'mainnet' | 'testnet' | 'regtest') => void;
+  network: TabNetwork;
 }
 
 export const DeviceResolutionStep: React.FC<DeviceResolutionProps> = ({
@@ -45,7 +45,6 @@ export const DeviceResolutionStep: React.FC<DeviceResolutionProps> = ({
   walletName,
   setWalletName,
   network,
-  setNetwork,
 }) => {
   const devicesToCreate = validationResult.devices.filter(d => d.willCreate);
   const devicesToReuse = validationResult.devices.filter(d => !d.willCreate);
@@ -72,29 +71,20 @@ export const DeviceResolutionStep: React.FC<DeviceResolutionProps> = ({
           />
         </div>
 
-        {/* Network Selection */}
+        {/* Network */}
         <div>
           <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-2">
             Network
           </label>
-          <div className="flex gap-2">
-            {(['mainnet', 'testnet', 'regtest'] as const).map(net => (
-              <button
-                key={net}
-                onClick={() => setNetwork(net)}
-                className={`flex-1 py-2 px-4 rounded-lg border text-sm font-medium transition-colors ${
-                  network === net
-                    ? net === 'mainnet'
-                      ? 'bg-mainnet-100/50 dark:bg-mainnet-900/20 text-mainnet-700 dark:text-mainnet-300 border border-mainnet-200 dark:border-mainnet-700'
-                      : net === 'testnet'
-                      ? 'bg-testnet-100/50 dark:bg-testnet-900/20 text-testnet-700 dark:text-testnet-300 border border-testnet-200 dark:border-testnet-700'
-                      : 'bg-signet-100/50 dark:bg-signet-900/20 text-signet-700 dark:text-signet-300 border border-signet-200 dark:border-signet-700'
-                    : 'border-sanctuary-200 dark:border-sanctuary-800 text-sanctuary-600 dark:text-sanctuary-400 hover:border-sanctuary-400'
-                }`}
-              >
-                {net.charAt(0).toUpperCase() + net.slice(1)}
-              </button>
-            ))}
+          <div className={`inline-flex items-center gap-2 py-2 px-4 rounded-lg border text-sm font-medium ${
+            network === 'mainnet'
+              ? 'bg-mainnet-100/50 dark:bg-mainnet-900/20 text-mainnet-700 dark:text-mainnet-300 border-mainnet-200 dark:border-mainnet-700'
+              : network === 'testnet'
+              ? 'bg-testnet-100/50 dark:bg-testnet-900/20 text-testnet-700 dark:text-testnet-300 border-testnet-200 dark:border-testnet-700'
+              : 'bg-signet-100/50 dark:bg-signet-900/20 text-signet-700 dark:text-signet-300 border-signet-200 dark:border-signet-700'
+          }`}>
+            <span className={`h-2 w-2 rounded-full ${networkConfigs[network].dotColor}`} />
+            {networkConfigs[network].label}
           </div>
           <p className="text-xs text-sanctuary-500 mt-1">
             Detected: {validationResult.network}

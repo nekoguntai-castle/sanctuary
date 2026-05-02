@@ -1,9 +1,16 @@
-import { useState } from 'react';
-import { ChevronDown, Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
 import type { Device, DeviceAccount } from '../../../types';
+import { useActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 import { AddAccountFlow } from '../accounts/AddAccountFlow';
 import { getAccountTypeInfo } from '../accountTypes';
-import { splitTestnetSignetAccounts } from '../../../utils/derivationPathGroups';
+import {
+  groupAccountsByNetwork,
+  groupAccountsByPurpose,
+  networkGroupMatchesNetwork,
+  type DerivationNetworkGroup,
+  type DeviceAccountPurpose,
+} from '../../../utils/derivationPathGroups';
 
 type DeviceAccountsSectionProps = {
   deviceId: string;
@@ -55,56 +62,147 @@ function DeviceAccountsHeader({ accountCount }: { accountCount: number }) {
 }
 
 function DeviceAccountsList({ device }: { device: Device }) {
+  const { selectedNetwork } = useActiveNetwork();
+
   if (!device.accounts || device.accounts.length === 0) {
     return <LegacyDeviceAccountCard device={device} />;
   }
 
-  const { primaryAccounts, testnetSignetAccounts } = splitTestnetSignetAccounts(device.accounts);
+  const accountsByNetwork = groupAccountsByNetwork(device.accounts);
+  const initialNetworkTab = networkGroupMatchesNetwork('testnet-signet', selectedNetwork) &&
+    accountsByNetwork['testnet-signet'].length > 0
+      ? 'testnet-signet'
+      : 'mainnet';
+
+  return (
+    <DeviceAccountTabs
+      accountsByNetwork={accountsByNetwork}
+      initialNetworkTab={initialNetworkTab}
+    />
+  );
+}
+
+function DeviceAccountTabs({
+  accountsByNetwork,
+  initialNetworkTab,
+}: {
+  accountsByNetwork: Record<DerivationNetworkGroup, DeviceAccount[]>;
+  initialNetworkTab: DerivationNetworkGroup;
+}) {
+  const [networkTab, setNetworkTab] = useState<DerivationNetworkGroup>(initialNetworkTab);
+  const [purposeTab, setPurposeTab] = useState<DeviceAccountPurpose>('single_sig');
+  const availableNetworkTabs = (['mainnet', 'testnet-signet'] as const).filter(
+    tab => accountsByNetwork[tab].length > 0
+  );
+  /* v8 ignore next -- defensive guard; parent renders legacy card before empty account groups reach tabs. */
+  if (availableNetworkTabs.length === 0) return null;
+
+  const activeNetworkTab: DerivationNetworkGroup = accountsByNetwork[networkTab].length > 0
+    ? networkTab
+    : availableNetworkTabs[0];
+  const accountsByPurpose = groupAccountsByPurpose(accountsByNetwork[activeNetworkTab]);
+  const activePurposeTab: DeviceAccountPurpose = accountsByPurpose[purposeTab].length > 0
+    ? purposeTab
+    : accountsByPurpose.multisig.length > 0
+    ? 'multisig'
+    : 'single_sig';
+  const activeAccounts = accountsByPurpose[activePurposeTab];
+
+  useEffect(() => {
+    setNetworkTab(initialNetworkTab);
+  }, [initialNetworkTab]);
 
   return (
     <div className="space-y-3">
-      {primaryAccounts.map(account => (
-        <DeviceAccountCard key={account.id} account={account} />
-      ))}
-      {testnetSignetAccounts.length > 0 && (
-        <TestnetSignetAccountsDisclosure accounts={testnetSignetAccounts} />
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {availableNetworkTabs.map(tab => (
+          <NetworkAccountTabButton
+            key={tab}
+            tab={tab}
+            active={tab === activeNetworkTab}
+            count={accountsByNetwork[tab].length}
+            onClick={() => setNetworkTab(tab)}
+          />
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <PurposeAccountTabButton
+          purpose="single_sig"
+          active={activePurposeTab === 'single_sig'}
+          count={accountsByPurpose.single_sig.length}
+          onClick={() => setPurposeTab('single_sig')}
+        />
+        <PurposeAccountTabButton
+          purpose="multisig"
+          active={activePurposeTab === 'multisig'}
+          count={accountsByPurpose.multisig.length}
+          onClick={() => setPurposeTab('multisig')}
+        />
+      </div>
+      <div className="space-y-3">
+        {activeAccounts.map(account => (
+          <DeviceAccountCard key={account.id} account={account} />
+        ))}
+      </div>
     </div>
   );
 }
 
-function TestnetSignetAccountsDisclosure({ accounts }: { accounts: DeviceAccount[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const accountLabel = accounts.length === 1 ? 'path' : 'paths';
+function NetworkAccountTabButton({
+  tab,
+  active,
+  count,
+  onClick,
+}: {
+  tab: DerivationNetworkGroup;
+  active: boolean;
+  count: number;
+  onClick: () => void;
+}) {
+  const isMainnet = tab === 'mainnet';
+  const label = isMainnet ? 'Mainnet' : 'Testnet / Signet';
+  const activeClass = isMainnet
+    ? 'bg-mainnet-100/50 dark:bg-mainnet-900/20 text-mainnet-700 dark:text-mainnet-300 border-mainnet-200 dark:border-mainnet-700'
+    : 'bg-testnet-100/50 dark:bg-testnet-900/20 text-testnet-700 dark:text-testnet-300 border-testnet-200 dark:border-testnet-700';
 
   return (
-    <div className="rounded-lg border border-testnet-200 dark:border-testnet-800 bg-testnet-50/70 dark:bg-testnet-900/20">
-      <button
-        type="button"
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        <div>
-          <p className="text-sm font-medium text-testnet-800 dark:text-testnet-200">
-            Testnet / signet derivation paths
-          </p>
-          <p className="text-xs text-testnet-700 dark:text-testnet-300">
-            {accounts.length} {accountLabel} hidden
-          </p>
-        </div>
-        <ChevronDown
-          className={`w-4 h-4 text-testnet-700 dark:text-testnet-300 transition-transform ${expanded ? 'rotate-180' : ''}`}
-        />
-      </button>
-      {expanded && (
-        <div className="space-y-3 px-3 pb-3">
-          {accounts.map(account => (
-            <DeviceAccountCard key={account.id} account={account} />
-          ))}
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+        active
+          ? activeClass
+          : 'border-sanctuary-200 dark:border-sanctuary-800 text-sanctuary-600 dark:text-sanctuary-400 hover:border-sanctuary-400'
+      }`}
+      onClick={onClick}
+    >
+      {label} <span className="text-[10px] opacity-70">({count})</span>
+    </button>
+  );
+}
+
+function PurposeAccountTabButton({
+  purpose,
+  active,
+  count,
+  onClick,
+}: {
+  purpose: DeviceAccountPurpose;
+  active: boolean;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+        active
+          ? 'surface-secondary text-sanctuary-900 dark:text-sanctuary-100 border-sanctuary-300 dark:border-sanctuary-700'
+          : 'border-sanctuary-200 dark:border-sanctuary-800 text-sanctuary-600 dark:text-sanctuary-400 hover:border-sanctuary-400'
+      }`}
+      onClick={onClick}
+    >
+      {purpose === 'multisig' ? 'Multisig' : 'Single-sig'} <span className="text-[10px] opacity-70">({count})</span>
+    </button>
   );
 }
 

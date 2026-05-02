@@ -128,7 +128,8 @@ it("replays, saves, expires, and deletes prompt history rows", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Replay prompt" }));
   await waitFor(() => {
     expect(consoleApi.replayPromptHistory).toHaveBeenCalledWith("prompt-1", {
-      clientContext: { mode: "auto" },
+      clientContext: { mode: "auto", selectedNetwork: "mainnet" },
+      sessionId: undefined,
     });
   });
 

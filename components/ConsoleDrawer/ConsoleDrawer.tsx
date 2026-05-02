@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { networkConfigs } from "../../src/app/networks";
 import {
   extractConsoleTransactionFilter,
   extractConsoleTransactionQuery,
@@ -119,6 +120,7 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
   isOpen,
   onClose,
   wallets,
+  selectedNetwork,
   isAdmin = false,
 }) => {
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -175,6 +177,7 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
   const controller = useConsoleDrawerController({
     isOpen,
     wallets,
+    selectedNetwork,
     defaultWalletId,
     onTurnComplete: handleTurnComplete,
   });
@@ -243,6 +246,13 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
         />
 
         <div className="flex items-center gap-2 border-b border-sanctuary-200 px-4 py-3 dark:border-sanctuary-800">
+          <span
+            className="inline-flex items-center gap-1.5 rounded-md border border-sanctuary-200 px-2 py-1 text-xs font-medium text-sanctuary-600 dark:border-sanctuary-700 dark:text-sanctuary-300"
+            title={`Console network: ${networkConfigs[selectedNetwork].label}`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${networkConfigs[selectedNetwork].dotColor}`} />
+            {networkConfigs[selectedNetwork].label}
+          </span>
           <ConsoleScopeSelector
             wallets={wallets}
             selectedWalletId={controller.selectedWalletId}

@@ -24,6 +24,8 @@ describe('importHelpers', () => {
     expect(getDerivationPath('nested_segwit', 1)).toBe("m/49'/0'/1'");
     expect(getDerivationPath('taproot', 2)).toBe("m/86'/0'/2'");
     expect(getDerivationPath('legacy', 3)).toBe("m/44'/0'/3'");
+    expect(getDerivationPath('native_segwit', 0, 'testnet')).toBe("m/84'/1'/0'");
+    expect(getDerivationPath('taproot', 4, 'signet')).toBe("m/86'/1'/4'");
   });
 
   it('builds descriptors for all script types and path normalization', () => {
@@ -121,6 +123,7 @@ describe('importHelpers', () => {
       setValidationResult,
       setValidationError,
       setWalletName,
+      undefined,
       'wpkh([override]xpub/0/*)',
     );
 
@@ -200,6 +203,33 @@ describe('importHelpers', () => {
     );
     expect(withoutError).toBe(false);
     expect(setValidationError).toHaveBeenLastCalledWith('Invalid import data');
+  });
+
+  it('rejects imports whose coin type does not match the active sidebar network', async () => {
+    vi.mocked(walletsApi.validateImport).mockResolvedValueOnce({
+      valid: true,
+      network: 'mainnet',
+    } as never);
+
+    const setValidationResult = vi.fn();
+    const setValidationError = vi.fn();
+    const setWalletName = vi.fn();
+
+    const ok = await validateImportData(
+      'descriptor',
+      'wpkh([abcd]xpub/0/*)',
+      '',
+      setValidationResult,
+      setValidationError,
+      setWalletName,
+      'testnet',
+    );
+
+    expect(ok).toBe(false);
+    expect(setValidationResult).toHaveBeenCalledWith(null);
+    expect(setValidationError).toHaveBeenCalledWith(
+      'Imported wallet appears to be mainnet, but the sidebar network is Testnet. Switch networks in the sidebar and validate again.'
+    );
   });
 
   it('maps ApiError and unknown failures to user-facing validation errors', async () => {

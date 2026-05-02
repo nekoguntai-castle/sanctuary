@@ -16,8 +16,8 @@ export async function renderDeviceListRouteRendersTableShellAndPrimaryActions({ 
 
   await page.goto('/#/devices');
 
-  await expect(main.getByRole('heading', { name: 'Hardware Devices' })).toBeVisible();
-  await expect(main.getByText('Manage your signers and keys')).toBeVisible();
+  await expect(main.getByRole('heading', { name: 'Mainnet Hardware Devices' })).toBeVisible();
+  await expect(main.getByText('Manage your mainnet signers and keys')).toBeVisible();
   await expect(main.getByRole('button', { name: 'Connect New Device' })).toBeVisible();
   await expect(main.getByRole('columnheader', { name: 'Label' })).toBeVisible();
   await expect(main.getByRole('columnheader', { name: 'Fingerprint' })).toBeVisible();
@@ -74,7 +74,10 @@ export async function renderCreateWalletRouteConfigurationShowsNetworkWarningFor
 
   await expect(main.getByRole('heading', { name: 'Configuration' })).toBeVisible();
   await expect(main.getByText('Script Type')).toBeVisible();
-  await main.getByRole('button', { name: 'Testnet' }).click();
+  await page
+    .getByRole('navigation', { name: 'Network tabs' })
+    .getByRole('button', { name: /Testnet/i })
+    .click();
   await expect(main.getByText('Testnet coins have no real-world value.')).toBeVisible();
 
   expect(unhandledRequests).toEqual([]);

@@ -1,18 +1,17 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { WebSocketTransactionData, WebSocketBalanceData, WebSocketConfirmationData, WebSocketSyncData } from '../../../types';
-import { TabNetwork } from '../../NetworkTabs';
 import * as adminApi from '../../../src/api/admin';
 import { useWebSocket, useWebSocketEvent } from '../../../hooks/websocket';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import { useNotificationSound } from '../../../hooks/useNotificationSound';
+import { useActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 import { createLogger } from '../../../utils/logger';
 import { useWallets, useRecentTransactions, useInvalidateAllWallets, useUpdateWalletSyncStatus, useBalanceHistory, usePendingTransactions } from '../../../hooks/queries/useWallets';
 import { useFeeEstimates, useBitcoinStatus, useMempoolData } from '../../../hooks/queries/useBitcoin';
 import { useCurrency } from '../../../contexts/CurrencyContext';
 import { useDelayedRender } from '../../../hooks/useDelayedRender';
 import {
-  applyNetworkSearchParam,
   buildBalanceNotification,
   buildBlockNotification,
   buildConfirmationNotification,
@@ -25,7 +24,6 @@ import {
   getSyncWalletId,
   mapApiWalletToDashboardWallet,
   mapRecentTransaction,
-  resolveInitialNetwork,
   toDashboardFeeEstimate,
 } from './dashboardDataModel';
 
@@ -40,21 +38,9 @@ export type Timeframe = '1D' | '1W' | '1M' | '1Y' | 'ALL';
 
 export function useDashboardData() {
   const { btcPrice, priceChange24h, currencySymbol, lastPriceUpdate } = useCurrency();
+  const { selectedNetwork } = useActiveNetwork();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
   const [timeframe, setTimeframe] = useState<Timeframe>('1W');
-
-  // Network tab state - persist in URL
-  const networkFromUrl = searchParams.get('network');
-  const [selectedNetwork, setSelectedNetwork] = useState<TabNetwork>(() => (
-    resolveInitialNetwork(networkFromUrl)
-  ));
-
-  // Update URL when network changes
-  const handleNetworkChange = (network: TabNetwork) => {
-    setSelectedNetwork(network);
-    setSearchParams(applyNetworkSearchParam(searchParams, network), { replace: true });
-  };
 
   // Version check state
   const [versionInfo, setVersionInfo] = useState<adminApi.VersionInfo | null>(null);
@@ -141,20 +127,20 @@ export function useDashboardData() {
     refetchMempool();
   };
 
-  // Subscribe to all wallet events (single batch message for efficiency)
+  // Subscribe to active-network wallet events (single batch message for efficiency)
   useEffect(() => {
-    if (wallets.length > 0) {
-      const walletIds = wallets.map(wallet => wallet.id);
+    if (filteredWallets.length > 0) {
+      const walletIds = filteredWallets.map(wallet => wallet.id);
       subscribeWallets(walletIds);
     }
     // Cleanup: unsubscribe from all wallets when effect re-runs or component unmounts
     return () => {
-      if (wallets.length > 0) {
-        const walletIds = wallets.map(wallet => wallet.id);
+      if (filteredWallets.length > 0) {
+        const walletIds = filteredWallets.map(wallet => wallet.id);
         unsubscribeWallets(walletIds);
       }
     };
-  }, [wallets, subscribeWallets, unsubscribeWallets]);
+  }, [filteredWallets, subscribeWallets, unsubscribeWallets]);
 
   // Refetch wallet data when window becomes visible (handles missed WS events)
   useEffect(() => {
@@ -282,7 +268,6 @@ export function useDashboardData() {
     // Navigation
     navigate,
     selectedNetwork,
-    handleNetworkChange,
 
     // Version
     versionInfo,

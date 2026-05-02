@@ -47,6 +47,17 @@ vi.mock("../contexts/UserContext", () => ({
   useUser: (...args: unknown[]) => mockUseUser(...args),
 }));
 
+vi.mock("../contexts/ActiveNetworkContext", () => ({
+  ActiveNetworkProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  useActiveNetwork: () => ({
+    selectedNetwork: "mainnet",
+    isMainnet: true,
+    setSelectedNetwork: vi.fn(),
+  }),
+}));
+
 vi.mock("../contexts/NotificationContext", () => ({
   NotificationProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>

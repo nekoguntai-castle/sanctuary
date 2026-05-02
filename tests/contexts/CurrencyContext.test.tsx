@@ -443,6 +443,40 @@ describe("CurrencyContext", () => {
       });
     });
 
+    it("suppresses fiat values for test networks even when fiat display is enabled", async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const TestNetworkFiat = () => {
+        const currency = useCurrency();
+        return (
+          <div>
+            <span data-testid="mainnet-fiat">
+              {currency.formatFiat(100000, { network: "mainnet" }) ?? "null"}
+            </span>
+            <span data-testid="testnet-fiat">
+              {currency.formatFiat(100000, { network: "testnet" }) ?? "null"}
+            </span>
+            <span data-testid="signet-value">
+              {currency.getFiatValue(100000, { network: "signet" }) ?? "null"}
+            </span>
+            <button data-testid="toggle-fiat" onClick={currency.toggleShowFiat}>
+              Toggle Fiat
+            </button>
+          </div>
+        );
+      };
+
+      renderWithProviders(<TestNetworkFiat />);
+
+      await waitFor(() => {
+        expect(priceApi.getPrice).toHaveBeenCalled();
+      });
+      await user.click(screen.getByTestId("toggle-fiat"));
+
+      expect(screen.getByTestId("mainnet-fiat")).toHaveTextContent("$50.00");
+      expect(screen.getByTestId("testnet-fiat")).toHaveTextContent("null");
+      expect(screen.getByTestId("signet-value")).toHaveTextContent("null");
+    });
+
     it("shows placeholder when price unavailable", async () => {
       vi.mocked(priceApi.getPrice).mockRejectedValue(new Error("No price"));
 

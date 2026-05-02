@@ -40,6 +40,7 @@ export const UTXORow: React.FC<UTXORowProps> = ({
               showPrivacy={showPrivacy}
               onShowPrivacyDetail={onShowPrivacyDetail}
               format={format}
+              network={network}
             />
             <UtxoAddressLink
               address={utxo.address}

@@ -2,6 +2,45 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Remeasure Sliding Indicators After Layout Settles
+
+**Rule:** UI indicators that depend on `offsetLeft` or `offsetWidth` must remeasure after first paint and after container, tab, or font sizing changes.
+
+**Why:** The sidebar network selector could load with Testnet active while the sliding selected background was measured before the tab strip finished its final layout. Switching networks later forced a remeasure and made it look correct.
+
+**How to apply:**
+
+- Measure once in a layout effect, then schedule a post-paint remeasure.
+- Use `ResizeObserver` on the tab strip and active tab when indicator dimensions depend on rendered text width.
+- Re-run measurement after `document.fonts.ready` when text sizing affects indicator width.
+- Add focused tests that simulate final layout arriving after mount instead of only asserting click-triggered updates.
+
+## Keep Repo Work In The Project Checkout When Temp Space Is Constrained
+
+**Rule:** Do not create or continue feature work in `/tmp` when the user reports temp-space pressure or when a normal project checkout is available.
+
+**Why:** This session initially used a `/tmp` worktree, then hit confusing command and storage friction. The user corrected the workflow: clean up stale temporary worktrees and continue from the main local checkout.
+
+**How to apply:**
+
+- Prefer `/home/nekoguntai/sanctuary` or another durable repo checkout for branch work.
+- Use `/tmp` only for short-lived generated artifacts that are safe to delete and clearly ignored.
+- If stale worktrees/branches exist, inspect them, preserve unrelated local files, and clean only the stale items the user approved.
+- After consolidating work, verify `git worktree list`, local branches, and `git status --short --branch` before continuing implementation.
+
+## Match Commands To The Current Approval Policy
+
+**Rule:** Check the session's sandbox and approval policy before running commands, and do not request escalation when the policy is `never`.
+
+**Why:** The user had to ask why ordinary commands kept requesting approval. The active environment later showed `danger-full-access` with approval policy `never`, so escalation flags would be rejected and would add noise.
+
+**How to apply:**
+
+- Read the active environment/permissions instructions at the start of resumed work.
+- Run normal terminal commands directly when filesystem access is unrestricted.
+- Avoid `sandbox_permissions` unless the current policy explicitly allows it and the command truly needs it.
+- If command behavior seems abnormal, explain the current policy and adjust the workflow before retrying the same failing pattern.
+
 ## Audit Coverage Before Broad Feature Commits
 
 **Rule:** Before committing a broad feature series, map each new behavior area to focused tests and add direct helper tests for any new branchy utility modules that are only indirectly covered.
@@ -1003,3 +1042,15 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Include selected network values in React Query keys and status API calls.
 - Make backend status endpoints validate the requested network and resolve per-network node configuration.
 - Test configured non-mainnet dashboard states and navigation targets alongside disabled/error states.
+
+## Security Assessment Must Include Remote Alert Sources
+
+**Rule:** Before calling a security task list complete, check local scans and the repository's open GitHub security alerts: CodeQL/code scanning, Dependabot, and secret scanning where available.
+
+**Why:** A local npm audit/security assessment missed the user's three GitHub findings: two CodeQL alerts and one Dependabot vulnerability.
+
+**How to apply:**
+
+- Query `gh api repos/<owner>/<repo>/code-scanning/alerts?state=open` and `gh api repos/<owner>/<repo>/dependabot/alerts?state=open`.
+- Record alert numbers, severities, locations, and links in the security assessment.
+- Treat local tool output and GitHub's alert state as complementary; neither replaces the other.

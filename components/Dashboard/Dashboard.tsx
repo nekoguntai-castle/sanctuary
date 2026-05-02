@@ -1,6 +1,5 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { NetworkTabs } from '../NetworkTabs';
 import { TrendingUp, TrendingDown, Zap, Bitcoin, Download, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useDashboardData } from './hooks/useDashboardData';
@@ -20,7 +19,6 @@ export const Dashboard: React.FC = () => {
     lastPriceUpdate,
     priceChangePositive,
     selectedNetwork,
-    handleNetworkChange,
     navigate,
     versionInfo,
     updateDismissed,
@@ -33,7 +31,6 @@ export const Dashboard: React.FC = () => {
     wsState,
     wallets,
     filteredWallets,
-    walletCounts,
     recentTx,
     pendingTxs,
     fees,
@@ -99,15 +96,6 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Network Tabs */}
-      <div className="flex items-center justify-between">
-        <NetworkTabs
-          selectedNetwork={selectedNetwork}
-          onNetworkChange={handleNetworkChange}
-          walletCounts={walletCounts}
-        />
-      </div>
 
       {/* Block Visualizer Section */}
       <div className="animate-fade-in-up-4">

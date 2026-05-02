@@ -42,6 +42,8 @@ export interface FiatDisplayProps {
   prefix?: string;
   /** Whether to show as negative amount */
   negative?: boolean;
+  /** Wallet/network context used to suppress non-mainnet fiat */
+  network?: string | null;
 }
 
 /**
@@ -90,10 +92,11 @@ export const FiatDisplay: React.FC<FiatDisplayProps> = ({
   className = '',
   prefix,
   negative = false,
+  network,
 }) => {
   const { formatFiat } = useCurrency();
 
-  const fiatValue = formatFiat(Math.abs(sats));
+  const fiatValue = formatFiat(Math.abs(sats), { network });
 
   // Return null if fiat display is disabled or unavailable
   if (!fiatValue) {

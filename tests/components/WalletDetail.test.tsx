@@ -35,6 +35,14 @@ vi.mock('../../contexts/UserContext', () => ({
   useUser: vi.fn(),
 }));
 
+vi.mock('../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: 'mainnet',
+    isMainnet: true,
+    setSelectedNetwork: vi.fn(),
+  }),
+}));
+
 vi.mock('../../contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
 }));

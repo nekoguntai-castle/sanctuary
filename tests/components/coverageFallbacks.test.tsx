@@ -94,7 +94,6 @@ describe('coverage fallback branches', () => {
         walletName=""
         setWalletName={vi.fn()}
         network="mainnet"
-        setNetwork={vi.fn()}
         scriptType="native_segwit"
         setScriptType={vi.fn()}
         quorumM={2}

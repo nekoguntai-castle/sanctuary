@@ -73,6 +73,7 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
           <Amount
             sats={wallet.balance}
             size="lg"
+            network={wallet.network}
             className="flex-shrink-0 font-semibold text-sanctuary-900 dark:text-sanctuary-50"
           />
         </div>

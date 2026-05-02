@@ -341,11 +341,14 @@ describe('DeviceDetail page', () => {
     expect(screen.queryByLabelText('Edit label')).not.toBeInTheDocument();
     expect(screen.queryByText('Add Derivation Path')).not.toBeInTheDocument();
 
-    expect(screen.getByText('Multisig Native SegWit (BIP-48)')).toBeInTheDocument();
     expect(screen.getByText('Taproot (BIP-86)')).toBeInTheDocument();
+    expect(screen.getByText("m/86'/0'/0'")).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Multisig/i }));
+
+    expect(screen.getByText('Multisig Native SegWit (BIP-48)')).toBeInTheDocument();
     expect(screen.getByText('Recommended')).toBeInTheDocument();
     expect(screen.getByText("m/48'/0'/0'/2'")).toBeInTheDocument();
-    expect(screen.getByText("m/86'/0'/0'")).toBeInTheDocument();
 
     await user.click(screen.getByText('Main Wallet'));
     expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-1');

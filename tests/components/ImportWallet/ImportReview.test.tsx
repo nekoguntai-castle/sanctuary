@@ -124,7 +124,7 @@ describe('ImportReview', () => {
       <ImportReview
         validationResult={validationResult}
         walletName="No Device Changes"
-        network="regtest"
+        network="signet"
         importError={null}
       />,
     );

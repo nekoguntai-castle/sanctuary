@@ -1,3 +1,361 @@
+# Active Task: PR Delivery 2026-05-01
+
+Status: in progress; CI follow-up
+
+Goal: commit, push, open the PR for `sidebar-network-selector`, monitor required checks, and merge safely if allowed.
+
+## Plan
+
+- [x] Preflight branch, working tree, and existing PR state.
+- [x] Commit the verified local changes with a focused delivery message.
+- [x] Push `sidebar-network-selector` and open the GitHub PR.
+- [ ] Monitor GitHub checks/review state and fix any actionable failures.
+- [ ] Merge through the repository's allowed path if the PR becomes mergeable, then verify the result.
+
+## Review
+
+- Opened PR #248 for `sidebar-network-selector`: https://github.com/nekoguntai-castle/sanctuary/pull/248.
+- Fixed stale generated architecture output after the first CI run reported drift.
+- Fixed the local reproduction of the Quick Browser Smoke failure by covering the wallet shell's price call and the active-network preference PATCH in `e2e/admin-drafts-smoke.spec.ts`.
+- Fixed the Quick Render Regression failure by updating the device-list render contract for the network-aware header copy.
+- Local verification passed: `npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts --grep "wallet drafts" --workers=1`; `npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts`; `npm run build`; `CI=true NODE_ENV=test VITE_API_URL=http://localhost:3001 npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts --grep "device list route" --workers=1`; `CI=true NODE_ENV=test VITE_API_URL=http://localhost:3001 npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts`.
+
+---
+
+# Active Task: Grade Findings Follow-Up 2026-05-01
+
+Status: complete; verified
+
+Goal: fix the actionable grade findings except physical hardware proofs, with the repo coverage gate restored to 100% for PR/merge readiness.
+
+## Plan
+
+- [x] Add focused coverage for the frontend and backend gaps reported by the grade run.
+- [x] Exclude ignored generated docs build output from configured raw all-files gitleaks scans without hiding source-controlled secrets.
+- [x] Run focused tests, then the full coverage gate and secret scan.
+- [x] Re-run final hygiene checks and document the review.
+
+## Review
+
+- Added focused behavioral coverage across the sidebar network selector follow-up areas: network tabs, active-network fallbacks, dashboard/wallet/import helpers, wallet/device derivation grouping, pending wallet cells, device account tabs, and backend Console selected-network auto context.
+- Simplified unreachable production branches where the current component contracts already guard impossible states; remaining `v8 ignore` comments are narrow and document parent/ref lifecycle guards.
+- Added a `.gitleaks.toml` path allowlist for ignored generated `website/build/` output so raw all-files scans no longer report generated docs artifacts while tracked source remains scanned.
+- The physical hardware proof item remains intentionally deferred.
+- Verification passed: focused frontend coverage suites; `npm --prefix server run test:run -- tests/unit/assistant/consoleService.test.ts`; `npm run coverage`; `npm run typecheck`; `npm run typecheck:tests`; `npm run lint`; `npm run quality:lizard`; tracked-tree gitleaks; raw all-files gitleaks; `git diff --check`.
+
+---
+
+# Active Task: Grade Audit 2026-05-01
+
+Status: complete; verified
+
+Goal: run the full `$grade` audit for the current repository and update `docs/plans/codebase-health-assessment.md`.
+
+## Plan
+
+- [x] Capture repo provenance, prior trend data, and current working-tree state.
+- [x] Run the bundled full-mode mechanical signal collector.
+- [x] Fix the wallet-count scoping regression exposed by the initial full test run.
+- [x] Inspect targeted source and test files for judged ISO/IEC 25010 criteria.
+- [x] Write the quality report and append grade history.
+- [x] Review the diff and document verification.
+
+## Review
+
+- Updated `docs/plans/codebase-health-assessment.md` with a full-mode grade: 97/100, A, high confidence.
+- The first full collector run exposed a `DeviceList.branches` regression from the uncommitted network-scoped device fix; aggregate-only `walletCount` values were being collapsed to 0 when no wallet-link details were available.
+- Fixed `scopeDeviceWalletsToNetwork` to preserve aggregate-only wallet counts and added focused utility coverage.
+- Post-fix verification passed for the focused failing suite and the full `grade.sh` test/lint/typecheck signals.
+- Coverage is measured at 99.85% lines but the repo's 100% coverage gate fails; documented as a top risk rather than a hard-fail grade gate.
+- Configured latest-commit and tracked-tree gitleaks scans pass; raw all-files gitleaks reports an ignored generated `website/build` artifact.
+- Verification passed: `npm run test:run -- tests/components/DeviceList/DeviceList.branches.test.tsx tests/utils/networkScopedDevices.test.ts`; `bash /home/nekoguntai/.codex/skills/grade/grade.sh`; `npm run quality:lizard`; `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .`; latest-commit gitleaks; tracked-tree gitleaks.
+
+---
+
+# Active Task: Device Network Visibility Derivation Paths 2026-05-01
+
+Status: complete; verified
+
+Goal: make Devices and sidebar device visibility follow usable derivation paths for the selected network instead of only attached wallet networks.
+
+## Plan
+
+- [x] Update `filterDevicesByNetwork` to include devices with accounts or legacy derivation paths compatible with the selected network.
+- [x] Keep wallet links/counts scoped to the selected network for display.
+- [x] Add focused utility coverage for a mainnet-capable device with only non-mainnet wallet links.
+- [x] Run focused tests, type/quality checks as needed, and document results.
+
+## Review
+
+- Device network filtering now checks usable derivation paths from imported device accounts plus the legacy device derivation path.
+- Devices remain visible for a selected network when they can create a wallet for that network, even if their existing linked wallets are only on another network.
+- Returned wallet links and `walletCount` are still scoped to the selected network so list/sidebar counts remain network-specific.
+- Devices with no derivation path data remain discoverable, and unparseable paths retain the existing audit-visible behavior from `derivationPathMatchesNetwork`.
+- Verification passed: `npm run test:run -- tests/utils/networkScopedDevices.test.ts tests/components/DeviceList.test.tsx tests/components/Layout.test.tsx`; `npm run typecheck`; `npm run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+
+---
+
+# Active Task: GitHub Security And Quality Findings 2026-05-01
+
+Status: complete; verified
+
+Goal: add the three open GitHub findings to the local task/security docs and fix them.
+
+## Findings
+
+- Code scanning #451: CodeQL `js/missing-rate-limiting` on `server/src/api/console.ts`; the Console router has a coarse limiter, but CodeQL needs route-local middleware on the flagged handlers.
+- Code scanning #420: CodeQL `js/indirect-command-line-injection` on `scripts/architecture/detect-drift.mjs`; the drift detector shells out with an interpolated git ref.
+- Dependabot #16: `uuid < 14.0.0` in `website/package-lock.json`, pulled transitively by Mermaid and SockJS.
+
+## Plan
+
+- [x] Document the three GitHub findings in `tasks/security-assessment-2026-04-29.md`.
+- [x] Update the Console API routes so every handler has explicit user rate limiting and turn/replay/session handlers keep the AI limiter.
+- [x] Replace shell-based git diff execution in `detect-drift.mjs` with `execFileSync`.
+- [x] Update the website dependency override/lockfile so all `uuid` entries resolve to `14.0.0`.
+- [x] Add/update focused tests where behavior changes and run focused verification.
+- [x] Run final hygiene checks and document the review results here.
+
+## Review
+
+- Added the three GitHub findings, links, severities, and triage notes to the security assessment.
+- Moved the Console `api:default` limiter from router-level middleware to explicit middleware on every route so CodeQL can see the handler-local rate limit; turn, replay, and session-create routes also keep `ai:analyze`.
+- Replaced `execSync` shell interpolation in the architecture drift detector with `execFileSync` and an argument vector.
+- Added a website `uuid` override and regenerated the lockfile so Mermaid and SockJS both resolve to `uuid@14.0.0`.
+- Updated the Console API route test to prove non-turn routes hit `api:default` and model-backed turns hit `ai:analyze`.
+- Verification passed: `npm --prefix server run test:run -- tests/unit/api/console.test.ts`; `node scripts/architecture/detect-drift.mjs --files scripts/architecture/detect-drift.mjs`; `npm audit --prefix website --json`; `npm ls uuid --prefix website --all`; `node -e "const transport=require('./website/node_modules/sockjs/lib/transport'); console.log(typeof transport.Transport)"`; `npm --prefix website run typecheck`; `npm --prefix website run build`; `npm --prefix server run build`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Note: CodeQL itself is not installed locally; GitHub alerts will remain open until this branch is pushed and GitHub rescans.
+
+---
+
+# Active Task: Sidebar Compact Header Network 2026-05-01
+
+Status: complete; verified
+
+Goal: use the compact header model by placing the network selector directly under the Sanctuary logo and letting the navigation start cleanly below it.
+
+## Plan
+
+- [x] Move the sidebar network selector into `SidebarHeader` under the logo.
+- [x] Remove the visible `Network` section label in compact header mode.
+- [x] Start the scrollable nav with Dashboard and keep Actions below primary navigation.
+- [x] Update focused sidebar tests and run verification.
+
+## Review
+
+- Moved the network selector into `SidebarHeader`, directly below the Sanctuary logo, and removed the visible `Network` section label in compact mode.
+- The scrollable sidebar nav now starts with primary navigation, then Actions, then wallet/device/system sections.
+- Kept the existing segmented control styling, disabled state behavior, and full-width selector layout.
+- Updated focused sidebar tests to assert the compact header selector and clean nav order.
+- Verification passed: `npm run test:run -- tests/components/Layout/SidebarContent.branches.test.tsx tests/components/NetworkTabs.test.tsx`; `npm run typecheck`; `npm run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Rebuilt the running instance with `./start.sh --rebuild`; Sanctuary is running at `https://localhost:8443`.
+- Post-rebuild containers are healthy. Health endpoint returns HTTP 200 and remains `degraded` only for disk usage at 86% used against the 80% warning threshold.
+
+---
+
+# Active Task: Sidebar Network Actions Ordering 2026-05-01
+
+Status: complete; verified
+
+Goal: put the Network selector at the top of the sidebar navigation and render Actions immediately after it.
+
+## Plan
+
+- [x] Move `SidebarNetworkSelector` before primary navigation.
+- [x] Render `SidebarConsoleQuickActions` directly after the network selector instead of injecting it after Dashboard.
+- [x] Update sidebar ordering tests and run focused verification.
+
+## Review
+
+- Updated the sidebar order to render Network first, Actions second, then Dashboard/Intelligence and the rest of the primary navigation.
+- Simplified `SidebarPrimaryNav` so it only renders primary nav items; quick actions now render at the parent sidebar level.
+- Updated the sidebar branch test to assert the new order: Mainnet, Testnet, Signet, Open AI Console, Show keyboard shortcuts, Dashboard, Intelligence.
+- Verification passed: `npm run test:run -- tests/components/Layout/SidebarContent.branches.test.tsx`; `npm run typecheck`; `npm run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Rebuilt the running instance with `./start.sh --rebuild`; Sanctuary is running at `https://localhost:8443`.
+- Post-rebuild containers are healthy. Health endpoint returns HTTP 200 and remains `degraded` only for disk usage at 86% used against the 80% warning threshold.
+
+---
+
+# Active Task: Sidebar Network Indicator Initial Measurement 2026-05-01
+
+Status: complete; verified
+
+Goal: fix the first-refresh selected-network background so it fully covers the active tab text before the user manually switches networks.
+
+## Plan
+
+- [x] Update `NetworkTabs` to remeasure the selected-tab indicator after first paint and after tab-strip resizing.
+- [x] Add a focused regression test for an initially selected Testnet tab whose final layout is reported after mount.
+- [x] Run focused tests, type checks, diff hygiene, and rebuild if verification passes.
+
+## Review
+
+- Confirmed the report: on first refresh with Testnet already selected, the selected background could measure the active tab before the sidebar/tab text had its final width.
+- Updated `NetworkTabs` to measure immediately in a layout effect, schedule a post-paint remeasure, observe the tab strip and active tab with `ResizeObserver`, remeasure after window resize, and remeasure after fonts are ready.
+- Added a regression test that starts with Testnet selected, simulates final layout arriving after mount, and verifies the indicator updates to the active tab dimensions.
+- Captured the measurement lesson in `tasks/lessons.md`.
+- Verification passed: `npm run test:run -- tests/components/NetworkTabs.test.tsx`; `npm run typecheck`; `npm run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Rebuilt the running instance with `./start.sh --rebuild`; Sanctuary is running at `https://localhost:8443`.
+- Post-rebuild containers are healthy. Health endpoint returns HTTP 200 and remains `degraded` only for disk usage at 86% used against the 80% warning threshold.
+
+---
+
+# Active Task: Sidebar Disabled Network Selector Follow-Up 2026-05-01
+
+Status: complete; verified
+
+Goal: keep the sidebar network selector compact and prevent users from selecting networks disabled under Node Configuration.
+
+## Plan
+
+- [x] Remove wallet-count badges from the sidebar network selector so the sidebar does not overflow.
+- [x] Load node configuration into layout state and derive enabled/disabled sidebar networks from it.
+- [x] Gray out disabled Testnet/Signet selector buttons, block selection, and add a helpful hover tip pointing admins to Node Configuration.
+- [x] If the persisted active network becomes disabled after config loads, move the active network back to Mainnet.
+- [x] Add focused tests for compact rendering, disabled state, tooltip copy, and click prevention.
+- [x] Run focused tests, type checks where needed, diff hygiene, and rebuild the running instance.
+
+## Review
+
+- Removed the wallet-count badges from `NetworkTabs` so the sidebar network selector only shows the network dot and label.
+- Added sidebar network availability derived from Bitcoin status responses; Testnet/Signet are marked unavailable only when the backend reports the Node Configuration disabled message.
+- Disabled network tabs render gray, do not change the active network on click, and expose the hover title: "Enable <network> under Node Configuration to select it."
+- If the persisted active network is disabled after availability loads, layout resets the active network to Mainnet.
+- Updated layout test harnesses for the active-network context and added regression coverage for disabled tabs, tooltip copy, click prevention, availability parsing, and persisted disabled-network fallback.
+- Verification passed: `npm run test:run -- tests/components/NetworkTabs.test.tsx tests/components/Layout/SidebarContent.branches.test.tsx tests/components/Layout/SidebarNetworkAvailability.test.ts tests/components/Layout.branches.test.tsx`.
+- Verification passed: `npm run test:run -- tests/components/NetworkTabs.test.tsx tests/components/Layout/SidebarContent.branches.test.tsx tests/components/Layout/SidebarNetworkAvailability.test.ts tests/components/Layout.test.tsx tests/components/Layout.branches.test.tsx`. One existing keyboard-shortcut branch test still emits a React `act(...)` warning while passing.
+- Verification passed: `npm run typecheck`; `npm run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Rebuilt the running instance with `./start.sh --rebuild`; Sanctuary is running at `https://localhost:8443`.
+- Post-rebuild health check returned HTTP 200. App services are healthy; health status remains `degraded` only because disk usage is elevated at 86% used with an 80% warning threshold.
+
+---
+
+# Active Task: Sidebar Network Selector Plan 2026-05-01
+
+Status: complete; verified
+
+Goal: move the Mainnet, Testnet, and Signet network selector into the sidebar, make the selected network persistent across the app, and ensure wallet fiat/USD values are suppressed for Testnet and Signet.
+
+## Current Findings
+
+- The reusable `NetworkTabs` control currently renders the Mainnet/Testnet/Signet selector in `components/Dashboard/Dashboard.tsx` and `components/WalletList/WalletListContent.tsx`.
+- Dashboard state is page-local in `components/Dashboard/hooks/useDashboardData.ts`; it initializes from `?network=` and threads the selected network into status, mempool, filtered wallets, recent transactions, pending transactions, and balance history.
+- Wallet list state is separate page-local state in `components/WalletList/useWalletNetworkParam.ts`; it also initializes from `?network=`.
+- Sidebar data comes from `components/Layout/useLayoutController.ts`, `components/Layout/SidebarContent.tsx`, `SidebarWalletSection`, and `SidebarDeviceSection`; today it shows all wallets/devices regardless of selected network.
+- Block height and dashboard mempool/status calls already support network query keys via `hooks/queries/useBitcoin.ts` and `src/api/bitcoin.ts`.
+- The AI Console receives all wallets from `Layout` and its auto context can expand to all accessible wallets on the server, so it needs selected-network filtering on both client-visible wallets and server auto-context resolution.
+- The broader Intelligence surface also consumes wallet lists and should be audited for active-network scoping so it does not mix networks when the sidebar selection changes.
+- `components/Layout/BlockHeightIndicator.tsx` still calls default Bitcoin status, which means layout block height currently reads Mainnet unless it is explicitly threaded the selected network.
+- Fiat display is global in `contexts/CurrencyContext.tsx`; wallet balances use `Amount`, `FiatDisplay`, wallet list cells, grid cards, dashboard summary, and wallet detail components. Because these format by sats only, Testnet/Signet balances can show non-zero USD values.
+- Device API payloads include linked wallet id/name/type/script type, but not wallet network; device list/detail network filtering needs wallet network added to those projections.
+- Device detail currently groups testnet-family derivation paths behind a disclosure in `DeviceAccountsSection`; the requested UX is better modeled as tabs by network, then subtabs by purpose.
+- Wallet list and dashboard fetch all wallets and filter on the client today; implementation should decide whether to keep client filtering or add optional backend `network` query parameters for `/wallets` and `/devices` if payload size or server-side isolation matters.
+- Import wallet currently exposes Mainnet/Testnet/Regtest buttons, not Signet, while create wallet exposes Mainnet/Testnet/Signet. The sidebar-selector work should explicitly decide how import defaults and overrides handle Signet.
+
+## Product Spec
+
+- The sidebar owns the app-wide active network: `mainnet`, `testnet`, or `signet`.
+- The selector keeps the existing visual language: same labels, dot colors, selected styling, count badges, and light/dark behavior from `NetworkTabs`.
+- The selected network is a user preference and persists across page refreshes, route changes, mobile sidebar usage, and browser tabs for the logged-in user when possible.
+- Invalid or missing stored values fall back to `mainnet`.
+- The sidebar selector is the single source of truth. No backward-compatibility work is required for old `?network=` page links in this change.
+- Network-scoped list views only show data for the selected network.
+- Wallet detail routes remain wallet-authoritative: when a wallet detail loads, the global selector should align to that wallet's network so the sidebar and detail view cannot disagree.
+- Device views show devices and linked wallet references relevant to the selected network. Unassigned devices remain discoverable; devices with only coin-type `1` accounts can be considered testnet/signet-family because Testnet and Signet share that key-material family.
+- Device detail derivation paths are displayed in a tabbed view instead of a collapsed Testnet/Signet disclosure: Mainnet and combined Testnet/Signet network tabs when the derivation paths are shared, with Single Sig and Multisig subtabs inside each network family where accounts exist.
+- AI Console "Auto" and "All visible wallets" scopes use the selected network's wallets, not all accessible wallets.
+- AI Console shows a read-only network tag so users can see which network the console is scoped to without changing it from inside the console drawer.
+- Dashboard block height, node status, mempool data, wallet totals, recent activity, and pending transaction visualization all use the selected network.
+- Testnet and Signet wallets never show fiat/USD equivalent values. They still show sats/BTC amounts and the existing "no market value" copy where applicable.
+
+## Implementation Plan
+
+- [x] Add a global active-network source of truth.
+  - Create a focused `NetworkContext`/`SelectedNetworkContext` that exposes `selectedNetwork`, `setSelectedNetwork`, `isMainnet`, and validation helpers.
+  - Back it with `useUserPreference('selectedNetwork', 'mainnet')` or equivalent typed user preference plus localStorage fallback.
+  - Add the provider inside `AppProviders` under `UserProvider`.
+  - Add typed preference support for `selectedNetwork` in frontend user preference types and auth API types.
+  - Do not retain or migrate page-local `?network=` behavior; remove page selectors and let the sidebar preference drive state.
+
+- [x] Move the selector into the sidebar.
+  - Extract shared network metadata from `NetworkTabs` so sidebar and tests do not duplicate labels/colors.
+  - Add `SidebarNetworkSelector` under `components/Layout/SidebarContent/`.
+  - Render it once in `SidebarContent`, near the top of the nav area before network-scoped sections.
+  - Feed wallet counts from `Layout` wallets using the existing count-by-network logic.
+  - Remove dashboard/wallet-list page-level `NetworkTabs` renderings after their state is context-driven.
+
+- [x] Replace page-local network state with the global selector.
+  - Update `useDashboardData` to read `selectedNetwork` from context and remove its local `useSearchParams` network state.
+  - Update `WalletList`/`WalletListContent` to read from context and remove `useWalletNetworkParam`.
+  - Ensure query keys and wallet-id-derived transaction/history queries continue to change when the selected network changes.
+
+- [x] Map sidebar wallets and devices to the selected network.
+  - Filter sidebar wallet subnav to selected-network wallets.
+  - Add `network` to device linked-wallet API projections and frontend device types.
+  - Filter device list wallet options, wallet counts, grouped/list rows, and sidebar device subnav by selected network.
+  - Filter device detail associated wallet references by selected network while preserving all imported device accounts for safety/audit views.
+  - Replace `DeviceAccountsSection` disclosure grouping with a derivation-path tab model: network tabs first, then Single Sig/Multisig subtabs per network.
+  - Combine Testnet and Signet in the same derivation-path tab when the paths are shared coin-type `1` key material.
+  - Add clear empty states for selected-network wallets/devices without implying data was deleted.
+
+- [x] Map console context to the selected network.
+  - Pass selected-network wallets into `ConsoleDrawer`.
+  - Add a read-only network badge/tag in the Console drawer, likely near the scope selector or header, using the same Mainnet/Testnet/Signet labels and colors as the sidebar selector.
+  - Include `selectedNetwork` in the console client auto context.
+  - Filter server-side console auto-context wallet lookup by selected network before planning tools.
+  - Update labels/tests so "All visible wallets" means wallets visible for the current network.
+  - Audit `components/Intelligence/Intelligence.tsx` and related intelligence wallet selectors for the same active-network mapping.
+
+- [x] Map dashboard/network status to the selected network.
+  - Confirm `useBitcoinStatus(selectedNetwork)` and `useMempoolData(selectedNetwork)` remain the only dashboard status sources.
+  - Thread selected network into `BlockHeightIndicator` so layout block height is not hardcoded to Mainnet.
+  - Update the layout-level periodic connection notification to check the selected network instead of defaulting to mainnet.
+  - Confirm block height, Electrum host/pool display, mempool visualizer, recent activity, and pending transaction data use selected-network wallet ids.
+
+- [x] Make wallet creation/import respect the active network.
+  - Default Create Wallet and Import Wallet network state from the global selected network.
+  - Resolve the existing Import Wallet mismatch where Signet is absent but global selection can be Signet.
+  - Decide whether wizard network controls become read-only active-network indicators or remain local overrides that also update the global selected network.
+  - Preserve existing Testnet/Signet warning copy and hardware derivation rules.
+
+- [x] Suppress fiat values for Testnet and Signet.
+  - Add a network-aware fiat formatting path, for example `formatFiat(sats, { network })` or `formatFiatForNetwork(sats, network)`.
+  - Update `Amount`, `FiatDisplay`, wallet list balance cells, wallet grid cards, dashboard balance summaries, wallet detail headers, transaction/UTXO rows, drafts, and send/review surfaces to pass the relevant wallet or selected network.
+  - Keep fiat display unchanged for mainnet and suppress fiat everywhere for Testnet and Signet.
+  - Add regression tests proving non-mainnet wallets with non-zero balances do not render USD/fiat strings.
+
+## Verification Plan
+
+- [x] Unit-test network preference validation, persistence fallback, and invalid stored values.
+- [x] Component-test the sidebar selector for labels, counts, active colors, click handling, and mobile/sidebar rendering.
+- [x] Update Dashboard tests to prove selected network comes from context and status/mempool hooks receive `mainnet`, `testnet`, and `signet`.
+- [x] Update WalletList tests to prove filtering follows the global selector and the old page tabs are gone.
+- [x] Add DeviceList/device-data tests for selected-network wallet filtering, unassigned devices, and linked wallet network projections.
+- [x] Add `DeviceAccountsSection` tests for Mainnet and combined Testnet/Signet derivation-path tabs, Single Sig/Multisig subtabs, empty tab states, and shared coin-type `1` handling.
+- [x] Add ConsoleDrawer/client-context tests and backend console service tests for selected-network auto context.
+- [x] Add ConsoleDrawer render coverage for the read-only selected-network tag.
+- [x] Add fiat suppression tests for wallet list table/grid, dashboard totals, wallet detail header, and shared `Amount`/`FiatDisplay`.
+- [x] Run focused frontend/backend tests for touched components and services.
+- [x] Run `npm run typecheck:tests`, backend test typecheck if server types change, `npm run quality:lizard`, and `git diff --check`.
+- [x] For final UI confidence, run the render regression or a focused Playwright smoke that switches networks in the sidebar and verifies Dashboard, Wallets, Devices, Console, and block height reflect the same selected network.
+
+## Review
+
+- Added `ActiveNetworkProvider` backed by the `selectedNetwork` user preference and mounted it under `UserProvider`.
+- Moved the Mainnet/Testnet/Signet selector into the sidebar, kept the existing `NetworkTabs` visual treatment, removed page-local `?network=` state, and deleted `components/WalletList/useWalletNetworkParam.ts`.
+- Scoped Dashboard, Wallets, Devices, Intelligence, AI Console, block height, connection checks, wallet detail alignment, create/import flows, and console server auto-context to the active network.
+- Replaced device derivation-path disclosure UI with network tabs plus Single-sig/Multisig subtabs; Testnet and Signet share the coin-type `1` tab.
+- Suppressed fiat formatting for Testnet and Signet across shared formatting paths and wallet surfaces while preserving mainnet fiat behavior.
+- Updated Playwright contracts to use the sidebar selector and refreshed the two changed Chromium render snapshots: `dashboard-testnet-shell-chromium-linux.png` and `wallet-list-testnet-shell-chromium-linux.png`.
+- Verification passed: `npm run test:run -- tests/contexts/ActiveNetworkContext.test.tsx tests/components/ConsoleDrawer.test.tsx tests/components/ConsoleDrawerController.test.tsx tests/components/ConsoleDrawerUtils.test.ts tests/components/CreateWallet/ConfigurationStep.branches.test.tsx tests/components/Dashboard/useDashboardData.test.tsx tests/components/DeviceDetail/DeviceAccountsSection.test.tsx tests/components/DeviceList/DeviceListHeader.branches.test.tsx tests/components/ImportWallet/DeviceResolution.test.tsx tests/components/ImportWallet/HardwareImport.test.tsx tests/components/ImportWallet/ImportReview.test.tsx tests/components/ImportWallet/importHelpers.test.ts tests/components/Intelligence.test.tsx tests/components/Layout/SidebarContent.branches.test.tsx tests/components/WalletDetail/useWalletDetailController.network.test.tsx tests/components/WalletList.test.tsx tests/components/WalletList.branches.test.tsx tests/components/WalletList/WalletGridView.test.tsx tests/contexts/CurrencyContext.test.tsx`.
+- Verification passed: `npm --prefix server run test:run -- tests/unit/api/devices.test.ts tests/unit/api/wallets.test.ts tests/unit/services/wallet.test.ts`.
+- Verification passed: `npm run test:e2e -- --project=chromium e2e/user-journeys.spec.ts e2e/create-wallet-flow.spec.ts e2e/import-wallet-flow.spec.ts --grep "sidebar network|sidebar Testnet|active network indicator"`.
+- Verification passed: `npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts --grep "dashboard renders core|wallet list renders network|create wallet route configuration"`.
+- Verification passed: `npm run typecheck`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Unrelated untracked task note files remain intentionally untouched: `tasks/feature-timeline-2026-04-29.md` and `tasks/security-assessment-2026-04-29.md`.
+
+---
+
 # Active Task: PR 247 Render Regression Merge Recovery 2026-05-01
 
 Status: in progress

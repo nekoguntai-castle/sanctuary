@@ -55,6 +55,7 @@ export interface ConsoleGatewayContext {
     name: string;
     network?: string | null;
   }>;
+  selectedNetwork?: string;
   walletLimitApplied?: boolean;
 }
 

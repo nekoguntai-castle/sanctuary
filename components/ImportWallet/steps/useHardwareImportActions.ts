@@ -2,6 +2,7 @@ import type { DeviceType } from '../../../services/hardwareWallet/types';
 import { isSecureContext } from '../../../services/hardwareWallet/environment';
 import { loadHardwareWalletRuntime } from '../../../services/hardwareWallet/loader';
 import { createLogger } from '../../../utils/logger';
+import type { TabNetwork } from '../../../src/app/networks';
 import { getDerivationPath, HardwareDeviceType, ScriptType } from '../importHelpers';
 import { XpubData } from '../hooks/useImportState';
 
@@ -11,6 +12,7 @@ export function useHardwareImportActions({
   hardwareDeviceType,
   scriptType,
   accountIndex,
+  network,
   setHardwareDeviceType,
   setDeviceConnected,
   setDeviceLabel,
@@ -24,6 +26,7 @@ export function useHardwareImportActions({
   hardwareDeviceType: HardwareDeviceType;
   scriptType: ScriptType;
   accountIndex: number;
+  network: TabNetwork;
   setHardwareDeviceType: (type: HardwareDeviceType) => void;
   setDeviceConnected: (connected: boolean) => void;
   setDeviceLabel: (label: string | null) => void;
@@ -75,7 +78,7 @@ export function useHardwareImportActions({
 
     try {
       const { hardwareWalletService } = await loadHardwareWalletRuntime();
-      const path = getDerivationPath(scriptType, accountIndex);
+      const path = getDerivationPath(scriptType, accountIndex, network);
       const result = await hardwareWalletService.getXpub(path);
 
       if (result.xpub && result.fingerprint) {

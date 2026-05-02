@@ -43,6 +43,7 @@ describe("useConsoleDrawerController", () => {
       useConsoleDrawerController({
         isOpen: true,
         wallets,
+        selectedNetwork: "mainnet",
       }),
     );
 

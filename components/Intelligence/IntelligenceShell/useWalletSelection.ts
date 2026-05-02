@@ -6,7 +6,14 @@ export function useWalletSelection(wallets: WalletOption[]): WalletSelectionCont
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   useEffect(() => {
-    if (wallets.length > 0 && !selectedWalletId) {
+    if (wallets.length === 0) {
+      if (selectedWalletId) {
+        setSelectedWalletId('');
+      }
+      return;
+    }
+
+    if (!wallets.some((wallet) => wallet.id === selectedWalletId)) {
       setSelectedWalletId(wallets[0].id);
     }
   }, [wallets, selectedWalletId]);

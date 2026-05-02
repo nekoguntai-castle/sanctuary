@@ -29,6 +29,9 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
   user,
   wallets,
   devices,
+  selectedNetwork,
+  setSelectedNetwork,
+  networkAvailability,
   expanded,
   darkMode,
   toggleTheme,
@@ -60,13 +63,17 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
 
   return (
     <>
-      <SidebarHeader />
+      <SidebarHeader
+        selectedNetwork={selectedNetwork}
+        onNetworkChange={setSelectedNetwork}
+        networkAvailability={networkAvailability}
+      />
 
       <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
         <SidebarPrimaryNav
           items={primaryNavItems}
-          quickActions={quickActions}
         />
+        {quickActions}
         <SidebarWalletSection
           show={isNavItemVisible(walletNavItem, capabilities)}
           navItem={walletNavItem}

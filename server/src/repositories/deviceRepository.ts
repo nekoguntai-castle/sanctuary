@@ -246,6 +246,7 @@ export async function findByIdFull(deviceId: string) {
               name: true,
               type: true,
               scriptType: true,
+              network: true,
             },
           },
         },
@@ -597,7 +598,7 @@ export async function findAccessibleByUser(userId: string) {
       wallets: {
         select: {
           wallet: {
-            select: { id: true, name: true, type: true, scriptType: true },
+            select: { id: true, name: true, type: true, scriptType: true, network: true },
           },
         },
       },

@@ -27,6 +27,7 @@ export const CONSOLE_TURN_STATE_VALUES = [
   "failed",
   "canceled",
 ] as const;
+export const CONSOLE_NETWORK_VALUES = ["mainnet", "testnet", "signet"] as const;
 
 export type ConsoleScopeKind = (typeof CONSOLE_SCOPE_KIND_VALUES)[number];
 export type ConsoleSensitivity = (typeof CONSOLE_SENSITIVITY_VALUES)[number];
@@ -69,6 +70,7 @@ export type ConsoleScope = z.infer<typeof ConsoleScopeSchema>;
 export const ConsoleClientContextSchema = z
   .object({
     mode: z.literal("auto"),
+    selectedNetwork: z.enum(CONSOLE_NETWORK_VALUES).optional(),
     routeWalletId: UuidSchema.optional(),
   })
   .strict();

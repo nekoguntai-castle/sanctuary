@@ -9,6 +9,7 @@ import type {
 } from "../../src/api/console";
 import { getConsoleSetupReason } from "../../src/api/console";
 import type { Wallet } from "../../src/api/wallets";
+import type { TabNetwork } from "../../src/app/networks";
 import type { ConsoleMessage } from "./types";
 
 export const GENERAL_SCOPE_ID = "general";
@@ -67,11 +68,13 @@ export function buildConsoleScope(
 
 export function buildConsoleClientContext(
   contextId: string,
+  selectedNetwork: TabNetwork,
   routeWalletId?: string | null,
-): { mode: "auto"; routeWalletId?: string } | undefined {
+): { mode: "auto"; selectedNetwork: TabNetwork; routeWalletId?: string } | undefined {
   if (contextId !== AUTO_CONTEXT_ID) return undefined;
   return {
     mode: "auto",
+    selectedNetwork,
     ...(routeWalletId ? { routeWalletId } : {}),
   };
 }

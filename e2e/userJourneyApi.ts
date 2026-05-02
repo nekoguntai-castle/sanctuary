@@ -20,6 +20,7 @@ const ADMIN_USER = {
     unit: 'sats',
     showFiat: false,
     priceProvider: 'auto',
+    selectedNetwork: 'mainnet',
   },
   createdAt: '2026-03-11T00:00:00.000Z',
 };
@@ -431,9 +432,12 @@ function getStatefulApiResponse(
   if (parsedRoute.requestKey === 'GET /auth/me') {
     return mockResponse({ ...state.user, preferences: state.preferences });
   }
-  if (parsedRoute.requestKey === 'PUT /auth/preferences') {
+  if (
+    parsedRoute.requestKey === 'PATCH /auth/me/preferences' ||
+    parsedRoute.requestKey === 'PUT /auth/preferences'
+  ) {
     state.preferences = mergePostBody(route, state.preferences);
-    return mockResponse(state.preferences);
+    return mockResponse({ ...state.user, preferences: state.preferences });
   }
   if (parsedRoute.requestKey === 'GET /wallets') {
     return mockResponse(state.wallets);

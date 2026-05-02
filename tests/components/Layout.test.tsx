@@ -15,9 +15,22 @@ import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import * as draftsApi from '../../src/api/drafts';
 
+const activeNetworkMock = vi.hoisted(() => ({
+  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet' | 'signet',
+  setSelectedNetwork: vi.fn(),
+}));
+
 // Mock context hooks
 vi.mock('../../contexts/UserContext', () => ({
   useUser: vi.fn(),
+}));
+
+vi.mock('../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: activeNetworkMock.selectedNetwork,
+    isMainnet: activeNetworkMock.selectedNetwork === 'mainnet',
+    setSelectedNetwork: activeNetworkMock.setSelectedNetwork,
+  }),
 }));
 
 vi.mock('../../contexts/AppNotificationContext', () => ({
@@ -105,6 +118,7 @@ describe('Layout', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    activeNetworkMock.selectedNetwork = 'mainnet';
 
     vi.mocked(UserContext.useUser).mockReturnValue({
       user: mockUser,

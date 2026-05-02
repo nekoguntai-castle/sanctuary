@@ -12,4 +12,8 @@ export interface PendingData {
 }
 
 export type WalletCountsByNetwork = Record<TabNetwork, number>;
-export type WalletValueFormatter = (value: number) => string | null;
+export type WalletAmountFormatter = (value: number) => string;
+export type WalletFiatFormatter = (
+  value: number,
+  options?: { network?: string | null },
+) => string | null;

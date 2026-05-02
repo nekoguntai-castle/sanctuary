@@ -1,5 +1,5 @@
 import type { Wallet } from '../../src/api/wallets';
-import type { PendingData, WalletValueFormatter } from './types';
+import type { PendingData, WalletAmountFormatter, WalletFiatFormatter } from './types';
 import { WalletBalance } from './WalletGridCardBalance';
 import { WalletMetadata } from './WalletGridCardMetadata';
 import { WalletSparkline } from './WalletGridCardSparkline';
@@ -18,8 +18,8 @@ export function WalletGridCard({
   wallet: Wallet;
   pendingData?: PendingData;
   sparklineValues?: number[];
-  format: WalletValueFormatter;
-  formatFiat: WalletValueFormatter;
+  format: WalletAmountFormatter;
+  formatFiat: WalletFiatFormatter;
   showFiat: boolean;
   onOpen: () => void;
 }) {

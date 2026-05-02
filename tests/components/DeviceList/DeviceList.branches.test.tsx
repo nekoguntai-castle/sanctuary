@@ -46,6 +46,14 @@ vi.mock('../../../contexts/UserContext', () => ({
   }),
 }));
 
+vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: 'mainnet',
+    isMainnet: true,
+    setSelectedNetwork: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../hooks/useLoadingState', () => ({
   useLoadingState: () => ({
     loading: false,

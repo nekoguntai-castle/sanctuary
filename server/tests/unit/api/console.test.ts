@@ -124,14 +124,23 @@ describe("console API routes", () => {
 
   it("applies the coarse console limiter and model-backed turn limiter", async () => {
     const tools = await request(app).get("/api/v1/console/tools");
+    const sessions = await request(app).get("/api/v1/console/sessions");
+    const createdSession = await request(app)
+      .post("/api/v1/console/sessions")
+      .send({ title: "Wallet Q&A" });
     const turn = await request(app)
       .post("/api/v1/console/turns")
       .send({ prompt: "show recent wallet activity" });
 
     expect(tools.status).toBe(200);
+    expect(sessions.status).toBe(200);
+    expect(createdSession.status).toBe(201);
     expect(turn.status).toBe(201);
     expect(mocks.rateLimitHits).toEqual([
       "api:default",
+      "api:default",
+      "api:default",
+      "ai:analyze",
       "api:default",
       "ai:analyze",
     ]);

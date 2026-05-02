@@ -128,6 +128,14 @@ vi.mock('../../../contexts/UserContext', () => ({
   }),
 }));
 
+vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: 'mainnet',
+    isMainnet: true,
+    setSelectedNetwork: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../src/api/devices', () => ({
   getDevice: deviceDetailMocks.getDevice,
   updateDevice: deviceDetailMocks.updateDevice,

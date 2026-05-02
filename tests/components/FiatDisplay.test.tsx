@@ -205,7 +205,7 @@ describe('FiatDisplay', () => {
       render(<FiatDisplay sats={-20000} />);
 
       // Should pass absolute value (20000) to formatFiat
-      expect(mockFormatFiat).toHaveBeenCalledWith(20000);
+      expect(mockFormatFiat).toHaveBeenCalledWith(20000, { network: undefined });
     });
   });
 });

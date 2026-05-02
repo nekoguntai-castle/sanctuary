@@ -27,6 +27,7 @@ export interface DeviceWalletInfo {
     name: string;
     type: string;
     scriptType: string | null;
+    network: string;
   };
 }
 

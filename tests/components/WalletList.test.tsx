@@ -13,6 +13,10 @@ import * as useWalletsHook from '../../hooks/queries/useWallets';
 
 // Mock navigate
 const mockNavigate = vi.fn();
+const activeNetworkMock = vi.hoisted(() => ({
+  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet' | 'signet',
+  setSelectedNetwork: vi.fn(),
+}));
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
@@ -28,6 +32,14 @@ vi.mock('../../contexts/CurrencyContext', () => ({
 
 vi.mock('../../contexts/UserContext', () => ({
   useUser: vi.fn(),
+}));
+
+vi.mock('../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: activeNetworkMock.selectedNetwork,
+    isMainnet: activeNetworkMock.selectedNetwork === 'mainnet',
+    setSelectedNetwork: activeNetworkMock.setSelectedNetwork,
+  }),
 }));
 
 // Mock hooks
@@ -132,6 +144,7 @@ describe('WalletList', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    activeNetworkMock.selectedNetwork = 'mainnet';
 
     vi.mocked(CurrencyContext.useCurrency).mockReturnValue({
       format: (sats: number) => `${sats} sats`,
@@ -265,11 +278,11 @@ describe('WalletList', () => {
     });
   });
 
-  describe('network tabs', () => {
-    it('renders network tabs', () => {
+  describe('active network', () => {
+    it('does not render page-level network tabs', () => {
       renderWalletList();
 
-      expect(screen.getByTestId('network-tabs')).toBeInTheDocument();
+      expect(screen.queryByTestId('network-tabs')).not.toBeInTheDocument();
     });
 
     it('filters wallets by network', async () => {
@@ -373,11 +386,8 @@ describe('WalletList', () => {
   describe('sync status', () => {
     it('shows sync in progress indicator', async () => {
       // Testnet wallet has sync in progress
-      const user = userEvent.setup();
+      activeNetworkMock.selectedNetwork = 'testnet';
       renderWalletList();
-
-      // Switch to testnet
-      await user.click(screen.getByTestId('testnet-tab'));
 
       await waitFor(() => {
         // Should show syncing icon (animate-spin)
