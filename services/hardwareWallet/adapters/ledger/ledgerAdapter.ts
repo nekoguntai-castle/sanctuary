@@ -34,9 +34,21 @@ const LEDGER_FRIENDLY_PREFIXES = [
   'Ledger is locked.',
   'Please open the Bitcoin app',
   'Bitcoin app not open',
+  'Bitcoin Test app is required',
   'Ledger is already connected',
   'Request rejected on Ledger.',
   'Ledger disconnected.',
+];
+
+const LEDGER_TESTNET_APP_NAMES = new Set(['Bitcoin Test', 'Bitcoin Test Legacy']);
+const LEDGER_TESTNET_PATH_ERROR_PATTERNS = [
+  '0x6a80',
+  'incorrect data',
+  '0x6d00',
+  '0x6e00',
+  'cla_not_supported',
+  'ins_not_supported',
+  'bitcoin app not open',
 ];
 
 const LEDGER_FRIENDLY_ERROR_RULES: LedgerFriendlyErrorRule[] = [
@@ -78,6 +90,8 @@ interface LedgerConnection {
   app: AppBtc;
   appClient: AppClient;
   device: USBDevice;
+  appName?: string;
+  appVersion?: string;
 }
 
 function getLedgerErrorMessage(error: unknown): string {
@@ -100,6 +114,27 @@ function getLedgerFriendlyError(error: unknown, context: LedgerErrorContext): st
   }
 
   return null;
+}
+
+function isTestnetFamilyPath(path: string): boolean {
+  return path.includes("/1'/") || path.includes('/1h/');
+}
+
+function getLedgerTestnetAppError(error: unknown, path: string, appName?: string): string | null {
+  if (!isTestnetFamilyPath(path)) return null;
+
+  const normalized = getLedgerErrorMessage(error).toLowerCase();
+  const appIsKnownTestnet = Boolean(appName && LEDGER_TESTNET_APP_NAMES.has(appName));
+  const appIsKnownWrongNetwork = Boolean(appName && !appIsKnownTestnet);
+  const errorSuggestsWrongApp = !appIsKnownTestnet && matchesAnyPattern(normalized, LEDGER_TESTNET_PATH_ERROR_PATTERNS);
+  if (!appIsKnownWrongNetwork && !errorSuggestsWrongApp) return null;
+
+  const runningApp = appName ? `Ledger is currently running ${appName}.` : '';
+  return [
+    `Bitcoin Test app is required on Ledger to export ${path}.`,
+    'Install or open Bitcoin Test on the Ledger, approve the public-key export prompt, then retry USB import.',
+    runningApp,
+  ].filter(Boolean).join(' ');
 }
 
 function shouldTryLegacyXpubFallback(error: unknown): boolean {
@@ -195,6 +230,17 @@ export class LedgerAdapter implements DeviceAdapter {
       const app = new AppBtc({ transport });
       const appClient = new AppClient(transport as any);
 
+      let appName: string | undefined;
+      let appVersion: string | undefined;
+      try {
+        const appInfo = await appClient.getAppAndVersion();
+        appName = appInfo.name;
+        appVersion = appInfo.version;
+        log.info('Detected Ledger app', { appName, appVersion });
+      } catch (error) {
+        log.debug('Could not read Ledger app info before readiness check', { error });
+      }
+
       // Get master fingerprint
       let fingerprint: string | undefined;
       try {
@@ -213,7 +259,7 @@ export class LedgerAdapter implements DeviceAdapter {
         log.warn('Could not get fingerprint - Bitcoin app may not be open', { error });
       }
 
-      this.connection = { transport: transport as any, app, appClient, device };
+      this.connection = { transport: transport as any, app, appClient, device, appName, appVersion };
 
       this.connectedDevice = {
         id: getDeviceId(device),
@@ -259,7 +305,7 @@ export class LedgerAdapter implements DeviceAdapter {
     }
 
     try {
-      const isTestnet = path.includes("/1'/") || path.includes("/1h/");
+      const isTestnet = isTestnetFamilyPath(path);
       const xpubVersion = isTestnet ? TPUB_VERSION : XPUB_VERSION;
 
       const xpub = await this.getLedgerXpub(path, xpubVersion);
@@ -284,8 +330,10 @@ export class LedgerAdapter implements DeviceAdapter {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      const testnetAppError = getLedgerTestnetAppError(error, path, this.connection?.appName);
       const friendlyError = getLedgerFriendlyError(error, 'xpub');
 
+      if (testnetAppError) throw new Error(testnetAppError);
       if (friendlyError) throw new Error(friendlyError);
 
       throw new Error(`Failed to get xpub: ${message}`);
@@ -300,6 +348,11 @@ export class LedgerAdapter implements DeviceAdapter {
     try {
       return await this.connection.appClient.getExtendedPubkey(path);
     } catch (error) {
+      const testnetAppError = getLedgerTestnetAppError(error, path, this.connection.appName);
+      if (testnetAppError) {
+        throw new Error(testnetAppError);
+      }
+
       if (!shouldTryLegacyXpubFallback(error)) {
         throw error;
       }

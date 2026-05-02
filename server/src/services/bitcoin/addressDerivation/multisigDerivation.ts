@@ -15,6 +15,7 @@ import type {
   DerivationNode,
   DescriptorDerivationDeps,
   DerivedAddress,
+  AddressDerivationNetwork,
 } from './types';
 
 type FromBase58 = NonNullable<DescriptorDerivationDeps['fromBase58']>;
@@ -27,7 +28,7 @@ export function deriveMultisigAddress(
   parsed: ParsedDescriptor,
   index: number,
   options: {
-    network: 'mainnet' | 'testnet' | 'regtest';
+    network: AddressDerivationNetwork;
     change: boolean;
   },
   deps: DescriptorDerivationDeps = {}

@@ -9,22 +9,23 @@ import * as bitcoin from 'bitcoinjs-lib';
 import bip32 from '../bip32';
 import { getErrorMessage } from '../../../utils/errors';
 import { convertToStandardXpub } from './xpubConversion';
-import type { XpubValidationResult } from './types';
+import type { AddressDerivationNetwork, XpubValidationResult } from './types';
 
 /**
  * Get network object from network string
  */
-export function getNetwork(network: 'mainnet' | 'testnet' | 'regtest'): bitcoin.Network {
+export function getNetwork(network: AddressDerivationNetwork): bitcoin.Network {
   switch (network) {
     case 'mainnet':
       return bitcoin.networks.bitcoin;
+    case 'signet':
     case 'testnet':
       return bitcoin.networks.testnet;
     case 'regtest':
       return bitcoin.networks.regtest;
     default:
       // Explicit error instead of silent fallback to mainnet
-      throw new Error(`Unsupported network: ${network}. Expected 'mainnet', 'testnet', or 'regtest'.`);
+      throw new Error(`Unsupported network: ${network}. Expected 'mainnet', 'testnet', 'signet', or 'regtest'.`);
   }
 }
 
@@ -34,7 +35,7 @@ export function getNetwork(network: 'mainnet' | 'testnet' | 'regtest'): bitcoin.
 export function getAccountPath(
   xpub: string,
   scriptType: string,
-  network: 'mainnet' | 'testnet' | 'regtest'
+  network: AddressDerivationNetwork
 ): string {
   // Standard BIP44/49/84/86 paths
   const coinType = network === 'mainnet' ? '0' : '1';
@@ -71,7 +72,7 @@ export function getAccountPath(
 /**
  * Validate xpub format
  */
-export function validateXpub(xpub: string, network: 'mainnet' | 'testnet' | 'regtest' = 'mainnet'): XpubValidationResult {
+export function validateXpub(xpub: string, network: AddressDerivationNetwork = 'mainnet'): XpubValidationResult {
   try {
     const networkObj = getNetwork(network);
 

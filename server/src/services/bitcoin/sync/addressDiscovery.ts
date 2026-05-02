@@ -12,6 +12,7 @@ import { walletLog } from "../../../websocket/notifications";
 import { ADDRESS_GAP_LIMIT } from "../../../constants";
 import * as addressDerivation from "../addressDerivation";
 import { parseAddressDerivationPath } from "../../../../../shared/utils/bitcoin";
+import type { WalletNetwork } from "../../wallet/types";
 
 const log = createLogger("BITCOIN:SVC_ADDR_DISCOVERY");
 
@@ -140,7 +141,7 @@ export async function ensureGapLimit(
       try {
         const { address, derivationPath } =
           addressDerivation.deriveAddressFromDescriptor(wallet.descriptor, i, {
-            network: wallet.network as "mainnet" | "testnet" | "regtest",
+            network: wallet.network as WalletNetwork,
             change: false,
           });
         newAddresses.push({ address, derivationPath });
@@ -173,7 +174,7 @@ export async function ensureGapLimit(
       try {
         const { address, derivationPath } =
           addressDerivation.deriveAddressFromDescriptor(wallet.descriptor, i, {
-            network: wallet.network as "mainnet" | "testnet" | "regtest",
+            network: wallet.network as WalletNetwork,
             change: true,
           });
         newAddresses.push({ address, derivationPath });

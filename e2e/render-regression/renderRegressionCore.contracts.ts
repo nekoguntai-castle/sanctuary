@@ -30,7 +30,9 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
   await expect(
     page.getByText("Testnet coins have no market value"),
   ).toBeVisible();
-  await expect(page.getByText(/^Testnet node not configured$/)).toBeVisible();
+  await expect(page.getByText(/^Connected$/)).toBeVisible();
+  await expect(page.getByRole("main").getByText("900,123").last()).toBeVisible();
+  await expect(page.getByText("2/3(active/total)")).toBeVisible();
   await expectChromiumMainScreenshot(page, "dashboard-testnet-shell.png");
 
   expect(unhandledRequests).toEqual([]);

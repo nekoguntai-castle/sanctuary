@@ -1,10 +1,11 @@
-import { nodeConfigRepository } from '../../repositories';
-import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
-import type { NetworkType } from './electrumPool';
-import type { NetworkModeConfig } from './nodeClient';
+import { nodeConfigRepository } from "../../repositories";
+import { createLogger } from "../../utils/logger";
+import { getErrorMessage } from "../../utils/errors";
+import type { NetworkType } from "./electrumPool";
+import type { NetworkModeConfig } from "./nodeClient";
+import { NetworkDisabledError, isNetworkDisabledError } from "./errors";
 
-const log = createLogger('BITCOIN:SVC_NODE_CLIENT_CONFIG');
+const log = createLogger("BITCOIN:SVC_NODE_CLIENT_CONFIG");
 
 interface PersistedNodeConfig {
   host: string;
@@ -35,64 +36,86 @@ interface PersistedNodeConfig {
   signetPoolLoadBalancing: string | null;
 }
 
-export function getDefaultNetworkModeConfig(network: NetworkType): NetworkModeConfig {
-  return { mode: network === 'mainnet' ? 'pool' : 'singleton' };
+export function getDefaultNetworkModeConfig(
+  network: NetworkType,
+): NetworkModeConfig {
+  return { mode: network === "mainnet" ? "pool" : "singleton" };
 }
 
 export function getPoolLoadBalancing(
   value: string | null | undefined,
-  fallback: NetworkModeConfig['poolLoadBalancing']
-): NetworkModeConfig['poolLoadBalancing'] {
-  return (value as NetworkModeConfig['poolLoadBalancing']) ?? fallback;
+  fallback: NetworkModeConfig["poolLoadBalancing"],
+): NetworkModeConfig["poolLoadBalancing"] {
+  return (value as NetworkModeConfig["poolLoadBalancing"]) ?? fallback;
 }
 
-export function getMainnetModeConfig(nodeConfig: PersistedNodeConfig): NetworkModeConfig {
+export function getMainnetModeConfig(
+  nodeConfig: PersistedNodeConfig,
+): NetworkModeConfig {
   return {
-    mode: (nodeConfig.mainnetMode as 'singleton' | 'pool') || 'pool',
+    mode: (nodeConfig.mainnetMode as "singleton" | "pool") || "pool",
     singletonHost: nodeConfig.mainnetSingletonHost ?? undefined,
     singletonPort: nodeConfig.mainnetSingletonPort ?? undefined,
     singletonSsl: nodeConfig.mainnetSingletonSsl ?? true,
     poolMin: nodeConfig.mainnetPoolMin ?? 1,
     poolMax: nodeConfig.mainnetPoolMax ?? 5,
-    poolLoadBalancing: getPoolLoadBalancing(nodeConfig.mainnetPoolLoadBalancing, 'round_robin'),
+    poolLoadBalancing: getPoolLoadBalancing(
+      nodeConfig.mainnetPoolLoadBalancing,
+      "round_robin",
+    ),
   };
 }
 
-export function assertNetworkEnabled(enabled: boolean | null | undefined, label: string): void {
+export function assertNetworkEnabled(
+  enabled: boolean | null | undefined,
+  label: string,
+): void {
   if (!enabled) {
-    throw new Error(`${label} is not enabled`);
+    throw new NetworkDisabledError(label);
   }
 }
 
-export function getTestnetModeConfig(nodeConfig: PersistedNodeConfig): NetworkModeConfig {
-  assertNetworkEnabled(nodeConfig.testnetEnabled, 'Testnet');
+export function getTestnetModeConfig(
+  nodeConfig: PersistedNodeConfig,
+): NetworkModeConfig {
+  assertNetworkEnabled(nodeConfig.testnetEnabled, "Testnet");
   return {
-    mode: (nodeConfig.testnetMode as 'singleton' | 'pool') || 'singleton',
+    mode: (nodeConfig.testnetMode as "singleton" | "pool") || "singleton",
     singletonHost: nodeConfig.testnetSingletonHost ?? undefined,
     singletonPort: nodeConfig.testnetSingletonPort ?? undefined,
     singletonSsl: nodeConfig.testnetSingletonSsl ?? true,
     poolMin: nodeConfig.testnetPoolMin ?? 1,
     poolMax: nodeConfig.testnetPoolMax ?? 3,
-    poolLoadBalancing: getPoolLoadBalancing(nodeConfig.testnetPoolLoadBalancing, 'round_robin'),
+    poolLoadBalancing: getPoolLoadBalancing(
+      nodeConfig.testnetPoolLoadBalancing,
+      "round_robin",
+    ),
   };
 }
 
-export function getSignetModeConfig(nodeConfig: PersistedNodeConfig): NetworkModeConfig {
-  assertNetworkEnabled(nodeConfig.signetEnabled, 'Signet');
+export function getSignetModeConfig(
+  nodeConfig: PersistedNodeConfig,
+): NetworkModeConfig {
+  assertNetworkEnabled(nodeConfig.signetEnabled, "Signet");
   return {
-    mode: (nodeConfig.signetMode as 'singleton' | 'pool') || 'singleton',
+    mode: (nodeConfig.signetMode as "singleton" | "pool") || "singleton",
     singletonHost: nodeConfig.signetSingletonHost ?? undefined,
     singletonPort: nodeConfig.signetSingletonPort ?? undefined,
     singletonSsl: nodeConfig.signetSingletonSsl ?? true,
     poolMin: nodeConfig.signetPoolMin ?? 1,
     poolMax: nodeConfig.signetPoolMax ?? 3,
-    poolLoadBalancing: getPoolLoadBalancing(nodeConfig.signetPoolLoadBalancing, 'round_robin'),
+    poolLoadBalancing: getPoolLoadBalancing(
+      nodeConfig.signetPoolLoadBalancing,
+      "round_robin",
+    ),
   };
 }
 
-export function getRegtestModeConfig(nodeConfig: PersistedNodeConfig): NetworkModeConfig {
+export function getRegtestModeConfig(
+  nodeConfig: PersistedNodeConfig,
+): NetworkModeConfig {
   return {
-    mode: 'singleton',
+    mode: "singleton",
     singletonHost: nodeConfig.host,
     singletonPort: nodeConfig.port,
     singletonSsl: nodeConfig.useSsl,
@@ -101,30 +124,38 @@ export function getRegtestModeConfig(nodeConfig: PersistedNodeConfig): NetworkMo
 
 export function buildNetworkModeConfig(
   network: NetworkType,
-  nodeConfig: PersistedNodeConfig
+  nodeConfig: PersistedNodeConfig,
 ): NetworkModeConfig {
   switch (network) {
-    case 'mainnet':
+    case "mainnet":
       return getMainnetModeConfig(nodeConfig);
-    case 'testnet':
+    case "testnet":
       return getTestnetModeConfig(nodeConfig);
-    case 'signet':
+    case "signet":
       return getSignetModeConfig(nodeConfig);
-    case 'regtest':
+    case "regtest":
       return getRegtestModeConfig(nodeConfig);
     default:
-      return { mode: 'pool' };
+      return { mode: "pool" };
   }
 }
 
-export async function getNetworkModeConfig(network: NetworkType): Promise<NetworkModeConfig> {
+export async function getNetworkModeConfig(
+  network: NetworkType,
+): Promise<NetworkModeConfig> {
   try {
     const nodeConfig = await nodeConfigRepository.findDefault();
     return nodeConfig
       ? buildNetworkModeConfig(network, nodeConfig)
       : getDefaultNetworkModeConfig(network);
   } catch (error) {
-    log.warn(`Failed to load network mode config for ${network}`, { error: getErrorMessage(error) });
+    if (isNetworkDisabledError(error)) {
+      throw error;
+    }
+
+    log.warn(`Failed to load network mode config for ${network}`, {
+      error: getErrorMessage(error),
+    });
     return getDefaultNetworkModeConfig(network);
   }
 }

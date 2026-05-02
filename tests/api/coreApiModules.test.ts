@@ -101,7 +101,7 @@ describe('Core API Modules', () => {
       await bitcoinApi.getBlockHeader(840000);
       await bitcoinApi.estimateFee({ inputCount: 1, outputCount: 2, feeRate: 10 });
 
-      expect(mockGet).toHaveBeenCalledWith('/bitcoin/status');
+      expect(mockGet).toHaveBeenCalledWith('/bitcoin/status', { network: 'mainnet' });
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees');
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/address/validate', { address: 'bc1qabc' });
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/address/bc1qabc', undefined);
@@ -165,7 +165,7 @@ describe('Core API Modules', () => {
         outputCount: 2,
         priority: 'fast',
       });
-      expect(mockGet).toHaveBeenCalledWith('/bitcoin/mempool');
+      expect(mockGet).toHaveBeenCalledWith('/bitcoin/mempool', { network: 'mainnet' });
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/address-lookup', { addresses: ['bc1q1', 'bc1q2'] });
     });
   });

@@ -84,7 +84,7 @@ export async function executeSyncPipeline(
   // Load all addresses for the wallet
   const addresses = await addressRepository.findByWalletId(walletId);
 
-  if (addresses.length === 0) {
+  if (addresses.length === 0 && !wallet.descriptor) {
     walletLog(walletId, "info", "BLOCKCHAIN", "No addresses to scan");
     return {
       addresses: 0,
@@ -103,6 +103,15 @@ export async function executeSyncPipeline(
       },
       elapsedMs: Date.now() - startTime,
     };
+  }
+
+  if (addresses.length === 0) {
+    walletLog(
+      walletId,
+      "info",
+      "BLOCKCHAIN",
+      "No stored addresses found; deriving wallet addresses before scanning",
+    );
   }
 
   // Log address breakdown

@@ -1,3 +1,37 @@
+# Active Task: PR 247 Render Regression Merge Recovery 2026-05-01
+
+Status: in progress
+
+Goal: clear the failing CI/merge-queue checks on PR #247 and verify the PR merges into `main`.
+
+## Plan
+
+- [x] Identify the active PR, branch state, and failing CI check.
+- [x] Confirm the failure root cause from the GitHub Actions job log.
+- [x] Verify the local render-regression assertion update with the focused Playwright command.
+- [x] Commit and push the render-regression fix and task tracker update.
+- [x] Monitor PR #247 checks and merge queue state until the next blocker is clear.
+- [x] Identify the merge-queue full coverage failures and map them to PR-changed files.
+- [x] Add focused backend/frontend coverage for the changed uncovered branches.
+- [ ] Commit and push the coverage fix, then re-enable merge queue auto-merge.
+- [ ] Monitor PR #247 checks and merge queue state until merged.
+- [ ] Verify `origin/main` contains the merged PR and document results here.
+
+## Review
+
+- Active PR: #247, `testnet-signet-wallet-workflows` into `main`.
+- CI root cause: Quick Render Regression expected `Testnet node not configured`, but the updated dashboard now renders connected Testnet status.
+- Updated the render contract to assert connected Testnet status, block height, and Electrum pool count; refreshed `dashboard-testnet-shell-chromium-linux.png`.
+- Verification passed: `npx playwright test e2e/render-regression.spec.ts --project=chromium --grep "dashboard renders core cards"`; `npx playwright test e2e/render-regression.spec.ts --project=chromium`; `git diff --check`.
+- Pushed commit `dbe6ae87fcc2b647b79dbd910fcf9728c88d62a6` to `testnet-signet-wallet-workflows`; PR branch checks passed and PR #247 entered the merge queue.
+- Merge queue run `25238899856` failed strict full coverage thresholds on changed PR files. Primary backend gaps: `server/src/services/bitcoin/networkStatusService.ts`, `server/src/services/wallet/walletAccountSelection.ts`, `server/src/services/bitcoin/electrum/connectionConfigResolver.ts`, `server/src/api/bitcoin/address.ts`, `server/src/api/wallets/export.ts`, and `server/src/services/bitcoin/utils.ts`. Primary frontend gaps: `components/ConnectDevice/DeviceDetailsForm/AccountSelectionList.tsx`, `components/Dashboard/MempoolSection.tsx`, `components/Dashboard/NodeStatusCard.tsx`, `components/DeviceDetail/DeviceDetail.tsx`, `components/DeviceDetail/DeviceDetail/DeviceAccountsSection.tsx`, `components/DeviceDetail/accounts/hooks/useAddAccountFlow.ts`, `components/ui/Toggle.tsx`, `services/hardwareWallet/xpubImportWarnings.ts`, and `services/hardwareWallet/adapters/ledger/ledgerAdapter.ts`.
+- Added focused backend and frontend coverage for the merge-queue changed-file gaps. Also fixed `Toggle` so omitting `thumbClassName` uses the intended default thumb surface instead of an empty class.
+- Split the new invalid-path wallet account-selection fallback coverage into its own contract file after lizard flagged the original account-selection contract group as over the function-length threshold.
+- Verification passed: `npm run test:run -- tests/components/ConnectDevice/DeviceDetailsForm.test.tsx tests/components/DeviceDetail/accounts/hooks/useAddAccountFlow.branches.test.tsx tests/components/ui/Toggle.test.tsx tests/services/hardwareWallet.ledgerAdapter.test.ts`; `npm run test:coverage`; `npm --prefix server run test:run -- tests/unit/api/bitcoin.test.ts tests/unit/services/bitcoin/electrum.connection.test.ts tests/unit/services/wallet.test.ts`; `npm --prefix server run test:run -- tests/unit/api/bitcoin.test.ts`; `npm --prefix server run test:run -- tests/unit/services/wallet.test.ts`; `npm --prefix server run test:coverage`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Local worktree has unrelated untracked task-note files; leave them unstaged.
+
+---
+
 # Active Task: Remaining API Module Test Split 2026-05-01
 
 Status: complete
@@ -108,6 +142,321 @@ Goal: reduce the next agent-related warning-sized server repository test by spli
 
 ---
 
+# Active Task: Testnet Upgrade Test Coverage Audit 2026-05-01
+
+Status: complete
+
+Goal: confirm the new Testnet/Signet wallet, sync, hardware import, node configuration, dashboard, and visualization upgrades have focused regression tests before committing and pushing.
+
+## Plan
+
+- [x] Map the changed Testnet/Signet code paths to existing frontend and backend tests.
+- [x] Add focused regression tests for any uncovered network-specific branches.
+- [x] Run the focused frontend/backend test suites, type checks, lizard, and diff hygiene checks.
+- [x] Document the final coverage and verification results here before committing.
+
+## Review
+
+- Confirmed focused coverage exists for the full Testnet/Signet upgrade set: hardware wallet standard paths and Ledger Bitcoin Test app guidance, wallet account selection by coin type, signet address/descriptor derivation, disabled-network sync errors and UI warnings, Node Configuration Testnet/Signet toggles, dark-mode badge/toggle contrast, dashboard network status, Electrum server display, and per-network mempool visualization.
+- Added direct helper coverage for `utils/derivationPathGroups.ts` and `services/hardwareWallet/xpubImportWarnings.ts`, so coin-type `1` grouping and skipped Ledger testnet/signet warning copy are covered independently of the UI.
+- Addressed pre-commit review findings: fixed signet warning contrast in create-wallet dark mode, reused the shared `Toggle` for Testnet/Signet sync switches, switched device-detail delete actions to the shared `Button`, documented the non-obvious coin-type `1` conventions, and updated agent-wallet tests so signet is treated as supported.
+- Verification passed: `npm run test:run -- tests/utils/derivationPathGroups.test.ts tests/services/hardwareWallet.xpubImportWarnings.test.ts tests/services/hardwareWallet.service.test.ts tests/services/hardwareWallet.ledgerAdapter.test.ts tests/hooks/useDeviceConnection.test.tsx tests/components/DeviceDetail/accounts/hooks/useAddAccountFlow.branches.test.tsx tests/components/DeviceDetail/accounts/AddAccountFlow.branches.test.tsx tests/components/DeviceDetail/DeviceAccountsSection.test.tsx tests/components/ConnectDevice/DeviceDetailsForm.test.tsx tests/components/ConnectDevice/DeviceDetailsForm.branches.test.tsx tests/components/NetworkConnectionCard.test.tsx tests/components/WalletDetail/WalletHeader.test.tsx tests/components/WalletDetail/hooks/useWalletSync.test.ts tests/hooks/useErrorHandler.test.tsx tests/components/Dashboard/MempoolSection.test.tsx tests/components/Dashboard/NodeStatusCard.test.tsx tests/components/Dashboard/Dashboard.render.test.tsx tests/components/Dashboard/useDashboardData.test.tsx tests/hooks/queries/useBitcoin.test.ts tests/api/coreApiModules.test.ts`.
+- Verification passed: `npm --prefix server run test -- tests/unit/services/wallet.test.ts tests/unit/api/devices.test.ts tests/unit/api/wallets.test.ts tests/unit/services/bitcoin/addressDerivation.derive.test.ts tests/unit/services/bitcoin/descriptorBuilder.test.ts tests/unit/services/bitcoin/nodeClient.test.ts tests/unit/services/bitcoin/electrum.connection.test.ts tests/unit/services/bitcoin/sync/pipeline.test.ts tests/unit/services/syncService.test.ts tests/unit/api/admin-nodeConfig-routes.test.ts tests/unit/api/bitcoin.test.ts tests/unit/services/bitcoin/mempool.test.ts`.
+- Verification passed after pre-commit fixes: `npm --prefix server run test -- tests/unit/services/agentFundingDraftValidation.test.ts tests/unit/services/agentOperationalAddressService.test.ts tests/unit/services/wallet.test.ts tests/unit/services/bitcoin/addressDerivation.derive.test.ts tests/unit/services/bitcoin/descriptorBuilder.test.ts`; `npm run test:run -- tests/components/NetworkConnectionCard.test.tsx tests/components/DeviceDetail/DeviceDetail.delete.test.tsx tests/components/CreateWallet/ConfigurationStep.branches.test.tsx tests/utils/derivationPathGroups.test.ts tests/services/hardwareWallet.xpubImportWarnings.test.ts`.
+- Verification passed: `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`; `npx playwright test e2e/network-sync-toggle-dark.spec.ts --project=chromium`.
+- `npm --prefix server run test -- tests/integration/repositories/deviceRepository.test.ts` was invoked, but the suite is skipped in this local environment.
+
+---
+
+# Active Task: Testnet Signet Block Visualization 2026-05-01
+
+Status: complete
+
+Goal: enable dashboard block/mempool visualization for Testnet and Signet without showing mainnet data on non-mainnet tabs.
+
+## Plan
+
+- [x] Thread the selected dashboard network into the mempool React Query hook and API client.
+- [x] Add a validated `network` query parameter to `/bitcoin/mempool` and split cache entries by network.
+- [x] Resolve mempool.space API bases per network, preserving configured mainnet/custom URLs.
+- [x] Add focused frontend/backend regression coverage for Testnet/Signet mempool requests.
+- [x] Verify with focused tests, type checks, lizard, runtime smoke, and rebuild the local instance.
+
+## Review
+
+- Root cause: the dashboard mempool visualizer was still a singleton mainnet data path. The React Query key, frontend API call, backend `/bitcoin/mempool` route, service cache, and mempool.space API resolver had no selected-network parameter.
+- Made mempool visualization network-aware for `mainnet`, `testnet`, and `signet`. Mainnet still honors the configured/custom fee estimator URL; Testnet and Signet use the matching public mempool.space API bases so mainnet config cannot bleed into non-mainnet tabs.
+- Connected Testnet/Signet dashboard tabs now render the existing block visualizer instead of the old "mainnet-only" placeholder. Disabled or error states still show the Node Config action.
+- Split the backend mempool cache by network and documented the new OpenAPI `network` query parameter.
+- Clamped future block timestamps to `0m ago`, which avoids negative ages on Testnet blocks with future timestamps.
+- Verification passed: `npm run test:run -- tests/components/Dashboard/MempoolSection.test.tsx tests/components/Dashboard/useDashboardData.test.tsx tests/hooks/queries/useBitcoin.test.ts tests/api/coreApiModules.test.ts`; `npm --prefix server run test -- tests/unit/services/bitcoin/mempool.test.ts tests/unit/api/bitcoin.test.ts`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Runtime smoke passed after rebuild: `/api/v1/bitcoin/mempool?network=testnet` and `/api/v1/bitcoin/mempool?network=signet` both returned pending mempool blocks, confirmed blocks, and mempool summary JSON.
+- Rebuilt the local instance with `./start.sh --rebuild`; app is running at `https://localhost:8443`, runtime containers are healthy, and the migration container exited `0`.
+
+---
+
+# Active Task: Dashboard Testnet Status Navigation 2026-05-01
+
+Status: complete
+
+Goal: fix the dashboard Testnet action and Electrum server card so they read saved network-specific node configuration correctly and do not navigate back to the dashboard unexpectedly.
+
+## Plan
+
+- [x] Trace the dashboard Testnet click handler and status request path.
+- [x] Patch the status resolver or UI state so enabled testnet config is treated as configured.
+- [x] Patch the click/navigation behavior so the dashboard action stays in the intended view.
+- [x] Add focused regression coverage for configured testnet status and the button behavior.
+- [x] Verify with focused tests and rebuild the running instance.
+
+## Review
+
+- Root cause: the dashboard status query was always using the mainnet Bitcoin status endpoint, while non-mainnet dashboard panels hardcoded Testnet/Signet as unconfigured and linked to the stale `/settings/node` path.
+- Made Bitcoin status network-aware from React Query keys through the frontend API, backend route, and Electrum status resolver. The resolver now honors enabled testnet/signet node configuration and reports configured Electrum pool servers even before live pool connections exist.
+- Updated the dashboard mempool and node-status cards so configured Testnet/Signet connections show actual host, block height, and server details instead of "node not configured." The Node Config action now routes to `/admin/node-config`.
+- Added regression coverage for configured non-mainnet dashboard states, network-aware status query keys, correct configure navigation, and backend testnet/pool status resolution.
+- Verification passed: `npm run test:run -- tests/components/Dashboard/MempoolSection.test.tsx tests/components/Dashboard/NodeStatusCard.test.tsx tests/components/Dashboard/Dashboard.render.test.tsx tests/components/Dashboard/useDashboardData.test.tsx tests/hooks/queries/useBitcoin.test.ts tests/api/coreApiModules.test.ts`; `npm --prefix server run test -- tests/unit/api/bitcoin.test.ts`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Runtime smoke passed: `curl -sk --max-time 10 https://localhost:8443/api/v1/bitcoin/status?network=testnet` returned a connected testnet Electrum status with host and block height.
+- Rebuilt the local instance with `./start.sh --rebuild`; app is running at `https://localhost:8443`, runtime containers are healthy, and the migration container exited `0`.
+
+---
+
+# Active Task: Testnet Sync Toggle Save Failure 2026-05-01
+
+Status: complete
+
+Goal: fix "Failed to save node configuration" when turning on Testnet Sync and saving Node Configuration.
+
+## Plan
+
+- [x] Capture the backend/API error for the failed save.
+- [x] Patch the node-config save path so testnet/signet sync fields are accepted and persisted.
+- [x] Add focused regression coverage for saving network sync toggles.
+- [x] Verify with focused tests and the running instance, then rebuild if needed.
+
+## Review
+
+- Root cause: `PUT /api/v1/admin/node-config` accepted `null` for per-network fields, but `buildNodeConfigData` only handled `undefined` and called `.toString()` on nullable numeric values.
+- Updated the node-config mapper input types and integer/string normalizers so nullable proxy, testnet, signet, and mainnet connection fields fall back to defaults or persist as null as intended.
+- Added a route regression that enables Testnet Sync while sending nullable connection fields, matching the UI save payload that failed locally.
+- Verification passed: `npm --prefix server run test -- tests/unit/api/admin-nodeConfig-routes.test.ts`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Rebuilt the local instance with `./start.sh --rebuild`; app is running at `https://localhost:8443`, runtime containers are healthy, and the migration container exited `0`.
+
+---
+
+# Active Task: Network Sync Toggle Still Light In Dark Mode 2026-05-01
+
+Status: complete
+
+Goal: remove the remaining white/light surfaces from the new testnet/signet on/off control in dark mode.
+
+## Plan
+
+- [x] Check the served rebuilt assets for stale toggle classes.
+- [x] Replace the network sync toggle with a self-contained dark-safe switch that has no white base thumb or primary-track dependency.
+- [x] Verify the actual browser-computed colors for the rendered Testnet/Signet sync control.
+- [x] Run focused tests and rebuild the running instance.
+
+## Review
+
+- Root cause: the first patch still left the Testnet/Signet sync UI using the shared switch pattern and raw light base classes. The served rebuild had the shared toggle fix, but the sync control could still render with light switch surfaces.
+- Replaced the network sync switch with a local dark-safe switch that uses semantic row surfaces, network-colored enabled tracks, and a dark thumb with no `bg-white` class.
+- Added a Playwright regression that forces dark mode on the Node Configuration route and checks the actual computed colors for the Testnet Sync row, track, and thumb are not white.
+- Verification passed: `npm run test:run -- tests/components/NetworkConnectionCard.test.tsx`; `npx playwright test e2e/network-sync-toggle-dark.spec.ts --project=chromium`; `npm run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Rebuilt the local instance with `./start.sh --rebuild`; app is running at `https://localhost:8443`, runtime containers are healthy, and the migration container exited `0`.
+
+---
+
+# Active Task: Network Sync Toggle Dark Mode 2026-05-01
+
+Status: complete
+
+Goal: remove the white dark-mode background from the new testnet/signet sync toggle UI.
+
+## Plan
+
+- [x] Identify which toggle surface is rendering white in Sanctuary dark mode.
+- [x] Patch the shared toggle dark-mode thumb/focus styling.
+- [x] Add focused regression coverage for the network sync toggle classes.
+- [x] Run focused verification and rebuild the local instance.
+
+## Review
+
+- Root cause: the shared `Toggle` component used `dark:bg-sanctuary-100` for its thumb, which is near-white in the Sanctuary dark palette. Its focus ring also relied on Tailwind's default white ring offset.
+- Updated the shared toggle to use `dark:bg-sanctuary-900` with a subtle dark ring for the thumb, and `dark:focus:ring-offset-sanctuary-950` for focus state.
+- Added focused NetworkConnectionCard coverage asserting the Testnet Sync toggle no longer uses the light dark-mode thumb class.
+- Verification passed: `npm run test:run -- tests/components/NetworkConnectionCard.test.tsx`; `npm run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Rebuilt the local instance with `./start.sh --rebuild`; app is running at `https://localhost:8443`, runtime containers are healthy, and the migration container exited `0`.
+
+---
+
+# Active Task: Testnet Wallet Sync Failure 2026-05-01
+
+Status: complete
+
+Goal: find and fix why a testnet wallet retries sync three times and then fails.
+
+## Plan
+
+- [x] Inspect backend sync logs and persisted wallet/network state for the failing testnet wallet.
+- [x] Trace testnet sync routing through address discovery and blockchain backend selection.
+- [x] Add explicit Testnet/Signet sync toggles in Node Configuration.
+- [x] Patch disabled-network sync failures so they fail fast and warn instead of retrying.
+- [x] Add focused regression coverage.
+- [x] Run focused verification and rebuild the local instance.
+
+## Review
+
+- Root cause: testnet was off in the persisted node config, but backend sync treated that configuration error as a transient Electrum failure, fell through to an incomplete singleton fallback, and retried three times.
+- Added explicit Testnet Sync and Signet Sync toggles in Node Configuration > Network Connections. When a network is off, the UI now shows that wallets on that network will not sync until the toggle is enabled and settings are saved.
+- Disabled testnet/signet node config now throws a typed non-retryable `NetworkDisabledError`; wallet sync records a final failed status immediately instead of scheduling retry attempts.
+- Wallet detail now surfaces disabled-network sync failures as a warning toast on manual sync and as a persistent "Network sync is off" banner using the stored sync error.
+- Backfilled default testnet/signet Electrum endpoint fields for existing default node configs while preserving the off state until the user enables each network.
+- Verification passed: `npm run test:run -- tests/components/NetworkConnectionCard.test.tsx tests/components/WalletDetail/hooks/useWalletSync.test.ts tests/components/WalletDetail/WalletHeader.test.tsx tests/hooks/useErrorHandler.test.tsx`; `npm --prefix server run test -- tests/unit/services/bitcoin/nodeClient.test.ts tests/unit/services/bitcoin/electrum.connection.test.ts tests/unit/services/syncService.test.ts`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Rebuilt the local instance with `./start.sh --rebuild`; app is running at `https://localhost:8443`, all runtime containers are healthy, and the migration container exited `0`.
+
+---
+
+# Active Task: Wallet Detail Testnet Badge Contrast 2026-05-01
+
+Status: complete
+
+Goal: make the testnet network badge readable in the individual wallet view under the Sanctuary dark theme.
+
+## Plan
+
+- [x] Identify the wallet-detail network badge styling path.
+- [x] Patch dark-mode network badge colors to use high-contrast theme shades.
+- [x] Add focused UI assertions and run focused verification.
+
+## Review
+
+- Root cause: the Sanctuary dark theme inverts network color scales, so the wallet-detail badge used `dark:text-testnet-100`, which resolves to a dark amber and was unreadable on an amber-tinted badge.
+- Updated wallet-detail testnet and signet network badges to use dark background shades with the lightest matching dark-mode text shades.
+- Added focused WalletHeader assertions for the dark-mode badge classes.
+- Verification passed: `npm run test:run -- tests/components/WalletDetail/WalletHeader.test.tsx`; `npm run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+
+---
+
+# Active Task: Ledger Bitcoin Test App Guidance 2026-05-01
+
+Status: complete
+
+Goal: make Ledger testnet/signet import failures point to the Bitcoin Test app requirement without implying Ledger Live is still open.
+
+## Plan
+
+- [x] Inspect Ledger adapter error handling and partial-import warning text.
+- [x] Patch the Ledger xpub path to detect wrong-app context for coin-type `1` paths.
+- [x] Update UI warning copy so Ledger Live is presented only as a USB-conflict check.
+- [x] Add focused regression coverage and run the smallest convincing verification.
+
+## Review
+
+- Confirmed the successful local workflow: installing/opening the Bitcoin Test app on Ledger lets USB import return coin-type `1` testnet/signet paths, and the existing-device merge flow adds those accounts to the saved device.
+- Updated Ledger xpub handling to read the running Ledger app name and emit a targeted error for coin-type `1` paths when the regular Bitcoin app or wrong-app APDU errors are encountered.
+- Updated partial USB import warning copy to say Ledger Live only matters when it is claiming USB, and to tell users to merge newly found accounts when re-importing an existing device.
+- Verification passed: `npm run test:run -- tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.service.test.ts tests/hooks/useDeviceConnection.test.tsx tests/components/DeviceDetail/accounts/hooks/useAddAccountFlow.branches.test.tsx`; `npm run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Rebuilt the local instance with `./start.sh --rebuild`; app is running at `https://localhost:8443`, and Sanctuary frontend/backend/worker/gateway/AI containers are healthy with migration exited `0`.
+
+---
+
+# Active Task: Ledger Testnet Account Import Feedback 2026-05-01
+
+Status: complete
+
+Goal: make the local USB account import path surface partial Ledger xpub failures so testnet/signet account import does not silently stop at mainnet accounts, while keeping full derivation-path device displays compact.
+
+## Plan
+
+- [x] Inspect local logs and USB import paths for the missing `m/84'/1'/0'` account.
+- [x] Patch hardware wallet import state so skipped standard paths are visible to connect-device and add-account flows.
+- [x] Collapse testnet/signet derivation paths in device account displays with an explicit expand affordance.
+- [x] Add focused regression coverage for partial Ledger imports, the device-detail add-account retry path, and collapsed derivation-path display.
+- [x] Run focused verification, rebuild the local instance, and document results.
+
+## Review
+
+- Root cause expanded: Ledger USB discovery can partially succeed, and the UI was discarding skipped-path information. Separately, the database still enforced one `deviceId + purpose + scriptType` account, which blocks storing both mainnet `m/84'/0'/0'` and testnet/signet `m/84'/1'/0'` for the same device.
+- Added `getAllXpubsWithFailures` plus shared USB warning helpers so new-device registration and device-detail "Add Derivation Path" can surface partial imports. If coin-type `1` paths are skipped, the UI now tells Ledger users to open the Bitcoin Test app and retry USB import.
+- Removed the bad `device_accounts(deviceId, purpose, scriptType)` unique constraint, replaced it with a non-unique lookup index, and kept `deviceId + derivationPath` as the uniqueness boundary.
+- Updated device-account duplicate checks and wallet export selection to be network-aware so same-purpose/script accounts are selected by coin type.
+- Collapsed testnet/signet derivation paths in the device account list and the connect-device account import selector behind an explicit expand control.
+- Verification passed: `npm run test:run -- tests/services/hardwareWallet.service.test.ts tests/hooks/useDeviceConnection.test.tsx tests/components/DeviceDetail/accounts/hooks/useAddAccountFlow.branches.test.tsx tests/components/DeviceDetail/accounts/AddAccountFlow.branches.test.tsx tests/components/DeviceDetail/DeviceAccountsSection.test.tsx tests/components/ConnectDevice/DeviceDetailsForm.test.tsx tests/components/ConnectDevice/DeviceDetailsForm.branches.test.tsx`; `npm --prefix server run test -- tests/unit/api/devices.test.ts tests/unit/api/wallets.test.ts tests/unit/services/wallet.test.ts`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- `npm --prefix server run test -- tests/integration/repositories/deviceRepository.test.ts` was invoked, but the suite is skipped in this environment.
+- Rebuilt the local instance with `./start.sh --rebuild`; app is running at `https://localhost:8443`. Migration `20260501000000_allow_network_variant_device_accounts` applied successfully, and the database now has `device_accounts_deviceId_purpose_scriptType_idx` instead of the old unique index.
+
+---
+
+# Active Task: Device Detail Delete Action 2026-05-01
+
+Status: complete
+
+Goal: let owners delete an unassigned device from the device detail screen, matching the existing delete behavior available from the device list.
+
+## Plan
+
+- [x] Trace the current device-list delete flow and device detail header/action layout.
+- [x] Add a detail-page delete affordance with confirmation, existing API usage, and navigation back to the device list after success.
+- [x] Add focused UI regression coverage for detail-page deletion and attached-wallet hiding.
+- [x] Run focused frontend tests, type checks, lizard, and diff hygiene checks.
+
+## Review
+
+- Added a device-detail delete control to `components/DeviceDetail/DeviceDetail/DeviceDetailHeader.tsx` that appears only for owner-owned devices with no attached wallets, matching the existing device-list delete rule.
+- Wired the detail page to the existing `deleteDevice` API, inline confirmation, API error display, and successful navigation back to `/devices`.
+- Added `tests/components/DeviceDetail/DeviceDetail.delete.test.tsx` coverage for successful deletion, hiding the action when a wallet is attached, and keeping the confirmation visible when the API rejects deletion.
+- Verification passed: `npm run test:run -- tests/components/DeviceDetail/DeviceDetail.delete.test.tsx tests/components/DeviceDetail/hooks/useDeviceData.branches.test.tsx`; `npm run test:run -- tests/components/DeviceDetail/DeviceDetail.delete.test.tsx`; `npm run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+
+---
+
+# Active Task: Signet Hardware Wallet Parity 2026-05-01
+
+Status: complete
+
+Goal: extend the local testnet hardware-wallet fix to signet so signet wallets can select coin-type 1 accounts, derive receive addresses, and keep the explicit `signet` network for sync routing.
+
+## Plan
+
+- [x] Trace signet support through wallet creation, descriptor building, address derivation, and sync routing.
+- [x] Add signet to the wallet creation/address derivation network contracts, mapping it to testnet address parameters and coin type 1 where appropriate.
+- [x] Add focused signet regression coverage for account selection, descriptor paths, and receive address derivation.
+- [x] Run focused backend tests, type checks, lizard, and diff hygiene checks.
+
+## Review
+
+- Root cause: signet was already exposed in the UI/API and sync routing, but wallet creation, descriptor building, address derivation, and several address/transaction helper contracts still only modeled `mainnet | testnet | regtest`.
+- Added signet to wallet creation and address-derivation network types. Signet now uses coin type `1` for hardware account selection and derivation paths, bitcoinjs testnet address parameters for receive address derivation/validation, and preserves `network: "signet"` for wallet records and node/electrum routing.
+- Extended the receive-address generation, gap-limit discovery, wallet repair/device descriptor paths, payjoin, transaction drafting, and script-type helper contracts so signet is not blocked by stale server-side network unions.
+- Added focused signet coverage for wallet account selection, descriptor path generation, direct address derivation, and descriptor batch derivation.
+- Verification passed: `npm --prefix server run test -- tests/unit/services/wallet.test.ts tests/unit/services/bitcoin/addressDerivation.derive.test.ts tests/unit/services/bitcoin/descriptorBuilder.test.ts tests/unit/services/bitcoin/sync/pipeline.test.ts`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+
+---
+
+# Active Task: Testnet Hardware Wallet Local Fix 2026-05-01
+
+Status: complete
+
+Goal: fix local testnet hardware-wallet wallets so testnet receive addresses derive, sync has valid testnet addresses to scan, and testnet badges/notices remain legible in dark mode.
+
+## Plan
+
+- [x] Confirm the failing path for a Ledger Nano S Plus testnet wallet.
+- [x] Make hardware account import and wallet creation network-aware so testnet wallets use coin-type 1 accounts.
+- [x] Fix the dark-mode testnet label/notice contrast regression.
+- [x] Add focused regression coverage for testnet account selection/address derivation and UI contrast.
+- [x] Run focused verification, lizard/diff checks, and document results.
+
+## Review
+
+- Root cause: USB hardware-wallet discovery only fetched mainnet account paths, and wallet creation selected accounts by purpose/script without checking coin type. A testnet wallet could be created with a mainnet descriptor, leaving it unable to derive receive addresses or scan valid testnet addresses.
+- Added testnet standard paths for USB account discovery and moved wallet account selection into `server/src/services/wallet/walletAccountSelection.ts`, which now prefers matching-network accounts and rejects mainnet-only devices for testnet wallet creation with an actionable path to add.
+- Updated sync pipeline behavior so descriptor wallets with zero stored addresses still enter the sync phases, allowing gap-limit address derivation instead of returning "No addresses to scan" immediately.
+- Fixed the testnet warning text in `components/CreateWallet/ConfigurationStep.tsx` from `dark:text-testnet-800` to `dark:text-testnet-200`.
+- Verification passed: `npm run test:run -- tests/services/hardwareWallet.service.test.ts tests/components/CreateWallet/ConfigurationStep.branches.test.tsx`; `npm --prefix server run test -- tests/unit/services/wallet.test.ts tests/unit/services/bitcoin/sync/pipeline.test.ts`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+
+---
+
 # Active Task: Admin Agent Routes Test Split 2026-05-01
 
 Status: complete
@@ -133,6 +482,28 @@ Goal: reduce the next agent-related warning-sized server route test by splitting
 - Large-file policy still passes and warning-sized test files dropped from 5 to 4.
 - Verification passed: `npm --prefix server run test -- tests/unit/api/admin-agents-routes.test.ts tests/unit/api/admin-agents-routes.controls.test.ts`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `node scripts/quality/check-large-files.mjs --json`; `git diff --check`.
 - Branch-ready split is complete; PR delivery continues through the queue verification workflow.
+
+---
+
+# Active Task: Codex Tmux PATH Recovery 2026-05-01
+
+Status: complete
+
+Goal: make `codex` available in new interactive tmux windows without changing repository runtime behavior.
+
+## Plan
+
+- [x] Confirm where the existing Codex CLI is installed and which Node version interactive shells select.
+- [x] Install or expose the Codex CLI under the active Node/global bin path used by new tmux windows.
+- [x] Verify `codex` resolves and reports its version from an interactive shell.
+- [x] Document the result and any remaining follow-up.
+
+## Review
+
+- Root cause: `nvm` defaults interactive shells to Node `24.14.1`, but `@openai/codex` was only installed under the older Node `22.22.0` prefix at `/home/nekoguntai/.nvm/versions/node/v22.22.0/bin/codex`.
+- Fixed by installing `@openai/codex@0.125.0` globally under the active Node `24.14.1` prefix, creating `/home/nekoguntai/.nvm/versions/node/v24.14.1/bin/codex`.
+- Verification passed: `bash -ic 'command -v codex'` resolved `/home/nekoguntai/.nvm/versions/node/v24.14.1/bin/codex`; `bash -ic 'codex --version'` returned `codex-cli 0.125.0`.
+- Verification passed in a disposable tmux session: `command -v codex` resolved the Node 24 path and `codex --version` returned `codex-cli 0.125.0`.
 
 ---
 

@@ -45,6 +45,7 @@ export interface NodeClientInterface {
   connect(): Promise<void>;
   disconnect(): void;
   isConnected(): boolean;
+  getServerVersion(): Promise<{ server: string; protocol: string }>;
   getBlockHeight(): Promise<number>;
   getBlockHeader(height: number): Promise<string>;
   getAddressHistory(address: string): Promise<Array<{ tx_hash: string; height: number }>>;

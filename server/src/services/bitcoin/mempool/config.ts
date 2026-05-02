@@ -10,14 +10,23 @@ import { getErrorMessage } from '../../../utils/errors';
 
 const log = createLogger('BITCOIN:SVC_MEMPOOL_CONFIG');
 
-// Default mempool.space API (public instance)
-const DEFAULT_MEMPOOL_API = 'https://mempool.space/api';
+export type MempoolNetwork = 'mainnet' | 'testnet' | 'signet';
+
+const DEFAULT_MEMPOOL_APIS: Record<MempoolNetwork, string> = {
+  mainnet: 'https://mempool.space/api',
+  testnet: 'https://mempool.space/testnet/api',
+  signet: 'https://mempool.space/signet/api',
+};
 
 /**
  * Get the mempool API base URL from node config or use default
  * Priority: feeEstimatorUrl > explorerUrl > default mempool.space
  */
-export async function getMempoolApiBase(): Promise<string> {
+export async function getMempoolApiBase(network: MempoolNetwork = 'mainnet'): Promise<string> {
+  if (network !== 'mainnet') {
+    return DEFAULT_MEMPOOL_APIS[network];
+  }
+
   try {
     const nodeConfig = await nodeConfigRepository.findDefault();
 
@@ -37,7 +46,7 @@ export async function getMempoolApiBase(): Promise<string> {
     log.warn('Could not fetch node config, using default', { error: getErrorMessage(error) });
   }
 
-  return DEFAULT_MEMPOOL_API;
+  return DEFAULT_MEMPOOL_APIS.mainnet;
 }
 
 /**

@@ -11,6 +11,7 @@ import { getErrorMessage } from '../../utils/errors';
 import { INITIAL_ADDRESS_COUNT } from '../../constants';
 import { hookRegistry, Operations } from '../hooks';
 import { InvalidInputError, WalletNotFoundError } from '../../errors';
+import type { WalletNetwork } from './types';
 
 const log = createLogger('WALLET:SVC_ADDRESS');
 
@@ -21,7 +22,7 @@ const log = createLogger('WALLET:SVC_ADDRESS');
 export function generateInitialAddresses(
   walletId: string,
   descriptor: string,
-  network: 'mainnet' | 'testnet' | 'regtest'
+  network: WalletNetwork
 ): Array<{ walletId: string; address: string; derivationPath: string; index: number; used: boolean }> {
   const addresses = [];
   for (const change of [false, true]) {
@@ -71,7 +72,7 @@ export async function generateAddress(
     wallet.descriptor,
     nextIndex,
     {
-      network: wallet.network as 'mainnet' | 'testnet' | 'regtest',
+      network: wallet.network as WalletNetwork,
       change: false, // External/receive address
     }
   );

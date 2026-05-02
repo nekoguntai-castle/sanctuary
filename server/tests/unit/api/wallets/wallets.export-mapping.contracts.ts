@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseDerivationPath } from '../../../../../shared/utils/bitcoin';
 
 export const registerWalletExportMappingContracts = () => {
   // ==================== Unit Tests for buildWalletExportData ====================
@@ -15,6 +16,25 @@ export const registerWalletExportMappingContracts = () => {
     };
 
     // Import buildWalletExportData helper for unit tests
+    function walletCoinType(network: string | null | undefined): number {
+      return network && network !== 'mainnet' ? 1 : 0;
+    }
+
+    function scopeAccountsToWalletNetwork(accounts: any[], network: string | null | undefined) {
+      const requestedCoinType = walletCoinType(network);
+      const networkMatches = accounts.filter((account: any) => {
+        const parsed = parseDerivationPath(account.derivationPath);
+        return parsed.valid && parsed.coinType === requestedCoinType;
+      });
+      if (networkMatches.length > 0) return networkMatches;
+
+      const unknownNetworkAccounts = accounts.filter((account: any) => {
+        const parsed = parseDerivationPath(account.derivationPath);
+        return !parsed.valid || parsed.coinType === null;
+      });
+      return unknownNetworkAccounts.length > 0 ? unknownNetworkAccounts : accounts;
+    }
+
     function buildWalletExportData(wallet: any) {
       const expectedPurpose = wallet.type === 'multi_sig' ? 'multisig' : 'single_sig';
 
@@ -28,7 +48,7 @@ export const registerWalletExportMappingContracts = () => {
         quorum: wallet.quorum || undefined,
         totalSigners: wallet.totalSigners || undefined,
         devices: wallet.devices.map((wd: any) => {
-          const accounts = wd.device.accounts || [];
+          const accounts = scopeAccountsToWalletNetwork(wd.device.accounts || [], wallet.network);
           const exactMatch = accounts.find(
             (a: any) => a.purpose === expectedPurpose && a.scriptType === wallet.scriptType
           );
@@ -133,6 +153,34 @@ export const registerWalletExportMappingContracts = () => {
 
       expect(exportData.devices[0].derivationPath).toBe("m/48'/0'/0'/2'");
       expect(exportData.devices[0].xpub).toBe('xpub_multisig_native');
+    });
+
+    it('should select the testnet-family account when exporting a testnet wallet', () => {
+      const wallet = {
+        id: 'wallet-1',
+        name: 'Testnet Wallet',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'testnet',
+        descriptor: 'wpkh(...)',
+        createdAt: new Date(),
+        devices: [
+          {
+            device: {
+              ...baseDevice,
+              accounts: [
+                { purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: "m/84'/0'/0'", xpub: 'xpub_mainnet' },
+                { purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: "m/84'/1'/0'", xpub: 'tpub_testnet' },
+              ],
+            },
+          },
+        ],
+      };
+
+      const exportData = buildWalletExportData(wallet);
+
+      expect(exportData.devices[0].derivationPath).toBe("m/84'/1'/0'");
+      expect(exportData.devices[0].xpub).toBe('tpub_testnet');
     });
 
     it('should fall back to legacy device fields when no accounts exist', () => {

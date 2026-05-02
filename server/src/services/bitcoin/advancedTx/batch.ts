@@ -19,7 +19,7 @@ export async function createBatchTransaction(
   feeRate: number,
   walletId: string,
   selectedUtxoIds?: string[],
-  network: "mainnet" | "testnet" | "regtest" = "mainnet",
+  network: "mainnet" | "testnet" | "signet" | "regtest" = "mainnet",
 ): Promise<{
   psbt: bitcoin.Psbt;
   fee: number;

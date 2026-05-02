@@ -47,7 +47,7 @@ export function getValidMedianFee(
  */
 export function formatConfirmedBlocks(blocks: MempoolBlock[]) {
   return blocks.slice(0, 4).map((block) => {
-    const age = Math.floor((Date.now() / 1000 - block.timestamp) / 60);
+    const age = Math.max(0, Math.floor((Date.now() / 1000 - block.timestamp) / 60));
     // Calculate average fee rate from totalFees and block weight
     // block.weight is in weight units, vsize = weight / 4
     const vsize = (block.weight || block.size) / 4;

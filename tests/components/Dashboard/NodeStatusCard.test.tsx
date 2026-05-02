@@ -34,7 +34,7 @@ describe('NodeStatusCard', () => {
   });
 
   describe('StatusIndicator', () => {
-    it('shows neutral indicator for non-mainnet', () => {
+    it('shows connected indicator for configured non-mainnet status', () => {
       const { container } = render(
         <NodeStatusCard
           isMainnet={false}
@@ -44,7 +44,7 @@ describe('NodeStatusCard', () => {
         />,
       );
 
-      const indicator = container.querySelector('.bg-sanctuary-400.rounded-full');
+      const indicator = container.querySelector('.animate-connected-glow');
       expect(indicator).toBeInTheDocument();
     });
 
@@ -332,8 +332,8 @@ describe('NodeStatusCard', () => {
     });
   });
 
-  describe('TestnetContent', () => {
-    it('shows testnet node not configured message', () => {
+  describe('NetworkUnavailableContent', () => {
+    it('shows unavailable testnet status without claiming it is unconfigured', () => {
       render(
         <NodeStatusCard
           isMainnet={false}
@@ -343,21 +343,57 @@ describe('NodeStatusCard', () => {
         />,
       );
 
-      expect(screen.getByText('Testnet node not configured')).toBeInTheDocument();
-      expect(screen.getByText('Configure in Settings \u2192 Node Configuration')).toBeInTheDocument();
+      expect(screen.getByText('Testnet node status is unavailable')).toBeInTheDocument();
+      expect(screen.queryByText('Testnet node not configured')).not.toBeInTheDocument();
+      expect(screen.getByText('Open Admin \u2192 Node Config to review Testnet settings.')).toBeInTheDocument();
     });
 
-    it('shows signet node not configured message', () => {
+    it('shows signet error message from the network status API', () => {
       render(
         <NodeStatusCard
           isMainnet={false}
           selectedNetwork="signet"
-          nodeStatus="unknown"
+          nodeStatus="error"
+          bitcoinStatus={{ connected: false, error: 'Signet sync is off' }}
+        />,
+      );
+
+      expect(screen.getByText('Signet sync is off')).toBeInTheDocument();
+    });
+
+    it('shows checking copy while a non-mainnet status request is in flight', () => {
+      render(
+        <NodeStatusCard
+          isMainnet={false}
+          selectedNetwork="testnet"
+          nodeStatus="checking"
           bitcoinStatus={undefined}
         />,
       );
 
-      expect(screen.getByText('Signet node not configured')).toBeInTheDocument();
+      expect(screen.getByText('Checking configured Electrum server...')).toBeInTheDocument();
+    });
+
+    it('shows configured testnet Electrum host when connected', () => {
+      render(
+        <NodeStatusCard
+          isMainnet={false}
+          selectedNetwork="testnet"
+          nodeStatus="connected"
+          bitcoinStatus={{
+            connected: true,
+            blockHeight: 4500000,
+            host: 'testnet.example.com',
+            useSsl: true,
+            pool: { enabled: false, minConnections: 1, maxConnections: 1, stats: null },
+          }}
+        />,
+      );
+
+      expect(screen.getByText('Connected')).toBeInTheDocument();
+      expect(screen.getByText('4,500,000')).toBeInTheDocument();
+      expect(screen.getByText('testnet.example.com')).toBeInTheDocument();
+      expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
     });
   });
 

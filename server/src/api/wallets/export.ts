@@ -11,8 +11,30 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { exportFormatRegistry, type WalletExportData } from '../../services/export';
 import type { ScriptType, Network } from '../../services/bitcoin/descriptorParser';
+import { parseDerivationPath } from '../../../../shared/utils/bitcoin';
 
 const router = Router();
+
+function walletCoinType(network: string | null | undefined): number {
+  return network && network !== 'mainnet' ? 1 : 0;
+}
+
+function accountCoinType(account: { derivationPath: string | null | undefined }): number | null {
+  const parsed = parseDerivationPath(account.derivationPath);
+  return parsed.valid ? parsed.coinType : null;
+}
+
+function scopeAccountsToWalletNetwork<T extends { derivationPath: string | null | undefined }>(
+  accounts: T[],
+  network: string | null | undefined,
+): T[] {
+  const requestedCoinType = walletCoinType(network);
+  const networkMatches = accounts.filter((account) => accountCoinType(account) === requestedCoinType);
+  if (networkMatches.length > 0) return networkMatches;
+
+  const unknownNetworkAccounts = accounts.filter((account) => accountCoinType(account) === null);
+  return unknownNetworkAccounts.length > 0 ? unknownNetworkAccounts : accounts;
+}
 
 /**
  * Build wallet export data from wallet with devices
@@ -34,7 +56,7 @@ function buildWalletExportData(wallet: NonNullable<Awaited<ReturnType<typeof wal
     devices: wallet.devices.map((wd) => {
       // Find the appropriate account based on wallet type
       // Priority: exact match (purpose + scriptType) > purpose match > legacy fields
-      const accounts = wd.device.accounts || [];
+      const accounts = scopeAccountsToWalletNetwork(wd.device.accounts || [], wallet.network);
       const exactMatch = accounts.find(
         (a) => a.purpose === expectedPurpose && a.scriptType === wallet.scriptType
       );

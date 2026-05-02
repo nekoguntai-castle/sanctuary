@@ -9,7 +9,7 @@ import {
 import { deriveAddressFromDescriptor } from "./bitcoin/addressDerivation";
 import { parseAddressDerivationPath } from "../../../shared/utils/bitcoin";
 
-type SupportedNetwork = "mainnet" | "testnet" | "regtest";
+type SupportedNetwork = "mainnet" | "testnet" | "signet" | "regtest";
 
 export interface AgentOperationalReceiveAddress {
   walletId: string;
@@ -33,7 +33,12 @@ interface DerivationPathRecord {
 }
 
 function toSupportedNetwork(network: string): SupportedNetwork {
-  if (network === "mainnet" || network === "testnet" || network === "regtest") {
+  if (
+    network === "mainnet" ||
+    network === "testnet" ||
+    network === "signet" ||
+    network === "regtest"
+  ) {
     return network;
   }
   throw new InvalidInputError(

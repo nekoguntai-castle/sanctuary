@@ -29,6 +29,7 @@ export interface QrExtractedFields {
 export interface ConnectionResult {
   fingerprint: string;
   accounts: DeviceAccount[];
+  warning?: string | null;
 }
 
 /** Dependencies injected into the hook */
@@ -174,6 +175,7 @@ export function useDeviceForm(deps: UseDeviceFormDeps): UseDeviceFormReturn {
         parsedAccounts: connectionResult.accounts,
         selectedAccounts: new Set(connectionResult.accounts.map((_, i) => i)),
       }));
+      setWarning(connectionResult.warning ?? null);
       setScanned(true);
     }
   }, [connectionResult]);

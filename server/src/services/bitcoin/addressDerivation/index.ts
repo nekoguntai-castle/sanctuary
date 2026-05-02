@@ -14,6 +14,7 @@ export type {
   DerivedAddress,
   DerivedAddressWithIndex,
   XpubValidationResult,
+  AddressDerivationNetwork,
 } from './types';
 
 // Xpub conversion

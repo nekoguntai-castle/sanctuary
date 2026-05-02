@@ -119,6 +119,12 @@ vi.mock('../../../../services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: connectMock,
     getAllXpubs: getAllXpubsMock,
+    getAllXpubsWithFailures: async (callback: unknown) => {
+      const value = await getAllXpubsMock(callback);
+      return Array.isArray(value)
+        ? { results: value, failures: [], totalPaths: value.length }
+        : value;
+    },
     disconnect: disconnectMock,
   },
   DeviceType: {},

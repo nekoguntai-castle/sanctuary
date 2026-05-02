@@ -15,6 +15,7 @@ const bitcoinApiMocks = vi.hoisted(() => ({
     getNodeConfig: vi.fn(),
     isConnected: vi.fn(),
     getElectrumPool: vi.fn(),
+    getNodeClient: vi.fn(),
   },
   mockBlockchain: {
     getBlockHeight: vi.fn(),
@@ -68,6 +69,7 @@ vi.mock('../../../../src/services/bitcoin/electrum', () => ({
 }));
 vi.mock('../../../../src/services/bitcoin/electrumPool', () => ({
   getElectrumPoolAsync: () => Promise.resolve(mockElectrumPool),
+  getElectrumPoolForNetwork: () => Promise.resolve(mockElectrumPool),
 }));
 vi.mock('../../../../src/middleware/auth', () => ({
   requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
@@ -220,15 +222,41 @@ export const setupBitcoinApiMocks = () => {
   });
   mockNodeClient.isConnected.mockReturnValue(true);
   mockNodeClient.getElectrumPool.mockReturnValue(mockElectrumPool);
+  mockNodeClient.getNodeClient.mockResolvedValue(mockElectrumClient);
 
   // Default prisma mocks
   mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({
+    id: 'default',
     type: 'electrum',
     host: 'electrum.example.com',
     port: 50002,
     useSsl: true,
     poolEnabled: true,
     explorerUrl: 'https://mempool.space',
+    mainnetMode: 'pool',
+    mainnetSingletonHost: 'electrum.example.com',
+    mainnetSingletonPort: 50002,
+    mainnetSingletonSsl: true,
+    mainnetPoolMin: 1,
+    mainnetPoolMax: 5,
+    mainnetPoolLoadBalancing: 'round_robin',
+    testnetEnabled: true,
+    testnetMode: 'singleton',
+    testnetSingletonHost: 'testnet.example.com',
+    testnetSingletonPort: 60002,
+    testnetSingletonSsl: true,
+    testnetPoolMin: 1,
+    testnetPoolMax: 3,
+    testnetPoolLoadBalancing: 'round_robin',
+    signetEnabled: true,
+    signetMode: 'singleton',
+    signetSingletonHost: 'signet.example.com',
+    signetSingletonPort: 50002,
+    signetSingletonSsl: true,
+    signetPoolMin: 1,
+    signetPoolMax: 3,
+    signetPoolLoadBalancing: 'round_robin',
+    servers: [],
   });
   mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
 };

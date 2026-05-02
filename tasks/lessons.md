@@ -2,6 +2,68 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Audit Coverage Before Broad Feature Commits
+
+**Rule:** Before committing a broad feature series, map each new behavior area to focused tests and add direct helper tests for any new branchy utility modules that are only indirectly covered.
+
+**Why:** The user asked for one more test coverage pass before committing the Testnet/Signet upgrade series. The main flows were covered, but direct tests for derivation-path grouping and skipped-xpub warning copy made the testnet-specific helper behavior explicit and easier to preserve.
+
+**How to apply:**
+
+- Group changed code by behavior, not by file count: hardware import, account selection, sync routing, dashboard status, mempool data, UI contrast, and migrations.
+- Prefer small direct unit tests for reusable helpers whose behavior would otherwise be asserted only through a component or hook.
+- Re-run the focused suites that correspond to the behavior map, then type checks, lizard, and diff hygiene before staging.
+
+## Avoid Light Toggle Surfaces In Dark Mode
+
+**Rule:** Shared switch/toggle controls must set both dark-mode thumb color and dark-mode focus ring offset explicitly.
+
+**Why:** The new testnet/signet sync toggle reused `dark:bg-sanctuary-100`, which is near-white in the Sanctuary dark palette, and the default Tailwind focus ring offset is white unless overridden.
+
+**How to apply:**
+
+- Use dark surface tokens such as `dark:bg-sanctuary-900` for toggle thumbs in dark mode.
+- Add `dark:focus:ring-offset-sanctuary-950` when using `focus:ring-offset-*` on dark surfaces.
+- Add focused class assertions when fixing theme-specific control regressions.
+- If the user still sees a light surface, verify browser-computed styles for the rendered route and remove white/light base classes from that specific control instead of relying on `dark:` overrides.
+
+## Check Dark Theme Inverted Palette Contrast
+
+**Rule:** In dark mode, do not assume low numeric theme shades are light text colors; inspect the active theme palette before choosing badge foreground/background classes.
+
+**Why:** The Sanctuary dark palette inverts semantic color scales, so `dark:text-testnet-100` resolves to a dark amber and became unreadable on the wallet-detail testnet badge.
+
+**How to apply:**
+
+- For dark-mode network badges, pair dark backgrounds like `dark:bg-testnet-50` with light foregrounds like `dark:text-testnet-950`.
+- Add focused render assertions for the actual dark-mode utility classes when fixing theme contrast bugs.
+- Re-check signet alongside testnet when they share the same badge helper.
+
+## Surface Partial Hardware Account Imports
+
+**Rule:** Do not treat a hardware wallet USB import as complete when standard paths were skipped; preserve and surface partial xpub failures, especially across mainnet/testnet coin-type boundaries.
+
+**Why:** The user registered a Ledger after the testnet path fix, but the local instance still stored only the six mainnet accounts. Wallet creation then correctly rejected the missing `m/84'/1'/0'` account, while the UI gave no clue that Ledger testnet paths had been skipped.
+
+**How to apply:**
+
+- Track per-path xpub failures alongside successful USB imports.
+- Show partial-import warnings in both new-device registration and add-account retry flows.
+- For Ledger coin-type `1` paths, tell the user to open the Bitcoin Test app and retry USB import when testnet/signet paths were not returned.
+- Do not imply Ledger Live is the primary blocker for coin-type `1` failures; distinguish "USB connection is claimed" from "regular Bitcoin app is open instead of Bitcoin Test."
+
+## Treat Signet As Testnet-Family For Wallet Key Material
+
+**Rule:** When fixing testnet wallet creation, derivation, or hardware account selection, include signet wherever the product exposes it as a selectable wallet network.
+
+**Why:** The user caught that the testnet hardware-wallet fix did not explicitly cover signet, even though the UI/API already advertise signet and the sync layer routes it separately.
+
+**How to apply:**
+
+- Use coin type `1` for signet derivation paths, matching testnet/regtest hardware account exports.
+- Use bitcoinjs testnet address parameters for signet address derivation and validation, while preserving `network: "signet"` for wallet records and node/electrum routing.
+- Add signet regression tests next to any testnet wallet-account or address-derivation coverage.
+
 ## Pin Calendar-Boundary Tests To A Deterministic Clock
 
 **Rule:** Tests for "this month", "last month", week/month windows, or other relative calendar presets must set an explicit fake system time near the middle of the relevant period.
@@ -104,6 +166,19 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - If the shell default is stale, use a stable Node 24 invocation or fix the local runtime once instead of prefixing every command with environment variables.
 - Do not use `npx` for tools that are not installed locally; it may try the network and trigger avoidable approval or DNS failures.
 - Add package scripts or local dev-tool dependencies when a verification command needs to be repeatable.
+
+## Use Nvm For Node And Npm Runtime Updates
+
+**Rule:** When the repo standardizes on `nvm`, do not keep suggesting or running `npm install` to update the runtime/npm toolchain. Use `nvm install`, `nvm use`, or the repo's documented Node setup instead.
+
+**Why:** The user clarified that repeated `npm install` update suggestions fight the intended `nvm` workflow and create unnecessary churn when the goal is to align the local runtime.
+
+**How to apply:**
+
+- Check `.nvmrc`, `.node-version`, `package.json` engines, and CI Node settings before changing local tooling.
+- Use `nvm install` to install the required Node version and bundled npm version.
+- Use `nvm use` before verification commands when the shell is on the wrong Node major.
+- Only run `npm install` when dependencies actually need to be installed or the lockfile/package metadata intentionally changes.
 
 ## Separate Global Ops Settings From User Preferences
 
@@ -892,3 +967,39 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Reuse the exported auth token extractor instead of hand-parsing `req.headers.authorization`.
 - Cover both bearer and cookie-auth paths in API tests when a route proxies user-scoped internal data.
 - Check internal endpoint logs for `userId=null` before blaming the external model provider.
+
+## Disabled Network Sync Needs UI Control And Specific Errors
+
+**Rule:** If a wallet feature can create testnet or signet wallets, the UI must expose the matching network sync enablement and sync failures must say when that network is off.
+
+**Why:** Testnet wallet sync retried three times against an incomplete Electrum fallback because the node config had testnet disabled. The user had no obvious UI control to enable it and the failure did not say sync was off.
+
+**How to apply:**
+
+- Add explicit per-network sync toggles anywhere network-specific sync config is editable.
+- Treat disabled network config as non-retryable, not as an Electrum transient.
+- Surface the disabled-network message in both immediate sync feedback and persisted wallet failure status.
+
+## API Schema Nullability Must Match Mappers
+
+**Rule:** When an API schema accepts `null`, every downstream mapper/parser type and branch must treat `null` as a first-class value, not just `undefined`.
+
+**Why:** The node-config PUT schema accepted nullable per-network fields from the UI, but the persistence mapper still called `.toString()` on nullable numeric fields. Turning on Testnet Sync with unchanged nullable connection fields returned "Failed to save node configuration."
+
+**How to apply:**
+
+- Define shared nullable input aliases for route mappers when the Zod schema allows null.
+- Add route tests that send the UI's saved payload shape, including nullable optional fields.
+- Prefer mapper-level defaulting for absent/null config values so frontend forms and persisted records stay compatible.
+
+## Dashboard Network Tabs Must Be Network-Aware End To End
+
+**Rule:** When a dashboard exposes selectable Bitcoin networks, route the selected network through query keys, API parameters, backend status resolvers, and empty/configured UI states together.
+
+**Why:** The dashboard Testnet tab still called the mainnet `/bitcoin/status` path and hardcoded non-mainnet panels as "not configured." That made configured Testnet/Signet Electrum settings look absent, hid configured server rows, and sent the Node Config action to a stale route.
+
+**How to apply:**
+
+- Include selected network values in React Query keys and status API calls.
+- Make backend status endpoints validate the requested network and resolve per-network node configuration.
+- Test configured non-mainnet dashboard states and navigation targets alongside disabled/error states.

@@ -4,6 +4,8 @@
  * Shared interfaces and types for the address derivation module.
  */
 
+export type AddressDerivationNetwork = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+
 /**
  * Multisig key info extracted from descriptor
  */

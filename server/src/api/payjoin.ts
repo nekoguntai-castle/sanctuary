@@ -213,7 +213,7 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
   const { psbt, payjoinUrl, network } = req.body;
 
   // Use provided network or default to mainnet
-  const networkStr = (network || 'mainnet') as 'mainnet' | 'testnet' | 'regtest';
+  const networkStr = (network || 'mainnet') as 'mainnet' | 'testnet' | 'signet' | 'regtest';
   const networkObj = getNetwork(networkStr);
 
   const result = await attemptPayjoinSend(

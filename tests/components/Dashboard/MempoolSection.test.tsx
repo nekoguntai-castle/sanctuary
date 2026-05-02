@@ -3,16 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { MempoolSection } from '../../../components/Dashboard/MempoolSection';
 
-const mockNavigate = vi.fn();
 const mockRefresh = vi.fn();
-
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
-  return {
-    ...actual,
-    useNavigate: () => mockNavigate,
-  };
-});
+const mockConfigureNode = vi.fn();
 
 vi.mock('../../../components/BlockVisualizer', () => ({
   BlockVisualizer: ({ blocks }: { blocks: unknown[] }) => (
@@ -44,6 +36,9 @@ describe('MempoolSection', () => {
     lastMempoolUpdate: new Date('2026-01-01T12:34:56Z'),
     wsConnected: true,
     wsState: 'connected',
+    nodeStatus: 'connected' as const,
+    bitcoinStatus: { connected: true, host: 'mainnet.example.com' },
+    onConfigureNode: mockConfigureNode,
   };
 
   it('renders mainnet live state and refreshes data', async () => {
@@ -79,38 +74,63 @@ describe('MempoolSection', () => {
     expect(screen.getByTestId('refresh-icon').className).toContain('animate-spin');
   });
 
-  it('renders non-mainnet configuration prompt and navigates to node settings', async () => {
+  it('renders connected non-mainnet block visualization without a false configuration prompt', async () => {
     const user = userEvent.setup();
     render(
       <MempoolSection
         {...baseProps}
         selectedNetwork="testnet"
         isMainnet={false}
+        bitcoinStatus={{ connected: true, host: 'testnet.example.com' }}
       />
     );
 
-    expect(screen.getByText('Testnet Node Not Configured')).toBeInTheDocument();
-    expect(screen.queryByTestId('block-visualizer')).not.toBeInTheDocument();
+    expect(screen.getByTestId('block-visualizer')).toBeInTheDocument();
     expect(screen.getByText('TESTNET')).toBeInTheDocument();
+    expect(screen.queryByText(/mainnet-only/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /open node config/i })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /configure node/i }));
-    expect(mockNavigate).toHaveBeenCalledWith('/settings/node');
+    await user.click(screen.getByTitle('Refresh mempool data'));
+    expect(mockRefresh).toHaveBeenCalled();
   });
 
-  it('renders signet-specific non-mainnet styling and configure action', async () => {
+  it('renders signet-specific attention state and configuration action', async () => {
     const user = userEvent.setup();
     render(
       <MempoolSection
         {...baseProps}
         selectedNetwork="signet"
         isMainnet={false}
+        nodeStatus="error"
+        bitcoinStatus={{ connected: false, error: 'Signet sync is off' }}
       />
     );
 
-    expect(screen.getByText('Signet Node Not Configured')).toBeInTheDocument();
+    expect(screen.getByText('Signet Node Needs Attention')).toBeInTheDocument();
+    expect(screen.getByText('Signet sync is off')).toBeInTheDocument();
     expect(screen.getByText('SIGNET')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /configure node/i }));
-    expect(mockNavigate).toHaveBeenCalledWith('/settings/node');
+    await user.click(screen.getByRole('button', { name: /open node config/i }));
+    expect(mockConfigureNode).toHaveBeenCalled();
+  });
+
+  it('renders the testnet checking state with testnet-specific treatment', async () => {
+    const user = userEvent.setup();
+    render(
+      <MempoolSection
+        {...baseProps}
+        selectedNetwork="testnet"
+        isMainnet={false}
+        nodeStatus="checking"
+        bitcoinStatus={undefined}
+      />
+    );
+
+    expect(screen.getByText('Checking Testnet Node')).toBeInTheDocument();
+    expect(screen.getByText(/review testnet Electrum settings/i)).toBeInTheDocument();
+    expect(screen.getByText('TESTNET')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /open node config/i }));
+    expect(mockConfigureNode).toHaveBeenCalled();
   });
 });

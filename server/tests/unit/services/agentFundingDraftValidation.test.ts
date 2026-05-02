@@ -249,15 +249,15 @@ describe('agentFundingDraftValidation', () => {
     await expect(validSubmission(fixture)).rejects.toThrow('same network');
   });
 
-  it('rejects unsupported networks, malformed fingerprints, malformed amounts, and malformed PSBTs', async () => {
+  it('rejects unsupported network strings, malformed fingerprints, malformed amounts, and malformed PSBTs', async () => {
     const fixture = buildFixture();
 
     setupRepositoryMocks(fixture);
     mockFindWalletById.mockImplementation(async (walletId: string) => {
       if (walletId === FUNDING_WALLET_ID) {
-        return { id: FUNDING_WALLET_ID, type: 'multi_sig', network: 'signet' };
+        return { id: FUNDING_WALLET_ID, type: 'multi_sig', network: 'liquid' };
       }
-      return { id: OPERATIONAL_WALLET_ID, type: 'single_sig', network: 'signet' };
+      return { id: OPERATIONAL_WALLET_ID, type: 'single_sig', network: 'liquid' };
     });
     await expect(validSubmission(fixture)).rejects.toThrow('Unsupported wallet network');
 

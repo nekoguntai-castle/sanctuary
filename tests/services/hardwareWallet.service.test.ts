@@ -301,6 +301,33 @@ describe('HardwareWalletService', () => {
     expect(results.every(r => r.xpub.startsWith('xpub-'))).toBe(true);
   });
 
+  it('returns skipped xpub path failures with partial batch results', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('ledger', {
+      getXpub: vi.fn(async (path: string) => {
+        if (path.includes("/1'/")) {
+          throw new Error('Bitcoin Test app not open');
+        }
+        return { xpub: `xpub-${path}`, fingerprint: 'f1f1f1f1', path };
+      }),
+    });
+    service.registerAdapter(adapter);
+    await service.connect('ledger');
+
+    const batch = await service.getAllXpubsWithFailures();
+
+    expect(batch.results).toHaveLength(6);
+    expect(batch.failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "m/84'/1'/0'",
+          message: 'Bitcoin Test app not open',
+        }),
+      ])
+    );
+    expect(batch.totalPaths).toBe(HardwareWalletService.STANDARD_PATHS.length);
+  });
+
   it('fetches all standard xpubs when every path succeeds', async () => {
     const service = new HardwareWalletService();
     const { adapter } = createMockAdapter('ledger', {
@@ -314,6 +341,25 @@ describe('HardwareWalletService', () => {
     expect(results).toHaveLength(HardwareWalletService.STANDARD_PATHS.length);
     expect(results.map(result => result.path)).toEqual(
       HardwareWalletService.STANDARD_PATHS.map(standardPath => standardPath.path)
+    );
+  });
+
+  it('includes testnet account paths in standard USB discovery', () => {
+    expect(HardwareWalletService.STANDARD_PATHS).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "m/84'/1'/0'",
+          purpose: 'single_sig',
+          scriptType: 'native_segwit',
+          name: expect.stringContaining('Testnet'),
+        }),
+        expect.objectContaining({
+          path: "m/48'/1'/0'/2'",
+          purpose: 'multisig',
+          scriptType: 'native_segwit',
+          name: expect.stringContaining('Testnet'),
+        }),
+      ])
     );
   });
 
@@ -331,7 +377,7 @@ describe('HardwareWalletService', () => {
     await service.connect('ledger');
 
     await expect(service.getAllXpubs()).rejects.toThrow(
-      /Failed to fetch any xpubs from device after trying 6\/6 standard account paths.*Most common error: Bitcoin app not open on Ledger.*Native SegWit/
+      /Failed to fetch any xpubs from device after trying 12\/12 standard account paths.*Most common error: Bitcoin app not open on Ledger.*Native SegWit/
     );
   });
 

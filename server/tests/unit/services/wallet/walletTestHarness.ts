@@ -232,6 +232,36 @@ vi.mock('../../../../src/repositories', () => ({
 // Mock descriptor builder
 vi.mock('../../../../src/services/bitcoin/descriptorBuilder', () => ({
   buildDescriptorFromDevices: (...args: any[]) => mockBuildDescriptorFromDevices(...args),
+  getDerivationPath: (
+    scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy',
+    network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet',
+    account = 0,
+  ) => {
+    const coinType = network === 'mainnet' ? '0' : '1';
+    const purpose = {
+      legacy: '44',
+      nested_segwit: '49',
+      native_segwit: '84',
+      taproot: '86',
+    }[scriptType];
+    return `m/${purpose}'/${coinType}'/${account}'`;
+  },
+  getMultisigDerivationPath: (
+    scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy',
+    network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet',
+    account = 0,
+  ) => {
+    const coinType = network === 'mainnet' ? '0' : '1';
+    const scriptPath = {
+      legacy: null,
+      nested_segwit: '1',
+      native_segwit: '2',
+      taproot: '3',
+    }[scriptType];
+    return scriptPath === null
+      ? `m/45'/${account}'`
+      : `m/48'/${coinType}'/${account}'/${scriptPath}'`;
+  },
 }));
 
 // Mock address derivation

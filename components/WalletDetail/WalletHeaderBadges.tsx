@@ -15,11 +15,11 @@ type WalletUserRole = 'owner' | 'signer' | 'viewer' | string | null | undefined;
 
 function getNetworkBadgeClass(network: string): string {
   if (network === 'testnet') {
-    return 'bg-testnet-100 text-testnet-800 border-testnet-200 dark:bg-testnet-500/10 dark:text-testnet-100 dark:border-testnet-500/30';
+    return 'bg-testnet-100 text-testnet-800 border-testnet-200 dark:bg-testnet-50 dark:text-testnet-950 dark:border-testnet-500/40';
   }
 
   if (network === 'signet') {
-    return 'bg-signet-100 text-signet-800 border-signet-200 dark:bg-signet-500/10 dark:text-signet-100 dark:border-signet-500/30';
+    return 'bg-signet-100 text-signet-800 border-signet-200 dark:bg-signet-50 dark:text-signet-950 dark:border-signet-500/40';
   }
 
   return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/20';

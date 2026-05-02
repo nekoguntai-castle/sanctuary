@@ -5,35 +5,47 @@
  * aggregate queries for balance computation.
  */
 
-import { walletRepository, utxoRepository, transactionRepository, addressRepository } from '../../repositories';
-import { WalletNotFoundError } from '../../errors';
-import { EDIT_ROLES } from './types';
-import type { WalletRole, WalletWithBalance } from './types';
+import {
+  walletRepository,
+  utxoRepository,
+  transactionRepository,
+  addressRepository,
+} from "../../repositories";
+import { WalletNotFoundError } from "../../errors";
+import { EDIT_ROLES } from "./types";
+import type { WalletRole, WalletWithBalance } from "./types";
 
 /**
  * Get all wallets for a user
  * OPTIMIZED: Uses aggregate queries for balance instead of loading all UTXOs
  */
-export async function getUserWallets(userId: string): Promise<WalletWithBalance[]> {
+export async function getUserWallets(
+  userId: string,
+): Promise<WalletWithBalance[]> {
   // First, get wallet IDs and basic info
-  const wallets = await walletRepository.findByUserIdWithInclude(userId, {
-    devices: { select: { id: true } },
-    addresses: { select: { id: true } },
-    group: { select: { name: true } },
-    users: { select: { userId: true, role: true } },
-  }, { createdAt: 'desc' });
+  const wallets = await walletRepository.findByUserIdWithInclude(
+    userId,
+    {
+      devices: { select: { id: true } },
+      addresses: { select: { id: true } },
+      group: { select: { name: true } },
+      users: { select: { userId: true, role: true } },
+    },
+    { createdAt: "desc" },
+  );
 
   if (wallets.length === 0) {
     return [];
   }
 
   // Fetch balances using aggregate query (single query for all wallets)
-  const walletIds = wallets.map(w => w.id);
-  const balanceMapBigint = await utxoRepository.getUnspentBalanceForWallets(walletIds);
+  const walletIds = wallets.map((w) => w.id);
+  const balanceMapBigint =
+    await utxoRepository.getUnspentBalanceForWallets(walletIds);
 
   // Create balance lookup map (convert BigInt to Number)
   const balanceMap = new Map(
-    [...balanceMapBigint.entries()].map(([id, val]) => [id, Number(val)])
+    [...balanceMapBigint.entries()].map(([id, val]) => [id, Number(val)]),
   );
 
   return wallets.map((wallet) => {
@@ -47,16 +59,18 @@ export async function getUserWallets(userId: string): Promise<WalletWithBalance[
 
     // Determine user's role for this wallet
     // Check direct user access first, then group access
-    const directAccess = wallet.users.find(u => u.userId === userId);
+    const directAccess = wallet.users.find((u) => u.userId === userId);
     let userRole: WalletRole = null;
     if (directAccess) {
       userRole = directAccess.role as WalletRole;
     } else if (hasGroup) {
       // User has access via group, use the wallet's groupRole
-      userRole = (wallet as unknown as { groupRole: string }).groupRole as WalletRole || 'viewer';
+      userRole =
+        ((wallet as unknown as { groupRole: string })
+          .groupRole as WalletRole) || "viewer";
     }
 
-    const canEdit = userRole === 'owner' || userRole === 'signer';
+    const canEdit = userRole === "owner" || userRole === "signer";
 
     return {
       id: wallet.id,
@@ -75,13 +89,16 @@ export async function getUserWallets(userId: string): Promise<WalletWithBalance[
       // Sync metadata
       lastSyncedAt: wallet.lastSyncedAt,
       lastSyncStatus: wallet.lastSyncStatus,
+      lastSyncError: wallet.lastSyncError,
       syncInProgress: wallet.syncInProgress,
       // Sharing info
       isShared,
-      sharedWith: isShared ? {
-        groupName: wallet.group?.name || null,
-        userCount,
-      } : undefined,
+      sharedWith: isShared
+        ? {
+            groupName: wallet.group?.name || null,
+            userCount,
+          }
+        : undefined,
       // User permissions
       userRole,
       canEdit,
@@ -94,31 +111,35 @@ export async function getUserWallets(userId: string): Promise<WalletWithBalance[
  */
 export async function getWalletById(
   walletId: string,
-  userId: string
+  userId: string,
 ): Promise<WalletWithBalance | null> {
-  const wallet = await walletRepository.findByIdWithFullAccess(walletId, userId, {
-    users: {
-      include: {
-        user: {
-          select: { id: true, username: true },
+  const wallet = await walletRepository.findByIdWithFullAccess(
+    walletId,
+    userId,
+    {
+      users: {
+        include: {
+          user: {
+            select: { id: true, username: true },
+          },
+        },
+      },
+      devices: {
+        include: { device: true },
+      },
+      addresses: {
+        orderBy: { index: "asc" },
+      },
+      group: {
+        include: {
+          members: {
+            where: { userId },
+            select: { role: true },
+          },
         },
       },
     },
-    devices: {
-      include: { device: true },
-    },
-    addresses: {
-      orderBy: { index: 'asc' },
-    },
-    group: {
-      include: {
-        members: {
-          where: { userId },
-          select: { role: true },
-        },
-      },
-    },
-  });
+  );
 
   if (!wallet) return null;
 
@@ -132,7 +153,7 @@ export async function getWalletById(
   const isShared = hasGroup || userCount > 1;
 
   // Determine user's role for this wallet
-  const directAccess = wallet.users.find(wu => wu.userId === userId);
+  const directAccess = wallet.users.find((wu) => wu.userId === userId);
   let userRole: WalletRole = null;
 
   if (directAccess) {
@@ -162,13 +183,16 @@ export async function getWalletById(
     // Sync metadata
     lastSyncedAt: wallet.lastSyncedAt,
     lastSyncStatus: wallet.lastSyncStatus,
+    lastSyncError: wallet.lastSyncError,
     syncInProgress: wallet.syncInProgress,
     // Sharing info
     isShared,
-    sharedWith: isShared ? {
-      groupName: wallet.group?.name || null,
-      userCount,
-    } : undefined,
+    sharedWith: isShared
+      ? {
+          groupName: wallet.group?.name || null,
+          userCount,
+        }
+      : undefined,
     // User permissions
     userRole,
     canEdit,
@@ -181,7 +205,11 @@ export async function getWalletById(
  */
 export async function getWalletStats(walletId: string, userId: string) {
   // First verify access
-  const wallet = await walletRepository.findByIdWithFullAccess(walletId, userId, {});
+  const wallet = await walletRepository.findByIdWithFullAccess(
+    walletId,
+    userId,
+    {},
+  );
 
   if (!wallet) {
     throw new WalletNotFoundError(walletId);
@@ -197,8 +225,8 @@ export async function getWalletStats(walletId: string, userId: string) {
       addressRepository.countByWalletId(walletId),
     ]);
 
-  const receivedGroup = txGrouped.find(g => g.type === 'received');
-  const sentGroup = txGrouped.find(g => g.type === 'sent');
+  const receivedGroup = txGrouped.find((g) => g.type === "received");
+  const sentGroup = txGrouped.find((g) => g.type === "sent");
 
   return {
     balance: Number(utxoAgg._sum.amount || 0),

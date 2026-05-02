@@ -46,8 +46,11 @@ describe('useBitcoin hooks', () => {
   describe('bitcoinKeys', () => {
     it('generates correct query keys', () => {
       expect(bitcoinKeys.all).toEqual(['bitcoin']);
-      expect(bitcoinKeys.status()).toEqual(['bitcoin', 'status']);
+      expect(bitcoinKeys.status()).toEqual(['bitcoin', 'status', 'mainnet']);
+      expect(bitcoinKeys.status('testnet')).toEqual(['bitcoin', 'status', 'testnet']);
       expect(bitcoinKeys.fees()).toEqual(['bitcoin', 'fees']);
+      expect(bitcoinKeys.mempool()).toEqual(['bitcoin', 'mempool', 'mainnet']);
+      expect(bitcoinKeys.mempool('signet')).toEqual(['bitcoin', 'mempool', 'signet']);
     });
   });
 
@@ -69,7 +72,27 @@ describe('useBitcoin hooks', () => {
       });
 
       expect(result.current.data).toEqual(mockStatus);
-      expect(bitcoinApi.getStatus).toHaveBeenCalled();
+      expect(bitcoinApi.getStatus).toHaveBeenCalledWith('mainnet');
+    });
+
+    it('fetches selected network bitcoin status', async () => {
+      const mockStatus = {
+        connected: true,
+        blockHeight: 4500000,
+        network: 'testnet',
+      };
+      vi.mocked(bitcoinApi.getStatus).mockResolvedValue(mockStatus as any);
+
+      const { result } = renderHook(() => useBitcoinStatus('testnet'), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(result.current.data).toEqual(mockStatus);
+      expect(bitcoinApi.getStatus).toHaveBeenCalledWith('testnet');
     });
 
     it('handles error state', async () => {
@@ -128,7 +151,27 @@ describe('useBitcoin hooks', () => {
       });
 
       expect(result.current.data).toEqual(mockMempoolData);
-      expect(bitcoinApi.getMempoolData).toHaveBeenCalled();
+      expect(bitcoinApi.getMempoolData).toHaveBeenCalledWith('mainnet');
+    });
+
+    it('fetches selected network mempool data', async () => {
+      const mockMempoolData = {
+        mempool: [{ height: 'Next', medianFee: 1, size: 1 }],
+        blocks: [{ height: 4_500_000, medianFee: 1, size: 1 }],
+        mempoolInfo: { count: 5, size: 0.1, totalFees: 1000 },
+      };
+      vi.mocked(bitcoinApi.getMempoolData).mockResolvedValue(mockMempoolData as any);
+
+      const { result } = renderHook(() => useMempoolData('testnet'), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(result.current.data).toEqual(mockMempoolData);
+      expect(bitcoinApi.getMempoolData).toHaveBeenCalledWith('testnet');
     });
   });
 });

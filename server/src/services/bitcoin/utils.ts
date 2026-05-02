@@ -37,7 +37,7 @@ bitcoin.initEccLib(ecc);
  */
 export function validateAddress(
   address: string,
-  network: 'mainnet' | 'testnet' | 'regtest' = 'mainnet'
+  network: NetworkType = 'mainnet'
 ): { valid: boolean; error?: string } {
   try {
     const networkObj = getNetwork(network);
@@ -55,9 +55,10 @@ export function validateAddress(
  * Get Bitcoin network object
  */
 export function getNetwork(
-  network: 'mainnet' | 'testnet' | 'regtest' = 'mainnet'
+  network: NetworkType = 'mainnet'
 ): bitcoin.Network {
   switch (network) {
+    case 'signet':
     case 'testnet':
       return bitcoin.networks.testnet;
     case 'regtest':
@@ -127,7 +128,7 @@ export function formatBTC(btc: number, decimals: number = 8): string {
  */
 export function parseTransaction(
   txHex: string,
-  network: 'mainnet' | 'testnet' | 'regtest' = 'mainnet'
+  network: NetworkType = 'mainnet'
 ): {
   txid: string;
   version: number;
@@ -199,7 +200,7 @@ export function createTransaction(
   }>,
   feeRate: number,
   options: {
-    network?: 'mainnet' | 'testnet' | 'regtest';
+    network?: NetworkType;
     enableRBF?: boolean;
   } = {}
 ): {

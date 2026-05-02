@@ -55,6 +55,10 @@ describe('Bitcoin Utilities', () => {
       expect(validateAddress(testnetAddresses.nativeSegwit[0], 'testnet').valid).toBe(true);
     });
 
+    it('should validate signet native segwit addresses with testnet parameters', () => {
+      expect(validateAddress(testnetAddresses.nativeSegwit[0], 'signet').valid).toBe(true);
+    });
+
     it('should reject invalid addresses', () => {
       expect(validateAddress('invalid-address', 'mainnet').valid).toBe(false);
       expect(validateAddress('', 'mainnet').valid).toBe(false);
@@ -142,6 +146,9 @@ describe('Bitcoin Utilities', () => {
 
       const testnet = getNetwork('testnet');
       expect(testnet.bech32).toBe('tb');
+
+      const signet = getNetwork('signet');
+      expect(signet.bech32).toBe('tb');
 
       const regtest = getNetwork('regtest');
       expect(regtest.bech32).toBe('bcrt');

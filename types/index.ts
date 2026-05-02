@@ -12,8 +12,8 @@
 // ============================================================================
 // Sub-module re-exports (focused type files)
 // ============================================================================
-export { HardwareDevice } from './hardware';
-export type { HardwareDeviceModel } from './hardware';
+export { HardwareDevice } from "./hardware";
+export type { HardwareDeviceModel } from "./hardware";
 export type {
   ThemeOption,
   BackgroundOption,
@@ -30,7 +30,7 @@ export type {
   WalletColumnId,
   DeviceColumnId,
   SeasonalBackgrounds,
-} from './ui';
+} from "./ui";
 export type {
   PageViewSettings,
   ViewSettings,
@@ -40,7 +40,7 @@ export type {
   DeviceAccount,
   Device,
   DeviceShareInfo,
-} from './user';
+} from "./user";
 
 // ============================================================================
 // Shared domain types (canonical source: shared/types/domain.ts)
@@ -65,7 +65,7 @@ import {
   type PrivacyGrade,
   type HealthStatus,
   type Quorum,
-} from '../shared/types/domain';
+} from "../shared/types/domain";
 
 import type {
   ApiErrorResponse,
@@ -80,11 +80,9 @@ import type {
   FeeEstimates,
   PriceSource,
   AggregatedPrice,
-} from '../shared/types/api';
+} from "../shared/types/api";
 
-export {
-  WalletType,
-};
+export { WalletType };
 export type {
   WalletScriptType,
   WalletNetwork,
@@ -126,19 +124,23 @@ export type {
 // ============================================================================
 
 export const WALLET_TYPE_LABELS: Record<WalletType, string> = {
-  [WalletType.SINGLE_SIG]: 'Single Sig',
-  [WalletType.MULTI_SIG]: 'Multisig',
+  [WalletType.SINGLE_SIG]: "Single Sig",
+  [WalletType.MULTI_SIG]: "Multisig",
 };
 
-export function getWalletTypeLabel(type: WalletType | string | undefined): string {
-  if (!type) return 'Unknown';
-  if (type === WalletType.MULTI_SIG || type === 'multi_sig') return WALLET_TYPE_LABELS[WalletType.MULTI_SIG];
-  if (type === WalletType.SINGLE_SIG || type === 'single_sig') return WALLET_TYPE_LABELS[WalletType.SINGLE_SIG];
+export function getWalletTypeLabel(
+  type: WalletType | string | undefined,
+): string {
+  if (!type) return "Unknown";
+  if (type === WalletType.MULTI_SIG || type === "multi_sig")
+    return WALLET_TYPE_LABELS[WalletType.MULTI_SIG];
+  if (type === WalletType.SINGLE_SIG || type === "single_sig")
+    return WALLET_TYPE_LABELS[WalletType.SINGLE_SIG];
   return type as string;
 }
 
 export function isMultisigType(type: WalletType | string | undefined): boolean {
-  return type === WalletType.MULTI_SIG || type === 'multi_sig';
+  return type === WalletType.MULTI_SIG || type === "multi_sig";
 }
 
 // ============================================================================
@@ -146,10 +148,10 @@ export function isMultisigType(type: WalletType | string | undefined): boolean {
 // ============================================================================
 
 export interface NodeConfig {
-  type: 'electrum';
+  type: "electrum";
   explorerUrl?: string;
   feeEstimatorUrl?: string;
-  mempoolEstimator?: 'simple' | 'mempool_space';
+  mempoolEstimator?: "simple" | "mempool_space";
   allowSelfSignedCert?: boolean;
 
   // MAINNET SETTINGS
@@ -203,7 +205,7 @@ export interface NodeConfig {
 export interface ElectrumServer {
   id: string;
   nodeConfigId: string;
-  network: 'mainnet' | 'testnet' | 'signet';
+  network: "mainnet" | "testnet" | "signet";
   label: string;
   host: string;
   port: number;
@@ -355,7 +357,13 @@ export interface TransactionOutput {
   address: string;
   amount: number;
   scriptPubKey?: string;
-  outputType: 'recipient' | 'change' | 'decoy' | 'consolidation' | 'op_return' | 'unknown';
+  outputType:
+    | "recipient"
+    | "change"
+    | "decoy"
+    | "consolidation"
+    | "op_return"
+    | "unknown";
   isOurs: boolean;
   label?: string;
 }
@@ -378,10 +386,10 @@ export interface Transaction {
   counterpartyAddress?: string;
   inputs?: TransactionInput[];
   outputs?: TransactionOutput[];
-  type?: 'sent' | 'received' | 'consolidation' | 'receive';
+  type?: "sent" | "received" | "consolidation" | "receive";
   replacedByTxid?: string;
   replacementForTxid?: string;
-  rbfStatus?: 'active' | 'replaced' | 'confirmed';
+  rbfStatus?: "active" | "replaced" | "confirmed";
   isFrozen?: boolean;
   isLocked?: boolean;
   lockedByDraftLabel?: string;
@@ -391,7 +399,7 @@ export interface PendingTransaction {
   txid: string;
   walletId: string;
   walletName?: string;
-  type: 'sent' | 'received';
+  type: "sent" | "received";
   amount: number;
   fee: number;
   feeRate: number;
@@ -405,14 +413,21 @@ export interface PendingTransaction {
 // WALLET TYPES
 // ============================================================================
 
-export function getQuorumM(quorum: Quorum | number | undefined | null, fallback = 1): number {
+export function getQuorumM(
+  quorum: Quorum | number | undefined | null,
+  fallback = 1,
+): number {
   if (quorum === undefined || quorum === null) return fallback;
-  return typeof quorum === 'number' ? quorum : quorum.m;
+  return typeof quorum === "number" ? quorum : quorum.m;
 }
 
-export function getQuorumN(quorum: Quorum | number | undefined | null, totalSigners?: number, fallback = 1): number {
+export function getQuorumN(
+  quorum: Quorum | number | undefined | null,
+  totalSigners?: number,
+  fallback = 1,
+): number {
   if (quorum === undefined || quorum === null) return totalSigners ?? fallback;
-  return typeof quorum === 'number' ? (totalSigners ?? fallback) : quorum.n;
+  return typeof quorum === "number" ? (totalSigners ?? fallback) : quorum.n;
 }
 
 export interface Wallet {
@@ -425,7 +440,7 @@ export interface Wallet {
   totalSigners?: number;
   deviceIds?: string[];
   balance: number;
-  unit?: 'BTC' | 'sats' | 'btc';
+  unit?: "BTC" | "sats" | "btc";
   descriptor?: string;
   ownerId?: string;
   groupIds?: string[];
@@ -438,7 +453,14 @@ export interface Wallet {
   createdAt?: string;
   lastSyncedAt?: string | null;
   lastSyncedBlockHeight?: number | null;
-  lastSyncStatus?: 'success' | 'failed' | 'partial' | 'retrying' | string | null;
+  lastSyncStatus?:
+    | "success"
+    | "failed"
+    | "partial"
+    | "retrying"
+    | string
+    | null;
+  lastSyncError?: string | null;
   syncInProgress?: boolean;
   isShared?: boolean;
   sharedWith?: {
@@ -521,7 +543,7 @@ export interface BlockHeader {
 
 export interface WebSocketTransactionData {
   txid?: string;
-  type?: 'received' | 'sent' | 'consolidation';
+  type?: "received" | "sent" | "consolidation";
   amount?: number;
   confirmations?: number;
   walletId?: string;
@@ -543,7 +565,14 @@ export interface WebSocketConfirmationData {
 
 export interface WebSocketSyncData {
   inProgress?: boolean;
-  status?: 'scanning' | 'complete' | 'error' | 'retry' | 'retrying' | 'success' | 'failed';
+  status?:
+    | "scanning"
+    | "complete"
+    | "error"
+    | "retry"
+    | "retrying"
+    | "success"
+    | "failed";
   lastSyncedAt?: string;
   lastSyncedBlockHeight?: number | null;
   error?: string;
@@ -613,8 +642,8 @@ export interface Transfer {
 }
 
 export interface TransferFilters {
-  role?: 'initiator' | 'recipient' | 'all';
-  status?: TransferStatus | 'active' | 'all';
+  role?: "initiator" | "recipient" | "all";
+  status?: TransferStatus | "active" | "all";
   resourceType?: TransferResourceType;
 }
 

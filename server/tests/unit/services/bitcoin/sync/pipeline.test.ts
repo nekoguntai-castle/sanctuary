@@ -201,6 +201,33 @@ describe("Sync Pipeline", () => {
       expect(result.utxos).toBe(0);
     });
 
+    it("should still run phases for descriptor wallets with no stored addresses", async () => {
+      mockPrismaClient.address.findMany.mockResolvedValue([]);
+      const phase = vi.fn(async (ctx: SyncContext) => {
+        expect(ctx.addresses).toEqual([]);
+        ctx.newAddresses = [
+          { address: "tb1qderivedreceive", derivationPath: "m/84'/1'/0'/0/0" },
+          { address: "tb1qderivedchange", derivationPath: "m/84'/1'/0'/1/0" },
+        ];
+        ctx.stats.newAddressesGenerated = 2;
+        return ctx;
+      });
+
+      const result = await executeSyncPipeline(walletId, [
+        createPhase("deriveInitialAddresses", phase),
+      ]);
+
+      expect(phase).toHaveBeenCalledTimes(1);
+      expect(result.addresses).toBe(2);
+      expect(result.stats.newAddressesGenerated).toBe(2);
+      expect(walletLog).toHaveBeenCalledWith(
+        walletId,
+        "info",
+        "BLOCKCHAIN",
+        "No stored addresses found; deriving wallet addresses before scanning",
+      );
+    });
+
     it("should throw error when wallet not found", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue(null);
 

@@ -14,7 +14,7 @@ interface DeviceInfo {
 import { formatPathForDescriptor } from '../../../../shared/utils/bitcoin';
 
 type ScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-type Network = 'mainnet' | 'testnet' | 'regtest';
+type Network = 'mainnet' | 'testnet' | 'signet' | 'regtest';
 
 /**
  * Get the standard BIP derivation path for a script type

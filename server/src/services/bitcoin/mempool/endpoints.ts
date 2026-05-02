@@ -7,7 +7,7 @@
 import axios from 'axios';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
-import { getMempoolApiBase } from './config';
+import { getMempoolApiBase, type MempoolNetwork } from './config';
 import type { MempoolBlock, MempoolInfo, FeeEstimates, ProjectedMempoolBlock } from './types';
 
 const log = createLogger('BITCOIN:SVC_MEMPOOL');
@@ -15,9 +15,12 @@ const log = createLogger('BITCOIN:SVC_MEMPOOL');
 /**
  * Get recent blocks from mempool.space
  */
-export async function getRecentBlocks(count: number = 10): Promise<MempoolBlock[]> {
+export async function getRecentBlocks(
+  count: number = 10,
+  network: MempoolNetwork = 'mainnet',
+): Promise<MempoolBlock[]> {
   try {
-    const apiBase = await getMempoolApiBase();
+    const apiBase = await getMempoolApiBase(network);
     const response = await axios.get(`${apiBase}/v1/blocks`, {
       timeout: 3000,
     });
@@ -33,9 +36,9 @@ export async function getRecentBlocks(count: number = 10): Promise<MempoolBlock[
 /**
  * Get mempool information
  */
-export async function getMempoolInfo(): Promise<MempoolInfo> {
+export async function getMempoolInfo(network: MempoolNetwork = 'mainnet'): Promise<MempoolInfo> {
   try {
-    const apiBase = await getMempoolApiBase();
+    const apiBase = await getMempoolApiBase(network);
     const response = await axios.get(`${apiBase}/mempool`, {
       timeout: 3000,
     });
@@ -51,9 +54,9 @@ export async function getMempoolInfo(): Promise<MempoolInfo> {
  * Get recommended fee estimates from mempool.space
  * Uses projected blocks API for decimal precision, falls back to recommended endpoint
  */
-export async function getRecommendedFees(): Promise<FeeEstimates> {
+export async function getRecommendedFees(network: MempoolNetwork = 'mainnet'): Promise<FeeEstimates> {
   try {
-    const apiBase = await getMempoolApiBase();
+    const apiBase = await getMempoolApiBase(network);
 
     // Try projected blocks first for decimal precision
     try {
@@ -113,9 +116,12 @@ export async function getRecommendedFees(): Promise<FeeEstimates> {
 /**
  * Get block by hash
  */
-export async function getBlock(hash: string): Promise<MempoolBlock> {
+export async function getBlock(
+  hash: string,
+  network: MempoolNetwork = 'mainnet',
+): Promise<MempoolBlock> {
   try {
-    const apiBase = await getMempoolApiBase();
+    const apiBase = await getMempoolApiBase(network);
     const response = await axios.get(`${apiBase}/block/${hash}`, {
       timeout: 3000,
     });
@@ -130,9 +136,12 @@ export async function getBlock(hash: string): Promise<MempoolBlock> {
 /**
  * Get block at specific height
  */
-export async function getBlockAtHeight(height: number): Promise<string> {
+export async function getBlockAtHeight(
+  height: number,
+  network: MempoolNetwork = 'mainnet',
+): Promise<string> {
   try {
-    const apiBase = await getMempoolApiBase();
+    const apiBase = await getMempoolApiBase(network);
     const response = await axios.get(`${apiBase}/block-height/${height}`, {
       timeout: 3000,
     });
@@ -148,9 +157,9 @@ export async function getBlockAtHeight(height: number): Promise<string> {
 /**
  * Get current block height (tip)
  */
-export async function getTipHeight(): Promise<number> {
+export async function getTipHeight(network: MempoolNetwork = 'mainnet'): Promise<number> {
   try {
-    const apiBase = await getMempoolApiBase();
+    const apiBase = await getMempoolApiBase(network);
     const response = await axios.get(`${apiBase}/blocks/tip/height`, {
       timeout: 3000,
     });
@@ -166,9 +175,11 @@ export async function getTipHeight(): Promise<number> {
  * Get projected mempool blocks from mempool.space API
  * This uses actual mempool sorting to show which transactions will be in each block
  */
-export async function getProjectedMempoolBlocks(): Promise<ProjectedMempoolBlock[]> {
+export async function getProjectedMempoolBlocks(
+  network: MempoolNetwork = 'mainnet',
+): Promise<ProjectedMempoolBlock[]> {
   try {
-    const apiBase = await getMempoolApiBase();
+    const apiBase = await getMempoolApiBase(network);
     const response = await axios.get(`${apiBase}/v1/fees/mempool-blocks`, {
       timeout: 3000,
     });

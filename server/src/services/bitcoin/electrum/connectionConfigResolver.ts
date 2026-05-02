@@ -1,10 +1,6 @@
-import config from '../../../config';
-import { nodeConfigRepository } from '../../../repositories';
-import type {
-  ElectrumConfig,
-  ProxyConfig,
-  BitcoinNetwork,
-} from './types';
+import config from "../../../config";
+import { nodeConfigRepository } from "../../../repositories";
+import type { ElectrumConfig, ProxyConfig, BitcoinNetwork } from "./types";
 
 interface PersistedNodeConfig {
   type: string;
@@ -31,13 +27,24 @@ interface PersistedNodeConfig {
 export interface ResolvedConnectionConfig {
   host: string;
   port: number;
-  protocol: 'tcp' | 'ssl';
+  protocol: "tcp" | "ssl";
   allowSelfSignedCert: boolean;
   proxy?: ProxyConfig;
 }
 
-export function proxyConfigFromNodeConfig(nodeConfig: PersistedNodeConfig): ProxyConfig | undefined {
-  if (!nodeConfig.proxyEnabled || !nodeConfig.proxyHost || !nodeConfig.proxyPort) {
+const TESTNET_DEFAULT_HOST = "electrum.blockstream.info";
+const TESTNET_DEFAULT_PORT = 60002;
+const SIGNET_DEFAULT_HOST = "electrum.mutinynet.com";
+const SIGNET_DEFAULT_PORT = 50002;
+
+export function proxyConfigFromNodeConfig(
+  nodeConfig: PersistedNodeConfig,
+): ProxyConfig | undefined {
+  if (
+    !nodeConfig.proxyEnabled ||
+    !nodeConfig.proxyHost ||
+    !nodeConfig.proxyPort
+  ) {
     return undefined;
   }
 
@@ -50,47 +57,58 @@ export function proxyConfigFromNodeConfig(nodeConfig: PersistedNodeConfig): Prox
   };
 }
 
-export function mainnetConnectionConfig(nodeConfig: PersistedNodeConfig): ResolvedConnectionConfig {
+export function mainnetConnectionConfig(
+  nodeConfig: PersistedNodeConfig,
+): ResolvedConnectionConfig {
   return {
     host: nodeConfig.mainnetSingletonHost || nodeConfig.host,
     port: nodeConfig.mainnetSingletonPort || nodeConfig.port,
-    protocol: (nodeConfig.mainnetSingletonSsl ?? nodeConfig.useSsl) ? 'ssl' : 'tcp',
+    protocol:
+      (nodeConfig.mainnetSingletonSsl ?? nodeConfig.useSsl) ? "ssl" : "tcp",
     allowSelfSignedCert: nodeConfig.allowSelfSignedCert ?? false,
     proxy: proxyConfigFromNodeConfig(nodeConfig),
   };
 }
 
-export function testnetConnectionConfig(nodeConfig: PersistedNodeConfig): ResolvedConnectionConfig {
+export function testnetConnectionConfig(
+  nodeConfig: PersistedNodeConfig,
+): ResolvedConnectionConfig {
   return {
-    host: nodeConfig.testnetSingletonHost || config.bitcoin.electrum.host,
-    port: nodeConfig.testnetSingletonPort || 51001,
-    protocol: nodeConfig.testnetSingletonSsl ? 'ssl' : 'tcp',
+    host: nodeConfig.testnetSingletonHost || TESTNET_DEFAULT_HOST,
+    port: nodeConfig.testnetSingletonPort || TESTNET_DEFAULT_PORT,
+    protocol: (nodeConfig.testnetSingletonSsl ?? true) ? "ssl" : "tcp",
     allowSelfSignedCert: nodeConfig.allowSelfSignedCert ?? false,
     proxy: proxyConfigFromNodeConfig(nodeConfig),
   };
 }
 
-export function signetConnectionConfig(nodeConfig: PersistedNodeConfig): ResolvedConnectionConfig {
+export function signetConnectionConfig(
+  nodeConfig: PersistedNodeConfig,
+): ResolvedConnectionConfig {
   return {
-    host: nodeConfig.signetSingletonHost || config.bitcoin.electrum.host,
-    port: nodeConfig.signetSingletonPort || 60001,
-    protocol: nodeConfig.signetSingletonSsl ? 'ssl' : 'tcp',
+    host: nodeConfig.signetSingletonHost || SIGNET_DEFAULT_HOST,
+    port: nodeConfig.signetSingletonPort || SIGNET_DEFAULT_PORT,
+    protocol: (nodeConfig.signetSingletonSsl ?? true) ? "ssl" : "tcp",
     allowSelfSignedCert: nodeConfig.allowSelfSignedCert ?? false,
     proxy: proxyConfigFromNodeConfig(nodeConfig),
   };
 }
 
-export function legacyConnectionConfig(nodeConfig: PersistedNodeConfig): ResolvedConnectionConfig {
+export function legacyConnectionConfig(
+  nodeConfig: PersistedNodeConfig,
+): ResolvedConnectionConfig {
   return {
     host: nodeConfig.host,
     port: nodeConfig.port,
-    protocol: nodeConfig.useSsl ? 'ssl' : 'tcp',
+    protocol: nodeConfig.useSsl ? "ssl" : "tcp",
     allowSelfSignedCert: nodeConfig.allowSelfSignedCert ?? false,
     proxy: proxyConfigFromNodeConfig(nodeConfig),
   };
 }
 
-export function explicitConnectionConfig(explicitConfig: ElectrumConfig): ResolvedConnectionConfig {
+export function explicitConnectionConfig(
+  explicitConfig: ElectrumConfig,
+): ResolvedConnectionConfig {
   return {
     host: explicitConfig.host,
     port: explicitConfig.port,
@@ -111,16 +129,16 @@ export function envConnectionConfig(): ResolvedConnectionConfig {
 
 export function dbConnectionConfig(
   nodeConfig: PersistedNodeConfig,
-  network: BitcoinNetwork
+  network: BitcoinNetwork,
 ): ResolvedConnectionConfig {
   switch (network) {
-    case 'mainnet':
+    case "mainnet":
       return mainnetConnectionConfig(nodeConfig);
-    case 'testnet':
+    case "testnet":
       return testnetConnectionConfig(nodeConfig);
-    case 'signet':
+    case "signet":
       return signetConnectionConfig(nodeConfig);
-    case 'regtest':
+    case "regtest":
     default:
       return legacyConnectionConfig(nodeConfig);
   }
@@ -128,14 +146,14 @@ export function dbConnectionConfig(
 
 export async function resolveElectrumConnectionConfig(
   explicitConfig: ElectrumConfig | null,
-  network: BitcoinNetwork
+  network: BitcoinNetwork,
 ): Promise<ResolvedConnectionConfig> {
   if (explicitConfig) {
     return explicitConnectionConfig(explicitConfig);
   }
 
   const nodeConfig = await nodeConfigRepository.findDefault();
-  return nodeConfig?.type === 'electrum'
+  return nodeConfig?.type === "electrum"
     ? dbConnectionConfig(nodeConfig, network)
     : envConnectionConfig();
 }

@@ -56,8 +56,9 @@ router.post('/address/validate', validate(
 router.get('/address/:address', asyncHandler(async (req, res) => {
   const { address } = req.params;
   const networkParam = req.query.network as string | undefined;
-  const network: 'mainnet' | 'testnet' | 'regtest' =
+  const network: 'mainnet' | 'testnet' | 'signet' | 'regtest' =
     networkParam === 'testnet' ? 'testnet' :
+    networkParam === 'signet' ? 'signet' :
     networkParam === 'regtest' ? 'regtest' : 'mainnet';
 
   const result = await blockchain.checkAddress(address, network);

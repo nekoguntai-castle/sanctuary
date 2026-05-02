@@ -67,6 +67,18 @@ describe('Descriptor Builder Service', () => {
       });
     });
 
+    describe('Signet paths', () => {
+      it('should generate BIP84 path with testnet coin type for signet', () => {
+        const path = getDerivationPath('native_segwit', 'signet', 0);
+        expect(path).toBe("m/84'/1'/0'");
+      });
+
+      it('should generate BIP86 path with testnet coin type for signet', () => {
+        const path = getDerivationPath('taproot', 'signet', 0);
+        expect(path).toBe("m/86'/1'/0'");
+      });
+    });
+
     describe('Account variation', () => {
       it('should support different account numbers', () => {
         const path0 = getDerivationPath('native_segwit', 'mainnet', 0);
@@ -127,6 +139,13 @@ describe('Descriptor Builder Service', () => {
       it('should generate testnet BIP48/1 path', () => {
         const path = getMultisigDerivationPath('nested_segwit', 'testnet', 0);
         expect(path).toBe("m/48'/1'/0'/1'");
+      });
+    });
+
+    describe('Signet multisig paths', () => {
+      it('should generate signet BIP48 paths with testnet coin type', () => {
+        const path = getMultisigDerivationPath('native_segwit', 'signet', 0);
+        expect(path).toBe("m/48'/1'/0'/2'");
       });
     });
 

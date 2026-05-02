@@ -88,6 +88,15 @@ export const registerBitcoinAddressRouteTests = () => {
         expect(mockBlockchain.checkAddress).toHaveBeenCalledWith('tb1qtest', 'testnet');
       });
 
+      it('should support signet network query parameter', async () => {
+        mockBlockchain.checkAddress.mockResolvedValue({ valid: true, balance: 0, transactionCount: 0 });
+        mockUtils.getAddressType.mockReturnValue('p2wpkh');
+
+        await request(app).get('/bitcoin/address/tb1qsignet?network=signet');
+
+        expect(mockBlockchain.checkAddress).toHaveBeenCalledWith('tb1qsignet', 'signet');
+      });
+
       it('should support regtest network query parameter', async () => {
         mockBlockchain.checkAddress.mockResolvedValue({ valid: true, balance: 0, transactionCount: 0 });
         mockUtils.getAddressType.mockReturnValue('p2wpkh');

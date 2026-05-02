@@ -7,7 +7,7 @@
 
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
-import { getMempoolEstimatorType } from './config';
+import { getMempoolEstimatorType, type MempoolNetwork } from './config';
 import { getRecentBlocks, getMempoolInfo, getRecommendedFees, getProjectedMempoolBlocks } from './endpoints';
 import { formatConfirmedBlocks, formatFeeRate } from './formatting';
 import { getBlocksAndMempoolSimple } from './simpleEstimator';
@@ -22,14 +22,14 @@ const log = createLogger('BITCOIN:SVC_MEMPOOL_DASH');
  * - 'simple': Fee bucket thresholds (faster, less accurate)
  * - 'mempool_space': Actual mempool sorting via API (more accurate)
  */
-export async function getBlocksAndMempool() {
+export async function getBlocksAndMempool(network: MempoolNetwork = 'mainnet') {
   try {
     const estimatorType = await getMempoolEstimatorType();
 
     const [blocks, mempoolInfo, fees] = await Promise.all([
-      getRecentBlocks(7),
-      getMempoolInfo(),
-      getRecommendedFees(),
+      getRecentBlocks(7, network),
+      getMempoolInfo(network),
+      getRecommendedFees(network),
     ]);
 
     // Mempool size in MB
@@ -56,7 +56,7 @@ export async function getBlocksAndMempool() {
     if (estimatorType === 'mempool_space') {
       // Use mempool.space projected blocks API for accurate sorting
       try {
-        const projectedBlocks = await getProjectedMempoolBlocks();
+        const projectedBlocks = await getProjectedMempoolBlocks(network);
 
         // IMPORTANT: Block ordering documentation
         // =========================================

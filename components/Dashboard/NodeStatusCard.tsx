@@ -12,8 +12,7 @@ interface NodeStatusCardProps {
   bitcoinStatus: BitcoinStatus | undefined;
 }
 
-const StatusIndicator: React.FC<{ isMainnet: boolean; nodeStatus: NodeStatusValue }> = ({ isMainnet, nodeStatus }) => {
-  if (!isMainnet) return <div className="h-3 w-3 rounded-full bg-sanctuary-400"></div>;
+const StatusIndicator: React.FC<{ nodeStatus: NodeStatusValue }> = ({ nodeStatus }) => {
   switch (nodeStatus) {
     case 'connected': return <div className="h-3 w-3 rounded-full bg-success-500 animate-connected-glow"></div>;
     case 'error': return <div className="h-3 w-3 rounded-full bg-rose-500"></div>;
@@ -136,24 +135,35 @@ const MainnetContent: React.FC<{ nodeStatus: NodeStatusValue; bitcoinStatus: Bit
   </div>
 );
 
-const TestnetContent: React.FC<{ selectedNetwork: TabNetwork }> = ({ selectedNetwork }) => (
-  <div className="flex items-start">
-    <div className="p-2.5 rounded-lg mr-3 bg-sanctuary-100 dark:bg-sanctuary-800 text-sanctuary-400 flex-shrink-0">
-      <Zap className="w-5 h-5" />
+const NetworkUnavailableContent: React.FC<{
+  selectedNetwork: TabNetwork;
+  nodeStatus: NodeStatusValue;
+  bitcoinStatus: BitcoinStatus | undefined;
+}> = ({ selectedNetwork, nodeStatus, bitcoinStatus }) => {
+  const label = selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1);
+  const message = nodeStatus === 'checking'
+    ? 'Checking configured Electrum server...'
+    : bitcoinStatus?.error || `${label} node status is unavailable`;
+
+  return (
+    <div className="flex items-start">
+      <div className="p-2.5 rounded-lg mr-3 bg-sanctuary-100 dark:bg-sanctuary-800 text-sanctuary-400 flex-shrink-0">
+        <Zap className="w-5 h-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
+          Electrum Server
+        </p>
+        <p className="text-xs text-sanctuary-500 dark:text-sanctuary-400 mt-1">
+          {message}
+        </p>
+        <p className="text-xs text-sanctuary-400 mt-1">
+          Open Admin → Node Config to review {label} settings.
+        </p>
+      </div>
     </div>
-    <div className="flex-1 min-w-0">
-      <p className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
-        Electrum Server
-      </p>
-      <p className="text-xs text-sanctuary-500 dark:text-sanctuary-400 mt-1">
-        {selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1)} node not configured
-      </p>
-      <p className="text-xs text-sanctuary-400 mt-1">
-        Configure in Settings → Node Configuration
-      </p>
-    </div>
-  </div>
-);
+  );
+};
 
 export const NodeStatusCard: React.FC<NodeStatusCardProps> = ({
   isMainnet,
@@ -175,13 +185,17 @@ export const NodeStatusCard: React.FC<NodeStatusCardProps> = ({
           {selectedNetwork.toUpperCase()}
         </span>
       </div>
-      <StatusIndicator isMainnet={isMainnet} nodeStatus={nodeStatus} />
+      <StatusIndicator nodeStatus={nodeStatus} />
     </div>
 
-    {isMainnet ? (
+    {isMainnet || nodeStatus === 'connected' ? (
       <MainnetContent nodeStatus={nodeStatus} bitcoinStatus={bitcoinStatus} />
     ) : (
-      <TestnetContent selectedNetwork={selectedNetwork} />
+      <NetworkUnavailableContent
+        selectedNetwork={selectedNetwork}
+        nodeStatus={nodeStatus}
+        bitcoinStatus={bitcoinStatus}
+      />
     )}
   </div>
 );

@@ -11,12 +11,20 @@ import { DeviceDetailTabs } from './DeviceDetail/DeviceDetailTabs';
 import { DeviceTransferModal } from './DeviceDetail/DeviceTransferModal';
 import type { DeviceDetailTab } from './DeviceDetail/types';
 import { useDeviceData } from './hooks/useDeviceData';
+import { deleteDevice } from '../../src/api/devices';
+import { extractErrorMessage } from '../../utils/errorHandler';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('DeviceDetail');
 
 export const DeviceDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<DeviceDetailTab>('details');
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const {
     device,
@@ -57,6 +65,22 @@ export const DeviceDetail: React.FC = () => {
   if (loading) return <DeviceDetailLoadingState />;
   if (!device) return <DeviceDetailNotFoundState />;
 
+  const attachedWalletCount = Math.max(wallets.length, device.walletCount ?? 0);
+  const canDeleteDevice = isOwner && attachedWalletCount === 0;
+
+  const handleDeleteDevice = async () => {
+    try {
+      setDeletePending(true);
+      setDeleteError(null);
+      await deleteDevice(device.id);
+      navigate('/devices', { replace: true });
+    } catch (error) {
+      log.error('Failed to delete device', { error });
+      setDeleteError(extractErrorMessage(error, 'Failed to delete device'));
+      setDeletePending(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in max-w-4xl mx-auto">
       <DeviceDetailHeader
@@ -74,6 +98,19 @@ export const DeviceDetail: React.FC = () => {
         onSave={handleSave}
         onCancelEdit={cancelEdit}
         getDeviceDisplayName={getDeviceDisplayName}
+        canDelete={canDeleteDevice}
+        deleteConfirmOpen={deleteConfirmOpen}
+        deletePending={deletePending}
+        deleteError={deleteError}
+        onRequestDelete={() => {
+          setDeleteConfirmOpen(true);
+          setDeleteError(null);
+        }}
+        onConfirmDelete={handleDeleteDevice}
+        onCancelDelete={() => {
+          setDeleteConfirmOpen(false);
+          setDeleteError(null);
+        }}
       >
         <DeviceAccountsSection
           deviceId={id!}

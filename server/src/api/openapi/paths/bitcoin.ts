@@ -239,6 +239,18 @@ export const bitcoinPaths = {
       summary: "Get mempool dashboard data",
       description:
         "Get recent confirmed blocks, projected mempool blocks, and mempool summary data.",
+      parameters: [
+        {
+          name: "network",
+          in: "query",
+          required: false,
+          schema: {
+            type: "string",
+            enum: ["mainnet", "testnet", "signet"],
+            default: "mainnet",
+          },
+        },
+      ],
       responses: {
         200: jsonResponse(
           "Mempool dashboard data",

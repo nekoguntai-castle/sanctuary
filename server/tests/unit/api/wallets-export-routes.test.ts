@@ -345,6 +345,95 @@ describe('Wallets Export Routes', () => {
     ]);
   });
 
+  it('scopes exported device accounts to signet coin-type paths', async () => {
+    mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet({
+      type: 'single_sig',
+      scriptType: 'native_segwit',
+      network: 'signet',
+      devices: [
+        {
+          device: {
+            label: 'Network Scoped',
+            type: 'ledger',
+            fingerprint: 'FPS',
+            xpub: 'legacy-xpub',
+            derivationPath: "m/84'/0'/0'",
+            accounts: [
+              {
+                purpose: 'single_sig',
+                scriptType: 'native_segwit',
+                xpub: 'xpub-mainnet',
+                derivationPath: "m/84'/0'/0'",
+              },
+              {
+                purpose: 'single_sig',
+                scriptType: 'native_segwit',
+                xpub: 'tpub-signet',
+                derivationPath: "m/84'/1'/0'",
+              },
+            ],
+          },
+        },
+      ],
+    }));
+
+    const response = await request(app).get('/api/v1/wallets/wallet-1/export/formats');
+    expect(response.status).toBe(200);
+
+    const walletDataArg = mockGetAvailableFormats.mock.calls[0][0];
+    expect(walletDataArg.network).toBe('signet');
+    expect(walletDataArg.devices).toEqual([
+      expect.objectContaining({
+        xpub: 'tpub-signet',
+        derivationPath: "m/84'/1'/0'",
+      }),
+    ]);
+  });
+
+  it('falls back to unknown-coin account paths when no network-specific export account exists', async () => {
+    mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet({
+      type: 'single_sig',
+      scriptType: 'native_segwit',
+      network: 'testnet',
+      devices: [
+        {
+          device: {
+            label: 'Unknown Path',
+            type: 'trezor',
+            fingerprint: 'FPU',
+            xpub: 'legacy-xpub',
+            derivationPath: "m/84'/0'/0'",
+            accounts: [
+              {
+                purpose: 'single_sig',
+                scriptType: 'native_segwit',
+                xpub: 'unknown-path-xpub',
+                derivationPath: 'custom-path',
+              },
+              {
+                purpose: 'single_sig',
+                scriptType: 'native_segwit',
+                xpub: 'xpub-mainnet',
+                derivationPath: "m/84'/0'/0'",
+              },
+            ],
+          },
+        },
+      ],
+    }));
+
+    const response = await request(app).get('/api/v1/wallets/wallet-1/export/formats');
+    expect(response.status).toBe(200);
+
+    const walletDataArg = mockGetAvailableFormats.mock.calls[0][0];
+    expect(walletDataArg.devices).toEqual([
+      expect.objectContaining({
+        xpub: 'unknown-path-xpub',
+        derivationPath: 'custom-path',
+      }),
+    ]);
+  });
+
   it('normalizes empty descriptor/quorum signer fields in export data', async () => {
     mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet({
       descriptor: null,

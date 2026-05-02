@@ -86,8 +86,8 @@ export function useDashboardData() {
   // React Query hooks for data fetching
   const { data: apiWallets, isLoading: walletsLoading } = useWallets();
   const { data: feeEstimates } = useFeeEstimates();
-  const { data: bitcoinStatus, isLoading: statusLoading } = useBitcoinStatus();
-  const { data: mempoolData, refetch: refetchMempool, isFetching: mempoolRefreshing } = useMempoolData();
+  const { data: bitcoinStatus, isLoading: statusLoading } = useBitcoinStatus(selectedNetwork);
+  const { data: mempoolData, refetch: refetchMempool, isFetching: mempoolRefreshing } = useMempoolData(selectedNetwork);
 
   // Use stable empty arrays when data is undefined to prevent re-renders
   const safeApiWallets = apiWallets ?? EMPTY_WALLETS;

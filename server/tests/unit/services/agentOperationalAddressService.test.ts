@@ -173,6 +173,41 @@ describe("agentOperationalAddressService", () => {
     });
   });
 
+  it("derives signet receive addresses using the signet network", async () => {
+    mockFindNextUnusedReceive.mockResolvedValueOnce(null).mockResolvedValueOnce(
+      addressRecord({
+        id: "addr-signet",
+        address: "tb1qsignetgenerated",
+        derivationPath: "m/84'/1'/0'/0/0",
+        index: 0,
+      }),
+    );
+    mockFindWalletById.mockResolvedValueOnce({
+      id: "operational-wallet",
+      type: "single_sig",
+      network: "signet",
+      descriptor: "wpkh([abcd1234/84h/1h/0h]tpub/*)",
+    });
+    mockFindDerivationPaths.mockResolvedValueOnce([]);
+
+    const result = await getOrCreateOperationalReceiveAddress({
+      agentId: "agent-1",
+      operationalWalletId: "operational-wallet",
+    });
+
+    expect(mockDeriveAddressFromDescriptor).toHaveBeenNthCalledWith(
+      1,
+      expect.any(String),
+      0,
+      {
+        network: "signet",
+        change: false,
+      },
+    );
+    expect(result.generated).toBe(true);
+    expect(result.address).toBe("tb1qsignetgenerated");
+  });
+
   it("fails closed when the operational wallet has no descriptor", async () => {
     mockFindNextUnusedReceive.mockResolvedValueOnce(null);
     mockFindWalletById.mockResolvedValueOnce({
@@ -227,12 +262,12 @@ describe("agentOperationalAddressService", () => {
     expect(mockCreateMany).not.toHaveBeenCalled();
   });
 
-  it("rejects unsupported operational wallet networks before deriving", async () => {
+  it("rejects unsupported operational wallet network strings before deriving", async () => {
     mockFindNextUnusedReceive.mockResolvedValueOnce(null);
     mockFindWalletById.mockResolvedValueOnce({
       id: "operational-wallet",
       type: "single_sig",
-      network: "signet",
+      network: "liquid",
       descriptor: "wpkh([abcd1234/84h/1h/0h]tpub/*)",
     });
 

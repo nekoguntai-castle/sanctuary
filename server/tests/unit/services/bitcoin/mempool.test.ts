@@ -43,6 +43,7 @@ import {
   getProjectedMempoolBlocks,
   getBlocksAndMempool,
 } from '../../../../src/services/bitcoin/mempool';
+import { formatConfirmedBlocks } from '../../../../src/services/bitcoin/mempool/formatting';
 
 const mockBlocks = (timestamp: number) => ([
   {
@@ -119,6 +120,40 @@ describe('mempool service', () => {
       'https://mempool.custom/api/v1/blocks',
       expect.objectContaining({ timeout: 3000 })
     );
+  });
+
+  it('uses the public testnet mempool API for testnet visualization', async () => {
+    hoisted.nodeConfig.findFirst.mockResolvedValue({
+      isDefault: true,
+      feeEstimatorUrl: 'https://mempool.custom/',
+    });
+    hoisted.axiosGet.mockResolvedValue({ data: mockBlocks(1000) });
+
+    await getRecentBlocks(1, 'testnet');
+
+    expect(hoisted.axiosGet).toHaveBeenCalledWith(
+      'https://mempool.space/testnet/api/v1/blocks',
+      expect.objectContaining({ timeout: 3000 })
+    );
+    expect(hoisted.nodeConfig.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('clamps future block timestamps to zero minutes ago', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+
+      const [block] = formatConfirmedBlocks([
+        {
+          ...mockBlocks(1735689900)[0],
+          timestamp: 1735689900,
+        },
+      ]);
+
+      expect(block.time).toBe('0m ago');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('uses explorerUrl when feeEstimatorUrl is missing', async () => {
