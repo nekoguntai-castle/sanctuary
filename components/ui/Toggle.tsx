@@ -27,7 +27,7 @@ export const Toggle: React.FC<ToggleProps> = ({
   className = "",
   activeClassName,
   inactiveClassName,
-  thumbClassName = "",
+  thumbClassName,
 }) => {
   const activeClass = activeClassName ?? activeColors[color];
   const inactiveClass =

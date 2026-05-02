@@ -2,14 +2,18 @@
 
 Status: in progress
 
-Goal: clear the failing Quick Render Regression check on PR #247 and verify the PR merges into `main`.
+Goal: clear the failing CI/merge-queue checks on PR #247 and verify the PR merges into `main`.
 
 ## Plan
 
 - [x] Identify the active PR, branch state, and failing CI check.
 - [x] Confirm the failure root cause from the GitHub Actions job log.
 - [x] Verify the local render-regression assertion update with the focused Playwright command.
-- [ ] Commit and push the render-regression fix and task tracker update.
+- [x] Commit and push the render-regression fix and task tracker update.
+- [x] Monitor PR #247 checks and merge queue state until the next blocker is clear.
+- [x] Identify the merge-queue full coverage failures and map them to PR-changed files.
+- [x] Add focused backend/frontend coverage for the changed uncovered branches.
+- [ ] Commit and push the coverage fix, then re-enable merge queue auto-merge.
 - [ ] Monitor PR #247 checks and merge queue state until merged.
 - [ ] Verify `origin/main` contains the merged PR and document results here.
 
@@ -19,6 +23,11 @@ Goal: clear the failing Quick Render Regression check on PR #247 and verify the 
 - CI root cause: Quick Render Regression expected `Testnet node not configured`, but the updated dashboard now renders connected Testnet status.
 - Updated the render contract to assert connected Testnet status, block height, and Electrum pool count; refreshed `dashboard-testnet-shell-chromium-linux.png`.
 - Verification passed: `npx playwright test e2e/render-regression.spec.ts --project=chromium --grep "dashboard renders core cards"`; `npx playwright test e2e/render-regression.spec.ts --project=chromium`; `git diff --check`.
+- Pushed commit `dbe6ae87fcc2b647b79dbd910fcf9728c88d62a6` to `testnet-signet-wallet-workflows`; PR branch checks passed and PR #247 entered the merge queue.
+- Merge queue run `25238899856` failed strict full coverage thresholds on changed PR files. Primary backend gaps: `server/src/services/bitcoin/networkStatusService.ts`, `server/src/services/wallet/walletAccountSelection.ts`, `server/src/services/bitcoin/electrum/connectionConfigResolver.ts`, `server/src/api/bitcoin/address.ts`, `server/src/api/wallets/export.ts`, and `server/src/services/bitcoin/utils.ts`. Primary frontend gaps: `components/ConnectDevice/DeviceDetailsForm/AccountSelectionList.tsx`, `components/Dashboard/MempoolSection.tsx`, `components/Dashboard/NodeStatusCard.tsx`, `components/DeviceDetail/DeviceDetail.tsx`, `components/DeviceDetail/DeviceDetail/DeviceAccountsSection.tsx`, `components/DeviceDetail/accounts/hooks/useAddAccountFlow.ts`, `components/ui/Toggle.tsx`, `services/hardwareWallet/xpubImportWarnings.ts`, and `services/hardwareWallet/adapters/ledger/ledgerAdapter.ts`.
+- Added focused backend and frontend coverage for the merge-queue changed-file gaps. Also fixed `Toggle` so omitting `thumbClassName` uses the intended default thumb surface instead of an empty class.
+- Split the new invalid-path wallet account-selection fallback coverage into its own contract file after lizard flagged the original account-selection contract group as over the function-length threshold.
+- Verification passed: `npm run test:run -- tests/components/ConnectDevice/DeviceDetailsForm.test.tsx tests/components/DeviceDetail/accounts/hooks/useAddAccountFlow.branches.test.tsx tests/components/ui/Toggle.test.tsx tests/services/hardwareWallet.ledgerAdapter.test.ts`; `npm run test:coverage`; `npm --prefix server run test:run -- tests/unit/api/bitcoin.test.ts tests/unit/services/bitcoin/electrum.connection.test.ts tests/unit/services/wallet.test.ts`; `npm --prefix server run test:run -- tests/unit/api/bitcoin.test.ts`; `npm --prefix server run test:run -- tests/unit/services/wallet.test.ts`; `npm --prefix server run test:coverage`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
 - Local worktree has unrelated untracked task-note files; leave them unstaged.
 
 ---

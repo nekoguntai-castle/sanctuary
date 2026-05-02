@@ -58,4 +58,32 @@ describe('DeviceAccountsSection', () => {
 
     expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
   });
+
+  it('uses plural path copy when multiple testnet-family accounts are hidden', () => {
+    render(
+      <DeviceAccountsSection
+        deviceId="device-1"
+        device={{
+          ...baseDevice,
+          accounts: [
+            ...baseDevice.accounts,
+            {
+              id: 'signet-taproot',
+              purpose: 'single_sig',
+              scriptType: 'taproot',
+              derivationPath: "m/86'/1'/0'",
+              xpub: 'tpub-signet',
+            },
+          ],
+        } as any}
+        isOwner={false}
+        showAddAccount={false}
+        onShowAddAccount={vi.fn()}
+        onCloseAddAccount={vi.fn()}
+        onDeviceUpdated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('2 paths hidden')).toBeInTheDocument();
+  });
 });

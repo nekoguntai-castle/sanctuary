@@ -108,6 +108,85 @@ describe('DeviceDetailsForm', () => {
     expect(props.onSave).toHaveBeenCalledTimes(1);
   });
 
+  it('collapses testnet and signet accounts and toggles them after expansion', async () => {
+    const user = userEvent.setup();
+    const props = createProps({
+      method: 'usb',
+      scanned: true,
+      formData: {
+        label: 'Ledger Nano S',
+        xpub: '',
+        fingerprint: 'f00dbeef',
+        derivationPath: "m/84'/0'/0'",
+        parsedAccounts: [
+          {
+            derivationPath: "m/84'/0'/0'",
+            xpub: 'xpub-mainnet',
+            purpose: 'single_sig',
+            scriptType: 'native_segwit',
+          },
+          {
+            derivationPath: "m/84'/1'/0'",
+            xpub: 'tpub-testnet',
+            purpose: 'single_sig',
+            scriptType: 'native_segwit',
+          },
+          {
+            derivationPath: "m/86'/1'/0'",
+            xpub: 'tpub-signet',
+            purpose: 'single_sig',
+            scriptType: 'taproot',
+          },
+        ],
+        selectedAccounts: new Set<number>([0, 2]),
+      },
+    });
+
+    render(<DeviceDetailsForm {...props} />);
+
+    expect(screen.getByText("m/84'/0'/0'")).toBeInTheDocument();
+    expect(screen.queryByText("m/84'/1'/0'")).not.toBeInTheDocument();
+    expect(screen.getByText('1 of 2 paths selected')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /testnet \/ signet derivation paths/i }));
+
+    expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
+    expect(screen.getByText("m/86'/1'/0'")).toBeInTheDocument();
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    await user.click(checkboxes[1]!);
+    expect(props.onToggleAccount).toHaveBeenCalledWith(1);
+  });
+
+  it('uses singular copy when one testnet or signet account is hidden', () => {
+    render(
+      <DeviceDetailsForm
+        {...createProps({
+          method: 'usb',
+          scanned: true,
+          formData: {
+            label: 'Ledger Nano S',
+            xpub: '',
+            fingerprint: 'f00dbeef',
+            derivationPath: "m/84'/0'/0'",
+            parsedAccounts: [
+              {
+                derivationPath: "m/84'/1'/0'",
+                xpub: 'tpub-testnet',
+                purpose: 'single_sig',
+                scriptType: 'native_segwit',
+              },
+            ],
+            selectedAccounts: new Set<number>(),
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText('0 of 1 path selected')).toBeInTheDocument();
+    expect(screen.queryByText("m/84'/1'/0'")).not.toBeInTheDocument();
+  });
+
   it('shows helper message when parsed accounts exist but none are selected', () => {
     render(
       <DeviceDetailsForm

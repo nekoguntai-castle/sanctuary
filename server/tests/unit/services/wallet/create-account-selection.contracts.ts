@@ -290,6 +290,44 @@ export function registerWalletCreateAccountSelectionTests(): void {
         expect(mockBuildDescriptorFromDevices).not.toHaveBeenCalled();
         expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
       });
+
+      it("should include the expected multisig testnet path when rejecting mismatched accounts", async () => {
+        const device = createMockDevice("device-1", "abc12345", [
+          {
+            purpose: "multisig",
+            scriptType: "native_segwit",
+            derivationPath: "m/48'/0'/0'/2'",
+            xpub: "xpub_mainnet_multisig",
+          },
+        ]);
+        const secondDevice = createMockDevice("device-2", "def67890", [
+          {
+            purpose: "multisig",
+            scriptType: "native_segwit",
+            derivationPath: "m/48'/0'/0'/2'",
+            xpub: "xpub_mainnet_multisig_2",
+          },
+        ]);
+
+        mockPrismaClient.device.findMany.mockResolvedValue([device, secondDevice]);
+
+        await expect(
+          createWallet(userId, {
+            name: "Broken Testnet Multisig",
+            type: "multi_sig",
+            scriptType: "native_segwit",
+            network: "testnet",
+            deviceIds: ["device-1", "device-2"],
+            quorum: 1,
+            totalSigners: 2,
+          }),
+        ).rejects.toThrow(
+          "Device \"Device device-1\" does not have a testnet multisig native_segwit account. Add m/48'/1'/0'/2'",
+        );
+
+        expect(mockBuildDescriptorFromDevices).not.toHaveBeenCalled();
+        expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
+      });
     });
 
     describe("Multi-sig wallet creation", () => {
@@ -684,6 +722,7 @@ export function registerWalletCreateAccountSelectionTests(): void {
           expect.any(Object),
         );
       });
+
     });
 
     describe("Validation", () => {

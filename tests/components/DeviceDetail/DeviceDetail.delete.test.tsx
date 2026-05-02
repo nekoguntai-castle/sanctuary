@@ -137,6 +137,19 @@ describe('DeviceDetail delete action', () => {
     expect(screen.queryByRole('button', { name: 'Delete device' })).not.toBeInTheDocument();
   });
 
+  it('closes the delete confirmation when cancellation is selected', async () => {
+    const user = userEvent.setup();
+    render(<DeviceDetail />);
+
+    await user.click(screen.getByRole('button', { name: 'Delete device' }));
+    expect(screen.getByText('Delete?')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel delete device' }));
+
+    expect(screen.queryByText('Delete?')).not.toBeInTheDocument();
+    expect(devicesApi.deleteDevice).not.toHaveBeenCalled();
+  });
+
   it('keeps the confirmation open and shows an API error when deletion fails', async () => {
     const user = userEvent.setup();
     vi.mocked(devicesApi.deleteDevice).mockRejectedValueOnce(new Error('Device is linked to a wallet'));

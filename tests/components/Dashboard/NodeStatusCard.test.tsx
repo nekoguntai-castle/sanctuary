@@ -361,6 +361,19 @@ describe('NodeStatusCard', () => {
       expect(screen.getByText('Signet sync is off')).toBeInTheDocument();
     });
 
+    it('shows checking copy while a non-mainnet status request is in flight', () => {
+      render(
+        <NodeStatusCard
+          isMainnet={false}
+          selectedNetwork="testnet"
+          nodeStatus="checking"
+          bitcoinStatus={undefined}
+        />,
+      );
+
+      expect(screen.getByText('Checking configured Electrum server...')).toBeInTheDocument();
+    });
+
     it('shows configured testnet Electrum host when connected', () => {
       render(
         <NodeStatusCard

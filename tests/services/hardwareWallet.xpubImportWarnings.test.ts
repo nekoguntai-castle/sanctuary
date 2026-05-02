@@ -49,6 +49,16 @@ describe("xpubImportWarnings", () => {
     expect(warning).not.toContain("Bitcoin Test app");
   });
 
+  it("uses plural generic guidance for multiple skipped mainnet paths", () => {
+    const warning = buildSkippedXpubWarning([
+      failure("Mainnet Native SegWit (BIP-84)", "m/84'/0'/0'"),
+      failure("Mainnet Taproot (BIP-86)", "m/86'/0'/0'"),
+    ]);
+
+    expect(warning).toContain("2 standard derivation paths were not returned");
+    expect(warning).not.toContain("testnet/signet");
+  });
+
   it("wraps skipped path guidance when no new USB accounts are found", () => {
     expect(buildNoNewUsbAccountsMessage([])).toBe(
       "No new accounts to add. All derivation paths already exist on this device.",

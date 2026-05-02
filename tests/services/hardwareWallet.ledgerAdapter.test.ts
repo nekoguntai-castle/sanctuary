@@ -307,6 +307,21 @@ describe("LedgerAdapter", () => {
     expect(MockAppClient).toHaveBeenCalledTimes(1);
   });
 
+  it("continues connect when Ledger app metadata cannot be read", async () => {
+    const transport = {
+      close: (...args: unknown[]) => mockTransportClose(...args),
+      device: makeUsbDevice({ productId: 0x0005 }),
+    };
+    mockTransportCreate.mockResolvedValue(transport);
+    mockGetAppAndVersion.mockRejectedValueOnce(new Error("app info unavailable"));
+
+    const adapter = new LedgerAdapter();
+    const device = await adapter.connect();
+
+    expect(device.connected).toBe(true);
+    expect(device.fingerprint).toBe("f00dbabe");
+  });
+
   it("continues connect when an unknown fingerprint fetch error occurs", async () => {
     const transport = {
       close: (...args: unknown[]) => mockTransportClose(...args),
@@ -507,6 +522,30 @@ describe("LedgerAdapter", () => {
     await expect(adapter.getXpub("m/84'/1'/0'")).rejects.toThrow(
       "Bitcoin Test app is required",
     );
+
+    (adapter as any).connection.appName = undefined;
+    mockGetExtendedPubkey.mockRejectedValueOnce(
+      new Error("incorrect data 0x6a80"),
+    );
+    let missingAppMetadataMessage = "";
+    try {
+      await adapter.getXpub("m/84'/1'/1'");
+    } catch (error) {
+      missingAppMetadataMessage =
+        error instanceof Error ? error.message : String(error);
+    }
+    expect(missingAppMetadataMessage).toContain(
+      "Bitcoin Test app is required",
+    );
+    expect(missingAppMetadataMessage).not.toContain("currently running");
+
+    (adapter as any).connection.appName = "Bitcoin Test";
+    mockGetExtendedPubkey.mockRejectedValueOnce(
+      new Error("incorrect data 0x6a80"),
+    );
+    mockGetWalletXpub.mockResolvedValueOnce("tpub-testnet-fallback");
+    const testnetAppFallbackResult = await adapter.getXpub("m/84'/1'/2'");
+    expect(testnetAppFallbackResult.xpub).toBe("tpub-testnet-fallback");
 
     mockGetExtendedPubkey.mockRejectedValueOnce(
       new Error("new API unavailable"),

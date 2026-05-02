@@ -129,6 +129,19 @@ export const registerBitcoinNetworkRouteTests = () => {
         expect(response.body).toHaveProperty('connected', false);
       });
 
+      it('should return disconnected status when the Electrum version is unavailable', async () => {
+        mockElectrumClient.getServerVersion.mockResolvedValue(null as any);
+        mockElectrumClient.getBlockHeight.mockResolvedValue(850000);
+
+        const response = await request(app).get('/bitcoin/status?network=signet');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({
+          connected: false,
+          error: 'Unable to read signet Electrum server version',
+        });
+      });
+
       it('should fall back to singleton status check when pool status fails', async () => {
         mockElectrumPool.isPoolInitialized.mockImplementationOnce(() => {
           throw new Error('Pool health failed');
@@ -184,12 +197,36 @@ export const registerBitcoinNetworkRouteTests = () => {
           signetEnabled: false,
           servers: [
             {
-              id: 'testnet-server-1',
-              label: 'Configured Testnet',
-              host: 'testnet.example.com',
+              id: 'testnet-server-2',
+              label: 'Backup Testnet',
+              host: 'backup-testnet.example.com',
               port: 60002,
               useSsl: true,
-              priority: 0,
+              priority: 2,
+              enabled: true,
+              network: 'testnet',
+              isHealthy: true,
+              lastHealthCheck: null,
+            },
+            {
+              id: 'testnet-server-1',
+              label: 'Default Priority Testnet',
+              host: 'default-priority-testnet.example.com',
+              port: 60003,
+              useSsl: true,
+              priority: null,
+              enabled: true,
+              network: 'testnet',
+              isHealthy: true,
+              lastHealthCheck: null,
+            },
+            {
+              id: 'testnet-server-3',
+              label: 'Tertiary Testnet',
+              host: 'tertiary-testnet.example.com',
+              port: 60004,
+              useSsl: true,
+              priority: 4,
               enabled: true,
               network: 'testnet',
               isHealthy: true,
@@ -219,9 +256,101 @@ export const registerBitcoinNetworkRouteTests = () => {
         expect(response.body.pool.stats.servers).toEqual([
           expect.objectContaining({
             serverId: 'testnet-server-1',
-            label: 'Configured Testnet',
-            host: 'testnet.example.com',
+            label: 'Default Priority Testnet',
+            host: 'default-priority-testnet.example.com',
+            port: 60003,
+          }),
+          expect.objectContaining({
+            serverId: 'testnet-server-2',
+            label: 'Backup Testnet',
+            host: 'backup-testnet.example.com',
             port: 60002,
+          }),
+          expect.objectContaining({
+            serverId: 'testnet-server-3',
+            label: 'Tertiary Testnet',
+            host: 'tertiary-testnet.example.com',
+            port: 60004,
+          }),
+        ]);
+      });
+
+      it('returns null configured stats when electrum config omits servers', async () => {
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({
+          id: 'default',
+          type: 'electrum',
+          host: 'electrum.example.com',
+          port: 50002,
+          useSsl: true,
+          explorerUrl: 'https://mempool.space',
+          testnetEnabled: true,
+          testnetMode: 'singleton',
+          testnetSingletonHost: 'testnet.example.com',
+          testnetSingletonPort: 60002,
+          testnetSingletonSsl: true,
+        });
+        mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'Fulcrum', protocol: '1.4' });
+        mockElectrumClient.getBlockHeight.mockResolvedValue(4_500_000);
+
+        const response = await request(app).get('/bitcoin/status?network=testnet');
+
+        expect(response.status).toBe(200);
+        expect(response.body.pool).toEqual(
+          expect.objectContaining({
+            enabled: false,
+            stats: null,
+          }),
+        );
+      });
+
+      it('uses default display and pool limits when mode config cannot be loaded', async () => {
+        const lastHealthCheck = '2026-01-01T00:00:00.000Z';
+        mockPrismaClient.nodeConfig.findFirst
+          .mockResolvedValueOnce({
+            id: 'default',
+            type: 'electrum',
+            host: 'electrum.example.com',
+            port: 50002,
+            useSsl: true,
+            explorerUrl: 'https://mempool.space',
+            servers: [
+              {
+                id: 'testnet-server-1',
+                label: 'Observed Testnet',
+                host: 'observed-testnet.example.com',
+                port: 60002,
+                useSsl: true,
+                priority: null,
+                enabled: true,
+                network: 'testnet',
+                isHealthy: null,
+                lastHealthCheck,
+              },
+            ],
+          })
+          .mockRejectedValueOnce(new Error('mode config unavailable'));
+        mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'Fulcrum', protocol: '1.4' });
+        mockElectrumClient.getBlockHeight.mockResolvedValue(4_500_001);
+
+        const response = await request(app).get('/bitcoin/status?network=testnet');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({
+          connected: true,
+          network: 'testnet',
+          host: 'electrum.blockstream.info',
+          useSsl: true,
+          pool: expect.objectContaining({
+            enabled: false,
+            minConnections: 1,
+            maxConnections: 5,
+          }),
+        });
+        expect(response.body.pool.stats.servers).toEqual([
+          expect.objectContaining({
+            serverId: 'testnet-server-1',
+            isHealthy: false,
+            lastHealthCheck: new Date(lastHealthCheck),
           }),
         ]);
       });

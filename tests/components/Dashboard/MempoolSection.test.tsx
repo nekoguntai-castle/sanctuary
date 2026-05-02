@@ -113,4 +113,24 @@ describe('MempoolSection', () => {
     await user.click(screen.getByRole('button', { name: /open node config/i }));
     expect(mockConfigureNode).toHaveBeenCalled();
   });
+
+  it('renders the testnet checking state with testnet-specific treatment', async () => {
+    const user = userEvent.setup();
+    render(
+      <MempoolSection
+        {...baseProps}
+        selectedNetwork="testnet"
+        isMainnet={false}
+        nodeStatus="checking"
+        bitcoinStatus={undefined}
+      />
+    );
+
+    expect(screen.getByText('Checking Testnet Node')).toBeInTheDocument();
+    expect(screen.getByText(/review testnet Electrum settings/i)).toBeInTheDocument();
+    expect(screen.getByText('TESTNET')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /open node config/i }));
+    expect(mockConfigureNode).toHaveBeenCalled();
+  });
 });

@@ -525,6 +525,73 @@ describe("useAddAccountFlow branch coverage", () => {
     expect(flow.result.current.addAccountError).toContain("testnet/signet");
   });
 
+  it("reports a generic error when every new USB account fails to save without skipped-path warnings", async () => {
+    getAllXpubsMock.mockResolvedValueOnce({
+      results: [
+        {
+          purpose: "single_sig",
+          scriptType: "native_segwit",
+          path: "m/84'/0'/9'",
+          xpub: "xpub-new-but-rejected",
+        },
+      ],
+      failures: [],
+      totalPaths: 1,
+    });
+    addDeviceAccountMock.mockRejectedValueOnce(new Error("duplicate account"));
+
+    const flow = renderFlowHook({ type: "ledger", accounts: [] });
+
+    await act(async () => {
+      await flow.result.current.handleAddAccountsViaUsb();
+    });
+
+    expect(addDeviceAccountMock).toHaveBeenCalledTimes(1);
+    expect(flow.result.current.addAccountError).toBe(
+      "No accounts were added. Check for duplicate paths and try again.",
+    );
+    expect(onDeviceUpdatedMock).not.toHaveBeenCalled();
+    expect(onCloseMock).not.toHaveBeenCalled();
+  });
+
+  it("includes skipped-path guidance when every new USB account fails to save", async () => {
+    getAllXpubsMock.mockResolvedValueOnce({
+      results: [
+        {
+          purpose: "single_sig",
+          scriptType: "native_segwit",
+          path: "m/84'/0'/9'",
+          xpub: "xpub-new-but-rejected",
+        },
+      ],
+      failures: [
+        {
+          name: "Testnet Native SegWit (BIP-84)",
+          path: "m/84'/1'/0'",
+          message: "Bitcoin Test app not open",
+        },
+      ],
+      totalPaths: 2,
+    });
+    addDeviceAccountMock.mockRejectedValueOnce(new Error("duplicate account"));
+
+    const flow = renderFlowHook({ type: "ledger", accounts: [] });
+
+    await act(async () => {
+      await flow.result.current.handleAddAccountsViaUsb();
+    });
+
+    expect(addDeviceAccountMock).toHaveBeenCalledTimes(1);
+    expect(flow.result.current.addAccountError).toContain(
+      "No accounts were added. 1 testnet/signet path was not returned.",
+    );
+    expect(flow.result.current.addAccountError).toContain(
+      "Skipped: Testnet Native SegWit (BIP-84) m/84'/1'/0'.",
+    );
+    expect(onDeviceUpdatedMock).not.toHaveBeenCalled();
+    expect(onCloseMock).not.toHaveBeenCalled();
+  });
+
   it("skips unselected parsed accounts and handles non-Error refresh failures", async () => {
     parseDeviceJsonMock.mockReturnValueOnce({
       accounts: [

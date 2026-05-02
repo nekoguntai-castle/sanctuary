@@ -9,6 +9,7 @@
 import { describe } from 'vitest';
 import { registerWalletAccessQueryTests } from './wallet/access-queries.contracts';
 import { registerWalletAddressDescriptorStatsTests } from './wallet/address-descriptor-stats.contracts';
+import { registerWalletCreateAccountSelectionFallbackTests } from './wallet/create-account-selection-fallbacks.contracts';
 import { registerWalletCreateAccountSelectionTests } from './wallet/create-account-selection.contracts';
 import { registerWalletMutationMaintenanceTests } from './wallet/mutations-maintenance.contracts';
 import { setupWalletServiceTestHooks } from './wallet/walletTestHarness';
@@ -16,6 +17,7 @@ import { setupWalletServiceTestHooks } from './wallet/walletTestHarness';
 describe('Wallet Service', () => {
   setupWalletServiceTestHooks();
   registerWalletCreateAccountSelectionTests();
+  registerWalletCreateAccountSelectionFallbackTests();
   registerWalletAccessQueryTests();
   registerWalletMutationMaintenanceTests();
   registerWalletAddressDescriptorStatsTests();

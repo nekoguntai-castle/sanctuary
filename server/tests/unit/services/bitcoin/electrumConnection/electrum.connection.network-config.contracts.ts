@@ -144,6 +144,40 @@ export function registerElectrumConnectionNetworkConfigContracts(): void {
     );
   });
 
+  it("uses TLS for testnet when SSL setting is null", async () => {
+    const baseSocket = new FakeSocket();
+    const tlsSocket = new FakeSocket();
+    nodeConfigFindFirstMock.mockResolvedValueOnce({
+      type: "electrum",
+      host: "db-host",
+      port: 50001,
+      useSsl: false,
+      testnetSingletonHost: "testnet-null-ssl-host",
+      testnetSingletonPort: 62002,
+      testnetSingletonSsl: null,
+    });
+    netConnectMock.mockImplementationOnce(() => {
+      queueMicrotask(() => baseSocket.emit("connect"));
+      return baseSocket;
+    });
+    tlsConnectMock.mockImplementationOnce(
+      (options: any, onSecureConnect: () => void) => {
+        queueMicrotask(() => onSecureConnect());
+        return tlsSocket;
+      },
+    );
+
+    const client = new ElectrumClient();
+    client.setNetwork("testnet");
+    await client.connect();
+
+    expect(netConnectMock).toHaveBeenCalledWith({
+      host: "testnet-null-ssl-host",
+      port: 62002,
+    });
+    expect(tlsConnectMock).toHaveBeenCalledTimes(1);
+  });
+
   it("uses plain TCP for testnet when SSL is disabled", async () => {
     const socket = new FakeSocket();
     nodeConfigFindFirstMock.mockResolvedValueOnce({
@@ -235,6 +269,33 @@ export function registerElectrumConnectionNetworkConfigContracts(): void {
       port: 60002,
     });
     expect(tlsConnectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses plain TCP for signet when SSL is disabled", async () => {
+    const socket = new FakeSocket();
+    nodeConfigFindFirstMock.mockResolvedValueOnce({
+      type: "electrum",
+      host: "db-host",
+      port: 50001,
+      useSsl: true,
+      signetSingletonHost: "signet-plain-host",
+      signetSingletonPort: 60001,
+      signetSingletonSsl: false,
+    });
+    netConnectMock.mockImplementationOnce(() => {
+      queueMicrotask(() => socket.emit("connect"));
+      return socket;
+    });
+
+    const client = new ElectrumClient();
+    client.setNetwork("signet");
+    await client.connect();
+
+    expect(netConnectMock).toHaveBeenCalledWith({
+      host: "signet-plain-host",
+      port: 60001,
+    });
+    expect(tlsConnectMock).not.toHaveBeenCalled();
   });
 
   it("uses regtest legacy host and port from database config", async () => {
