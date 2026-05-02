@@ -23,7 +23,6 @@ import type { FeatureFlags, ExperimentalFeatures } from './types';
 export const defaultExperimentalFlags: ExperimentalFeatures = {
   taprootAddresses: false,
   silentPayments: false,
-  coinJoin: false,
 };
 
 /**
@@ -90,7 +89,6 @@ export function loadFeatureFlags(): FeatureFlags {
     experimental: {
       taprootAddresses: parseBoolEnv('FEATURE_EXP_TAPROOT', defaultExperimentalFlags.taprootAddresses),
       silentPayments: parseBoolEnv('FEATURE_EXP_SILENT_PAYMENTS', defaultExperimentalFlags.silentPayments),
-      coinJoin: parseBoolEnv('FEATURE_EXP_COINJOIN', defaultExperimentalFlags.coinJoin),
     },
   };
 }

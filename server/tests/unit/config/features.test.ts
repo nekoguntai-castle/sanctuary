@@ -21,7 +21,6 @@ const FEATURE_ENV_KEYS = [
   'FEATURE_TREASURY_INTELLIGENCE',
   'FEATURE_EXP_TAPROOT',
   'FEATURE_EXP_SILENT_PAYMENTS',
-  'FEATURE_EXP_COINJOIN',
 ] as const;
 
 const ORIGINAL_FEATURE_ENV = Object.fromEntries(
@@ -67,7 +66,6 @@ describe('Feature Flags Config', () => {
     process.env.FEATURE_TREASURY_INTELLIGENCE = 'true';
     process.env.FEATURE_EXP_TAPROOT = '1';
     process.env.FEATURE_EXP_SILENT_PAYMENTS = 'TRUE';
-    process.env.FEATURE_EXP_COINJOIN = 'false';
 
     const flags = loadFeatureFlags();
 
@@ -87,7 +85,6 @@ describe('Feature Flags Config', () => {
     expect(flags.experimental).toEqual({
       taprootAddresses: true,
       silentPayments: true,
-      coinJoin: false,
     });
   });
 });

@@ -43,7 +43,6 @@ const mockFeatures = {
   experimental: {
     taprootAddresses: false,
     silentPayments: false,
-    coinJoin: false,
   },
 };
 
@@ -105,7 +104,6 @@ describe('Feature Gate Middleware', () => {
     mockFeatures.websocketV2Events = true;
     mockFeatures.experimental.taprootAddresses = false;
     mockFeatures.experimental.silentPayments = false;
-    mockFeatures.experimental.coinJoin = false;
 
     // Restore default feature service behavior
     isEnabledMock.mockReset();

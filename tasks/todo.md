@@ -1,3 +1,46 @@
+# Active Task: PR Delivery For Privacy-Mixing Reference Removal 2026-05-02
+
+Status: in progress
+
+Goal: commit, push, open, monitor, and merge the privacy-mixing reference removal through the repository PR workflow.
+
+## Plan
+
+- [x] Preflight the diff, current branch, and GitHub auth/remote state.
+- [x] Move the work to a delivery branch and confirm local verification.
+- [x] Commit only the scoped files and push the branch.
+- [ ] Open or update the GitHub PR with summary and verification.
+- [ ] Monitor checks/review state and fix any actionable failures.
+- [ ] Merge through the repository's allowed path, verify `origin/main`, and clean up safely.
+
+## Review
+
+- Pending.
+
+---
+
+# Active Task: Remove Unused Privacy-Mixing References 2026-05-02
+
+Status: complete; verified
+
+Goal: remove the unused experimental privacy-mixing feature flag and related references without touching Payjoin behavior.
+
+## Plan
+
+- [x] Remove the unused experimental privacy-mixing feature flag from config, schema, feature-flag flattening, and feature definitions.
+- [x] Update tests that expected the flag or recommendation copy.
+- [x] Remove docs text that advertises the future integration.
+- [x] Re-scan for removed references, run focused tests, and review the diff.
+
+## Review
+
+- Removed the unused experimental feature from defaults, environment parsing, schema validation, runtime flattening, and admin feature definitions.
+- Updated config, feature-gate, feature-flag service, and UTXO banner tests to match the narrower experimental flag set and neutral privacy recommendation copy.
+- Updated the transaction broadcasting future-enhancements doc to avoid advertising the removed integration.
+- Verification passed: targeted reference scan; backend focused tests for config/schema/feature gate/feature flag service; focused UTXO banner test; server build; server test typecheck; frontend test typecheck; app typecheck; `git diff --check`.
+
+---
+
 # Active Task: PR Delivery 2026-05-01
 
 Status: in progress; CI follow-up

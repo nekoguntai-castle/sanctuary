@@ -180,7 +180,6 @@ function buildValidConfig() {
       experimental: {
         taprootAddresses: false,
         silentPayments: false,
-        coinJoin: false,
       },
     },
     // Legacy fields (still required by CombinedConfigSchema)

@@ -2,6 +2,19 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Narrow Privacy-Feature Removals To The Approved Scope
+
+**Rule:** When the user narrows a removal from a broad privacy-feature sweep to one named feature, remove only that feature and explicitly leave adjacent implemented features untouched.
+
+**Why:** One privacy-mixing item was only an unused experimental flag and text references, while Payjoin is implemented across API, UI, persistence, and tests. Treating both the same would create unnecessary product and schema churn.
+
+**How to apply:**
+
+- Re-run a targeted search for the narrowed feature before editing.
+- Remove runtime toggles, schema entries, docs, and tests for that feature only.
+- Keep adjacent protocol names and code paths unchanged unless the user separately approves their removal.
+- Verify with a targeted `rg` scan that names only the removed feature.
+
 ## Remeasure Sliding Indicators After Layout Settles
 
 **Rule:** UI indicators that depend on `offsetLeft` or `offsetWidth` must remeasure after first paint and after container, tab, or font sizing changes.

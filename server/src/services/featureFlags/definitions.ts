@@ -90,10 +90,6 @@ export const FEATURE_DEFINITIONS: Record<
     description: "Enable Silent Payments (BIP352)",
     category: "experimental",
   },
-  "experimental.coinJoin": {
-    description: "Enable CoinJoin transaction support",
-    category: "experimental",
-  },
 };
 
 export const FEATURE_FLAG_KEYS = Object.freeze(

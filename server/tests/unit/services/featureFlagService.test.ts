@@ -63,7 +63,6 @@ const { mockPrisma, mockCache, mockConfig, mockEventBus } = vi.hoisted(() => {
       experimental: {
         taprootAddresses: false,
         silentPayments: false,
-        coinJoin: false,
       },
     },
   };

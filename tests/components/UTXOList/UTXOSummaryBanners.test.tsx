@@ -61,7 +61,7 @@ describe('UTXOSummaryBanners', () => {
           addressReuseCount: 0,
           roundAmountCount: 1,
           clusterCount: 2,
-          recommendations: ['Consider using CoinJoin'],
+          recommendations: ['Avoid address reuse'],
         }}
         dustCount={0}
         dustTotal={0}
@@ -72,7 +72,7 @@ describe('UTXOSummaryBanners', () => {
 
     expect(screen.getByText(/Wallet Privacy Score: 72/)).toBeInTheDocument();
     expect(screen.getByText('good')).toBeInTheDocument();
-    expect(screen.getByText('Consider using CoinJoin')).toBeInTheDocument();
+    expect(screen.getByText('Avoid address reuse')).toBeInTheDocument();
   });
 
   it('does not show privacy summary when showPrivacy is false', () => {
