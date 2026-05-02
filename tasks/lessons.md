@@ -1042,3 +1042,15 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Include selected network values in React Query keys and status API calls.
 - Make backend status endpoints validate the requested network and resolve per-network node configuration.
 - Test configured non-mainnet dashboard states and navigation targets alongside disabled/error states.
+
+## Security Assessment Must Include Remote Alert Sources
+
+**Rule:** Before calling a security task list complete, check local scans and the repository's open GitHub security alerts: CodeQL/code scanning, Dependabot, and secret scanning where available.
+
+**Why:** A local npm audit/security assessment missed the user's three GitHub findings: two CodeQL alerts and one Dependabot vulnerability.
+
+**How to apply:**
+
+- Query `gh api repos/<owner>/<repo>/code-scanning/alerts?state=open` and `gh api repos/<owner>/<repo>/dependabot/alerts?state=open`.
+- Record alert numbers, severities, locations, and links in the security assessment.
+- Treat local tool output and GitHub's alert state as complementary; neither replaces the other.

@@ -1,3 +1,36 @@
+# Active Task: GitHub Security And Quality Findings 2026-05-01
+
+Status: complete; verified
+
+Goal: add the three open GitHub findings to the local task/security docs and fix them.
+
+## Findings
+
+- Code scanning #451: CodeQL `js/missing-rate-limiting` on `server/src/api/console.ts`; the Console router has a coarse limiter, but CodeQL needs route-local middleware on the flagged handlers.
+- Code scanning #420: CodeQL `js/indirect-command-line-injection` on `scripts/architecture/detect-drift.mjs`; the drift detector shells out with an interpolated git ref.
+- Dependabot #16: `uuid < 14.0.0` in `website/package-lock.json`, pulled transitively by Mermaid and SockJS.
+
+## Plan
+
+- [x] Document the three GitHub findings in `tasks/security-assessment-2026-04-29.md`.
+- [x] Update the Console API routes so every handler has explicit user rate limiting and turn/replay/session handlers keep the AI limiter.
+- [x] Replace shell-based git diff execution in `detect-drift.mjs` with `execFileSync`.
+- [x] Update the website dependency override/lockfile so all `uuid` entries resolve to `14.0.0`.
+- [x] Add/update focused tests where behavior changes and run focused verification.
+- [x] Run final hygiene checks and document the review results here.
+
+## Review
+
+- Added the three GitHub findings, links, severities, and triage notes to the security assessment.
+- Moved the Console `api:default` limiter from router-level middleware to explicit middleware on every route so CodeQL can see the handler-local rate limit; turn, replay, and session-create routes also keep `ai:analyze`.
+- Replaced `execSync` shell interpolation in the architecture drift detector with `execFileSync` and an argument vector.
+- Added a website `uuid` override and regenerated the lockfile so Mermaid and SockJS both resolve to `uuid@14.0.0`.
+- Updated the Console API route test to prove non-turn routes hit `api:default` and model-backed turns hit `ai:analyze`.
+- Verification passed: `npm --prefix server run test:run -- tests/unit/api/console.test.ts`; `node scripts/architecture/detect-drift.mjs --files scripts/architecture/detect-drift.mjs`; `npm audit --prefix website --json`; `npm ls uuid --prefix website --all`; `node -e "const transport=require('./website/node_modules/sockjs/lib/transport'); console.log(typeof transport.Transport)"`; `npm --prefix website run typecheck`; `npm --prefix website run build`; `npm --prefix server run build`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Note: CodeQL itself is not installed locally; GitHub alerts will remain open until this branch is pushed and GitHub rescans.
+
+---
+
 # Active Task: Sidebar Compact Header Network 2026-05-01
 
 Status: complete; verified

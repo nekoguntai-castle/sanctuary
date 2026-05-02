@@ -20,7 +20,7 @@
 
 import { readFile, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -97,7 +97,10 @@ function getChangedFiles() {
     ? process.argv[2]
     : (process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : 'origin/main');
   try {
-    const output = execSync(`git diff --name-only ${ref}...HEAD`, { cwd: repoRoot, encoding: 'utf8' });
+    const output = execFileSync('git', ['diff', '--name-only', `${ref}...HEAD`], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+    });
     return output.split('\n').filter(Boolean);
   } catch (err) {
     console.error(`detect-drift: could not diff against ${ref}: ${err.message}`);

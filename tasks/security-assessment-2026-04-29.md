@@ -506,3 +506,21 @@ publication.
   non-cryptographic PRNG; treat them as defence in depth, not as a
   primary anonymity guarantee" — *or* fix the `Math.random` calls before
   the next release and keep the current language.
+
+---
+
+## GitHub Security And Quality Findings Added 2026-05-01
+
+Source: GitHub open security alerts for `nekoguntai-castle/sanctuary`.
+
+| Alert | Type | Severity | Location | Status |
+|---|---|---:|---|---|
+| [Code scanning #451](https://github.com/nekoguntai-castle/sanctuary/security/code-scanning/451) | CodeQL `js/missing-rate-limiting` | High | `server/src/api/console.ts:46` | Open |
+| [Code scanning #420](https://github.com/nekoguntai-castle/sanctuary/security/code-scanning/420) | CodeQL `js/indirect-command-line-injection` | Medium | `scripts/architecture/detect-drift.mjs:100` | Open |
+| [Dependabot #16](https://github.com/nekoguntai-castle/sanctuary/security/dependabot/16) | `uuid < 14.0.0` transitive npm vulnerability | Medium | `website/package-lock.json` | Open |
+
+### Triage
+
+- #451 is a CodeQL precision issue against the current route shape: the Console router has `router.use(consoleRouteLimiter)`, but the alert is attached to a specific handler. Fix by making rate limiting explicit on each non-turn Console route.
+- #420 is a real maintainability/security issue in a CI helper. Fix by replacing shell interpolation with `execFileSync("git", ["diff", "--name-only", "<ref>...HEAD"])`.
+- #16 should be handled in the website manifest/lockfile with an override that resolves vulnerable transitive `uuid` entries to `14.0.0`, then verified against the docs build.
