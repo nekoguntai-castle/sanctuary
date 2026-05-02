@@ -115,5 +115,17 @@ upgrade_fixture_after_upgrade() {
         return 1
     fi
 
+    if ! echo "$node_config_response" | grep -q '"testnetSingletonHost":"electrum.blockstream.info"'; then
+        log_error "Testnet defaults were not backfilled on the default node config after upgrade"
+        log_error "Response: ${node_config_response:0:600}"
+        return 1
+    fi
+
+    if ! echo "$node_config_response" | grep -q '"signetSingletonHost":"electrum.mutinynet.com"'; then
+        log_error "Signet defaults were not backfilled on the default node config after upgrade"
+        log_error "Response: ${node_config_response:0:600}"
+        return 1
+    fi
+
     return 0
 }
