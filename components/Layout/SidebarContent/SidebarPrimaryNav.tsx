@@ -4,15 +4,13 @@ import { NavItem } from '../NavItem';
 
 interface SidebarPrimaryNavProps {
   items: AppNavItem[];
-  quickActions?: React.ReactNode;
 }
 
-export const SidebarPrimaryNav: React.FC<SidebarPrimaryNavProps> = ({ items, quickActions }) => (
+export const SidebarPrimaryNav: React.FC<SidebarPrimaryNavProps> = ({ items }) => (
   <>
-    {items.map((item, index) => (
+    {items.map((item) => (
       <React.Fragment key={item.id}>
         <NavItem to={item.to} icon={item.icon} label={item.label} />
-        {index === 0 ? quickActions : null}
       </React.Fragment>
     ))}
   </>

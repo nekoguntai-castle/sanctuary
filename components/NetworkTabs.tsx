@@ -1,99 +1,161 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, useLayoutEffect } from 'react';
+import {
+  TAB_NETWORKS,
+  networkConfigs,
+  type TabNetwork,
+} from '../src/app/networks';
 
-// Networks we support tabs for (excluding regtest which is dev-only)
-export type TabNetwork = 'mainnet' | 'testnet' | 'signet';
+export type { TabNetwork };
 
 interface NetworkTabsProps {
   selectedNetwork: TabNetwork;
   onNetworkChange: (network: TabNetwork) => void;
-  walletCounts: Record<TabNetwork, number>;
+  networkAvailability?: Record<TabNetwork, boolean>;
   className?: string;
+  fullWidth?: boolean;
 }
 
-interface NetworkConfig {
-  label: string;
-  dotColor: string;
-}
+const getDisabledTitle = (network: TabNetwork): string => {
+  const label = networkConfigs[network].label;
+  return `${label} is disabled. Enable ${label} under Node Configuration to select it.`;
+};
 
-const networkConfigs: Record<TabNetwork, NetworkConfig> = {
-  mainnet: {
-    label: 'Mainnet',
-    dotColor: 'bg-mainnet-500',
-  },
-  testnet: {
-    label: 'Testnet',
-    dotColor: 'bg-testnet-500',
-  },
-  signet: {
-    label: 'Signet',
-    dotColor: 'bg-signet-500',
-  },
+const getActiveTabIndicator = (nav: HTMLElement | null) => {
+  if (!nav) return null;
+
+  const activeEl = nav.querySelector('[data-active="true"]') as HTMLElement | null;
+  if (!activeEl) return null;
+
+  return {
+    left: activeEl.offsetLeft,
+    width: activeEl.offsetWidth,
+  };
+};
+
+const requestMeasureFrame = (callback: () => void): number | null => {
+  if (typeof window.requestAnimationFrame !== 'function') {
+    callback();
+    return null;
+  }
+
+  return window.requestAnimationFrame(callback);
+};
+
+const cancelMeasureFrame = (frameId: number | null) => {
+  if (frameId !== null && typeof window.cancelAnimationFrame === 'function') {
+    window.cancelAnimationFrame(frameId);
+  }
 };
 
 export const NetworkTabs = ({
   selectedNetwork,
   onNetworkChange,
-  walletCounts,
+  networkAvailability,
   className = '',
+  fullWidth = false,
 }: NetworkTabsProps) => {
-  const networks: TabNetwork[] = ['mainnet', 'testnet', 'signet'];
   const navRef = useRef<HTMLElement>(null);
+  const measureFrameRef = useRef<number | null>(null);
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
 
   const updateIndicator = useCallback(() => {
-    /* v8 ignore start -- defensive guard; ref is always attached after mount */
-    if (!navRef.current) return;
-    /* v8 ignore stop */
-    const activeEl = navRef.current.querySelector('[data-active="true"]') as HTMLElement | null;
-    /* v8 ignore start -- offsetLeft/offsetWidth require layout engine; jsdom always returns null */
-    if (activeEl) {
-      setIndicator({
-        left: activeEl.offsetLeft,
-        width: activeEl.offsetWidth,
-      });
-    }
-    /* v8 ignore stop */
+    const nextIndicator = getActiveTabIndicator(navRef.current);
+    if (!nextIndicator) return;
+
+    setIndicator((current) => (
+      current.left === nextIndicator.left && current.width === nextIndicator.width
+        ? current
+        : nextIndicator
+    ));
   }, []);
 
-  useEffect(() => {
+  const scheduleIndicatorUpdate = useCallback(() => {
+    cancelMeasureFrame(measureFrameRef.current);
+    measureFrameRef.current = requestMeasureFrame(() => {
+      measureFrameRef.current = null;
+      updateIndicator();
+    });
+  }, [updateIndicator]);
+
+  useLayoutEffect(() => {
     updateIndicator();
-  }, [selectedNetwork, updateIndicator]);
+    scheduleIndicatorUpdate();
+  }, [selectedNetwork, updateIndicator, scheduleIndicatorUpdate]);
 
   useEffect(() => {
-    window.addEventListener('resize', updateIndicator);
-    return () => window.removeEventListener('resize', updateIndicator);
-  }, [updateIndicator]);
+    const nav = navRef.current;
+    if (!nav) return undefined;
+
+    let cancelled = false;
+    const resizeObserver = typeof ResizeObserver === 'function'
+      ? new ResizeObserver(scheduleIndicatorUpdate)
+      : null;
+    const activeEl = nav.querySelector('[data-active="true"]') as HTMLElement | null;
+
+    resizeObserver?.observe(nav);
+    if (activeEl) resizeObserver?.observe(activeEl);
+
+    window.addEventListener('resize', scheduleIndicatorUpdate);
+    void document.fonts?.ready.then(() => {
+      if (!cancelled) scheduleIndicatorUpdate();
+    });
+
+    return () => {
+      cancelled = true;
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', scheduleIndicatorUpdate);
+    };
+  }, [selectedNetwork, scheduleIndicatorUpdate]);
+
+  useEffect(() => () => {
+    cancelMeasureFrame(measureFrameRef.current);
+  }, []);
 
   return (
     <div className={className}>
-      <nav ref={navRef} className="relative inline-flex gap-0.5 p-0.5 surface-secondary rounded-md" aria-label="Network tabs">
+      <nav
+        ref={navRef}
+        className={`relative ${fullWidth ? 'flex w-full' : 'inline-flex'} gap-0.5 p-0.5 surface-secondary rounded-md`}
+        aria-label="Network tabs"
+      >
         {/* Sliding indicator */}
         <div
           className="absolute top-0.5 bottom-0.5 rounded bg-white dark:bg-sanctuary-700 shadow-sm transition-all duration-300 ease-out z-0"
           style={{ left: indicator.left, width: indicator.width }}
         />
-        {networks.map((network) => {
+        {TAB_NETWORKS.map((network) => {
           const config = networkConfigs[network];
-          const count = walletCounts[network] || 0;
           const isSelected = selectedNetwork === network;
+          const isDisabled = networkAvailability?.[network] === false;
 
           return (
             <button
               key={network}
+              type="button"
               data-active={isSelected}
-              onClick={() => onNetworkChange(network)}
+              aria-disabled={isDisabled}
+              title={isDisabled ? getDisabledTitle(network) : undefined}
+              onClick={() => {
+                if (!isDisabled) onNetworkChange(network);
+              }}
               className={`
-                relative z-10 px-3 py-1.5 text-xs font-medium rounded transition-colors duration-200
-                ${isSelected
+                relative z-10 ${fullWidth ? 'flex-1 px-2' : 'px-3'} py-1.5 text-xs font-medium rounded transition-colors duration-200
+                ${isDisabled
+                  ? 'cursor-not-allowed text-sanctuary-300 hover:text-sanctuary-300 dark:text-sanctuary-600 dark:hover:text-sanctuary-600'
+                  : isSelected
                   ? 'text-sanctuary-900 dark:text-sanctuary-50'
                   : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
                 }
               `}
             >
               <span className="flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${config.dotColor}`} aria-hidden="true" />
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    isDisabled ? 'bg-sanctuary-300 dark:bg-sanctuary-600' : config.dotColor
+                  }`}
+                  aria-hidden="true"
+                />
                 <span>{config.label}</span>
-                <span className="text-sanctuary-400 text-[10px] tabular-nums">{count}</span>
               </span>
             </button>
           );

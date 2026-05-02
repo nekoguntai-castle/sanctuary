@@ -35,6 +35,14 @@ vi.mock('../../../hooks/useErrorHandler', () => ({
   }),
 }));
 
+vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: 'mainnet',
+    isMainnet: true,
+    setSelectedNetwork: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),

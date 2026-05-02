@@ -12,8 +12,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme 
   const sidebarContent = (
     <SidebarContent
       user={controller.user}
-      wallets={controller.wallets}
-      devices={controller.devices}
+      wallets={controller.activeWallets}
+      devices={controller.activeDevices}
+      selectedNetwork={controller.selectedNetwork}
+      setSelectedNetwork={controller.setSelectedNetwork}
+      networkAvailability={controller.networkAvailability}
       expanded={controller.expanded}
       darkMode={darkMode}
       toggleTheme={toggleTheme}
@@ -36,7 +39,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme 
       <ConsoleDrawer
         isOpen={controller.isConsoleOpen}
         onClose={controller.closeConsole}
-        wallets={controller.wallets}
+        wallets={controller.activeWallets}
+        selectedNetwork={controller.selectedNetwork}
         isAdmin={!!controller.user?.isAdmin}
       />
       <KeyboardShortcutsModal

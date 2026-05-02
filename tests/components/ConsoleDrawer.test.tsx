@@ -42,7 +42,8 @@ it("loads Console state and submits an auto-context prompt", async () => {
   await waitFor(() => {
     expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
       prompt: "How long ago was block 800000?",
-      clientContext: { mode: "auto" },
+      clientContext: { mode: "auto", selectedNetwork: "mainnet" },
+      sessionId: undefined,
     });
   });
   expect(
@@ -68,7 +69,12 @@ it("keeps Auto selected and sends the current wallet route as context", async ()
   await waitFor(() => {
     expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
       prompt: "show me transactions between feb 2020 and june 2020",
-      clientContext: { mode: "auto", routeWalletId: "wallet-1" },
+      clientContext: {
+        mode: "auto",
+        routeWalletId: "wallet-1",
+        selectedNetwork: "mainnet",
+      },
+      sessionId: undefined,
     });
   });
 });
@@ -447,13 +453,14 @@ it("handles session selection, wallet scope, keyboard send, prompt search, and c
           isOpen={false}
           onClose={onClose}
           wallets={wallets}
+          selectedNetwork="mainnet"
           isAdmin
         />
       </MemoryRouter>,
     );
     view.rerender(
       <MemoryRouter>
-        <ConsoleDrawer isOpen onClose={onClose} wallets={wallets} isAdmin />
+        <ConsoleDrawer isOpen onClose={onClose} wallets={wallets} selectedNetwork="mainnet" isAdmin />
       </MemoryRouter>,
     );
     await waitFor(() => {
@@ -523,7 +530,7 @@ it("falls back to auto context when a selected wallet disappears", async () => {
 
   view.rerender(
     <MemoryRouter>
-      <ConsoleDrawer isOpen onClose={vi.fn()} wallets={[]} isAdmin />
+      <ConsoleDrawer isOpen onClose={vi.fn()} wallets={[]} selectedNetwork="mainnet" isAdmin />
     </MemoryRouter>,
   );
 
@@ -543,7 +550,7 @@ it("falls back to auto context when all-visible-wallets has no wallets", async (
 
   view.rerender(
     <MemoryRouter>
-      <ConsoleDrawer isOpen onClose={vi.fn()} wallets={[]} isAdmin />
+      <ConsoleDrawer isOpen onClose={vi.fn()} wallets={[]} selectedNetwork="mainnet" isAdmin />
     </MemoryRouter>,
   );
 

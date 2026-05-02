@@ -9,6 +9,9 @@ vi.mock('../../providers/QueryProvider', () => ({
 vi.mock('../../contexts/UserContext', () => ({
   UserProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="user-provider">{children}</div>,
 }));
+vi.mock('../../contexts/ActiveNetworkContext', () => ({
+  ActiveNetworkProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="active-network-provider">{children}</div>,
+}));
 vi.mock('../../contexts/CurrencyContext', () => ({
   CurrencyProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="currency-provider">{children}</div>,
 }));
@@ -32,6 +35,7 @@ describe('AppProviders', () => {
 
     expect(screen.getByTestId('query-provider')).toBeInTheDocument();
     expect(screen.getByTestId('user-provider')).toBeInTheDocument();
+    expect(screen.getByTestId('active-network-provider')).toBeInTheDocument();
     expect(screen.getByTestId('currency-provider')).toBeInTheDocument();
     expect(screen.getByTestId('notification-provider')).toBeInTheDocument();
     expect(screen.getByTestId('app-notification-provider')).toBeInTheDocument();
@@ -39,7 +43,7 @@ describe('AppProviders', () => {
     expect(screen.getByTestId('child')).toHaveTextContent('Hello');
   });
 
-  it('nests providers in the correct order (query > user > currency > notification > app-notification > sidebar)', () => {
+  it('nests providers in the correct order (query > user > active-network > currency > notification > app-notification > sidebar)', () => {
     render(
       <AppProviders>
         <span data-testid="child">Content</span>
@@ -48,6 +52,7 @@ describe('AppProviders', () => {
 
     const queryProvider = screen.getByTestId('query-provider');
     const userProvider = screen.getByTestId('user-provider');
+    const activeNetworkProvider = screen.getByTestId('active-network-provider');
     const currencyProvider = screen.getByTestId('currency-provider');
     const notificationProvider = screen.getByTestId('notification-provider');
     const appNotificationProvider = screen.getByTestId('app-notification-provider');
@@ -56,7 +61,8 @@ describe('AppProviders', () => {
 
     // Each provider should contain the next one in the nesting order
     expect(queryProvider).toContainElement(userProvider);
-    expect(userProvider).toContainElement(currencyProvider);
+    expect(userProvider).toContainElement(activeNetworkProvider);
+    expect(activeNetworkProvider).toContainElement(currencyProvider);
     expect(currencyProvider).toContainElement(notificationProvider);
     expect(notificationProvider).toContainElement(appNotificationProvider);
     expect(appNotificationProvider).toContainElement(sidebarProvider);

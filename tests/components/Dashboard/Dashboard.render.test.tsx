@@ -184,8 +184,8 @@ describe('Dashboard render branches', () => {
     expect(screen.getByText('8 sat/vB')).toBeInTheDocument();
     expect(screen.getByText('3 sat/vB')).toBeInTheDocument();
 
-    await user.click(screen.getByTestId('network-tabs'));
-    expect(mocks.handleNetworkChange).toHaveBeenCalledWith('testnet');
+    expect(screen.queryByTestId('network-tabs')).not.toBeInTheDocument();
+    expect(mocks.handleNetworkChange).not.toHaveBeenCalled();
 
     await user.click(screen.getByTestId('price-chart'));
     expect(mocks.setTimeframe).toHaveBeenCalledWith('1M');

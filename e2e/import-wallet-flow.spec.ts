@@ -25,6 +25,7 @@ const ADMIN_USER = {
     unit: 'sats',
     showFiat: false,
     priceProvider: 'auto',
+    selectedNetwork: 'mainnet',
   },
   createdAt: '2026-03-11T00:00:00.000Z',
 };
@@ -52,6 +53,7 @@ type ImportApiOptions = {
   validationResponse?: Record<string, unknown>;
   importError?: string;
   failures?: Record<string, MockApiFailure>;
+  userPreferences?: Partial<typeof ADMIN_USER.preferences>;
 };
 
 function mockResponse(body: unknown, status?: number): MockApiResponse {
@@ -245,9 +247,27 @@ function getImportMutationResponse(
 }
 
 function getImportApiResponse(
+  route: Route,
   parsedRoute: ParsedApiRoute,
   options?: ImportApiOptions
 ): MockApiResponse | null {
+  if (parsedRoute.requestKey === 'GET /auth/me') {
+    return mockResponse({
+      ...ADMIN_USER,
+      preferences: {
+        ...ADMIN_USER.preferences,
+        ...options?.userPreferences,
+      },
+    });
+  }
+  if (parsedRoute.requestKey === 'PATCH /auth/me/preferences') {
+    const nextPreferences = {
+      ...ADMIN_USER.preferences,
+      ...options?.userPreferences,
+      ...(route.request().postDataJSON() as Partial<typeof ADMIN_USER.preferences>),
+    };
+    return mockResponse({ ...ADMIN_USER, preferences: nextPreferences });
+  }
   const mutationResponse = getImportMutationResponse(parsedRoute.requestKey, options);
   if (mutationResponse) {
     return mutationResponse;
@@ -274,7 +294,7 @@ function createImportApiRouteHandler(options: {
       return;
     }
 
-    const response = getImportApiResponse(parsedRoute, options.apiOptions);
+    const response = getImportApiResponse(route, parsedRoute, options.apiOptions);
     if (response) {
       await json(route, response.body, response.status);
       return;
@@ -553,7 +573,7 @@ test.describe('Import wallet flow', () => {
 
   // --- Network Selection on Config ---
 
-  test('network selection available on configuration step', async ({ page }) => {
+  test('active network indicator is available on configuration step', async ({ page }) => {
     const unhandledRequests = await mockImportApi(page);
     const main = page.getByRole('main');
 
@@ -566,8 +586,8 @@ test.describe('Import wallet flow', () => {
 
     await expect(main.getByRole('heading', { name: /Configure|Import/i }).first()).toBeVisible({ timeout: 10000 });
 
-    // Network buttons should be available
-    await expect(main.getByRole('button', { name: /Mainnet/i })).toBeVisible();
+    await expect(main.getByText('Network')).toBeVisible();
+    await expect(main.getByText('Mainnet', { exact: true })).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
   });

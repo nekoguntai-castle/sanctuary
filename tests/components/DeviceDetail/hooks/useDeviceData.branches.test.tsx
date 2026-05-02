@@ -18,6 +18,14 @@ vi.mock('../../../../contexts/UserContext', () => ({
   useUser: () => useUserMock(),
 }));
 
+vi.mock('../../../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: 'mainnet',
+    isMainnet: true,
+    setSelectedNetwork: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../../utils/logger', () => ({
   createLogger: () => loggerSpies,
 }));

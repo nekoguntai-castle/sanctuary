@@ -16,6 +16,7 @@ interface AmountProps {
   forceSats?: boolean; // Always show in sats regardless of user preference
   inline?: boolean; // Display fiat inline instead of below (for compact views)
   size?: 'sm' | 'md' | 'lg' | 'xl'; // Preset sizes
+  network?: string | null;
 }
 
 export const Amount: React.FC<AmountProps> = ({
@@ -26,11 +27,12 @@ export const Amount: React.FC<AmountProps> = ({
   forceSats = false,
   inline = false,
   size = 'md',
+  network,
 }) => {
   const { format, formatFiat } = useCurrency();
 
   const btcValue = format(Math.abs(sats), { forceSats });
-  const fiatValue = formatFiat(Math.abs(sats));
+  const fiatValue = formatFiat(Math.abs(sats), { network });
   const sign = showSign ? (sats >= 0 ? '+' : '-') : (sats < 0 ? '-' : '');
   const displayBtc = sign ? `${sign}${btcValue}` : btcValue;
 

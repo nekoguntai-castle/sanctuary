@@ -64,7 +64,7 @@ const makeValidationResult = (
 interface RenderOptions {
   validationResult?: ImportValidationResult;
   walletName?: string;
-  network?: 'mainnet' | 'testnet' | 'regtest';
+  network?: 'mainnet' | 'testnet' | 'signet';
 }
 
 const renderStep = ({
@@ -73,17 +73,15 @@ const renderStep = ({
   network = 'mainnet',
 }: RenderOptions = {}) => {
   const setWalletName = vi.fn();
-  const setNetwork = vi.fn();
   render(
     <DeviceResolutionStep
       validationResult={validationResult}
       walletName={walletName}
       setWalletName={setWalletName}
       network={network}
-      setNetwork={setNetwork}
     />
   );
-  return { setWalletName, setNetwork };
+  return { setWalletName };
 };
 
 describe('DeviceResolutionStep', () => {
@@ -129,36 +127,29 @@ describe('DeviceResolutionStep', () => {
     expect(screen.queryByText('Will reuse existing devices:')).not.toBeInTheDocument();
   });
 
-  it('updates wallet name and allows selecting network buttons', async () => {
+  it('updates wallet name and shows active sidebar network read-only', async () => {
     const user = userEvent.setup();
-    const { setWalletName, setNetwork } = renderStep({ network: 'mainnet' });
+    const { setWalletName } = renderStep({ network: 'testnet' });
 
     const input = screen.getByPlaceholderText('e.g., Imported Multisig');
     await user.clear(input);
     await user.type(input, 'Vault 2');
     expect(setWalletName).toHaveBeenCalled();
 
-    await user.click(screen.getByRole('button', { name: 'Testnet' }));
-    await user.click(screen.getByRole('button', { name: 'Regtest' }));
-    expect(setNetwork).toHaveBeenCalledWith('testnet');
-    expect(setNetwork).toHaveBeenCalledWith('regtest');
+    expect(screen.getByText('Testnet')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Testnet' })).not.toBeInTheDocument();
   });
 
   it.each([
     ['mainnet', 'Mainnet', 'text-mainnet-700'],
     ['testnet', 'Testnet', 'text-testnet-700'],
-    ['regtest', 'Regtest', 'text-signet-700'],
+    ['signet', 'Signet', 'text-signet-700'],
   ] as const)(
     'applies active network styling for %s',
-    (network, buttonName, activeClass) => {
+    (network, label, activeClass) => {
       renderStep({ network });
 
-      expect(screen.getByRole('button', { name: buttonName })).toHaveClass(activeClass);
-      // Ensure inactive buttons use the shared inactive class branch.
-      const inactive = ['Mainnet', 'Testnet', 'Regtest'].filter(name => name !== buttonName);
-      for (const name of inactive) {
-        expect(screen.getByRole('button', { name })).toHaveClass('border-sanctuary-200');
-      }
+      expect(screen.getByText(label).closest('div')).toHaveClass(activeClass);
     }
   );
 

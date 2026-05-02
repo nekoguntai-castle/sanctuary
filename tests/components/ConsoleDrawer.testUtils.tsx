@@ -142,14 +142,17 @@ export function renderDrawer(
     onLocationChange?: (location: ReturnType<typeof useLocation>) => void;
   } = {},
 ) {
+  const { selectedNetwork = "mainnet", ...drawerOverrides } = overrides;
+
   return render(
     <MemoryRouter initialEntries={[options.route ?? "/"]}>
       <ConsoleDrawer
         isOpen
         onClose={vi.fn()}
         wallets={wallets}
+        selectedNetwork={selectedNetwork}
         isAdmin
-        {...overrides}
+        {...drawerOverrides}
       />
       {options.onLocationChange ? (
         <LocationProbe onChange={options.onLocationChange} />

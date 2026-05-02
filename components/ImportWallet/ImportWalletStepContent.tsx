@@ -31,7 +31,6 @@ export function ImportWalletStepContent({
         walletName={state.walletName}
         setWalletName={state.setWalletName}
         network={state.network}
-        setNetwork={state.setNetwork}
       />
     );
   }
@@ -59,6 +58,7 @@ function ImportDataStep({
     return (
       <HardwareImport
         hardwareDeviceType={state.hardwareDeviceType}
+        network={state.network}
         setHardwareDeviceType={state.setHardwareDeviceType}
         deviceConnected={state.deviceConnected}
         setDeviceConnected={state.setDeviceConnected}

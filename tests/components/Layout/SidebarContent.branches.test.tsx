@@ -57,10 +57,17 @@ vi.mock('../../../src/app/capabilities', () => ({
   hasRequiredCapabilities: vi.fn(defaultHasRequiredCapabilities),
 }));
 
-const buildProps = (overrides: Partial<React.ComponentProps<typeof SidebarContent>> = {}) => ({
+const buildProps = (
+  overrides: Partial<React.ComponentProps<typeof SidebarContent>> = {},
+): React.ComponentProps<typeof SidebarContent> => {
+  const { selectedNetwork = 'mainnet', ...rest } = overrides;
+  return {
   user: { username: 'alice', isAdmin: true },
   wallets: [],
   devices: [],
+  selectedNetwork,
+  setSelectedNetwork: vi.fn(),
+  networkAvailability: { mainnet: true, testnet: true, signet: true },
   expanded: { wallets: true, devices: true, admin: true },
   darkMode: false,
   toggleTheme: vi.fn(),
@@ -71,8 +78,9 @@ const buildProps = (overrides: Partial<React.ComponentProps<typeof SidebarConten
   onVersionClick: vi.fn(),
   onOpenConsole: vi.fn(),
   onOpenShortcuts: vi.fn(),
-  ...overrides,
-});
+  ...rest,
+  };
+};
 
 describe('SidebarContent branch coverage', () => {
   beforeEach(() => {
@@ -100,6 +108,28 @@ describe('SidebarContent branch coverage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Devices' }));
     expect(props.toggleSection).toHaveBeenCalledWith('devices');
+  });
+
+  it('shows node configuration guidance and blocks disabled network selection', () => {
+    const setSelectedNetwork = vi.fn();
+    render(
+      <SidebarContent
+        {...buildProps({
+          setSelectedNetwork,
+          networkAvailability: { mainnet: true, testnet: false, signet: true },
+        })}
+      />
+    );
+
+    const testnetButton = screen.getByRole('button', { name: 'Testnet' });
+    fireEvent.click(testnetButton);
+
+    expect(testnetButton).toHaveAttribute('aria-disabled', 'true');
+    expect(testnetButton).toHaveAttribute(
+      'title',
+      'Testnet is disabled. Enable Testnet under Node Configuration to select it.'
+    );
+    expect(setSelectedNetwork).not.toHaveBeenCalled();
   });
 
   it('covers wallet/device mapping with multisig and single-sig icon/class branches', () => {
@@ -145,16 +175,19 @@ describe('SidebarContent branch coverage', () => {
     expect(screen.getByText('Intelligence')).toBeInTheDocument();
   });
 
-  it('places sidebar actions directly after Dashboard with aligned section text', () => {
+  it('uses compact header network selector and keeps navigation order clean', () => {
     const props = buildProps({ capabilities: { console: true, intelligence: true } });
     render(<SidebarContent {...props} />);
 
-    const nav = screen.getByRole('navigation');
-    const dashboard = screen.getByRole('button', { name: 'Dashboard' });
+    const mainnetButton = screen.getByRole('button', { name: 'Mainnet' });
     const consoleButton = screen.getByRole('button', { name: 'Open AI Console' });
     const shortcutsButton = screen.getByRole('button', { name: 'Show keyboard shortcuts' });
+    const dashboard = screen.getByRole('button', { name: 'Dashboard' });
     const intelligence = screen.getByRole('button', { name: 'Intelligence' });
+    const nav = screen.getByText('Actions').closest('nav');
 
+    expect(screen.queryByText('Network')).not.toBeInTheDocument();
+    expect(mainnetButton.closest('nav')).toHaveAttribute('aria-label', 'Network tabs');
     expect(screen.getByText('Actions')).toHaveClass(
       'px-4',
       'text-[9px]',
@@ -164,11 +197,12 @@ describe('SidebarContent branch coverage', () => {
     expect(shortcutsButton.getAttribute('title')).toContain(
       'Show keyboard shortcuts'
     );
-    expect(Array.from(nav.querySelectorAll('button')).slice(0, 4)).toEqual([
+    expect(nav).not.toBeNull();
+    expect(Array.from(nav!.querySelectorAll('button')).slice(0, 4)).toEqual([
       dashboard,
+      intelligence,
       consoleButton,
       shortcutsButton,
-      intelligence,
     ]);
 
     fireEvent.click(consoleButton);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as consoleApi from "../../src/api/console";
 import type { Wallet } from "../../src/api/wallets";
+import type { TabNetwork } from "../../src/app/networks";
 import {
   ALL_WALLETS_SCOPE_ID,
   AUTO_CONTEXT_ID,
@@ -25,6 +26,7 @@ import type { ConsoleDrawerController, ConsoleMessage } from "./types";
 interface UseConsoleDrawerControllerOptions {
   isOpen: boolean;
   wallets: Wallet[];
+  selectedNetwork: TabNetwork;
   defaultWalletId?: string | null;
   onTurnComplete?: (result: consoleApi.ConsoleTurnResult) => void;
 }
@@ -40,6 +42,7 @@ function getExpirationDate(days: number): string {
 export function useConsoleDrawerController({
   isOpen,
   wallets,
+  selectedNetwork,
   defaultWalletId,
   onTurnComplete,
 }: UseConsoleDrawerControllerOptions): ConsoleDrawerController {
@@ -71,8 +74,8 @@ export function useConsoleDrawerController({
     [selectedWalletId, wallets],
   );
   const clientContext = useMemo(
-    () => buildConsoleClientContext(selectedWalletId, defaultWalletId),
-    [defaultWalletId, selectedWalletId],
+    () => buildConsoleClientContext(selectedWalletId, selectedNetwork, defaultWalletId),
+    [defaultWalletId, selectedNetwork, selectedWalletId],
   );
 
   const setSelectedSessionId = useCallback((sessionId: string | null) => {

@@ -23,10 +23,13 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
   await expect(page.getByText("Bitcoin Price")).toBeVisible();
   await expect(page.getByText("Fee Estimation")).toBeVisible();
   await expect(page.getByText("Node Status")).toBeVisible();
-  await expect(page.getByTitle("Current block height")).toBeVisible();
+  await expect(page.getByTitle("Mainnet block height")).toBeVisible();
   await expect(page.getByText("22 sat/vB")).toBeVisible();
 
-  await page.getByRole("button", { name: /Testnet/i }).click();
+  await page
+    .getByRole("navigation", { name: "Network tabs" })
+    .getByRole("button", { name: /Testnet/i })
+    .click();
   await expect(
     page.getByText("Testnet coins have no market value"),
   ).toBeVisible();
@@ -147,7 +150,10 @@ export async function renderWalletListRendersNetworkScopedCardsAndControls({
   ).toBeVisible();
   await expect(page.getByText("Render Testnet Wallet")).not.toBeVisible();
 
-  await page.getByRole("button", { name: /Testnet/i }).click();
+  await page
+    .getByRole("navigation", { name: "Network tabs" })
+    .getByRole("button", { name: /Testnet/i })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Testnet Wallets" }),
   ).toBeVisible();

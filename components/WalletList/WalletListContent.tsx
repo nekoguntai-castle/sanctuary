@@ -6,16 +6,13 @@ import type { CellRendererProps } from '../ui/ConfigurableTable';
 import { WALLET_COLUMNS } from '../columns/walletColumns';
 import type { WalletWithPending } from '../cells/WalletCells';
 import type { TabNetwork } from '../NetworkTabs';
-import { NetworkTabs } from '../NetworkTabs';
 import { BalanceChart } from './BalanceChart';
 import { WalletGridView } from './WalletGridView';
 import { WalletListHeader } from './WalletListHeader';
-import type { PendingData, WalletCountsByNetwork, WalletSortField, WalletSortOrder, WalletViewMode } from './types';
+import type { PendingData, WalletSortField, WalletSortOrder, WalletViewMode } from './types';
 
 export function WalletListContent({
   selectedNetwork,
-  onNetworkChange,
-  walletCounts,
   filteredWallets,
   sortedWallets,
   totalBalance,
@@ -40,8 +37,6 @@ export function WalletListContent({
   cellRenderers,
 }: {
   selectedNetwork: TabNetwork;
-  onNetworkChange: (network: TabNetwork) => void;
-  walletCounts: WalletCountsByNetwork;
   filteredWallets: Wallet[];
   sortedWallets: Wallet[];
   totalBalance: number;
@@ -69,14 +64,6 @@ export function WalletListContent({
 
   return (
     <div className="space-y-6 animate-fade-in pb-8">
-      <div className="flex items-center justify-between">
-        <NetworkTabs
-          selectedNetwork={selectedNetwork}
-          onNetworkChange={onNetworkChange}
-          walletCounts={walletCounts}
-        />
-      </div>
-
       <WalletListHeader
         selectedNetwork={selectedNetwork}
         viewMode={viewMode}

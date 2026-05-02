@@ -1,5 +1,6 @@
 import React from 'react';
 import { ImportValidationResult } from '../../src/api/wallets';
+import type { TabNetwork } from '../../src/app/networks';
 import {
   AlertCircle,
   PlusCircle,
@@ -10,7 +11,7 @@ import {
 interface ImportReviewProps {
   validationResult: ImportValidationResult;
   walletName: string;
-  network: 'mainnet' | 'testnet' | 'regtest';
+  network: TabNetwork;
   importError: string | null;
 }
 

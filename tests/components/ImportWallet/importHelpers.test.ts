@@ -121,6 +121,7 @@ describe('importHelpers', () => {
       setValidationResult,
       setValidationError,
       setWalletName,
+      undefined,
       'wpkh([override]xpub/0/*)',
     );
 

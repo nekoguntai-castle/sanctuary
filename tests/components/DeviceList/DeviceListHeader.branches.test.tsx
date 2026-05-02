@@ -16,10 +16,15 @@ vi.mock('../../../components/ui/CustomIcons', () => ({
   getWalletIcon: (_type: string, _cls: string) => <span data-testid="wallet-icon" />,
 }));
 
-const buildProps = (overrides: Partial<React.ComponentProps<typeof DeviceListHeader>> = {}) => ({
+const buildProps = (
+  overrides: Partial<React.ComponentProps<typeof DeviceListHeader>> = {},
+): React.ComponentProps<typeof DeviceListHeader> => {
+  const { selectedNetwork = 'mainnet', ...rest } = overrides;
+  return {
   deviceCount: 6,
   ownedCount: 4,
   sharedCount: 2,
+  selectedNetwork,
   viewMode: 'grouped' as const,
   setViewMode: vi.fn(),
   ownershipFilter: 'all' as const,
@@ -33,8 +38,9 @@ const buildProps = (overrides: Partial<React.ComponentProps<typeof DeviceListHea
   onColumnOrderChange: vi.fn(),
   onColumnVisibilityChange: vi.fn(),
   onColumnReset: vi.fn(),
-  ...overrides,
-});
+  ...rest,
+  };
+};
 
 describe('DeviceListHeader branch coverage', () => {
   it('covers ownership filter active branches and list-view callback', () => {

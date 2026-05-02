@@ -45,6 +45,7 @@ vi.mock('../../../components/ui/Button', () => ({
 
 interface HardwareImportOverrides {
   hardwareDeviceType?: 'ledger' | 'trezor';
+  network?: 'mainnet' | 'testnet' | 'signet';
   deviceConnected?: boolean;
   deviceLabel?: string | null;
   scriptType?: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
@@ -58,6 +59,7 @@ interface HardwareImportOverrides {
 function renderHardwareImport(overrides: HardwareImportOverrides = {}) {
   const props = {
     hardwareDeviceType: overrides.hardwareDeviceType ?? 'ledger',
+    network: overrides.network ?? 'mainnet',
     setHardwareDeviceType: vi.fn(),
     deviceConnected: overrides.deviceConnected ?? false,
     setDeviceConnected: vi.fn(),

@@ -133,6 +133,7 @@ async function resolveAutoConsoleContext(
   const accessibleWallets = await walletRepository.findAccessibleWithSelect(
     actor.userId,
     { id: true, name: true, network: true },
+    clientContext.selectedNetwork ? { network: clientContext.selectedNetwork } : undefined,
   );
   const wallets = selectAutoContextWallets(
     accessibleWallets,
@@ -157,6 +158,9 @@ async function resolveAutoConsoleContext(
           }
         : {}),
       wallets,
+      ...(clientContext.selectedNetwork
+        ? { selectedNetwork: clientContext.selectedNetwork }
+        : {}),
       ...(accessibleWallets.length > wallets.length
         ? { walletLimitApplied: true }
         : {}),

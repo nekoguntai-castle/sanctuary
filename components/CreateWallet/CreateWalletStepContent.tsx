@@ -18,7 +18,6 @@ interface CreateWalletStepContentProps {
   walletName: string;
   setWalletName: (walletName: string) => void;
   network: Network;
-  setNetwork: (network: Network) => void;
   scriptType: ScriptType;
   setScriptType: (scriptType: ScriptType) => void;
   quorumM: number;
@@ -38,7 +37,6 @@ export const CreateWalletStepContent: React.FC<CreateWalletStepContentProps> = (
   walletName,
   setWalletName,
   network,
-  setNetwork,
   scriptType,
   setScriptType,
   quorumM,
@@ -67,7 +65,6 @@ export const CreateWalletStepContent: React.FC<CreateWalletStepContentProps> = (
         walletName={walletName}
         setWalletName={setWalletName}
         network={network}
-        setNetwork={setNetwork}
         scriptType={scriptType}
         setScriptType={setScriptType}
         quorumM={quorumM}

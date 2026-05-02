@@ -85,14 +85,16 @@ const baseTurn: ConsoleTurn = {
 
 describe("console drawer utilities", () => {
   it("builds labels, scopes, prompt titles, and error messages", () => {
-    expect(buildConsoleClientContext(AUTO_CONTEXT_ID)).toEqual({
+    expect(buildConsoleClientContext(AUTO_CONTEXT_ID, "mainnet")).toEqual({
       mode: "auto",
+      selectedNetwork: "mainnet",
     });
-    expect(buildConsoleClientContext(AUTO_CONTEXT_ID, "wallet-1")).toEqual({
+    expect(buildConsoleClientContext(AUTO_CONTEXT_ID, "testnet", "wallet-1")).toEqual({
       mode: "auto",
+      selectedNetwork: "testnet",
       routeWalletId: "wallet-1",
     });
-    expect(buildConsoleClientContext(GENERAL_SCOPE_ID)).toBeUndefined();
+    expect(buildConsoleClientContext(GENERAL_SCOPE_ID, "mainnet")).toBeUndefined();
     expect(buildConsoleScope(AUTO_CONTEXT_ID)).toEqual({ kind: "general" });
     expect(buildConsoleScope(GENERAL_SCOPE_ID)).toEqual({ kind: "general" });
     expect(buildConsoleScope("wallet-1")).toEqual({

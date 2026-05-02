@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAppNotifications } from '../../contexts/AppNotificationContext';
+import { useActiveNetwork } from '../../contexts/ActiveNetworkContext';
 import { useUser } from '../../contexts/UserContext';
 import { useBitcoinStatus } from '../../hooks/queries/useBitcoin';
 import { useWalletLabels } from '../../hooks/queries/useWalletLabels';
@@ -8,6 +9,7 @@ import { useAIStatus } from '../../hooks/useAIStatus';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
 import { useWalletLogs } from '../../hooks/websocket';
 import { parseConsoleTransactionFilterState } from '../../src/app/consoleTransactionNavigation';
+import { toTabNetwork } from '../../src/app/networks';
 import { useAddressLabels } from './hooks/useAddressLabels';
 import { useAITransactionFilter } from './hooks/useAITransactionFilter';
 import { useTransactionFilters } from './hooks/useTransactionFilters';
@@ -37,6 +39,7 @@ export const useWalletDetailController = () => {
   const { user } = useUser();
   const { handleError } = useErrorHandler();
   const { addNotification: addAppNotification, removeNotificationsByType } = useAppNotifications();
+  const { selectedNetwork, setSelectedNetwork } = useActiveNetwork();
   const locationState = location.state as WalletDetailLocationState | null;
   const highlightTxId = locationState?.highlightTxId;
   const appliedConsoleFilterRef = useRef<string | null>(null);
@@ -47,7 +50,7 @@ export const useWalletDetailController = () => {
       ),
     [locationState?.consoleTransactionFilter]
   );
-  const { data: bitcoinStatus } = useBitcoinStatus();
+  const { data: bitcoinStatus } = useBitcoinStatus(selectedNetwork);
   const { enabled: aiEnabled } = useAIStatus();
 
   const {
@@ -72,6 +75,14 @@ export const useWalletDetailController = () => {
     fetchData,
   } = useWalletData({ id, user });
   const walletUserRole = wallet?.userRole || 'viewer';
+
+  useEffect(() => {
+    if (!wallet) return;
+    const walletNetwork = toTabNetwork(wallet.network);
+    if (walletNetwork !== selectedNetwork) {
+      setSelectedNetwork(walletNetwork);
+    }
+  }, [selectedNetwork, setSelectedNetwork, wallet]);
 
   const {
     syncing, setSyncing,

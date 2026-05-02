@@ -10,6 +10,7 @@ interface UtxoAmountSummaryProps {
   showPrivacy: boolean;
   onShowPrivacyDetail: (id: string) => void;
   format: (sats: number) => string;
+  network: string;
 }
 
 export function UtxoAmountSummary({
@@ -18,10 +19,11 @@ export function UtxoAmountSummary({
   showPrivacy,
   onShowPrivacyDetail,
   format,
+  network,
 }: UtxoAmountSummaryProps) {
   return (
     <div className={model.amountClassName}>
-      <Amount sats={model.utxo.amount} size="lg" />
+      <Amount sats={model.utxo.amount} size="lg" network={network} />
       <DustBadge model={model} format={format} />
       <PrivacyBadgeButton
         model={model}

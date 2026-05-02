@@ -31,6 +31,14 @@ vi.mock('../../../hooks/queries/useWallets', () => ({
   useImportWallet: () => mockUseImportWallet(),
 }));
 
+vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: 'mainnet',
+    isMainnet: true,
+    setSelectedNetwork: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../components/ImportWallet/hooks/useImportState', () => ({
   useImportState: () => mockUseImportState(),
 }));
@@ -189,6 +197,7 @@ describe('ImportWallet logic branches', () => {
       state.setValidationResult,
       state.setValidationError,
       state.setWalletName,
+      'mainnet',
       'wpkh([abcd]xpub/0/*)',
     );
     expect(state.setIsValidating).toHaveBeenNthCalledWith(1, true);

@@ -40,6 +40,7 @@ export interface UserPreferences {
   contrastLevel?: number; // -2 to +2, adjusts background contrast (0 = default)
   patternOpacity?: number; // 0 to 100, controls background visibility (default 50)
   flyoutOpacity?: number; // 50 to 100, controls drawer/flyout surface opacity (default 92)
+  selectedNetwork?: 'mainnet' | 'testnet' | 'signet';
   priceProvider?: string;
   telegram?: TelegramConfig;
   notificationSounds?: NotificationSounds;
@@ -96,6 +97,7 @@ export interface Device {
       name: string;
       type: string;
       scriptType?: string;
+      network?: string;
     };
   }>;
   // Wallet-specific metadata (set by formatDevicesForWallet)

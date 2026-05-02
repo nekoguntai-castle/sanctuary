@@ -7,6 +7,18 @@ vi.mock('../../../components/DeviceDetail/accounts/AddAccountFlow', () => ({
   AddAccountFlow: () => <div data-testid="add-account-flow" />,
 }));
 
+const activeNetworkMock = vi.hoisted(() => ({
+  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet' | 'signet',
+}));
+
+vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: activeNetworkMock.selectedNetwork,
+    isMainnet: activeNetworkMock.selectedNetwork === 'mainnet',
+    setSelectedNetwork: vi.fn(),
+  }),
+}));
+
 const baseDevice = {
   id: 'device-1',
   type: 'ledger',
@@ -31,8 +43,9 @@ const baseDevice = {
 };
 
 describe('DeviceAccountsSection', () => {
-  it('collapses testnet and signet derivation paths until expanded', async () => {
+  it('shows derivation paths behind network tabs', async () => {
     const user = userEvent.setup();
+    activeNetworkMock.selectedNetwork = 'mainnet';
 
     render(
       <DeviceAccountsSection
@@ -48,18 +61,18 @@ describe('DeviceAccountsSection', () => {
 
     expect(screen.getByText("m/84'/0'/0'")).toBeInTheDocument();
     expect(screen.queryByText("m/84'/1'/0'")).not.toBeInTheDocument();
-    expect(screen.getByText('1 path hidden')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /mainnet \(1\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /testnet \/ signet \(1\)/i })).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole('button', {
-        name: /testnet \/ signet derivation paths/i,
-      }),
-    );
+    await user.click(screen.getByRole('button', { name: /testnet \/ signet \(1\)/i }));
 
     expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
   });
 
-  it('uses plural path copy when multiple testnet-family accounts are hidden', () => {
+  it('combines multiple testnet-family paths in one network tab', async () => {
+    const user = userEvent.setup();
+    activeNetworkMock.selectedNetwork = 'mainnet';
+
     render(
       <DeviceAccountsSection
         deviceId="device-1"
@@ -84,6 +97,11 @@ describe('DeviceAccountsSection', () => {
       />,
     );
 
-    expect(screen.getByText('2 paths hidden')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /testnet \/ signet \(2\)/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /testnet \/ signet \(2\)/i }));
+
+    expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
+    expect(screen.getByText("m/86'/1'/0'")).toBeInTheDocument();
   });
 });

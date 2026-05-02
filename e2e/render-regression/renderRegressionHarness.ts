@@ -114,6 +114,7 @@ export const ADMIN_USER = {
     unit: 'sats',
     showFiat: false,
     priceProvider: 'auto',
+    selectedNetwork: 'mainnet',
   },
   createdAt: '2026-03-11T00:00:00.000Z',
 };
@@ -673,9 +674,25 @@ function createAuthenticatedApiRouteHandler(
   unhandledRequests: string[],
   failures?: MockApiFailureMap
 ) {
+  let preferences = { ...ADMIN_USER.preferences };
+
   const apiRouteHandler = async (route: Route) => {
     const { method, path, requestKey } = parseApiRoute(route);
     if (await maybeFulfillInjectedFailure(route, requestKey, failures?.[requestKey])) {
+      return;
+    }
+
+    if (requestKey === 'GET /auth/me') {
+      await json(route, { ...ADMIN_USER, preferences });
+      return;
+    }
+
+    if (requestKey === 'PATCH /auth/me/preferences') {
+      preferences = {
+        ...preferences,
+        ...(route.request().postDataJSON() as Partial<typeof ADMIN_USER.preferences>),
+      };
+      await json(route, { ...ADMIN_USER, preferences });
       return;
     }
 

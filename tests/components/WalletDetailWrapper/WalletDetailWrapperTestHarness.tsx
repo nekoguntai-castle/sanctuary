@@ -82,6 +82,14 @@ vi.mock('../../../contexts/UserContext', () => ({
   }),
 }));
 
+vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: 'mainnet',
+    isMainnet: true,
+    setSelectedNetwork: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../contexts/AppNotificationContext', () => ({
   useAppNotifications: () => ({
     addNotification: walletDetailMocks.addAppNotification,

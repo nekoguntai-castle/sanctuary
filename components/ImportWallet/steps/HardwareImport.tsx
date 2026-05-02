@@ -1,4 +1,5 @@
 import React from 'react';
+import type { TabNetwork } from '../../../src/app/networks';
 import { ScriptType, HardwareDeviceType } from '../importHelpers';
 import { XpubData } from '../hooks/useImportState';
 import {
@@ -13,6 +14,7 @@ import { useHardwareImportActions } from './useHardwareImportActions';
 
 interface HardwareImportProps {
   hardwareDeviceType: HardwareDeviceType;
+  network: TabNetwork;
   setHardwareDeviceType: (type: HardwareDeviceType) => void;
   deviceConnected: boolean;
   setDeviceConnected: (connected: boolean) => void;
@@ -34,6 +36,7 @@ interface HardwareImportProps {
 
 export const HardwareImport: React.FC<HardwareImportProps> = ({
   hardwareDeviceType,
+  network,
   setHardwareDeviceType,
   deviceConnected,
   setDeviceConnected,
@@ -63,6 +66,7 @@ export const HardwareImport: React.FC<HardwareImportProps> = ({
     hardwareDeviceType,
     scriptType,
     accountIndex,
+    network,
     setHardwareDeviceType,
     setDeviceConnected,
     setDeviceLabel,
@@ -98,6 +102,7 @@ export const HardwareImport: React.FC<HardwareImportProps> = ({
           <ConnectedHardwareOptions
             accountIndex={accountIndex}
             isFetchingXpub={isFetchingXpub}
+            network={network}
             scriptType={scriptType}
             xpubData={xpubData}
             onAccountIndexChange={handleAccountIndexChange}

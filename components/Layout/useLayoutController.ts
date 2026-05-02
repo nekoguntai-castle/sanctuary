@@ -10,17 +10,47 @@ import { useDevices } from '../../hooks/queries/useDevices';
 import { useWallets } from '../../hooks/queries/useWallets';
 import { useAppShortcuts } from '../../hooks/useAppShortcuts';
 import { useAppCapabilities } from '../../hooks/useAppCapabilities';
+import { useActiveNetwork } from '../../contexts/ActiveNetworkContext';
 import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import { getDrafts } from '../../src/api/drafts';
 import type { Wallet } from '../../src/api/wallets';
+import { filterByNetwork, type TabNetwork } from '../../src/app/networks';
 import { createLogger } from '../../utils/logger';
 import { logError } from '../../utils/errorHandler';
+import { filterDevicesByNetwork } from '../../utils/networkScopedDevices';
 import type { ExpandedState } from './types';
 
 const log = createLogger('Layout');
 
 type LayoutSection = keyof ExpandedState;
+type NetworkAvailability = Record<TabNetwork, boolean>;
+
+const DEFAULT_NETWORK_AVAILABILITY: NetworkAvailability = {
+  mainnet: true,
+  testnet: true,
+  signet: true,
+};
+
+const NODE_CONFIG_DISABLED_MESSAGE = 'sync is off in Node Configuration';
+
+const isSameNetworkAvailability = (
+  first: NetworkAvailability,
+  second: NetworkAvailability,
+): boolean => (
+  first.mainnet === second.mainnet &&
+  first.testnet === second.testnet &&
+  first.signet === second.signet
+);
+
+const isSameExpandedState = (
+  first: ExpandedState,
+  second: ExpandedState,
+): boolean => (
+  first.wallets === second.wallets &&
+  first.devices === second.devices &&
+  first.admin === second.admin
+);
 
 interface NotificationActions {
   addNotification: (input: CreateNotificationInput) => string;
@@ -102,10 +132,11 @@ const syncDraftNotifications = async (
 
 const checkBitcoinConnection = async (
   isAdmin: boolean,
+  network: TabNetwork,
   notificationActions: NotificationActions
 ) => {
   try {
-    const status = await bitcoinApi.getStatus();
+    const status = await bitcoinApi.getStatus(network);
     if (status.connected) {
       notificationActions.removeNotificationsByType('connection_error');
       return;
@@ -127,8 +158,40 @@ const checkBitcoinConnection = async (
   }
 };
 
+const isNodeConfigurationDisabledStatus = (
+  status: bitcoinApi.BitcoinStatus | null,
+): boolean => (
+  status?.connected === false &&
+  typeof status.error === 'string' &&
+  status.error.includes(NODE_CONFIG_DISABLED_MESSAGE)
+);
+
+const getStatusForAvailability = async (
+  network: Exclude<TabNetwork, 'mainnet'>,
+): Promise<bitcoinApi.BitcoinStatus | null> => {
+  try {
+    return await bitcoinApi.getStatus(network);
+  } catch {
+    return null;
+  }
+};
+
+export const getSidebarNetworkAvailability = async (): Promise<NetworkAvailability> => {
+  const [testnetStatus, signetStatus] = await Promise.all([
+    getStatusForAvailability('testnet'),
+    getStatusForAvailability('signet'),
+  ]);
+
+  return {
+    mainnet: true,
+    testnet: !isNodeConfigurationDisabledStatus(testnetStatus),
+    signet: !isNodeConfigurationDisabledStatus(signetStatus),
+  };
+};
+
 export const useLayoutController = () => {
   const { user, logout } = useUser();
+  const { selectedNetwork, setSelectedNetwork } = useActiveNetwork();
   const location = useLocation();
   const {
     getWalletCount,
@@ -145,15 +208,67 @@ export const useLayoutController = () => {
   const [versionInfo, setVersionInfo] = useState<adminApi.VersionInfo | null>(null);
   const [versionLoading, setVersionLoading] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const [networkAvailability, setNetworkAvailability] = useState<NetworkAvailability>(
+    DEFAULT_NETWORK_AVAILABILITY
+  );
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: wallets = [] } = useWallets();
   const { data: devices = [] } = useDevices();
   const capabilities = useAppCapabilities();
+  const activeWallets = useMemo(
+    () => filterByNetwork(wallets, selectedNetwork),
+    [selectedNetwork, wallets]
+  );
+  const activeDevices = useMemo(
+    () => filterDevicesByNetwork(devices, selectedNetwork),
+    [devices, selectedNetwork]
+  );
 
   useEffect(() => {
-    setExpanded(getExpandedState(location.pathname));
+    const nextExpanded = getExpandedState(location.pathname);
+    setExpanded((current) => (
+      isSameExpandedState(current, nextExpanded) ? current : nextExpanded
+    ));
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!user) {
+      setNetworkAvailability((current) => (
+        isSameNetworkAvailability(current, DEFAULT_NETWORK_AVAILABILITY)
+          ? current
+          : DEFAULT_NETWORK_AVAILABILITY
+      ));
+      return;
+    }
+
+    let cancelled = false;
+
+    const refreshNetworkAvailability = async () => {
+      const availability = await getSidebarNetworkAvailability();
+      if (cancelled) return;
+      setNetworkAvailability((current) => (
+        isSameNetworkAvailability(current, availability) ? current : availability
+      ));
+    };
+
+    void refreshNetworkAvailability();
+    const interval = setInterval(refreshNetworkAvailability, 60000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (networkAvailability[selectedNetwork]) return;
+    setSelectedNetwork('mainnet');
+  }, [
+    networkAvailability,
+    selectedNetwork,
+    setSelectedNetwork,
+  ]);
 
   useEffect(() => {
     if (!user || wallets.length === 0) return;
@@ -165,14 +280,14 @@ export const useLayoutController = () => {
     if (!user) return;
 
     const runConnectionCheck = () => {
-      void checkBitcoinConnection(user.isAdmin, { addNotification, removeNotificationsByType });
+      void checkBitcoinConnection(user.isAdmin, selectedNetwork, { addNotification, removeNotificationsByType });
     };
 
     runConnectionCheck();
     const interval = setInterval(runConnectionCheck, 60000);
 
     return () => clearInterval(interval);
-  }, [user, addNotification, removeNotificationsByType]);
+  }, [user, selectedNetwork, addNotification, removeNotificationsByType]);
 
   useEffect(() => () => {
     if (copyFeedbackTimeoutRef.current) {
@@ -261,7 +376,12 @@ export const useLayoutController = () => {
     user,
     logout,
     wallets,
+    activeWallets,
     devices,
+    activeDevices,
+    selectedNetwork,
+    setSelectedNetwork,
+    networkAvailability,
     capabilities,
     expanded,
     isMobileMenuOpen,

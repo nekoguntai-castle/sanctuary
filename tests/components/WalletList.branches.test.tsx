@@ -12,6 +12,10 @@ import * as UserContext from '../../contexts/UserContext';
 import * as useWalletsHook from '../../hooks/queries/useWallets';
 
 const mockNavigate = vi.fn();
+const activeNetworkMock = vi.hoisted(() => ({
+  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet' | 'signet',
+  setSelectedNetwork: vi.fn(),
+}));
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
@@ -27,6 +31,14 @@ vi.mock('../../contexts/CurrencyContext', () => ({
 
 vi.mock('../../contexts/UserContext', () => ({
   useUser: vi.fn(),
+}));
+
+vi.mock('../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: activeNetworkMock.selectedNetwork,
+    isMainnet: activeNetworkMock.selectedNetwork === 'mainnet',
+    setSelectedNetwork: activeNetworkMock.setSelectedNetwork,
+  }),
 }));
 
 vi.mock('../../hooks/queries/useWallets', () => ({
@@ -166,6 +178,7 @@ describe('WalletList branch coverage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    activeNetworkMock.selectedNetwork = 'mainnet';
 
     vi.mocked(CurrencyContext.useCurrency).mockReturnValue({
       format: (v: number) => `${v}`,
@@ -188,13 +201,12 @@ describe('WalletList branch coverage', () => {
     } as any);
   });
 
-  it('handles network URL state and mainnet URL cleanup branch', async () => {
-    const user = userEvent.setup();
-    renderWalletList('/wallets?network=testnet');
+  it('uses the active network preference instead of URL network state', () => {
+    activeNetworkMock.selectedNetwork = 'testnet';
+    renderWalletList('/wallets?network=mainnet');
 
-    expect(screen.getByTestId('selected-network')).toHaveTextContent('testnet');
-    await user.click(screen.getByText('to-mainnet'));
-    expect(screen.getByTestId('selected-network')).toHaveTextContent('mainnet');
+    expect(screen.getByTestId('balance-chart')).toHaveTextContent('testnet:1:400');
+    expect(screen.getByTestId('wallet-order')).toHaveTextContent('w4');
   });
 
   it('handles table sort callback branches and row navigation', async () => {

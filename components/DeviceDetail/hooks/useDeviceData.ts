@@ -4,6 +4,8 @@ import { getDevice, updateDevice, getDeviceModels, getDeviceShareInfo, shareDevi
 import * as authApi from '../../../src/api/auth';
 import * as adminApi from '../../../src/api/admin';
 import { useUser } from '../../../contexts/UserContext';
+import { useActiveNetwork } from '../../../contexts/ActiveNetworkContext';
+import { toTabNetwork } from '../../../src/app/networks';
 import { createLogger } from '../../../utils/logger';
 
 const log = createLogger('DeviceDetail');
@@ -12,6 +14,7 @@ export interface WalletInfo {
   id: string;
   name: string;
   type: WalletType | string;
+  network?: string;
 }
 
 export interface GroupDisplay {
@@ -24,6 +27,7 @@ export function useDeviceData(id: string | undefined) {
   const [wallets, setWallets] = useState<WalletInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const { user } = useUser();
+  const { selectedNetwork } = useActiveNetwork();
 
   const [isEditing, setIsEditing] = useState(false);
   const [editLabel, setEditLabel] = useState('');
@@ -67,11 +71,14 @@ export function useDeviceData(id: string | undefined) {
         }
 
         // Extract wallet info from device data
-        const walletList = deviceData.wallets?.map(w => ({
-          id: w.wallet.id,
-          name: w.wallet.name,
-          type: w.wallet.type === 'multi_sig' ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG
-        })) || [];
+        const walletList = deviceData.wallets
+          ?.filter(w => toTabNetwork(w.wallet.network) === selectedNetwork)
+          .map(w => ({
+            id: w.wallet.id,
+            name: w.wallet.name,
+            type: w.wallet.type === 'multi_sig' ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG,
+            network: w.wallet.network,
+          })) || [];
         setWallets(walletList);
         setEditLabel(deviceData.label);
         setEditModelSlug(deviceData.model?.slug || '');
@@ -82,7 +89,7 @@ export function useDeviceData(id: string | undefined) {
       }
     };
     fetchData();
-  }, [id, user]);
+  }, [id, selectedNetwork, user]);
 
   const handleSave = async () => {
     if (!device) return;

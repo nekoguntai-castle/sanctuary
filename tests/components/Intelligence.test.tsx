@@ -14,9 +14,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Intelligence } from '../../components/Intelligence/Intelligence';
 
 const mockUseWallets = vi.fn();
+const activeNetworkState = vi.hoisted(() => ({
+  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet' | 'signet',
+}));
 
 vi.mock('../../hooks/queries/useWallets', () => ({
   useWallets: () => mockUseWallets(),
+}));
+
+vi.mock('../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: activeNetworkState.selectedNetwork,
+    isMainnet: activeNetworkState.selectedNetwork === 'mainnet',
+    setSelectedNetwork: vi.fn(),
+  }),
 }));
 
 vi.mock('../../src/api/intelligence', () => ({
@@ -62,12 +73,21 @@ const mockWallets = [
     id: 'wallet-1',
     name: 'My Bitcoin Wallet',
     type: 'single_sig',
+    network: 'mainnet',
     balance: 100000,
   },
   {
     id: 'wallet-2',
     name: 'Savings Vault',
     type: 'multi_sig',
+    network: 'mainnet',
+    balance: 500000,
+  },
+  {
+    id: 'wallet-3',
+    name: 'Testnet Treasury',
+    type: 'single_sig',
+    network: 'testnet',
     balance: 500000,
   },
 ];
@@ -75,6 +95,7 @@ const mockWallets = [
 describe('Intelligence', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    activeNetworkState.selectedNetwork = 'mainnet';
   });
 
   it('should show loading spinner initially', () => {
@@ -164,7 +185,7 @@ describe('Intelligence', () => {
     });
   });
 
-  it('should open wallet dropdown on click and show all wallets', async () => {
+  it('should open wallet dropdown on click and show active-network wallets', async () => {
     mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
 
     render(<Intelligence />);
@@ -184,6 +205,20 @@ describe('Intelligence', () => {
     await waitFor(() => {
       expect(screen.getByText('Savings Vault')).toBeInTheDocument();
     });
+    expect(screen.queryByText('Testnet Treasury')).not.toBeInTheDocument();
+  });
+
+  it('should scope wallet selection to the active network', async () => {
+    activeNetworkState.selectedNetwork = 'testnet';
+    mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
+
+    render(<Intelligence />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Testnet Treasury')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('My Bitcoin Wallet')).not.toBeInTheDocument();
+    expect(screen.queryByText('Savings Vault')).not.toBeInTheDocument();
   });
 
   it('should switch wallet when dropdown item is clicked', async () => {

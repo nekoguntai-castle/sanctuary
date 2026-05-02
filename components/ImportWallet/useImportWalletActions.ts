@@ -24,6 +24,7 @@ export function useImportWalletActions({
         state.setValidationResult,
         state.setValidationError,
         state.setWalletName,
+        state.network,
         dataOverride,
       );
     } finally {

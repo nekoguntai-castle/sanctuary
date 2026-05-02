@@ -5,7 +5,9 @@
  * Manages state, data loading, and delegates rendering to subcomponents.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
+import { useActiveNetwork } from '../../contexts/ActiveNetworkContext';
+import { filterDevicesByNetwork } from '../../utils/networkScopedDevices';
 import { EmptyState } from './EmptyState';
 import { DeviceListContent } from './DeviceListContent';
 import { useDeviceListDerivedData } from './useDeviceListDerivedData';
@@ -13,6 +15,7 @@ import { useDeviceListPreferences } from './useDeviceListPreferences';
 import { useDeviceListRecords } from './useDeviceListRecords';
 
 export const DeviceList: React.FC = () => {
+  const { selectedNetwork } = useActiveNetwork();
   const {
     user,
     viewMode,
@@ -32,8 +35,12 @@ export const DeviceList: React.FC = () => {
   } = useDeviceListPreferences();
 
   const records = useDeviceListRecords(user);
+  const activeDevices = useMemo(
+    () => filterDevicesByNetwork(records.devices, selectedNetwork),
+    [records.devices, selectedNetwork]
+  );
   const derived = useDeviceListDerivedData({
-    devices: records.devices,
+    devices: activeDevices,
     deviceModels: records.deviceModels,
     sortBy,
     sortOrder,
@@ -55,7 +62,7 @@ export const DeviceList: React.FC = () => {
 
   return (
     <DeviceListContent
-      devices={records.devices}
+      devices={activeDevices}
       sortedDevices={derived.sortedDevices}
       groupedDevices={derived.groupedDevices}
       deviceModels={records.deviceModels}
@@ -86,6 +93,7 @@ export const DeviceList: React.FC = () => {
       handleSave={records.handleSave}
       handleDelete={records.handleDelete}
       cellRenderers={derived.cellRenderers}
+      selectedNetwork={selectedNetwork}
     />
   );
 };

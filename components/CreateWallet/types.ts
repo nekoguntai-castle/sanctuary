@@ -5,9 +5,10 @@
  */
 
 import type { Device, WalletType, DeviceAccount } from '../../types';
+import type { TabNetwork } from '../../src/app/networks';
 
 export type ScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-export type Network = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+export type Network = TabNetwork;
 export type CreateWalletStep = 1 | 2 | 3 | 4;
 
 export interface CreateWalletState {

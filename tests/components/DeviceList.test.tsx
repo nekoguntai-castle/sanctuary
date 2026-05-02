@@ -52,6 +52,14 @@ vi.mock('../../contexts/UserContext', () => ({
   }),
 }));
 
+vi.mock('../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: 'mainnet',
+    isMainnet: true,
+    setSelectedNetwork: vi.fn(),
+  }),
+}));
+
 // Mock device API
 const mockGetDevices = vi.fn();
 const mockUpdateDevice = vi.fn();

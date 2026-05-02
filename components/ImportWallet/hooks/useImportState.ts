@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { ImportValidationResult } from '../../../src/api/wallets';
+import type { TabNetwork } from '../../../src/app/networks';
 import { ImportFormat, ScriptType, HardwareDeviceType } from '../importHelpers';
 
 export interface XpubData {
@@ -19,14 +20,13 @@ export interface BytesUrDecoderLike {
   };
 }
 
-export function useImportState() {
+export function useImportState(network: TabNetwork = 'mainnet') {
   const [step, setStep] = useState(1);
 
   // Form State
   const [format, setFormat] = useState<ImportFormat | null>(null);
   const [importData, setImportData] = useState('');
   const [walletName, setWalletName] = useState('');
-  const [network, setNetwork] = useState<'mainnet' | 'testnet' | 'regtest'>('mainnet');
 
   // Validation State
   const [validationResult, setValidationResult] = useState<ImportValidationResult | null>(null);
@@ -80,7 +80,7 @@ export function useImportState() {
     format, setFormat,
     importData, setImportData,
     walletName, setWalletName,
-    network, setNetwork,
+    network,
     validationResult, setValidationResult,
     isValidating, setIsValidating,
     validationError, setValidationError,

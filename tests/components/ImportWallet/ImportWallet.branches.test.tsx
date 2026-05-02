@@ -30,6 +30,14 @@ vi.mock('../../../hooks/queries/useWallets', () => ({
   useImportWallet: () => mockUseImportWallet(),
 }));
 
+vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: 'mainnet',
+    isMainnet: true,
+    setSelectedNetwork: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../components/ImportWallet/hooks/useImportState', () => ({
   useImportState: () => mockUseImportState(),
 }));

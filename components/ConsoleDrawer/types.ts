@@ -8,11 +8,13 @@ import type {
   ConsoleToolTrace,
 } from "../../src/api/console";
 import type { Wallet } from "../../src/api/wallets";
+import type { TabNetwork } from "../../src/app/networks";
 
 export interface ConsoleDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   wallets: Wallet[];
+  selectedNetwork: TabNetwork;
   isAdmin?: boolean;
 }
 

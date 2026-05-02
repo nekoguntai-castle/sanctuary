@@ -18,6 +18,7 @@ import { DeviceGroupedView } from './DeviceGroupedView';
 import { DeviceListHeader } from './DeviceListHeader';
 import { WalletFilterBanner } from './WalletFilterBanner';
 import type { DeviceWalletOption } from './deviceListData';
+import type { TabNetwork } from '../../src/app/networks';
 
 export function DeviceListContent({
   devices,
@@ -51,6 +52,7 @@ export function DeviceListContent({
   handleSave,
   handleDelete,
   cellRenderers,
+  selectedNetwork,
 }: {
   devices: Device[];
   sortedDevices: Device[];
@@ -83,6 +85,7 @@ export function DeviceListContent({
   handleSave: (device: Device) => Promise<void>;
   handleDelete: (device: Device) => Promise<void>;
   cellRenderers: Record<string, React.FC<CellRendererProps<DeviceWithWallets>>>;
+  selectedNetwork: TabNetwork;
 }) {
   const navigate = useNavigate();
   const devicesWithWallets: DeviceWithWallets[] = sortedDevices;
@@ -93,6 +96,7 @@ export function DeviceListContent({
         deviceCount={devices.length}
         ownedCount={ownedCount}
         sharedCount={sharedCount}
+        selectedNetwork={selectedNetwork}
         viewMode={viewMode}
         setViewMode={setViewMode}
         ownershipFilter={ownershipFilter}

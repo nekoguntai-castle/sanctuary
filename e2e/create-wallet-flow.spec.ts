@@ -28,6 +28,7 @@ const ADMIN_USER = {
     unit: 'sats',
     showFiat: false,
     priceProvider: 'auto',
+    selectedNetwork: 'mainnet',
   },
   createdAt: '2026-03-11T00:00:00.000Z',
 };
@@ -139,6 +140,7 @@ type CreateWalletApiOptions = {
   createSuccess?: boolean;
   createError?: string;
   failures?: Record<string, MockApiFailure>;
+  userPreferences?: Partial<typeof ADMIN_USER.preferences>;
 };
 
 type CreateWalletBody = {
@@ -353,6 +355,23 @@ function getCreateWalletApiResponse(
   parsedRoute: ParsedApiRoute,
   options?: CreateWalletApiOptions
 ): MockApiResponse | null {
+  if (parsedRoute.requestKey === 'GET /auth/me') {
+    return mockResponse({
+      ...ADMIN_USER,
+      preferences: {
+        ...ADMIN_USER.preferences,
+        ...options?.userPreferences,
+      },
+    });
+  }
+  if (parsedRoute.requestKey === 'PATCH /auth/me/preferences') {
+    const nextPreferences = {
+      ...ADMIN_USER.preferences,
+      ...options?.userPreferences,
+      ...(route.request().postDataJSON() as Partial<typeof ADMIN_USER.preferences>),
+    };
+    return mockResponse({ ...ADMIN_USER, preferences: nextPreferences });
+  }
   if (parsedRoute.requestKey === 'GET /devices') {
     return mockResponse(options?.devices ?? [DEVICE_1, DEVICE_2]);
   }
@@ -499,9 +518,10 @@ test.describe('Create wallet flow', () => {
 
   // --- Network Selection ---
 
-  test('testnet network selection shows warning', async ({ page }) => {
+  test('sidebar Testnet selection shows configuration warning', async ({ page }) => {
     const unhandledRequests = await mockCreateWalletApi(page);
     const main = page.getByRole('main');
+    const networkTabs = page.getByRole('navigation', { name: 'Network tabs' });
 
     await page.goto('/#/wallets/create');
     await main.getByRole('button', { name: 'Single Signature' }).click();
@@ -509,12 +529,12 @@ test.describe('Create wallet flow', () => {
     await main.getByText('Create Coldcard').click();
     await main.getByRole('button', { name: 'Next Step' }).click();
 
-    // Configuration step - switch to testnet
     await expect(main.getByText('Configuration')).toBeVisible();
-    await main.getByRole('button', { name: 'Testnet' }).click();
 
-    // Warning should appear
-    await expect(main.getByRole('button', { name: 'Testnet' })).toBeVisible();
+    await networkTabs.getByRole('button', { name: /Testnet/i }).click();
+
+    await expect(main.getByText('Testnet', { exact: true })).toBeVisible();
+    await expect(main.getByText('Testnet coins have no real-world value.')).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
   });

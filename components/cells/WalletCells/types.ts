@@ -12,7 +12,7 @@ export interface WalletWithPending extends Wallet {
 
 export interface CurrencyFormatter {
   format: (sats: number) => string;
-  formatFiat: (sats: number) => string | null;
+  formatFiat: (sats: number, options?: { network?: string | null }) => string | null;
   showFiat: boolean;
 }
 

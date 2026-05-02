@@ -1,5 +1,6 @@
 import { AlertCircle, CheckCircle, Loader2, Usb } from 'lucide-react';
 import { Button } from '../../ui/Button';
+import type { TabNetwork } from '../../../src/app/networks';
 import { getDerivationPath, HardwareDeviceType, ScriptType, scriptTypeOptions } from '../importHelpers';
 import { XpubData } from '../hooks/useImportState';
 
@@ -194,6 +195,7 @@ function ConnectedDeviceSummary({
 export function ConnectedHardwareOptions({
   accountIndex,
   isFetchingXpub,
+  network,
   scriptType,
   xpubData,
   onAccountIndexChange,
@@ -202,6 +204,7 @@ export function ConnectedHardwareOptions({
 }: {
   accountIndex: number;
   isFetchingXpub: boolean;
+  network: TabNetwork;
   scriptType: ScriptType;
   xpubData: XpubData | null;
   onAccountIndexChange: (value: string) => void;
@@ -218,7 +221,7 @@ export function ConnectedHardwareOptions({
         accountIndex={accountIndex}
         onAccountIndexChange={onAccountIndexChange}
       />
-      <DerivationPathDisplay scriptType={scriptType} accountIndex={accountIndex} />
+      <DerivationPathDisplay scriptType={scriptType} accountIndex={accountIndex} network={network} />
       <FetchXpubButton
         isFetchingXpub={isFetchingXpub}
         xpubData={xpubData}
@@ -288,16 +291,18 @@ function AccountIndexInput({
 
 function DerivationPathDisplay({
   accountIndex,
+  network,
   scriptType,
 }: {
   accountIndex: number;
+  network: TabNetwork;
   scriptType: ScriptType;
 }) {
   return (
     <div className="surface-secondary rounded-lg p-4">
       <p className="text-xs text-sanctuary-500 mb-1">Derivation Path</p>
       <p className="font-mono text-sm text-sanctuary-900 dark:text-sanctuary-100">
-        {getDerivationPath(scriptType, accountIndex)}
+        {getDerivationPath(scriptType, accountIndex, network)}
       </p>
     </div>
   );

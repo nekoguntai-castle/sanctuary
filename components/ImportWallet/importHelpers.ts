@@ -1,6 +1,11 @@
 import { ImportValidationResult } from '../../src/api/wallets';
 import * as walletsApi from '../../src/api/wallets';
 import { ApiError } from '../../src/api/client';
+import {
+  formatNetworkTitle,
+  networksShareCoinType,
+  type TabNetwork,
+} from '../../src/app/networks';
 
 // Input validation constants
 export const MAX_INPUT_SIZE = 100 * 1024; // 100KB max input size
@@ -10,15 +15,20 @@ export type ImportFormat = 'descriptor' | 'json' | 'hardware' | 'qr_code';
 export type ScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
 export type HardwareDeviceType = 'ledger' | 'trezor';
 
-// Helper: Compute derivation path from script type and account
-export const getDerivationPath = (scriptType: ScriptType, account: number): string => {
+// Helper: Compute the BIP-44/49/84/86 account path; signet shares testnet coin type 1.
+export const getDerivationPath = (
+  scriptType: ScriptType,
+  account: number,
+  network: TabNetwork = 'mainnet',
+): string => {
   const purpose: Record<ScriptType, number> = {
     native_segwit: 84,
     nested_segwit: 49,
     taproot: 86,
     legacy: 44,
   };
-  return `m/${purpose[scriptType]}'/0'/${account}'`;
+  const coinType = network === 'mainnet' ? 0 : 1;
+  return `m/${purpose[scriptType]}'/${coinType}'/${account}'`;
 };
 
 // Helper: Build descriptor from xpub data
@@ -80,6 +90,7 @@ export const validateImportData = async (
   setValidationResult: (result: ImportValidationResult | null) => void,
   setValidationError: (error: string | null) => void,
   setWalletName: (name: string) => void,
+  activeNetwork?: TabNetwork,
   dataOverride?: string,
 ): Promise<boolean> => {
   setValidationError(null);
@@ -109,6 +120,14 @@ export const validateImportData = async (
 
     if (!result.valid) {
       setValidationError(result.error || 'Invalid import data');
+      return false;
+    }
+
+    if (activeNetwork && !networksShareCoinType(result.network, activeNetwork)) {
+      setValidationResult(null);
+      setValidationError(
+        `Imported wallet appears to be ${result.network}, but the sidebar network is ${formatNetworkTitle(activeNetwork)}. Switch networks in the sidebar and validate again.`
+      );
       return false;
     }
 

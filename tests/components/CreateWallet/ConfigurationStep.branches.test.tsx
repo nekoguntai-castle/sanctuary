@@ -14,7 +14,6 @@ describe('ConfigurationStep branch coverage', () => {
     walletName: '',
     setWalletName: vi.fn(),
     network: 'mainnet' as const,
-    setNetwork: vi.fn(),
     scriptType: 'native_segwit' as const,
     setScriptType: vi.fn(),
     quorumM: 2,
@@ -47,18 +46,11 @@ describe('ConfigurationStep branch coverage', () => {
     expect(screen.getByText(/Signet is a controlled testing network/i)).toBeInTheDocument();
   });
 
-  it('calls setNetwork when selecting each network option', async () => {
-    const user = userEvent.setup();
-    const setNetwork = vi.fn();
-    render(<ConfigurationStep {...baseProps} setNetwork={setNetwork} />);
+  it('shows the active sidebar network as read-only context', () => {
+    render(<ConfigurationStep {...baseProps} network="testnet" />);
 
-    await user.click(screen.getByRole('button', { name: 'Mainnet' }));
-    await user.click(screen.getByRole('button', { name: 'Testnet' }));
-    await user.click(screen.getByRole('button', { name: 'Signet' }));
-
-    expect(setNetwork).toHaveBeenNthCalledWith(1, 'mainnet');
-    expect(setNetwork).toHaveBeenNthCalledWith(2, 'testnet');
-    expect(setNetwork).toHaveBeenNthCalledWith(3, 'signet');
+    expect(screen.getByText('Testnet')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Testnet' })).not.toBeInTheDocument();
   });
 
   it('calls setScriptType for all script options in single-sig mode', async () => {

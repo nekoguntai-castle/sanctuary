@@ -1,4 +1,6 @@
 import { WalletType, type Device, type DeviceAccount } from '../../types';
+import { derivationPathMatchesNetwork } from '../../utils/derivationPathGroups';
+import type { TabNetwork } from '../../src/app/networks';
 import type {
   CreateWalletPayload,
   CreateWalletState,
@@ -21,34 +23,53 @@ export function getRequiredAccountPurpose(walletType: WalletType): 'single_sig' 
 }
 
 export function hasCompatibleAccount(device: Device, walletType: WalletType): boolean {
+  return hasCompatibleNetworkAccount(device, walletType, 'mainnet');
+}
+
+function scopeAccountsByNetwork(accounts: DeviceAccount[], network: TabNetwork): DeviceAccount[] {
+  const networkMatches = accounts.filter(account => (
+    derivationPathMatchesNetwork(account.derivationPath, network)
+  ));
+  return networkMatches.length > 0 ? networkMatches : accounts.filter(account => (
+    derivationPathMatchesNetwork(account.derivationPath, 'mainnet') &&
+    derivationPathMatchesNetwork(account.derivationPath, 'testnet')
+  ));
+}
+
+export function hasCompatibleNetworkAccount(
+  device: Device,
+  walletType: WalletType,
+  network: TabNetwork
+): boolean {
   const accounts = device.accounts ?? [];
 
   if (accounts.length === 0) {
     const path = device.derivationPath || '';
     const isMultisigPath = path.includes("48'");
-    return walletType === WalletType.MULTI_SIG ? isMultisigPath : !isMultisigPath;
+    const networkMatches = !path || derivationPathMatchesNetwork(path, network);
+    return networkMatches && (walletType === WalletType.MULTI_SIG ? isMultisigPath : !isMultisigPath);
   }
 
   const requiredPurpose = getRequiredAccountPurpose(walletType);
-  return accounts.some(account => account.purpose === requiredPurpose);
+  return scopeAccountsByNetwork(accounts, network).some(account => account.purpose === requiredPurpose);
 }
 
-export function getDisplayAccount(device: Device, walletType: WalletType): DeviceAccount | null {
+export function getDisplayAccount(device: Device, walletType: WalletType, network: TabNetwork): DeviceAccount | null {
   const accounts = device.accounts ?? [];
   if (accounts.length === 0) return null;
 
   const requiredPurpose = getRequiredAccountPurpose(walletType);
-  return accounts.find(account => account.purpose === requiredPurpose) ?? null;
+  return scopeAccountsByNetwork(accounts, network).find(account => account.purpose === requiredPurpose) ?? null;
 }
 
-export function getCompatibleDevices(devices: Device[], walletType: WalletType | null): Device[] {
+export function getCompatibleDevices(devices: Device[], walletType: WalletType | null, network: TabNetwork): Device[] {
   if (!walletType) return devices;
-  return devices.filter(device => hasCompatibleAccount(device, walletType));
+  return devices.filter(device => hasCompatibleNetworkAccount(device, walletType, network));
 }
 
-export function getIncompatibleDevices(devices: Device[], walletType: WalletType | null): Device[] {
+export function getIncompatibleDevices(devices: Device[], walletType: WalletType | null, network: TabNetwork): Device[] {
   if (!walletType) return [];
-  return devices.filter(device => !hasCompatibleAccount(device, walletType));
+  return devices.filter(device => !hasCompatibleNetworkAccount(device, walletType, network));
 }
 
 export function getNextSelectedDeviceIds(

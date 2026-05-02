@@ -43,6 +43,7 @@ let delayedRenderReady = true;
 
 let currencyState: any;
 let userState: any;
+let activeNetworkState: 'mainnet' | 'testnet' | 'signet' = 'mainnet';
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
@@ -83,6 +84,14 @@ vi.mock('../../../hooks/websocket', () => ({
 vi.mock('../../../contexts/NotificationContext', () => ({
   useNotifications: () => ({
     addNotification: mockAddNotification,
+  }),
+}));
+
+vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: activeNetworkState,
+    isMainnet: activeNetworkState === 'mainnet',
+    setSelectedNetwork: vi.fn(),
   }),
 }));
 
@@ -240,6 +249,7 @@ const resetState = () => {
   wsConnected = true;
   wsState = 'connected';
   delayedRenderReady = true;
+  activeNetworkState = 'mainnet';
 
   currencyState = {
     format: vi.fn((sats: number) => `${sats}`),
@@ -333,10 +343,9 @@ describe('useDashboardData', () => {
     expect(result.current.priceChangePositive).toBe(true);
 
     expect(mockSubscribeWallets).toHaveBeenCalledWith([
-      'w-main-low',
       'w-main-high',
-      'w-test',
       'w-fallback',
+      'w-main-low',
     ]);
     expect(mockSubscribe).toHaveBeenCalledWith('blocks');
     expect(mockSubscribe).toHaveBeenCalledWith('mempool');
@@ -362,10 +371,9 @@ describe('useDashboardData', () => {
 
     unmount();
     expect(mockUnsubscribeWallets).toHaveBeenCalledWith([
-      'w-main-low',
       'w-main-high',
-      'w-test',
       'w-fallback',
+      'w-main-low',
     ]);
     expect(mockUnsubscribe).toHaveBeenCalledWith('blocks');
     expect(mockUnsubscribe).toHaveBeenCalledWith('mempool');
@@ -375,10 +383,10 @@ describe('useDashboardData', () => {
     );
   });
 
-  it('handles URL network selection and updates URL params through handleNetworkChange', async () => {
-    mockSearchParams = new URLSearchParams('network=testnet');
+  it('uses the active network preference for dashboard data', async () => {
+    activeNetworkState = 'testnet';
 
-    const { result } = renderHook(() => useDashboardData());
+    const { result, rerender } = renderHook(() => useDashboardData());
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
@@ -391,24 +399,21 @@ describe('useDashboardData', () => {
     expect(mempoolNetworks).toContain('testnet');
 
     act(() => {
-      result.current.handleNetworkChange('signet');
+      activeNetworkState = 'signet';
     });
+    rerender();
     expect(result.current.selectedNetwork).toBe('signet');
     expect(bitcoinStatusNetworks).toContain('signet');
     expect(mempoolNetworks).toContain('signet');
-    expect(mockSearchParams.get('network')).toBe('signet');
-    expect(mockSetSearchParams).toHaveBeenLastCalledWith(mockSearchParams, { replace: true });
 
     act(() => {
-      result.current.handleNetworkChange('mainnet');
+      activeNetworkState = 'mainnet';
     });
+    rerender();
     expect(result.current.selectedNetwork).toBe('mainnet');
-    expect(mockSearchParams.get('network')).toBeNull();
-    expect(mockSetSearchParams).toHaveBeenLastCalledWith(mockSearchParams, { replace: true });
   });
 
-  it('covers loading/unknown/error node status and mainnet fallback for invalid URL network', async () => {
-    mockSearchParams = new URLSearchParams('network=regtest');
+  it('covers loading/unknown/error node status for the active mainnet view', async () => {
     walletsData = [];
     walletsLoading = true;
     feeEstimatesData = undefined;

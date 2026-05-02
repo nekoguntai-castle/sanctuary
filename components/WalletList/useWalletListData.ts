@@ -5,7 +5,6 @@ import type { WalletSortField, WalletSortOrder } from './types';
 import {
   attachPendingData,
   buildPendingByWallet,
-  countWalletsByNetwork,
   filterWalletsByNetwork,
   sortWallets,
   totalWalletBalance,
@@ -26,7 +25,6 @@ export function useWalletListData({
     () => filterWalletsByNetwork(wallets, selectedNetwork),
     [wallets, selectedNetwork]
   );
-  const walletCounts = useMemo(() => countWalletsByNetwork(wallets), [wallets]);
   const sortedWallets = useMemo(
     () => sortWallets(filteredWallets, sortBy, sortOrder),
     [filteredWallets, sortBy, sortOrder]
@@ -48,7 +46,6 @@ export function useWalletListData({
     wallets,
     loading,
     filteredWallets,
-    walletCounts,
     sortedWallets,
     totalBalance,
     walletIds,

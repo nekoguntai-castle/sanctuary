@@ -8,7 +8,9 @@ import React, {
   useRef,
 } from "react";
 import { useUser } from "./UserContext";
+import { useOptionalActiveNetwork } from "./ActiveNetworkContext";
 import * as priceApi from "../src/api/price";
+import { suppressFiatForNetwork } from "../src/app/networks";
 import { createLogger } from "../utils/logger";
 import { satsToBTC, formatBTC } from "@shared/utils/bitcoin";
 
@@ -16,6 +18,7 @@ const log = createLogger("Currency");
 
 export type FiatCurrency = "USD" | "EUR" | "GBP" | "JPY";
 export type BitcoinUnit = "sats" | "btc";
+export type FiatNetworkOptions = { network?: string | null };
 
 interface CurrencyContextType {
   showFiat: boolean;
@@ -28,8 +31,8 @@ interface CurrencyContextType {
   priceChange24h: number | null;
   currencySymbol: string;
   format: (sats: number, options?: { forceSats?: boolean }) => string;
-  formatFiat: (sats: number) => string | null;
-  getFiatValue: (sats: number) => number | null;
+  formatFiat: (sats: number, options?: FiatNetworkOptions) => string | null;
+  getFiatValue: (sats: number, options?: FiatNetworkOptions) => number | null;
   formatFiatPrice: (price: number | null) => string;
   priceLoading: boolean;
   priceError: string | null;
@@ -64,6 +67,7 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const { user, updatePreferences } = useUser();
+  const activeNetwork = useOptionalActiveNetwork()?.selectedNetwork;
 
   // Local state fallbacks for when user is not logged in yet (or if preferences are missing)
   const [localShowFiat, setLocalShowFiat] = useState(false);
@@ -226,11 +230,12 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [refreshPrice]);
 
   const getFiatValue = useCallback(
-    (sats: number): number | null => {
+    (sats: number, options?: FiatNetworkOptions): number | null => {
+      if (suppressFiatForNetwork(options?.network ?? activeNetwork)) return null;
       if (btcPrice === null) return null;
       return satsToBTC(sats) * btcPrice;
     },
-    [btcPrice],
+    [activeNetwork, btcPrice],
   );
 
   // Format fiat price - returns "-----" if price not yet loaded
@@ -259,13 +264,14 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // Format fiat value only (returns null if fiat is disabled or price unavailable)
   const formatFiat = useCallback(
-    (sats: number): string | null => {
+    (sats: number, options?: FiatNetworkOptions): string | null => {
       if (!showFiat) return null;
-      const fiatVal = getFiatValue(sats);
+      if (suppressFiatForNetwork(options?.network ?? activeNetwork)) return null;
+      const fiatVal = getFiatValue(sats, options);
       if (fiatVal === null) return "-----";
       return `${currencySymbol}${fiatVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     },
-    [showFiat, getFiatValue, currencySymbol],
+    [activeNetwork, showFiat, getFiatValue, currencySymbol],
   );
 
   // Memoize context value to prevent unnecessary re-renders

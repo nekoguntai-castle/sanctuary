@@ -1,0 +1,74 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  ActiveNetworkProvider,
+  useActiveNetwork,
+} from '../../contexts/ActiveNetworkContext';
+
+const preferenceState = vi.hoisted(() => ({
+  storedNetwork: 'mainnet' as unknown,
+  setStoredNetwork: vi.fn(),
+}));
+
+vi.mock('../../hooks/useUserPreference', () => ({
+  useUserPreference: () => [
+    preferenceState.storedNetwork,
+    preferenceState.setStoredNetwork,
+  ],
+}));
+
+function ActiveNetworkConsumer() {
+  const { selectedNetwork, isMainnet, setSelectedNetwork } = useActiveNetwork();
+
+  return (
+    <div>
+      <span data-testid="selected-network">{selectedNetwork}</span>
+      <span data-testid="mainnet-state">{isMainnet ? 'mainnet' : 'not-mainnet'}</span>
+      <button type="button" onClick={() => setSelectedNetwork('signet')}>
+        Select Signet
+      </button>
+    </div>
+  );
+}
+
+function renderProvider() {
+  return render(
+    <ActiveNetworkProvider>
+      <ActiveNetworkConsumer />
+    </ActiveNetworkProvider>
+  );
+}
+
+describe('ActiveNetworkProvider', () => {
+  beforeEach(() => {
+    preferenceState.storedNetwork = 'mainnet';
+    preferenceState.setStoredNetwork.mockClear();
+  });
+
+  it('exposes the stored network preference and writes network changes', async () => {
+    preferenceState.storedNetwork = 'testnet';
+    const user = userEvent.setup();
+
+    renderProvider();
+
+    expect(screen.getByTestId('selected-network')).toHaveTextContent('testnet');
+    expect(screen.getByTestId('mainnet-state')).toHaveTextContent('not-mainnet');
+
+    await user.click(screen.getByRole('button', { name: 'Select Signet' }));
+
+    expect(preferenceState.setStoredNetwork).toHaveBeenCalledWith('signet');
+  });
+
+  it('normalizes invalid stored values back to mainnet', async () => {
+    preferenceState.storedNetwork = 'regtest';
+
+    renderProvider();
+
+    expect(screen.getByTestId('selected-network')).toHaveTextContent('mainnet');
+    expect(screen.getByTestId('mainnet-state')).toHaveTextContent('mainnet');
+    await waitFor(() => {
+      expect(preferenceState.setStoredNetwork).toHaveBeenCalledWith('mainnet');
+    });
+  });
+});

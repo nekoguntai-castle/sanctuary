@@ -12,8 +12,21 @@ import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import * as draftsApi from '../../src/api/drafts';
 
+const activeNetworkMock = vi.hoisted(() => ({
+  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet' | 'signet',
+  setSelectedNetwork: vi.fn(),
+}));
+
 vi.mock('../../contexts/UserContext', () => ({
   useUser: vi.fn(),
+}));
+
+vi.mock('../../contexts/ActiveNetworkContext', () => ({
+  useActiveNetwork: () => ({
+    selectedNetwork: activeNetworkMock.selectedNetwork,
+    isMainnet: activeNetworkMock.selectedNetwork === 'mainnet',
+    setSelectedNetwork: activeNetworkMock.setSelectedNetwork,
+  }),
 }));
 
 vi.mock('../../contexts/AppNotificationContext', () => ({
@@ -155,6 +168,7 @@ describe('Layout branch coverage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    activeNetworkMock.selectedNetwork = 'mainnet';
 
     vi.mocked(UserContext.useUser).mockReturnValue({
       user: baseUser,
@@ -348,6 +362,22 @@ describe('Layout branch coverage', () => {
     expect(call).not.toHaveProperty('actionLabel');
     });
   }
+
+  it('resets a persisted active network when Node Configuration disables it', async () => {
+    activeNetworkMock.selectedNetwork = 'testnet';
+    vi.mocked(bitcoinApi.getStatus).mockImplementation(async (network) => ({
+      connected: network !== 'testnet',
+      error: network === 'testnet'
+        ? 'Testnet sync is off in Node Configuration. Enable Testnet under Network Connections.'
+        : undefined,
+    }) as any);
+
+    renderLayout();
+
+    await waitFor(() => {
+      expect(activeNetworkMock.setSelectedNetwork).toHaveBeenCalledWith('mainnet');
+    });
+  });
 
   function registerVersionModalTests(): void {
     it('fetches version info only on first version click and supports close callback', async () => {
