@@ -23,6 +23,7 @@
 #   --skip-ssl           Skip SSL certificate generation
 #   --skip-prereqs       Skip prerequisite checks
 #   --from-install       Called from install.sh (adjusts messaging)
+#   --offline            Start from preloaded offline-bundle images; never build or pull
 #   --help               Show this help message
 #
 # Environment Variables:
@@ -76,6 +77,7 @@ OPT_SKIP_SSL=false
 OPT_SKIP_PREREQS=false
 OPT_FROM_INSTALL=false
 OPT_UPGRADE=false
+OPT_OFFLINE="${SANCTUARY_OFFLINE_MODE:-false}"
 OPT_ENABLE_MONITORING="${ENABLE_MONITORING:-}"
 OPT_ENABLE_TOR="${ENABLE_TOR:-}"
 
@@ -132,6 +134,10 @@ while [[ $# -gt 0 ]]; do
             OPT_UPGRADE=true
             shift
             ;;
+        --offline)
+            OPT_OFFLINE=true
+            shift
+            ;;
         --help|-h)
             show_help
             ;;
@@ -142,6 +148,15 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+case "$OPT_OFFLINE" in
+    true|yes|1)
+        OPT_OFFLINE=true
+        ;;
+    *)
+        OPT_OFFLINE=false
+        ;;
+esac
 
 # ============================================
 # Prerequisite Check Functions
@@ -726,6 +741,8 @@ GATEWAY_TLS_ENABLED=true
 
 ENABLE_MONITORING=${OPT_ENABLE_MONITORING:-no}
 ENABLE_TOR=${OPT_ENABLE_TOR:-no}
+SANCTUARY_INSTALL_MODE=${SANCTUARY_INSTALL_MODE:-$([ "$OPT_OFFLINE" = true ] && echo offline || echo online)}
+SANCTUARY_OFFLINE_VERSION=${SANCTUARY_OFFLINE_VERSION:-}
 
 # ============================================
 # BITCOIN NETWORK
@@ -759,15 +776,69 @@ export_runtime_environment() {
     export SANCTUARY_ENV_FILE="$ENV_FILE"
     export SANCTUARY_SSL_DIR="$SSL_DIR"
     export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET REDIS_PASSWORD
-    export HTTPS_PORT HTTP_PORT GATEWAY_PORT ENABLE_MONITORING ENABLE_TOR
+    export HTTPS_PORT HTTP_PORT GATEWAY_PORT ENABLE_MONITORING ENABLE_TOR SANCTUARY_INSTALL_MODE SANCTUARY_OFFLINE_VERSION
 }
 
 # ============================================
 # Service Startup
 # ============================================
+validate_offline_images() {
+    local missing=false
+    local image
+    local required_images=(
+        "sanctuary-backend:local"
+        "sanctuary-frontend:local"
+        "sanctuary-gateway:local"
+        "sanctuary-ai:local"
+        "postgres:16-alpine"
+        "redis:7-alpine"
+        "tecnativa/docker-socket-proxy:latest"
+    )
+
+    if [ "$OPT_ENABLE_MONITORING" = "yes" ]; then
+        required_images+=(
+            "jaegertracing/all-in-one:1.53"
+            "grafana/loki:2.9.0"
+            "grafana/promtail:3.5.0"
+            "prom/prometheus:v2.47.0"
+            "prom/alertmanager:v0.26.0"
+            "grafana/grafana:10.2.0"
+        )
+    fi
+
+    if [ "$OPT_ENABLE_TOR" = "yes" ]; then
+        required_images+=("dperson/torproxy:latest")
+    fi
+
+    for image in "${required_images[@]}"; do
+        if ! docker image inspect "$image" >/dev/null 2>&1; then
+            echo -e "${RED}Missing offline image:${NC} $image"
+            missing=true
+        fi
+    done
+
+    if [ "$missing" = true ]; then
+        echo ""
+        echo "Apply the official full offline bundle before running setup in offline mode."
+        exit 1
+    fi
+}
+
+compose_up_no_build_args() {
+    local args="-d --no-build"
+    if docker compose up --help 2>&1 | grep -q -- '--pull'; then
+        args="$args --pull never"
+    fi
+    echo "$args"
+}
+
 start_services() {
     echo "Starting Sanctuary..."
-    echo -e "${YELLOW}Note: First-time build may take 2-5 minutes.${NC}"
+    if [ "$OPT_OFFLINE" = true ]; then
+        echo -e "${YELLOW}Offline mode: using preloaded bundle images. No build or pull will run.${NC}"
+    else
+        echo -e "${YELLOW}Note: First-time build may take 2-5 minutes.${NC}"
+    fi
     echo ""
 
     cd "$PROJECT_DIR"
@@ -778,20 +849,24 @@ start_services() {
     [ "$OPT_ENABLE_MONITORING" = "yes" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.monitoring.yml"
     [ "$OPT_ENABLE_TOR" = "yes" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.tor.yml"
 
-    # Step 1: Build all images first (ensures all build output completes before continuing)
-    BUILD_ARGS=""
-    if [ "$OPT_UPGRADE" = true ]; then
-        echo "Upgrading — rebuilding containers from scratch..."
-        echo -e "${YELLOW}This ensures all code changes are included in the new images.${NC}"
-        BUILD_ARGS="--no-cache"
+    if [ "$OPT_OFFLINE" = true ]; then
+        validate_offline_images
     else
-        echo "Building containers..."
-    fi
-    # Note: parallel builds can sometimes fail with "already exists" race condition
-    # but the images are still built successfully, so we continue on error
-    if ! docker compose $COMPOSE_FILES build $BUILD_ARGS; then
-        echo ""
-        echo -e "${YELLOW}Build completed with warnings (this is usually fine).${NC}"
+        # Step 1: Build all images first (ensures all build output completes before continuing)
+        BUILD_ARGS=""
+        if [ "$OPT_UPGRADE" = true ]; then
+            echo "Upgrading — rebuilding containers from scratch..."
+            echo -e "${YELLOW}This ensures all code changes are included in the new images.${NC}"
+            BUILD_ARGS="--no-cache"
+        else
+            echo "Building containers..."
+        fi
+        # Note: parallel builds can sometimes fail with "already exists" race condition
+        # but the images are still built successfully, so we continue on error
+        if ! docker compose $COMPOSE_FILES build $BUILD_ARGS; then
+            echo ""
+            echo -e "${YELLOW}Build completed with warnings (this is usually fine).${NC}"
+        fi
     fi
 
     # Step 2: Start containers
@@ -800,11 +875,15 @@ start_services() {
 
     # Check if --wait flag is supported (docker compose v2.1+)
     if docker compose up --help 2>&1 | grep -q -- '--wait'; then
+        UP_ARGS="-d --wait"
+        if [ "$OPT_OFFLINE" = true ]; then
+            UP_ARGS="$(compose_up_no_build_args) --wait"
+        fi
         # Use --wait to wait for health checks before returning
         # Note: We don't use --no-build here. If the previous build step had a race
         # condition error and some images weren't built, docker compose will build
         # only the missing ones. If all images exist, it won't rebuild.
-        if docker compose $COMPOSE_FILES up -d --wait; then
+        if docker compose $COMPOSE_FILES up $UP_ARGS; then
             FRONTEND_RUNNING=true
             WORKER_RUNNING=true
         else
@@ -821,7 +900,11 @@ start_services() {
         USED_WAIT_FLAG=true
     else
         # Fallback for older docker compose versions
-        docker compose $COMPOSE_FILES up -d
+        if [ "$OPT_OFFLINE" = true ]; then
+            docker compose $COMPOSE_FILES up $(compose_up_no_build_args)
+        else
+            docker compose $COMPOSE_FILES up -d
+        fi
         USED_WAIT_FLAG=false
     fi
 }

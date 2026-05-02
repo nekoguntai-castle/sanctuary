@@ -1,6 +1,6 @@
 # Active Task: Offline Package Install And Upgrade Mechanism 2026-05-02
 
-Status: planning; awaiting approval before implementation
+Status: implemented; unit-verified
 
 Goal: let operators install or upgrade Sanctuary on airgapped or GitHub-blocked machines from a manually uploaded offline bundle, without weakening upgrade safety or relying on network access during bundle application.
 
@@ -45,14 +45,14 @@ Goal: let operators install or upgrade Sanctuary on airgapped or GitHub-blocked 
 
 ## Implementation Plan
 
-- [ ] Add offline bundle creation scripts under `scripts/offline/`.
+- [x] Add offline bundle creation scripts under `scripts/offline/`.
   - Build or tag Sanctuary images for the requested release/platform.
   - Pull required external images on the connected machine, including monitoring and Tor images for official release bundles.
   - Save all images to tar files, generate checksums, generate manifests, and sign the checksum file with the Sanctuary offline-release private key.
   - Refuse to create a release bundle without a signing key unless `--unsigned-for-dev` is explicitly set; unsigned bundles are only for local tests and must be rejected by normal install/upgrade commands.
   - Permit any smaller `--core-only` output only as an explicit dev/test artifact, with manifest metadata that prevents operators from mistaking it for the release bundle.
   - Keep bundle creation runnable outside GitHub Actions so a trusted connected workstation can build it if GitHub is unavailable.
-- [ ] Add offline bundle application helpers under `scripts/offline/`.
+- [x] Add offline bundle application helpers under `scripts/offline/`.
   - Validate archive path and prevent path traversal during staging extraction.
   - Verify the bundle signature against the pinned release public key, then verify checksums before loading images or changing source code.
   - Allow unsigned bundles only behind an explicit developer/test flag such as `--allow-unsigned-dev-bundle`, with loud output and no mention in the normal operator quick path.
@@ -60,7 +60,7 @@ Goal: let operators install or upgrade Sanctuary on airgapped or GitHub-blocked 
   - Validate optional profile coverage before upgrade as a safety check. Official full bundles should satisfy monitoring/Tor coverage automatically; dev/core-only bundles must fail before modifying an install that has those profiles enabled unless every required target image is already present locally.
   - When profile coverage is missing, fail with a specific message directing the operator to use the official full bundle instead of disabling the profile or attempting a network pull.
   - Load images with `docker load`, retag Sanctuary images to the local tags expected by Compose, and verify all required images exist locally.
-- [ ] Add a localized pre-upgrade backup helper, usable by online and offline upgrades.
+- [x] Add a localized pre-upgrade backup helper, usable by online and offline upgrades.
   - Proposed path: `scripts/create-upgrade-backup.sh`, invoked by `install.sh` before any offline source checkout, image load, or setup/start changes.
   - Default output directory: `${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}/backups/offline-upgrades/<timestamp>-<current-version>/`.
   - Capture a PostgreSQL custom-format dump via the existing postgres container (`pg_dump --format=custom`) so rollback can restore the whole database state without relying on the app UI.
@@ -70,27 +70,27 @@ Goal: let operators install or upgrade Sanctuary on airgapped or GitHub-blocked 
   - Keep sidecar files out of the default operator path. Allow an explicit `--write-sidecar-checksum` only if future automation needs an external inventory file.
   - Validate the backup before continuing: non-empty database dump, env copy exists when the install has one, the single archive can be listed and extracted to a temp validation directory, and the internal checksum file verifies against extracted contents.
   - Print exact restore guidance after creation, but keep restore as a separate explicit command/script because it is destructive.
-- [ ] Extend `install.sh`.
+- [x] Extend `install.sh`.
   - Add `--offline-bundle PATH` and `SANCTUARY_OFFLINE_BUNDLE=PATH`.
   - In offline mode, skip release API lookup and remote git operations.
   - Use the local git bundle for fresh clone or existing checkout fetch/checkout.
   - Preserve existing upgrade behavior: runtime env detection, secret loading, optional feature flag pass-through, and setup delegation.
   - Replace copy-only backup guidance with the localized pre-upgrade backup prompt for existing installs. Keep the plain `pg_dump` command as fallback guidance only if automatic backup creation cannot run.
   - Keep Git as a phase-one host prerequisite for source checkout from the git bundle; consider a no-git source archive fallback later only if operator feedback requires it.
-- [ ] Extend `scripts/setup.sh`.
+- [x] Extend `scripts/setup.sh`.
   - Add `--offline` or `SANCTUARY_OFFLINE_MODE=yes`.
   - In offline mode, skip `docker compose build` and use `docker compose up -d --no-build` after image presence validation.
   - Persist enough runtime metadata to make future `start.sh` behavior clear, for example `SANCTUARY_INSTALL_MODE=offline` and `SANCTUARY_OFFLINE_VERSION=vX.Y.Z`.
   - Preserve existing encryption material rules, especially legacy `ENCRYPTION_KEY` plus missing `ENCRYPTION_SALT` handling.
-- [ ] Extend `start.sh`.
+- [x] Extend `start.sh`.
   - For offline installs, normal start should use existing images without attempting rebuilds or pulls.
   - `./start.sh --rebuild` should refuse in offline mode with clear guidance to apply a newer offline bundle, unless an explicit override is provided.
   - Keep online installs unchanged.
-- [ ] Update docs.
+- [x] Update docs.
   - Add README upgrade/install instructions for offline bundles.
   - Add `docs/reference/offline-bundles.md` with bundle creation, transfer, trust-anchor bootstrapping, public-key fingerprint verification, apply, optional profiles, rollback, and troubleshooting.
   - Call out that Docker and Docker Compose must already be installed on the airgapped machine, and that wallet sync still needs a reachable local node/Electrum path in truly airgapped deployments.
-- [ ] Add tests and release checks.
+- [x] Add tests and release checks.
   - Unit tests for installer argument parsing, manifest validation, checksum/signature failures, optional-profile mismatch, and offline no-network behavior with fake `curl`, `git`, and `docker` commands.
   - Setup/start tests proving offline mode skips build and rejects offline rebuilds.
   - Add an offline upgrade fixture to the existing install E2E harness: install an older ref, create/apply a current offline bundle, verify secrets/data/migrations/user traffic survive.
@@ -118,9 +118,13 @@ Goal: let operators install or upgrade Sanctuary on airgapped or GitHub-blocked 
 
 ## Review
 
-- Planning only; no installer/setup/start implementation has been changed.
-- Verification performed for planning: read `install.sh`, `scripts/setup.sh`, `start.sh`, core/optional Compose files, install test docs, upgrade testing roadmap, package scripts, `tasks/lessons.md`, branch status, and open PR queue.
-- Next checkpoint: approve or revise this plan before implementation begins.
+- Added signed offline bundle create/apply scripts, manifest/checksum/signature verification, unsafe archive rejection, platform checks, full-bundle profile coverage checks, and a bootstrap `install-offline.sh` path for older installs.
+- Added `install.sh --offline-bundle`, `--offline-public-key`, `--allow-downgrade`, `--yes`, and `--skip-upgrade-backup`; offline upgrades verify first, offer/create the local backup, then load images and check out the bundled tag.
+- Added `scripts/create-upgrade-backup.sh`, which writes one owner-only `.tar.gz` archive containing a PostgreSQL custom dump, runtime env copy, TLS material, metadata, and internal checksums.
+- Extended `scripts/setup.sh` and `start.sh` so persisted offline installs start from preloaded images with `--no-build`/`--pull never`, and `start.sh --rebuild` refuses by default.
+- Updated docs and install test scope so offline/backup changes are routed through the install lanes.
+- Verification passed: shell syntax for touched installer/offline scripts; `./tests/install/run-all-tests.sh --unit-only`; `git diff --check`; `docker compose config --quiet` with required env placeholders.
+- Remaining release follow-up: provision the real pinned offline-release public key file and run a Docker-backed signed full-bundle create/apply smoke for the release platform before publishing the first official bundle.
 
 ---
 

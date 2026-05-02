@@ -283,6 +283,7 @@ run_install_script() {
         export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
         export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
         export SKIP_GIT_CHECKOUT="true"
+        export SANCTUARY_ASSUME_YES="true"
         export RATE_LIMIT_LOGIN=100
         export RATE_LIMIT_2FA=100
         export RATE_LIMIT_PASSWORD_CHANGE=100

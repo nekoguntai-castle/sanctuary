@@ -55,6 +55,11 @@ if [ -f "$ENV_FILE" ]; then
     set +a
 fi
 
+IS_OFFLINE_INSTALL=false
+if [ "${SANCTUARY_INSTALL_MODE:-}" = "offline" ]; then
+    IS_OFFLINE_INSTALL=true
+fi
+
 if [ -n "${SANCTUARY_SSL_DIR:-}" ]; then
     SSL_DIR="$SANCTUARY_SSL_DIR"
 fi
@@ -241,6 +246,30 @@ if ! docker image inspect sanctuary-gateway:local &>/dev/null; then
     NEED_BUILD="yes"
 fi
 
+set_start_flags() {
+    BUILD_FLAG=""
+    UP_FLAGS="-d"
+
+    if [ "$NEED_BUILD" = "yes" ]; then
+        if [ "$IS_OFFLINE_INSTALL" = true ]; then
+            echo "Error: local Sanctuary images are missing on an offline install."
+            echo "Apply a signed offline bundle instead of rebuilding or pulling images."
+            exit 1
+        fi
+        echo "Local images not found - building..."
+        BUILD_FLAG="--build"
+    fi
+
+    if [ "$IS_OFFLINE_INSTALL" = true ]; then
+        UP_FLAGS="-d --no-build"
+        if docker compose up --help 2>&1 | grep -q -- '--pull'; then
+            UP_FLAGS="$UP_FLAGS --pull never"
+        fi
+    else
+        UP_FLAGS="-d $BUILD_FLAG"
+    fi
+}
+
 case "${1:-}" in
     --stop)
         echo "Stopping Sanctuary..."
@@ -262,13 +291,8 @@ case "${1:-}" in
         echo "      Run Ollama, LM Studio, or another trusted provider outside Sanctuary,"
         echo "      then configure its endpoint in Admin → AI Settings."
         echo ""
-        # Auto-build if images are missing
-        BUILD_FLAG=""
-        if [ "$NEED_BUILD" = "yes" ]; then
-            echo "Local images not found - building..."
-            BUILD_FLAG="--build"
-        fi
-        docker compose $MCP_PROFILE up -d $BUILD_FLAG
+        set_start_flags
+        docker compose $MCP_PROFILE up $UP_FLAGS
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -285,13 +309,8 @@ case "${1:-}" in
         echo "MCP will bind to ${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}."
         echo "Create an MCP API key from Admin before connecting an LLM client."
         echo ""
-        # Auto-build if images are missing
-        BUILD_FLAG=""
-        if [ "$NEED_BUILD" = "yes" ]; then
-            echo "Local images not found - building..."
-            BUILD_FLAG="--build"
-        fi
-        docker compose --profile mcp up -d $BUILD_FLAG
+        set_start_flags
+        docker compose --profile mcp up $UP_FLAGS
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo "MCP endpoint: http://${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}/mcp"
@@ -301,13 +320,8 @@ case "${1:-}" in
         echo ""
         echo "Note: First-time setup will download monitoring images (~500MB total)."
         echo ""
-        # Auto-build if images are missing
-        BUILD_FLAG=""
-        if [ "$NEED_BUILD" = "yes" ]; then
-            echo "Local images not found - building..."
-            BUILD_FLAG="--build"
-        fi
-        docker compose -f docker-compose.yml -f docker-compose.monitoring.yml $MCP_PROFILE up -d $BUILD_FLAG
+        set_start_flags
+        docker compose -f docker-compose.yml -f docker-compose.monitoring.yml $MCP_PROFILE up $UP_FLAGS
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -323,13 +337,8 @@ case "${1:-}" in
         echo ""
         echo "Note: First-time setup will download the Tor image (~50MB)."
         echo ""
-        # Auto-build if images are missing
-        BUILD_FLAG=""
-        if [ "$NEED_BUILD" = "yes" ]; then
-            echo "Local images not found - building..."
-            BUILD_FLAG="--build"
-        fi
-        docker compose -f docker-compose.yml -f docker-compose.tor.yml $MCP_PROFILE up -d $BUILD_FLAG
+        set_start_flags
+        docker compose -f docker-compose.yml -f docker-compose.tor.yml $MCP_PROFILE up $UP_FLAGS
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -348,6 +357,13 @@ case "${1:-}" in
         echo "  4. Enable the payjoinSupport feature flag in Admin → Feature Flags"
         ;;
     --rebuild)
+        if [ "$IS_OFFLINE_INSTALL" = true ] && [ "${SANCTUARY_ALLOW_OFFLINE_REBUILD:-false}" != "true" ]; then
+            echo "Error: --rebuild is disabled for offline installs."
+            echo "Apply a newer signed offline bundle with ./install.sh --offline-bundle <bundle.tar.gz>."
+            echo "Set SANCTUARY_ALLOW_OFFLINE_REBUILD=true only for deliberate development recovery."
+            exit 1
+        fi
+
         echo "Rebuilding and starting Sanctuary..."
 
         # Generate SSL certificates if missing and openssl is available
@@ -447,20 +463,15 @@ case "${1:-}" in
         [ "$HAS_MONITORING" = "yes" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.monitoring.yml"
         [ "$HAS_TOR" = "yes" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.tor.yml"
 
-        # Auto-build if images are missing
-        BUILD_FLAG=""
-        if [ "$NEED_BUILD" = "yes" ]; then
-            echo "Local images not found - building..."
-            BUILD_FLAG="--build"
-        fi
+        set_start_flags
 
         PROFILES=""
         [ "$HAS_MCP" = "yes" ] && PROFILES="$PROFILES --profile mcp"
 
         if [ -n "$PROFILES" ]; then
-            docker compose $COMPOSE_FILES $PROFILES up -d $BUILD_FLAG
+            docker compose $COMPOSE_FILES $PROFILES up $UP_FLAGS
         else
-            docker compose $COMPOSE_FILES up -d $BUILD_FLAG
+            docker compose $COMPOSE_FILES up $UP_FLAGS
         fi
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"

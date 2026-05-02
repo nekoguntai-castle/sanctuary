@@ -802,10 +802,45 @@ test_install_script_checks_multiple_ports() {
 }
 
 test_install_script_has_upgrade_backup_guidance() {
-    if grep -q "backup\|pg_dump" "$INSTALL_SCRIPT"; then
+    if grep -q "create_upgrade_backup_or_prompt\|create-upgrade-backup.sh\|pg_dump" "$INSTALL_SCRIPT"; then
         return 0
     else
-        echo -e "${RED}ASSERTION FAILED:${NC} install.sh should provide database backup guidance for upgrades"
+        echo -e "${RED}ASSERTION FAILED:${NC} install.sh should provide local backup handling for upgrades"
+        return 1
+    fi
+}
+
+test_install_script_supports_offline_bundle() {
+    if grep -q -- "--offline-bundle" "$INSTALL_SCRIPT" \
+        && grep -q "SANCTUARY_OFFLINE_BUNDLE" "$INSTALL_SCRIPT" \
+        && grep -q -- "--allow-downgrade" "$INSTALL_SCRIPT" \
+        && grep -q "apply-bundle.sh" "$INSTALL_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} install.sh should support signed offline bundle upgrades"
+        return 1
+    fi
+}
+
+test_setup_script_supports_offline_mode() {
+    if grep -q -- "--offline" "$SETUP_SCRIPT" \
+        && grep -q "validate_offline_images" "$SETUP_SCRIPT" \
+        && grep -q "true|yes|1" "$SETUP_SCRIPT" \
+        && grep -q -- "--no-build" "$SETUP_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should support offline no-build startup"
+        return 1
+    fi
+}
+
+test_start_script_refuses_offline_rebuild() {
+    if grep -q "SANCTUARY_INSTALL_MODE" "$START_SCRIPT" \
+        && grep -q "SANCTUARY_ALLOW_OFFLINE_REBUILD" "$START_SCRIPT" \
+        && grep -q "offline bundle" "$START_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} start.sh should refuse offline rebuilds by default"
         return 1
     fi
 }
@@ -1232,6 +1267,9 @@ main() {
     run_test "install script has port conflict check" test_install_script_has_port_conflict_check
     run_test "install script checks multiple ports" test_install_script_checks_multiple_ports
     run_test "install script has upgrade backup guidance" test_install_script_has_upgrade_backup_guidance
+    run_test "install script supports offline bundle" test_install_script_supports_offline_bundle
+    run_test "setup script supports offline mode" test_setup_script_supports_offline_mode
+    run_test "start script refuses offline rebuild" test_start_script_refuses_offline_rebuild
     run_test "install script has health check timeout" test_install_script_has_health_check_timeout
     run_test "install script passes --upgrade flag" test_install_script_passes_upgrade_flag
     echo ""
