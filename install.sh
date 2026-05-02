@@ -3,12 +3,18 @@
 # Sanctuary Bitcoin Wallet - Install Script
 # ============================================
 #
-# One-liner installation (GitHub):
+# One-liner installation:
+#   # Codeberg (public, recommended)
+#   curl -fsSL https://codeberg.org/nekoguntai-castle/sanctuary/raw/branch/main/install.sh | bash
+#
+#   # GitHub (works once any account flag is lifted)
 #   curl -fsSL https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/install.sh | bash
 #
 # Or download and run:
-#   ./install.sh
-#   ./install.sh --source github
+#   ./install.sh                       # auto-probes Codeberg, GitHub, GitLab and uses the first reachable
+#   ./install.sh --source codeberg     # force Codeberg
+#   ./install.sh --source github       # force GitHub
+#   ./install.sh --source gitlab       # force GitLab mirror
 #
 # This script handles repository management (clone/update/version checkout),
 # then delegates to scripts/setup.sh for configuration and startup.
@@ -51,6 +57,10 @@ detect_source() {
     # If source specified, use it
     if [ -n "$source" ]; then
         case "$source" in
+            codeberg|Codeberg)
+                echo "codeberg"
+                return
+                ;;
             github|GitHub)
                 echo "github"
                 return
@@ -74,7 +84,10 @@ detect_source() {
             remote_url=$(git -C "$INSTALL_DIR" config --get remote.origin.url 2>/dev/null || true)
         fi
 
-        if echo "$remote_url" | grep -qi "gitlab"; then
+        if echo "$remote_url" | grep -qi "codeberg"; then
+            echo "codeberg"
+            return
+        elif echo "$remote_url" | grep -qi "gitlab"; then
             echo "gitlab"
             return
         elif echo "$remote_url" | grep -qi "github"; then
@@ -83,8 +96,30 @@ detect_source() {
         fi
     fi
 
-    # Default to GitHub
-    echo "github"
+    # Auto-probe public reachability — try each platform's repo metadata
+    # endpoint and use the first one that returns 200. Order is preference:
+    # Codeberg first (public + actively mirrored), GitHub next (shadow-banned
+    # accounts will 404), GitLab last (existing fallback mirror).
+    if command -v curl &> /dev/null; then
+        local probes=(
+            "codeberg|https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary"
+            "github|https://api.github.com/repos/nekoguntai-castle/sanctuary"
+            "gitlab|https://gitlab.com/api/v4/projects/narusegawa-nekoworks%2Fsanctuary"
+        )
+        for probe in "${probes[@]}"; do
+            local name="${probe%%|*}"
+            local url="${probe##*|}"
+            local code
+            code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null || echo "000")
+            if [ "$code" = "200" ]; then
+                echo "$name"
+                return
+            fi
+        done
+    fi
+
+    # Last-resort default: Codeberg (the one we know is consistently public)
+    echo "codeberg"
 }
 
 # Configuration
@@ -350,6 +385,11 @@ SOURCE_PLATFORM=$(detect_source "$@")
 
 # Set platform-specific URLs
 case "$SOURCE_PLATFORM" in
+    codeberg)
+        REPO_URL="https://codeberg.org/nekoguntai-castle/sanctuary.git"
+        API_URL="https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary/releases/latest"
+        PLATFORM_NAME="Codeberg"
+        ;;
     gitlab)
         REPO_URL="https://gitlab.com/narusegawa-nekoworks/sanctuary.git"
         API_URL="https://gitlab.com/api/v4/projects/narusegawa-nekoworks%2Fsanctuary/releases"
@@ -376,12 +416,15 @@ get_latest_release() {
 
     # Try platform-specific API first
     if command -v curl &> /dev/null; then
+        # Single sed parser handles all three JSON formats:
+        #   GitHub:   "tag_name": "v0.8.49"   (formatted)
+        #   GitLab:   "tag_name":"v0.8.49"    (compact, list endpoint)
+        #   Codeberg: "tag_name":"v0.8.49"    (compact, /releases/latest)
         case "$SOURCE_PLATFORM" in
-            gitlab)
-                tag=$(curl -fsSL "$API_URL" 2>/dev/null | grep -o '"tag_name":"[^"]*"' | head -1 | cut -d'"' -f4)
-                ;;
-            github|*)
-                tag=$(curl -fsSL "$API_URL" 2>/dev/null | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+            gitlab|codeberg|github|*)
+                tag=$(curl -fsSL "$API_URL" 2>/dev/null \
+                    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+                    | head -1)
                 ;;
         esac
 
