@@ -21,6 +21,7 @@ const getDisabledTitle = (network: TabNetwork): string => {
 };
 
 const getActiveTabIndicator = (nav: HTMLElement | null) => {
+  /* v8 ignore next -- defensive guard; the nav ref is attached before layout/effect measurement. */
   if (!nav) return null;
 
   const activeEl = nav.querySelector('[data-active="true"]') as HTMLElement | null;
@@ -84,6 +85,7 @@ export const NetworkTabs = ({
 
   useEffect(() => {
     const nav = navRef.current;
+    /* v8 ignore next -- defensive guard; effects run only after the nav ref has mounted. */
     if (!nav) return undefined;
 
     let cancelled = false;

@@ -1,3 +1,92 @@
+# Active Task: PR Delivery 2026-05-01
+
+Status: in progress
+
+Goal: commit, push, open the PR for `sidebar-network-selector`, monitor required checks, and merge safely if allowed.
+
+## Plan
+
+- [ ] Preflight branch, working tree, and existing PR state.
+- [ ] Commit the verified local changes with a focused delivery message.
+- [ ] Push `sidebar-network-selector` and open the GitHub PR.
+- [ ] Monitor GitHub checks/review state and fix any actionable failures.
+- [ ] Merge through the repository's allowed path if the PR becomes mergeable, then verify the result.
+
+---
+
+# Active Task: Grade Findings Follow-Up 2026-05-01
+
+Status: complete; verified
+
+Goal: fix the actionable grade findings except physical hardware proofs, with the repo coverage gate restored to 100% for PR/merge readiness.
+
+## Plan
+
+- [x] Add focused coverage for the frontend and backend gaps reported by the grade run.
+- [x] Exclude ignored generated docs build output from configured raw all-files gitleaks scans without hiding source-controlled secrets.
+- [x] Run focused tests, then the full coverage gate and secret scan.
+- [x] Re-run final hygiene checks and document the review.
+
+## Review
+
+- Added focused behavioral coverage across the sidebar network selector follow-up areas: network tabs, active-network fallbacks, dashboard/wallet/import helpers, wallet/device derivation grouping, pending wallet cells, device account tabs, and backend Console selected-network auto context.
+- Simplified unreachable production branches where the current component contracts already guard impossible states; remaining `v8 ignore` comments are narrow and document parent/ref lifecycle guards.
+- Added a `.gitleaks.toml` path allowlist for ignored generated `website/build/` output so raw all-files scans no longer report generated docs artifacts while tracked source remains scanned.
+- The physical hardware proof item remains intentionally deferred.
+- Verification passed: focused frontend coverage suites; `npm --prefix server run test:run -- tests/unit/assistant/consoleService.test.ts`; `npm run coverage`; `npm run typecheck`; `npm run typecheck:tests`; `npm run lint`; `npm run quality:lizard`; tracked-tree gitleaks; raw all-files gitleaks; `git diff --check`.
+
+---
+
+# Active Task: Grade Audit 2026-05-01
+
+Status: complete; verified
+
+Goal: run the full `$grade` audit for the current repository and update `docs/plans/codebase-health-assessment.md`.
+
+## Plan
+
+- [x] Capture repo provenance, prior trend data, and current working-tree state.
+- [x] Run the bundled full-mode mechanical signal collector.
+- [x] Fix the wallet-count scoping regression exposed by the initial full test run.
+- [x] Inspect targeted source and test files for judged ISO/IEC 25010 criteria.
+- [x] Write the quality report and append grade history.
+- [x] Review the diff and document verification.
+
+## Review
+
+- Updated `docs/plans/codebase-health-assessment.md` with a full-mode grade: 97/100, A, high confidence.
+- The first full collector run exposed a `DeviceList.branches` regression from the uncommitted network-scoped device fix; aggregate-only `walletCount` values were being collapsed to 0 when no wallet-link details were available.
+- Fixed `scopeDeviceWalletsToNetwork` to preserve aggregate-only wallet counts and added focused utility coverage.
+- Post-fix verification passed for the focused failing suite and the full `grade.sh` test/lint/typecheck signals.
+- Coverage is measured at 99.85% lines but the repo's 100% coverage gate fails; documented as a top risk rather than a hard-fail grade gate.
+- Configured latest-commit and tracked-tree gitleaks scans pass; raw all-files gitleaks reports an ignored generated `website/build` artifact.
+- Verification passed: `npm run test:run -- tests/components/DeviceList/DeviceList.branches.test.tsx tests/utils/networkScopedDevices.test.ts`; `bash /home/nekoguntai/.codex/skills/grade/grade.sh`; `npm run quality:lizard`; `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .`; latest-commit gitleaks; tracked-tree gitleaks.
+
+---
+
+# Active Task: Device Network Visibility Derivation Paths 2026-05-01
+
+Status: complete; verified
+
+Goal: make Devices and sidebar device visibility follow usable derivation paths for the selected network instead of only attached wallet networks.
+
+## Plan
+
+- [x] Update `filterDevicesByNetwork` to include devices with accounts or legacy derivation paths compatible with the selected network.
+- [x] Keep wallet links/counts scoped to the selected network for display.
+- [x] Add focused utility coverage for a mainnet-capable device with only non-mainnet wallet links.
+- [x] Run focused tests, type/quality checks as needed, and document results.
+
+## Review
+
+- Device network filtering now checks usable derivation paths from imported device accounts plus the legacy device derivation path.
+- Devices remain visible for a selected network when they can create a wallet for that network, even if their existing linked wallets are only on another network.
+- Returned wallet links and `walletCount` are still scoped to the selected network so list/sidebar counts remain network-specific.
+- Devices with no derivation path data remain discoverable, and unparseable paths retain the existing audit-visible behavior from `derivationPathMatchesNetwork`.
+- Verification passed: `npm run test:run -- tests/utils/networkScopedDevices.test.ts tests/components/DeviceList.test.tsx tests/components/Layout.test.tsx`; `npm run typecheck`; `npm run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+
+---
+
 # Active Task: GitHub Security And Quality Findings 2026-05-01
 
 Status: complete; verified

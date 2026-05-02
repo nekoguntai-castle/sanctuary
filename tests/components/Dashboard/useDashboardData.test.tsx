@@ -1,5 +1,9 @@
 import { act,renderHook } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
+import {
+  applyNetworkSearchParam,
+  resolveInitialNetwork,
+} from '../../../components/Dashboard/hooks/dashboardDataModel';
 import { useDashboardData } from '../../../components/Dashboard/hooks/useDashboardData';
 
 const mockNavigate = vi.fn();
@@ -286,6 +290,15 @@ describe('useDashboardData', () => {
   afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+  });
+
+  it('resolves and writes dashboard network search parameters', () => {
+    expect(resolveInitialNetwork('testnet')).toBe('testnet');
+    expect(resolveInitialNetwork('regtest')).toBe('mainnet');
+
+    const params = new URLSearchParams('network=testnet&page=2');
+    expect(applyNetworkSearchParam(params, 'mainnet').toString()).toBe('page=2');
+    expect(applyNetworkSearchParam(params, 'signet').toString()).toBe('page=2&network=signet');
   });
 
   it('maps API data, derives dashboard values, and sets up subscriptions', async () => {

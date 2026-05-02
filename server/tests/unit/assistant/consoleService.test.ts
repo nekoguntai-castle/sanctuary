@@ -183,6 +183,35 @@ describe("console service", () => {
     );
   });
 
+  it("scopes auto context wallet lookup and planner metadata to the selected network", async () => {
+    mocks.walletRepository.findAccessibleWithSelect.mockResolvedValue([
+      { id: walletId, name: "Testnet Vault", network: "testnet" },
+    ]);
+
+    await runConsoleTurn(actor(), {
+      prompt: "show testnet wallet context",
+      clientContext: { mode: "auto", selectedNetwork: "testnet" },
+      maxSensitivity: "wallet",
+    });
+
+    expect(mocks.walletRepository.findAccessibleWithSelect).toHaveBeenCalledWith(
+      "user-1",
+      { id: true, name: true, network: true },
+      { network: "testnet" },
+    );
+    expect(mocks.planConsoleTools).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({
+          mode: "auto",
+          selectedNetwork: "testnet",
+          wallets: [
+            { id: walletId, name: "Testnet Vault", network: "testnet" },
+          ],
+        }),
+      }),
+    );
+  });
+
   it("caps auto context wallet sets and marks planner context when the wallet limit applies", async () => {
     const wallets = Array.from({ length: 30 }, (_, index) => ({
       id: `wallet-${index}`,

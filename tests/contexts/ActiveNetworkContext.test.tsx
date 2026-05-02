@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ActiveNetworkProvider,
   useActiveNetwork,
+  useOptionalActiveNetwork,
 } from '../../contexts/ActiveNetworkContext';
 
 const preferenceState = vi.hoisted(() => ({
@@ -30,6 +31,11 @@ function ActiveNetworkConsumer() {
       </button>
     </div>
   );
+}
+
+function OptionalActiveNetworkConsumer() {
+  const context = useOptionalActiveNetwork();
+  return <span data-testid="optional-network">{context?.selectedNetwork ?? 'none'}</span>;
 }
 
 function renderProvider() {
@@ -70,5 +76,25 @@ describe('ActiveNetworkProvider', () => {
     await waitFor(() => {
       expect(preferenceState.setStoredNetwork).toHaveBeenCalledWith('mainnet');
     });
+  });
+
+  it('returns undefined from optional hook outside the provider', () => {
+    render(<OptionalActiveNetworkConsumer />);
+
+    expect(screen.getByTestId('optional-network')).toHaveTextContent('none');
+  });
+
+  it('throws from required hook outside the provider', () => {
+    const RequiredConsumer = () => {
+      useActiveNetwork();
+      return null;
+    };
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => render(<RequiredConsumer />)).toThrow(
+      'useActiveNetwork must be used within an ActiveNetworkProvider'
+    );
+
+    consoleSpy.mockRestore();
   });
 });

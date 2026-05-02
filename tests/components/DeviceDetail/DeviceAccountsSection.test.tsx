@@ -104,4 +104,191 @@ describe('DeviceAccountsSection', () => {
     expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
     expect(screen.getByText("m/86'/1'/0'")).toBeInTheDocument();
   });
+
+  it('opens on the testnet family tab when the active network is signet', () => {
+    activeNetworkMock.selectedNetwork = 'signet';
+
+    render(
+      <DeviceAccountsSection
+        deviceId="device-1"
+        device={baseDevice as any}
+        isOwner={false}
+        showAddAccount={false}
+        onShowAddAccount={vi.fn()}
+        onCloseAddAccount={vi.fn()}
+        onDeviceUpdated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
+    expect(screen.queryByText("m/84'/0'/0'")).not.toBeInTheDocument();
+  });
+
+  it('switches to multisig purpose paths when requested', async () => {
+    const user = userEvent.setup();
+    activeNetworkMock.selectedNetwork = 'mainnet';
+
+    render(
+      <DeviceAccountsSection
+        deviceId="device-1"
+        device={{
+          ...baseDevice,
+          accounts: [
+            ...baseDevice.accounts,
+            {
+              id: 'mainnet-multisig',
+              purpose: 'multisig',
+              scriptType: 'native_segwit',
+              derivationPath: "m/48'/0'/0'/2'",
+              xpub: 'xpub-mainnet-multisig',
+            },
+          ],
+        } as any}
+        isOwner={false}
+        showAddAccount={false}
+        onShowAddAccount={vi.fn()}
+        onCloseAddAccount={vi.fn()}
+        onDeviceUpdated={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /multisig \(1\)/i }));
+
+    expect(screen.getByText("m/48'/0'/0'/2'")).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /single-sig \(1\)/i }));
+    expect(screen.getByText("m/84'/0'/0'")).toBeInTheDocument();
+  });
+
+  it('defaults to multisig purpose when the active network has only multisig paths', () => {
+    activeNetworkMock.selectedNetwork = 'mainnet';
+
+    render(
+      <DeviceAccountsSection
+        deviceId="device-1"
+        device={{
+          ...baseDevice,
+          accounts: [
+            {
+              id: 'mainnet-multisig',
+              purpose: 'multisig',
+              scriptType: 'native_segwit',
+              derivationPath: "m/48'/0'/0'/2'",
+              xpub: 'xpub-mainnet-multisig',
+            },
+          ],
+        } as any}
+        isOwner={false}
+        showAddAccount={false}
+        onShowAddAccount={vi.fn()}
+        onCloseAddAccount={vi.fn()}
+        onDeviceUpdated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /multisig \(1\)/i })).toHaveClass('surface-secondary');
+    expect(screen.getByText("m/48'/0'/0'/2'")).toBeInTheDocument();
+  });
+
+  it('falls back from stale selected tabs when the account set changes', async () => {
+    const user = userEvent.setup();
+    activeNetworkMock.selectedNetwork = 'mainnet';
+    const { rerender } = render(
+      <DeviceAccountsSection
+        deviceId="device-1"
+        device={{
+          ...baseDevice,
+          accounts: [
+            ...baseDevice.accounts,
+            {
+              id: 'mainnet-multisig',
+              purpose: 'multisig',
+              scriptType: 'native_segwit',
+              derivationPath: "m/48'/0'/0'/2'",
+              xpub: 'xpub-mainnet-multisig',
+            },
+          ],
+        } as any}
+        isOwner={false}
+        showAddAccount={false}
+        onShowAddAccount={vi.fn()}
+        onCloseAddAccount={vi.fn()}
+        onDeviceUpdated={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /testnet \/ signet \(1\)/i }));
+    expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /multisig \(0\)/i }));
+    expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
+
+    rerender(
+      <DeviceAccountsSection
+        deviceId="device-1"
+        device={{
+          ...baseDevice,
+          accounts: [baseDevice.accounts[0]],
+        } as any}
+        isOwner={false}
+        showAddAccount={false}
+        onShowAddAccount={vi.fn()}
+        onCloseAddAccount={vi.fn()}
+        onDeviceUpdated={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("m/84'/0'/0'")).toBeInTheDocument();
+
+    rerender(
+      <DeviceAccountsSection
+        deviceId="device-1"
+        device={{
+          ...baseDevice,
+          accounts: [
+            {
+              id: 'mainnet-multisig',
+              purpose: 'multisig',
+              scriptType: 'native_segwit',
+              derivationPath: "m/48'/0'/0'/2'",
+              xpub: 'xpub-mainnet-multisig',
+            },
+          ],
+        } as any}
+        isOwner={false}
+        showAddAccount={false}
+        onShowAddAccount={vi.fn()}
+        onCloseAddAccount={vi.fn()}
+        onDeviceUpdated={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("m/48'/0'/0'/2'")).toBeInTheDocument();
+  });
+
+  it('renders legacy account details and owner add-account controls', async () => {
+    const user = userEvent.setup();
+    const onShowAddAccount = vi.fn();
+
+    render(
+      <DeviceAccountsSection
+        deviceId="device-1"
+        device={{
+          ...baseDevice,
+          accounts: [],
+          derivationPath: "m/84'/0'/1'",
+          xpub: 'xpub-legacy',
+        } as any}
+        isOwner
+        showAddAccount
+        onShowAddAccount={onShowAddAccount}
+        onCloseAddAccount={vi.fn()}
+        onDeviceUpdated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("m/84'/0'/1'")).toBeInTheDocument();
+    expect(screen.getByTestId('add-account-flow')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /add derivation path/i }));
+    expect(onShowAddAccount).toHaveBeenCalledTimes(1);
+  });
 });

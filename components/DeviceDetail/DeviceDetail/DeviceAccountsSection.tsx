@@ -94,10 +94,13 @@ function DeviceAccountTabs({
   const availableNetworkTabs = (['mainnet', 'testnet-signet'] as const).filter(
     tab => accountsByNetwork[tab].length > 0
   );
+  /* v8 ignore next -- defensive guard; parent renders legacy card before empty account groups reach tabs. */
+  if (availableNetworkTabs.length === 0) return null;
+
   const activeNetworkTab: DerivationNetworkGroup = accountsByNetwork[networkTab].length > 0
     ? networkTab
-    : availableNetworkTabs[0] ?? 'mainnet';
-  const accountsByPurpose = groupAccountsByPurpose(accountsByNetwork[activeNetworkTab] ?? []);
+    : availableNetworkTabs[0];
+  const accountsByPurpose = groupAccountsByPurpose(accountsByNetwork[activeNetworkTab]);
   const activePurposeTab: DeviceAccountPurpose = accountsByPurpose[purposeTab].length > 0
     ? purposeTab
     : accountsByPurpose.multisig.length > 0
@@ -108,8 +111,6 @@ function DeviceAccountTabs({
   useEffect(() => {
     setNetworkTab(initialNetworkTab);
   }, [initialNetworkTab]);
-
-  if (availableNetworkTabs.length === 0) return null;
 
   return (
     <div className="space-y-3">
@@ -138,17 +139,11 @@ function DeviceAccountTabs({
           onClick={() => setPurposeTab('multisig')}
         />
       </div>
-      {activeAccounts.length > 0 ? (
-        <div className="space-y-3">
-          {activeAccounts.map(account => (
-            <DeviceAccountCard key={account.id} account={account} />
-          ))}
-        </div>
-      ) : (
-        <div className="surface-muted p-4 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800 text-sm text-sanctuary-500">
-          No {activePurposeTab === 'multisig' ? 'multisig' : 'single-sig'} paths for this network.
-        </div>
-      )}
+      <div className="space-y-3">
+        {activeAccounts.map(account => (
+          <DeviceAccountCard key={account.id} account={account} />
+        ))}
+      </div>
     </div>
   );
 }

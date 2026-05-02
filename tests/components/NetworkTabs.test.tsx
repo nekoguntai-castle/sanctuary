@@ -2,6 +2,8 @@ import { act,fireEvent,render,screen } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { NetworkTabs,TabNetwork } from '../../components/NetworkTabs';
 
+const originalDocumentFonts = Object.getOwnPropertyDescriptor(document, 'fonts');
+
 const setTabLayout = (element: HTMLElement, left: number, width: number) => {
   Object.defineProperty(element, 'offsetLeft', {
     configurable: true,
@@ -27,6 +29,14 @@ describe('NetworkTabs', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    if (originalDocumentFonts) {
+      Object.defineProperty(document, 'fonts', originalDocumentFonts);
+    } else {
+      Object.defineProperty(document, 'fonts', {
+        configurable: true,
+        value: undefined,
+      });
+    }
   });
 
   describe('Rendering', () => {
@@ -101,6 +111,92 @@ describe('NetworkTabs', () => {
       });
 
       expect(indicator).toHaveStyle({ left: '44px', width: '76px' });
+    });
+
+    it('measures synchronously when animation frames and resize observers are unavailable', () => {
+      vi.stubGlobal('requestAnimationFrame', undefined);
+      vi.stubGlobal('cancelAnimationFrame', undefined);
+      vi.stubGlobal('ResizeObserver', undefined);
+
+      render(<NetworkTabs {...defaultProps} />);
+
+      expect(screen.getByRole('button', { name: 'Mainnet' })).toHaveAttribute('data-active', 'true');
+    });
+
+    it('ignores measurement when no active tab exists', () => {
+      const { container } = render(
+        <NetworkTabs {...defaultProps} selectedNetwork={'regtest' as TabNetwork} />
+      );
+
+      const indicator = container.querySelector('.shadow-sm') as HTMLElement;
+      expect(indicator).toHaveStyle({ left: '0px', width: '0px' });
+    });
+
+    it('cancels pending animation frames before remeasure and unmount', () => {
+      let frameId = 10;
+      const cancelAnimationFrame = vi.fn();
+      vi.stubGlobal('requestAnimationFrame', vi.fn(() => frameId++));
+      vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame);
+
+      const { rerender, unmount } = render(<NetworkTabs {...defaultProps} />);
+
+      rerender(<NetworkTabs {...defaultProps} selectedNetwork="testnet" />);
+      unmount();
+
+      expect(cancelAnimationFrame).toHaveBeenCalledWith(10);
+      expect(cancelAnimationFrame).toHaveBeenCalledWith(11);
+    });
+
+    it('remeasures after fonts settle only while mounted', async () => {
+      let resolveFontsReady!: () => void;
+      const fontsReady = new Promise<void>((resolve) => {
+        resolveFontsReady = resolve;
+      });
+      const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+        callback(0);
+        return requestAnimationFrame.mock.calls.length;
+      });
+      Object.defineProperty(document, 'fonts', {
+        configurable: true,
+        value: { ready: fontsReady },
+      });
+      vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+      vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+      render(<NetworkTabs {...defaultProps} />);
+      const initialFrameCount = requestAnimationFrame.mock.calls.length;
+
+      await act(async () => {
+        resolveFontsReady();
+        await fontsReady;
+      });
+
+      expect(requestAnimationFrame.mock.calls.length).toBeGreaterThan(initialFrameCount);
+    });
+
+    it('does not remeasure when fonts settle after unmount', async () => {
+      let resolveFontsReady!: () => void;
+      const fontsReady = new Promise<void>((resolve) => {
+        resolveFontsReady = resolve;
+      });
+      const requestAnimationFrame = vi.fn(() => 1);
+      Object.defineProperty(document, 'fonts', {
+        configurable: true,
+        value: { ready: fontsReady },
+      });
+      vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+      vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+      const { unmount } = render(<NetworkTabs {...defaultProps} />);
+      const initialFrameCount = requestAnimationFrame.mock.calls.length;
+      unmount();
+
+      await act(async () => {
+        resolveFontsReady();
+        await fontsReady;
+      });
+
+      expect(requestAnimationFrame).toHaveBeenCalledTimes(initialFrameCount);
     });
   });
 

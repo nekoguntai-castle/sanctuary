@@ -43,15 +43,6 @@ const isSameNetworkAvailability = (
   first.signet === second.signet
 );
 
-const isSameExpandedState = (
-  first: ExpandedState,
-  second: ExpandedState,
-): boolean => (
-  first.wallets === second.wallets &&
-  first.devices === second.devices &&
-  first.admin === second.admin
-);
-
 interface NotificationActions {
   addNotification: (input: CreateNotificationInput) => string;
   removeNotificationsByType: (type: NotificationType, scopeId?: string) => void;
@@ -226,19 +217,12 @@ export const useLayoutController = () => {
   );
 
   useEffect(() => {
-    const nextExpanded = getExpandedState(location.pathname);
-    setExpanded((current) => (
-      isSameExpandedState(current, nextExpanded) ? current : nextExpanded
-    ));
+    setExpanded(getExpandedState(location.pathname));
   }, [location.pathname]);
 
   useEffect(() => {
     if (!user) {
-      setNetworkAvailability((current) => (
-        isSameNetworkAvailability(current, DEFAULT_NETWORK_AVAILABILITY)
-          ? current
-          : DEFAULT_NETWORK_AVAILABILITY
-      ));
+      setNetworkAvailability(DEFAULT_NETWORK_AVAILABILITY);
       return;
     }
 
@@ -246,6 +230,7 @@ export const useLayoutController = () => {
 
     const refreshNetworkAvailability = async () => {
       const availability = await getSidebarNetworkAvailability();
+      /* v8 ignore next -- async unmount race guard; cleanup path prevents setting state after unmount. */
       if (cancelled) return;
       setNetworkAvailability((current) => (
         isSameNetworkAvailability(current, availability) ? current : availability

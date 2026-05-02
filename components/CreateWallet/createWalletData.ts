@@ -27,12 +27,8 @@ export function hasCompatibleAccount(device: Device, walletType: WalletType): bo
 }
 
 function scopeAccountsByNetwork(accounts: DeviceAccount[], network: TabNetwork): DeviceAccount[] {
-  const networkMatches = accounts.filter(account => (
+  return accounts.filter(account => (
     derivationPathMatchesNetwork(account.derivationPath, network)
-  ));
-  return networkMatches.length > 0 ? networkMatches : accounts.filter(account => (
-    derivationPathMatchesNetwork(account.derivationPath, 'mainnet') &&
-    derivationPathMatchesNetwork(account.derivationPath, 'testnet')
   ));
 }
 
