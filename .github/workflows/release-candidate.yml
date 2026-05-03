@@ -405,7 +405,7 @@ jobs:
 
       - name: Upload upgrade artifacts
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
           path: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
@@ -453,7 +453,7 @@ jobs:
 
       - name: Upload upgrade artifacts
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: upgrade-full-recovery
           path: .tmp/upgrade-artifacts/full-recovery

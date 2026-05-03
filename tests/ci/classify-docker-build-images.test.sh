@@ -109,6 +109,18 @@ main() {
   assert_images "$output_file" "true" "false"
 
   base_sha="$head_sha"
+  commit_file "$repo_dir" "package.json" '{"scripts":{"check:quality":"node scripts/check.js"}}' "root package script"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "false" "false"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "package-lock.json" '{"lockfileVersion":3}' "root package lock"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "false"
+
+  base_sha="$head_sha"
   commit_file "$repo_dir" "server/Dockerfile" "FROM scratch" "backend dockerfile"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"

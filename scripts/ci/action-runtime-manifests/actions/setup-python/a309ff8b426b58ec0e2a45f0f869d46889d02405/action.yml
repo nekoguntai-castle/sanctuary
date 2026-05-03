@@ -1,0 +1,5 @@
+name: setup-python
+runs:
+  using: node24
+  main: dist/setup/index.js
+  post: dist/cache-save/index.js

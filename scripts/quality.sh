@@ -7,16 +7,20 @@ cd "$ROOT"
 QUALITY_TOOLS_DIR="${QUALITY_TOOLS_DIR:-$ROOT/.tmp/quality-tools}"
 LIZARD_VERSION="${LIZARD_VERSION:-1.21.2}"
 GITLEAKS_VERSION="${GITLEAKS_VERSION:-8.30.1}"
+SEMGREP_VERSION="${SEMGREP_VERSION:-1.161.0}"
 LIZARD_REQUIREMENTS_FILE="$ROOT/scripts/quality/lizard-requirements.txt"
 LIZARD_VENV="$QUALITY_TOOLS_DIR/lizard-$LIZARD_VERSION"
 GITLEAKS_DIR="$QUALITY_TOOLS_DIR/gitleaks-$GITLEAKS_VERSION"
+SEMGREP_VENV="$QUALITY_TOOLS_DIR/semgrep-$SEMGREP_VERSION"
 LIZARD_WARNING_BASELINE="${LIZARD_WARNING_BASELINE:-9}"
 GITLEAKS_LOG_OPTS="${GITLEAKS_LOG_OPTS:--1}"
+SEMGREP_REPORT="${SEMGREP_REPORT:-reports/semgrep/semgrep.json}"
 QUALITY_COVERAGE_SCRIPT="${QUALITY_COVERAGE_SCRIPT:-test:coverage}"
 QUALITY_TYPECHECK_SCRIPT="${QUALITY_TYPECHECK_SCRIPT:-typecheck}"
 QUALITY_BOOTSTRAP_TOOLS="${QUALITY_BOOTSTRAP_TOOLS:-1}"
 GITLEAKS_BIN_RESOLVED=""
 LIZARD_BIN_RESOLVED=""
+SEMGREP_BIN_RESOLVED=""
 
 truthy() {
   case "${1:-}" in
@@ -170,6 +174,37 @@ ensure_lizard_bin() {
   "$LIZARD_VENV/bin/python" -m pip install --disable-pip-version-check --requirement "$LIZARD_REQUIREMENTS_FILE"
 }
 
+ensure_semgrep_bin() {
+  if [[ -n "${SEMGREP_BIN:-}" ]]; then
+    if SEMGREP_BIN_RESOLVED="$(resolve_executable "$SEMGREP_BIN")"; then
+      return 0
+    fi
+
+    printf 'Configured SEMGREP_BIN is not executable: %s\n' "$SEMGREP_BIN" >&2
+    return 127
+  fi
+
+  SEMGREP_BIN_RESOLVED="$SEMGREP_VENV/bin/semgrep"
+  if [[ -x "$SEMGREP_BIN_RESOLVED" ]]; then
+    return 0
+  fi
+
+  if ! truthy "$QUALITY_BOOTSTRAP_TOOLS"; then
+    printf 'Missing pinned semgrep executable: %s\n' "$SEMGREP_BIN_RESOLVED" >&2
+    printf 'Run with QUALITY_BOOTSTRAP_TOOLS=1 or install semgrep %s manually.\n' "$SEMGREP_VERSION" >&2
+    return 127
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf 'Missing required quality tool: python3\n' >&2
+    return 127
+  fi
+
+  python3 -m venv "$SEMGREP_VENV"
+  "$SEMGREP_VENV/bin/python" -m pip install --disable-pip-version-check --upgrade pip
+  "$SEMGREP_VENV/bin/python" -m pip install --disable-pip-version-check "semgrep==$SEMGREP_VERSION"
+}
+
 run_gitleaks() {
   ensure_gitleaks_bin
 
@@ -211,9 +246,23 @@ run_lizard() {
 }
 
 run_npm_audit() {
-  npm audit --audit-level=high
-  npm --prefix server audit --audit-level=high
-  npm --prefix gateway audit --audit-level=high
+  local package_dirs=(
+    .
+    server
+    gateway
+    ai-proxy
+    website
+    scripts/verify-addresses
+    scripts/verify-psbt
+  )
+
+  for package_dir in "${package_dirs[@]}"; do
+    if [[ "$package_dir" = "." ]]; then
+      npm audit --audit-level=high
+    else
+      npm --prefix "$package_dir" audit --audit-level=high
+    fi
+  done
 }
 
 run_jscpd() {
@@ -233,6 +282,43 @@ run_large_file_check() {
   node scripts/quality/check-large-files.mjs
 }
 
+run_semgrep() {
+  local semgrep_status
+
+  ensure_semgrep_bin
+
+  mkdir -p "$(dirname "$SEMGREP_REPORT")"
+  "$SEMGREP_BIN_RESOLVED" --version
+  set +e
+  "$SEMGREP_BIN_RESOLVED" scan \
+    --config p/default \
+    --severity ERROR \
+    --error \
+    --json \
+    --output "$SEMGREP_REPORT" \
+    --exclude node_modules \
+    --exclude dist \
+    --exclude build \
+    --exclude coverage \
+    --exclude reports \
+    --exclude playwright-report \
+    --exclude test-results \
+    --exclude .tmp \
+    --exclude .tmp-gh \
+    --exclude server/src/generated \
+    .
+  semgrep_status="$?"
+  set -e
+
+  if (( semgrep_status > 1 )); then
+    return "$semgrep_status"
+  fi
+
+  node scripts/quality/check-semgrep-baseline.mjs \
+    "$SEMGREP_REPORT" \
+    scripts/quality/semgrep-baseline.json
+}
+
 run_step "lint" QUALITY_SKIP_LINT npm run lint
 run_step "typecheck" QUALITY_SKIP_TYPECHECK npm run "$QUALITY_TYPECHECK_SCRIPT"
 run_step "browser auth contract" QUALITY_SKIP_AUTH_CONTRACT npm run check:browser-auth-contract
@@ -241,6 +327,7 @@ run_step "OpenAPI route coverage" QUALITY_SKIP_OPENAPI_ROUTE_COVERAGE npm run ch
 run_step "coverage tests" QUALITY_SKIP_COVERAGE npm run "$QUALITY_COVERAGE_SCRIPT"
 run_step "npm audit" QUALITY_SKIP_AUDIT run_npm_audit
 run_step "gitleaks" QUALITY_SKIP_GITLEAKS run_gitleaks
+run_step "semgrep SAST" QUALITY_SKIP_SEMGREP run_semgrep
 run_step "lizard complexity" QUALITY_SKIP_LIZARD run_lizard
 run_step "jscpd duplication" QUALITY_SKIP_JSCPD run_jscpd
 run_step "large-file classification" QUALITY_SKIP_LARGE_FILES run_large_file_check

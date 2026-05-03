@@ -1,0 +1,4 @@
+name: download-artifact
+runs:
+  using: node24
+  main: dist/index.js

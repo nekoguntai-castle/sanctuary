@@ -101,7 +101,7 @@ describe('useAIStatus', () => {
         enabled: true,
         configured: false,
         available: false,
-        endpoint: 'http://10.114.123.214:1234',
+        endpoint: 'http://studio.local:1234',
       });
 
       const { result } = renderHook(() => useAIStatus());

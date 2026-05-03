@@ -52,7 +52,7 @@ export function registerDetectOllamaContracts() {
     (aiService.detectProviderEndpoint as Mock).mockResolvedValue({
       found: true,
       providerType: 'openai-compatible',
-      endpoint: 'http://10.114.123.214:1234',
+      endpoint: 'http://studio.local:1234',
       models: [{ name: 'qwen/qwen3.6-35b-a3b', size: 0, modifiedAt: '' }],
     });
 
@@ -61,13 +61,13 @@ export function registerDetectOllamaContracts() {
       .set('Authorization', 'Bearer test-token')
       .set('x-test-admin', 'true')
       .send({
-        endpoint: 'http://10.114.123.214:1234',
+        endpoint: 'http://studio.local:1234',
         preferredProviderType: 'openai-compatible',
       });
 
     expect(response.status).toBe(200);
     expect(aiService.detectProviderEndpoint).toHaveBeenCalledWith({
-      endpoint: 'http://10.114.123.214:1234',
+      endpoint: 'http://studio.local:1234',
       preferredProviderType: 'openai-compatible',
     });
     expect(
@@ -87,7 +87,7 @@ export function registerDetectOllamaContracts() {
       .set('Authorization', 'Bearer test-token')
       .set('x-test-admin', 'true')
       .send({
-        endpoint: 'http://10.114.123.214:1234',
+        endpoint: 'http://studio.local:1234',
         preferredProviderType: 'openai-compatible',
       });
 
@@ -129,7 +129,7 @@ export function registerDetectOllamaContracts() {
       .set('Authorization', 'Bearer test-token')
       .set('x-test-admin', 'true')
       .send({
-        endpoint: 'http://10.114.123.214:1234',
+        endpoint: 'http://studio.local:1234',
         preferredProviderType: 'openai-compatible',
       });
 
@@ -158,7 +158,7 @@ export function registerDetectOllamaContracts() {
       .set('Authorization', 'Bearer test-token')
       .set('x-test-admin', 'true')
       .send({
-        endpoint: 'ftp://10.114.123.214:1234',
+        endpoint: 'ftp://studio.local:1234',
         preferredProviderType: 'openai-compatible',
       });
 

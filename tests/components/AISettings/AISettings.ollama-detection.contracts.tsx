@@ -178,14 +178,14 @@ export function registerAISettingsOllamaDetectionContracts() {
     it('detects a typed LM Studio LAN endpoint without an API key', async () => {
       mockGetSystemSettings.mockResolvedValue({
         ...enabledSettings,
-        aiEndpoint: 'http://10.114.123.214:1234',
+        aiEndpoint: 'http://studio.local:1234',
         aiModel: '',
         aiProviderProfiles: [
           {
             id: 'lm-studio',
             name: 'LM Studio',
             providerType: 'openai-compatible',
-            endpoint: 'http://10.114.123.214:1234',
+            endpoint: 'http://studio.local:1234',
             model: '',
             capabilities: { chat: true, toolCalls: true, strictJson: true },
           },
@@ -195,7 +195,7 @@ export function registerAISettingsOllamaDetectionContracts() {
       mockDetectProvider.mockResolvedValue({
         found: true,
         providerType: 'openai-compatible',
-        endpoint: 'http://10.114.123.214:1234',
+        endpoint: 'http://studio.local:1234',
         models: [{ name: 'qwen/qwen3.6-35b-a3b', size: 0, modifiedAt: '' }],
       });
       const user = userEvent.setup();
@@ -206,7 +206,7 @@ export function registerAISettingsOllamaDetectionContracts() {
 
       await waitFor(() => {
         expect(mockDetectProvider).toHaveBeenCalledWith({
-          endpoint: 'http://10.114.123.214:1234',
+          endpoint: 'http://studio.local:1234',
           preferredProviderType: 'openai-compatible',
         });
         expect(screen.getByLabelText('Model')).toHaveValue(
@@ -218,14 +218,14 @@ export function registerAISettingsOllamaDetectionContracts() {
     it('detects and saves an LM Studio LAN provider without credential updates', async () => {
       mockGetSystemSettings.mockResolvedValue({
         ...enabledSettings,
-        aiEndpoint: 'http://10.114.123.214:1234',
+        aiEndpoint: 'http://studio.local:1234',
         aiModel: '',
         aiProviderProfiles: [
           {
             id: 'lm-studio',
             name: 'LM Studio',
             providerType: 'openai-compatible',
-            endpoint: 'http://10.114.123.214:1234',
+            endpoint: 'http://studio.local:1234',
             model: '',
             capabilities: { chat: true, toolCalls: true, strictJson: true },
             credentialState: {
@@ -240,7 +240,7 @@ export function registerAISettingsOllamaDetectionContracts() {
       mockDetectProvider.mockResolvedValue({
         found: true,
         providerType: 'openai-compatible',
-        endpoint: 'http://10.114.123.214:1234',
+        endpoint: 'http://studio.local:1234',
         models: [
           { name: 'unsloth/qwen3.6-35b-a3b', size: 0, modifiedAt: '' },
           { name: 'lmstudio-community/model', size: 0, modifiedAt: '' },
@@ -263,14 +263,14 @@ export function registerAISettingsOllamaDetectionContracts() {
       await waitFor(() => {
         expect(mockUpdateSystemSettings).toHaveBeenLastCalledWith(
           expect.objectContaining({
-            aiEndpoint: 'http://10.114.123.214:1234',
+            aiEndpoint: 'http://studio.local:1234',
             aiModel: 'unsloth/qwen3.6-35b-a3b',
             aiActiveProviderProfileId: 'lm-studio',
             aiProviderProfiles: [
               expect.objectContaining({
                 id: 'lm-studio',
                 providerType: 'openai-compatible',
-                endpoint: 'http://10.114.123.214:1234',
+                endpoint: 'http://studio.local:1234',
                 model: 'unsloth/qwen3.6-35b-a3b',
               }),
             ],

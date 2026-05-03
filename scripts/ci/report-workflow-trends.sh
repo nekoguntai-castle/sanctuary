@@ -79,7 +79,7 @@ summarize_runs() {
   local label="$2"
   local event="$3"
 
-  jq -r --arg label "$label" --arg event "$event" '
+  jq -r --arg workflow_label "$label" --arg event "$event" '
     def to_epoch:
       if . == null then null else fromdateiso8601 end;
 
@@ -132,7 +132,7 @@ summarize_runs() {
     | ($runs | map(.runner_seconds // 0)) as $runner_values
     | [
         "Workflow Duration Trend",
-        "Workflow | \($label)",
+        "Workflow | \($workflow_label)",
         "Event filter | \(if $event == "" then "all" else $event end)",
         "Runs | \($runs | length)",
         "Wall p50 | \(($wall_values | percentile(0.5)) | format_seconds)",
@@ -153,9 +153,9 @@ summarize_runs() {
 
 fetch_live_runs() {
   local output_file="$1"
-  require_command gh
 
   [ -n "$workflow" ] || fail '--workflow is required unless --runs-json is used'
+  require_command gh
 
   local args
   args=(run list --workflow "$workflow" --status success --limit "$limit" --json databaseId,workflowName,event,status,conclusion,createdAt,updatedAt,headBranch)

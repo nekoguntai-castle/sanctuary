@@ -230,14 +230,14 @@ describe('useAISettings', () => {
   it('reports OpenAI-compatible detection failures instead of treating an error result as connected', async () => {
     vi.mocked(adminApi.getSystemSettings).mockResolvedValueOnce({
       aiEnabled: true,
-      aiEndpoint: 'http://10.114.123.214:1234',
+      aiEndpoint: 'http://studio.local:1234',
       aiModel: '',
       aiProviderProfiles: [
         {
           id: 'lm-studio',
           name: 'LM Studio',
           providerType: 'openai-compatible',
-          endpoint: 'http://10.114.123.214:1234',
+          endpoint: 'http://studio.local:1234',
           model: '',
           capabilities: { chat: true, toolCalls: true, strictJson: true },
         },
@@ -582,14 +582,14 @@ describe('useAISettings', () => {
   it('saves an OpenAI-compatible provider endpoint without an API key or selected model', async () => {
     vi.mocked(adminApi.getSystemSettings).mockResolvedValueOnce({
       aiEnabled: true,
-      aiEndpoint: 'http://10.114.123.214:1234',
+      aiEndpoint: 'http://studio.local:1234',
       aiModel: '',
       aiProviderProfiles: [
         {
           id: 'lm-studio',
           name: 'LM Studio',
           providerType: 'openai-compatible',
-          endpoint: 'http://10.114.123.214:1234',
+          endpoint: 'http://studio.local:1234',
           model: '',
           capabilities: { chat: true, toolCalls: true, strictJson: true },
         },
@@ -611,7 +611,7 @@ describe('useAISettings', () => {
       .mocked(adminApi.updateSystemSettings)
       .mock.calls.at(-1)?.[0];
     expect(savedPayload).toMatchObject({
-      aiEndpoint: 'http://10.114.123.214:1234',
+      aiEndpoint: 'http://studio.local:1234',
       aiModel: '',
       aiActiveProviderProfileId: 'lm-studio',
     });

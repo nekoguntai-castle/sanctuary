@@ -73,8 +73,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_type == 'branch') }}
+  group: ${{ github.event.pull_request.number || github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'pull_request' && github.event_name == 'push' && github.ref_type == 'branch' }}
 
 env:
   HTTPS_PORT: 8443
@@ -153,31 +153,49 @@ jobs:
   fresh-install-test:
     name: Fresh Install E2E Test
     runs-on: ubuntu-latest
-    needs: determine-scope
+    needs: [determine-scope, unit-tests]
     if: |
+      always() &&
       needs.determine-scope.outputs.should_run == 'true' &&
-      needs.determine-scope.outputs.run_fresh_install == 'true'
+      (needs.determine-scope.outputs.run_fresh_install == 'true' ||
+       needs.determine-scope.outputs.run_install_script == 'true') &&
+      (needs.unit-tests.result == 'success' || needs.unit-tests.result == 'skipped')
     timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: sanctuary-ci-fresh-${{ github.run_id }}
+      HTTPS_PORT: '15443'
+      HTTP_PORT: '15080'
+      GATEWAY_PORT: '15000'
+      PORT_OFFSET: '0'
 
     steps:
+      - name: Note PR install E2E coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Docker-backed install E2E suites run outside pull_request CI."
+          echo "PR coverage uses install unit tests and local runner-shaped E2E verification."
+
       - name: Checkout repository
+        if: github.event_name != 'pull_request'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
-
       - name: Check Docker
+        if: github.event_name != 'pull_request'
         run: |
           docker --version
           docker compose version
 
       - name: Make test scripts executable
+        if: github.event_name != 'pull_request'
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 
+      - name: Assign run-specific ports
+        if: github.event_name != 'pull_request'
+        run: bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+
       - name: Run fresh install test
+        if: github.event_name != 'pull_request'
         env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-          HTTP_PORT: ${{ env.HTTP_PORT }}
           KEEP_CONTAINERS: ${{ github.event.inputs.keep_containers }}
         run: |
           scripts/ci/time-command.sh "fresh install e2e" bash -c '
@@ -188,8 +206,21 @@ jobs:
             fi
           '
 
+      - name: Run install script test
+        if: github.event_name != 'pull_request'
+        env:
+          KEEP_CONTAINERS: ${{ github.event.inputs.keep_containers }}
+        run: |
+          scripts/ci/time-command.sh "install script e2e" bash -c '
+            if [ "${KEEP_CONTAINERS:-false}" = "true" ]; then
+              ./tests/install/e2e/install-script.test.sh --keep-containers --verbose
+            else
+              ./tests/install/e2e/install-script.test.sh --verbose
+            fi
+          '
+
       - name: Show container logs on failure
-        if: failure()
+        if: failure() && github.event_name != 'pull_request'
         run: |
           echo "=== Container Status ==="
           docker compose ps || true
@@ -210,7 +241,7 @@ jobs:
           docker compose logs migrate 2>&1 || true
 
       - name: Cleanup
-        if: always() && github.event.inputs.keep_containers != 'true'
+        if: always() && github.event_name != 'pull_request' && github.event.inputs.keep_containers != 'true'
         run: |
           docker compose down -v --remove-orphans || true
           docker system prune -f || true
@@ -227,64 +258,25 @@ jobs:
   install-script-test:
     name: Install Script E2E Test
     runs-on: ubuntu-latest
-    needs: determine-scope
+    needs: [determine-scope, fresh-install-test]
     if: |
+      always() &&
       needs.determine-scope.outputs.should_run == 'true' &&
       needs.determine-scope.outputs.run_install_script == 'true'
     timeout-minutes: 30
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
-
-      - name: Check Docker
+      - name: Verify combined install script result
         run: |
-          docker --version
-          docker compose version
-
-      - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh install.sh
-
-      - name: Run install script test
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-          HTTP_PORT: ${{ env.HTTP_PORT }}
-          KEEP_CONTAINERS: ${{ github.event.inputs.keep_containers }}
-        run: |
-          scripts/ci/time-command.sh "install script e2e" bash -c '
-            if [ "${KEEP_CONTAINERS:-false}" = "true" ]; then
-              ./tests/install/e2e/install-script.test.sh --keep-containers --verbose
-            else
-              ./tests/install/e2e/install-script.test.sh --verbose
-            fi
-          '
-
-      - name: Show container logs on failure
-        if: failure()
-        run: |
-          echo "=== Container Status ==="
-          docker compose ps || true
-          echo ""
-          echo "=== .env file contents ==="
-          cat .env 2>/dev/null || echo ".env file not found"
-          echo ""
-          echo "=== Database Logs ==="
-          docker compose logs --tail 100 postgres 2>&1 || true
-          echo ""
-          echo "=== Backend Logs ==="
-          docker compose logs --tail 100 backend 2>&1 || true
-          echo ""
-          echo "=== Frontend Logs ==="
-          docker compose logs --tail 100 frontend 2>&1 || true
-
-      - name: Cleanup
-        if: always() && github.event.inputs.keep_containers != 'true'
-        run: |
-          docker compose down -v --remove-orphans || true
-          docker system prune -f || true
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Install script E2E runs outside pull_request CI."
+            exit 0
+          fi
+          if [ "${{ needs.fresh-install-test.result }}" != "success" ]; then
+            echo "::error::Install script E2E failed in the combined install job"
+            exit 1
+          fi
+          echo "Install script E2E passed in the combined install job."
 
   # ============================================
   # Reusable Stack Smoke Test
@@ -292,20 +284,31 @@ jobs:
   install-stack-smoke:
     name: Install Stack Smoke
     runs-on: ubuntu-latest
-    needs: determine-scope
+    needs: [determine-scope, fresh-install-test, install-script-test]
     if: |
+      always() &&
+      github.event_name != 'pull_request' &&
       needs.determine-scope.outputs.should_run == 'true' &&
+      (needs.fresh-install-test.result == 'success' ||
+       (needs.fresh-install-test.result == 'skipped' &&
+        needs.determine-scope.outputs.run_fresh_install != 'true')) &&
+      (needs.install-script-test.result == 'success' ||
+       (needs.install-script-test.result == 'skipped' &&
+        needs.determine-scope.outputs.run_install_script != 'true')) &&
       needs.determine-scope.outputs.run_reuse_stack == 'true' &&
       (needs.determine-scope.outputs.run_container_health == 'true' ||
        needs.determine-scope.outputs.run_auth_flow == 'true')
     timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: sanctuary-ci-stack-${{ github.run_id }}
+      HTTPS_PORT: '15445'
+      HTTP_PORT: '15082'
+      GATEWAY_PORT: '15002'
+      PORT_OFFSET: '6'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
       - name: Check Docker
         run: |
@@ -315,10 +318,10 @@ jobs:
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 
+      - name: Assign run-specific ports
+        run: bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+
       - name: Start reusable stack
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-          HTTP_PORT: ${{ env.HTTP_PORT }}
         run: |
           scripts/ci/time-command.sh "install stack startup" bash -c '
             JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
@@ -328,11 +331,16 @@ jobs:
             AI_CONFIG_SECRET=$(openssl rand -hex 32)
             REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
 
-            cd docker/nginx/ssl && ./generate-certs.sh localhost && cd ../../..
+            source tests/install/utils/helpers.sh
+            SANCTUARY_SSL_DIR="$PWD/docker/nginx/ssl"
+            SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
+            export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
+            bash docker/nginx/ssl/generate-certs.sh localhost
 
             JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
               GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
               AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
+              SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
               HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
               RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
               docker compose up -d --build
@@ -343,14 +351,10 @@ jobs:
 
       - name: Run container health tests
         if: needs.determine-scope.outputs.run_container_health == 'true'
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
         run: scripts/ci/time-command.sh "install stack container health" ./tests/install/e2e/container-health.test.sh --verbose
 
       - name: Run auth flow tests
         if: needs.determine-scope.outputs.run_auth_flow == 'true'
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
         run: scripts/ci/time-command.sh "install stack auth flow" ./tests/install/e2e/auth-flow.test.sh --verbose
 
       - name: Show container logs on failure
@@ -371,29 +375,33 @@ jobs:
   container-health-test:
     name: Container Health Test
     runs-on: ubuntu-latest
-    needs: [determine-scope, fresh-install-test]
+    needs: [determine-scope, fresh-install-test, install-script-test]
     if: |
       always() &&
       needs.determine-scope.outputs.should_run == 'true' &&
       needs.fresh-install-test.result == 'success' &&
+      (needs.install-script-test.result == 'success' || needs.install-script-test.result == 'skipped') &&
       needs.determine-scope.outputs.run_container_health == 'true' &&
       needs.determine-scope.outputs.run_reuse_stack != 'true'
     timeout-minutes: 15
+    env:
+      COMPOSE_PROJECT_NAME: sanctuary-ci-health-${{ github.run_id }}
+      HTTPS_PORT: '15446'
+      HTTP_PORT: '15083'
+      GATEWAY_PORT: '15003'
+      PORT_OFFSET: '9'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
-
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 
+      - name: Assign run-specific ports
+        run: bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+
       - name: Start containers
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-          HTTP_PORT: ${{ env.HTTP_PORT }}
         run: |
           # Generate all required secrets
           JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
@@ -404,12 +412,17 @@ jobs:
           REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
 
           # Generate SSL certs
-          cd docker/nginx/ssl && ./generate-certs.sh localhost && cd ../../..
+          source tests/install/utils/helpers.sh
+          SANCTUARY_SSL_DIR="$PWD/docker/nginx/ssl"
+          SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
+          export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
+          bash docker/nginx/ssl/generate-certs.sh localhost
 
           # Start containers
           JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
             GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
             AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
+            SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
             HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
             docker compose up -d --build
 
@@ -417,8 +430,6 @@ jobs:
           sleep 30
 
       - name: Run container health tests
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
         run: ./tests/install/e2e/container-health.test.sh --verbose
 
       - name: Show container logs on failure
@@ -439,30 +450,35 @@ jobs:
   auth-flow-test:
     name: Authentication Flow Test
     runs-on: ubuntu-latest
-    needs: [determine-scope, fresh-install-test]
+    needs: [determine-scope, fresh-install-test, install-script-test, container-health-test]
     if: |
       always() &&
       needs.determine-scope.outputs.should_run == 'true' &&
       needs.fresh-install-test.result == 'success' &&
+      (needs.install-script-test.result == 'success' || needs.install-script-test.result == 'skipped') &&
+      (needs.container-health-test.result == 'success' || needs.container-health-test.result == 'skipped') &&
       needs.determine-scope.outputs.run_auth_flow == 'true' &&
       needs.determine-scope.outputs.run_reuse_stack != 'true'
     # 25min: frontend npm ci inside docker build can push total runtime past 15min on slow npm mirror days (see v0.8.40 release).
     timeout-minutes: 25
+    env:
+      COMPOSE_PROJECT_NAME: sanctuary-ci-auth-${{ github.run_id }}
+      HTTPS_PORT: '15447'
+      HTTP_PORT: '15084'
+      GATEWAY_PORT: '15004'
+      PORT_OFFSET: '12'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
-
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 
+      - name: Assign run-specific ports
+        run: bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+
       - name: Start containers
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-          HTTP_PORT: ${{ env.HTTP_PORT }}
         run: |
           # Generate all required secrets
           JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
@@ -473,12 +489,17 @@ jobs:
           REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
 
           # Generate SSL certs
-          cd docker/nginx/ssl && ./generate-certs.sh localhost && cd ../../..
+          source tests/install/utils/helpers.sh
+          SANCTUARY_SSL_DIR="$PWD/docker/nginx/ssl"
+          SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
+          export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
+          bash docker/nginx/ssl/generate-certs.sh localhost
 
           # Start containers with higher rate limits for testing
           JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
             GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
             AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
+            SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
             HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
             RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
             docker compose up -d --build
@@ -490,8 +511,6 @@ jobs:
           sleep 30
 
       - name: Run auth flow tests
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
         run: ./tests/install/e2e/auth-flow.test.sh --verbose
 
       - name: Show container logs on failure
@@ -510,19 +529,44 @@ jobs:
   upgrade-baseline-test:
     name: Upgrade Baseline ${{ matrix.source_ref }}
     runs-on: ubuntu-latest
-    needs: determine-scope
+    needs: [determine-scope, fresh-install-test, install-script-test, install-stack-smoke, auth-flow-test]
     if: |
+      always() &&
+      github.event_name != 'pull_request' &&
       needs.determine-scope.outputs.should_run == 'true' &&
-      needs.determine-scope.outputs.run_upgrade_baseline == 'true'
+      needs.determine-scope.outputs.run_upgrade_baseline == 'true' &&
+      (needs.fresh-install-test.result == 'success' ||
+       (needs.fresh-install-test.result == 'skipped' &&
+        needs.determine-scope.outputs.run_fresh_install != 'true')) &&
+      (needs.install-script-test.result == 'success' ||
+       (needs.install-script-test.result == 'skipped' &&
+        needs.determine-scope.outputs.run_install_script != 'true')) &&
+      (needs.install-stack-smoke.result == 'success' || needs.install-stack-smoke.result == 'skipped') &&
+      (needs.auth-flow-test.result == 'success' || needs.auth-flow-test.result == 'skipped')
     timeout-minutes: 60
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - source_ref: latest-stable
             fixture: baseline
+            https_port: '16443'
+            http_port: '16080'
+            gateway_port: '16000'
+            port_offset: '15'
           - source_ref: n-2
             fixture: baseline
+            https_port: '16444'
+            http_port: '16081'
+            gateway_port: '16001'
+            port_offset: '18'
+    env:
+      COMPOSE_PROJECT_NAME: sanctuary-ci-upgrade-${{ github.run_id }}-${{ matrix.source_ref }}-${{ matrix.fixture }}
+      HTTPS_PORT: ${{ matrix.https_port }}
+      HTTP_PORT: ${{ matrix.http_port }}
+      GATEWAY_PORT: ${{ matrix.gateway_port }}
+      PORT_OFFSET: ${{ matrix.port_offset }}
 
     steps:
       - name: Checkout repository
@@ -530,16 +574,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
-
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 
+      - name: Assign run-specific ports
+        run: bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+
       - name: Run baseline upgrade test
         env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-          HTTP_PORT: ${{ env.HTTP_PORT }}
           SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || matrix.source_ref }}
           SANCTUARY_UPGRADE_FIXTURE: ${{ matrix.fixture }}
           SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
@@ -554,7 +596,7 @@ jobs:
 
       - name: Upload upgrade artifacts
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
           path: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
@@ -567,23 +609,51 @@ jobs:
   upgrade-extended-test:
     name: Upgrade Extended ${{ matrix.fixture }}
     runs-on: ubuntu-latest
-    needs: determine-scope
+    needs: [determine-scope, upgrade-baseline-test]
     if: |
+      always() &&
+      github.event_name != 'pull_request' &&
       needs.determine-scope.outputs.should_run == 'true' &&
-      needs.determine-scope.outputs.run_upgrade_extended == 'true'
+      needs.determine-scope.outputs.run_upgrade_extended == 'true' &&
+      (needs.upgrade-baseline-test.result == 'success' ||
+       (needs.upgrade-baseline-test.result == 'skipped' &&
+        needs.determine-scope.outputs.run_upgrade_baseline != 'true'))
     timeout-minutes: 60
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - source_ref: latest-stable
             fixture: browser-origin-ip
+            https_port: '18443'
+            http_port: '18080'
+            gateway_port: '14000'
+            port_offset: '21'
           - source_ref: latest-stable
             fixture: legacy-runtime-env
+            https_port: '16445'
+            http_port: '16082'
+            gateway_port: '16002'
+            port_offset: '24'
           - source_ref: latest-stable
             fixture: notification-delivery
+            https_port: '16446'
+            http_port: '16083'
+            gateway_port: '16003'
+            port_offset: '27'
           - source_ref: latest-stable
             fixture: optional-profiles
+            https_port: '16447'
+            http_port: '16084'
+            gateway_port: '16004'
+            port_offset: '30'
+    env:
+      COMPOSE_PROJECT_NAME: sanctuary-ci-upgrade-${{ github.run_id }}-${{ matrix.source_ref }}-${{ matrix.fixture }}
+      HTTPS_PORT: ${{ matrix.https_port }}
+      HTTP_PORT: ${{ matrix.http_port }}
+      GATEWAY_PORT: ${{ matrix.gateway_port }}
+      PORT_OFFSET: ${{ matrix.port_offset }}
 
     steps:
       - name: Checkout repository
@@ -591,16 +661,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
-
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 
+      - name: Assign run-specific ports
+        run: bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+
       - name: Run extended upgrade test
         env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-          HTTP_PORT: ${{ env.HTTP_PORT }}
           SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || matrix.source_ref }}
           SANCTUARY_UPGRADE_FIXTURE: ${{ matrix.fixture }}
           SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
@@ -615,7 +683,7 @@ jobs:
 
       - name: Upload upgrade artifacts
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
           path: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}

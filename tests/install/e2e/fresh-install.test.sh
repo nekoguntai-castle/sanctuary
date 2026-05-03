@@ -63,19 +63,21 @@ done
 
 # Test configuration
 TEST_ID=$(generate_test_run_id)
-TEST_INSTALL_DIR=$(create_test_directory "/tmp" "sanctuary-install-test")
+TEST_ROOT=$(default_install_test_root "$PROJECT_ROOT")
+TEST_INSTALL_DIR=$(create_test_directory "$TEST_ROOT" "sanctuary-install-test")
+TEST_DOCKER_INSTALL_DIR=$(docker_visible_path "$TEST_INSTALL_DIR")
 HTTPS_PORT="${HTTPS_PORT:-8443}"
 HTTP_PORT="${HTTP_PORT:-8080}"
-API_BASE_URL="https://localhost:${HTTPS_PORT}"
+TEST_HTTP_HOST=$(default_install_test_host)
+API_BASE_URL="https://${TEST_HTTP_HOST}:${HTTPS_PORT}"
 COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
 
-# The TLS material for the nginx frontend container is generated into
-# $TEST_INSTALL_DIR/runtime/ssl (outside the repo checkout). Export
-# SANCTUARY_SSL_DIR so every subsequent `docker compose` invocation
-# mounts the same directory where `test_ssl_certificate_generation`
-# writes fullchain.pem/privkey.pem — otherwise nginx falls back to
-# plain HTTP and the frontend container never becomes healthy.
+# The TLS material for the nginx frontend container is generated into the
+# test runtime tree. Export SANCTUARY_SSL_DIR so every subsequent
+# `docker compose` invocation mounts the same directory where
+# `test_ssl_certificate_generation` writes fullchain.pem/privkey.pem.
 export SANCTUARY_SSL_DIR="$TEST_INSTALL_DIR/runtime/ssl"
+export SANCTUARY_COMPOSE_SSL_DIR="$TEST_DOCKER_INSTALL_DIR/runtime/ssl"
 mkdir -p "$SANCTUARY_SSL_DIR"
 
 # Test state
@@ -141,6 +143,7 @@ setup() {
     log_info "  Test ID:       $TEST_ID"
     log_info "  Install Dir:   $TEST_INSTALL_DIR"
     log_info "  HTTPS Port:    $HTTPS_PORT"
+    log_info "  HTTP Host:     $TEST_HTTP_HOST"
     log_info "  API Base URL:  $API_BASE_URL"
 
     # Verify prerequisites
@@ -755,7 +758,7 @@ test_gateway_api() {
     log_info "Testing gateway API..."
 
     local gateway_port="${GATEWAY_PORT:-4000}"
-    local gateway_url="http://localhost:${gateway_port}"
+    local gateway_url="http://${TEST_HTTP_HOST}:${gateway_port}"
 
     # Test gateway health
     local health_response=$(curl -s "$gateway_url/health" 2>/dev/null)

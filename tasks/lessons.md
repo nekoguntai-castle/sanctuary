@@ -2,6 +2,30 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Disambiguate Runner Requests Before Inspecting App Code
+
+**Rule:** When the user asks about a "runner", first identify whether they mean Forgejo Actions, local scripts, CI test runners, or an application background worker before diving into repository internals.
+
+**Why:** The user asked about making a runner fire more parallel sessions and then clarified they meant Forgejo, while the first investigation went into Sanctuary worker/support-package runner code.
+
+**How to apply:**
+
+- Check for context words like Forgejo, Actions, CI, host IPs, queues, workers, or support packages.
+- If the request is operational and mentions a host, inspect runner/service config before app source.
+- For Forgejo, look for `runner.capacity`, the runner config path, and the service/container manager.
+
+## Scrub Internal Operational Metadata Before Commit
+
+**Rule:** Do not commit private CI/CD hostnames, IP addresses, usernames, service names, config paths, or capacity details into repo-tracked task notes, tests, or docs.
+
+**Why:** Operational debugging often produces useful local notes, but those details expose infrastructure topology when they land in the repository.
+
+**How to apply:**
+
+- Before committing, scan the diff for private address ranges, host aliases, SSH usernames, service/container names, and absolute operational paths.
+- Use reserved example domains such as `.invalid` in tests instead of real local endpoints.
+- Keep runner and deployment verification details in the chat or private operator notes, not repo-tracked project docs.
+
 ## Narrow Privacy-Feature Removals To The Approved Scope
 
 **Rule:** When the user narrows a removal from a broad privacy-feature sweep to one named feature, remove only that feature and explicitly leave adjacent implemented features untouched.
@@ -53,6 +77,57 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Run normal terminal commands directly when filesystem access is unrestricted.
 - Avoid `sandbox_permissions` unless the current policy explicitly allows it and the command truly needs it.
 - If command behavior seems abnormal, explain the current policy and adjust the workflow before retrying the same failing pattern.
+
+## Do Not Assume GitHub Workspace Env In Forgejo Jobs
+
+**Rule:** Forgejo Actions jobs can mount the repository under a workspace path without exporting `GITHUB_WORKSPACE` or `ACT`; install tests must detect Docker-visible workspace paths directly.
+
+**Why:** Local act-like reproductions passed with GitHub-style env vars, while real Forgejo install jobs fell back to `/tmp`, which is not visible to the host Docker daemon for bind-mounted runtime files.
+
+**How to apply:**
+
+- Treat workspace-mounted project roots as runner scratch roots even when GitHub-style env vars are absent.
+- Reproduce Docker-socket tests with the repo mounted under a workspace path and those env vars unset.
+- Redact verbose install output before printing it, because runner origin URLs and generated secrets can appear in traces.
+
+## Reconcile Database Role Passwords After Volume Restores
+
+**Rule:** After restoring a Postgres volume or dump into a running Sanctuary stack, reconcile the database role password with the runtime env and verify TCP auth from the compose network before declaring login fixed.
+
+**Why:** Local socket `psql` checks can pass while Prisma fails new TCP connections with `P1000` / `28P01`, which surfaces in the UI as `database operation failed`.
+
+**How to apply:**
+
+- Source the active runtime env file and update the restored Postgres role password to match `POSTGRES_PASSWORD`.
+- Verify with an external client on the Sanctuary compose network, using `psql -h postgres`, not only `docker exec ... psql` over a local socket.
+- Restart app services after repair so Prisma pools reconnect with the corrected credentials.
+- Include a health endpoint and fresh login check in the restore verification path.
+
+## Treat Postgres Role Drift As Runtime State, Not Code Drift
+
+**Rule:** If `DATABASE_URL`, the Postgres container env, and the runtime env file agree but TCP auth still fails, the live Postgres role password has drifted; repair the role and collect runtime evidence before blaming code edits.
+
+**Why:** The recurring local `database operation failed` happened while backend, worker, and Postgres containers had not restarted. The three credential sources matched, but Postgres rejected them with `28P01`, so the database role state had changed independently of the checkout.
+
+**How to apply:**
+
+- Compare short hashes for backend `DATABASE_URL`, Postgres container `POSTGRES_PASSWORD`, and the runtime env file without printing secrets.
+- Test TCP auth from the compose network with a throwaway Postgres client; do not rely on local socket `psql`.
+- Enable Postgres DDL and connection logging after unexplained role drift so any future `ALTER ROLE` leaves a clearer trail.
+- When restarting backend/worker behind nginx, also refresh frontend nginx if public HTTPS returns `502` while in-network backend health is good.
+
+## Treat Explicit Installer Sources As Authoritative
+
+**Rule:** Installer `--source` arguments must override existing git remotes and must not fall back to another forge; automatic/default source selection may fail over only when the operator did not explicitly choose a source.
+
+**Why:** The user ran `./install.sh --source codeberg` from a checkout whose `origin` still pointed at GitHub. The installer printed Codeberg but `git fetch` used the stale GitHub remote, producing a GitHub credential prompt instead of a Codeberg pull.
+
+**How to apply:**
+
+- Track whether the source came from an explicit CLI argument separately from the selected forge name.
+- Before any online `git fetch` in an existing checkout, rewrite `origin` to the selected forge URL.
+- Run git network operations with terminal prompts disabled so a 404 or blocked forge fails cleanly.
+- Add regression coverage for stale `origin` plus explicit `--source`, explicit-source no-fallback, and automatic prompt-free failover.
 
 ## Audit Coverage Before Broad Feature Commits
 
@@ -218,6 +293,45 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - If the shell default is stale, use a stable Node 24 invocation or fix the local runtime once instead of prefixing every command with environment variables.
 - Do not use `npx` for tools that are not installed locally; it may try the network and trigger avoidable approval or DNS failures.
 - Add package scripts or local dev-tool dependencies when a verification command needs to be repeatable.
+
+## Preserve Compose Project And Volume Identity During Local Rebuilds
+
+**Rule:** Before rebuilding a running local instance, identify the exact Compose project, working directory, config files, environment file, and Postgres volume that currently serve the user-facing URL; rebuild that identity or explicitly migrate its data before switching projects.
+
+**Why:** Replacing a stale `sanctuary-upgrade-test-*` project with the default `sanctuary` project created a fresh `sanctuary_postgres_data` volume and made the app appear defaulted. Recovery then required scanning preserved volumes and restoring the only non-empty source.
+
+**How to apply:**
+
+- Run `docker inspect` on the frontend and postgres containers for `com.docker.compose.project`, `project.working_dir`, `project.config_files`, and mounted volume names before stopping anything.
+- Capture DB fingerprints before rebuild: user count, wallet count, device count, wallet networks, and oldest user timestamp.
+- If the target project name changes, dump/restore or reattach the existing Postgres volume deliberately before starting the replacement stack.
+- When recovering, match the user's expected data signature, for example "one device and a testnet wallet," before overwriting the active DB.
+
+## Treat CodeQL As GitHub-Native Unless Proven Otherwise
+
+**Rule:** Do not make CodeQL a required Forgejo gate unless the workflow has been proven on the target Forgejo runner with a pinned or self-hosted CodeQL bundle.
+
+**Why:** `github/codeql-action/init` queries `GITHUB_API_URL` for `github/codeql-action` tags when choosing the CLI bundle. On Forgejo, `GITHUB_API_URL` points at the Forgejo instance, which has no `github/codeql-action` repo and returns `404`.
+
+**How to apply:**
+
+- Prefer Forgejo-native security gates such as Semgrep, dependency audit, secret scan, actionlint, lockfile checks, and complexity/duplication gates.
+- If CodeQL is reintroduced on Forgejo, pin the CodeQL CLI bundle URL or self-host the CLI and verify the workflow before adding it to required checks.
+- Keep GitHub-only CodeQL assumptions out of Forgejo branch protection until the Forgejo run has passed end to end.
+- When comparing GitHub and Forgejo CI, compare the security coverage intent, not just exact workflow names.
+
+## Do Not Assume Forgejo Actions Runs Are API-Cancellable
+
+**Rule:** Before trying to clear a Forgejo Actions backlog, check the live Forgejo OpenAPI schema for a run cancel endpoint and avoid runner-level cleanup unless the user accepts failed/stale statuses.
+
+**Why:** Forgejo `15.0.1` exposed run listing, run details, task listing, and workflow dispatch, but no `POST /actions/runs/{run_id}/cancel` endpoint. The GitHub/Gitea-style cancel route returned `404`, and the web cancel route required a browser session instead of the git/API credential.
+
+**How to apply:**
+
+- Use `swagger.v1.json` to confirm supported Actions endpoints for the live instance.
+- Treat local runner container kills as a blunt fallback: they may free capacity but usually do not produce clean "cancelled" run history.
+- For stale pre-fix queues, prefer letting Forgejo drain and judge only fresh runs on the current workflow state.
+- If clean cancellation is required, use the Forgejo web UI with an authenticated browser session or upgrade/configure Forgejo to expose a supported cancel API.
 
 ## Use Nvm For Node And Npm Runtime Updates
 

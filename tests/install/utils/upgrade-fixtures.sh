@@ -110,7 +110,11 @@ apply_upgrade_fixture_defaults() {
     local fixture_list="$1"
 
     if fixture_list_contains "$fixture_list" "browser-origin-ip"; then
-        UPGRADE_BROWSER_HOST="${UPGRADE_BROWSER_HOST:-127.0.0.1}"
+        if [ -f /.dockerenv ] && command -v default_install_test_host >/dev/null 2>&1; then
+            UPGRADE_BROWSER_HOST="${UPGRADE_BROWSER_HOST:-$(default_install_test_host)}"
+        else
+            UPGRADE_BROWSER_HOST="${UPGRADE_BROWSER_HOST:-127.0.0.1}"
+        fi
     fi
 
     UPGRADE_BROWSER_HOST="${UPGRADE_BROWSER_HOST:-localhost}"

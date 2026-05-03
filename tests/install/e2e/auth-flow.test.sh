@@ -47,7 +47,8 @@ done
 # Test configuration
 TEST_ID=$(generate_test_run_id)
 HTTPS_PORT="${HTTPS_PORT:-8443}"
-API_BASE_URL="https://localhost:${HTTPS_PORT}"
+TEST_HTTP_HOST=$(default_install_test_host)
+API_BASE_URL="https://${TEST_HTTP_HOST}:${HTTPS_PORT}"
 COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
 
 # Test passwords

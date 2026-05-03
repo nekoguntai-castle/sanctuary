@@ -14,10 +14,9 @@
 # This script handles repository management (clone/update/version checkout),
 # then delegates to scripts/setup.sh for configuration and startup.
 #
-# Codeberg is the active mirror. The GitHub mirror is currently inactive
-# pending the upstream org being unsuspended; the --source github escape
-# hatch is preserved for when that resolves but auto-probe no longer
-# considers GitHub.
+# Codeberg is the default source. GitHub remains available as an alternate
+# forge. Explicit --source choices are authoritative; automatic selection may
+# try the alternate forge when the preferred one is unavailable.
 #
 # ============================================
 
@@ -57,6 +56,60 @@ _source_reachable() {
     [ "$code" = "200" ]
 }
 
+source_repo_url() {
+    case "$1" in
+        codeberg) echo "https://codeberg.org/nekoguntai-castle/sanctuary.git" ;;
+        github)   echo "https://github.com/nekoguntai-castle/sanctuary.git" ;;
+    esac
+}
+
+source_api_url() {
+    case "$1" in
+        codeberg) echo "https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary/releases/latest" ;;
+        github)   echo "https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest" ;;
+    esac
+}
+
+source_platform_name() {
+    case "$1" in
+        codeberg) echo "Codeberg" ;;
+        github)   echo "GitHub" ;;
+        *)        echo "$1" ;;
+    esac
+}
+
+alternate_source() {
+    case "$1" in
+        codeberg) echo "github" ;;
+        github)   echo "codeberg" ;;
+    esac
+}
+
+requested_source_arg() {
+    local source=""
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --source)
+                source="$2"
+                shift 2
+                ;;
+            --source=*)
+                source="${1#*=}"
+                shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    case "$source" in
+        codeberg|Codeberg) echo "codeberg" ;;
+        github|GitHub)     echo "github" ;;
+        *)                 echo "" ;;
+    esac
+}
+
 detect_source() {
     local source=""
     # Check if --source argument was provided
@@ -76,9 +129,8 @@ detect_source() {
         esac
     done
 
-    # If source specified, use it (respect operator's explicit choice even if
-    # the source happens to be unreachable — they may know something we don't,
-    # like an upcoming reachability change or auth they'll provide later).
+    # If source specified, use it. Explicit source choices are authoritative:
+    # the installer will fail cleanly instead of falling back to another forge.
     if [ -n "$source" ]; then
         case "$source" in
             codeberg|Codeberg)
@@ -125,11 +177,10 @@ detect_source() {
         echo -e "${YELLOW}Detected source '$detected' from existing remote, but it is not reachable. Falling back to auto-probe.${NC}" >&2
     fi
 
-    # Auto-probe public reachability — Codeberg is the only candidate.
-    # GitHub is an escape hatch via explicit --source github; not in the
-    # auto-probe path because the upstream org is currently suspended.
+    # Auto-probe public reachability. Prefer Codeberg by default, but allow
+    # GitHub as a prompt-free alternate when Codeberg is unavailable.
     if command -v curl &> /dev/null; then
-        for candidate in codeberg; do
+        for candidate in codeberg github; do
             if _source_reachable "$candidate"; then
                 echo "$candidate"
                 return
@@ -156,6 +207,13 @@ ASSUME_YES="${SANCTUARY_ASSUME_YES:-false}"
 SKIP_UPGRADE_BACKUP="${SANCTUARY_SKIP_UPGRADE_BACKUP:-false}"
 OFFLINE_TARGET_VERSION=""
 OFFLINE_MODE=false
+
+configure_source_platform() {
+    SOURCE_PLATFORM="$1"
+    REPO_URL="$(source_repo_url "$SOURCE_PLATFORM")"
+    API_URL="$(source_api_url "$SOURCE_PLATFORM")"
+    PLATFORM_NAME="$(source_platform_name "$SOURCE_PLATFORM")"
+}
 
 resolve_runtime_env_file() {
     local candidate="${SANCTUARY_ENV_FILE:-$DEFAULT_ENV_FILE}"
@@ -400,21 +458,13 @@ create_upgrade_backup_or_prompt() {
 parse_install_options "$@"
 
 # Detect source platform
+REQUESTED_SOURCE_PLATFORM="$(requested_source_arg "$@")"
+SOURCE_EXPLICIT=false
+if [ -n "$REQUESTED_SOURCE_PLATFORM" ]; then
+    SOURCE_EXPLICIT=true
+fi
 SOURCE_PLATFORM=$(detect_source "$@")
-
-# Set platform-specific URLs
-case "$SOURCE_PLATFORM" in
-    codeberg)
-        REPO_URL="https://codeberg.org/nekoguntai-castle/sanctuary.git"
-        API_URL="https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary/releases/latest"
-        PLATFORM_NAME="Codeberg"
-        ;;
-    github|*)
-        REPO_URL="https://github.com/nekoguntai-castle/sanctuary.git"
-        API_URL="https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest"
-        PLATFORM_NAME="GitHub"
-        ;;
-esac
+configure_source_platform "$SOURCE_PLATFORM"
 
 if [ "$OFFLINE_MODE" = true ]; then
     REPO_URL="${OFFLINE_BUNDLE:-preloaded offline bundle}"
@@ -425,21 +475,22 @@ fi
 # ============================================
 # Get latest release tag
 # ============================================
-get_latest_release() {
-    local tag=""
+git_no_prompt() {
+    GIT_TERMINAL_PROMPT=0 git "$@"
+}
 
-    # Try platform-specific API first
+get_latest_release_for_source() {
+    local source="$1"
+    local api_url repo_url tag=""
+
+    api_url="$(source_api_url "$source")"
+    repo_url="$(source_repo_url "$source")"
+    [ -n "$api_url" ] && [ -n "$repo_url" ] || return 1
+
     if command -v curl &> /dev/null; then
-        # Single sed parser handles both JSON formats:
-        #   GitHub:   "tag_name": "v0.8.49"   (formatted, with whitespace)
-        #   Codeberg: "tag_name":"v0.8.49"    (compact)
-        case "$SOURCE_PLATFORM" in
-            codeberg|github|*)
-                tag=$(curl -fsSL "$API_URL" 2>/dev/null \
-                    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-                    | head -1)
-                ;;
-        esac
+        tag=$(curl -fsSL "$api_url" 2>/dev/null \
+            | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+            | head -1)
 
         if [ -n "$tag" ]; then
             echo "$tag"
@@ -447,15 +498,148 @@ get_latest_release() {
         fi
     fi
 
-    # Fallback: use git ls-remote to get latest tag
-    tag=$(git ls-remote --tags --sort=-v:refname "$REPO_URL" 2>/dev/null | head -1 | sed 's/.*refs\/tags\///' | sed 's/\^{}//')
+    tag=$(git_no_prompt ls-remote --tags --sort=-v:refname "$repo_url" 2>/dev/null | head -1 | sed 's/.*refs\/tags\///' | sed 's/\^{}//')
     if [ -n "$tag" ]; then
         echo "$tag"
         return 0
     fi
 
-    # Last resort: return empty (will use main)
-    echo ""
+    return 1
+}
+
+resolve_latest_release() {
+    local primary_source="$SOURCE_PLATFORM"
+    local fallback_source tag=""
+
+    RELEASE_TAG=""
+
+    tag="$(get_latest_release_for_source "$primary_source" || true)"
+    if [ -n "$tag" ]; then
+        RELEASE_TAG="$tag"
+        return 0
+    fi
+
+    if [ "$SOURCE_EXPLICIT" = true ]; then
+        return 1
+    fi
+
+    fallback_source="$(alternate_source "$primary_source")"
+    [ -n "$fallback_source" ] || return 1
+
+    echo -e "${YELLOW}Primary source $(source_platform_name "$primary_source") did not provide a release. Trying $(source_platform_name "$fallback_source")...${NC}"
+    tag="$(get_latest_release_for_source "$fallback_source" || true)"
+    if [ -n "$tag" ]; then
+        configure_source_platform "$fallback_source"
+        RELEASE_TAG="$tag"
+        echo -e "${GREEN}✓${NC} Using fallback source: ${PLATFORM_NAME} (${REPO_URL})"
+        return 0
+    fi
+
+    return 1
+}
+
+ensure_origin_url() {
+    local repo_url="$1"
+
+    if git remote get-url origin >/dev/null 2>&1; then
+        git remote set-url origin "$repo_url"
+    else
+        git remote add origin "$repo_url"
+    fi
+}
+
+try_fetch_source() {
+    local source="$1"
+    local repo_url
+
+    repo_url="$(source_repo_url "$source")"
+    [ -n "$repo_url" ] || return 1
+    ensure_origin_url "$repo_url" || return 1
+    git_no_prompt fetch --tags origin >/dev/null 2>&1
+}
+
+fetch_existing_installation() {
+    local primary_source="$SOURCE_PLATFORM"
+    local fallback_source
+
+    if try_fetch_source "$primary_source"; then
+        configure_source_platform "$primary_source"
+        return 0
+    fi
+
+    if [ "$SOURCE_EXPLICIT" = true ]; then
+        echo -e "${RED}✗${NC} Could not fetch updates from ${PLATFORM_NAME}."
+        echo "Explicit --source $SOURCE_PLATFORM was requested, so no alternate forge was tried."
+        exit 1
+    fi
+
+    fallback_source="$(alternate_source "$primary_source")"
+    [ -n "$fallback_source" ] || {
+        echo -e "${RED}✗${NC} Could not fetch updates from ${PLATFORM_NAME}."
+        exit 1
+    }
+
+    echo -e "${YELLOW}Could not fetch from $(source_platform_name "$primary_source"). Trying $(source_platform_name "$fallback_source")...${NC}"
+    if try_fetch_source "$fallback_source"; then
+        configure_source_platform "$fallback_source"
+        echo -e "${GREEN}✓${NC} Fetched updates from ${PLATFORM_NAME}"
+        return 0
+    fi
+
+    echo -e "${RED}✗${NC} Could not fetch updates from Codeberg or GitHub."
+    exit 1
+}
+
+try_clone_source() {
+    local source="$1"
+    local repo_url parent_dir temp_dir
+
+    repo_url="$(source_repo_url "$source")"
+    [ -n "$repo_url" ] || return 1
+
+    parent_dir="$(dirname "$INSTALL_DIR")"
+    mkdir -p "$parent_dir" || return 1
+    temp_dir="$(mktemp -d "$parent_dir/.sanctuary-clone.XXXXXX")" || return 1
+
+    if git_no_prompt clone "$repo_url" "$temp_dir" >/dev/null 2>&1; then
+        mv "$temp_dir" "$INSTALL_DIR"
+        return 0
+    fi
+
+    rm -rf "$temp_dir"
+    return 1
+}
+
+clone_repository() {
+    local primary_source="$SOURCE_PLATFORM"
+    local fallback_source
+
+    if try_clone_source "$primary_source"; then
+        configure_source_platform "$primary_source"
+        return 0
+    fi
+
+    if [ "$SOURCE_EXPLICIT" = true ]; then
+        echo -e "${RED}✗${NC} Could not clone from ${PLATFORM_NAME}."
+        echo "Explicit --source $SOURCE_PLATFORM was requested, so no alternate forge was tried."
+        exit 1
+    fi
+
+    fallback_source="$(alternate_source "$primary_source")"
+    [ -n "$fallback_source" ] || {
+        echo -e "${RED}✗${NC} Could not clone from ${PLATFORM_NAME}."
+        exit 1
+    }
+
+    echo -e "${YELLOW}Could not clone from $(source_platform_name "$primary_source"). Trying $(source_platform_name "$fallback_source")...${NC}"
+    if try_clone_source "$fallback_source"; then
+        configure_source_platform "$fallback_source"
+        echo -e "${GREEN}✓${NC} Cloned from ${PLATFORM_NAME}"
+        return 0
+    fi
+
+    echo -e "${RED}✗${NC} Could not clone from Codeberg or GitHub."
+    exit 1
 }
 
 # ============================================
@@ -619,7 +803,7 @@ main() {
         fi
     else
         echo "Fetching latest release..."
-        RELEASE_TAG=$(get_latest_release)
+        resolve_latest_release || true
         if [ -n "$RELEASE_TAG" ]; then
             echo -e "${GREEN}✓${NC} Latest release: $RELEASE_TAG"
         else
@@ -644,7 +828,7 @@ main() {
 
             echo ""
             echo "Updating existing installation..."
-            git fetch --tags 2>/dev/null || true
+            fetch_existing_installation
             if [ -n "$RELEASE_TAG" ]; then
                 git checkout "$RELEASE_TAG" 2>/dev/null || {
                     echo -e "${YELLOW}Could not checkout $RELEASE_TAG. Continuing with current version.${NC}"
@@ -652,7 +836,7 @@ main() {
             fi
         else
             echo "Cloning Sanctuary to $INSTALL_DIR..."
-            git clone "$REPO_URL" "$INSTALL_DIR"
+            clone_repository
             cd "$INSTALL_DIR"
             if [ -n "$RELEASE_TAG" ]; then
                 git checkout "$RELEASE_TAG" 2>/dev/null || {

@@ -46,7 +46,7 @@ describe("AI proxy endpoint policy", () => {
         .allowed,
     ).toBe(true);
     expect(
-      evaluateProviderEndpoint("http://10.114.123.214:1234", defaultOptions)
+      evaluateProviderEndpoint("http://studio.local:1234", defaultOptions)
         .allowed,
     ).toBe(true);
     expect(

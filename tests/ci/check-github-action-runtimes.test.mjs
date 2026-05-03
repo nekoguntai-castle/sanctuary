@@ -31,7 +31,7 @@ function writeRemoteAction(manifestRoot, spec, content) {
   );
 }
 
-async function runFixture(workflowContent, configure = () => {}) {
+async function runFixture(workflowContent, configure = () => {}, runtimeOptions = {}) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'action-runtime-check-'));
   const rootDir = path.join(tempDir, 'repo');
   const manifestRoot = path.join(tempDir, 'manifests');
@@ -39,7 +39,7 @@ async function runFixture(workflowContent, configure = () => {}) {
   configure(rootDir, manifestRoot);
 
   try {
-    return await checkActionRuntimes({ rootDir, manifestRoot });
+    return await checkActionRuntimes({ rootDir, manifestRoot, ...runtimeOptions });
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -99,6 +99,44 @@ jobs:
   assert.equal(result.findings[0].runtime, 'node20');
   assert.match(result.findings[0].chain, /runtime-check\.yml:8/);
   assert.match(result.findings[0].chain, /actions\/bad@v1/);
+}
+
+async function assertAllowsForgejoArtifactFallback() {
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+`,
+  );
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.findings.length, 0);
+  assert.equal(result.checkedManifests, 0);
+}
+
+async function assertCustomAllowlistCanBeTightened() {
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+`,
+    () => {},
+    { allowedRuntimeActions: [] },
+  );
+
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /absolute Forgejo action URL must be explicitly allowed/);
+  assert.equal(result.findings.length, 0);
 }
 
 async function assertBlocksCompositeNestedDeprecatedRuntime() {
@@ -177,9 +215,96 @@ jobs:
   assert.match(result.errors[0], /missing fixture manifest/);
 }
 
+async function assertUsesTrackedManifestRootByDefault() {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'action-runtime-check-'));
+  const rootDir = path.join(tempDir, 'repo');
+  writeWorkflow(
+    rootDir,
+    `
+name: Runtime Check
+on: pull_request
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/good@v1
+`,
+  );
+  writeRemoteAction(
+    path.join(rootDir, 'scripts/ci/action-runtime-manifests'),
+    'actions/good@v1',
+    "name: good\nruns:\n  using: node24\n  main: dist/index.js\n",
+  );
+
+  try {
+    const result = await checkActionRuntimes({ rootDir });
+    assert.equal(result.errors.length, 0);
+    assert.equal(result.findings.length, 0);
+    assert.equal(result.checkedManifests, 1);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function assertIgnoresForgejoGithubTokenForRemoteManifestFetches() {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'action-runtime-check-'));
+  const rootDir = path.join(tempDir, 'repo');
+  writeWorkflow(
+    rootDir,
+    `
+name: Runtime Check
+on: pull_request
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+`,
+  );
+
+  const originalFetch = globalThis.fetch;
+  const originalServerUrl = process.env.GITHUB_SERVER_URL;
+  const originalToken = process.env.GITHUB_TOKEN;
+  let authorizationHeader = 'not-called';
+  let requestedUrl = '';
+
+  globalThis.fetch = async (url, init) => {
+    requestedUrl = String(url);
+    authorizationHeader = init?.headers?.Authorization;
+    return new Response("name: checkout\nruns:\n  using: node24\n  main: dist/index.js\n");
+  };
+  process.env.GITHUB_SERVER_URL = 'https://forgejo.example.invalid';
+  process.env.GITHUB_TOKEN = 'forgejo-runtime-token';
+
+  try {
+    const result = await checkActionRuntimes({ rootDir, manifestRoot: '' });
+    assert.equal(result.errors.length, 0);
+    assert.equal(result.findings.length, 0);
+    assert.equal(authorizationHeader, undefined);
+    assert.match(requestedUrl, /^https:\/\/data\.forgejo\.org\//);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalServerUrl === undefined) {
+      delete process.env.GITHUB_SERVER_URL;
+    } else {
+      process.env.GITHUB_SERVER_URL = originalServerUrl;
+    }
+    if (originalToken === undefined) {
+      delete process.env.GITHUB_TOKEN;
+    } else {
+      process.env.GITHUB_TOKEN = originalToken;
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 await assertAllowsModernActions();
 await assertBlocksDirectDeprecatedRuntime();
+await assertAllowsForgejoArtifactFallback();
+await assertCustomAllowlistCanBeTightened();
 await assertBlocksCompositeNestedDeprecatedRuntime();
 await assertBlocksLocalDeprecatedRuntime();
 await assertFailsClosedOnMissingManifest();
+await assertUsesTrackedManifestRootByDefault();
+await assertIgnoresForgejoGithubTokenForRemoteManifestFetches();
 console.log('github action runtime guard regression checks passed');

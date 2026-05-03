@@ -614,6 +614,265 @@ test_install_script_no_hardcoded_container_names() {
 }
 
 # ============================================
+# Unit Tests: installer forge source behavior
+# ============================================
+
+setup_forge_installer_fixture() {
+    local name="$1"
+
+    FORGE_TEST_DIR="$TEST_TMP_DIR/forge-$name"
+    FORGE_INSTALL_DIR="$FORGE_TEST_DIR/install"
+    FORGE_FAKEBIN="$FORGE_TEST_DIR/fakebin"
+    FORGE_STATE_DIR="$FORGE_TEST_DIR/state"
+    FORGE_RUN_DIR="$FORGE_TEST_DIR/run"
+
+    mkdir -p "$FORGE_INSTALL_DIR/.git" "$FORGE_INSTALL_DIR/scripts" "$FORGE_FAKEBIN" "$FORGE_STATE_DIR" "$FORGE_RUN_DIR"
+    printf '%s\n' "github" > "$FORGE_STATE_DIR/remote-source"
+    : > "$FORGE_STATE_DIR/git.log"
+
+    cat > "$FORGE_INSTALL_DIR/scripts/setup.sh" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+    chmod +x "$FORGE_INSTALL_DIR/scripts/setup.sh"
+
+    cat > "$FORGE_FAKEBIN/docker" <<'EOF'
+#!/bin/bash
+if [ "$1" = "volume" ] && [ "$2" = "ls" ]; then
+    exit 0
+fi
+exit 0
+EOF
+    chmod +x "$FORGE_FAKEBIN/docker"
+
+    cat > "$FORGE_FAKEBIN/curl" <<'EOF'
+#!/bin/bash
+url="${!#}"
+
+if [[ " $* " == *" -w "* ]]; then
+    if [[ "$url" == *"api.github.com/repos/nekoguntai-castle/sanctuary" ]]; then
+        printf '%s' "${FAKE_CURL_GITHUB_PROBE:-200}"
+    else
+        printf '%s' "${FAKE_CURL_CODEBERG_PROBE:-200}"
+    fi
+    exit 0
+fi
+
+if [[ "$url" == *"codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary/releases/latest" ]]; then
+    if [ "${FAKE_CURL_CODEBERG_RELEASE:-v9.9.9}" = "fail" ]; then
+        exit 22
+    fi
+    printf '{"tag_name":"%s"}\n' "${FAKE_CURL_CODEBERG_RELEASE:-v9.9.9}"
+    exit 0
+fi
+
+if [[ "$url" == *"api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest" ]]; then
+    if [ "${FAKE_CURL_GITHUB_RELEASE:-v9.9.9}" = "fail" ]; then
+        exit 22
+    fi
+    printf '{"tag_name":"%s"}\n' "${FAKE_CURL_GITHUB_RELEASE:-v9.9.9}"
+    exit 0
+fi
+
+exit 22
+EOF
+    chmod +x "$FORGE_FAKEBIN/curl"
+
+    cat > "$FORGE_FAKEBIN/git" <<'EOF'
+#!/bin/bash
+if [ "$1" = "-C" ]; then
+    shift 2
+fi
+
+state_dir="${FAKE_FORGE_STATE_DIR:?missing FAKE_FORGE_STATE_DIR}"
+remote_file="$state_dir/remote-source"
+log_file="$state_dir/git.log"
+
+source_from_url() {
+    case "$1" in
+        *codeberg.org*) echo "codeberg" ;;
+        *github.com*) echo "github" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+url_for_source() {
+    case "$1" in
+        codeberg) echo "https://codeberg.org/nekoguntai-castle/sanctuary.git" ;;
+        github) echo "https://github.com/nekoguntai-castle/sanctuary.git" ;;
+        *) echo "https://unknown.invalid/sanctuary.git" ;;
+    esac
+}
+
+current_source="$(cat "$remote_file" 2>/dev/null || echo github)"
+
+case "$1" in
+    config)
+        if [ "$2" = "--get" ] && [ "$3" = "remote.origin.url" ]; then
+            url_for_source "$current_source"
+            exit 0
+        fi
+        ;;
+    describe)
+        echo "v0.8.50"
+        exit 0
+        ;;
+    rev-parse)
+        echo "abcdef0"
+        exit 0
+        ;;
+    remote)
+        case "$2" in
+            get-url)
+                url_for_source "$current_source"
+                exit 0
+                ;;
+            set-url|add)
+                next_source="$(source_from_url "$4")"
+                echo "$next_source" > "$remote_file"
+                echo "remote-$2:$next_source" >> "$log_file"
+                exit 0
+                ;;
+        esac
+        ;;
+    fetch)
+        current_source="$(cat "$remote_file" 2>/dev/null || echo github)"
+        echo "fetch:$current_source" >> "$log_file"
+        if [ "$current_source" = "codeberg" ] && [ "${FAKE_GIT_FETCH_FAIL_CODEBERG:-false}" = "true" ]; then
+            exit 1
+        fi
+        if [ "$current_source" = "github" ] && [ "${FAKE_GIT_FETCH_FAIL_GITHUB:-false}" = "true" ]; then
+            exit 1
+        fi
+        exit 0
+        ;;
+    checkout)
+        echo "checkout:$2" >> "$log_file"
+        exit 0
+        ;;
+    ls-remote)
+        url="${!#}"
+        source="$(source_from_url "$url")"
+        echo "ls-remote:$source" >> "$log_file"
+        if [ "$source" = "codeberg" ] && [ "${FAKE_GIT_LS_REMOTE_FAIL_CODEBERG:-false}" = "true" ]; then
+            exit 1
+        fi
+        if [ "$source" = "github" ] && [ "${FAKE_GIT_LS_REMOTE_FAIL_GITHUB:-false}" = "true" ]; then
+            exit 1
+        fi
+        printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/tags/v9.9.9\n'
+        exit 0
+        ;;
+    clone)
+        url="$2"
+        target="$3"
+        source="$(source_from_url "$url")"
+        echo "clone:$source" >> "$log_file"
+        if [ "$source" = "codeberg" ] && [ "${FAKE_GIT_CLONE_FAIL_CODEBERG:-false}" = "true" ]; then
+            exit 1
+        fi
+        if [ "$source" = "github" ] && [ "${FAKE_GIT_CLONE_FAIL_GITHUB:-false}" = "true" ]; then
+            exit 1
+        fi
+        mkdir -p "$target/.git" "$target/scripts"
+        printf '#!/bin/bash\nexit 0\n' > "$target/scripts/setup.sh"
+        chmod +x "$target/scripts/setup.sh"
+        exit 0
+        ;;
+esac
+
+echo "unexpected git command: $*" >> "$log_file"
+exit 1
+EOF
+    chmod +x "$FORGE_FAKEBIN/git"
+}
+
+run_forge_installer() {
+    local output_file="$1"
+    shift
+
+    (
+        cd "$FORGE_RUN_DIR"
+        PATH="$FORGE_FAKEBIN:$PATH" \
+            FAKE_FORGE_STATE_DIR="$FORGE_STATE_DIR" \
+            FAKE_CURL_CODEBERG_PROBE="${FAKE_CURL_CODEBERG_PROBE:-200}" \
+            FAKE_CURL_GITHUB_PROBE="${FAKE_CURL_GITHUB_PROBE:-200}" \
+            FAKE_CURL_CODEBERG_RELEASE="${FAKE_CURL_CODEBERG_RELEASE:-v9.9.9}" \
+            FAKE_CURL_GITHUB_RELEASE="${FAKE_CURL_GITHUB_RELEASE:-v9.9.9}" \
+            FAKE_GIT_FETCH_FAIL_CODEBERG="${FAKE_GIT_FETCH_FAIL_CODEBERG:-false}" \
+            FAKE_GIT_FETCH_FAIL_GITHUB="${FAKE_GIT_FETCH_FAIL_GITHUB:-false}" \
+            FAKE_GIT_LS_REMOTE_FAIL_CODEBERG="${FAKE_GIT_LS_REMOTE_FAIL_CODEBERG:-false}" \
+            FAKE_GIT_LS_REMOTE_FAIL_GITHUB="${FAKE_GIT_LS_REMOTE_FAIL_GITHUB:-false}" \
+            FAKE_GIT_CLONE_FAIL_CODEBERG="${FAKE_GIT_CLONE_FAIL_CODEBERG:-false}" \
+            FAKE_GIT_CLONE_FAIL_GITHUB="${FAKE_GIT_CLONE_FAIL_GITHUB:-false}" \
+            SANCTUARY_DIR="$FORGE_INSTALL_DIR" \
+            SANCTUARY_ASSUME_YES=true \
+            SANCTUARY_SKIP_UPGRADE_BACKUP=true \
+            SANCTUARY_ENV_FILE="$FORGE_STATE_DIR/runtime.env" \
+            bash "$INSTALL_SCRIPT" "$@" > "$output_file" 2>&1
+    )
+}
+
+test_explicit_codeberg_rewrites_stale_github_origin_without_prompt() {
+    setup_forge_installer_fixture "explicit-codeberg"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    run_forge_installer "$output" --source codeberg || {
+        cat "$output"
+        return 1
+    }
+
+    local log
+    log="$(cat "$FORGE_STATE_DIR/git.log")"
+    assert_contains "$log" "remote-set-url:codeberg" "explicit Codeberg should rewrite stale origin before fetch" || return 1
+    assert_contains "$log" "fetch:codeberg" "explicit Codeberg should fetch from Codeberg" || return 1
+    if echo "$log" | grep -q "fetch:github"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} explicit Codeberg should not fetch from GitHub"
+        echo "$log"
+        return 1
+    fi
+}
+
+test_explicit_source_failure_does_not_fall_back() {
+    setup_forge_installer_fixture "explicit-no-fallback"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    if FAKE_GIT_FETCH_FAIL_CODEBERG=true run_forge_installer "$output" --source codeberg; then
+        echo -e "${RED}ASSERTION FAILED:${NC} explicit Codeberg fetch failure should fail install"
+        cat "$output"
+        return 1
+    fi
+
+    local log
+    log="$(cat "$FORGE_STATE_DIR/git.log")"
+    assert_contains "$log" "fetch:codeberg" "explicit Codeberg should attempt Codeberg fetch" || return 1
+    assert_contains "$(cat "$output")" "Explicit --source codeberg" "failure should explain no alternate forge was tried" || return 1
+    if echo "$log" | grep -q "fetch:github"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} explicit source failure should not fall back to GitHub"
+        echo "$log"
+        return 1
+    fi
+}
+
+test_auto_source_fetch_failure_falls_back_prompt_free() {
+    setup_forge_installer_fixture "auto-fallback"
+    printf '%s\n' "codeberg" > "$FORGE_STATE_DIR/remote-source"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    FAKE_GIT_FETCH_FAIL_CODEBERG=true run_forge_installer "$output" || {
+        cat "$output"
+        return 1
+    }
+
+    local log
+    log="$(cat "$FORGE_STATE_DIR/git.log")"
+    assert_contains "$log" "fetch:codeberg" "automatic mode should try the detected source first" || return 1
+    assert_contains "$log" "remote-set-url:github" "automatic mode should rewrite origin for fallback source" || return 1
+    assert_contains "$log" "fetch:github" "automatic mode should fetch from fallback source" || return 1
+    assert_contains "$(cat "$output")" "Trying GitHub" "automatic fallback should be visible to the operator"
+}
+
+# ============================================
 # Unit Tests: start.sh file structure
 # ============================================
 
@@ -1242,6 +1501,12 @@ main() {
     run_test "install script has silent openssl check" test_install_script_has_silent_openssl_check
     run_test "install script uses has_openssl for capture" test_install_script_uses_has_openssl_for_capture
     run_test "install script no hardcoded container names" test_install_script_no_hardcoded_container_names
+    echo ""
+
+    echo -e "${YELLOW}Test Suite: Installer Forge Source Behavior${NC}"
+    run_test "explicit Codeberg rewrites stale GitHub origin" test_explicit_codeberg_rewrites_stale_github_origin_without_prompt
+    run_test "explicit source failure does not fall back" test_explicit_source_failure_does_not_fall_back
+    run_test "automatic source fetch failure falls back" test_auto_source_fetch_failure_falls_back_prompt_free
     echo ""
 
     echo -e "${YELLOW}Test Suite: start.sh File Structure${NC}"

@@ -70,7 +70,7 @@ export function registerAiStatusContracts() {
     (aiService.getConfigStatus as Mock).mockResolvedValue({
       enabled: true,
       configured: false,
-      endpoint: 'http://10.114.123.214:1234',
+      endpoint: 'http://studio.local:1234',
     });
 
     const response = await request(app)
@@ -81,7 +81,7 @@ export function registerAiStatusContracts() {
     expect(response.body.enabled).toBe(true);
     expect(response.body.configured).toBe(false);
     expect(response.body.available).toBe(false);
-    expect(response.body.endpoint).toBe('http://10.114.123.214:1234');
+    expect(response.body.endpoint).toBe('http://studio.local:1234');
     expect(response.body.message).toBe('AI provider is not configured');
     expect(aiService.checkHealth).not.toHaveBeenCalled();
   });
@@ -169,7 +169,7 @@ export function registerAiStatusContracts() {
     (aiService.getConfigStatus as Mock).mockResolvedValue({
       enabled: true,
       configured: false,
-      endpoint: 'http://10.114.123.214:1234',
+      endpoint: 'http://studio.local:1234',
     });
 
     const response = await request(app)
@@ -183,7 +183,7 @@ export function registerAiStatusContracts() {
       enabled: true,
       configured: false,
       available: false,
-      endpoint: 'http://10.114.123.214:1234',
+      endpoint: 'http://studio.local:1234',
       message: 'AI provider is not configured',
     });
     expect(aiService.checkHealth).not.toHaveBeenCalled();

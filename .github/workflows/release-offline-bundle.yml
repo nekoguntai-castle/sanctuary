@@ -47,7 +47,7 @@ jobs:
           echo "bundle=sanctuary-offline-${TAG}-linux-amd64.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: Checkout at tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ steps.tag.outputs.tag }}
           fetch-depth: 0
@@ -92,7 +92,7 @@ jobs:
           sha256sum "$BUNDLE" | tee "${BUNDLE}.sha256"
 
       - name: Upload as workflow artifact (debug / fallback)
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: ${{ steps.tag.outputs.bundle }}
           path: |

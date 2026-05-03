@@ -1,0 +1,4 @@
+name: upload-artifact
+runs:
+  using: node24
+  main: dist/upload/index.js

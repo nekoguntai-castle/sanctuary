@@ -65,8 +65,8 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group' }}
+  group: ${{ github.event.pull_request.number || github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'merge_group') }}
 
 env:
   NODE_VERSION: '24'
@@ -246,14 +246,20 @@ jobs:
       - name: Generate Prisma client
         run: ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend prisma generate" npx prisma generate
 
+      - name: Resolve Postgres service host
+        run: |
+          if getent hosts postgres >/dev/null 2>&1; then
+            database_host=postgres
+          else
+            database_host=localhost
+          fi
+          echo "DATABASE_URL=postgresql://test:test@${database_host}:5432/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+
       - name: Run database migrations
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
         run: ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend prisma migrate" npx prisma migrate deploy
 
       - name: Run related backend tests
         env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
@@ -303,14 +309,20 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Resolve Postgres service host
+        run: |
+          if getent hosts postgres >/dev/null 2>&1; then
+            database_host=postgres
+          else
+            database_host=localhost
+          fi
+          echo "DATABASE_URL=postgresql://test:test@${database_host}:5432/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+
       - name: Run database migrations
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
         run: npx prisma migrate deploy
 
       - name: Run integration smoke tests
         env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
@@ -351,7 +363,7 @@ jobs:
 
       - name: Upload critical mutation report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: critical-mutation-report-pr
           path: server/reports/mutation/
@@ -505,7 +517,7 @@ jobs:
 
       - name: Upload quick render Playwright report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: playwright-report-quick-render
           path: playwright-report/
@@ -514,7 +526,7 @@ jobs:
 
       - name: Upload quick render Playwright results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: playwright-results-quick-render
           path: test-results/
@@ -712,7 +724,7 @@ jobs:
 
       - name: Upload backend coverage
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: backend-coverage
           path: |
@@ -962,7 +974,7 @@ jobs:
 
       - name: Upload frontend coverage blob
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: frontend-coverage-blob-${{ matrix.shard }}
           path: .vitest-reports/blob-${{ matrix.shard }}-2.json
@@ -1013,7 +1025,7 @@ jobs:
 
       - name: Upload frontend coverage
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: frontend-coverage
           path: coverage/
@@ -1094,7 +1106,7 @@ jobs:
 
       - name: Upload gateway coverage
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: gateway-coverage
           path: gateway/coverage/
@@ -1172,7 +1184,7 @@ jobs:
 
       - name: Upload critical mutation report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: critical-mutation-report
           path: server/reports/mutation/
@@ -1316,7 +1328,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: playwright-report-browser-${{ matrix.group }}
           path: playwright-report/
@@ -1324,7 +1336,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: playwright-results-browser-${{ matrix.group }}
           path: test-results/
@@ -1381,7 +1393,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: playwright-report-render
           path: playwright-report/
@@ -1389,7 +1401,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: playwright-results-render
           path: test-results/

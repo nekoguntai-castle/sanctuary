@@ -103,14 +103,14 @@ export function registerAISettingsSaveConfigurationContracts() {
     it('should allow saving an endpoint before a model is selected', async () => {
       mockGetSystemSettings.mockResolvedValue({
         aiEnabled: true,
-        aiEndpoint: 'http://10.114.123.214:1234',
+        aiEndpoint: 'http://studio.local:1234',
         aiModel: '',
         aiProviderProfiles: [
           {
             id: 'lm-studio',
             name: 'LM Studio',
             providerType: 'openai-compatible',
-            endpoint: 'http://10.114.123.214:1234',
+            endpoint: 'http://studio.local:1234',
             model: '',
             capabilities: { chat: true, toolCalls: true, strictJson: true },
           },
@@ -126,7 +126,7 @@ export function registerAISettingsSaveConfigurationContracts() {
       await waitFor(() => {
         expect(mockUpdateSystemSettings).toHaveBeenCalledWith(
           expect.objectContaining({
-            aiEndpoint: 'http://10.114.123.214:1234',
+            aiEndpoint: 'http://studio.local:1234',
             aiModel: '',
             aiActiveProviderProfileId: 'lm-studio',
           }),

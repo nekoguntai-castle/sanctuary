@@ -70,6 +70,6 @@ scripts/offline/keys/*-private.pem
 scripts/offline/keys/*.priv
 scripts/offline/keys/*.key
 
-# forgejo-runner registration state — never commit (contains runner token,
+# Local CI runner registration state — never commit (contains runner token,
 # even if for a deleted runner instance)
 .runner

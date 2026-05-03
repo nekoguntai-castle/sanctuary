@@ -91,7 +91,7 @@ is_both_image_file() {
 
 is_frontend_image_file() {
   case "$1" in
-    App.tsx|index.html|index.tsx|src/*|components/*|contexts/*|hooks/*|providers/*|services/*|themes/*|utils/*|Dockerfile|package.json|package-lock.json|tsconfig*.json|vite*.ts)
+    App.tsx|index.html|index.tsx|src/*|components/*|contexts/*|hooks/*|providers/*|services/*|themes/*|utils/*|Dockerfile|package-lock.json|tsconfig*.json|vite*.ts)
       return 0
       ;;
     docker/nginx/nginx.conf|docker/nginx/default.conf.template|docker/nginx/default-ssl.conf.template|docker/nginx/docker-entrypoint.sh)

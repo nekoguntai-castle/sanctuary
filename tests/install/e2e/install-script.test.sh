@@ -29,6 +29,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # Source helpers
 source "$SCRIPT_DIR/../utils/helpers.sh"
+source "$SCRIPT_DIR/../utils/collect-upgrade-artifacts.sh"
 
 # ============================================
 # Configuration
@@ -59,11 +60,15 @@ done
 # Test configuration
 HTTPS_PORT="${HTTPS_PORT:-8443}"
 HTTP_PORT="${HTTP_PORT:-8080}"
-API_BASE_URL="https://localhost:${HTTPS_PORT}"
+TEST_HTTP_HOST=$(default_install_test_host)
+API_BASE_URL="https://${TEST_HTTP_HOST}:${HTTPS_PORT}"
 TEST_ID=$(generate_test_run_id)
-TEST_RUNTIME_DIR="${TEST_RUNTIME_DIR:-/tmp/sanctuary-install-runtime-${TEST_ID}}"
+TEST_ROOT=$(default_install_test_root "$PROJECT_ROOT")
+TEST_RUNTIME_DIR="${TEST_RUNTIME_DIR:-$TEST_ROOT/sanctuary-install-runtime-${TEST_ID}}"
+TEST_DOCKER_RUNTIME_DIR=$(docker_visible_path "$TEST_RUNTIME_DIR")
 TEST_ENV_FILE="$TEST_RUNTIME_DIR/sanctuary.env"
 TEST_SSL_DIR="$TEST_RUNTIME_DIR/ssl"
+TEST_COMPOSE_SSL_DIR="${SANCTUARY_COMPOSE_SSL_DIR:-$TEST_DOCKER_RUNTIME_DIR/ssl}"
 COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
 
 # Test state
@@ -83,6 +88,7 @@ load_test_runtime_env() {
     set +a
     export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
     export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
+    export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
 }
 
 # ============================================
@@ -122,6 +128,7 @@ setup() {
     log_info "  Project Root:  $PROJECT_ROOT"
     log_info "  Runtime Dir:   $TEST_RUNTIME_DIR"
     log_info "  HTTPS Port:    $HTTPS_PORT"
+    log_info "  HTTP Host:     $TEST_HTTP_HOST"
     log_info "  API Base URL:  $API_BASE_URL"
 
     # Verify prerequisites
@@ -216,15 +223,18 @@ test_install_script_creates_env() {
         SANCTUARY_RUNTIME_DIR="$TEST_RUNTIME_DIR" \
         SANCTUARY_ENV_FILE="$TEST_ENV_FILE" \
         SANCTUARY_SSL_DIR="$TEST_SSL_DIR" \
+        SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR" \
         SKIP_GIT_CHECKOUT="true" \
         bash -x "$PROJECT_ROOT/install.sh" 2>&1) || {
+        local redacted_output
+        redacted_output="$(printf '%s\n' "$install_output" | redact_stream)"
         log_error "install.sh failed to run"
-        log_error "Output: $install_output"
+        log_error "Output: $redacted_output"
         return 1
     }
 
     if [ "$VERBOSE" = "true" ]; then
-        echo "$install_output"
+        printf '%s\n' "$install_output" | redact_stream
     fi
 
     # Verify runtime env file was created outside the repo

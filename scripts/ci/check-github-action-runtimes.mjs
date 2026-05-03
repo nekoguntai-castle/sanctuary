@@ -4,14 +4,21 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_BANNED_RUNTIMES = ['node12', 'node16', 'node20'];
+const DEFAULT_ALLOWED_RUNTIME_ACTIONS = [
+  'https://data.forgejo.org/forgejo/upload-artifact@v4',
+  'https://data.forgejo.org/forgejo/download-artifact@v4',
+];
+const DEFAULT_FETCH_TIMEOUT_MS = 10000;
+const DEFAULT_MANIFEST_ROOT = 'scripts/ci/action-runtime-manifests';
 const ACTION_MANIFEST_NAMES = ['action.yml', 'action.yaml'];
 
 function parseArgs(argv) {
   const options = {
     rootDir: process.cwd(),
     workflowDir: '.github/workflows',
-    manifestRoot: '',
+    manifestRoot: undefined,
     bannedRuntimes: DEFAULT_BANNED_RUNTIMES,
+    allowedRuntimeActions: DEFAULT_ALLOWED_RUNTIME_ACTIONS,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -29,6 +36,12 @@ function parseArgs(argv) {
       options.bannedRuntimes = readOptionValue(argv, index)
         .split(',')
         .map((runtime) => runtime.trim())
+        .filter(Boolean);
+      index += 1;
+    } else if (arg === '--allowed-runtime-actions') {
+      options.allowedRuntimeActions = readOptionValue(argv, index)
+        .split(',')
+        .map((action) => action.trim())
         .filter(Boolean);
       index += 1;
     } else {
@@ -107,6 +120,9 @@ function parseUsesSpec(spec) {
   if (spec.startsWith('docker://')) {
     return { kind: 'skip', reason: 'docker action', spec };
   }
+  if (/^https?:\/\//.test(spec)) {
+    return { kind: 'absolute', spec };
+  }
   if (spec.startsWith('./')) {
     return { kind: 'local', actionPath: spec, spec };
   }
@@ -144,6 +160,10 @@ function manifestCacheKey(action) {
     return `local:${action.actionPath}`;
   }
   return `remote:${action.owner}/${action.repo}/${action.ref}/${action.actionPath}`;
+}
+
+function isAllowedRuntimeAction(action, options) {
+  return options.allowedRuntimeActions.includes(action.spec);
 }
 
 function remoteFixtureDir(manifestRoot, action) {
@@ -194,13 +214,14 @@ async function fetchGitHubManifest(action, manifestName) {
     Accept: 'application/vnd.github.raw',
     'User-Agent': 'sanctuary-action-runtime-check',
   };
-  if (process.env.GITHUB_TOKEN) {
-    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const token = githubManifestToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
   let response;
   try {
-    response = await fetch(url, { headers });
+    response = await fetchWithTimeout(url, { headers });
   } catch (error) {
     const cause = error.cause?.message ?? error.message;
     throw new Error(`network error while fetching ${action.spec}: ${cause}`);
@@ -215,6 +236,80 @@ async function fetchGitHubManifest(action, manifestName) {
   return await response.text();
 }
 
+async function fetchForgejoManifest(action, manifestName) {
+  const actionPath = [action.actionPath, manifestName].filter(Boolean).join('/');
+  const encodedPath = actionPath.split('/').map(encodeURIComponent).join('/');
+  const baseUrl = process.env.FORGEJO_ACTIONS_URL || 'https://data.forgejo.org';
+  const url = new URL(
+    `/api/v1/repos/${encodeURIComponent(action.owner)}/${encodeURIComponent(
+      action.repo,
+    )}/raw/${encodedPath}`,
+    baseUrl,
+  );
+  url.searchParams.set('ref', action.ref);
+
+  let response;
+  try {
+    response = await fetchWithTimeout(url, {
+      headers: {
+        Accept: 'text/plain',
+        'User-Agent': 'sanctuary-action-runtime-check',
+      },
+    });
+  } catch (error) {
+    const cause = error.cause?.message ?? error.message;
+    throw new Error(`network error while fetching ${action.spec} from Forgejo mirror: ${cause}`);
+  }
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(
+      `${response.status} ${response.statusText} while fetching ${action.spec} from Forgejo mirror`,
+    );
+  }
+
+  return await response.text();
+}
+
+async function fetchWithTimeout(url, options) {
+  const timeoutMs = Number.parseInt(
+    process.env.ACTION_RUNTIME_MANIFEST_FETCH_TIMEOUT_MS || `${DEFAULT_FETCH_TIMEOUT_MS}`,
+    10,
+  );
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return await fetch(url, options);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error(`timeout after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function githubManifestToken() {
+  const explicitToken = process.env.GITHUB_MANIFEST_TOKEN;
+  if (explicitToken) {
+    return explicitToken;
+  }
+
+  const serverUrl = process.env.GITHUB_SERVER_URL || '';
+  if (serverUrl && !/^https:\/\/github\.com\/?$/i.test(serverUrl)) {
+    return '';
+  }
+
+  return process.env.GITHUB_TOKEN || '';
+}
+
 async function readRemoteManifest(action, manifestRoot) {
   if (manifestRoot) {
     const manifestPath = findManifestInDir(remoteFixtureDir(manifestRoot, action));
@@ -227,14 +322,33 @@ async function readRemoteManifest(action, manifestRoot) {
     };
   }
 
+  const fetchers = preferGitHubManifests()
+    ? [fetchGitHubManifest, fetchForgejoManifest]
+    : [fetchForgejoManifest, fetchGitHubManifest];
+  const errors = [];
+
   for (const manifestName of ACTION_MANIFEST_NAMES) {
-    const text = await fetchGitHubManifest(action, manifestName);
-    if (text) {
-      return { source: `${action.spec}/${manifestName}`, text };
+    for (const fetchManifest of fetchers) {
+      try {
+        const text = await fetchManifest(action, manifestName);
+        if (text) {
+          return { source: `${action.spec}/${manifestName}`, text };
+        }
+      } catch (error) {
+        errors.push(error.message);
+      }
     }
   }
 
+  if (errors.length > 0) {
+    throw new Error(errors.join('; '));
+  }
+
   throw new Error(`missing remote action manifest for ${action.spec}`);
+}
+
+function preferGitHubManifests() {
+  return /^https:\/\/github\.com\/?$/i.test(process.env.GITHUB_SERVER_URL || '');
 }
 
 async function readManifest(action, options) {
@@ -251,6 +365,16 @@ function formatChain(chain, action, manifest) {
 
 async function inspectAction(action, options, state, chain = []) {
   if (action.kind === 'skip') {
+    return;
+  }
+  if (action.kind === 'absolute') {
+    if (isAllowedRuntimeAction(action, options)) {
+      return;
+    }
+    addUniqueError(
+      state,
+      `${action.spec}: absolute Forgejo action URL must be explicitly allowed by --allowed-runtime-actions`,
+    );
     return;
   }
   if (action.kind === 'unresolved') {
@@ -283,7 +407,7 @@ async function inspectAction(action, options, state, chain = []) {
     }
 
     const runtime = extractRuntime(manifest.text);
-    if (options.bannedRuntimes.includes(runtime)) {
+    if (options.bannedRuntimes.includes(runtime) && !isAllowedRuntimeAction(action, options)) {
       state.findings.push({
         runtime,
         chain: formatChain(chain, action, manifest),
@@ -328,11 +452,17 @@ async function inspectWorkflow(filePath, options, state) {
 }
 
 export async function checkActionRuntimes(rawOptions = {}) {
+  const rootDir = path.resolve(rawOptions.rootDir ?? process.cwd());
+  const manifestRoot =
+    rawOptions.manifestRoot !== undefined
+      ? rawOptions.manifestRoot
+      : defaultManifestRoot(rootDir);
   const options = {
-    rootDir: path.resolve(rawOptions.rootDir ?? process.cwd()),
+    rootDir,
     workflowDir: rawOptions.workflowDir ?? '.github/workflows',
-    manifestRoot: rawOptions.manifestRoot ? path.resolve(rawOptions.manifestRoot) : '',
+    manifestRoot: manifestRoot ? path.resolve(rootDir, manifestRoot) : '',
     bannedRuntimes: rawOptions.bannedRuntimes ?? DEFAULT_BANNED_RUNTIMES,
+    allowedRuntimeActions: rawOptions.allowedRuntimeActions ?? DEFAULT_ALLOWED_RUNTIME_ACTIONS,
   };
   const state = {
     errors: [],
@@ -352,6 +482,14 @@ export async function checkActionRuntimes(rawOptions = {}) {
     findings: state.findings,
     checkedManifests: state.manifestCache.size,
   };
+}
+
+function defaultManifestRoot(rootDir) {
+  const manifestRoot = path.join(rootDir, DEFAULT_MANIFEST_ROOT);
+  if (existsSync(manifestRoot) && statSync(manifestRoot).isDirectory()) {
+    return DEFAULT_MANIFEST_ROOT;
+  }
+  return '';
 }
 
 function printResult(result) {

@@ -50,7 +50,8 @@ DB_TIMEOUT=$((60 * TIMEOUT_MULTIPLIER))
 
 # Test configuration
 HTTPS_PORT="${HTTPS_PORT:-8443}"
-API_BASE_URL="https://localhost:${HTTPS_PORT}"
+TEST_HTTP_HOST=$(default_install_test_host)
+API_BASE_URL="https://${TEST_HTTP_HOST}:${HTTPS_PORT}"
 
 # Test counters
 TESTS_RUN=0
@@ -510,7 +511,7 @@ test_gateway_port_accessible() {
     log_info "Testing gateway port accessibility..."
 
     local gateway_port="${GATEWAY_PORT:-4000}"
-    local status_code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${gateway_port}/health" 2>/dev/null || echo "000")
+    local status_code=$(curl -s -o /dev/null -w "%{http_code}" "http://${TEST_HTTP_HOST}:${gateway_port}/health" 2>/dev/null || echo "000")
 
     if [ "$status_code" = "200" ]; then
         log_success "Gateway port $gateway_port is accessible"

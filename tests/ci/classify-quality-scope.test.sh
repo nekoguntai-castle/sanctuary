@@ -96,9 +96,9 @@ main() {
   assert_exact_output "$output_file" "run_ci_classifier_tests" "false"
 
   base_sha="$head_sha"
-  printf 'name: CodeQL\non: pull_request\njobs: {}\n' > "$repo_dir/.github/workflows/codeql.yml"
-  git -C "$repo_dir" add .github/workflows/codeql.yml
-  git -C "$repo_dir" commit -qm "codeql workflow change"
+  printf 'name: Code Quality\non: pull_request\njobs: {}\n' > "$repo_dir/.github/workflows/quality.yml"
+  git -C "$repo_dir" add .github/workflows/quality.yml
+  git -C "$repo_dir" commit -qm "quality workflow change"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"

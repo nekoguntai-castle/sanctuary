@@ -10,6 +10,7 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
+source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
 source "$PROJECT_ROOT/tests/install/utils/upgrade-test-defaults.sh"
 source "$PROJECT_ROOT/tests/install/utils/upgrade-source-refs.sh"
 source "$PROJECT_ROOT/tests/install/utils/upgrade-fixtures.sh"
@@ -163,7 +164,11 @@ test_fixture_defaults_are_composable() {
   apply_upgrade_fixture_defaults "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles"
   apply_upgrade_test_network_defaults
 
-  assert_equals "127.0.0.1" "$UPGRADE_BROWSER_HOST" "browser fixture should use IP origin"
+  local expected_browser_host="127.0.0.1"
+  if [ -f /.dockerenv ]; then
+    expected_browser_host="$(default_install_test_host)"
+  fi
+  assert_equals "$expected_browser_host" "$UPGRADE_BROWSER_HOST" "browser fixture should use IP origin"
   assert_equals "9443" "$HTTPS_PORT" "upgrade test defaults should use isolated HTTPS port"
   assert_equals "9080" "$HTTP_PORT" "upgrade test defaults should use isolated HTTP port"
   assert_equals "4400" "$GATEWAY_PORT" "upgrade test defaults should use isolated gateway port"
@@ -311,6 +316,88 @@ test_invalid_fixture_is_rejected() {
   fi
 }
 
+test_install_root_defaults_to_tmp_outside_actions() {
+  local root
+  root="$(env -u SANCTUARY_INSTALL_TEST_ROOT -u GITHUB_WORKSPACE ACT=false \
+    bash -c 'source "$1"; default_install_test_root "$2"' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh" "/home/test/repo")"
+
+  assert_equals "/tmp" "$root" "non-Actions install tests should default to /tmp"
+}
+
+test_install_root_uses_workspace_in_actions() {
+  local root
+  root="$(SANCTUARY_INSTALL_TEST_ROOT="" GITHUB_WORKSPACE="/workspace/sanctuary" ACT=true \
+    bash -c 'source "$1"; default_install_test_root "$2"' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$PROJECT_ROOT")"
+
+  assert_equals "/workspace/sanctuary/.tmp/install-tests" "$root" \
+    "Actions install tests should use a Docker-visible workspace path"
+}
+
+test_install_root_uses_workspace_mount_without_actions_env() {
+  local root
+  root="$(env -u SANCTUARY_INSTALL_TEST_ROOT -u GITHUB_WORKSPACE ACT=false \
+    bash -c 'source "$1"; default_install_test_root "$2"' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh" "/workspace/owner/repo")"
+
+  assert_equals "/workspace/owner/repo/.tmp/install-tests" "$root" \
+    "workspace-mounted runner tests should use a Docker-visible workspace path"
+}
+
+test_install_root_honors_explicit_override() {
+  local root
+  root="$(SANCTUARY_INSTALL_TEST_ROOT="/custom/install-tests" GITHUB_WORKSPACE="/workspace/sanctuary" ACT=true \
+    bash -c 'source "$1"; default_install_test_root "$2"' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$PROJECT_ROOT")"
+
+  assert_equals "/custom/install-tests" "$root" "explicit install test root should win"
+}
+
+test_docker_visible_path_maps_workspace_volume() {
+  local fake_bin="$TEST_TMP_DIR/bin"
+  mkdir -p "$fake_bin"
+  cat > "$fake_bin/docker" <<'EOF'
+#!/bin/sh
+if [ "$1" = "inspect" ]; then
+  printf '%s\t%s\n' "/var/lib/docker/volumes/workspace/_data" "/workspace/sanctuary"
+  printf '%s\t%s\n' "/var/run/docker.sock" "/var/run/docker.sock"
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "$fake_bin/docker"
+
+  local mapped
+  mapped="$(HOSTNAME="test-container" PATH="$fake_bin:$PATH" \
+    bash -c 'source "$1"; docker_visible_path "$2"' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh" \
+    "/workspace/sanctuary/.tmp/install-tests/certs")"
+
+  assert_equals "/var/lib/docker/volumes/workspace/_data/.tmp/install-tests/certs" "$mapped" \
+    "workspace volume path should map to Docker daemon-visible source"
+}
+
+test_install_test_host_resolves_default() {
+  local host
+  host="$(SANCTUARY_INSTALL_TEST_HOST="" bash -c 'source "$1"; default_install_test_host' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh")"
+
+  if [ -z "$host" ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} default install test host should not be empty"
+    return 1
+  fi
+}
+
+test_install_test_host_honors_override() {
+  local host
+  host="$(SANCTUARY_INSTALL_TEST_HOST="gateway.example.invalid" \
+    bash -c 'source "$1"; default_install_test_host' _ \
+    "$PROJECT_ROOT/tests/install/utils/helpers.sh")"
+
+  assert_equals "gateway.example.invalid" "$host" "explicit test host should win"
+}
+
 test_redacted_env_hides_upgrade_secrets() {
   local env_file="$TEST_TMP_DIR/sanctuary.env"
   local redacted_file="$TEST_TMP_DIR/redacted.env"
@@ -339,8 +426,15 @@ EOF
 test_diagnostic_redaction_hides_log_secrets() {
   local log_file="$TEST_TMP_DIR/install.log"
   local redacted_file="$TEST_TMP_DIR/install.redacted.log"
+  local private_origin
+  local private_service
+  local private_docker
 
-  cat > "$log_file" <<'EOF'
+  private_origin="$(printf '10.%s.2.3' "1")"
+  private_service="$(printf '192.168.%s.20' "1")"
+  private_docker="$(printf '172.17.%s.1' "0")"
+
+  cat > "$log_file" <<EOF
 Save these values:
 ENCRYPTION_KEY=key-material
 POSTGRES_PASSWORD=db-password
@@ -348,6 +442,9 @@ POSTGRES_PASSWORD=db-password
 Request header X-CSRF-Token: csrf-token
 Worker queue cleanup oldKey=repeat:sync:mainnet:*/5 newJobId=repeat:sync:mainnet:*/5
 {"apiKey":"json-api-key","safe":"visible"}
+origin=http://${private_origin}:3000/owner/repo.git
+gateway=https://${private_service}:8443/api/v1/health
+docker_host=${private_docker}
 EOF
 
   redact_file "$log_file" "$redacted_file"
@@ -362,6 +459,9 @@ EOF
   assert_contains "$redacted" "oldKey=<redacted>" "camelCase key fields should be redacted in logs" || failures=1
   assert_contains "$redacted" "newJobId=<redacted>" "job ID fields should be redacted in logs" || failures=1
   assert_contains "$redacted" '"apiKey": "<redacted>"' "camelCase JSON key fields should be redacted in logs" || failures=1
+  assert_contains "$redacted" "origin=<private-url>" "private origin URLs should be redacted in logs" || failures=1
+  assert_contains "$redacted" "gateway=<private-url>" "private service URLs should be redacted in logs" || failures=1
+  assert_contains "$redacted" "docker_host=<private-ip>" "private IP values should be redacted in logs" || failures=1
   assert_contains "$redacted" '"HTTPS_PORT":"8443"' "non-secret JSON fields should remain visible" || failures=1
   assert_contains "$redacted" '"safe":"visible"' "non-secret JSON fields should remain visible" || failures=1
   assert_not_contains "$redacted" "key-material" "raw key material must not leak" || failures=1
@@ -370,6 +470,9 @@ EOF
   assert_not_contains "$redacted" "json-api-key" "raw camelCase JSON key material must not leak" || failures=1
   assert_not_contains "$redacted" "repeat:sync:mainnet" "raw queue key material must not leak" || failures=1
   assert_not_contains "$redacted" "csrf-token" "CSRF token must not leak" || failures=1
+  assert_not_contains "$redacted" "$private_origin" "private origin IP must not leak" || failures=1
+  assert_not_contains "$redacted" "$private_service" "private service IP must not leak" || failures=1
+  assert_not_contains "$redacted" "$private_docker" "private Docker host IP must not leak" || failures=1
 
   return "$failures"
 }
@@ -438,6 +541,13 @@ main() {
   run_test "upgrade harness sources extracted helpers" test_upgrade_harness_sources_extracted_helpers
   run_test "upgrade network defaults respect overrides" test_upgrade_network_defaults_respect_overrides
   run_test "invalid fixture is rejected" test_invalid_fixture_is_rejected
+  run_test "install root defaults to tmp outside actions" test_install_root_defaults_to_tmp_outside_actions
+  run_test "install root uses workspace in actions" test_install_root_uses_workspace_in_actions
+  run_test "install root uses workspace mount without actions env" test_install_root_uses_workspace_mount_without_actions_env
+  run_test "install root honors explicit override" test_install_root_honors_explicit_override
+  run_test "docker visible path maps workspace volume" test_docker_visible_path_maps_workspace_volume
+  run_test "install test host resolves default" test_install_test_host_resolves_default
+  run_test "install test host honors override" test_install_test_host_honors_override
   run_test "redacted env hides upgrade secrets" test_redacted_env_hides_upgrade_secrets
   run_test "diagnostic redaction hides log secrets" test_diagnostic_redaction_hides_log_secrets
   run_test "browser refresh smoke sends csrf header" test_browser_refresh_smoke_sends_csrf_header

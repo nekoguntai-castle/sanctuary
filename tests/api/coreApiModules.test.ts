@@ -63,7 +63,7 @@ describe('Core API Modules', () => {
 
       await aiApi.detectOllama();
       await aiApi.detectProvider({
-        endpoint: 'http://10.114.123.214:1234',
+        endpoint: 'http://studio.local:1234',
         preferredProviderType: 'openai-compatible',
       });
       await aiApi.listModels();
@@ -73,7 +73,7 @@ describe('Core API Modules', () => {
 
       expect(mockPost).toHaveBeenCalledWith('/ai/detect-ollama', {});
       expect(mockPost).toHaveBeenCalledWith('/ai/detect-provider', {
-        endpoint: 'http://10.114.123.214:1234',
+        endpoint: 'http://studio.local:1234',
         preferredProviderType: 'openai-compatible',
       });
       expect(mockGet).toHaveBeenCalledWith('/ai/models');

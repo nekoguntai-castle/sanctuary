@@ -1,0 +1,4 @@
+name: login-action
+runs:
+  using: node24
+  main: dist/index.js

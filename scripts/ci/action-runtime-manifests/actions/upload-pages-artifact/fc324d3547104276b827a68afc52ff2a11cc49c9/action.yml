@@ -1,0 +1,5 @@
+name: upload-pages-artifact
+runs:
+  using: composite
+  steps:
+    - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f

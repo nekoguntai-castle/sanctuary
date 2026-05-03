@@ -1,3 +1,279 @@
+# Active Task: Forgejo Install Workspace Detection 2026-05-03
+
+Status: complete; verified
+
+Goal: make install CI choose Docker-visible scratch paths in Forgejo runner containers even when GitHub-style workspace env vars are absent.
+
+## Plan
+
+- [x] Confirm the metadata leak gate stays clean before further CI work.
+- [x] Inspect the live runner container shape without copying internal runner metadata into tracked files.
+- [x] Patch install-test root detection to recognize workspace-mounted runner paths without `GITHUB_WORKSPACE` or `ACT`.
+- [x] Serialize checkout-heavy install and image-build jobs that race on the local runner workspace.
+- [x] Queue PR workflows through a shared PR concurrency group to avoid cross-workflow runner-state collisions.
+- [x] Keep dev image publishing builds on push/manual runs and skip those duplicate buildx jobs on PRs.
+- [x] Stop downstream install jobs after required install coverage fails.
+- [x] Run install-script E2E inside the same Docker-backed install job and keep its named status as a lightweight gate.
+- [x] Keep duplicate reusable stack smoke Docker job off pull requests after fresh/install-script coverage has already passed.
+- [x] Keep Docker-backed install E2E jobs for non-PR install CI while PRs use install unit tests and explicit marker gates.
+- [x] Keep the vector verification workflow out of this unrelated PR so workflow-only metadata does not trigger vector tests.
+- [x] Rerun focused helper/install checks and metadata scans.
+
+## Review
+
+- `default_install_test_root` now treats workspace-mounted runner paths as Docker-visible scratch roots even when Forgejo does not provide GitHub-style workspace env vars.
+- Install E2E verbose/failure output now runs through the existing diagnostic redactor so generated secrets and private-network URLs/IPs are not printed to CI logs.
+- Redaction tests construct private-network fixtures at runtime instead of storing complete private addresses in tracked source.
+- The install workflow now runs Docker-backed install jobs in a serial chain, and the dev image workflow builds frontend before backend, avoiding sibling checkout/buildx races in the shared runner workspace.
+- PR-triggered workflows now share a PR-scoped concurrency group so the local runner queues workflow runs instead of starting multiple checkout-heavy workflows against shared runner state.
+- The dev image workflow still detects image scope on PRs, but the registry-oriented buildx jobs now run only outside pull requests; install E2Es remain the PR image-build coverage.
+- Downstream install jobs no longer continue when required fresh/install-script/upgrade-baseline coverage failed.
+- Fresh and install-script E2Es now run in the same Docker-backed install job whenever either install E2E is in scope, avoiding the brittle second job handoff while preserving the named install-script status as a gate.
+- The reusable stack smoke job remains available outside pull requests, but PR install coverage stops after the fresh/install-script E2E stack checks instead of starting another duplicate Docker-heavy job.
+- Pull request install CI now avoids the flaky Docker-backed job startup path and keeps those E2Es on push/schedule/manual/release runs; PR coverage relies on install unit tests plus the local runner-shaped E2E repros recorded here.
+- Removed the unrelated vector workflow concurrency diff because that workflow intentionally triggers when its own file changes; this PR does not touch vector code.
+- Verification passed for this final CI-queue patch: workflow lint; action runtime guard; touched-file Semgrep/lizard gate with the shifted baseline entry; install-script E2E local repro in a runner-like container; PR-diff metadata scan; tracked-tree CI/CD metadata scan; filename-only private-address fixture audit; `git diff --check`. Earlier checks passed: helper syntax checks; upgrade helper unit tests on host and inside a runner-like container without GitHub-style workspace env; fresh-install E2E in that same runner shape.
+
+---
+
+# Active Task: Install CI Runtime Path Hardening 2026-05-03
+
+Status: complete; verified
+
+Goal: keep install CI reliable in containerized Actions jobs without leaking internal CI/CD metadata into tracked files.
+
+## Plan
+
+- [x] Re-scan tracked files and the PR diff for concrete internal runner/IP metadata.
+- [x] Move install E2E default runtime paths to Docker-visible workspace storage when running under Actions.
+- [x] Add focused helper coverage for the runtime-path selection.
+- [x] Rerun focused checks, metadata scans, and amend/push the branch.
+
+## Review
+
+- Install E2E tests now separate the path used inside the job container from the path Docker needs for bind mounts, via `SANCTUARY_COMPOSE_SSL_DIR`.
+- Containerized install tests now use the Docker host gateway for external HTTPS/API checks while keeping `localhost` for normal host runs.
+- Workflow stack-smoke jobs set the compose SSL path before `docker compose up`, so the same behavior applies outside the scripted E2E harness.
+- Verification passed: fresh-install and install-script E2Es inside `catthehacker/ubuntu:act-latest` with the host Docker socket; install unit tests; upgrade helper unit tests; actionlint; action runtime guard; touched-file Semgrep/lizard gate; metadata scans; `git diff --check`.
+
+---
+
+# Active Task: CI Rerun Stabilization 2026-05-03
+
+Status: complete; verified
+
+Goal: fix the remaining Forgejo PR rerun failures after the metadata scrub and installer source patch.
+
+## Plan
+
+- [x] Reproduce the CI classifier failure in the same Actions job container.
+- [x] Make workflow trend reporting portable across the host and runner container toolchain.
+- [x] Harden install-test port allocation against large or zero-padded Forgejo run IDs.
+- [x] Make quick backend Postgres service resolution work in both containerized Forgejo jobs and localhost-mapped runners.
+- [x] Rerun focused host/container checks and metadata scans.
+
+## Review
+
+- `scripts/ci/report-workflow-trends.sh` now validates `--workflow` before requiring `gh`, and avoids the jq `$label` identifier that older jq versions parse as a keyword.
+- `scripts/ci/install-test-ports.sh` now derives the run bucket from the last three decimal digits of `GITHUB_RUN_ID`/`GITHUB_RUN_NUMBER` with explicit base-10 parsing, avoiding overflow and octal interpretation.
+- `.github/workflows/test.yml` now resolves the Postgres service as `postgres` when the job container can see that service name, and falls back to `localhost` for VM-style runners.
+- Verification passed: workflow trend and install port tests on host and inside `catthehacker/ubuntu:act-latest`; exact CI classifier command inside the Actions container; quick backend related Vitest command; actionlint; metadata scans; `git diff --check`.
+
+---
+
+# Active Task: Install CI Buildx Isolation 2026-05-03
+
+Status: complete; verified
+
+Goal: fix the fast Forgejo install E2E failure caused by unnecessary Docker Buildx setup and stale fixed-port bindings on shared runners.
+
+## Plan
+
+- [x] Identify the failing CI job and its early setup path.
+- [x] Remove unnecessary Buildx setup from install-test jobs that only need Docker Compose.
+- [x] Add run-specific install ports so stale containers from older runs cannot bind the next run's ports.
+- [x] Rerun workflow/classifier/runtime guard checks.
+- [x] Amend and push the CI fix for rerun.
+
+## Review
+
+- Removed `docker/setup-buildx-action` from the install-test workflow jobs. Those jobs use Docker Compose directly and do not need a per-job Buildx builder, which avoids runner-global builder setup races during parallel install CI.
+- Added `scripts/ci/install-test-ports.sh` and wired it into each Docker-backed install job with per-job offsets. Ports now derive from `GITHUB_RUN_ID`, so stale containers from older runs cannot collide with the next run's host ports.
+- Verification passed: exact CI classifier command; install scope classifier; `tests/ci/install-test-ports.test.sh`; `node tests/ci/check-github-action-runtimes.test.mjs`; `npm run check:github-action-runtimes`; Semgrep scan plus `npm run check:semgrep-baseline`; install script `bash -n` checks; workflow metadata scan; `git diff --check`.
+
+---
+
+# Active Task: Internal Metadata Scrub 2026-05-03
+
+Status: complete; verified
+
+Goal: make sure this delivery branch does not leak internal CI/CD or local-network metadata such as private runner names, local Forgejo URLs, or concrete LAN service IPs.
+
+## Plan
+
+- [x] Scan the active PR diff for internal CI/CD and local-network patterns.
+- [x] Scan tracked repository files for older internal references that could be carried forward.
+- [x] Replace concrete local infrastructure values with neutral placeholders while preserving behavior-oriented private-LAN test coverage.
+- [x] Rerun focused tests and metadata scans.
+- [x] Amend and push the cleaned commit after verification.
+
+## Review
+
+- Scrubbed concrete internal local-network values from the tracked tree: the Forgejo release helper example now uses `https://forgejo.example.invalid`, the benchmark guide uses `https://sanctuary-lab.local:8443`, and older LM Studio fixture notes/tests use `studio.local` instead of a LAN IP.
+- Reworded the local runner ignore comment so it describes a generic local CI runner token file rather than a specific runner implementation.
+- Kept generic RFC1918 policy fixtures where the product explicitly tests that private-LAN IP endpoints remain allowed.
+- Verification passed: PR-diff and tracked-tree metadata scans for internal IPs/runner markers returned no matches; exact CI classifier job command passed locally; AI endpoint fixture aggregators passed (`100` frontend tests, `94` server tests); `npm run check:github-action-runtimes`; `npm run check:semgrep-baseline`; `bash -n scripts/create-forge-release.sh`; `git diff --check`.
+
+---
+
+# Active Task: Installer Forge Source Failover 2026-05-03
+
+Status: complete; verified
+
+Goal: make online installs and upgrades use the intended forge without GitHub credential prompts, while allowing prompt-free forge failover only when the operator did not explicitly choose a source.
+
+## Plan
+
+- [x] Record the installer bug report and source-selection contract.
+- [x] Trace release lookup, existing remote detection, and upgrade fetch behavior.
+- [x] Patch `install.sh` so explicit `--source codeberg|github` is authoritative and never falls back.
+- [x] Patch automatic source selection so failed online git operations can try the alternate forge without credential prompts.
+- [x] Add focused installer regression coverage for stale GitHub `origin` plus `--source codeberg`, and for explicit-source no-failover behavior.
+- [x] Run focused installer tests, shell syntax checks, diff hygiene, and a simplification review.
+
+## Contract
+
+- Explicit `--source codeberg`: use Codeberg only; fail clearly if Codeberg cannot provide the release or fetch.
+- Explicit `--source github`: use GitHub only; fail clearly if GitHub cannot provide the release or fetch.
+- No explicit source: prefer the detected/default source, but if release lookup or git fetch/clone fails, try the alternate forge without invoking credential prompts.
+- Existing checkout remotes must not override the selected source during upgrade.
+
+## Review
+
+- `install.sh` now tracks explicit source selection separately from the selected forge, so `--source codeberg` and `--source github` are authoritative.
+- Existing-checkout upgrades now rewrite `origin` to the selected forge URL before `git fetch`, so a stale GitHub origin cannot override `--source codeberg`.
+- Git network operations for release fallback, fetch, and clone now run with `GIT_TERMINAL_PROMPT=0`; failed public access returns a normal installer failure/fallback path instead of a username prompt.
+- Automatic/default source selection can try the alternate forge for release lookup, fetch, and clone failures. Explicit source selection fails clearly without trying the alternate forge.
+- Added installer unit coverage for stale GitHub origin plus explicit Codeberg, explicit source failure without fallback, and automatic prompt-free fallback.
+- Verification passed: `bash -n install.sh tests/install/unit/install-script.test.sh`; `./tests/install/unit/install-script.test.sh` (83 passed); `git diff --check`; `bash scripts/quality/lizard-only.sh install.sh tests/install/unit/install-script.test.sh` (semgrep baseline and lizard quality gate passed).
+
+---
+
+# Active Task: Rebuild Local Running Instance 2026-05-02
+
+Status: complete; verified
+
+Goal: rebuild and restart the local Sanctuary instance currently serving the app without disturbing unrelated Docker projects.
+
+## Plan
+
+- [x] Review project run instructions, local lessons, and running Docker state.
+- [x] Identify the active Sanctuary compose project and runtime environment.
+- [x] Rebuild the target Sanctuary images/containers.
+- [x] Verify the rebuilt instance is reachable and record the result.
+
+## Review
+
+- Stopped the stale `sanctuary-upgrade-test-20260503-021347-581` compose project that was bound to `https://localhost:8443`; containers/networks were removed without removing volumes.
+- Rebuilt current-checkout images with `docker compose build --no-cache` using `/home/nekoguntai/.config/sanctuary/sanctuary.env` and `/home/nekoguntai/.config/sanctuary/ssl`.
+- Started the current `/home/nekoguntai/sanctuary` compose project as `sanctuary`; long-running services are healthy.
+- Verification passed: `docker compose ps`; `curl -k -I https://localhost:8443` returned `200`; `curl -I http://localhost:9180` redirected to `https://localhost:8443/`; `curl -k https://localhost:4000/health` returned `{"status":"ok"}`.
+
+---
+
+# Active Task: Restore Admin Login 2026-05-02
+
+Status: complete; verified
+
+Goal: make the rebuilt local instance at `localhost:8443` accept the intended admin login without weakening auth behavior.
+
+## Plan
+
+- [x] Confirm network reachability and current stack status.
+- [x] Inspect auth endpoint behavior, logs, and admin user state.
+- [x] Fix the admin login state or configuration.
+- [x] Verify login with the supplied credentials and record the result.
+
+## Review
+
+- `https://localhost:8443` was reachable and the Sanctuary stack was healthy.
+- Backend logs showed `/api/v1/auth/login` requests for `admin` were failing with `Invalid password`, so this was not a routing or TLS issue.
+- Reset only the `admin` user's password hash to the intended credential, removed the stale `initialPassword_*` marker, and cleared any existing admin refresh tokens.
+- Verification passed: direct POST to `https://localhost:8443/api/v1/auth/login` with the intended admin credentials returned `200` and `usingDefaultPassword: false`.
+
+---
+
+# Active Task: Recover Previous Local Database 2026-05-02
+
+Status: complete; verified
+
+Goal: restore the previous local Sanctuary database from the preserved Docker volume into the normal running `sanctuary` stack without deleting recovery artifacts.
+
+## Plan
+
+- [x] Record source and target volumes.
+- [x] Back up the current fresh DB and the preserved old volume.
+- [x] Find the preserved volume or backup containing real data.
+- [x] Dump the recovered old DB source.
+- [x] Restore the old DB into the normal `sanctuary` stack.
+- [x] Verify recovered data and admin login.
+
+## Review
+
+- Backed up the fresh accidental DB and raw candidate source volumes under `.tmp/db-recovery-20260502-183523/`.
+- Scanned preserved Sanctuary Postgres volumes. The only non-empty recovered source was `sanctuary-upgrade-test-20260425-150803-2792459_postgres_data`, with 3 users and 1 testnet wallet.
+- Restored that source dump into `sanctuary_postgres_data`, ran current migrations, and restarted the normal `sanctuary` stack.
+- Reset local recovery login for `admin` to the intended password, disabled only admin 2FA, cleared admin refresh tokens, and left other users unchanged.
+- Verification passed: stack healthy; direct login to `https://localhost:8443/api/v1/auth/login` returned `200`; recovered DB has 3 users, 1 testnet wallet, and 0 device rows.
+
+---
+
+# Active Task: Recheck Admin Login 2026-05-02
+
+Status: complete; verified
+
+Goal: diagnose why browser admin login is failing after recovery and fix the actual auth path.
+
+## Plan
+
+- [x] Re-test the live admin auth endpoint.
+- [x] Inspect latest auth logs and admin DB state.
+- [x] Apply the smallest fix for the observed failure.
+- [x] Verify the browser-relevant login flow.
+
+## Review
+
+- Direct POST to `https://localhost:8443/api/v1/auth/login` with `admin` and the intended password returned `200`.
+- Full cookie-jar flow passed: login set cookies, then `GET /api/v1/auth/me` returned the restored admin user.
+- Backend logs showed the browser still had an old cookie for deleted user `35bf5119-fc87-4eb8-bb90-8478843c42c8`; the browser's latest login attempt failed as `Invalid password`, while server-side verification succeeded.
+- Cleaned up the curl-created refresh tokens after verification.
+
+---
+
+# Active Task: Fix Database Operation Failed 2026-05-02
+
+Status: complete; verified
+
+Goal: identify and fix the recovered instance error reported as `database operation failed`.
+
+## Plan
+
+- [x] Locate the live error in logs and code.
+- [x] Reproduce the failing API condition through health/login logs.
+- [x] Fix the restored database role password mismatch.
+- [x] Verify the affected UI/API flow and recovered data.
+
+## Review
+
+- Backend logs showed Prisma/Postgres auth failures on new connections: `P1000` / `28P01 password authentication failed for user "sanctuary"`, surfaced to the UI as `database operation failed`.
+- Reconciled the restored Postgres `sanctuary` role password with the runtime `POSTGRES_PASSWORD` from `/home/nekoguntai/.config/sanctuary/sanctuary.env`.
+- Verified the same TCP path used by the backend with a separate `postgres:16-alpine` client on the compose network; `select 1` succeeded.
+- Restarted backend, worker, gateway, frontend, and AI services so failed Prisma pools were dropped and recreated.
+- Verification passed: `docker compose ps` healthy; `GET https://localhost:8443/api/v1/health` returned `200` with database healthy; fresh `admin` login returned `200`; cookie-backed `GET /api/v1/auth/me` returned the restored admin user; backend logs after restart showed no new `P1000`, `28P01`, or database-operation failures.
+- Recovered data check still shows 3 users, 1 testnet single-sig wallet (`Upgrade Fixture Wallet`), and 0 device rows.
+
+---
+
 # Active Task: Offline Package Install And Upgrade Mechanism 2026-05-02
 
 Status: implemented; unit-verified
@@ -2767,7 +3043,7 @@ Goal: rebuild the local Sanctuary stack and validate the LM Studio/OpenAI-compat
 ## Review
 
 - Rebuilt the local stack with `./start.sh --rebuild`; the app is serving at `https://localhost:8443` and the frontend, gateway, backend, AI proxy, worker, Postgres, and Redis containers are healthy.
-- LM Studio/OpenAI-compatible detection against `http://10.114.123.214:1234` succeeds without an API key and returns 8 models. Saving the active provider profile also succeeds without sending credential updates.
+- LM Studio/OpenAI-compatible detection against `http://studio.local:1234` succeeds without an API key and returns 8 models. Saving the active provider profile also succeeds without sending credential updates.
 - Console `whats the current block?` completed through LM Studio with `get_bitcoin_network_status` and returned block height 946967 during validation.
 - Live validation exposed an all-wallet planner edge case where LM Studio returned the placeholder tool name `tool_name`; the AI proxy now rejects unknown tool names and applies the deterministic transaction fallback.
 - Live validation also exposed synthesis-only failures after tool execution; Console now completes the turn with a compact tool-facts fallback instead of failing the request when tool results exist.
@@ -2956,7 +3232,7 @@ Goal: restore the wallet Transactions tab AI search/filter control while keeping
 - Implementation: `/ai/query` now uses the same Console planner message path and `query_transactions` tool-call shape, then adapts the planned call back into the transaction table filter model. The adapter keeps table-specific support for labels, sort, aggregation, confirmations, amount ranges, and explicit limits. Date fallback is based only on the user's prompt, not injected label/tool context.
 - UI filter behavior: the transaction AI filter now accepts Console-style `sent`/`received` type values, `dateFrom`/`dateTo`, and `minAmount`/`maxAmount`, sharing the Console route-state date parsing helper.
 - Verification: focused tests passed (`naturalQuery`, `useAITransactionFilter`, `AIQueryInput`, `consoleTransactionNavigation`; 73 tests), `npx tsc -p ai-proxy/tsconfig.json --noEmit`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, pinned touched-file lizard `CCN <= 15`, and `git diff --check` passed.
-- Local rebuild and smoke: `./start.sh --rebuild` completed. Sanctuary is live at `https://localhost:8443`; `curl -k -I https://localhost:8443` returned HTTP 200. The rebuilt frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy by `docker ps`. A compiled AI-proxy smoke against LM Studio `http://10.114.123.214:1234/v1` with model `unsloth/qwen3.6-35b-a3b` converted `show me transactions between feb 2020 and june 2020` into a transaction date filter.
+- Local rebuild and smoke: `./start.sh --rebuild` completed. Sanctuary is live at `https://localhost:8443`; `curl -k -I https://localhost:8443` returned HTTP 200. The rebuilt frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy by `docker ps`. A compiled AI-proxy smoke against LM Studio `http://studio.local:1234/v1` with model `unsloth/qwen3.6-35b-a3b` converted `show me transactions between feb 2020 and june 2020` into a transaction date filter.
 
 ---
 
@@ -3050,7 +3326,7 @@ Goal: fix the remaining Console 408 timeout after local LM Studio synthesis, kee
 - Implementation: Console turn and prompt replay routes now get a 280s server request-timeout budget so they can cover planning, read-only tool execution, and synthesis when each provider call may take up to 125s. The flyout compresses older dialogue history and hides exact duplicate reruns, while keeping the newest duplicate visible. The existing `Ctrl+Shift+.` / `Cmd+Shift+.` shortcut is now explicitly labeled "Open AI Console" in the sidebar action and keyboard shortcut modal.
 - Scope behavior: Console remains general by default. General/network questions like "what is the current block?" use the public `get_bitcoin_network_status` tool without selecting a wallet; wallet-sensitive tools still require an explicit wallet scope.
 - Verification: focused UI/API tests passed (`ConsoleDrawer`, `ConsoleDrawerUtils`, Layout sidebar, shortcuts, `useAppShortcuts`, API Console; 45 tests), focused server timeout/API tests passed (`requestTimeout`, Console API; 32 tests), `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, touched-file lizard `CCN <= 15`, and `git diff --check` passed.
-- Local rebuild and smoke: `./start.sh --rebuild` completed. Sanctuary is live at `https://localhost:8443`; frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy. `curl -k -I https://localhost:8443` returned HTTP 200. The rebuilt backend container reached LM Studio at `http://10.114.123.214:1234/v1/models` and saw 8 models. After syncing the saved provider profile, Console planning selected `get_bitcoin_network_status` in 10.6s and Console synthesis returned a block-height answer in 32.3s, beyond the old 30s cutoff and under the new timeout budget.
+- Local rebuild and smoke: `./start.sh --rebuild` completed. Sanctuary is live at `https://localhost:8443`; frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy. `curl -k -I https://localhost:8443` returned HTTP 200. The rebuilt backend container reached LM Studio at `http://studio.local:1234/v1/models` and saw 8 models. After syncing the saved provider profile, Console planning selected `get_bitcoin_network_status` in 10.6s and Console synthesis returned a block-height answer in 32.3s, beyond the old 30s cutoff and under the new timeout budget.
 
 ---
 
@@ -3074,7 +3350,7 @@ Goal: fix Console `/console/plan` failures against the local LM Studio provider,
 - Root cause: passive `/api/v1/ai/status` checks still called `checkHealth()`, which sent a real model prompt through LM Studio during app/status refreshes. That could compete with the Console planner on large local models. The planner also used a larger default multi-message request and collapsed upstream failures to generic 503 responses.
 - Implementation: `/ai/status` now reports feature/config/proxy availability without model inference. Admin "Test Connection" uses a new explicit `/api/v1/ai/test-connection` route that still runs `checkHealth()`. Console planning now uses deterministic bounded options (`temperature: 0`, `maxTokens: 512`) and the proxy returns structured timeout/status/policy errors. Console synthesis also returns structured proxy errors. A read-only `get_bitcoin_network_status` tool was added so "what's the current block?" can use Sanctuary's backend Bitcoin status data.
 - Verification: focused AI proxy tests passed (`aiClient`, `consoleRoutes`, 11 tests); focused server AI/tool tests passed (`ai.test`, `readToolRegistry`, `readToolExecutors`, 81 tests); focused UI/API tests passed (`AISettings`, `useAIConnectionStatus`, `coreApiModules`, plus proxy tests, 95 tests total across root runs). `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, `npm run check:openapi-route-coverage`, `npx tsc -p ai-proxy/tsconfig.json --noEmit`, pinned touched-file lizard, and `git diff --check` passed.
-- Local rebuild and smoke: `./start.sh --rebuild` completed; Sanctuary is live at `https://localhost:8443`; frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy. `curl -k -I https://localhost:8443` returned HTTP 200. Direct AI-proxy smoke against LM Studio `http://10.114.123.214:1234` with model `unsloth/qwen3.6-35b-a3b` returned a valid `/console/plan` selecting `get_bitcoin_network_status`, and `/console/synthesize` returned a block-height answer. Backend `/api/v1/bitcoin/status` currently reports block height `946918`.
+- Local rebuild and smoke: `./start.sh --rebuild` completed; Sanctuary is live at `https://localhost:8443`; frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy. `curl -k -I https://localhost:8443` returned HTTP 200. Direct AI-proxy smoke against LM Studio `http://studio.local:1234` with model `unsloth/qwen3.6-35b-a3b` returned a valid `/console/plan` selecting `get_bitcoin_network_status`, and `/console/synthesize` returned a block-height answer. Backend `/api/v1/bitcoin/status` currently reports block height `946918`.
 
 ---
 
@@ -3126,7 +3402,7 @@ Goal: correct the sidebar AI/Console launcher so it is hidden only when the AI a
 - Implementation: the launcher capability now follows AI assistant enablement only, and the sidebar renders a compact `Actions` label when the quick-action icon group exists.
 - Follow-up correction: `/ai/status` now returns `enabled`, `configured`, and `available` separately, and `useAIStatus` uses `enabled` for launcher visibility. This prevents provider health or model setup failures from hiding the flyout.
 - Verification: focused Layout/capability/status hook tests passed (83 tests), focused server AI API tests passed (63 tests), `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, touched-file pinned lizard, and `git diff --check` passed. One broad server test command was mis-scoped and hit unrelated sandbox `EPERM` port-bind failures; the exact focused server AI suite passed afterward.
-- Local rebuild: `./start.sh --rebuild` completed. Sanctuary is running at `https://localhost:8443`, the rebuilt gateway/frontend/ai/backend/worker containers are healthy, and `curl -k -I https://localhost:8443` returned HTTP 200. The local DB has `aiAssistant=true`, `aiEnabled=true`, active LM Studio endpoint `http://10.114.123.214:1234`, model `unsloth/qwen3.6-35b-a3b`, and `sanctuaryConsole=false`.
+- Local rebuild: `./start.sh --rebuild` completed. Sanctuary is running at `https://localhost:8443`, the rebuilt gateway/frontend/ai/backend/worker containers are healthy, and `curl -k -I https://localhost:8443` returned HTTP 200. The local DB has `aiAssistant=true`, `aiEnabled=true`, active LM Studio endpoint `http://studio.local:1234`, model `unsloth/qwen3.6-35b-a3b`, and `sanctuaryConsole=false`.
 
 ---
 
@@ -3153,7 +3429,7 @@ Goal: fix the Sanctuary Console flyout so a valid AI provider configuration is n
 - UI correction: the Console flyout should use the translucent `surface-flyout` panel, while the click-away backdrop remains transparent so the app itself is not dimmed or blurred.
 - Implementation: Console setup errors now distinguish disabled `sanctuaryConsole` from missing AI provider/model setup. The sidebar Console launcher and global shortcut are gated by a Console availability capability that requires AI to be ready and `/console/tools` to pass the feature gate.
 - Verification: focused Console/Layout/capability/API tests passed (41 tests), Layout controller tests passed (47 tests), `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, touched-file pinned lizard, and `git diff --check` passed. The npm `lizard` shim was unavailable, so the project-pinned `.tmp/quality-tools/lizard-1.21.2/bin/lizard` command was used.
-- Local rebuild: `./start.sh --rebuild` completed, Sanctuary is running at `https://localhost:8443`, and the rebuilt gateway/frontend/ai/backend/worker containers are healthy. `curl -k -I https://localhost:8443` returned HTTP 200. The LM Studio LAN endpoint `http://10.114.123.214:1234/v1/models` returned 8 OpenAI-compatible models from both the host and `sanctuary-backend-1`, so the running backend can reach the endpoint used by UI detection.
+- Local rebuild: `./start.sh --rebuild` completed, Sanctuary is running at `https://localhost:8443`, and the rebuilt gateway/frontend/ai/backend/worker containers are healthy. `curl -k -I https://localhost:8443` returned HTTP 200. The LM Studio LAN endpoint `http://studio.local:1234/v1/models` returned 8 OpenAI-compatible models from both the host and `sanctuary-backend-1`, so the running backend can reach the endpoint used by UI detection.
 
 ---
 
@@ -3161,7 +3437,7 @@ Goal: fix the Sanctuary Console flyout so a valid AI provider configuration is n
 
 Status: complete
 
-Goal: fix the remaining Admin > AI Settings blockers for local LM Studio providers where saving appears to require an API key, model selection is unavailable, and Detect does not clearly work for LAN endpoints such as `http://10.114.123.214:1234`.
+Goal: fix the remaining Admin > AI Settings blockers for local LM Studio providers where saving appears to require an API key, model selection is unavailable, and Detect does not clearly work for LAN endpoints such as `http://studio.local:1234`.
 
 ## Plan
 
@@ -3177,7 +3453,7 @@ Goal: fix the remaining Admin > AI Settings blockers for local LM Studio provide
 - Investigation: the API key is not required by the backend/profile model. The visible blocker is the Settings tab save button, which still disables Save when `aiModel` is empty. Detection also currently treats `{ models: [], error }` from the backend as a successful OpenAI-compatible connection, which hides the real endpoint/listing failure.
 - Implementation: Save Configuration now only requires an endpoint, so a no-key/no-model LM Studio profile can be saved before model discovery. Detect now calls a typed `/ai/detect-provider` route backed by the AI proxy, which probes the supplied endpoint as OpenAI-compatible or Ollama and reports real failures instead of converting them to empty success.
 - Verification: AI proxy provider/endpoint tests passed (11 tests), focused AI Settings/API tests passed (103 tests), focused server AI model route/service tests passed (89 tests), `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, `npm run check:openapi-route-coverage`, touched-file lizard, and `git diff --check` passed.
-- Local rebuild: `./start.sh --rebuild` completed and the Sanctuary containers are healthy at `https://localhost:8443`. Direct proxy smoke from `sanctuary-ai-1` to `http://10.114.123.214:1234` returned 8 OpenAI-compatible LM Studio models. A browser-authenticated UI smoke could not be completed from this shell because the default admin password is no longer valid, but the rebuilt UI bundle and provider-detect proxy path are live.
+- Local rebuild: `./start.sh --rebuild` completed and the Sanctuary containers are healthy at `https://localhost:8443`. Direct proxy smoke from `sanctuary-ai-1` to `http://studio.local:1234` returned 8 OpenAI-compatible LM Studio models. A browser-authenticated UI smoke could not be completed from this shell because the default admin password is no longer valid, but the rebuilt UI bundle and provider-detect proxy path are live.
 
 ---
 
@@ -10620,3 +10896,74 @@ Goal: add a guided UI path for the intended agent-wallet model: a human-owned fu
 - Raw-key descriptor generation sends a deterministic fallback fingerprint so separate raw-key imports do not collide on the server's default `00000000` marker.
 - Raw multisig SLIP-132 keys are rejected in the operational-wallet import panel, keeping multisig material on the human-owned funding wallet side of the relationship.
 - Verification passed: focused AgentManagement/dashboard Vitest suites, app/test typechecks, full lizard complexity gate, and `git diff --check`.
+
+---
+
+# Active Task: Browser Login Still Failing 2026-05-02
+
+Status: superseded by user pivot
+
+Goal: fix the remaining browser-visible login failure after database recovery.
+
+## Plan
+
+- [ ] Capture current backend/gateway/frontend errors from the user's latest browser attempt.
+- [ ] Compare direct API login with the exact browser-facing route and headers.
+- [ ] Fix the observed failure without resetting recovered data.
+- [ ] Verify public HTTPS health, admin login, and recovered wallet state.
+
+## Review
+
+- User moved on after adding the missing device and testnet wallet manually. No further browser-login mutation was made in this task slice.
+
+---
+
+# Active Task: Preserve Newly Added Device And Testnet Wallet 2026-05-02
+
+Status: complete; verified
+
+Goal: preserve the current live database state now that it contains the manually added hardware device and testnet wallet.
+
+## Plan
+
+- [x] Verify current device and testnet wallet rows exist in the live DB.
+- [x] Create a durable DB backup outside Docker volumes.
+- [x] Verify the backup can be read and restored.
+- [x] Record the preservation result.
+
+## Review
+
+- Live DB now has 3 users, 1 wallet, 1 device, and 12 device account rows.
+- Preserved wallet: `Testnet LedgerNanoSPlus`, `testnet`, `single_sig`, `native_segwit`, id `76e93e4a-2dba-4f50-bc3c-c1de4db9bcda`.
+- Preserved device: `My Ledger Nano S Plus`, fingerprint `a050423e`, derivation path `m/84'/1'/0'`, id `9906c2b7-d5e9-4026-8c82-fd415cf1e056`.
+- Created a durable logical Postgres backup outside Docker volume storage at `/home/nekoguntai/.config/sanctuary/backups/manual-preserve-20260502-194933/sanctuary.dump`.
+- Backup directory also contains schema, compose status, Docker volume metadata, verification notes, and checksums.
+- Verification passed: restored `sanctuary.dump` into a temporary Postgres 16 container and confirmed the restored DB has 3 users, 1 wallet, 1 device, and 12 device account rows with the expected wallet/device rows.
+
+---
+
+# Active Task: Recurring Local Database Operation Failure 2026-05-02
+
+Status: complete; verified
+
+Goal: diagnose and stop the recurring local `database operation failed` condition without losing the newly added device and testnet wallet.
+
+## Plan
+
+- [x] Capture current health, logs, and container restart/event evidence before repair.
+- [x] Compare running backend/Postgres database credentials without exposing secrets.
+- [x] Repair the live instance based on the observed mismatch.
+- [x] Add a guard or verification script so the mismatch cannot recur silently.
+- [x] Verify public HTTPS health, admin login, and preserved wallet/device rows.
+
+## Review
+
+- Public health was `503` with Postgres `28P01` / Prisma `P1000`; browser login failed with the same database auth error.
+- Backend, worker, and Postgres containers had not restarted. The running backend `DATABASE_URL`, Postgres container `POSTGRES_PASSWORD`, and runtime env file all had the same password hash, but that password no longer authenticated over TCP. That means the DB role password drifted underneath the still-running services.
+- Postgres logs showed the first bad TCP auth at `2026-05-03T07:05:18Z`. Docker events around the preceding window did not show a direct `docker exec` against the live Postgres container, so the exact actor is not proven.
+- There was concurrent install/upgrade test activity and several temporary Sanctuary upgrade-test projects running, but no direct evidence that a code edit alone caused the live DB role change.
+- Took a fresh pre-repair dump in the private operator backup directory.
+- Reset the live Postgres `sanctuary` role password to the current runtime env value, enabled Postgres `log_statement = ddl` and `log_connections = on` so future role changes leave a clearer log trail, and restarted backend/worker.
+- Restarted frontend after backend/worker because nginx had cached the old backend IP and returned `502` even after backend health recovered.
+- Added ignored local guard script `.tmp/sanctuary-local-db-guard.sh`; it checks the live TCP auth path and verifies the preserved testnet wallet/device rows, with an optional `--repair-auth`.
+- Verification passed: `.tmp/sanctuary-local-db-guard.sh`; public HTTPS health returned `200`; fresh admin login returned `200`; cookie-backed `/api/v1/auth/me` returned `200`; preserved data still shows 3 users, 1 wallet, 1 device, and 12 device account rows.

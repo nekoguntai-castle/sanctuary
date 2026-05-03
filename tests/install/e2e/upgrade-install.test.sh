@@ -127,16 +127,19 @@ fi
 # Test configuration
 TEST_ID=$(generate_test_run_id)
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sanctuary-upgrade-${TEST_ID}}"
+TEST_ROOT=$(default_install_test_root "$TARGET_PROJECT_ROOT")
 
 apply_upgrade_fixture_defaults "$UPGRADE_FIXTURE"
 apply_upgrade_test_network_defaults
 
-TEST_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-/tmp/sanctuary-upgrade-runtime-${TEST_ID}}"
+TEST_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$TEST_ROOT/sanctuary-upgrade-runtime-${TEST_ID}}"
 TEST_SSL_DIR="${SANCTUARY_SSL_DIR:-$TEST_RUNTIME_DIR/ssl}"
-API_BASE_URL="https://localhost:${HTTPS_PORT}"
+TEST_COMPOSE_SSL_DIR="${SANCTUARY_COMPOSE_SSL_DIR:-$(docker_visible_path "$TEST_SSL_DIR")}"
+TEST_HTTP_HOST=$(default_install_test_host)
+API_BASE_URL="https://${TEST_HTTP_HOST}:${HTTPS_PORT}"
 BROWSER_BASE_URL="https://${UPGRADE_BROWSER_HOST}:${HTTPS_PORT}"
 COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
-UPGRADE_SOURCE_CHECKOUT="/tmp/sanctuary-upgrade-source-${TEST_ID}/sanctuary"
+UPGRADE_SOURCE_CHECKOUT="${SANCTUARY_UPGRADE_SOURCE_CHECKOUT:-$TEST_ROOT/sanctuary-upgrade-source-${TEST_ID}/sanctuary}"
 LEGACY_TARGET_ENV_FILE="$TARGET_PROJECT_ROOT/.env"
 if [ "$UPGRADE_USE_LEGACY_RUNTIME_ENV" = "true" ] && [ -z "${SANCTUARY_ENV_FILE:-}" ]; then
     TEST_ENV_FILE="$UPGRADE_SOURCE_CHECKOUT/.env"
@@ -201,6 +204,7 @@ load_runtime_env() {
     set +a
     export SANCTUARY_ENV_FILE="$env_file"
     export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
+    export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
 }
 
 # Extract the sanctuary_csrf cookie value from the Netscape-format cookie
@@ -282,6 +286,7 @@ run_install_script() {
         export SANCTUARY_RUNTIME_DIR="$TEST_RUNTIME_DIR"
         export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
         export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
+        export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
         export SKIP_GIT_CHECKOUT="true"
         export SANCTUARY_ASSUME_YES="true"
         export RATE_LIMIT_LOGIN=100
@@ -348,6 +353,7 @@ setup() {
     log_info "  Fixture:       $UPGRADE_FIXTURE"
     log_info "  Compose Proj:  $COMPOSE_PROJECT_NAME"
     log_info "  HTTPS Port:    $HTTPS_PORT"
+    log_info "  HTTP Host:     $TEST_HTTP_HOST"
     log_info "  Browser URL:   $BROWSER_BASE_URL"
 
     # Verify prerequisites
@@ -358,6 +364,7 @@ setup() {
 
     export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
     export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
+    export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
 
     cleanup_containers "$TARGET_PROJECT_ROOT" 2>/dev/null || true
 
@@ -1412,6 +1419,7 @@ test_recover_postgres_password_drift() {
     setup_output=$(
         export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
         export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
+        export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
         export HTTPS_PORT
         export HTTP_PORT
         export GATEWAY_PORT
@@ -1540,6 +1548,7 @@ test_force_rebuild_upgrade() {
         export GATEWAY_PORT
         export SANCTUARY_ENV_FILE="$(resolve_env_file)"
         export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
+        export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
         export RATE_LIMIT_LOGIN=100
         export RATE_LIMIT_2FA=100
         export RATE_LIMIT_PASSWORD_CHANGE=100

@@ -12,7 +12,7 @@
 # Auth: tokens read from ~/.config/sanctuary/forge-tokens.env or env vars.
 # Format of the file:
 #
-#   FORGEJO_URL=http://10.14.23.20:3000
+#   FORGEJO_URL=https://forgejo.example.invalid
 #   FORGEJO_OWNER=nekoguntai
 #   FORGEJO_REPO=sanctuary
 #   FORGEJO_TOKEN=...

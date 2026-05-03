@@ -25,18 +25,18 @@ describe("AI proxy provider detection", () => {
 
     const result = await detectProviderModels(
       { ...baseConfig, providerType: "openai-compatible" },
-      "http://10.114.123.214:1234",
+      "http://studio.local:1234",
       "openai-compatible",
     );
 
     expect(result).toMatchObject({
       found: true,
       providerType: "openai-compatible",
-      endpoint: "http://10.114.123.214:1234",
+      endpoint: "http://studio.local:1234",
       models: [{ name: "qwen/qwen3.6-35b-a3b", size: 0, modifiedAt: "" }],
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://10.114.123.214:1234/v1/models",
+      "http://studio.local:1234/v1/models",
       expect.objectContaining({
         headers: { "Content-Type": "application/json" },
       }),

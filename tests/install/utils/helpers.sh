@@ -421,8 +421,122 @@ create_test_directory() {
     local base_dir="${1:-/tmp}"
     local prefix="${2:-sanctuary-test}"
 
+    mkdir -p "$base_dir"
     local test_dir=$(mktemp -d "${base_dir}/${prefix}-XXXXXX")
     echo "$test_dir"
+}
+
+# Pick a default install-test scratch root. Forgejo/GitHub Actions jobs that
+# mount the host Docker socket must use the checked-out workspace so Docker can
+# see bind-mounted certs, env files, and temporary worktrees.
+default_install_test_root() {
+    local project_root="${1:-${PROJECT_ROOT:-.}}"
+
+    if [ -n "${SANCTUARY_INSTALL_TEST_ROOT:-}" ]; then
+        echo "$SANCTUARY_INSTALL_TEST_ROOT"
+        return 0
+    fi
+
+    if [ -n "${GITHUB_WORKSPACE:-}" ]; then
+        echo "${GITHUB_WORKSPACE%/}/.tmp/install-tests"
+        return 0
+    fi
+
+    if [ "${ACT:-false}" = "true" ]; then
+        echo "${project_root%/}/.tmp/install-tests"
+        return 0
+    fi
+
+    case "${project_root%/}" in
+        /workspace/*)
+            echo "${project_root%/}/.tmp/install-tests"
+            return 0
+            ;;
+    esac
+
+    echo "/tmp"
+}
+
+docker_visible_path() {
+    local container_path="${1:-}"
+
+    if [ -z "$container_path" ]; then
+        return 1
+    fi
+
+    if ! command -v docker >/dev/null 2>&1 || [ -z "${HOSTNAME:-}" ]; then
+        echo "$container_path"
+        return 0
+    fi
+
+    local mount_lines
+    if ! mount_lines=$(docker inspect --format '{{range .Mounts}}{{printf "%s\t%s\n" .Source .Destination}}{{end}}' "$HOSTNAME" 2>/dev/null); then
+        echo "$container_path"
+        return 0
+    fi
+
+    local normalized_path="${container_path%/}"
+    local best_source=""
+    local best_destination=""
+    local best_length=0
+    local source destination
+
+    while IFS=$'\t' read -r source destination; do
+        [ -n "$source" ] && [ -n "$destination" ] || continue
+        destination="${destination%/}"
+
+        if [ "$normalized_path" = "$destination" ] || [[ "$normalized_path" == "$destination/"* ]]; then
+            if [ "${#destination}" -gt "$best_length" ]; then
+                best_source="$source"
+                best_destination="$destination"
+                best_length="${#destination}"
+            fi
+        fi
+    done <<< "$mount_lines"
+
+    if [ -n "$best_source" ]; then
+        local relative_path="${normalized_path#$best_destination}"
+        echo "${best_source%/}${relative_path}"
+        return 0
+    fi
+
+    echo "$container_path"
+}
+
+docker_host_gateway() {
+    local gateway_hex
+    gateway_hex=$(awk '$2 == "00000000" { print $3; exit }' /proc/net/route 2>/dev/null || true)
+
+    if [[ ! "$gateway_hex" =~ ^[0-9A-Fa-f]{8}$ ]]; then
+        return 1
+    fi
+
+    printf '%d.%d.%d.%d\n' \
+        "$((16#${gateway_hex:6:2}))" \
+        "$((16#${gateway_hex:4:2}))" \
+        "$((16#${gateway_hex:2:2}))" \
+        "$((16#${gateway_hex:0:2}))"
+}
+
+default_install_test_host() {
+    if [ -n "${SANCTUARY_INSTALL_TEST_HOST:-}" ]; then
+        echo "$SANCTUARY_INSTALL_TEST_HOST"
+        return 0
+    fi
+
+    if [ ! -f /.dockerenv ]; then
+        echo "localhost"
+        return 0
+    fi
+
+    local host_internal
+    host_internal=$(getent hosts host.docker.internal 2>/dev/null | awk 'NR == 1 { print $1 }')
+    if [ -n "$host_internal" ]; then
+        echo "$host_internal"
+        return 0
+    fi
+
+    docker_host_gateway || echo "localhost"
 }
 
 # Check if file contains expected content
@@ -579,7 +693,7 @@ setup_test_environment() {
     export TEST_RUN_ID="$test_id"
     export HTTPS_PORT="${HTTPS_PORT:-8443}"
     export HTTP_PORT="${HTTP_PORT:-8080}"
-    export API_BASE_URL="https://localhost:${HTTPS_PORT}"
+    export API_BASE_URL="https://$(default_install_test_host):${HTTPS_PORT}"
 
     log_info "Test environment setup complete"
     log_info "  TEST_RUN_ID: $TEST_RUN_ID"

@@ -38,6 +38,7 @@ list_group_specs() {
       printf '%s\n' \
         e2e/console-drawer-smoke.spec.ts \
         e2e/dashboard-price-blocks.spec.ts \
+        e2e/network-sync-toggle-dark.spec.ts \
         e2e/settings-persistence.spec.ts \
         e2e/user-journeys.spec.ts \
         e2e/wallet-sharing-privacy.spec.ts \

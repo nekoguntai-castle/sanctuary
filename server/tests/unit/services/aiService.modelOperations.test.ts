@@ -61,28 +61,28 @@ describe("aiService model operations", () => {
       okJson({
         found: true,
         providerType: "openai-compatible",
-        endpoint: "http://10.114.123.214:1234",
+        endpoint: "http://studio.local:1234",
         models: [{ name: "qwen/qwen3.6-35b-a3b", size: 0, modifiedAt: "" }],
       }),
     );
 
     const mod = await import("../../../src/services/aiService");
     const result = await mod.detectProviderEndpoint({
-      endpoint: "http://10.114.123.214:1234",
+      endpoint: "http://studio.local:1234",
       preferredProviderType: "openai-compatible",
     });
 
     expect(result).toMatchObject({
       found: true,
       providerType: "openai-compatible",
-      endpoint: "http://10.114.123.214:1234",
+      endpoint: "http://studio.local:1234",
     });
     expect(mocks.fetch).toHaveBeenCalledWith(
       "http://ai:3100/detect-provider",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
-          endpoint: "http://10.114.123.214:1234",
+          endpoint: "http://studio.local:1234",
           preferredProviderType: "openai-compatible",
         }),
       }),
@@ -103,7 +103,7 @@ describe("aiService model operations", () => {
     const mod = await import("../../../src/services/aiService");
     await expect(
       mod.detectProviderEndpoint({
-        endpoint: "http://10.114.123.214:1234",
+        endpoint: "http://studio.local:1234",
         preferredProviderType: "openai-compatible",
       }),
     ).resolves.toEqual({
@@ -118,7 +118,7 @@ describe("aiService model operations", () => {
     const mod = await import("../../../src/services/aiService");
     await expect(
       mod.detectProviderEndpoint({
-        endpoint: "http://10.114.123.214:1234",
+        endpoint: "http://studio.local:1234",
         preferredProviderType: "openai-compatible",
       }),
     ).resolves.toEqual({
@@ -133,7 +133,7 @@ describe("aiService model operations", () => {
     const mod = await import("../../../src/services/aiService");
     await expect(
       mod.detectProviderEndpoint({
-        endpoint: "http://10.114.123.214:1234",
+        endpoint: "http://studio.local:1234",
         preferredProviderType: "openai-compatible",
       }),
     ).resolves.toEqual({
@@ -152,7 +152,7 @@ describe("aiService model operations", () => {
     const mod = await import("../../../src/services/aiService");
     await expect(
       mod.detectProviderEndpoint({
-        endpoint: "http://10.114.123.214:1234",
+        endpoint: "http://studio.local:1234",
         preferredProviderType: "openai-compatible",
       }),
     ).resolves.toEqual({
@@ -167,7 +167,7 @@ describe("aiService model operations", () => {
     const mod = await import("../../../src/services/aiService");
     await expect(
       mod.detectProviderEndpoint({
-        endpoint: "http://10.114.123.214:1234",
+        endpoint: "http://studio.local:1234",
         preferredProviderType: "openai-compatible",
       }),
     ).resolves.toEqual({
