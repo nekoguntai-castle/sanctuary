@@ -92,7 +92,7 @@ jobs:
           sha256sum "$BUNDLE" | tee "${BUNDLE}.sha256"
 
       - name: Upload as workflow artifact (debug / fallback)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.tag.outputs.bundle }}
           path: |

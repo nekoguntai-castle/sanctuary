@@ -554,7 +554,7 @@ jobs:
 
       - name: Upload upgrade artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@v3
         with:
           name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
           path: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
@@ -615,7 +615,7 @@ jobs:
 
       - name: Upload upgrade artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@v3
         with:
           name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
           path: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
