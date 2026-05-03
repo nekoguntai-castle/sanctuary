@@ -64,3 +64,8 @@ reports/
 # Codex
 .codex
 AGENTS.md
+
+# Offline release signing — never commit private keys
+scripts/offline/keys/*-private.pem
+scripts/offline/keys/*.priv
+scripts/offline/keys/*.key

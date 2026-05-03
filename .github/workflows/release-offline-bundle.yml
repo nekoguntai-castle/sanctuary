@@ -1,0 +1,160 @@
+name: Release Offline Bundle
+
+# Builds a signed offline install/upgrade bundle when a final release tag is
+# pushed and attaches it to the corresponding Release object on whichever
+# forge is running this workflow (Forgejo Actions and GitHub Actions both
+# read .github/workflows/, so each forge will produce its own copy of the
+# bundle attached to its own Release).
+#
+# RC / alpha / beta tags are deliberately excluded — operators only consume
+# the final stable bundle.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - '!v*.*.*-rc*'
+      - '!v*.*.*-alpha*'
+      - '!v*.*.*-beta*'
+      - '!v*.*.*-dev*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to build a bundle for'
+        required: true
+
+permissions:
+  contents: write   # upload artifact to the Release object
+
+jobs:
+  bundle:
+    name: Build and attach offline bundle (linux/amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Resolve target tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [ -z "$TAG" ]; then
+            echo "::error::No tag resolved (ref_name=${{ github.ref_name }})"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "bundle=sanctuary-offline-${TAG}-linux-amd64.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout at tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify signing key secret is present
+        env:
+          OFFLINE_SIGNING_KEY: ${{ secrets.OFFLINE_SIGNING_KEY }}
+        run: |
+          if [ -z "$OFFLINE_SIGNING_KEY" ]; then
+            echo "::error::OFFLINE_SIGNING_KEY secret is missing on this forge"
+            exit 1
+          fi
+
+      - name: Verify pinned public key is committed
+        run: |
+          KEY=scripts/offline/keys/sanctuary-offline-release-public.pem
+          if [ ! -s "$KEY" ]; then
+            echo "::error::$KEY missing from checkout — bundle would be unverifiable"
+            exit 1
+          fi
+
+      - name: Build offline bundle
+        env:
+          OFFLINE_SIGNING_KEY: ${{ secrets.OFFLINE_SIGNING_KEY }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          BUNDLE: ${{ steps.tag.outputs.bundle }}
+        run: |
+          set -euo pipefail
+          KEY_FILE="$(mktemp)"
+          chmod 600 "$KEY_FILE"
+          printf '%s' "$OFFLINE_SIGNING_KEY" > "$KEY_FILE"
+          trap 'rm -f "$KEY_FILE"' EXIT
+
+          ./scripts/offline/create-bundle.sh \
+            --tag "$TAG" \
+            --platform linux/amd64 \
+            --signing-key "$KEY_FILE" \
+            --public-key scripts/offline/keys/sanctuary-offline-release-public.pem \
+            --output "$BUNDLE"
+
+          ls -la "$BUNDLE"
+          sha256sum "$BUNDLE" | tee "${BUNDLE}.sha256"
+
+      - name: Upload as workflow artifact (debug / fallback)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.tag.outputs.bundle }}
+          path: |
+            ${{ steps.tag.outputs.bundle }}
+            ${{ steps.tag.outputs.bundle }}.sha256
+          retention-days: 7
+
+      - name: Attach bundle to Release (forge-aware)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          BUNDLE: ${{ steps.tag.outputs.bundle }}
+        run: |
+          set -euo pipefail
+          API_BASE="${GITHUB_API_URL:-https://api.github.com}"
+          OWNER_REPO="$GITHUB_REPOSITORY"
+
+          # Find or create the Release object for this tag
+          REL=$(curl -sS -H "Authorization: token $GITHUB_TOKEN" \
+            "$API_BASE/repos/$OWNER_REPO/releases/tags/$TAG")
+          REL_ID=$(echo "$REL" | jq -r '.id // empty')
+
+          if [ -z "$REL_ID" ]; then
+            echo "No Release for $TAG yet — creating one"
+            REL=$(curl -sS -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Content-Type: application/json" \
+              -X POST "$API_BASE/repos/$OWNER_REPO/releases" \
+              -d "$(jq -n --arg t "$TAG" '{tag_name:$t,name:$t,draft:false,prerelease:false}')")
+            REL_ID=$(echo "$REL" | jq -r '.id')
+          fi
+          [ -n "$REL_ID" ] && [ "$REL_ID" != "null" ] || { echo "::error::Could not resolve release id"; exit 1; }
+          echo "Release ID: $REL_ID"
+
+          # GitHub uses uploads.github.com for asset uploads; Forgejo uses the same API host
+          if echo "$API_BASE" | grep -q "api.github.com"; then
+            UPLOAD_URL="https://uploads.github.com/repos/$OWNER_REPO/releases/$REL_ID/assets?name=$BUNDLE"
+          else
+            UPLOAD_URL="$API_BASE/repos/$OWNER_REPO/releases/$REL_ID/assets?name=$BUNDLE"
+          fi
+
+          # Remove any prior asset with the same name (idempotency)
+          EXISTING=$(curl -sS -H "Authorization: token $GITHUB_TOKEN" \
+            "$API_BASE/repos/$OWNER_REPO/releases/$REL_ID/assets" \
+            | jq -r --arg n "$BUNDLE" '.[] | select(.name==$n) | .id')
+          for aid in $EXISTING; do
+            echo "deleting existing asset $aid"
+            curl -sS -o /dev/null -X DELETE \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              "$API_BASE/repos/$OWNER_REPO/releases/assets/$aid" || true
+          done
+
+          # Upload the bundle and its sha256 sidecar
+          for f in "$BUNDLE" "${BUNDLE}.sha256"; do
+            CT="application/octet-stream"
+            [[ "$f" == *.sha256 ]] && CT="text/plain"
+            if echo "$API_BASE" | grep -q "api.github.com"; then
+              U="https://uploads.github.com/repos/$OWNER_REPO/releases/$REL_ID/assets?name=$f"
+            else
+              U="$API_BASE/repos/$OWNER_REPO/releases/$REL_ID/assets?name=$f"
+            fi
+            echo "uploading $f -> $U"
+            curl -sS -f -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Content-Type: $CT" \
+              -X POST "$U" \
+              --data-binary "@$f"
+            echo ""
+          done
+          echo "Done."
