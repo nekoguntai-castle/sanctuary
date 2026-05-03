@@ -10,13 +10,13 @@ name: Release Offline Bundle
 # the final stable bundle.
 
 on:
+  # NOTE: Forgejo Actions doesn't honor GitHub-style negative `!` glob
+  # patterns in `tags:` — the whole filter becomes empty and the workflow
+  # never fires. Match all v*.*.* tags and skip RC/alpha/beta/dev variants
+  # via a job-level `if:` condition.
   push:
     tags:
       - 'v*.*.*'
-      - '!v*.*.*-rc*'
-      - '!v*.*.*-alpha*'
-      - '!v*.*.*-beta*'
-      - '!v*.*.*-dev*'
   workflow_dispatch:
     inputs:
       tag:
@@ -31,6 +31,9 @@ jobs:
     name: Build and attach offline bundle (linux/amd64)
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # Skip RC/alpha/beta/dev tags — operators only consume the final stable
+    # bundle. Manual `workflow_dispatch` is unaffected (it always runs).
+    if: ${{ github.event_name == 'workflow_dispatch' || (!contains(github.ref_name, '-rc') && !contains(github.ref_name, '-alpha') && !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-dev')) }}
     steps:
       - name: Resolve target tag
         id: tag
