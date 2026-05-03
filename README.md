@@ -109,7 +109,7 @@
 
 **Option 1: One-liner** (downloads, clones, and installs automatically)
 
-Sanctuary is mirrored across multiple forges. Pick whichever is reachable from where you're installing — the script itself auto-probes Codeberg, GitHub, and the GitLab mirror once it starts running, but the curl above has to fetch *some* copy of `install.sh` first.
+Sanctuary is mirrored on Codeberg and GitHub. Pick whichever is reachable from where you're installing — the script itself auto-probes Codeberg first, then GitHub, once it starts running, but the curl above has to fetch *some* copy of `install.sh` first.
 
 ```bash
 # Codeberg (public; recommended)
@@ -142,7 +142,7 @@ Open **https://localhost:8443** and accept the certificate warning.
 <summary><strong>What the install script does</strong></summary>
 
 1. Checks for Docker and Git
-2. Fetches the latest release tag (auto-probes Codeberg first, then GitHub, then GitLab — uses the first reachable; override with `--source`)
+2. Fetches the latest release tag (auto-probes Codeberg first, then GitHub — uses the first reachable; override with `--source`)
 3. Clones the repository and checks out the release
 4. Delegates to `scripts/setup.sh` for configuration and startup
 5. Generates self-signed SSL certificates (for hardware wallet support)

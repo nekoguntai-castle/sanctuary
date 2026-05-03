@@ -11,10 +11,9 @@
 #   curl -fsSL https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/install.sh | bash
 #
 # Or download and run:
-#   ./install.sh                       # auto-probes Codeberg, GitHub, GitLab and uses the first reachable
+#   ./install.sh                       # auto-probes Codeberg, then GitHub, and uses the first reachable
 #   ./install.sh --source codeberg     # force Codeberg
 #   ./install.sh --source github       # force GitHub
-#   ./install.sh --source gitlab       # force GitLab mirror
 #
 # This script handles repository management (clone/update/version checkout),
 # then delegates to scripts/setup.sh for configuration and startup.
@@ -65,10 +64,6 @@ detect_source() {
                 echo "github"
                 return
                 ;;
-            gitlab|GitLab)
-                echo "gitlab"
-                return
-                ;;
             *)
                 echo -e "${YELLOW}Unknown source '$source', auto-detecting...${NC}" >&2
                 ;;
@@ -87,9 +82,6 @@ detect_source() {
         if echo "$remote_url" | grep -qi "codeberg"; then
             echo "codeberg"
             return
-        elif echo "$remote_url" | grep -qi "gitlab"; then
-            echo "gitlab"
-            return
         elif echo "$remote_url" | grep -qi "github"; then
             echo "github"
             return
@@ -97,14 +89,13 @@ detect_source() {
     fi
 
     # Auto-probe public reachability — try each platform's repo metadata
-    # endpoint and use the first one that returns 200. Order is preference:
-    # Codeberg first (public + actively mirrored), GitHub next (shadow-banned
-    # accounts will 404), GitLab last (existing fallback mirror).
+    # endpoint and use the first one that returns 200. Codeberg first
+    # (public + actively mirrored from Forgejo), GitHub second (shadow-banned
+    # accounts will 404).
     if command -v curl &> /dev/null; then
         local probes=(
             "codeberg|https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary"
             "github|https://api.github.com/repos/nekoguntai-castle/sanctuary"
-            "gitlab|https://gitlab.com/api/v4/projects/narusegawa-nekoworks%2Fsanctuary"
         )
         for probe in "${probes[@]}"; do
             local name="${probe%%|*}"
@@ -390,11 +381,6 @@ case "$SOURCE_PLATFORM" in
         API_URL="https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary/releases/latest"
         PLATFORM_NAME="Codeberg"
         ;;
-    gitlab)
-        REPO_URL="https://gitlab.com/narusegawa-nekoworks/sanctuary.git"
-        API_URL="https://gitlab.com/api/v4/projects/narusegawa-nekoworks%2Fsanctuary/releases"
-        PLATFORM_NAME="GitLab"
-        ;;
     github|*)
         REPO_URL="https://github.com/nekoguntai-castle/sanctuary.git"
         API_URL="https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest"
@@ -416,12 +402,11 @@ get_latest_release() {
 
     # Try platform-specific API first
     if command -v curl &> /dev/null; then
-        # Single sed parser handles all three JSON formats:
-        #   GitHub:   "tag_name": "v0.8.49"   (formatted)
-        #   GitLab:   "tag_name":"v0.8.49"    (compact, list endpoint)
-        #   Codeberg: "tag_name":"v0.8.49"    (compact, /releases/latest)
+        # Single sed parser handles both JSON formats:
+        #   GitHub:   "tag_name": "v0.8.49"   (formatted, with whitespace)
+        #   Codeberg: "tag_name":"v0.8.49"    (compact)
         case "$SOURCE_PLATFORM" in
-            gitlab|codeberg|github|*)
+            codeberg|github|*)
                 tag=$(curl -fsSL "$API_URL" 2>/dev/null \
                     | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
                     | head -1)
