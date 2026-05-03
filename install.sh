@@ -4,19 +4,20 @@
 # ============================================
 #
 # One-liner installation:
-#   # Codeberg (public, recommended)
 #   curl -fsSL https://codeberg.org/nekoguntai-castle/sanctuary/raw/branch/main/install.sh | bash
 #
-#   # GitHub (works once any account flag is lifted)
-#   curl -fsSL https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/install.sh | bash
-#
 # Or download and run:
-#   ./install.sh                       # auto-probes Codeberg, then GitHub, and uses the first reachable
-#   ./install.sh --source codeberg     # force Codeberg
-#   ./install.sh --source github       # force GitHub
+#   ./install.sh                       # default: Codeberg
+#   ./install.sh --source codeberg     # explicit Codeberg
+#   ./install.sh --source github       # explicit GitHub (currently unmaintained — org suspended)
 #
 # This script handles repository management (clone/update/version checkout),
 # then delegates to scripts/setup.sh for configuration and startup.
+#
+# Codeberg is the active mirror. The GitHub mirror is currently inactive
+# pending the upstream org being unsuspended; the --source github escape
+# hatch is preserved for when that resolves but auto-probe no longer
+# considers GitHub.
 #
 # ============================================
 
@@ -124,12 +125,11 @@ detect_source() {
         echo -e "${YELLOW}Detected source '$detected' from existing remote, but it is not reachable. Falling back to auto-probe.${NC}" >&2
     fi
 
-    # Auto-probe public reachability — try each platform's repo metadata
-    # endpoint and use the first one that responds. Codeberg first (public,
-    # actively mirrored from Forgejo); GitHub second (shadow-banned accounts
-    # will 404 here so we fall through naturally).
+    # Auto-probe public reachability — Codeberg is the only candidate.
+    # GitHub is an escape hatch via explicit --source github; not in the
+    # auto-probe path because the upstream org is currently suspended.
     if command -v curl &> /dev/null; then
-        for candidate in codeberg github; do
+        for candidate in codeberg; do
             if _source_reachable "$candidate"; then
                 echo "$candidate"
                 return

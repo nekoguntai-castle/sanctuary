@@ -109,29 +109,17 @@
 
 **Option 1: One-liner** (downloads, clones, and installs automatically)
 
-Sanctuary is mirrored on Codeberg and GitHub. Pick whichever is reachable from where you're installing — the script itself auto-probes Codeberg first, then GitHub, once it starts running, but the curl above has to fetch *some* copy of `install.sh` first.
-
 ```bash
-# Codeberg (public; recommended)
 curl -fsSL https://codeberg.org/nekoguntai-castle/sanctuary/raw/branch/main/install.sh | bash
-
-# GitHub (alternate)
-curl -fsSL https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/install.sh | bash
 ```
 
 This installs the **latest release** to `~/sanctuary` by default. Set `SANCTUARY_DIR` to customize the location.
 
 **Option 2: Clone first** (if you want to choose the directory)
 ```bash
-# Codeberg
 git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
-# Or GitHub
-git clone https://github.com/nekoguntai-castle/sanctuary.git
-
 cd sanctuary
-./install.sh                       # auto-probe (default)
-./install.sh --source codeberg     # force Codeberg
-./install.sh --source github       # force GitHub
+./install.sh
 ```
 
 Open **https://localhost:8443** and accept the certificate warning.
@@ -142,7 +130,7 @@ Open **https://localhost:8443** and accept the certificate warning.
 <summary><strong>What the install script does</strong></summary>
 
 1. Checks for Docker and Git
-2. Fetches the latest release tag (auto-probes Codeberg first, then GitHub — uses the first reachable; override with `--source`)
+2. Fetches the latest release tag from Codeberg (override with `--source` if needed)
 3. Clones the repository and checks out the release
 4. Delegates to `scripts/setup.sh` for configuration and startup
 5. Generates self-signed SSL certificates (for hardware wallet support)
@@ -196,7 +184,7 @@ After installation, follow these steps to set up your Sanctuary:
 
 ## Umbrel
 
-Running [Umbrel](https://umbrel.com/)? Install via the [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) community app store. Note: Umbrel runs apps over HTTP, which limits WebUSB hardware-wallet support and QR camera scanning — see the [sanctuary-umbrel README](https://github.com/nekoguntai-castle/sanctuary-umbrel#limitations-on-umbrel) for the full list of what works and what doesn't, plus the standalone HTTPS install if you need full functionality.
+Running [Umbrel](https://umbrel.com/)? Install via the [`nekoguntai-castle/sanctuary-umbrel`](https://codeberg.org/nekoguntai-castle/sanctuary-umbrel) community app store. Note: Umbrel runs apps over HTTP, which limits WebUSB hardware-wallet support and QR camera scanning — see the [sanctuary-umbrel README](https://codeberg.org/nekoguntai-castle/sanctuary-umbrel#limitations-on-umbrel) for the full list of what works and what doesn't, plus the standalone HTTPS install if you need full functionality.
 
 ---
 
@@ -415,9 +403,8 @@ Optional containers are enabled by startup flags such as `--with-tor`, `--with-m
 If you prefer to run the commands yourself:
 
 ```bash
-# 1. Clone the repository (Codeberg or GitHub — both mirror the same code)
+# 1. Clone the repository
 git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
-# Or: git clone https://github.com/nekoguntai-castle/sanctuary.git
 cd sanctuary
 
 # 2. Run setup script (generates secrets, SSL certs, builds and starts services)
@@ -453,7 +440,7 @@ The setup script automatically:
 
 3. **Clone and run**
    ```powershell
-   git clone https://github.com/nekoguntai-castle/sanctuary.git
+   git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
    cd sanctuary
    wsl ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -477,7 +464,7 @@ For users who prefer not to use Docker Desktop:
 
 3. **Clone and run** (still in the Ubuntu/Linux terminal)
    ```bash
-   git clone https://github.com/nekoguntai-castle/sanctuary.git
+   git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -497,7 +484,7 @@ For users who prefer not to use Docker Desktop:
 
 2. **Clone and run**
    ```bash
-   git clone https://github.com/nekoguntai-castle/sanctuary.git
+   git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -518,7 +505,7 @@ For users who prefer a lighter-weight solution:
 
 3. **Clone and run**
    ```bash
-   git clone https://github.com/nekoguntai-castle/sanctuary.git
+   git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -553,7 +540,7 @@ For users who prefer a lighter-weight solution:
 
 2. **Clone and run**
    ```bash
-   git clone https://github.com/nekoguntai-castle/sanctuary.git
+   git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -573,7 +560,7 @@ For systems where you can't or don't want to run Docker:
 
 2. **Clone and run**
    ```bash
-   git clone https://github.com/nekoguntai-castle/sanctuary.git
+   git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh --no-start  # Generates secrets and SSL certs (but don't start with docker)
    podman-compose up -d           # Use podman-compose instead
