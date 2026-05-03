@@ -34,6 +34,28 @@ NC='\033[0m' # No Color
 # ============================================
 # Platform detection and configuration
 # ============================================
+
+# Repo metadata URL for a given source name. Used as a reachability probe
+# (curl returns 200 when the repo is publicly visible) and lets the script
+# fall through to alternate forges when the configured source is unreachable
+# (e.g., a shadow-banned GitHub org returning 404 to anonymous requests).
+_source_probe_url() {
+    case "$1" in
+        codeberg) echo "https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary" ;;
+        github)   echo "https://api.github.com/repos/nekoguntai-castle/sanctuary" ;;
+    esac
+}
+
+_source_reachable() {
+    local probe_url
+    probe_url=$(_source_probe_url "$1")
+    [ -n "$probe_url" ] || return 1
+    command -v curl &> /dev/null || return 0   # can't probe → assume yes
+    local code
+    code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 5 "$probe_url" 2>/dev/null || echo "000")
+    [ "$code" = "200" ]
+}
+
 detect_source() {
     local source=""
     # Check if --source argument was provided
@@ -53,7 +75,9 @@ detect_source() {
         esac
     done
 
-    # If source specified, use it
+    # If source specified, use it (respect operator's explicit choice even if
+    # the source happens to be unreachable — they may know something we don't,
+    # like an upcoming reachability change or auth they'll provide later).
     if [ -n "$source" ]; then
         case "$source" in
             codeberg|Codeberg)
@@ -70,7 +94,12 @@ detect_source() {
         esac
     fi
 
-    # Auto-detect from existing git remote
+    # Auto-detect from existing git remote, but only commit to it if the
+    # source is actually reachable. If origin is GitHub but GitHub is
+    # 404-ing the repo (account flagged, repo private, network blocked),
+    # fall through to the auto-probe instead of trying to git ls-remote
+    # against an unreachable endpoint and prompting for credentials.
+    local detected=""
     if [ -d ".git" ] || [ -d "$INSTALL_DIR/.git" ]; then
         local remote_url
         if [ -d ".git" ]; then
@@ -80,30 +109,29 @@ detect_source() {
         fi
 
         if echo "$remote_url" | grep -qi "codeberg"; then
-            echo "codeberg"
-            return
+            detected="codeberg"
         elif echo "$remote_url" | grep -qi "github"; then
-            echo "github"
-            return
+            detected="github"
         fi
     fi
 
+    if [ -n "$detected" ] && _source_reachable "$detected"; then
+        echo "$detected"
+        return
+    fi
+
+    if [ -n "$detected" ]; then
+        echo -e "${YELLOW}Detected source '$detected' from existing remote, but it is not reachable. Falling back to auto-probe.${NC}" >&2
+    fi
+
     # Auto-probe public reachability — try each platform's repo metadata
-    # endpoint and use the first one that returns 200. Codeberg first
-    # (public + actively mirrored from Forgejo), GitHub second (shadow-banned
-    # accounts will 404).
+    # endpoint and use the first one that responds. Codeberg first (public,
+    # actively mirrored from Forgejo); GitHub second (shadow-banned accounts
+    # will 404 here so we fall through naturally).
     if command -v curl &> /dev/null; then
-        local probes=(
-            "codeberg|https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary"
-            "github|https://api.github.com/repos/nekoguntai-castle/sanctuary"
-        )
-        for probe in "${probes[@]}"; do
-            local name="${probe%%|*}"
-            local url="${probe##*|}"
-            local code
-            code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null || echo "000")
-            if [ "$code" = "200" ]; then
-                echo "$name"
+        for candidate in codeberg github; do
+            if _source_reachable "$candidate"; then
+                echo "$candidate"
                 return
             fi
         done
