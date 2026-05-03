@@ -12,6 +12,18 @@ name: Release Candidate Validation
 # Total runtime: ~25-35 minutes
 
 on:
+  # Fire automatically on RC / pre-release tag pushes so RC validation
+  # happens BEFORE the operator promotes to a final tag. Final stable tags
+  # (e.g. v0.8.50) are matched by release.yml's pattern, not this one.
+  # Forgejo Actions doesn't honor negative `!` globs, so use positive-only
+  # patterns covering the prerelease shapes used in this repo
+  # (-rc1, -rc.1, -alpha1, -beta.1, -dev*).
+  push:
+    tags:
+      - 'v*-rc*'
+      - 'v*-alpha*'
+      - 'v*-beta*'
+      - 'v*-dev*'
   workflow_call:
     inputs:
       ref:
