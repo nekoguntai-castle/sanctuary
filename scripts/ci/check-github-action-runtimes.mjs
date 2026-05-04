@@ -11,6 +11,11 @@ const DEFAULT_ALLOWED_RUNTIME_ACTIONS = [
 const DEFAULT_FETCH_TIMEOUT_MS = 10000;
 const DEFAULT_MANIFEST_ROOT = 'scripts/ci/action-runtime-manifests';
 const ACTION_MANIFEST_NAMES = ['action.yml', 'action.yaml'];
+const WORKSPACE_ABSOLUTE_HELPERS = [
+  'ensure-node',
+  'ensure-python',
+  'install-semgrep',
+];
 
 function parseArgs(argv) {
   const options = {
@@ -444,11 +449,33 @@ async function inspectWorkflow(filePath, options, state) {
   const workflow = readText(filePath);
   const relativePath = path.relative(options.rootDir, filePath);
 
+  inspectWorkspaceAbsoluteHelperCalls(workflow, relativePath, state);
+
   for (const use of extractUses(workflow)) {
     const action = parseUsesSpec(use.spec);
     const chain = [`${relativePath}:${use.line}`];
     await inspectAction(action, options, state, chain);
   }
+}
+
+function inspectWorkspaceAbsoluteHelperCalls(workflow, relativePath, state) {
+  const helperPattern = new RegExp(
+    `\\bbash\\s+scripts/ci/(${WORKSPACE_ABSOLUTE_HELPERS.join('|')})\\.sh\\b`,
+  );
+
+  workflow.split(/\r?\n/).forEach((line, index) => {
+    const match = line.match(helperPattern);
+    if (!match) {
+      return;
+    }
+
+    addUniqueError(
+      state,
+      `${relativePath}:${index + 1}: root CI helper scripts/ci/${match[1]}.sh must be ` +
+        'invoked through ${{ github.workspace }}/scripts/... so job working-directory changes ' +
+        'cannot break it',
+    );
+  });
 }
 
 export async function checkActionRuntimes(rawOptions = {}) {

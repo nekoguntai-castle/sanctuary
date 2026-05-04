@@ -1,3 +1,30 @@
+# Active Task: Post-Merge Main Push Workflow Failures 2026-05-04
+
+Status: in progress
+
+Goal: fix the `main` push failures after the merged Forgejo CI stabilization PR, deliver a follow-up PR, and verify strict checks plus the replacement post-merge `main` lane.
+
+## Plan
+
+- [x] Confirm the merged PR state and current `main` push failures without recording internal runner metadata.
+- [x] Patch root-relative CI helper calls so workflow jobs keep working when their shell default directory is not the repository root.
+- [x] Stop release-only checks from running on ordinary `main` branch pushes.
+- [x] Add a workflow regression guard so bare repo-root CI helper invocations cannot reappear unnoticed.
+- [x] Update lessons with the correction pattern and run focused local workflow checks.
+- [ ] Commit, push, open a follow-up PR, monitor strict checks, merge it, and verify the replacement `main` push run.
+
+## Review
+
+- The outstanding CI stabilization PR was merged, but the replacement `main` push lane failed before test bodies started.
+- Full backend push jobs used `working-directory: server`, so bare `bash scripts/ci/ensure-node.sh` resolved under `server/scripts/...` and failed before coverage/typecheck could run.
+- Workflow helper calls for Node, Python, and Semgrep setup now use `${{ github.workspace }}/scripts/...` in Code Quality, Test Suite, and Verify Vectors.
+- The release workflow no longer runs on ordinary `main` branch pushes; it remains tag-scoped for stable release tags.
+- The action runtime guard now also rejects bare repo-root CI helper invocations, with regression coverage that avoids hard-coded line-number expectations.
+- Local verification passed: no bare helper invocation scan hits; action runtime guard and regression test; actionlint; CI helper tests; quality classifier test; lizard-only quality gate; JS syntax checks; `git diff --check`; diff metadata scan.
+- The first PR run exposed a workflow-graph issue rather than a test failure: the PR `Full Test Summary` no-op marker depended on the skipped non-PR full-lane graph and failed immediately in Forgejo. The PR marker is now split into an independent no-op job, while the non-PR full summary keeps the full-lane dependency graph.
+
+---
+
 # Active Task: Local Login Database Operation Failure 2026-05-03
 
 Status: complete; verified

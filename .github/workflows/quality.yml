@@ -80,7 +80,7 @@ jobs:
           clean: false
 
       - name: Verify Node.js toolchain
-        run: bash scripts/ci/ensure-node.sh
+        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
       - name: Run lint in clean workspace
         run: |
@@ -119,7 +119,7 @@ jobs:
           clean: false
 
       - name: Verify Node.js toolchain
-        run: bash scripts/ci/ensure-node.sh
+        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
       - name: Check lockfile peer resolution
         run: |
@@ -145,7 +145,7 @@ jobs:
           clean: false
 
       - name: Verify Node.js toolchain
-        run: bash scripts/ci/ensure-node.sh
+        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
       - name: Run npm audit
         run: |
@@ -255,7 +255,7 @@ jobs:
       - name: Install Semgrep
         env:
           SEMGREP_REPORT_DIR: /tmp/sanctuary-semgrep-${{ github.run_id }}
-        run: bash scripts/ci/install-semgrep.sh
+        run: bash ${{ github.workspace }}/scripts/ci/install-semgrep.sh
 
       - name: Run Semgrep baseline gate
         run: |
@@ -352,7 +352,7 @@ jobs:
           clean: false
 
       - name: Verify Node.js toolchain
-        run: bash scripts/ci/ensure-node.sh
+        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
       - name: Check action runtimes
         env:
@@ -371,7 +371,7 @@ jobs:
           clean: false
 
       - name: Verify Node.js toolchain
-        run: bash scripts/ci/ensure-node.sh
+        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
       - name: Run CI classifier tests
         run: |
@@ -442,7 +442,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Python toolchain
-        run: bash scripts/ci/ensure-python.sh
+        run: bash ${{ github.workspace }}/scripts/ci/ensure-python.sh
 
       - name: Run lizard
         # McCabe / NIST / SonarQube: warn on CCN > 15. The current measured
@@ -463,7 +463,7 @@ jobs:
           clean: false
 
       - name: Verify Node.js toolchain
-        run: bash scripts/ci/ensure-node.sh
+        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
       - name: Run jscpd
         # Uses .jscpd.json at the repo root. Config owns threshold and
@@ -502,7 +502,7 @@ jobs:
           clean: false
 
       - name: Verify Node.js toolchain
-        run: bash scripts/ci/ensure-node.sh
+        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
       - name: Check large-file classification
         run: node scripts/quality/check-large-files.mjs

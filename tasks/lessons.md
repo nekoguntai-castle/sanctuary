@@ -2,6 +2,44 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Use Workspace-Absolute Paths For Repo-Root CI Helpers
+
+**Rule:** Workflow steps must invoke repo-root helper scripts through `${{ github.workspace }}/scripts/...`, especially when a job or later edit may set `working-directory`.
+
+**Why:** The PR-required checks passed, but the post-merge `main` push lane ran full backend jobs from `server/`; `bash scripts/ci/ensure-node.sh` resolved under `server/scripts/...` and failed before tests started.
+
+**How to apply:**
+
+- Prefer `bash ${{ github.workspace }}/scripts/ci/ensure-node.sh`, `ensure-python.sh`, and `install-semgrep.sh` in workflow run steps.
+- Keep syntax-only checks such as `bash -n scripts/ci/...` rooted in the checkout, but do not use bare helper invocations for actual setup steps.
+- Run the workflow runtime/policy guard after workflow edits so bare helper calls fail locally before a long remote lane is queued.
+- When a CI failure happens before the test body starts, inspect workflow execution context and default working directories before changing application code.
+
+## Keep Release Workflows Tag-Scoped Unless Branch Checks Are Real
+
+**Rule:** Release workflows that only validate or publish tagged releases should not run on ordinary `main` branch pushes.
+
+**Why:** The post-merge `main` push triggered a release check that was intentionally designed to skip branch work, but the skipped branch path still produced a failed run and made `main` look red.
+
+**How to apply:**
+
+- Trigger release validation from release tags, manual dispatch, or explicit release events instead of broad branch pushes.
+- If branch release checks are required, make them real deterministic checks with logs, not placeholder skip paths.
+- Verify the target-branch push lane after changing workflow triggers, because PR checks do not exercise every `push` trigger.
+
+## Keep PR Marker Jobs Independent From Skipped Full Lanes
+
+**Rule:** A PR no-op marker job should not depend on the non-PR full-lane graph it is replacing.
+
+**Why:** The Test Suite quick PR lane passed its actual changed-file checks, but the `Full Test Summary` PR marker still depended on skipped full-lane jobs and failed immediately in Forgejo before any test assertion ran.
+
+**How to apply:**
+
+- Split PR marker jobs from non-PR summary/gate jobs when the non-PR job needs a large `needs:` graph.
+- Keep the PR marker as a tiny job with no full-lane dependencies; let `PR Required Checks` depend on the real quick-lane jobs.
+- Keep the non-PR full summary behind the full-lane `needs:` graph so `main`, schedules, and manual full runs still enforce the broad gate.
+- If a red job finishes before its dependencies or test body could plausibly run, inspect the workflow graph before changing test code.
+
 ## Verify The Post-Merge Lane, Not Only PR Required Checks
 
 **Rule:** After merging workflow or CI-scope changes, check the latest target-branch `push` run separately from the PR-required contexts before declaring Actions clean.

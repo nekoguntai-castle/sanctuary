@@ -298,6 +298,45 @@ jobs:
   }
 }
 
+async function assertBlocksBareRepoRootCiHelperCalls() {
+  const result = await runFixture(`
+name: Runtime Check
+on: pull_request
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - run: bash scripts/ci/ensure-node.sh
+`);
+
+  assert.equal(result.findings.length, 0);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /runtime-check\.yml:\d+:/);
+  assert.match(result.errors[0], /scripts\/ci\/ensure-node\.sh must be invoked through/);
+  assert.match(result.errors[0], /\$\{\{ github\.workspace \}\}/);
+}
+
+async function assertAllowsWorkspaceAbsoluteCiHelperCalls() {
+  const result = await runFixture(`
+name: Runtime Check
+on: pull_request
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - run: bash \${{ github.workspace }}/scripts/ci/ensure-node.sh
+`);
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.findings.length, 0);
+}
+
 await assertAllowsModernActions();
 await assertBlocksDirectDeprecatedRuntime();
 await assertAllowsForgejoArtifactFallback();
@@ -307,4 +346,6 @@ await assertBlocksLocalDeprecatedRuntime();
 await assertFailsClosedOnMissingManifest();
 await assertUsesTrackedManifestRootByDefault();
 await assertIgnoresForgejoGithubTokenForRemoteManifestFetches();
+await assertBlocksBareRepoRootCiHelperCalls();
+await assertAllowsWorkspaceAbsoluteCiHelperCalls();
 console.log('github action runtime guard regression checks passed');
