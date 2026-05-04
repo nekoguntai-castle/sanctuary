@@ -8,7 +8,7 @@ Goal: clear the current post-merge `main` Test Suite failure without weakening t
 
 - [x] Compare the latest red job with the backend worker and install/quality failures already fixed.
 - [x] Confirm the failure signature is frontend Vitest fork-worker startup/termination, not an application assertion failure.
-- [x] Move frontend coverage shards to the stable Vitest thread-pool/no-file-parallelism contract.
+- [x] Move frontend coverage shards to the stable serialized fork-pool/no-file-parallelism contract.
 - [x] Add a script regression check for the worker flags instead of line-number-based workflow assertions.
 - [x] Run focused local frontend coverage script checks and at least one real coverage shard with the patched worker contract.
 - [ ] Commit, push, open the follow-up PR, monitor strict checks, merge when green, and verify the replacement `main` push lane.
@@ -24,6 +24,8 @@ Goal: clear the current post-merge `main` Test Suite failure without weakening t
 - PR #265 merged, and the replacement `main` run confirmed the fork-worker failure was gone. The same full coverage shard then exposed a different native runner failure: Vitest itself exited 139 during shard 2 before writing the second blob report.
 - The follow-up fix retries only exit 139 at the frontend coverage shard command boundary. Non-139 Vitest failures still fail immediately, preserving assertion and coverage failures as hard failures.
 - Local verification for the follow-up retry passed: coverage script regression tests cover both 139 retry and non-139 hard failure; real shard 2 completed and wrote its blob; lizard-only quality, whitespace, shell syntax, and diff metadata checks passed.
+- PR #266 merged, but the next replacement `main` run showed the thread pool itself was unstable on the runner: shard 1 segfaulted, retried once, then segfaulted again before any deterministic assertion failure. The next patch switches frontend coverage to a serialized fork pool while keeping the exit-139 retry as a narrow guard.
+- Direct and script-backed local serialized fork-pool shard 1 runs passed and wrote their blobs, preserving process isolation without concurrent fork workers.
 
 ---
 

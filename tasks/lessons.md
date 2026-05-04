@@ -4,13 +4,14 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 
 ## Use Stable Worker Pools For Frontend Coverage CI
 
-**Rule:** Frontend coverage shard jobs in Forgejo CI should run Vitest with the thread pool, one worker, and no file parallelism unless a later runner rehearsal proves broader parallelism stable.
+**Rule:** Frontend coverage shard jobs in Forgejo CI should run Vitest with the fork pool, one worker, and no file parallelism unless a later runner rehearsal proves broader parallelism stable.
 
 **Why:** The post-merge `main` lane kept backend and frontend typechecks green, then failed in frontend coverage after Vitest reported passed test files but hit fork-worker startup and termination errors.
 
 **How to apply:**
 
 - Put worker settings in the shard script, not only in workflow YAML, so local and remote coverage shards share the same execution contract.
+- Prefer serialized forks for frontend jsdom/V8 coverage. Serialized threads removed fork-worker startup errors but caused repeat native segfaults on the Forgejo runner.
 - Assert those worker flags in script-level regression tests; do not rely on brittle workflow line numbers.
 - Retry only native Vitest segfault exits, such as 139, at the shard command boundary; do not retry ordinary test assertion or coverage failures.
 - Keep 100% coverage thresholds intact. Worker-pool failures are CI execution architecture problems, not permission to lower the gate.

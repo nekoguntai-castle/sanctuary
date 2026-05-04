@@ -73,7 +73,7 @@ FAKE_VITEST
     CAPTURED_VITEST_ARGS="$captured_args" VITEST_BIN="$fake_vitest_bin" bash "$SHARD_SCRIPT" 1 2
   )
   assert_file_contains '--pool' "$captured_args"
-  assert_file_contains 'threads' "$captured_args"
+  assert_file_contains 'forks' "$captured_args"
   assert_file_contains '--maxWorkers=1' "$captured_args"
   assert_file_contains '--no-file-parallelism' "$captured_args"
   assert_file_contains '--shard' "$captured_args"

@@ -24,7 +24,7 @@ run_vitest_shard_once() {
   rm -rf coverage-shards
 
   "$vitest_bin" run \
-    --pool threads \
+    --pool forks \
     --maxWorkers=1 \
     --no-file-parallelism \
     --coverage \
