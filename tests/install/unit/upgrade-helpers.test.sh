@@ -78,6 +78,40 @@ assert_not_contains() {
   return 1
 }
 
+shared_backend_services_with_build() {
+  local compose_file="$1"
+
+  awk '
+    function flush_service() {
+      if (service != "" && has_backend_image && has_build) {
+        print service
+      }
+      has_backend_image = 0
+      has_build = 0
+    }
+
+    /^  [^[:space:]#][^:]*:$/ {
+      flush_service()
+      service = $0
+      sub(/^  /, "", service)
+      sub(/:$/, "", service)
+      next
+    }
+
+    service != "" && /^    image: sanctuary-backend:local([[:space:]]|$)/ {
+      has_backend_image = 1
+    }
+
+    service != "" && /^    build:/ {
+      has_build = 1
+    }
+
+    END {
+      flush_service()
+    }
+  ' "$compose_file"
+}
+
 run_test() {
   local test_name="$1"
   local test_func="$2"
@@ -188,15 +222,70 @@ test_fixture_defaults_are_composable() {
   assert_equals "upgrade-fixture-unit-tor" "$TOR_CONTAINER_NAME" "optional fixture should isolate Tor container name"
 }
 
-test_optional_profiles_is_in_release_matrices() {
-  local install_count
+test_baseline_browser_host_uses_upgrade_network_default() {
+  local original_default="${UPGRADE_TEST_DEFAULT_BROWSER_HOST:-}"
+
+  UPGRADE_TEST_DEFAULT_BROWSER_HOST="runner-host.example.invalid"
+  UPGRADE_BROWSER_HOST=""
+
+  apply_upgrade_fixture_defaults "baseline"
+
+  local result=0
+  assert_equals "runner-host.example.invalid" "$UPGRADE_BROWSER_HOST" \
+    "baseline fixture should use the Docker-visible browser host default" || result=1
+
+  UPGRADE_TEST_DEFAULT_BROWSER_HOST="$original_default"
+  UPGRADE_BROWSER_HOST=""
+  return "$result"
+}
+
+test_optional_profile_ports_follow_install_port_scope() {
+  HTTPS_PORT="23030"
+  COMPOSE_PROJECT_NAME="upgrade-fixture-unit"
+  UPGRADE_OPTIONAL_PROFILE_PORT_BASE=""
+  GRAFANA_PORT=""
+  PROMETHEUS_PORT=""
+  ALERTMANAGER_PORT=""
+  JAEGER_UI_PORT=""
+  LOKI_PORT=""
+  JAEGER_OTLP_GRPC_PORT=""
+  JAEGER_OTLP_HTTP_PORT=""
+
+  apply_upgrade_fixture_defaults "optional-profiles"
+
+  local result=0
+  assert_equals "23130" "$GRAFANA_PORT" "optional fixture should derive Grafana port from HTTPS scope" || result=1
+  assert_equals "23131" "$PROMETHEUS_PORT" "optional fixture should derive Prometheus port from HTTPS scope" || result=1
+  assert_equals "23132" "$ALERTMANAGER_PORT" "optional fixture should derive Alertmanager port from HTTPS scope" || result=1
+  assert_equals "23133" "$JAEGER_UI_PORT" "optional fixture should derive Jaeger UI port from HTTPS scope" || result=1
+  assert_equals "23134" "$LOKI_PORT" "optional fixture should derive Loki port from HTTPS scope" || result=1
+  assert_equals "23135" "$JAEGER_OTLP_GRPC_PORT" "optional fixture should derive Jaeger gRPC port from HTTPS scope" || result=1
+  assert_equals "23136" "$JAEGER_OTLP_HTTP_PORT" "optional fixture should derive Jaeger HTTP port from HTTPS scope" || result=1
+
+  HTTPS_PORT=""
+  UPGRADE_OPTIONAL_PROFILE_PORT_BASE=""
+  return "$result"
+}
+
+test_optional_profiles_is_in_release_coverage() {
+  local install_contents
+  local extended_fixtures
+  local failures=0
   local rc_count
 
-  install_count=$(grep -c 'fixture: optional-profiles' "$PROJECT_ROOT/.github/workflows/install-test.yml")
+  install_contents="$(cat "$PROJECT_ROOT/.github/workflows/install-test.yml")"
+  extended_fixtures="$("$PROJECT_ROOT/scripts/ci/run-extended-upgrade-fixtures.sh" --list)"
   rc_count=$(grep -c 'fixture: optional-profiles' "$PROJECT_ROOT/.github/workflows/release-candidate.yml")
 
-  assert_equals "1" "$install_count" "install release matrix should include optional profiles once"
-  assert_equals "1" "$rc_count" "release candidate matrix should include optional profiles once"
+  assert_contains "$install_contents" 'scripts/ci/run-extended-upgrade-fixtures.sh' \
+    "install workflow should run the extended fixture script" || failures=1
+  assert_contains "$extended_fixtures" 'optional-profiles 30' \
+    "install extended upgrades should include optional profiles once" || failures=1
+  assert_equals "1" "$(grep -c '^optional-profiles 30$' <<< "$extended_fixtures")" \
+    "install extended upgrades should include optional profiles once" || failures=1
+  assert_equals "1" "$rc_count" "release candidate matrix should include optional profiles once" || failures=1
+
+  return "$failures"
 }
 
 test_legacy_optional_profile_compose_is_isolated() {
@@ -283,6 +372,100 @@ test_tor_compose_uses_supported_hidden_service_config() {
     "Tor healthcheck should not depend on public Tor reachability"
 }
 
+test_legacy_compose_ssl_mount_uses_docker_visible_path() {
+  local source_checkout="$TEST_TMP_DIR/source"
+  local compose_file="$source_checkout/docker-compose.yml"
+
+  mkdir -p "$source_checkout"
+  cat > "$compose_file" <<'EOF'
+services:
+  frontend:
+    volumes:
+      - ${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}:/etc/nginx/ssl:ro
+EOF
+
+  SANCTUARY_SSL_DIR="/container/runtime/ssl" \
+    SANCTUARY_COMPOSE_SSL_DIR="/host/runtime/ssl" \
+    adapt_legacy_compose_ssl_mount "$source_checkout"
+
+  local contents
+  contents="$(cat "$compose_file")"
+
+  assert_contains "$contents" '${SANCTUARY_COMPOSE_SSL_DIR:-${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}}:/etc/nginx/ssl:ro' \
+    "legacy compose SSL mount should use Docker-visible path when available"
+}
+
+test_current_compose_ssl_mount_is_left_unchanged() {
+  local source_checkout="$TEST_TMP_DIR/source"
+  local compose_file="$source_checkout/docker-compose.yml"
+
+  mkdir -p "$source_checkout"
+  cat > "$compose_file" <<'EOF'
+services:
+  frontend:
+    volumes:
+      - ${SANCTUARY_COMPOSE_SSL_DIR:-${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}}:/etc/nginx/ssl:ro
+EOF
+
+  local before
+  before="$(cat "$compose_file")"
+
+  SANCTUARY_SSL_DIR="/container/runtime/ssl" \
+    SANCTUARY_COMPOSE_SSL_DIR="/host/runtime/ssl" \
+    adapt_legacy_compose_ssl_mount "$source_checkout"
+
+  assert_equals "$before" "$(cat "$compose_file")" \
+    "current compose SSL mount should remain unchanged"
+}
+
+test_legacy_shared_backend_builds_are_adapted() {
+  local source_checkout="$TEST_TMP_DIR/source"
+  local compose_file="$source_checkout/docker-compose.yml"
+
+  mkdir -p "$source_checkout"
+  cat > "$compose_file" <<'EOF'
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: sanctuary-backend:local
+  worker:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: sanctuary-backend:local
+    command: ["node", "dist/app/src/worker.js"]
+  migrate:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: sanctuary-backend:local
+    command: ["sh", "/app/scripts/migrate.sh"]
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sanctuary-frontend:local
+EOF
+
+  adapt_legacy_shared_backend_builds "$source_checkout"
+
+  local services
+  services="$(shared_backend_services_with_build "$compose_file" | paste -sd ',' -)"
+
+  assert_equals "backend" "$services" \
+    "upgrade harness should keep one backend-image build and make worker/migrate reuse it"
+}
+
+test_current_compose_builds_shared_backend_image_once() {
+  local services
+  services="$(shared_backend_services_with_build "$PROJECT_ROOT/docker-compose.yml" | paste -sd ',' -)"
+
+  assert_equals "backend" "$services" \
+    "current compose should not export sanctuary-backend:local from multiple services"
+}
+
 test_upgrade_harness_sources_extracted_helpers() {
   local contents
   contents="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
@@ -293,6 +476,47 @@ test_upgrade_harness_sources_extracted_helpers() {
     "upgrade harness should source extracted 2FA verification helpers"
   assert_contains "$contents" 'source "$SCRIPT_DIR/../utils/upgrade-notification-helpers.sh"' \
     "upgrade harness should source extracted notification helpers"
+  assert_contains "$contents" 'run_install_script_command "$project_dir" 2>&1 | redact_stream | tee "$install_log"' \
+    "upgrade harness should redact install output before writing CI logs"
+  assert_contains "$contents" 'install_log_has_buildkit_cache_corruption "$install_log"' \
+    "upgrade harness should detect legacy source install BuildKit cache corruption"
+  assert_contains "$contents" 'recover_upgrade_builder_cache' \
+    "upgrade harness should recover Docker builder cache for disposable legacy source installs"
+  assert_contains "$contents" 'install.sh exited successfully after BuildKit cache corruption; retrying source install' \
+    "upgrade harness should retry legacy source installs that hide BuildKit failures behind a zero exit"
+  assert_contains "$contents" 'run_install_script_attempt "$project_dir" "$install_log" true' \
+    "upgrade harness should retry source install once after builder-cache recovery"
+}
+
+test_install_workflow_uses_run_scoped_ssl_dirs() {
+  local contents
+  local checkout_count
+  local clean_false_count
+  contents="$(cat "$PROJECT_ROOT/.github/workflows/install-test.yml")"
+
+  assert_contains "$contents" 'SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2' \
+    "install workflow should keep runner locks under the checked-out workspace"
+  assert_contains "$contents" 'SANCTUARY_SSL_DIR="$(default_install_test_root "$PWD")/ssl-${COMPOSE_PROJECT_NAME}"' \
+    "install workflow should generate SSL material under the run-scoped install-test root"
+  assert_not_contains "$contents" 'SANCTUARY_SSL_DIR="$PWD/docker/nginx/ssl"' \
+    "install workflow should not write generated SSL material into a fixed repo path"
+
+  checkout_count="$(grep -c 'uses: actions/checkout' <<< "$contents")"
+  clean_false_count="$(grep -c 'clean: false' <<< "$contents")"
+  assert_equals "$checkout_count" "$clean_false_count" \
+    "install workflow checkout steps should not pre-clean shared runner workspaces"
+}
+
+test_runner_lock_helper_uses_cross_uid_writable_locks() {
+  local contents
+  contents="$(cat "$PROJECT_ROOT/scripts/ci/with-runner-lock.sh")"
+
+  assert_contains "$contents" 'chmod 1777 "$lock_dir"' \
+    "runner lock directory should be writable across job user IDs"
+  assert_contains "$contents" 'umask 000' \
+    "runner lock files should be created writable across job user IDs"
+  assert_contains "$contents" 'chmod 666 "$lock_file"' \
+    "runner lock files should remain writable when reused by another job user"
 }
 
 test_upgrade_network_defaults_respect_overrides() {
@@ -327,21 +551,27 @@ test_install_root_defaults_to_tmp_outside_actions() {
 
 test_install_root_uses_workspace_in_actions() {
   local root
-  root="$(SANCTUARY_INSTALL_TEST_ROOT="" GITHUB_WORKSPACE="/workspace/sanctuary" ACT=true \
+  local uid
+  uid="$(id -u)"
+
+  root="$(SANCTUARY_INSTALL_TEST_ROOT="" GITHUB_WORKSPACE="/workspace/sanctuary" GITHUB_RUN_ID="12345" ACT=true \
     bash -c 'source "$1"; default_install_test_root "$2"' _ \
     "$PROJECT_ROOT/tests/install/utils/helpers.sh" "$PROJECT_ROOT")"
 
-  assert_equals "/workspace/sanctuary/.tmp/install-tests" "$root" \
+  assert_equals "/workspace/sanctuary/.tmp/install-tests-12345-$uid" "$root" \
     "Actions install tests should use a Docker-visible workspace path"
 }
 
 test_install_root_uses_workspace_mount_without_actions_env() {
   local root
-  root="$(env -u SANCTUARY_INSTALL_TEST_ROOT -u GITHUB_WORKSPACE ACT=false \
+  local uid
+  uid="$(id -u)"
+
+  root="$(env -u SANCTUARY_INSTALL_TEST_ROOT -u GITHUB_WORKSPACE GITHUB_RUN_ID="67890" ACT=false \
     bash -c 'source "$1"; default_install_test_root "$2"' _ \
     "$PROJECT_ROOT/tests/install/utils/helpers.sh" "/workspace/owner/repo")"
 
-  assert_equals "/workspace/owner/repo/.tmp/install-tests" "$root" \
+  assert_equals "/workspace/owner/repo/.tmp/install-tests-67890-$uid" "$root" \
     "workspace-mounted runner tests should use a Docker-visible workspace path"
 }
 
@@ -534,11 +764,19 @@ main() {
 
   run_test "source ref aliases resolve stable tags" test_source_ref_aliases_resolve_stable_tags
   run_test "fixture defaults are composable" test_fixture_defaults_are_composable
-  run_test "optional profiles is in release matrices" test_optional_profiles_is_in_release_matrices
+  run_test "baseline browser host uses upgrade network default" test_baseline_browser_host_uses_upgrade_network_default
+  run_test "optional profile ports follow install port scope" test_optional_profile_ports_follow_install_port_scope
+  run_test "optional profiles is in release coverage" test_optional_profiles_is_in_release_coverage
   run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
   run_test "legacy optional profile compose can use target tor overlay" test_legacy_optional_profile_compose_can_use_target_tor_overlay
   run_test "tor compose uses supported hidden service config" test_tor_compose_uses_supported_hidden_service_config
+  run_test "legacy compose ssl mount uses docker visible path" test_legacy_compose_ssl_mount_uses_docker_visible_path
+  run_test "current compose ssl mount is left unchanged" test_current_compose_ssl_mount_is_left_unchanged
+  run_test "legacy shared backend builds are adapted" test_legacy_shared_backend_builds_are_adapted
+  run_test "current compose builds shared backend image once" test_current_compose_builds_shared_backend_image_once
   run_test "upgrade harness sources extracted helpers" test_upgrade_harness_sources_extracted_helpers
+  run_test "install workflow uses run-scoped ssl dirs" test_install_workflow_uses_run_scoped_ssl_dirs
+  run_test "runner lock helper uses cross-UID writable locks" test_runner_lock_helper_uses_cross_uid_writable_locks
   run_test "upgrade network defaults respect overrides" test_upgrade_network_defaults_respect_overrides
   run_test "invalid fixture is rejected" test_invalid_fixture_is_rejected
   run_test "install root defaults to tmp outside actions" test_install_root_defaults_to_tmp_outside_actions

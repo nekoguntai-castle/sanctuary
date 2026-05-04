@@ -12,15 +12,46 @@ UPGRADE_EXPECT_OPTIONAL_PROFILES="${UPGRADE_EXPECT_OPTIONAL_PROFILES:-false}"
 
 apply_optional_profile_isolation_defaults() {
     local profile_slug="${COMPOSE_PROJECT_NAME:-sanctuary-upgrade-optional}"
+    local optional_port_base="${UPGRADE_OPTIONAL_PROFILE_PORT_BASE:-}"
+
+    if [ -z "$optional_port_base" ] && [ -n "${HTTPS_PORT:-}" ]; then
+        case "$HTTPS_PORT" in
+            ''|*[!0-9]*)
+                ;;
+            *)
+                optional_port_base=$((10#$HTTPS_PORT + 100))
+                ;;
+        esac
+    fi
+
+    optional_port_base="${optional_port_base:-19400}"
+    case "$optional_port_base" in
+        ''|*[!0-9]*)
+            log_error "UPGRADE_OPTIONAL_PROFILE_PORT_BASE must be a non-negative integer"
+            return 1
+            ;;
+    esac
+    if [ $((10#$optional_port_base + 6)) -gt 65535 ]; then
+        log_error "Optional profile port range exceeds 65535"
+        return 1
+    fi
+
+    set_optional_profile_port_default() {
+        local name="$1"
+        local offset="$2"
+        if [ -z "${!name:-}" ]; then
+            printf -v "$name" '%s' "$((10#$optional_port_base + offset))"
+        fi
+    }
 
     MONITORING_BIND_ADDR="${MONITORING_BIND_ADDR:-127.0.0.1}"
-    GRAFANA_PORT="${GRAFANA_PORT:-19400}"
-    PROMETHEUS_PORT="${PROMETHEUS_PORT:-19401}"
-    ALERTMANAGER_PORT="${ALERTMANAGER_PORT:-19402}"
-    JAEGER_UI_PORT="${JAEGER_UI_PORT:-19403}"
-    LOKI_PORT="${LOKI_PORT:-19404}"
-    JAEGER_OTLP_GRPC_PORT="${JAEGER_OTLP_GRPC_PORT:-19405}"
-    JAEGER_OTLP_HTTP_PORT="${JAEGER_OTLP_HTTP_PORT:-19406}"
+    set_optional_profile_port_default GRAFANA_PORT 0
+    set_optional_profile_port_default PROMETHEUS_PORT 1
+    set_optional_profile_port_default ALERTMANAGER_PORT 2
+    set_optional_profile_port_default JAEGER_UI_PORT 3
+    set_optional_profile_port_default LOKI_PORT 4
+    set_optional_profile_port_default JAEGER_OTLP_GRPC_PORT 5
+    set_optional_profile_port_default JAEGER_OTLP_HTTP_PORT 6
 
     JAEGER_CONTAINER_NAME="${JAEGER_CONTAINER_NAME:-${profile_slug}-jaeger}"
     LOKI_CONTAINER_NAME="${LOKI_CONTAINER_NAME:-${profile_slug}-loki}"
@@ -51,6 +82,116 @@ isolate_legacy_optional_profile_compose() {
     if grep -q '^    container_name: sanctuary-tor$' "$tor_compose"; then
         sed -i 's/container_name: sanctuary-tor/container_name: ${TOR_CONTAINER_NAME:-sanctuary-tor}/' "$tor_compose"
     fi
+}
+
+adapt_legacy_compose_ssl_mount() {
+    local project_dir="$1"
+    local compose_file="$project_dir/docker-compose.yml"
+    local legacy_mount='${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}:/etc/nginx/ssl:ro'
+    local compose_mount='${SANCTUARY_COMPOSE_SSL_DIR:-${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}}:/etc/nginx/ssl:ro'
+
+    [ -f "$compose_file" ] || return 0
+    [ -n "${SANCTUARY_COMPOSE_SSL_DIR:-}" ] || return 0
+    [ "${SANCTUARY_COMPOSE_SSL_DIR:-}" != "${SANCTUARY_SSL_DIR:-}" ] || return 0
+
+    if grep -q 'SANCTUARY_COMPOSE_SSL_DIR' "$compose_file"; then
+        return 0
+    fi
+
+    if ! grep -Fq "$legacy_mount" "$compose_file"; then
+        return 0
+    fi
+
+    local tmp_file
+    tmp_file="$(mktemp "${compose_file}.XXXXXX")"
+    while IFS= read -r line || [ -n "$line" ]; do
+        printf '%s\n' "${line//$legacy_mount/$compose_mount}"
+    done < "$compose_file" > "$tmp_file"
+    mv "$tmp_file" "$compose_file"
+
+    log_info "Adapted legacy frontend SSL mount for Docker-visible CI path"
+}
+
+adapt_legacy_shared_backend_builds() {
+    local project_dir="$1"
+    local compose_file="$project_dir/docker-compose.yml"
+
+    [ -f "$compose_file" ] || return 0
+
+    local shared_services
+    shared_services="$(
+        awk '
+            function flush_service() {
+                if ((service == "worker" || service == "migrate") && has_backend_image) {
+                    if (output != "") {
+                        output = output ","
+                    }
+                    output = output service
+                }
+                has_backend_image = 0
+            }
+
+            /^  [^[:space:]#][^:]*:$/ {
+                flush_service()
+                service = $0
+                sub(/^  /, "", service)
+                sub(/:$/, "", service)
+                next
+            }
+
+            service != "" && /^    image: sanctuary-backend:local([[:space:]]|$)/ {
+                has_backend_image = 1
+            }
+
+            END {
+                flush_service()
+                print output
+            }
+        ' "$compose_file"
+    )"
+
+    [ -n "$shared_services" ] || return 0
+
+    local tmp_file
+    tmp_file="$(mktemp "${compose_file}.XXXXXX")"
+
+    awk -v shared_services="$shared_services" '
+        BEGIN {
+            split(shared_services, names, ",")
+            for (idx in names) {
+                reuse_backend_image[names[idx]] = 1
+            }
+        }
+
+        /^  [^[:space:]#][^:]*:$/ {
+            service = $0
+            sub(/^  /, "", service)
+            sub(/:$/, "", service)
+            skip_build = 0
+        }
+
+        skip_build {
+            if ($0 ~ /^      / || $0 ~ /^[[:space:]]*$/) {
+                next
+            }
+            skip_build = 0
+        }
+
+        reuse_backend_image[service] && $0 ~ /^    build:[[:space:]]*$/ {
+            skip_build = 1
+            next
+        }
+
+        { print }
+    ' "$compose_file" > "$tmp_file"
+
+    if cmp -s "$compose_file" "$tmp_file"; then
+        rm -f "$tmp_file"
+        return 0
+    fi
+
+    mv "$tmp_file" "$compose_file"
+    log_info "Adapted shared backend-image services to reuse the backend build"
 }
 
 upgrade_fixture_usage() {
@@ -117,7 +258,7 @@ apply_upgrade_fixture_defaults() {
         fi
     fi
 
-    UPGRADE_BROWSER_HOST="${UPGRADE_BROWSER_HOST:-localhost}"
+    UPGRADE_BROWSER_HOST="${UPGRADE_BROWSER_HOST:-${UPGRADE_TEST_DEFAULT_BROWSER_HOST:-localhost}}"
 
     if fixture_list_contains "$fixture_list" "legacy-runtime-env"; then
         UPGRADE_USE_LEGACY_RUNTIME_ENV=true

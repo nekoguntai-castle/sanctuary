@@ -1,3 +1,232 @@
+# Active Task: Local Login Database Operation Failure 2026-05-03
+
+Status: complete; verified
+
+Goal: restore login on the local running instance and reduce recurrence of the `database operation failed` login failure.
+
+## Plan
+
+- [x] Inspect the running app/Postgres stack, backend logs, and health checks without printing secrets.
+- [x] Compare runtime database credential sources using hashes/redacted values only.
+- [x] Reproduce the backend-to-Postgres TCP auth path from the compose network.
+- [x] Repair the runtime state or patch configuration/code if the failure is not runtime drift.
+- [x] Verify health and a fresh login path after the fix.
+- [x] Record the result, verification, and any recurrence guard in this task note.
+
+## Review
+
+- Backend and worker were unhealthy while Postgres was healthy; backend logs showed Prisma/Postgres `P1000` / `28P01 password authentication failed for user "sanctuary"` during health checks and login.
+- Backend, worker, and Postgres runtime credentials matched by redacted password hash, but the persisted Postgres role did not authenticate over the app's TCP path.
+- Repaired the live `sanctuary` Postgres role password to match the running Postgres container `POSTGRES_PASSWORD`.
+- Found the recurrence source: `tests/install/unit/install-script.test.sh` runs `scripts/setup.sh --no-start` with throwaway test env files, and `setup.sh` still reconciled the live Postgres role password before this fix.
+- Added `scripts/reconcile-postgres-password.sh` and wired `start.sh` to start Postgres first, wait for its healthcheck, validate the app-relevant `postgres:5432` password path, reconcile if needed, and then start the rest of the stack.
+- Patched `scripts/setup.sh` so live Postgres reconciliation is skipped when `--no-start` is set, preventing unit/setup dry runs from mutating the running database role. The real setup start path now also starts Postgres and runs the reconciliation helper before the remaining services.
+- Verification passed: Postgres service-DNS TCP `select 1`; helper no-op against the repaired stack; `GET https://localhost:8443/api/v1/health` returned `200` with database healthy after two wait intervals; fake login returned `401 Invalid username or password` instead of `500 Database operation failed`; backend/worker health are healthy; backend/worker logs after the final wait showed no fresh `28P01`, `P1000`, or DB-auth job failures.
+- Local checks passed: `bash -n start.sh scripts/setup.sh scripts/reconcile-postgres-password.sh tests/install/unit/install-script.test.sh`; `bash tests/install/unit/install-script.test.sh` passed 86/86; `git diff --check`; pinned lizard passed for `start.sh` and `scripts/reconcile-postgres-password.sh`. Broader lizard runs still report pre-existing shell warnings in `scripts/setup.sh` (`start_services`) and `tests/install/unit/install-script.test.sh` (`assert_length`).
+
+---
+
+# Active Task: Forgejo CI Parallelism Optimization Plan 2026-05-03
+
+Status: planned; awaiting implementation
+
+Goal: reduce Forgejo CI wall-clock time while preserving the same coverage intent and keeping explicit isolation around Docker/browser/install E2E work that has previously collided on the shared runner.
+
+## Assumptions
+
+- Forgejo jobs can run in parallel when runner capacity and job `needs` allow it.
+- The shared `e2e` runner lock remains necessary for mutating Docker/browser/install sections until a rehearsal proves a narrower lock is safe.
+- Coverage, typecheck, lint, install, upgrade, release, and required summary semantics must remain unchanged.
+- Workflow changes should land in small phases so a bad parallelism assumption is easy to revert.
+
+## Plan
+
+- [ ] Phase 0: Baseline measurement.
+  - Capture current wall-clock and queue time for representative `pull_request`, `merge_group` or manual full-lane, `push` to `main`, and install workflow runs.
+  - Record current long poles by workflow/job: `Test Suite`, `Install Tests`, browser/render E2E, frontend coverage, backend integration, install/upgrade.
+  - Confirm current runner capacity only in private operator notes, not repo-tracked files.
+- [ ] Phase 1: Stop unrelated workflow-level queueing.
+  - Change non-release workflow concurrency groups from ref-only to workflow-plus-ref, for example `${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}`.
+  - Keep `cancel-in-progress: false` on `main`/release-sensitive paths unless explicitly re-evaluated.
+  - Keep `scripts/ci/with-runner-lock.sh e2e ...` around Docker/browser/install E2E sections as the real cross-workflow isolation boundary.
+  - Verify that `Test Suite`, `Install Tests`, `Code Quality`, and other independent workflows can be scheduled together while their locked E2E sections still queue.
+- [ ] Phase 2: Split full `Test Suite` by true dependencies.
+  - Keep `detect-changes` as the initial classifier.
+  - Let backend typecheck, frontend typechecks, gateway tests, ai-proxy tests, critical mutation, and build checks start from `detect-changes` when their path conditions are true and they do not consume another job's artifacts.
+  - Keep frontend coverage merge dependent only on frontend coverage artifacts.
+  - Keep summary jobs as aggregators that validate all relevant upstream results.
+  - Preserve path filters and required-check names so branch protection behavior does not silently weaken.
+- [ ] Phase 3: Reconsider matrix throttles one at a time.
+  - Backend integration matrix: test `max-parallel: 2` only after proving each matrix job uses isolated services, ports, workspaces, reports, and database names.
+  - Frontend typecheck matrix: remove `max-parallel: 1` if runner workspace/cache behavior is stable under two sibling Node jobs.
+  - Browser E2E matrix: keep `max-parallel: 1` until a dedicated rehearsal proves the API ports, reports, Playwright outputs, and runner lock avoid collision.
+  - Install upgrade matrices: keep `max-parallel: 1` initially because each cell mutates Docker Compose state and runs long upgrade flows.
+- [ ] Phase 4: Reduce duplicate installs and cold-start time without reducing checks.
+  - Audit repeated `npm ci` setup across independent jobs and only add shared artifacts if the artifact handoff is Forgejo-compatible and faster than a clean install.
+  - Prefer existing package-lock cache behavior for low-risk wins before introducing custom dependency artifacts.
+  - Avoid sharing mutable `node_modules` or build directories across concurrent jobs on the same runner.
+- [ ] Phase 5: Install workflow-specific tuning.
+  - Keep install unit tests parallelizable after `determine-scope`.
+  - Keep fresh/install-script combined job unless splitting proves faster without duplicate Docker build/start cost.
+  - Treat container-health/auth-flow reuse-stack mode as the preferred non-PR path when both are in scope.
+  - Do not parallelize upgrade baseline/extended matrices until lock contention and Docker disk pressure are measured.
+- [ ] Phase 6: Rehearsal and rollout.
+  - Run workflow lint and action runtime guard after each workflow edit.
+  - Run classifier tests for every changed path filter or condition.
+  - Manually dispatch `Test Suite` and `Install Tests` together on the same ref to verify workflow-level parallelism plus `e2e` lock behavior.
+  - Verify PR required checks, merge-group/full-lane checks, and a post-merge `main` push run before calling the optimization complete.
+
+## Risk Controls
+
+- If Docker/browser/install jobs overlap unexpectedly, restore the previous concurrency group or widen the explicit lock before continuing.
+- If concurrent Node jobs corrupt a shared checkout/cache/report path, either isolate the output paths or put that specific job family back behind `max-parallel: 1`.
+- If branch protection loses a required context, stop and restore the aggregator job contract before pursuing speed.
+- If wall-clock improves but failure flake rate rises, revert the last phase instead of stacking more changes.
+
+## Expected Impact
+
+- Lowest-risk likely win: allow independent workflows to start together while locked E2E sections still serialize.
+- Medium-risk likely win: remove artificial full-lane chains between backend, frontend, gateway, ai-proxy, mutation, and build jobs.
+- Higher-risk experimental win: selectively increase matrix parallelism after isolated rehearsals.
+
+## Review
+
+- This is a planning-only entry. No workflow files were changed yet.
+- The current workflow layout is conservative because prior Forgejo runs showed cross-workflow Docker/browser/install overlap despite matching workflow-level concurrency groups.
+- The plan preserves the explicit `e2e` lock as the safety mechanism and moves parallelism first into non-mutating jobs and independent workflow scheduling.
+
+---
+
+# Active Task: Verify Forgejo Telegram Webhook 2026-05-03
+
+Status: complete; verified
+
+Goal: verify whether the Forgejo Telegram webhook can deliver PR/merge notifications without exposing notification credentials.
+
+## Plan
+
+- [x] Identify how Forgejo is reachable from this workstation and whether an API/admin path is available.
+- [x] Verify Telegram delivery with redacted token/chat handling where credentials are accessible.
+- [x] Verify Forgejo webhook delivery or collect the precise blocker preventing an end-to-end test.
+- [x] Record the result and any required next step.
+
+## Review
+
+- Direct Telegram API delivery worked for the provided notification credentials.
+- Existing Forgejo hook was user-level; the `nekoguntai-castle/sanctuary` repo initially had no repo-level hooks.
+- Added repo-level Telegram hook `id=2` for `sanctuary`, active on `push`, pull-request events, and action-run success/failure/recovery events.
+- Patched a first malformed create attempt in place before relying on it; final hook URL is redacted in local notes and points to the provided Telegram bot/chat.
+- Forgejo accepted the repo hook test endpoint with HTTP `204`; user confirmed the Forgejo Telegram test message arrived.
+- Deleted temporary diagnostic local-sink hook `id=3`.
+- Removed local scratch files created during Telegram/Forgejo testing and verified the provided bot/chat values do not appear in the repo, shell history, checked temp files, runner state, `.config`, `.cache`, or `.local/share` scans.
+
+---
+
+# Active Task: Main Push Actions Failure Triage 2026-05-03
+
+Status: in progress
+
+Goal: fix the real post-merge `push` Action failures on `main`, not just stale failed PR attempts.
+
+## Plan
+
+- [x] Compare latest `main` commit status against stale failed PR runs.
+- [x] Identify which failures are push-only full-lane jobs.
+- [x] Patch workflow/service isolation so full push jobs do not collide on the shared local runner.
+- [x] Replace remaining GitHub artifact download actions in full-lane artifact handoffs.
+- [x] Serialize frontend coverage shards inside one job so shard runs cannot collide in a shared checkout.
+- [x] Add an explicit runner lock around Docker/browser E2E sections because Forgejo workflow concurrency did not serialize separate workflow files.
+- [x] Reproduce the focused full-lane commands locally where practical.
+- [x] Harden the remaining wallet-experience E2E selector failures and rerun the focused browser slice.
+- [x] Run workflow lint, runtime guards, metadata scans, and focused CI helper tests.
+- [ ] Commit, push, open/monitor a follow-up PR, and verify the replacement `main` run.
+
+## Review
+
+- Latest `main` push for merge commit `61c8b842` is genuinely failing; this is not only stale PR history.
+- The failing set is concentrated in push-only full-lane jobs that PR quick-lane coverage intentionally skipped.
+- Test workflow service containers now request runner-assigned host ports and resolve those ports before building `DATABASE_URL`/`REDIS_URL`.
+- Push/manual full-lane jobs now run in an explicit sequence, with matrix fan-out limited to one job at a time where shared checkout/npm or services were colliding on the local runner.
+- Core CI workflows now share a ref-level concurrency group for PR, push, and manual runs so workflow-level Docker/npm jobs queue on the local runner instead of overlapping.
+- Full browser E2E matrix jobs now use distinct backend API ports and stop the background backend process at job end.
+- Full test artifact handoffs now use the Forgejo-compatible download action, matching the existing Forgejo upload action.
+- Manual full-lane rehearsal caught remaining GitHub `download-artifact` usages in frontend coverage merge and coverage-summary download steps; those have now been replaced.
+- Manual full-lane rehearsal then showed parallel frontend coverage shards still mutating the same local runner checkout; full coverage shards now run sequentially in one job before the existing merge step.
+- Manual full-lane rehearsal also showed install E2Es overlapping the full browser E2E job despite matching workflow-level concurrency groups; Docker/browser E2E run sections now use an explicit shared runner lock.
+- The latest full coverage shard and coverage merge gates passed on the PR head, but the manual wallet-experience browser E2E slice still needed selector hardening before merge.
+- Browser E2E selector hardening now scopes the node-config Testnet tab click to main content and gives block tooltips self-contained fallback positioning before geometry assertions.
+- Local wallet-experience browser E2E now passes cleanly for the failing shard: 49 passed, 7 skipped, no retries.
+- Local frontend coverage shards plus merge still pass the 100% gate on the current diff: 5,986 tests with 100% statements, branches, functions, and lines.
+- PR-required checks passed on the current PR head, and the manually dispatched full Test Suite passed on the same head, including frontend coverage shards, frontend coverage merge, browser E2E, render E2E, mutation, build, and summary gates.
+- The manually dispatched Install Tests workflow exposed one remaining full-lane failure: the Docker-backed fresh/install E2E job reused `.tmp/install-tests`, which can be left root-owned by prior Docker-backed runner jobs and block later non-root jobs from creating scratch directories.
+- Install test helpers now choose a run/UID-scoped Docker-visible scratch root under `.tmp`, and `.dockerignore` excludes `.tmp` so runtime scratch data does not inflate production image build contexts.
+- Local install E2E repros now pass with the patched scratch root: fresh install 18/18 and install-script 9/9.
+- The follow-up reusable stack smoke job still wrote generated TLS material into the fixed repo `docker/nginx/ssl` path; workflow stack startup now uses the same run-scoped install-test root for generated TLS material.
+- Local reusable stack smoke repro passed with the generated TLS path moved out of the fixed repo directory: container health 26/26 and auth flow 16/16.
+- The install workflow line shift only moved an existing Semgrep baseline entry; the quality gate now passes with the refreshed coordinates and no new Semgrep findings.
+- Manual full Install Tests on the amended head then failed before the E2E body could run, consistent with checkout pre-clean colliding with stale generated artifacts in the shared Docker runner workspace; install workflow checkout steps now use `clean: false` and rely on run-scoped scratch paths for isolation.
+- Forgejo push runs skip GitHub-only Pages upload/deploy and GHCR image publishing jobs instead of failing on GitHub-specific actions or credentials.
+- Install cleanup no longer runs a global Docker prune that can interfere with sibling jobs on the same runner.
+- Local verification passed: workflow lint; action runtime guard; frontend/backend test typechecks; architecture graph/site build path; frontend coverage shards plus merge; install unit/classifier tests; touched-file Semgrep/lizard gate; metadata scan; `git diff --check`.
+- Follow-up manual install run on the latest head still failed `Install Stack Smoke` while install unit tests, fresh install E2E, install-script E2E, full app tests, full browser E2E, render E2E, mutation, and 100% frontend coverage were green.
+- Reproduced the stack smoke path locally on the host and inside the Forgejo-style Docker job container; both passed container health 26/26 and auth flow 16/16.
+- Patched the install workflow so broad/manual `all` and workflow-change runs rely on the already-passed Fresh Install E2E stack coverage instead of running a duplicate reusable stack build on the shared runner. Targeted container-health/auth-flow suites still run the explicit reusable stack.
+- The next manual install run failed fresh install immediately while the automatic PR install run was also active on the same head. Root cause: PR events and manual branch dispatches used different concurrency keys, so Forgejo could run them against the same shared workspace. Core CI concurrency keys now normalize PR/manual/push runs to the branch or ref name.
+- After the concurrency fix, manual Fresh Install E2E, Install Script E2E, and Install Stack Smoke passed. The baseline upgrade matrix then failed both cells immediately because Forgejo started both matrix entries at the same timestamp despite `max-parallel: 1`; install upgrade baseline and extended lanes are now sequential steps inside single jobs.
+- Manual fresh install still failed immediately after queued PR checks completed, consistent with checkout/setup state rather than installer behavior. Removed broad `chmod +x tests/install/**/*.sh` workflow steps so install jobs no longer leave tracked executable-bit changes in the shared checkout when `clean: false` is required.
+- Targeted manual `fresh-install` still failed before the E2E body while the same command passed in the Forgejo runner image from a clean local clone. Manual Docker-backed suites now run the unit scripts inside the Fresh Install E2E job instead of in a preceding standalone unit job, avoiding the failing cross-job handoff while preserving the unit gate.
+- The next PR architecture run failed before downstream checks despite local architecture lint, graph regeneration, website typecheck, and docs build passing. The architecture checkout now also uses `clean: false` so Forgejo does not try to clean shared runner workspace state before running deterministic install/build commands.
+- Architecture still failed after checkout hardening while the same install command passed in the runner image. The PR-only diagram drift fetch now rewrites `origin` to the current Forgejo server/repository and disables terminal prompts before fetching the base ref, avoiding mirrored-origin GitHub fetches.
+- The latest broad manual install run failed only the combined Fresh Install E2E job before downstream install/upgrade jobs could run; the named Install Script E2E failure was the marker job reflecting that combined result, not an independent app failure.
+- Runner locks now use a versioned workspace path and the lock helper creates sticky shared lock directories plus cross-UID writable lock files, avoiding stale root-owned lock state while preserving serialization of Docker-backed E2E bodies.
+- The refreshed PR install and quality workflows are green, but the Test Suite quick lane then failed hygiene/frontend while browser/render were active. The same hygiene and frontend commands pass locally, so the test quick lane now serializes checkout-mutating hygiene, frontend, browser, and render bodies on the shared lock.
+- A later Quality rerun failed only the lockfile peer-resolution job while sibling quality jobs were active; that resolver now runs from a clean temp clone with its own npm cache instead of the shared checkout.
+- The following Quality rerun then moved the failure to lint/jscpd while other quality jobs were active, confirming the same intra-workflow shared-checkout race. Quality jobs are now chained after `determine-scope`, with `clean: false` on the remaining checkouts.
+- Manual install `all` still failed Fresh Install before the E2E body was distinguishable because manual units were running inside the Fresh job. Manual unit coverage now runs in the named Install Script Unit Tests job again, so fast unit/preflight failures no longer masquerade as Docker Fresh E2E failures.
+- The latest PR quality run failed Semgrep after install workflow line shifts. Instead of preserving brittle coordinate-based matching, the Semgrep baseline checker now uses a versioned source-fingerprint identity so line-only movement does not require baseline edits while changed findings still fail review.
+- Test Suite quick hygiene/frontend/browser/render jobs and Install workflow Docker-backed jobs now run mutating command bodies from isolated per-job clones. Docker-backed install clones are created under the workspace mount so bind mounts remain visible to Docker, while the shared checkout is treated as immutable source input.
+- The manual full Install Tests run now reaches the final `Upgrade Extended` path after unit, fresh install, install-script E2E, stack smoke, and upgrade baseline passed. The extended upgrade job was too opaque as one sequential job when remote logs were unavailable, so extended fixtures are now split into named matrix jobs with per-fixture artifacts while preserving the same fixture coverage.
+- The concrete extended-upgrade failure was `optional-profiles`: fixed monitoring/Jaeger host ports collided with stale or sibling runner state, causing a bind failure before backend health. Optional-profile upgrade fixtures now derive their monitoring/Tor-adjacent host port range from the same run-scoped install HTTPS port, while preserving explicit operator overrides. Local patched optional-profile upgrade now passes 18/18.
+- The latest Code Quality failures visible in Forgejo are from a scheduled `main` run on the pre-fix SHA, not the current PR head. Current PR Code Quality is green, and the failed scheduled gates pass locally on this branch: action runtime guard, lizard, and clean-clone jscpd.
+- The current PR head then proved Architecture, Docker Build, Install Tests, and Test Suite green, including quick browser and quick render after retrying native frontend builds. Code Quality failed only in the jscpd job, while the same clean-clone jscpd command passed locally at 1.7% duplicated lines.
+- The jscpd workflow now uses the shared isolated-workspace helper plus `scripts/quality/jscpd-only.sh` instead of a hand-rolled temp clone. The local `scripts/quality.sh` gate also delegates to that entrypoint so CI and local quality runs share the same duplicate-code implementation.
+- The next PR head proved Install Tests, Code Quality, and Test Suite green. Architecture failed only in generated dependency graphs with a native `139` segfault after dependency installation, diagram lint, and drift detection had passed.
+- Architecture dependency installs and generated graph commands now use the shared `scripts/ci/retry-command.sh` helper, keeping deterministic stale-graph detection blocking while retrying runner-native crashes at the command boundary.
+- Current PR automatic gates are green on `29de3fb9`: Architecture, Docker Build, Install Tests, Code Quality, and Test Suite.
+- The focused manual upgrade dispatch still failed `Upgrade Baseline`. Local exact `n-2` core upgrade passed 18/18, so the remaining failure is not the upgrade assertions themselves.
+- Server-side Forgejo logs show the manual failure is a BuildKit image-export/cache corruption during backend image unpack (`archive/tar: invalid tar header`), not the earlier worker/migrate duplicate-build race.
+
+## Current Plan Addendum
+
+- [x] Add a targeted compose-build recovery path in `scripts/setup.sh` for corrupt BuildKit layer/cache failures.
+- [x] Ensure normal post-build `docker compose up` uses `--no-build` so setup builds once and startup cannot trigger an untracked second build.
+- [x] Add focused unit coverage for BuildKit retry/no-build startup behavior.
+- [x] Add the same targeted retry around disposable legacy source installs in the upgrade harness, because older tags do not contain the current `setup.sh` recovery.
+- [x] Re-run install unit checks, lizard, metadata scans, and local upgrade repros.
+- [ ] Commit/push and re-dispatch focused upgrade.
+
+## Addendum Review
+
+- `scripts/setup.sh` now treats corrupt BuildKit layer/cache output as a build-boundary failure: it captures the compose build log, clears the builder cache, retries once with `--no-cache`, and then starts services with `--no-build`.
+- The upgrade E2E harness now applies the same one-time recovery around legacy source installs, because older stable tags do not include the current setup recovery.
+- Verification passed locally: setup/upgrade helper syntax checks, install-script unit tests 89/89, upgrade helper unit tests 27/27, lizard-only, action runtime guard, `git diff --check`, PR-diff metadata scan, exact `n-2` core upgrade 18/18, and exact latest-stable core upgrade 18/18.
+- Automatic PR gates were green before this follow-up hardening patch. The remaining delivery step is to commit/push this patch and rerun the automatic PR checks plus a focused manual upgrade dispatch.
+- After commit `f5e317cd`, Architecture, Docker Build, and Install Tests passed, but Code Quality failed in the Lint job because the runner downloaded Node `24.15.0` and ESLint exited with native `139` before producing lint findings. Local lint and clean-clone lint passed on Node `24.14.1`.
+- Node is now pinned to `24.14.1` for setup-node based Forgejo jobs plus `.node-version`/`.nvmrc`, while Architecture keeps its intentional runner-provisioned major-version guard.
+- The next current-head Test Suite failed in Quick Frontend with native `139` exits from `npm ci` and TypeScript while other Node-heavy workflows were active. Architecture, Quality lint, and Quick Frontend Node-heavy command bodies now share a `node-toolchain` runner lock.
+- Automatic PR checks are green on `40606e12`: Architecture, Docker Build, Install Tests, Code Quality, and Test Suite. The focused manual upgrade rerun still failed `Upgrade Baseline` because legacy `v0.8.50` printed BuildKit corruption but exited `0`, leaving no Postgres container for the harness health check.
+- The upgrade harness now treats recognized BuildKit corruption in legacy source-install logs as a retry condition even when `install.sh` returns success.
+- Verify Vectors is not a required PR gate here, but it also triggered because workflow files changed. It failed before vector tests because `actions/setup-python` downloaded a corrupted Python archive. The workflow now uses runner `python3` plus the verifier script's pinned venv bootstrap, and its Node-heavy commands share the `node-toolchain` lock.
+- The next Verify Vectors run reached server dependency installation, then failed in `npm ci` because `server` postinstall ran Prisma generate and exited with native `139`. The workflow now installs server dependencies with lifecycle scripts disabled, runs shared-module linking and Prisma generate as explicit retried commands, and uses `test:run` for focused server tests so codegen is not re-run before every test step.
+- After that patch, Verify Vectors reached Bitcoin Core startup and failed because the runner's Docker endpoint was pointed at an unavailable `docker-in-docker` hostname. Each Verify Vectors job path that starts Bitcoin Core now resolves Docker with `scripts/ci/wait-for-docker.sh` before the first Docker command, and workflow path filters include that helper.
+- The next Verify Vectors run started Bitcoin Core successfully, but the verifier polled job-container loopback while Docker had published the RPC port on the Docker host. The shared Docker endpoint helper now exports `SANCTUARY_DOCKER_PUBLISHED_HOST`, the address verifier derives its default RPC URL from it or `DOCKER_HOST`, and PSBT vector generation uses the same published host.
+- The next Verify Vectors run reached actual address checks and exposed a verifier portability bug: Python was available but `hashlib` lacked RIPEMD160, so the required independent non-JS implementation failed every HASH160 path. The Python verifier now falls back to the pinned `bip_utils` RIPEMD160 implementation, and local `verify:repeatable` passed 83 single-sig plus 39 multisig vectors with no fixture drift.
+- Code Quality then failed in the Semgrep SAST job before scanning code: install validation printed the Semgrep version and then exited with native `139`, after an earlier package hash mismatch on the first install attempt. Semgrep install and executable validation now run through a tested fresh-venv retry helper that disables pip cache on retries.
+- The next run exposed two remaining provider-action setup contracts: the new Semgrep helper was invoked directly without an executable bit, and Quality/Test jobs still used `setup-node`/`setup-python`, which failed before repo code with native/cache/archive errors. Required PR workflows now use tested repo-owned Node/Python toolchain gates and invoke Semgrep through `bash`.
+- Verify Vectors then progressed through those gates and exposed a stale repo-local Python verifier venv with corrupted pip files. The repeatable address verifier now creates a fresh run-scoped venv, validates `bip_utils` during install, disables pip cache on retry, and has a shell regression test for retry/cleanup behavior.
+
+---
+
 # Active Task: Forgejo Install Workspace Detection 2026-05-03
 
 Status: complete; verified
@@ -10967,3 +11196,107 @@ Goal: diagnose and stop the recurring local `database operation failed` conditio
 - Restarted frontend after backend/worker because nginx had cached the old backend IP and returned `502` even after backend health recovered.
 - Added ignored local guard script `.tmp/sanctuary-local-db-guard.sh`; it checks the live TCP auth path and verifies the preserved testnet wallet/device rows, with an optional `--repair-auth`.
 - Verification passed: `.tmp/sanctuary-local-db-guard.sh`; public HTTPS health returned `200`; fresh admin login returned `200`; cookie-backed `/api/v1/auth/me` returned `200`; preserved data still shows 3 users, 1 wallet, 1 device, and 12 device account rows.
+
+---
+
+# Active Task: Forgejo External Drive Backup Automation 2026-05-03
+
+Status: complete; verified
+
+Goal: configure the remote Forgejo machine to automatically back up its installation and data to an attached external drive without saving connection details or credentials in repository files.
+
+## Plan
+
+- [x] Connect over SSH without persisting credentials or host details in repo files.
+- [x] Inspect Forgejo install method, config path, data path, database type, and mounted external drive.
+- [x] Create a plain rsync snapshot backup script and macOS launchd timer.
+- [x] Run one backup and verify snapshot/log output.
+- [x] Record the final result and verification.
+
+## Review
+
+- Configured daily plain filesystem snapshots at 03:30 local time using a user LaunchAgent.
+- Backups are stored on the attached external drive under `forgejo-backups`, with `latest` pointing at the newest successful snapshot.
+- Each snapshot contains the Forgejo work path plus metadata needed for restore; `RESTORE.md` on the external drive documents the restore commands.
+- No SSH password, host IP, or hostname was written to repository files; a scan of task notes for the provided connection details returned no matches.
+- Verification passed: first backup completed, SQLite `PRAGMA quick_check` returned `ok` on the copied database, Forgejo restarted successfully, localhost Forgejo HTTP returned `200`, launchd loaded the daily schedule, and backup logs show a successful snapshot.
+
+---
+
+# Active Task: Forgejo PR Install Failures 2026-05-03
+
+Status: in progress
+
+Goal: finish PR delivery for installer source selection and Forgejo CI stabilization without leaking internal runner metadata.
+
+## Plan
+
+- [x] Stabilize automatic PR checks and targeted fresh-install runs.
+- [x] Reproduce the broad manual `all` upgrade-baseline failure locally.
+- [x] Patch the upgrade harness so old source checkouts work inside the containerized runner.
+- [x] Verify focused unit coverage and the local upgrade-baseline repro.
+- [x] Amend/push the PR branch and inspect the refreshed PR checks.
+- [x] Fix refreshed architecture and lizard failures on the current PR head.
+- [x] Re-run focused local gates for the latest upgrade/build fix.
+- [ ] Amend/push and verify the refreshed PR checks plus focused upgrade dispatch.
+
+## Review
+
+- Automatic PR checks and targeted fresh-install passed on the previous head.
+- Broad manual `all` still failed in Upgrade Baseline.
+- Local repro matched the remote failure: a released source checkout started, but the frontend became unhealthy because the legacy compose SSL mount did not use the Docker-visible certificate path inside the containerized runner.
+- Patched the upgrade harness to adapt disposable legacy source worktrees for Docker-visible SSL mounts and Docker-visible browser-host defaults.
+- Focused local verification passed for upgrade-helper unit tests, latest-stable baseline upgrade 18/18, and n-2 baseline upgrade 18/18.
+- The amended PR head fixed install-test PR coverage; current failures narrowed to Architecture and the lizard quality job.
+- Architecture graph/site commands and drift detection pass locally. The workflow now uses a full checkout and the PR base SHA for drift detection, avoiding unauthenticated fetches from the temp clone.
+- A runner-shaped architecture repro exposed root-owned `node_modules` cleanup failures after containerized `npm ci`; architecture dependency/build work now runs in a disposable temp clone instead of the shared checkout.
+- The lizard command passes locally with the same baseline. CI now uses the same lizard-only helper as local verification, and that helper correctly skips unrelated Semgrep work.
+- The refreshed PR head fixed architecture, install, and docker-build. Remaining failures narrowed to the jscpd quality job and PR quick browser smoke while quick render was running concurrently.
+- jscpd now scans a clean temp clone and writes reports outside the shared checkout, with generated `coverage-*` output excluded from duplicate detection.
+- PR quick browser smoke and quick render regression now run their dependency install, browser install, frontend build, and Playwright command under the existing workspace runner lock.
+- Local verification for this patch passed: actionlint, action runtime guard, runner-lock regression test, `git diff --check`, jscpd direct scan, jscpd temp-clone workflow-shaped scan, and diff metadata scan.
+- The next PR run confirmed jscpd, quick browser smoke, quick render regression, install, and docker-build were green. Remaining failures narrowed to architecture setup, quality lint, and quick frontend tests.
+- The architecture commands pass locally from a temp clone on the current head. The workflow setup path now avoids setup-node caching and creates the runner temp parent before `mktemp`.
+- Quality lint and quick frontend checks pass locally. Their CI jobs now run install/typecheck/lint/related tests in clean temp clones with checkout cleanup disabled for stale workspace tolerance.
+- Local verification for this follow-up passed: actionlint, action runtime guard, diff whitespace check, diff metadata scan, architecture temp-clone command sequence, lint temp-clone command sequence, and quick frontend temp-clone command sequence.
+- The next architecture run still failed while jscpd, quick browser, and quick render stayed green. Architecture dependency installs are now sequential and use temp-workspace npm caches, and architecture cleanup is warning-only.
+- Local verification for the serialized architecture path passed: root/server/gateway/website installs with temp-workspace npm caches, diagram lint, drift detection, graph regeneration diff check, website typecheck, and Docusaurus build.
+- The serialized architecture run is now green on Forgejo. Quality still failed in lint and dependency audit even though both pass locally, so audit now also runs from a temp clone with per-workspace npm caches and temp-clone trap cleanup is warning-only.
+- Local verification for the audit isolation passed: actionlint, action runtime guard, diff whitespace check, diff metadata scan, and temp-clone npm audit across all package lockfiles.
+- Architecture then failed again on the same workflow shape after previously passing, consistent with transient npm install-time behavior. Temp-clone `npm ci` calls now disable install-time audit/fund network work and retry up to three times; the dedicated audit job remains the vulnerability gate.
+- Local verification for the npm retry update passed: actionlint, action runtime guard, diff whitespace check, and diff metadata scan.
+- The current head shows install green and dependency audit green, but architecture remains runner-specific. Architecture now uses the standard `ubuntu-20.04` label instead of the broader `ubuntu-latest` pool.
+- Local verification for the architecture label pin passed after adding the Forgejo runner label to actionlint config: actionlint, action runtime guard, diff whitespace check, and diff metadata scan.
+- The newest run has architecture, install, docker-build, lint, and jscpd green, but quality still failed on dependency audit and Semgrep. Local Semgrep/baseline passes, so Semgrep now installs and reports from temp paths, and dependency audit calls retry with temp-workspace npm caches.
+- Local verification for Semgrep/audit isolation passed: Semgrep scan plus baseline check, actionlint, action runtime guard, diff whitespace check, and diff metadata scan.
+- The latest pushed head fixed PR install coverage, and the local optional-profile extended-upgrade repro now passes with run-scoped optional service ports. The automatic PR Install Tests quick lane is green on the current head.
+- A new PR Architecture task failed without retrievable remote logs, while the full architecture command sequence passes locally in a clean isolated clone. Architecture now uses the shared CI isolated-workspace helper instead of a one-off clone block, checks out the exact source HEAD in the clone, and preserves the failed isolated workspace for runner-side inspection instead of cleaning it on failure.
+- Code Quality is being handled in the same pass. Local gates covering the stale scheduled-main failures pass on this branch: workflow lint, action runtime guard, lizard, jscpd, and large-file classification. The relevant CI/install helper tests also pass.
+- The Forgejo-stored Architecture task log showed the command path passed through dependency install retries, graph generation, drift detection, and website typecheck, then the Docusaurus build process exited with a native segmentation fault. The docs build step now uses the same bounded retry pattern as the dependency install setup, so transient runner/container crashes are retried while deterministic build failures still fail after three attempts.
+- The latest Test Suite failed only Quick Render Regression. Its stored log showed Playwright dependency setup completed, then `vite build` transformed modules and segfaulted with exit 139 before the render E2E command started. Added a shared `scripts/ci/retry-command.sh` helper with regression tests and wired it around frontend build commands in quick browser, quick render, full browser, full render, and full build-check paths.
+- The current PR head has Code Quality green on Forgejo; this pass still includes quality, but the remaining red path moved to manual full Install Tests.
+- Manual full Install Tests reached the extended upgrade lane after unit, fresh install, install-script, stack smoke, and upgrade baseline passed. Every extended matrix child failed before app upgrade assertions because the job context could not reach Docker, showing that matrix fan-out was the architectural problem rather than an installer behavior failure.
+- Extended upgrade fixtures now run sequentially through a shared helper from one Docker-backed job, with per-fixture log groups and artifacts, and install-scope classification now treats install CI helper changes as upgrade-relevant for non-PR coverage.
+- The refreshed Code Quality lint job then failed after app lint, server lint, and API-body validation had passed, when gateway ESLint exited with native status 139. The lint command now runs through the shared bounded retry helper so deterministic lint findings still fail while runner-native crashes get retried at the command boundary.
+- Focused manual `upgrade` dispatch then failed before the upgrade test body because Docker was not reachable in the baseline job container. Docker-backed install jobs now use a shared Docker readiness helper that probes and persists a usable Docker endpoint instead of failing on the first Docker CLI call.
+- A later Test Suite quick frontend run passed typechecks and most related tests, then failed importing `react-dom/client.js` with an invalid-token parse error from `node_modules`. Quick frontend now retries the whole isolated workspace check from a fresh clone/install, so corrupted runner dependency reads do not get fixed by rerunning only the test command inside the same workspace.
+- The next focused `upgrade` dispatch reached real installer work, then failed when Compose delegated the legacy install build to Buildx/Bake and Docker failed exporting a backend layer with an invalid tar header. Install E2E now disables Compose Bake; Docker Build remains the dedicated buildx coverage.
+- The refreshed Code Quality lane failed Semgrep on the install test summary shell block. Instead of updating brittle baseline line numbers, the summary and release-gate scripts now receive GitHub/needs values through environment variables and the stale install-test Semgrep baseline entry was removed.
+- The next Code Quality run passed Semgrep, actionlint, classifier tests, and lizard, then failed in the jscpd job while the same direct and isolated jscpd command passed locally. The jscpd scan now runs through the shared bounded retry helper, and diagnostic Semgrep/jscpd artifact uploads are non-blocking so artifact service issues do not fail the quality gate after the scanner has passed.
+- The stale prior-head Test Suite run then held the queue in Quick Browser Smoke with no job-level timeout. Quick browser and quick render now have explicit 30-minute job timeouts and a bounded 20-minute E2E lock wait so runner-lock contention cannot stall the suite indefinitely.
+- The queue stall exposed that all PR workflows shared one branch-wide concurrency group with `cancel-in-progress: false`. Architecture, Docker Build, Install Tests, Code Quality, and Test Suite now use per-workflow/per-event concurrency groups, and pull-request runs cancel obsolete prior runs for the same workflow.
+- After a stable runner restart, local Semgrep and quick frontend checks passed with the same inputs while remote Semgrep still failed before later quality gates. Semgrep setup now uses the shared retry helper, and the scan retries only transient Semgrep exit statuses before running the unchanged baseline gate.
+- Code Quality then passed completely. Test Suite remains narrowed to Quick Frontend, which passes locally with the detected frontend file list but fails remotely without API-accessible step logs. Quick Frontend now preserves its failed isolated workspace so the next failure leaves runner-side evidence instead of deleting it.
+- The next Test Suite run passed Quick Frontend and failed Quick Browser Smoke within seconds, before the browser body could plausibly complete. Playwright cache restore is now non-blocking across quick/full browser and render jobs, and quick browser/render command bodies preserve failed isolated workspaces for runner-side inspection.
+- Semgrep then failed again within seconds, too early for the scan/install path. The Semgrep job no longer depends on `actions/setup-python`; it creates its venv from the runner's system Python and keeps the existing retry and baseline gate.
+- Architecture then failed within roughly one minute while its full command sequence continued to pass locally, consistent with another setup-action boundary failure. The Architecture workflow now uses the runner's already-installed Node 24 and verifies the major version instead of invoking `actions/setup-node`.
+- The latest head has Architecture, Docker Build, Install Tests, and Code Quality green. Test Suite is narrowed to Quick Browser Smoke; quick E2E jobs now use a shared Playwright artifact collector so reports/results survive isolated-workspace cleanup, and diagnostic uploads no longer gate the tests.
+- The preserved Forgejo task log confirmed Quick Browser failed before the app smoke test: Playwright's `--with-deps` apt path hit a mirror-sync package-size mismatch. Playwright install is now wrapped in the shared bounded retry helper across quick/full browser and render jobs.
+- The next Test Suite run failed earlier in Quick Frontend: one isolated attempt segfaulted during `tsc`, while later attempts completed all related tests but Vitest's fork pool emitted `EPIPE`. The quick related-test command now runs through Vitest's worker-thread pool with one worker and no file parallelism; the same 247-test related set passes locally in that mode.
+- Retrying Playwright's `--with-deps` path was still too dependent on external apt mirror state. E2E jobs now install/restore the Chromium browser first, verify a headless launch, and only install OS dependencies if the launch probe proves they are missing.
+- Automatic PR checks then passed together on the same head: Architecture, Docker Build, Install Tests, Code Quality, and Test Suite. The remaining blocker moved to the manually dispatched focused install `upgrade` lane.
+- The focused upgrade dispatch failed in `Upgrade Baseline` during source installation because legacy Compose exported `sanctuary-backend:local` from backend, worker, and migrate in parallel; BuildKit reported a corrupt layer extraction and the old setup script treated the build failure as a warning.
+- Current `docker-compose.yml` now defines the backend image build only once; worker and migrate reuse that image. The upgrade harness adapts disposable legacy source worktrees the same way before running their installer, so older release tags can be tested under modern Compose/BuildKit without carrying the old duplicate-build race forward.
+- Current `scripts/setup.sh` now fails immediately on Docker image build failure instead of continuing to a misleading missing-container error.
+- Upgrade install output now flows through the existing diagnostic redactor before it is written to CI logs or install logs.
+- Local verification for this patch passed: upgrade-helper unit tests 27/27, install-script unit tests 86/86, extended-upgrade fixture helper test, shell syntax checks, `docker compose config --quiet` with required env, lizard-only quality gate, action runtime guard, Semgrep p/default scan plus baseline, diff metadata scan, `git diff --check`, and latest-stable core upgrade 18/18.

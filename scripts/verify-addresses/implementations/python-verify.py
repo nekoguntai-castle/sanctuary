@@ -16,6 +16,8 @@ Output:
 import sys
 import json
 from typing import List
+import hashlib
+import os
 
 try:
     import bip_utils
@@ -44,9 +46,32 @@ except ImportError:
 
 def hash160(payload: bytes) -> bytes:
     """Bitcoin HASH160: RIPEMD160(SHA256(payload))."""
-    import hashlib
+    return ripemd160(hashlib.sha256(payload).digest())
 
-    return hashlib.new('ripemd160', hashlib.sha256(payload).digest()).digest()
+
+def ripemd160(payload: bytes) -> bytes:
+    """RIPEMD160 digest with fallbacks for OpenSSL builds that disable it."""
+    try:
+        if not _force_ripemd160_fallback():
+            return hashlib.new('ripemd160', payload).digest()
+    except (ValueError, TypeError):
+        pass
+
+    if HAS_BIP_UTILS and hasattr(bip_utils, 'Ripemd160'):
+        return bip_utils.Ripemd160.QuickDigest(payload)
+
+    try:
+        from Crypto.Hash import RIPEMD160
+    except ImportError as exc:
+        raise RuntimeError('RIPEMD160 is unavailable from hashlib, bip_utils, and pycryptodome') from exc
+
+    digest = RIPEMD160.new()
+    digest.update(payload)
+    return digest.digest()
+
+
+def _force_ripemd160_fallback() -> bool:
+    return os.environ.get('VERIFY_ADDRESSES_FORCE_RIPEMD160_FALLBACK') == '1'
 
 
 def network_params(network: str) -> tuple[bytes, bytes, str]:
@@ -107,8 +132,6 @@ def derive_single_sig_bip_utils(xpub: str, index: int, script_type: str, change:
 def derive_multisig_bip_utils(xpubs: List[str], threshold: int, index: int,
                                script_type: str, change: bool, network: str) -> str:
     """Derive multisig address using bip_utils primitives."""
-    import hashlib
-
     _, p2sh_version, bech32_hrp = network_params(network)
 
     # Derive public keys from each xpub
@@ -129,7 +152,7 @@ def derive_multisig_bip_utils(xpubs: List[str], threshold: int, index: int,
 
     # Hash the redeem script
     script_hash = hashlib.sha256(redeem_script).digest()
-    script_hash_160 = hashlib.new('ripemd160', script_hash).digest()
+    script_hash_160 = ripemd160(script_hash)
 
     if script_type == 'p2sh':
         # P2SH: hash160 of redeem script
@@ -144,7 +167,7 @@ def derive_multisig_bip_utils(xpubs: List[str], threshold: int, index: int,
         # Create witness script hash (SHA256)
         witness_program = bytes([0x00, 0x20]) + script_hash
         # Hash160 of the witness program
-        wp_hash = hashlib.new('ripemd160', hashlib.sha256(witness_program).digest()).digest()
+        wp_hash = hash160(witness_program)
         return base58check_address(p2sh_version, wp_hash)
 
     else:

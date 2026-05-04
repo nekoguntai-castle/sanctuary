@@ -18,25 +18,67 @@ function readJson(filePath) {
 }
 
 function normalizePath(filePath) {
-  return filePath.split(path.sep).join('/');
+  if (path.isAbsolute(filePath)) {
+    const relativePath = path.relative(process.cwd(), filePath);
+    if (relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)) {
+      return relativePath.split(path.sep).join('/');
+    }
+  }
+
+  return filePath.split(path.sep).join('/').replace(/^\.\//u, '');
 }
 
-function keyForFinding({ id, path: filePath, startLine, endLine }) {
-  return [id, normalizePath(filePath), startLine, endLine].join('\0');
+function keyForFinding({ id, path: filePath, sha256 }) {
+  return [id, normalizePath(filePath), sha256].join('\0');
 }
 
-function fingerprint(finding) {
-  return crypto.createHash('sha256').update(keyForFinding(finding)).digest('hex');
+function normalizeSource(source) {
+  return source.replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '').trim();
+}
+
+function sourceForFinding(filePath, startLine, endLine) {
+  const source = fs.readFileSync(filePath, 'utf8');
+  return source.split(/\r?\n/).slice(startLine - 1, endLine).join('\n');
+}
+
+function fingerprint({ id, path: filePath, source }) {
+  return crypto
+    .createHash('sha256')
+    .update([id, normalizePath(filePath), normalizeSource(source)].join('\0'))
+    .digest('hex');
 }
 
 function semgrepFinding(result) {
-  return {
+  const finding = {
     id: result.check_id,
     path: normalizePath(result.path),
     startLine: result.start?.line,
     endLine: result.end?.line,
     severity: result.extra?.severity ?? 'UNKNOWN',
     message: result.extra?.message ?? '',
+  };
+
+  let sha256 = '';
+  if (
+    typeof finding.id === 'string' &&
+    finding.id.length > 0 &&
+    typeof finding.path === 'string' &&
+    finding.path.length > 0 &&
+    Number.isInteger(finding.startLine) &&
+    finding.startLine >= 1 &&
+    Number.isInteger(finding.endLine) &&
+    finding.endLine >= finding.startLine
+  ) {
+    sha256 = fingerprint({
+      id: finding.id,
+      path: finding.path,
+      source: sourceForFinding(finding.path, finding.startLine, finding.endLine),
+    });
+  }
+
+  return {
+    ...finding,
+    sha256,
   };
 }
 
@@ -69,6 +111,9 @@ function validateFindingShape(finding, label) {
   if (!Number.isInteger(finding.endLine) || finding.endLine < finding.startLine) {
     errors.push(`${label} has invalid endLine`);
   }
+  if (typeof finding.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(finding.sha256)) {
+    errors.push(`${label} has invalid sha256`);
+  }
   return errors;
 }
 
@@ -84,6 +129,10 @@ function main(argv) {
   const results = Array.isArray(semgrepReport.results) ? semgrepReport.results : [];
   const entries = Array.isArray(baseline.entries) ? baseline.entries : [];
   const errors = [];
+
+  if (baseline.version !== 2) {
+    errors.push('baseline version must be 2 for source-fingerprint matching');
+  }
 
   const currentFindings = results.map(semgrepFinding);
   const baselineFindings = entries.map(baselineFinding);
@@ -103,12 +152,6 @@ function main(argv) {
     const label = `baseline entry ${index + 1}`;
     errors.push(...validateFindingShape(finding, label));
     const key = keyForFinding(finding);
-    const expectedHash = fingerprint(finding);
-    if (finding.sha256 !== expectedHash) {
-      errors.push(
-        `${label} has invalid sha256 for ${formatFinding(finding)}; expected ${expectedHash}`,
-      );
-    }
     if (baselineByKey.has(key)) {
       errors.push(`Duplicate baseline finding key: ${formatFinding(finding)}`);
     }

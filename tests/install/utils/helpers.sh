@@ -438,23 +438,45 @@ default_install_test_root() {
     fi
 
     if [ -n "${GITHUB_WORKSPACE:-}" ]; then
-        echo "${GITHUB_WORKSPACE%/}/.tmp/install-tests"
+        echo "${GITHUB_WORKSPACE%/}/.tmp/$(install_test_root_name)"
         return 0
     fi
 
     if [ "${ACT:-false}" = "true" ]; then
-        echo "${project_root%/}/.tmp/install-tests"
+        echo "${project_root%/}/.tmp/$(install_test_root_name)"
         return 0
     fi
 
     case "${project_root%/}" in
         /workspace/*)
-            echo "${project_root%/}/.tmp/install-tests"
+            echo "${project_root%/}/.tmp/$(install_test_root_name)"
             return 0
             ;;
     esac
 
     echo "/tmp"
+}
+
+sanitize_install_test_root_segment() {
+    local value="${1:-local}"
+
+    value="$(printf '%s' "$value" | LC_ALL=C tr -c 'A-Za-z0-9_.-' '-')"
+    value="${value#-}"
+    value="${value%-}"
+
+    if [ -z "$value" ]; then
+        value="local"
+    fi
+
+    echo "$value"
+}
+
+install_test_root_name() {
+    local run_id="${GITHUB_RUN_ID:-${GITHUB_RUN_NUMBER:-local}}"
+    local uid
+
+    uid="$(id -u 2>/dev/null || echo "user")"
+    echo "install-tests-$(sanitize_install_test_root_segment "$run_id")-$(sanitize_install_test_root_segment "$uid")"
 }
 
 docker_visible_path() {

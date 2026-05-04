@@ -72,8 +72,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event.pull_request.number || github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'pull_request' && github.event_name == 'push' }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   REGISTRY: ghcr.io
@@ -107,6 +107,7 @@ jobs:
     name: Build frontend image
     if: |
       github.event_name != 'pull_request' &&
+      github.server_url == 'https://github.com' &&
       needs.detect-image-scope.outputs.frontend_image == 'true'
     runs-on: ubuntu-latest
     needs: [detect-image-scope]
@@ -159,6 +160,7 @@ jobs:
     if: |
       always() &&
       github.event_name != 'pull_request' &&
+      github.server_url == 'https://github.com' &&
       needs.detect-image-scope.outputs.backend_image == 'true' &&
       (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
     runs-on: ubuntu-latest
@@ -217,6 +219,7 @@ jobs:
           echo "## Dev Images Built" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Reason: ${{ needs.detect-image-scope.outputs.reason }}" >> $GITHUB_STEP_SUMMARY
+          echo "Registry publish runs only on GitHub-hosted pushes." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Frontend image: ${{ needs.build-frontend.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Backend image: ${{ needs.build-backend.result }}" >> $GITHUB_STEP_SUMMARY

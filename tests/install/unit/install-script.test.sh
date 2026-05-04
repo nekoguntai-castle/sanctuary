@@ -118,6 +118,26 @@ assert_contains() {
     fi
 }
 
+extract_shell_function() {
+    local function_name="$1"
+    local source_file="$2"
+
+    awk -v function_name="$function_name" '
+        $0 ~ "^" function_name "\\(\\)[[:space:]]*\\{" {
+            in_function = 1
+        }
+        in_function {
+            line = $0
+            print line
+            opens += gsub(/\{/, "{", line)
+            closes += gsub(/\}/, "}", line)
+            if (opens > 0 && opens == closes) {
+                exit
+            }
+        }
+    ' "$source_file"
+}
+
 assert_length() {
     local value="$1"
     local min_length="$2"
@@ -877,6 +897,7 @@ test_auto_source_fetch_failure_falls_back_prompt_free() {
 # ============================================
 
 START_SCRIPT="$PROJECT_ROOT/start.sh"
+POSTGRES_RECONCILE_SCRIPT="$PROJECT_ROOT/scripts/reconcile-postgres-password.sh"
 
 test_start_script_exists() {
     assert_file_exists "$START_SCRIPT" "start.sh should exist in project root"
@@ -932,6 +953,18 @@ test_start_script_exports_secrets() {
         return 0
     else
         echo -e "${RED}ASSERTION FAILED:${NC} start.sh should export all required secrets"
+        return 1
+    fi
+}
+
+test_start_script_reconciles_postgres_password() {
+    if grep -q "scripts/reconcile-postgres-password.sh" "$START_SCRIPT" \
+        && grep -q "start_compose_stack" "$START_SCRIPT" \
+        && grep -q "psql -w -h postgres" "$POSTGRES_RECONCILE_SCRIPT" \
+        && grep -q "ALTER USER" "$POSTGRES_RECONCILE_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} start.sh should reconcile Postgres role password before app startup"
         return 1
     fi
 }
@@ -1137,6 +1170,168 @@ test_setup_script_uses_no_cache_on_upgrade() {
     fi
 }
 
+test_setup_script_recovers_corrupt_buildkit_cache() {
+    local build_body
+    build_body="$(extract_shell_function "run_compose_build" "$SETUP_SCRIPT")"
+
+    assert_contains "$build_body" "compose_build_failed_due_to_cache_corruption" \
+        "setup.sh build wrapper should detect cache-corruption failures" || return 1
+    assert_contains "$build_body" "recover_docker_builder_cache" \
+        "setup.sh should recover corrupt Docker builder cache before retrying" || return 1
+    assert_contains "$build_body" "docker compose \$COMPOSE_FILES build --no-cache" \
+        "setup.sh should retry corrupt BuildKit failures with a clean no-cache build" || return 1
+
+    local detector_body
+    detector_body="$(extract_shell_function "compose_build_failed_due_to_cache_corruption" "$SETUP_SCRIPT")"
+    assert_contains "$detector_body" "archive/tar: invalid tar header" \
+        "setup.sh should recognize BuildKit invalid tar cache failures" || return 1
+    assert_contains "$detector_body" "failed to extract layer" \
+        "setup.sh should recognize layer extraction cache failures"
+}
+
+test_setup_script_does_not_rebuild_during_compose_up_after_build() {
+    local start_body
+    start_body="$(extract_shell_function "start_services" "$SETUP_SCRIPT")"
+
+    assert_contains "$start_body" "run_compose_build \$BUILD_ARGS" \
+        "setup.sh should route image builds through the retrying build wrapper" || return 1
+    assert_contains "$start_body" "compose_up_after_build_args" \
+        "setup.sh should use no-build compose-up args after a successful build" || return 1
+
+    local up_args_body
+    up_args_body="$(extract_shell_function "compose_up_after_build_args" "$SETUP_SCRIPT")"
+    assert_contains "$up_args_body" "-d --no-build" \
+        "post-build compose up should not trigger another image build"
+}
+
+test_setup_script_retries_corrupt_buildkit_cache_with_fake_docker() {
+    local fixture_dir="$TEST_TMP_DIR/buildkit-recovery"
+    local fakebin="$fixture_dir/bin"
+    local env_file="$fixture_dir/runtime/sanctuary.env"
+    local ssl_dir="$fixture_dir/runtime/ssl"
+    local log_file="$fixture_dir/docker.log"
+    local count_file="$fixture_dir/build-count"
+    local output=""
+
+    mkdir -p "$fakebin" "$(dirname "$env_file")" "$ssl_dir"
+
+    cat > "$fakebin/docker" <<'EOF'
+#!/usr/bin/env bash
+set -e
+
+log_file="${FAKE_DOCKER_LOG:?}"
+count_file="${FAKE_DOCKER_BUILD_COUNT:?}"
+
+if [ "$1" = "compose" ]; then
+    shift
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -f|--file)
+                shift 2
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+    case "$1" in
+        version)
+            echo "Docker Compose version v5.1.3"
+            exit 0
+            ;;
+        build)
+            shift
+            printf 'compose build:%s\n' "$*" >> "$log_file"
+            count=0
+            [ -f "$count_file" ] && count="$(cat "$count_file")"
+            count=$((count + 1))
+            printf '%s\n' "$count" > "$count_file"
+            if [ "$count" -eq 1 ]; then
+                echo "target backend: failed to solve: failed to extract layer sha256:deadbeef: archive/tar: invalid tar header" >&2
+                exit 1
+            fi
+            case " $* " in
+                *" --no-cache "*)
+                    exit 0
+                    ;;
+                *)
+                    echo "retry must use --no-cache" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+        up)
+            shift
+            if [ "${1:-}" = "--help" ]; then
+                echo "Usage: docker compose up [--wait] [--pull]"
+                exit 0
+            fi
+            printf 'compose up:%s\n' "$*" >> "$log_file"
+            case " $* " in
+                *" --no-build "*)
+                    exit 0
+                    ;;
+                *)
+                    echo "compose up must use --no-build after setup build" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+        ps)
+            exit 0
+            ;;
+    esac
+fi
+
+if [ "$1" = "builder" ] && [ "${2:-}" = "prune" ]; then
+    printf 'builder prune:%s\n' "${*:2}" >> "$log_file"
+    exit 0
+fi
+
+if [ "$1" = "ps" ]; then
+    exit 0
+fi
+
+printf 'unexpected docker command:%s\n' "$*" >> "$log_file"
+exit 1
+EOF
+    chmod +x "$fakebin/docker"
+
+    output=$(
+        PATH="$fakebin:$PATH" \
+            FAKE_DOCKER_LOG="$log_file" \
+            FAKE_DOCKER_BUILD_COUNT="$count_file" \
+            SANCTUARY_ENV_FILE="$env_file" \
+            SANCTUARY_SSL_DIR="$ssl_dir" \
+            HTTPS_PORT=58445 \
+            HTTP_PORT=58082 \
+            GATEWAY_PORT=54002 \
+            ENABLE_MONITORING=no \
+            ENABLE_TOR=no \
+            bash "$SETUP_SCRIPT" --force --non-interactive --skip-ssl --skip-prereqs 2>&1
+    ) || {
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should recover a corrupt BuildKit cache failure"
+        echo "$output"
+        [ -f "$log_file" ] && cat "$log_file"
+        return 1
+    }
+
+    local log
+    log="$(cat "$log_file")"
+    assert_contains "$log" "compose build:" \
+        "setup.sh should run an initial compose build" || return 1
+    assert_contains "$log" "builder prune:prune --force" \
+        "setup.sh should clear builder cache before retrying" || return 1
+    assert_contains "$log" "compose build:--no-cache" \
+        "setup.sh should retry the failed build with --no-cache" || return 1
+    assert_contains "$log" "compose up:-d --no-build postgres" \
+        "setup.sh should start postgres without rebuilding after build" || return 1
+    assert_contains "$log" "compose up:-d --no-build --wait" \
+        "setup.sh should start the full stack without rebuilding after build" || return 1
+    assert_contains "$output" "Docker builder cache appears to be corrupt" \
+        "setup.sh should explain the targeted BuildKit cache recovery"
+}
+
 test_start_script_rebuild_uses_no_cache() {
     # start.sh --rebuild should use --no-cache to ensure fresh images
     if grep -q "no-cache" "$START_SCRIPT"; then
@@ -1284,6 +1479,26 @@ test_setup_script_defaults_to_external_ssl_dir() {
         return 0
     else
         echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should default fresh SSL files outside the repo"
+        return 1
+    fi
+}
+
+test_setup_script_skips_postgres_reconcile_when_no_start() {
+    if grep -q 'if \[ "$OPT_NO_START" = false \]; then' "$SETUP_SCRIPT" \
+        && grep -q "reconcile_postgres_password_with_running_database" "$SETUP_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should not reconcile the live Postgres role for --no-start test/setup runs"
+        return 1
+    fi
+}
+
+test_setup_script_reconciles_postgres_after_starting_database() {
+    if grep -q "scripts/reconcile-postgres-password.sh" "$SETUP_SCRIPT" \
+        && grep -q "up .*postgres" "$SETUP_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should start Postgres before running password reconciliation"
         return 1
     fi
 }
@@ -1517,6 +1732,7 @@ main() {
     run_test "start script checks GATEWAY_SECRET" test_start_script_checks_gateway_secret
     run_test "start script checks POSTGRES_PASSWORD" test_start_script_checks_postgres_password
     run_test "start script exports secrets" test_start_script_exports_secrets
+    run_test "start script reconciles Postgres password" test_start_script_reconciles_postgres_password
     run_test "start script sources .env file" test_start_script_sources_env_file
     run_test "start script has .env.local fallback" test_start_script_has_env_local_fallback
     run_test "start script .env has set -a" test_start_script_env_has_set_a
@@ -1542,6 +1758,9 @@ main() {
     echo -e "${YELLOW}Test Suite: Upgrade Clean Rebuild${NC}"
     run_test "setup script has --upgrade flag" test_setup_script_has_upgrade_flag
     run_test "setup script uses --no-cache on upgrade" test_setup_script_uses_no_cache_on_upgrade
+    run_test "setup script recovers corrupt BuildKit cache" test_setup_script_recovers_corrupt_buildkit_cache
+    run_test "setup script avoids rebuild during compose up" test_setup_script_does_not_rebuild_during_compose_up_after_build
+    run_test "setup script retries corrupt BuildKit cache with fake Docker" test_setup_script_retries_corrupt_buildkit_cache_with_fake_docker
     run_test "start script --rebuild uses --no-cache" test_start_script_rebuild_uses_no_cache
     echo ""
 
@@ -1565,6 +1784,8 @@ main() {
     run_test "setup script defaults to external runtime env" test_setup_script_defaults_to_external_runtime_env
     run_test "setup script keeps legacy env fallback" test_setup_script_keeps_legacy_env_fallback
     run_test "setup script defaults to external SSL dir" test_setup_script_defaults_to_external_ssl_dir
+    run_test "setup script skips Postgres reconcile with --no-start" test_setup_script_skips_postgres_reconcile_when_no_start
+    run_test "setup script reconciles Postgres after starting database" test_setup_script_reconciles_postgres_after_starting_database
     run_test "setup script preserves legacy default salt for existing key" test_setup_script_preserves_legacy_default_salt_for_existing_key
     run_test "setup script generates unique salt for fresh install" test_setup_script_generates_unique_salt_for_fresh_install
     echo ""

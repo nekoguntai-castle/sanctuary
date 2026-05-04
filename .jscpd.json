@@ -13,6 +13,7 @@
     "**/dist/**",
     "**/build/**",
     "**/coverage/**",
+    "**/coverage-*/**",
     "reports/**",
     "**/reports/**",
     "playwright-report/**",

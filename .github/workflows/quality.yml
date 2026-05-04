@@ -30,17 +30,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event.pull_request.number || github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'pull_request' && github.event_name == 'merge_group' }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NODE_VERSION: '24'
-  PYTHON_VERSION: '3.12'
+  PYTHON_VERSION: '3'
   GITLEAKS_VERSION: '8.30.1'
   SEMGREP_VERSION: '1.161.0'
   ACTIONLINT_VERSION: '1.7.12'
   ACTIONLINT_LINUX_AMD64_SHA256: '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
   LIZARD_WARNING_BASELINE: '9'
+  SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
 
 jobs:
   determine-scope:
@@ -71,57 +72,92 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     needs: [determine-scope]
-    if: needs.determine-scope.outputs.run_repo_quality == 'true'
+    if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
+          clean: false
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
-      - name: Run lint
-        run: npm run lint
+      - name: Run lint in clean workspace
+        run: |
+          scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
+          set -euo pipefail
+          source_workspace="${GITHUB_WORKSPACE:-$PWD}"
+          lint_tmp_parent="${RUNNER_TEMP:-/tmp}"
+          mkdir -p "$lint_tmp_parent"
+          lint_workdir="$(mktemp -d "$lint_tmp_parent/sanctuary-lint.XXXXXX")"
+          trap 'rm -rf "$lint_workdir" || echo "::warning::Could not fully remove lint temp workspace"' EXIT
+
+          git clone --quiet --no-hardlinks "$source_workspace" "$lint_workdir/repo"
+          cd "$lint_workdir/repo"
+          for attempt in 1 2 3; do
+            echo "npm ci (lint), attempt $attempt"
+            if npm ci --audit=false --fund=false --cache "$lint_workdir/.npm-cache"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+          scripts/ci/retry-command.sh "quality lint" npm run lint
+          NODE_LOCK
 
   lockfile-peer-resolution:
     name: Lockfile peer resolution
     runs-on: ubuntu-latest
-    needs: [determine-scope]
-    if: needs.determine-scope.outputs.run_repo_quality == 'true'
+    needs: [determine-scope, lint]
+    if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
+          clean: false
+
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Check lockfile peer resolution
-        run: bash scripts/quality/check-lockfile-peer-resolution.sh
+        run: |
+          source_workspace="${GITHUB_WORKSPACE:-$PWD}"
+          peer_tmp_parent="${RUNNER_TEMP:-/tmp}"
+          mkdir -p "$peer_tmp_parent"
+          peer_workdir="$(mktemp -d "$peer_tmp_parent/sanctuary-peer-resolution.XXXXXX")"
+          trap 'rm -rf "$peer_workdir" || echo "::warning::Could not fully remove peer-resolution temp workspace"' EXIT
+
+          git clone --quiet --no-hardlinks "$source_workspace" "$peer_workdir/repo"
+          cd "$peer_workdir/repo"
+          npm_config_cache="$peer_workdir/.npm-cache" bash scripts/quality/check-lockfile-peer-resolution.sh
 
   dependency-audit:
     name: Dependency audit (npm)
     runs-on: ubuntu-latest
-    needs: [determine-scope]
-    if: needs.determine-scope.outputs.run_repo_quality == 'true'
+    needs: [determine-scope, lockfile-peer-resolution]
+    if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          clean: false
+
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Run npm audit
         run: |
+          source_workspace="${GITHUB_WORKSPACE:-$PWD}"
+          audit_tmp_parent="${RUNNER_TEMP:-/tmp}"
+          mkdir -p "$audit_tmp_parent"
+          audit_workdir="$(mktemp -d "$audit_tmp_parent/sanctuary-audit.XXXXXX")"
+          trap 'rm -rf "$audit_workdir" || echo "::warning::Could not fully remove audit temp workspace"' EXIT
+
+          git clone --quiet --no-hardlinks "$source_workspace" "$audit_workdir/repo"
+          cd "$audit_workdir/repo"
+
           package_dirs=(
             .
             server
@@ -132,22 +168,40 @@ jobs:
             scripts/verify-psbt
           )
 
+          run_audit() {
+            label="$1"
+            shift
+            for attempt in 1 2 3; do
+              echo "npm audit ($label), attempt $attempt"
+              if "$@"; then
+                return 0
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                return 1
+              fi
+              sleep $((attempt * 10))
+            done
+          }
+
           for package_dir in "${package_dirs[@]}"; do
+            cache_name="${package_dir//\//-}"
             if [ "$package_dir" = "." ]; then
-              npm audit --audit-level=high
+              run_audit root npm audit --audit-level=high --cache "$audit_workdir/.npm-cache/root"
             else
-              npm --prefix "$package_dir" audit --audit-level=high
+              run_audit "$package_dir" npm --prefix "$package_dir" audit --audit-level=high --cache "$audit_workdir/.npm-cache/$cache_name"
             fi
           done
 
   gitleaks:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
-    needs: [determine-scope]
+    needs: [determine-scope, dependency-audit]
+    if: always()
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          clean: false
           fetch-depth: 0
 
       - name: Install gitleaks
@@ -187,70 +241,89 @@ jobs:
   semgrep-sast:
     name: SAST (Semgrep)
     runs-on: ubuntu-latest
-    needs: [determine-scope]
-    if: needs.determine-scope.outputs.run_repo_quality == 'true' || needs.determine-scope.outputs.run_workflow_quality == 'true'
+    needs: [determine-scope, gitleaks]
+    if: |
+      always() &&
+      (needs.determine-scope.outputs.run_repo_quality == 'true' ||
+       needs.determine-scope.outputs.run_workflow_quality == 'true')
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          clean: false
 
       - name: Install Semgrep
-        run: |
-          python -m venv .tmp/semgrep-venv
-          .tmp/semgrep-venv/bin/python -m pip install --disable-pip-version-check --upgrade pip
-          .tmp/semgrep-venv/bin/python -m pip install --disable-pip-version-check "semgrep==${SEMGREP_VERSION}"
-          .tmp/semgrep-venv/bin/semgrep --version
+        env:
+          SEMGREP_REPORT_DIR: /tmp/sanctuary-semgrep-${{ github.run_id }}
+        run: bash scripts/ci/install-semgrep.sh
 
       - name: Run Semgrep baseline gate
         run: |
-          mkdir -p reports/semgrep
-          set +e
-          .tmp/semgrep-venv/bin/semgrep scan \
-            --config p/default \
-            --severity ERROR \
-            --error \
-            --json \
-            --output reports/semgrep/semgrep.json \
-            --exclude node_modules \
-            --exclude dist \
-            --exclude build \
-            --exclude coverage \
-            --exclude reports \
-            --exclude playwright-report \
-            --exclude test-results \
-            --exclude .tmp \
-            --exclude .tmp-gh \
-            --exclude server/src/generated \
-            .
-          semgrep_status="$?"
-          set -e
+          rm -rf "$SEMGREP_REPORT_DIR"
+          mkdir -p "$SEMGREP_REPORT_DIR"
 
-          if [ "$semgrep_status" -gt 1 ]; then
-            exit "$semgrep_status"
-          fi
+          semgrep_status=0
+          for attempt in 1 2 3; do
+            echo "semgrep scan, attempt $attempt"
+            set +e
+            "$SEMGREP_BIN" scan \
+              --config p/default \
+              --severity ERROR \
+              --error \
+              --json \
+              --output "$SEMGREP_REPORT_DIR/semgrep.json" \
+              --exclude node_modules \
+              --exclude dist \
+              --exclude build \
+              --exclude coverage \
+              --exclude reports \
+              --exclude playwright-report \
+              --exclude test-results \
+              --exclude .tmp \
+              --exclude .tmp-gh \
+              --exclude server/src/generated \
+              .
+            semgrep_status="$?"
+            set -e
 
-          npm run check:semgrep-baseline
+            if [ "$semgrep_status" -le 1 ]; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit "$semgrep_status"
+            fi
+            sleep $((attempt * 10))
+          done
+
+          node scripts/quality/check-semgrep-baseline.mjs "$SEMGREP_REPORT_DIR/semgrep.json" scripts/quality/semgrep-baseline.json
 
       - name: Upload Semgrep report
         if: always()
+        continue-on-error: true
         uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: semgrep-report
-          path: reports/semgrep/
+          path: /tmp/sanctuary-semgrep-${{ github.run_id }}/
           if-no-files-found: ignore
+
+      - name: Clean Semgrep workspace
+        if: always()
+        run: |
+          if [ -n "${SEMGREP_WORKDIR:-}" ] && [ -d "$SEMGREP_WORKDIR" ]; then
+            rm -rf "$SEMGREP_WORKDIR" || echo "::warning::Could not fully remove Semgrep temp workspace"
+          fi
+          rm -rf "/tmp/sanctuary-semgrep-${{ github.run_id }}"
 
   workflow-lint:
     name: Workflow lint (actionlint)
     runs-on: ubuntu-latest
-    needs: [determine-scope]
-    if: needs.determine-scope.outputs.run_workflow_quality == 'true'
+    needs: [determine-scope, semgrep-sast]
+    if: always() && needs.determine-scope.outputs.run_workflow_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          clean: false
 
       - name: Install actionlint
         run: |
@@ -270,16 +343,16 @@ jobs:
   workflow-action-runtime-guard:
     name: Workflow action runtime guard
     runs-on: ubuntu-latest
-    needs: [determine-scope]
-    if: needs.determine-scope.outputs.run_workflow_quality == 'true'
+    needs: [determine-scope, workflow-lint]
+    if: always() && needs.determine-scope.outputs.run_workflow_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          clean: false
+
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Check action runtimes
         env:
@@ -289,16 +362,16 @@ jobs:
   ci-classifier-tests:
     name: CI classifier tests
     runs-on: ubuntu-latest
-    needs: [determine-scope]
-    if: needs.determine-scope.outputs.run_ci_classifier_tests == 'true'
+    needs: [determine-scope, workflow-action-runtime-guard]
+    if: always() && needs.determine-scope.outputs.run_ci_classifier_tests == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          clean: false
+
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Run CI classifier tests
         run: |
@@ -310,20 +383,36 @@ jobs:
           bash -n scripts/ci/frontend-coverage-shard.sh
           bash -n scripts/ci/frontend-coverage-merge.sh
           bash -n scripts/ci/install-test-ports.sh
+          bash -n scripts/ci/docker-endpoint-lib.sh
+          bash -n scripts/ci/ensure-node.sh
+          bash -n scripts/ci/ensure-python.sh
+          bash -n scripts/ci/install-semgrep.sh
           bash -n scripts/ci/time-command.sh
+          bash -n scripts/ci/with-runner-lock.sh
+          bash -n scripts/ci/run-extended-upgrade-fixtures.sh
+          bash -n scripts/ci/wait-for-docker.sh
           bash -n scripts/ci/report-workflow-durations.sh
           bash -n scripts/ci/report-workflow-trends.sh
           bash -n scripts/ci/report-timing-notices.sh
+          bash -n scripts/ci/retry-command.sh
+          bash -n scripts/verify-addresses/verify-repeatable.sh
           bash -n tests/ci/playwright-timing-reporter.test.sh
           bash -n tests/ci/classify-test-changes.test.sh
           bash -n tests/ci/classify-docker-build-images.test.sh
           bash -n tests/ci/classify-quality-scope.test.sh
           bash -n tests/ci/browser-e2e-groups.test.sh
           bash -n tests/ci/backend-integration-groups.test.sh
+          bash -n tests/ci/ensure-toolchains.test.sh
           bash -n tests/ci/frontend-coverage-scripts.test.sh
           bash -n tests/ci/install-test-ports.test.sh
+          bash -n tests/ci/install-semgrep.test.sh
+          bash -n tests/ci/with-runner-lock.test.sh
+          bash -n tests/ci/run-extended-upgrade-fixtures.test.sh
+          bash -n tests/ci/wait-for-docker.test.sh
           bash -n tests/ci/report-workflow-trends.test.sh
           bash -n tests/ci/report-timing-notices.test.sh
+          bash -n tests/ci/retry-command.test.sh
+          bash -n tests/ci/verify-addresses-repeatable.test.sh
           node tests/ci/check-github-action-runtimes.test.mjs
           bash tests/ci/playwright-timing-reporter.test.sh
           bash tests/ci/classify-test-changes.test.sh
@@ -331,102 +420,89 @@ jobs:
           bash tests/ci/classify-quality-scope.test.sh
           bash tests/ci/browser-e2e-groups.test.sh
           bash tests/ci/backend-integration-groups.test.sh
+          bash tests/ci/ensure-toolchains.test.sh
           bash tests/ci/frontend-coverage-scripts.test.sh
           bash tests/ci/install-test-ports.test.sh
+          bash tests/ci/install-semgrep.test.sh
+          bash tests/ci/with-runner-lock.test.sh
+          bash tests/ci/run-extended-upgrade-fixtures.test.sh
+          bash tests/ci/wait-for-docker.test.sh
           bash tests/ci/report-workflow-trends.test.sh
           bash tests/ci/report-timing-notices.test.sh
+          bash tests/ci/retry-command.test.sh
+          bash tests/ci/verify-addresses-repeatable.test.sh
 
   lizard:
     name: Cyclomatic complexity (lizard)
     runs-on: ubuntu-latest
-    needs: [determine-scope]
-    if: needs.determine-scope.outputs.run_repo_quality == 'true'
+    needs: [determine-scope, ci-classifier-tests]
+    if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install lizard
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install --requirement scripts/quality/lizard-requirements.txt
+      - name: Verify Python toolchain
+        run: bash scripts/ci/ensure-python.sh
 
       - name: Run lizard
         # McCabe / NIST / SonarQube: warn on CCN > 15. The current measured
         # CI-scope baseline is 9 warnings; fail the job if that count grows.
-        # -l filters by language; `-x` excludes generated, vendored, and
-        # test-fixture paths that skew the signal.
-        run: |
-          lizard \
-            -w \
-            -i "${LIZARD_WARNING_BASELINE}" \
-            -l javascript \
-            -l typescript \
-            -C 15 \
-            -T nloc=200 \
-            -x './node_modules/*' \
-            -x './*/node_modules/*' \
-            -x './dist/*' \
-            -x './*/dist/*' \
-            -x './build/*' \
-            -x './coverage/*' \
-            -x './*/coverage/*' \
-            -x './server/src/generated/*' \
-            -x './server/tests/fixtures/*' \
-            -x './scripts/verify-addresses/output/*' \
-            -x './*.min.js' \
-            -x './reports/*' \
-            -x './playwright-report/*' \
-            -x './test-results/*' \
-            -x './.tmp/*' \
-            -x './.tmp-gh/*' \
-            .
+        env:
+          QUALITY_BOOTSTRAP_TOOLS: '1'
+        run: bash scripts/quality/lizard-only.sh
 
   jscpd:
     name: Duplication (jscpd)
     runs-on: ubuntu-latest
-    needs: [determine-scope]
-    if: needs.determine-scope.outputs.run_repo_quality == 'true'
+    needs: [determine-scope, lizard]
+    if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          clean: false
+
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Run jscpd
         # Uses .jscpd.json at the repo root. Config owns threshold and
         # exclusions. Installing via npx keeps the repo devDependencies
         # lean; pin to a known-good major version to avoid drift.
-        run: npx --yes jscpd@4 .
+        env:
+          JSCPD_REPORT_DIR: /tmp/sanctuary-jscpd-${{ github.run_id }}
+        run: |
+          rm -rf "$JSCPD_REPORT_DIR"
+          QUALITY_JSCPD_OUTPUT_DIR="$JSCPD_REPORT_DIR" \
+            scripts/ci/run-in-isolated-workspace.sh --keep-on-failure jscpd \
+              scripts/ci/retry-command.sh "quality jscpd" scripts/quality/jscpd-only.sh
 
       - name: Upload jscpd report
         if: always()
+        continue-on-error: true
         uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: jscpd-report
-          path: reports/jscpd/
+          path: /tmp/sanctuary-jscpd-${{ github.run_id }}/
           if-no-files-found: ignore
+
+      - name: Clean jscpd report
+        if: always()
+        run: rm -rf "/tmp/sanctuary-jscpd-${{ github.run_id }}"
 
   large-file-classification:
     name: Large-file classification
     runs-on: ubuntu-latest
-    needs: [determine-scope]
-    if: needs.determine-scope.outputs.run_repo_quality == 'true'
+    needs: [determine-scope, jscpd]
+    if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          clean: false
+
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Check large-file classification
         run: node scripts/quality/check-large-files.mjs

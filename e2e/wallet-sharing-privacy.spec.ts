@@ -5,7 +5,7 @@
  * address management, and UTXO tab content.
  */
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { json, unmocked, registerApiRoutes } from "./helpers";
 
 const WALLET_ID = "wallet-share-1";
@@ -527,6 +527,44 @@ async function mockShareApi(page: Page) {
   return unhandledRequests;
 }
 
+async function gotoWalletDetail(page: Page) {
+  await page.goto(`/#/wallets/${WALLET_ID}`);
+  await waitForWalletDetailOrRecover(page);
+}
+
+async function waitForWalletDetailOrRecover(page: Page) {
+  const walletHeading = page.getByRole("heading", { name: WALLET.name });
+  const maxAttempts = 2;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const result = await waitForWalletDetailState(page, walletHeading);
+    if (result === "loaded") return;
+    if (attempt === maxAttempts - 1) break;
+
+    await expect(
+      page.getByText(/Failed to fetch dynamically imported module/i),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Try again" }).click();
+  }
+
+  await expect(walletHeading).toBeVisible({ timeout: 15000 });
+}
+
+async function waitForWalletDetailState(page: Page, walletHeading: Locator) {
+  const routeErrorHeading = page.getByRole("heading", {
+    name: "Something went wrong",
+  });
+
+  return Promise.race([
+    walletHeading
+      .waitFor({ state: "visible", timeout: 15000 })
+      .then(() => "loaded" as const),
+    routeErrorHeading
+      .waitFor({ state: "visible", timeout: 15000 })
+      .then(() => "error" as const),
+  ]);
+}
+
 test.describe("Wallet sharing and privacy", () => {
   const runtimeErrors = new WeakMap<Page, string[]>();
 
@@ -552,10 +590,7 @@ test.describe("Wallet sharing and privacy", () => {
   test("wallet access tab shows ownership info for owner", async ({ page }) => {
     const unhandledRequests = await mockShareApi(page);
 
-    await page.goto(`/#/wallets/${WALLET_ID}`);
-    await expect(
-      page.getByRole("heading", { name: WALLET.name }),
-    ).toBeVisible();
+    await gotoWalletDetail(page);
 
     // Click access tab
     await page.getByRole("button", { name: /access/i }).click();
@@ -569,7 +604,7 @@ test.describe("Wallet sharing and privacy", () => {
   test("sharing sub-tab is accessible from access tab", async ({ page }) => {
     const unhandledRequests = await mockShareApi(page);
 
-    await page.goto(`/#/wallets/${WALLET_ID}`);
+    await gotoWalletDetail(page);
     await page.getByRole("button", { name: /access/i }).click();
 
     // Access tab should render without crashing
@@ -591,10 +626,7 @@ test.describe("Wallet sharing and privacy", () => {
     test.fixme(`${tab} tab is clickable on wallet detail`, async ({ page }) => {
       await mockShareApi(page);
 
-      await page.goto(`/#/wallets/${WALLET_ID}`);
-      await expect(
-        page.getByRole("heading", { name: WALLET.name }),
-      ).toBeVisible({ timeout: 10000 });
+      await gotoWalletDetail(page);
 
       const tabButton = page.getByRole("button", locator);
       await expect(tabButton).toBeVisible();
@@ -612,10 +644,7 @@ test.describe("Wallet sharing and privacy", () => {
   test("privacy data is available in wallet detail", async ({ page }) => {
     const unhandledRequests = await mockShareApi(page);
 
-    await page.goto(`/#/wallets/${WALLET_ID}`);
-    await expect(
-      page.getByRole("heading", { name: WALLET.name }),
-    ).toBeVisible();
+    await gotoWalletDetail(page);
 
     // The wallet detail page loads without crashing when privacy data is mocked
     await expect(page.getByRole("main")).toBeVisible();
@@ -627,10 +656,7 @@ test.describe("Wallet sharing and privacy", () => {
   test("stats tab shows transaction statistics", async ({ page }) => {
     const unhandledRequests = await mockShareApi(page);
 
-    await page.goto(`/#/wallets/${WALLET_ID}`);
-    await expect(
-      page.getByRole("heading", { name: WALLET.name }),
-    ).toBeVisible();
+    await gotoWalletDetail(page);
 
     await page.getByRole("button", { name: /stats/i }).click();
 
@@ -646,10 +672,7 @@ test.describe("Wallet sharing and privacy", () => {
   test("wallet settings tab renders for owner", async ({ page }) => {
     const unhandledRequests = await mockShareApi(page);
 
-    await page.goto(`/#/wallets/${WALLET_ID}`);
-    await expect(
-      page.getByRole("heading", { name: WALLET.name }),
-    ).toBeVisible();
+    await gotoWalletDetail(page);
 
     await page.getByRole("button", { name: /settings/i }).click();
 
@@ -666,10 +689,7 @@ test.describe("Wallet sharing and privacy", () => {
   test("all wallet detail tabs are navigable", async ({ page }) => {
     const unhandledRequests = await mockShareApi(page);
 
-    await page.goto(`/#/wallets/${WALLET_ID}`);
-    await expect(
-      page.getByRole("heading", { name: WALLET.name }),
-    ).toBeVisible();
+    await gotoWalletDetail(page);
 
     // Tab through each available tab
     const tabs = [

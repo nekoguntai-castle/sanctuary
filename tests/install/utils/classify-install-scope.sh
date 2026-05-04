@@ -258,6 +258,20 @@ while IFS= read -r file; do
       add_scope installer
       reason="Installer scope changed"
       ;;
+    scripts/ci/create-isolated-workspace.sh|scripts/ci/install-test-ports.sh|scripts/ci/run-in-isolated-workspace.sh|scripts/ci/wait-for-docker.sh|scripts/ci/with-runner-lock.sh)
+      enable_unit
+      enable_standard_stack
+      enable_install_script
+      enable_upgrade
+      add_scope install-ci-helper
+      reason="Install CI helper changed"
+      ;;
+    scripts/ci/run-extended-upgrade-fixtures.sh)
+      enable_unit
+      enable_upgrade
+      add_scope upgrade
+      reason="Upgrade CI helper changed"
+      ;;
     docker-compose.yml|docker-compose.*.yml|Dockerfile|server/Dockerfile|docker/*)
       enable_unit
       enable_fresh_install

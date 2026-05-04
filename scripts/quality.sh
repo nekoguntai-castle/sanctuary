@@ -267,15 +267,8 @@ run_npm_audit() {
 
 run_jscpd() {
   local output_dir="${QUALITY_JSCPD_OUTPUT_DIR:-reports/jscpd}"
-  local report_file="$output_dir/jscpd-report.json"
 
-  npx --yes jscpd@4 --silent --reporters json,markdown --output "$output_dir" .
-  node -e '
-    const fs = require("node:fs");
-    const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    const total = report.statistics.total;
-    console.log(`jscpd: ${total.percentage}% duplicated lines (${total.duplicatedLines}/${total.lines}), ${total.clones} clones across ${total.sources} files`);
-  ' "$report_file"
+  QUALITY_JSCPD_OUTPUT_DIR="$output_dir" scripts/quality/jscpd-only.sh
 }
 
 run_large_file_check() {

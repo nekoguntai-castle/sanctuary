@@ -12,6 +12,8 @@ on:
       - 'server/.dependency-cruiser.cjs'
       - 'gateway/.dependency-cruiser.cjs'
       - 'scripts/architecture/**'
+      - 'scripts/ci/create-isolated-workspace.sh'
+      - 'scripts/ci/retry-command.sh'
       - 'website/**'
       - '.github/workflows/architecture.yml'
   push:
@@ -21,48 +23,52 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event.pull_request.number || github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NODE_VERSION: '24'
+  SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
 
 jobs:
   build:
     name: Lint diagrams, regenerate graphs, build site
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          clean: false
+          fetch-depth: 0
 
-      - name: Install dependencies (root, server, gateway, website in parallel)
-        # Bare `wait` returns 0 even when background jobs fail. Capture each
-        # PID and wait on it explicitly so any install failure surfaces.
+      - name: Check Node.js
         run: |
-          set -uo pipefail
-          npm ci > /tmp/npm-root.log 2>&1 & pid_root=$!
-          (cd server && npm ci) > /tmp/npm-server.log 2>&1 & pid_server=$!
-          (cd gateway && npm ci) > /tmp/npm-gateway.log 2>&1 & pid_gateway=$!
-          (cd website && npm ci) > /tmp/npm-website.log 2>&1 & pid_website=$!
-          fail=0
-          wait "$pid_root"    || { echo "::group::root npm ci failed";    cat /tmp/npm-root.log;    echo "::endgroup::"; fail=1; }
-          wait "$pid_server"  || { echo "::group::server npm ci failed";  cat /tmp/npm-server.log;  echo "::endgroup::"; fail=1; }
-          wait "$pid_gateway" || { echo "::group::gateway npm ci failed"; cat /tmp/npm-gateway.log; echo "::endgroup::"; fail=1; }
-          wait "$pid_website" || { echo "::group::website npm ci failed"; cat /tmp/npm-website.log; echo "::endgroup::"; fail=1; }
-          if [ "$fail" -eq 0 ]; then
-            echo "::group::root npm ci log";    cat /tmp/npm-root.log;    echo "::endgroup::"
-            echo "::group::server npm ci log";  cat /tmp/npm-server.log;  echo "::endgroup::"
-            echo "::group::gateway npm ci log"; cat /tmp/npm-gateway.log; echo "::endgroup::"
-            echo "::group::website npm ci log"; cat /tmp/npm-website.log; echo "::endgroup::"
-          fi
-          exit "$fail"
+          node --version
+          npm --version
+          node -e 'const major = Number(process.versions.node.split(".")[0]); if (major !== Number(process.env.NODE_VERSION)) { throw new Error(`Expected Node ${process.env.NODE_VERSION}, got ${process.version}`); }'
+
+      - name: Prepare architecture workspace
+        run: |
+          ARCH_WORKDIR="$(scripts/ci/create-isolated-workspace.sh architecture)"
+          ARCH_ROOT="$(dirname "$ARCH_WORKDIR")"
+          echo "ARCH_WORKDIR=$ARCH_WORKDIR" >> "$GITHUB_ENV"
+          echo "ARCH_ROOT=$ARCH_ROOT" >> "$GITHUB_ENV"
+
+      - name: Install dependencies (root, server, gateway, website)
+        run: |
+          scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
+          set -euo pipefail
+          cd "$ARCH_WORKDIR"
+
+          scripts/ci/retry-command.sh "root npm ci" npm ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/root"
+          scripts/ci/retry-command.sh "server npm ci" npm --prefix server ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/server"
+          scripts/ci/retry-command.sh "gateway npm ci" npm --prefix gateway ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/gateway"
+          scripts/ci/retry-command.sh "website npm ci" npm --prefix website ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/website"
+          NODE_LOCK
 
       - name: Lint diagram click hrefs
-        run: npm run arch:lint
+        run: |
+          cd "$ARCH_WORKDIR"
+          npm run arch:lint
 
       - name: Warn on diagram drift (changed files referenced by C4 diagrams)
         if: github.event_name == 'pull_request'
@@ -71,40 +77,74 @@ jobs:
         # the diagram. Author confirms the diagram is still accurate or
         # amends it; not every code change to a diagrammed file requires a
         # diagram update (refactors, bug fixes, test additions).
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.ref }}"
-          node scripts/architecture/detect-drift.mjs "origin/${{ github.event.pull_request.base.ref }}"
+          cd "$ARCH_WORKDIR"
+          node scripts/architecture/detect-drift.mjs "$BASE_SHA"
 
       - name: Regenerate dependency graphs
-        run: npm run arch:graphs
+        run: |
+          scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
+          set -euo pipefail
+          cd "$ARCH_WORKDIR"
+          scripts/ci/retry-command.sh "architecture dependency graphs" npm run arch:graphs
+          NODE_LOCK
 
       - name: Regenerate function-level call graphs
-        run: npm run arch:calls
+        run: |
+          scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
+          set -euo pipefail
+          cd "$ARCH_WORKDIR"
+          scripts/ci/retry-command.sh "architecture call graphs" npm run arch:calls
+          NODE_LOCK
 
       - name: Detect stale generated graphs
         run: |
+          cd "$ARCH_WORKDIR"
           if ! git diff --exit-code -- docs/architecture/generated; then
             echo "::error::Generated architecture graphs are stale. Run 'npm run arch:graphs && npm run arch:calls' locally and commit the result."
             exit 1
           fi
 
       - name: Typecheck Docusaurus site
-        run: npm --prefix website run typecheck
+        run: |
+          scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
+          set -euo pipefail
+          cd "$ARCH_WORKDIR"
+          npm --prefix website run typecheck
+          NODE_LOCK
 
       - name: Build Docusaurus site
-        run: npm run docs:build
+        run: |
+          scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
+          set -euo pipefail
+          cd "$ARCH_WORKDIR"
+          scripts/ci/retry-command.sh "docs build" npm run docs:build
+          if [ "${GITHUB_EVENT_NAME:-}" = "push" ] && [ "${GITHUB_REF:-}" = "refs/heads/main" ] && [ "${GITHUB_SERVER_URL:-}" = "https://github.com" ]; then
+            rm -rf "${GITHUB_WORKSPACE:-$PWD}/website/build"
+            mkdir -p "${GITHUB_WORKSPACE:-$PWD}/website"
+            cp -a website/build "${GITHUB_WORKSPACE:-$PWD}/website/build"
+          fi
+          NODE_LOCK
 
       - name: Upload site artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.server_url == 'https://github.com'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
         with:
           path: website/build
 
+      - name: Clean architecture workspace
+        run: |
+          if [ -n "${ARCH_ROOT:-}" ] && [ -d "$ARCH_ROOT" ]; then
+            rm -rf "$ARCH_ROOT" || echo "::warning::Could not fully remove architecture temp workspace"
+          fi
+
   deploy:
     name: Deploy to GitHub Pages
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.server_url == 'https://github.com'
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     permissions:
       pages: write
       id-token: write

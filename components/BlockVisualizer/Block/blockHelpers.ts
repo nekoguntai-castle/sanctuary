@@ -26,6 +26,23 @@ export const isPendingTxStuck = (feeRate: number, blockMinFee?: number) => {
   return blockMinFee !== undefined && feeRate < blockMinFee;
 };
 
+export const getBlockButtonLabel = (
+  block: BlockProps['block'],
+  viewModel: BlockViewModel
+) => {
+  const blockType = viewModel.isPending ? 'Pending block' : 'Confirmed block';
+  const blockHeight = formatAccessibleBlockHeight(block.height);
+  const txCount = block.txCount === undefined
+    ? 'transaction count unavailable'
+    : `${block.txCount.toLocaleString()} transactions`;
+
+  return [
+    `${blockType} ${blockHeight}`,
+    `median fee ${viewModel.formattedMedianFee} sat/vB`,
+    txCount,
+  ].join(', ');
+};
+
 const getFillPercentage = (size: number) => {
   return Math.min((size / 1.6) * 100, 100);
 };
@@ -56,4 +73,8 @@ const formatBlockHeight = (
 
 const getPendingTxLimit = (compact: boolean) => {
   return compact ? 3 : 5;
+};
+
+const formatAccessibleBlockHeight = (height: BlockProps['block']['height']) => {
+  return typeof height === 'number' ? height.toLocaleString() : height;
 };

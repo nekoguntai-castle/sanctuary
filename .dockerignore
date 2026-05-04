@@ -36,6 +36,7 @@ Dockerfile*
 # Test files
 coverage
 .nyc_output
+.tmp
 
 # OS files
 .DS_Store

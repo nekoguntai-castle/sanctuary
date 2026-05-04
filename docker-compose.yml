@@ -296,9 +296,6 @@ services:
   # Uses the same image as backend with different entry point.
   # ============================================
   worker:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
     image: sanctuary-backend:local
     pull_policy: never # Reuse image built by backend service
     restart: unless-stopped
@@ -454,9 +451,6 @@ services:
   # Uses the same image as backend (no rebuild)
   # ============================================
   migrate:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
     image: sanctuary-backend:local
     pull_policy: never # Reuse image built by backend service
     depends_on:

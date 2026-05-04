@@ -59,6 +59,37 @@ export const BlockAnimationStyles: React.FC = () => (
       animation: pulse-glow 2s ease-in-out infinite;
     }
 
+    .block-visualizer-frame {
+      position: relative;
+    }
+
+    .block-visualizer-button {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .block-visualizer-tooltip {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      margin-bottom: 0.5rem;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -0.25rem);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      white-space: nowrap;
+      z-index: 50;
+    }
+
+    .block-visualizer-frame:hover .block-visualizer-tooltip {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
     .scrollbar-hide::-webkit-scrollbar {
       display: none;
     }

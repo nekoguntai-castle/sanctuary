@@ -13,11 +13,15 @@ fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
-venv_dir="${VERIFY_ADDRESSES_VENV_DIR:-$repo_root/.tmp/verify-addresses-python}"
-rpc_url="${BITCOIN_RPC_URL:-http://127.0.0.1:18443}"
+# shellcheck source=scripts/ci/docker-endpoint-lib.sh
+source "$repo_root/scripts/ci/docker-endpoint-lib.sh"
+venv_dir="${VERIFY_ADDRESSES_VENV_DIR:-}"
 rpc_user="${BITCOIN_RPC_USER:-verify}"
 rpc_pass="${BITCOIN_RPC_PASS:-verify}"
 started_bitcoind=0
+created_python_venv=0
+
+rpc_url="${BITCOIN_RPC_URL:-http://$(sanctuary_current_docker_published_host):18443}"
 
 require_command() {
   local command_name="$1"
@@ -28,6 +32,9 @@ require_command() {
 }
 
 cleanup() {
+  if [[ "$created_python_venv" -eq 1 && -n "$venv_dir" && "${VERIFY_ADDRESSES_KEEP_PYTHON_VENV:-0}" != "1" ]]; then
+    rm -rf "$venv_dir" || true
+  fi
   if [[ "$started_bitcoind" -eq 1 && "${VERIFY_ADDRESSES_KEEP_BITCOIND:-0}" != "1" ]]; then
     docker compose -f "$script_dir/docker-compose.yml" down
   fi
@@ -48,10 +55,62 @@ install_python_dependencies() {
   fi
 
   require_command python3
-  python3 -m venv "$venv_dir"
+
+  local attempts="${VERIFY_ADDRESSES_PYTHON_INSTALL_ATTEMPTS:-3}"
+  if [[ ! "$attempts" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'VERIFY_ADDRESSES_PYTHON_INSTALL_ATTEMPTS must be a positive integer\n' >&2
+    exit 1
+  fi
+
+  local temp_parent="${VERIFY_ADDRESSES_VENV_PARENT:-${RUNNER_TEMP:-$repo_root/.tmp}}"
+  mkdir -p "$temp_parent"
+
+  local attempt status
+  for attempt in $(seq 1 "$attempts"); do
+    if [[ -z "${VERIFY_ADDRESSES_VENV_DIR:-}" ]]; then
+      venv_dir="$(mktemp -d "$temp_parent/verify-addresses-python.XXXXXX")"
+      created_python_venv=1
+    else
+      venv_dir="$VERIFY_ADDRESSES_VENV_DIR"
+    fi
+
+    printf 'Installing Python verifier dependencies, attempt %s\n' "$attempt"
+    set +e
+    install_python_dependencies_attempt "$attempt"
+    status="$?"
+    set -e
+
+    if [[ "$status" -eq 0 ]]; then
+      return
+    fi
+
+    if [[ "$created_python_venv" -eq 1 ]]; then
+      rm -rf "$venv_dir" || true
+      venv_dir=""
+      created_python_venv=0
+    fi
+
+    if [[ "$attempt" -eq "$attempts" ]]; then
+      exit "$status"
+    fi
+
+    sleep $((attempt * 10))
+  done
+}
+
+install_python_dependencies_attempt() {
+  local attempt="$1"
+  local pip_flags=(--disable-pip-version-check)
+
+  if [[ "$attempt" -gt 1 ]]; then
+    pip_flags+=(--no-cache-dir)
+  fi
+
+  python3 -m venv --clear "$venv_dir" || return
   python_bin="$venv_dir/bin/python"
-  "$python_bin" -m pip install --upgrade pip
-  "$python_bin" -m pip install 'bip_utils==2.12.1'
+  "$python_bin" -m pip install "${pip_flags[@]}" --upgrade pip || return
+  "$python_bin" -m pip install "${pip_flags[@]}" 'bip_utils==2.12.1' || return
+  "$python_bin" -c 'import bip_utils; print(getattr(bip_utils, "__version__", "unknown"))' || return
 }
 
 start_bitcoin_core() {

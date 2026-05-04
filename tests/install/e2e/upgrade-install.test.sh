@@ -191,6 +191,25 @@ resolve_env_file() {
     fi
 }
 
+redact_text() {
+    printf '%s\n' "$1" | redact_stream
+}
+
+install_log_has_buildkit_cache_corruption() {
+    local install_log="$1"
+
+    [ -f "$install_log" ] || return 1
+
+    grep -Eiq \
+        'archive/tar: invalid tar header|failed to extract layer|failed to read expected number of bytes' \
+        "$install_log"
+}
+
+recover_upgrade_builder_cache() {
+    log_warning "Docker builder cache appears corrupt during source install; clearing builder cache and retrying once"
+    docker builder prune --force >/dev/null
+}
+
 load_runtime_env() {
     local env_file
     env_file="$(resolve_env_file)"
@@ -266,16 +285,9 @@ cleanup_upgrade_source_checkout() {
     fi
 }
 
-run_install_script() {
+run_install_script_command() {
     local project_dir="$1"
-    local checkout_name
-    checkout_name="$(basename "$project_dir")"
-    local install_log="$TEST_RUNTIME_DIR/install-${checkout_name}.log"
 
-    mkdir -p "$TEST_RUNTIME_DIR"
-    isolate_legacy_optional_profile_compose "$project_dir" "$TARGET_PROJECT_ROOT"
-
-    set +e
     (
         export HTTPS_PORT
         export HTTP_PORT
@@ -293,17 +305,78 @@ run_install_script() {
         export RATE_LIMIT_2FA=100
         export RATE_LIMIT_PASSWORD_CHANGE=100
         bash "$project_dir/install.sh" </dev/null
-    ) 2>&1 | tee "$install_log"
-    local exit_code=${PIPESTATUS[0]}
+    )
+}
+
+run_install_script_attempt() {
+    local project_dir="$1"
+    local install_log="$2"
+    local append_mode="${3:-false}"
+    local exit_code
+
+    set +e
+    if [ "$append_mode" = "true" ]; then
+        run_install_script_command "$project_dir" 2>&1 | redact_stream | tee -a "$install_log"
+    else
+        run_install_script_command "$project_dir" 2>&1 | redact_stream | tee "$install_log"
+    fi
+    exit_code=${PIPESTATUS[0]}
     set -e
 
-    if [ $exit_code -ne 0 ]; then
-        log_error "install.sh failed for checkout: $project_dir"
-        log_error "Install log: $install_log"
+    return "$exit_code"
+}
+
+retry_install_script_after_cache_recovery() {
+    local project_dir="$1"
+    local install_log="$2"
+
+    if ! recover_upgrade_builder_cache; then
         return 1
     fi
 
-    return 0
+    {
+        echo ""
+        echo "Retrying source install after Docker builder cache recovery..."
+    } | tee -a "$install_log"
+    cleanup_containers "$project_dir" 2>/dev/null || true
+    run_install_script_attempt "$project_dir" "$install_log" true
+}
+
+run_install_script() {
+    local project_dir="$1"
+    local checkout_name
+    checkout_name="$(basename "$project_dir")"
+    local install_log="$TEST_RUNTIME_DIR/install-${checkout_name}.log"
+    local exit_code
+
+    mkdir -p "$TEST_RUNTIME_DIR"
+    isolate_legacy_optional_profile_compose "$project_dir" "$TARGET_PROJECT_ROOT"
+    adapt_legacy_compose_ssl_mount "$project_dir"
+    adapt_legacy_shared_backend_builds "$project_dir"
+
+    if run_install_script_attempt "$project_dir" "$install_log" false; then
+        if ! install_log_has_buildkit_cache_corruption "$install_log"; then
+            return 0
+        fi
+
+        log_warning "install.sh exited successfully after BuildKit cache corruption; retrying source install"
+        if retry_install_script_after_cache_recovery "$project_dir" "$install_log"; then
+            return 0
+        fi
+        exit_code=$?
+    else
+        exit_code=$?
+        if install_log_has_buildkit_cache_corruption "$install_log"; then
+            if retry_install_script_after_cache_recovery "$project_dir" "$install_log"; then
+                return 0
+            fi
+            exit_code=$?
+        fi
+    fi
+
+    log_error "install.sh failed for checkout: $project_dir"
+    log_error "Install log: $install_log"
+    return "$exit_code"
 }
 
 # Test counters
@@ -1431,12 +1504,12 @@ test_recover_postgres_password_drift() {
         bash "$PROJECT_ROOT/scripts/setup.sh" --force --non-interactive --skip-ssl 2>&1
     ) || {
         log_error "setup.sh failed while recovering the PostgreSQL password drift"
-        log_error "Output: $setup_output"
+        log_error "Output: $(redact_text "$setup_output")"
         return 1
     }
 
     if [ "$VERBOSE" = "true" ]; then
-        echo "$setup_output"
+        redact_text "$setup_output"
     fi
 
     load_runtime_env || return 1
@@ -1558,12 +1631,12 @@ test_force_rebuild_upgrade() {
     set -e
 
     if [ "$VERBOSE" = "true" ]; then
-        echo "$rebuild_output"
+        redact_text "$rebuild_output"
     fi
 
     if [ $exit_code -ne 0 ]; then
         log_error "start.sh --rebuild failed"
-        log_error "Output: $rebuild_output"
+        log_error "Output: $(redact_text "$rebuild_output")"
         return 1
     fi
 

@@ -6,13 +6,14 @@
  */
 
 import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { AddressDeriver, ScriptType, MultisigScriptType, Network } from '../types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PYTHON_SCRIPT = join(__dirname, 'python-verify.py');
+const DEFAULT_PYTHON_RUN_ATTEMPTS = 3;
 
 interface PythonResult {
   address?: string;
@@ -22,59 +23,124 @@ interface PythonResult {
   name?: string;
 }
 
-async function runPython(args: string[]): Promise<PythonResult> {
+interface PythonProcessOutcome {
+  stdout: string;
+  stderr: string;
+  code: number | null;
+  signal: NodeJS.Signals | null;
+}
+
+function getPythonRunAttempts(): number {
+  const rawAttempts = process.env.VERIFY_ADDRESSES_PYTHON_RUN_ATTEMPTS;
+  if (!rawAttempts) {
+    return DEFAULT_PYTHON_RUN_ATTEMPTS;
+  }
+
+  const parsed = Number(rawAttempts);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error('VERIFY_ADDRESSES_PYTHON_RUN_ATTEMPTS must be a positive integer');
+  }
+
+  return parsed;
+}
+
+function configuredPythonCommands(): string[] {
+  const configuredPython = process.env.VERIFY_ADDRESSES_PYTHON;
+  return configuredPython ? [configuredPython] : ['python3', 'python'];
+}
+
+function runPythonProcess(command: string, args: string[]): Promise<PythonProcessOutcome> {
   return new Promise((resolve, reject) => {
-    // Prefer the repeatable verification venv when the wrapper provides it.
-    const configuredPython = process.env.VERIFY_ADDRESSES_PYTHON;
-    const pythonCommands = configuredPython ? [configuredPython] : ['python3', 'python'];
-    let tried = 0;
+    const proc = spawn(command, [PYTHON_SCRIPT, ...args], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
 
-    function tryCommand(cmd: string) {
-      const proc = spawn(cmd, [PYTHON_SCRIPT, ...args], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
 
-      let stdout = '';
-      let stderr = '';
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
 
-      proc.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
 
-      proc.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
+    proc.on('error', (err) => {
+      if (!settled) {
+        settled = true;
+        reject(err);
+      }
+    });
 
-      proc.on('error', (err) => {
-        tried++;
-        if (tried < pythonCommands.length) {
-          tryCommand(pythonCommands[tried]);
-        } else {
-          reject(new Error(`Python not found: ${err.message}`));
-        }
-      });
+    proc.on('close', (code, signal) => {
+      if (!settled) {
+        settled = true;
+        resolve({ stdout, stderr, code, signal });
+      }
+    });
+  });
+}
 
-      proc.on('close', (code) => {
-        if (code !== 0 && stdout === '') {
-          reject(new Error(`Python script failed: ${stderr || 'Unknown error'}`));
-          return;
-        }
+function parsePythonResult(stdout: string): PythonResult {
+  try {
+    const result = JSON.parse(stdout.trim()) as PythonResult;
+    if (result.error) {
+      throw new Error(result.error);
+    }
+    return result;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(`Failed to parse Python output: ${stdout}`);
+    }
+    throw error;
+  }
+}
 
-        try {
-          const result = JSON.parse(stdout.trim()) as PythonResult;
-          if (result.error) {
-            reject(new Error(result.error));
-          } else {
-            resolve(result);
-          }
-        } catch (e) {
-          reject(new Error(`Failed to parse Python output: ${stdout}`));
-        }
-      });
+function pythonFailureMessage(outcome: PythonProcessOutcome): string {
+  const status = outcome.signal ? `signal ${outcome.signal}` : `exit code ${outcome.code ?? 'unknown'}`;
+  const detail = outcome.stderr.trim() || 'no stderr';
+  return `Python script failed (${status}): ${detail}`;
+}
+
+function isEmptyProcessFailure(outcome: PythonProcessOutcome): boolean {
+  return outcome.code !== 0 && outcome.stdout.trim() === '';
+}
+
+async function runPythonCommand(command: string, args: string[]): Promise<PythonResult> {
+  const attempts = getPythonRunAttempts();
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const outcome = await runPythonProcess(command, args);
+    if (isEmptyProcessFailure(outcome)) {
+      lastError = new Error(pythonFailureMessage(outcome));
+      continue;
     }
 
-    tryCommand(pythonCommands[0]);
-  });
+    return parsePythonResult(outcome.stdout);
+  }
+
+  throw lastError ?? new Error('Python script failed before producing output');
+}
+
+async function runPython(args: string[]): Promise<PythonResult> {
+  let lastError: Error | null = null;
+
+  for (const command of configuredPythonCommands()) {
+    try {
+      return await runPythonCommand(command, args);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error(`Python not found: ${lastError?.message ?? 'no candidate command worked'}`);
 }
 
 export const pythonImpl: AddressDeriver = {

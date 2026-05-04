@@ -16,6 +16,13 @@ on:
       - 'docker/**'
       - 'scripts/setup.sh'
       - 'scripts/reset-user-2fa.sh'
+      - 'scripts/ci/create-isolated-workspace.sh'
+      - 'scripts/ci/docker-endpoint-lib.sh'
+      - 'scripts/ci/install-test-ports.sh'
+      - 'scripts/ci/run-in-isolated-workspace.sh'
+      - 'scripts/ci/run-extended-upgrade-fixtures.sh'
+      - 'scripts/ci/wait-for-docker.sh'
+      - 'scripts/ci/with-runner-lock.sh'
       - 'tests/install/**'
       - '!tests/install/*.md'
       - '!tests/install/**/*.md'
@@ -35,6 +42,13 @@ on:
       - 'docker/**'
       - 'scripts/setup.sh'
       - 'scripts/reset-user-2fa.sh'
+      - 'scripts/ci/create-isolated-workspace.sh'
+      - 'scripts/ci/docker-endpoint-lib.sh'
+      - 'scripts/ci/install-test-ports.sh'
+      - 'scripts/ci/run-in-isolated-workspace.sh'
+      - 'scripts/ci/run-extended-upgrade-fixtures.sh'
+      - 'scripts/ci/wait-for-docker.sh'
+      - 'scripts/ci/with-runner-lock.sh'
       - 'tests/install/**'
       - '!tests/install/*.md'
       - '!tests/install/**/*.md'
@@ -73,12 +87,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event.pull_request.number || github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'pull_request' && github.event_name == 'push' && github.ref_type == 'branch' }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   HTTPS_PORT: 8443
   HTTP_PORT: 8080
+  COMPOSE_BAKE: 'false'
+  SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
 
 jobs:
   # ============================================
@@ -106,6 +122,7 @@ jobs:
       - name: Checkout for path filtering
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          clean: false
           fetch-depth: 0
 
       - name: Classify install test scope
@@ -135,17 +152,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          clean: false
           fetch-depth: 0
-
-      - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 
       - name: Run unit tests
         run: |
-          ./tests/install/unit/install-script.test.sh
-          ./tests/install/unit/reset-user-2fa-script.test.sh
-          ./tests/install/unit/upgrade-helpers.test.sh
-          ./tests/install/unit/install-scope.test.sh
+          scripts/ci/run-in-isolated-workspace.sh install-unit bash -c '
+            ./tests/install/unit/install-script.test.sh
+            ./tests/install/unit/reset-user-2fa-script.test.sh
+            ./tests/install/unit/upgrade-helpers.test.sh
+            ./tests/install/unit/install-scope.test.sh
+          '
 
   # ============================================
   # Fresh Install E2E Test
@@ -178,27 +195,32 @@ jobs:
       - name: Checkout repository
         if: github.event_name != 'pull_request'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          clean: false
 
       - name: Check Docker
         if: github.event_name != 'pull_request'
-        run: |
-          docker --version
-          docker compose version
+        run: scripts/ci/wait-for-docker.sh
 
-      - name: Make test scripts executable
+      - name: Prepare isolated install workspace
         if: github.event_name != 'pull_request'
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+        run: |
+          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible fresh-install)"
+          echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
 
       - name: Assign run-specific ports
         if: github.event_name != 'pull_request'
-        run: bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+        run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
 
       - name: Run fresh install test
         if: github.event_name != 'pull_request'
         env:
           KEEP_CONTAINERS: ${{ github.event.inputs.keep_containers }}
         run: |
-          scripts/ci/time-command.sh "fresh install e2e" bash -c '
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "fresh install e2e" bash -c '
             if [ "${KEEP_CONTAINERS:-false}" = "true" ]; then
               ./tests/install/e2e/fresh-install.test.sh --keep-containers --verbose
             else
@@ -211,7 +233,8 @@ jobs:
         env:
           KEEP_CONTAINERS: ${{ github.event.inputs.keep_containers }}
         run: |
-          scripts/ci/time-command.sh "install script e2e" bash -c '
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "install script e2e" bash -c '
             if [ "${KEEP_CONTAINERS:-false}" = "true" ]; then
               ./tests/install/e2e/install-script.test.sh --keep-containers --verbose
             else
@@ -222,6 +245,9 @@ jobs:
       - name: Show container logs on failure
         if: failure() && github.event_name != 'pull_request'
         run: |
+          if [ -d "${SANCTUARY_INSTALL_WORKSPACE:-}" ]; then
+            cd "$SANCTUARY_INSTALL_WORKSPACE"
+          fi
           echo "=== Container Status ==="
           docker compose ps || true
           echo ""
@@ -243,8 +269,17 @@ jobs:
       - name: Cleanup
         if: always() && github.event_name != 'pull_request' && github.event.inputs.keep_containers != 'true'
         run: |
+          if [ -d "${SANCTUARY_INSTALL_WORKSPACE:-}" ]; then
+            cd "$SANCTUARY_INSTALL_WORKSPACE"
+          fi
           docker compose down -v --remove-orphans || true
-          docker system prune -f || true
+
+      - name: Cleanup isolated install workspace
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          if [ -n "${SANCTUARY_INSTALL_WORKSPACE:-}" ]; then
+            rm -rf "$(dirname "$SANCTUARY_INSTALL_WORKSPACE")" || echo "::warning::Could not fully remove isolated install workspace"
+          fi
 
   # ============================================
   # Install Script E2E Test
@@ -305,25 +340,42 @@ jobs:
       HTTP_PORT: '15082'
       GATEWAY_PORT: '15002'
       PORT_OFFSET: '6'
+      USE_FRESH_INSTALL_STACK_COVERAGE: ${{ needs.determine-scope.outputs.test_suite == 'all' || contains(needs.determine-scope.outputs.scope, 'workflow') }}
 
     steps:
+      - name: Use fresh install stack coverage
+        if: env.USE_FRESH_INSTALL_STACK_COVERAGE == 'true'
+        run: |
+          echo "Fresh Install E2E already verified stack startup, container health, login, password change, API health, gateway API, and cleanup."
+          echo "Skipping the duplicate reusable stack build for this broad workflow run."
+
       - name: Checkout repository
+        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          clean: false
 
       - name: Check Docker
-        run: |
-          docker --version
-          docker compose version
+        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
+        run: scripts/ci/wait-for-docker.sh
 
-      - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+      - name: Prepare isolated stack workspace
+        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
+        run: |
+          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible install-stack)"
+          echo "SANCTUARY_STACK_WORKSPACE=$workspace" >> "$GITHUB_ENV"
 
       - name: Assign run-specific ports
-        run: bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
+        run: |
+          cd "$SANCTUARY_STACK_WORKSPACE"
+          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
 
       - name: Start reusable stack
+        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
         run: |
-          scripts/ci/time-command.sh "install stack startup" bash -c '
+          cd "$SANCTUARY_STACK_WORKSPACE"
+          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "install stack startup" bash -c '
             JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
             ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
             GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
@@ -332,7 +384,8 @@ jobs:
             REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
 
             source tests/install/utils/helpers.sh
-            SANCTUARY_SSL_DIR="$PWD/docker/nginx/ssl"
+            SANCTUARY_SSL_DIR="$(default_install_test_root "$PWD")/ssl-${COMPOSE_PROJECT_NAME}"
+            mkdir -p "$SANCTUARY_SSL_DIR"
             SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
             export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
             bash docker/nginx/ssl/generate-certs.sh localhost
@@ -350,24 +403,42 @@ jobs:
           '
 
       - name: Run container health tests
-        if: needs.determine-scope.outputs.run_container_health == 'true'
-        run: scripts/ci/time-command.sh "install stack container health" ./tests/install/e2e/container-health.test.sh --verbose
+        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true' && needs.determine-scope.outputs.run_container_health == 'true'
+        run: |
+          cd "$SANCTUARY_STACK_WORKSPACE"
+          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "install stack container health" ./tests/install/e2e/container-health.test.sh --verbose
 
       - name: Run auth flow tests
-        if: needs.determine-scope.outputs.run_auth_flow == 'true'
-        run: scripts/ci/time-command.sh "install stack auth flow" ./tests/install/e2e/auth-flow.test.sh --verbose
+        if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true' && needs.determine-scope.outputs.run_auth_flow == 'true'
+        run: |
+          cd "$SANCTUARY_STACK_WORKSPACE"
+          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "install stack auth flow" ./tests/install/e2e/auth-flow.test.sh --verbose
 
       - name: Show container logs on failure
-        if: failure()
+        if: failure() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
         run: |
+          if [ -d "${SANCTUARY_STACK_WORKSPACE:-}" ]; then
+            cd "$SANCTUARY_STACK_WORKSPACE"
+          fi
           docker compose ps || true
           docker compose logs --tail 100 postgres 2>&1 || true
           docker compose logs --tail 100 backend 2>&1 || true
           docker compose logs --tail 100 frontend 2>&1 || true
 
       - name: Cleanup
-        if: always() && github.event.inputs.keep_containers != 'true'
-        run: docker compose down -v --remove-orphans || true
+        if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true' && github.event.inputs.keep_containers != 'true'
+        run: |
+          if [ -d "${SANCTUARY_STACK_WORKSPACE:-}" ]; then
+            cd "$SANCTUARY_STACK_WORKSPACE"
+          fi
+          docker compose down -v --remove-orphans || true
+
+      - name: Cleanup isolated stack workspace
+        if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
+        run: |
+          if [ -n "${SANCTUARY_STACK_WORKSPACE:-}" ]; then
+            rm -rf "$(dirname "$SANCTUARY_STACK_WORKSPACE")" || echo "::warning::Could not fully remove isolated stack workspace"
+          fi
 
   # ============================================
   # Container Health Test
@@ -394,47 +465,65 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          clean: false
 
-      - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+      - name: Check Docker
+        run: scripts/ci/wait-for-docker.sh
+
+      - name: Prepare isolated health workspace
+        run: |
+          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible container-health)"
+          echo "SANCTUARY_HEALTH_WORKSPACE=$workspace" >> "$GITHUB_ENV"
 
       - name: Assign run-specific ports
-        run: bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+        run: |
+          cd "$SANCTUARY_HEALTH_WORKSPACE"
+          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
 
       - name: Start containers
         run: |
-          # Generate all required secrets
-          JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-          AI_CONFIG_SECRET=$(openssl rand -hex 32)
-          REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
+          cd "$SANCTUARY_HEALTH_WORKSPACE"
+          scripts/ci/with-runner-lock.sh e2e bash -c '
+            # Generate all required secrets
+            JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+            ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+            GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+            POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
+            AI_CONFIG_SECRET=$(openssl rand -hex 32)
+            REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
 
-          # Generate SSL certs
-          source tests/install/utils/helpers.sh
-          SANCTUARY_SSL_DIR="$PWD/docker/nginx/ssl"
-          SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
-          export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
-          bash docker/nginx/ssl/generate-certs.sh localhost
+            # Generate SSL certs
+            source tests/install/utils/helpers.sh
+            SANCTUARY_SSL_DIR="$(default_install_test_root "$PWD")/ssl-${COMPOSE_PROJECT_NAME}"
+            mkdir -p "$SANCTUARY_SSL_DIR"
+            SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
+            export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
+            bash docker/nginx/ssl/generate-certs.sh localhost
 
-          # Start containers
-          JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
-            GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
-            SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
-            HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-            docker compose up -d --build
+            # Start containers
+            JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+              GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+              AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
+              SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
+              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
+              docker compose up -d --build
 
-          # Wait for startup
-          sleep 30
+            # Wait for startup
+            sleep 30
+          '
 
       - name: Run container health tests
-        run: ./tests/install/e2e/container-health.test.sh --verbose
+        run: |
+          cd "$SANCTUARY_HEALTH_WORKSPACE"
+          scripts/ci/with-runner-lock.sh e2e ./tests/install/e2e/container-health.test.sh --verbose
 
       - name: Show container logs on failure
         if: failure()
         run: |
+          if [ -d "${SANCTUARY_HEALTH_WORKSPACE:-}" ]; then
+            cd "$SANCTUARY_HEALTH_WORKSPACE"
+          fi
           docker compose ps || true
           docker compose logs --tail 50 postgres 2>&1 || true
           docker compose logs --tail 50 backend 2>&1 || true
@@ -442,7 +531,18 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: docker compose down -v --remove-orphans || true
+        run: |
+          if [ -d "${SANCTUARY_HEALTH_WORKSPACE:-}" ]; then
+            cd "$SANCTUARY_HEALTH_WORKSPACE"
+          fi
+          docker compose down -v --remove-orphans || true
+
+      - name: Cleanup isolated health workspace
+        if: always()
+        run: |
+          if [ -n "${SANCTUARY_HEALTH_WORKSPACE:-}" ]; then
+            rm -rf "$(dirname "$SANCTUARY_HEALTH_WORKSPACE")" || echo "::warning::Could not fully remove isolated health workspace"
+          fi
 
   # ============================================
   # Authentication Flow Test
@@ -471,63 +571,92 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          clean: false
 
-      - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+      - name: Check Docker
+        run: scripts/ci/wait-for-docker.sh
+
+      - name: Prepare isolated auth workspace
+        run: |
+          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible auth-flow)"
+          echo "SANCTUARY_AUTH_WORKSPACE=$workspace" >> "$GITHUB_ENV"
 
       - name: Assign run-specific ports
-        run: bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+        run: |
+          cd "$SANCTUARY_AUTH_WORKSPACE"
+          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
 
       - name: Start containers
         run: |
-          # Generate all required secrets
-          JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-          AI_CONFIG_SECRET=$(openssl rand -hex 32)
-          REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
+          cd "$SANCTUARY_AUTH_WORKSPACE"
+          scripts/ci/with-runner-lock.sh e2e bash -c '
+            # Generate all required secrets
+            JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+            ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+            GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+            POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
+            AI_CONFIG_SECRET=$(openssl rand -hex 32)
+            REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
 
-          # Generate SSL certs
-          source tests/install/utils/helpers.sh
-          SANCTUARY_SSL_DIR="$PWD/docker/nginx/ssl"
-          SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
-          export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
-          bash docker/nginx/ssl/generate-certs.sh localhost
+            # Generate SSL certs
+            source tests/install/utils/helpers.sh
+            SANCTUARY_SSL_DIR="$(default_install_test_root "$PWD")/ssl-${COMPOSE_PROJECT_NAME}"
+            mkdir -p "$SANCTUARY_SSL_DIR"
+            SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
+            export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
+            bash docker/nginx/ssl/generate-certs.sh localhost
 
-          # Start containers with higher rate limits for testing
-          JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
-            GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
-            SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
-            HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-            RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
-            docker compose up -d --build
+            # Start containers with higher rate limits for testing
+            JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+              GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+              AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
+              SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
+              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
+              RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
+              docker compose up -d --build
 
-          # Wait for migration to complete
-          timeout 120 bash -c 'until docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -q "Exited"; do sleep 5; done' || true
+            # Wait for migration to complete
+            timeout 120 bash -c "until docker compose ps migrate --format \"{{.Status}}\" 2>/dev/null | grep -q \"Exited\"; do sleep 5; done" || true
 
-          # Wait for services
-          sleep 30
+            # Wait for services
+            sleep 30
+          '
 
       - name: Run auth flow tests
-        run: ./tests/install/e2e/auth-flow.test.sh --verbose
+        run: |
+          cd "$SANCTUARY_AUTH_WORKSPACE"
+          scripts/ci/with-runner-lock.sh e2e ./tests/install/e2e/auth-flow.test.sh --verbose
 
       - name: Show container logs on failure
         if: failure()
         run: |
+          if [ -d "${SANCTUARY_AUTH_WORKSPACE:-}" ]; then
+            cd "$SANCTUARY_AUTH_WORKSPACE"
+          fi
           docker compose ps || true
           docker compose logs --tail 100 backend 2>&1 || true
 
       - name: Cleanup
         if: always()
-        run: docker compose down -v --remove-orphans || true
+        run: |
+          if [ -d "${SANCTUARY_AUTH_WORKSPACE:-}" ]; then
+            cd "$SANCTUARY_AUTH_WORKSPACE"
+          fi
+          docker compose down -v --remove-orphans || true
+
+      - name: Cleanup isolated auth workspace
+        if: always()
+        run: |
+          if [ -n "${SANCTUARY_AUTH_WORKSPACE:-}" ]; then
+            rm -rf "$(dirname "$SANCTUARY_AUTH_WORKSPACE")" || echo "::warning::Could not fully remove isolated auth workspace"
+          fi
 
   # ============================================
   # Upgrade Test Matrix (Long Running)
   # ============================================
   upgrade-baseline-test:
-    name: Upgrade Baseline ${{ matrix.source_ref }}
+    name: Upgrade Baseline
     runs-on: ubuntu-latest
     needs: [determine-scope, fresh-install-test, install-script-test, install-stack-smoke, auth-flow-test]
     if: |
@@ -543,71 +672,87 @@ jobs:
         needs.determine-scope.outputs.run_install_script != 'true')) &&
       (needs.install-stack-smoke.result == 'success' || needs.install-stack-smoke.result == 'skipped') &&
       (needs.auth-flow-test.result == 'success' || needs.auth-flow-test.result == 'skipped')
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - source_ref: latest-stable
-            fixture: baseline
-            https_port: '16443'
-            http_port: '16080'
-            gateway_port: '16000'
-            port_offset: '15'
-          - source_ref: n-2
-            fixture: baseline
-            https_port: '16444'
-            http_port: '16081'
-            gateway_port: '16001'
-            port_offset: '18'
-    env:
-      COMPOSE_PROJECT_NAME: sanctuary-ci-upgrade-${{ github.run_id }}-${{ matrix.source_ref }}-${{ matrix.fixture }}
-      HTTPS_PORT: ${{ matrix.https_port }}
-      HTTP_PORT: ${{ matrix.http_port }}
-      GATEWAY_PORT: ${{ matrix.gateway_port }}
-      PORT_OFFSET: ${{ matrix.port_offset }}
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          clean: false
           fetch-depth: 0
 
-      - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+      - name: Check Docker
+        run: scripts/ci/wait-for-docker.sh
 
-      - name: Assign run-specific ports
-        run: bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
-
-      - name: Run baseline upgrade test
-        env:
-          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || matrix.source_ref }}
-          SANCTUARY_UPGRADE_FIXTURE: ${{ matrix.fixture }}
-          SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
-        run: scripts/ci/time-command.sh "upgrade baseline ${{ matrix.source_ref }} ${{ matrix.fixture }}" ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "${{ matrix.fixture }}" --verbose
-
-      - name: Show container logs on failure
-        if: failure()
+      - name: Prepare isolated upgrade workspace
         run: |
-          docker compose ps || true
-          docker compose logs --tail 50 postgres 2>&1 || true
-          docker compose logs --tail 100 backend 2>&1 || true
+          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible upgrade-baseline)"
+          echo "SANCTUARY_UPGRADE_WORKSPACE=$workspace" >> "$GITHUB_ENV"
 
-      - name: Upload upgrade artifacts
+      - name: Run baseline upgrades sequentially
+        env:
+          SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE: ${{ github.event.inputs.upgrade_source_ref }}
+        run: |
+          cd "$SANCTUARY_UPGRADE_WORKSPACE"
+
+          run_upgrade() {
+            local source_ref="$1"
+            local port_offset="$2"
+            local port_env
+
+            export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${{ github.run_id }}-${source_ref}-baseline"
+            export SANCTUARY_UPGRADE_SOURCE_REF="${SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE:-$source_ref}"
+            export SANCTUARY_UPGRADE_FIXTURE="baseline"
+            export SANCTUARY_UPGRADE_ARTIFACT_DIR="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/.tmp/upgrade-artifacts/${source_ref}-baseline"
+
+            port_env="$(mktemp)"
+            GITHUB_ENV="$port_env" bash scripts/ci/install-test-ports.sh "$port_offset"
+            set -a
+            . "$port_env"
+            set +a
+            rm -f "$port_env"
+
+            cleanup() {
+              docker compose down -v --remove-orphans || true
+            }
+            trap cleanup EXIT
+
+            if scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "upgrade baseline ${source_ref} baseline" ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture baseline --verbose; then
+              cleanup
+              trap - EXIT
+              return 0
+            fi
+
+            docker compose ps || true
+            docker compose logs --tail 50 postgres 2>&1 || true
+            docker compose logs --tail 100 backend 2>&1 || true
+            cleanup
+            trap - EXIT
+            return 1
+          }
+
+          run_upgrade latest-stable 15
+          run_upgrade n-2 18
+
+      - name: Upload baseline upgrade artifacts
         if: always()
         uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
-          name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
-          path: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
+          name: upgrade-baseline
+          path: |
+            .tmp/upgrade-artifacts/latest-stable-baseline
+            .tmp/upgrade-artifacts/n-2-baseline
           if-no-files-found: ignore
 
-      - name: Cleanup
+      - name: Cleanup isolated upgrade workspace
         if: always()
-        run: docker compose down -v --remove-orphans || true
+        run: |
+          if [ -n "${SANCTUARY_UPGRADE_WORKSPACE:-}" ]; then
+            rm -rf "$(dirname "$SANCTUARY_UPGRADE_WORKSPACE")" || echo "::warning::Could not fully remove isolated upgrade workspace"
+          fi
 
-  upgrade-extended-test:
-    name: Upgrade Extended ${{ matrix.fixture }}
+  upgrade-extended-fixture-test:
+    name: Upgrade Extended Fixtures
     runs-on: ubuntu-latest
     needs: [determine-scope, upgrade-baseline-test]
     if: |
@@ -618,80 +763,53 @@ jobs:
       (needs.upgrade-baseline-test.result == 'success' ||
        (needs.upgrade-baseline-test.result == 'skipped' &&
         needs.determine-scope.outputs.run_upgrade_baseline != 'true'))
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - source_ref: latest-stable
-            fixture: browser-origin-ip
-            https_port: '18443'
-            http_port: '18080'
-            gateway_port: '14000'
-            port_offset: '21'
-          - source_ref: latest-stable
-            fixture: legacy-runtime-env
-            https_port: '16445'
-            http_port: '16082'
-            gateway_port: '16002'
-            port_offset: '24'
-          - source_ref: latest-stable
-            fixture: notification-delivery
-            https_port: '16446'
-            http_port: '16083'
-            gateway_port: '16003'
-            port_offset: '27'
-          - source_ref: latest-stable
-            fixture: optional-profiles
-            https_port: '16447'
-            http_port: '16084'
-            gateway_port: '16004'
-            port_offset: '30'
-    env:
-      COMPOSE_PROJECT_NAME: sanctuary-ci-upgrade-${{ github.run_id }}-${{ matrix.source_ref }}-${{ matrix.fixture }}
-      HTTPS_PORT: ${{ matrix.https_port }}
-      HTTP_PORT: ${{ matrix.http_port }}
-      GATEWAY_PORT: ${{ matrix.gateway_port }}
-      PORT_OFFSET: ${{ matrix.port_offset }}
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          clean: false
           fetch-depth: 0
 
-      - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+      - name: Check Docker
+        run: scripts/ci/wait-for-docker.sh
 
-      - name: Assign run-specific ports
-        run: bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
-
-      - name: Run extended upgrade test
+      - name: Run extended upgrade fixtures sequentially
         env:
-          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || matrix.source_ref }}
-          SANCTUARY_UPGRADE_FIXTURE: ${{ matrix.fixture }}
-          SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
-        run: scripts/ci/time-command.sh "upgrade extended ${{ matrix.source_ref }} ${{ matrix.fixture }}" ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "${{ matrix.fixture }}" --verbose
+          SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE: ${{ github.event.inputs.upgrade_source_ref }}
+        run: scripts/ci/run-extended-upgrade-fixtures.sh
 
-      - name: Show container logs on failure
-        if: failure()
-        run: |
-          docker compose ps || true
-          docker compose logs --tail 50 postgres 2>&1 || true
-          docker compose logs --tail 100 backend 2>&1 || true
-
-      - name: Upload upgrade artifacts
+      - name: Upload extended upgrade artifacts
         if: always()
         uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
-          name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
-          path: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
+          name: upgrade-extended-fixtures
+          path: .tmp/upgrade-artifacts/
           if-no-files-found: ignore
 
-      - name: Cleanup
-        if: always()
-        run: docker compose down -v --remove-orphans || true
+  upgrade-extended-test:
+    name: Upgrade Extended
+    runs-on: ubuntu-latest
+    needs: [determine-scope, upgrade-baseline-test, upgrade-extended-fixture-test]
+    if: |
+      always() &&
+      github.event_name != 'pull_request' &&
+      needs.determine-scope.outputs.should_run == 'true' &&
+      needs.determine-scope.outputs.run_upgrade_extended == 'true' &&
+      (needs.upgrade-baseline-test.result == 'success' ||
+       (needs.upgrade-baseline-test.result == 'skipped' &&
+        needs.determine-scope.outputs.run_upgrade_baseline != 'true'))
+    steps:
+      - name: Check extended upgrade fixtures
+        env:
+          EXTENDED_FIXTURES: ${{ needs.upgrade-extended-fixture-test.result }}
+        run: |
+          if [ "$EXTENDED_FIXTURES" != "success" ]; then
+            echo "::error::One or more extended upgrade fixtures failed"
+            exit 1
+          fi
+          echo "Extended upgrade fixtures passed."
 
   # ============================================
   # Test Summary
@@ -705,189 +823,175 @@ jobs:
     steps:
       - name: Generate summary
         env:
+          AUTH_FLOW: ${{ needs.auth-flow-test.result }}
+          CONTAINER_HEALTH: ${{ needs.container-health-test.result }}
+          EVENT_NAME: ${{ github.event_name }}
+          FRESH_INSTALL: ${{ needs.fresh-install-test.result }}
+          INSTALL_SCRIPT: ${{ needs.install-script-test.result }}
+          INSTALL_STACK_SMOKE: ${{ needs.install-stack-smoke.result }}
           IS_RELEASE: ${{ needs.determine-scope.outputs.is_release }}
-          TEST_SUITE: ${{ needs.determine-scope.outputs.test_suite }}
-          SHOULD_RUN: ${{ needs.determine-scope.outputs.should_run }}
-          SCOPE: ${{ needs.determine-scope.outputs.scope }}
           REASON: ${{ needs.determine-scope.outputs.reason }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_UNIT: ${{ needs.determine-scope.outputs.run_unit }}
+          SCOPE: ${{ needs.determine-scope.outputs.scope }}
+          SHOULD_RUN: ${{ needs.determine-scope.outputs.should_run }}
+          TEST_SUITE: ${{ needs.determine-scope.outputs.test_suite }}
+          UNIT_TESTS: ${{ needs.unit-tests.result }}
+          UPGRADE_BASELINE: ${{ needs.upgrade-baseline-test.result }}
+          UPGRADE_EXTENDED: ${{ needs.upgrade-extended-test.result }}
         run: |
-          echo "## Install Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          summary="$GITHUB_STEP_SUMMARY"
+
+          append_status() {
+            label="$1"
+            result="$2"
+
+            if [ "$result" = "success" ]; then
+              echo "- $label: :white_check_mark: Passed" >> "$summary"
+            elif [ "$result" = "skipped" ]; then
+              echo "- $label: :arrow_right: Skipped" >> "$summary"
+            else
+              echo "- $label: :x: Failed" >> "$summary"
+            fi
+          }
+
+          echo "## Install Test Results" >> "$summary"
+          echo "" >> "$summary"
 
           # Check if tests were skipped due to no relevant changes
           if [ "$SHOULD_RUN" != "true" ]; then
-            echo "### Tests Skipped" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "> No install-relevant files changed. Tests were skipped." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Install tests run when these files change:" >> $GITHUB_STEP_SUMMARY
-            echo "- \`install.sh\`, \`scripts/setup.sh\`, \`scripts/reset-user-2fa.sh\`" >> $GITHUB_STEP_SUMMARY
-            echo "- \`docker-compose*.yml\`, \`Dockerfile\`, \`server/Dockerfile\`, \`docker/**\`" >> $GITHUB_STEP_SUMMARY
-            echo "- \`server/prisma/**\`, \`tests/install/**\`" >> $GITHUB_STEP_SUMMARY
-            echo "- \`.github/workflows/install-test.yml\`" >> $GITHUB_STEP_SUMMARY
+            echo "### Tests Skipped" >> "$summary"
+            echo "" >> "$summary"
+            echo "> No install-relevant files changed. Tests were skipped." >> "$summary"
+            echo "" >> "$summary"
+            echo "Install tests run when these files change:" >> "$summary"
+            echo "- \`install.sh\`, \`scripts/setup.sh\`, \`scripts/reset-user-2fa.sh\`" >> "$summary"
+            echo "- \`docker-compose*.yml\`, \`Dockerfile\`, \`server/Dockerfile\`, \`docker/**\`" >> "$summary"
+            echo "- \`server/prisma/**\`, \`tests/install/**\`" >> "$summary"
+            echo "- \`.github/workflows/install-test.yml\`" >> "$summary"
             exit 0
           fi
 
           # Show test context
-          if [ "$IS_RELEASE" == "true" ]; then
-            echo "### Release Validation: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "> Running release-critical tests to validate installation before release." >> $GITHUB_STEP_SUMMARY
+          if [ "$IS_RELEASE" = "true" ]; then
+            echo "### Release Validation: $REF_NAME" >> "$summary"
+            echo "" >> "$summary"
+            echo "> Running release-critical tests to validate installation before release." >> "$summary"
           else
-            echo "### Test Suite: $TEST_SUITE" >> $GITHUB_STEP_SUMMARY
+            echo "### Test Suite: $TEST_SUITE" >> "$summary"
           fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Scope: \`$SCOPE\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Reason: $REASON" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$summary"
+          echo "- Scope: \`$SCOPE\`" >> "$summary"
+          echo "- Reason: $REASON" >> "$summary"
+          echo "" >> "$summary"
 
           # Unit tests
-          if [ "${{ needs.unit-tests.result }}" == "success" ]; then
-            echo "- Unit Tests: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.unit-tests.result }}" == "skipped" ]; then
-            echo "- Unit Tests: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
+          if [ "$UNIT_TESTS" = "success" ]; then
+            echo "- Unit Tests: :white_check_mark: Passed" >> "$summary"
+          elif [ "$UNIT_TESTS" = "skipped" ] && \
+               [ "$EVENT_NAME" = "workflow_dispatch" ] && \
+               [ "$RUN_UNIT" == "true" ] && \
+               [ "$TEST_SUITE" != "unit" ]; then
+            echo "- Unit Tests: :white_check_mark: Passed in Fresh Install E2E job" >> "$summary"
+          elif [ "$UNIT_TESTS" = "skipped" ]; then
+            echo "- Unit Tests: :arrow_right: Skipped" >> "$summary"
           else
-            echo "- Unit Tests: :x: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "- Unit Tests: :x: Failed" >> "$summary"
           fi
 
-          # Fresh install
-          if [ "${{ needs.fresh-install-test.result }}" == "success" ]; then
-            echo "- Fresh Install E2E: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.fresh-install-test.result }}" == "skipped" ]; then
-            echo "- Fresh Install E2E: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- Fresh Install E2E: :x: Failed" >> $GITHUB_STEP_SUMMARY
-          fi
+          append_status "Fresh Install E2E" "$FRESH_INSTALL"
+          append_status "Install Script E2E" "$INSTALL_SCRIPT"
+          append_status "Install Stack Smoke" "$INSTALL_STACK_SMOKE"
+          append_status "Container Health" "$CONTAINER_HEALTH"
+          append_status "Auth Flow" "$AUTH_FLOW"
+          append_status "Baseline Upgrade Install" "$UPGRADE_BASELINE"
+          append_status "Extended Upgrade Fixtures" "$UPGRADE_EXTENDED"
 
-          # Install script test
-          if [ "${{ needs.install-script-test.result }}" == "success" ]; then
-            echo "- Install Script E2E: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.install-script-test.result }}" == "skipped" ]; then
-            echo "- Install Script E2E: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- Install Script E2E: :x: Failed" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Reusable stack smoke
-          if [ "${{ needs.install-stack-smoke.result }}" == "success" ]; then
-            echo "- Install Stack Smoke: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.install-stack-smoke.result }}" == "skipped" ]; then
-            echo "- Install Stack Smoke: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- Install Stack Smoke: :x: Failed" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Container health
-          if [ "${{ needs.container-health-test.result }}" == "success" ]; then
-            echo "- Container Health: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.container-health-test.result }}" == "skipped" ]; then
-            echo "- Container Health: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- Container Health: :x: Failed" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Auth flow
-          if [ "${{ needs.auth-flow-test.result }}" == "success" ]; then
-            echo "- Auth Flow: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.auth-flow-test.result }}" == "skipped" ]; then
-            echo "- Auth Flow: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- Auth Flow: :x: Failed" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Upgrade tests
-          if [ "${{ needs.upgrade-baseline-test.result }}" == "success" ]; then
-            echo "- Baseline Upgrade Install: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.upgrade-baseline-test.result }}" == "skipped" ]; then
-            echo "- Baseline Upgrade Install: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- Baseline Upgrade Install: :x: Failed" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ needs.upgrade-extended-test.result }}" == "success" ]; then
-            echo "- Extended Upgrade Fixtures: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.upgrade-extended-test.result }}" == "skipped" ]; then
-            echo "- Extended Upgrade Fixtures: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- Extended Upgrade Fixtures: :x: Failed" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Test Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "- HTTPS Port: ${{ env.HTTPS_PORT }}" >> $GITHUB_STEP_SUMMARY
-          echo "- HTTP Port: ${{ env.HTTP_PORT }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$summary"
+          echo "### Test Configuration" >> "$summary"
+          echo "- HTTPS Port: $HTTPS_PORT" >> "$summary"
+          echo "- HTTP Port: $HTTP_PORT" >> "$summary"
 
           # Release gate warning
-          if [ "$IS_RELEASE" == "true" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "---" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$IS_RELEASE" = "true" ]; then
+            echo "" >> "$summary"
+            echo "---" >> "$summary"
+            echo "" >> "$summary"
             STACK_OK=false
-            if [ "${{ needs.install-stack-smoke.result }}" == "success" ] || \
-               { [ "${{ needs.container-health-test.result }}" == "success" ] && [ "${{ needs.auth-flow-test.result }}" == "success" ]; }; then
+            if [ "$INSTALL_STACK_SMOKE" = "success" ] || \
+               { [ "$CONTAINER_HEALTH" = "success" ] && [ "$AUTH_FLOW" = "success" ]; }; then
               STACK_OK=true
             fi
-            if [ "${{ needs.unit-tests.result }}" == "success" ] && \
-               [ "${{ needs.fresh-install-test.result }}" == "success" ] && \
-               [ "${{ needs.install-script-test.result }}" == "success" ] && \
-               [ "$STACK_OK" == "true" ] && \
-               [ "${{ needs.upgrade-baseline-test.result }}" == "success" ] && \
-               [ "${{ needs.upgrade-extended-test.result }}" == "success" ]; then
-              echo ":rocket: **Release validation passed!** Installation has been verified." >> $GITHUB_STEP_SUMMARY
+            if [ "$UNIT_TESTS" = "success" ] && \
+               [ "$FRESH_INSTALL" = "success" ] && \
+               [ "$INSTALL_SCRIPT" = "success" ] && \
+               [ "$STACK_OK" = "true" ] && \
+               [ "$UPGRADE_BASELINE" = "success" ] && \
+               [ "$UPGRADE_EXTENDED" = "success" ]; then
+              echo ":rocket: **Release validation passed!** Installation has been verified." >> "$summary"
             else
-              echo ":stop_sign: **Release validation FAILED!** Do not proceed with release until issues are resolved." >> $GITHUB_STEP_SUMMARY
+              echo ":stop_sign: **Release validation FAILED!** Do not proceed with release until issues are resolved." >> "$summary"
             fi
           fi
 
       - name: Check release gate
         if: needs.determine-scope.outputs.is_release == 'true'
+        env:
+          AUTH_FLOW: ${{ needs.auth-flow-test.result }}
+          CONTAINER_HEALTH: ${{ needs.container-health-test.result }}
+          FRESH_INSTALL: ${{ needs.fresh-install-test.result }}
+          INSTALL_SCRIPT: ${{ needs.install-script-test.result }}
+          INSTALL_STACK_SMOKE: ${{ needs.install-stack-smoke.result }}
+          UNIT_TESTS: ${{ needs.unit-tests.result }}
+          UPGRADE_BASELINE: ${{ needs.upgrade-baseline-test.result }}
+          UPGRADE_EXTENDED: ${{ needs.upgrade-extended-test.result }}
         run: |
           echo "Checking release gate..."
 
           FAILED=false
 
-          if [ "${{ needs.unit-tests.result }}" != "success" ] && [ "${{ needs.unit-tests.result }}" != "skipped" ]; then
+          if [ "$UNIT_TESTS" != "success" ] && [ "$UNIT_TESTS" != "skipped" ]; then
             echo "::error::Unit tests failed - release blocked"
             FAILED=true
           fi
 
-          if [ "${{ needs.fresh-install-test.result }}" != "success" ]; then
+          if [ "$FRESH_INSTALL" != "success" ]; then
             echo "::error::Fresh install test failed - release blocked"
             FAILED=true
           fi
 
-          if [ "${{ needs.install-script-test.result }}" != "success" ]; then
+          if [ "$INSTALL_SCRIPT" != "success" ]; then
             echo "::error::Install script test failed - release blocked"
             FAILED=true
           fi
 
-          if [ "${{ needs.install-stack-smoke.result }}" != "success" ] && \
-             { [ "${{ needs.container-health-test.result }}" != "success" ] || [ "${{ needs.auth-flow-test.result }}" != "success" ]; }; then
+          if [ "$INSTALL_STACK_SMOKE" != "success" ] && \
+             { [ "$CONTAINER_HEALTH" != "success" ] || [ "$AUTH_FLOW" != "success" ]; }; then
             echo "::error::Install stack smoke failed - release blocked"
             FAILED=true
           fi
 
-          if [ "${{ needs.container-health-test.result }}" != "success" ] && [ "${{ needs.container-health-test.result }}" != "skipped" ]; then
+          if [ "$CONTAINER_HEALTH" != "success" ] && [ "$CONTAINER_HEALTH" != "skipped" ]; then
             echo "::error::Container health test failed - release blocked"
             FAILED=true
           fi
 
-          if [ "${{ needs.auth-flow-test.result }}" != "success" ] && [ "${{ needs.auth-flow-test.result }}" != "skipped" ]; then
+          if [ "$AUTH_FLOW" != "success" ] && [ "$AUTH_FLOW" != "skipped" ]; then
             echo "::error::Auth flow test failed - release blocked"
             FAILED=true
           fi
 
-          if [ "${{ needs.upgrade-baseline-test.result }}" != "success" ]; then
+          if [ "$UPGRADE_BASELINE" != "success" ]; then
             echo "::error::Baseline upgrade matrix failed - release blocked"
             FAILED=true
           fi
 
-          if [ "${{ needs.upgrade-extended-test.result }}" != "success" ]; then
+          if [ "$UPGRADE_EXTENDED" != "success" ]; then
             echo "::error::Extended upgrade fixtures failed - release blocked"
             FAILED=true
           fi
 
-          if [ "$FAILED" == "true" ]; then
+          if [ "$FAILED" = "true" ]; then
             echo "::error::Release validation failed! Install tests must pass before releasing."
             exit 1
           fi

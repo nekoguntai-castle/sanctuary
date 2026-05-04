@@ -6,7 +6,7 @@
  * 2. Block visualizer tooltip appears above blocks (not clipped by overflow)
  */
 
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import { json, unmocked, registerApiRoutes } from './helpers';
 
 const MAINNET_WALLET_ID = 'wallet-dash-price-1';
@@ -257,6 +257,51 @@ async function mockDashboardApi(
   );
 }
 
+function getFirstConfirmedBlockButton(page: Page) {
+  return page.getByRole('button', { name: /confirmed block 900,100/i });
+}
+
+function getNextPendingBlockButton(page: Page) {
+  return page.getByRole('button', { name: /pending block next/i });
+}
+
+function getBlockTooltip(page: Page, txCountText: string) {
+  return page.locator('.block-visualizer-tooltip', { hasText: txCountText }).first();
+}
+
+async function waitForBlockTooltipStyles(blockButton: Locator, tooltip: Locator) {
+  await expect.poll(async () => {
+    const [buttonPosition, tooltipPosition] = await Promise.all([
+      blockButton.evaluate((element) => getComputedStyle(element).position),
+      tooltip.evaluate((element) => getComputedStyle(element).position),
+    ]);
+
+    return `${buttonPosition}:${tooltipPosition}`;
+  }, { timeout: 10000 }).toBe('relative:absolute');
+}
+
+async function hoverBlockAndWaitForTooltip(blockButton: Locator, tooltip: Locator) {
+  await waitForBlockTooltipStyles(blockButton, tooltip);
+  await blockButton.hover();
+
+  await expect.poll(async () => {
+    return tooltip.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
+  }, { timeout: 5000 }).toBeGreaterThan(0.9);
+}
+
+async function expectTooltipAboveBlock(tooltip: Locator, blockButton: Locator) {
+  await expect.poll(async () => {
+    const tooltipBox = await tooltip.boundingBox();
+    const blockBox = await blockButton.boundingBox();
+
+    if (!tooltipBox || !blockBox) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    return tooltipBox.y + tooltipBox.height - blockBox.y;
+  }, { timeout: 5000 }).toBeLessThanOrEqual(4);
+}
+
 // ─── 1. 24h Price Change Display ─────────────────────────────────────
 
 test.describe('Dashboard 24h Price Change', () => {
@@ -317,33 +362,15 @@ test.describe('Block Visualizer Tooltip', () => {
     await page.goto('/#/');
     await page.waitForLoadState('networkidle');
 
-    // Wait for blocks to render — target the block button specifically (block height also shows in status area)
-    const blockButton = page.locator('button', { hasText: '900,100' }).first();
+    const blockButton = getFirstConfirmedBlockButton(page);
     await expect(blockButton).toBeVisible({ timeout: 10000 });
 
-    // Hover the block button
-    await blockButton.hover();
-
-    // The tooltip should appear with transaction count and details
-    const tooltip = page.getByText('2,800 txs');
-    await expect(tooltip).toBeVisible({ timeout: 5000 });
+    const tooltip = getBlockTooltip(page, '2,800 txs');
+    await hoverBlockAndWaitForTooltip(blockButton, tooltip);
 
     // Verify tooltip contains fee info
-    await expect(page.getByText('Range: 8-25')).toBeVisible();
-
-    // Verify the tooltip is positioned above the block (bottom-full)
-    // by checking it's visible and not hidden behind other elements
-    const tooltipBox = await tooltip.boundingBox();
-    const blockBox = await blockButton.boundingBox();
-
-    expect(tooltipBox).toBeTruthy();
-    expect(blockBox).toBeTruthy();
-
-    if (tooltipBox && blockBox) {
-      // Tooltip bottom edge should be above or at the block top edge
-      // (tooltip is positioned with bottom-full mb-2, so it should be above)
-      expect(tooltipBox.y + tooltipBox.height).toBeLessThanOrEqual(blockBox.y + 4); // small tolerance
-    }
+    await expect(tooltip).toContainText('Range: 8-25');
+    await expectTooltipAboveBlock(tooltip, blockButton);
   });
 
   test('tooltip shows block fullness percentage', async ({ page }) => {
@@ -351,21 +378,16 @@ test.describe('Block Visualizer Tooltip', () => {
     await page.goto('/#/');
     await page.waitForLoadState('networkidle');
 
-    // Wait for blocks to render — target the block button specifically (block height also shows in status area)
-    const blockButton = page.locator('button', { hasText: '900,100' }).first();
+    const blockButton = getFirstConfirmedBlockButton(page);
     await expect(blockButton).toBeVisible({ timeout: 10000 });
 
-    // Hover the block
-    await blockButton.hover();
-
-    // Wait for tooltip to appear (same pattern as the passing tooltip test above)
-    const tooltip = page.getByText('2,800 txs');
-    await expect(tooltip).toBeVisible({ timeout: 5000 });
+    const tooltip = getBlockTooltip(page, '2,800 txs');
+    await hoverBlockAndWaitForTooltip(blockButton, tooltip);
 
     // Tooltip should show fullness percentage
     // Block size is 1.4, fillPercentage = min((1.4 / 1.6) * 100, 100)
     // Note: 1.4/1.6 = 0.8749999999999999 (floating point), so Math.round(87.49...) = 87
-    await expect(page.getByText('87%')).toBeVisible();
+    await expect(tooltip).toContainText('87%');
   });
 
   test('pending block tooltip also appears above', async ({ page }) => {
@@ -373,28 +395,11 @@ test.describe('Block Visualizer Tooltip', () => {
     await page.goto('/#/');
     await page.waitForLoadState('networkidle');
 
-    // Wait for a pending block to render — look for "Next" label
-    const pendingBlock = page.getByText('Next');
-    await expect(pendingBlock).toBeVisible({ timeout: 10000 });
-
-    // Hover the pending block
-    const blockButton = page.locator('button', { has: pendingBlock });
-    await blockButton.hover();
-
-    // Should show tx count for pending block
-    const tooltip = page.getByText('1,500 txs');
-    await expect(tooltip).toBeVisible({ timeout: 5000 });
-
-    // Verify tooltip is above the block
-    const tooltipBox = await tooltip.boundingBox();
-    const blockBox = await blockButton.boundingBox();
-
-    expect(tooltipBox).toBeTruthy();
-    expect(blockBox).toBeTruthy();
-
-    if (tooltipBox && blockBox) {
-      expect(tooltipBox.y + tooltipBox.height).toBeLessThanOrEqual(blockBox.y + 4);
-    }
+    const blockButton = getNextPendingBlockButton(page);
+    await expect(blockButton).toBeVisible({ timeout: 10000 });
+    const tooltip = getBlockTooltip(page, '1,500 txs');
+    await hoverBlockAndWaitForTooltip(blockButton, tooltip);
+    await expectTooltipAboveBlock(tooltip, blockButton);
   });
 
   test('block fullness legend is visible below the visualizer', async ({ page }) => {

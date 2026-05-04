@@ -65,11 +65,12 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ${{ github.event.pull_request.number || github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'merge_group') }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NODE_VERSION: '24'
+  SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
 
 jobs:
   # ============================================
@@ -123,52 +124,79 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+          clean: false
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
-      - name: Run test hygiene checks on changed tests
+      - name: Run quick hygiene checks in isolated workspace
+        env:
+          CHANGED_TEST_FILES: ${{ needs.detect-changes.outputs.test_files }}
         run: |
-          if [ -z "${{ needs.detect-changes.outputs.test_files }}" ]; then
-            echo "No changed test files."
-            exit 0
-          fi
-          npm run test:hygiene -- ${{ needs.detect-changes.outputs.test_files }}
+          scripts/ci/run-in-isolated-workspace.sh quick-hygiene bash -c '
+            set -euo pipefail
+            for attempt in 1 2 3; do
+              echo "npm ci (quick hygiene), attempt $attempt"
+              if npm ci --audit=false --fund=false --cache .tmp/npm-cache; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                exit 1
+              fi
+              sleep $((attempt * 10))
+            done
+
+            if [ -z "${CHANGED_TEST_FILES:-}" ]; then
+              echo "No changed test files."
+              exit 0
+            fi
+            npm run test:hygiene -- $CHANGED_TEST_FILES
+          '
 
   quick-frontend-tests:
     name: Quick Frontend Tests
-    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.frontend_changed == 'true'
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      needs.detect-changes.outputs.frontend_changed == 'true' &&
+      (needs.quick-test-hygiene.result == 'success' ||
+       needs.quick-test-hygiene.result == 'skipped')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
+    needs: [detect-changes, quick-test-hygiene]
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+          clean: false
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
-      - name: Run strict app typecheck
-        run: npm run typecheck:app
-
-      - name: Run strict test typecheck
-        run: npm run typecheck:tests
-
-      - name: Run related frontend tests
-        run: npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.frontend_files }}
+      - name: Run quick frontend checks in isolated workspace
+        env:
+          FRONTEND_FILES: ${{ needs.detect-changes.outputs.frontend_files }}
+        run: |
+          scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick frontend isolated checks" scripts/ci/run-in-isolated-workspace.sh --keep-on-failure quick-frontend bash -c '
+            set -euo pipefail
+            for attempt in 1 2 3; do
+              echo "npm ci (quick frontend), attempt $attempt"
+              if npm ci --audit=false --fund=false --cache .tmp/npm-cache; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                exit 1
+              fi
+              sleep $((attempt * 10))
+            done
+            npm run typecheck:app
+            npm run typecheck:tests
+            related_files=()
+            if [ -n "$FRONTEND_FILES" ]; then
+              read -r -a related_files <<< "$FRONTEND_FILES"
+            fi
+            npx vitest related --run --passWithNoTests --pool threads --maxWorkers=1 --no-file-parallelism "${related_files[@]}"
+          '
 
   quick-backend-typecheck:
     name: Quick Backend Typecheck
@@ -183,12 +211,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: npm ci
@@ -219,7 +243,7 @@ jobs:
           POSTGRES_PASSWORD: test
           POSTGRES_DB: sanctuary_test
         ports:
-          - 5432:5432
+          - 5432/tcp
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -230,12 +254,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend npm ci" npm ci
@@ -247,13 +267,17 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend prisma generate" npx prisma generate
 
       - name: Resolve Postgres service host
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
         run: |
           if getent hosts postgres >/dev/null 2>&1; then
             database_host=postgres
+            database_port=5432
           else
             database_host=localhost
+            database_port="${POSTGRES_PORT:-5432}"
           fi
-          echo "DATABASE_URL=postgresql://test:test@${database_host}:5432/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
 
       - name: Run database migrations
         run: ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend prisma migrate" npx prisma migrate deploy
@@ -282,7 +306,7 @@ jobs:
           POSTGRES_PASSWORD: test
           POSTGRES_DB: sanctuary_test
         ports:
-          - 5432:5432
+          - 5432/tcp
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -293,12 +317,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install backend dependencies
         run: npm ci
@@ -310,13 +330,17 @@ jobs:
         run: npx prisma generate
 
       - name: Resolve Postgres service host
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
         run: |
           if getent hosts postgres >/dev/null 2>&1; then
             database_host=postgres
+            database_port=5432
           else
             database_host=localhost
+            database_port="${POSTGRES_PORT:-5432}"
           fi
-          echo "DATABASE_URL=postgresql://test:test@${database_host}:5432/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
 
       - name: Run database migrations
         run: npx prisma migrate deploy
@@ -345,12 +369,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: npm ci
@@ -382,12 +402,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: gateway/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: npm ci
@@ -408,14 +424,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            ai-proxy/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install root test dependencies
         run: npm ci
@@ -431,25 +441,27 @@ jobs:
 
   quick-browser-smoke:
     name: Quick Browser Smoke
-    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.browser_smoke_changed == 'true'
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      needs.detect-changes.outputs.browser_smoke_changed == 'true' &&
+      (needs.quick-frontend-tests.result == 'success' ||
+       needs.quick-frontend-tests.result == 'skipped')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
+    needs: [detect-changes, quick-frontend-tests]
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+          clean: false
 
-      - name: Install dependencies
-        run: scripts/ci/time-command.sh "quick browser npm ci" npm ci
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Cache Playwright browsers
+        continue-on-error: true
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: ~/.cache/ms-playwright
@@ -457,42 +469,72 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-playwright-
 
-      - name: Install Playwright browsers
-        run: scripts/ci/time-command.sh "quick browser playwright install" npx playwright install --with-deps chromium
-
-      - name: Build frontend
-        run: scripts/ci/time-command.sh "quick browser frontend build" npm run build
-        env:
-          VITE_API_URL: http://localhost:3001
-
-      - name: Run smoke E2E tests
-        run: scripts/ci/time-command.sh "quick browser smoke" npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts
+      - name: Run quick browser smoke
         env:
           CI: 'true'
           NODE_ENV: test
+          SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1200'
           VITE_API_URL: http://localhost:3001
+        run: |
+          scripts/ci/with-runner-lock.sh e2e scripts/ci/run-in-isolated-workspace.sh --keep-on-failure quick-browser bash -c '
+            set -euo pipefail
+            collect_artifacts() {
+              scripts/ci/collect-playwright-artifacts.sh quick-browser || echo "::warning::Could not collect quick browser Playwright artifacts"
+            }
+            trap collect_artifacts EXIT
+            scripts/ci/time-command.sh "quick browser npm ci" npm ci --audit=false --fund=false --cache .tmp/npm-cache
+            scripts/ci/time-command.sh "quick browser playwright install" scripts/ci/install-playwright-chromium.sh
+            scripts/ci/time-command.sh "quick browser frontend build" scripts/ci/retry-command.sh "quick browser frontend build" npm run build
+            scripts/ci/time-command.sh "quick browser smoke" npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts
+          '
+
+      - name: Upload quick browser Playwright report
+        if: always()
+        continue-on-error: true
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: playwright-report-quick-browser
+          path: .tmp/quick-browser-artifacts/${{ github.run_id }}/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload quick browser Playwright results
+        if: always()
+        continue-on-error: true
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: playwright-results-quick-browser
+          path: .tmp/quick-browser-artifacts/${{ github.run_id }}/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Cleanup quick browser artifacts
+        if: always()
+        run: rm -rf ".tmp/quick-browser-artifacts/${{ github.run_id }}" || echo "::warning::Could not fully remove quick browser artifacts"
 
   quick-render-regression:
     name: Quick Render Regression
-    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.render_changed == 'true'
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      needs.detect-changes.outputs.render_changed == 'true' &&
+      (needs.quick-browser-smoke.result == 'success' ||
+       needs.quick-browser-smoke.result == 'skipped')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
+    needs: [detect-changes, quick-browser-smoke]
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+          clean: false
 
-      - name: Install dependencies
-        run: scripts/ci/time-command.sh "quick render npm ci" npm ci
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Cache Playwright browsers
+        continue-on-error: true
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: ~/.cache/ms-playwright
@@ -500,38 +542,48 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-playwright-
 
-      - name: Install Playwright browsers
-        run: scripts/ci/time-command.sh "quick render playwright install" npx playwright install --with-deps chromium
-
-      - name: Build frontend
-        run: scripts/ci/time-command.sh "quick render frontend build" npm run build
-        env:
-          VITE_API_URL: http://localhost:3001
-
-      - name: Run render regression E2E tests
-        run: scripts/ci/time-command.sh "quick render regression" npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
+      - name: Run quick render regression
         env:
           CI: 'true'
           NODE_ENV: test
+          SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1200'
           VITE_API_URL: http://localhost:3001
+        run: |
+          scripts/ci/with-runner-lock.sh e2e scripts/ci/run-in-isolated-workspace.sh --keep-on-failure quick-render bash -c '
+            set -euo pipefail
+            collect_artifacts() {
+              scripts/ci/collect-playwright-artifacts.sh quick-render || echo "::warning::Could not collect quick render Playwright artifacts"
+            }
+            trap collect_artifacts EXIT
+            scripts/ci/time-command.sh "quick render npm ci" npm ci --audit=false --fund=false --cache .tmp/npm-cache
+            scripts/ci/time-command.sh "quick render playwright install" scripts/ci/install-playwright-chromium.sh
+            scripts/ci/time-command.sh "quick render frontend build" scripts/ci/retry-command.sh "quick render frontend build" npm run build
+            scripts/ci/time-command.sh "quick render regression" npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
+          '
 
       - name: Upload quick render Playwright report
         if: always()
+        continue-on-error: true
         uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: playwright-report-quick-render
-          path: playwright-report/
+          path: .tmp/quick-render-artifacts/${{ github.run_id }}/playwright-report/
           if-no-files-found: ignore
           retention-days: 7
 
       - name: Upload quick render Playwright results
         if: always()
+        continue-on-error: true
         uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: playwright-results-quick-render
-          path: test-results/
+          path: .tmp/quick-render-artifacts/${{ github.run_id }}/test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Cleanup quick render artifacts
+        if: always()
+        run: rm -rf ".tmp/quick-render-artifacts/${{ github.run_id }}" || echo "::warning::Could not fully remove quick render artifacts"
 
   pr-required-checks:
     name: PR Required Checks
@@ -641,12 +693,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: npm ci
@@ -669,7 +717,7 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
+    needs: [detect-changes, full-backend-typecheck]
     defaults:
       run:
         working-directory: server
@@ -682,7 +730,7 @@ jobs:
           POSTGRES_PASSWORD: test
           POSTGRES_DB: sanctuary_test
         ports:
-          - 5432:5432
+          - 5432/tcp
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -693,12 +741,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: npm ci
@@ -709,14 +753,24 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Run database migrations
+      - name: Resolve Postgres service host
         env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+        run: |
+          if getent hosts postgres >/dev/null 2>&1; then
+            database_host=postgres
+            database_port=5432
+          else
+            database_host=localhost
+            database_port="${POSTGRES_PORT:-5432}"
+          fi
+          echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+
+      - name: Run database migrations
         run: npx prisma migrate deploy
 
       - name: Run unit tests with coverage
         env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
@@ -741,12 +795,13 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
+    needs: [detect-changes, full-backend-unit-coverage]
     defaults:
       run:
         working-directory: server
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         group:
           - flows
@@ -762,7 +817,7 @@ jobs:
           POSTGRES_PASSWORD: test
           POSTGRES_DB: sanctuary_test
         ports:
-          - 5432:5432
+          - 5432/tcp
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -773,12 +828,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: npm ci
@@ -789,14 +840,24 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Run database migrations
+      - name: Resolve Postgres service host
         env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+        run: |
+          if getent hosts postgres >/dev/null 2>&1; then
+            database_host=postgres
+            database_port=5432
+          else
+            database_host=localhost
+            database_port="${POSTGRES_PORT:-5432}"
+          fi
+          echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+
+      - name: Run database migrations
         run: npx prisma migrate deploy
 
       - name: Run integration tests
         env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
@@ -908,9 +969,10 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
+    needs: [detect-changes, full-backend-tests]
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         target:
           - app-typecheck
@@ -920,12 +982,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: npm ci
@@ -939,7 +997,7 @@ jobs:
         run: scripts/ci/time-command.sh "frontend test typecheck" npm run typecheck:tests
 
   full-frontend-coverage-shards:
-    name: Full Frontend Coverage (shard ${{ matrix.shard }}/2)
+    name: Full Frontend Coverage Shards
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
@@ -947,37 +1005,40 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
-    strategy:
-      fail-fast: false
-      matrix:
-        shard:
-          - 1
-          - 2
+    needs: [detect-changes, full-frontend-typechecks]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run frontend coverage shard
-        run: scripts/ci/time-command.sh "frontend coverage shard ${{ matrix.shard }}/2" npm run test:coverage:shard -- ${{ matrix.shard }} 2
+      - name: Run frontend coverage shard 1
+        run: scripts/ci/time-command.sh "frontend coverage shard 1/2" npm run test:coverage:shard -- 1 2
 
-      - name: Upload frontend coverage blob
+      - name: Run frontend coverage shard 2
+        run: scripts/ci/time-command.sh "frontend coverage shard 2/2" npm run test:coverage:shard -- 2 2
+
+      - name: Upload frontend coverage blob 1
         if: always()
         uses: https://data.forgejo.org/forgejo/upload-artifact@v4
         with:
-          name: frontend-coverage-blob-${{ matrix.shard }}
-          path: .vitest-reports/blob-${{ matrix.shard }}-2.json
+          name: frontend-coverage-blob-1
+          path: .vitest-reports/blob-1-2.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Upload frontend coverage blob 2
+        if: always()
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: frontend-coverage-blob-2
+          path: .vitest-reports/blob-2-2.json
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 14
@@ -998,24 +1059,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: npm ci
 
       - name: Download frontend coverage shard 1
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: https://data.forgejo.org/forgejo/download-artifact@v4
         with:
           name: frontend-coverage-blob-1
           path: .vitest-reports/
 
       - name: Download frontend coverage shard 2
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: https://data.forgejo.org/forgejo/download-artifact@v4
         with:
           name: frontend-coverage-blob-2
           path: .vitest-reports/
@@ -1079,7 +1136,7 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.gateway_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
+    needs: [detect-changes, full-frontend-tests]
     defaults:
       run:
         working-directory: gateway
@@ -1088,12 +1145,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: gateway/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: npm ci
@@ -1121,20 +1174,14 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.ai_proxy_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
+    needs: [detect-changes, full-gateway-tests]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            ai-proxy/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install root test dependencies
         run: npm ci
@@ -1157,7 +1204,7 @@ jobs:
        needs.detect-changes.outputs.critical_mutation_changed == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: [detect-changes]
+    needs: [detect-changes, full-ai-proxy-tests]
     defaults:
       run:
         working-directory: server
@@ -1166,12 +1213,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: npm ci
@@ -1199,15 +1242,20 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.browser_smoke_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
+    needs: [detect-changes, full-critical-mutation]
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
-        group:
-          - admin-auth
-          - wallet-lifecycle
-          - wallet-transactions
-          - wallet-experience
+        include:
+          - group: admin-auth
+            api_port: '3101'
+          - group: wallet-lifecycle
+            api_port: '3102'
+          - group: wallet-transactions
+            api_port: '3103'
+          - group: wallet-experience
+            api_port: '3104'
 
     services:
       postgres:
@@ -1217,7 +1265,7 @@ jobs:
           POSTGRES_PASSWORD: test
           POSTGRES_DB: sanctuary_test
         ports:
-          - 5432:5432
+          - 5432/tcp
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -1227,7 +1275,7 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 6379:6379
+          - 6379/tcp
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -1238,16 +1286,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install frontend dependencies
         run: scripts/ci/time-command.sh "browser npm ci" npm ci
 
       - name: Cache Playwright browsers
+        continue-on-error: true
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: ~/.cache/ms-playwright
@@ -1256,12 +1302,36 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
-        run: scripts/ci/time-command.sh "browser playwright install" npx playwright install --with-deps chromium
+        run: scripts/ci/time-command.sh "browser playwright install" scripts/ci/install-playwright-chromium.sh
 
       - name: Build frontend
-        run: scripts/ci/time-command.sh "browser frontend build" npm run build
+        run: scripts/ci/time-command.sh "browser frontend build" scripts/ci/retry-command.sh "browser frontend build" npm run build
         env:
-          VITE_API_URL: http://localhost:3001
+          VITE_API_URL: http://localhost:${{ matrix.api_port }}
+
+      - name: Resolve service endpoints
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+          REDIS_PORT: ${{ job.services.redis.ports['6379'] }}
+        run: |
+          if getent hosts postgres >/dev/null 2>&1; then
+            database_host=postgres
+            database_port=5432
+          else
+            database_host=localhost
+            database_port="${POSTGRES_PORT:-5432}"
+          fi
+
+          if getent hosts redis >/dev/null 2>&1; then
+            redis_host=redis
+            redis_port=6379
+          else
+            redis_host=localhost
+            redis_port="${REDIS_PORT:-6379}"
+          fi
+
+          echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+          echo "REDIS_URL=redis://${redis_host}:${redis_port}" >> "$GITHUB_ENV"
 
       - name: Setup backend
         working-directory: server
@@ -1269,60 +1339,66 @@ jobs:
           "${{ github.workspace }}/scripts/ci/time-command.sh" "browser backend npm ci" npm ci
           "${{ github.workspace }}/scripts/ci/time-command.sh" "browser prisma generate" npx prisma generate
           "${{ github.workspace }}/scripts/ci/time-command.sh" "browser prisma migrate" npx prisma migrate deploy
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
 
       - name: Build backend
         working-directory: server
         run: ${{ github.workspace }}/scripts/ci/time-command.sh "browser backend build" npm run build
 
-      - name: Start backend server
-        working-directory: server
-        run: npm run start &
+      - name: Run browser-flow E2E tests
+        run: |
+          scripts/ci/with-runner-lock.sh e2e bash -c '
+            set -euo pipefail
+
+            mapfile -t browser_specs < <(scripts/ci/browser-e2e-groups.sh "$BROWSER_GROUP")
+            if [ "${#browser_specs[@]}" -eq 0 ]; then
+              echo "No browser-flow E2E specs found for ${BROWSER_GROUP}."
+              exit 0
+            fi
+
+            cleanup() {
+              if [ -n "${BACKEND_PID:-}" ]; then
+                kill "$BACKEND_PID" 2>/dev/null || true
+              fi
+            }
+            trap cleanup EXIT
+
+            (
+              cd server
+              PORT="$API_PORT" npm run start
+            ) &
+            BACKEND_PID="$!"
+
+            echo "Waiting for backend server..."
+            for i in {1..30}; do
+              if curl -s "http://localhost:${API_PORT}/health" > /dev/null 2>&1; then
+                echo "Backend is ready!"
+                break
+              fi
+              if [ "$i" -eq 30 ]; then
+                echo "Backend failed to start"
+                exit 1
+              fi
+              echo "Attempt $i: Backend not ready yet..."
+              sleep 2
+            done
+
+            printf "Running browser-flow E2E group %s:\n" "$BROWSER_GROUP"
+            printf "  %s\n" "${browser_specs[@]}"
+            VITE_API_URL="http://localhost:${API_PORT}" \
+              scripts/ci/time-command.sh "browser-flow E2E ${BROWSER_GROUP}" \
+              npm run test:e2e -- --project=chromium "${browser_specs[@]}"
+          '
         env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
-          REDIS_URL: redis://localhost:6379
+          BROWSER_GROUP: ${{ matrix.group }}
+          API_PORT: ${{ matrix.api_port }}
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           GATEWAY_SECRET: test-gateway-secret-for-ci-minimum-32-chars
           ENCRYPTION_SALT: test-encryption-salt-for-ci
           NODE_ENV: test
-          PORT: 3001
           # E2E harness starts only the server, not the paired worker, so
           # disable the critical worker-heartbeat startup gate.
           WORKER_HEALTH_MONITOR_ENABLED: 'false'
-
-      - name: Wait for backend to be ready
-        run: |
-          echo "Waiting for backend server..."
-          for i in {1..30}; do
-            if curl -s http://localhost:3001/health > /dev/null 2>&1; then
-              echo "Backend is ready!"
-              exit 0
-            fi
-            echo "Attempt $i: Backend not ready yet..."
-            sleep 2
-          done
-          echo "Backend failed to start"
-          exit 1
-
-      - name: Run browser-flow E2E tests
-        run: |
-          mapfile -t browser_specs < <(scripts/ci/browser-e2e-groups.sh "${{ matrix.group }}")
-          if [ "${#browser_specs[@]}" -eq 0 ]; then
-            echo "No browser-flow E2E specs found for ${{ matrix.group }}."
-            exit 0
-          fi
-          printf 'Running browser-flow E2E group %s:\n' "${{ matrix.group }}"
-          printf '  %s\n' "${browser_specs[@]}"
-          scripts/ci/time-command.sh "browser-flow E2E ${{ matrix.group }}" npm run test:e2e -- --project=chromium "${browser_specs[@]}"
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
-          ENCRYPTION_KEY: test-encryption-key-32-chars-long!
-          NODE_ENV: test
-          VITE_API_URL: http://localhost:3001
           # Keep auth-dependent legacy specs skipped until seeded test auth users exist.
           SKIP_AUTH_TESTS: 'true'
 
@@ -1352,23 +1428,20 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.render_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
+    needs: [detect-changes, full-browser-e2e-tests]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Install dependencies
         run: scripts/ci/time-command.sh "render npm ci" npm ci
 
       - name: Cache Playwright browsers
+        continue-on-error: true
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: ~/.cache/ms-playwright
@@ -1377,15 +1450,15 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
-        run: scripts/ci/time-command.sh "render playwright install" npx playwright install --with-deps chromium
+        run: scripts/ci/time-command.sh "render playwright install" scripts/ci/install-playwright-chromium.sh
 
       - name: Build frontend
-        run: scripts/ci/time-command.sh "render frontend build" npm run build
+        run: scripts/ci/time-command.sh "render frontend build" scripts/ci/retry-command.sh "render frontend build" npm run build
         env:
           VITE_API_URL: http://localhost:3001
 
       - name: Run render regression E2E tests
-        run: scripts/ci/time-command.sh "render regression E2E" npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
+        run: scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "render regression E2E" npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
         env:
           CI: 'true'
           NODE_ENV: test
@@ -1417,21 +1490,19 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.build_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
+    needs: [detect-changes, full-render-e2e-tests]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
       - name: Build frontend
         run: |
           npm ci
-          npm run build
+          scripts/ci/retry-command.sh "build check frontend build" npm run build
 
       - name: Build backend
         working-directory: server
@@ -1455,28 +1526,28 @@ jobs:
 
       - name: Download backend coverage
         if: github.event_name != 'pull_request' && (needs.full-backend-tests.result == 'success' || needs.full-backend-tests.result == 'failure')
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: https://data.forgejo.org/forgejo/download-artifact@v4
         with:
           name: backend-coverage
           path: backend-results/
 
       - name: Download frontend coverage
         if: github.event_name != 'pull_request' && (needs.full-frontend-tests.result == 'success' || needs.full-frontend-tests.result == 'failure')
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: https://data.forgejo.org/forgejo/download-artifact@v4
         with:
           name: frontend-coverage
           path: frontend-results/
 
       - name: Download gateway coverage
         if: github.event_name != 'pull_request' && (needs.full-gateway-tests.result == 'success' || needs.full-gateway-tests.result == 'failure')
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: https://data.forgejo.org/forgejo/download-artifact@v4
         with:
           name: gateway-coverage
           path: gateway-results/
 
       - name: Download critical mutation report
         if: github.event_name != 'pull_request' && (needs.full-critical-mutation.result == 'success' || needs.full-critical-mutation.result == 'failure')
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: https://data.forgejo.org/forgejo/download-artifact@v4
         with:
           name: critical-mutation-report
           path: mutation-results/

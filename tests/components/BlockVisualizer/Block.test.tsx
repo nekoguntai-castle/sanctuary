@@ -87,6 +87,9 @@ describe('Block', () => {
     expect(screen.getAllByText('10-20').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('BLK mempool')).toBeInTheDocument();
     expect(screen.getByText('5m')).toBeInTheDocument();
+    expect(screen.getByRole('button', {
+      name: 'Pending block mempool, median fee 12 sat/vB, 1,234 transactions',
+    })).toBeInTheDocument();
 
     const dots = screen.getAllByTestId('pending-dot');
     expect(dots).toHaveLength(5);
@@ -202,7 +205,11 @@ describe('Block', () => {
     expect(screen.getByText(/420/)).toBeInTheDocument();
     expect(screen.getByText(/50%/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button'));
+    const blockButton = screen.getByRole('button', {
+      name: 'Confirmed block 800,000, median fee 0.7 sat/vB, 420 transactions',
+    });
+
+    fireEvent.click(blockButton);
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
@@ -221,6 +228,9 @@ describe('Block', () => {
     );
 
     expect(screen.getByText('tip')).toBeInTheDocument();
+    expect(screen.getByRole('button', {
+      name: 'Confirmed block tip, median fee 0.7 sat/vB, transaction count unavailable',
+    })).toBeInTheDocument();
     expect(screen.queryByText(/txs • Median:/)).not.toBeInTheDocument();
     expect(screen.queryByText('Median Fee')).not.toBeInTheDocument();
   });

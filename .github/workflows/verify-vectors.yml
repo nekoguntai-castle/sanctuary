@@ -39,10 +39,19 @@ on:
       - 'server/tests/fixtures/bip174-test-vectors.ts'
       - 'scripts/verify-addresses/**'
       - 'scripts/verify-psbt/**'
+      - 'scripts/ci/docker-endpoint-lib.sh'
+      - 'scripts/ci/ensure-node.sh'
+      - 'scripts/ci/ensure-python.sh'
+      - 'scripts/ci/wait-for-docker.sh'
       - '.github/workflows/verify-vectors.yml'
 
 permissions:
   contents: read
+
+env:
+  NODE_VERSION: '24'
+  PYTHON_VERSION: '3'
+  SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -57,57 +66,62 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
-      - name: Setup Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
-        with:
-          python-version: '3.12'
+      - name: Verify Python toolchain
+        run: |
+          bash scripts/ci/ensure-python.sh
+          python3 -m venv --help >/dev/null
+
+      - name: Wait for Docker
+        run: ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
 
       - name: Install server dependencies
         working-directory: server
-        run: npm ci
+        run: |
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+            set -euo pipefail
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "vector server npm ci" npm ci --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "vector shared schema link" node scripts/ensure-shared-module-resolution.mjs
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "vector prisma generate" npx prisma generate
+          '
 
       - name: Run cross-implementation address verifier
         working-directory: scripts/verify-addresses
-        run: npm run verify:repeatable
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run verify:repeatable
 
       - name: Run address derivation tests
         working-directory: server
-        run: npm run test -- tests/unit/services/bitcoin/addressDerivation.verified.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/addressDerivation.verified.test.ts
 
       - name: Run derivation path tests
         working-directory: server
-        run: npm run test -- tests/unit/services/scriptTypes/derivationPaths.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/scriptTypes/derivationPaths.test.ts
 
       - name: Run multisig key ordering tests
         working-directory: server
-        run: npm run test -- tests/unit/services/bitcoin/multisigKeyOrdering.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/multisigKeyOrdering.test.ts
 
       - name: Run xpub validation tests
         working-directory: server
-        run: npm run test -- tests/unit/services/bitcoin/xpubValidation.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/xpubValidation.test.ts
 
       - name: Run property-based tests
         working-directory: server
-        run: npm run test -- tests/unit/services/bitcoin/propertyBased.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/propertyBased.test.ts
 
       - name: Run descriptor checksum tests
         working-directory: server
-        run: npm run test -- tests/unit/services/bitcoin/descriptorChecksum.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/descriptorChecksum.test.ts
 
       - name: Run PSBT BIP-174 verification tests
         working-directory: server
-        run: npm run test -- tests/unit/services/bitcoin/psbt.verified.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/psbt.verified.test.ts
 
       - name: Run PSBT property-based tests
         working-directory: server
-        run: npm run test -- tests/unit/services/bitcoin/psbt.property.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/psbt.property.test.ts
 
   # Optional: Regenerate vectors with Bitcoin Core
   # This job runs only on manual trigger and requires Docker
@@ -120,19 +134,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: '24'
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
 
-      - name: Setup Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
-        with:
-          python-version: '3.12'
+      - name: Verify Python toolchain
+        run: |
+          bash scripts/ci/ensure-python.sh
+          python3 -m venv --help >/dev/null
+
+      - name: Wait for Docker
+        run: ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
 
       - name: Generate address vectors with pinned verifier stack
         working-directory: scripts/verify-addresses
-        run: npm run generate:repeatable
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run generate:repeatable
 
       - name: Check for vector changes
         run: |
@@ -154,10 +169,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: '24'
+      - name: Verify Node.js toolchain
+        run: bash scripts/ci/ensure-node.sh
+
+      - name: Wait for Docker
+        run: ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
 
       - name: Start Bitcoin Core
         run: |
@@ -176,9 +192,10 @@ jobs:
 
       - name: Wait for Bitcoin Core
         run: |
+          rpc_url="http://${SANCTUARY_DOCKER_PUBLISHED_HOST:-127.0.0.1}:18443/"
           echo "Waiting for Bitcoin Core to be ready..."
           for i in {1..30}; do
-            if curl -s --user sanctuary:sanctuary-verify --data-binary '{"jsonrpc":"1.0","method":"getblockchaininfo","params":[]}' http://localhost:18443/ > /dev/null 2>&1; then
+            if curl -s --user sanctuary:sanctuary-verify --data-binary '{"jsonrpc":"1.0","method":"getblockchaininfo","params":[]}' "$rpc_url" > /dev/null 2>&1; then
               echo "Bitcoin Core is ready"
               exit 0
             fi
@@ -190,29 +207,37 @@ jobs:
 
       - name: Install server dependencies
         working-directory: server
-        run: npm ci
+        run: |
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+            set -euo pipefail
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector server npm ci" npm ci --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared schema link" node scripts/ensure-shared-module-resolution.mjs
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector prisma generate" npx prisma generate
+          '
 
       - name: Install PSBT verification dependencies
         working-directory: scripts/verify-psbt
-        run: npm ci
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm ci
 
       - name: Generate PSBT vectors
         working-directory: scripts/verify-psbt
-        env:
-          BITCOIN_RPC_USER: sanctuary
-          BITCOIN_RPC_PASS: sanctuary-verify
-        run: npm run generate
+        run: |
+          BITCOIN_RPC_HOST="${SANCTUARY_DOCKER_PUBLISHED_HOST:-127.0.0.1}" \
+            BITCOIN_RPC_USER=sanctuary \
+            BITCOIN_RPC_PASS=sanctuary-verify \
+            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run generate
 
       - name: Generate signed PSBT vectors
         working-directory: scripts/verify-psbt
-        env:
-          BITCOIN_RPC_USER: sanctuary
-          BITCOIN_RPC_PASS: sanctuary-verify
-        run: npm run generate:signed
+        run: |
+          BITCOIN_RPC_HOST="${SANCTUARY_DOCKER_PUBLISHED_HOST:-127.0.0.1}" \
+            BITCOIN_RPC_USER=sanctuary \
+            BITCOIN_RPC_PASS=sanctuary-verify \
+            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run generate:signed
 
       - name: Verify generated PSBT vectors are non-empty
         working-directory: scripts/verify-psbt
-        run: npm run verify
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run verify
 
       - name: Check for PSBT vector changes
         run: |
@@ -235,8 +260,13 @@ jobs:
       - name: Run PSBT tests with new vectors
         working-directory: server
         run: |
-          npm ci
-          npm run test -- tests/unit/services/bitcoin/psbt.verified.test.ts tests/unit/services/bitcoin/psbt.signed-vectors.test.ts
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+            set -euo pipefail
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector server npm ci" npm ci --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared schema link" node scripts/ensure-shared-module-resolution.mjs
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector prisma generate" npx prisma generate
+            npm run test:run -- tests/unit/services/bitcoin/psbt.verified.test.ts tests/unit/services/bitcoin/psbt.signed-vectors.test.ts
+          '
 
   # Summary job
   summary:

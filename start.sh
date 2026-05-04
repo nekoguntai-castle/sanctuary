@@ -272,6 +272,21 @@ set_start_flags() {
     fi
 }
 
+start_compose_stack() {
+    local compose_files="$1"
+    local profiles="$2"
+    local up_flags="$3"
+    local postgres_up_flags="-d"
+
+    if [ "$IS_OFFLINE_INSTALL" = true ] && docker compose up --help 2>&1 | grep -q -- '--pull'; then
+        postgres_up_flags="$postgres_up_flags --pull never"
+    fi
+
+    docker compose $compose_files $profiles up $postgres_up_flags postgres
+    SANCTUARY_PROJECT_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/reconcile-postgres-password.sh"
+    docker compose $compose_files $profiles up $up_flags
+}
+
 case "${1:-}" in
     --stop)
         echo "Stopping Sanctuary..."
@@ -294,7 +309,7 @@ case "${1:-}" in
         echo "      then configure its endpoint in Admin → AI Settings."
         echo ""
         set_start_flags
-        docker compose $MCP_PROFILE up $UP_FLAGS
+        start_compose_stack "" "$MCP_PROFILE" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -312,7 +327,7 @@ case "${1:-}" in
         echo "Create an MCP API key from Admin before connecting an LLM client."
         echo ""
         set_start_flags
-        docker compose --profile mcp up $UP_FLAGS
+        start_compose_stack "" "--profile mcp" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo "MCP endpoint: http://${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}/mcp"
@@ -323,7 +338,7 @@ case "${1:-}" in
         echo "Note: First-time setup will download monitoring images (~500MB total)."
         echo ""
         set_start_flags
-        docker compose -f docker-compose.yml -f docker-compose.monitoring.yml $MCP_PROFILE up $UP_FLAGS
+        start_compose_stack "-f docker-compose.yml -f docker-compose.monitoring.yml" "$MCP_PROFILE" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -340,7 +355,7 @@ case "${1:-}" in
         echo "Note: First-time setup will download the Tor image (~50MB)."
         echo ""
         set_start_flags
-        docker compose -f docker-compose.yml -f docker-compose.tor.yml $MCP_PROFILE up $UP_FLAGS
+        start_compose_stack "-f docker-compose.yml -f docker-compose.tor.yml" "$MCP_PROFILE" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -405,11 +420,7 @@ case "${1:-}" in
         PROFILES=""
         [ "$HAS_MCP" = "yes" ] && PROFILES="$PROFILES --profile mcp"
 
-        if [ -n "$PROFILES" ]; then
-            docker compose $COMPOSE_FILES $PROFILES up -d
-        else
-            docker compose $COMPOSE_FILES up -d
-        fi
+        start_compose_stack "$COMPOSE_FILES" "$PROFILES" "-d"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         ;;
@@ -470,11 +481,7 @@ case "${1:-}" in
         PROFILES=""
         [ "$HAS_MCP" = "yes" ] && PROFILES="$PROFILES --profile mcp"
 
-        if [ -n "$PROFILES" ]; then
-            docker compose $COMPOSE_FILES $PROFILES up $UP_FLAGS
-        else
-            docker compose $COMPOSE_FILES up $UP_FLAGS
-        fi
+        start_compose_stack "$COMPOSE_FILES" "$PROFILES" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         ;;

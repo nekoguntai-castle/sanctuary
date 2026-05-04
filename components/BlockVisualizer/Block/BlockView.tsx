@@ -2,6 +2,7 @@ import { Clock } from 'lucide-react';
 import { getBlockColors } from '../blockUtils';
 import { PendingTxDot } from '../PendingTxDot';
 import {
+  getBlockButtonLabel,
   getPendingOverflowCount,
   isPendingTxStuck,
 } from './blockHelpers';
@@ -22,12 +23,14 @@ export function BlockView({
   viewModel,
 }: BlockViewProps) {
   const colors = getBlockColors(viewModel.isPending);
+  const blockButtonLabel = getBlockButtonLabel(block, viewModel);
 
   return (
-    <div className="relative group flex flex-col items-center">
+    <div className="block-visualizer-frame relative group flex flex-col items-center">
       <button
+        aria-label={blockButtonLabel}
         onClick={onClick}
-        className={`
+        className={`block-visualizer-button
           relative flex-shrink-0 flex flex-col
           ${compact ? 'w-[72px] h-[72px]' : 'w-28 h-32 md:w-32 md:h-36'}
           rounded-lg overflow-hidden transition-all duration-300
@@ -245,7 +248,7 @@ function BlockTooltip({
   if (compact || block.txCount === undefined) return null;
 
   return (
-    <div className={`
+    <div className={`block-visualizer-tooltip
       absolute bottom-full left-1/2 -translate-x-1/2 mb-2
       text-[10px] font-medium px-3 py-2 rounded-lg
       bg-sanctuary-800 text-sanctuary-100 dark:bg-sanctuary-100 dark:text-sanctuary-900

@@ -688,7 +688,9 @@ load_or_generate_secrets() {
         echo "  - REDIS_PASSWORD: generated"
     fi
 
-    reconcile_postgres_password_with_running_database
+    if [ "$OPT_NO_START" = false ]; then
+        reconcile_postgres_password_with_running_database
+    fi
 
     echo ""
 }
@@ -835,6 +837,64 @@ compose_up_no_build_args() {
     echo "$args"
 }
 
+compose_build_failed_due_to_cache_corruption() {
+    local build_log="$1"
+
+    [ -f "$build_log" ] || return 1
+
+    grep -Eiq \
+        'archive/tar: invalid tar header|failed to extract layer|failed to read expected number of bytes' \
+        "$build_log"
+}
+
+recover_docker_builder_cache() {
+    echo ""
+    echo -e "${YELLOW}Docker builder cache appears to be corrupt.${NC}"
+    echo "Clearing Docker builder cache and retrying once with --no-cache."
+
+    docker builder prune --force >/dev/null
+}
+
+run_compose_build() {
+    local build_args="$*"
+    local build_log
+    local status
+
+    build_log="$(mktemp "${TMPDIR:-/tmp}/sanctuary-compose-build.XXXXXX.log")" || return 1
+
+    set +e
+    docker compose $COMPOSE_FILES build $build_args 2>&1 | tee "$build_log"
+    status=${PIPESTATUS[0]}
+    set -e
+
+    if [ "$status" -eq 0 ]; then
+        rm -f "$build_log"
+        return 0
+    fi
+
+    if ! compose_build_failed_due_to_cache_corruption "$build_log"; then
+        rm -f "$build_log"
+        return "$status"
+    fi
+
+    if ! recover_docker_builder_cache; then
+        rm -f "$build_log"
+        return "$status"
+    fi
+
+    set +e
+    docker compose $COMPOSE_FILES build --no-cache 2>&1 | tee -a "$build_log"
+    status=${PIPESTATUS[0]}
+    set -e
+
+    rm -f "$build_log"
+    return "$status"
+}
+
+compose_up_after_build_args() {
+    echo "-d --no-build"
+}
+
 start_services() {
     echo "Starting Sanctuary..."
     if [ "$OPT_OFFLINE" = true ]; then
@@ -864,11 +924,11 @@ start_services() {
         else
             echo "Building containers..."
         fi
-        # Note: parallel builds can sometimes fail with "already exists" race condition
-        # but the images are still built successfully, so we continue on error
-        if ! docker compose $COMPOSE_FILES build $BUILD_ARGS; then
+        if ! run_compose_build $BUILD_ARGS; then
             echo ""
-            echo -e "${YELLOW}Build completed with warnings (this is usually fine).${NC}"
+            echo -e "${RED}Error: Docker image build failed.${NC}"
+            echo "Resolve the build error above and rerun setup."
+            exit 1
         fi
     fi
 
@@ -876,16 +936,24 @@ start_services() {
     echo ""
     echo "Starting containers..."
 
+    if [ "$OPT_OFFLINE" = true ]; then
+        docker compose $COMPOSE_FILES up $(compose_up_no_build_args) postgres
+    else
+        docker compose $COMPOSE_FILES up $(compose_up_after_build_args) postgres
+    fi
+    SANCTUARY_PROJECT_DIR="$PROJECT_DIR" bash "$PROJECT_DIR/scripts/reconcile-postgres-password.sh"
+
     # Check if --wait flag is supported (docker compose v2.1+)
     if docker compose up --help 2>&1 | grep -q -- '--wait'; then
         UP_ARGS="-d --wait"
         if [ "$OPT_OFFLINE" = true ]; then
             UP_ARGS="$(compose_up_no_build_args) --wait"
+        else
+            UP_ARGS="$(compose_up_after_build_args) --wait"
         fi
-        # Use --wait to wait for health checks before returning
-        # Note: We don't use --no-build here. If the previous build step had a race
-        # condition error and some images weren't built, docker compose will build
-        # only the missing ones. If all images exist, it won't rebuild.
+        # Use --wait to wait for health checks before returning. The build phase
+        # above is the only place setup is allowed to build images; startup must
+        # not silently run a second build with different retry behavior.
         if docker compose $COMPOSE_FILES up $UP_ARGS; then
             FRONTEND_RUNNING=true
             WORKER_RUNNING=true
@@ -906,7 +974,7 @@ start_services() {
         if [ "$OPT_OFFLINE" = true ]; then
             docker compose $COMPOSE_FILES up $(compose_up_no_build_args)
         else
-            docker compose $COMPOSE_FILES up -d
+            docker compose $COMPOSE_FILES up $(compose_up_after_build_args)
         fi
         USED_WAIT_FLAG=false
     fi

@@ -16,8 +16,10 @@ test("network sync switch avoids white surfaces in dark mode", async ({
     document.documentElement.classList.add("dark");
   });
 
-  await page.getByRole("button", { name: /Network Connections/i }).click();
-  await page.getByRole("button", { name: /^testnet/i }).click();
+  const main = page.getByRole("main");
+
+  await main.getByRole("button", { name: /Network Connections/i }).click();
+  await main.getByRole("button", { name: /^testnet\(\d+\)$/i }).click();
 
   const switchControl = page.getByRole("switch", { name: "Testnet Sync" });
   await expect(switchControl).toBeVisible();

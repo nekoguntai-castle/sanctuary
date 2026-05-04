@@ -2,6 +2,43 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Verify The Post-Merge Lane, Not Only PR Required Checks
+
+**Rule:** After merging workflow or CI-scope changes, check the latest target-branch `push` run separately from the PR-required contexts before declaring Actions clean.
+
+**Why:** The PR quick lane passed, but `main` immediately ran push-only full-lane jobs that failed. Those failures were easy to miss if only the PR head status was treated as the whole CI surface.
+
+**How to apply:**
+
+- Query the target branch head SHA after merge and inspect its `push` workflow statuses.
+- Treat stale failed PR attempts and current target-branch failures as separate buckets.
+- When PRs intentionally skip Docker-heavy or full-suite jobs, run local equivalents or a branch/manual full-lane rehearsal before merge.
+- In final delivery notes, state whether post-merge target-branch Actions were checked and what remained red.
+
+## Audit Workflow Action Families As A Set
+
+**Rule:** When swapping a workflow action implementation for forge compatibility, search and replace the entire action family before declaring the lane fixed.
+
+**Why:** Upload steps had moved to the Forgejo artifact action, but remaining GitHub `download-artifact` steps in the full coverage merge path still failed during manual full-lane rehearsal.
+
+**How to apply:**
+
+- Run an exact `rg` for both the short action name and version-pinned references, such as `actions/download-artifact` and `download-artifact@`.
+- Check downstream summary/download jobs as well as the obvious producer/consumer pair that first failed.
+- Re-run workflow lint and the manual lane that exercises the artifact handoff after the replacement.
+
+## Do Not Trust Workflow-Level Concurrency Across Forgejo Workflow Files
+
+**Rule:** For shared-runner Docker, browser, and install E2E sections, use an explicit lock in the job commands instead of relying only on workflow-level `concurrency`.
+
+**Why:** Matching ref-level concurrency groups did not stop separate workflow files from overlapping during manual rehearsal. The overlap caused install E2Es and browser E2E to fail at the same time on the same branch head.
+
+**How to apply:**
+
+- Put the lock around the mutating Docker/browser test section, not just the workflow declaration.
+- Keep lock names generic and repo-local; do not encode runner hostnames, IP addresses, or operational paths.
+- Rehearse by dispatching the affected workflows together, because a single workflow run cannot prove cross-workflow isolation.
+
 ## Disambiguate Runner Requests Before Inspecting App Code
 
 **Rule:** When the user asks about a "runner", first identify whether they mean Forgejo Actions, local scripts, CI test runners, or an application background worker before diving into repository internals.
@@ -60,7 +97,7 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 
 **How to apply:**
 
-- Prefer `/home/nekoguntai/sanctuary` or another durable repo checkout for branch work.
+- Prefer the durable project checkout or another durable repo checkout for branch work.
 - Use `/tmp` only for short-lived generated artifacts that are safe to delete and clearly ignored.
 - If stale worktrees/branches exist, inspect them, preserve unrelated local files, and clean only the stale items the user approved.
 - After consolidating work, verify `git worktree list`, local branches, and `git status --short --branch` before continuing implementation.
@@ -90,6 +127,21 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Reproduce Docker-socket tests with the repo mounted under a workspace path and those env vars unset.
 - Redact verbose install output before printing it, because runner origin URLs and generated secrets can appear in traces.
 
+## Use Run-Scoped Install Test Scratch Roots
+
+**Rule:** Docker-backed install tests must not reuse a fixed workspace scratch directory across CI jobs; include the run identity and process UID in the default workspace scratch root.
+
+**Why:** A previous Docker-backed job can leave `.tmp/install-tests` owned by root in the shared checkout. A later non-root job then fails before Docker starts because `mktemp` cannot create its runtime directory.
+
+**How to apply:**
+
+- Keep install scratch roots under the checked-out workspace when the host Docker daemon must see bind mounts, but use a path like `.tmp/install-tests-<run>-<uid>`.
+- Do not depend on chmodding or deleting stale root-owned scratch directories from a later non-root job.
+- Keep generated TLS material for install stack smoke jobs under the same run-scoped root, not under fixed repo paths such as `docker/nginx/ssl`.
+- Do not let `actions/checkout` pre-clean Docker-backed install workspaces on the shared Forgejo runner; run-scoped scratch paths provide isolation without tripping over stale generated artifacts from older jobs.
+- Exclude `.tmp` from Docker build contexts so install-test runtime data and generated artifacts do not enter production image builds.
+- Reproduce this class of failure with `GITHUB_WORKSPACE`, `GITHUB_RUN_ID`, and the run-derived install ports set locally before rerunning the remote workflow.
+
 ## Reconcile Database Role Passwords After Volume Restores
 
 **Rule:** After restoring a Postgres volume or dump into a running Sanctuary stack, reconcile the database role password with the runtime env and verify TCP auth from the compose network before declaring login fixed.
@@ -115,6 +167,225 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Test TCP auth from the compose network with a throwaway Postgres client; do not rely on local socket `psql`.
 - Enable Postgres DDL and connection logging after unexplained role drift so any future `ALTER ROLE` leaves a clearer trail.
 - When restarting backend/worker behind nginx, also refresh frontend nginx if public HTTPS returns `502` while in-network backend health is good.
+
+## Keep Dry-Run Setup Tests Away From Live Runtime State
+
+**Rule:** Setup, install, and unit-test paths that pass `--no-start` must not reconcile or mutate a running local Postgres role, even if a Sanctuary stack is already up in the same checkout.
+
+**Why:** The local recurring `database operation failed` login bug was reintroduced by an install unit test that ran `scripts/setup.sh --no-start` with throwaway test passwords. Setup still found the live compose Postgres container and changed the real `sanctuary` role password to the test value.
+
+**How to apply:**
+
+- Gate live database reconciliation behind the same condition that actually starts services.
+- Treat `--no-start`, dry-run, and unit-test setup invocations as file/config generation only.
+- After testing installer/setup scripts while a local stack is running, verify the app-relevant `postgres:5432` auth path and health endpoint before assuming the stack is still clean.
+- Prefer helper tests that assert dry-run setup cannot touch Docker runtime state.
+
+## Keep Forgejo Runner Locks Inside The Workspace
+
+**Rule:** Workflow-level runner locks should use a path under `${{ github.workspace }}` instead of a parent directory inferred from the checkout path.
+
+**Why:** Forgejo job containers can mount the checkout in a writable workspace while the parent directory is owned or mounted differently. A lock helper that creates `../.sanctuary-runner-locks` can fail before the E2E body starts, leaving no application containers or logs to inspect.
+
+**How to apply:**
+
+- Set `SANCTUARY_RUNNER_LOCK_DIR` explicitly in workflows that call `scripts/ci/with-runner-lock.sh`.
+- Prefer `.tmp/runner-locks` under the checkout so the path follows the job workspace and remains ignored.
+- Add unit assertions for workflow lock paths when a runner-only failure mode is fixed.
+
+## Separate Marker Jobs From Real E2E Failures
+
+**Rule:** When a Forgejo run reports multiple red install E2E jobs, first identify which job actually executed the Docker body and which jobs are marker or summary jobs reflecting an upstream result.
+
+**Why:** The broad manual install run reported both Fresh Install E2E and Install Script E2E as failed, but the install-script job was only checking the combined fresh/install job result. Treating both as independent failures made the debug loop look larger than it was.
+
+**How to apply:**
+
+- Inspect job `needs` and marker-step logic before changing application code.
+- Patch runner/workflow handoff issues when the same E2E command passes locally and the remote failure happens before useful app logs.
+- Keep named marker jobs for branch protection, but document when their status is derived from a combined job.
+- Keep unit/preflight jobs named separately from Docker E2E jobs once the checkout handoff is stable; otherwise a fast unit failure is reported as a Docker Fresh failure.
+- Prefer one root-cause patch and one broad rerun over repeated speculative workflow retries.
+
+## Serialize Shared-Checkout Quick Lanes On Forgejo
+
+**Rule:** Forgejo quick-lane and quality jobs that run `npm ci`, `npm install --package-lock-only`, build assets, run browser installs, or clone the current checkout must either use isolated temp clones from a stable source or serialize on the same workspace lock.
+
+**Why:** The PR Test Suite quick lane failed in hygiene and frontend jobs while browser/render jobs were also active, and the Quality lockfile peer-resolution job later failed while sibling quality jobs were active. The commands passed locally, so the common failure mode was concurrent shared-checkout mutation, not the checks themselves.
+
+**How to apply:**
+
+- Use `clean: false` for checkout-heavy jobs on the shared runner.
+- Put checkout-mutating command bodies behind the same lock used by browser/render E2E sections.
+- Run quality checks that invoke package-manager resolvers from a temp clone with a temp npm cache.
+
+## Key Static-Analysis Baselines On Stable Evidence
+
+**Rule:** Static-analysis baseline identity must be based on stable evidence, such as rule id, normalized path, and matched source fingerprint, not line numbers alone.
+
+**Why:** The Quality gate failed on a stale Semgrep line range even when no new security finding existed. Treating line movement as a new finding created avoidable churn and made the CI debug loop look larger than it was.
+
+**How to apply:**
+
+- Reproduce with the same `semgrep scan --config p/default --severity ERROR --error --json` command and `check-semgrep-baseline.mjs`.
+- Keep line numbers as review/reporting metadata only; do not use them as the primary baseline key.
+- Fail when the rule, normalized path, or matched source fingerprint changes, because that requires human review.
+- Add tests for harmless line movement and meaningful source changes whenever baseline matching logic changes.
+
+## Treat The CI Checkout As Immutable Input
+
+**Rule:** Jobs that install dependencies, build assets, run browser tests, generate runtime files, or invoke Docker-backed install scripts should operate from a per-job clone instead of mutating the shared Actions checkout.
+
+**Why:** Forgejo exposed repeated failures where successful local commands became remote flakes because sibling jobs or older Docker runs left checkout state, permissions, reports, or generated files behind. Retrying long suites without isolating that state wastes time and makes failures ambiguous.
+
+**How to apply:**
+
+- Use `scripts/ci/run-in-isolated-workspace.sh` for short-lived package/test commands.
+- Use `scripts/ci/create-isolated-workspace.sh --docker-visible` for Docker-backed jobs whose bind mounts must be visible to the host Docker daemon.
+- Chain quick jobs that still consume the same workspace when job-level parallelism offers little value but creates checkout races.
+- Chain quality jobs that all read the shared checkout; temp clones still need a stable source checkout.
+- Keep marker jobs as thin status translators only; the actual test body should run in the named job or in a documented combined job.
+- Clean isolated workspaces after containers are stopped, and make cleanup warning-only so stale root-owned generated files cannot fail an otherwise passed test.
+
+## Give Long Fixture Suites First-Class Job Boundaries
+
+**Rule:** Long E2E suites with independent fixtures should expose each fixture as a named job or matrix cell, with per-fixture artifacts, instead of hiding all fixtures inside one sequential shell step.
+
+**Why:** The extended install upgrade path failed after earlier install and baseline jobs passed, but the remote job logs were unavailable through the API. A single combined `Upgrade Extended` job made it impossible to tell which fixture failed without rerunning local guesses.
+
+**How to apply:**
+
+- Put fixture names in the CI job name so the failing case is visible from status alone.
+- Keep shared-runner locks around the mutating E2E body rather than relying on a combined sequential shell step for isolation.
+- Upload artifacts per fixture so failed fixture evidence can be downloaded independently.
+- Preserve aggregate summary semantics through the matrix job result instead of weakening required checks.
+
+## Treat BuildKit Cache Corruption As A Build Boundary Failure
+
+**Rule:** When Docker BuildKit fails while exporting or unpacking an image layer with tar/cache errors, recover at the compose build boundary and then keep startup in `--no-build` mode.
+
+**Why:** Removing duplicate compose builds fixed one race, but a later Forgejo upgrade run still failed on `archive/tar: invalid tar header` for the backend image itself. Re-running long E2E suites without a targeted builder-cache recovery only repeats the expensive failure.
+
+**How to apply:**
+
+- Capture the compose build output and retry only recognized cache-corruption failures.
+- Clear Docker builder cache, not containers or volumes, and retry once with `--no-cache`.
+- After a successful build, use `docker compose up --no-build` so startup cannot trigger a second, differently handled build.
+- For legacy installers, inspect the build log even when the installer exits `0`; older setup paths can print a BuildKit failure and still continue to a misleading completion banner.
+- Keep this logic in installer/setup code, not in CI-only wrapper sleeps or brittle log-line assertions.
+
+## Pin CI Node Patch Versions On Forgejo
+
+**Rule:** Forgejo workflows should use an exact Node patch version, not a floating major, when native JavaScript toolchain commands are required gates.
+
+**Why:** A quality run pulled a newer Node 24 patch and ESLint segfaulted three times before any lint finding was produced, while the same command passed locally on the previously verified Node patch.
+
+**How to apply:**
+
+- Keep `.node-version`, `.nvmrc`, and setup-node workflow `NODE_VERSION` values aligned.
+- For jobs that intentionally use the runner-provisioned Node binary, keep the guard to a major-version check unless the job also installs the exact patch.
+- Treat native exit `139` in lint/typecheck/build setup as toolchain instability until the exact command fails locally on the same Node patch.
+- Prefer pinning the known-good patch over adding more retries around deterministic native crashes.
+
+## Serialize Node Toolchain Gates On Shared Forgejo Runners
+
+**Rule:** Node-heavy CI command bodies that install dependencies, typecheck, lint, build docs, or generate graphs should use a shared runner lock when they can run in parallel on the same Forgejo runner.
+
+**Why:** After pinning Node, quick frontend checks still hit native `139` crashes in `npm ci` and TypeScript while architecture and quality workflows were active. Retrying whole jobs did not remove the underlying resource contention.
+
+**How to apply:**
+
+- Use the existing `scripts/ci/with-runner-lock.sh` helper with a specific lock name such as `node-toolchain`.
+- Put the lock around the expensive command body, not just checkout or a single small command.
+- Keep Docker/browser E2E on the existing `e2e` lock; use a separate Node lock so unrelated Docker serialization does not hide the actual resource boundary.
+
+## Avoid Setup Actions When The Job Already Bootstraps The Tool
+
+**Rule:** On Forgejo, avoid setup actions for tools that the job can verify and bootstrap itself with a simple command check.
+
+**Why:** Verify Vectors failed before vector tests because `actions/setup-python` downloaded a corrupted Python archive and tar failed. The verifier script already creates its own Python virtualenv and installs pinned dependencies.
+
+**How to apply:**
+
+- Prefer `python3 --version` plus `python3 -m venv --help` when the script creates a venv itself.
+- Keep dependency pinning inside the repo-owned script where local and CI behavior match.
+- Reserve setup actions for cases where they provide semantic coverage that the repo script cannot supply.
+
+## Separate Dependency Install From Native Codegen In CI
+
+**Rule:** CI jobs that need Prisma-generated clients should install Node dependencies with lifecycle scripts disabled, then run `prisma generate` explicitly behind the retry/lock boundary.
+
+**Why:** Verify Vectors failed in `npm ci` because `server` postinstall ran Prisma generate and the native process exited `139`. When codegen is hidden inside lifecycle scripts, the workflow cannot retry or label the real failing operation.
+
+**How to apply:**
+
+- Use `npm ci --ignore-scripts` for dependency installation in narrowly-scoped CI jobs.
+- Run shared-module linking and `npx prisma generate` as named commands through `scripts/ci/retry-command.sh`.
+- Use `npm run test:run` for focused Vitest commands after generating Prisma once, so `pretest` does not re-run codegen before every test step.
+
+## Resolve Docker Before Starting CI Containers
+
+**Rule:** Forgejo workflows that start Docker services must run `scripts/ci/wait-for-docker.sh` before the first `docker` or `docker compose` command.
+
+**Why:** Verify Vectors reached Bitcoin Core startup after the dependency/codegen split, then failed because Docker was pointed at a `docker-in-docker` hostname that this runner could not resolve.
+
+**How to apply:**
+
+- Use the shared Docker wait helper instead of assuming a specific `DOCKER_HOST`.
+- Treat the Docker CLI endpoint and published service host as separate values; remote Docker port mappings are not necessarily reachable on job-container loopback.
+- Keep endpoint parsing in `scripts/ci/docker-endpoint-lib.sh` so workflow helpers and repo scripts do not drift.
+- Add the helper to workflow path filters when a workflow depends on it.
+- Resolve Docker once per job before repo scripts that start containers, so scripts can stay portable across local, hosted, and Forgejo runner environments.
+
+## Keep Crypto Primitives Portable Across CI Images
+
+**Rule:** Verification scripts that need Bitcoin HASH160 must not assume `hashlib.new('ripemd160')` is available in every CI Python/OpenSSL build.
+
+**Why:** Verify Vectors reached the real vector checks after the Forgejo Docker fixes, but the Python verifier failed every HASH160 path on a runner image where RIPEMD160 was unavailable through `hashlib`.
+
+**How to apply:**
+
+- Prefer the verifier's pinned crypto dependency for RIPEMD160 fallback instead of relaxing consensus requirements.
+- Keep direct `hashlib.new('ripemd160')` calls behind one helper so single-sig and multisig paths share the same behavior.
+- Locally rerun the repeatable verifier after cryptographic fallback changes; fixture drift checks should still pass.
+
+## Validate Native CI Tools Inside The Retry Boundary
+
+**Rule:** CI tool installation retries must include the executable validation command, not only package installation.
+
+**Why:** Code Quality failed after Semgrep installed because `semgrep --version` exited with native `139`. The first install attempt also hit a package hash mismatch, so reusing the same venv/cache was not a reliable recovery path.
+
+**How to apply:**
+
+- Install each native Python/Node tool in a fresh temp workspace per attempt when validating the executable fails.
+- Disable package caches on retry after download integrity errors or native crashes.
+- Keep the installer in a tested script instead of embedding multi-branch retry logic directly in workflow YAML.
+
+## Treat Runner Toolchains As Explicit Contracts
+
+**Rule:** Required PR workflows should verify preinstalled runner toolchains with repo-owned scripts before running package managers, instead of downloading Node/Python in every job.
+
+**Why:** Forgejo jobs kept failing before repo code ran: `setup-node` exited `139` while adding Node to cache, and `setup-python` failed extracting a corrupt archive. The same issue resurfaced across unrelated jobs because toolchain setup was still hidden inside provider actions.
+
+**How to apply:**
+
+- Use workflow actions for orchestration, not fragile per-job toolchain mutation when the runner image already owns the toolchain.
+- Put version checks in small scripts with local tests, and reuse them across Quality/Test/Verify workflows.
+- Invoke repo scripts through `bash` unless the executable bit is intentionally part of the contract and verified in tests.
+- Create Python virtualenvs in run-scoped temp directories by default; never reuse a repo-local venv across CI jobs unless the reuse path has corruption detection and cleanup.
+
+## Scope Every Optional Service Port To The Test Run
+
+**Rule:** Docker-backed fixtures that enable optional services must derive all host ports from the run-scoped test port allocation, not from fixed "isolated" constants.
+
+**Why:** The optional-profiles upgrade fixture used fixed monitoring and Jaeger ports. On the shared runner, a leftover or sibling service could hold one of those ports, causing the fixture to fail before backend health even though the core upgrade path was healthy.
+
+**How to apply:**
+
+- Treat app ports and optional service ports as one allocation family.
+- Preserve explicit operator overrides, but make CI defaults derive from `install-test-ports.sh` or the harness `HTTPS_PORT`.
+- Unit test the derived port range so future fixtures do not quietly reintroduce fixed host ports.
+- When locally verifying uncommitted CI fixes inside isolated clones, apply the working-tree diff to the clone before running the repro; otherwise the clone only tests committed `HEAD`.
 
 ## Treat Explicit Installer Sources As Authoritative
 
@@ -705,7 +976,7 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Never pass `prefix_rule` for `rm -rf`, `git clean`, reset/checkout cleanup, or similar destructive operations.
 - Prefer writing generated artifacts to ignored, task-specific temp paths that do not require cleanup during the same turn.
 - If cleanup is necessary, request one-off approval for the exact path and command only.
-- After a mistaken approval, remove the matching line from `/home/nekoguntai/.codex/rules/default.rules` and verify no broad destructive rule remains.
+- After a mistaken approval, remove the matching line from the local Codex rules file and verify no broad destructive rule remains.
 
 ## Treat open PRs as a managed queue before adding more PRs
 
@@ -791,7 +1062,7 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 
 **Rule:** Do not wrap `gh` commands with per-command environment prefixes such as `TMPDIR=...` unless there is a concrete failure that requires it. Prefer plain `gh pr ...`, `gh run ...`, or `gh api ...` so approval rules match stable command prefixes.
 
-**Why:** The user corrected the workflow after repeated `TMPDIR=/home/nekoguntai/sanctuary/.tmp-gh gh ...` commands required changing approvals for each PR/check/run variant.
+**Why:** The user corrected the workflow after repeated `TMPDIR=<project-checkout>/.tmp-gh gh ...` commands required changing approvals for each PR/check/run variant.
 
 **How to apply:**
 
@@ -1193,3 +1464,477 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Prefer `mktemp`-scoped cleanup for tests and generated staging directories.
 - Do not run broad cleanup commands or remove repo files without a fresh, one-off permission.
 - Mention self-temp cleanup before running tests that create and remove their own temporary directories.
+
+## Re-poll Before Declaring CI Stable
+
+**Rule:** When Forgejo checks are still queued or a manual run is pending, do not describe the branch as stable from an earlier poll. Re-poll immediately before answering and name any remaining queued, running, or failed job.
+
+**Why:** A later manual install run failed `Install Stack Smoke` after the previous poll showed no failures. Saying there were no failures was stale within minutes.
+
+**How to apply:**
+
+- Treat queued manual runs as unresolved until their final task list is checked.
+- Separate required PR checks from optional/manual full-lane checks in status updates.
+- If the user says the UI still shows a failure, trust that signal first and refresh the task list before explaining.
+
+## Normalize Forgejo Concurrency By Branch
+
+**Rule:** Core Forgejo workflows that share a runner workspace must use the same concurrency key for pull request, manual, and push runs on the same branch or ref.
+
+**Why:** A manual install `all` run and the automatic pull-request install run used different keys (`PR number` versus branch ref), so they overlapped on the same runner workspace and the manual fresh install failed before the E2E body could run.
+
+**How to apply:**
+
+- Prefer `github.event.pull_request.head.ref || github.ref_name || github.ref` for branch-scoped workflow concurrency on this runner.
+- Dispatch manual reruns only after confirming any older run on the same head has either completed or is queued behind the same key.
+- Treat very fast Docker E2E failures during checkout/setup as runner-workspace races until timing proves the test body ran.
+
+## Do Not Trust Forgejo Matrix Serialization
+
+**Rule:** Docker-backed install or upgrade lanes that must run one at a time should be written as explicit sequential steps or jobs, not as a matrix relying on `max-parallel: 1`.
+
+**Why:** The manual install `all` run started both upgrade-baseline matrix cells at the same second and both failed before the upgrade body could run. The workflow declared `max-parallel: 1`, but Forgejo still scheduled the matrix cells together.
+
+**How to apply:**
+
+- Use one job with sequential fixture steps for shared Docker/checkout install lanes.
+- Keep a cleanup trap inside each fixture step so a failed fixture does not leave its compose project running.
+- Reserve matrices for fast, isolated checks where simultaneous workspace access is harmless.
+
+## Avoid Chmod Mutations In Shared Checkouts
+
+**Rule:** CI jobs using `actions/checkout` with `clean: false` must not run broad `chmod +x` over tracked globs. Invoke scripts with `bash` or commit the intended executable bits instead.
+
+**Why:** Install jobs changed executable bits on tracked shell files in the shared workspace. The next manual install checkout then failed within seconds before the E2E body could run.
+
+**How to apply:**
+
+- Treat mode-only diffs as workspace pollution when a Forgejo job fails during setup.
+- Remove chmod setup steps once scripts are executable in git or called through `bash`.
+- If a workflow needs generated files executable, chmod only generated paths under ignored scratch directories.
+
+## Keep Manual Docker E2E Setup In One Job
+
+**Rule:** When Forgejo fails a Docker-backed manual E2E job before the test body but the same command passes in the runner image, remove unnecessary preceding jobs and run prerequisite checks inside the Docker E2E job after its checkout.
+
+**Why:** A targeted manual fresh-install run passed determine-scope and standalone unit tests, then failed before starting the Fresh Install E2E script. The same fresh-install command passed from a clean clone in the runner image, pointing to the workflow handoff rather than product behavior.
+
+**How to apply:**
+
+- Keep unit scripts as a gate, but colocate them with the manual Docker E2E job when the standalone unit job is only a prerequisite.
+- Re-run the targeted manual suite first before re-running the broad `all` suite.
+- Treat "passes in runner image, fails before body in Forgejo" as workflow orchestration evidence, not an app regression.
+
+## Pin Forgejo Base Ref Fetches To Forgejo
+
+**Rule:** PR-only CI steps that fetch the base branch must set `origin` to `${{ github.server_url }}/${{ github.repository }}.git` and run with `GIT_TERMINAL_PROMPT=0` before `git fetch`.
+
+**Why:** Mirrored Forgejo repositories can retain GitHub metadata in event payloads and checkout state. A drift-check fetch of `origin/main` can fail against GitHub even though the PR is running on Forgejo.
+
+**How to apply:**
+
+- Use env variables for `BASE_REF` and `REPO_URL` instead of interpolating PR fields directly in shell.
+- Rewrite `origin` immediately before the fetch in jobs that need the base ref.
+- Treat GitHub credential prompts or fast fetch failures on Forgejo as stale-origin bugs first.
+
+## Adapt Legacy Upgrade Sources To Containerized Runners
+
+**Rule:** Upgrade tests that install older source refs must adapt legacy compose files for runner-specific path translation before invoking the old install script.
+
+**Why:** Older tags mounted `SANCTUARY_SSL_DIR` directly. Inside Forgejo's containerized runner that path is not necessarily visible to the host Docker daemon, so certs are generated in one path while the frontend container receives an empty mount and fails its HTTPS healthcheck.
+
+**How to apply:**
+
+- Keep generated SSL material under run-scoped test roots.
+- Pass both container-local and Docker-visible SSL paths through the harness.
+- Patch only disposable source worktrees; never mutate the checked-in target compose file or the released tag.
+
+## Use Docker-Visible Browser Hosts In Upgrade Smoke
+
+**Rule:** Upgrade browser-visible smoke tests must default to the harness' Docker-visible host, not literal `localhost`, when running inside a containerized CI runner.
+
+**Why:** Inside the runner container, `localhost` points at the runner container itself, while the application is published by the host Docker daemon. The stack can be healthy and API checks can pass, but browser-origin smoke fails with an empty response.
+
+**How to apply:**
+
+- Derive baseline upgrade browser hosts from the same default-install-test-host helper used for API traffic.
+- Keep `localhost` as the default only when the host helper resolves to it.
+- Add fixture-default unit tests for baseline behavior, not only the special browser-origin fixture.
+
+## Prefer Checked-Out Base SHAs For Forgejo Drift Checks
+
+**Rule:** PR drift checks should diff against the checked-out PR base SHA when checkout already has full history, instead of performing an extra authenticated fetch in a temp clone.
+
+**Why:** Temp clones used for container-safe architecture work do not necessarily inherit Forgejo's checkout credentials. An extra fetch can prompt or fail even though the base commit is already available from a full checkout.
+
+**How to apply:**
+
+- Set `fetch-depth: 0` on architecture checkout when drift detection needs the PR base.
+- Pass `${{ github.event.pull_request.base.sha }}` to the drift detector.
+- Avoid resetting remotes or fetching from temp clones unless the base object is genuinely missing.
+
+## Keep CI Quality Helpers And Local Checks Aligned
+
+**Rule:** CI quality jobs should call the same repo helper used for local verification instead of duplicating long tool invocations inline.
+
+**Why:** The lizard gate passed locally through the helper but the workflow still owned a separate install and invocation path. Duplicated command surfaces make runner-only failures harder to reproduce and easy to fix in only one place.
+
+**How to apply:**
+
+- Prefer small `scripts/quality/*` entrypoints for long tool commands.
+- Skip unrelated quality stages explicitly in focused helper scripts.
+- Verify the helper locally before pushing workflow changes that call it.
+
+## Keep Root-Writing CI Installs Out Of Shared Checkouts
+
+**Rule:** Forgejo jobs that run `npm ci` inside a containerized action should install in a disposable temp clone when the runner cleanup or later jobs touch the shared checkout.
+
+**Why:** A containerized architecture repro succeeded through dependency installation but left root-owned `node_modules` in the host-mounted clone, causing cleanup to fail with permission errors. The same ownership pattern can make a successful job report failed during teardown.
+
+**How to apply:**
+
+- Clone the checked-out source into a `mktemp` directory under `RUNNER_TEMP` before dependency-heavy architecture/docs work.
+- Run installs, generated-graph checks, typechecks, and docs builds inside that temp clone.
+- Remove only the exact temp clone in an `always()` cleanup step, and copy artifacts back to the workspace only when a later action needs them.
+
+## Run Duplication Gates From Clean Clones
+
+**Rule:** CI duplicate-code scans should read from a clean tracked-source clone and write reports outside the shared checkout.
+
+**Why:** jscpd can fail or drift when a Forgejo runner checkout contains stale generated coverage/report directories from earlier jobs. Writing reports back into the checkout also adds another mutable path for later jobs to trip over.
+
+**How to apply:**
+
+- Use a temp clone as the scan input for jscpd and similar whole-repo source scanners.
+- Put scanner reports under an exact run-scoped temp path and upload from there.
+- Keep generated coverage variants such as `coverage-*` excluded from duplicate detection.
+
+## Serialize PR Quick Browser Lanes
+
+**Rule:** Browser-based PR quick lanes that share a checkout, Playwright output directories, build artifacts, or localhost ports must take the same runner lock as full E2E lanes.
+
+**Why:** Quick browser smoke and quick render regression can run at the same time on Forgejo. Both install dependencies, install browsers, build the frontend, and run Playwright against the same workspace and default ports.
+
+**How to apply:**
+
+- Put the lock around the whole install/build/test sequence, not only the final Playwright command.
+- Keep Playwright caches outside the locked section when they are restored by Actions, but do not let workspace-mutating commands overlap.
+- Prefer the existing repo lock helper and workspace lock directory instead of inventing per-job ad hoc locks.
+
+## Avoid Setup Caches In Temp-Clone Jobs
+
+**Rule:** When a workflow installs and tests inside a disposable temp clone, do not also enable setup-node dependency caching against the outer shared checkout.
+
+**Why:** The temp clone is the isolation boundary. A cache action tied to the mutable outer checkout can fail before the repo command body starts, which makes local command reproduction pass while Forgejo still reports the job failed.
+
+**How to apply:**
+
+- Keep setup-node limited to installing the requested Node version for temp-clone jobs.
+- Run `npm ci` inside the temp clone, then run the actual lint/typecheck/test command there.
+- Create the runner temp parent with `mkdir -p` before `mktemp` so runners with missing `RUNNER_TEMP` directories do not fail in setup.
+- Give temp-clone `npm ci` calls a cache under that same temp workspace, and serialize multi-package installs when Forgejo failures are not reproducible from the command body.
+- Treat temp-clone cleanup as best-effort in CI jobs; a cleanup ownership mismatch should warn, not fail a job whose gate already passed.
+- Disable install-time `npm ci` audit/fund network work in CI setup steps and keep vulnerability enforcement in the dedicated audit job.
+- Keep Semgrep virtualenvs and reports out of shared checkouts on Forgejo; install and upload from run-scoped temp paths just like other whole-repo quality scanners.
+
+## Reuse One CI Workspace Isolation Primitive
+
+**Rule:** New Forgejo workflow isolation should use the repo's shared isolated-workspace helper instead of adding another hand-rolled temp clone.
+
+**Why:** A one-off Architecture temp clone passed locally but still failed remotely without retrievable logs. The shared helper already checks out the exact source HEAD and gives us one place to improve clone, cleanup, and failure-preservation behavior.
+
+**How to apply:**
+
+- Use `scripts/ci/create-isolated-workspace.sh` or `scripts/ci/run-in-isolated-workspace.sh` for workflow jobs that need clean tracked source.
+- Keep named workflow steps for long gates so the failing phase is visible.
+- Clean isolated workspaces after success, but preserve them on failure when remote logs are missing or incomplete.
+- Add the helper path to workflow triggers when a workflow relies on it.
+
+## Keep Quality Scanner Entry Points Shared
+
+**Rule:** Whole-repo quality scanners should have a repo-owned script entrypoint, and workflows should invoke that script through the shared isolated-workspace helper instead of embedding scanner setup in YAML.
+
+**Why:** The jscpd job failed remotely while the same clean-clone command passed locally, and the previous workflow still had bespoke clone/run logic. Keeping the command in `scripts/quality/jscpd-only.sh` gives local and CI runs the same scanner behavior and leaves only one workspace-isolation path to harden.
+
+**How to apply:**
+
+- Put scanner cache/report setup in `scripts/quality/*` scripts, not workflow heredocs.
+- Run Forgejo whole-repo scanners through `scripts/ci/run-in-isolated-workspace.sh --keep-on-failure` when remote logs may be incomplete.
+- Keep local aggregate scripts, such as `scripts/quality.sh`, delegating to the same scanner entrypoints used by CI.
+
+## Retry Native Tool Crashes At CI Boundaries
+
+**Rule:** Bounded retries are appropriate around CI setup/build commands that can crash natively in the runner container, as long as the real validation still runs and a deterministic failure remains blocking.
+
+**Why:** Architecture passed lint, drift, graph regeneration, and typecheck, then Docusaurus exited with `139` from a native segmentation fault. The same job had already recovered from a transient `npm ci` segfault because dependency setup used a three-attempt retry loop.
+
+**How to apply:**
+
+- Use retries around package install and docs/build commands that depend on Node/native toolchains in Forgejo containers.
+- Include generated graph commands in the same native-tool retry boundary; stale generated output still has to pass the later `git diff --exit-code` check.
+- Include ESLint command boundaries in the same retry pattern when logs show a native `139` after earlier lint phases pass without findings.
+- When a frontend test fails while parsing a dependency under `node_modules`, retry the whole isolated workspace command so the retry gets a fresh install instead of reusing the suspect dependency tree.
+- Keep retries bounded, visible in logs, and scoped to whole idempotent commands.
+- Do not retry semantic checks by weakening assertions; rerun the same command and fail after the last attempt.
+- Centralize retry behavior in `scripts/ci/retry-command.sh` when more than one workflow path needs the same transient-crash handling.
+
+## Keep Docker Upgrade Fixtures In One Runner Job
+
+**Rule:** Long Docker-backed upgrade fixtures should run sequentially inside one job unless the runner label explicitly guarantees identical Docker access for every matrix child.
+
+**Why:** The baseline upgrade job passed, then each extended matrix child failed before test assertions because the child context could not reach Docker. A runner lock serialized command bodies, but it could not control which runner/container context Forgejo scheduled for each matrix child.
+
+**How to apply:**
+
+- Use one job plus a fixture loop for install upgrade fixtures that all need the same Docker daemon.
+- Preserve fixture observability with log groups and artifact directories instead of splitting into matrix jobs on a heterogeneous runner pool.
+- Treat install CI helper changes as upgrade-relevant so non-PR lanes exercise the helper paths that orchestrate upgrade fixtures.
+
+## Wait For Docker Before Install E2E Bodies
+
+**Rule:** Docker-backed install jobs should use one shared Docker readiness helper before starting install, stack, or upgrade E2E bodies.
+
+**Why:** A focused manual upgrade dispatch failed before assertions because Docker was not reachable at the first CLI call in the baseline job container. Immediate checks make runner endpoint startup races look like installer failures.
+
+**How to apply:**
+
+- Call the shared readiness helper in each Docker-backed install workflow job.
+- Let the helper probe supported endpoint shapes and persist the working `DOCKER_HOST` for later workflow steps.
+- Keep the timeout bounded and fail with a clear Docker-boundary error if the endpoint never appears.
+- Route changes to the Docker readiness helper through install upgrade coverage, because it gates baseline and extended upgrade tests.
+
+## Keep Install E2E Off Compose Bake
+
+**Rule:** Install E2E workflows should prefer the direct Compose build path and leave Buildx/Bake-specific coverage to the Docker Build workflow.
+
+**Why:** A focused upgrade run reached the legacy source install, then Buildx/Bake failed while exporting an image layer with an invalid tar header. That failure exercises runner build-cache/export behavior, not installer semantics.
+
+**How to apply:**
+
+- Set install workflow `COMPOSE_BAKE=false` so installer tests do not depend on Compose Bake.
+- Keep Docker Build CI as the place that validates buildx behavior.
+- If install E2E fails during image export rather than app assertions, inspect whether the workflow accidentally reintroduced buildx-specific behavior.
+
+## Fix Workflow Shell Findings Instead Of Moving Baselines
+
+**Rule:** Do not keep updating Semgrep baseline line numbers for GitHub Actions shell-injection findings. Remove the risky workflow shape.
+
+**Why:** The install test summary used `${{ ... }}` expressions directly inside a `run:` block, so normal workflow edits churned the Semgrep source fingerprint and made the gate look like a line-number maintenance problem.
+
+**How to apply:**
+
+- Pass `github`, `inputs`, `matrix`, and `needs` values through step `env:` before shell code uses them.
+- Quote those environment variables in shell conditions and output commands.
+- Remove stale baseline entries when the workflow no longer has the finding, rather than re-fingerprinting the old pattern.
+
+## Keep Diagnostic Artifact Uploads Non-Blocking
+
+**Rule:** Quality scanner report uploads should help diagnosis, not decide pass/fail after the scanner command has already enforced the gate.
+
+**Why:** A Forgejo Code Quality run passed the earlier quality stages, then the jscpd job failed remotely while the same direct and isolated jscpd commands passed locally. The report upload sits after the real scanner gate and depends on the artifact service rather than repository correctness.
+
+**How to apply:**
+
+- Keep scanner commands blocking and unchanged; retry the whole scanner command only at an idempotent command boundary.
+- Mark diagnostic artifact upload steps `continue-on-error: true` so report service failures do not fail Code Quality.
+- Keep cleanup in `always()` steps so report paths do not accumulate on successful runs.
+
+## Bound Quick E2E Lock Waits
+
+**Rule:** Quick E2E jobs that acquire the shared runner lock need explicit job timeouts and a shorter lock wait than long full-suite/install jobs.
+
+**Why:** A stale prior-head Test Suite run sat in Quick Browser Smoke long enough to block newer PR-head workflows. Without a job timeout, lock contention or a stuck browser setup can look like no progress instead of a bounded failure.
+
+**How to apply:**
+
+- Add `timeout-minutes` to quick browser/render jobs, not only the full E2E jobs.
+- Set `SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS` for quick E2E jobs so lock contention fails with a clear boundary.
+- Keep longer lock waits only for intentionally long install/upgrade paths that have their own job timeout.
+
+## Scope Workflow Concurrency By Workflow
+
+**Rule:** PR workflow concurrency groups should include the workflow name and cancel obsolete pull-request runs.
+
+**Why:** A stale Test Suite run blocked unrelated Architecture, Docker Build, Install Tests, and Code Quality workflows because they all shared one branch-wide group with `cancel-in-progress: false`.
+
+**How to apply:**
+
+- Use `${{ github.workflow }}` in concurrency groups for independent workflows.
+- Include `${{ github.event_name }}` when manual dispatches should not be canceled by PR updates.
+- Use `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` so new PR pushes replace obsolete runs of the same workflow.
+
+## Retry Semgrep Infrastructure, Not Findings
+
+**Rule:** Semgrep CI retries should cover installation and scan infrastructure errors, while the baseline comparison remains the deterministic gate.
+
+**Why:** Local Semgrep plus baseline passed with the current tree while Forgejo failed the Semgrep job before later quality stages. The likely failure class is registry/package/runner execution, not a new repository finding.
+
+**How to apply:**
+
+- Use the shared retry helper for Semgrep package installation.
+- Retry `semgrep scan` only when Semgrep exits with an infrastructure status greater than `1`.
+- Run `check-semgrep-baseline.mjs` once after a usable report is produced; do not retry or soften new/stale finding failures.
+
+## Preserve Remote Evidence For Opaque Quick Jobs
+
+**Rule:** When Forgejo only exposes job-level failure through the API, quick isolated-workspace jobs should preserve failed workspaces until the root cause is known.
+
+**Why:** Quick Frontend passed locally with the same detected file list, but the remote job failed without API-accessible step logs. Deleting the isolated workspace on failure removed the most useful remaining evidence.
+
+**How to apply:**
+
+- Use `scripts/ci/run-in-isolated-workspace.sh --keep-on-failure` on opaque quick jobs while debugging remote-only failures.
+- Keep the normal success cleanup path so passing jobs do not accumulate workspaces.
+- Remove the preservation flag later only after the remote failure mode is understood and covered.
+
+## Do Not Let Browser Cache Restore Gate E2E
+
+**Rule:** Playwright browser cache restore is an optimization and should not be a blocking E2E gate.
+
+**Why:** Quick Browser Smoke failed within seconds after Quick Frontend passed, before the browser install/build/test body could plausibly run. The cache restore step sits before the real validation and depends on runner cache service state.
+
+**How to apply:**
+
+- Mark `Cache Playwright browsers` steps `continue-on-error: true`.
+- Keep the subsequent `npx playwright install --with-deps chromium` step blocking so browsers are still actually installed.
+- Preserve failed quick browser/render isolated workspaces while diagnosing remote-only E2E failures.
+
+## Avoid Setup Actions For Self-Contained Tool Venvs
+
+**Rule:** If a quality job creates its own virtualenv and installs a pinned tool, prefer the runner's system interpreter over an extra setup action unless the version is semantically required.
+
+**Why:** The Semgrep job failed within seconds on Forgejo, before the scan/install path could run. The `actions/setup-python` boundary was an avoidable remote action dependency because the job already creates an isolated venv and pins Semgrep.
+
+**How to apply:**
+
+- Use `python3`/`python` from the runner for self-contained venv bootstraps.
+- Keep setup actions where the job needs a specific interpreter version for repository code semantics.
+- Keep the pinned tool install and scanner/baseline gate unchanged after removing the setup action.
+
+## Prefer Verified Runner Toolchains For Flaky Setup Boundaries
+
+**Rule:** On self-hosted Forgejo lanes, use an already-provisioned runner toolchain with an explicit version check when setup actions are failing before the real validation starts.
+
+**Why:** Architecture failed quickly on Forgejo while the complete architecture command sequence passed locally. The setup-node action was not adding cache behavior or semantic coverage in that job; it was just another remote setup boundary before the actual graph/site checks.
+
+**How to apply:**
+
+- Replace avoidable setup actions with `node --version` / `npm --version` and an explicit major-version assertion when the runner is provisioned with the required toolchain.
+- Keep setup actions for jobs that must test multiple versions or cannot rely on the runner image.
+- Do not remove the real validation commands; only remove the flaky setup boundary before them.
+
+## Quick E2E Failures Need Durable Artifacts
+
+**Rule:** Quick browser/render jobs that run in isolated workspaces must copy Playwright reports/results back to the original workspace before upload.
+
+**Why:** Quick Browser Smoke failed remotely after Quick Frontend passed, but the isolated workspace cleanup and Forgejo task API left no useful failure artifact to inspect.
+
+**How to apply:**
+
+- Use a shared artifact collector instead of duplicating inline `cp` blocks per job.
+- Install the collector as an `EXIT` trap inside the isolated workspace so failures still copy evidence.
+- Mark diagnostic artifact uploads `continue-on-error`; report upload problems should not turn a passing test into a failing gate.
+
+## Retry Playwright OS Dependency Installs
+
+**Rule:** `npx playwright install --with-deps` is an external package-manager boundary and should use the shared CI retry helper.
+
+**Why:** Quick Browser Smoke failed before the application build or Playwright test because Ubuntu package metadata changed mid-fetch during the Playwright dependency install.
+
+**How to apply:**
+
+- Wrap `npx playwright install --with-deps chromium` with `scripts/ci/retry-command.sh` in quick and full E2E jobs.
+- Keep the Playwright install blocking; retries only cover transient package-manager and mirror-sync failures.
+- Do not retry the Playwright assertions themselves unless the test has an explicit, understood transient dependency.
+
+## Probe Browser Runtime Before Apt
+
+**Rule:** Browser E2E jobs should verify whether cached/restored browsers can already launch before invoking OS package installation.
+
+**Why:** Retrying Playwright's `--with-deps` path still kept apt mirror state on the critical path, even when the browser cache was already restored.
+
+**How to apply:**
+
+- Run `npx playwright install chromium` first so the browser binary is present from cache or download.
+- Launch Chromium headlessly as the real dependency probe.
+- Only run `npx playwright install-deps chromium` when the launch probe fails, and keep that dependency install retried.
+
+## Serialize Small Related-Test Lanes On Forgejo
+
+**Rule:** PR quick related-test lanes should favor deterministic worker settings over maximum parallelism when the related set is small.
+
+**Why:** Quick Frontend completed all related tests, then failed because Vitest's fork pool emitted `EPIPE`; another attempt segfaulted in `tsc`. The issue was process-pool instability, not a test assertion.
+
+**How to apply:**
+
+- Use `--pool threads --maxWorkers=1 --no-file-parallelism` for small related-test subsets on Forgejo.
+- Keep full coverage lanes parallelized where sharding is explicit and the job owns enough work to justify it.
+- Treat worker crashes and EPIPE after passing assertions as CI execution architecture problems, not flaky test expectations.
+
+## Build Shared Images Once In Compose
+
+**Rule:** A Compose stack should not define the same local image tag as a build output for multiple services.
+
+**Why:** Legacy upgrade runs exported `sanctuary-backend:local` from backend, worker, and migrate at the same time. Modern BuildKit/Bake can race or corrupt the image export, and the old installer then failed later with missing containers.
+
+**How to apply:**
+
+- Put the `build:` block on the service that owns the image, then let sibling services reuse the image with `pull_policy: never`.
+- For upgrade tests against older tags, adapt disposable legacy worktrees before install instead of committing brittle line-number expectations or changing release history.
+- Treat Docker build failures as hard setup failures once the duplicate-build race is removed.
+
+## Redact Installer Output Before CI Logs
+
+**Rule:** Install and upgrade harnesses must redact installer output before it reaches CI stdout or uploaded logs.
+
+**Why:** Verbose installer output can include generated runtime secrets and private runner paths while still being useful for diagnosing setup failures.
+
+**How to apply:**
+
+- Pipe installer output through the shared redactor before `tee` writes logs.
+- Keep redacted runtime env and service logs as artifacts; do not upload raw install logs.
+- Add unit assertions around the logging path, not just artifact collection.
+
+## Build Test Architecture Around Stable Contracts
+
+**Rule:** Installer, CI, and E2E tests should assert durable behavior contracts through repo-owned helpers, not incidental line numbers, exact transcript fragments, or provider-specific workflow mechanics.
+
+**Why:** Repeated Forgejo failures showed that brittle assertions and hidden CI setup behavior can make each fix break another lane. A mature test architecture keeps the provider boundary explicit, isolates state per run, and catches failures in small focused tests before spending time on long E2E reruns.
+
+**How to apply:**
+
+- Keep workflow YAML thin; put source selection, installer setup, toolchain checks, retries, redaction, and artifact collection in repo-owned scripts that have direct unit or contract tests.
+- Assert behavior and structured outcomes instead of source line numbers, full logs, or fragile wording. Use stable markers, fixtures, return codes, generated files, and parsed JSON where possible.
+- Treat Forgejo/GitHub Actions vocabulary as a compatibility syntax layer. External network calls, checkout origins, artifact actions, and release-source choices must be explicit adapter boundaries.
+- When the user explicitly chooses a source, test that only that source is contacted and failure is reported directly. When fallback is allowed, test that one failed source does not block probing the other.
+- Isolate temp directories, virtualenvs, caches, ports, containers, reports, and credentials per run. Never reuse fixed mutable `.tmp` state across CI jobs unless the test is specifically proving reuse.
+- Split long E2E coverage behind faster harness tests that exercise the same decision logic. A slow install or upgrade rerun should confirm integration, not discover basic parser or control-flow mistakes.
+- Keep provider-specific compatibility tests focused on observable contracts: no terminal prompts in CI, no GitHub fetch when Codeberg is explicit, redacted logs, deterministic artifacts, and stable required-check aggregation.
+- If an E2E fix requires repeatedly updating expected line numbers, stop and replace the expectation with a semantic assertion before continuing.
+
+## Host-Socket Docker Ports Need The Job Gateway
+
+**Rule:** A CI job container that talks to a host Docker daemon through a Unix socket must reach published container ports through the job container's default gateway, not through `127.0.0.1`.
+
+**Why:** Verify Vectors started Bitcoin Core successfully on Forgejo, but the verifier waited on loopback from inside the job container. The published RPC port belonged to the Docker host, so Bitcoin Core was healthy while the job-side readiness probe could not reach it.
+
+**How to apply:**
+
+- Centralize Docker published-host detection in the shared endpoint helper instead of hard-coding loopback in each workflow or test harness.
+- Keep loopback for normal host execution, but use the container gateway when a job is clearly running inside a container with a Unix Docker endpoint.
+- Add deterministic unit tests for host execution, TCP Docker endpoints, explicit `SANCTUARY_DOCKER_PUBLISHED_HOST`, and containerized Unix-socket execution.
+- Give environment-detection helpers an explicit test override so the same unit test passes on developer hosts and inside Forgejo job containers.
+- When a Docker service log shows healthy startup but the job cannot reach the published port, inspect the job-to-host network boundary before changing application code.
+
+## Retry Empty External Verifier Failures Only At The Boundary
+
+**Rule:** Cross-language verifier wrappers may retry subprocess failures that produce no stdout/stderr or terminate by signal, but they must not retry structured calculation errors returned by the verifier.
+
+**Why:** Forgejo reached the real address verifier after the Docker gateway fix, then `bip_utils` occasionally exited without diagnostics during multisig derivation. The address implementations otherwise agreed, so the brittle point was process startup/runtime stability, not vector correctness.
+
+**How to apply:**
+
+- Keep retries narrow and local to the external process boundary.
+- Preserve hard failures for JSON error responses, parse failures, or actual address disagreements.
+- Include exit code or signal in the final error so a repeated failure remains diagnosable.
+- Add regression tests that prove empty failures retry and structured verifier errors do not.
