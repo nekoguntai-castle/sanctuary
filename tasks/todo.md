@@ -21,6 +21,9 @@ Goal: clear the current post-merge `main` Test Suite failure without weakening t
 - Local verification of the patched coverage architecture passed: shard 1, shard 2, and merge completed with 459 files, 5,992 tests, and 100% statements, branches, functions, and lines.
 - The first local merge rerun usefully exposed one uncovered delayed animation callback in `WalletSummary`; that behavior is now covered directly with fake timers instead of an ignore comment or threshold change.
 - Focused quality checks also passed: frontend coverage script regression, frontend test typecheck, workflow action runtime guard, actionlint with the known Forgejo artifact-action ignore, lizard-only quality gate, shell syntax checks, whitespace check, and diff metadata scan.
+- PR #265 merged, and the replacement `main` run confirmed the fork-worker failure was gone. The same full coverage shard then exposed a different native runner failure: Vitest itself exited 139 during shard 2 before writing the second blob report.
+- The follow-up fix retries only exit 139 at the frontend coverage shard command boundary. Non-139 Vitest failures still fail immediately, preserving assertion and coverage failures as hard failures.
+- Local verification for the follow-up retry passed: coverage script regression tests cover both 139 retry and non-139 hard failure; real shard 2 completed and wrote its blob; lizard-only quality, whitespace, shell syntax, and diff metadata checks passed.
 
 ---
 

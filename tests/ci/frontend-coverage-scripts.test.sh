@@ -36,6 +36,15 @@ assert_file_contains() {
   grep -Fq -- "$expected" "$file" || fail "expected ${file} to contain: ${expected}"
 }
 
+assert_file_equals() {
+  local expected="$1"
+  local file="$2"
+  local actual
+  actual="$(cat "$file")"
+
+  [ "$actual" = "$expected" ] || fail "expected ${file} to equal ${expected}, got ${actual}"
+}
+
 main() {
   TEST_TEMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
@@ -69,6 +78,55 @@ FAKE_VITEST
   assert_file_contains '--no-file-parallelism' "$captured_args"
   assert_file_contains '--shard' "$captured_args"
   assert_file_contains '1/2' "$captured_args"
+
+  local retry_vitest_bin="$TEST_TEMP_DIR/retry-vitest"
+  local retry_count="$TEST_TEMP_DIR/retry-count"
+  cat >"$retry_vitest_bin" <<'RETRY_VITEST'
+#!/usr/bin/env bash
+set -euo pipefail
+attempt=1
+if [ -f "$CAPTURED_VITEST_ATTEMPTS" ]; then
+  attempt="$(($(cat "$CAPTURED_VITEST_ATTEMPTS") + 1))"
+fi
+printf '%s' "$attempt" >"$CAPTURED_VITEST_ATTEMPTS"
+if [ "$attempt" -eq 1 ]; then
+  exit 139
+fi
+mkdir -p .vitest-reports
+: > .vitest-reports/blob-1-2.json
+RETRY_VITEST
+  chmod +x "$retry_vitest_bin"
+
+  (
+    cd "$TEST_TEMP_DIR"
+    CAPTURED_VITEST_ATTEMPTS="$retry_count" VITEST_BIN="$retry_vitest_bin" bash "$SHARD_SCRIPT" 1 2
+  )
+  assert_file_equals '2' "$retry_count"
+
+  local fail_vitest_bin="$TEST_TEMP_DIR/fail-vitest"
+  local fail_count="$TEST_TEMP_DIR/fail-count"
+  local fail_output="$TEST_TEMP_DIR/fail-output"
+  cat >"$fail_vitest_bin" <<'FAIL_VITEST'
+#!/usr/bin/env bash
+set -euo pipefail
+attempt=1
+if [ -f "$CAPTURED_VITEST_ATTEMPTS" ]; then
+  attempt="$(($(cat "$CAPTURED_VITEST_ATTEMPTS") + 1))"
+fi
+printf '%s' "$attempt" >"$CAPTURED_VITEST_ATTEMPTS"
+echo 'non-retryable-vitest-failure' >&2
+exit 1
+FAIL_VITEST
+  chmod +x "$fail_vitest_bin"
+
+  if (
+    cd "$TEST_TEMP_DIR"
+    CAPTURED_VITEST_ATTEMPTS="$fail_count" VITEST_BIN="$fail_vitest_bin" bash "$SHARD_SCRIPT" 1 2
+  ) >"$fail_output" 2>&1; then
+    fail 'expected non-139 Vitest failure to fail'
+  fi
+  assert_file_contains 'non-retryable-vitest-failure' "$fail_output"
+  assert_file_equals '1' "$fail_count"
 
   assert_fails_with 'blob report directory does not exist' bash "$MERGE_SCRIPT" "$TEST_TEMP_DIR/missing"
   mkdir "$TEST_TEMP_DIR/empty-reports"

@@ -12,6 +12,7 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 
 - Put worker settings in the shard script, not only in workflow YAML, so local and remote coverage shards share the same execution contract.
 - Assert those worker flags in script-level regression tests; do not rely on brittle workflow line numbers.
+- Retry only native Vitest segfault exits, such as 139, at the shard command boundary; do not retry ordinary test assertion or coverage failures.
 - Keep 100% coverage thresholds intact. Worker-pool failures are CI execution architecture problems, not permission to lower the gate.
 - Classify failures by signature before editing tests: assertion failures, coverage misses, workflow graph failures, native process exits, and worker startup failures need different fixes.
 

@@ -14,6 +14,51 @@ is_positive_integer() {
   [[ "${1:-}" =~ ^[1-9][0-9]*$ ]]
 }
 
+run_vitest_shard_once() {
+  local vitest_bin="$1"
+  local shard_index="$2"
+  local shard_total="$3"
+  local expected_blob="$4"
+
+  rm -f "$expected_blob"
+  rm -rf coverage-shards
+
+  "$vitest_bin" run \
+    --pool threads \
+    --maxWorkers=1 \
+    --no-file-parallelism \
+    --coverage \
+    --config vitest.coverage-shard.config.ts \
+    --shard "${shard_index}/${shard_total}"
+}
+
+run_vitest_shard_with_native_retry() {
+  local vitest_bin="$1"
+  local shard_index="$2"
+  local shard_total="$3"
+  local expected_blob="$4"
+  local attempts="${SANCTUARY_FRONTEND_COVERAGE_SEGFAULT_ATTEMPTS:-2}"
+
+  is_positive_integer "$attempts" || fail 'SANCTUARY_FRONTEND_COVERAGE_SEGFAULT_ATTEMPTS must be a positive integer'
+
+  local attempt status
+  for attempt in $(seq 1 "$attempts"); do
+    set +e
+    run_vitest_shard_once "$vitest_bin" "$shard_index" "$shard_total" "$expected_blob"
+    status="$?"
+    set -e
+
+    if [ "$status" -eq 0 ]; then
+      return 0
+    fi
+    if [ "$status" -ne 139 ] || [ "$attempt" -eq "$attempts" ]; then
+      return "$status"
+    fi
+
+    echo "frontend-coverage-shard: Vitest exited 139; retrying shard ${shard_index}/${shard_total} (attempt $((attempt + 1))/${attempts})" >&2
+  done
+}
+
 main() {
   if [ "$#" -ne 2 ]; then
     usage
@@ -40,16 +85,7 @@ main() {
 
   local expected_blob=".vitest-reports/blob-${shard_index}-${shard_total}.json"
   mkdir -p .vitest-reports
-  rm -f "$expected_blob"
-  rm -rf coverage-shards
-
-  "$vitest_bin" run \
-    --pool threads \
-    --maxWorkers=1 \
-    --no-file-parallelism \
-    --coverage \
-    --config vitest.coverage-shard.config.ts \
-    --shard "${shard_index}/${shard_total}"
+  run_vitest_shard_with_native_retry "$vitest_bin" "$shard_index" "$shard_total" "$expected_blob"
 
   if [ ! -f "$expected_blob" ]; then
     fail "expected Vitest blob report at ${expected_blob}"
