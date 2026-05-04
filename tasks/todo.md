@@ -1,3 +1,29 @@
+# Active Task: Post-Merge Frontend Coverage Worker Failure 2026-05-04
+
+Status: in progress
+
+Goal: clear the current post-merge `main` Test Suite failure without weakening the 100% frontend coverage gate or repeating brittle test edits.
+
+## Plan
+
+- [x] Compare the latest red job with the backend worker and install/quality failures already fixed.
+- [x] Confirm the failure signature is frontend Vitest fork-worker startup/termination, not an application assertion failure.
+- [x] Move frontend coverage shards to the stable Vitest thread-pool/no-file-parallelism contract.
+- [x] Add a script regression check for the worker flags instead of line-number-based workflow assertions.
+- [x] Run focused local frontend coverage script checks and at least one real coverage shard with the patched worker contract.
+- [ ] Commit, push, open the follow-up PR, monitor strict checks, merge when green, and verify the replacement `main` push lane.
+
+## Review
+
+- The merged backend stabilization stayed effective on the replacement `main` push: full backend typecheck, unit coverage, all backend integration groups, frontend typechecks, gateway, and AI proxy tests passed before the red gate.
+- The current red gate is distinct from the prior backend failures. `Full Frontend Coverage Shards` failed after test execution had largely completed, with Vitest fork-worker startup/termination errors rather than a deterministic failed assertion.
+- The coverage gate remains strict. The fix is to stabilize the Vitest worker architecture for frontend coverage shards, not lower coverage thresholds or skip tests.
+- Local verification of the patched coverage architecture passed: shard 1, shard 2, and merge completed with 459 files, 5,992 tests, and 100% statements, branches, functions, and lines.
+- The first local merge rerun usefully exposed one uncovered delayed animation callback in `WalletSummary`; that behavior is now covered directly with fake timers instead of an ignore comment or threshold change.
+- Focused quality checks also passed: frontend coverage script regression, frontend test typecheck, workflow action runtime guard, actionlint with the known Forgejo artifact-action ignore, lizard-only quality gate, shell syntax checks, whitespace check, and diff metadata scan.
+
+---
+
 # Active Task: Post-Merge Main Push Workflow Failures 2026-05-04
 
 Status: in progress

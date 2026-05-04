@@ -2,6 +2,19 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Use Stable Worker Pools For Frontend Coverage CI
+
+**Rule:** Frontend coverage shard jobs in Forgejo CI should run Vitest with the thread pool, one worker, and no file parallelism unless a later runner rehearsal proves broader parallelism stable.
+
+**Why:** The post-merge `main` lane kept backend and frontend typechecks green, then failed in frontend coverage after Vitest reported passed test files but hit fork-worker startup and termination errors.
+
+**How to apply:**
+
+- Put worker settings in the shard script, not only in workflow YAML, so local and remote coverage shards share the same execution contract.
+- Assert those worker flags in script-level regression tests; do not rely on brittle workflow line numbers.
+- Keep 100% coverage thresholds intact. Worker-pool failures are CI execution architecture problems, not permission to lower the gate.
+- Classify failures by signature before editing tests: assertion failures, coverage misses, workflow graph failures, native process exits, and worker startup failures need different fixes.
+
 ## Use Workspace-Absolute Paths For Repo-Root CI Helpers
 
 **Rule:** Workflow steps must invoke repo-root helper scripts through `${{ github.workspace }}/scripts/...`, especially when a job or later edit may set `working-directory`.

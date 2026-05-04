@@ -1,4 +1,4 @@
-import { render,screen } from '@testing-library/react';
+import { act,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { WalletSummary } from '../../../components/Dashboard/WalletSummary';
@@ -101,6 +101,30 @@ describe('WalletSummary', () => {
     const segment = container.querySelector('[style*="width: 0%"]') as HTMLElement;
     expect(segment).toBeInTheDocument();
     expect(screen.getByText('Synced')).toBeInTheDocument();
+  });
+
+  it('animates wallet distribution bars after mount', () => {
+    vi.useFakeTimers();
+    try {
+      const wallets = [
+        { id: 'w-animated', name: 'Animated', type: 'single_sig', balance: 5000 },
+      ] as any[];
+
+      const { container } = render(
+        <WalletSummary selectedNetwork="mainnet" filteredWallets={wallets} totalBalance={5000} />
+      );
+
+      const segment = container.querySelector('.relative[style*="width"]') as HTMLElement;
+      expect(segment).toHaveStyle({ width: '0%', minWidth: '0px' });
+
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+
+      expect(segment).toHaveStyle({ width: '100%', minWidth: '4px' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('triggers cross-highlight on bar segment and table row hover', async () => {

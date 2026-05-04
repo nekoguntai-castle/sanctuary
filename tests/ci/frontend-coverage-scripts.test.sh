@@ -26,7 +26,14 @@ assert_fails_with() {
     fail "expected command to fail: $*"
   fi
 
-  grep -Fq "$expected" "$output_file" || fail "expected output to contain: ${expected}"
+  grep -Fq -- "$expected" "$output_file" || fail "expected output to contain: ${expected}"
+}
+
+assert_file_contains() {
+  local expected="$1"
+  local file="$2"
+
+  grep -Fq -- "$expected" "$file" || fail "expected ${file} to contain: ${expected}"
 }
 
 main() {
@@ -40,6 +47,28 @@ main() {
   assert_fails_with 'shard index must be a positive integer' bash "$SHARD_SCRIPT" 0 2
   assert_fails_with 'shard total must be a positive integer' bash "$SHARD_SCRIPT" 1 nope
   assert_fails_with 'shard index must be less than or equal to shard total' bash "$SHARD_SCRIPT" 3 2
+
+  local fake_vitest_bin="$TEST_TEMP_DIR/fake-vitest"
+  local captured_args="$TEST_TEMP_DIR/vitest-args"
+  cat >"$fake_vitest_bin" <<'FAKE_VITEST'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$@" >"$CAPTURED_VITEST_ARGS"
+mkdir -p .vitest-reports
+: > .vitest-reports/blob-1-2.json
+FAKE_VITEST
+  chmod +x "$fake_vitest_bin"
+
+  (
+    cd "$TEST_TEMP_DIR"
+    CAPTURED_VITEST_ARGS="$captured_args" VITEST_BIN="$fake_vitest_bin" bash "$SHARD_SCRIPT" 1 2
+  )
+  assert_file_contains '--pool' "$captured_args"
+  assert_file_contains 'threads' "$captured_args"
+  assert_file_contains '--maxWorkers=1' "$captured_args"
+  assert_file_contains '--no-file-parallelism' "$captured_args"
+  assert_file_contains '--shard' "$captured_args"
+  assert_file_contains '1/2' "$captured_args"
 
   assert_fails_with 'blob report directory does not exist' bash "$MERGE_SCRIPT" "$TEST_TEMP_DIR/missing"
   mkdir "$TEST_TEMP_DIR/empty-reports"

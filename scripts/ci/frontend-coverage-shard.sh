@@ -44,6 +44,9 @@ main() {
   rm -rf coverage-shards
 
   "$vitest_bin" run \
+    --pool threads \
+    --maxWorkers=1 \
+    --no-file-parallelism \
     --coverage \
     --config vitest.coverage-shard.config.ts \
     --shard "${shard_index}/${shard_total}"
