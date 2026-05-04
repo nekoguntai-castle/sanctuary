@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT="$ROOT_DIR/scripts/ci/setup-server-dependencies.sh"
+TEST_TEMP_DIR=''
+
+fail() {
+  echo "FAIL: $*" >&2
+  exit 1
+}
+
+cleanup() {
+  if [ -n "$TEST_TEMP_DIR" ]; then
+    rm -rf "$TEST_TEMP_DIR"
+  fi
+}
+
+assert_contains() {
+  grep -Fq "$2" "$1" || fail "expected $1 to contain: $2"
+}
+
+assert_no_line() {
+  if grep -Fxq "$2" "$1"; then
+    fail "expected $1 not to contain line: $2"
+  fi
+}
+
+write_mock_commands() {
+  local bin_dir="$1"
+  local log_file="$2"
+  local npx_count_file="$3"
+
+  cat >"$bin_dir/npm" <<MOCK
+#!/usr/bin/env bash
+printf 'npm:%s:%s\\n' "\$PWD" "\$*" >> "$log_file"
+case " \$* " in
+  *" ci --ignore-scripts "*) exit 0 ;;
+  *) exit 64 ;;
+esac
+MOCK
+
+  cat >"$bin_dir/node" <<MOCK
+#!/usr/bin/env bash
+printf 'node:%s:%s\\n' "\$PWD" "\$*" >> "$log_file"
+case " \$* " in
+  *" scripts/ensure-shared-module-resolution.mjs "*) exit 0 ;;
+  *) exit 65 ;;
+esac
+MOCK
+
+  cat >"$bin_dir/npx" <<MOCK
+#!/usr/bin/env bash
+printf 'npx:%s:%s\\n' "\$PWD" "\$*" >> "$log_file"
+count="\$(cat "$npx_count_file")"
+count="\$((count + 1))"
+printf '%s' "\$count" > "$npx_count_file"
+[ "\$count" -ge 2 ]
+MOCK
+
+  chmod +x "$bin_dir/npm" "$bin_dir/node" "$bin_dir/npx"
+}
+
+main() {
+  TEST_TEMP_DIR="$(mktemp -d)"
+  trap cleanup EXIT
+
+  bash -n "$SCRIPT"
+
+  local server_dir="$TEST_TEMP_DIR/server"
+  local bin_dir="$TEST_TEMP_DIR/bin"
+  local log_file="$TEST_TEMP_DIR/commands.log"
+  local npx_count_file="$TEST_TEMP_DIR/npx-count"
+  mkdir -p "$server_dir/scripts" "$bin_dir"
+  touch "$server_dir/package-lock.json" "$server_dir/package.json"
+  touch "$server_dir/scripts/ensure-shared-module-resolution.mjs"
+  : >"$log_file"
+  printf '0' >"$npx_count_file"
+  write_mock_commands "$bin_dir" "$log_file" "$npx_count_file"
+
+  PATH="$bin_dir:$PATH" \
+    SANCTUARY_SERVER_DIR="$server_dir" \
+    SANCTUARY_SERVER_SETUP_NO_LOCK=1 \
+    SANCTUARY_RETRY_DELAY_SECONDS=0 \
+    bash "$SCRIPT"
+
+  assert_contains "$log_file" "npm:$server_dir:ci --ignore-scripts"
+  assert_no_line "$log_file" "npm:$server_dir:ci"
+  assert_contains "$log_file" "node:$server_dir:scripts/ensure-shared-module-resolution.mjs"
+  assert_contains "$log_file" "npx:$server_dir:prisma generate"
+  [ "$(cat "$npx_count_file")" = '2' ] || fail 'expected prisma generate to retry once'
+
+  echo 'setup-server-dependencies regression checks passed'
+}
+
+main "$@"

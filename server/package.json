@@ -27,6 +27,7 @@
     "test": "vitest",
     "pretest:run": "node scripts/ensure-shared-module-resolution.mjs",
     "test:run": "vitest run",
+    "test:run:ci": "vitest run --pool threads --maxWorkers=1 --no-file-parallelism",
     "test:watch": "vitest --watch",
     "pretest:coverage": "node scripts/ensure-shared-module-resolution.mjs",
     "test:coverage": "vitest run --coverage",

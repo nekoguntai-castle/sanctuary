@@ -94,7 +94,8 @@ EOF
   write_docker_stub
 
   : > "$TEST_TEMP_DIR/counter"
-  PATH="$TEST_TEMP_DIR/bin:$PATH" \
+  env -u DOCKER_HOST -u SANCTUARY_DOCKER_PUBLISHED_HOST \
+    PATH="$TEST_TEMP_DIR/bin:$PATH" \
     SANCTUARY_STUB_DOCKER_MODE=delayed \
     SANCTUARY_STUB_DOCKER_COUNTER="$TEST_TEMP_DIR/counter" \
     SANCTUARY_DOCKER_WAIT_SECONDS=2 \
@@ -106,7 +107,7 @@ EOF
   : > "$TEST_TEMP_DIR/github-env"
   PATH="$TEST_TEMP_DIR/bin:$PATH" \
     DOCKER_HOST=tcp://docker-host:2375 \
-    GITHUB_ENV="$TEST_TEMP_DIR/github-env" \
+    SANCTUARY_DOCKER_ENV_FILE="$TEST_TEMP_DIR/github-env" \
     SANCTUARY_STUB_DOCKER_MODE=ready \
     SANCTUARY_STUB_DOCKER_COUNTER="$TEST_TEMP_DIR/counter" \
     SANCTUARY_DOCKER_WAIT_SECONDS=0 \
@@ -119,8 +120,9 @@ EOF
 
   : > "$TEST_TEMP_DIR/counter"
   : > "$TEST_TEMP_DIR/github-env"
-  PATH="$TEST_TEMP_DIR/bin:$PATH" \
-    GITHUB_ENV="$TEST_TEMP_DIR/github-env" \
+  env -u DOCKER_HOST -u SANCTUARY_DOCKER_PUBLISHED_HOST \
+    PATH="$TEST_TEMP_DIR/bin:$PATH" \
+    SANCTUARY_DOCKER_ENV_FILE="$TEST_TEMP_DIR/github-env" \
     SANCTUARY_ASSUME_CONTAINERIZED=1 \
     SANCTUARY_PROC_ROUTE_FILE="$route_file" \
     SANCTUARY_STUB_DOCKER_MODE=ready \
@@ -134,7 +136,8 @@ EOF
     fail 'expected containerized default endpoint to export gateway published host'
 
   : > "$TEST_TEMP_DIR/counter"
-  if PATH="$TEST_TEMP_DIR/bin:$PATH" \
+  if env -u DOCKER_HOST -u SANCTUARY_DOCKER_PUBLISHED_HOST \
+    PATH="$TEST_TEMP_DIR/bin:$PATH" \
     SANCTUARY_STUB_DOCKER_MODE=down \
     SANCTUARY_STUB_DOCKER_COUNTER="$TEST_TEMP_DIR/counter" \
     SANCTUARY_DOCKER_WAIT_SECONDS=0 \

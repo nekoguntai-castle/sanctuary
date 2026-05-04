@@ -406,6 +406,7 @@ jobs:
           bash -n tests/ci/frontend-coverage-scripts.test.sh
           bash -n tests/ci/install-test-ports.test.sh
           bash -n tests/ci/install-semgrep.test.sh
+          bash -n tests/ci/setup-server-dependencies.test.sh
           bash -n tests/ci/with-runner-lock.test.sh
           bash -n tests/ci/run-extended-upgrade-fixtures.test.sh
           bash -n tests/ci/wait-for-docker.test.sh
@@ -424,6 +425,7 @@ jobs:
           bash tests/ci/frontend-coverage-scripts.test.sh
           bash tests/ci/install-test-ports.test.sh
           bash tests/ci/install-semgrep.test.sh
+          bash tests/ci/setup-server-dependencies.test.sh
           bash tests/ci/with-runner-lock.test.sh
           bash tests/ci/run-extended-upgrade-fixtures.test.sh
           bash tests/ci/wait-for-docker.test.sh

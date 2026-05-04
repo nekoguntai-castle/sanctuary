@@ -64,6 +64,18 @@ resolve_executable() {
   return 127
 }
 
+retry_setup_command() {
+  local label="$1"
+  shift
+
+  if [[ -x "$ROOT/scripts/ci/retry-command.sh" ]]; then
+    "$ROOT/scripts/ci/retry-command.sh" "$label" "$@"
+    return
+  fi
+
+  "$@"
+}
+
 gitleaks_asset_platform() {
   local os
   local arch
@@ -170,8 +182,10 @@ ensure_lizard_bin() {
   fi
 
   python3 -m venv "$LIZARD_VENV"
-  "$LIZARD_VENV/bin/python" -m pip install --disable-pip-version-check --upgrade pip
-  "$LIZARD_VENV/bin/python" -m pip install --disable-pip-version-check --requirement "$LIZARD_REQUIREMENTS_FILE"
+  retry_setup_command "lizard pip upgrade" \
+    "$LIZARD_VENV/bin/python" -m pip install --disable-pip-version-check --upgrade pip
+  retry_setup_command "lizard dependency install" \
+    "$LIZARD_VENV/bin/python" -m pip install --disable-pip-version-check --requirement "$LIZARD_REQUIREMENTS_FILE"
 }
 
 ensure_semgrep_bin() {

@@ -40,6 +40,19 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Keep the non-PR full summary behind the full-lane `needs:` graph so `main`, schedules, and manual full runs still enforce the broad gate.
 - If a red job finishes before its dependencies or test body could plausibly run, inspect the workflow graph before changing test code.
 
+## Use Worker Threads For Backend Vitest CI
+
+**Rule:** Backend Vitest jobs in Forgejo CI should use a single worker-thread pool and no file parallelism when the lane runs in shared runner containers.
+
+**Why:** The post-merge full backend lane produced native process failures, not assertion failures: `tsc` exited with status 139, Vitest fork workers died, and coverage dropped below 100% only because the worker pool terminated before all instrumented files finished.
+
+**How to apply:**
+
+- Route backend CI Vitest invocations through a shared script such as `npm run test:run:ci -- ...`.
+- Use `--pool threads --maxWorkers=1 --no-file-parallelism` for Forgejo backend unit and integration suites that have previously hit fork-worker instability.
+- Wrap deterministic command boundaries with `scripts/ci/retry-command.sh` only for native runner crashes; keep assertion failures and coverage thresholds blocking.
+- Treat incomplete 100% coverage output after worker termination as infrastructure instability until a focused local run proves a real coverage regression.
+
 ## Verify The Post-Merge Lane, Not Only PR Required Checks
 
 **Rule:** After merging workflow or CI-scope changes, check the latest target-branch `push` run separately from the PR-required contexts before declaring Actions clean.
@@ -1976,3 +1989,42 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Preserve hard failures for JSON error responses, parse failures, or actual address disagreements.
 - Include exit code or signal in the final error so a repeated failure remains diagnosable.
 - Add regression tests that prove empty failures retry and structured verifier errors do not.
+
+## Do Not Patch Tests For Job-Network Startup Failures
+
+**Rule:** If a Forgejo job fails while creating the job container or network, treat it as runner substrate exhaustion until a rerun reaches checkout and repository code.
+
+**Why:** A Test Suite rerun failed before checkout and before changed-file classification because the runner could not allocate a Docker network. Changing E2E selectors, coverage thresholds, or application code for that failure would add noise and hide the real boundary.
+
+**How to apply:**
+
+- Check whether the failed log reached checkout, dependency installation, or a repo-owned script before opening code.
+- Wait for sibling workflows to finish before retriggering a failed required check that died during job container startup.
+- Use a small notes-only or root-cause commit to retrigger when the platform lacks a rerun API; do not make unrelated test changes just to create a new run.
+- If the same job-network error repeats with no active sibling jobs, escalate to runner maintenance or capacity configuration instead of weakening repository tests.
+
+## Keep Backend CI Setup Out Of Postinstall
+
+**Rule:** Backend CI jobs should install dependencies with lifecycle scripts disabled, then run schema linking and Prisma generation explicitly through repo-owned setup helpers.
+
+**Why:** Quick backend lanes failed before typecheck or tests because `npm ci` ran Prisma generation as `postinstall`, and Prisma's native CLI exited 139. A separate smoke job then generated once successfully during install and failed on the standalone generation step, proving the brittle boundary was setup execution rather than test assertions.
+
+**How to apply:**
+
+- Use a shared backend setup helper instead of duplicating `npm ci`, schema-linking, and `npx prisma generate` in workflow YAML.
+- Run `npm ci --ignore-scripts` in CI so native codegen does not hide inside package lifecycle hooks.
+- Run Prisma generation and migrations as named, timed, retried setup boundaries; keep test commands themselves strict.
+- Put backend dependency/codegen setup under the same `node-toolchain` lock as other Node-heavy CI work on the shared Forgejo runner.
+
+## Keep CI Helper Tests Off Provider File Commands
+
+**Rule:** CI helper tests should use test-specific override files for environment export assertions instead of writing to the real Actions `$GITHUB_ENV` channel.
+
+**Why:** Forgejo processes `$GITHUB_ENV` as a provider file-command channel, which can interfere with a shell test that wants to inspect the file directly during the same job.
+
+**How to apply:**
+
+- Add a private override variable, such as a helper-specific env file path, for tests that need to inspect exported key/value lines.
+- Keep production behavior writing to `$GITHUB_ENV` when the override is not set.
+- Assert the helper's exported values from the private file in unit tests, and leave provider file-command behavior to workflow integration.
+- Clear inherited provider/runtime variables in tests that assert default endpoint behavior; CI jobs may export `DOCKER_HOST` or similar values that do not exist on a local developer shell.

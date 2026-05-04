@@ -214,17 +214,14 @@ jobs:
       - name: Verify Node.js toolchain
         run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Link shared schema dependencies
-        run: node scripts/ensure-shared-module-resolution.mjs
-
-      - name: Generate Prisma client
-        run: npx prisma generate
+      - name: Setup server dependencies
+        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
 
       - name: Run server test typecheck
-        run: npm run typecheck:tests
+        run: >
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend typecheck"
+          ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend typecheck"
+          npm run typecheck:tests
 
   quick-backend-tests:
     name: Quick Backend Tests
@@ -257,14 +254,8 @@ jobs:
       - name: Verify Node.js toolchain
         run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
-      - name: Install dependencies
-        run: ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend npm ci" npm ci
-
-      - name: Link shared schema dependencies
-        run: ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend shared schema link" node scripts/ensure-shared-module-resolution.mjs
-
-      - name: Generate Prisma client
-        run: ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend prisma generate" npx prisma generate
+      - name: Setup server dependencies
+        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
 
       - name: Resolve Postgres service host
         env:
@@ -280,14 +271,23 @@ jobs:
           echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
 
       - name: Run database migrations
-        run: ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend prisma migrate" npx prisma migrate deploy
+        run: >
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend prisma migrate"
+          ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend prisma migrate"
+          npx prisma migrate deploy
 
       - name: Run related backend tests
         env:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
-        run: npx vitest related --run --passWithNoTests --exclude "tests/integration/**" ${{ needs.detect-changes.outputs.backend_files }}
+        run: >
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend related tests"
+          ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend related tests"
+          npx vitest related --run --passWithNoTests
+          --pool threads --maxWorkers=1 --no-file-parallelism
+          --exclude "tests/integration/**"
+          ${{ needs.detect-changes.outputs.backend_files }}
 
   quick-backend-integration-smoke:
     name: Quick Backend Integration Smoke
@@ -320,14 +320,8 @@ jobs:
       - name: Verify Node.js toolchain
         run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
-      - name: Install backend dependencies
-        run: npm ci
-
-      - name: Link shared schema dependencies
-        run: node scripts/ensure-shared-module-resolution.mjs
-
-      - name: Generate Prisma client
-        run: npx prisma generate
+      - name: Setup server dependencies
+        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
 
       - name: Resolve Postgres service host
         env:
@@ -343,7 +337,10 @@ jobs:
           echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
 
       - name: Run database migrations
-        run: npx prisma migrate deploy
+        run: >
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend smoke prisma migrate"
+          ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend smoke prisma migrate"
+          npx prisma migrate deploy
 
       - name: Run integration smoke tests
         env:
@@ -351,7 +348,9 @@ jobs:
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
         run: >
-          npx vitest run --no-file-parallelism --maxWorkers 1
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend integration smoke"
+          ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend integration smoke"
+          npm run test:run:ci --
           tests/integration/websocket/websocket.integration.test.ts
           tests/integration/flows/auth.integration.test.ts
 
@@ -372,11 +371,8 @@ jobs:
       - name: Verify Node.js toolchain
         run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Link shared schema dependencies
-        run: node scripts/ensure-shared-module-resolution.mjs
+      - name: Setup server dependencies
+        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
 
       - name: Run critical mutation gate
         run: npm run test:mutation:critical:gate
@@ -482,7 +478,7 @@ jobs:
               scripts/ci/collect-playwright-artifacts.sh quick-browser || echo "::warning::Could not collect quick browser Playwright artifacts"
             }
             trap collect_artifacts EXIT
-            scripts/ci/time-command.sh "quick browser npm ci" npm ci --audit=false --fund=false --cache .tmp/npm-cache
+            scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick browser npm ci" scripts/ci/time-command.sh "quick browser npm ci" npm ci --audit=false --fund=false --cache .tmp/npm-cache
             scripts/ci/time-command.sh "quick browser playwright install" scripts/ci/install-playwright-chromium.sh
             scripts/ci/time-command.sh "quick browser frontend build" scripts/ci/retry-command.sh "quick browser frontend build" npm run build
             scripts/ci/time-command.sh "quick browser smoke" npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts
@@ -555,7 +551,7 @@ jobs:
               scripts/ci/collect-playwright-artifacts.sh quick-render || echo "::warning::Could not collect quick render Playwright artifacts"
             }
             trap collect_artifacts EXIT
-            scripts/ci/time-command.sh "quick render npm ci" npm ci --audit=false --fund=false --cache .tmp/npm-cache
+            scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick render npm ci" scripts/ci/time-command.sh "quick render npm ci" npm ci --audit=false --fund=false --cache .tmp/npm-cache
             scripts/ci/time-command.sh "quick render playwright install" scripts/ci/install-playwright-chromium.sh
             scripts/ci/time-command.sh "quick render frontend build" scripts/ci/retry-command.sh "quick render frontend build" npm run build
             scripts/ci/time-command.sh "quick render regression" npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
@@ -696,17 +692,14 @@ jobs:
       - name: Verify Node.js toolchain
         run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Link shared schema dependencies
-        run: node scripts/ensure-shared-module-resolution.mjs
-
-      - name: Generate Prisma client
-        run: npx prisma generate
+      - name: Setup server dependencies
+        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
 
       - name: Run server test typecheck
-        run: ${{ github.workspace }}/scripts/ci/time-command.sh "server test typecheck" npm run typecheck:tests
+        run: >
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "server test typecheck"
+          ${{ github.workspace }}/scripts/ci/time-command.sh "server test typecheck"
+          npm run typecheck:tests
 
   full-backend-unit-coverage:
     name: Full Backend Unit Coverage
@@ -744,14 +737,8 @@ jobs:
       - name: Verify Node.js toolchain
         run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Link shared schema dependencies
-        run: node scripts/ensure-shared-module-resolution.mjs
-
-      - name: Generate Prisma client
-        run: npx prisma generate
+      - name: Setup server dependencies
+        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
 
       - name: Resolve Postgres service host
         env:
@@ -767,14 +754,20 @@ jobs:
           echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
 
       - name: Run database migrations
-        run: npx prisma migrate deploy
+        run: >
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "backend unit prisma migrate"
+          ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit prisma migrate"
+          npx prisma migrate deploy
 
       - name: Run unit tests with coverage
         env:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
-        run: ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit coverage" npm run test:unit -- --coverage
+        run: >
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "backend unit coverage"
+          ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit coverage"
+          npm run test:run:ci -- tests/unit --coverage
 
       - name: Upload backend coverage
         if: always()
@@ -831,14 +824,8 @@ jobs:
       - name: Verify Node.js toolchain
         run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Link shared schema dependencies
-        run: node scripts/ensure-shared-module-resolution.mjs
-
-      - name: Generate Prisma client
-        run: npx prisma generate
+      - name: Setup server dependencies
+        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
 
       - name: Resolve Postgres service host
         env:
@@ -854,7 +841,10 @@ jobs:
           echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
 
       - name: Run database migrations
-        run: npx prisma migrate deploy
+        run: >
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "backend integration prisma migrate"
+          ${{ github.workspace }}/scripts/ci/time-command.sh "backend integration prisma migrate"
+          npx prisma migrate deploy
 
       - name: Run integration tests
         env:
@@ -871,7 +861,8 @@ jobs:
 
           "${{ github.workspace }}/scripts/ci/time-command.sh" \
             "backend integration ${{ matrix.group }}" \
-            npx vitest run --no-file-parallelism --maxWorkers 1 "${specs[@]}"
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "backend integration ${{ matrix.group }}" \
+            npm run test:run:ci -- "${specs[@]}"
 
   full-backend-tests:
     name: Full Backend Tests
@@ -1216,11 +1207,8 @@ jobs:
       - name: Verify Node.js toolchain
         run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Link shared schema dependencies
-        run: node scripts/ensure-shared-module-resolution.mjs
+      - name: Setup server dependencies
+        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
 
       - name: Run critical mutation gate
         run: npm run test:mutation:critical:gate
@@ -1336,13 +1324,17 @@ jobs:
       - name: Setup backend
         working-directory: server
         run: |
-          "${{ github.workspace }}/scripts/ci/time-command.sh" "browser backend npm ci" npm ci
-          "${{ github.workspace }}/scripts/ci/time-command.sh" "browser prisma generate" npx prisma generate
-          "${{ github.workspace }}/scripts/ci/time-command.sh" "browser prisma migrate" npx prisma migrate deploy
+          "${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh"
+          "${{ github.workspace }}/scripts/ci/retry-command.sh" "browser prisma migrate" \
+            "${{ github.workspace }}/scripts/ci/time-command.sh" "browser prisma migrate" \
+            npx prisma migrate deploy
 
       - name: Build backend
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/time-command.sh "browser backend build" npm run build
+        run: >
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "browser backend build"
+          ${{ github.workspace }}/scripts/ci/time-command.sh "browser backend build"
+          npm --ignore-scripts run build
 
       - name: Run browser-flow E2E tests
         run: |
@@ -1507,9 +1499,10 @@ jobs:
       - name: Build backend
         working-directory: server
         run: |
-          npm ci
-          npx prisma generate
-          npm run build
+          "${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh"
+          "${{ github.workspace }}/scripts/ci/retry-command.sh" "build check backend build" \
+            "${{ github.workspace }}/scripts/ci/time-command.sh" "build check backend build" \
+            npm --ignore-scripts run build
 
   full-test-summary-pr:
     name: Full Test Summary

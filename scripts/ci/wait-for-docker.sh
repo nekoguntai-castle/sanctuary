@@ -82,6 +82,7 @@ collect_candidates() {
 
 activate_candidate() {
   local endpoint="$1"
+  local env_file="${SANCTUARY_DOCKER_ENV_FILE:-${GITHUB_ENV:-}}"
   local published_host
 
   published_host="$(sanctuary_docker_published_host_for_endpoint "$endpoint")"
@@ -89,17 +90,17 @@ activate_candidate() {
 
   if [ "$endpoint" = "__default__" ]; then
     unset DOCKER_HOST
-    if [ -n "${GITHUB_ENV:-}" ]; then
-      echo "DOCKER_HOST=" >> "$GITHUB_ENV"
-      echo "SANCTUARY_DOCKER_PUBLISHED_HOST=$published_host" >> "$GITHUB_ENV"
+    if [ -n "$env_file" ]; then
+      echo "DOCKER_HOST=" >> "$env_file"
+      echo "SANCTUARY_DOCKER_PUBLISHED_HOST=$published_host" >> "$env_file"
     fi
     return 0
   fi
 
   export DOCKER_HOST="$endpoint"
-  if [ -n "${GITHUB_ENV:-}" ]; then
-    echo "DOCKER_HOST=$endpoint" >> "$GITHUB_ENV"
-    echo "SANCTUARY_DOCKER_PUBLISHED_HOST=$published_host" >> "$GITHUB_ENV"
+  if [ -n "$env_file" ]; then
+    echo "DOCKER_HOST=$endpoint" >> "$env_file"
+    echo "SANCTUARY_DOCKER_PUBLISHED_HOST=$published_host" >> "$env_file"
   fi
 }
 
