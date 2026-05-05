@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ci/provider-context.sh
+. "$SCRIPT_DIR/provider-context.sh"
+
 usage() {
   cat >&2 <<'EOF'
 Usage: scripts/ci/install-semgrep.sh
 
 Installs Semgrep into a temporary virtualenv and validates the executable.
-Writes SEMGREP_WORKDIR, SEMGREP_BIN, and SEMGREP_REPORT_DIR to GITHUB_ENV
-when running under Actions.
+Writes SEMGREP_WORKDIR, SEMGREP_BIN, and SEMGREP_REPORT_DIR via the
+provider-context CI env channel when one is set (see
+scripts/ci/provider-context.sh).
 EOF
 }
 
@@ -22,15 +27,6 @@ require_positive_integer() {
 
   if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
     fail "${name} must be a positive integer"
-  fi
-}
-
-write_github_env() {
-  local name="$1"
-  local value="$2"
-
-  if [ -n "${GITHUB_ENV:-}" ]; then
-    echo "${name}=${value}" >> "$GITHUB_ENV"
   fi
 }
 
@@ -75,10 +71,13 @@ main() {
   local python_bin
   python_bin="$(find_python)" || fail 'python3 or python is required'
 
-  local temp_parent="${RUNNER_TEMP:-/tmp}"
+  local temp_parent
+  temp_parent="$(ci_temp_dir)"
   mkdir -p "$temp_parent"
 
-  local report_dir="${SEMGREP_REPORT_DIR:-/tmp/sanctuary-semgrep-${GITHUB_RUN_ID:-local}}"
+  local run_id
+  run_id="$(ci_run_id)"
+  local report_dir="${SEMGREP_REPORT_DIR:-/tmp/sanctuary-semgrep-${run_id}}"
   local attempt status workdir
 
   for attempt in $(seq 1 "$attempts"); do
@@ -91,9 +90,10 @@ main() {
     set -e
 
     if [ "$status" -eq 0 ]; then
-      write_github_env SEMGREP_WORKDIR "$workdir"
-      write_github_env SEMGREP_BIN "$workdir/venv/bin/semgrep"
-      write_github_env SEMGREP_REPORT_DIR "$report_dir"
+      ci_emit_env \
+        "SEMGREP_WORKDIR=$workdir" \
+        "SEMGREP_BIN=$workdir/venv/bin/semgrep" \
+        "SEMGREP_REPORT_DIR=$report_dir"
       return 0
     fi
 

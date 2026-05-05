@@ -2,14 +2,18 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
+# shellcheck source=scripts/ci/provider-context.sh
+. "$ROOT/scripts/ci/provider-context.sh"
 cd "$ROOT"
 
 output_dir="${QUALITY_JSCPD_OUTPUT_DIR:-reports/jscpd}"
 report_file="$output_dir/jscpd-report.json"
 
-if [ -n "${RUNNER_TEMP:-}" ]; then
-  mkdir -p "$RUNNER_TEMP"
-  export npm_config_cache="${npm_config_cache:-$RUNNER_TEMP/sanctuary-jscpd-npm-cache-${GITHUB_RUN_ID:-local}}"
+# Keep the npm cache off the shared workspace whenever a runner-temp dir exists.
+ci_temp="$(ci_temp_dir)"
+if [ -n "$ci_temp" ] && [ "$ci_temp" != "/tmp" ]; then
+  mkdir -p "$ci_temp"
+  export npm_config_cache="${npm_config_cache:-$ci_temp/sanctuary-jscpd-npm-cache-$(ci_run_id)}"
 fi
 
 export npm_config_audit="${npm_config_audit:-false}"

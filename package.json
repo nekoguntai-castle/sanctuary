@@ -15,6 +15,8 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:related": "./scripts/run-tests.sh --since main",
+    "test:related:since": "./scripts/run-tests.sh --since",
     "coverage": "npm run test:coverage:full",
     "test:coverage": "vitest run --coverage",
     "test:coverage:shard": "bash scripts/ci/frontend-coverage-shard.sh",

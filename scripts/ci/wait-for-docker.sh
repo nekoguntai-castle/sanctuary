@@ -4,6 +4,8 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/ci/docker-endpoint-lib.sh
 source "$script_dir/docker-endpoint-lib.sh"
+# shellcheck source=scripts/ci/provider-context.sh
+source "$script_dir/provider-context.sh"
 
 usage() {
   cat >&2 <<'EOF'
@@ -82,7 +84,13 @@ collect_candidates() {
 
 activate_candidate() {
   local endpoint="$1"
-  local env_file="${SANCTUARY_DOCKER_ENV_FILE:-${GITHUB_ENV:-}}"
+  local env_file="${SANCTUARY_DOCKER_ENV_FILE:-}"
+  if [ -z "$env_file" ]; then
+    env_file="$(ci_env_file)"
+    if [ "$env_file" = "/dev/stdout" ]; then
+      env_file=""
+    fi
+  fi
   local published_host
 
   published_host="$(sanctuary_docker_published_host_for_endpoint "$endpoint")"
@@ -137,8 +145,8 @@ main() {
     done
 
     if [ "$SECONDS" -ge "$deadline" ]; then
-      echo "::error::Docker did not become available within ${timeout}s"
-      echo "::error::Tried ${#docker_candidates[@]} Docker endpoint candidate(s)"
+      ci_emit_error "Docker did not become available within ${timeout}s"
+      ci_emit_error "Tried ${#docker_candidates[@]} Docker endpoint candidate(s)"
       docker --version || true
       docker compose version || true
       return 1

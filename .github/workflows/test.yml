@@ -128,7 +128,7 @@ jobs:
           clean: false
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Run quick hygiene checks in isolated workspace
         env:
@@ -171,7 +171,7 @@ jobs:
           clean: false
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Run quick frontend checks in isolated workspace
         env:
@@ -212,10 +212,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Setup server dependencies
-        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
+        uses: ./.github/actions/setup-server-deps
 
       - name: Run server test typecheck
         run: >
@@ -252,10 +252,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Setup server dependencies
-        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
+        uses: ./.github/actions/setup-server-deps
 
       - name: Resolve Postgres service host
         env:
@@ -318,10 +318,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Setup server dependencies
-        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
+        uses: ./.github/actions/setup-server-deps
 
       - name: Resolve Postgres service host
         env:
@@ -369,17 +369,17 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Setup server dependencies
-        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
+        uses: ./.github/actions/setup-server-deps
 
       - name: Run critical mutation gate
         run: npm run test:mutation:critical:gate
 
       - name: Upload critical mutation report
         if: always()
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: critical-mutation-report-pr
           path: server/reports/mutation/
@@ -399,7 +399,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
         run: npm ci
@@ -421,7 +421,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Install root test dependencies
         run: npm ci
@@ -454,7 +454,7 @@ jobs:
           clean: false
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Cache Playwright browsers
         continue-on-error: true
@@ -487,7 +487,7 @@ jobs:
       - name: Upload quick browser Playwright report
         if: always()
         continue-on-error: true
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: playwright-report-quick-browser
           path: .tmp/quick-browser-artifacts/${{ github.run_id }}/playwright-report/
@@ -497,7 +497,7 @@ jobs:
       - name: Upload quick browser Playwright results
         if: always()
         continue-on-error: true
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: playwright-results-quick-browser
           path: .tmp/quick-browser-artifacts/${{ github.run_id }}/test-results/
@@ -527,7 +527,7 @@ jobs:
           clean: false
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Cache Playwright browsers
         continue-on-error: true
@@ -560,7 +560,7 @@ jobs:
       - name: Upload quick render Playwright report
         if: always()
         continue-on-error: true
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: playwright-report-quick-render
           path: .tmp/quick-render-artifacts/${{ github.run_id }}/playwright-report/
@@ -570,7 +570,7 @@ jobs:
       - name: Upload quick render Playwright results
         if: always()
         continue-on-error: true
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: playwright-results-quick-render
           path: .tmp/quick-render-artifacts/${{ github.run_id }}/test-results/
@@ -690,10 +690,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Setup server dependencies
-        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
+        uses: ./.github/actions/setup-server-deps
 
       - name: Run server test typecheck
         run: >
@@ -735,10 +735,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Setup server dependencies
-        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
+        uses: ./.github/actions/setup-server-deps
 
       - name: Resolve Postgres service host
         env:
@@ -771,7 +771,7 @@ jobs:
 
       - name: Upload backend coverage
         if: always()
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: backend-coverage
           path: |
@@ -822,10 +822,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Setup server dependencies
-        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
+        uses: ./.github/actions/setup-server-deps
 
       - name: Resolve Postgres service host
         env:
@@ -974,7 +974,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
         run: npm ci
@@ -1003,7 +1003,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
         run: npm ci
@@ -1016,7 +1016,7 @@ jobs:
 
       - name: Upload frontend coverage blob 1
         if: always()
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: frontend-coverage-blob-1
           path: .vitest-reports/blob-1-2.json
@@ -1026,7 +1026,7 @@ jobs:
 
       - name: Upload frontend coverage blob 2
         if: always()
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: frontend-coverage-blob-2
           path: .vitest-reports/blob-2-2.json
@@ -1051,19 +1051,19 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
         run: npm ci
 
       - name: Download frontend coverage shard 1
-        uses: https://data.forgejo.org/forgejo/download-artifact@v4
+        uses: ./.github/actions/download-artifact
         with:
           name: frontend-coverage-blob-1
           path: .vitest-reports/
 
       - name: Download frontend coverage shard 2
-        uses: https://data.forgejo.org/forgejo/download-artifact@v4
+        uses: ./.github/actions/download-artifact
         with:
           name: frontend-coverage-blob-2
           path: .vitest-reports/
@@ -1073,7 +1073,7 @@ jobs:
 
       - name: Upload frontend coverage
         if: always()
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: frontend-coverage
           path: coverage/
@@ -1137,7 +1137,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
         run: npm ci
@@ -1150,7 +1150,7 @@ jobs:
 
       - name: Upload gateway coverage
         if: always()
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: gateway-coverage
           path: gateway/coverage/
@@ -1172,7 +1172,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Install root test dependencies
         run: npm ci
@@ -1205,17 +1205,17 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Setup server dependencies
-        run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh
+        uses: ./.github/actions/setup-server-deps
 
       - name: Run critical mutation gate
         run: npm run test:mutation:critical:gate
 
       - name: Upload critical mutation report
         if: always()
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: critical-mutation-report
           path: server/reports/mutation/
@@ -1275,7 +1275,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Install frontend dependencies
         run: scripts/ci/time-command.sh "browser npm ci" npm ci
@@ -1396,7 +1396,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: playwright-report-browser-${{ matrix.group }}
           path: playwright-report/
@@ -1404,7 +1404,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: playwright-results-browser-${{ matrix.group }}
           path: test-results/
@@ -1427,7 +1427,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
         run: scripts/ci/time-command.sh "render npm ci" npm ci
@@ -1458,7 +1458,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: playwright-report-render
           path: playwright-report/
@@ -1466,7 +1466,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: playwright-results-render
           path: test-results/
@@ -1489,7 +1489,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Build frontend
         run: |
@@ -1525,28 +1525,28 @@ jobs:
     steps:
       - name: Download backend coverage
         if: needs.full-backend-tests.result == 'success' || needs.full-backend-tests.result == 'failure'
-        uses: https://data.forgejo.org/forgejo/download-artifact@v4
+        uses: ./.github/actions/download-artifact
         with:
           name: backend-coverage
           path: backend-results/
 
       - name: Download frontend coverage
         if: needs.full-frontend-tests.result == 'success' || needs.full-frontend-tests.result == 'failure'
-        uses: https://data.forgejo.org/forgejo/download-artifact@v4
+        uses: ./.github/actions/download-artifact
         with:
           name: frontend-coverage
           path: frontend-results/
 
       - name: Download gateway coverage
         if: needs.full-gateway-tests.result == 'success' || needs.full-gateway-tests.result == 'failure'
-        uses: https://data.forgejo.org/forgejo/download-artifact@v4
+        uses: ./.github/actions/download-artifact
         with:
           name: gateway-coverage
           path: gateway-results/
 
       - name: Download critical mutation report
         if: needs.full-critical-mutation.result == 'success' || needs.full-critical-mutation.result == 'failure'
-        uses: https://data.forgejo.org/forgejo/download-artifact@v4
+        uses: ./.github/actions/download-artifact
         with:
           name: critical-mutation-report
           path: mutation-results/

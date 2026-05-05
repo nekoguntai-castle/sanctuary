@@ -14,6 +14,10 @@
 #   --frontend   Run frontend tests only
 #   --watch      Run in watch mode (frontend only, not with --docker)
 #   --integration  Run integration tests with database (backend only)
+#   --since REF  Only run lanes affected by changes since REF (e.g. main).
+#                Uses scripts/ci/plan-test-run.sh + run-lane.sh — same
+#                contract CI uses, so what runs locally matches what runs
+#                on PR. Pairs well with `npm run test:related`.
 #   --help       Show this help message
 #
 # Examples:
@@ -22,6 +26,8 @@
 #   ./scripts/run-tests.sh --backend --coverage  # Backend with coverage
 #   ./scripts/run-tests.sh --frontend --watch    # Frontend in watch mode
 #   ./scripts/run-tests.sh --backend --integration  # Backend integration tests
+#   ./scripts/run-tests.sh --since main          # Only test lanes affected
+#                                                # by changes since main
 #
 # =============================================
 
@@ -45,6 +51,7 @@ RUN_BACKEND=true
 RUN_FRONTEND=true
 WATCH_MODE=false
 INTEGRATION_MODE=false
+SINCE_REF=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -74,8 +81,12 @@ while [[ $# -gt 0 ]]; do
             RUN_FRONTEND=false
             shift
             ;;
+        --since)
+            SINCE_REF="$2"
+            shift 2
+            ;;
         --help)
-            head -30 "$0" | tail -25
+            head -32 "$0" | tail -28
             exit 0
             ;;
         *)
@@ -86,6 +97,59 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$PROJECT_ROOT"
+
+# --- Change-scoped mode: --since REF -----------------------------------
+if [ -n "$SINCE_REF" ]; then
+    echo -e "${BLUE}=============================================${NC}"
+    echo -e "${BLUE}  Change-scoped run (since: ${SINCE_REF})${NC}"
+    echo -e "${BLUE}=============================================${NC}"
+    echo ""
+
+    plan_path="${TMPDIR:-/tmp}/sanctuary-test-plan-local-$$.json"
+    trap 'rm -f "$plan_path"' EXIT
+    bash "$PROJECT_ROOT/scripts/ci/plan-test-run.sh" --since "$SINCE_REF" > "$plan_path"
+
+    # Pretty-print the plan summary so the developer can see what's running.
+    PLAN_JSON="$(cat "$plan_path")" node -e '
+      const plan = JSON.parse(process.env.PLAN_JSON);
+      console.log(`tier: ${plan.tier} (coverage_required=${plan.coverage_required}, full_scan=${plan.full_scan})`);
+      const lanes = Object.entries(plan.lanes)
+        .filter(([, v]) => v.run)
+        .map(([name, v]) => `  ${name} (${v.files.length} file${v.files.length === 1 ? "" : "s"})`);
+      if (lanes.length === 0) {
+        console.log("No lanes selected — nothing to do.");
+      } else {
+        console.log("Selected lanes:");
+        console.log(lanes.join("\n"));
+      }
+    '
+    echo ""
+
+    # Iterate lanes and dispatch via run-lane.sh
+    LANES=$(PLAN_JSON="$(cat "$plan_path")" node -e '
+      const plan = JSON.parse(process.env.PLAN_JSON);
+      console.log(Object.entries(plan.lanes).filter(([, v]) => v.run).map(([n]) => n).join(" "));
+    ')
+
+    if [ -z "$LANES" ]; then
+        echo -e "${GREEN}Nothing to test for changes since ${SINCE_REF}.${NC}"
+        exit 0
+    fi
+
+    overall_status=0
+    for lane in $LANES; do
+        echo -e "${YELLOW}--- Running lane: ${lane} ---${NC}"
+        if bash "$PROJECT_ROOT/scripts/ci/run-lane.sh" "$lane" --plan "$plan_path"; then
+            echo -e "${GREEN}lane ${lane} passed${NC}"
+        else
+            echo -e "${RED}lane ${lane} failed${NC}"
+            overall_status=1
+        fi
+        echo ""
+    done
+
+    exit "$overall_status"
+fi
 
 echo -e "${BLUE}=============================================${NC}"
 echo -e "${BLUE}  Sanctuary Test Runner${NC}"

@@ -92,7 +92,7 @@ jobs:
           sha256sum "$BUNDLE" | tee "${BUNDLE}.sha256"
 
       - name: Upload as workflow artifact (debug / fallback)
-        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        uses: ./.github/actions/upload-artifact
         with:
           name: ${{ steps.tag.outputs.bundle }}
           path: |

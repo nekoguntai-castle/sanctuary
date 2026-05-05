@@ -24,6 +24,8 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { ciEmitSummary, ciEmitWarning, ciStepSummaryFile } from '../ci/provider-context.mjs';
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..');
 
@@ -93,9 +95,10 @@ async function buildReferenceIndex() {
 function getChangedFiles() {
   const idx = process.argv.indexOf('--files');
   if (idx !== -1) return process.argv.slice(idx + 1);
+  const baseRef = process.env.SANCTUARY_CI_BASE_REF || process.env.GITHUB_BASE_REF;
   const ref = process.argv[2] && !process.argv[2].startsWith('--')
     ? process.argv[2]
-    : (process.env.GITHUB_BASE_REF ? `origin/${process.env.GITHUB_BASE_REF}` : 'origin/main');
+    : (baseRef ? `origin/${baseRef}` : 'origin/main');
   try {
     const output = execFileSync('git', ['diff', '--name-only', `${ref}...HEAD`], {
       cwd: repoRoot,
@@ -109,12 +112,7 @@ function getChangedFiles() {
 }
 
 function emitWarning(message) {
-  // GitHub Actions annotation; on stdout otherwise.
-  if (process.env.GITHUB_ACTIONS === 'true') {
-    console.log(`::warning::${message}`);
-  } else {
-    console.warn(`detect-drift: ${message}`);
-  }
+  ciEmitWarning(message);
 }
 
 async function main() {
@@ -146,7 +144,7 @@ async function main() {
     summary.push({ file, diagrams: stale });
   }
 
-  if (process.env.GITHUB_STEP_SUMMARY && summary.length > 0) {
+  if (ciStepSummaryFile() && summary.length > 0) {
     const lines = [
       '## Architecture diagram drift check',
       '',
@@ -158,7 +156,7 @@ async function main() {
     for (const { file, diagrams } of summary) {
       lines.push(`| \`${file}\` | ${diagrams.map((d) => `\`${d}\``).join(', ')} |`);
     }
-    require('node:fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+    ciEmitSummary(lines.join('\n'));
   }
 
   if (warningCount === 0) {

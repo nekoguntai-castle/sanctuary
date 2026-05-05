@@ -126,8 +126,10 @@ for (const line of summaryLines) {
   console.log(line);
 }
 
-if (process.env.GITHUB_STEP_SUMMARY) {
-  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summaryLines.join('\n')}\n`);
+// Provider-agnostic step-summary emission; falls through to stderr locally.
+const { ciStepSummaryFile } = await import('../../../scripts/ci/provider-context.mjs');
+if (ciStepSummaryFile()) {
+  fs.appendFileSync(ciStepSummaryFile(), `${summaryLines.join('\n')}\n`);
 }
 
 if (rawCounted === 0 || weightedCounted === 0) {

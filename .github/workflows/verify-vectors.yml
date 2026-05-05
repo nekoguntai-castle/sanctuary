@@ -67,12 +67,13 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Verify Python toolchain
-        run: |
-          bash ${{ github.workspace }}/scripts/ci/ensure-python.sh
-          python3 -m venv --help >/dev/null
+        uses: ./.github/actions/setup-python-toolchain
+
+      - name: Validate Python venv module
+        run: python3 -m venv --help >/dev/null
 
       - name: Wait for Docker
         run: ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
@@ -135,12 +136,13 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Verify Python toolchain
-        run: |
-          bash ${{ github.workspace }}/scripts/ci/ensure-python.sh
-          python3 -m venv --help >/dev/null
+        uses: ./.github/actions/setup-python-toolchain
+
+      - name: Validate Python venv module
+        run: python3 -m venv --help >/dev/null
 
       - name: Wait for Docker
         run: ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
@@ -170,7 +172,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - name: Verify Node.js toolchain
-        run: bash ${{ github.workspace }}/scripts/ci/ensure-node.sh
+        uses: ./.github/actions/setup-node-toolchain
 
       - name: Wait for Docker
         run: ${{ github.workspace }}/scripts/ci/wait-for-docker.sh

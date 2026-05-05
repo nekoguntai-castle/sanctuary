@@ -1,0 +1,10 @@
+name: 'Setup server dependencies'
+description: >-
+  Installs server dependencies (npm ci with lifecycle scripts disabled) and
+  runs Prisma generation through the repo-owned helper. Provider-agnostic.
+runs:
+  using: composite
+  steps:
+    - name: Setup server dependencies
+      shell: bash
+      run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh

@@ -53,16 +53,16 @@ main() {
 
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck source=scripts/ci/provider-context.sh
+  . "$script_dir/provider-context.sh"
 
   local create_args=()
   if [ "$docker_visible" = true ]; then
     create_args+=(--docker-visible)
   fi
 
-  local original_workspace="${GITHUB_WORKSPACE:-}"
-  if [ -z "$original_workspace" ]; then
-    original_workspace="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
-  fi
+  local original_workspace
+  original_workspace="$(ci_workspace)"
   original_workspace="$(cd "$original_workspace" && pwd -P)"
 
   local isolated_workspace
@@ -74,15 +74,16 @@ main() {
   (
     export SANCTUARY_CI_ORIGINAL_WORKSPACE="$original_workspace"
     export SANCTUARY_CI_ISOLATED_WORKSPACE="$isolated_workspace"
+    export SANCTUARY_CI_WORKSPACE_OVERRIDE="$isolated_workspace"
     export GITHUB_WORKSPACE="$isolated_workspace"
     cd "$isolated_workspace"
     "$@"
   ) || status="$?"
 
   if [ "$status" -eq 0 ] || [ "$keep_on_failure" = false ]; then
-    rm -rf "$isolated_root" || echo "::warning::Could not fully remove isolated workspace"
+    rm -rf "$isolated_root" || ci_emit_warning "Could not fully remove isolated workspace"
   else
-    echo "::warning::Preserving failed isolated workspace for runner-side inspection"
+    ci_emit_warning "Preserving failed isolated workspace for runner-side inspection"
   fi
 
   return "$status"

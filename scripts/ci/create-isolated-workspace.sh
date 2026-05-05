@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ci/provider-context.sh
+. "$SCRIPT_DIR/provider-context.sh"
+
 usage() {
   cat >&2 <<'EOF'
 Usage: scripts/ci/create-isolated-workspace.sh [--docker-visible] LABEL
@@ -63,7 +67,8 @@ main() {
   source_head="$(git -C "$source_workspace" rev-parse --verify HEAD)" || \
     fail 'could not resolve source HEAD'
 
-  local run_id="${GITHUB_RUN_ID:-local}"
+  local run_id
+  run_id="$(ci_run_id)"
   local uid
   uid="$(id -u)"
 
@@ -71,10 +76,18 @@ main() {
   if [ -n "${SANCTUARY_CI_WORKSPACE_PARENT:-}" ]; then
     parent="$SANCTUARY_CI_WORKSPACE_PARENT"
   elif [ "$docker_visible" = true ]; then
-    local workspace_root="${GITHUB_WORKSPACE:-$source_workspace}"
+    # Docker bind mounts must live under the runner-assigned workspace so the
+    # daemon can see them. Prefer the provider workspace; fall back to the
+    # source clone root if no provider workspace is exposed.
+    local workspace_root
+    if [ -n "${GITHUB_WORKSPACE:-}" ] || [ -n "${SANCTUARY_CI_WORKSPACE_OVERRIDE:-}" ]; then
+      workspace_root="$(ci_workspace)"
+    else
+      workspace_root="$source_workspace"
+    fi
     parent="$workspace_root/.tmp/ci-workspaces/${run_id}-${uid}"
   else
-    parent="${RUNNER_TEMP:-/tmp}/sanctuary-ci-workspaces/${run_id}-${uid}"
+    parent="$(ci_temp_dir)/sanctuary-ci-workspaces/${run_id}-${uid}"
   fi
 
   mkdir -p "$parent"

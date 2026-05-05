@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-output_file="${GITHUB_OUTPUT:-/dev/stdout}"
-event_name="${EVENT_NAME:-${GITHUB_EVENT_NAME:-}}"
-workflow_sha="${WORKFLOW_SHA:-${GITHUB_SHA:-HEAD}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ci/provider-context.sh
+. "$SCRIPT_DIR/provider-context.sh"
+
+event_name="$(ci_event_name)"
+workflow_sha="$(ci_event_head_sha)"
 origin_main_ref="${ORIGIN_MAIN_REF:-origin/main}"
 
 run_repo_quality=true
@@ -11,9 +14,10 @@ run_workflow_quality=false
 run_ci_classifier_tests=false
 
 emit_outputs() {
-  echo "run_repo_quality=$run_repo_quality" >> "$output_file"
-  echo "run_workflow_quality=$run_workflow_quality" >> "$output_file"
-  echo "run_ci_classifier_tests=$run_ci_classifier_tests" >> "$output_file"
+  ci_emit_output \
+    "run_repo_quality=$run_repo_quality" \
+    "run_workflow_quality=$run_workflow_quality" \
+    "run_ci_classifier_tests=$run_ci_classifier_tests"
 }
 
 mark_full_quality() {
@@ -35,16 +39,12 @@ base_sha=''
 head_sha="$workflow_sha"
 
 case "$event_name" in
-  pull_request)
-    base_sha="${PR_BASE_SHA:-}"
-    head_sha="${PR_HEAD_SHA:-$workflow_sha}"
-    ;;
-  merge_group)
-    base_sha="${MERGE_GROUP_BASE_SHA:-}"
-    head_sha="${MERGE_GROUP_HEAD_SHA:-$workflow_sha}"
+  pull_request|merge_group)
+    base_sha="$(ci_event_base_sha)"
+    head_sha="$(ci_event_head_sha)"
     ;;
   push)
-    base_sha="${PUSH_BEFORE_SHA:-}"
+    base_sha="$(ci_event_base_sha)"
     head_sha="$workflow_sha"
     if [ "$base_sha" = "$zero_sha" ]; then
       base_sha="$(git rev-list --max-parents=0 "$head_sha")"

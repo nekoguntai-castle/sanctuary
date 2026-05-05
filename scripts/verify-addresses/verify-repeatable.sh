@@ -15,6 +15,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 # shellcheck source=scripts/ci/docker-endpoint-lib.sh
 source "$repo_root/scripts/ci/docker-endpoint-lib.sh"
+# shellcheck source=scripts/ci/provider-context.sh
+source "$repo_root/scripts/ci/provider-context.sh"
 venv_dir="${VERIFY_ADDRESSES_VENV_DIR:-}"
 rpc_user="${BITCOIN_RPC_USER:-verify}"
 rpc_pass="${BITCOIN_RPC_PASS:-verify}"
@@ -62,7 +64,14 @@ install_python_dependencies() {
     exit 1
   fi
 
-  local temp_parent="${VERIFY_ADDRESSES_VENV_PARENT:-${RUNNER_TEMP:-$repo_root/.tmp}}"
+  local temp_parent="${VERIFY_ADDRESSES_VENV_PARENT:-}"
+  if [ -z "$temp_parent" ]; then
+    if [ -n "${RUNNER_TEMP:-}" ] || [ -n "${SANCTUARY_CI_TEMP_DIR_OVERRIDE:-}" ]; then
+      temp_parent="$(ci_temp_dir)"
+    else
+      temp_parent="$repo_root/.tmp"
+    fi
+  fi
   mkdir -p "$temp_parent"
 
   local attempt status

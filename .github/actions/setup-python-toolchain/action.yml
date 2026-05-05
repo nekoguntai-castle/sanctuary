@@ -1,0 +1,11 @@
+name: 'Setup Python toolchain'
+description: >-
+  Verifies the Python toolchain matches the project version via the
+  repo-owned ensure-python helper. Provider-agnostic; works on GitHub Actions
+  and Forgejo Actions.
+runs:
+  using: composite
+  steps:
+    - name: Verify Python toolchain
+      shell: bash
+      run: bash ${{ github.workspace }}/scripts/ci/ensure-python.sh

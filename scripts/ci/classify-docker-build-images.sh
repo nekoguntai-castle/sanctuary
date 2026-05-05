@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-output_file="${GITHUB_OUTPUT:-/dev/stdout}"
-event_name="${EVENT_NAME:-${GITHUB_EVENT_NAME:-}}"
-workflow_sha="${WORKFLOW_SHA:-${GITHUB_SHA:-HEAD}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ci/provider-context.sh
+. "$SCRIPT_DIR/provider-context.sh"
+
+event_name="$(ci_event_name)"
+workflow_sha="$(ci_event_head_sha)"
 origin_main_ref="${ORIGIN_MAIN_REF:-origin/main}"
 
 frontend_image=false
@@ -11,11 +14,10 @@ backend_image=false
 reason='No image-impacting files changed'
 
 emit_outputs() {
-  {
-    echo "frontend_image=$frontend_image"
-    echo "backend_image=$backend_image"
-    echo "reason=$reason"
-  } >> "$output_file"
+  ci_emit_output \
+    "frontend_image=$frontend_image" \
+    "backend_image=$backend_image" \
+    "reason=$reason"
 }
 
 mark_both_images() {
@@ -36,11 +38,11 @@ head_sha="$workflow_sha"
 
 case "$event_name" in
   pull_request)
-    base_sha="${PR_BASE_SHA:-}"
-    head_sha="${PR_HEAD_SHA:-$workflow_sha}"
+    base_sha="$(ci_event_base_sha)"
+    head_sha="$(ci_event_head_sha)"
     ;;
   push)
-    base_sha="${PUSH_BEFORE_SHA:-}"
+    base_sha="$(ci_event_base_sha)"
     head_sha="$workflow_sha"
     if [ "$base_sha" = "$zero_sha" ]; then
       base_sha="$(git rev-list --max-parents=0 "$head_sha")"

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ci/provider-context.sh
+. "$SCRIPT_DIR/provider-context.sh"
+
 fail() {
   echo "ensure-python: $*" >&2
   exit 1
@@ -20,14 +24,6 @@ version_matches() {
   [[ "$actual" = "$expected".* ]]
 }
 
-write_github_env() {
-  local name="$1"
-  local value="$2"
-
-  if [ -n "${GITHUB_ENV:-}" ]; then
-    echo "${name}=${value}" >> "$GITHUB_ENV"
-  fi
-}
 
 find_python() {
   if [ -n "${PYTHON_BINARY:-}" ]; then
@@ -61,7 +57,7 @@ main() {
     fail "expected Python ${expected}, got ${actual}"
   fi
 
-  write_github_env SANCTUARY_PYTHON_BIN "$python_bin"
+  ci_emit_env "SANCTUARY_PYTHON_BIN=$python_bin"
   echo "Python ${actual} ($python_bin)"
 }
 

@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ci/provider-context.sh
+. "$SCRIPT_DIR/provider-context.sh"
+
 usage() {
   cat >&2 <<'EOF'
 Usage: scripts/ci/collect-playwright-artifacts.sh LABEL [RUN_ID]
 
 Copies Playwright reports from the current workspace into the original CI
-workspace so actions/upload-artifact can publish them after an isolated
-workspace command exits.
+workspace so the upload-artifact step (provider-specific) can publish them
+after an isolated workspace command exits.
 EOF
 }
 
@@ -33,7 +37,7 @@ main() {
   fi
 
   local label="$1"
-  local run_id="${2:-${GITHUB_RUN_ID:-local}}"
+  local run_id="${2:-$(ci_run_id)}"
 
   if [[ ! "$label" =~ ^[A-Za-z0-9._-]+$ ]]; then
     fail 'label may only contain letters, numbers, dot, underscore, and dash'
@@ -42,10 +46,7 @@ main() {
     fail 'run id may only contain letters, numbers, dot, underscore, and dash'
   fi
 
-  local original_workspace="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-}"
-  if [ -z "$original_workspace" ]; then
-    original_workspace="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
-  fi
+  local original_workspace="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-$(ci_workspace)}"
   original_workspace="$(cd "$original_workspace" && pwd -P)"
 
   local artifact_root="$original_workspace/.tmp/${label}-artifacts/${run_id}"
