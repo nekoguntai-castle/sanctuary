@@ -963,7 +963,6 @@ jobs:
     needs: [detect-changes, full-backend-tests]
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         target:
           - app-typecheck
