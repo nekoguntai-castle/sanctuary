@@ -446,16 +446,12 @@ jobs:
           bash tests/ci/provider-context.test.sh
           bash tests/ci/plan-test-run.test.sh
           bash tests/ci/run-lane.test.sh
-          # tests/ci/portability.test.sh:
-          #   passes locally under every ambient-env shape we reproduced
-          #   (bare, FORGEJO_SERVER_URL set, FORGEJO_ACTIONS=true,
-          #    GITHUB_ACTIONS=true, plus the realistic mix), but fails on
-          #   this Forgejo runner in 5-7 seconds. Forgejo's actions log API
-          #   isn't reachable with our PAT, so we can't see which PROBE
-          #   marker is the last one printed before death. Holding it out
-          #   of the CI gate while we wait for log access; pre-commit still
-          #   runs it locally so the test isn't dead, just not gating.
-          # bash tests/ci/portability.test.sh
+          # portability.test.sh has explicit PROBE markers added at each
+          # stage (see tests/ci/portability.test.sh) so a Forgejo-runner
+          # failure surfaces the last marker before death in the step log.
+          # If the runner reproduces the earlier 5-7s failure, the user
+          # can paste the truncated log to identify the failing stage.
+          bash tests/ci/portability.test.sh
           bash tests/ci/check-provider-leaks.test.sh
           bash scripts/ci/check-provider-leaks.sh
           # Existing CI helper tests.

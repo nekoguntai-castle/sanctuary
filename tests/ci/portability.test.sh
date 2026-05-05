@@ -161,27 +161,39 @@ main() {
 
   # ---- Bonus: provider-context's emit channels should also route correctly
   # for each provider when the matching env file is set.
+  #
+  # The Forgejo runner exports GITHUB_ENV globally to its own command-file
+  # path. The adapter's ci_env_file() prefers GITHUB_ENV over FORGEJO_ENV,
+  # so without scrubbing the ambient env the FORGEJO probe would write
+  # `BAR=2` into the runner's command file (which it interprets as a
+  # `::set-env::` directive) and our probe-supplied FORGEJO_ENV file would
+  # stay empty. Use `env -i` to wipe the ambient env first.
   local gh_env_file fj_env_file
   gh_env_file="$(mktemp)"
   fj_env_file="$(mktemp)"
-
+  probe "running github-env emit probe"
   (
-    GITHUB_ACTIONS=true GITHUB_ENV="$gh_env_file" \
+    "${clean_env[@]}" \
+      GITHUB_ACTIONS=true GITHUB_ENV="$gh_env_file" \
       bash -c '
         . "'"$ROOT_DIR/scripts/ci/provider-context.sh"'"
         ci_emit_env "FOO=1"
       '
   )
   [ "$(cat "$gh_env_file")" = "FOO=1" ] || fail "GITHUB_ENV channel did not receive emit"
+  probe "github-env emit OK"
 
+  probe "running forgejo-env emit probe"
   (
-    FORGEJO_ACTIONS=true FORGEJO_ENV="$fj_env_file" \
+    "${clean_env[@]}" \
+      FORGEJO_ACTIONS=true FORGEJO_ENV="$fj_env_file" \
       bash -c '
         . "'"$ROOT_DIR/scripts/ci/provider-context.sh"'"
         ci_emit_env "BAR=2"
       '
   )
   [ "$(cat "$fj_env_file")" = "BAR=2" ] || fail "FORGEJO_ENV channel did not receive emit"
+  probe "forgejo-env emit OK"
 
   rm -f "$out_gh" "$out_fj" "$out_local" "$gh_env_file" "$fj_env_file"
 
