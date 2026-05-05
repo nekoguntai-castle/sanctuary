@@ -195,7 +195,7 @@ jobs:
             if [ -n "$FRONTEND_FILES" ]; then
               read -r -a related_files <<< "$FRONTEND_FILES"
             fi
-            npx vitest related --run --passWithNoTests --pool threads --maxWorkers=1 --no-file-parallelism "${related_files[@]}"
+            npx vitest related --run --passWithNoTests --pool threads --maxWorkers=2 --no-file-parallelism "${related_files[@]}"
           '
 
   quick-backend-typecheck:
@@ -285,7 +285,7 @@ jobs:
           ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend related tests"
           ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend related tests"
           npx vitest related --run --passWithNoTests
-          --pool threads --maxWorkers=1 --no-file-parallelism
+          --pool threads --maxWorkers=2 --no-file-parallelism
           --exclude "tests/integration/**"
           ${{ needs.detect-changes.outputs.backend_files }}
 
