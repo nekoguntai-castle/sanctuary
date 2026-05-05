@@ -1,0 +1,35 @@
+name: 'Cache npm'
+description: >-
+  Restore (and save on success) the runner-wide npm download cache, keyed
+  on lockfile hash. Sibling to the upload-artifact / download-artifact
+  composites; uses the same actions/cache@<sha> pin that scripts/ci/
+  action-runtime-manifests/actions/cache/<sha>/action.yml validates.
+
+  The key is `<runner.os>-npm-<hashFiles(inputs.lockfile-glob)>`; on
+  miss we fall back to `<runner.os>-npm-` so a stale-but-not-too-stale
+  cache still seeds the next install.
+inputs:
+  lockfile-glob:
+    description: >-
+      Glob (or newline-separated globs) passed to hashFiles() for the
+      cache key. Default matches every package-lock.json in the tree.
+    required: false
+    default: '**/package-lock.json'
+  cache-paths:
+    description: >-
+      Newline-separated paths to cache. Default covers the runner-global
+      ~/.npm download cache plus the project-local .tmp/npm-cache that
+      isolated-workspace clones use as their `npm ci --cache` target.
+    required: false
+    default: |
+      ~/.npm
+      .tmp/npm-cache
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      with:
+        path: ${{ inputs.cache-paths }}
+        key: ${{ runner.os }}-npm-${{ hashFiles(inputs.lockfile-glob) }}
+        restore-keys: |
+          ${{ runner.os }}-npm-

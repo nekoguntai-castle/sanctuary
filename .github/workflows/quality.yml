@@ -82,6 +82,11 @@ jobs:
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
 
+      - name: Restore npm cache
+        uses: ./.github/actions/cache-npm
+        with:
+          lockfile-glob: package-lock.json
+
       - name: Run lint in clean workspace
         run: |
           scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
@@ -96,7 +101,10 @@ jobs:
           cd "$lint_workdir/repo"
           for attempt in 1 2 3; do
             echo "npm ci (lint), attempt $attempt"
-            if npm ci --audit=false --fund=false --cache "$lint_workdir/.npm-cache"; then
+            # Tell npm to use the runner-shared cache that the
+            # cache-npm composite restored above; misses fall back to
+            # downloading and the post-step persists the new entries.
+            if npm ci --audit=false --fund=false; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
