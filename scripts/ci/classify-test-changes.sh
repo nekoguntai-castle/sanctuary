@@ -67,16 +67,6 @@ emit_outputs() {
 
 mark_full_scan() {
   full_scan=true
-  frontend_changed=true
-  backend_changed=true
-  backend_integration_changed=true
-  critical_mutation_changed=true
-  gateway_changed=true
-  ai_proxy_changed=true
-  e2e_changed=true
-  browser_smoke_changed=true
-  render_changed=true
-  build_changed=true
 }
 
 if [ "$event_name" = "schedule" ] || [ "$event_name" = "workflow_dispatch" ]; then
@@ -134,6 +124,11 @@ while IFS= read -r file; do
 
   if is_docs_only_file "$file"; then
     continue
+  fi
+
+  if is_full_scan_trigger_file "$file"; then
+    mark_full_scan
+    break
   fi
 
   if is_ai_proxy_file "$file"; then

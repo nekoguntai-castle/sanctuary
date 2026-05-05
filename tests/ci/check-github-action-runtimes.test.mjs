@@ -337,6 +337,166 @@ jobs:
   assert.equal(result.findings.length, 0);
 }
 
+async function assertBlocksManualFullTestSummaryStatusPost() {
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs: {}
+`,
+    (rootDir) => {
+      writeFile(
+        path.join(rootDir, '.github/workflows/test.yml'),
+        `
+name: Test Suite
+on: pull_request
+jobs:
+  pr-required-checks:
+    name: PR Required Checks
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -sS -X POST /statuses/head \
+            -d '{"context":"Test Suite / Full Test Summary (pull_request)","state":"success"}'
+  full-test-summary:
+    name: Full Lane Test Summary
+    if: always() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo full
+`,
+      );
+    },
+  );
+
+  assert.equal(result.findings.length, 0);
+  assert.match(
+    result.errors.join('\n'),
+    /required Full Test Summary pull_request context must be emitted by the real full-test-summary job/,
+  );
+  assert.match(result.errors.join('\n'), /full-test-summary job must be named "Full Test Summary"/);
+  assert.match(result.errors.join('\n'), /must not exclude pull_request events/);
+}
+
+async function assertBlocksSkippedAsSuccessfulFullLanePrerequisite() {
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs: {}
+`,
+    (rootDir) => {
+      writeFile(
+        path.join(rootDir, '.github/workflows/test.yml'),
+        `
+name: Test Suite
+on: pull_request
+jobs:
+  # ============================================
+  # Full Lane (pull requests, merge queue, main, nightly, manual)
+  # ============================================
+  full-frontend-coverage:
+    name: Full Frontend Coverage
+    if: >-
+      always() &&
+      needs.full-frontend-typechecks.result != 'failure' &&
+      needs.full-frontend-typechecks.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo coverage
+  full-test-summary:
+    name: Full Test Summary
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo full
+`,
+      );
+    },
+  );
+
+  assert.equal(result.findings.length, 0);
+  assert.match(
+    result.errors.join('\n'),
+    /full-lane dependency gates must not treat skipped prerequisites as success/,
+  );
+}
+
+async function assertBlocksBrowserE2eMatrixFanout() {
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs: {}
+`,
+    (rootDir) => {
+      writeFile(
+        path.join(rootDir, '.github/workflows/test.yml'),
+        `
+name: Test Suite
+on: pull_request
+jobs:
+  # ============================================
+  # Full Lane (pull requests, merge queue, main, nightly, manual)
+  # ============================================
+  full-browser-e2e-tests:
+    name: Full Browser E2E Tests
+    strategy:
+      matrix:
+        group: [admin-auth, wallet-experience]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo browser
+  full-test-summary:
+    name: Full Test Summary
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo full
+`,
+      );
+    },
+  );
+
+  assert.equal(result.findings.length, 0);
+  assert.match(
+    result.errors.join('\n'),
+    /full-browser-e2e-tests must stay sequential/,
+  );
+}
+
+async function assertAllowsRealFullTestSummaryGate() {
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs: {}
+`,
+    (rootDir) => {
+      writeFile(
+        path.join(rootDir, '.github/workflows/test.yml'),
+        `
+name: Test Suite
+on: pull_request
+jobs:
+  # ============================================
+  # Full Lane (pull requests, merge queue, main, nightly, manual)
+  # ============================================
+  full-test-summary:
+    name: Full Test Summary
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo full
+`,
+      );
+    },
+  );
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.findings.length, 0);
+}
+
 await assertAllowsModernActions();
 await assertBlocksDirectDeprecatedRuntime();
 await assertAllowsForgejoArtifactFallback();
@@ -348,4 +508,8 @@ await assertUsesTrackedManifestRootByDefault();
 await assertIgnoresForgejoGithubTokenForRemoteManifestFetches();
 await assertBlocksBareRepoRootCiHelperCalls();
 await assertAllowsWorkspaceAbsoluteCiHelperCalls();
+await assertBlocksManualFullTestSummaryStatusPost();
+await assertBlocksSkippedAsSuccessfulFullLanePrerequisite();
+await assertBlocksBrowserE2eMatrixFanout();
+await assertAllowsRealFullTestSummaryGate();
 console.log('github action runtime guard regression checks passed');

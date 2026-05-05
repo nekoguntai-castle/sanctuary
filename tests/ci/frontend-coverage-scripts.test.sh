@@ -103,6 +103,31 @@ RETRY_VITEST
   )
   assert_file_equals '2' "$retry_count"
 
+  local ipc_vitest_bin="$TEST_TEMP_DIR/ipc-vitest"
+  local ipc_count="$TEST_TEMP_DIR/ipc-count"
+  cat >"$ipc_vitest_bin" <<'IPC_VITEST'
+#!/usr/bin/env bash
+set -euo pipefail
+attempt=1
+if [ -f "$CAPTURED_VITEST_ATTEMPTS" ]; then
+  attempt="$(($(cat "$CAPTURED_VITEST_ATTEMPTS") + 1))"
+fi
+printf '%s' "$attempt" >"$CAPTURED_VITEST_ATTEMPTS"
+if [ "$attempt" -eq 1 ]; then
+  echo 'Error: write EPIPE while terminating Vitest worker' >&2
+  exit 1
+fi
+mkdir -p .vitest-reports
+: > .vitest-reports/blob-1-2.json
+IPC_VITEST
+  chmod +x "$ipc_vitest_bin"
+
+  (
+    cd "$TEST_TEMP_DIR"
+    CAPTURED_VITEST_ATTEMPTS="$ipc_count" VITEST_BIN="$ipc_vitest_bin" bash "$SHARD_SCRIPT" 1 2
+  )
+  assert_file_equals '2' "$ipc_count"
+
   local fail_vitest_bin="$TEST_TEMP_DIR/fail-vitest"
   local fail_count="$TEST_TEMP_DIR/fail-count"
   local fail_output="$TEST_TEMP_DIR/fail-output"

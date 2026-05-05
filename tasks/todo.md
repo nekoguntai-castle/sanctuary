@@ -6,12 +6,25 @@ Goal: clear the current post-merge `main` Test Suite failure without weakening t
 
 ## Plan
 
-- [x] Compare the latest red job with the backend worker and install/quality failures already fixed.
-- [x] Confirm the failure signature is frontend Vitest fork-worker startup/termination, not an application assertion failure.
-- [x] Move frontend coverage shards to the stable serialized fork-pool/no-file-parallelism contract.
-- [x] Add a script regression check for the worker flags instead of line-number-based workflow assertions.
-- [x] Run focused local frontend coverage script checks and at least one real coverage shard with the patched worker contract.
-- [ ] Commit, push, open the follow-up PR, monitor strict checks, merge when green, and verify the replacement `main` push lane.
+- [x] Compare earlier red jobs with the backend worker and install/quality failures already fixed.
+- [x] Confirm the earlier failure signature was frontend Vitest fork-worker startup/termination, not an application assertion failure.
+- [x] Move frontend coverage shards to the serialized fork-pool/no-file-parallelism contract.
+- [x] Add script regression checks for worker flags and exit-139 retry behavior.
+- [x] Run focused local frontend coverage script checks and real coverage shards with the patched worker contract.
+- [x] Inspect run #981's current `Full Frontend Coverage Shards (push)` failure surface against the latest `main` state.
+- [x] Review recent frontend coverage stabilization commits for incomplete assumptions or regressions.
+- [x] Patch the narrow root cause without weakening 100% frontend coverage thresholds.
+- [x] Restore strict PR full-lane enforcement so the required `Full Test Summary` context is produced by the real full-lane aggregator.
+- [x] Run focused CI script tests plus a real frontend coverage shard/merge gate where practical.
+- [x] Document the result and verification here before final handoff.
+- [x] Fix PR #279 runner pressure caused by full-scan changes also expanding the quick changed-file lane.
+- [x] Remove the unproven per-group backend integration database reset that made the serialized job fail early.
+- [x] Tighten full-lane dependency gating so skipped upstream jobs only unblock unrelated changed-file lanes.
+- [x] Add a workflow-policy regression guard for skipped-as-successful full-lane prerequisites.
+- [x] Replace the browser E2E matrix with one sequential job after a 0-second matrix child failure.
+- [x] Add a workflow-policy regression guard so the browser E2E full lane stays sequential.
+- [x] Keep Full Test Summary artifact downloads non-blocking so report availability cannot fail an otherwise green strict lane.
+- [ ] Refresh PR #279 and verify the protected required checks through the real full-lane summary.
 
 ## Review
 
@@ -26,6 +39,25 @@ Goal: clear the current post-merge `main` Test Suite failure without weakening t
 - Local verification for the follow-up retry passed: coverage script regression tests cover both 139 retry and non-139 hard failure; real shard 2 completed and wrote its blob; lizard-only quality, whitespace, shell syntax, and diff metadata checks passed.
 - PR #266 merged, but the next replacement `main` run showed the thread pool itself was unstable on the runner: shard 1 segfaulted, retried once, then segfaulted again before any deterministic assertion failure. The next patch switches frontend coverage to a serialized fork pool while keeping the exit-139 retry as a narrow guard.
 - Direct and script-backed local serialized fork-pool shard 1 runs passed and wrote their blobs, preserving process isolation without concurrent fork workers.
+- Run #981 on `41337ec6` proved the classifier cascade was fixed: `Detect Changed Files`, backend, gateway, AI proxy, frontend typechecks, browser E2E, render E2E, and build jobs ran; the real remaining failure was `Full Frontend Coverage Shards (push)` after 4m16s, with merge/summary failures cascading from that job.
+- The shard script now captures each Vitest attempt log, retries only exact exit 139 or known Vitest infrastructure signatures such as `EPIPE`, closed IPC channels, worker termination, and native segmentation-fault text, and keeps ordinary assertion/coverage failures non-retryable.
+- The full frontend coverage job now runs root dependency install and both shard commands under the shared `node-toolchain` lock. Dependency install is retried as setup; shard retry remains inside the shard script so assertions and coverage misses still fail.
+- The legacy changed-file classifier now honors the shared full-scan trigger predicate, and Test Suite `push.paths` includes `.github/actions/**`, so action-wrapper and coverage-config changes cannot skip the strict full lane.
+- The required PR `Test Suite / Full Test Summary (pull_request)` context is no longer manually posted by `PR Required Checks`. The real `Full Test Summary` job now runs on pull requests, merge queue, `main` pushes, schedules, and manual dispatch, and the workflow guard rejects future quick-lane manual posts for that context.
+- PR #279 exposed a second-order workflow issue: full-scan config changes correctly required the real full lane, but the classifier also marked every subsystem as changed, so quick PR jobs and the full PR lane started together. That added runner pressure without increasing strictness.
+- The refreshed PR #279 run fixed the quick-lane expansion and Code Quality passed. Test Suite then failed only `Full Backend Typecheck` after a retry-shaped 1m3s, while the same CI setup and `npm run typecheck:tests` command passed locally. The next patch keeps the strict full lane but hardens that native TypeScript command boundary with the shared runner lock and longer bounded retry.
+- The next PR #279 head proved `Full Backend Typecheck` green, then failed in `Full Backend Unit Coverage` after 5m19s and cascaded into backend integration starts. Backend Vitest coverage/integration now uses an infrastructure-aware retry wrapper for exit 139 and worker/IPC signatures only, and expensive downstream full-lane jobs no longer start after an upstream full-lane failure.
+- Local verification of the backend coverage patch passed: retry-wrapper regression tests, actionlint, action runtime guard, classifier regression, exact backend unit coverage through the new wrapper with 428 files / 9,537 tests / 100% coverage, lizard baseline, and whitespace check.
+- The next PR #279 head proved Code Quality, backend typecheck, and backend unit coverage green on Forgejo. The remaining red moved to a 0-second `repositories-core` backend integration matrix child while sibling integration jobs ran, so the backend integration matrix is now serialized to avoid job-container startup pressure.
+- `max-parallel: 1` did not remove Forgejo matrix child job-container allocation; another head failed a different integration child at 0 seconds. The integration matrix is now replaced with one sequential job that resets the test database before each group, preserving strict integration coverage without per-group job-container fan-out.
+- The first sequential integration head failed after 1m0s, pointing at the newly added per-group Prisma reset rather than a test assertion. The loop now keeps the single post-migration database and relies on the integration harness cleanup hooks already used by the specs.
+- Downstream full-lane conditions no longer treat any skipped prerequisite as good enough. Skipped prerequisites only unblock later jobs when that prerequisite lane is not relevant to the changed-file scope, preventing expensive cascade jobs after an upstream full-scan failure.
+- The workflow runtime/policy guard now rejects future full-lane predicates that broadly accept `needs.*.result != 'failure'`, because that silently treats skipped prerequisites as successful.
+- The next strict PR run proved backend integration and frontend coverage green, then failed only the `wallet-experience` browser matrix child at job start while three sibling browser groups passed. The browser E2E lane now runs all browser groups in one job to remove the remaining runner-fragile matrix fan-out.
+- The workflow runtime/policy guard now also rejects a matrix on `full-browser-e2e-tests`, matching the backend lesson that `max-parallel: 1` is not enough when Forgejo still allocates matrix child jobs separately.
+- The next strict PR run proved every upstream full-lane job green, then failed only the final summary after 1s. Summary artifact downloads are now best-effort; the required summary remains strict because its final check still evaluates every upstream job result.
+- Verification passed: shell syntax checks; `bash tests/ci/frontend-coverage-scripts.test.sh`; `bash tests/ci/classify-test-changes.test.sh`; `bash tests/ci/plan-test-run.test.sh`; `bash tests/ci/run-lane.test.sh`; `node tests/ci/check-github-action-runtimes.test.mjs`; `npm run check:github-action-runtimes`; pinned actionlint on `test.yml` and `quality.yml`; `git diff --check`; lizard with the repo warning baseline; real frontend coverage shard 1, shard 2, and merge. The merged frontend coverage result stayed at 459 files, 5,992 tests, and 100% statements, branches, functions, and lines.
+- The zero-warning lizard wrapper still reports the known parser-shaped warning that `scripts/ci/check-github-action-runtimes.mjs:84` spans the file; the repository's normal lizard warning baseline passed.
 
 ---
 

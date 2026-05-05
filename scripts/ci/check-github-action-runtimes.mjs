@@ -450,6 +450,7 @@ async function inspectWorkflow(filePath, options, state) {
   const relativePath = path.relative(options.rootDir, filePath);
 
   inspectWorkspaceAbsoluteHelperCalls(workflow, relativePath, state);
+  inspectStrictFullTestSummaryGate(workflow, relativePath, state);
 
   for (const use of extractUses(workflow)) {
     const action = parseUsesSpec(use.spec);
@@ -476,6 +477,64 @@ function inspectWorkspaceAbsoluteHelperCalls(workflow, relativePath, state) {
         'cannot break it',
     );
   });
+}
+
+function inspectStrictFullTestSummaryGate(workflow, relativePath, state) {
+  if (relativePath !== '.github/workflows/test.yml') {
+    return;
+  }
+
+  if (workflow.includes('Test Suite / Full Test Summary (pull_request)')) {
+    addUniqueError(
+      state,
+      `${relativePath}: required Full Test Summary pull_request context must be emitted by the ` +
+        'real full-test-summary job, not posted manually from another job',
+    );
+  }
+
+  const fullLaneSection = workflow.split(/\n\s+# Full Lane /)[1] ?? '';
+  if (fullLaneSection.includes("github.event_name != 'pull_request'")) {
+    addUniqueError(
+      state,
+      `${relativePath}: strict full-lane jobs must run on pull_request so merged code is tested before merge`,
+    );
+  }
+
+  if (/needs\.[A-Za-z0-9_-]+\.result\s*!=\s*'failure'/.test(fullLaneSection)) {
+    addUniqueError(
+      state,
+      `${relativePath}: full-lane dependency gates must not treat skipped prerequisites as success; ` +
+        'require success or explicitly prove the prerequisite lane is out of scope',
+    );
+  }
+
+  const summaryJobMatch = workflow.match(
+    /\n\s{2}full-test-summary:\n(?<body>[\s\S]*?)(?:\n\s{2}[A-Za-z0-9_-]+:\n|$)/,
+  );
+  const summaryJobBody = summaryJobMatch?.groups?.body ?? '';
+  if (!summaryJobBody.includes('name: Full Test Summary')) {
+    addUniqueError(
+      state,
+      `${relativePath}: full-test-summary job must be named "Full Test Summary" to satisfy the required PR context`,
+    );
+  }
+  if (summaryJobBody.includes("github.event_name != 'pull_request'")) {
+    addUniqueError(
+      state,
+      `${relativePath}: full-test-summary job must not exclude pull_request events`,
+    );
+  }
+
+  const browserJobBody =
+    workflow.match(
+      /\n\s{2}full-browser-e2e-tests:\n(?<body>[\s\S]*?)(?:\n\s{2}[A-Za-z0-9_-]+:\n|$)/,
+    )?.groups?.body ?? '';
+  if (/\n\s+matrix:/.test(browserJobBody)) {
+    addUniqueError(
+      state,
+      `${relativePath}: full-browser-e2e-tests must stay sequential; Forgejo matrix children have failed before checkout on the shared runner`,
+    );
+  }
 }
 
 export async function checkActionRuntimes(rawOptions = {}) {

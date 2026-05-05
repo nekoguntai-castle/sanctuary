@@ -55,6 +55,7 @@ on:
       - 'Dockerfile'
       - 'server/Dockerfile'
       - '.github/mutation-baseline.json'
+      - '.github/actions/**'
       - '.github/workflows/test.yml'
   schedule:
     - cron: '0 7 * * *'
@@ -218,7 +219,10 @@ jobs:
         uses: ./.github/actions/setup-server-deps
 
       - name: Run server test typecheck
+        env:
+          SANCTUARY_RETRY_ATTEMPTS: '5'
         run: >
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend typecheck"
           ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend typecheck"
           npm run typecheck:tests
@@ -584,8 +588,8 @@ jobs:
   pr-required-checks:
     name: PR Required Checks
     # Runs on pull_request and merge_group. On pull_request it aggregates
-    # the quick lane; on merge_group it's a no-op (Full Lane Test Summary
-    # is the authoritative gate there), but it must still report a
+    # the quick lane; on merge_group it's a no-op (Full Test Summary is
+    # the authoritative gate there), but it must still report a
     # conclusion so branch protection doesn't rely on GitHub's
     # "skipped == success" semantics for merge-queue eligibility.
     if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
@@ -607,7 +611,7 @@ jobs:
         if: github.event_name == 'merge_group'
         run: |
           echo "PR Required Checks aggregates the pull_request quick lane."
-          echo "On merge_group events, Full Lane Test Summary is the authoritative gate."
+          echo "On merge_group events, Full Test Summary is the authoritative gate."
           echo "Reporting success so branch-protection required-checks are explicitly satisfied."
 
       - name: Check PR quick lane results
@@ -668,47 +672,59 @@ jobs:
             exit 1
           fi
 
-      # Forgejo doesn't reliably emit a commit-status for trivial no-op
-      # aggregator jobs (the prior `full-test-summary-pr` job's status
-      # never reached the commit/status API even after adding `needs:`
-      # and a checkout step). Branch protection requires the un-suffixed
-      # `Test Suite / Full Test Summary (pull_request)` context, so post
-      # it directly from this job, which DOES reliably emit its own
-      # status. This step only runs on PR events and only when the
-      # quick-lane checks above succeeded — `set -e` propagates failure.
-      - name: Post Full Test Summary commit status (Forgejo workaround)
-        if: github.event_name == 'pull_request'
+  full-lane-ready:
+    name: Full Lane Ready
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [detect-changes, pr-required-checks]
+    steps:
+      - name: Check full lane prerequisites
         env:
-          FORGE_API: ${{ github.api_url }}
-          FORGE_REPO: ${{ github.repository }}
-          FORGE_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          FORGE_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          DETECT_CHANGES: ${{ needs.detect-changes.result }}
+          PR_REQUIRED_CHECKS: ${{ needs.pr-required-checks.result }}
         run: |
-          set -euo pipefail
-          curl -sS -X POST \
-            -H "Authorization: token $FORGE_TOKEN" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json" \
-            "$FORGE_API/repos/$FORGE_REPO/statuses/$FORGE_PR_HEAD_SHA" \
-            -d '{"context":"Test Suite / Full Test Summary (pull_request)","state":"success","description":"Aggregated by PR Required Checks (Forgejo no-op workaround)"}' \
-            -o /tmp/post.json -w 'HTTP %{http_code}\n'
-          echo "--- response ---"
-          head -c 400 /tmp/post.json
-          echo ""
+          failed=false
+
+          require_success() {
+            name="$1"
+            result="$2"
+            if [ "$result" != "success" ]; then
+              echo "::error::$name result was $result; expected success"
+              failed=true
+            else
+              echo "$name: $result"
+            fi
+          }
+
+          require_success "Detect Changed Files" "$DETECT_CHANGES"
+
+          case "$EVENT_NAME" in
+            pull_request|merge_group)
+              require_success "PR Required Checks" "$PR_REQUIRED_CHECKS"
+              ;;
+            *)
+              echo "PR Required Checks: $PR_REQUIRED_CHECKS"
+              ;;
+          esac
+
+          if [ "$failed" = "true" ]; then
+            exit 1
+          fi
 
   # ============================================
-  # Full Lane (main/nightly/manual)
+  # Full Lane (pull requests, merge queue, main, nightly, manual)
   # ============================================
   full-backend-typecheck:
     name: Full Backend Typecheck
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes]
+    needs: [detect-changes, full-lane-ready]
     defaults:
       run:
         working-directory: server
@@ -724,7 +740,10 @@ jobs:
         uses: ./.github/actions/setup-server-deps
 
       - name: Run server test typecheck
+        env:
+          SANCTUARY_RETRY_ATTEMPTS: '5'
         run: >
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           ${{ github.workspace }}/scripts/ci/retry-command.sh "server test typecheck"
           ${{ github.workspace }}/scripts/ci/time-command.sh "server test typecheck"
           npm run typecheck:tests
@@ -733,12 +752,13 @@ jobs:
     name: Full Backend Unit Coverage
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
+      needs.full-backend-typecheck.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-backend-typecheck]
+    needs: [detect-changes, full-lane-ready, full-backend-typecheck]
     defaults:
       run:
         working-directory: server
@@ -792,8 +812,10 @@ jobs:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
+          SANCTUARY_VITEST_INFRA_ATTEMPTS: '5'
         run: >
-          ${{ github.workspace }}/scripts/ci/retry-command.sh "backend unit coverage"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          ${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh "backend unit coverage"
           ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit coverage"
           npm run test:run:ci -- tests/unit --coverage
 
@@ -808,27 +830,23 @@ jobs:
           retention-days: 14
 
   full-backend-integration-tests:
-    name: Full Backend Integration Tests (${{ matrix.group }})
+    name: Full Backend Integration Tests
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
+      (needs.full-backend-unit-coverage.result == 'success' ||
+       (needs.full-backend-unit-coverage.result == 'skipped' &&
+        needs.detect-changes.outputs.full_scan != 'true' &&
+        needs.detect-changes.outputs.test_suite_changed != 'true' &&
+        needs.detect-changes.outputs.backend_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-backend-unit-coverage]
+    needs: [detect-changes, full-lane-ready, full-backend-unit-coverage]
     defaults:
       run:
         working-directory: server
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        group:
-          - flows
-          - repositories-core
-          - repositories-sharing
-          - ops-workers
 
     services:
       postgres:
@@ -879,30 +897,39 @@ jobs:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
+          SANCTUARY_VITEST_INFRA_ATTEMPTS: '5'
         run: |
-          mapfile -t specs < <("${{ github.workspace }}/scripts/ci/backend-integration-groups.sh" "${{ matrix.group }}")
+          groups=(flows ops-workers repositories-core repositories-sharing)
 
-          if [ "${#specs[@]}" -eq 0 ]; then
-            echo "::error::No backend integration specs found for group ${{ matrix.group }}"
-            exit 1
-          fi
+          for group in "${groups[@]}"; do
+            echo "::group::Backend integration ${group}"
+            mapfile -t specs < <("${{ github.workspace }}/scripts/ci/backend-integration-groups.sh" "$group")
 
-          "${{ github.workspace }}/scripts/ci/time-command.sh" \
-            "backend integration ${{ matrix.group }}" \
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "backend integration ${{ matrix.group }}" \
-            npm run test:run:ci -- "${specs[@]}"
+            if [ "${#specs[@]}" -eq 0 ]; then
+              echo "::error::No backend integration specs found for group ${group}"
+              exit 1
+            fi
+
+            "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
+              "${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh" \
+              "backend integration ${group}" \
+              "${{ github.workspace }}/scripts/ci/time-command.sh" \
+              "backend integration ${group}" \
+              npm run test:run:ci -- "${specs[@]}"
+            echo "::endgroup::"
+          done
 
   full-backend-tests:
     name: Full Backend Tests
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true' ||
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-backend-typecheck, full-backend-unit-coverage, full-backend-integration-tests]
+    needs: [detect-changes, full-lane-ready, full-backend-typecheck, full-backend-unit-coverage, full-backend-integration-tests]
     steps:
       - name: Check backend lane result
         env:
@@ -983,12 +1010,18 @@ jobs:
     name: Full Frontend Typecheck (${{ matrix.target }})
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
+      (needs.full-backend-tests.result == 'success' ||
+       (needs.full-backend-tests.result == 'skipped' &&
+        needs.detect-changes.outputs.full_scan != 'true' &&
+        needs.detect-changes.outputs.test_suite_changed != 'true' &&
+        needs.detect-changes.outputs.backend_changed != 'true' &&
+        needs.detect-changes.outputs.backend_integration_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-backend-tests]
+    needs: [detect-changes, full-lane-ready, full-backend-tests]
     strategy:
       fail-fast: false
       matrix:
@@ -1018,12 +1051,13 @@ jobs:
     name: Full Frontend Coverage Shards
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
+      needs.full-frontend-typechecks.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-frontend-typechecks]
+    needs: [detect-changes, full-lane-ready, full-frontend-typechecks]
 
     steps:
       - name: Checkout repository
@@ -1033,13 +1067,23 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
-        run: npm ci
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-command.sh "frontend coverage npm ci"
+          scripts/ci/time-command.sh "frontend coverage npm ci"
+          npm ci --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Run frontend coverage shard 1
-        run: scripts/ci/time-command.sh "frontend coverage shard 1/2" npm run test:coverage:shard -- 1 2
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/time-command.sh "frontend coverage shard 1/2"
+          npm run test:coverage:shard -- 1 2
 
       - name: Run frontend coverage shard 2
-        run: scripts/ci/time-command.sh "frontend coverage shard 2/2" npm run test:coverage:shard -- 2 2
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/time-command.sh "frontend coverage shard 2/2"
+          npm run test:coverage:shard -- 2 2
 
       - name: Upload frontend coverage blob 1
         if: always()
@@ -1065,13 +1109,13 @@ jobs:
     name: Full Frontend Coverage Merge
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
       needs.full-frontend-coverage-shards.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-frontend-coverage-shards]
+    needs: [detect-changes, full-lane-ready, full-frontend-coverage-shards]
 
     steps:
       - name: Checkout repository
@@ -1081,7 +1125,11 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
-        run: npm ci
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-command.sh "frontend coverage merge npm ci"
+          scripts/ci/time-command.sh "frontend coverage merge npm ci"
+          npm ci --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Download frontend coverage shard 1
         uses: ./.github/actions/download-artifact
@@ -1111,12 +1159,12 @@ jobs:
     name: Full Frontend Tests
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-frontend-typechecks, full-frontend-coverage-merge]
+    needs: [detect-changes, full-lane-ready, full-frontend-typechecks, full-frontend-coverage-merge]
 
     steps:
       - name: Check frontend lane result
@@ -1149,12 +1197,17 @@ jobs:
     name: Full Gateway Tests
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
+      (needs.full-frontend-tests.result == 'success' ||
+       (needs.full-frontend-tests.result == 'skipped' &&
+        needs.detect-changes.outputs.full_scan != 'true' &&
+        needs.detect-changes.outputs.test_suite_changed != 'true' &&
+        needs.detect-changes.outputs.frontend_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.gateway_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-frontend-tests]
+    needs: [detect-changes, full-lane-ready, full-frontend-tests]
     defaults:
       run:
         working-directory: gateway
@@ -1187,12 +1240,17 @@ jobs:
     name: Full AI Proxy Tests
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
+      (needs.full-gateway-tests.result == 'success' ||
+       (needs.full-gateway-tests.result == 'skipped' &&
+        needs.detect-changes.outputs.full_scan != 'true' &&
+        needs.detect-changes.outputs.test_suite_changed != 'true' &&
+        needs.detect-changes.outputs.gateway_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.ai_proxy_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-gateway-tests]
+    needs: [detect-changes, full-lane-ready, full-gateway-tests]
 
     steps:
       - name: Checkout repository
@@ -1217,12 +1275,17 @@ jobs:
     name: Full Critical Mutation Gate
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
+      (needs.full-ai-proxy-tests.result == 'success' ||
+       (needs.full-ai-proxy-tests.result == 'skipped' &&
+        needs.detect-changes.outputs.full_scan != 'true' &&
+        needs.detect-changes.outputs.test_suite_changed != 'true' &&
+        needs.detect-changes.outputs.ai_proxy_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.critical_mutation_changed == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: [detect-changes, full-ai-proxy-tests]
+    needs: [detect-changes, full-lane-ready, full-ai-proxy-tests]
     defaults:
       run:
         working-directory: server
@@ -1249,28 +1312,19 @@ jobs:
           retention-days: 14
 
   full-browser-e2e-tests:
-    name: Full Browser E2E Tests (${{ matrix.group }})
+    name: Full Browser E2E Tests
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
+      (needs.full-critical-mutation.result == 'success' ||
+       (needs.full-critical-mutation.result == 'skipped' &&
+        needs.detect-changes.outputs.full_scan != 'true' &&
+        needs.detect-changes.outputs.critical_mutation_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.browser_smoke_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-critical-mutation]
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - group: admin-auth
-            api_port: '3101'
-          - group: wallet-lifecycle
-            api_port: '3102'
-          - group: wallet-transactions
-            api_port: '3103'
-          - group: wallet-experience
-            api_port: '3104'
+    needs: [detect-changes, full-lane-ready, full-critical-mutation]
 
     services:
       postgres:
@@ -1322,7 +1376,7 @@ jobs:
       - name: Build frontend
         run: scripts/ci/time-command.sh "browser frontend build" scripts/ci/retry-command.sh "browser frontend build" npm run build
         env:
-          VITE_API_URL: http://localhost:${{ matrix.api_port }}
+          VITE_API_URL: http://localhost:3101
 
       - name: Resolve service endpoints
         env:
@@ -1368,48 +1422,63 @@ jobs:
           scripts/ci/with-runner-lock.sh e2e bash -c '
             set -euo pipefail
 
-            mapfile -t browser_specs < <(scripts/ci/browser-e2e-groups.sh "$BROWSER_GROUP")
-            if [ "${#browser_specs[@]}" -eq 0 ]; then
-              echo "No browser-flow E2E specs found for ${BROWSER_GROUP}."
-              exit 0
-            fi
+            readonly api_port=3101
+            BACKEND_PID=""
 
-            cleanup() {
+            cleanup_backend() {
               if [ -n "${BACKEND_PID:-}" ]; then
                 kill "$BACKEND_PID" 2>/dev/null || true
+                wait "$BACKEND_PID" 2>/dev/null || true
+                BACKEND_PID=""
               fi
             }
-            trap cleanup EXIT
+            trap cleanup_backend EXIT
 
-            (
-              cd server
-              PORT="$API_PORT" npm run start
-            ) &
-            BACKEND_PID="$!"
-
-            echo "Waiting for backend server..."
-            for i in {1..30}; do
-              if curl -s "http://localhost:${API_PORT}/health" > /dev/null 2>&1; then
-                echo "Backend is ready!"
-                break
+            while IFS= read -r browser_group; do
+              echo "::group::Browser E2E ${browser_group}"
+              mapfile -t browser_specs < <(scripts/ci/browser-e2e-groups.sh "$browser_group")
+              if [ "${#browser_specs[@]}" -eq 0 ]; then
+                echo "No browser-flow E2E specs found for ${browser_group}."
+                echo "::endgroup::"
+                continue
               fi
-              if [ "$i" -eq 30 ]; then
-                echo "Backend failed to start"
-                exit 1
-              fi
-              echo "Attempt $i: Backend not ready yet..."
-              sleep 2
-            done
 
-            printf "Running browser-flow E2E group %s:\n" "$BROWSER_GROUP"
-            printf "  %s\n" "${browser_specs[@]}"
-            VITE_API_URL="http://localhost:${API_PORT}" \
-              scripts/ci/time-command.sh "browser-flow E2E ${BROWSER_GROUP}" \
-              npm run test:e2e -- --project=chromium "${browser_specs[@]}"
+              (
+                cd server
+                PORT="$api_port" npm run start
+              ) &
+              BACKEND_PID="$!"
+
+              echo "Waiting for backend server..."
+              for i in {1..30}; do
+                if curl -s "http://localhost:${api_port}/health" > /dev/null 2>&1; then
+                  echo "Backend is ready!"
+                  break
+                fi
+                if [ "$i" -eq 30 ]; then
+                  echo "Backend failed to start"
+                  exit 1
+                fi
+                echo "Attempt $i: Backend not ready yet..."
+                sleep 2
+              done
+
+              printf "Running browser-flow E2E group %s:\n" "$browser_group"
+              printf "  %s\n" "${browser_specs[@]}"
+              VITE_API_URL="http://localhost:${api_port}" \
+                scripts/ci/time-command.sh "browser-flow E2E ${browser_group}" \
+                npm run test:e2e -- --project=chromium "${browser_specs[@]}"
+
+              cleanup_backend
+              echo "::endgroup::"
+            done < <(scripts/ci/browser-e2e-groups.sh --groups)
+
+            if [ -n "${BACKEND_PID:-}" ]; then
+              echo "Backend process was still running after browser E2E groups"
+              exit 1
+            fi
           '
         env:
-          BROWSER_GROUP: ${{ matrix.group }}
-          API_PORT: ${{ matrix.api_port }}
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           GATEWAY_SECRET: test-gateway-secret-for-ci-minimum-32-chars
@@ -1425,7 +1494,7 @@ jobs:
         if: always()
         uses: ./.github/actions/upload-artifact
         with:
-          name: playwright-report-browser-${{ matrix.group }}
+          name: playwright-report-browser
           path: playwright-report/
           retention-days: 14
 
@@ -1433,7 +1502,7 @@ jobs:
         if: always()
         uses: ./.github/actions/upload-artifact
         with:
-          name: playwright-results-browser-${{ matrix.group }}
+          name: playwright-results-browser
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14
@@ -1442,12 +1511,17 @@ jobs:
     name: Full Render E2E Tests
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
+      (needs.full-browser-e2e-tests.result == 'success' ||
+       (needs.full-browser-e2e-tests.result == 'skipped' &&
+        needs.detect-changes.outputs.full_scan != 'true' &&
+        needs.detect-changes.outputs.test_suite_changed != 'true' &&
+        needs.detect-changes.outputs.browser_smoke_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.render_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-browser-e2e-tests]
+    needs: [detect-changes, full-lane-ready, full-browser-e2e-tests]
 
     steps:
       - name: Checkout repository
@@ -1504,12 +1578,17 @@ jobs:
     name: Full Build Check
     if: >-
       always() &&
-      github.event_name != 'pull_request' &&
+      needs.full-lane-ready.result == 'success' &&
+      (needs.full-render-e2e-tests.result == 'success' ||
+       (needs.full-render-e2e-tests.result == 'skipped' &&
+        needs.detect-changes.outputs.full_scan != 'true' &&
+        needs.detect-changes.outputs.test_suite_changed != 'true' &&
+        needs.detect-changes.outputs.render_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.build_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-render-e2e-tests]
+    needs: [detect-changes, full-lane-ready, full-render-e2e-tests]
 
     steps:
       - name: Checkout repository
@@ -1532,16 +1611,15 @@ jobs:
             npm --ignore-scripts run build
 
   full-test-summary:
-    name: Full Lane Test Summary
-    if: >-
-      always() &&
-      github.event_name != 'pull_request'
+    name: Full Test Summary
+    if: always()
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-backend-tests, full-frontend-tests, full-gateway-tests, full-ai-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
+    needs: [detect-changes, full-lane-ready, full-backend-tests, full-frontend-tests, full-gateway-tests, full-ai-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
 
     steps:
       - name: Download backend coverage
         if: needs.full-backend-tests.result == 'success' || needs.full-backend-tests.result == 'failure'
+        continue-on-error: true
         uses: ./.github/actions/download-artifact
         with:
           name: backend-coverage
@@ -1549,6 +1627,7 @@ jobs:
 
       - name: Download frontend coverage
         if: needs.full-frontend-tests.result == 'success' || needs.full-frontend-tests.result == 'failure'
+        continue-on-error: true
         uses: ./.github/actions/download-artifact
         with:
           name: frontend-coverage
@@ -1556,6 +1635,7 @@ jobs:
 
       - name: Download gateway coverage
         if: needs.full-gateway-tests.result == 'success' || needs.full-gateway-tests.result == 'failure'
+        continue-on-error: true
         uses: ./.github/actions/download-artifact
         with:
           name: gateway-coverage
@@ -1563,6 +1643,7 @@ jobs:
 
       - name: Download critical mutation report
         if: needs.full-critical-mutation.result == 'success' || needs.full-critical-mutation.result == 'failure'
+        continue-on-error: true
         uses: ./.github/actions/download-artifact
         with:
           name: critical-mutation-report
@@ -1672,6 +1753,7 @@ jobs:
       - name: Check full lane result
         env:
           DETECT_CHANGES: ${{ needs.detect-changes.result }}
+          FULL_LANE_READY: ${{ needs.full-lane-ready.result }}
           FULL_SCAN: ${{ needs.detect-changes.outputs.full_scan }}
           TEST_SUITE_CHANGED: ${{ needs.detect-changes.outputs.test_suite_changed }}
           FRONTEND_CHANGED: ${{ needs.detect-changes.outputs.frontend_changed }}
@@ -1797,6 +1879,7 @@ jobs:
           fi
 
           require_success "Detect Changed Files" "$DETECT_CHANGES"
+          require_success "Full Lane Ready" "$FULL_LANE_READY"
           require_when_relevant "Full Backend Tests" "$FULL_BACKEND_TESTS" "$backend_required"
           require_when_relevant "Full Frontend Tests" "$FULL_FRONTEND_TESTS" "$frontend_required"
           require_when_relevant "Full Gateway Tests" "$FULL_GATEWAY_TESTS" "$gateway_required"

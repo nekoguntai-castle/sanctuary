@@ -65,7 +65,7 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 
 - Route backend CI Vitest invocations through a shared script such as `npm run test:run:ci -- ...`.
 - Use `--pool threads --maxWorkers=1 --no-file-parallelism` for Forgejo backend unit and integration suites that have previously hit fork-worker instability.
-- Wrap deterministic command boundaries with `scripts/ci/retry-command.sh` only for native runner crashes; keep assertion failures and coverage thresholds blocking.
+- Wrap backend Vitest command boundaries with an infrastructure-aware retry helper that retries exit 139 and worker/IPC signatures only; keep assertion failures and coverage thresholds blocking.
 - Treat incomplete 100% coverage output after worker termination as infrastructure instability until a focused local run proves a real coverage regression.
 
 ## Verify The Post-Merge Lane, Not Only PR Required Checks
@@ -2057,6 +2057,19 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - After every merge, verify the post-merge target-branch push lane separately from PR-required contexts (mentioned earlier in this file under "Verify The Post-Merge Lane"). A red `main` after merge means the change is not actually shipped; do not declare a phase complete on a red post-merge lane.
 - Branch protection should have `apply_to_admins: true` so the admin path enforces the same gate as everyone else. If a real emergency requires bypassing, relax the flag deliberately, fix, and re-tighten — do not normalize the bypass.
 
+## Back Required PR Summaries With Real Full Lanes
+
+**Rule:** Required PR summary contexts that claim full-suite coverage must be emitted by the real full-lane aggregator after its dependencies run, not manually posted from a quick-lane job.
+
+**Why:** The `Test Suite / Full Test Summary (pull_request)` workaround made branch protection enforce a status context, but it let the quick-lane aggregator post success before full frontend coverage ran. The next `main` push then found a real full-lane frontend coverage failure that should have blocked the merge candidate before it reached `main`.
+
+**How to apply:**
+
+- Keep `Full Test Summary` as a real workflow job on `pull_request`, `merge_group`, `push`, scheduled, and manual runs.
+- Let docs-only or irrelevant changes skip individual full-lane jobs through classifier outputs, but make the summary job inspect those skips explicitly.
+- Do not post `Test Suite / Full Test Summary (pull_request)` directly from `PR Required Checks` or another quick-lane job.
+- Add workflow-policy regression checks when changing branch-protection contexts, summary job names, or event filters.
+
 ## Wrap Path-Classifier CI Jobs In Retry-Command
 
 **Rule:** The `Detect Changed Files` (test.yml) and `Determine Quality Scope` (quality.yml) jobs each have a single classify step, and every other job in the workflow depends on its outputs. Wrap the classify invocation in `scripts/ci/retry-command.sh` so a transient script-internal flake does not cascade-skip the entire workflow graph.
@@ -2068,3 +2081,54 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Run path/scope classify steps as `scripts/ci/retry-command.sh "<label>" bash scripts/ci/classify-*.sh` rather than calling the script directly.
 - Keep `emit_outputs` calls at terminal points so retries do not write partial output sets that could confuse downstream `if:` predicates.
 - `retry-command.sh` only catches script-internal failures — it does not protect against the runner aborting before the step runs. If those still occur, the next push of any change re-validates `main`; do not auto-rerun a red main lane just to clear the red.
+
+## Keep Full-Scan Separate From Quick Changed-File Lanes
+
+**Rule:** A full-scan trigger should require the strict full lane, but it should not automatically mark every quick-lane subsystem as changed.
+
+**Why:** A workflow/config PR already gets broad coverage through the real full lane. Marking every quick-lane boolean true at the same time starts redundant quick jobs beside the full lane, increasing runner pressure without improving branch protection.
+
+**How to apply:**
+
+- Treat `full_scan=true` as the signal that the full-lane summary must require every full subsystem.
+- Keep quick-lane booleans tied to actual changed files so `PR Required Checks` can skip irrelevant quick jobs.
+- If the full lane is required on PRs, release it through an explicit prerequisite job after the quick required-check aggregate succeeds.
+- Add classifier regression tests for global workflow/action/config changes that assert `full_scan=true` while quick subsystem booleans stay false unless their files actually changed.
+
+## Avoid Matrix Fan-Out On Runner-Fragile Integration Lanes
+
+**Rule:** If Forgejo matrix children fail at 0 seconds before checkout or test output, collapse that lane into one sequential job instead of keeping per-child job containers.
+
+**Why:** Backend integration groups were already limited to `max-parallel: 1`, but Forgejo still allocated separate matrix child jobs and different children failed at 0 seconds on separate PR heads. The same pattern later hit a browser E2E matrix child while sibling browser groups passed. The failure was job-container startup pressure, not a repository test assertion.
+
+**How to apply:**
+
+- Prefer a single job that loops over integration groups when the groups share the same service dependencies.
+- Reuse the test harness's existing cleanup hooks, or add an explicitly verified isolation helper. Do not introduce a new destructive database reset inside the loop unless the exact CI command has been proven locally.
+- Keep the strict aggregate gate unchanged; only remove the runner-fragile fan-out.
+- Treat 0-second matrix child failures differently from integration or browser tests that run and emit assertion logs.
+
+## Treat Skipped Full-Lane Prerequisites As Conditional
+
+**Rule:** A skipped full-lane prerequisite only unblocks a downstream job when that prerequisite lane is outside the changed-file scope. For full-scan or suite-wide changes, downstream jobs require the prerequisite to be `success`, not merely "not failed."
+
+**Why:** A backend integration failure caused upstream frontend typechecks to skip, but a downstream condition accepted `skipped` as good enough and started frontend coverage. That wastes runner capacity and makes one real failure look like several unrelated failures.
+
+**How to apply:**
+
+- Avoid broad predicates such as `needs.some-job.result != 'failure' && needs.some-job.result != 'cancelled'` in full-lane chains.
+- For same-lane prerequisites, require `needs.some-job.result == 'success'`.
+- Only allow `skipped` when classifier outputs prove the prerequisite lane is unrelated to the current change.
+- Keep aggregate jobs responsible for reporting relevant skipped prerequisites as failures when they were required by `full_scan` or suite-wide scope.
+
+## Keep Strict Summary Checks Separate From Report Artifacts
+
+**Rule:** A required summary job should fail because upstream required jobs failed, not because optional coverage/report artifact downloads were unavailable.
+
+**Why:** A PR run reached a fully green strict full lane, then the final required summary failed after one second before evaluating upstream results. The summary's first steps downloaded report artifacts, so artifact transport/report presence became stricter than the actual test gates.
+
+**How to apply:**
+
+- Keep the final summary result check strict over `needs.*.result`.
+- Mark report-artifact download steps `continue-on-error: true`; missing reports may reduce summary detail but must not override green upstream tests.
+- Do not make test result artifacts the only proof of execution. The producing jobs must enforce coverage/test thresholds directly before uploading reports.

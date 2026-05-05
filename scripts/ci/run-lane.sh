@@ -111,8 +111,8 @@ fi
 ci_emit_notice "lane=$lane tier=$tier coverage_required=$coverage_required files=${#files[@]}"
 
 # Local helper: run vitest at $1 with related/run mode based on files.
-# Uses --pool threads --maxWorkers=1 --no-file-parallelism for coverage runs
-# (segfault-safe), defaults otherwise.
+# Uses a single worker thread for generic local coverage runs; the Forgejo
+# frontend coverage shard script owns its stricter serialized fork policy.
 #
 # Tier conventions (Phase 4):
 #   *.test.ts             — fast unit; runs every tier

@@ -32,30 +32,49 @@ run_vitest_shard_once() {
     --shard "${shard_index}/${shard_total}"
 }
 
+is_retryable_vitest_infrastructure_failure() {
+  local status="$1"
+  local output_file="$2"
+
+  if [ "$status" -eq 139 ]; then
+    return 0
+  fi
+
+  [ -f "$output_file" ] || return 1
+
+  grep -Eiq \
+    '(^|[^[:alnum:]_])EPIPE([^[:alnum:]_]|$)|ERR_IPC_CHANNEL_CLOSED|IPC channel|channel closed|worker (exited unexpectedly|terminated|died)|Failed to terminate worker|Segmentation fault|core dumped' \
+    "$output_file"
+}
+
 run_vitest_shard_with_native_retry() {
   local vitest_bin="$1"
   local shard_index="$2"
   local shard_total="$3"
   local expected_blob="$4"
-  local attempts="${SANCTUARY_FRONTEND_COVERAGE_SEGFAULT_ATTEMPTS:-2}"
+  local attempts="${SANCTUARY_FRONTEND_COVERAGE_SEGFAULT_ATTEMPTS:-3}"
 
   is_positive_integer "$attempts" || fail 'SANCTUARY_FRONTEND_COVERAGE_SEGFAULT_ATTEMPTS must be a positive integer'
 
-  local attempt status
+  local log_dir="${SANCTUARY_FRONTEND_COVERAGE_LOG_DIR:-.tmp/frontend-coverage}"
+  mkdir -p "$log_dir"
+
+  local attempt attempt_log status
   for attempt in $(seq 1 "$attempts"); do
+    attempt_log="${log_dir}/shard-${shard_index}-${shard_total}-attempt-${attempt}.log"
     set +e
-    run_vitest_shard_once "$vitest_bin" "$shard_index" "$shard_total" "$expected_blob"
-    status="$?"
+    run_vitest_shard_once "$vitest_bin" "$shard_index" "$shard_total" "$expected_blob" 2>&1 | tee "$attempt_log"
+    status="${PIPESTATUS[0]}"
     set -e
 
     if [ "$status" -eq 0 ]; then
       return 0
     fi
-    if [ "$status" -ne 139 ] || [ "$attempt" -eq "$attempts" ]; then
+    if ! is_retryable_vitest_infrastructure_failure "$status" "$attempt_log" || [ "$attempt" -eq "$attempts" ]; then
       return "$status"
     fi
 
-    echo "frontend-coverage-shard: Vitest exited 139; retrying shard ${shard_index}/${shard_total} (attempt $((attempt + 1))/${attempts})" >&2
+    echo "frontend-coverage-shard: retrying shard ${shard_index}/${shard_total} after retryable Vitest infrastructure failure (attempt $((attempt + 1))/${attempts})" >&2
   done
 }
 
