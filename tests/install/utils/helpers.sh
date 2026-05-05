@@ -279,6 +279,14 @@ cleanup_compose_project_resources() {
     docker volume ls --filter "label=com.docker.compose.project=$project" -q | xargs -r docker volume rm -f 2>/dev/null || true
 }
 
+disable_compose_project_restart_policy() {
+    local project="$1"
+
+    [ -n "$project" ] || return 0
+
+    docker ps -a --filter "label=com.docker.compose.project=$project" -q | xargs -r docker update --restart=no 2>/dev/null || true
+}
+
 cleanup_compose_projects_by_prefix() {
     local prefix="$1"
     local exclude_project="${2:-}"
@@ -849,10 +857,23 @@ check_default_password_marker() {
 # Cleanup trap handler
 # ============================================
 
-# Set up cleanup trap
+# Set up cleanup traps for interrupted test runs.
 setup_cleanup_trap() {
     local cleanup_func="${1:-cleanup_containers}"
     local project_dir="${2:-.}"
 
     trap "log_warning 'Caught signal, cleaning up...'; $cleanup_func '$project_dir'; exit 1" INT TERM
+}
+
+# Set up cleanup traps for interrupted and ordinary exit paths.
+setup_exit_cleanup_trap() {
+    local cleanup_func="${1:-cleanup_containers}"
+    local project_dir="${2:-.}"
+
+    setup_cleanup_trap "$cleanup_func" "$project_dir"
+    trap "status=\$?; $cleanup_func '$project_dir'; trap - EXIT; exit \$status" EXIT
+}
+
+clear_cleanup_trap() {
+    trap - INT TERM EXIT
 }

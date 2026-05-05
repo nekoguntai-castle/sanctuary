@@ -78,6 +78,72 @@ assert_not_contains() {
   return 1
 }
 
+write_cleanup_docker_stub() {
+  local bin_dir="$TEST_TMP_DIR/bin"
+  mkdir -p "$bin_dir"
+
+  cat > "$bin_dir/docker" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\n' "$*" >> "${DOCKER_CALL_LOG:?}"
+
+if [ "$1" = "ps" ] && [ "${2:-}" = "-a" ] && [ "${3:-}" = "--format" ]; then
+  printf '%s\n' \
+    sanctuary-upgrade-test-old \
+    sanctuary-upgrade-test-current \
+    unrelated-project
+  exit 0
+fi
+
+if [ "$1" = "network" ] && [ "${2:-}" = "ls" ] && [ "${3:-}" = "--format" ]; then
+  printf '%s\n' \
+    sanctuary-upgrade-test-old \
+    sanctuary-upgrade-test-current
+  exit 0
+fi
+
+if [ "$1" = "volume" ] && [ "${2:-}" = "ls" ] && [ "${3:-}" = "--format" ]; then
+  printf '%s\n' sanctuary-upgrade-test-old
+  exit 0
+fi
+
+if [ "$1" = "ps" ] && [ "${2:-}" = "-a" ] && [ "${3:-}" = "--filter" ] && [ "${5:-}" = "-q" ]; then
+  case "$4" in
+    label=com.docker.compose.project=sanctuary-upgrade-test-old)
+      printf '%s\n' old-container
+      ;;
+    label=com.docker.compose.project=restart-project)
+      printf '%s\n' restart-container-a restart-container-b
+      ;;
+  esac
+  exit 0
+fi
+
+if [ "$1" = "network" ] && [ "${2:-}" = "ls" ] && [ "${3:-}" = "--filter" ] && [ "${5:-}" = "-q" ]; then
+  case "$4" in
+    label=com.docker.compose.project=sanctuary-upgrade-test-old)
+      printf '%s\n' old-network
+      ;;
+  esac
+  exit 0
+fi
+
+if [ "$1" = "volume" ] && [ "${2:-}" = "ls" ] && [ "${3:-}" = "--filter" ] && [ "${5:-}" = "-q" ]; then
+  case "$4" in
+    label=com.docker.compose.project=sanctuary-upgrade-test-old)
+      printf '%s\n' old-volume
+      ;;
+  esac
+  exit 0
+fi
+
+exit 0
+EOF
+
+  chmod +x "$bin_dir/docker"
+}
+
 shared_backend_services_with_build() {
   local compose_file="$1"
 
@@ -757,6 +823,105 @@ test_browser_refresh_smoke_sends_csrf_header() {
     "refresh request should send the current CSRF token"
 }
 
+test_cleanup_compose_projects_by_prefix_skips_current_project() {
+  local call_log="$TEST_TMP_DIR/docker-calls.log"
+  local original_path="$PATH"
+  local calls
+
+  write_cleanup_docker_stub
+  : > "$call_log"
+
+  export DOCKER_CALL_LOG="$call_log"
+  PATH="$TEST_TMP_DIR/bin:$PATH"
+  cleanup_compose_projects_by_prefix "sanctuary-upgrade-test-" "sanctuary-upgrade-test-current"
+  PATH="$original_path"
+  unset DOCKER_CALL_LOG
+
+  calls="$(cat "$call_log")"
+
+  assert_contains "$calls" "rm -f old-container" \
+    "stale project containers should be removed by compose label" || return 1
+  assert_contains "$calls" "network rm old-network" \
+    "stale project networks should be removed by compose label" || return 1
+  assert_contains "$calls" "volume rm -f old-volume" \
+    "stale project volumes should be removed by compose label" || return 1
+  assert_not_contains "$calls" "label=com.docker.compose.project=sanctuary-upgrade-test-current" \
+    "current project must not be removed during stale-project cleanup"
+}
+
+test_disable_compose_project_restart_policy_updates_project_containers() {
+  local call_log="$TEST_TMP_DIR/docker-calls.log"
+  local original_path="$PATH"
+  local calls
+
+  write_cleanup_docker_stub
+  : > "$call_log"
+
+  export DOCKER_CALL_LOG="$call_log"
+  PATH="$TEST_TMP_DIR/bin:$PATH"
+  disable_compose_project_restart_policy "restart-project"
+  PATH="$original_path"
+  unset DOCKER_CALL_LOG
+
+  calls="$(cat "$call_log")"
+
+  assert_contains "$calls" "update --restart=no restart-container-a restart-container-b" \
+    "upgrade test containers should not resurrect after daemon restarts"
+}
+
+test_exit_cleanup_trap_runs_on_normal_exit() {
+  local trap_script="$TEST_TMP_DIR/trap-check.sh"
+  local trap_log="$TEST_TMP_DIR/trap.log"
+  local output
+
+  cat > "$trap_script" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
+log_warning() { :; }
+probe_cleanup() {
+  printf 'cleanup:%s\n' "\$1" >> "$trap_log"
+}
+setup_exit_cleanup_trap probe_cleanup /tmp/upgrade-project
+EOF
+  chmod +x "$trap_script"
+
+  "$trap_script"
+  output="$(cat "$trap_log")"
+
+  assert_contains "$output" "cleanup:/tmp/upgrade-project" \
+    "EXIT cleanup trap should run when the test process exits normally"
+}
+
+test_exit_cleanup_trap_preserves_failure_status() {
+  local trap_script="$TEST_TMP_DIR/trap-fail-check.sh"
+  local trap_log="$TEST_TMP_DIR/trap-fail.log"
+  local exit_code
+
+  cat > "$trap_script" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
+log_warning() { :; }
+probe_cleanup() {
+  printf 'cleanup:%s\n' "\$1" >> "$trap_log"
+}
+setup_exit_cleanup_trap probe_cleanup /tmp/upgrade-project
+exit 7
+EOF
+  chmod +x "$trap_script"
+
+  set +e
+  "$trap_script"
+  exit_code=$?
+  set -e
+
+  assert_equals "7" "$exit_code" \
+    "EXIT cleanup trap should preserve the original failing status" || return 1
+  assert_contains "$(cat "$trap_log")" "cleanup:/tmp/upgrade-project" \
+    "cleanup should still run before the failure exits"
+}
+
 main() {
   echo ""
   echo "Upgrade Helper Unit Tests"
@@ -788,6 +953,10 @@ main() {
   run_test "install test host honors override" test_install_test_host_honors_override
   run_test "redacted env hides upgrade secrets" test_redacted_env_hides_upgrade_secrets
   run_test "diagnostic redaction hides log secrets" test_diagnostic_redaction_hides_log_secrets
+  run_test "stale upgrade projects cleanup skips current project" test_cleanup_compose_projects_by_prefix_skips_current_project
+  run_test "upgrade cleanup disables restart policy" test_disable_compose_project_restart_policy_updates_project_containers
+  run_test "exit cleanup trap runs on normal exit" test_exit_cleanup_trap_runs_on_normal_exit
+  run_test "exit cleanup trap preserves failure status" test_exit_cleanup_trap_preserves_failure_status
   run_test "browser refresh smoke sends csrf header" test_browser_refresh_smoke_sends_csrf_header
 
   echo ""

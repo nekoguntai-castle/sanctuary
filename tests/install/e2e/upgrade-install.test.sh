@@ -151,6 +151,7 @@ UPGRADE_CREATED_TARGET_LEGACY_ENV=false
 UPGRADE_SOURCE_LABEL=""
 UPGRADE_TARGET_LABEL="$(git -C "$TARGET_PROJECT_ROOT" describe --tags --always 2>/dev/null || git -C "$TARGET_PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "current-checkout")"
 UPGRADE_ARTIFACT_DIR="${SANCTUARY_UPGRADE_ARTIFACT_DIR:-$TARGET_PROJECT_ROOT/.tmp/upgrade-artifacts/${TEST_ID}}"
+TEARDOWN_RAN=false
 
 # State variables for testing
 ORIGINAL_JWT_SECRET=""
@@ -439,6 +440,8 @@ setup() {
     export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
     export SANCTUARY_COMPOSE_SSL_DIR="$TEST_COMPOSE_SSL_DIR"
 
+    setup_exit_cleanup_trap "teardown"
+    cleanup_compose_projects_by_prefix "sanctuary-upgrade-test-" "$COMPOSE_PROJECT_NAME" 2>/dev/null || true
     cleanup_containers "$TARGET_PROJECT_ROOT" 2>/dev/null || true
 
     if ! prepare_upgrade_source_checkout; then
@@ -448,11 +451,14 @@ setup() {
 
     log_info "  Source Ref:    $UPGRADE_SOURCE_LABEL"
     log_info "  Source Root:   $PROJECT_ROOT"
-
-    setup_cleanup_trap "teardown"
 }
 
 teardown() {
+    if [ "$TEARDOWN_RAN" = "true" ]; then
+        return 0
+    fi
+    TEARDOWN_RAN=true
+
     log_info "Cleaning up upgrade test environment..."
 
     if [ "$KEEP_CONTAINERS" = "false" ]; then
@@ -460,6 +466,7 @@ teardown() {
         if [ "$UPGRADE_SOURCE_CREATED" = "true" ]; then
             cleanup_containers "$UPGRADE_SOURCE_CHECKOUT" 2>/dev/null || true
         fi
+        cleanup_compose_project_resources "$COMPOSE_PROJECT_NAME" 2>/dev/null || true
     else
         log_warning "Keeping containers running (--keep-containers specified)"
         get_container_status "$TARGET_PROJECT_ROOT"
@@ -479,6 +486,7 @@ teardown() {
     fi
 
     cleanup_upgrade_source_checkout
+    clear_cleanup_trap
 }
 
 # ============================================
@@ -493,6 +501,7 @@ test_ensure_existing_installation() {
     if ! run_install_script "$PROJECT_ROOT"; then
         return 1
     fi
+    disable_compose_project_restart_policy "$COMPOSE_PROJECT_NAME"
 
     # Wait for containers
     if ! wait_for_all_containers_healthy 300; then
@@ -1097,6 +1106,7 @@ test_restart_containers_after_upgrade() {
     if ! run_install_script "$PROJECT_ROOT"; then
         return 1
     fi
+    disable_compose_project_restart_policy "$COMPOSE_PROJECT_NAME"
 
     # Wait for containers to be healthy
     if ! wait_for_all_containers_healthy 300; then
