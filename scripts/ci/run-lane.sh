@@ -113,6 +113,14 @@ ci_emit_notice "lane=$lane tier=$tier coverage_required=$coverage_required files
 # Local helper: run vitest at $1 with related/run mode based on files.
 # Uses --pool threads --maxWorkers=1 --no-file-parallelism for coverage runs
 # (segfault-safe), defaults otherwise.
+#
+# Tier conventions (Phase 4):
+#   *.test.ts             — fast unit; runs every tier
+#   *.slow.test.ts        — >~5s; skipped on quick tier full-suite runs
+#                           (vitest related still picks them up when their
+#                            target source is in the changed file list)
+#   *.integration.test.ts — DB/Redis/HTTP fixtures; only the
+#                           backend_integration lane runs them
 run_vitest_in() {
   local dir="$1"
   shift
@@ -123,8 +131,17 @@ run_vitest_in() {
     mode_args+=(--coverage --pool threads --maxWorkers=1 --no-file-parallelism)
   fi
 
+  # Quick tier never runs the slow tier when running full-suite. Change-scoped
+  # `vitest related` runs honor the dependency graph instead and may include
+  # a slow test that directly tests a changed file (which is what you want).
+  local quick_excludes=()
+  if [ "$tier" = "quick" ]; then
+    quick_excludes+=(--exclude '**/*.slow.test.*')
+  fi
+
   if [ "${#files[@]}" -gt 0 ] && [ "$coverage_required" != "true" ]; then
-    # Change-scoped run on PR (no coverage).
+    # Change-scoped run on PR (no coverage). Slow tests still surface here
+    # only if they are dependency-related to the changed files.
     (
       cd "$dir"
       exec npx vitest related --run --passWithNoTests "${mode_args[@]}" "${extra_args[@]}" -- "${files[@]}"
@@ -133,7 +150,7 @@ run_vitest_in() {
     # Full lane run (push/main/full or no specific files).
     (
       cd "$dir"
-      exec npx vitest run "${mode_args[@]}" "${extra_args[@]}"
+      exec npx vitest run "${mode_args[@]}" "${quick_excludes[@]}" "${extra_args[@]}"
     )
   fi
 }
@@ -143,7 +160,9 @@ case "$lane" in
     run_vitest_in .
     ;;
   backend_unit)
-    run_vitest_in server --exclude 'tests/integration/**'
+    run_vitest_in server \
+      --exclude 'tests/integration/**' \
+      --exclude '**/*.integration.test.*'
     ;;
   backend_integration)
     (cd server && exec npm run test:integration:db)

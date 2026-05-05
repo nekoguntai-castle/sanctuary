@@ -163,6 +163,18 @@ main() {
   assert_eq "dispatch --full coverage_required" "true" "$(json_query "$plan" coverage_required)"
   assert_eq "dispatch --full full_scan" "true" "$(json_query "$plan" full_scan)"
 
+  # ---- *.integration.test.* anywhere under server/ routes correctly -------
+  base="$head"
+  mkdir -p "$repo/server/tests/feature"
+  printf 'export const t = 1\n' > "$repo/server/tests/feature/notifications.integration.test.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm 'add nested integration test'
+  head="$(git -C "$repo" rev-parse HEAD)"
+
+  plan="$(EVENT_NAME=pull_request run_planner "$repo" "$base" "$head")"
+  assert_eq "nested .integration.test → backend_integration" "true" \
+    "$(json_query "$plan" lanes.backend_integration.run)"
+
   echo "plan-test-run regression checks passed"
 }
 

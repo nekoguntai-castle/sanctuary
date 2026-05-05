@@ -144,6 +144,79 @@ EOF
     *) fail "coverage path should call 'vitest run':\n$args" ;;
   esac
 
+  # ---- tier=quick full-suite excludes *.slow.test.* ---------------------
+  cat > "$tmp/plan-f.json" <<'EOF'
+{
+  "tier": "quick",
+  "coverage_required": false,
+  "full_scan": true,
+  "provider": "local",
+  "event": "pull_request",
+  "base_sha": "a",
+  "head_sha": "b",
+  "lanes": {
+    "frontend_unit": { "run": true, "files": [] }
+  }
+}
+EOF
+  STUB_OUT="$tmp/npx.args4" PATH="$stub_dir:$PATH" \
+    bash "$RUN_LANE" frontend_unit --plan "$tmp/plan-f.json" >/dev/null 2>&1
+  args="$(cat "$tmp/npx.args4")"
+  case "$args" in
+    *vitest*run*--exclude*\*\*/\*.slow.test.\**) ;;
+    *) fail "quick tier full-suite should exclude **/*.slow.test.*:\n$args" ;;
+  esac
+
+  # ---- tier=full does NOT add the slow exclude --------------------------
+  cat > "$tmp/plan-g.json" <<'EOF'
+{
+  "tier": "full",
+  "coverage_required": false,
+  "full_scan": true,
+  "provider": "local",
+  "event": "push",
+  "base_sha": "a",
+  "head_sha": "b",
+  "lanes": {
+    "frontend_unit": { "run": true, "files": [] }
+  }
+}
+EOF
+  STUB_OUT="$tmp/npx.args5" PATH="$stub_dir:$PATH" \
+    bash "$RUN_LANE" frontend_unit --plan "$tmp/plan-g.json" >/dev/null 2>&1
+  args="$(cat "$tmp/npx.args5")"
+  case "$args" in
+    *--exclude*\*\*/\*.slow.test.\**)
+      fail "full tier should not add slow-test exclude:\n$args" ;;
+  esac
+
+  # ---- backend_unit lane excludes integration tests by both patterns ----
+  cat > "$tmp/plan-h.json" <<'EOF'
+{
+  "tier": "quick",
+  "coverage_required": false,
+  "full_scan": false,
+  "provider": "local",
+  "event": "pull_request",
+  "base_sha": "a",
+  "head_sha": "b",
+  "lanes": {
+    "backend_unit": { "run": true, "files": [] }
+  }
+}
+EOF
+  STUB_OUT="$tmp/npx.args6" PATH="$stub_dir:$PATH" \
+    bash "$RUN_LANE" backend_unit --plan "$tmp/plan-h.json" >/dev/null 2>&1
+  args="$(cat "$tmp/npx.args6")"
+  case "$args" in
+    *--exclude*tests/integration/\*\**) ;;
+    *) fail "backend_unit should exclude tests/integration/**:\n$args" ;;
+  esac
+  case "$args" in
+    *--exclude*\*\*/\*.integration.test.\**) ;;
+    *) fail "backend_unit should exclude **/*.integration.test.*:\n$args" ;;
+  esac
+
   echo "run-lane regression checks passed"
 }
 

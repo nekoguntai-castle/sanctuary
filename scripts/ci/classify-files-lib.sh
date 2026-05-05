@@ -38,6 +38,13 @@ is_backend_integration_file() {
     server/prisma/*|server/tests/integration/*)
       return 0
       ;;
+    # Phase 4 tier convention — *.integration.test.* anywhere under server/
+    # routes to the backend_integration lane regardless of directory.
+    # (In bash case patterns `*` matches across slashes, so this catches
+    # any depth.)
+    server/*.integration.test.*)
+      return 0
+      ;;
     server/src/api/*|server/src/routes.ts|server/src/index.ts)
       return 0
       ;;
