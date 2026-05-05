@@ -114,7 +114,7 @@ jobs:
           MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           WORKFLOW_SHA: ${{ github.sha }}
-        run: bash scripts/ci/classify-test-changes.sh
+        run: scripts/ci/retry-command.sh "classify changed paths" bash scripts/ci/classify-test-changes.sh
 
   quick-test-hygiene:
     name: Quick Test Hygiene
@@ -584,10 +584,10 @@ jobs:
   pr-required-checks:
     name: PR Required Checks
     # Runs on pull_request and merge_group. On pull_request it aggregates
-    # the quick lane; on merge_group it's a no-op (Full Test Summary is the
-    # authoritative gate there), but it must still report a conclusion so
-    # branch protection doesn't rely on GitHub's "skipped == success"
-    # semantics for merge-queue eligibility.
+    # the quick lane; on merge_group it's a no-op (Full Lane Test Summary
+    # is the authoritative gate there), but it must still report a
+    # conclusion so branch protection doesn't rely on GitHub's
+    # "skipped == success" semantics for merge-queue eligibility.
     if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
     runs-on: ubuntu-latest
     needs:
@@ -607,7 +607,7 @@ jobs:
         if: github.event_name == 'merge_group'
         run: |
           echo "PR Required Checks aggregates the pull_request quick lane."
-          echo "On merge_group events, Full Test Summary (full lane) is the authoritative gate."
+          echo "On merge_group events, Full Lane Test Summary is the authoritative gate."
           echo "Reporting success so branch-protection required-checks are explicitly satisfied."
 
       - name: Check PR quick lane results
@@ -667,6 +667,34 @@ jobs:
           if [ "$failed" = "true" ]; then
             exit 1
           fi
+
+      # Forgejo doesn't reliably emit a commit-status for trivial no-op
+      # aggregator jobs (the prior `full-test-summary-pr` job's status
+      # never reached the commit/status API even after adding `needs:`
+      # and a checkout step). Branch protection requires the un-suffixed
+      # `Test Suite / Full Test Summary (pull_request)` context, so post
+      # it directly from this job, which DOES reliably emit its own
+      # status. This step only runs on PR events and only when the
+      # quick-lane checks above succeeded — `set -e` propagates failure.
+      - name: Post Full Test Summary commit status (Forgejo workaround)
+        if: github.event_name == 'pull_request'
+        env:
+          FORGE_API: ${{ github.api_url }}
+          FORGE_REPO: ${{ github.repository }}
+          FORGE_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FORGE_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -sS -X POST \
+            -H "Authorization: token $FORGE_TOKEN" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            "$FORGE_API/repos/$FORGE_REPO/statuses/$FORGE_PR_HEAD_SHA" \
+            -d '{"context":"Test Suite / Full Test Summary (pull_request)","state":"success","description":"Aggregated by PR Required Checks (Forgejo no-op workaround)"}' \
+            -o /tmp/post.json -w 'HTTP %{http_code}\n'
+          echo "--- response ---"
+          head -c 400 /tmp/post.json
+          echo ""
 
   # ============================================
   # Full Lane (main/nightly/manual)
@@ -1503,18 +1531,8 @@ jobs:
             "${{ github.workspace }}/scripts/ci/time-command.sh" "build check backend build" \
             npm --ignore-scripts run build
 
-  full-test-summary-pr:
-    name: Full Test Summary
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Pull request no-op
-        run: |
-          echo "Full Test Summary validates the full lane on merge_group, main, schedule, and manual runs."
-          echo "Pull requests are gated by PR Required Checks and the quick lane, so this required context reports success here."
-
   full-test-summary:
-    name: Full Test Summary
+    name: Full Lane Test Summary
     if: >-
       always() &&
       github.event_name != 'pull_request'

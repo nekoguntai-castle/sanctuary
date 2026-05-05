@@ -2043,3 +2043,28 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Keep production behavior writing to `$GITHUB_ENV` when the override is not set.
 - Assert the helper's exported values from the private file in unit tests, and leave provider file-command behavior to workflow integration.
 - Clear inherited provider/runtime variables in tests that assert default endpoint behavior; CI jobs may export `DOCKER_HOST` or similar values that do not exist on a local developer shell.
+
+## Never Admin-Bypass Red Required Checks
+
+**Rule:** Do not merge a PR while any required status check is red, even when the failures look like the documented runner-substrate flake. Retrigger to a green state first; if substrate is unhealthy, escalate, do not push through.
+
+**Why:** Forgejo branch protection on `main` had `apply_to_admins: false`, which lets admin users squash-merge via API even when required checks are red. Multiple PRs in the test-architecture series (PR #275, #277) merged through 0-second `Detect Changed Files` / `Quick Render Regression` / `Dependency audit` failures because the failure signature matched the documented substrate flake — but the right application of "retry, do not patch" is **retry the CI run until green, then merge**, not merge through. Result: post-merge `main` push lane (run #970) ended up red on `Full Test Summary-1` because the same substrate flake hit the post-merge push lane, where there is nowhere to retry to.
+
+**How to apply:**
+
+- A red required check is a hard stop. Even with admin permission, do not call the merge API while the umbrella checks are not green.
+- Substrate-flake failures (0-second job aborts, no logs, runner ID present) are retriggered, not merged through. If three retriggers do not clear the lane, the runner pool is unhealthy — fix that, not the test.
+- After every merge, verify the post-merge target-branch push lane separately from PR-required contexts (mentioned earlier in this file under "Verify The Post-Merge Lane"). A red `main` after merge means the change is not actually shipped; do not declare a phase complete on a red post-merge lane.
+- Branch protection should have `apply_to_admins: true` so the admin path enforces the same gate as everyone else. If a real emergency requires bypassing, relax the flag deliberately, fix, and re-tighten — do not normalize the bypass.
+
+## Wrap Path-Classifier CI Jobs In Retry-Command
+
+**Rule:** The `Detect Changed Files` (test.yml) and `Determine Quality Scope` (quality.yml) jobs each have a single classify step, and every other job in the workflow depends on its outputs. Wrap the classify invocation in `scripts/ci/retry-command.sh` so a transient script-internal flake does not cascade-skip the entire workflow graph.
+
+**Why:** When `Detect Changed Files` failed in 0 seconds (substrate flake), all 33 downstream jobs reported as `skipped` and the umbrella `Full Test Summary-1` reported `failure` despite no real test ever running. The classifier scripts emit outputs only at terminal `emit_outputs` points, so a partial failure followed by a retry produces no duplicate-key issues — `retry-command.sh` is safe here.
+
+**How to apply:**
+
+- Run path/scope classify steps as `scripts/ci/retry-command.sh "<label>" bash scripts/ci/classify-*.sh` rather than calling the script directly.
+- Keep `emit_outputs` calls at terminal points so retries do not write partial output sets that could confuse downstream `if:` predicates.
+- `retry-command.sh` only catches script-internal failures — it does not protect against the runner aborting before the step runs. If those still occur, the next push of any change re-validates `main`; do not auto-rerun a red main lane just to clear the red.
