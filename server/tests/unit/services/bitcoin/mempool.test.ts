@@ -135,7 +135,7 @@ describe('mempool service', () => {
       'https://mempool.space/testnet/api/v1/blocks',
       expect.objectContaining({ timeout: 3000 })
     );
-    expect(hoisted.nodeConfig.findFirst).not.toHaveBeenCalled();
+    expect(hoisted.nodeConfig.findFirst).toHaveBeenCalledTimes(1);
   });
 
   it('uses the public testnet4 mempool API separately from testnet3', async () => {
@@ -151,7 +151,38 @@ describe('mempool service', () => {
       'https://mempool.space/testnet4/api/v1/blocks',
       expect.objectContaining({ timeout: 3000 })
     );
-    expect(hoisted.nodeConfig.findFirst).not.toHaveBeenCalled();
+    expect(hoisted.nodeConfig.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses configured testnet4 fee estimator URL separately from mainnet', async () => {
+    hoisted.nodeConfig.findFirst.mockResolvedValue({
+      isDefault: true,
+      feeEstimatorUrl: 'https://mempool.custom/',
+      testnet4FeeEstimatorUrl: 'https://testnet4-fees.example/base/',
+    });
+    hoisted.axiosGet.mockResolvedValue({ data: mockBlocks(1000) });
+
+    await getRecentBlocks(1, 'testnet4');
+
+    expect(hoisted.axiosGet).toHaveBeenCalledWith(
+      'https://testnet4-fees.example/base/api/v1/blocks',
+      expect.objectContaining({ timeout: 3000 })
+    );
+  });
+
+  it('uses configured signet explorer URL when fee estimator URL is unset', async () => {
+    hoisted.nodeConfig.findFirst.mockResolvedValue({
+      isDefault: true,
+      signetExplorerUrl: 'https://signet-explorer.example',
+    });
+    hoisted.axiosGet.mockResolvedValue({ data: mockBlocks(1000) });
+
+    await getRecentBlocks(1, 'signet');
+
+    expect(hoisted.axiosGet).toHaveBeenCalledWith(
+      'https://signet-explorer.example/api/v1/blocks',
+      expect.objectContaining({ timeout: 3000 })
+    );
   });
 
   it('clamps future block timestamps to zero minutes ago', () => {

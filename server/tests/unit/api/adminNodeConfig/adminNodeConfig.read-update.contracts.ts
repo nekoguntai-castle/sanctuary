@@ -24,6 +24,12 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
         port: '50002',
         hasPassword: false,
         poolEnabled: true,
+        testnet3ExplorerUrl: 'https://mempool.space/testnet',
+        testnet3FeeEstimatorUrl: 'https://mempool.space/testnet',
+        testnet4ExplorerUrl: 'https://mempool.space/testnet4',
+        testnet4FeeEstimatorUrl: 'https://mempool.space/testnet4',
+        signetExplorerUrl: 'https://mempool.space/signet',
+        signetFeeEstimatorUrl: 'https://mempool.space/signet',
       });
       expect(response.body.servers).toEqual([]);
     });
@@ -51,6 +57,12 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
         buildNodeConfig({
           allowSelfSignedCert: null as any,
           feeEstimatorUrl: null,
+          testnet3ExplorerUrl: null,
+          testnet3FeeEstimatorUrl: '',
+          testnet4ExplorerUrl: null,
+          testnet4FeeEstimatorUrl: null,
+          signetExplorerUrl: null,
+          signetFeeEstimatorUrl: null,
           mempoolEstimator: null as any,
           poolLoadBalancing: null as any,
           proxyEnabled: undefined as any,
@@ -63,6 +75,10 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
       expect(response.status).toBe(200);
       expect(response.body.allowSelfSignedCert).toBe(false);
       expect(response.body.feeEstimatorUrl).toBe('https://mempool.space');
+      expect(response.body.testnet3ExplorerUrl).toBe('https://mempool.space/testnet');
+      expect(response.body.testnet3FeeEstimatorUrl).toBe('');
+      expect(response.body.testnet4FeeEstimatorUrl).toBe('https://mempool.space/testnet4');
+      expect(response.body.signetExplorerUrl).toBe('https://mempool.space/signet');
       expect(response.body.mempoolEstimator).toBe('simple');
       expect(response.body.poolLoadBalancing).toBe('round_robin');
       expect(response.body.proxyEnabled).toBe(false);
@@ -169,6 +185,12 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
           allowSelfSignedCert: true,
           explorerUrl: 'https://explorer.example.com',
           feeEstimatorUrl: 'https://fees.example.com',
+          testnet3ExplorerUrl: 'https://explorer.testnet3.example.com',
+          testnet3FeeEstimatorUrl: '',
+          testnet4ExplorerUrl: 'https://explorer.testnet4.example.com',
+          testnet4FeeEstimatorUrl: 'https://fees.testnet4.example.com',
+          signetExplorerUrl: 'https://explorer.signet.example.com',
+          signetFeeEstimatorUrl: 'https://fees.signet.example.com',
           mempoolEstimator: 'mempool_space',
           poolEnabled: false,
           poolMinConnections: 2,
@@ -215,6 +237,12 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
           allowSelfSignedCert: true,
           explorerUrl: 'https://explorer.example.com',
           feeEstimatorUrl: 'https://fees.example.com',
+          testnet3ExplorerUrl: 'https://explorer.testnet3.example.com',
+          testnet3FeeEstimatorUrl: '',
+          testnet4ExplorerUrl: 'https://explorer.testnet4.example.com',
+          testnet4FeeEstimatorUrl: 'https://fees.testnet4.example.com',
+          signetExplorerUrl: 'https://explorer.signet.example.com',
+          signetFeeEstimatorUrl: 'https://fees.signet.example.com',
           mempoolEstimator: 'mempool_space',
           poolEnabled: false,
           poolMinConnections: 2,
@@ -258,6 +286,12 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
           data: expect.objectContaining({
             mempoolEstimator: 'mempool_space',
             poolLoadBalancing: 'least_connections',
+            testnet3ExplorerUrl: 'https://explorer.testnet3.example.com',
+            testnet3FeeEstimatorUrl: '',
+            testnet4ExplorerUrl: 'https://explorer.testnet4.example.com',
+            testnet4FeeEstimatorUrl: 'https://fees.testnet4.example.com',
+            signetExplorerUrl: 'https://explorer.signet.example.com',
+            signetFeeEstimatorUrl: 'https://fees.signet.example.com',
             proxyPort: 9050,
             mainnetSingletonPort: 51002,
             mainnetPoolMin: 2,
@@ -417,6 +451,12 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
           allowSelfSignedCert: true,
           explorerUrl: 'https://explorer.create.example.com',
           feeEstimatorUrl: 'https://fees.create.example.com',
+          testnet3ExplorerUrl: 'https://explorer.create-testnet3.example.com',
+          testnet3FeeEstimatorUrl: '',
+          testnet4ExplorerUrl: 'https://explorer.create-testnet4.example.com',
+          testnet4FeeEstimatorUrl: 'https://fees.create-testnet4.example.com',
+          signetExplorerUrl: 'https://explorer.create-signet.example.com',
+          signetFeeEstimatorUrl: 'https://fees.create-signet.example.com',
           mempoolEstimator: 'mempool_space',
           poolEnabled: false,
           poolMinConnections: 3,
@@ -463,6 +503,12 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
           allowSelfSignedCert: true,
           explorerUrl: 'https://explorer.create.example.com',
           feeEstimatorUrl: 'https://fees.create.example.com',
+          testnet3ExplorerUrl: 'https://explorer.create-testnet3.example.com',
+          testnet3FeeEstimatorUrl: '',
+          testnet4ExplorerUrl: 'https://explorer.create-testnet4.example.com',
+          testnet4FeeEstimatorUrl: 'https://fees.create-testnet4.example.com',
+          signetExplorerUrl: 'https://explorer.create-signet.example.com',
+          signetFeeEstimatorUrl: 'https://fees.create-signet.example.com',
           mempoolEstimator: 'mempool_space',
           poolEnabled: false,
           poolMinConnections: 3,
@@ -504,6 +550,12 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
           data: expect.objectContaining({
             mempoolEstimator: 'mempool_space',
             poolLoadBalancing: 'failover_only',
+            testnet3ExplorerUrl: 'https://explorer.create-testnet3.example.com',
+            testnet3FeeEstimatorUrl: '',
+            testnet4ExplorerUrl: 'https://explorer.create-testnet4.example.com',
+            testnet4FeeEstimatorUrl: 'https://fees.create-testnet4.example.com',
+            signetExplorerUrl: 'https://explorer.create-signet.example.com',
+            signetFeeEstimatorUrl: 'https://fees.create-signet.example.com',
             proxyPort: 9150,
             mainnetSingletonPort: 54002,
             mainnetPoolMin: 3,

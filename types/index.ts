@@ -151,6 +151,12 @@ export interface NodeConfig {
   type: "electrum";
   explorerUrl?: string;
   feeEstimatorUrl?: string;
+  testnet3ExplorerUrl?: string | null;
+  testnet3FeeEstimatorUrl?: string | null;
+  testnet4ExplorerUrl?: string | null;
+  testnet4FeeEstimatorUrl?: string | null;
+  signetExplorerUrl?: string | null;
+  signetFeeEstimatorUrl?: string | null;
   mempoolEstimator?: "simple" | "mempool_space";
   allowSelfSignedCert?: boolean;
 

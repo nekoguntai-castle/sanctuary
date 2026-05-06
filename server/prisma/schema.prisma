@@ -567,6 +567,12 @@ model NodeConfig {
   isDefault        Boolean @default(false)
   explorerUrl      String?
   feeEstimatorUrl  String? // URL for mempool.space-compatible API (defaults to mempool.space)
+  testnet3ExplorerUrl     String?
+  testnet3FeeEstimatorUrl String?
+  testnet4ExplorerUrl     String?
+  testnet4FeeEstimatorUrl String?
+  signetExplorerUrl       String?
+  signetFeeEstimatorUrl   String?
   mempoolEstimator String  @default("mempool_space") // simple, mempool_space
 
   // TLS certificate verification (for SSL connections)

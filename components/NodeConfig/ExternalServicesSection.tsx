@@ -1,12 +1,120 @@
-import React from "react";
+import React, { useState } from "react";
 import { ExternalLink, ChevronRight } from "lucide-react";
 import { Input } from "../ui/Input";
 import { PriceProviderDiagnostics } from "../PriceProviderDiagnostics";
-import { ExternalServicesSectionProps } from "./types";
+import type { NodeConfig as NodeConfigType } from "../../types";
+import type { ExternalServicesSectionProps, NetworkTab } from "./types";
+
+type ExternalServiceUrlField =
+  | "explorerUrl"
+  | "feeEstimatorUrl"
+  | "testnet3ExplorerUrl"
+  | "testnet3FeeEstimatorUrl"
+  | "testnet4ExplorerUrl"
+  | "testnet4FeeEstimatorUrl"
+  | "signetExplorerUrl"
+  | "signetFeeEstimatorUrl";
+
+interface ExternalServicePreset {
+  label: string;
+  url: string;
+}
+
+interface NetworkExternalServiceConfig {
+  label: string;
+  explorerField: ExternalServiceUrlField;
+  feeField: ExternalServiceUrlField;
+  defaultUrl: string;
+  presets: ExternalServicePreset[];
+}
+
+const NETWORK_TABS: NetworkTab[] = [
+  "mainnet",
+  "testnet3",
+  "testnet4",
+  "signet",
+];
+
+const NETWORK_EXTERNAL_SERVICES: Record<
+  NetworkTab,
+  NetworkExternalServiceConfig
+> = {
+  mainnet: {
+    label: "Mainnet",
+    explorerField: "explorerUrl",
+    feeField: "feeEstimatorUrl",
+    defaultUrl: "https://mempool.space",
+    presets: [
+      { label: "mempool.space", url: "https://mempool.space" },
+      { label: "blockstream.info", url: "https://blockstream.info" },
+    ],
+  },
+  testnet3: {
+    label: "Testnet3",
+    explorerField: "testnet3ExplorerUrl",
+    feeField: "testnet3FeeEstimatorUrl",
+    defaultUrl: "https://mempool.space/testnet",
+    presets: [
+      { label: "mempool.space", url: "https://mempool.space/testnet" },
+      { label: "blockstream.info", url: "https://blockstream.info/testnet" },
+    ],
+  },
+  testnet4: {
+    label: "Testnet4",
+    explorerField: "testnet4ExplorerUrl",
+    feeField: "testnet4FeeEstimatorUrl",
+    defaultUrl: "https://mempool.space/testnet4",
+    presets: [
+      { label: "mempool.space", url: "https://mempool.space/testnet4" },
+    ],
+  },
+  signet: {
+    label: "Signet",
+    explorerField: "signetExplorerUrl",
+    feeField: "signetFeeEstimatorUrl",
+    defaultUrl: "https://mempool.space/signet",
+    presets: [
+      { label: "mempool.space", url: "https://mempool.space/signet" },
+    ],
+  },
+};
+
+function getUrlValue(
+  nodeConfig: NodeConfigType,
+  field: ExternalServiceUrlField,
+): string {
+  const value = nodeConfig[field];
+  return typeof value === "string" ? value : "";
+}
+
+function updateUrlField(
+  nodeConfig: NodeConfigType,
+  field: ExternalServiceUrlField,
+  value: string,
+): NodeConfigType {
+  return { ...nodeConfig, [field]: value };
+}
+
+function tabButtonClass(active: boolean): string {
+  return active
+    ? "bg-primary-600 text-white border-primary-600"
+    : "surface-secondary border-sanctuary-200 dark:border-sanctuary-700 text-sanctuary-700 dark:text-sanctuary-300 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-700";
+}
+
+function presetButtonClass(active: boolean): string {
+  return active
+    ? "bg-primary-50 dark:bg-primary-900/20 border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300"
+    : "surface-secondary border-sanctuary-200 dark:border-sanctuary-700 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-700";
+}
 
 export const ExternalServicesSection: React.FC<
   ExternalServicesSectionProps
 > = ({ nodeConfig, onConfigChange, expanded, onToggle, summary }) => {
+  const [activeNetwork, setActiveNetwork] = useState<NetworkTab>("mainnet");
+  const serviceConfig = NETWORK_EXTERNAL_SERVICES[activeNetwork];
+  const explorerUrl = getUrlValue(nodeConfig, serviceConfig.explorerField);
+  const feeEstimatorUrl = getUrlValue(nodeConfig, serviceConfig.feeField);
+
   return (
     <div className="surface-elevated rounded-xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
       <button
@@ -31,6 +139,20 @@ export const ExternalServicesSection: React.FC<
 
       {expanded && (
         <div className="px-4 pb-4 space-y-4 border-t border-sanctuary-100 dark:border-sanctuary-800 pt-4">
+          <div className="flex flex-wrap gap-2">
+            {NETWORK_TABS.map((network) => (
+              <button
+                key={network}
+                type="button"
+                onClick={() => setActiveNetwork(network)}
+                aria-pressed={activeNetwork === network}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${tabButtonClass(activeNetwork === network)}`}
+              >
+                {NETWORK_EXTERNAL_SERVICES[network].label}
+              </button>
+            ))}
+          </div>
+
           {/* Block Explorer */}
           <div className="flex items-center gap-3">
             <div className="flex-1">
@@ -39,31 +161,38 @@ export const ExternalServicesSection: React.FC<
               </label>
               <Input
                 type="text"
-                value={nodeConfig.explorerUrl || ""}
+                value={explorerUrl}
                 onChange={(e) =>
-                  onConfigChange({ ...nodeConfig, explorerUrl: e.target.value })
+                  onConfigChange(
+                    updateUrlField(
+                      nodeConfig,
+                      serviceConfig.explorerField,
+                      e.target.value,
+                    ),
+                  )
                 }
-                placeholder="https://mempool.space"
+                placeholder={serviceConfig.defaultUrl}
+                aria-label={`${serviceConfig.label} block explorer URL`}
                 className="font-mono text-sm"
               />
             </div>
             <div className="flex gap-1 pt-5">
-              {["mempool.space", "blockstream.info"].map((preset) => (
+              {serviceConfig.presets.map((preset) => (
                 <button
-                  key={preset}
+                  key={preset.url}
+                  type="button"
                   onClick={() =>
-                    onConfigChange({
-                      ...nodeConfig,
-                      explorerUrl: `https://${preset}`,
-                    })
+                    onConfigChange(
+                      updateUrlField(
+                        nodeConfig,
+                        serviceConfig.explorerField,
+                        preset.url,
+                      ),
+                    )
                   }
-                  className={`text-xs px-2 py-1.5 rounded-lg border transition-colors ${
-                    nodeConfig.explorerUrl === `https://${preset}`
-                      ? "bg-primary-50 dark:bg-primary-900/20 border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300"
-                      : "surface-secondary border-sanctuary-200 dark:border-sanctuary-700 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-700"
-                  }`}
+                  className={`text-xs px-2 py-1.5 rounded-lg border transition-colors ${presetButtonClass(explorerUrl === preset.url)}`}
                 >
-                  {preset}
+                  {preset.label}
                 </button>
               ))}
             </div>
@@ -78,13 +207,16 @@ export const ExternalServicesSection: React.FC<
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="radio"
-                  name="feeSource"
-                  checked={!!nodeConfig.feeEstimatorUrl}
+                  name={`feeSource-${activeNetwork}`}
+                  checked={!!feeEstimatorUrl}
                   onChange={() =>
-                    onConfigChange({
-                      ...nodeConfig,
-                      feeEstimatorUrl: "https://mempool.space",
-                    })
+                    onConfigChange(
+                      updateUrlField(
+                        nodeConfig,
+                        serviceConfig.feeField,
+                        serviceConfig.defaultUrl,
+                      ),
+                    )
                   }
                   className="w-4 h-4 text-primary-600"
                 />
@@ -95,10 +227,12 @@ export const ExternalServicesSection: React.FC<
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="radio"
-                  name="feeSource"
-                  checked={!nodeConfig.feeEstimatorUrl}
+                  name={`feeSource-${activeNetwork}`}
+                  checked={!feeEstimatorUrl}
                   onChange={() =>
-                    onConfigChange({ ...nodeConfig, feeEstimatorUrl: "" })
+                    onConfigChange(
+                      updateUrlField(nodeConfig, serviceConfig.feeField, ""),
+                    )
                   }
                   className="w-4 h-4 text-primary-600"
                 />
@@ -110,7 +244,7 @@ export const ExternalServicesSection: React.FC<
           </div>
 
           {/* Fee Estimator URL - only shown when using Mempool API */}
-          {nodeConfig.feeEstimatorUrl && (
+          {feeEstimatorUrl && (
             <div className="flex items-center gap-3">
               <div className="flex-1">
                 <label className="block text-xs font-medium text-sanctuary-500 mb-1">
@@ -118,14 +252,18 @@ export const ExternalServicesSection: React.FC<
                 </label>
                 <Input
                   type="text"
-                  value={nodeConfig.feeEstimatorUrl}
+                  value={feeEstimatorUrl}
                   onChange={(e) =>
-                    onConfigChange({
-                      ...nodeConfig,
-                      feeEstimatorUrl: e.target.value,
-                    })
+                    onConfigChange(
+                      updateUrlField(
+                        nodeConfig,
+                        serviceConfig.feeField,
+                        e.target.value,
+                      ),
+                    )
                   }
-                  placeholder="https://mempool.space"
+                  placeholder={serviceConfig.defaultUrl}
+                  aria-label={`${serviceConfig.label} mempool API URL`}
                   className="font-mono text-sm"
                 />
               </div>

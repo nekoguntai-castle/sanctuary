@@ -24,6 +24,12 @@ export interface NodeConfigInput {
   password?: string;
   explorerUrl?: NullableString;
   feeEstimatorUrl?: NullableString;
+  testnet3ExplorerUrl?: NullableString;
+  testnet3FeeEstimatorUrl?: NullableString;
+  testnet4ExplorerUrl?: NullableString;
+  testnet4FeeEstimatorUrl?: NullableString;
+  signetExplorerUrl?: NullableString;
+  signetFeeEstimatorUrl?: NullableString;
   mempoolEstimator?: string;
   poolEnabled?: boolean;
   poolMinConnections?: number;
@@ -86,6 +92,13 @@ const VALID_LOAD_BALANCING = [
   "least_connections",
   "failover_only",
 ];
+
+const DEFAULT_EXTERNAL_SERVICE_URLS = {
+  mainnet: "https://mempool.space",
+  testnet3: "https://mempool.space/testnet",
+  testnet4: "https://mempool.space/testnet4",
+  signet: "https://mempool.space/signet",
+} as const;
 
 interface NetworkDefaults {
   mode: string;
@@ -174,6 +187,19 @@ function encryptedOrNull(value: NullableString | undefined): string | null {
 
 function optionalString(value: NullableString | undefined): string | null {
   return value || null;
+}
+
+function optionalExternalServiceUrl(
+  value: NullableString | undefined,
+): string | null {
+  return value === undefined ? null : value;
+}
+
+function responseExternalServiceUrl(
+  value: unknown,
+  fallback: string,
+): string {
+  return typeof value === "string" ? value : fallback;
 }
 
 function buildProxyData(input: NodeConfigInput): Record<string, unknown> {
@@ -362,8 +388,14 @@ export function buildNodeConfigData(
     port: parseRequiredInteger(input.port),
     useSsl: input.useSsl === true,
     allowSelfSignedCert: input.allowSelfSignedCert === true,
-    explorerUrl: input.explorerUrl || "https://mempool.space",
-    feeEstimatorUrl: input.feeEstimatorUrl || null,
+    explorerUrl: input.explorerUrl || DEFAULT_EXTERNAL_SERVICE_URLS.mainnet,
+    feeEstimatorUrl: optionalExternalServiceUrl(input.feeEstimatorUrl),
+    testnet3ExplorerUrl: input.testnet3ExplorerUrl || DEFAULT_EXTERNAL_SERVICE_URLS.testnet3,
+    testnet3FeeEstimatorUrl: optionalExternalServiceUrl(input.testnet3FeeEstimatorUrl),
+    testnet4ExplorerUrl: input.testnet4ExplorerUrl || DEFAULT_EXTERNAL_SERVICE_URLS.testnet4,
+    testnet4FeeEstimatorUrl: optionalExternalServiceUrl(input.testnet4FeeEstimatorUrl),
+    signetExplorerUrl: input.signetExplorerUrl || DEFAULT_EXTERNAL_SERVICE_URLS.signet,
+    signetFeeEstimatorUrl: optionalExternalServiceUrl(input.signetFeeEstimatorUrl),
     mempoolEstimator: estimator,
     poolEnabled:
       input.poolEnabled ??
@@ -388,8 +420,38 @@ function buildNodeConfigBaseResponse(
     port: String(nodeConfig.port),
     useSsl: nodeConfig.useSsl,
     allowSelfSignedCert: nodeConfig.allowSelfSignedCert ?? false,
-    explorerUrl: nodeConfig.explorerUrl,
-    feeEstimatorUrl: nodeConfig.feeEstimatorUrl || "https://mempool.space",
+    explorerUrl: responseExternalServiceUrl(
+      nodeConfig.explorerUrl,
+      DEFAULT_EXTERNAL_SERVICE_URLS.mainnet,
+    ),
+    feeEstimatorUrl: responseExternalServiceUrl(
+      nodeConfig.feeEstimatorUrl,
+      DEFAULT_EXTERNAL_SERVICE_URLS.mainnet,
+    ),
+    testnet3ExplorerUrl: responseExternalServiceUrl(
+      nodeConfig.testnet3ExplorerUrl,
+      DEFAULT_EXTERNAL_SERVICE_URLS.testnet3,
+    ),
+    testnet3FeeEstimatorUrl: responseExternalServiceUrl(
+      nodeConfig.testnet3FeeEstimatorUrl,
+      DEFAULT_EXTERNAL_SERVICE_URLS.testnet3,
+    ),
+    testnet4ExplorerUrl: responseExternalServiceUrl(
+      nodeConfig.testnet4ExplorerUrl,
+      DEFAULT_EXTERNAL_SERVICE_URLS.testnet4,
+    ),
+    testnet4FeeEstimatorUrl: responseExternalServiceUrl(
+      nodeConfig.testnet4FeeEstimatorUrl,
+      DEFAULT_EXTERNAL_SERVICE_URLS.testnet4,
+    ),
+    signetExplorerUrl: responseExternalServiceUrl(
+      nodeConfig.signetExplorerUrl,
+      DEFAULT_EXTERNAL_SERVICE_URLS.signet,
+    ),
+    signetFeeEstimatorUrl: responseExternalServiceUrl(
+      nodeConfig.signetFeeEstimatorUrl,
+      DEFAULT_EXTERNAL_SERVICE_URLS.signet,
+    ),
     mempoolEstimator: nodeConfig.mempoolEstimator || "simple",
     poolEnabled: nodeConfig.poolEnabled,
     poolMinConnections: nodeConfig.poolMinConnections,

@@ -30,6 +30,9 @@ interface StatusNodeConfig {
   port: number;
   useSsl: boolean;
   explorerUrl: string | null;
+  testnet3ExplorerUrl?: string | null;
+  testnet4ExplorerUrl?: string | null;
+  signetExplorerUrl?: string | null;
   servers?: ConfiguredServer[];
 }
 
@@ -61,6 +64,32 @@ const NETWORK_DEFAULTS: Record<NetworkType, { host: string; port: number; useSsl
   signet: { host: 'electrum.mutinynet.com', port: 50002, useSsl: true },
   regtest: { host: 'localhost', port: 50001, useSsl: false },
 };
+
+const DEFAULT_EXPLORER_URLS: Record<NetworkType, string> = {
+  mainnet: 'https://mempool.space',
+  testnet3: 'https://mempool.space/testnet',
+  testnet4: 'https://mempool.space/testnet4',
+  signet: 'https://mempool.space/signet',
+  regtest: 'https://mempool.space',
+};
+
+const EXPLORER_URL_FIELDS: Record<NetworkType, keyof StatusNodeConfig> = {
+  mainnet: 'explorerUrl',
+  testnet3: 'testnet3ExplorerUrl',
+  testnet4: 'testnet4ExplorerUrl',
+  signet: 'signetExplorerUrl',
+  regtest: 'explorerUrl',
+};
+
+function getExplorerUrl(
+  nodeConfig: StatusNodeConfig | null,
+  network: NetworkType,
+): string {
+  const value = nodeConfig?.[EXPLORER_URL_FIELDS[network]];
+  return typeof value === 'string' && value.trim()
+    ? value.trim()
+    : DEFAULT_EXPLORER_URLS[network];
+}
 
 function getConfiguredServers(
   nodeConfig: StatusNodeConfig | null,
@@ -226,7 +255,7 @@ export async function getBitcoinNetworkStatus(
     network,
     host: displayConnection.host,
     useSsl: displayConnection.useSsl,
-    explorerUrl: nodeConfig?.explorerUrl || 'https://mempool.space',
+    explorerUrl: getExplorerUrl(nodeConfig, network),
     confirmationThreshold,
     deepConfirmationThreshold,
     pool: nodeConfig?.type === 'electrum' ? {

@@ -121,6 +121,12 @@ export type NodeConfigRecord = {
   allowSelfSignedCert: boolean;
   explorerUrl: string;
   feeEstimatorUrl: string | null;
+  testnet3ExplorerUrl: string | null;
+  testnet3FeeEstimatorUrl: string | null;
+  testnet4ExplorerUrl: string | null;
+  testnet4FeeEstimatorUrl: string | null;
+  signetExplorerUrl: string | null;
+  signetFeeEstimatorUrl: string | null;
   mempoolEstimator: string;
   poolEnabled: boolean;
   poolMinConnections: number;
@@ -168,6 +174,12 @@ export function buildNodeConfig(overrides: Partial<NodeConfigRecord> = {}): Node
     allowSelfSignedCert: false,
     explorerUrl: 'https://mempool.space',
     feeEstimatorUrl: 'https://mempool.space',
+    testnet3ExplorerUrl: 'https://mempool.space/testnet',
+    testnet3FeeEstimatorUrl: 'https://mempool.space/testnet',
+    testnet4ExplorerUrl: 'https://mempool.space/testnet4',
+    testnet4FeeEstimatorUrl: 'https://mempool.space/testnet4',
+    signetExplorerUrl: 'https://mempool.space/signet',
+    signetFeeEstimatorUrl: 'https://mempool.space/signet',
     mempoolEstimator: 'simple',
     poolEnabled: true,
     poolMinConnections: 1,

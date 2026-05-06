@@ -17,6 +17,12 @@ function createNodeConfig(overrides: Partial<NodeConfig> = {}): NodeConfig {
     type: "electrum",
     explorerUrl: "https://mempool.space",
     feeEstimatorUrl: "https://mempool.space",
+    testnet3ExplorerUrl: "https://mempool.space/testnet",
+    testnet3FeeEstimatorUrl: "https://mempool.space/testnet",
+    testnet4ExplorerUrl: "https://mempool.space/testnet4",
+    testnet4FeeEstimatorUrl: "https://mempool.space/testnet4",
+    signetExplorerUrl: "https://mempool.space/signet",
+    signetFeeEstimatorUrl: "https://mempool.space/signet",
     mempoolEstimator: "mempool_space",
     mainnetMode: "singleton",
     ...overrides,
@@ -87,6 +93,61 @@ describe("ExternalServicesSection", () => {
     expect(onConfigChange).toHaveBeenLastCalledWith({
       ...nodeConfig,
       explorerUrl: "https://blockstream.info",
+    });
+  });
+
+  it("updates network-specific explorer presets and fee source fields", async () => {
+    const user = userEvent.setup();
+    const onConfigChange = vi.fn();
+    const nodeConfig = createNodeConfig();
+
+    const { rerender } = render(
+      <ExternalServicesSection
+        nodeConfig={nodeConfig}
+        onConfigChange={onConfigChange}
+        expanded
+        onToggle={vi.fn()}
+        summary="External config"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Testnet3" }));
+    await user.click(screen.getByRole("button", { name: "blockstream.info" }));
+    expect(onConfigChange).toHaveBeenLastCalledWith({
+      ...nodeConfig,
+      testnet3ExplorerUrl: "https://blockstream.info/testnet",
+    });
+
+    await user.click(screen.getByRole("button", { name: "Testnet4" }));
+    fireEvent.change(screen.getByLabelText("Testnet4 block explorer URL"), {
+      target: { value: "https://explorer.testnet4.example" },
+    });
+    expect(onConfigChange).toHaveBeenLastCalledWith({
+      ...nodeConfig,
+      testnet4ExplorerUrl: "https://explorer.testnet4.example",
+    });
+
+    await user.click(screen.getByRole("radio", { name: "Electrum Server" }));
+    expect(onConfigChange).toHaveBeenLastCalledWith({
+      ...nodeConfig,
+      testnet4FeeEstimatorUrl: "",
+    });
+
+    rerender(
+      <ExternalServicesSection
+        nodeConfig={createNodeConfig({ testnet4FeeEstimatorUrl: "" })}
+        onConfigChange={onConfigChange}
+        expanded
+        onToggle={vi.fn()}
+        summary="External config"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Testnet4" }));
+    await user.click(screen.getByRole("radio", { name: "Mempool API" }));
+    expect(onConfigChange).toHaveBeenLastCalledWith({
+      ...createNodeConfig({ testnet4FeeEstimatorUrl: "" }),
+      testnet4FeeEstimatorUrl: "https://mempool.space/testnet4",
     });
   });
 

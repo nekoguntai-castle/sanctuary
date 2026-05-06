@@ -173,9 +173,40 @@ export const registerBitcoinNetworkRouteTests = () => {
           blockHeight: 4_500_000,
           host: 'testnet.example.com',
           useSsl: true,
+          explorerUrl: 'https://mempool.space/testnet',
           pool: expect.objectContaining({ enabled: false }),
         });
         expect(mockNodeClient.getNodeClient).toHaveBeenCalledWith('testnet3');
+      });
+
+      it('returns configured explorer URL for testnet4 status', async () => {
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({
+          id: 'default',
+          type: 'electrum',
+          host: 'electrum.example.com',
+          port: 50002,
+          useSsl: true,
+          explorerUrl: 'https://mempool.space',
+          testnet4ExplorerUrl: 'https://testnet4-explorer.example',
+          testnet4Enabled: true,
+          testnet4Mode: 'singleton',
+          testnet4SingletonHost: 'testnet4.example.com',
+          testnet4SingletonPort: 60002,
+          testnet4SingletonSsl: true,
+          servers: [],
+        });
+        mockElectrumClient.isConnected.mockReturnValue(true);
+        mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'Fulcrum', protocol: '1.4' });
+        mockElectrumClient.getBlockHeight.mockResolvedValue(4_500_002);
+
+        const response = await request(app).get('/bitcoin/status?network=testnet4');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({
+          connected: true,
+          network: 'testnet4',
+          explorerUrl: 'https://testnet4-explorer.example',
+        });
       });
 
       it('rejects legacy testnet status network input', async () => {
