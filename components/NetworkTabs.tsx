@@ -7,12 +7,24 @@ import {
 
 export type { TabNetwork };
 
+type NetworkTabsLayout = 'row' | 'grid';
+
+interface NetworkTabButtonProps {
+  network: TabNetwork;
+  selectedNetwork: TabNetwork;
+  onNetworkChange: (network: TabNetwork) => void;
+  networkAvailability?: Record<TabNetwork, boolean>;
+  layout: NetworkTabsLayout;
+  fullWidth: boolean;
+}
+
 interface NetworkTabsProps {
   selectedNetwork: TabNetwork;
   onNetworkChange: (network: TabNetwork) => void;
   networkAvailability?: Record<TabNetwork, boolean>;
   className?: string;
   fullWidth?: boolean;
+  layout?: NetworkTabsLayout;
 }
 
 const getDisabledTitle = (network: TabNetwork): string => {
@@ -48,18 +60,92 @@ const cancelMeasureFrame = (frameId: number | null) => {
   }
 };
 
-export const NetworkTabs = ({
-  selectedNetwork,
-  onNetworkChange,
-  networkAvailability,
-  className = '',
-  fullWidth = false,
-}: NetworkTabsProps) => {
+const getNavClassName = (layout: NetworkTabsLayout, fullWidth: boolean) => {
+  const baseClass = 'relative gap-0.5 p-0.5 surface-secondary rounded-md';
+  if (layout === 'grid') return `${baseClass} grid grid-cols-2 w-full`;
+  return `${baseClass} ${fullWidth ? 'flex w-full' : 'inline-flex'}`;
+};
+
+const getButtonBaseClass = (layout: NetworkTabsLayout, fullWidth: boolean) => {
+  const widthClass = layout === 'grid'
+    ? 'min-w-0 px-2 justify-center'
+    : `${fullWidth ? 'flex-1 px-2' : 'px-3'}`;
+
+  return `relative z-10 ${widthClass} py-1.5 text-xs font-medium rounded transition-colors duration-200`;
+};
+
+const getButtonStateClass = (isSelected: boolean, isDisabled: boolean, layout: NetworkTabsLayout) => {
+  if (isDisabled) {
+    return 'cursor-not-allowed text-sanctuary-300 hover:text-sanctuary-300 dark:text-sanctuary-600 dark:hover:text-sanctuary-600';
+  }
+
+  if (isSelected && layout === 'grid') {
+    return 'bg-white dark:bg-sanctuary-700 shadow-sm text-sanctuary-900 dark:text-sanctuary-50';
+  }
+
+  if (isSelected) {
+    return 'text-sanctuary-900 dark:text-sanctuary-50';
+  }
+
+  return 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300';
+};
+
+const getButtonClassName = (
+  isSelected: boolean,
+  isDisabled: boolean,
+  layout: NetworkTabsLayout,
+  fullWidth: boolean
+) => `${getButtonBaseClass(layout, fullWidth)} ${getButtonStateClass(isSelected, isDisabled, layout)}`;
+
+const createResizeObserver = (callback: ResizeObserverCallback) => (
+  typeof ResizeObserver === 'function' ? new ResizeObserver(callback) : null
+);
+
+const observeTabResizeTargets = (resizeObserver: ResizeObserver | null, nav: HTMLElement) => {
+  const activeEl = nav.querySelector('[data-active="true"]') as HTMLElement | null;
+
+  resizeObserver?.observe(nav);
+  if (activeEl) resizeObserver?.observe(activeEl);
+};
+
+const scheduleAfterFontsReady = (
+  scheduleIndicatorUpdate: () => void,
+  isCancelled: () => boolean
+) => {
+  void document.fonts?.ready.then(() => {
+    if (!isCancelled()) scheduleIndicatorUpdate();
+  });
+};
+
+function setupIndicatorObservers(
+  nav: HTMLElement | null,
+  scheduleIndicatorUpdate: () => void
+) {
+  /* v8 ignore next -- defensive guard; effects run only after the nav ref has mounted. */
+  if (!nav) return undefined;
+
+  let cancelled = false;
+  const resizeObserver = createResizeObserver(scheduleIndicatorUpdate);
+
+  observeTabResizeTargets(resizeObserver, nav);
+  window.addEventListener('resize', scheduleIndicatorUpdate);
+  scheduleAfterFontsReady(scheduleIndicatorUpdate, () => cancelled);
+
+  return () => {
+    cancelled = true;
+    resizeObserver?.disconnect();
+    window.removeEventListener('resize', scheduleIndicatorUpdate);
+  };
+}
+
+function useNetworkTabIndicator(layout: NetworkTabsLayout, selectedNetwork: TabNetwork) {
   const navRef = useRef<HTMLElement>(null);
   const measureFrameRef = useRef<number | null>(null);
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
 
   const updateIndicator = useCallback(() => {
+    if (layout === 'grid') return;
+
     const nextIndicator = getActiveTabIndicator(navRef.current);
     if (!nextIndicator) return;
 
@@ -68,7 +154,7 @@ export const NetworkTabs = ({
         ? current
         : nextIndicator
     ));
-  }, []);
+  }, [layout]);
 
   const scheduleIndicatorUpdate = useCallback(() => {
     cancelMeasureFrame(measureFrameRef.current);
@@ -83,85 +169,94 @@ export const NetworkTabs = ({
     scheduleIndicatorUpdate();
   }, [selectedNetwork, updateIndicator, scheduleIndicatorUpdate]);
 
-  useEffect(() => {
-    const nav = navRef.current;
-    /* v8 ignore next -- defensive guard; effects run only after the nav ref has mounted. */
-    if (!nav) return undefined;
-
-    let cancelled = false;
-    const resizeObserver = typeof ResizeObserver === 'function'
-      ? new ResizeObserver(scheduleIndicatorUpdate)
-      : null;
-    const activeEl = nav.querySelector('[data-active="true"]') as HTMLElement | null;
-
-    resizeObserver?.observe(nav);
-    if (activeEl) resizeObserver?.observe(activeEl);
-
-    window.addEventListener('resize', scheduleIndicatorUpdate);
-    void document.fonts?.ready.then(() => {
-      if (!cancelled) scheduleIndicatorUpdate();
-    });
-
-    return () => {
-      cancelled = true;
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', scheduleIndicatorUpdate);
-    };
-  }, [selectedNetwork, scheduleIndicatorUpdate]);
+  useEffect(
+    () => setupIndicatorObservers(navRef.current, scheduleIndicatorUpdate),
+    [selectedNetwork, scheduleIndicatorUpdate]
+  );
 
   useEffect(() => () => {
     cancelMeasureFrame(measureFrameRef.current);
   }, []);
 
+  return { navRef, indicator };
+}
+
+function SlidingTabIndicator({ indicator }: { indicator: { left: number; width: number } }) {
+  return (
+    <div
+      data-testid="network-tabs-indicator"
+      className="absolute top-0.5 bottom-0.5 rounded bg-white dark:bg-sanctuary-700 shadow-sm transition-all duration-300 ease-out z-0"
+      style={{ left: indicator.left, width: indicator.width }}
+    />
+  );
+}
+
+function NetworkTabButton({
+  network,
+  selectedNetwork,
+  onNetworkChange,
+  networkAvailability,
+  layout,
+  fullWidth,
+}: NetworkTabButtonProps) {
+  const config = networkConfigs[network];
+  const isSelected = selectedNetwork === network;
+  const isDisabled = networkAvailability?.[network] === false;
+
+  return (
+    <button
+      key={network}
+      type="button"
+      data-active={isSelected}
+      aria-disabled={isDisabled}
+      title={isDisabled ? getDisabledTitle(network) : undefined}
+      onClick={() => {
+        if (!isDisabled) onNetworkChange(network);
+      }}
+      className={getButtonClassName(isSelected, isDisabled, layout, fullWidth)}
+    >
+      <span className="flex min-w-0 items-center justify-center gap-1.5">
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+            isDisabled ? 'bg-sanctuary-300 dark:bg-sanctuary-600' : config.dotColor
+          }`}
+          aria-hidden="true"
+        />
+        <span className="truncate">{config.label}</span>
+      </span>
+    </button>
+  );
+}
+
+export const NetworkTabs = ({
+  selectedNetwork,
+  onNetworkChange,
+  networkAvailability,
+  className = '',
+  fullWidth = false,
+  layout = 'row',
+}: NetworkTabsProps) => {
+  const { navRef, indicator } = useNetworkTabIndicator(layout, selectedNetwork);
+
   return (
     <div className={className}>
       <nav
         ref={navRef}
-        className={`relative ${fullWidth ? 'flex w-full' : 'inline-flex'} gap-0.5 p-0.5 surface-secondary rounded-md`}
+        className={getNavClassName(layout, fullWidth)}
         aria-label="Network tabs"
       >
-        {/* Sliding indicator */}
-        <div
-          className="absolute top-0.5 bottom-0.5 rounded bg-white dark:bg-sanctuary-700 shadow-sm transition-all duration-300 ease-out z-0"
-          style={{ left: indicator.left, width: indicator.width }}
-        />
-        {TAB_NETWORKS.map((network) => {
-          const config = networkConfigs[network];
-          const isSelected = selectedNetwork === network;
-          const isDisabled = networkAvailability?.[network] === false;
-
-          return (
-            <button
-              key={network}
-              type="button"
-              data-active={isSelected}
-              aria-disabled={isDisabled}
-              title={isDisabled ? getDisabledTitle(network) : undefined}
-              onClick={() => {
-                if (!isDisabled) onNetworkChange(network);
-              }}
-              className={`
-                relative z-10 ${fullWidth ? 'flex-1 px-2' : 'px-3'} py-1.5 text-xs font-medium rounded transition-colors duration-200
-                ${isDisabled
-                  ? 'cursor-not-allowed text-sanctuary-300 hover:text-sanctuary-300 dark:text-sanctuary-600 dark:hover:text-sanctuary-600'
-                  : isSelected
-                  ? 'text-sanctuary-900 dark:text-sanctuary-50'
-                  : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
-                }
-              `}
-            >
-              <span className="flex items-center gap-1.5">
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    isDisabled ? 'bg-sanctuary-300 dark:bg-sanctuary-600' : config.dotColor
-                  }`}
-                  aria-hidden="true"
-                />
-                <span>{config.label}</span>
-              </span>
-            </button>
-          );
-        })}
+        {layout === 'row' && <SlidingTabIndicator indicator={indicator} />}
+        {TAB_NETWORKS.map((network) => (
+          <NetworkTabButton
+            key={network}
+            network={network}
+            selectedNetwork={selectedNetwork}
+            onNetworkChange={onNetworkChange}
+            networkAvailability={networkAvailability}
+            layout={layout}
+            fullWidth={fullWidth}
+          />
+        ))}
       </nav>
     </div>
   );

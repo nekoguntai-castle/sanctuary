@@ -77,10 +77,27 @@ describe('NetworkTabs', () => {
     });
 
     it('should render a sliding indicator element', () => {
-      const { container } = render(<NetworkTabs {...defaultProps} />);
+      render(<NetworkTabs {...defaultProps} />);
 
-      const indicator = container.querySelector('.shadow-sm');
-      expect(indicator).toBeInTheDocument();
+      expect(screen.getByTestId('network-tabs-indicator')).toBeInTheDocument();
+    });
+
+    it('renders grid layout without a sliding indicator for compact containers', () => {
+      render(
+        <NetworkTabs
+          {...defaultProps}
+          selectedNetwork="testnet4"
+          layout="grid"
+          fullWidth
+        />
+      );
+
+      const nav = screen.getByRole('navigation', { name: 'Network tabs' });
+      const selectedButton = screen.getByRole('button', { name: 'Testnet4' });
+
+      expect(nav).toHaveClass('grid', 'grid-cols-2', 'w-full');
+      expect(screen.queryByTestId('network-tabs-indicator')).not.toBeInTheDocument();
+      expect(selectedButton).toHaveClass('bg-white', 'shadow-sm', 'text-sanctuary-900');
     });
 
     it('should remeasure initially selected Testnet4 after the tab strip settles', () => {
@@ -101,11 +118,11 @@ describe('NetworkTabs', () => {
       });
       vi.stubGlobal('cancelAnimationFrame', vi.fn());
 
-      const { container } = render(
+      render(
         <NetworkTabs {...defaultProps} selectedNetwork="testnet4" fullWidth />
       );
       const testnetButton = screen.getByRole('button', { name: 'Testnet4' });
-      const indicator = container.querySelector('.shadow-sm') as HTMLElement;
+      const indicator = screen.getByTestId('network-tabs-indicator') as HTMLElement;
 
       setTabLayout(testnetButton, 44, 76);
       act(() => {
@@ -126,11 +143,11 @@ describe('NetworkTabs', () => {
     });
 
     it('ignores measurement when no active tab exists', () => {
-      const { container } = render(
+      render(
         <NetworkTabs {...defaultProps} selectedNetwork={'regtest' as TabNetwork} />
       );
 
-      const indicator = container.querySelector('.shadow-sm') as HTMLElement;
+      const indicator = screen.getByTestId('network-tabs-indicator') as HTMLElement;
       expect(indicator).toHaveStyle({ left: '0px', width: '0px' });
     });
 
@@ -275,6 +292,24 @@ describe('NetworkTabs', () => {
         'title',
         'Testnet4 is disabled. Enable Testnet4 under Node Configuration to select it.'
       );
+      expect(testnetButton).toHaveClass('cursor-not-allowed', 'text-sanctuary-300');
+      expect(mockOnNetworkChange).not.toHaveBeenCalled();
+    });
+
+    it('blocks disabled networks in grid layout', () => {
+      render(
+        <NetworkTabs
+          {...defaultProps}
+          selectedNetwork="signet"
+          layout="grid"
+          networkAvailability={{ mainnet: true, testnet3: false, testnet4: true, signet: true }}
+        />
+      );
+
+      const testnetButton = screen.getByRole('button', { name: 'Testnet3' });
+      fireEvent.click(testnetButton);
+
+      expect(testnetButton).toHaveAttribute('aria-disabled', 'true');
       expect(testnetButton).toHaveClass('cursor-not-allowed', 'text-sanctuary-300');
       expect(mockOnNetworkChange).not.toHaveBeenCalled();
     });

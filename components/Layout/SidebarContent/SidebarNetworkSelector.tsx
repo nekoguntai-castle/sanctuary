@@ -29,6 +29,7 @@ export const SidebarNetworkSelector: React.FC<SidebarNetworkSelectorProps> = ({
         onNetworkChange={onNetworkChange}
         networkAvailability={networkAvailability}
         fullWidth
+        layout="grid"
       />
     </div>
   </>
