@@ -133,7 +133,7 @@ export const NODE_CONFIG_TYPE_VALUES = ['electrum'] as const;
 export const NODE_CONNECTION_MODE_VALUES = ['singleton', 'pool'] as const;
 export const NODE_LOAD_BALANCING_VALUES = ['round_robin', 'least_connections', 'failover_only'] as const;
 export const NODE_MEMPOOL_ESTIMATOR_VALUES = ['simple', 'mempool_space'] as const;
-export const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet', 'signet', 'regtest'] as const;
+export const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'] as const;
 export const DEAD_LETTER_CATEGORY_VALUES = ['sync', 'push', 'telegram', 'notification', 'electrum', 'transaction', 'other'] as const;
 export const MONITORING_SERVICE_VALUES = ['grafana', 'prometheus', 'jaeger'] as const;
 
@@ -197,6 +197,22 @@ export const nodeConfigResponseProperties = {
   mainnetPoolMin: { type: 'integer', nullable: true, minimum: 0 },
   mainnetPoolMax: { type: 'integer', nullable: true, minimum: 0 },
   mainnetPoolLoadBalancing: nodeLoadBalancingSchema,
+  testnet3Enabled: { type: 'boolean' },
+  testnet3Mode: nodeConnectionModeSchema,
+  testnet3SingletonHost: { type: 'string', nullable: true },
+  testnet3SingletonPort: { type: 'integer', nullable: true, minimum: 1, maximum: 65535 },
+  testnet3SingletonSsl: { type: 'boolean', nullable: true },
+  testnet3PoolMin: { type: 'integer', nullable: true, minimum: 0 },
+  testnet3PoolMax: { type: 'integer', nullable: true, minimum: 0 },
+  testnet3PoolLoadBalancing: nodeLoadBalancingSchema,
+  testnet4Enabled: { type: 'boolean' },
+  testnet4Mode: nodeConnectionModeSchema,
+  testnet4SingletonHost: { type: 'string', nullable: true },
+  testnet4SingletonPort: { type: 'integer', nullable: true, minimum: 1, maximum: 65535 },
+  testnet4SingletonSsl: { type: 'boolean', nullable: true },
+  testnet4PoolMin: { type: 'integer', nullable: true, minimum: 0 },
+  testnet4PoolMax: { type: 'integer', nullable: true, minimum: 0 },
+  testnet4PoolLoadBalancing: nodeLoadBalancingSchema,
   testnetEnabled: { type: 'boolean' },
   testnetMode: nodeConnectionModeSchema,
   testnetSingletonHost: { type: 'string', nullable: true },
@@ -238,6 +254,12 @@ export const nodeConfigUpdateRequestProperties = {
   mainnetSingletonPort: nodeConfigNullablePortInputSchema,
   mainnetPoolMin: nodeConfigNullableCountInputSchema,
   mainnetPoolMax: nodeConfigNullableCountInputSchema,
+  testnet3SingletonPort: nodeConfigNullablePortInputSchema,
+  testnet3PoolMin: nodeConfigNullableCountInputSchema,
+  testnet3PoolMax: nodeConfigNullableCountInputSchema,
+  testnet4SingletonPort: nodeConfigNullablePortInputSchema,
+  testnet4PoolMin: nodeConfigNullableCountInputSchema,
+  testnet4PoolMax: nodeConfigNullableCountInputSchema,
   testnetSingletonPort: nodeConfigNullablePortInputSchema,
   testnetPoolMin: nodeConfigNullableCountInputSchema,
   testnetPoolMax: nodeConfigNullableCountInputSchema,

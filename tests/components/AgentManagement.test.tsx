@@ -57,13 +57,13 @@ const agent = {
     id: 'funding-1',
     name: 'Funding',
     type: 'multi_sig',
-    network: 'testnet',
+    network: 'testnet3',
   },
   operationalWallet: {
     id: 'operational-1',
     name: 'Operational',
     type: 'single_sig',
-    network: 'testnet',
+    network: 'testnet3',
   },
   signerDevice: {
     id: 'device-1',
@@ -105,7 +105,7 @@ const options = {
       id: 'funding-1',
       name: 'Funding',
       type: 'multi_sig',
-      network: 'testnet',
+      network: 'testnet3',
       accessUserIds: ['user-1'],
       deviceIds: ['device-1'],
     },
@@ -113,7 +113,7 @@ const options = {
       id: 'operational-1',
       name: 'Operational',
       type: 'single_sig',
-      network: 'testnet',
+      network: 'testnet3',
       accessUserIds: ['user-1'],
       deviceIds: [],
     },
@@ -134,7 +134,7 @@ const importedOperationalWallet = {
   id: 'operational-imported',
   name: 'Imported Ops',
   type: 'single_sig',
-  network: 'testnet',
+  network: 'testnet3',
   accessUserIds: ['user-1'],
   deviceIds: [],
 };
@@ -193,7 +193,7 @@ describe('AgentManagement', () => {
       format: 'descriptor',
       walletType: 'single_sig',
       scriptType: 'native_segwit',
-      network: 'testnet',
+      network: 'testnet3',
       devices: [],
       suggestedName: 'Imported Ops',
     });
@@ -359,7 +359,7 @@ describe('AgentManagement', () => {
     expect(walletsApi.importWallet).toHaveBeenCalledWith({
       data: 'wpkh(tpub-inline/0/*)',
       name: 'Imported Ops',
-      network: 'testnet',
+      network: 'testnet3',
     });
 
     selects = screen.getAllByRole('combobox');
@@ -425,7 +425,7 @@ describe('AgentManagement', () => {
       expect.objectContaining({
         xpub: 'tpub-inline',
         scriptType: 'taproot',
-        network: 'testnet',
+        network: 'testnet3',
         fingerprint: expect.stringMatching(/^[0-9a-f]{8}$/),
       })
     );
@@ -433,7 +433,7 @@ describe('AgentManagement', () => {
     expect(walletsApi.importWallet).toHaveBeenCalledWith({
       data: descriptor,
       name: 'Imported Ops',
-      network: 'testnet',
+      network: 'testnet3',
     });
   });
 
@@ -471,7 +471,7 @@ describe('AgentManagement', () => {
       format: 'descriptor',
       walletType: 'multi_sig',
       scriptType: 'native_segwit',
-      network: 'testnet',
+      network: 'testnet3',
       quorum: 2,
       totalSigners: 3,
       devices: [],

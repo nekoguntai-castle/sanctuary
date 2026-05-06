@@ -448,7 +448,7 @@ export function registerBlockchainSyncAddressTests(): void {
       mockPrismaClient.address.findMany.mockResolvedValue([{ address: testAddress }]);
       mockElectrumClient.getAddressHistory.mockResolvedValue([{ tx_hash: txHash, height: 800000 }]);
       mockElectrumClient.getAddressUTXOs.mockResolvedValue([]);
-      mockElectrumClient.getBlockHeight.mockRejectedValue(new Error('height unavailable'));
+      mockElectrumClient.getBlockHeight.mockRejectedValueOnce(new Error('height unavailable'));
       mockElectrumClient.getTransactionsBatch.mockResolvedValue(
         new Map([[
           txHash,

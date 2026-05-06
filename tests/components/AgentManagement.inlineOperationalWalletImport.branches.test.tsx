@@ -15,7 +15,7 @@ const fundingWallet: AgentOptionWallet = {
   id: 'funding-1',
   name: 'Funding',
   type: 'multi_sig',
-  network: 'testnet',
+  network: 'testnet3',
   accessUserIds: ['user-1'],
   deviceIds: ['device-1'],
 };
@@ -53,7 +53,7 @@ describe('InlineOperationalWalletImport branch coverage', () => {
       format: 'descriptor',
       walletType: 'single_sig',
       scriptType: 'native_segwit',
-      network: 'testnet',
+      network: 'testnet3',
       devices: [],
     });
     vi.mocked(walletsApi.importWallet).mockResolvedValue({
@@ -62,7 +62,7 @@ describe('InlineOperationalWalletImport branch coverage', () => {
         name: '',
         type: 'single_sig',
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
         quorum: null,
         totalSigners: null,
       },
@@ -114,7 +114,7 @@ describe('InlineOperationalWalletImport branch coverage', () => {
       valid: false,
       format: 'unknown',
       walletType: 'unknown',
-      network: 'testnet',
+      network: 'testnet3',
       devices: [],
     } as any);
     renderImport();
@@ -142,7 +142,7 @@ describe('InlineOperationalWalletImport branch coverage', () => {
     await enterDescriptorAndImport(user);
 
     expect(
-      await screen.findByText('Operational wallet network mainnet must match funding wallet network testnet.')
+      await screen.findByText('Operational wallet network mainnet must match funding wallet network testnet3.')
     ).toBeInTheDocument();
     expect(walletsApi.importWallet).not.toHaveBeenCalled();
   });
@@ -159,7 +159,7 @@ describe('InlineOperationalWalletImport branch coverage', () => {
     expect(walletsApi.importWallet).toHaveBeenCalledWith({
       data: 'wpkh(tpub-inline/0/*)',
       name: 'Agent operational wallet',
-      network: 'testnet',
+      network: 'testnet3',
     });
     expect(await screen.findByText('Imported and selected Agent operational wallet')).toBeInTheDocument();
   });

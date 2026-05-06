@@ -6,6 +6,7 @@
 
 import { walletRepository, addressRepository } from "../../../repositories";
 import { getNodeClient } from "../nodeClient";
+import { normalizeLegacyBitcoinNetwork } from "../networks";
 import { getElectrumPool } from "../electrumPool";
 import { createLogger } from "../../../utils/logger";
 import { getErrorMessage } from "../../../utils/errors";
@@ -64,11 +65,9 @@ export async function executeSyncPipeline(
     throw new Error(`Wallet ${walletId} not found`);
   }
 
-  const network = (wallet.network as BitcoinNetwork) || "mainnet";
+  const network = normalizeLegacyBitcoinNetwork(wallet.network, "mainnet") as BitcoinNetwork;
 
-  // Check if Tor proxy is enabled
-  const pool = getElectrumPool();
-  const viaTor = pool.isProxyEnabled();
+  const viaTor = getElectrumPool().isProxyEnabled();
 
   walletLog(
     walletId,

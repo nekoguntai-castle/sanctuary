@@ -70,7 +70,7 @@ export interface CreateWalletOptions {
   name?: string;
   type?: 'single_sig' | 'multi_sig';
   scriptType?: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-  network?: 'mainnet' | 'testnet' | 'signet' | 'regtest';
+  network?: 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
   descriptor?: string;
   fingerprint?: string;
   quorum?: number;
@@ -88,7 +88,7 @@ export async function createTestWallet(
       name: options.name || `test-wallet-${Date.now()}`,
       type: options.type || 'single_sig',
       scriptType: options.scriptType || 'native_segwit',
-      network: options.network || 'testnet',
+      network: options.network || 'testnet3',
       descriptor: options.descriptor,
       fingerprint: options.fingerprint || `fp${Date.now().toString(16)}`,
       quorum: options.quorum,

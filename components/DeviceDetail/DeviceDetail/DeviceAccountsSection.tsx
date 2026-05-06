@@ -160,7 +160,7 @@ function NetworkAccountTabButton({
   onClick: () => void;
 }) {
   const isMainnet = tab === 'mainnet';
-  const label = isMainnet ? 'Mainnet' : 'Testnet / Signet';
+  const label = isMainnet ? 'Mainnet' : 'Testnet-family / Signet';
   const activeClass = isMainnet
     ? 'bg-mainnet-100/50 dark:bg-mainnet-900/20 text-mainnet-700 dark:text-mainnet-300 border-mainnet-200 dark:border-mainnet-700'
     : 'bg-testnet-100/50 dark:bg-testnet-900/20 text-testnet-700 dark:text-testnet-300 border-testnet-200 dark:border-testnet-700';

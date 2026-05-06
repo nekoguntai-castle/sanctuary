@@ -76,6 +76,26 @@ describe('getExplorerUrl', () => {
     });
   });
 
+  describe('Testnet4 URLs', () => {
+    it('should convert mempool.space transaction URLs to testnet4', () => {
+      const url = 'https://mempool.space/tx/abc123';
+      const expected = 'https://mempool.space/testnet4/tx/abc123';
+      expect(getExplorerUrl(url, 'testnet4')).toBe(expected);
+    });
+
+    it('should convert mempool.space address URLs to testnet4', () => {
+      const url = 'https://mempool.space/address/tb1qtest';
+      const expected = 'https://mempool.space/testnet4/address/tb1qtest';
+      expect(getExplorerUrl(url, 'testnet4')).toBe(expected);
+    });
+
+    it('should handle base mempool.space URL for testnet4', () => {
+      const url = 'https://mempool.space/';
+      const expected = 'https://mempool.space/testnet4/';
+      expect(getExplorerUrl(url, 'testnet4')).toBe(expected);
+    });
+  });
+
   describe('Regtest and unknown networks', () => {
     it('should return unchanged URL for regtest', () => {
       const url = 'https://mempool.space/tx/abc123';
@@ -108,6 +128,12 @@ describe('getTxExplorerUrl', () => {
     expect(getTxExplorerUrl(txid, 'signet')).toBe(expected);
   });
 
+  it('should generate testnet4 transaction URL', () => {
+    const txid = 'abc123def456';
+    const expected = 'https://mempool.space/testnet4/tx/abc123def456';
+    expect(getTxExplorerUrl(txid, 'testnet4')).toBe(expected);
+  });
+
   it('should use custom explorer base URL', () => {
     const txid = 'abc123def456';
     const expected = 'https://blockstream.info/testnet/tx/abc123def456';
@@ -138,6 +164,12 @@ describe('getAddressExplorerUrl', () => {
     const address = 'tb1qtest123';
     const expected = 'https://mempool.space/signet/address/tb1qtest123';
     expect(getAddressExplorerUrl(address, 'signet')).toBe(expected);
+  });
+
+  it('should generate testnet4 address URL', () => {
+    const address = 'tb1qtest123';
+    const expected = 'https://mempool.space/testnet4/address/tb1qtest123';
+    expect(getAddressExplorerUrl(address, 'testnet4')).toBe(expected);
   });
 
   it('should use custom explorer base URL', () => {

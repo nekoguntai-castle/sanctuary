@@ -14,7 +14,7 @@ import * as useWalletsHook from '../../hooks/queries/useWallets';
 // Mock navigate
 const mockNavigate = vi.fn();
 const activeNetworkMock = vi.hoisted(() => ({
-  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet' | 'signet',
+  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet3' | 'testnet4' | 'signet',
   setSelectedNetwork: vi.fn(),
 }));
 vi.mock('react-router-dom', async () => {
@@ -70,7 +70,7 @@ vi.mock('../../components/NetworkTabs', () => ({
   NetworkTabs: ({ selectedNetwork, onNetworkChange }: any) => (
     <div data-testid="network-tabs">
       <button data-testid="mainnet-tab" onClick={() => onNetworkChange('mainnet')}>Mainnet</button>
-      <button data-testid="testnet-tab" onClick={() => onNetworkChange('testnet')}>Testnet</button>
+      <button data-testid="testnet-tab" onClick={() => onNetworkChange('testnet3')}>Testnet3</button>
       <span data-testid="selected-network">{selectedNetwork}</span>
     </div>
   ),
@@ -127,7 +127,7 @@ describe('WalletList', () => {
       name: 'Test Wallet',
       type: 'single_sig',
       balance: 50000,
-      network: 'testnet',
+      network: 'testnet3',
       scriptType: 'native_segwit',
       deviceCount: 1,
       isShared: false,
@@ -386,7 +386,7 @@ describe('WalletList', () => {
   describe('sync status', () => {
     it('shows sync in progress indicator', async () => {
       // Testnet wallet has sync in progress
-      activeNetworkMock.selectedNetwork = 'testnet';
+      activeNetworkMock.selectedNetwork = 'testnet3';
       renderWalletList();
 
       await waitFor(() => {

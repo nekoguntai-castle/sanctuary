@@ -37,14 +37,14 @@ describe("blockHeight utils", () => {
       const { getCachedBlockHeight, setCachedBlockHeight } = await loadModule();
 
       expect(getCachedBlockHeight("mainnet")).toBe(0);
-      expect(getCachedBlockHeight("testnet")).toBe(0);
+      expect(getCachedBlockHeight("testnet3")).toBe(0);
 
       setCachedBlockHeight(123, "mainnet");
       setCachedBlockHeight(99, "mainnet");
-      setCachedBlockHeight(456, "testnet");
+      setCachedBlockHeight(456, "testnet3");
 
       expect(getCachedBlockHeight("mainnet")).toBe(123);
-      expect(getCachedBlockHeight("testnet")).toBe(456);
+      expect(getCachedBlockHeight("testnet3")).toBe(456);
       expect(mockLogger.debug).toHaveBeenCalledTimes(2);
     });
   });
@@ -187,8 +187,8 @@ describe("blockHeight utils", () => {
       const getBlockHeader = vi.fn().mockResolvedValue(headerHex);
       mockGetNodeClient.mockResolvedValue({ getBlockHeader });
 
-      const first = await getBlockTimestamp(500_000, "testnet");
-      const second = await getBlockTimestamp(500_000, "mainnet");
+      const first = await getBlockTimestamp(500_000, "testnet3");
+      const second = await getBlockTimestamp(500_000, "testnet3");
 
       expect(first?.toISOString()).toBe(new Date(unix * 1000).toISOString());
       expect(second?.toISOString()).toBe(new Date(unix * 1000).toISOString());

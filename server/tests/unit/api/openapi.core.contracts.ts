@@ -366,7 +366,7 @@ export function registerOpenApiCoreTests() {
       openApiSpec.components.schemas.AddressValidationRequest.properties
         .network,
     ).toMatchObject({
-      enum: ["mainnet", "testnet", "regtest"],
+      enum: ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
       default: "mainnet",
     });
     expect(
@@ -546,7 +546,7 @@ export function registerOpenApiCoreTests() {
     expect(
       openApiSpec.components.schemas.NetworkSyncStatusResponse.properties
         .network.enum,
-    ).toEqual(["mainnet", "testnet", "signet"]);
+    ).toEqual(["mainnet", "testnet3", "testnet4", "signet"]);
     expect(
       openApiSpec.paths["/sync/network/{network}"].post.parameters,
     ).toContainEqual(
@@ -554,7 +554,7 @@ export function registerOpenApiCoreTests() {
         name: "network",
         in: "path",
         schema: expect.objectContaining({
-          enum: ["mainnet", "testnet", "signet"],
+          enum: ["mainnet", "testnet3", "testnet4", "signet"],
         }),
       }),
     );

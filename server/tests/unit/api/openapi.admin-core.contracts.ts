@@ -374,7 +374,7 @@ export function registerOpenApiAdminCoreTests() {
         name: 'network',
         in: 'query',
         schema: expect.objectContaining({
-          enum: ['mainnet', 'testnet', 'signet', 'regtest'],
+          enum: ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'],
         }),
       }),
     );
@@ -386,7 +386,8 @@ export function registerOpenApiAdminCoreTests() {
 
     expect(openApiSpec.components.schemas.AdminElectrumServer.properties.network.enum).toEqual([
       'mainnet',
-      'testnet',
+      'testnet3',
+      'testnet4',
       'signet',
       'regtest',
     ]);
@@ -411,7 +412,7 @@ export function registerOpenApiAdminCoreTests() {
         maximum: 65535,
       });
     expect(openApiSpec.components.schemas.AdminCreateElectrumServerRequest.properties.network).toMatchObject({
-      enum: ['mainnet', 'testnet', 'signet', 'regtest'],
+      enum: ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'],
       default: 'mainnet',
     });
     expect(openApiSpec.paths['/admin/electrum-servers'].post.requestBody.content['application/json'].schema)
@@ -469,7 +470,7 @@ export function registerOpenApiAdminCoreTests() {
           in: 'path',
           required: true,
           schema: expect.objectContaining({
-            enum: ['mainnet', 'testnet', 'signet', 'regtest'],
+            enum: ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'],
           }),
         }),
       );
@@ -495,7 +496,8 @@ export function registerOpenApiAdminCoreTests() {
     expect(openApiSpec.components.schemas.AdminUpdateElectrumServerRequest.required).toBeUndefined();
     expect(openApiSpec.components.schemas.AdminUpdateElectrumServerRequest.properties.network.enum).toEqual([
       'mainnet',
-      'testnet',
+      'testnet3',
+      'testnet4',
       'signet',
       'regtest',
     ]);

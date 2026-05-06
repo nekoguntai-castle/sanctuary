@@ -9,7 +9,7 @@ const genericOutputSchema = z.object({}).passthrough();
 const dashboardBudget = { maxRows: 100, maxBytes: 128_000 };
 
 const dashboardSummaryInputSchema = {
-  network: z.enum(['mainnet', 'testnet', 'signet', 'regtest']).optional(),
+  network: z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']).optional(),
   limit: z.number().int().positive().optional(),
 } as const;
 

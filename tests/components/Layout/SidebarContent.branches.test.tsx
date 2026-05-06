@@ -67,7 +67,7 @@ const buildProps = (
   devices: [],
   selectedNetwork,
   setSelectedNetwork: vi.fn(),
-  networkAvailability: { mainnet: true, testnet: true, signet: true },
+  networkAvailability: { mainnet: true, testnet3: true, testnet4: true, signet: true },
   expanded: { wallets: true, devices: true, admin: true },
   darkMode: false,
   toggleTheme: vi.fn(),
@@ -116,18 +116,18 @@ describe('SidebarContent branch coverage', () => {
       <SidebarContent
         {...buildProps({
           setSelectedNetwork,
-          networkAvailability: { mainnet: true, testnet: false, signet: true },
+          networkAvailability: { mainnet: true, testnet3: false, testnet4: true, signet: true },
         })}
       />
     );
 
-    const testnetButton = screen.getByRole('button', { name: 'Testnet' });
+    const testnetButton = screen.getByRole('button', { name: 'Testnet3' });
     fireEvent.click(testnetButton);
 
     expect(testnetButton).toHaveAttribute('aria-disabled', 'true');
     expect(testnetButton).toHaveAttribute(
       'title',
-      'Testnet is disabled. Enable Testnet under Node Configuration to select it.'
+      'Testnet3 is disabled. Enable Testnet3 under Node Configuration to select it.'
     );
     expect(setSelectedNetwork).not.toHaveBeenCalled();
   });

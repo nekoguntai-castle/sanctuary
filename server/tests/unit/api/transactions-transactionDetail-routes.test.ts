@@ -93,6 +93,27 @@ describe('Transactions Detail Routes', () => {
     expect(response.body).toEqual({ hex: '020000000001testnethex' });
   });
 
+  it('fetches regtest raw tx from the local-compatible mempool endpoint', async () => {
+    const txid = '9'.repeat(64);
+    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+      rawTx: null,
+      wallet: { network: 'regtest' },
+    });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      text: async () => '020000000001regtesthex',
+    });
+
+    const response = await request(app).get(`/api/v1/transactions/${txid}/raw`);
+
+    expect(response.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledWith(
+      `https://mempool.space/api/tx/${txid}/hex`,
+      expect.any(Object)
+    );
+    expect(response.body).toEqual({ hex: '020000000001regtesthex' });
+  });
+
   it('defaults to mainnet endpoint and returns 404 when external lookup fails', async () => {
     mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
     mockFetch.mockResolvedValue({ ok: false, status: 404 });

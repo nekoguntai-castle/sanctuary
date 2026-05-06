@@ -6,12 +6,12 @@
  */
 
 import { normalizeDerivationPath } from '../../../../../shared/utils/bitcoin';
-import type { ParsedDevice, ScriptType, Network } from './types';
+import type { ParsedDevice, ScriptType, DetectedNetwork } from './types';
 
 /**
  * Detect network from xpub prefix or derivation path
  */
-export function detectNetwork(xpub: string, derivationPath: string): Network {
+export function detectNetwork(xpub: string, derivationPath: string): DetectedNetwork {
   // Check derivation path coin type
   const coinTypeMatch = derivationPath.match(/\/(\d+)[h']/);
   if (coinTypeMatch) {

@@ -34,9 +34,18 @@ export const registerBitcoinAddressRouteTests = () => {
 
         await request(app)
           .post('/bitcoin/address/validate')
+          .send({ address: 'tb1qtest123', network: 'testnet3' });
+
+        expect(mockBlockchain.checkAddress).toHaveBeenCalledWith('tb1qtest123', 'testnet3');
+      });
+
+      it('should reject legacy testnet network input', async () => {
+        const response = await request(app)
+          .post('/bitcoin/address/validate')
           .send({ address: 'tb1qtest123', network: 'testnet' });
 
-        expect(mockBlockchain.checkAddress).toHaveBeenCalledWith('tb1qtest123', 'testnet');
+        expect(response.status).toBe(400);
+        expect(mockBlockchain.checkAddress).not.toHaveBeenCalled();
       });
 
       it('should return 400 when address is missing', async () => {
@@ -83,9 +92,17 @@ export const registerBitcoinAddressRouteTests = () => {
         mockBlockchain.checkAddress.mockResolvedValue({ valid: true, balance: 0, transactionCount: 0 });
         mockUtils.getAddressType.mockReturnValue('p2wpkh');
 
-        await request(app).get('/bitcoin/address/tb1qtest?network=testnet');
+        await request(app).get('/bitcoin/address/tb1qtest?network=testnet3');
 
-        expect(mockBlockchain.checkAddress).toHaveBeenCalledWith('tb1qtest', 'testnet');
+        expect(mockBlockchain.checkAddress).toHaveBeenCalledWith('tb1qtest', 'testnet3');
+      });
+
+      it('should reject legacy testnet network query parameter', async () => {
+        const response = await request(app).get('/bitcoin/address/tb1qtest?network=testnet');
+
+        expect(response.status).toBe(400);
+        expect(response.body.message).toContain('Invalid network');
+        expect(mockBlockchain.checkAddress).not.toHaveBeenCalled();
       });
 
       it('should support signet network query parameter', async () => {

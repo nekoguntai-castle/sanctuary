@@ -212,7 +212,7 @@ describe('Wallets Import Routes', () => {
       .send({
         data: 'wpkh(xpub...)',
         name: '  Imported Wallet  ',
-        network: 'testnet',
+        network: 'testnet3',
         deviceLabels: { dev1: 'Coldcard' },
       });
 
@@ -220,7 +220,7 @@ describe('Wallets Import Routes', () => {
     expect(mockImportWallet).toHaveBeenCalledWith('user-1', {
       data: 'wpkh(xpub...)',
       name: 'Imported Wallet',
-      network: 'testnet',
+      network: 'testnet3',
       deviceLabels: { dev1: 'Coldcard' },
     });
     expect(response.body).toEqual({

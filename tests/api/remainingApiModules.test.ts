@@ -221,7 +221,7 @@ describe("Remaining API Modules", () => {
       await syncApi.resyncWallet("w1");
       await syncApi.syncNetworkWallets("mainnet");
       await syncApi.syncNetworkWallets("mainnet", "high");
-      await syncApi.resyncNetworkWallets("testnet");
+      await syncApi.resyncNetworkWallets("testnet3");
       await syncApi.getNetworkSyncStatus("signet");
 
       expect(mockPost).toHaveBeenCalledWith("/sync/wallet/w1");
@@ -244,7 +244,7 @@ describe("Remaining API Modules", () => {
         priority: "high",
       });
       expect(mockPost).toHaveBeenCalledWith(
-        "/sync/network/testnet/resync",
+        "/sync/network/testnet3/resync",
         {},
         { headers: { "X-Confirm-Resync": "true" } },
       );

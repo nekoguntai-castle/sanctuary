@@ -16,9 +16,11 @@ import { ValidationError, NotFoundError } from '../../errors/ApiError';
 
 const router = Router();
 
+const AddressNetworkSchema = z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
+
 const AddressValidateBodySchema = z.object({
   address: z.string().min(1),
-  network: z.string().optional().default('mainnet'),
+  network: AddressNetworkSchema.optional().default('mainnet'),
 });
 
 const AddressLookupBodySchema = z.object({
@@ -55,13 +57,12 @@ router.post('/address/validate', validate(
  */
 router.get('/address/:address', asyncHandler(async (req, res) => {
   const { address } = req.params;
-  const networkParam = req.query.network as string | undefined;
-  const network: 'mainnet' | 'testnet' | 'signet' | 'regtest' =
-    networkParam === 'testnet' ? 'testnet' :
-    networkParam === 'signet' ? 'signet' :
-    networkParam === 'regtest' ? 'regtest' : 'mainnet';
+  const networkResult = AddressNetworkSchema.safeParse(req.query.network ?? 'mainnet');
+  if (!networkResult.success) {
+    throw new ValidationError('Invalid network. Must be mainnet, testnet3, testnet4, signet, or regtest.');
+  }
 
-  const result = await blockchain.checkAddress(address, network);
+  const result = await blockchain.checkAddress(address, networkResult.data);
 
   if (!result.valid) {
     throw new ValidationError(result.error || 'Invalid address');

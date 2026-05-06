@@ -19,6 +19,7 @@ import type {
   QueuedBlocksSummary,
 } from '../../../src/api/bitcoin';
 import type { RecentTransaction } from '../../../src/api/transactions/types';
+import { toTabNetwork } from '../../../src/app/networks';
 import type { SoundEvent } from '../../../hooks/useNotificationSound';
 
 export interface DashboardFeeEstimate {
@@ -40,8 +41,6 @@ interface DashboardNotificationResult {
 
 type DashboardTransaction = Transaction & { confirmed: boolean };
 
-const TAB_NETWORKS = new Set<TabNetwork>(['mainnet', 'testnet', 'signet']);
-
 function numericValue(value: string | number | undefined | null): number {
   if (typeof value === 'string') {
     return parseInt(value, 10);
@@ -51,7 +50,7 @@ function numericValue(value: string | number | undefined | null): number {
 }
 
 export function resolveInitialNetwork(networkFromUrl: string | null): TabNetwork {
-  return TAB_NETWORKS.has(networkFromUrl as TabNetwork) ? networkFromUrl as TabNetwork : 'mainnet';
+  return toTabNetwork(networkFromUrl);
 }
 
 export function applyNetworkSearchParam(searchParams: URLSearchParams, network: TabNetwork) {
@@ -84,15 +83,16 @@ export function mapApiWalletToDashboardWallet(wallet: Wallet): Wallet {
 
 export function getFilteredWallets(wallets: Wallet[], selectedNetwork: TabNetwork): Wallet[] {
   return wallets
-    .filter((wallet) => wallet.network === selectedNetwork)
+    .filter((wallet) => toTabNetwork(wallet.network) === selectedNetwork)
     .sort((a, b) => b.balance - a.balance);
 }
 
 export function countWalletsByNetwork(wallets: Wallet[]): Record<TabNetwork, number> {
   return {
-    mainnet: wallets.filter((wallet) => wallet.network === 'mainnet').length,
-    testnet: wallets.filter((wallet) => wallet.network === 'testnet').length,
-    signet: wallets.filter((wallet) => wallet.network === 'signet').length,
+    mainnet: wallets.filter((wallet) => toTabNetwork(wallet.network) === 'mainnet').length,
+    testnet3: wallets.filter((wallet) => toTabNetwork(wallet.network) === 'testnet3').length,
+    testnet4: wallets.filter((wallet) => toTabNetwork(wallet.network) === 'testnet4').length,
+    signet: wallets.filter((wallet) => toTabNetwork(wallet.network) === 'signet').length,
   };
 }
 

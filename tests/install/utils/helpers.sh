@@ -69,6 +69,19 @@ run_project_compose() {
     "${compose_cmd[@]}" "$@"
 }
 
+cleanup_docker_resources() {
+    local helper_dir
+    local project_root
+    local cleanup_script
+
+    helper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    project_root="$(cd "$helper_dir/../../.." && pwd)"
+    cleanup_script="$project_root/scripts/ci/cleanup-docker-resources.sh"
+
+    [ -x "$cleanup_script" ] || return 127
+    bash "$cleanup_script" "$@"
+}
+
 # Get container name for a service (supports dynamic project names)
 # Usage: get_container_name "postgres" -> returns "sanctuary-postgres-1" or "{project}-postgres-1"
 get_container_name() {
@@ -263,8 +276,7 @@ cleanup_containers() {
         run_project_compose "$project_dir" down -v --remove-orphans 2>/dev/null || true
     )
 
-    # Remove any orphaned containers
-    docker ps -a --filter "name=${project}-" -q | xargs -r docker rm -f 2>/dev/null || true
+    cleanup_docker_resources --project "$project" 2>/dev/null || true
 
     log_success "Cleanup complete"
 }
@@ -274,9 +286,7 @@ cleanup_compose_project_resources() {
 
     [ -n "$project" ] || return 0
 
-    docker ps -a --filter "label=com.docker.compose.project=$project" -q | xargs -r docker rm -f 2>/dev/null || true
-    docker network ls --filter "label=com.docker.compose.project=$project" -q | xargs -r docker network rm 2>/dev/null || true
-    docker volume ls --filter "label=com.docker.compose.project=$project" -q | xargs -r docker volume rm -f 2>/dev/null || true
+    cleanup_docker_resources --project "$project" 2>/dev/null || true
 }
 
 disable_compose_project_restart_policy() {
@@ -290,29 +300,14 @@ disable_compose_project_restart_policy() {
 cleanup_compose_projects_by_prefix() {
     local prefix="$1"
     local exclude_project="${2:-}"
-    local projects=""
 
-    projects="$(
-        {
-            docker ps -a --format '{{.Label "com.docker.compose.project"}}'
-            docker network ls --format '{{.Label "com.docker.compose.project"}}'
-            docker volume ls --format '{{.Label "com.docker.compose.project"}}'
-        } 2>/dev/null | grep -E "^${prefix}" | sort -u
-    )"
+    [ -n "$prefix" ] || return 0
 
-    [ -n "$projects" ] || return 0
-
-    while IFS= read -r project; do
-        [ -n "$project" ] || continue
-        if [ -n "$exclude_project" ] && [ "$project" = "$exclude_project" ]; then
-            continue
-        fi
-
-        log_info "Cleaning up stale compose project: $project"
-        cleanup_compose_project_resources "$project"
-    done <<EOF
-$projects
-EOF
+    if [ -n "$exclude_project" ]; then
+        cleanup_docker_resources --prefix "$prefix" --exclude-project "$exclude_project" 2>/dev/null || true
+    else
+        cleanup_docker_resources --prefix "$prefix" 2>/dev/null || true
+    fi
 }
 
 # ============================================

@@ -86,7 +86,7 @@ function TestnetSignetSelectionDisclosure({
       >
         <div>
           <p className="text-xs font-medium text-testnet-800 dark:text-testnet-200">
-            Testnet / signet derivation paths
+            Testnet-family / signet derivation paths
           </p>
           <p className="text-[10px] text-testnet-700 dark:text-testnet-300">
             {selectedCount} of {rows.length} {pathLabel} selected

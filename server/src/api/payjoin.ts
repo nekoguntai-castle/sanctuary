@@ -27,6 +27,7 @@ import {
   attemptPayjoinSend,
 } from '../services/payjoinService';
 import { getNetwork } from '../services/bitcoin/utils';
+import { isBitcoinNetwork, normalizeLegacyBitcoinNetwork } from '../services/bitcoin/networks';
 
 const log = createLogger('PAYJOIN:ROUTE');
 
@@ -50,18 +51,18 @@ const AttemptPayjoinBodySchema = z.object({
     return;
   }
 
-  if (data.network && !['mainnet', 'testnet', 'regtest'].includes(data.network as string)) {
+  if (data.network && !isBitcoinNetwork(data.network)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'Invalid network. Must be mainnet, testnet, or regtest',
+      message: 'Invalid network. Must be mainnet, testnet3, testnet4, signet, or regtest',
       path: ['network'],
     });
   }
 });
 
 const attemptPayjoinValidationMessage = (issues: Array<{ message: string }>) => (
-  issues.some(issue => issue.message === 'Invalid network. Must be mainnet, testnet, or regtest')
-    ? 'Invalid network. Must be mainnet, testnet, or regtest'
+  issues.some(issue => issue.message.startsWith('Invalid network.'))
+    ? 'Invalid network. Must be mainnet, testnet3, testnet4, signet, or regtest'
     : 'psbt and payjoinUrl are required'
 );
 
@@ -213,7 +214,7 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
   const { psbt, payjoinUrl, network } = req.body;
 
   // Use provided network or default to mainnet
-  const networkStr = (network || 'mainnet') as 'mainnet' | 'testnet' | 'signet' | 'regtest';
+  const networkStr = normalizeLegacyBitcoinNetwork(network, 'mainnet');
   const networkObj = getNetwork(networkStr);
 
   const result = await attemptPayjoinSend(

@@ -24,7 +24,7 @@ describe('importHelpers', () => {
     expect(getDerivationPath('nested_segwit', 1)).toBe("m/49'/0'/1'");
     expect(getDerivationPath('taproot', 2)).toBe("m/86'/0'/2'");
     expect(getDerivationPath('legacy', 3)).toBe("m/44'/0'/3'");
-    expect(getDerivationPath('native_segwit', 0, 'testnet')).toBe("m/84'/1'/0'");
+    expect(getDerivationPath('native_segwit', 0, 'testnet3')).toBe("m/84'/1'/0'");
     expect(getDerivationPath('taproot', 4, 'signet')).toBe("m/86'/1'/4'");
   });
 
@@ -222,13 +222,13 @@ describe('importHelpers', () => {
       setValidationResult,
       setValidationError,
       setWalletName,
-      'testnet',
+      'testnet3',
     );
 
     expect(ok).toBe(false);
     expect(setValidationResult).toHaveBeenCalledWith(null);
-    expect(setValidationError).toHaveBeenCalledWith(
-      'Imported wallet appears to be mainnet, but the sidebar network is Testnet. Switch networks in the sidebar and validate again.'
+    expect(setValidationError).toHaveBeenLastCalledWith(
+      'Imported wallet appears to be mainnet, but the sidebar network is Testnet3. Switch networks in the sidebar and validate again.'
     );
   });
 

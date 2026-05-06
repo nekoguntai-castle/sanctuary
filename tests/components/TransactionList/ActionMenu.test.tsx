@@ -37,7 +37,7 @@ const wallets: Wallet[] = [
     id: 'wallet-1',
     name: 'Main',
     type: 'watchonly',
-    network: 'testnet',
+    network: 'testnet3',
     balance: 0,
   },
 ];
@@ -90,7 +90,7 @@ describe('TransactionList ActionMenu', () => {
       />
     );
 
-    expect(getTxExplorerUrl).toHaveBeenCalledWith('abc123', 'testnet', 'https://mempool.space');
+    expect(getTxExplorerUrl).toHaveBeenCalledWith('abc123', 'testnet3', 'https://mempool.space');
 
     rerender(
       <ActionMenu

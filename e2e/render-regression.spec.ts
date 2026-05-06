@@ -29,7 +29,7 @@ test.describe('Route-level rendering regressions', () => {
   test('device list route renders table shell and primary actions', walletDeviceTests.renderDeviceListRouteRendersTableShellAndPrimaryActions);
   test('create wallet route renders topology step and actions', walletDeviceTests.renderCreateWalletRouteRendersTopologyStepAndActions);
   test('create wallet route shows no-compatible-device message for multisig selection', walletDeviceTests.renderCreateWalletRouteShowsNoCompatibleDeviceMessageForMultisigSelection);
-  test('create wallet route configuration shows network warning for testnet', walletDeviceTests.renderCreateWalletRouteConfigurationShowsNetworkWarningForTestnet);
+  test('create wallet route configuration shows network warning for Testnet3', walletDeviceTests.renderCreateWalletRouteConfigurationShowsNetworkWarningForTestnet3);
   test('send transaction route renders transaction type selection shell', walletDeviceTests.renderSendTransactionRouteRendersTransactionTypeSelectionShell);
   test('send transaction route redirects viewers back to wallet detail', walletDeviceTests.renderSendTransactionRouteRedirectsViewersBackToWalletDetail);
   test('send transaction route renders failure state when wallet fetch returns 500', walletDeviceTests.renderSendTransactionRouteRendersFailureStateWhenWalletFetchReturns500);

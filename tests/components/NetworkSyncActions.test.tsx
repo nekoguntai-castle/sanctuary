@@ -43,10 +43,10 @@ describe('NetworkSyncActions', () => {
     });
 
     it('should display correct network label', () => {
-      render(<NetworkSyncActions {...defaultProps} network="testnet" />);
+      render(<NetworkSyncActions {...defaultProps} network="testnet3" />);
 
-      expect(screen.getByText('Sync All Testnet')).toBeInTheDocument();
-      expect(screen.getByText('Full Resync All Testnet')).toBeInTheDocument();
+      expect(screen.getByText('Sync All Testnet3')).toBeInTheDocument();
+      expect(screen.getByText('Full Resync All Testnet3')).toBeInTheDocument();
     });
 
     it('should apply custom className', () => {
@@ -232,15 +232,15 @@ describe('NetworkSyncActions', () => {
   });
 
   describe('Different networks', () => {
-    it('should work with testnet', async () => {
-      render(<NetworkSyncActions {...defaultProps} network="testnet" />);
+    it('should work with testnet3', async () => {
+      render(<NetworkSyncActions {...defaultProps} network="testnet3" />);
 
-      const syncButton = screen.getByText('Sync All Testnet').closest('button');
+      const syncButton = screen.getByText('Sync All Testnet3').closest('button');
       await act(async () => {
         fireEvent.click(syncButton!);
       });
 
-      expect(syncApi.syncNetworkWallets).toHaveBeenCalledWith('testnet');
+      expect(syncApi.syncNetworkWallets).toHaveBeenCalledWith('testnet3');
     });
 
     it('should work with signet', async () => {

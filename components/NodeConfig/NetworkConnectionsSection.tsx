@@ -1,7 +1,7 @@
 import React from 'react';
 import { Globe, ChevronRight } from 'lucide-react';
 import { NetworkConnectionCard } from '../NetworkConnectionCard';
-import { NetworkConnectionsSectionProps } from './types';
+import { NetworkConnectionsSectionProps, type NetworkTab } from './types';
 import { NetworkTabsRow } from './NetworkTabsRow';
 
 export const NetworkConnectionsSection: React.FC<NetworkConnectionsSectionProps> = ({
@@ -17,7 +17,7 @@ export const NetworkConnectionsSection: React.FC<NetworkConnectionsSectionProps>
   onToggle,
   summary,
 }) => {
-  const getServersForNetwork = (network: 'mainnet' | 'testnet' | 'signet') => {
+  const getServersForNetwork = (network: NetworkTab) => {
     return servers.filter(s => s.network === network).sort((a, b) => a.priority - b.priority);
   };
 

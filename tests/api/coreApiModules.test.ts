@@ -92,7 +92,7 @@ describe('Core API Modules', () => {
       await bitcoinApi.getFeeEstimates();
       await bitcoinApi.validateAddress({ address: 'bc1qabc' });
       await bitcoinApi.getAddressInfo('bc1qabc');
-      await bitcoinApi.getAddressInfo('tb1qabc', 'testnet');
+      await bitcoinApi.getAddressInfo('tb1qabc', 'testnet3');
       await bitcoinApi.syncWallet('w1');
       await bitcoinApi.syncAddress('addr-1');
       await bitcoinApi.getTransactionDetails('txid-1');
@@ -105,7 +105,7 @@ describe('Core API Modules', () => {
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees');
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/address/validate', { address: 'bc1qabc' });
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/address/bc1qabc', undefined);
-      expect(mockGet).toHaveBeenCalledWith('/bitcoin/address/tb1qabc', { network: 'testnet' });
+      expect(mockGet).toHaveBeenCalledWith('/bitcoin/address/tb1qabc', { network: 'testnet3' });
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/wallet/w1/sync');
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/address/addr-1/sync');
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/transaction/txid-1');
@@ -302,7 +302,7 @@ describe('Core API Modules', () => {
       await walletsApi.validateXpub({
         xpub: 'tpub-inline',
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
         fingerprint: '00000000',
       });
       await walletsApi.importWallet({ data: 'wpkh(...)', name: 'Imported' });
@@ -330,7 +330,7 @@ describe('Core API Modules', () => {
       expect(mockPost).toHaveBeenCalledWith('/wallets/validate-xpub', {
         xpub: 'tpub-inline',
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
         fingerprint: '00000000',
       });
       expect(mockPost).toHaveBeenCalledWith('/wallets/import', { data: 'wpkh(...)', name: 'Imported' });

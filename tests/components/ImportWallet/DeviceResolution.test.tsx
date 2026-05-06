@@ -64,7 +64,7 @@ const makeValidationResult = (
 interface RenderOptions {
   validationResult?: ImportValidationResult;
   walletName?: string;
-  network?: 'mainnet' | 'testnet' | 'signet';
+  network?: 'mainnet' | 'testnet3' | 'testnet4' | 'signet';
 }
 
 const renderStep = ({
@@ -129,20 +129,20 @@ describe('DeviceResolutionStep', () => {
 
   it('updates wallet name and shows active sidebar network read-only', async () => {
     const user = userEvent.setup();
-    const { setWalletName } = renderStep({ network: 'testnet' });
+    const { setWalletName } = renderStep({ network: 'testnet3' });
 
     const input = screen.getByPlaceholderText('e.g., Imported Multisig');
     await user.clear(input);
     await user.type(input, 'Vault 2');
     expect(setWalletName).toHaveBeenCalled();
 
-    expect(screen.getByText('Testnet')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Testnet' })).not.toBeInTheDocument();
+    expect(screen.getByText('Testnet3')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Testnet3' })).not.toBeInTheDocument();
   });
 
   it.each([
     ['mainnet', 'Mainnet', 'text-mainnet-700'],
-    ['testnet', 'Testnet', 'text-testnet-700'],
+    ['testnet3', 'Testnet3', 'text-testnet-700'],
     ['signet', 'Signet', 'text-signet-700'],
   ] as const)(
     'applies active network styling for %s',

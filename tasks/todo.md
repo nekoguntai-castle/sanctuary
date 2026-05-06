@@ -1,3 +1,78 @@
+# Active Task: CI Docker Resource Cleanup 2026-05-05
+
+Status: repo-side prevention verified; PR delivery can resume next
+
+Goal: stop Forgejo CI from failing before checkout with Docker address-pool exhaustion by adding deterministic repo-owned cleanup, while keeping host daemon pool expansion and destructive runner cleanup as explicit operator actions.
+
+## Plan
+
+- [x] Confirm the observed failure mode is Docker job-network allocation, not an application assertion failure.
+- [x] Review the proposed `.tmp/plans/ci-resource-cleanup.md` cleanup approach against current install/upgrade workflow cleanup.
+- [x] Add a shared `scripts/ci/cleanup-docker-resources.sh` entrypoint with exact project cleanup, stale prefix cleanup, runner-leftover cleanup, dry-run output, and protected project safeguards.
+- [x] Add fake-docker regression tests for cleanup selection, dry-run behavior, protected project safety, runner leftovers, and stale prefix exclusion.
+- [x] Wire install/upgrade Docker cleanup paths and workflow `always()` cleanup steps through the shared entrypoint without weakening explicit debug keep flags.
+- [x] Run focused syntax, cleanup regression, install helper, workflow lint/runtime, and dry-run checks.
+- [ ] After repo-side prevention is verified, resume PR #280 delivery and address any remaining concrete CI/test failures.
+
+## Review
+
+- Docker daemon configuration currently uses one default pool, `172.30.0.0/16` split into `/24` subnets. Expanding to two explicit `/16` pools, `172.30.0.0/16` and `172.31.0.0/16`, is a sensible host-side change because broader `172.28.0.0/14` would overlap current long-lived app networks.
+- Actual host cleanup and Docker/runner restarts are intentionally separate from this repo patch because they can remove active resources and require exact operator approval.
+- Added bounded timeouts around cleanup Docker queries/commands after a real dry-run showed `docker volume ls` could hang on the current daemon state.
+- Verification passed: cleanup fake-Docker regression, install upgrade helper unit tests, shell syntax checks, workflow `actionlint`, GitHub action runtime guard, `git diff --check`, and a bounded real Docker dry-run. Touched-file lizard was skipped because `lizard` is not installed in this workspace.
+- Host-side recovery is still required if Forgejo cannot start jobs at all. Repo cleanup prevents recurrence after jobs can start; it cannot free a daemon before checkout when the runner cannot allocate the job network.
+
+---
+
+# Active Task: Explicit Testnet3 And Testnet4 Support 2026-05-05
+
+Status: delivery in progress
+
+Goal: add first-class `testnet3` and `testnet4` support across Sanctuary while preserving existing legacy `testnet` wallets/config as `testnet3`, so testnet4 wallets sync against configured Electrum/electrs endpoints instead of the legacy testnet3 endpoint.
+
+## Plan
+
+- [x] Confirm the existing root cause for the missing testnet4 transaction and preserve the evidence.
+- [x] Add central network helpers/types for `mainnet | testnet3 | testnet4 | signet | regtest`, with legacy `testnet` accepted only at migration/preference normalization boundaries.
+- [x] Add database migration coverage so stored `wallets.network='testnet'` and `electrum_servers.network='testnet'` become `testnet3`, and node config `testnet*` values backfill into new `testnet3*` fields.
+- [x] Extend backend config, API schemas, OpenAPI, mempool/status, sync queues, Electrum singleton/pool lookup, admin Electrum server APIs, and wallet create/import paths for `testnet3` and `testnet4`.
+- [x] Preserve Bitcoin testnet-family address, descriptor, xpub, and hardware-account behavior for `testnet3`, `testnet4`, `signet`, and `regtest` while storing the explicit selected network.
+- [x] Update frontend API types, selected-network persistence, dashboard/sidebar/wallet filters, create/import flows, network sync controls, and node configuration UI to show `Testnet3`, `Testnet4`, and `Signet` separately.
+- [x] Add focused backend/frontend tests for migration, network validation, mempool base URLs, sync client separation, wallet create/import ambiguity resolution, tabs/counts, persistence, and node config controls.
+- [x] Run focused verification: backend network/wallet/migration tests, frontend network/UI tests, typechecks where practical, touched-file lizard checks for non-trivial logic, and a final diff review.
+- [x] Fix pre-commit changed-file backend test failures without widening the product scope.
+- [x] Rerun the focused failing suites plus backend typechecks and the changed-file backend test lane.
+- [x] Commit, push, and open PR #280.
+- [ ] Monitor delivery checks through the PR workflow, fix any failures, merge when checks are green, and verify the target branch.
+- [ ] After PR #280 is merged, fix the deferred Node Configuration External Services network-specific URL behavior.
+
+## Review
+
+- Public mempool.space testnet4 confirms tx `705ac67008d9c31c411f77a5b6fdac4556177d6127abe82840c74494cbe77925` in block `133798`.
+- The tx pays wallet address `tb1qll5ds4znfs83z5ule49ehq7lyhtjkhdrgq9573`, and the local DB has that address in wallet `76e93e4a-2dba-4f50-bc3c-c1de4db9bcda` at `m/84'/1'/0'/0/1`.
+- The local DB has no `transactions` row for the txid.
+- Public `mempool.space/testnet4/api/address/.../txs` returns this tx, while `mempool.space/testnet/api/address/.../txs` returns an empty array for the same address.
+- Worker logs show the wallet syncing `testnet` through `electrum.blockstream.info:60002` and recording `0` transactions. That endpoint is the legacy testnet3 path, not testnet4.
+- Current Sanctuary network support is `mainnet`, `testnet`, `signet`, and `regtest`; there is no app-level `testnet4` wallet network yet. The clean product fix is to add explicit testnet4 support or deliberately migrate the existing `testnet` slot to testnet4.
+- Implemented explicit app-facing networks `mainnet`, `testnet3`, `testnet4`, `signet`, and `regtest`, with legacy `testnet` retained only for migration/stored-data/preference compatibility and ambiguous descriptor detection.
+- Added migration `20260505000000_explicit_testnet3_testnet4_support` to rewrite legacy wallet, Electrum server, and node config network rows to `testnet3`, add independent testnet3/testnet4 node configuration columns, and backfill testnet3 settings from the deprecated `testnet*` fields.
+- Added separate testnet3/testnet4 Electrum config, pool config, status/mempool paths, sync network handling, admin Electrum server validation, OpenAPI schemas, wallet create/import resolution, hardware account coin-type mapping, and assistant console network validation.
+- Updated frontend selected-network persistence, API types, tabs, dashboard/sidebar/wallet filters, create/import flows, network sync controls, node config tabs/cards, and labels so Testnet3, Testnet4, and Signet are visible as separate networks.
+- Validation now rejects legacy `testnet` on new Bitcoin/admin API inputs; ambiguous coin-type-1 descriptor imports resolve to the requested/active network or default to `testnet3` for compatibility.
+- Verification passed: frontend app typecheck; frontend test typecheck; backend source `tsc --noEmit`; backend test typecheck; focused frontend network/UI suite (14 files, 112 tests); focused backend network/wallet/migration/admin/console suite (8 files, 258 tests); lizard with the known one-warning repository baseline; `git diff --check`.
+- Testnet4 live Electrum sync was not run because no operator-configured testnet4 Electrum/electrs endpoint is available in this local environment.
+- Pre-commit found stale changed-file backend tests and one sync pipeline regression. The pipeline should continue using the Electrum pool proxy state instead of adding a direct node config repository lookup, and legacy test expectations need to move from visible `testnet` to explicit `testnet3`.
+- Remediation verification passed: focused backend retry group for sync pipeline, address derivation, Electrum config, sync service, wallet import, agent funding/operational wallets, API/OpenAPI, blockchain, node client, wallet create, pool helpers, xpub validation, and import routes; focused frontend retry group with 18 files / 184 tests passed; backend changed-file lane with 288 files / 6,613 tests passed; backend source typecheck; backend test typecheck; frontend app typecheck; frontend test typecheck; `git diff --check`; lizard with the known repository warning baseline.
+- PR #280 first CI attempt exposed a critical mutation sandbox failure: `server/src/services/bitcoin/networks.ts` imported shared constants outside the Stryker sandbox. The helper is now runtime self-contained while preserving the same explicit network union, and local `npm run test:mutation:critical:gate` passes.
+- Deferred follow-up: Node Configuration -> External Services still presents global mainnet-oriented explorer and mempool presets. After the explicit testnet3/testnet4 PR lands, update that section so network-specific selections such as testnet3, testnet4, and signet use the correct external-service URLs and tests cover the behavior.
+- PR #280 delivery rerun exposed a workflow classifier bug after an amended force-push: Forgejo supplied the previous PR head as the pull_request base SHA, so changed-file detection compared old-head to new-head and skipped required full lanes. The classifier now falls back to the merge-base when a pull_request base SHA is not an ancestor of the head.
+- Focused verification for the classifier fix passed: shell syntax for the classifier and regression test, `tests/ci/classify-test-changes.test.sh`, `scripts/ci/check-github-action-runtimes.mjs`, `git diff --check`, and a local reproduction using the old PR head as the incoming base SHA.
+- The refreshed PR #280 run reached the Architecture workflow and correctly failed on stale generated dependency graphs. Regenerating the graphs updated `docs/architecture/generated/frontend.md`; local architecture lint plus Docusaurus typecheck/build passed.
+- Quick render E2E exposed stale legacy Testnet selectors in Playwright contracts after Testnet3/Testnet4 became separate visible tabs. E2E mocks and selectors now use explicit `testnet3`/`Testnet3`, and the render regression plus focused create-wallet/user-journey E2E checks pass locally.
+- Repeated PR #280 reruns showed Forgejo job-start failures in the PR quick lane while several quick jobs started together. The Test Suite quick lane now serializes backend typecheck, related backend tests, integration smoke, mutation, frontend, browser, and render checks without removing coverage.
+
+---
+
 # Active Task: Post-Merge Frontend Coverage Worker Failure 2026-05-04
 
 Status: in progress

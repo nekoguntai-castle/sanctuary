@@ -116,7 +116,7 @@ describe("agentOperationalAddressService", () => {
     mockFindWalletById.mockResolvedValueOnce({
       id: "operational-wallet",
       type: "single_sig",
-      network: "testnet",
+      network: "testnet3",
       descriptor: "wpkh([abcd1234/84h/1h/0h]tpub/*)",
     });
     mockFindDerivationPaths.mockResolvedValueOnce([
@@ -139,7 +139,7 @@ describe("agentOperationalAddressService", () => {
       expect.any(String),
       20,
       {
-        network: "testnet",
+        network: "testnet3",
         change: false,
       },
     );
@@ -147,7 +147,7 @@ describe("agentOperationalAddressService", () => {
       expect.any(String),
       39,
       {
-        network: "testnet",
+        network: "testnet3",
         change: false,
       },
     );
@@ -213,7 +213,7 @@ describe("agentOperationalAddressService", () => {
     mockFindWalletById.mockResolvedValueOnce({
       id: "operational-wallet",
       type: "single_sig",
-      network: "testnet",
+      network: "testnet3",
       descriptor: null,
     });
 
@@ -247,7 +247,7 @@ describe("agentOperationalAddressService", () => {
     mockFindWalletById.mockResolvedValueOnce({
       id: "operational-wallet",
       type: "multi_sig",
-      network: "testnet",
+      network: "testnet3",
       descriptor: "wsh(sortedmulti(...))",
     });
 
@@ -287,7 +287,7 @@ describe("agentOperationalAddressService", () => {
     mockFindWalletById.mockResolvedValueOnce({
       id: "operational-wallet",
       type: "single_sig",
-      network: "testnet",
+      network: "testnet3",
       descriptor: "wpkh([abcd1234/84h/1h/0h]tpub/*)",
     });
     mockFindDerivationPaths.mockResolvedValueOnce([]);
@@ -311,7 +311,7 @@ describe("agentOperationalAddressService", () => {
     mockFindWalletById.mockResolvedValueOnce({
       id: "operational-wallet",
       type: "single_sig",
-      network: "testnet",
+      network: "testnet3",
       descriptor: "wpkh([abcd1234/84h/1h/0h]tpub/*)",
     });
     mockFindDerivationPaths.mockResolvedValueOnce([]);
@@ -337,7 +337,7 @@ describe("agentOperationalAddressService", () => {
     mockFindWalletById.mockResolvedValueOnce({
       id: "operational-wallet",
       type: "single_sig",
-      network: "testnet",
+      network: "testnet3",
       descriptor: "wpkh([abcd1234/84h/1h/0h]tpub/*)",
     });
     mockFindDerivationPaths.mockResolvedValueOnce([]);

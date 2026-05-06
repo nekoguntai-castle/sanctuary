@@ -18,7 +18,7 @@ export function registerWalletCoreCrudTests(): void {
         name: 'My Single Sig Wallet',
         type: 'single_sig',
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
         descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
       };
 
@@ -43,7 +43,7 @@ export function registerWalletCoreCrudTests(): void {
         name: 'My Multi-Sig Wallet',
         type: 'multi_sig',
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
         quorum: 2,
         totalSigners: 3,
         descriptor: "wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/2']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[11223344/48'/1'/0'/2']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[55667788/48'/1'/0'/2']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*))",
@@ -69,7 +69,7 @@ export function registerWalletCoreCrudTests(): void {
         name: 'My Taproot Wallet',
         type: 'single_sig',
         scriptType: 'taproot',
-        network: 'testnet',
+        network: 'testnet3',
         descriptor: "tr([aabbccdd/86'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
       };
 
@@ -134,7 +134,7 @@ export function registerWalletCoreCrudTests(): void {
           name: 'Wallet 1',
           type: 'single_sig',
           scriptType: 'native_segwit',
-          network: 'testnet',
+          network: 'testnet3',
           descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
           users: {
             create: {
@@ -195,7 +195,7 @@ export function registerWalletCoreCrudTests(): void {
           name: 'Test Wallet',
           type: 'single_sig',
           scriptType: 'native_segwit',
-          network: 'testnet',
+          network: 'testnet3',
           users: {
             create: {
               userId,

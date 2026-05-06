@@ -6,6 +6,7 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import { createLogger } from '../../utils/logger';
+import { bitcoinJsNetworkName, type BitcoinNetwork } from './networks';
 
 const log = createLogger('BITCOIN:SVC_PSBT_INFO');
 
@@ -50,12 +51,13 @@ export function getPSBTInfo(psbtBase64: string): PSBTInfo {
  * Get PSBT info with network-aware address parsing
  *
  * @param psbtBase64 - Base64-encoded PSBT
- * @param network - Bitcoin network ('mainnet' or 'testnet')
+ * @param network - Bitcoin network
  * @returns Parsed PSBT information
  */
-export function getPSBTInfoWithNetwork(psbtBase64: string, network: 'mainnet' | 'testnet'): PSBTInfo {
+export function getPSBTInfoWithNetwork(psbtBase64: string, network: BitcoinNetwork): PSBTInfo {
   const psbt = bitcoin.Psbt.fromBase64(psbtBase64);
-  const networkObj = network === 'testnet' ? bitcoin.networks.testnet : bitcoin.networks.bitcoin;
+  const networkObj =
+    bitcoinJsNetworkName(network) === 'mainnet' ? bitcoin.networks.bitcoin : bitcoin.networks.testnet;
 
   const inputs = psbt.data.inputs.map((input, index) => {
     const txInput = psbt.txInputs[index];

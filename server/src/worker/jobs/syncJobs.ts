@@ -26,6 +26,7 @@ import {
 } from '../../services/bitcoin/sync/confirmations';
 import { setCachedBlockHeight, getCachedBlockHeight } from '../../services/bitcoin/blockchain';
 import { getConfig } from '../../config';
+import { normalizeLegacyBitcoinNetwork } from '../../services/bitcoin/networks';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 
@@ -86,7 +87,7 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
       await populateMissingTransactionFields(walletId);
 
       // Get current block height for this network
-      const network = wallet.network as 'mainnet' | 'testnet' | 'signet' | 'regtest';
+      const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
       const currentBlockHeight = getCachedBlockHeight(network);
 
       // Update wallet metadata with block height
@@ -280,7 +281,7 @@ export const updateConfirmationsJob: WorkerJobHandler<UpdateConfirmationsJobData
     // Update cached block height if provided
     if (height) {
       const config = getConfig();
-      const network = config.bitcoin.network as 'mainnet' | 'testnet' | 'signet' | 'regtest';
+      const network = config.bitcoin.network;
       setCachedBlockHeight(height, network);
       log.info(`Block height updated to ${height}`, { hash: hash?.slice(0, 16) });
     }

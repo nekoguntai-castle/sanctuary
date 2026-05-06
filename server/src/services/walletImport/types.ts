@@ -15,7 +15,7 @@ export const WALLET_IMPORT_FORMAT_VALUES = [
 ] as const;
 export const WALLET_IMPORT_WALLET_TYPE_VALUES = ['single_sig', 'multi_sig'] as const;
 export const WALLET_IMPORT_SCRIPT_TYPE_VALUES = ['native_segwit', 'nested_segwit', 'taproot', 'legacy'] as const;
-export const WALLET_IMPORT_NETWORK_VALUES = ['mainnet', 'testnet', 'signet', 'regtest'] as const;
+export const WALLET_IMPORT_NETWORK_VALUES = ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'] as const;
 
 export interface DeviceResolution {
   fingerprint: string;

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { TabNetwork } from '../NetworkTabs';
 import * as syncApi from '../../src/api/sync';
+import { formatNetworkTitle } from '../../src/app/networks';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import type { NetworkSyncActionState, NetworkSyncResult } from './types';
 
@@ -12,10 +13,6 @@ interface UseNetworkSyncActionsParams {
 
 const SYNC_RESULT_TIMEOUT_MS = 5000;
 const RESYNC_RESULT_TIMEOUT_MS = 8000;
-
-const getNetworkLabel = (network: TabNetwork) => (
-  network.charAt(0).toUpperCase() + network.slice(1)
-);
 
 const createSyncSuccessResult = (queued: number): NetworkSyncResult => ({
   type: 'success',
@@ -79,7 +76,7 @@ export const useNetworkSyncActions = ({
   };
 
   return {
-    networkLabel: getNetworkLabel(network),
+    networkLabel: formatNetworkTitle(network),
     syncing,
     resyncing,
     showResyncDialog,

@@ -8,7 +8,7 @@
 import type { ParsedDescriptor, Network } from '../bitcoin/descriptorParser';
 import { parseImportInput } from '../import';
 import { resolveDevices, checkDuplicateWallet } from './deviceResolution';
-import { createWalletTransaction } from './walletImportService';
+import { createWalletTransaction, resolveImportNetwork } from './walletImportService';
 import type { ImportWalletResult } from './types';
 
 /**
@@ -26,7 +26,7 @@ export async function importFromDescriptor(
   // Parse descriptor (use parseImportInput to handle text with comments)
   const parseResult = parseImportInput(input.descriptor);
   const parsed = parseResult.parsed;
-  const network = input.network || parsed.network;
+  const network = resolveImportNetwork(parsed.network, input.network);
 
   // Check for duplicate wallet
   const newFingerprints = new Set(parsed.devices.map(d => d.fingerprint.toLowerCase()));
@@ -58,7 +58,7 @@ export async function importFromParsedData(
   }
 ): Promise<ImportWalletResult> {
   const { parsed } = input;
-  const network = input.network || parsed.network;
+  const network = resolveImportNetwork(parsed.network, input.network);
 
   // Check for duplicate wallet
   const newFingerprints = new Set(parsed.devices.map(d => d.fingerprint.toLowerCase()));

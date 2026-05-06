@@ -10,6 +10,7 @@ import type {
   ParsedDescriptor,
   JsonImportConfig,
   Network,
+  DetectedNetwork,
 } from '../bitcoin/descriptorParser';
 import { parseImportInput } from '../import';
 import { getErrorMessage } from '../../utils/errors';
@@ -21,6 +22,11 @@ import { INITIAL_ADDRESS_COUNT } from '../../constants';
 import { resolveDevices } from './deviceResolution';
 import { importFromDescriptor, importFromParsedData } from './descriptorImport';
 import { importFromJson } from './jsonImport';
+import {
+  isBitcoinNetwork,
+  resolveDetectedBitcoinNetwork,
+  type BitcoinNetwork,
+} from '../bitcoin/networks';
 import type {
   DeviceResolution,
   ImportValidationResult,
@@ -267,7 +273,7 @@ export async function createWalletTransaction(
  */
 export async function validateImport(
   userId: string,
-  input: { descriptor?: string; json?: string }
+  input: { descriptor?: string; json?: string; network?: Network }
 ): Promise<ImportValidationResult> {
   const rawInput = input.descriptor || input.json;
 
@@ -286,6 +292,7 @@ export async function validateImport(
   try {
     // Use unified parser that handles all formats
     const parseResult = parseImportInput(rawInput);
+    const network = resolveImportNetwork(parseResult.parsed.network, input.network);
 
     // Resolve devices
     const devices = await resolveDevices(
@@ -299,7 +306,7 @@ export async function validateImport(
       format: parseResult.format,
       walletType: parseResult.parsed.type,
       scriptType: parseResult.parsed.scriptType,
-      network: parseResult.parsed.network,
+      network,
       quorum: parseResult.parsed.quorum,
       totalSigners: parseResult.parsed.totalSigners,
       devices,
@@ -386,4 +393,18 @@ export async function importWallet(
     network: input.network,
     deviceLabels: input.deviceLabels,
   });
+}
+
+export function parseRequestedImportNetwork(value: unknown): Network | undefined {
+  return isBitcoinNetwork(value) ? value : undefined;
+}
+
+export function resolveImportNetwork(
+  detected: DetectedNetwork | undefined,
+  requested?: Network,
+): Network {
+  return resolveDetectedBitcoinNetwork(
+    detected,
+    requested as BitcoinNetwork | undefined,
+  ) as Network;
 }

@@ -63,7 +63,7 @@ export const syncNetworkParameter = {
   name: "network",
   in: "path",
   required: true,
-  schema: { type: "string", enum: ["mainnet", "testnet", "signet"] },
+  schema: { type: "string", enum: ["mainnet", "testnet3", "testnet4", "signet"] },
 } as const;
 
 export const txidParameter = {
@@ -79,7 +79,7 @@ export const addressNetworkQueryParameter = {
   required: false,
   schema: {
     type: "string",
-    enum: ["mainnet", "testnet", "regtest"],
+    enum: ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
     default: "mainnet",
   },
 } as const;

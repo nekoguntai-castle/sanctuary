@@ -10,6 +10,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { getNetwork, calculateFee } from '../utils';
 import { getNodeClient } from '../nodeClient';
+import type { BitcoinNetwork } from '../networks';
 import { walletRepository, addressRepository } from '../../../repositories';
 import { getErrorMessage } from '../../../utils/errors';
 import { log, RBF_SEQUENCE, MIN_RBF_FEE_BUMP, getDustThreshold } from './shared';
@@ -126,7 +127,7 @@ export async function createRBFTransaction(
   originalTxid: string,
   newFeeRate: number,
   walletId: string,
-  network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet'
+  network: BitcoinNetwork = 'mainnet'
 ): Promise<{
   psbt: bitcoin.Psbt;
   fee: number;
@@ -137,7 +138,7 @@ export async function createRBFTransaction(
   inputPaths: string[];
 }> {
   // Use nodeClient which respects poolEnabled setting from node_configs
-  const client = await getNodeClient();
+  const client = await getNodeClient(network);
 
   // Get configurable thresholds
   const dustThreshold = await getDustThreshold();

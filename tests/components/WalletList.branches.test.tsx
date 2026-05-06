@@ -13,7 +13,7 @@ import * as useWalletsHook from '../../hooks/queries/useWallets';
 
 const mockNavigate = vi.fn();
 const activeNetworkMock = vi.hoisted(() => ({
-  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet' | 'signet',
+  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet3' | 'testnet4' | 'signet',
   setSelectedNetwork: vi.fn(),
 }));
 
@@ -53,7 +53,7 @@ vi.mock('../../components/NetworkTabs', () => ({
     <div data-testid="network-tabs">
       <span data-testid="selected-network">{selectedNetwork}</span>
       <button onClick={() => onNetworkChange('mainnet')}>to-mainnet</button>
-      <button onClick={() => onNetworkChange('testnet')}>to-testnet</button>
+      <button onClick={() => onNetworkChange('testnet3')}>to-testnet</button>
       <button onClick={() => onNetworkChange('signet')}>to-signet</button>
     </div>
   ),
@@ -150,7 +150,7 @@ describe('WalletList branch coverage', () => {
       name: 'Testnet Wallet',
       type: 'single_sig',
       balance: 400,
-      network: 'testnet',
+      network: 'testnet3',
       deviceCount: 4,
     },
   ];
@@ -202,10 +202,10 @@ describe('WalletList branch coverage', () => {
   });
 
   it('uses the active network preference instead of URL network state', () => {
-    activeNetworkMock.selectedNetwork = 'testnet';
+    activeNetworkMock.selectedNetwork = 'testnet3';
     renderWalletList('/wallets?network=mainnet');
 
-    expect(screen.getByTestId('balance-chart')).toHaveTextContent('testnet:1:400');
+    expect(screen.getByTestId('balance-chart')).toHaveTextContent('testnet3:1:400');
     expect(screen.getByTestId('wallet-order')).toHaveTextContent('w4');
   });
 

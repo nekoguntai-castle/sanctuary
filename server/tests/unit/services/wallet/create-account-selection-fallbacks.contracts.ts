@@ -15,7 +15,7 @@ export function registerWalletCreateAccountSelectionFallbackTests(): void {
         name,
         type: "single_sig",
         scriptType: "native_segwit",
-        network: "testnet",
+        network: "testnet3",
         devices: [],
         addresses: [],
       };
@@ -49,7 +49,7 @@ export function registerWalletCreateAccountSelectionFallbackTests(): void {
         name: "Unknown Network Wallet",
         type: "single_sig",
         scriptType: "native_segwit",
-        network: "testnet",
+        network: "testnet3",
         deviceIds: ["device-1"],
       });
 
@@ -60,7 +60,7 @@ export function registerWalletCreateAccountSelectionFallbackTests(): void {
             derivationPath: "not-a-valid-path",
           }),
         ]),
-        expect.objectContaining({ network: "testnet" }),
+        expect.objectContaining({ network: "testnet3" }),
       );
     });
 
@@ -83,7 +83,7 @@ export function registerWalletCreateAccountSelectionFallbackTests(): void {
         name: "Legacy Unknown Network Wallet",
         type: "single_sig",
         scriptType: "native_segwit",
-        network: "testnet",
+        network: "testnet3",
         deviceIds: ["device-1"],
       });
 
@@ -94,7 +94,7 @@ export function registerWalletCreateAccountSelectionFallbackTests(): void {
             derivationPath: "not-a-valid-path",
           }),
         ]),
-        expect.objectContaining({ network: "testnet" }),
+        expect.objectContaining({ network: "testnet3" }),
       );
     });
   });

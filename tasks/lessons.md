@@ -2,6 +2,31 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Reprioritize Before Editing After User Clarification
+
+**Rule:** When the user clarifies or reprioritizes a bug during implementation, update the task tracker and stop editing the deferred area before returning to the requested delivery path.
+
+**Why:** The transaction-details report was clarified to Node Configuration External Services, then explicitly deferred until after the PR merge. Continuing the UI fix before delivery would ignore the newest instruction.
+
+**How to apply:**
+
+- Treat the latest user instruction as the active objective.
+- Put deferred work in `tasks/todo.md` with enough detail to resume later.
+- Do not patch the deferred area until the requested blocker, merge, or delivery step is complete.
+- Keep verification and final notes scoped to the active objective.
+
+## Validate PR Event SHAs Before Changed-File Classification
+
+**Rule:** Pull request changed-file classifiers must verify that the reported base SHA is an ancestor of the head; if not, fall back to the merge-base with the target branch.
+
+**Why:** A force-pushed PR rerun compared the previous PR head to the amended head, saw only the amended task-note delta, and skipped required lanes even though the full PR still changed frontend and backend code.
+
+**How to apply:**
+
+- For `pull_request`, run `git merge-base --is-ancestor "$base_sha" "$head_sha"` before trusting the event base.
+- If the base is not an ancestor, compute `git merge-base origin/main "$head_sha"` and classify against that.
+- Add regression tests with two sibling PR heads so old-head-to-new-head diffs cannot hide the real PR surface.
+
 ## Use Stable Worker Pools For Frontend Coverage CI
 
 **Rule:** Frontend coverage shard jobs in Forgejo CI should run Vitest with the fork pool, one worker, and no file parallelism unless a later runner rehearsal proves broader parallelism stable.

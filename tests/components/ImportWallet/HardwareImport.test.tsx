@@ -45,7 +45,7 @@ vi.mock('../../../components/ui/Button', () => ({
 
 interface HardwareImportOverrides {
   hardwareDeviceType?: 'ledger' | 'trezor';
-  network?: 'mainnet' | 'testnet' | 'signet';
+  network?: 'mainnet' | 'testnet3' | 'signet';
   deviceConnected?: boolean;
   deviceLabel?: string | null;
   scriptType?: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';

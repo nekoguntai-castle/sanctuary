@@ -712,7 +712,7 @@ describe('Payjoin API Routes', () => {
         .send({
           psbt: VALID_PSBT_BASE64,
           payjoinUrl: 'https://example.com/pj',
-          network: 'testnet',
+          network: 'testnet3',
         });
 
       expect(res.status).toBe(200);

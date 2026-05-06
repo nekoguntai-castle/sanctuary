@@ -2,6 +2,7 @@ import React from 'react';
 import { TrendingUp, TrendingDown, Bitcoin } from 'lucide-react';
 import { AnimatedPrice } from './PriceChart';
 import { TabNetwork } from '../NetworkTabs';
+import { formatNetworkTitle } from '../../src/app/networks';
 
 interface BitcoinPriceCardProps {
   isMainnet: boolean;
@@ -62,10 +63,10 @@ export const BitcoinPriceCard: React.FC<BitcoinPriceCardProps> = ({
     ) : (
       <div className="flex flex-col items-center justify-center py-4">
         <span className="text-2xl font-bold text-sanctuary-400 dark:text-sanctuary-500 mb-2">
-          {selectedNetwork === 'testnet' ? 'tBTC' : 'sBTC'}
+          {selectedNetwork === 'signet' ? 'sBTC' : 'tBTC'}
         </span>
         <p className="text-sm text-sanctuary-500 dark:text-sanctuary-400 text-center">
-          {selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1)} coins have no market value
+          {formatNetworkTitle(selectedNetwork)} coins have no market value
         </p>
       </div>
     )}

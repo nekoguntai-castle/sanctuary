@@ -10,11 +10,12 @@ import { getErrorMessage } from '../../../utils/errors';
 
 const log = createLogger('BITCOIN:SVC_MEMPOOL_CONFIG');
 
-export type MempoolNetwork = 'mainnet' | 'testnet' | 'signet';
+export type MempoolNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet';
 
 const DEFAULT_MEMPOOL_APIS: Record<MempoolNetwork, string> = {
   mainnet: 'https://mempool.space/api',
-  testnet: 'https://mempool.space/testnet/api',
+  testnet3: 'https://mempool.space/testnet/api',
+  testnet4: 'https://mempool.space/testnet4/api',
   signet: 'https://mempool.space/signet/api',
 };
 

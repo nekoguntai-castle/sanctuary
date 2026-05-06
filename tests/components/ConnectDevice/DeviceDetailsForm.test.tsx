@@ -148,7 +148,7 @@ describe('DeviceDetailsForm', () => {
     expect(screen.queryByText("m/84'/1'/0'")).not.toBeInTheDocument();
     expect(screen.getByText('1 of 2 paths selected')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /testnet \/ signet derivation paths/i }));
+    await user.click(screen.getByRole('button', { name: /testnet-family \/ signet derivation paths/i }));
 
     expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
     expect(screen.getByText("m/86'/1'/0'")).toBeInTheDocument();

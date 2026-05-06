@@ -10,6 +10,8 @@ import { createLogger } from '../../utils/logger';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { requireAuthenticatedUser } from '../../middleware/auth';
+import { getMempoolApiBase } from '../../services/bitcoin/mempool/config';
+import { normalizeLegacyBitcoinNetwork } from '../../services/bitcoin/networks';
 
 const router = Router();
 const log = createLogger('TX_DETAIL:ROUTE');
@@ -43,10 +45,10 @@ router.get('/transactions/:txid/raw', asyncHandler(async (req, res) => {
 
   // If we found a transaction but no rawTx, or need to fetch externally,
   // use the network from the found transaction or default to mainnet
-  const network = transaction?.wallet?.network || 'mainnet';
-  const mempoolBaseUrl = network === 'testnet'
-    ? 'https://mempool.space/testnet/api'
-    : 'https://mempool.space/api';
+  const network = normalizeLegacyBitcoinNetwork(transaction?.wallet?.network, 'mainnet');
+  const mempoolBaseUrl = network === 'regtest'
+    ? 'https://mempool.space/api'
+    : await getMempoolApiBase(network);
 
   const response = await fetch(`${mempoolBaseUrl}/tx/${txid}/hex`, {
     signal: AbortSignal.timeout(10_000),

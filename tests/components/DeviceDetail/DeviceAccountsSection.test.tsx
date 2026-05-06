@@ -8,7 +8,7 @@ vi.mock('../../../components/DeviceDetail/accounts/AddAccountFlow', () => ({
 }));
 
 const activeNetworkMock = vi.hoisted(() => ({
-  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet' | 'signet',
+  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet3' | 'testnet4' | 'signet',
 }));
 
 vi.mock('../../../contexts/ActiveNetworkContext', () => ({
@@ -62,9 +62,9 @@ describe('DeviceAccountsSection', () => {
     expect(screen.getByText("m/84'/0'/0'")).toBeInTheDocument();
     expect(screen.queryByText("m/84'/1'/0'")).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /mainnet \(1\)/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /testnet \/ signet \(1\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /testnet-family \/ signet \(1\)/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /testnet \/ signet \(1\)/i }));
+    await user.click(screen.getByRole('button', { name: /testnet-family \/ signet \(1\)/i }));
 
     expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
   });
@@ -97,9 +97,9 @@ describe('DeviceAccountsSection', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /testnet \/ signet \(2\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /testnet-family \/ signet \(2\)/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /testnet \/ signet \(2\)/i }));
+    await user.click(screen.getByRole('button', { name: /testnet-family \/ signet \(2\)/i }));
 
     expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
     expect(screen.getByText("m/86'/1'/0'")).toBeInTheDocument();
@@ -217,7 +217,7 @@ describe('DeviceAccountsSection', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /testnet \/ signet \(1\)/i }));
+    await user.click(screen.getByRole('button', { name: /testnet-family \/ signet \(1\)/i }));
     expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /multisig \(0\)/i }));

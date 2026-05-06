@@ -22,8 +22,10 @@ const RecentBlocksCountSchema = z.coerce.number().int().min(1).catch(10)
 
 /** Block height (must be a non-negative integer) */
 const BlockHeightSchema = z.coerce.number().int().min(0);
-const StatusNetworkSchema = z.enum(['mainnet', 'testnet', 'signet', 'regtest']).catch('mainnet');
-const MempoolNetworkSchema = z.enum(['mainnet', 'testnet', 'signet']).catch('mainnet');
+const StatusNetworkSchema = z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
+const MempoolNetworkSchema = z.enum(['mainnet', 'testnet3', 'testnet4', 'signet']);
+const STATUS_NETWORK_VALUES = 'mainnet, testnet3, testnet4, signet, or regtest';
+const MEMPOOL_NETWORK_VALUES = 'mainnet, testnet3, testnet4, or signet';
 
 const router = Router();
 const log = createLogger('BITCOIN_NETWORK:ROUTE');
@@ -38,6 +40,18 @@ const mempoolCache = new Map<z.infer<typeof MempoolNetworkSchema>, MempoolCacheE
 const MEMPOOL_CACHE_TTL = 15000; // 15 seconds
 const MEMPOOL_STALE_TTL = 300000; // 5 minutes for stale fallback
 
+function parseNetworkQuery<T extends z.ZodType>(
+  schema: T,
+  value: unknown,
+  validValues: string,
+): z.infer<T> {
+  const result = schema.safeParse(value ?? 'mainnet');
+  if (!result.success) {
+    throw new ValidationError(`Invalid network. Must be ${validValues}.`);
+  }
+  return result.data;
+}
+
 /**
  * GET /api/v1/bitcoin/status
  * Get Bitcoin network status
@@ -45,9 +59,14 @@ const MEMPOOL_STALE_TTL = 300000; // 5 minutes for stale fallback
  * NOTE: Intentionally keeps try/catch for graceful degradation -
  * returns { connected: false } instead of a 500 error.
  */
-router.get('/status', async (req: Request, res: Response) => {
+router.get('/status', asyncHandler(async (req: Request, res: Response) => {
+  const network = parseNetworkQuery(
+    StatusNetworkSchema,
+    req.query.network,
+    STATUS_NETWORK_VALUES,
+  );
+
   try {
-    const network = StatusNetworkSchema.parse(req.query.network);
     res.json(await getBitcoinNetworkStatus(network));
   } catch (error) {
     res.json({
@@ -55,7 +74,7 @@ router.get('/status', async (req: Request, res: Response) => {
       error: getErrorMessage(error),
     });
   }
-});
+}));
 
 /**
  * GET /api/v1/bitcoin/mempool
@@ -64,8 +83,12 @@ router.get('/status', async (req: Request, res: Response) => {
  * NOTE: Intentionally keeps try/catch for stale cache fallback -
  * returns stale data instead of a 500 error when fresh fetch fails.
  */
-router.get('/mempool', async (req: Request, res: Response) => {
-  const network = MempoolNetworkSchema.parse(req.query.network);
+router.get('/mempool', asyncHandler(async (req: Request, res: Response) => {
+  const network = parseNetworkQuery(
+    MempoolNetworkSchema,
+    req.query.network,
+    MEMPOOL_NETWORK_VALUES,
+  );
   const now = Date.now();
   const cached = mempoolCache.get(network);
 
@@ -92,7 +115,7 @@ router.get('/mempool', async (req: Request, res: Response) => {
       message: 'Failed to fetch mempool data',
     });
   }
-});
+}));
 
 /**
  * GET /api/v1/bitcoin/blocks/recent

@@ -23,6 +23,7 @@ import {
   validateResponse,
 } from './types';
 import type { TransactionDetails, BitcoinNetwork } from './types';
+import { bitcoinJsNetworkName } from '../networks';
 
 const log = createLogger('ELECTRUM:SVC_METHODS');
 
@@ -35,15 +36,10 @@ const log = createLogger('ELECTRUM:SVC_METHODS');
  */
 export function getNetworkLib(network: BitcoinNetwork): unknown {
   const bitcoin = require('bitcoinjs-lib');
-  switch (network) {
-    case 'testnet':
-      return bitcoin.networks.testnet;
-    case 'regtest':
-      return bitcoin.networks.regtest;
-    case 'mainnet':
-    default:
-      return bitcoin.networks.bitcoin;
-  }
+  const bitcoinJsNetwork = bitcoinJsNetworkName(network);
+  if (bitcoinJsNetwork === 'testnet') return bitcoin.networks.testnet;
+  if (bitcoinJsNetwork === 'regtest') return bitcoin.networks.regtest;
+  return bitcoin.networks.bitcoin;
 }
 
 /**

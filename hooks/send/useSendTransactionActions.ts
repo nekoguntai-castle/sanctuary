@@ -132,7 +132,7 @@ async function applyPayjoinIfNeeded(
   log.info('Attempting Payjoin', { payjoinUrl: state.payjoinUrl, network: walletNetwork });
 
   try {
-    const network = (walletNetwork || 'mainnet') as 'mainnet' | 'testnet' | 'regtest';
+    const network = (walletNetwork || 'mainnet') as Parameters<typeof payjoinApi.attemptPayjoin>[2];
     // `shouldAttemptPayjoin` above already enforces `state.payjoinUrl` is truthy,
     // but TypeScript doesn't narrow that guarantee across the helper boundary.
     // The `?? ''` fallback is defensive and unreachable at runtime.

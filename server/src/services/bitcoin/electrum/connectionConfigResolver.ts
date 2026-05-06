@@ -11,6 +11,12 @@ interface PersistedNodeConfig {
   mainnetSingletonHost: string | null;
   mainnetSingletonPort: number | null;
   mainnetSingletonSsl: boolean | null;
+  testnet3SingletonHost: string | null;
+  testnet3SingletonPort: number | null;
+  testnet3SingletonSsl: boolean | null;
+  testnet4SingletonHost: string | null;
+  testnet4SingletonPort: number | null;
+  testnet4SingletonSsl: boolean | null;
   testnetSingletonHost: string | null;
   testnetSingletonPort: number | null;
   testnetSingletonSsl: boolean | null;
@@ -70,13 +76,34 @@ export function mainnetConnectionConfig(
   };
 }
 
-export function testnetConnectionConfig(
+export function testnet3ConnectionConfig(
   nodeConfig: PersistedNodeConfig,
 ): ResolvedConnectionConfig {
   return {
-    host: nodeConfig.testnetSingletonHost || TESTNET_DEFAULT_HOST,
-    port: nodeConfig.testnetSingletonPort || TESTNET_DEFAULT_PORT,
-    protocol: (nodeConfig.testnetSingletonSsl ?? true) ? "ssl" : "tcp",
+    host:
+      nodeConfig.testnet3SingletonHost ||
+      nodeConfig.testnetSingletonHost ||
+      TESTNET_DEFAULT_HOST,
+    port:
+      nodeConfig.testnet3SingletonPort ||
+      nodeConfig.testnetSingletonPort ||
+      TESTNET_DEFAULT_PORT,
+    protocol:
+      (nodeConfig.testnet3SingletonSsl ?? nodeConfig.testnetSingletonSsl ?? true)
+        ? "ssl"
+        : "tcp",
+    allowSelfSignedCert: nodeConfig.allowSelfSignedCert ?? false,
+    proxy: proxyConfigFromNodeConfig(nodeConfig),
+  };
+}
+
+export function testnet4ConnectionConfig(
+  nodeConfig: PersistedNodeConfig,
+): ResolvedConnectionConfig {
+  return {
+    host: nodeConfig.testnet4SingletonHost || "",
+    port: nodeConfig.testnet4SingletonPort || TESTNET_DEFAULT_PORT,
+    protocol: (nodeConfig.testnet4SingletonSsl ?? true) ? "ssl" : "tcp",
     allowSelfSignedCert: nodeConfig.allowSelfSignedCert ?? false,
     proxy: proxyConfigFromNodeConfig(nodeConfig),
   };
@@ -134,8 +161,10 @@ export function dbConnectionConfig(
   switch (network) {
     case "mainnet":
       return mainnetConnectionConfig(nodeConfig);
-    case "testnet":
-      return testnetConnectionConfig(nodeConfig);
+    case "testnet3":
+      return testnet3ConnectionConfig(nodeConfig);
+    case "testnet4":
+      return testnet4ConnectionConfig(nodeConfig);
     case "signet":
       return signetConnectionConfig(nodeConfig);
     case "regtest":

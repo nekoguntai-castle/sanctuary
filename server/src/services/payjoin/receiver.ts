@@ -17,6 +17,7 @@ import {
   clonePsbt,
 } from '../bitcoin/psbtValidation';
 import { getNetwork } from '../bitcoin/utils';
+import { normalizeLegacyBitcoinNetwork } from '../bitcoin/networks';
 import { PayjoinErrors } from './types';
 import type { PayjoinResult } from './types';
 
@@ -52,9 +53,7 @@ export async function processPayjoinRequest(
       };
     }
 
-    const network = getNetwork(
-      address.wallet.network as 'mainnet' | 'testnet' | 'signet' | 'regtest' || 'mainnet'
-    );
+    const network = getNetwork(normalizeLegacyBitcoinNetwork(address.wallet.network, 'mainnet'));
 
     // Validate original PSBT structure
     const structureValidation = validatePsbtStructure(originalPsbtBase64);

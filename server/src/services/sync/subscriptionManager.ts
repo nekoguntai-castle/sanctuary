@@ -20,6 +20,7 @@ import { getErrorMessage } from "../../utils/errors";
 import { getConfig } from "../../config";
 import { eventService } from "../eventService";
 import { acquireLock, extendLock, releaseLock } from "../../infrastructure";
+import { normalizeLegacyBitcoinNetwork } from "../bitcoin/networks";
 import type { SyncState } from "./types";
 import {
   ELECTRUM_SUBSCRIPTION_LOCK_KEY,
@@ -543,13 +544,8 @@ export async function subscribeWalletAddresses(
   walletId: string,
 ): Promise<void> {
   // Get wallet to determine network
-  const network = (await walletRepository.findNetwork(walletId)) as
-    | "mainnet"
-    | "testnet"
-    | "signet"
-    | "regtest"
-    | null;
-  const resolvedNetwork = network || "mainnet";
+  const network = await walletRepository.findNetwork(walletId);
+  const resolvedNetwork = normalizeLegacyBitcoinNetwork(network, "mainnet");
 
   const addressStrings = await addressRepository.findAddressStrings(walletId);
 

@@ -20,7 +20,7 @@ const ImportWalletTypeSchema = z.enum(['single_sig', 'multi_sig']);
 
 const ImportScriptTypeSchema = z.enum(['native_segwit', 'nested_segwit', 'taproot', 'legacy']);
 
-const ImportNetworkSchema = z.enum(['mainnet', 'testnet', 'regtest']);
+const ImportNetworkSchema = z.enum(['mainnet', 'testnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
 
 /**
  * Extended public key for imports — more lenient than the API XpubSchema.

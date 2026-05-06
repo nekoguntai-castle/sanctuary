@@ -10,7 +10,7 @@ import { getErrorMessage } from "../../../utils/errors";
 
 const log = createLogger("BITCOIN:SVC_BLOCK_HEIGHT");
 
-export type Network = "mainnet" | "testnet" | "signet" | "regtest";
+export type Network = "mainnet" | "testnet3" | "testnet4" | "signet" | "regtest";
 
 const TRANSIENT_BLOCK_HEIGHT_ERROR_PARTS = [
   "connection ended",
@@ -163,7 +163,7 @@ export class LRUCache<K, V> {
 }
 
 // Cache for block timestamps to avoid repeated lookups (max 1000 blocks)
-const blockTimestampCache = new LRUCache<number, Date>(1000);
+const blockTimestampCache = new LRUCache<string, Date>(1000);
 
 /**
  * Get block timestamp from block height
@@ -171,12 +171,13 @@ const blockTimestampCache = new LRUCache<number, Date>(1000);
  */
 export async function getBlockTimestamp(
   height: number,
-  network: "mainnet" | "testnet" | "signet" | "regtest" = "mainnet",
+  network: Network = "mainnet",
 ): Promise<Date | null> {
   if (height <= 0) return null;
 
   // Check cache first
-  const cached = blockTimestampCache.get(height);
+  const cacheKey = `${network}:${height}`;
+  const cached = blockTimestampCache.get(cacheKey);
   if (cached !== undefined) {
     return cached;
   }
@@ -203,7 +204,7 @@ export async function getBlockTimestamp(
     const date = new Date(timestamp * 1000);
 
     // Cache the result
-    blockTimestampCache.set(height, date);
+    blockTimestampCache.set(cacheKey, date);
 
     return date;
   } catch (error) {

@@ -114,15 +114,15 @@ test.describe('User journey flows', () => {
 
   // --- Dashboard Interaction ---
 
-  test('sidebar network switcher toggles dashboard between mainnet and testnet', async ({ page }) => {
+  test('sidebar network switcher toggles dashboard between mainnet and Testnet3', async ({ page }) => {
     const unhandledRequests = await mockAuthenticatedApi(page);
     const networkTabs = page.getByRole('navigation', { name: 'Network tabs' });
 
     await page.goto('/#/');
     await expect(page.getByText('Bitcoin Price')).toBeVisible();
 
-    await networkTabs.getByRole('button', { name: /Testnet/i }).click();
-    await expect(page.getByText('Testnet coins have no market value')).toBeVisible();
+    await networkTabs.getByRole('button', { name: 'Testnet3' }).click();
+    await expect(page.getByText('Testnet3 coins have no market value')).toBeVisible();
 
     await networkTabs.getByRole('button', { name: /Mainnet/i }).click();
     await expect(page.getByText('Bitcoin Price')).toBeVisible();
@@ -332,7 +332,7 @@ test.describe('User journey flows', () => {
     await expect(page.getByText('Journey Main Wallet')).toBeVisible();
     await expect(page.getByText('Journey Testnet Wallet')).not.toBeVisible();
 
-    await networkTabs.getByRole('button', { name: /Testnet/i }).click();
+    await networkTabs.getByRole('button', { name: 'Testnet3' }).click();
     await expect(page.getByText('Journey Testnet Wallet')).toBeVisible();
     await expect(page.getByText('Journey Main Wallet')).not.toBeVisible();
 

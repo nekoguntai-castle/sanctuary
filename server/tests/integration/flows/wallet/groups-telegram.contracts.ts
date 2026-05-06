@@ -24,7 +24,7 @@ export function registerWalletGroupsTelegramTests(): void {
         name: 'Group Wallet at Creation',
         type: 'single_sig',
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
         descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
         groupId: group.id,
       };
@@ -90,7 +90,7 @@ export function registerWalletGroupsTelegramTests(): void {
           name: 'Group Member Access Wallet',
           type: 'single_sig',
           scriptType: 'native_segwit',
-          network: 'testnet',
+          network: 'testnet3',
           descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
           groupId: group.id,
         })
@@ -113,7 +113,7 @@ export function registerWalletGroupsTelegramTests(): void {
           name: 'No Group Wallet',
           type: 'single_sig',
           scriptType: 'native_segwit',
-          network: 'testnet',
+          network: 'testnet3',
           descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
         })
         .expect(201);

@@ -71,6 +71,7 @@ run_fixture() {
 
       cleanup() {
         docker compose down -v --remove-orphans || true
+        bash scripts/ci/cleanup-docker-resources.sh --project "$COMPOSE_PROJECT_NAME" || true
       }
       trap cleanup EXIT
 

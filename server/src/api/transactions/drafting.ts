@@ -13,6 +13,7 @@ import { walletRepository } from '../../repositories/walletRepository';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ValidationError, NotFoundError, ForbiddenError } from '../../errors/ApiError';
 import { validateAddress } from '../../services/bitcoin/utils';
+import { normalizeLegacyBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import { policyEvaluationEngine } from '../../services/vaultPolicy';
 import { MIN_FEE_RATE } from '../../constants';
 import * as txService from '../../services/bitcoin/transactionService';
@@ -42,7 +43,7 @@ const BatchTransactionRequestSchema = z.object({
   memo: z.string().optional(),
 }).passthrough();
 
-type WalletNetwork = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+type WalletNetwork = BitcoinNetwork;
 type BatchTransactionOutputInput = z.infer<typeof BatchTransactionOutputSchema>;
 type ValidatedBatchOutput = { address: string; amount: number; sendMax?: boolean };
 
@@ -128,7 +129,7 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
   }
 
   // Validate Bitcoin address for the wallet's network
-  const network = wallet.network as WalletNetwork;
+  const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet') as WalletNetwork;
   const addressValidation = validateAddress(recipient, network);
   if (!addressValidation.valid) {
     throw new ValidationError(`Invalid Bitcoin address: ${addressValidation.error}`);
@@ -212,7 +213,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     throw new NotFoundError('Wallet not found');
   }
 
-  const network = wallet.network as WalletNetwork;
+  const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet') as WalletNetwork;
   const validatedOutputs = validateBatchOutputs(outputs, network);
 
   // Evaluate vault policies BEFORE creating the batch PSBT

@@ -22,7 +22,8 @@ import {
   formatBTC as sharedFormatBTC,
   SATS_PER_BTC,
 } from '../../../../shared/utils/bitcoin';
-import type { NetworkType, AddressType } from '../../../../shared/constants/bitcoin';
+import type { LegacyNetworkType, NetworkType, AddressType } from '../../../../shared/constants/bitcoin';
+import { bitcoinJsNetworkName } from './networks';
 
 export { satsToBTC, btcToSats, SATS_PER_BTC, NetworkType, AddressType };
 
@@ -37,7 +38,7 @@ bitcoin.initEccLib(ecc);
  */
 export function validateAddress(
   address: string,
-  network: NetworkType = 'mainnet'
+  network: LegacyNetworkType = 'mainnet'
 ): { valid: boolean; error?: string } {
   try {
     const networkObj = getNetwork(network);
@@ -55,17 +56,12 @@ export function validateAddress(
  * Get Bitcoin network object
  */
 export function getNetwork(
-  network: NetworkType = 'mainnet'
+  network: LegacyNetworkType = 'mainnet'
 ): bitcoin.Network {
-  switch (network) {
-    case 'signet':
-    case 'testnet':
-      return bitcoin.networks.testnet;
-    case 'regtest':
-      return bitcoin.networks.regtest;
-    default:
-      return bitcoin.networks.bitcoin;
-  }
+  const bitcoinJsNetwork = bitcoinJsNetworkName(network);
+  if (bitcoinJsNetwork === 'testnet') return bitcoin.networks.testnet;
+  if (bitcoinJsNetwork === 'regtest') return bitcoin.networks.regtest;
+  return bitcoin.networks.bitcoin;
 }
 
 /**
@@ -128,7 +124,7 @@ export function formatBTC(btc: number, decimals: number = 8): string {
  */
 export function parseTransaction(
   txHex: string,
-  network: NetworkType = 'mainnet'
+  network: LegacyNetworkType = 'mainnet'
 ): {
   txid: string;
   version: number;
@@ -200,7 +196,7 @@ export function createTransaction(
   }>,
   feeRate: number,
   options: {
-    network?: NetworkType;
+    network?: LegacyNetworkType;
     enableRBF?: boolean;
   } = {}
 ): {

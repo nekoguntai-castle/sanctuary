@@ -28,7 +28,8 @@ type NetworkAvailability = Record<TabNetwork, boolean>;
 
 const DEFAULT_NETWORK_AVAILABILITY: NetworkAvailability = {
   mainnet: true,
-  testnet: true,
+  testnet3: true,
+  testnet4: true,
   signet: true,
 };
 
@@ -39,7 +40,8 @@ const isSameNetworkAvailability = (
   second: NetworkAvailability,
 ): boolean => (
   first.mainnet === second.mainnet &&
-  first.testnet === second.testnet &&
+  first.testnet3 === second.testnet3 &&
+  first.testnet4 === second.testnet4 &&
   first.signet === second.signet
 );
 
@@ -168,14 +170,16 @@ const getStatusForAvailability = async (
 };
 
 export const getSidebarNetworkAvailability = async (): Promise<NetworkAvailability> => {
-  const [testnetStatus, signetStatus] = await Promise.all([
-    getStatusForAvailability('testnet'),
+  const [testnet3Status, testnet4Status, signetStatus] = await Promise.all([
+    getStatusForAvailability('testnet3'),
+    getStatusForAvailability('testnet4'),
     getStatusForAvailability('signet'),
   ]);
 
   return {
     mainnet: true,
-    testnet: !isNodeConfigurationDisabledStatus(testnetStatus),
+    testnet3: !isNodeConfigurationDisabledStatus(testnet3Status),
+    testnet4: !isNodeConfigurationDisabledStatus(testnet4Status),
     signet: !isNodeConfigurationDisabledStatus(signetStatus),
   };
 };

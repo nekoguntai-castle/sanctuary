@@ -15,7 +15,7 @@ import { Intelligence } from '../../components/Intelligence/Intelligence';
 
 const mockUseWallets = vi.fn();
 const activeNetworkState = vi.hoisted(() => ({
-  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet' | 'signet',
+  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet3' | 'signet',
 }));
 
 vi.mock('../../hooks/queries/useWallets', () => ({
@@ -87,7 +87,7 @@ const mockWallets = [
     id: 'wallet-3',
     name: 'Testnet Treasury',
     type: 'single_sig',
-    network: 'testnet',
+    network: 'testnet3',
     balance: 500000,
   },
 ];
@@ -209,7 +209,7 @@ describe('Intelligence', () => {
   });
 
   it('should scope wallet selection to the active network', async () => {
-    activeNetworkState.selectedNetwork = 'testnet';
+    activeNetworkState.selectedNetwork = 'testnet3';
     mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
 
     render(<Intelligence />);

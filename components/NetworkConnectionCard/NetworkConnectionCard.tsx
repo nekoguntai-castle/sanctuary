@@ -1,11 +1,12 @@
 import React from "react";
 import { AlertTriangle } from "lucide-react";
-import type { NetworkConnectionCardProps } from "./types";
+import type { NetworkConnectionCardProps, NetworkType } from "./types";
 import { SingletonConfig } from "./SingletonConfig";
 import { PoolConfig } from "./PoolConfig";
 import { ConnectionModeSelector } from "./NetworkConnectionCard/ConnectionModeSelector";
 import { useNetworkConnectionCardController } from "./NetworkConnectionCard/useNetworkConnectionCardController";
 import { Toggle } from "../ui/Toggle";
+import { formatNetworkTitle } from "../../src/app/networks";
 
 export const NetworkConnectionCard: React.FC<NetworkConnectionCardProps> = ({
   network,
@@ -101,7 +102,7 @@ function NetworkSyncToggle({
   enabled,
   onToggle,
 }: {
-  network: "testnet" | "signet";
+  network: Exclude<NetworkType, "mainnet">;
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
 }) {
@@ -144,8 +145,8 @@ function NetworkSyncToggle({
   );
 }
 
-function getNetworkLabel(network: "testnet" | "signet"): string {
-  return network === "testnet" ? "Testnet" : "Signet";
+function getNetworkLabel(network: Exclude<NetworkType, "mainnet">): string {
+  return formatNetworkTitle(network);
 }
 
 function NetworkSyncSwitch({
@@ -156,11 +157,11 @@ function NetworkSyncSwitch({
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
-  network: "testnet" | "signet";
+  network: Exclude<NetworkType, "mainnet">;
   label: string;
 }) {
   const activeClass =
-    network === "testnet"
+    network === "testnet3" || network === "testnet4"
       ? "border-testnet-500 bg-testnet-500"
       : "border-signet-500 bg-signet-500";
 

@@ -63,13 +63,13 @@ export function getAddressNetwork(address: string): 'mainnet' | 'testnet' | 'reg
  */
 export function addressMatchesNetwork(
   address: string,
-  network: 'mainnet' | 'testnet' | 'regtest'
+  network: 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest' | 'testnet'
 ): boolean {
   const addressNetwork = getAddressNetwork(address);
   if (!addressNetwork) return false;
 
-  // Regtest uses testnet address format
-  if (network === 'regtest') {
+  // Testnet3, testnet4, signet, and regtest use the testnet address family.
+  if (network !== 'mainnet') {
     return addressNetwork === 'testnet';
   }
 

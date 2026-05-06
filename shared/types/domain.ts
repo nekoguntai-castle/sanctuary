@@ -28,7 +28,7 @@ export type WalletScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | '
 /**
  * Bitcoin network
  */
-export type WalletNetwork = 'mainnet' | 'testnet' | 'regtest' | 'signet';
+export type WalletNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'regtest' | 'signet';
 
 /**
  * User's role on a wallet

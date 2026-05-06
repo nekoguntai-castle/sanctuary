@@ -60,7 +60,11 @@ export const payjoinSchemas = {
     properties: {
       psbt: { type: 'string', minLength: 1, description: 'Original PSBT in base64 format' },
       payjoinUrl: { type: 'string', format: 'uri' },
-      network: { type: 'string', enum: ['mainnet', 'testnet', 'regtest'], default: 'mainnet' },
+      network: {
+        type: 'string',
+        enum: ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'],
+        default: 'mainnet',
+      },
     },
     required: ['psbt', 'payjoinUrl'],
   },

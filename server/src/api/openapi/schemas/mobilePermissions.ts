@@ -29,7 +29,7 @@ export const mobilePermissionSchemas = {
       id: { type: 'string' },
       walletId: { type: 'string' },
       walletName: { type: 'string' },
-      walletNetwork: { type: 'string', enum: ['mainnet', 'testnet', 'regtest', 'signet'] },
+      walletNetwork: { type: 'string', enum: ['mainnet', 'testnet3', 'testnet4', 'regtest', 'signet'] },
       role: { type: 'string', enum: ['viewer', 'signer', 'approver', 'owner'] },
       effectivePermissions: { $ref: '#/components/schemas/MobilePermissionMap' },
       hasCustomRestrictions: { type: 'boolean' },

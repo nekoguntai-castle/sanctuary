@@ -51,6 +51,22 @@ export function registerWalletCreateAccountSelectionTests(): void {
     });
 
     describe("Single-sig wallet creation", () => {
+      it("rejects legacy or unknown wallet network values before loading devices", async () => {
+        await expect(
+          createWallet(userId, {
+            name: "Legacy Testnet Wallet",
+            type: "single_sig",
+            scriptType: "native_segwit",
+            network: "testnet" as any,
+            deviceIds: ["device-1"],
+          }),
+        ).rejects.toThrow(
+          "Invalid network. Must be mainnet, testnet3, testnet4, signet, or regtest.",
+        );
+
+        expect(mockPrismaClient.device.findMany).not.toHaveBeenCalled();
+      });
+
       it("should select single_sig account for single-sig wallet", async () => {
         const device = createMockDevice("device-1", "abc12345", [
           {
@@ -157,7 +173,7 @@ export function registerWalletCreateAccountSelectionTests(): void {
         );
       });
 
-      it("should select the matching testnet account for a testnet wallet", async () => {
+      it("should select the matching testnet account for a testnet3 wallet", async () => {
         const device = createMockDevice("device-1", "abc12345", [
           {
             purpose: "single_sig",
@@ -179,14 +195,14 @@ export function registerWalletCreateAccountSelectionTests(): void {
           name: "Testnet Wallet",
           type: "single_sig",
           scriptType: "native_segwit",
-          network: "testnet",
+          network: "testnet3",
         });
         mockPrismaClient.wallet.findUnique.mockResolvedValue({
           id: "wallet-1",
           name: "Testnet Wallet",
           type: "single_sig",
           scriptType: "native_segwit",
-          network: "testnet",
+          network: "testnet3",
           devices: [],
           addresses: [],
         });
@@ -195,7 +211,7 @@ export function registerWalletCreateAccountSelectionTests(): void {
           name: "Testnet Wallet",
           type: "single_sig",
           scriptType: "native_segwit",
-          network: "testnet",
+          network: "testnet3",
           deviceIds: ["device-1"],
         });
 
@@ -206,7 +222,7 @@ export function registerWalletCreateAccountSelectionTests(): void {
               derivationPath: "m/84'/1'/0'",
             }),
           ]),
-          expect.objectContaining({ network: "testnet" }),
+          expect.objectContaining({ network: "testnet3" }),
         );
       });
 
@@ -263,7 +279,7 @@ export function registerWalletCreateAccountSelectionTests(): void {
         );
       });
 
-      it("should reject a testnet wallet when the device only has mainnet accounts", async () => {
+      it("should reject a testnet3 wallet when the device only has mainnet accounts", async () => {
         const device = createMockDevice("device-1", "abc12345", [
           {
             purpose: "single_sig",
@@ -280,11 +296,11 @@ export function registerWalletCreateAccountSelectionTests(): void {
             name: "Broken Testnet Wallet",
             type: "single_sig",
             scriptType: "native_segwit",
-            network: "testnet",
+            network: "testnet3",
             deviceIds: ["device-1"],
           }),
         ).rejects.toThrow(
-          "Device \"Device device-1\" does not have a testnet single_sig native_segwit account. Add m/84'/1'/0'",
+          "Device \"Device device-1\" does not have a testnet3 single_sig native_segwit account. Add m/84'/1'/0'",
         );
 
         expect(mockBuildDescriptorFromDevices).not.toHaveBeenCalled();
@@ -316,13 +332,13 @@ export function registerWalletCreateAccountSelectionTests(): void {
             name: "Broken Testnet Multisig",
             type: "multi_sig",
             scriptType: "native_segwit",
-            network: "testnet",
+            network: "testnet3",
             deviceIds: ["device-1", "device-2"],
             quorum: 1,
             totalSigners: 2,
           }),
         ).rejects.toThrow(
-          "Device \"Device device-1\" does not have a testnet multisig native_segwit account. Add m/48'/1'/0'/2'",
+          "Device \"Device device-1\" does not have a testnet3 multisig native_segwit account. Add m/48'/1'/0'/2'",
         );
 
         expect(mockBuildDescriptorFromDevices).not.toHaveBeenCalled();
@@ -638,7 +654,7 @@ export function registerWalletCreateAccountSelectionTests(): void {
         );
       });
 
-      it("should reject a testnet wallet for a legacy mainnet-only device", async () => {
+      it("should reject a testnet3 wallet for a legacy mainnet-only device", async () => {
         const legacyDevice = {
           id: "device-1",
           userId,
@@ -657,11 +673,11 @@ export function registerWalletCreateAccountSelectionTests(): void {
             name: "Legacy Testnet Wallet",
             type: "single_sig",
             scriptType: "native_segwit",
-            network: "testnet",
+            network: "testnet3",
             deviceIds: ["device-1"],
           }),
         ).rejects.toThrow(
-          "Device \"Legacy Ledger\" does not have a testnet single_sig native_segwit account. Add m/84'/1'/0'",
+          "Device \"Legacy Ledger\" does not have a testnet3 single_sig native_segwit account. Add m/84'/1'/0'",
         );
 
         expect(mockBuildDescriptorFromDevices).not.toHaveBeenCalled();

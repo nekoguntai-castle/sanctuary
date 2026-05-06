@@ -96,6 +96,66 @@ export const registerWalletImportDescriptorContracts = () => {
       );
     });
 
+    it('stores requested testnet4 for ambiguous testnet-family descriptors', async () => {
+      const descriptor = "wpkh([abcd1234/84'/1'/0']tpub...)#checksum";
+
+      mockParseImportInput.mockReturnValue({
+        format: 'descriptor',
+        parsed: {
+          type: 'single_sig',
+          scriptType: 'native_segwit',
+          devices: [
+            {
+              fingerprint: 'abcd1234',
+              xpub: 'tpub...',
+              derivationPath: "m/84'/1'/0'",
+            },
+          ],
+          network: 'testnet',
+          isChange: false,
+        },
+      });
+
+      const createdDevice = {
+        id: 'device-new-testnet4',
+        userId,
+        type: 'unknown',
+        label: 'Imported Device 1',
+        fingerprint: 'abcd1234',
+        derivationPath: "m/84'/1'/0'",
+        xpub: 'tpub...',
+      };
+
+      mockPrismaClient.wallet.findMany.mockResolvedValue([]);
+      setupDeviceMocks([createdDevice]);
+      mockPrismaClient.wallet.create.mockResolvedValue({
+        id: 'wallet-testnet4',
+        name: 'Testnet4 Wallet',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'testnet4',
+        quorum: null,
+        totalSigners: null,
+        descriptor: 'wpkh([abcd1234/84h/1h/0h]tpub...)',
+        fingerprint: 'wallet-fp',
+      });
+
+      await walletImport.importFromDescriptor(userId, {
+        descriptor,
+        name: 'Testnet4 Wallet',
+        network: 'testnet4',
+      });
+
+      expect(mockPrismaClient.wallet.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            name: 'Testnet4 Wallet',
+            network: 'testnet4',
+          }),
+        })
+      );
+    });
+
     it('should import multisig wallet from descriptor', async () => {
       const descriptor = "wsh(sortedmulti(2,[aaaa1111/48'/0'/0'/2']xpub6E1..., [bbbb2222/48'/0'/0'/2']xpub6E2...))#checksum";
 

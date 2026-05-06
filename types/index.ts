@@ -163,14 +163,34 @@ export interface NodeConfig {
   mainnetPoolMax?: number;
   mainnetPoolLoadBalancing?: LoadBalancingStrategy;
 
-  // TESTNET SETTINGS
+  // TESTNET3 SETTINGS
+  testnet3Enabled?: boolean;
+  testnet3Mode?: ConnectionMode;
+  testnet3SingletonHost?: string | null;
+  testnet3SingletonPort?: number | null;
+  testnet3SingletonSsl?: boolean | null;
+  testnet3PoolMin?: number | null;
+  testnet3PoolMax?: number | null;
+  testnet3PoolLoadBalancing?: LoadBalancingStrategy;
+
+  // TESTNET4 SETTINGS
+  testnet4Enabled?: boolean;
+  testnet4Mode?: ConnectionMode;
+  testnet4SingletonHost?: string | null;
+  testnet4SingletonPort?: number | null;
+  testnet4SingletonSsl?: boolean | null;
+  testnet4PoolMin?: number | null;
+  testnet4PoolMax?: number | null;
+  testnet4PoolLoadBalancing?: LoadBalancingStrategy;
+
+  // LEGACY TESTNET SETTINGS (deprecated, mirrored to testnet3)
   testnetEnabled?: boolean;
   testnetMode?: ConnectionMode;
-  testnetSingletonHost?: string;
-  testnetSingletonPort?: number;
-  testnetSingletonSsl?: boolean;
-  testnetPoolMin?: number;
-  testnetPoolMax?: number;
+  testnetSingletonHost?: string | null;
+  testnetSingletonPort?: number | null;
+  testnetSingletonSsl?: boolean | null;
+  testnetPoolMin?: number | null;
+  testnetPoolMax?: number | null;
   testnetPoolLoadBalancing?: LoadBalancingStrategy;
 
   // SIGNET SETTINGS
@@ -205,7 +225,7 @@ export interface NodeConfig {
 export interface ElectrumServer {
   id: string;
   nodeConfigId: string;
-  network: "mainnet" | "testnet" | "signet";
+  network: WalletNetwork;
   label: string;
   host: string;
   port: number;

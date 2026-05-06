@@ -86,12 +86,12 @@ export interface AddressInfo {
   type: string;
 }
 
-export type BitcoinDashboardNetwork = 'mainnet' | 'testnet' | 'signet';
+export type BitcoinDashboardNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet';
 export type BitcoinStatusNetwork = BitcoinDashboardNetwork;
 
 export interface ValidateAddressRequest {
   address: string;
-  network?: 'mainnet' | 'testnet' | 'regtest';
+  network?: 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
 }
 
 export interface ValidateAddressResponse {

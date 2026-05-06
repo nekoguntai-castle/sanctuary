@@ -10,23 +10,20 @@ import bip32 from '../bip32';
 import { getErrorMessage } from '../../../utils/errors';
 import { convertToStandardXpub } from './xpubConversion';
 import type { AddressDerivationNetwork, XpubValidationResult } from './types';
+import { bitcoinJsNetworkName, isBitcoinNetwork } from '../networks';
 
 /**
  * Get network object from network string
  */
 export function getNetwork(network: AddressDerivationNetwork): bitcoin.Network {
-  switch (network) {
-    case 'mainnet':
-      return bitcoin.networks.bitcoin;
-    case 'signet':
-    case 'testnet':
-      return bitcoin.networks.testnet;
-    case 'regtest':
-      return bitcoin.networks.regtest;
-    default:
-      // Explicit error instead of silent fallback to mainnet
-      throw new Error(`Unsupported network: ${network}. Expected 'mainnet', 'testnet', 'signet', or 'regtest'.`);
+  if (network !== 'testnet' && !isBitcoinNetwork(network)) {
+    throw new Error(`Unsupported network: ${String(network)}`);
   }
+
+  const bitcoinJsNetwork = bitcoinJsNetworkName(network);
+  if (bitcoinJsNetwork === 'testnet') return bitcoin.networks.testnet;
+  if (bitcoinJsNetwork === 'regtest') return bitcoin.networks.regtest;
+  return bitcoin.networks.bitcoin;
 }
 
 /**

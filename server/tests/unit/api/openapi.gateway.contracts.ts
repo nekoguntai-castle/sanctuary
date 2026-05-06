@@ -532,7 +532,9 @@ export function registerOpenApiGatewayTests() {
     ]);
     expect(openApiSpec.components.schemas.PayjoinAttemptRequest.properties.network.enum).toEqual([
       'mainnet',
-      'testnet',
+      'testnet3',
+      'testnet4',
+      'signet',
       'regtest',
     ]);
     expect(openApiSpec.components.schemas.PayjoinReceiverError.enum).toEqual([

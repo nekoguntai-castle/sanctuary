@@ -5,7 +5,7 @@ import { browserOrBearerAuth as bearerAuth } from '../../security';
 export { AUDIT_DEFAULT_PAGE_SIZE, AUDIT_STATS_DAYS, bearerAuth, FEATURE_FLAG_KEYS };
 
 export const AUDIT_LOG_LIMIT_MAX = 500;
-export const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet', 'signet', 'regtest'] as const;
+export const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'] as const;
 export const DEAD_LETTER_CATEGORY_VALUES = ['sync', 'push', 'telegram', 'notification', 'electrum', 'transaction', 'other'] as const;
 export const MONITORING_SERVICE_VALUES = ['grafana', 'prometheus', 'jaeger'] as const;
 

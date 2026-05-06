@@ -48,13 +48,16 @@ run_classifier() {
   local base_sha="$2"
   local head_sha="$3"
   local output_file="$4"
+  local event_name="${5:-push}"
 
   : > "$output_file"
   (
     cd "$repo_dir"
-    export EVENT_NAME=push
+    export EVENT_NAME="$event_name"
     export GITHUB_OUTPUT="$output_file"
     export PUSH_BEFORE_SHA="$base_sha"
+    export PR_BASE_SHA="$base_sha"
+    export PR_HEAD_SHA="$head_sha"
     export WORKFLOW_SHA="$head_sha"
     bash "$CLASSIFIER_SCRIPT"
   )
@@ -70,6 +73,7 @@ main() {
 
   create_repo "$repo_dir"
   base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  git -C "$repo_dir" update-ref refs/remotes/origin/main "$base_sha"
 
   mkdir -p "$repo_dir/tests/install"
   cat <<'EOF_DOC' > "$repo_dir/tests/install/README.md"
@@ -89,6 +93,24 @@ EOF_DOC
   assert_exact_output "$output_file" "render_changed" "false"
   assert_exact_output "$output_file" "build_changed" "false"
   assert_exact_output "$output_file" "test_files" ""
+
+  mkdir -p "$repo_dir/components/ForcePush"
+  printf 'export const ForcePushed = () => null;\n' > "$repo_dir/components/ForcePush/ForcePushed.tsx"
+  git -C "$repo_dir" add components/ForcePush/ForcePushed.tsx
+  git -C "$repo_dir" commit -qm "old pr head"
+  local old_pr_head
+  old_pr_head="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  git -C "$repo_dir" reset -q --soft "$base_sha"
+  printf '# Follow-up\n' > "$repo_dir/tasks.md"
+  git -C "$repo_dir" add components/ForcePush/ForcePushed.tsx tasks.md
+  git -C "$repo_dir" commit -qm "amended pr head"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$old_pr_head" "$head_sha" "$output_file" "pull_request"
+  assert_exact_output "$output_file" "frontend_changed" "true"
+  assert_exact_output "$output_file" "render_changed" "true"
+  assert_contains_output "$output_file" "frontend_files" "components/ForcePush/ForcePushed.tsx"
 
   base_sha="$head_sha"
   mkdir -p "$repo_dir/server/src/services"

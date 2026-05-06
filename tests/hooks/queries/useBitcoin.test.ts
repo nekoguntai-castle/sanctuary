@@ -47,7 +47,7 @@ describe('useBitcoin hooks', () => {
     it('generates correct query keys', () => {
       expect(bitcoinKeys.all).toEqual(['bitcoin']);
       expect(bitcoinKeys.status()).toEqual(['bitcoin', 'status', 'mainnet']);
-      expect(bitcoinKeys.status('testnet')).toEqual(['bitcoin', 'status', 'testnet']);
+      expect(bitcoinKeys.status('testnet3')).toEqual(['bitcoin', 'status', 'testnet3']);
       expect(bitcoinKeys.fees()).toEqual(['bitcoin', 'fees']);
       expect(bitcoinKeys.mempool()).toEqual(['bitcoin', 'mempool', 'mainnet']);
       expect(bitcoinKeys.mempool('signet')).toEqual(['bitcoin', 'mempool', 'signet']);
@@ -79,11 +79,11 @@ describe('useBitcoin hooks', () => {
       const mockStatus = {
         connected: true,
         blockHeight: 4500000,
-        network: 'testnet',
+        network: 'testnet3',
       };
       vi.mocked(bitcoinApi.getStatus).mockResolvedValue(mockStatus as any);
 
-      const { result } = renderHook(() => useBitcoinStatus('testnet'), {
+      const { result } = renderHook(() => useBitcoinStatus('testnet3'), {
         wrapper: createWrapper(),
       });
 
@@ -92,7 +92,7 @@ describe('useBitcoin hooks', () => {
       });
 
       expect(result.current.data).toEqual(mockStatus);
-      expect(bitcoinApi.getStatus).toHaveBeenCalledWith('testnet');
+      expect(bitcoinApi.getStatus).toHaveBeenCalledWith('testnet3');
     });
 
     it('handles error state', async () => {
@@ -162,7 +162,7 @@ describe('useBitcoin hooks', () => {
       };
       vi.mocked(bitcoinApi.getMempoolData).mockResolvedValue(mockMempoolData as any);
 
-      const { result } = renderHook(() => useMempoolData('testnet'), {
+      const { result } = renderHook(() => useMempoolData('testnet3'), {
         wrapper: createWrapper(),
       });
 
@@ -171,7 +171,7 @@ describe('useBitcoin hooks', () => {
       });
 
       expect(result.current.data).toEqual(mockMempoolData);
-      expect(bitcoinApi.getMempoolData).toHaveBeenCalledWith('testnet');
+      expect(bitcoinApi.getMempoolData).toHaveBeenCalledWith('testnet3');
     });
   });
 });

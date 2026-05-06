@@ -178,7 +178,7 @@ export async function createTestWallet(
       name: walletData?.name ?? 'Test Wallet',
       type: walletData?.type ?? 'single_sig',
       scriptType: walletData?.scriptType ?? 'native_segwit',
-      network: walletData?.network ?? 'testnet',
+      network: walletData?.network ?? 'testnet3',
       descriptor: walletData?.descriptor ?? defaultDescriptor,
     })
     .expect(201);

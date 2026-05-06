@@ -472,6 +472,46 @@ export function registerTransactionHttpReadTests(): void {
     });
   });
 
+  it("uses the local-compatible mempool endpoint for regtest pending transactions", async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      name: "Regtest Wallet",
+      network: "regtest",
+    });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      {
+        txid: "4".repeat(64),
+        walletId,
+        type: "sent",
+        amount: BigInt(-30000),
+        fee: BigInt(0),
+        createdAt: new Date(Date.now() - 3000),
+        counterpartyAddress: "bcrt1qrecipient",
+        rawTx: null,
+        blockHeight: null,
+      },
+    ]);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ weight: 600, fee: 900 }),
+    });
+
+    const response = await request(app).get(
+      `/api/v1/wallets/${walletId}/transactions/pending`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledWith(
+      `https://mempool.space/api/tx/${"4".repeat(64)}`,
+      expect.any(Object),
+    );
+    expect(response.body[0]).toMatchObject({
+      txid: "4".repeat(64),
+      fee: 900,
+      vsize: 150,
+      feeRate: 6,
+    });
+  });
+
   it("maps legacy receive type to received when mempool response is not ok", async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       name: "Legacy Wallet",

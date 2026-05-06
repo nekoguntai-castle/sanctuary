@@ -115,7 +115,7 @@ export function OutputsStep() {
         }
 
         if (parsed.payjoinUrl) {
-          const walletNetwork = (wallet.network || 'mainnet') as 'mainnet' | 'testnet' | 'regtest';
+          const walletNetwork = (wallet.network || 'mainnet') as Parameters<typeof addressMatchesNetwork>[1];
           const addressMatches = addressMatchesNetwork(parsed.address, walletNetwork);
 
           if (addressMatches) {

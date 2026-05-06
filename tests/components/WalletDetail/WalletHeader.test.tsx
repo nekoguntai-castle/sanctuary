@@ -97,7 +97,7 @@ describe("WalletHeader", () => {
     );
 
     expect(screen.getByText("2/3 Multisig")).toBeInTheDocument();
-    expect(screen.getByText("signet")).toHaveClass("dark:text-signet-950");
+    expect(screen.getByText("Signet")).toHaveClass("dark:text-signet-950");
     expect(screen.getByText("Retrying 2/5")).toBeInTheDocument();
     expect(screen.getByText("Signer")).toBeInTheDocument();
     expect(screen.getByText("Shared")).toBeInTheDocument();
@@ -139,12 +139,12 @@ describe("WalletHeader", () => {
   it("uses retrying defaults when status is retrying without retry metadata", () => {
     renderHeader({
       lastSyncStatus: "retrying",
-      network: "testnet",
+      network: "testnet3",
     });
 
     const badge = screen.getByText("Retrying 1/3").closest("span");
-    expect(screen.getByText("testnet")).toHaveClass("dark:text-testnet-950");
-    expect(screen.getByText("testnet")).toHaveClass("dark:bg-testnet-50");
+    expect(screen.getByText("Testnet3")).toHaveClass("dark:text-testnet-950");
+    expect(screen.getByText("Testnet3")).toHaveClass("dark:bg-testnet-50");
     expect(badge).toHaveAttribute("title", "Sync failed, retrying...");
   });
 
@@ -171,11 +171,11 @@ describe("WalletHeader", () => {
     renderHeader({
       lastSyncStatus: "success",
       lastSyncedAt: null,
-      network: "regtest",
+      network: "testnet4",
     });
 
     expect(screen.getByText("Synced")).toBeInTheDocument();
-    expect(screen.getByText("regtest")).toBeInTheDocument();
+    expect(screen.getByText("Testnet4")).toBeInTheDocument();
   });
 
   it("renders failed and cached sync statuses", () => {
@@ -204,15 +204,15 @@ describe("WalletHeader", () => {
 
   it("shows a network sync-off warning for disabled testnet sync failures", () => {
     renderHeader({
-      network: "testnet",
+      network: "testnet3",
       lastSyncStatus: "failed",
       lastSyncError:
-        "Testnet sync is off in Node Configuration. Enable Testnet under Network Connections, save settings, then sync testnet wallets again.",
+        "Testnet3 sync is off in Node Configuration. Enable Testnet3 under Network Connections, save settings, then sync testnet3 wallets again.",
     });
 
     expect(screen.getByText("Network sync is off")).toBeInTheDocument();
     expect(
-      screen.getByText(/Enable Testnet under Network Connections/i),
+      screen.getByText(/Enable Testnet3 under Network Connections/i),
     ).toBeInTheDocument();
     expect(screen.queryByText("Wallet not synced")).not.toBeInTheDocument();
   });

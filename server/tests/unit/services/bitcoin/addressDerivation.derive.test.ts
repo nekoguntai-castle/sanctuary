@@ -18,7 +18,7 @@ describe('Address Derivation Service deriveAddress', () => {
     it('should derive native segwit address at index 0', () => {
       const result = deriveAddress(testTpub, 0, {
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
         change: false,
       });
 
@@ -29,9 +29,9 @@ describe('Address Derivation Service deriveAddress', () => {
     });
 
     it('should derive different addresses at different indices', () => {
-      const addr0 = deriveAddress(testTpub, 0, { network: 'testnet' });
-      const addr1 = deriveAddress(testTpub, 1, { network: 'testnet' });
-      const addr2 = deriveAddress(testTpub, 2, { network: 'testnet' });
+      const addr0 = deriveAddress(testTpub, 0, { network: 'testnet3' });
+      const addr1 = deriveAddress(testTpub, 1, { network: 'testnet3' });
+      const addr2 = deriveAddress(testTpub, 2, { network: 'testnet3' });
 
       expect(addr0.address).not.toBe(addr1.address);
       expect(addr1.address).not.toBe(addr2.address);
@@ -40,11 +40,11 @@ describe('Address Derivation Service deriveAddress', () => {
 
     it('should derive change addresses when change=true', () => {
       const receive = deriveAddress(testTpub, 0, {
-        network: 'testnet',
+        network: 'testnet3',
         change: false,
       });
       const change = deriveAddress(testTpub, 0, {
-        network: 'testnet',
+        network: 'testnet3',
         change: true,
       });
 
@@ -58,7 +58,7 @@ describe('Address Derivation Service deriveAddress', () => {
     it('should derive nested segwit address', () => {
       const result = deriveAddress(testTpub, 0, {
         scriptType: 'nested_segwit',
-        network: 'testnet',
+        network: 'testnet3',
         change: false,
       });
 
@@ -70,7 +70,7 @@ describe('Address Derivation Service deriveAddress', () => {
     it('should derive legacy address', () => {
       const result = deriveAddress(testTpub, 0, {
         scriptType: 'legacy',
-        network: 'testnet',
+        network: 'testnet3',
         change: false,
       });
 
@@ -82,7 +82,7 @@ describe('Address Derivation Service deriveAddress', () => {
     it('should derive taproot address for testnet', () => {
       const result = deriveAddress(testTpub, 0, {
         scriptType: 'taproot',
-        network: 'testnet',
+        network: 'testnet3',
         change: false,
       });
 
@@ -92,9 +92,9 @@ describe('Address Derivation Service deriveAddress', () => {
     });
 
     it('should derive different taproot addresses at different indices', () => {
-      const addr0 = deriveAddress(testTpub, 0, { scriptType: 'taproot', network: 'testnet' });
-      const addr1 = deriveAddress(testTpub, 1, { scriptType: 'taproot', network: 'testnet' });
-      const addr2 = deriveAddress(testTpub, 2, { scriptType: 'taproot', network: 'testnet' });
+      const addr0 = deriveAddress(testTpub, 0, { scriptType: 'taproot', network: 'testnet3' });
+      const addr1 = deriveAddress(testTpub, 1, { scriptType: 'taproot', network: 'testnet3' });
+      const addr2 = deriveAddress(testTpub, 2, { scriptType: 'taproot', network: 'testnet3' });
 
       expect(addr0.address).not.toBe(addr1.address);
       expect(addr1.address).not.toBe(addr2.address);
@@ -104,12 +104,12 @@ describe('Address Derivation Service deriveAddress', () => {
     it('should derive taproot change addresses', () => {
       const receive = deriveAddress(testTpub, 0, {
         scriptType: 'taproot',
-        network: 'testnet',
+        network: 'testnet3',
         change: false,
       });
       const change = deriveAddress(testTpub, 0, {
         scriptType: 'taproot',
-        network: 'testnet',
+        network: 'testnet3',
         change: true,
       });
 
@@ -213,7 +213,7 @@ describe('Address Derivation Service deriveAddress', () => {
     it('should handle vpub format (testnet native segwit)', () => {
       const result = deriveAddress(testTpub, 0, {
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
       });
 
       expect(result.address).toMatch(/^tb1q/);
@@ -226,7 +226,7 @@ describe('Address Derivation Service batch derivation', () => {
 
   it('should derive multiple addresses at once', () => {
     const results = deriveAddresses(testTpub, 0, 5, {
-      network: 'testnet',
+      network: 'testnet3',
     });
 
     expect(results.length).toBe(5);
@@ -240,7 +240,7 @@ describe('Address Derivation Service batch derivation', () => {
 
   it('should start from specified index', () => {
     const results = deriveAddresses(testTpub, 10, 3, {
-      network: 'testnet',
+      network: 'testnet3',
     });
 
     expect(results.length).toBe(3);
@@ -251,11 +251,11 @@ describe('Address Derivation Service batch derivation', () => {
 
   it('should derive change addresses in batch', () => {
     const receive = deriveAddresses(testTpub, 0, 3, {
-      network: 'testnet',
+      network: 'testnet3',
       change: false,
     });
     const change = deriveAddresses(testTpub, 0, 3, {
-      network: 'testnet',
+      network: 'testnet3',
       change: true,
     });
 
@@ -268,7 +268,7 @@ describe('Address Derivation Service batch derivation', () => {
     const descriptor = `wpkh([aabbccdd/84'/1'/0']${testTpub}/0/*)`;
 
     const results = deriveAddressesFromDescriptor(descriptor, 0, 5, {
-      network: 'testnet',
+      network: 'testnet3',
     });
 
     expect(results.length).toBe(5);
@@ -297,16 +297,16 @@ describe('Address Derivation Service determinism', () => {
   const testTpub = testXpubs.testnet.bip84;
 
   it('should produce same address for same inputs', () => {
-    const addr1 = deriveAddress(testTpub, 0, { network: 'testnet' });
-    const addr2 = deriveAddress(testTpub, 0, { network: 'testnet' });
+    const addr1 = deriveAddress(testTpub, 0, { network: 'testnet3' });
+    const addr2 = deriveAddress(testTpub, 0, { network: 'testnet3' });
 
     expect(addr1.address).toBe(addr2.address);
     expect(addr1.derivationPath).toBe(addr2.derivationPath);
   });
 
   it('should produce same public key for same inputs', () => {
-    const result1 = deriveAddress(testTpub, 5, { network: 'testnet' });
-    const result2 = deriveAddress(testTpub, 5, { network: 'testnet' });
+    const result1 = deriveAddress(testTpub, 5, { network: 'testnet3' });
+    const result2 = deriveAddress(testTpub, 5, { network: 'testnet3' });
 
     expect(Buffer.from(result1.publicKey).equals(Buffer.from(result2.publicKey))).toBe(true);
   });

@@ -21,7 +21,7 @@ export const WALLET_SHARE_ROLE_VALUES = [
 
 export type WalletRole = (typeof WALLET_ROLE_VALUES)[number] | null;
 export type WalletShareRole = (typeof WALLET_SHARE_ROLE_VALUES)[number];
-export type WalletNetwork = "mainnet" | "testnet" | "signet" | "regtest";
+export type WalletNetwork = "mainnet" | "testnet3" | "testnet4" | "signet" | "regtest";
 
 /**
  * Result of checking wallet access with edit permission

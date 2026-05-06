@@ -9,6 +9,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { getNetwork, estimateTransactionSize } from '../utils';
 import { getNodeClient } from '../nodeClient';
+import type { BitcoinNetwork } from '../networks';
 import { utxoRepository } from '../../../repositories';
 import { getDustThreshold } from './shared';
 
@@ -59,7 +60,7 @@ export async function createCPFPTransaction(
   targetFeeRate: number,
   recipientAddress: string,
   _walletId: string,
-  network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet'
+  network: BitcoinNetwork = 'mainnet'
 ): Promise<{
   psbt: bitcoin.Psbt;
   childFee: number;
@@ -68,7 +69,7 @@ export async function createCPFPTransaction(
   effectiveFeeRate: number;
 }> {
   // Use nodeClient which respects poolEnabled setting from node_configs
-  const client = await getNodeClient();
+  const client = await getNodeClient(network);
 
   // Get configurable thresholds
   const dustThreshold = await getDustThreshold();

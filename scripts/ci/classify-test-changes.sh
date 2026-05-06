@@ -109,8 +109,22 @@ ensure_commit() {
   fi
 }
 
-ensure_commit "$base_sha"
 ensure_commit "$head_sha"
+
+if [ -n "$base_sha" ]; then
+  ensure_commit "$base_sha"
+fi
+
+if [ "$event_name" = "pull_request" ] &&
+   [ -n "$base_sha" ] &&
+   ! git merge-base --is-ancestor "$base_sha" "$head_sha" >/dev/null 2>&1; then
+  fallback_base="$(git merge-base "$origin_main_ref" "$head_sha" 2>/dev/null || true)"
+  if [ -n "$fallback_base" ]; then
+    base_sha="$fallback_base"
+  fi
+fi
+
+ensure_commit "$base_sha"
 
 git rev-parse --verify "$base_sha^{commit}" >/dev/null
 git rev-parse --verify "$head_sha^{commit}" >/dev/null

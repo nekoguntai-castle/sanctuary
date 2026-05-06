@@ -15,6 +15,7 @@ import {
 } from "../../../utils/errors";
 import { asyncHandler } from "../../../errors/errorHandler";
 import { getCachedBlockHeight } from "../../../services/bitcoin/blockchain";
+import { normalizeLegacyBitcoinNetwork } from "../../../services/bitcoin/networks";
 import { calculateConfirmations } from "./utils";
 
 const TRANSACTION_TYPES = new Set(["sent", "received", "consolidation"]);
@@ -91,9 +92,7 @@ export function createListTransactionsRouter(): Router {
       const wallet = await walletRepository.findByIdWithSelect(walletId, {
         network: true,
       });
-      const network =
-        (wallet?.network as "mainnet" | "testnet" | "signet" | "regtest") ||
-        "mainnet";
+      const network = normalizeLegacyBitcoinNetwork(wallet?.network, "mainnet");
 
       // Get cached block height for this network (no network call)
       const currentHeight = getCachedBlockHeight(network);

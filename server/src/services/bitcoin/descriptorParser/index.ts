@@ -10,6 +10,7 @@ export type {
   ParsedDevice,
   ScriptType,
   Network,
+  DetectedNetwork,
   ParsedDescriptor,
   DescriptorParseError,
   JsonImportDevice,

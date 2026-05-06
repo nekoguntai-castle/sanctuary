@@ -53,17 +53,29 @@ describe('ActiveNetworkProvider', () => {
   });
 
   it('exposes the stored network preference and writes network changes', async () => {
-    preferenceState.storedNetwork = 'testnet';
+    preferenceState.storedNetwork = 'testnet4';
     const user = userEvent.setup();
 
     renderProvider();
 
-    expect(screen.getByTestId('selected-network')).toHaveTextContent('testnet');
+    expect(screen.getByTestId('selected-network')).toHaveTextContent('testnet4');
     expect(screen.getByTestId('mainnet-state')).toHaveTextContent('not-mainnet');
 
     await user.click(screen.getByRole('button', { name: 'Select Signet' }));
 
     expect(preferenceState.setStoredNetwork).toHaveBeenCalledWith('signet');
+  });
+
+  it('normalizes legacy stored testnet preference to testnet3', async () => {
+    preferenceState.storedNetwork = 'testnet';
+
+    renderProvider();
+
+    expect(screen.getByTestId('selected-network')).toHaveTextContent('testnet3');
+    expect(screen.getByTestId('mainnet-state')).toHaveTextContent('not-mainnet');
+    await waitFor(() => {
+      expect(preferenceState.setStoredNetwork).toHaveBeenCalledWith('testnet3');
+    });
   });
 
   it('normalizes invalid stored values back to mainnet', async () => {

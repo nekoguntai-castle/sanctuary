@@ -116,6 +116,7 @@ export const validateImportData = async (
     const result = await walletsApi.validateImport({
       descriptor: sendAsDescriptor ? dataToValidate : undefined,
       json: sendAsJson ? dataToValidate : undefined,
+      network: activeNetwork,
     });
 
     if (!result.valid) {

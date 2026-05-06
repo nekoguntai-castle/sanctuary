@@ -27,7 +27,12 @@ export const CONSOLE_TURN_STATE_VALUES = [
   "failed",
   "canceled",
 ] as const;
-export const CONSOLE_NETWORK_VALUES = ["mainnet", "testnet", "signet"] as const;
+export const CONSOLE_NETWORK_VALUES = [
+  "mainnet",
+  "testnet3",
+  "testnet4",
+  "signet",
+] as const;
 
 export type ConsoleScopeKind = (typeof CONSOLE_SCOPE_KIND_VALUES)[number];
 export type ConsoleSensitivity = (typeof CONSOLE_SENSITIVITY_VALUES)[number];

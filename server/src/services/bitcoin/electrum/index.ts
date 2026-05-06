@@ -7,6 +7,7 @@
  */
 
 import { ElectrumClient } from './electrumClient';
+import type { BitcoinNetwork } from './types';
 
 export { ElectrumClient } from './electrumClient';
 export default ElectrumClient;
@@ -37,7 +38,7 @@ const electrumClients = new Map<string, ElectrumClient>();
  * Note: The client is created without explicitConfig, so connect() will load
  * per-network config from the database.
  */
-export function getElectrumClientForNetwork(network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet'): ElectrumClient {
+export function getElectrumClientForNetwork(network: BitcoinNetwork = 'mainnet'): ElectrumClient {
   if (!electrumClients.has(network)) {
     // Create client without explicitConfig - connect() will load per-network config from database
     const client = new ElectrumClient();
@@ -57,7 +58,7 @@ export function getElectrumClient(): ElectrumClient {
 /**
  * Close Electrum connection for a specific network
  */
-export function closeElectrumClientForNetwork(network: 'mainnet' | 'testnet' | 'signet' | 'regtest'): void {
+export function closeElectrumClientForNetwork(network: BitcoinNetwork): void {
   const client = electrumClients.get(network);
   if (client) {
     client.disconnect();

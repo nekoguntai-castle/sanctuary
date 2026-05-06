@@ -134,7 +134,7 @@ export interface ElectrumConfig {
   host: string;
   port: number;
   protocol: 'tcp' | 'ssl';
-  network?: 'mainnet' | 'testnet' | 'signet' | 'regtest'; // Bitcoin network (default: mainnet)
+  network?: BitcoinNetwork; // Bitcoin network (default: mainnet)
   allowSelfSignedCert?: boolean; // Optional: allow self-signed TLS certificates (default: false)
   connectionTimeoutMs?: number; // Optional: connection/handshake timeout (default: 10000ms)
   proxy?: ProxyConfig; // Optional: SOCKS5 proxy configuration (for Tor)
@@ -203,7 +203,7 @@ export interface TransactionDetails {
 }
 
 /** Bitcoin network type */
-export type BitcoinNetwork = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+export type BitcoinNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
 
 /**
  * Pending request tracking structure

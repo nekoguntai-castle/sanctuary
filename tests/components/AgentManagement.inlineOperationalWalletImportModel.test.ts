@@ -12,7 +12,7 @@ describe('inlineOperationalWalletImportModel', () => {
     id: 'funding-1',
     name: 'Funding',
     type: 'multi_sig',
-    network: 'testnet',
+    network: 'testnet3',
     accessUserIds: ['user-1'],
     deviceIds: [],
   };
@@ -83,7 +83,7 @@ describe('inlineOperationalWalletImportModel', () => {
     expect(validateXpub).toHaveBeenCalledWith({
       xpub: 'tpub123',
       scriptType: 'taproot',
-      network: 'testnet',
+      network: 'testnet3',
       fingerprint: getRawKeyFallbackFingerprint('tpub123'),
     });
 
@@ -165,13 +165,13 @@ describe('inlineOperationalWalletImportModel', () => {
       normalizeOperationalImportData({
         importData: 'xpub123',
         rawKeyScriptType: 'native_segwit',
-        selectedFundingWallet: { ...fundingWallet, network: 'signet' },
+      selectedFundingWallet: { ...fundingWallet, network: 'liquid' as any },
         validateXpub,
       })
     ).resolves.toEqual({
       ok: false,
       error:
-        'Raw extended public key import supports mainnet, testnet, and regtest funding wallets. Use a descriptor or wallet export for this network.',
+        'Raw extended public key import supports mainnet, testnet-family, signet, and regtest funding wallets. Use a descriptor or wallet export for this network.',
     });
 
     expect(validateXpub).not.toHaveBeenCalled();

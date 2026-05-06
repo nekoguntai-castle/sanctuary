@@ -6,6 +6,7 @@ import {
 } from './walletImport.setup';
 import { mockPrismaClient } from '../../mocks/prisma';
 import * as walletImport from '../../../src/services/walletImport';
+import { parseRequestedImportNetwork } from '../../../src/services/walletImport/walletImportService';
 import type { Network } from '../../../src/services/bitcoin/descriptorParser';
 
 describe('Wallet Import Service - Validation', () => {
@@ -16,6 +17,12 @@ describe('Wallet Import Service - Validation', () => {
   });
 
   describe('validateImport', () => {
+    it('ignores legacy or unknown requested import network values', () => {
+      expect(parseRequestedImportNetwork('testnet')).toBeUndefined();
+      expect(parseRequestedImportNetwork('unknown')).toBeUndefined();
+      expect(parseRequestedImportNetwork('testnet4')).toBe('testnet4');
+    });
+
     describe('Descriptor Import Validation', () => {
       it('should validate wpkh (native segwit) descriptor', async () => {
         const descriptor = "wpkh([abcd1234/84'/0'/0']xpub6Dz8PGZuAKKWdmNnKVVR3fFKPxPNaPXpNLhU6fKwC3Qh9U8jv7r5w2ZQRX1tYkGdBN35p1HsLPZxwUJp9L8yN4tVd4rPqvKtJ5mFYA9VqG6/0/*)#checksum";
@@ -48,6 +55,61 @@ describe('Wallet Import Service - Validation', () => {
         expect(result.devices).toHaveLength(1);
         expect(result.devices[0].fingerprint).toBe('abcd1234');
         expect(result.devices[0].willCreate).toBe(true);
+      });
+
+      it('resolves ambiguous testnet descriptor imports from the requested network', async () => {
+        const descriptor = "wpkh([abcd1234/84'/1'/0']tpub...)#checksum";
+
+        mockParseImportInput.mockReturnValue({
+          format: 'descriptor',
+          parsed: {
+            type: 'single_sig',
+            scriptType: 'native_segwit',
+            devices: [
+              {
+                fingerprint: 'abcd1234',
+                xpub: 'tpub...',
+                derivationPath: "m/84'/1'/0'",
+              },
+            ],
+            network: 'testnet',
+            isChange: false,
+          },
+        });
+
+        const result = await walletImport.validateImport(userId, {
+          descriptor,
+          network: 'testnet4',
+        });
+
+        expect(result.valid).toBe(true);
+        expect(result.network).toBe('testnet4');
+      });
+
+      it('defaults ambiguous testnet descriptor imports to testnet3 for compatibility', async () => {
+        const descriptor = "wpkh([abcd1234/84'/1'/0']tpub...)#checksum";
+
+        mockParseImportInput.mockReturnValue({
+          format: 'descriptor',
+          parsed: {
+            type: 'single_sig',
+            scriptType: 'native_segwit',
+            devices: [
+              {
+                fingerprint: 'abcd1234',
+                xpub: 'tpub...',
+                derivationPath: "m/84'/1'/0'",
+              },
+            ],
+            network: 'testnet',
+            isChange: false,
+          },
+        });
+
+        const result = await walletImport.validateImport(userId, { descriptor });
+
+        expect(result.valid).toBe(true);
+        expect(result.network).toBe('testnet3');
       });
 
       it('should validate wsh multisig descriptor', async () => {

@@ -342,7 +342,7 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
     });
 
     it('subscribes wallet addresses using wallet network when present', async () => {
-      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({ network: 'testnet' });
+      mockPrismaClient.wallet.findUnique.mockResolvedValueOnce({ network: 'testnet3' });
       mockPrismaClient.address.findMany.mockResolvedValueOnce([
         { address: 'tb1qaddr-a' },
         { address: 'tb1qaddr-b' },
@@ -350,7 +350,7 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
 
       await context.syncService.subscribeWalletAddresses('wallet-1');
 
-      expect(mockGetNodeClient).toHaveBeenCalledWith('testnet');
+      expect(mockGetNodeClient).toHaveBeenCalledWith('testnet3');
       expect(mockElectrumClient.subscribeAddress).toHaveBeenCalledTimes(2);
     });
 

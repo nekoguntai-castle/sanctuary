@@ -10,6 +10,7 @@ import { walletRepository, addressRepository } from '../../../repositories';
 import { createLogger } from '../../../utils/logger';
 import { walletLog } from '../../../websocket/notifications';
 import { executeSyncPipeline, defaultSyncPhases } from '../sync';
+import { normalizeLegacyBitcoinNetwork } from '../networks';
 import type { SyncWalletResult } from './types';
 
 const log = createLogger('BITCOIN:SVC_SYNC_WALLET');
@@ -83,7 +84,7 @@ export async function syncWallet(walletId: string, depth = 0): Promise<SyncWalle
 
     const wallet = await walletRepository.findById(walletId);
     if (wallet) {
-      const network = (wallet.network as 'mainnet' | 'testnet' | 'signet' | 'regtest') || 'mainnet';
+      const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
       const client = await getNodeClient(network);
 
       const newAddresses = await addressRepository.findRecentUnused(walletId, result.stats.newAddressesGenerated);

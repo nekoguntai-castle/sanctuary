@@ -518,7 +518,7 @@ test.describe('Create wallet flow', () => {
 
   // --- Network Selection ---
 
-  test('sidebar Testnet selection shows configuration warning', async ({ page }) => {
+  test('sidebar Testnet3 selection shows configuration warning', async ({ page }) => {
     const unhandledRequests = await mockCreateWalletApi(page);
     const main = page.getByRole('main');
     const networkTabs = page.getByRole('navigation', { name: 'Network tabs' });
@@ -531,9 +531,9 @@ test.describe('Create wallet flow', () => {
 
     await expect(main.getByText('Configuration')).toBeVisible();
 
-    await networkTabs.getByRole('button', { name: /Testnet/i }).click();
+    await networkTabs.getByRole('button', { name: 'Testnet3' }).click();
 
-    await expect(main.getByText('Testnet', { exact: true })).toBeVisible();
+    await expect(main.getByText('Testnet3', { exact: true })).toBeVisible();
     await expect(main.getByText('Testnet coins have no real-world value.')).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);

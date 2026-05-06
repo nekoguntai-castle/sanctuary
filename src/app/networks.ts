@@ -1,6 +1,7 @@
-export const TAB_NETWORKS = ['mainnet', 'testnet', 'signet'] as const;
+export const TAB_NETWORKS = ['mainnet', 'testnet3', 'testnet4', 'signet'] as const;
 
 export type TabNetwork = typeof TAB_NETWORKS[number];
+export type LegacyTabNetwork = TabNetwork | 'testnet';
 
 export interface NetworkConfig {
   label: string;
@@ -12,8 +13,12 @@ export const networkConfigs: Record<TabNetwork, NetworkConfig> = {
     label: 'Mainnet',
     dotColor: 'bg-mainnet-500',
   },
-  testnet: {
-    label: 'Testnet',
+  testnet3: {
+    label: 'Testnet3',
+    dotColor: 'bg-testnet-500',
+  },
+  testnet4: {
+    label: 'Testnet4',
     dotColor: 'bg-testnet-500',
   },
   signet: {
@@ -27,6 +32,7 @@ export function isTabNetwork(value: unknown): value is TabNetwork {
 }
 
 export function toTabNetwork(value: unknown, fallback: TabNetwork = 'mainnet'): TabNetwork {
+  if (value === 'testnet') return 'testnet3';
   return isTabNetwork(value) ? value : fallback;
 }
 
@@ -39,7 +45,7 @@ export function isMainnetNetwork(network: string | null | undefined): boolean {
 }
 
 export function suppressFiatForNetwork(network: string | null | undefined): boolean {
-  return network === 'testnet' || network === 'signet';
+  return Boolean(network && network !== 'mainnet');
 }
 
 export function coinTypeForNetwork(network: string | null | undefined): number {
@@ -58,8 +64,9 @@ export function countByNetwork<T extends { network?: string | null }>(
 ): Record<TabNetwork, number> {
   return {
     mainnet: items.filter((item) => toTabNetwork(item.network) === 'mainnet').length,
-    testnet: items.filter((item) => item.network === 'testnet').length,
-    signet: items.filter((item) => item.network === 'signet').length,
+    testnet3: items.filter((item) => toTabNetwork(item.network) === 'testnet3').length,
+    testnet4: items.filter((item) => toTabNetwork(item.network) === 'testnet4').length,
+    signet: items.filter((item) => toTabNetwork(item.network) === 'signet').length,
   };
 }
 

@@ -42,7 +42,25 @@ export interface NodeConfigInput {
   mainnetPoolMin?: NullableStringOrNumber;
   mainnetPoolMax?: NullableStringOrNumber;
   mainnetPoolLoadBalancing?: string;
-  // Per-network settings - Testnet
+  // Per-network settings - Testnet3
+  testnet3Enabled?: boolean;
+  testnet3Mode?: string;
+  testnet3SingletonHost?: NullableString;
+  testnet3SingletonPort?: NullableStringOrNumber;
+  testnet3SingletonSsl?: NullableBoolean;
+  testnet3PoolMin?: NullableStringOrNumber;
+  testnet3PoolMax?: NullableStringOrNumber;
+  testnet3PoolLoadBalancing?: string;
+  // Per-network settings - Testnet4
+  testnet4Enabled?: boolean;
+  testnet4Mode?: string;
+  testnet4SingletonHost?: NullableString;
+  testnet4SingletonPort?: NullableStringOrNumber;
+  testnet4SingletonSsl?: NullableBoolean;
+  testnet4PoolMin?: NullableStringOrNumber;
+  testnet4PoolMax?: NullableStringOrNumber;
+  testnet4PoolLoadBalancing?: string;
+  // Deprecated legacy Testnet settings
   testnetEnabled?: boolean;
   testnetMode?: string;
   testnetSingletonHost?: NullableString;
@@ -102,6 +120,16 @@ const MAINNET_DEFAULTS: NetworkDefaults = {
 const TESTNET_DEFAULTS: NetworkDefaults = {
   mode: "singleton",
   host: "electrum.blockstream.info",
+  port: 60002,
+  useSsl: true,
+  poolMin: 1,
+  poolMax: 3,
+  poolLoadBalancing: "round_robin",
+};
+
+const TESTNET4_DEFAULTS: NetworkDefaults = {
+  mode: "singleton",
+  host: "",
   port: 60002,
   useSsl: true,
   poolMin: 1,
@@ -179,6 +207,13 @@ function buildNetworkData(
   };
 }
 
+function legacyField<T>(
+  value: T | null | undefined,
+  legacyValue: T | null | undefined,
+): T | null | undefined {
+  return value ?? legacyValue;
+}
+
 function buildMainnetData(input: NodeConfigInput): Record<string, unknown> {
   const mainnet = buildNetworkData(
     {
@@ -204,29 +239,76 @@ function buildMainnetData(input: NodeConfigInput): Record<string, unknown> {
   };
 }
 
-function buildTestnetData(input: NodeConfigInput): Record<string, unknown> {
-  const testnet = buildNetworkData(
+function buildTestnet3Fields(input: NodeConfigInput): NetworkInputFields {
+  return {
+    mode: legacyField(input.testnet3Mode, input.testnetMode) ?? undefined,
+    singletonHost: legacyField(input.testnet3SingletonHost, input.testnetSingletonHost),
+    singletonPort: legacyField(input.testnet3SingletonPort, input.testnetSingletonPort),
+    singletonSsl: legacyField(input.testnet3SingletonSsl, input.testnetSingletonSsl),
+    poolMin: legacyField(input.testnet3PoolMin, input.testnetPoolMin),
+    poolMax: legacyField(input.testnet3PoolMax, input.testnetPoolMax),
+    poolLoadBalancing:
+      legacyField(input.testnet3PoolLoadBalancing, input.testnetPoolLoadBalancing) ??
+      undefined,
+  };
+}
+
+function buildTestnet3CompatibilityData(
+  enabled: boolean,
+  testnet3: ReturnType<typeof buildNetworkData>,
+): Record<string, unknown> {
+  return {
+    testnetEnabled: enabled,
+    testnetMode: testnet3.mode,
+    testnetSingletonHost: testnet3.singletonHost,
+    testnetSingletonPort: testnet3.singletonPort,
+    testnetSingletonSsl: testnet3.singletonSsl,
+    testnetPoolMin: testnet3.poolMin,
+    testnetPoolMax: testnet3.poolMax,
+    testnetPoolLoadBalancing: testnet3.poolLoadBalancing,
+  };
+}
+
+function buildTestnet3Data(input: NodeConfigInput): Record<string, unknown> {
+  const enabled = legacyField(input.testnet3Enabled, input.testnetEnabled) ?? false;
+  const testnet3 = buildNetworkData(buildTestnet3Fields(input), TESTNET_DEFAULTS);
+
+  return {
+    testnet3Enabled: enabled,
+    testnet3Mode: testnet3.mode,
+    testnet3SingletonHost: testnet3.singletonHost,
+    testnet3SingletonPort: testnet3.singletonPort,
+    testnet3SingletonSsl: testnet3.singletonSsl,
+    testnet3PoolMin: testnet3.poolMin,
+    testnet3PoolMax: testnet3.poolMax,
+    testnet3PoolLoadBalancing: testnet3.poolLoadBalancing,
+    ...buildTestnet3CompatibilityData(enabled, testnet3),
+  };
+}
+
+function buildTestnet4Data(input: NodeConfigInput): Record<string, unknown> {
+  const testnet4 = buildNetworkData(
     {
-      mode: input.testnetMode,
-      singletonHost: input.testnetSingletonHost,
-      singletonPort: input.testnetSingletonPort,
-      singletonSsl: input.testnetSingletonSsl,
-      poolMin: input.testnetPoolMin,
-      poolMax: input.testnetPoolMax,
-      poolLoadBalancing: input.testnetPoolLoadBalancing,
+      mode: input.testnet4Mode,
+      singletonHost: input.testnet4SingletonHost,
+      singletonPort: input.testnet4SingletonPort,
+      singletonSsl: input.testnet4SingletonSsl,
+      poolMin: input.testnet4PoolMin,
+      poolMax: input.testnet4PoolMax,
+      poolLoadBalancing: input.testnet4PoolLoadBalancing,
     },
-    TESTNET_DEFAULTS,
+    TESTNET4_DEFAULTS,
   );
 
   return {
-    testnetEnabled: input.testnetEnabled ?? false,
-    testnetMode: testnet.mode,
-    testnetSingletonHost: testnet.singletonHost,
-    testnetSingletonPort: testnet.singletonPort,
-    testnetSingletonSsl: testnet.singletonSsl,
-    testnetPoolMin: testnet.poolMin,
-    testnetPoolMax: testnet.poolMax,
-    testnetPoolLoadBalancing: testnet.poolLoadBalancing,
+    testnet4Enabled: input.testnet4Enabled ?? false,
+    testnet4Mode: testnet4.mode,
+    testnet4SingletonHost: testnet4.singletonHost || null,
+    testnet4SingletonPort: testnet4.singletonPort,
+    testnet4SingletonSsl: testnet4.singletonSsl,
+    testnet4PoolMin: testnet4.poolMin,
+    testnet4PoolMax: testnet4.poolMax,
+    testnet4PoolLoadBalancing: testnet4.poolLoadBalancing,
   };
 }
 
@@ -291,16 +373,13 @@ export function buildNodeConfigData(
     poolLoadBalancing: loadBalancing,
     ...buildProxyData(input),
     ...buildMainnetData(input),
-    ...buildTestnetData(input),
+    ...buildTestnet3Data(input),
+    ...buildTestnet4Data(input),
     ...buildSignetData(input),
   };
 }
 
-/**
- * Build the API response object from a NodeConfig database record.
- * Masks sensitive fields (proxy password).
- */
-export function buildNodeConfigResponse(
+function buildNodeConfigBaseResponse(
   nodeConfig: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
@@ -316,7 +395,13 @@ export function buildNodeConfigResponse(
     poolMinConnections: nodeConfig.poolMinConnections,
     poolMaxConnections: nodeConfig.poolMaxConnections,
     poolLoadBalancing: nodeConfig.poolLoadBalancing || "round_robin",
-    // Per-network settings
+  };
+}
+
+function buildMainnetResponse(
+  nodeConfig: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
     mainnetMode: nodeConfig.mainnetMode,
     mainnetSingletonHost: nodeConfig.mainnetSingletonHost,
     mainnetSingletonPort: nodeConfig.mainnetSingletonPort,
@@ -324,6 +409,55 @@ export function buildNodeConfigResponse(
     mainnetPoolMin: nodeConfig.mainnetPoolMin,
     mainnetPoolMax: nodeConfig.mainnetPoolMax,
     mainnetPoolLoadBalancing: nodeConfig.mainnetPoolLoadBalancing,
+  };
+}
+
+function buildTestnet3Response(
+  nodeConfig: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    testnet3Enabled: legacyField(nodeConfig.testnet3Enabled, nodeConfig.testnetEnabled),
+    testnet3Mode: legacyField(nodeConfig.testnet3Mode, nodeConfig.testnetMode),
+    testnet3SingletonHost: legacyField(
+      nodeConfig.testnet3SingletonHost,
+      nodeConfig.testnetSingletonHost,
+    ),
+    testnet3SingletonPort: legacyField(
+      nodeConfig.testnet3SingletonPort,
+      nodeConfig.testnetSingletonPort,
+    ),
+    testnet3SingletonSsl: legacyField(
+      nodeConfig.testnet3SingletonSsl,
+      nodeConfig.testnetSingletonSsl,
+    ),
+    testnet3PoolMin: legacyField(nodeConfig.testnet3PoolMin, nodeConfig.testnetPoolMin),
+    testnet3PoolMax: legacyField(nodeConfig.testnet3PoolMax, nodeConfig.testnetPoolMax),
+    testnet3PoolLoadBalancing: legacyField(
+      nodeConfig.testnet3PoolLoadBalancing,
+      nodeConfig.testnetPoolLoadBalancing,
+    ),
+  };
+}
+
+function buildTestnet4Response(
+  nodeConfig: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    testnet4Enabled: nodeConfig.testnet4Enabled,
+    testnet4Mode: nodeConfig.testnet4Mode,
+    testnet4SingletonHost: nodeConfig.testnet4SingletonHost,
+    testnet4SingletonPort: nodeConfig.testnet4SingletonPort,
+    testnet4SingletonSsl: nodeConfig.testnet4SingletonSsl,
+    testnet4PoolMin: nodeConfig.testnet4PoolMin,
+    testnet4PoolMax: nodeConfig.testnet4PoolMax,
+    testnet4PoolLoadBalancing: nodeConfig.testnet4PoolLoadBalancing,
+  };
+}
+
+function buildLegacyTestnetResponse(
+  nodeConfig: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
     testnetEnabled: nodeConfig.testnetEnabled,
     testnetMode: nodeConfig.testnetMode,
     testnetSingletonHost: nodeConfig.testnetSingletonHost,
@@ -332,6 +466,13 @@ export function buildNodeConfigResponse(
     testnetPoolMin: nodeConfig.testnetPoolMin,
     testnetPoolMax: nodeConfig.testnetPoolMax,
     testnetPoolLoadBalancing: nodeConfig.testnetPoolLoadBalancing,
+  };
+}
+
+function buildSignetResponse(
+  nodeConfig: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
     signetEnabled: nodeConfig.signetEnabled,
     signetMode: nodeConfig.signetMode,
     signetSingletonHost: nodeConfig.signetSingletonHost,
@@ -340,5 +481,22 @@ export function buildNodeConfigResponse(
     signetPoolMin: nodeConfig.signetPoolMin,
     signetPoolMax: nodeConfig.signetPoolMax,
     signetPoolLoadBalancing: nodeConfig.signetPoolLoadBalancing,
+  };
+}
+
+/**
+ * Build the API response object from a NodeConfig database record.
+ * Masks sensitive fields (proxy password).
+ */
+export function buildNodeConfigResponse(
+  nodeConfig: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...buildNodeConfigBaseResponse(nodeConfig),
+    ...buildMainnetResponse(nodeConfig),
+    ...buildTestnet3Response(nodeConfig),
+    ...buildTestnet4Response(nodeConfig),
+    ...buildLegacyTestnetResponse(nodeConfig),
+    ...buildSignetResponse(nodeConfig),
   };
 }

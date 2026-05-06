@@ -263,7 +263,7 @@ describe('NodeConfig', () => {
   });
 
   describe('network tabs', () => {
-    it('shows mainnet/testnet/signet tabs', async () => {
+    it('shows mainnet/testnet3/testnet4/signet tabs', async () => {
       render(<NodeConfig />);
 
       await waitFor(() => {
@@ -279,7 +279,7 @@ describe('NodeConfig', () => {
 
       // Network tabs should be visible as tab buttons
       const tabs = document.querySelectorAll('.border-b button');
-      expect(tabs.length).toBe(3); // mainnet, testnet, signet
+      expect(tabs.length).toBe(4); // mainnet, testnet3, testnet4, signet
     });
 
     it('switches network tabs when clicked', async () => {
@@ -295,8 +295,8 @@ describe('NodeConfig', () => {
         expect(screen.getByTestId('network-card-mainnet')).toBeInTheDocument();
       });
 
-      // Click testnet tab (find by text within the tab bar)
-      const testnetButtons = screen.getAllByText(/testnet/i);
+      // Click testnet3 tab (find by text within the tab bar)
+      const testnetButtons = screen.getAllByText(/testnet3/i);
       // The tab button should be in the tab bar area
       testnetButtons.forEach(btn => {
         if (btn.tagName === 'BUTTON' || btn.closest('button')) {
@@ -305,7 +305,7 @@ describe('NodeConfig', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByTestId('network-card-testnet')).toBeInTheDocument();
+        expect(screen.getByTestId('network-card-testnet3')).toBeInTheDocument();
       });
     });
   });

@@ -89,9 +89,9 @@ describe("console drawer utilities", () => {
       mode: "auto",
       selectedNetwork: "mainnet",
     });
-    expect(buildConsoleClientContext(AUTO_CONTEXT_ID, "testnet", "wallet-1")).toEqual({
+    expect(buildConsoleClientContext(AUTO_CONTEXT_ID, "testnet3", "wallet-1")).toEqual({
       mode: "auto",
-      selectedNetwork: "testnet",
+      selectedNetwork: "testnet3",
       routeWalletId: "wallet-1",
     });
     expect(buildConsoleClientContext(GENERAL_SCOPE_ID, "mainnet")).toBeUndefined();

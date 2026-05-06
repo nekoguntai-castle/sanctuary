@@ -222,7 +222,7 @@ describe('agentFundingDraftValidation', () => {
 
     setupRepositoryMocks(fixture);
     mockFindWalletById
-      .mockResolvedValueOnce({ id: FUNDING_WALLET_ID, type: 'multi_sig', network: 'testnet' })
+      .mockResolvedValueOnce({ id: FUNDING_WALLET_ID, type: 'multi_sig', network: 'testnet3' })
       .mockResolvedValueOnce(null);
     await expect(validSubmission(fixture)).rejects.toThrow('Operational wallet not found');
 
@@ -233,16 +233,16 @@ describe('agentFundingDraftValidation', () => {
     setupRepositoryMocks(fixture);
     mockFindWalletById.mockImplementation(async (walletId: string) => {
       if (walletId === FUNDING_WALLET_ID) {
-        return { id: FUNDING_WALLET_ID, type: 'single_sig', network: 'testnet' };
+        return { id: FUNDING_WALLET_ID, type: 'single_sig', network: 'testnet3' };
       }
-      return { id: OPERATIONAL_WALLET_ID, type: 'single_sig', network: 'testnet' };
+      return { id: OPERATIONAL_WALLET_ID, type: 'single_sig', network: 'testnet3' };
     });
     await expect(validSubmission(fixture)).rejects.toThrow('must be a multisig wallet');
 
     setupRepositoryMocks(fixture);
     mockFindWalletById.mockImplementation(async (walletId: string) => {
       if (walletId === FUNDING_WALLET_ID) {
-        return { id: FUNDING_WALLET_ID, type: 'multi_sig', network: 'testnet' };
+        return { id: FUNDING_WALLET_ID, type: 'multi_sig', network: 'testnet3' };
       }
       return { id: OPERATIONAL_WALLET_ID, type: 'single_sig', network: 'mainnet' };
     });
@@ -455,14 +455,14 @@ function setupRepositoryMocks(
       return {
         id: FUNDING_WALLET_ID,
         type: 'multi_sig',
-        network: 'testnet',
+        network: 'testnet3',
       };
     }
     if (walletId === OPERATIONAL_WALLET_ID) {
       return {
         id: OPERATIONAL_WALLET_ID,
         type: 'single_sig',
-        network: 'testnet',
+        network: 'testnet3',
       };
     }
     return null;

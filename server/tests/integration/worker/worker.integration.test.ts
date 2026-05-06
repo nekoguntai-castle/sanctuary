@@ -37,8 +37,8 @@ describe('worker integration', () => {
     const onNewBlock = harness.electrumOptions.onNewBlock!;
     const onAddressActivity = harness.electrumOptions.onAddressActivity!;
 
-    onNewBlock('testnet', 123, 'hash-123');
-    onAddressActivity('testnet', 'wallet-1', 'addr-1');
+    onNewBlock('testnet3', 123, 'hash-123');
+    onAddressActivity('testnet3', 'wallet-1', 'addr-1');
 
     expect(harness.jobQueue.addJob).toHaveBeenCalledWith(
       'confirmations',

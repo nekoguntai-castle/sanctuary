@@ -12,6 +12,7 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import { getNetwork } from '../utils';
+import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { RBF_SEQUENCE } from '../advancedTx';
 import { walletRepository } from '../../../repositories';
 import { createLogger } from '../../../utils/logger';
@@ -66,7 +67,7 @@ export async function createTransaction(
   log.debug('createTransaction', { walletId, scriptType: wallet.scriptType });
 
   // Validate recipient address
-  const network = wallet.network === 'testnet' ? 'testnet' : 'mainnet';
+  const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
   const networkObj = getNetwork(network);
 
   // Resolve wallet signing info (fingerprints, xpubs, multisig keys)

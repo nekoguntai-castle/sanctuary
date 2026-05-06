@@ -60,7 +60,7 @@ export async function renderCreateWalletRouteShowsNoCompatibleDeviceMessageForMu
   expect(unhandledRequests).toEqual([]);
 }
 
-export async function renderCreateWalletRouteConfigurationShowsNetworkWarningForTestnet({ page }: { page: Page }): Promise<void> {
+export async function renderCreateWalletRouteConfigurationShowsNetworkWarningForTestnet3({ page }: { page: Page }): Promise<void> {
   const unhandledRequests = await mockAuthenticatedApi(page);
   const main = page.getByRole('main');
 
@@ -76,7 +76,7 @@ export async function renderCreateWalletRouteConfigurationShowsNetworkWarningFor
   await expect(main.getByText('Script Type')).toBeVisible();
   await page
     .getByRole('navigation', { name: 'Network tabs' })
-    .getByRole('button', { name: /Testnet/i })
+    .getByRole('button', { name: 'Testnet3' })
     .click();
   await expect(main.getByText('Testnet coins have no real-world value.')).toBeVisible();
 

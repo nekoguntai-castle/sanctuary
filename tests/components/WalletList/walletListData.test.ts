@@ -14,7 +14,7 @@ import {
 
 const wallets = [
   { id: 'alpha', name: 'Alpha', type: 'single_sig', balance: 300, network: 'mainnet', deviceCount: 2 },
-  { id: 'bravo', name: 'Bravo', type: 'multi_sig', balance: 100, network: 'testnet', deviceCount: 5 },
+  { id: 'bravo', name: 'Bravo', type: 'multi_sig', balance: 100, network: 'testnet3', deviceCount: 5 },
   { id: 'charlie', name: 'Charlie', type: 'single_sig', balance: 200, network: 'signet' },
 ] as any[];
 
@@ -22,16 +22,19 @@ describe('walletListData', () => {
   it('resolves URL networks and display titles', () => {
     expect(isTabNetwork(null)).toBe(false);
     expect(isTabNetwork('mainnet')).toBe(true);
+    expect(resolveInitialNetwork('testnet')).toBe('testnet3');
+    expect(resolveInitialNetwork('testnet4')).toBe('testnet4');
     expect(resolveInitialNetwork('signet')).toBe('signet');
     expect(resolveInitialNetwork('regtest')).toBe('mainnet');
-    expect(formatNetworkTitle('testnet')).toBe('Testnet');
+    expect(formatNetworkTitle('testnet3')).toBe('Testnet3');
   });
 
   it('filters, counts, totals, and maps wallet ids by network', () => {
     expect(filterWalletsByNetwork(wallets, 'mainnet').map(wallet => wallet.id)).toEqual(['alpha']);
     expect(countWalletsByNetwork(wallets)).toEqual({
       mainnet: 1,
-      testnet: 1,
+      testnet3: 1,
+      testnet4: 0,
       signet: 1,
     });
     expect(totalWalletBalance(wallets)).toBe(600);

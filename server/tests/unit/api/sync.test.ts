@@ -420,20 +420,20 @@ describe('Sync API - Network Endpoints', () => {
       );
     });
 
-    it('should queue testnet wallets for sync', async () => {
-      mockWalletRepository.getIdsByNetwork.mockResolvedValue(['testnet-wallet-1']);
+    it('should queue testnet3 wallets for sync', async () => {
+      mockWalletRepository.getIdsByNetwork.mockResolvedValue(['testnet3-wallet-1']);
 
       const response = await request(app)
-        .post('/sync/network/testnet')
+        .post('/sync/network/testnet3')
         .send({ priority: 'high' });
 
       expect(response.status).toBe(200);
       expect(response.body.queued).toBe(1);
       expect(mockEnqueueWalletSyncBatch).toHaveBeenCalledWith(
-        ['testnet-wallet-1'],
+        ['testnet3-wallet-1'],
         expect.objectContaining({
           priority: 'high',
-          reason: 'manual-network-sync:testnet',
+          reason: 'manual-network-sync:testnet3',
         })
       );
     });
@@ -453,7 +453,7 @@ describe('Sync API - Network Endpoints', () => {
       mockWalletRepository.getIdsByNetwork.mockResolvedValue([]);
 
       const response = await request(app)
-        .post('/sync/network/testnet')
+        .post('/sync/network/testnet4')
         .send({});
 
       expect(response.status).toBe(200);
@@ -461,7 +461,7 @@ describe('Sync API - Network Endpoints', () => {
         success: true,
         queued: 0,
         walletIds: [],
-        message: 'No testnet wallets found',
+        message: 'No testnet4 wallets found',
       });
       expect(mockEnqueueWalletSyncBatch).not.toHaveBeenCalled();
     });
@@ -544,7 +544,7 @@ describe('Sync API - Network Endpoints', () => {
       mockWalletRepository.resetSyncState.mockResolvedValue({});
 
       const response = await request(app)
-        .post('/sync/network/testnet/resync')
+        .post('/sync/network/testnet3/resync')
         .set('X-Confirm-Resync', 'true')
         .send({});
 
@@ -655,7 +655,7 @@ describe('Sync API - Network Endpoints', () => {
       mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([]);
 
       const response = await request(app)
-        .get('/sync/network/testnet/status');
+        .get('/sync/network/testnet4/status');
 
       expect(response.status).toBe(200);
       expect(response.body.total).toBe(0);

@@ -13,6 +13,22 @@ export const DEFAULT_NODE_CONFIG: NodeConfigType = {
   mainnetPoolMin: 1,
   mainnetPoolMax: 5,
   mainnetPoolLoadBalancing: 'round_robin',
+  testnet3Enabled: false,
+  testnet3Mode: 'singleton',
+  testnet3SingletonHost: 'electrum.blockstream.info',
+  testnet3SingletonPort: 60002,
+  testnet3SingletonSsl: true,
+  testnet3PoolMin: 1,
+  testnet3PoolMax: 3,
+  testnet3PoolLoadBalancing: 'round_robin',
+  testnet4Enabled: false,
+  testnet4Mode: 'singleton',
+  testnet4SingletonHost: null,
+  testnet4SingletonPort: 60002,
+  testnet4SingletonSsl: true,
+  testnet4PoolMin: 1,
+  testnet4PoolMax: 3,
+  testnet4PoolLoadBalancing: 'round_robin',
   testnetEnabled: false,
   testnetMode: 'singleton',
   testnetSingletonHost: 'electrum.blockstream.info',
@@ -58,7 +74,8 @@ export function getExternalServicesSummary(config: NodeConfigType | null): strin
 
 export function getNetworksSummary(config: NodeConfigType | null, servers: ElectrumServer[]): string {
   const parts = [`Mainnet (${getServersForNetwork(servers, 'mainnet').length})`];
-  if (config?.testnetEnabled) parts.push('Testnet');
+  if (config?.testnet3Enabled ?? config?.testnetEnabled) parts.push('Testnet3');
+  if (config?.testnet4Enabled) parts.push('Testnet4');
   if (config?.signetEnabled) parts.push('Signet');
   return parts.join(' • ');
 }

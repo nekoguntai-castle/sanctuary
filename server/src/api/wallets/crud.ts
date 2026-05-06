@@ -20,7 +20,7 @@ const CreateWalletBodySchema = z.object({
   name: z.string().min(1),
   type: z.enum(['single_sig', 'multi_sig']),
   scriptType: z.string().min(1),
-  network: z.string().optional(),
+  network: z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']).optional(),
   quorum: z.unknown().optional(),
   totalSigners: z.unknown().optional(),
   descriptor: z.string().optional(),

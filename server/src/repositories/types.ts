@@ -10,7 +10,7 @@ import type { Wallet, Address, Transaction, User, UTXO } from '../generated/pris
 export type { Wallet, Address, Transaction, User, UTXO };
 
 // Network type from schema
-export type NetworkType = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+export type NetworkType = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
 
 // Wallet with includes
 export interface WalletWithAddresses extends Wallet {

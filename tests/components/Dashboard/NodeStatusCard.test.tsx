@@ -38,7 +38,7 @@ describe('NodeStatusCard', () => {
       const { container } = render(
         <NodeStatusCard
           isMainnet={false}
-          selectedNetwork="testnet"
+          selectedNetwork="testnet3"
           nodeStatus="connected"
           bitcoinStatus={undefined}
         />,
@@ -333,19 +333,19 @@ describe('NodeStatusCard', () => {
   });
 
   describe('NetworkUnavailableContent', () => {
-    it('shows unavailable testnet status without claiming it is unconfigured', () => {
+    it('shows unavailable testnet3 status without claiming it is unconfigured', () => {
       render(
         <NodeStatusCard
           isMainnet={false}
-          selectedNetwork="testnet"
+          selectedNetwork="testnet3"
           nodeStatus="unknown"
           bitcoinStatus={undefined}
         />,
       );
 
-      expect(screen.getByText('Testnet node status is unavailable')).toBeInTheDocument();
-      expect(screen.queryByText('Testnet node not configured')).not.toBeInTheDocument();
-      expect(screen.getByText('Open Admin \u2192 Node Config to review Testnet settings.')).toBeInTheDocument();
+      expect(screen.getByText('Testnet3 node status is unavailable')).toBeInTheDocument();
+      expect(screen.queryByText('Testnet3 node not configured')).not.toBeInTheDocument();
+      expect(screen.getByText('Open Admin \u2192 Node Config to review Testnet3 settings.')).toBeInTheDocument();
     });
 
     it('shows signet error message from the network status API', () => {
@@ -365,7 +365,7 @@ describe('NodeStatusCard', () => {
       render(
         <NodeStatusCard
           isMainnet={false}
-          selectedNetwork="testnet"
+          selectedNetwork="testnet3"
           nodeStatus="checking"
           bitcoinStatus={undefined}
         />,
@@ -374,11 +374,11 @@ describe('NodeStatusCard', () => {
       expect(screen.getByText('Checking configured Electrum server...')).toBeInTheDocument();
     });
 
-    it('shows configured testnet Electrum host when connected', () => {
+    it('shows configured testnet3 Electrum host when connected', () => {
       render(
         <NodeStatusCard
           isMainnet={false}
-          selectedNetwork="testnet"
+          selectedNetwork="testnet3"
           nodeStatus="connected"
           bitcoinStatus={{
             connected: true,
@@ -411,17 +411,17 @@ describe('NodeStatusCard', () => {
       expect(screen.getByText('MAINNET')).toBeInTheDocument();
     });
 
-    it('shows TESTNET badge for testnet', () => {
+    it('shows TESTNET3 badge for testnet3', () => {
       render(
         <NodeStatusCard
           isMainnet={false}
-          selectedNetwork="testnet"
+          selectedNetwork="testnet3"
           nodeStatus="unknown"
           bitcoinStatus={undefined}
         />,
       );
 
-      expect(screen.getByText('TESTNET')).toBeInTheDocument();
+      expect(screen.getByText('TESTNET3')).toBeInTheDocument();
     });
 
     it('shows SIGNET badge for signet', () => {

@@ -8,8 +8,9 @@ import {
 } from "../repositories";
 import { deriveAddressFromDescriptor } from "./bitcoin/addressDerivation";
 import { parseAddressDerivationPath } from "../../../shared/utils/bitcoin";
+import { isBitcoinNetwork, type BitcoinNetwork } from "./bitcoin/networks";
 
-type SupportedNetwork = "mainnet" | "testnet" | "signet" | "regtest";
+type SupportedNetwork = BitcoinNetwork;
 
 export interface AgentOperationalReceiveAddress {
   walletId: string;
@@ -34,10 +35,7 @@ interface DerivationPathRecord {
 
 function toSupportedNetwork(network: string): SupportedNetwork {
   if (
-    network === "mainnet" ||
-    network === "testnet" ||
-    network === "signet" ||
-    network === "regtest"
+    isBitcoinNetwork(network)
   ) {
     return network;
   }

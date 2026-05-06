@@ -10,6 +10,7 @@ import { AnimatedFeeRate } from './AnimatedFeeRate';
 import { WalletSummary } from './WalletSummary';
 import { RecentTransactions } from './RecentTransactions';
 import { SanctuarySpinner, SanctuaryLogo } from '../ui/CustomIcons';
+import { formatNetworkTitle } from '../../src/app/networks';
 
 export const Dashboard: React.FC = () => {
   const {
@@ -161,10 +162,10 @@ export const Dashboard: React.FC = () => {
           ) : (
             <div className="flex flex-col items-center justify-center py-4">
               <span className="text-2xl font-bold text-sanctuary-400 dark:text-sanctuary-500 mb-2">
-                {selectedNetwork === 'testnet' ? 'tBTC' : 'sBTC'}
+                {selectedNetwork === 'signet' ? 'sBTC' : 'tBTC'}
               </span>
               <p className="text-sm text-sanctuary-500 dark:text-sanctuary-400 text-center">
-                {selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1)} coins have no market value
+                {formatNetworkTitle(selectedNetwork)} coins have no market value
               </p>
             </div>
           )}

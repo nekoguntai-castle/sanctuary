@@ -8,7 +8,7 @@ import * as bitcoinApi from '../../src/api/bitcoin';
 import * as adminApi from '../../src/api/admin';
 
 export type SectionId = 'external' | 'networks' | 'proxy';
-export type NetworkTab = 'mainnet' | 'testnet' | 'signet';
+export type NetworkTab = 'mainnet' | 'testnet3' | 'testnet4' | 'signet';
 
 export interface ExternalServicesSectionProps {
   nodeConfig: NodeConfigType;
@@ -25,7 +25,7 @@ export interface NetworkConnectionsSectionProps {
   activeNetworkTab: NetworkTab;
   onNetworkTabChange: (tab: NetworkTab) => void;
   onConfigChange: (config: NodeConfigType) => void;
-  onServersChange: (network: 'mainnet' | 'testnet' | 'signet', servers: ElectrumServer[]) => void;
+  onServersChange: (network: NetworkTab, servers: ElectrumServer[]) => void;
   onTestConnection: (host: string, port: number, ssl: boolean) => Promise<{ success: boolean; message: string }>;
   expanded: boolean;
   onToggle: () => void;

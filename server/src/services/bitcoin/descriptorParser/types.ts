@@ -11,7 +11,8 @@ export interface ParsedDevice {
 }
 
 export type ScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-export type Network = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+export type Network = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
+export type DetectedNetwork = Network | 'testnet';
 
 export interface ParsedDescriptor {
   type: 'single_sig' | 'multi_sig';
@@ -19,7 +20,7 @@ export interface ParsedDescriptor {
   devices: ParsedDevice[];
   quorum?: number;
   totalSigners?: number;
-  network: Network;
+  network: DetectedNetwork;
   isChange: boolean;
 }
 
@@ -43,7 +44,7 @@ export interface JsonImportConfig {
   type: 'single_sig' | 'multi_sig';
   scriptType: ScriptType;
   quorum?: number;
-  network?: Network;
+  network?: DetectedNetwork;
   devices: JsonImportDevice[];
   name?: string;
 }

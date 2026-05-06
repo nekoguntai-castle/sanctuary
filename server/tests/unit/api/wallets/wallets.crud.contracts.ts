@@ -46,7 +46,7 @@ export const registerWalletCrudContracts = () => {
         name: 'New Wallet',
         type: 'single_sig',
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
       };
 
       mockCreateWallet.mockResolvedValue({ id: 'wallet-new', ...walletData, createdAt: new Date() });
@@ -130,7 +130,7 @@ export const registerWalletCrudContracts = () => {
         name: 'Test Wallet',
         type: 'single_sig',
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
         balance: 150000,
       };
 

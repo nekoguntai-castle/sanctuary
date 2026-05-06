@@ -1,7 +1,7 @@
 import { NodeConfig as NodeConfigType, ElectrumServer } from '../../types';
 import * as bitcoinApi from '../../src/api/bitcoin';
 
-export type NetworkType = 'mainnet' | 'testnet' | 'signet';
+export type NetworkType = 'mainnet' | 'testnet3' | 'testnet4' | 'signet';
 export type ConnectionMode = 'singleton' | 'pool';
 
 export interface NetworkConnectionCardProps {

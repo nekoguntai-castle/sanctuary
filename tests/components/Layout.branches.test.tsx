@@ -13,7 +13,7 @@ import * as bitcoinApi from '../../src/api/bitcoin';
 import * as draftsApi from '../../src/api/drafts';
 
 const activeNetworkMock = vi.hoisted(() => ({
-  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet' | 'signet',
+  selectedNetwork: 'mainnet' as 'mainnet' | 'testnet3' | 'signet',
   setSelectedNetwork: vi.fn(),
 }));
 
@@ -364,10 +364,10 @@ describe('Layout branch coverage', () => {
   }
 
   it('resets a persisted active network when Node Configuration disables it', async () => {
-    activeNetworkMock.selectedNetwork = 'testnet';
+    activeNetworkMock.selectedNetwork = 'testnet3';
     vi.mocked(bitcoinApi.getStatus).mockImplementation(async (network) => ({
-      connected: network !== 'testnet',
-      error: network === 'testnet'
+      connected: network !== 'testnet3',
+      error: network === 'testnet3'
         ? 'Testnet sync is off in Node Configuration. Enable Testnet under Network Connections.'
         : undefined,
     }) as any);

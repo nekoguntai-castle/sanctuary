@@ -1,7 +1,7 @@
 import apiClient from './client';
 
 export type XpubScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-export type XpubValidationNetwork = 'mainnet' | 'testnet' | 'regtest';
+export type XpubValidationNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
 
 export interface ValidateXpubRequest {
   xpub: string;

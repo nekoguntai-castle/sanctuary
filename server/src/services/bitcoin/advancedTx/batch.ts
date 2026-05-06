@@ -8,6 +8,7 @@
 
 import * as bitcoin from "bitcoinjs-lib";
 import { getNetwork, estimateTransactionSize, calculateFee } from "../utils";
+import type { BitcoinNetwork } from "../networks";
 import { utxoRepository, addressRepository } from "../../../repositories";
 import { RBF_SEQUENCE, getDustThreshold } from "./shared";
 
@@ -19,7 +20,7 @@ export async function createBatchTransaction(
   feeRate: number,
   walletId: string,
   selectedUtxoIds?: string[],
-  network: "mainnet" | "testnet" | "signet" | "regtest" = "mainnet",
+  network: BitcoinNetwork = "mainnet",
 ): Promise<{
   psbt: bitcoin.Psbt;
   fee: number;

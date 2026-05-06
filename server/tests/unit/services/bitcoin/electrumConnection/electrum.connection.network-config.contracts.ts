@@ -107,7 +107,7 @@ export function registerElectrumConnectionNetworkConfigContracts(): void {
     expect(tlsConnectMock).toHaveBeenCalledTimes(1);
   });
 
-  it("uses testnet Electrum defaults when singleton host and port are absent", async () => {
+  it("uses testnet3 Electrum defaults when singleton host and port are absent", async () => {
     const baseSocket = new FakeSocket();
     const tlsSocket = new FakeSocket();
     nodeConfigFindFirstMock.mockResolvedValueOnce({
@@ -115,7 +115,7 @@ export function registerElectrumConnectionNetworkConfigContracts(): void {
       host: "db-host",
       port: 50001,
       useSsl: false,
-      testnetSingletonSsl: true,
+      testnet3SingletonSsl: true,
     });
     netConnectMock.mockImplementationOnce(() => {
       queueMicrotask(() => baseSocket.emit("connect"));
@@ -129,7 +129,7 @@ export function registerElectrumConnectionNetworkConfigContracts(): void {
     );
 
     const client = new ElectrumClient();
-    client.setNetwork("testnet");
+    client.setNetwork("testnet3");
     await client.connect();
 
     expect(netConnectMock).toHaveBeenCalledWith({
@@ -144,7 +144,7 @@ export function registerElectrumConnectionNetworkConfigContracts(): void {
     );
   });
 
-  it("uses TLS for testnet when SSL setting is null", async () => {
+  it("uses TLS for testnet3 when SSL setting is null", async () => {
     const baseSocket = new FakeSocket();
     const tlsSocket = new FakeSocket();
     nodeConfigFindFirstMock.mockResolvedValueOnce({
@@ -152,9 +152,9 @@ export function registerElectrumConnectionNetworkConfigContracts(): void {
       host: "db-host",
       port: 50001,
       useSsl: false,
-      testnetSingletonHost: "testnet-null-ssl-host",
-      testnetSingletonPort: 62002,
-      testnetSingletonSsl: null,
+      testnet3SingletonHost: "testnet-null-ssl-host",
+      testnet3SingletonPort: 62002,
+      testnet3SingletonSsl: null,
     });
     netConnectMock.mockImplementationOnce(() => {
       queueMicrotask(() => baseSocket.emit("connect"));
@@ -168,7 +168,7 @@ export function registerElectrumConnectionNetworkConfigContracts(): void {
     );
 
     const client = new ElectrumClient();
-    client.setNetwork("testnet");
+    client.setNetwork("testnet3");
     await client.connect();
 
     expect(netConnectMock).toHaveBeenCalledWith({
@@ -178,16 +178,16 @@ export function registerElectrumConnectionNetworkConfigContracts(): void {
     expect(tlsConnectMock).toHaveBeenCalledTimes(1);
   });
 
-  it("uses plain TCP for testnet when SSL is disabled", async () => {
+  it("uses plain TCP for testnet3 when SSL is disabled", async () => {
     const socket = new FakeSocket();
     nodeConfigFindFirstMock.mockResolvedValueOnce({
       type: "electrum",
       host: "db-host",
       port: 50001,
       useSsl: true,
-      testnetSingletonHost: "testnet-plain-host",
-      testnetSingletonPort: 52001,
-      testnetSingletonSsl: false,
+      testnet3SingletonHost: "testnet-plain-host",
+      testnet3SingletonPort: 52001,
+      testnet3SingletonSsl: false,
     });
     netConnectMock.mockImplementationOnce(() => {
       queueMicrotask(() => socket.emit("connect"));
@@ -195,11 +195,72 @@ export function registerElectrumConnectionNetworkConfigContracts(): void {
     });
 
     const client = new ElectrumClient();
-    client.setNetwork("testnet");
+    client.setNetwork("testnet3");
     await client.connect();
 
     expect(netConnectMock).toHaveBeenCalledWith({
       host: "testnet-plain-host",
+      port: 52001,
+    });
+    expect(tlsConnectMock).not.toHaveBeenCalled();
+  });
+
+  it("uses testnet4 defaults when singleton host, port, and SSL are absent", async () => {
+    const baseSocket = new FakeSocket();
+    const tlsSocket = new FakeSocket();
+    nodeConfigFindFirstMock.mockResolvedValueOnce({
+      type: "electrum",
+      host: "db-host",
+      port: 50001,
+      useSsl: false,
+      testnet4SingletonHost: null,
+      testnet4SingletonPort: null,
+      testnet4SingletonSsl: null,
+    });
+    netConnectMock.mockImplementationOnce(() => {
+      queueMicrotask(() => baseSocket.emit("connect"));
+      return baseSocket;
+    });
+    tlsConnectMock.mockImplementationOnce(
+      (options: any, onSecureConnect: () => void) => {
+        queueMicrotask(() => onSecureConnect());
+        return tlsSocket;
+      },
+    );
+
+    const client = new ElectrumClient();
+    client.setNetwork("testnet4");
+    await client.connect();
+
+    expect(netConnectMock).toHaveBeenCalledWith({
+      host: "",
+      port: 60002,
+    });
+    expect(tlsConnectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses plain TCP for testnet4 when SSL is disabled", async () => {
+    const socket = new FakeSocket();
+    nodeConfigFindFirstMock.mockResolvedValueOnce({
+      type: "electrum",
+      host: "db-host",
+      port: 50001,
+      useSsl: true,
+      testnet4SingletonHost: "testnet4-plain-host",
+      testnet4SingletonPort: 52001,
+      testnet4SingletonSsl: false,
+    });
+    netConnectMock.mockImplementationOnce(() => {
+      queueMicrotask(() => socket.emit("connect"));
+      return socket;
+    });
+
+    const client = new ElectrumClient();
+    client.setNetwork("testnet4");
+    await client.connect();
+
+    expect(netConnectMock).toHaveBeenCalledWith({
+      host: "testnet4-plain-host",
       port: 52001,
     });
     expect(tlsConnectMock).not.toHaveBeenCalled();

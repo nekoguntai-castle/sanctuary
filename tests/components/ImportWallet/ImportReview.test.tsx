@@ -104,7 +104,7 @@ describe('ImportReview', () => {
       <ImportReview
         validationResult={validationResult}
         walletName="2 of 3 Vault"
-        network="testnet"
+        network="testnet3"
         importError={null}
       />,
     );
@@ -112,7 +112,7 @@ describe('ImportReview', () => {
     expect(screen.getByText('2-of-3 Multisig')).toBeInTheDocument();
     expect(screen.getByText('2 existing devices will be reused')).toBeInTheDocument();
     expect(screen.getByText('2 new devices will be created')).toBeInTheDocument();
-    expect(screen.getByText('testnet')).toBeInTheDocument();
+    expect(screen.getByText('testnet3')).toBeInTheDocument();
   });
 
   it('hides device action rows when no devices are created or reused', () => {

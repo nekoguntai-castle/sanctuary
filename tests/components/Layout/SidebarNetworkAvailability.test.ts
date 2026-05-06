@@ -11,17 +11,18 @@ describe('sidebar network availability', () => {
     vi.clearAllMocks();
   });
 
-  it('marks Testnet and Signet unavailable only when status reports Node Configuration disabled copy', async () => {
+  it('marks Testnet3 and Signet unavailable only when status reports Node Configuration disabled copy', async () => {
     vi.mocked(bitcoinApi.getStatus).mockImplementation(async (network) => ({
       connected: false,
-      error: network === 'testnet'
+      error: network === 'testnet3'
         ? 'Testnet sync is off in Node Configuration. Enable Testnet under Network Connections.'
         : 'Connection refused',
     }) as any);
 
     await expect(getSidebarNetworkAvailability()).resolves.toEqual({
       mainnet: true,
-      testnet: false,
+      testnet3: false,
+      testnet4: true,
       signet: true,
     });
   });
@@ -31,7 +32,8 @@ describe('sidebar network availability', () => {
 
     await expect(getSidebarNetworkAvailability()).resolves.toEqual({
       mainnet: true,
-      testnet: true,
+      testnet3: true,
+      testnet4: true,
       signet: true,
     });
   });

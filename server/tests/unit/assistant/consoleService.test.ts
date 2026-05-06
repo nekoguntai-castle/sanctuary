@@ -185,27 +185,27 @@ describe("console service", () => {
 
   it("scopes auto context wallet lookup and planner metadata to the selected network", async () => {
     mocks.walletRepository.findAccessibleWithSelect.mockResolvedValue([
-      { id: walletId, name: "Testnet Vault", network: "testnet" },
+      { id: walletId, name: "Testnet3 Vault", network: "testnet3" },
     ]);
 
     await runConsoleTurn(actor(), {
-      prompt: "show testnet wallet context",
-      clientContext: { mode: "auto", selectedNetwork: "testnet" },
+      prompt: "show testnet3 wallet context",
+      clientContext: { mode: "auto", selectedNetwork: "testnet3" },
       maxSensitivity: "wallet",
     });
 
     expect(mocks.walletRepository.findAccessibleWithSelect).toHaveBeenCalledWith(
       "user-1",
       { id: true, name: true, network: true },
-      { network: "testnet" },
+      { network: "testnet3" },
     );
     expect(mocks.planConsoleTools).toHaveBeenCalledWith(
       expect.objectContaining({
         context: expect.objectContaining({
           mode: "auto",
-          selectedNetwork: "testnet",
+          selectedNetwork: "testnet3",
           wallets: [
-            { id: walletId, name: "Testnet Vault", network: "testnet" },
+            { id: walletId, name: "Testnet3 Vault", network: "testnet3" },
           ],
         }),
       }),

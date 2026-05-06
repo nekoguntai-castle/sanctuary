@@ -139,7 +139,7 @@ describeIfDb('Phase 2 operations proof', () => {
         name: walletName,
         type: 'single_sig',
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
         groupId: group.id,
       },
     });

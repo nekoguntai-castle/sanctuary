@@ -32,6 +32,12 @@ interface PersistedPoolConfig {
   mainnetPoolMin: number | null;
   mainnetPoolMax: number | null;
   mainnetPoolLoadBalancing: string | null;
+  testnet3PoolMin: number | null;
+  testnet3PoolMax: number | null;
+  testnet3PoolLoadBalancing: string | null;
+  testnet4PoolMin: number | null;
+  testnet4PoolMax: number | null;
+  testnet4PoolLoadBalancing: string | null;
   testnetPoolMin: number | null;
   testnetPoolMax: number | null;
   testnetPoolLoadBalancing: string | null;
@@ -117,10 +123,17 @@ function getNetworkPoolOverrides(
       maxConnections: nodeConfig.mainnetPoolMax,
       loadBalancing: optionalLoadBalancing(nodeConfig.mainnetPoolLoadBalancing),
     },
-    testnet: {
-      minConnections: nodeConfig.testnetPoolMin,
-      maxConnections: nodeConfig.testnetPoolMax,
-      loadBalancing: optionalLoadBalancing(nodeConfig.testnetPoolLoadBalancing),
+    testnet3: {
+      minConnections: nodeConfig.testnet3PoolMin ?? nodeConfig.testnetPoolMin,
+      maxConnections: nodeConfig.testnet3PoolMax ?? nodeConfig.testnetPoolMax,
+      loadBalancing: optionalLoadBalancing(
+        nodeConfig.testnet3PoolLoadBalancing ?? nodeConfig.testnetPoolLoadBalancing,
+      ),
+    },
+    testnet4: {
+      minConnections: nodeConfig.testnet4PoolMin,
+      maxConnections: nodeConfig.testnet4PoolMax,
+      loadBalancing: optionalLoadBalancing(nodeConfig.testnet4PoolLoadBalancing),
     },
     signet: {
       minConnections: nodeConfig.signetPoolMin,

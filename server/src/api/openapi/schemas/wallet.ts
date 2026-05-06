@@ -23,6 +23,8 @@ import {
   VALID_VOTE_DECISIONS,
 } from '../../../services/vaultPolicy/types';
 
+const WALLET_NETWORK_VALUES = ['mainnet', 'testnet3', 'testnet4', 'regtest', 'signet'] as const;
+
 export const walletSchemas = {
   Wallet: {
     type: 'object',
@@ -31,7 +33,7 @@ export const walletSchemas = {
       name: { type: 'string' },
       type: { type: 'string', enum: ['single_sig', 'multi_sig'] },
       scriptType: { type: 'string', enum: ['native_segwit', 'nested_segwit', 'taproot', 'legacy'] },
-      network: { type: 'string', enum: ['mainnet', 'testnet', 'regtest', 'signet'] },
+      network: { type: 'string', enum: [...WALLET_NETWORK_VALUES] },
       quorum: { type: 'integer', nullable: true },
       totalSigners: { type: 'integer', nullable: true },
       descriptor: { type: 'string', nullable: true },
@@ -65,7 +67,7 @@ export const walletSchemas = {
       name: { type: 'string' },
       type: { type: 'string', enum: ['single_sig', 'multi_sig'] },
       scriptType: { type: 'string', enum: ['native_segwit', 'nested_segwit', 'taproot', 'legacy'] },
-      network: { type: 'string', enum: ['mainnet', 'testnet', 'regtest', 'signet'] },
+      network: { type: 'string', enum: [...WALLET_NETWORK_VALUES] },
       quorum: { type: 'integer' },
       totalSigners: { type: 'integer' },
       descriptor: { type: 'string' },

@@ -79,14 +79,14 @@ describe('MempoolSection', () => {
     render(
       <MempoolSection
         {...baseProps}
-        selectedNetwork="testnet"
+        selectedNetwork="testnet3"
         isMainnet={false}
         bitcoinStatus={{ connected: true, host: 'testnet.example.com' }}
       />
     );
 
     expect(screen.getByTestId('block-visualizer')).toBeInTheDocument();
-    expect(screen.getByText('TESTNET')).toBeInTheDocument();
+    expect(screen.getByText('TESTNET3')).toBeInTheDocument();
     expect(screen.queryByText(/mainnet-only/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /open node config/i })).not.toBeInTheDocument();
 
@@ -114,21 +114,21 @@ describe('MempoolSection', () => {
     expect(mockConfigureNode).toHaveBeenCalled();
   });
 
-  it('renders the testnet checking state with testnet-specific treatment', async () => {
+  it('renders the testnet3 checking state with testnet3-specific treatment', async () => {
     const user = userEvent.setup();
     render(
       <MempoolSection
         {...baseProps}
-        selectedNetwork="testnet"
+        selectedNetwork="testnet3"
         isMainnet={false}
         nodeStatus="checking"
         bitcoinStatus={undefined}
       />
     );
 
-    expect(screen.getByText('Checking Testnet Node')).toBeInTheDocument();
-    expect(screen.getByText(/review testnet Electrum settings/i)).toBeInTheDocument();
-    expect(screen.getByText('TESTNET')).toBeInTheDocument();
+    expect(screen.getByText('Checking Testnet3 Node')).toBeInTheDocument();
+    expect(screen.getByText(/review testnet3 Electrum settings/i)).toBeInTheDocument();
+    expect(screen.getByText('TESTNET3')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /open node config/i }));
     expect(mockConfigureNode).toHaveBeenCalled();

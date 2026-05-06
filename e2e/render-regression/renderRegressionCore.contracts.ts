@@ -28,10 +28,10 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
 
   await page
     .getByRole("navigation", { name: "Network tabs" })
-    .getByRole("button", { name: /Testnet/i })
+    .getByRole("button", { name: "Testnet3" })
     .click();
   await expect(
-    page.getByText("Testnet coins have no market value"),
+    page.getByText("Testnet3 coins have no market value"),
   ).toBeVisible();
   await expect(page.getByText(/^Connected$/)).toBeVisible();
   await expect(page.getByRole("main").getByText("900,123").last()).toBeVisible();
@@ -152,10 +152,10 @@ export async function renderWalletListRendersNetworkScopedCardsAndControls({
 
   await page
     .getByRole("navigation", { name: "Network tabs" })
-    .getByRole("button", { name: /Testnet/i })
+    .getByRole("button", { name: "Testnet3" })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Testnet Wallets" }),
+    page.getByRole("heading", { name: "Testnet3 Wallets" }),
   ).toBeVisible();
   await expect(page.getByText("Render Testnet Wallet")).toBeVisible();
   await expectChromiumMainScreenshot(page, "wallet-list-testnet-shell.png");

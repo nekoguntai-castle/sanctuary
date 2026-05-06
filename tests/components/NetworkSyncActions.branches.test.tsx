@@ -58,7 +58,7 @@ describe('NetworkSyncActions branch coverage', () => {
 
   it('renders singular sync message and clears it after timeout', async () => {
     vi.useFakeTimers();
-    const { onSyncStarted } = renderActions({ walletCount: 1, network: 'testnet' });
+    const { onSyncStarted } = renderActions({ walletCount: 1, network: 'testnet3' });
     vi.mocked(syncApi.syncNetworkWallets).mockResolvedValueOnce({
       success: true,
       queued: 1,
@@ -66,7 +66,7 @@ describe('NetworkSyncActions branch coverage', () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Sync All Testnet' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Sync All Testnet3' }));
     });
 
     expect(screen.getByText('Queued 1 wallet for sync')).toBeInTheDocument();

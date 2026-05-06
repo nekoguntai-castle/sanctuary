@@ -62,7 +62,7 @@ describeIfDatabase('WalletRepository Integration Tests', () => {
             name: 'Group Wallet',
             type: 'single_sig',
             scriptType: 'native_segwit',
-            network: 'testnet',
+            network: 'testnet3',
             groupId: group.id,
           },
         });
@@ -174,12 +174,12 @@ describeIfDatabase('WalletRepository Integration Tests', () => {
         const user = await createTestUser(tx);
 
         await createTestWallet(tx, user.id, { name: 'Mainnet 1', network: 'mainnet' });
-        await createTestWallet(tx, user.id, { name: 'Testnet 1', network: 'testnet' });
-        await createTestWallet(tx, user.id, { name: 'Testnet 2', network: 'testnet' });
+        await createTestWallet(tx, user.id, { name: 'Testnet 1', network: 'testnet3' });
+        await createTestWallet(tx, user.id, { name: 'Testnet 2', network: 'testnet3' });
 
         const testnetWallets = await tx.wallet.findMany({
           where: {
-            network: 'testnet',
+            network: 'testnet3',
             OR: [
               { users: { some: { userId: user.id } } },
               { group: { members: { some: { userId: user.id } } } },
@@ -188,7 +188,7 @@ describeIfDatabase('WalletRepository Integration Tests', () => {
         });
 
         expect(testnetWallets).toHaveLength(2);
-        expect(testnetWallets.every((w) => w.network === 'testnet')).toBe(true);
+        expect(testnetWallets.every((w) => w.network === 'testnet3')).toBe(true);
       });
     });
   });
@@ -198,12 +198,12 @@ describeIfDatabase('WalletRepository Integration Tests', () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
 
-        const wallet1 = await createTestWallet(tx, user.id, { network: 'testnet' });
-        const wallet2 = await createTestWallet(tx, user.id, { network: 'testnet' });
+        const wallet1 = await createTestWallet(tx, user.id, { network: 'testnet3' });
+        const wallet2 = await createTestWallet(tx, user.id, { network: 'testnet3' });
 
         const ids = await tx.wallet.findMany({
           where: {
-            network: 'testnet',
+            network: 'testnet3',
             OR: [
               { users: { some: { userId: user.id } } },
               { group: { members: { some: { userId: user.id } } } },
@@ -428,9 +428,10 @@ describeIfDatabase('WalletRepository Integration Tests', () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
 
-        const networks: Array<'mainnet' | 'testnet' | 'signet' | 'regtest'> = [
+        const networks: Array<'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest'> = [
           'mainnet',
-          'testnet',
+          'testnet3',
+          'testnet4',
           'signet',
           'regtest',
         ];

@@ -5,7 +5,7 @@
  */
 
 import apiClient from './client';
-import type { Wallet } from '../types';
+import type { Wallet, WalletNetwork } from '../types';
 export type { ValidateXpubRequest, ValidateXpubResponse, XpubScriptType, XpubValidationNetwork } from './walletXpub';
 export { validateXpub } from './walletXpub';
 
@@ -16,7 +16,7 @@ export interface CreateWalletRequest {
   name: string;
   type: 'single_sig' | 'multi_sig';
   scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-  network?: 'mainnet' | 'testnet' | 'regtest' | 'signet';
+  network?: WalletNetwork;
   quorum?: number;
   totalSigners?: number;
   descriptor?: string;
@@ -66,7 +66,7 @@ export interface ImportValidationResult {
   format: 'descriptor' | 'json' | 'wallet_export' | 'bluewallet_text';
   walletType: 'single_sig' | 'multi_sig';
   scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-  network: 'mainnet' | 'testnet' | 'regtest' | 'signet';
+  network: WalletNetwork;
   quorum?: number;
   totalSigners?: number;
   devices: DeviceResolution[];
@@ -76,7 +76,7 @@ export interface ImportValidationResult {
 export interface ImportWalletRequest {
   data: string; // Descriptor or JSON
   name: string;
-  network?: 'mainnet' | 'testnet' | 'regtest' | 'signet';
+  network?: WalletNetwork;
   deviceLabels?: Record<string, string>;
 }
 
@@ -175,6 +175,7 @@ export async function addDeviceToWallet(
 export async function validateImport(input: {
   descriptor?: string;
   json?: string;
+  network?: WalletNetwork;
 }): Promise<ImportValidationResult> {
   return apiClient.post<ImportValidationResult>('/wallets/import/validate', input);
 }

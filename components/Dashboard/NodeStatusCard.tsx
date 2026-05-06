@@ -44,6 +44,18 @@ const StatusLabel: React.FC<{ nodeStatus: NodeStatusValue }> = ({ nodeStatus }) 
   }
 };
 
+const getNetworkBadgeClass = (selectedNetwork: TabNetwork): string => {
+  if (selectedNetwork === 'mainnet') {
+    return 'bg-mainnet-500/8 dark:bg-mainnet-400/10 text-mainnet-600 dark:text-mainnet-400';
+  }
+
+  if (selectedNetwork === 'testnet3' || selectedNetwork === 'testnet4') {
+    return 'bg-testnet-500/8 dark:bg-testnet-400/10 text-testnet-600 dark:text-testnet-400';
+  }
+
+  return 'bg-signet-500/8 dark:bg-signet-400/10 text-signet-600 dark:text-signet-400';
+};
+
 const PoolDisplay: React.FC<{ bitcoinStatus: BitcoinStatus }> = ({ bitcoinStatus }) => {
   const pool = bitcoinStatus.pool;
   if (!pool?.enabled) {
@@ -175,13 +187,7 @@ export const NodeStatusCard: React.FC<NodeStatusCardProps> = ({
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center space-x-2">
         <h4 className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">Node Status</h4>
-        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-          selectedNetwork === 'mainnet'
-            ? 'bg-mainnet-500/8 dark:bg-mainnet-400/10 text-mainnet-600 dark:text-mainnet-400'
-            : selectedNetwork === 'testnet'
-            ? 'bg-testnet-500/8 dark:bg-testnet-400/10 text-testnet-600 dark:text-testnet-400'
-            : 'bg-signet-500/8 dark:bg-signet-400/10 text-signet-600 dark:text-signet-400'
-        }`}>
+        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${getNetworkBadgeClass(selectedNetwork)}`}>
           {selectedNetwork.toUpperCase()}
         </span>
       </div>

@@ -122,17 +122,33 @@ describe('mempool service', () => {
     );
   });
 
-  it('uses the public testnet mempool API for testnet visualization', async () => {
+  it('uses the public testnet3 mempool API for testnet3 visualization', async () => {
     hoisted.nodeConfig.findFirst.mockResolvedValue({
       isDefault: true,
       feeEstimatorUrl: 'https://mempool.custom/',
     });
     hoisted.axiosGet.mockResolvedValue({ data: mockBlocks(1000) });
 
-    await getRecentBlocks(1, 'testnet');
+    await getRecentBlocks(1, 'testnet3');
 
     expect(hoisted.axiosGet).toHaveBeenCalledWith(
       'https://mempool.space/testnet/api/v1/blocks',
+      expect.objectContaining({ timeout: 3000 })
+    );
+    expect(hoisted.nodeConfig.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('uses the public testnet4 mempool API separately from testnet3', async () => {
+    hoisted.nodeConfig.findFirst.mockResolvedValue({
+      isDefault: true,
+      feeEstimatorUrl: 'https://mempool.custom/',
+    });
+    hoisted.axiosGet.mockResolvedValue({ data: mockBlocks(1000) });
+
+    await getRecentBlocks(1, 'testnet4');
+
+    expect(hoisted.axiosGet).toHaveBeenCalledWith(
+      'https://mempool.space/testnet4/api/v1/blocks',
       expect.objectContaining({ timeout: 3000 })
     );
     expect(hoisted.nodeConfig.findFirst).not.toHaveBeenCalled();

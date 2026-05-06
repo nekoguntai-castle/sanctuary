@@ -8,7 +8,7 @@
 import type { JsonImportConfig, Network } from '../bitcoin/descriptorParser';
 import { parseJsonImport } from '../bitcoin/descriptorParser';
 import { resolveDevices } from './deviceResolution';
-import { createWalletTransaction } from './walletImportService';
+import { createWalletTransaction, resolveImportNetwork } from './walletImportService';
 import { createLogger } from '../../utils/logger';
 import { safeJsonParseUntyped } from '../../utils/safeJson';
 import type { ImportWalletResult } from './types';
@@ -38,7 +38,7 @@ export async function importFromJson(
   }
   const jsonConfig = parseResult.data as JsonImportConfig;
   const parsed = parseJsonImport(jsonConfig);
-  const network = input.network || parsed.network;
+  const network = resolveImportNetwork(parsed.network, input.network);
 
   // Resolve devices with original labels/types from JSON
   const resolutions = await resolveDevices(

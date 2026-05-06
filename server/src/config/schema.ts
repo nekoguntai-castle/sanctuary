@@ -11,7 +11,7 @@ import { z } from 'zod';
 // Basic Type Schemas
 // =============================================================================
 
-export const NetworkTypeSchema = z.enum(['mainnet', 'testnet', 'signet', 'regtest']);
+export const NetworkTypeSchema = z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
 export const ElectrumProtocolSchema = z.enum(['tcp', 'ssl']);
 export const LogLevelSchema = z.enum(['error', 'warn', 'info', 'debug', 'trace']);
 export const NodeEnvSchema = z.enum(['development', 'production', 'test']);

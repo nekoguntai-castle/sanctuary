@@ -240,20 +240,20 @@ describe('admin electrum servers router', () => {
   it('GET /:network returns servers for valid network', async () => {
     mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(buildNodeConfig());
     mockPrismaClient.electrumServer.findMany.mockResolvedValue([
-      buildServer({ id: 'srv-testnet', network: 'testnet' }),
+      buildServer({ id: 'srv-testnet3', network: 'testnet3' }),
     ]);
 
-    const response = await request(app).get('/api/v1/admin/electrum-servers/testnet');
+    const response = await request(app).get('/api/v1/admin/electrum-servers/testnet3');
 
     expect(response.status).toBe(200);
     expect(mockPrismaClient.electrumServer.findMany).toHaveBeenCalledWith({
       where: {
         nodeConfigId: 'default',
-        network: 'testnet',
+        network: 'testnet3',
       },
       orderBy: { priority: 'asc' },
     });
-    expect(response.body[0].id).toBe('srv-testnet');
+    expect(response.body[0].id).toBe('srv-testnet3');
   });
 
   it('GET /:network returns empty array when node config is missing', async () => {

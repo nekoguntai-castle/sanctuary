@@ -124,11 +124,11 @@ describe('BitcoinPriceCard', () => {
   });
 
   describe('non-mainnet', () => {
-    it('shows tBTC for testnet', () => {
+    it('shows tBTC for testnet3', () => {
       render(
         <BitcoinPriceCard
           isMainnet={false}
-          selectedNetwork="testnet"
+          selectedNetwork="testnet3"
           btcPrice={null}
           currencySymbol="$"
           priceChange24h={null}
@@ -138,7 +138,7 @@ describe('BitcoinPriceCard', () => {
       );
 
       expect(screen.getByText('tBTC')).toBeInTheDocument();
-      expect(screen.getByText('Testnet coins have no market value')).toBeInTheDocument();
+      expect(screen.getByText('Testnet3 coins have no market value')).toBeInTheDocument();
     });
 
     it('shows sBTC for signet', () => {

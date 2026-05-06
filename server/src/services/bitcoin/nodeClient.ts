@@ -11,7 +11,7 @@ import {
   getElectrumPool,
   getElectrumPoolForNetwork,
   resetElectrumPoolForNetwork,
-  NetworkType,
+  type NetworkType,
 } from './electrumPool';
 import { nodeConfigRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
@@ -122,9 +122,9 @@ function getDefaultElectrumConfig(): NodeConfig {
 
 /**
  * Get the node client based on active configuration
- * @param network Network parameter (mainnet, testnet, signet, or regtest)
+ * @param network Network parameter (mainnet, testnet3, testnet4, signet, or regtest)
  */
-export async function getNodeClient(network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet'): Promise<NodeClientInterface> {
+export async function getNodeClient(network: NetworkType = 'mainnet'): Promise<NodeClientInterface> {
   // Check if we have a cached client for this network
   const cachedClient = networkClients.get(network);
   if (cachedClient && cachedClient.isConnected()) {

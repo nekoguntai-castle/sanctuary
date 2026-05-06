@@ -56,7 +56,8 @@ export interface BitcoinNetworkStatus {
 
 const NETWORK_DEFAULTS: Record<NetworkType, { host: string; port: number; useSsl: boolean }> = {
   mainnet: { host: 'electrum.blockstream.info', port: 50002, useSsl: true },
-  testnet: { host: 'electrum.blockstream.info', port: 60002, useSsl: true },
+  testnet3: { host: 'electrum.blockstream.info', port: 60002, useSsl: true },
+  testnet4: { host: '', port: 60002, useSsl: true },
   signet: { host: 'electrum.mutinynet.com', port: 50002, useSsl: true },
   regtest: { host: 'localhost', port: 50001, useSsl: false },
 };

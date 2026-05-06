@@ -12,7 +12,7 @@ import type { NodeClientInterface } from '../nodeClient';
 // ============================================
 
 /** Bitcoin network type */
-export type BitcoinNetwork = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+export type BitcoinNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
 
 /** Transaction history entry from Electrum */
 export interface TxHistoryEntry {

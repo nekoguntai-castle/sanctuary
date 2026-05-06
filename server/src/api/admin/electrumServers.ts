@@ -20,7 +20,7 @@ import { parseAdminRequestBody } from './requestValidation';
 
 const router = Router();
 const log = createLogger('ADMIN_ELECTRUM:ROUTE');
-const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet', 'signet', 'regtest'] as const;
+const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'] as const;
 const ELECTRUM_NETWORK_MESSAGE = `Invalid network. Must be one of: ${ELECTRUM_NETWORK_VALUES.join(', ')}`;
 
 function formatElectrumServerValidation(requiredMessage: string) {
@@ -36,7 +36,7 @@ function formatElectrumServerValidation(requiredMessage: string) {
  * GET /api/v1/admin/electrum-servers
  * Get all Electrum servers for the default node config
  * Query params:
- *   - network: Filter by network (mainnet, testnet, signet, regtest)
+ *   - network: Filter by network (mainnet, testnet3, testnet4, signet, regtest)
  */
 router.get('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
   const { network } = req.query;
@@ -110,7 +110,7 @@ router.get('/:network', authenticate, requireAdmin, asyncHandler(async (req, res
  * POST /api/v1/admin/electrum-servers
  * Add a new Electrum server
  * Body params:
- *   - network: Network (mainnet, testnet, signet, regtest) - defaults to mainnet
+ *   - network: Network (mainnet, testnet3, testnet4, signet, regtest) - defaults to mainnet
  */
 router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
   const { label, host, port, useSsl, priority, enabled, network } = parseAdminRequestBody(

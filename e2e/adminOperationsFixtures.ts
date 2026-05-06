@@ -39,7 +39,7 @@ export const AGENT_FUNDING_WALLET = {
   id: 'wallet-agent-funding',
   name: 'Agent Funding Vault',
   type: 'multi_sig',
-  network: 'testnet',
+  network: 'testnet3',
   accessUserIds: [REGULAR_USER.id],
   deviceIds: [AGENT_SIGNER_DEVICE.id],
 };
@@ -48,7 +48,7 @@ export const AGENT_OPERATIONAL_WALLET = {
   id: 'wallet-agent-operational',
   name: 'Agent Operating Wallet',
   type: 'single_sig',
-  network: 'testnet',
+  network: 'testnet3',
   accessUserIds: [REGULAR_USER.id],
   deviceIds: [],
 };

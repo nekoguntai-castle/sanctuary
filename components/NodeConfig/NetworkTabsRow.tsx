@@ -1,11 +1,13 @@
 import type { NodeConfig as NodeConfigType } from '../../types';
 import type { NetworkTab } from './types';
+import { formatNetworkTitle } from '../../src/app/networks';
 
-const NETWORK_TABS: NetworkTab[] = ['mainnet', 'testnet', 'signet'];
+const NETWORK_TABS: NetworkTab[] = ['mainnet', 'testnet3', 'testnet4', 'signet'];
 
 const NETWORK_COLORS: Record<NetworkTab, string> = {
   mainnet: 'border-mainnet-500 text-mainnet-600 dark:text-mainnet-400',
-  testnet: 'border-testnet-500 text-testnet-600 dark:text-testnet-400',
+  testnet3: 'border-testnet-500 text-testnet-600 dark:text-testnet-400',
+  testnet4: 'border-testnet-500 text-testnet-600 dark:text-testnet-400',
   signet: 'border-signet-500 text-signet-600 dark:text-signet-400',
 };
 
@@ -54,7 +56,7 @@ function NetworkTabButton({
       onClick={onClick}
       className={`flex-1 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${networkTabClass(network, active)}`}
     >
-      <span className="capitalize">{network}</span>
+      <span>{formatNetworkTitle(network)}</span>
       <NetworkTabBadge enabled={enabled} serverCount={serverCount} />
     </button>
   );
@@ -77,7 +79,8 @@ function NetworkTabBadge({
 
 function isNetworkEnabled(config: NodeConfigType, network: NetworkTab): boolean {
   if (network === 'mainnet') return true;
-  if (network === 'testnet') return Boolean(config.testnetEnabled);
+  if (network === 'testnet3') return Boolean(config.testnet3Enabled ?? config.testnetEnabled);
+  if (network === 'testnet4') return Boolean(config.testnet4Enabled);
   return Boolean(config.signetEnabled);
 }
 

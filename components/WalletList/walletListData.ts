@@ -1,4 +1,5 @@
 import type { Wallet } from '../../src/api/wallets';
+import { toTabNetwork, formatNetworkTitle as formatTabNetworkTitle } from '../../src/app/networks';
 import type { TabNetwork } from '../NetworkTabs';
 import type { PendingData, WalletCountsByNetwork, WalletSortField, WalletSortOrder } from './types';
 import type { WalletWithPending } from '../cells/WalletCells';
@@ -9,29 +10,30 @@ interface PendingTransaction {
   type: string;
 }
 
-const TAB_NETWORKS: TabNetwork[] = ['mainnet', 'testnet', 'signet'];
+const TAB_NETWORKS: TabNetwork[] = ['mainnet', 'testnet3', 'testnet4', 'signet'];
 
 export function isTabNetwork(value: string | null): value is TabNetwork {
   return value !== null && TAB_NETWORKS.includes(value as TabNetwork);
 }
 
 export function resolveInitialNetwork(networkFromUrl: string | null): TabNetwork {
-  return isTabNetwork(networkFromUrl) ? networkFromUrl : 'mainnet';
+  return toTabNetwork(networkFromUrl);
 }
 
 export function formatNetworkTitle(network: TabNetwork): string {
-  return network.charAt(0).toUpperCase() + network.slice(1);
+  return formatTabNetworkTitle(network);
 }
 
 export function filterWalletsByNetwork(wallets: Wallet[], selectedNetwork: TabNetwork): Wallet[] {
-  return wallets.filter(wallet => wallet.network === selectedNetwork);
+  return wallets.filter(wallet => toTabNetwork(wallet.network) === selectedNetwork);
 }
 
 export function countWalletsByNetwork(wallets: Wallet[]): WalletCountsByNetwork {
   return {
-    mainnet: wallets.filter(wallet => wallet.network === 'mainnet').length,
-    testnet: wallets.filter(wallet => wallet.network === 'testnet').length,
-    signet: wallets.filter(wallet => wallet.network === 'signet').length,
+    mainnet: wallets.filter(wallet => toTabNetwork(wallet.network) === 'mainnet').length,
+    testnet3: wallets.filter(wallet => toTabNetwork(wallet.network) === 'testnet3').length,
+    testnet4: wallets.filter(wallet => toTabNetwork(wallet.network) === 'testnet4').length,
+    signet: wallets.filter(wallet => toTabNetwork(wallet.network) === 'signet').length,
   };
 }
 

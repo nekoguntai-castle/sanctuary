@@ -11,6 +11,7 @@ import { getBlockTimestamp } from '../../utils/blockHeight';
 import { walletLog } from '../../../../websocket/notifications';
 import { populateBlockHeight, populateBlockTime, populateFee, populateCounterpartyAddress, populateAddressId } from './fieldPopulators';
 import type { PopulationStats, PendingUpdate } from './types';
+import type { BitcoinNetwork } from '../../networks';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
 const LOG_INTERVAL = 20;
@@ -28,8 +29,6 @@ interface TransactionForUpdate {
   counterpartyAddress: string | null;
 }
 
-type NetworkName = 'mainnet' | 'testnet' | 'signet' | 'regtest';
-
 /**
  * Process all transactions and collect pending database updates.
  * This is the main field population logic that examines each transaction
@@ -45,7 +44,7 @@ export async function processTransactionUpdates(
   walletAddressLookup: Map<string, string>,
   walletAddressSet: Set<string>,
   currentHeight: number,
-  network: NetworkName
+  network: BitcoinNetwork
 ): Promise<{ pendingUpdates: PendingUpdate[]; updated: number; stats: PopulationStats }> {
   const pendingUpdates: PendingUpdate[] = [];
   const stats = createPopulationStats();
@@ -114,7 +113,7 @@ async function processSingleTransaction(input: {
   walletAddressLookup: Map<string, string>;
   walletAddressSet: Set<string>;
   currentHeight: number;
-  network: NetworkName;
+  network: BitcoinNetwork;
   stats: PopulationStats;
 }): Promise<PendingUpdate | null> {
   const { tx, stats } = input;
@@ -139,7 +138,7 @@ async function populateTransactionDetails(
     walletAddresses: Array<{ id: string; address: string }>;
     walletAddressLookup: Map<string, string>;
     walletAddressSet: Set<string>;
-    network: NetworkName;
+    network: BitcoinNetwork;
     stats: PopulationStats;
   },
   txDetails: any,
@@ -169,7 +168,7 @@ async function populateTransactionDetails(
 async function populateBlockTimeFromHeader(
   tx: TransactionForUpdate,
   updates: Record<string, unknown>,
-  network: NetworkName,
+  network: BitcoinNetwork,
   stats: PopulationStats
 ): Promise<void> {
   if (tx.blockTime !== null || updates.blockTime || (!tx.blockHeight && !updates.blockHeight)) {

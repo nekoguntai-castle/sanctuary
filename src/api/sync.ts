@@ -78,7 +78,7 @@ export async function resyncWallet(walletId: string): Promise<ResyncResult> {
 }
 
 // Network-based sync types
-export type NetworkType = 'mainnet' | 'testnet' | 'signet';
+export type NetworkType = 'mainnet' | 'testnet3' | 'testnet4' | 'signet';
 
 export interface NetworkSyncResult {
   success: boolean;

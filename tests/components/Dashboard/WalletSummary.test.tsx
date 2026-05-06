@@ -36,11 +36,11 @@ describe('WalletSummary', () => {
 
   it('renders empty-state row when no wallets exist', () => {
     render(
-      <WalletSummary selectedNetwork="testnet" filteredWallets={[]} totalBalance={0} />
+      <WalletSummary selectedNetwork="testnet3" filteredWallets={[]} totalBalance={0} />
     );
 
-    expect(screen.getByText('Testnet Wallets')).toBeInTheDocument();
-    expect(screen.getByText(/No testnet wallets yet/i)).toBeInTheDocument();
+    expect(screen.getByText('Testnet3 Wallets')).toBeInTheDocument();
+    expect(screen.getByText(/No testnet3 wallets yet/i)).toBeInTheDocument();
   });
 
   it('renders wallet rows, sync states, and navigates on row click', async () => {

@@ -41,7 +41,7 @@ describe('createWalletData', () => {
     expect(hasCompatibleNetworkAccount(singleMainnetDevice as any, WalletType.SINGLE_SIG, 'mainnet')).toBe(true);
     expect(hasCompatibleNetworkAccount(singleMainnetDevice as any, WalletType.SINGLE_SIG, 'signet')).toBe(false);
     expect(hasCompatibleNetworkAccount(multisigTestnetDevice as any, WalletType.MULTI_SIG, 'signet')).toBe(true);
-    expect(getDisplayAccount(multisigTestnetDevice as any, WalletType.MULTI_SIG, 'testnet')?.id).toBe(
+    expect(getDisplayAccount(multisigTestnetDevice as any, WalletType.MULTI_SIG, 'testnet3')?.id).toBe(
       'multi-testnet-account'
     );
     expect(getDisplayAccount(singleMainnetDevice as any, WalletType.MULTI_SIG, 'mainnet')).toBeNull();

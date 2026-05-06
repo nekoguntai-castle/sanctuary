@@ -11,6 +11,8 @@ import { walletRepository, transactionRepository } from '../../../repositories';
 import { createLogger } from '../../../utils/logger';
 import { asyncHandler } from '../../../errors/errorHandler';
 import { mapWithConcurrency } from '../../../utils/async';
+import { getMempoolApiBase } from '../../../services/bitcoin/mempool/config';
+import { normalizeLegacyBitcoinNetwork } from '../../../services/bitcoin/networks';
 
 const log = createLogger('TX_PENDING:ROUTE');
 const MEMPOOL_FETCH_CONCURRENCY = 5;
@@ -26,10 +28,11 @@ const pendingTransactionWhere = {
   ],
 };
 
-const getMempoolBaseUrl = (wallet: PendingWallet): string => {
-  return wallet?.network === 'testnet'
-    ? 'https://mempool.space/testnet/api'
-    : 'https://mempool.space/api';
+const getMempoolBaseUrl = async (wallet: PendingWallet): Promise<string> => {
+  const network = normalizeLegacyBitcoinNetwork(wallet?.network, 'mainnet');
+  return network === 'regtest'
+    ? 'https://mempool.space/api'
+    : getMempoolApiBase(network);
 };
 
 const fetchMempoolTxData = async (
@@ -108,7 +111,7 @@ const loadPendingTransactions = async (walletId: string) => {
     return [];
   }
 
-  const mempoolBaseUrl = getMempoolBaseUrl(wallet);
+  const mempoolBaseUrl = await getMempoolBaseUrl(wallet);
   return mapWithConcurrency(
     pendingTxs,
     tx => buildPendingTransactionResponse(tx, wallet, mempoolBaseUrl),

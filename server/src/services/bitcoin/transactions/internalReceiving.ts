@@ -7,6 +7,7 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import { getNetwork } from '../utils';
+import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { createLogger } from '../../../utils/logger';
 import { isUniqueConstraintError } from './helpers';
 import type { PrismaTxClient } from './types';
@@ -34,7 +35,7 @@ export async function createInternalReceivingTransactions(
       where: { id: walletId },
       select: { network: true },
     });
-    const networkObj = getNetwork(wallet?.network === 'testnet' ? 'testnet' : 'mainnet');
+    const networkObj = getNetwork(normalizeLegacyBitcoinNetwork(wallet?.network, 'mainnet'));
 
     // Extract all output addresses
     const outputAddresses: Array<{ address: string; amount: number }> = [];

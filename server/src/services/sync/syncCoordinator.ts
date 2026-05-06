@@ -6,7 +6,7 @@ import * as blockchain from '../bitcoin/blockchain';
 
 const log = createLogger('SYNC:COORDINATOR');
 
-const SYNC_NETWORKS = ['mainnet', 'testnet', 'signet'] as const;
+const SYNC_NETWORKS = ['mainnet', 'testnet3', 'testnet4', 'signet'] as const;
 
 export type SyncPriority = 'high' | 'normal' | 'low';
 type SyncNetwork = Extract<NetworkType, (typeof SYNC_NETWORKS)[number]>;
@@ -75,7 +75,7 @@ export interface UpdateConfirmationsResponse {
 
 function parseSyncNetwork(network: string): SyncNetwork {
   if (!SYNC_NETWORKS.includes(network as SyncNetwork)) {
-    throw new InvalidInputError('Invalid network. Must be mainnet, testnet, or signet.');
+    throw new InvalidInputError('Invalid network. Must be mainnet, testnet3, testnet4, or signet.');
   }
 
   return network as SyncNetwork;

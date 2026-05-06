@@ -50,7 +50,7 @@ const TESTNET_WALLET = {
   name: 'Journey Testnet Wallet',
   type: 'single_sig',
   scriptType: 'native_segwit',
-  network: 'testnet',
+  network: 'testnet3',
   descriptor: 'wpkh([efgh5678/84h/1h/0h]tpubJourneyTest/0/*)',
   fingerprint: 'efgh5678',
   balance: 500000,

@@ -58,7 +58,7 @@ export const DateRangeSchema = z.object({
 // Bitcoin-specific
 // =============================================================================
 
-export const NetworkTypeSchema = z.enum(['mainnet', 'testnet', 'signet', 'regtest']);
+export const NetworkTypeSchema = z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
 
 export const ScriptTypeSchema = z.enum([
   'p2pkh', // Legacy

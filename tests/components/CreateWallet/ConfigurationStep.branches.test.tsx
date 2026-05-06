@@ -29,9 +29,9 @@ describe('ConfigurationStep branch coverage', () => {
   });
 
   it('shows testnet warning message and styling branch', () => {
-    render(<ConfigurationStep {...baseProps} network="testnet" />);
+    render(<ConfigurationStep {...baseProps} network="testnet3" />);
 
-    const warning = screen.getByText(/This wallet will operate on testnet/i);
+    const warning = screen.getByText(/This wallet will operate on Testnet3/i);
     expect(warning).toBeInTheDocument();
     expect(warning.closest('div')).toHaveClass('dark:text-testnet-950');
     expect(screen.getByText(/Testnet coins have no real-world value/i)).toBeInTheDocument();
@@ -47,10 +47,10 @@ describe('ConfigurationStep branch coverage', () => {
   });
 
   it('shows the active sidebar network as read-only context', () => {
-    render(<ConfigurationStep {...baseProps} network="testnet" />);
+    render(<ConfigurationStep {...baseProps} network="testnet3" />);
 
-    expect(screen.getByText('Testnet')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Testnet' })).not.toBeInTheDocument();
+    expect(screen.getByText('Testnet3')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Testnet3' })).not.toBeInTheDocument();
   });
 
   it('calls setScriptType for all script options in single-sig mode', async () => {

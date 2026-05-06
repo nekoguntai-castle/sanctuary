@@ -170,7 +170,7 @@ describe('feature flag admin + worker integration', () => {
 
     vi.doMock('../../../src/config', () => ({
       getConfig: () => ({
-        bitcoin: { network: 'testnet' },
+        bitcoin: { network: 'testnet3' },
         sync: {
           intervalMs: 5 * 60 * 1000,
           confirmationUpdateIntervalMs: 2 * 60 * 1000,

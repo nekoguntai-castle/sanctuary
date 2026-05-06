@@ -7,7 +7,7 @@
 
 import type { ElectrumClient } from '../../services/bitcoin/electrum';
 
-export type BitcoinNetwork = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+export type BitcoinNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
 
 export interface ElectrumManagerCallbacks {
   /** Called when a new block is received */

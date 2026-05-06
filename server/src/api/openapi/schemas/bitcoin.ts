@@ -198,7 +198,7 @@ export const bitcoinSchemas = {
       address: { type: "string", minLength: 1 },
       network: {
         type: "string",
-        enum: ["mainnet", "testnet", "regtest"],
+        enum: ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
         default: "mainnet",
       },
     },

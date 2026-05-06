@@ -14,7 +14,7 @@ export type LoadBalancingStrategy = 'round_robin' | 'least_connections' | 'failo
 /**
  * Network type for pool operations
  */
-export type NetworkType = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+export type NetworkType = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
 
 /**
  * SOCKS5 proxy configuration (for Tor support)

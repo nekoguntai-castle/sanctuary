@@ -348,7 +348,7 @@ describe('Wallet Import Service - Operations', () => {
           devices: [
             { fingerprint: 'abcd1234', xpub: 'tpub6D...', derivationPath: "m/84'/1'/0'" },
           ],
-          network: 'testnet' as Network,
+          network: 'testnet3' as Network,
           isChange: false,
         },
       });
@@ -371,7 +371,7 @@ describe('Wallet Import Service - Operations', () => {
         name: 'Testnet Wallet',
         type: 'single_sig',
         scriptType: 'native_segwit',
-        network: 'testnet',
+        network: 'testnet3',
         quorum: null,
         totalSigners: null,
         descriptor: "wpkh([abcd1234/84h/1h/0h]tpub6D...)",
@@ -386,7 +386,7 @@ describe('Wallet Import Service - Operations', () => {
       expect(mockPrismaClient.wallet.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            network: 'testnet',
+            network: 'testnet3',
           }),
         })
       );

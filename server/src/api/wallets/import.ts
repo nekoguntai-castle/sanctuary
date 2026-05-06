@@ -19,6 +19,7 @@ const WalletImportValidateBodySchema = z
   .object({
     descriptor: z.unknown().optional(),
     json: z.unknown().optional(),
+    network: z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']).optional(),
   })
   .superRefine((data, ctx) => {
     if (!data.descriptor && !data.json) {
@@ -34,7 +35,7 @@ const WalletImportBodySchema = z
   .object({
     data: z.unknown().optional(),
     name: z.string().trim().min(1, 'name is required').optional(),
-    network: z.unknown().optional(),
+    network: z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']).optional(),
     deviceLabels: z.unknown().optional(),
   })
   .superRefine((data, ctx) => {
@@ -86,11 +87,12 @@ router.post('/import/validate', validate(
   { message: walletImportValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
-  const { descriptor, json } = req.body;
+  const { descriptor, json, network } = req.body;
 
   const result = await walletImport.validateImport(userId, {
     descriptor,
     json,
+    network,
   });
 
   res.json(result);

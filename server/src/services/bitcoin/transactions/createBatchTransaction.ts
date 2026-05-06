@@ -11,6 +11,7 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import { getNetwork, estimateTransactionSize, calculateFee } from '../utils';
+import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { RBF_SEQUENCE } from '../advancedTx';
 import { walletRepository, utxoRepository, systemSettingRepository } from '../../../repositories';
 import { DEFAULT_CONFIRMATION_THRESHOLD } from '../../../constants';
@@ -59,7 +60,7 @@ export async function createBatchTransaction(
     throw new Error('Wallet not found');
   }
 
-  const network = wallet.network === 'testnet' ? 'testnet' : 'mainnet';
+  const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
   const networkObj = getNetwork(network);
   assertValidBatchOutputs(outputs, networkObj);
   const signingInfo = resolveWalletSigningInfo(wallet, '[BATCH] ');

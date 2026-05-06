@@ -4,7 +4,14 @@
  * Shared interfaces and types for the address derivation module.
  */
 
-export type AddressDerivationNetwork = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+export type AddressDerivationNetwork =
+  | 'mainnet'
+  // Internal compatibility alias for verified vectors and ambiguous testnet-family descriptors.
+  | 'testnet'
+  | 'testnet3'
+  | 'testnet4'
+  | 'signet'
+  | 'regtest';
 
 /**
  * Multisig key info extracted from descriptor

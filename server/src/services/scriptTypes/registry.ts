@@ -130,7 +130,7 @@ class ScriptTypeRegistry {
    */
   getDerivationPath(
     scriptTypeId: string,
-    network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet',
+    network: 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest' = 'mainnet',
     account: number = 0
   ): string {
     const handler = this.get(scriptTypeId);
@@ -145,7 +145,7 @@ class ScriptTypeRegistry {
    */
   getMultisigDerivationPath(
     scriptTypeId: string,
-    network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet',
+    network: 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest' = 'mainnet',
     account: number = 0
   ): string {
     const handler = this.get(scriptTypeId);

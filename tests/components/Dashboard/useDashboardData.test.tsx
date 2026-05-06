@@ -47,7 +47,7 @@ let delayedRenderReady = true;
 
 let currencyState: any;
 let userState: any;
-let activeNetworkState: 'mainnet' | 'testnet' | 'signet' = 'mainnet';
+let activeNetworkState: 'mainnet' | 'testnet3' | 'testnet4' | 'signet' = 'mainnet';
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
@@ -178,7 +178,7 @@ const resetState = () => {
       type: 'single_sig',
       balance: 3000,
       scriptType: 'wpkh',
-      network: 'testnet',
+      network: 'testnet3',
       descriptor: 'desc-3',
       fingerprint: 'fp3',
       lastSyncStatus: null,
@@ -293,10 +293,12 @@ describe('useDashboardData', () => {
   });
 
   it('resolves and writes dashboard network search parameters', () => {
-    expect(resolveInitialNetwork('testnet')).toBe('testnet');
+    expect(resolveInitialNetwork('testnet3')).toBe('testnet3');
+    expect(resolveInitialNetwork('testnet')).toBe('testnet3');
+    expect(resolveInitialNetwork('testnet4')).toBe('testnet4');
     expect(resolveInitialNetwork('regtest')).toBe('mainnet');
 
-    const params = new URLSearchParams('network=testnet&page=2');
+    const params = new URLSearchParams('network=testnet3&page=2');
     expect(applyNetworkSearchParam(params, 'mainnet').toString()).toBe('page=2');
     expect(applyNetworkSearchParam(params, 'signet').toString()).toBe('page=2&network=signet');
   });
@@ -320,7 +322,8 @@ describe('useDashboardData', () => {
     ]);
     expect(result.current.walletCounts).toEqual({
       mainnet: 3,
-      testnet: 1,
+      testnet3: 1,
+      testnet4: 0,
       signet: 0,
     });
     expect(result.current.totalBalance).toBe(7000);
@@ -397,7 +400,7 @@ describe('useDashboardData', () => {
   });
 
   it('uses the active network preference for dashboard data', async () => {
-    activeNetworkState = 'testnet';
+    activeNetworkState = 'testnet3';
 
     const { result, rerender } = renderHook(() => useDashboardData());
     await act(async () => {
@@ -405,11 +408,11 @@ describe('useDashboardData', () => {
       await Promise.resolve();
     });
 
-    expect(result.current.selectedNetwork).toBe('testnet');
+    expect(result.current.selectedNetwork).toBe('testnet3');
     expect(result.current.isMainnet).toBe(false);
     expect(result.current.filteredWallets.map(w => w.id)).toEqual(['w-test']);
-    expect(bitcoinStatusNetworks).toContain('testnet');
-    expect(mempoolNetworks).toContain('testnet');
+    expect(bitcoinStatusNetworks).toContain('testnet3');
+    expect(mempoolNetworks).toContain('testnet3');
 
     act(() => {
       activeNetworkState = 'signet';

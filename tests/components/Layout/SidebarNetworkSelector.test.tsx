@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SidebarNetworkSelector } from '../../../components/Layout/SidebarContent/SidebarNetworkSelector';
 
 describe('SidebarNetworkSelector', () => {
-const availability = { mainnet: true, testnet: true, signet: true };
+const availability = { mainnet: true, testnet3: true, testnet4: true, signet: true };
 const selectorSpacing = () => screen.getByRole('navigation', { name: 'Network tabs' }).parentElement?.parentElement;
 
   it('shows the section label in expanded sidebar mode', () => {

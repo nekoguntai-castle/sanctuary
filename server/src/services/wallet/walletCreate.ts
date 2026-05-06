@@ -18,6 +18,7 @@ import { InvalidInputError, DeviceNotFoundError } from "../../errors";
 import { generateInitialAddresses } from "./addressGeneration";
 import type { CreateWalletInput, WalletNetwork, WalletWithBalance } from "./types";
 import { buildDeviceInfo } from "./walletAccountSelection";
+import { isBitcoinNetwork } from "../bitcoin/networks";
 
 const log = createLogger("WALLET:SVC_CREATE");
 
@@ -26,6 +27,12 @@ type WalletDevice = Awaited<
 >[number];
 
 function validateWalletInput(input: CreateWalletInput): void {
+  if (input.network && !isBitcoinNetwork(input.network)) {
+    throw new InvalidInputError(
+      "Invalid network. Must be mainnet, testnet3, testnet4, signet, or regtest.",
+    );
+  }
+
   if (input.type !== "multi_sig") {
     return;
   }

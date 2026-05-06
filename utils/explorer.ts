@@ -7,7 +7,7 @@
 /**
  * Convert a base explorer URL to be network-aware
  * @param baseUrl - The base explorer URL (e.g., "https://mempool.space/tx/...")
- * @param network - The Bitcoin network (mainnet, testnet, signet, regtest)
+ * @param network - The Bitcoin network (mainnet, testnet3, testnet4, signet, regtest)
  * @returns Network-aware explorer URL
  */
 export function getExplorerUrl(baseUrl: string, network: string): string {
@@ -16,10 +16,10 @@ export function getExplorerUrl(baseUrl: string, network: string): string {
     return baseUrl;
   }
 
-  // For testnet and signet, insert the network prefix into the URL
-  // mempool.space -> mempool.space/testnet
+  // For non-mainnet public networks, insert the network prefix into the URL
+  // mempool.space -> mempool.space/testnet or mempool.space/testnet4
   // blockstream.info -> blockstream.info/testnet
-  if (network === 'testnet') {
+  if (network === 'testnet' || network === 'testnet3') {
     return baseUrl
       .replace('mempool.space/', 'mempool.space/testnet/')
       .replace('mempool.space/tx/', 'mempool.space/testnet/tx/')
@@ -27,6 +27,13 @@ export function getExplorerUrl(baseUrl: string, network: string): string {
       .replace('blockstream.info/', 'blockstream.info/testnet/')
       .replace('blockstream.info/tx/', 'blockstream.info/testnet/tx/')
       .replace('blockstream.info/address/', 'blockstream.info/testnet/address/');
+  }
+
+  if (network === 'testnet4') {
+    return baseUrl
+      .replace('mempool.space/', 'mempool.space/testnet4/')
+      .replace('mempool.space/tx/', 'mempool.space/testnet4/tx/')
+      .replace('mempool.space/address/', 'mempool.space/testnet4/address/');
   }
 
   if (network === 'signet') {

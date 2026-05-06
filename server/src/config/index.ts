@@ -230,7 +230,10 @@ const parseNodeEnv = (): 'development' | 'production' | 'test' => {
 
 const parseBitcoinNetwork = (): NetworkType => {
   const network = process.env.BITCOIN_NETWORK || 'mainnet';
-  if (network === 'mainnet' || network === 'testnet' || network === 'signet' || network === 'regtest') {
+  if (network === 'testnet') {
+    return 'testnet3';
+  }
+  if (network === 'mainnet' || network === 'testnet3' || network === 'testnet4' || network === 'signet' || network === 'regtest') {
     return network;
   }
   return 'mainnet';

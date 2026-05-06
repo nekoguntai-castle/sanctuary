@@ -113,7 +113,7 @@ model Wallet {
   name       String
   type       String // single_sig, multi_sig
   scriptType String // native_segwit, nested_segwit, taproot, legacy
-  network    String @default("mainnet") // mainnet, testnet, regtest
+  network    String @default("mainnet") // mainnet, testnet3, testnet4, signet, regtest
 
   // Multi-sig configuration
   quorum       Int? // e.g., 2 for 2-of-3
@@ -584,16 +584,28 @@ model NodeConfig {
   mainnetPoolLoadBalancing String  @default("round_robin") // round_robin, least_connections, failover_only
 
   // ========================================
-  // TESTNET SETTINGS (optional)
+  // TESTNET3 SETTINGS (optional)
   // ========================================
-  testnetEnabled           Boolean @default(false)
-  testnetMode              String  @default("singleton") // "singleton" | "pool"
-  testnetSingletonHost     String?
-  testnetSingletonPort     Int?
-  testnetSingletonSsl      Boolean @default(true)
-  testnetPoolMin           Int     @default(1)
-  testnetPoolMax           Int     @default(3)
-  testnetPoolLoadBalancing String  @default("round_robin")
+  testnet3Enabled           Boolean @default(false)
+  testnet3Mode              String  @default("singleton") // "singleton" | "pool"
+  testnet3SingletonHost     String?
+  testnet3SingletonPort     Int?
+  testnet3SingletonSsl      Boolean @default(true)
+  testnet3PoolMin           Int     @default(1)
+  testnet3PoolMax           Int     @default(3)
+  testnet3PoolLoadBalancing String  @default("round_robin")
+
+  // ========================================
+  // TESTNET4 SETTINGS (optional)
+  // ========================================
+  testnet4Enabled           Boolean @default(false)
+  testnet4Mode              String  @default("singleton") // "singleton" | "pool"
+  testnet4SingletonHost     String?
+  testnet4SingletonPort     Int?
+  testnet4SingletonSsl      Boolean @default(true)
+  testnet4PoolMin           Int     @default(1)
+  testnet4PoolMax           Int     @default(3)
+  testnet4PoolLoadBalancing String  @default("round_robin")
 
   // ========================================
   // SIGNET SETTINGS (optional)
@@ -606,6 +618,18 @@ model NodeConfig {
   signetPoolMin            Int     @default(1)
   signetPoolMax            Int     @default(3)
   signetPoolLoadBalancing  String  @default("round_robin")
+
+  // ========================================
+  // LEGACY TESTNET FIELDS (deprecated, kept for migration compatibility)
+  // ========================================
+  testnetEnabled           Boolean @default(false)
+  testnetMode              String  @default("singleton") // @deprecated - use testnet3Mode
+  testnetSingletonHost     String? // @deprecated - use testnet3SingletonHost
+  testnetSingletonPort     Int?    // @deprecated - use testnet3SingletonPort
+  testnetSingletonSsl      Boolean @default(true) // @deprecated - use testnet3SingletonSsl
+  testnetPoolMin           Int     @default(1) // @deprecated - use testnet3PoolMin
+  testnetPoolMax           Int     @default(3) // @deprecated - use testnet3PoolMax
+  testnetPoolLoadBalancing String  @default("round_robin") // @deprecated - use testnet3PoolLoadBalancing
 
   // ========================================
   // PROXY SETTINGS (global, applies to all networks)
@@ -641,7 +665,7 @@ model NodeConfig {
 model ElectrumServer {
   id           String  @id @default(uuid())
   nodeConfigId String
-  network      String  @default("mainnet") // mainnet, testnet, signet, regtest
+  network      String  @default("mainnet") // mainnet, testnet3, testnet4, signet, regtest
   label        String // User-friendly name (e.g., "Blockstream SSL", "My Umbrel")
   host         String
   port         Int

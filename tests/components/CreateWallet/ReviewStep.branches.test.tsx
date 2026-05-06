@@ -40,13 +40,13 @@ describe('CreateWallet ReviewStep branch coverage', () => {
 
   it('renders testnet badge and multisig quorum row', () => {
     const { container } = renderStep({
-      network: 'testnet',
+      network: 'testnet3',
       walletType: WalletType.MULTI_SIG,
       quorumM: 2,
       selectedDeviceIds: new Set(['d1', 'd2']),
     });
 
-    expect(screen.getByText('Testnet')).toBeInTheDocument();
+    expect(screen.getByText('Testnet3')).toBeInTheDocument();
     expect(container.querySelector('.text-testnet-700')).toBeInTheDocument();
     expect(screen.getByText('Quorum')).toBeInTheDocument();
     expect(screen.getByText('2 of 2')).toBeInTheDocument();

@@ -9,6 +9,7 @@
 import { walletRepository, transactionRepository, systemSettingRepository } from '../../../../repositories';
 import { DEFAULT_DEEP_CONFIRMATION_THRESHOLD } from '../../../../constants';
 import { getBlockHeight } from '../../utils/blockHeight';
+import { normalizeLegacyBitcoinNetwork } from '../../networks';
 import { SystemSettingSchemas } from '../../../../utils/safeJson';
 import { executeInChunks } from './batchUpdates';
 import type { ConfirmationUpdate } from './types';
@@ -22,7 +23,7 @@ export async function updateTransactionConfirmations(walletId: string): Promise<
   const network = await walletRepository.findNetwork(walletId);
   if (network === null) return [];
 
-  const castNetwork = (network as 'mainnet' | 'testnet' | 'signet' | 'regtest') || 'mainnet';
+  const castNetwork = normalizeLegacyBitcoinNetwork(network, 'mainnet');
 
   // Get deep confirmation threshold from settings
   const deepConfirmationThreshold = await systemSettingRepository.getParsed('deepConfirmationThreshold', SystemSettingSchemas.number, DEFAULT_DEEP_CONFIRMATION_THRESHOLD);

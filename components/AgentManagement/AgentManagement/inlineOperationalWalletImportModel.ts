@@ -33,6 +33,13 @@ const SCRIPTED_SINGLE_SIG_PREFIXES: Record<string, XpubScriptType> = {
   upub: 'nested_segwit',
   vpub: 'native_segwit',
 };
+const SUPPORTED_XPUB_NETWORKS: SupportedXpubNetwork[] = [
+  'mainnet',
+  'testnet3',
+  'testnet4',
+  'signet',
+  'regtest',
+];
 
 export const RAW_KEY_SCRIPT_TYPE_OPTIONS: Array<{ value: XpubScriptType; label: string }> = [
   { value: 'native_segwit', label: 'Native SegWit' },
@@ -98,7 +105,7 @@ export async function normalizeOperationalImportData({
   if (!network) {
     return {
       ok: false,
-      error: 'Raw extended public key import supports mainnet, testnet, and regtest funding wallets. Use a descriptor or wallet export for this network.',
+      error: 'Raw extended public key import supports mainnet, testnet-family, signet, and regtest funding wallets. Use a descriptor or wallet export for this network.',
     };
   }
 
@@ -138,12 +145,8 @@ function getRawKeyScriptType(
 }
 
 function getXpubValidationNetwork(selectedFundingWallet?: AgentOptionWallet): SupportedXpubNetwork | null {
-  if (
-    selectedFundingWallet?.network === 'mainnet' ||
-    selectedFundingWallet?.network === 'testnet' ||
-    selectedFundingWallet?.network === 'regtest'
-  ) {
-    return selectedFundingWallet.network;
+  if (SUPPORTED_XPUB_NETWORKS.includes(selectedFundingWallet?.network as SupportedXpubNetwork)) {
+    return selectedFundingWallet?.network as SupportedXpubNetwork;
   }
 
   return null;

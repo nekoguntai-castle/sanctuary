@@ -105,7 +105,7 @@ export const syncSchemas = {
   NetworkSyncStatusResponse: {
     type: "object",
     properties: {
-      network: { type: "string", enum: ["mainnet", "testnet", "signet"] },
+      network: { type: "string", enum: ["mainnet", "testnet3", "testnet4", "signet"] },
       total: { type: "integer", minimum: 0 },
       syncing: { type: "integer", minimum: 0 },
       synced: { type: "integer", minimum: 0 },

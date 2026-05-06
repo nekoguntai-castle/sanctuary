@@ -7,6 +7,7 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import { getNetwork } from '../utils';
+import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { createLogger } from '../../../utils/logger';
 import type { PrismaTxClient, TransactionInputMetadata, TransactionOutputMetadata } from './types';
 
@@ -140,7 +141,7 @@ export async function storeTransactionOutputs(
       where: { id: walletId },
       select: { network: true },
     });
-    const networkObj = getNetwork(network?.network === 'testnet' ? 'testnet' : 'mainnet');
+    const networkObj = getNetwork(normalizeLegacyBitcoinNetwork(network?.network, 'mainnet'));
 
     // Get all wallet addresses to check ownership
     const walletAddresses = await tx.address.findMany({

@@ -109,8 +109,8 @@ export function registerElectrumPoolInternalLifecycleTests(context: ElectrumPool
 
     it('updates proxy/network helpers and exposes circuit health', () => {
       context.pool = createPool();
-      context.pool!.setNetwork('testnet');
-      expect(context.pool!.getNetwork()).toBe('testnet');
+      context.pool!.setNetwork('testnet3');
+      expect(context.pool!.getNetwork()).toBe('testnet3');
 
       context.pool!.setProxyConfig({ enabled: true, host: '127.0.0.1', port: 9050 });
       expect(context.pool!.isProxyEnabled()).toBe(true);

@@ -104,7 +104,7 @@ describe('Wallets XPUB Validation Routes', () => {
 
     const response = await request(app)
       .post('/api/v1/wallets/validate-xpub')
-      .send({ xpub: 'tpub123', network: 'testnet' });
+      .send({ xpub: 'tpub123', network: 'testnet3' });
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({

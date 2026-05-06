@@ -24,14 +24,16 @@ describe('NetworkConnectionsSection branch coverage', () => {
     const nodeConfig = {
       mainnetPoolMin: 1,
       mainnetPoolMax: 5,
-      testnetEnabled: true,
+      testnet3Enabled: true,
+      testnet4Enabled: true,
       signetEnabled: false,
     } as any;
 
     const servers = [
       { id: 'm2', network: 'mainnet', priority: 2 },
       { id: 'm1', network: 'mainnet', priority: 1 },
-      { id: 't1', network: 'testnet', priority: 0 },
+      { id: 't3', network: 'testnet3', priority: 0 },
+      { id: 't4', network: 'testnet4', priority: 0 },
     ] as any;
 
     render(
@@ -51,6 +53,8 @@ describe('NetworkConnectionsSection branch coverage', () => {
     );
 
     expect(screen.getByTestId('network-server-count')).toHaveTextContent('2');
+    expect(screen.getByRole('button', { name: /testnet3\(1\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /testnet4\(1\)/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('update-config'));
     expect(onConfigChange).toHaveBeenCalledWith({
@@ -66,5 +70,33 @@ describe('NetworkConnectionsSection branch coverage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /network connections/i }));
     expect(onToggle).toHaveBeenCalled();
+  });
+
+  it('forwards testnet4 server updates separately from testnet3', () => {
+    const onServersChange = vi.fn();
+
+    render(
+      <NetworkConnectionsSection
+        nodeConfig={{ testnet3Enabled: true, testnet4Enabled: true } as any}
+        servers={[
+          { id: 't3', network: 'testnet3', priority: 0 },
+          { id: 't4', network: 'testnet4', priority: 0 },
+        ] as any}
+        poolStats={null}
+        activeNetworkTab="testnet4"
+        onNetworkTabChange={vi.fn()}
+        onConfigChange={vi.fn()}
+        onServersChange={onServersChange}
+        onTestConnection={vi.fn()}
+        expanded={true}
+        onToggle={vi.fn()}
+        summary="testnet4"
+      />
+    );
+
+    expect(screen.getByTestId('network-server-count')).toHaveTextContent('1');
+
+    fireEvent.click(screen.getByText('update-servers'));
+    expect(onServersChange).toHaveBeenCalledWith('testnet4', [{ id: 'updated-mainnet' }]);
   });
 });

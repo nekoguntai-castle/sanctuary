@@ -246,7 +246,7 @@ export const bitcoinPaths = {
           required: false,
           schema: {
             type: "string",
-            enum: ["mainnet", "testnet", "signet"],
+            enum: ["mainnet", "testnet3", "testnet4", "signet"],
             default: "mainnet",
           },
         },

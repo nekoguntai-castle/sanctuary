@@ -23,7 +23,7 @@ const WALLET = {
   name: 'Smoke Wallet',
   type: 'single_sig',
   scriptType: 'native_segwit',
-  network: 'testnet',
+  network: 'testnet3',
   descriptor: 'wpkh([abcd1234/84h/1h/0h]tpubD6NzVbkrYhZ4Yexample/0/*)',
   fingerprint: 'abcd1234',
   balance: 0,

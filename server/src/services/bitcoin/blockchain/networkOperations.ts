@@ -8,6 +8,7 @@
 import { getNodeClient } from '../nodeClient';
 import type { TransactionDetails } from '../electrum';
 import { validateAddress } from '../utils';
+import type { BitcoinNetwork } from '../networks';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import type { FeeEstimates, CheckAddressResult } from './types';
@@ -90,7 +91,7 @@ export async function monitorAddress(address: string): Promise<string | null> {
  */
 export async function checkAddress(
   address: string,
-  network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet'
+  network: BitcoinNetwork = 'mainnet'
 ): Promise<CheckAddressResult> {
   // First validate format
   const validation = validateAddress(address, network);
@@ -99,7 +100,7 @@ export async function checkAddress(
   }
 
   // Check blockchain
-  const client = await getNodeClient();
+  const client = await getNodeClient(network);
 
   try {
     if (!client.isConnected()) {

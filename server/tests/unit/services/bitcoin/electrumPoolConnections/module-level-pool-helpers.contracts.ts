@@ -21,7 +21,7 @@ export function registerElectrumPoolModuleHelperTests(): void {
     afterEach(async () => {
       await shutdownElectrumPool();
       await resetElectrumPoolForNetwork('mainnet');
-      await resetElectrumPoolForNetwork('testnet');
+      await resetElectrumPoolForNetwork('testnet3');
       await resetElectrumPoolForNetwork('signet');
       await resetElectrumPoolForNetwork('regtest');
       await resetElectrumPool();
@@ -56,12 +56,12 @@ export function registerElectrumPoolModuleHelperTests(): void {
     });
 
     it('supports network-scoped pool lifecycle and reset', async () => {
-      const first = await getElectrumPoolForNetwork('testnet');
-      const second = await getElectrumPoolForNetwork('testnet');
+      const first = await getElectrumPoolForNetwork('testnet3');
+      const second = await getElectrumPoolForNetwork('testnet3');
       expect(second).toBe(first);
 
-      await resetElectrumPoolForNetwork('testnet');
-      const recreated = await getElectrumPoolForNetwork('testnet');
+      await resetElectrumPoolForNetwork('testnet3');
+      const recreated = await getElectrumPoolForNetwork('testnet3');
       expect(recreated).not.toBe(first);
     });
 
@@ -109,9 +109,9 @@ export function registerElectrumPoolModuleHelperTests(): void {
         poolMinConnections: 1,
         poolMaxConnections: 2,
         poolLoadBalancing: 'round_robin',
-        testnetPoolMin: 4,
-        testnetPoolMax: 6,
-        testnetPoolLoadBalancing: 'least_connections',
+        testnet3PoolMin: 4,
+        testnet3PoolMax: 6,
+        testnet3PoolLoadBalancing: 'least_connections',
         proxyEnabled: true,
         proxyHost: '127.0.0.1',
         proxyPort: 9050,
@@ -126,20 +126,20 @@ export function registerElectrumPoolModuleHelperTests(): void {
             useSsl: true,
             priority: 0,
             enabled: true,
-            network: 'testnet',
+            network: 'testnet3',
             supportsVerbose: true,
           },
         ],
       });
 
-      const testnetPool = await getElectrumPoolForNetwork('testnet');
-      expect((testnetPool as any).config.minConnections).toBe(4);
-      expect((testnetPool as any).config.maxConnections).toBe(6);
-      expect((testnetPool as any).config.loadBalancing).toBe('least_connections');
-      expect(testnetPool.isProxyEnabled()).toBe(true);
-      expect(testnetPool.getServers()).toHaveLength(1);
+      const testnet3Pool = await getElectrumPoolForNetwork('testnet3');
+      expect((testnet3Pool as any).config.minConnections).toBe(4);
+      expect((testnet3Pool as any).config.maxConnections).toBe(6);
+      expect((testnet3Pool as any).config.loadBalancing).toBe('least_connections');
+      expect(testnet3Pool.isProxyEnabled()).toBe(true);
+      expect(testnet3Pool.getServers()).toHaveLength(1);
 
-      await resetElectrumPoolForNetwork('testnet');
+      await resetElectrumPoolForNetwork('testnet3');
 
       (prisma as any).nodeConfig.findFirst.mockResolvedValueOnce({
         type: 'electrum',
@@ -182,9 +182,9 @@ export function registerElectrumPoolModuleHelperTests(): void {
         poolMinConnections: 2,
         poolMaxConnections: 4,
         poolLoadBalancing: 'round_robin',
-        testnetPoolMin: null,
-        testnetPoolMax: null,
-        testnetPoolLoadBalancing: null,
+        testnet3PoolMin: null,
+        testnet3PoolMax: null,
+        testnet3PoolLoadBalancing: null,
         proxyEnabled: true,
         proxyHost: '127.0.0.1',
         proxyPort: 9050,
@@ -199,25 +199,25 @@ export function registerElectrumPoolModuleHelperTests(): void {
             useSsl: true,
             priority: 0,
             enabled: true,
-            network: 'testnet',
+            network: 'testnet3',
             supportsVerbose: true,
           },
         ],
       });
 
-      const testnetPool = await getElectrumPoolForNetwork('testnet');
-      expect((testnetPool as any).config.minConnections).toBe(2);
-      expect((testnetPool as any).config.maxConnections).toBe(4);
-      expect((testnetPool as any).config.loadBalancing).toBe('round_robin');
-      expect(testnetPool.getProxyConfig()).toMatchObject({
+      const testnet3Pool = await getElectrumPoolForNetwork('testnet3');
+      expect((testnet3Pool as any).config.minConnections).toBe(2);
+      expect((testnet3Pool as any).config.maxConnections).toBe(4);
+      expect((testnet3Pool as any).config.loadBalancing).toBe('round_robin');
+      expect(testnet3Pool.getProxyConfig()).toMatchObject({
         enabled: true,
         host: '127.0.0.1',
         port: 9050,
       });
-      expect(testnetPool.getProxyConfig()?.username).toBeUndefined();
-      expect(testnetPool.getProxyConfig()?.password).toBeUndefined();
+      expect(testnet3Pool.getProxyConfig()?.username).toBeUndefined();
+      expect(testnet3Pool.getProxyConfig()?.password).toBeUndefined();
 
-      await resetElectrumPoolForNetwork('testnet');
+      await resetElectrumPoolForNetwork('testnet3');
 
       (prisma as any).nodeConfig.findFirst.mockResolvedValueOnce({
         type: 'electrum',
@@ -262,9 +262,9 @@ export function registerElectrumPoolModuleHelperTests(): void {
         mainnetPoolMin: 10,
         mainnetPoolMax: 12,
         mainnetPoolLoadBalancing: 'failover_only',
-        testnetPoolMin: 6,
-        testnetPoolMax: 9,
-        testnetPoolLoadBalancing: 'least_connections',
+        testnet3PoolMin: 6,
+        testnet3PoolMax: 9,
+        testnet3PoolLoadBalancing: 'least_connections',
         signetPoolMin: 5,
         signetPoolMax: 7,
         signetPoolLoadBalancing: 'failover_only',

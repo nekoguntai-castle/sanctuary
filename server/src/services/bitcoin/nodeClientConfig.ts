@@ -7,6 +7,8 @@ import { NetworkDisabledError, isNetworkDisabledError } from "./errors";
 
 const log = createLogger("BITCOIN:SVC_NODE_CLIENT_CONFIG");
 
+type ConnectionMode = "singleton" | "pool";
+
 interface PersistedNodeConfig {
   host: string;
   port: number;
@@ -18,6 +20,22 @@ interface PersistedNodeConfig {
   mainnetPoolMin: number | null;
   mainnetPoolMax: number | null;
   mainnetPoolLoadBalancing: string | null;
+  testnet3Enabled: boolean | null;
+  testnet3Mode: string | null;
+  testnet3SingletonHost: string | null;
+  testnet3SingletonPort: number | null;
+  testnet3SingletonSsl: boolean | null;
+  testnet3PoolMin: number | null;
+  testnet3PoolMax: number | null;
+  testnet3PoolLoadBalancing: string | null;
+  testnet4Enabled: boolean | null;
+  testnet4Mode: string | null;
+  testnet4SingletonHost: string | null;
+  testnet4SingletonPort: number | null;
+  testnet4SingletonSsl: boolean | null;
+  testnet4PoolMin: number | null;
+  testnet4PoolMax: number | null;
+  testnet4PoolLoadBalancing: string | null;
   testnetEnabled: boolean | null;
   testnetMode: string | null;
   testnetSingletonHost: string | null;
@@ -49,11 +67,25 @@ export function getPoolLoadBalancing(
   return (value as NetworkModeConfig["poolLoadBalancing"]) ?? fallback;
 }
 
+function withLegacy<T>(
+  value: T | null | undefined,
+  legacyValue: T | null | undefined,
+): T | undefined {
+  return value ?? legacyValue ?? undefined;
+}
+
+function getConnectionMode(
+  value: string | null | undefined,
+  fallback: ConnectionMode,
+): ConnectionMode {
+  return value === "pool" || value === "singleton" ? value : fallback;
+}
+
 export function getMainnetModeConfig(
   nodeConfig: PersistedNodeConfig,
 ): NetworkModeConfig {
   return {
-    mode: (nodeConfig.mainnetMode as "singleton" | "pool") || "pool",
+    mode: getConnectionMode(nodeConfig.mainnetMode, "pool"),
     singletonHost: nodeConfig.mainnetSingletonHost ?? undefined,
     singletonPort: nodeConfig.mainnetSingletonPort ?? undefined,
     singletonSsl: nodeConfig.mainnetSingletonSsl ?? true,
@@ -75,19 +107,54 @@ export function assertNetworkEnabled(
   }
 }
 
-export function getTestnetModeConfig(
+export function getTestnet3ModeConfig(
   nodeConfig: PersistedNodeConfig,
 ): NetworkModeConfig {
-  assertNetworkEnabled(nodeConfig.testnetEnabled, "Testnet");
+  const mode = withLegacy(nodeConfig.testnet3Mode, nodeConfig.testnetMode);
+
+  assertNetworkEnabled(
+    nodeConfig.testnet3Enabled ?? nodeConfig.testnetEnabled,
+    "Testnet3",
+  );
+
   return {
-    mode: (nodeConfig.testnetMode as "singleton" | "pool") || "singleton",
-    singletonHost: nodeConfig.testnetSingletonHost ?? undefined,
-    singletonPort: nodeConfig.testnetSingletonPort ?? undefined,
-    singletonSsl: nodeConfig.testnetSingletonSsl ?? true,
-    poolMin: nodeConfig.testnetPoolMin ?? 1,
-    poolMax: nodeConfig.testnetPoolMax ?? 3,
+    mode: getConnectionMode(mode, "singleton"),
+    singletonHost: withLegacy(
+      nodeConfig.testnet3SingletonHost,
+      nodeConfig.testnetSingletonHost,
+    ),
+    singletonPort: withLegacy(
+      nodeConfig.testnet3SingletonPort,
+      nodeConfig.testnetSingletonPort,
+    ),
+    singletonSsl:
+      withLegacy(nodeConfig.testnet3SingletonSsl, nodeConfig.testnetSingletonSsl) ??
+      true,
+    poolMin: withLegacy(nodeConfig.testnet3PoolMin, nodeConfig.testnetPoolMin) ?? 1,
+    poolMax: withLegacy(nodeConfig.testnet3PoolMax, nodeConfig.testnetPoolMax) ?? 3,
     poolLoadBalancing: getPoolLoadBalancing(
-      nodeConfig.testnetPoolLoadBalancing,
+      withLegacy(
+        nodeConfig.testnet3PoolLoadBalancing,
+        nodeConfig.testnetPoolLoadBalancing,
+      ),
+      "round_robin",
+    ),
+  };
+}
+
+export function getTestnet4ModeConfig(
+  nodeConfig: PersistedNodeConfig,
+): NetworkModeConfig {
+  assertNetworkEnabled(nodeConfig.testnet4Enabled, "Testnet4");
+  return {
+    mode: getConnectionMode(nodeConfig.testnet4Mode, "singleton"),
+    singletonHost: nodeConfig.testnet4SingletonHost ?? undefined,
+    singletonPort: nodeConfig.testnet4SingletonPort ?? undefined,
+    singletonSsl: nodeConfig.testnet4SingletonSsl ?? true,
+    poolMin: nodeConfig.testnet4PoolMin ?? 1,
+    poolMax: nodeConfig.testnet4PoolMax ?? 3,
+    poolLoadBalancing: getPoolLoadBalancing(
+      nodeConfig.testnet4PoolLoadBalancing,
       "round_robin",
     ),
   };
@@ -98,7 +165,7 @@ export function getSignetModeConfig(
 ): NetworkModeConfig {
   assertNetworkEnabled(nodeConfig.signetEnabled, "Signet");
   return {
-    mode: (nodeConfig.signetMode as "singleton" | "pool") || "singleton",
+    mode: getConnectionMode(nodeConfig.signetMode, "singleton"),
     singletonHost: nodeConfig.signetSingletonHost ?? undefined,
     singletonPort: nodeConfig.signetSingletonPort ?? undefined,
     singletonSsl: nodeConfig.signetSingletonSsl ?? true,
@@ -129,8 +196,10 @@ export function buildNetworkModeConfig(
   switch (network) {
     case "mainnet":
       return getMainnetModeConfig(nodeConfig);
-    case "testnet":
-      return getTestnetModeConfig(nodeConfig);
+    case "testnet3":
+      return getTestnet3ModeConfig(nodeConfig);
+    case "testnet4":
+      return getTestnet4ModeConfig(nodeConfig);
     case "signet":
       return getSignetModeConfig(nodeConfig);
     case "regtest":

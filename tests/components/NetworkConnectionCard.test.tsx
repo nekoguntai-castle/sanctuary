@@ -502,7 +502,7 @@ describe("NetworkConnectionCard", () => {
       render(
         <NetworkConnectionCard
           {...defaultProps}
-          network="testnet"
+          network="testnet3"
           config={{
             ...mockConfig,
             testnetEnabled: false,
@@ -512,12 +512,12 @@ describe("NetworkConnectionCard", () => {
         />,
       );
 
-      expect(screen.getByText("Testnet Sync")).toBeInTheDocument();
+      expect(screen.getByText("Testnet3 Sync")).toBeInTheDocument();
       expect(
-        screen.getByText(/Testnet wallets will not sync/i),
+        screen.getByText(/Testnet3 wallets will not sync/i),
       ).toBeInTheDocument();
 
-      const toggle = screen.getByRole("switch", { name: "Testnet Sync" });
+      const toggle = screen.getByRole("switch", { name: "Testnet3 Sync" });
       expect(toggle).toHaveAttribute("aria-checked", "false");
       expect(toggle).toHaveClass("dark:focus:ring-offset-sanctuary-950");
       expect(toggle).toHaveClass("bg-sanctuary-700");
@@ -529,7 +529,7 @@ describe("NetworkConnectionCard", () => {
       await user.click(toggle);
 
       expect(defaultProps.onConfigChange).toHaveBeenCalledWith({
-        testnetEnabled: true,
+        testnet3Enabled: true,
       });
     });
 
@@ -563,7 +563,7 @@ describe("NetworkConnectionCard", () => {
       render(
         <NetworkConnectionCard
           {...defaultProps}
-          network="testnet"
+          network="testnet3"
           config={{ ...mockConfig, testnetMode: "singleton" }}
           servers={[]}
         />,

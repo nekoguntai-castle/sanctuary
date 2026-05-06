@@ -6,7 +6,28 @@
 
 export const SATS_PER_BTC = 100_000_000;
 
-export type NetworkType = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+export const BITCOIN_NETWORKS = ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'] as const;
+
+export type NetworkType = typeof BITCOIN_NETWORKS[number];
+
+export type LegacyNetworkType = NetworkType | 'testnet';
+
+export function isNetworkType(value: unknown): value is NetworkType {
+  return typeof value === 'string' && BITCOIN_NETWORKS.includes(value as NetworkType);
+}
+
+export function normalizeLegacyNetworkType(
+  value: unknown,
+  fallback: NetworkType = 'mainnet',
+): NetworkType {
+  if (value === 'testnet') return 'testnet3';
+  return isNetworkType(value) ? value : fallback;
+}
+
+export function isTestnetFamilyNetwork(network: string | null | undefined): boolean {
+  const normalized = normalizeLegacyNetworkType(network, 'mainnet');
+  return normalized === 'testnet3' || normalized === 'testnet4' || normalized === 'signet' || normalized === 'regtest';
+}
 
 export type AddressType =
   | 'legacy'

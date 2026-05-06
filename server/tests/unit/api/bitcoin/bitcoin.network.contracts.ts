@@ -158,24 +158,31 @@ export const registerBitcoinNetworkRouteTests = () => {
         expect(response.body.server).toBe('ElectrumX');
       });
 
-      it('returns selected testnet singleton status with configured host', async () => {
+      it('returns selected testnet3 singleton status with configured host', async () => {
         mockElectrumClient.isConnected.mockReturnValue(true);
         mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'Fulcrum', protocol: '1.4' });
         mockElectrumClient.getBlockHeight.mockResolvedValue(4_500_000);
 
-        const response = await request(app).get('/bitcoin/status?network=testnet');
+        const response = await request(app).get('/bitcoin/status?network=testnet3');
 
         expect(response.status).toBe(200);
         expect(response.body).toMatchObject({
           connected: true,
-          network: 'testnet',
+          network: 'testnet3',
           server: 'Fulcrum',
           blockHeight: 4_500_000,
           host: 'testnet.example.com',
           useSsl: true,
           pool: expect.objectContaining({ enabled: false }),
         });
-        expect(mockNodeClient.getNodeClient).toHaveBeenCalledWith('testnet');
+        expect(mockNodeClient.getNodeClient).toHaveBeenCalledWith('testnet3');
+      });
+
+      it('rejects legacy testnet status network input', async () => {
+        const response = await request(app).get('/bitcoin/status?network=testnet');
+
+        expect(response.status).toBe(400);
+        expect(response.body.message).toContain('Invalid network');
       });
 
       it('includes configured pool servers when live pool stats are not populated', async () => {
@@ -190,45 +197,45 @@ export const registerBitcoinNetworkRouteTests = () => {
           mainnetMode: 'pool',
           mainnetPoolMin: 1,
           mainnetPoolMax: 5,
-          testnetEnabled: true,
-          testnetMode: 'pool',
-          testnetPoolMin: 1,
-          testnetPoolMax: 3,
+          testnet3Enabled: true,
+          testnet3Mode: 'pool',
+          testnet3PoolMin: 1,
+          testnet3PoolMax: 3,
           signetEnabled: false,
           servers: [
             {
-              id: 'testnet-server-2',
-              label: 'Backup Testnet',
-              host: 'backup-testnet.example.com',
+              id: 'testnet3-server-2',
+              label: 'Backup Testnet3',
+              host: 'backup-testnet3.example.com',
               port: 60002,
               useSsl: true,
               priority: 2,
               enabled: true,
-              network: 'testnet',
+              network: 'testnet3',
               isHealthy: true,
               lastHealthCheck: null,
             },
             {
-              id: 'testnet-server-1',
-              label: 'Default Priority Testnet',
-              host: 'default-priority-testnet.example.com',
+              id: 'testnet3-server-1',
+              label: 'Default Priority Testnet3',
+              host: 'default-priority-testnet3.example.com',
               port: 60003,
               useSsl: true,
               priority: null,
               enabled: true,
-              network: 'testnet',
+              network: 'testnet3',
               isHealthy: true,
               lastHealthCheck: null,
             },
             {
-              id: 'testnet-server-3',
-              label: 'Tertiary Testnet',
-              host: 'tertiary-testnet.example.com',
+              id: 'testnet3-server-3',
+              label: 'Tertiary Testnet3',
+              host: 'tertiary-testnet3.example.com',
               port: 60004,
               useSsl: true,
               priority: 4,
               enabled: true,
-              network: 'testnet',
+              network: 'testnet3',
               isHealthy: true,
               lastHealthCheck: null,
             },
@@ -249,27 +256,27 @@ export const registerBitcoinNetworkRouteTests = () => {
         mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'Fulcrum', protocol: '1.4' });
         mockElectrumClient.getBlockHeight.mockResolvedValue(4_500_000);
 
-        const response = await request(app).get('/bitcoin/status?network=testnet');
+        const response = await request(app).get('/bitcoin/status?network=testnet3');
 
         expect(response.status).toBe(200);
         expect(response.body.pool.enabled).toBe(true);
         expect(response.body.pool.stats.servers).toEqual([
           expect.objectContaining({
-            serverId: 'testnet-server-1',
-            label: 'Default Priority Testnet',
-            host: 'default-priority-testnet.example.com',
+            serverId: 'testnet3-server-1',
+            label: 'Default Priority Testnet3',
+            host: 'default-priority-testnet3.example.com',
             port: 60003,
           }),
           expect.objectContaining({
-            serverId: 'testnet-server-2',
-            label: 'Backup Testnet',
-            host: 'backup-testnet.example.com',
+            serverId: 'testnet3-server-2',
+            label: 'Backup Testnet3',
+            host: 'backup-testnet3.example.com',
             port: 60002,
           }),
           expect.objectContaining({
-            serverId: 'testnet-server-3',
-            label: 'Tertiary Testnet',
-            host: 'tertiary-testnet.example.com',
+            serverId: 'testnet3-server-3',
+            label: 'Tertiary Testnet3',
+            host: 'tertiary-testnet3.example.com',
             port: 60004,
           }),
         ]);
@@ -283,16 +290,16 @@ export const registerBitcoinNetworkRouteTests = () => {
           port: 50002,
           useSsl: true,
           explorerUrl: 'https://mempool.space',
-          testnetEnabled: true,
-          testnetMode: 'singleton',
-          testnetSingletonHost: 'testnet.example.com',
-          testnetSingletonPort: 60002,
-          testnetSingletonSsl: true,
+          testnet3Enabled: true,
+          testnet3Mode: 'singleton',
+          testnet3SingletonHost: 'testnet.example.com',
+          testnet3SingletonPort: 60002,
+          testnet3SingletonSsl: true,
         });
         mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'Fulcrum', protocol: '1.4' });
         mockElectrumClient.getBlockHeight.mockResolvedValue(4_500_000);
 
-        const response = await request(app).get('/bitcoin/status?network=testnet');
+        const response = await request(app).get('/bitcoin/status?network=testnet3');
 
         expect(response.status).toBe(200);
         expect(response.body.pool).toEqual(
@@ -315,14 +322,14 @@ export const registerBitcoinNetworkRouteTests = () => {
             explorerUrl: 'https://mempool.space',
             servers: [
               {
-                id: 'testnet-server-1',
-                label: 'Observed Testnet',
-                host: 'observed-testnet.example.com',
+                id: 'testnet3-server-1',
+                label: 'Observed Testnet3',
+                host: 'observed-testnet3.example.com',
                 port: 60002,
                 useSsl: true,
                 priority: null,
                 enabled: true,
-                network: 'testnet',
+                network: 'testnet3',
                 isHealthy: null,
                 lastHealthCheck,
               },
@@ -332,12 +339,12 @@ export const registerBitcoinNetworkRouteTests = () => {
         mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'Fulcrum', protocol: '1.4' });
         mockElectrumClient.getBlockHeight.mockResolvedValue(4_500_001);
 
-        const response = await request(app).get('/bitcoin/status?network=testnet');
+        const response = await request(app).get('/bitcoin/status?network=testnet3');
 
         expect(response.status).toBe(200);
         expect(response.body).toMatchObject({
           connected: true,
-          network: 'testnet',
+          network: 'testnet3',
           host: 'electrum.blockstream.info',
           useSsl: true,
           pool: expect.objectContaining({
@@ -348,7 +355,7 @@ export const registerBitcoinNetworkRouteTests = () => {
         });
         expect(response.body.pool.stats.servers).toEqual([
           expect.objectContaining({
-            serverId: 'testnet-server-1',
+            serverId: 'testnet3-server-1',
             isHealthy: false,
             lastHealthCheck: new Date(lastHealthCheck),
           }),
@@ -381,11 +388,18 @@ export const registerBitcoinNetworkRouteTests = () => {
         };
         mockMempool.getBlocksAndMempool.mockResolvedValue(mempoolData);
 
-        const response = await request(app).get('/bitcoin/mempool?network=testnet');
+        const response = await request(app).get('/bitcoin/mempool?network=testnet3');
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual(mempoolData);
-        expect(mockMempool.getBlocksAndMempool).toHaveBeenCalledWith('testnet');
+        expect(mockMempool.getBlocksAndMempool).toHaveBeenCalledWith('testnet3');
+      });
+
+      it('rejects legacy testnet mempool network input', async () => {
+        const response = await request(app).get('/bitcoin/mempool?network=testnet');
+
+        expect(response.status).toBe(400);
+        expect(response.body.message).toContain('Invalid network');
       });
 
       it('should handle mempool.getBlocksAndMempool being called', async () => {

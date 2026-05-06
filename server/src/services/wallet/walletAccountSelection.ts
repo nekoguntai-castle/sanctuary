@@ -28,9 +28,10 @@ const PURPOSE_BY_WALLET_TYPE: Record<CreateWalletInput["type"], AccountPurpose> 
 const COIN_TYPE_BY_NETWORK: Record<WalletNetwork, number> = {
   mainnet: 0,
   regtest: 1,
-  // Signet has no dedicated SLIP-44 entry, so hardware wallets use coin type 1.
+  // Testnet-family networks share SLIP-44 coin type 1 in hardware wallet exports.
   signet: 1,
-  testnet: 1,
+  testnet3: 1,
+  testnet4: 1,
 };
 
 export function walletPurpose(input: CreateWalletInput): AccountPurpose {

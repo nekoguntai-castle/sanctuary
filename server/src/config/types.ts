@@ -4,7 +4,7 @@
  * Centralized types for all application configuration.
  */
 
-export type NetworkType = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+export type NetworkType = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
 export type ElectrumProtocol = 'tcp' | 'ssl';
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace';
 

@@ -253,7 +253,7 @@ describe('Dashboard render branches', () => {
     const navigate = vi.fn();
     mocks.dashboardData = makeDashboardState({
       isMainnet: false,
-      selectedNetwork: 'testnet',
+      selectedNetwork: 'testnet3',
       priceChange24h: null,
       versionInfo: null,
       bitcoinStatus: undefined,
@@ -263,9 +263,9 @@ describe('Dashboard render branches', () => {
     render(<Dashboard />);
 
     expect(screen.getByText('tBTC')).toBeInTheDocument();
-    expect(screen.getByText('Testnet coins have no market value')).toBeInTheDocument();
-    expect(screen.getByText('Testnet node status is unavailable')).toBeInTheDocument();
-    expect(screen.getByText('Open Admin → Node Config to review Testnet settings.')).toBeInTheDocument();
+    expect(screen.getByText('Testnet3 coins have no market value')).toBeInTheDocument();
+    expect(screen.getByText('Testnet3 node status is unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Open Admin → Node Config to review Testnet3 settings.')).toBeInTheDocument();
     expect(screen.queryByText('Update Available: v2.0.0')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trending-up')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trending-down')).not.toBeInTheDocument();
@@ -372,10 +372,10 @@ describe('Dashboard render branches', () => {
     expect(screen.getByText('Signet sync is off')).toBeInTheDocument();
   });
 
-  it('renders configured testnet node details from selected-network status', () => {
+  it('renders configured testnet3 node details from selected-network status', () => {
     mocks.dashboardData = makeDashboardState({
       isMainnet: false,
-      selectedNetwork: 'testnet',
+      selectedNetwork: 'testnet3',
       versionInfo: null,
       bitcoinStatus: {
         connected: true,
