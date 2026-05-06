@@ -484,23 +484,6 @@ export async function findByOutpointsForWallet(
 }
 
 /**
- * Find existing UTXOs by outpoints (txid:vout) without wallet filter.
- * Used by single-address sync.
- */
-export async function findExistingByOutpointsGlobal(
-  outpoints: Array<{ txid: string; vout: number }>
-): Promise<Set<string>> {
-  if (outpoints.length === 0) return new Set();
-  const existing = await prisma.uTXO.findMany({
-    where: {
-      OR: outpoints.map(o => ({ txid: o.txid, vout: o.vout })),
-    },
-    select: { txid: true, vout: true },
-  });
-  return new Set(existing.map(u => `${u.txid}:${u.vout}`));
-}
-
-/**
  * Bulk create UTXOs
  */
 export async function createMany(
@@ -744,7 +727,6 @@ export const utxoRepository = {
   batchUpdateByIds,
   findExistingByOutpoints,
   findByOutpointsForWallet,
-  findExistingByOutpointsGlobal,
   createMany,
   // Privacy methods
   findByIdWithWallet,

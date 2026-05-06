@@ -211,7 +211,12 @@ describe("nodeClient service", () => {
     );
     const testnet4Singleton = {
       connect: vi.fn().mockResolvedValue(undefined),
-      disconnect: vi.fn(),
+      disconnect: vi
+        .fn()
+        .mockImplementationOnce(() => {
+          throw new Error("disconnect failed");
+        })
+        .mockImplementation(() => undefined),
       isConnected: vi.fn().mockReturnValue(true),
       getBlockHeight: vi.fn(),
     };
@@ -869,6 +874,21 @@ describe("nodeClient service", () => {
 
     expect(result.success).toBe(false);
     expect(result.message).toContain("connect failed");
+  });
+
+  it("returns connection failure when test client construction fails", async () => {
+    mocks.electrumClientCtor.mockImplementationOnce(() => {
+      throw new Error("invalid test config");
+    });
+
+    const result = await testNodeConfig({
+      host: "invalid.example.com",
+      port: 50002,
+      protocol: "ssl",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("invalid test config");
   });
 
   it("defaults protocol to ssl in testNodeConfig when protocol is omitted", async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  getExpectedGenesisHash,
   hashBlockHeader,
   verifyNodeClientNetwork,
 } from '../../../../src/services/bitcoin/networkIdentity';
@@ -43,5 +44,13 @@ describe('network identity', () => {
         { timeoutMs: 1 },
       ),
     ).rejects.toThrow('Testnet4 chain identity check timed out');
+  });
+
+  it('skips identity validation for networks without a fixed genesis anchor', async () => {
+    const client = { getBlockHeader: vi.fn() };
+
+    expect(getExpectedGenesisHash('regtest')).toBeNull();
+    await expect(verifyNodeClientNetwork(client, 'regtest')).resolves.toBeUndefined();
+    expect(client.getBlockHeader).not.toHaveBeenCalled();
   });
 });

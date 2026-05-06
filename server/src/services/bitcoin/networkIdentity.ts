@@ -15,11 +15,12 @@ const EXPECTED_GENESIS_HASHES: Partial<Record<NetworkType, string>> = {
   signet: "00000008819873e925422c1ff0f99f7cc9bbb232af63a077a480a3633bee1ef6",
 };
 
-const NETWORK_LABELS: Partial<Record<NetworkType, string>> = {
+const NETWORK_LABELS: Record<NetworkType, string> = {
   mainnet: "Mainnet",
   testnet3: "Testnet3",
   testnet4: "Testnet4",
   signet: "Signet",
+  regtest: "Regtest",
 };
 
 /**
@@ -38,7 +39,7 @@ export function getExpectedGenesisHash(network: NetworkType): string | null {
 }
 
 function getNetworkLabel(network: NetworkType): string {
-  return NETWORK_LABELS[network] ?? network;
+  return NETWORK_LABELS[network];
 }
 
 async function getGenesisHeaderWithTimeout(
@@ -46,18 +47,19 @@ async function getGenesisHeaderWithTimeout(
   network: NetworkType,
   timeoutMs: number,
 ): Promise<string> {
-  let timeout: ReturnType<typeof setTimeout> | null = null;
+  let timeout!: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(`${getNetworkLabel(network)} chain identity check timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
   try {
     return await Promise.race([
       client.getBlockHeader(0),
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => {
-          reject(new Error(`${getNetworkLabel(network)} chain identity check timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-      }),
+      timeoutPromise,
     ]);
   } finally {
-    if (timeout) clearTimeout(timeout);
+    clearTimeout(timeout);
   }
 }
 
