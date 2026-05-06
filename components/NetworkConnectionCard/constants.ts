@@ -37,11 +37,11 @@ export const NETWORK_COLORS: Record<NetworkType, NetworkColors> = {
     badge: 'bg-testnet-500',
   },
   testnet4: {
-    bg: 'bg-testnet-50 dark:bg-testnet-900/20',
-    border: 'border-testnet-200 dark:border-testnet-800',
-    text: 'text-testnet-700 dark:text-testnet-500',
-    accent: 'bg-testnet-100 dark:bg-testnet-900/30 text-testnet-600 dark:text-testnet-500',
-    badge: 'bg-testnet-500',
+    bg: 'bg-teal-50 dark:bg-teal-900/20',
+    border: 'border-teal-200 dark:border-teal-800',
+    text: 'text-teal-700 dark:text-teal-500',
+    accent: 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-500',
+    badge: 'bg-teal-500',
   },
   signet: {
     bg: 'bg-signet-50 dark:bg-signet-900/20',

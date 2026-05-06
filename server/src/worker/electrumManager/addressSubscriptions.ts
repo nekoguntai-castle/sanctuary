@@ -9,7 +9,13 @@ import { walletRepository, addressRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { SUBSCRIPTION_BATCH_SIZE } from './types';
-import type { BitcoinNetwork, NetworkState } from './types';
+import {
+  getAddressFromSubscriptionKey,
+  getAddressSubscriptionKey,
+  type AddressWalletInfo,
+  type BitcoinNetwork,
+  type NetworkState,
+} from './types';
 
 const log = createLogger('WORKER:ELECTRUM_ADDR');
 
@@ -21,7 +27,7 @@ const log = createLogger('WORKER:ELECTRUM_ADDR');
  */
 export async function subscribeAllAddresses(
   networks: Map<BitcoinNetwork, NetworkState>,
-  addressToWallet: Map<string, { walletId: string; network: BitcoinNetwork }>
+  addressToWallet: Map<string, AddressWalletInfo>
 ): Promise<void> {
   log.info('Subscribing to all wallet addresses...');
 
@@ -53,7 +59,7 @@ export async function subscribeAllAddresses(
       });
 
       // Track address -> wallet mapping
-      addressToWallet.set(addr.address, {
+      addressToWallet.set(getAddressSubscriptionKey(network, addr.address), {
         walletId: addr.walletId,
         network,
       });
@@ -91,7 +97,7 @@ export async function subscribeAllAddresses(
 export async function subscribeNetworkAddresses(
   network: BitcoinNetwork,
   networks: Map<BitcoinNetwork, NetworkState>,
-  addressToWallet: Map<string, { walletId: string; network: BitcoinNetwork }>
+  addressToWallet: Map<string, AddressWalletInfo>
 ): Promise<void> {
   const state = networks.get(network);
   if (!state?.connected) return;
@@ -99,9 +105,12 @@ export async function subscribeNetworkAddresses(
   // Get addresses for this network from our tracking
   const networkAddresses: Array<{ address: string; walletId: string }> = [];
 
-  for (const [address, info] of addressToWallet) {
+  for (const [key, info] of addressToWallet) {
     if (info.network === network) {
-      networkAddresses.push({ address, walletId: info.walletId });
+      networkAddresses.push({
+        address: getAddressFromSubscriptionKey(key),
+        walletId: info.walletId,
+      });
     }
   }
 
@@ -172,7 +181,7 @@ export async function subscribeAddressBatch(
 export async function subscribeWalletAddresses(
   walletId: string,
   networks: Map<BitcoinNetwork, NetworkState>,
-  addressToWallet: Map<string, { walletId: string; network: BitcoinNetwork }>
+  addressToWallet: Map<string, AddressWalletInfo>
 ): Promise<void> {
   const walletNetwork = await walletRepository.findNetwork(walletId);
 
@@ -196,7 +205,10 @@ export async function subscribeWalletAddresses(
 
   // Update tracking
   for (const addr of addressData) {
-    addressToWallet.set(addr.address, { walletId, network });
+    addressToWallet.set(getAddressSubscriptionKey(network, addr.address), {
+      walletId,
+      network,
+    });
   }
 
   await subscribeAddressBatch(state, addressData);
@@ -208,11 +220,12 @@ export async function subscribeWalletAddresses(
 export function unsubscribeWalletAddresses(
   walletId: string,
   networks: Map<BitcoinNetwork, NetworkState>,
-  addressToWallet: Map<string, { walletId: string; network: BitcoinNetwork }>
+  addressToWallet: Map<string, AddressWalletInfo>
 ): void {
-  for (const [address, info] of addressToWallet) {
+  for (const [key, info] of addressToWallet) {
     if (info.walletId === walletId) {
-      addressToWallet.delete(address);
+      const address = getAddressFromSubscriptionKey(key);
+      addressToWallet.delete(key);
 
       const state = networks.get(info.network);
       if (state) {

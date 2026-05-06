@@ -26,7 +26,12 @@ export interface NetworkConnectionsSectionProps {
   onNetworkTabChange: (tab: NetworkTab) => void;
   onConfigChange: (config: NodeConfigType) => void;
   onServersChange: (network: NetworkTab, servers: ElectrumServer[]) => void;
-  onTestConnection: (host: string, port: number, ssl: boolean) => Promise<{ success: boolean; message: string }>;
+  onTestConnection: (
+    network: NetworkTab,
+    host: string,
+    port: number,
+    ssl: boolean
+  ) => Promise<{ success: boolean; message: string }>;
   expanded: boolean;
   onToggle: () => void;
   summary: string;

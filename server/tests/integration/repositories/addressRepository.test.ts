@@ -42,7 +42,7 @@ describeIfDatabase("AddressRepository Integration Tests", () => {
       });
     });
 
-    it("should enforce unique address", async () => {
+    it("should enforce unique address within one wallet", async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
@@ -53,6 +53,39 @@ describeIfDatabase("AddressRepository Integration Tests", () => {
         await expect(
           createTestAddress(tx, wallet.id, { address: addressString }),
         ).rejects.toThrow();
+      });
+    });
+
+    it("should allow the same address in separate wallet network scopes", async () => {
+      await withTestTransaction(async (tx) => {
+        const user = await createTestUser(tx);
+        const testnet3Wallet = await createTestWallet(tx, user.id, {
+          network: "testnet3",
+        });
+        const testnet4Wallet = await createTestWallet(tx, user.id, {
+          network: "testnet4",
+        });
+        const addressString = generateTestnetAddress("p2wpkh");
+
+        await createTestAddress(tx, testnet3Wallet.id, {
+          address: addressString,
+          derivationPath: "m/84'/1'/0'/0/0",
+          index: 0,
+        });
+        await createTestAddress(tx, testnet4Wallet.id, {
+          address: addressString,
+          derivationPath: "m/84'/1'/0'/0/0",
+          index: 0,
+        });
+
+        await assertCount(tx, "address", 1, {
+          walletId: testnet3Wallet.id,
+          address: addressString,
+        });
+        await assertCount(tx, "address", 1, {
+          walletId: testnet4Wallet.id,
+          address: addressString,
+        });
       });
     });
   });

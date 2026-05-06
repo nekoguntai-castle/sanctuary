@@ -82,7 +82,8 @@ export const registerBroadcastAndSaveCoreContracts = () => {
     expect(mockPrismaClient.uTXO.update).toHaveBeenCalledTimes(2);
     expect(mockPrismaClient.uTXO.update).toHaveBeenCalledWith({
       where: {
-        txid_vout: {
+        walletId_txid_vout: {
+          walletId,
           txid: sampleUtxos[0].txid,
           vout: sampleUtxos[0].vout,
         },

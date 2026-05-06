@@ -2,6 +2,7 @@ import type { ElectrumServer } from '../generated/prisma/client';
 import { ConflictError, NotFoundError } from '../errors/ApiError';
 import { nodeConfigRepository } from '../repositories/nodeConfigRepository';
 import { reloadElectrumServers } from './bitcoin/electrumPool';
+import type { NetworkType } from './bitcoin/electrumPool';
 import { testNodeConfig } from './bitcoin/nodeClient';
 
 export type CreateElectrumServerInput = {
@@ -28,6 +29,7 @@ export type TestElectrumConnectionInput = {
   host: string;
   port: number;
   useSsl: boolean;
+  network?: NetworkType;
 };
 
 export type ElectrumConnectionTestResult = {
@@ -79,6 +81,7 @@ export async function testElectrumConnection(input: TestElectrumConnectionInput)
     host: input.host,
     port: input.port,
     protocol: input.useSsl ? 'ssl' : 'tcp',
+    network: input.network,
   });
 
   return {

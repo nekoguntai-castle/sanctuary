@@ -9,12 +9,17 @@ import { addressRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { subscribeAddressBatch } from './addressSubscriptions';
-import type { BitcoinNetwork, NetworkState } from './types';
+import {
+  getAddressFromSubscriptionKey,
+  getAddressSubscriptionKey,
+  type AddressWalletInfo,
+  type BitcoinNetwork,
+  type NetworkState,
+} from './types';
 
 const log = createLogger('WORKER:ELECTRUM_HEALTH');
 const RECONCILE_PAGE_SIZE = 2000;
 
-type AddressWalletInfo = { walletId: string; network: BitcoinNetwork };
 type ReconcileAddress = Awaited<ReturnType<typeof addressRepository.findAllWithWalletNetworkPaginated>>[number];
 type NewAddressesByNetwork = Map<BitcoinNetwork, Array<{ address: string; walletId: string }>>;
 
@@ -56,7 +61,7 @@ export async function checkHealth(
  */
 export async function reconcileSubscriptions(
   networks: Map<BitcoinNetwork, NetworkState>,
-  addressToWallet: Map<string, { walletId: string; network: BitcoinNetwork }>
+  addressToWallet: Map<string, AddressWalletInfo>
 ): Promise<{ removed: number; added: number }> {
   log.info('Reconciling Electrum subscriptions with database...');
 
@@ -65,7 +70,7 @@ export async function reconcileSubscriptions(
   let cursor: string | undefined;
 
   // First pass: Paginate through database addresses
-  // - Build a set of all addresses (just strings, lightweight)
+  // - Build a set of all network-scoped address keys (just strings, lightweight)
   // - Find and subscribe to new addresses in batches
   while (true) {
     const addresses = await addressRepository.findAllWithWalletNetworkPaginated({
@@ -99,10 +104,12 @@ function collectReconcilePage(
   let added = 0;
 
   for (const addr of addresses) {
-    dbAddressSet.add(addr.address);
+    const network = getAddressNetwork(addr);
+    const key = getAddressSubscriptionKey(network, addr.address);
+    dbAddressSet.add(key);
 
-    if (!addressToWallet.has(addr.address)) {
-      trackNewAddress(addr, addressToWallet, newAddressesByNetwork);
+    if (!addressToWallet.has(key)) {
+      trackNewAddress(addr, network, key, addressToWallet, newAddressesByNetwork);
       added++;
     }
   }
@@ -110,18 +117,23 @@ function collectReconcilePage(
   return { newAddressesByNetwork, added };
 }
 
+function getAddressNetwork(addr: ReconcileAddress): BitcoinNetwork {
+  return (addr.wallet.network || 'mainnet') as BitcoinNetwork;
+}
+
 function trackNewAddress(
   addr: ReconcileAddress,
+  network: BitcoinNetwork,
+  key: string,
   addressToWallet: Map<string, AddressWalletInfo>,
   newAddressesByNetwork: NewAddressesByNetwork
 ): void {
-  const network = (addr.wallet.network || 'mainnet') as BitcoinNetwork;
   getNetworkAddressBatch(newAddressesByNetwork, network).push({
     address: addr.address,
     walletId: addr.walletId,
   });
 
-  addressToWallet.set(addr.address, {
+  addressToWallet.set(key, {
     walletId: addr.walletId,
     network,
   });
@@ -162,12 +174,13 @@ function removeDeletedAddresses(
 ): number {
   let removed = 0;
 
-  for (const [address, info] of addressToWallet) {
-    if (dbAddressSet.has(address)) {
+  for (const [key, info] of addressToWallet) {
+    if (dbAddressSet.has(key)) {
       continue;
     }
 
-    addressToWallet.delete(address);
+    const address = getAddressFromSubscriptionKey(key);
+    addressToWallet.delete(key);
     networks.get(info.network)?.subscribedAddresses.delete(address);
     removed++;
   }
@@ -203,7 +216,7 @@ export function isConnected(networks: Map<BitcoinNetwork, NetworkState>): boolea
 export function getHealthMetrics(
   isRunning: boolean,
   networks: Map<BitcoinNetwork, NetworkState>,
-  addressToWallet: Map<string, { walletId: string; network: BitcoinNetwork }>
+  addressToWallet: Map<string, AddressWalletInfo>
 ): {
   isRunning: boolean;
   networks: Record<string, {

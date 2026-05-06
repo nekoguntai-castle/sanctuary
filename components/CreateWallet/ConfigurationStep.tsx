@@ -8,7 +8,7 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 import { WalletType } from '../../types';
-import { networkConfigs } from '../../src/app/networks';
+import { getNetworkColorClass, networkConfigs } from '../../src/app/networks';
 import type { ScriptType, Network } from './types';
 
 interface ConfigurationStepProps {
@@ -55,22 +55,12 @@ export const ConfigurationStep: React.FC<ConfigurationStepProps> = ({
           {/* Network */}
           <div>
               <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-2">Network</label>
-              <div className={`inline-flex items-center gap-2 py-2 px-4 rounded-lg border text-sm font-medium ${
-                  network === 'mainnet'
-                      ? 'bg-mainnet-100/50 dark:bg-mainnet-900/20 text-mainnet-700 dark:text-mainnet-300 border-mainnet-200 dark:border-mainnet-700'
-                      : isTestnetFamily(network)
-                      ? 'bg-testnet-100/50 dark:bg-testnet-900/20 text-testnet-700 dark:text-testnet-300 border-testnet-200 dark:border-testnet-700'
-                      : 'bg-signet-100/50 dark:bg-signet-900/20 text-signet-700 dark:text-signet-300 border-signet-200 dark:border-signet-700'
-              }`}>
+              <div className={`inline-flex items-center gap-2 py-2 px-4 rounded-lg border text-sm font-medium ${getNetworkColorClass(network, 'borderedBadge')}`}>
                   <span className={`h-2 w-2 rounded-full ${networkConfigs[network].dotColor}`} />
                   {networkConfigs[network].label}
               </div>
               {network !== 'mainnet' && (
-                  <div className={`mt-2 p-3 rounded-lg border text-xs ${
-                      isTestnetFamily(network)
-                          ? 'bg-testnet-50 dark:bg-testnet-900/10 border-testnet-300 dark:border-testnet-600 text-testnet-700 dark:text-testnet-950'
-                          : 'bg-signet-50 dark:bg-signet-900/10 border-signet-300 dark:border-signet-600 text-signet-700 dark:text-signet-950'
-                  }`}>
+                  <div className={`mt-2 p-3 rounded-lg border text-xs ${getNetworkColorClass(network, 'warningPanel')}`}>
                       <strong>Warning:</strong> This wallet will operate on {networkConfigs[network].label}. {isTestnetFamily(network) ? 'Testnet coins have no real-world value.' : 'Signet is a controlled testing network.'}
                   </div>
               )}

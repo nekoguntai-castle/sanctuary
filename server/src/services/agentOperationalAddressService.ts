@@ -173,7 +173,10 @@ export async function verifyOperationalReceiveAddress(input: {
   operationalWalletId: string;
   address: string;
 }): Promise<AgentOperationalAddressVerification> {
-  const record = await addressRepository.findByAddressWithWallet(input.address);
+  const record = await addressRepository.findByWalletIdAndAddressWithWallet(
+    input.operationalWalletId,
+    input.address,
+  );
   const verified = Boolean(
     record &&
     record.walletId === input.operationalWalletId &&

@@ -97,7 +97,7 @@ describe("WalletHeader", () => {
     );
 
     expect(screen.getByText("2/3 Multisig")).toBeInTheDocument();
-    expect(screen.getByText("Signet")).toHaveClass("dark:text-signet-950");
+    expect(screen.getByText("Signet")).toHaveClass("dark:text-signet-300");
     expect(screen.getByText("Retrying 2/5")).toBeInTheDocument();
     expect(screen.getByText("Signer")).toBeInTheDocument();
     expect(screen.getByText("Shared")).toBeInTheDocument();
@@ -143,8 +143,8 @@ describe("WalletHeader", () => {
     });
 
     const badge = screen.getByText("Retrying 1/3").closest("span");
-    expect(screen.getByText("Testnet3")).toHaveClass("dark:text-testnet-950");
-    expect(screen.getByText("Testnet3")).toHaveClass("dark:bg-testnet-50");
+    expect(screen.getByText("Testnet3")).toHaveClass("dark:text-testnet-300");
+    expect(screen.getByText("Testnet3")).toHaveClass("dark:bg-testnet-900/20");
     expect(badge).toHaveAttribute("title", "Sync failed, retrying...");
   });
 
@@ -175,7 +175,7 @@ describe("WalletHeader", () => {
     });
 
     expect(screen.getByText("Synced")).toBeInTheDocument();
-    expect(screen.getByText("Testnet4")).toBeInTheDocument();
+    expect(screen.getByText("Testnet4")).toHaveClass("text-teal-700");
   });
 
   it("renders failed and cached sync statuses", () => {

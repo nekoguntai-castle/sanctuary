@@ -2,6 +2,31 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Verify Network Identity, Not Just Connectivity
+
+**Rule:** Any per-network Electrum or node test must verify chain identity for the selected network, not just socket connectivity and block height.
+
+**Why:** `electrum.blockstream.info:60002` accepts SSL Electrum connections and reports a plausible testnet height, but it is legacy Testnet3. Using it in the Testnet4 slot made the UI look connected while syncing the wrong chain.
+
+**How to apply:**
+
+- Fetch block header 0 and compare the double-SHA256 genesis hash against the selected network before accepting a tested endpoint.
+- Pass the active network through every admin "Test connection" path.
+- Treat testnet-family address reuse as a collision risk; scope address and UTXO ownership by wallet/network before relying on balances.
+
+## Make Remote Here-Docs Paste-Safe
+
+**Rule:** When giving an operator a remote here-doc command, make the delimiter token start at column 1 and avoid indentation inside the paste block.
+
+**Why:** An indented `EOF` was treated as content, wrote a literal `EOF` into a runner compose file, and left the compose config invalid. The Docker-in-Docker cleanup command also ran Docker CLI without the runner's TCP Docker endpoint, so it tried the absent Unix socket inside the DIND container.
+
+**How to apply:**
+
+- Use delimiter names like `YAML`/`SCRIPT` at column 1 in copy-paste commands.
+- Tell the user explicitly not to indent the closing delimiter.
+- For Docker-in-Docker exec cleanup, export the runner's intended TCP `DOCKER_HOST` inside the DIND container.
+- Ask for validation commands such as `docker compose config` before restarting services.
+
 ## Reprioritize Before Editing After User Clarification
 
 **Rule:** When the user clarifies or reprioritizes a bug during implementation, update the task tracker and stop editing the deferred area before returning to the requested delivery path.

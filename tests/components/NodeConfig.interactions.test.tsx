@@ -7,7 +7,7 @@ import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 
 const mockNetworkCardTestArgs = vi.hoisted(() => ({
-  calls: [] as Array<{ host: string; port: number; ssl: boolean }>,
+  calls: [] as Array<{ network: string; host: string; port: number; ssl: boolean }>,
 }));
 
 vi.mock('../../utils/logger', () => ({
@@ -62,8 +62,8 @@ vi.mock('../../components/NetworkConnectionCard', () => ({
         </button>
         <button
           onClick={async () => {
-            mockNetworkCardTestArgs.calls.push({ host: 'example.com', port: 50002, ssl: true });
-            const result = await onTestConnection('example.com', 50002, true);
+            mockNetworkCardTestArgs.calls.push({ network, host: 'example.com', port: 50002, ssl: true });
+            const result = await onTestConnection(network, 'example.com', 50002, true);
             setTestResult(result.message);
           }}
         >
@@ -188,6 +188,7 @@ describe('NodeConfig interaction branches', () => {
         host: 'example.com',
         port: 50002,
         useSsl: true,
+        network: 'mainnet',
       });
     });
     expect(screen.getByText('Electrum OK')).toBeInTheDocument();

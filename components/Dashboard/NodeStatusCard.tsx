@@ -2,6 +2,7 @@ import React from 'react';
 import { Zap, CheckCircle2, XCircle } from 'lucide-react';
 import { TabNetwork } from '../NetworkTabs';
 import { BitcoinStatus } from '../../src/api/bitcoin';
+import { getNetworkColorClass } from '../../src/app/networks';
 
 type NodeStatusValue = 'unknown' | 'checking' | 'connected' | 'error';
 
@@ -45,15 +46,7 @@ const StatusLabel: React.FC<{ nodeStatus: NodeStatusValue }> = ({ nodeStatus }) 
 };
 
 const getNetworkBadgeClass = (selectedNetwork: TabNetwork): string => {
-  if (selectedNetwork === 'mainnet') {
-    return 'bg-mainnet-500/8 dark:bg-mainnet-400/10 text-mainnet-600 dark:text-mainnet-400';
-  }
-
-  if (selectedNetwork === 'testnet3' || selectedNetwork === 'testnet4') {
-    return 'bg-testnet-500/8 dark:bg-testnet-400/10 text-testnet-600 dark:text-testnet-400';
-  }
-
-  return 'bg-signet-500/8 dark:bg-signet-400/10 text-signet-600 dark:text-signet-400';
+  return getNetworkColorClass(selectedNetwork, 'subtleBadge');
 };
 
 const PoolDisplay: React.FC<{ bitcoinStatus: BitcoinStatus }> = ({ bitcoinStatus }) => {

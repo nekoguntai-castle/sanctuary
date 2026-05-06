@@ -1,14 +1,12 @@
 import React from 'react';
 import { ImportValidationResult, DeviceResolution as DeviceResolutionType } from '../../src/api/wallets';
-import { networkConfigs, type TabNetwork } from '../../src/app/networks';
+import { getNetworkColorClass, networkConfigs, type TabNetwork } from '../../src/app/networks';
 import { SingleSigIcon, MultiSigIcon, getDeviceIcon } from '../ui/CustomIcons';
 import {
   CheckCircle,
   PlusCircle,
   RefreshCw,
 } from 'lucide-react';
-
-const isTestnetFamily = (network: TabNetwork): boolean => network === 'testnet3' || network === 'testnet4';
 
 const DeviceCard: React.FC<{ device: DeviceResolutionType; isReused: boolean }> = ({ device, isReused }) => (
   <div className={`p-3 rounded-lg border flex items-center justify-between ${
@@ -78,13 +76,7 @@ export const DeviceResolutionStep: React.FC<DeviceResolutionProps> = ({
           <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-2">
             Network
           </label>
-          <div className={`inline-flex items-center gap-2 py-2 px-4 rounded-lg border text-sm font-medium ${
-            network === 'mainnet'
-              ? 'bg-mainnet-100/50 dark:bg-mainnet-900/20 text-mainnet-700 dark:text-mainnet-300 border-mainnet-200 dark:border-mainnet-700'
-              : isTestnetFamily(network)
-              ? 'bg-testnet-100/50 dark:bg-testnet-900/20 text-testnet-700 dark:text-testnet-300 border-testnet-200 dark:border-testnet-700'
-              : 'bg-signet-100/50 dark:bg-signet-900/20 text-signet-700 dark:text-signet-300 border-signet-200 dark:border-signet-700'
-          }`}>
+          <div className={`inline-flex items-center gap-2 py-2 px-4 rounded-lg border text-sm font-medium ${getNetworkColorClass(network, 'borderedBadge')}`}>
             <span className={`h-2 w-2 rounded-full ${networkConfigs[network].dotColor}`} />
             {networkConfigs[network].label}
           </div>

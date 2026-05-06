@@ -72,6 +72,7 @@ export function useNetworkConnectionCardController({
     setTestMessage("");
     try {
       const result = await onTestConnection(
+        network,
         getNetworkSingletonHost(network, config),
         getNetworkSingletonPort(network, config),
         getNetworkSingletonSsl(network, config),
@@ -88,6 +89,7 @@ export function useNetworkConnectionCardController({
     setServerTestStatus((prev) => ({ ...prev, [server.id]: "testing" }));
     try {
       const result = await onTestConnection(
+        network,
         server.host,
         server.port,
         server.useSsl,

@@ -2,7 +2,7 @@ import React from 'react';
 import { TabNetwork } from '../NetworkTabs';
 import { BlockVisualizer } from '../BlockVisualizer';
 import type { BitcoinStatus, BlockData, QueuedBlocksSummary } from '../../src/api/bitcoin';
-import { formatNetworkTitle } from '../../src/app/networks';
+import { formatNetworkTitle, getNetworkColorClass } from '../../src/app/networks';
 import { Bitcoin, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import type { PendingTransaction } from '../../types';
 
@@ -25,26 +25,25 @@ interface MempoolSectionProps {
   onConfigureNode: () => void;
 }
 
+interface WebSocketStatusProps {
+  connected: boolean;
+  state: string;
+}
+
 function getNetworkLabel(selectedNetwork: TabNetwork) {
   return formatNetworkTitle(selectedNetwork);
 }
 
 function getNetworkBadgeClass(selectedNetwork: TabNetwork) {
-  return selectedNetwork === 'testnet3' || selectedNetwork === 'testnet4'
-    ? 'bg-testnet-500/8 dark:bg-testnet-400/10 text-testnet-600 dark:text-testnet-400'
-    : 'bg-signet-500/8 dark:bg-signet-400/10 text-signet-600 dark:text-signet-400';
+  return getNetworkColorClass(selectedNetwork, 'subtleBadge');
 }
 
 function getNetworkIconClass(selectedNetwork: TabNetwork) {
-  return selectedNetwork === 'testnet3' || selectedNetwork === 'testnet4'
-    ? 'text-testnet-500 dark:text-testnet-200'
-    : 'text-signet-500 dark:text-signet-200';
+  return getNetworkColorClass(selectedNetwork, 'iconText');
 }
 
 function getNetworkIconBackgroundClass(selectedNetwork: TabNetwork) {
-  return selectedNetwork === 'testnet3' || selectedNetwork === 'testnet4'
-    ? 'bg-testnet-100 dark:bg-testnet-900/20'
-    : 'bg-signet-100 dark:bg-signet-900/20';
+  return getNetworkColorClass(selectedNetwork, 'iconBackground');
 }
 
 function NetworkTitle({
@@ -94,13 +93,7 @@ function MempoolRefreshButton({
   );
 }
 
-function WebSocketStatus({
-  connected,
-  state,
-}: {
-  connected: boolean;
-  state: string;
-}) {
+function WebSocketStatus({ connected, state }: WebSocketStatusProps) {
   if (connected) {
     return (
       <div className="flex items-center text-xs">

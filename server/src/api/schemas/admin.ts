@@ -47,6 +47,7 @@ export const TestElectrumServerSchema = z.object({
   host: z.string().min(1, 'Host is required'),
   port: z.coerce.number().int().min(1).max(65535),
   useSsl: z.boolean().default(false),
+  network: NetworkTypeSchema.optional(),
 });
 
 export const ReorderElectrumServersSchema = z.object({

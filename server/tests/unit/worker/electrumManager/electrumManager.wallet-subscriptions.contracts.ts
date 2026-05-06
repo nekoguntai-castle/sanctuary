@@ -4,6 +4,7 @@ import {
   mockClient,
 } from './electrumManagerTestHarness';
 import { walletRepository, addressRepository } from '../../../../src/repositories';
+import { getAddressSubscriptionKey } from '../../../../src/worker/electrumManager/types';
 
 export function registerElectrumManagerWalletSubscriptionContracts() {
   describe('subscribeWalletAddresses', () => {
@@ -29,8 +30,8 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
       expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr1', 'addr2']);
       const tracked = (manager as unknown as { addressToWallet: Map<string, { walletId: string; network: string }> })
         .addressToWallet;
-      expect(tracked.get('addr1')).toEqual({ walletId: 'wallet1', network: 'mainnet' });
-      expect(tracked.get('addr2')).toEqual({ walletId: 'wallet1', network: 'mainnet' });
+      expect(tracked.get(getAddressSubscriptionKey('mainnet', 'addr1'))).toEqual({ walletId: 'wallet1', network: 'mainnet' });
+      expect(tracked.get(getAddressSubscriptionKey('mainnet', 'addr2'))).toEqual({ walletId: 'wallet1', network: 'mainnet' });
     });
 
     it('returns when wallet does not exist', async () => {
@@ -65,12 +66,12 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
       expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-default']);
       const tracked = (manager as unknown as { addressToWallet: Map<string, { walletId: string; network: string }> })
         .addressToWallet;
-      expect(tracked.get('addr-default')).toEqual({ walletId: 'wallet-default', network: 'mainnet' });
+      expect(tracked.get(getAddressSubscriptionKey('mainnet', 'addr-default'))).toEqual({ walletId: 'wallet-default', network: 'mainnet' });
     });
 
     it('returns when network is not connected', async () => {
-      (manager as unknown as { networks: Map<string, unknown> }).networks.set('testnet', {
-        network: 'testnet',
+      (manager as unknown as { networks: Map<string, unknown> }).networks.set('testnet3', {
+        network: 'testnet3',
         client: mockClient,
         connected: false,
         subscribedToHeaders: false,
@@ -80,7 +81,7 @@ export function registerElectrumManagerWalletSubscriptionContracts() {
         reconnectAttempts: 0,
       });
 
-      vi.mocked(walletRepository.findNetwork).mockResolvedValueOnce('testnet');
+      vi.mocked(walletRepository.findNetwork).mockResolvedValueOnce('testnet3');
       await manager.subscribeWalletAddresses('wallet1');
 
       expect(addressRepository.findAddressStrings).not.toHaveBeenCalled();

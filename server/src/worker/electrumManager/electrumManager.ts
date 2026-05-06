@@ -10,7 +10,12 @@ import { getConfig } from '../../config';
 import { createLogger } from '../../utils/logger';
 import type { DistributedLock } from '../../infrastructure';
 import { HEALTH_CHECK_INTERVAL_MS, ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS } from './types';
-import type { BitcoinNetwork, NetworkState, ElectrumManagerCallbacks } from './types';
+import type {
+  AddressWalletInfo,
+  BitcoinNetwork,
+  NetworkState,
+  ElectrumManagerCallbacks,
+} from './types';
 import { acquireSubscriptionLock, startLockRefresh, releaseSubscriptionLock } from './lockCoordination';
 import { connectNetwork } from './networkConnection';
 import { scheduleReconnect } from './reconnection';
@@ -31,7 +36,7 @@ const log = createLogger('WORKER:ELECTRUM_MGR');
 
 export class ElectrumSubscriptionManager {
   private networks: Map<BitcoinNetwork, NetworkState> = new Map();
-  private addressToWallet: Map<string, { walletId: string; network: BitcoinNetwork }> = new Map();
+  private addressToWallet: Map<string, AddressWalletInfo> = new Map();
   private callbacks: ElectrumManagerCallbacks;
   private isRunningFlag = false;
   private healthCheckTimer: NodeJS.Timeout | null = null;

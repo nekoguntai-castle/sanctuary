@@ -50,18 +50,19 @@ router.get('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
  * NOTE: This route MUST be defined before /:network and /:id to avoid route conflicts
  */
 router.post('/test-connection', authenticate, requireAdmin, asyncHandler(async (req, res) => {
-  const { host, port, useSsl } = parseAdminRequestBody(
+  const { host, port, useSsl, network } = parseAdminRequestBody(
     TestElectrumServerSchema,
     req.body,
     'Host and port are required'
   );
 
-  const result = await adminElectrumServerService.testElectrumConnection({ host, port, useSsl });
+  const result = await adminElectrumServerService.testElectrumConnection({ host, port, useSsl, network });
 
   log.info('Electrum connection test result', {
     host,
     port,
     useSsl,
+    network,
     success: result.success,
     message: result.message,
   });

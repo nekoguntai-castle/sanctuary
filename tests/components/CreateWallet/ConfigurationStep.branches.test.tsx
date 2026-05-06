@@ -37,6 +37,15 @@ describe('ConfigurationStep branch coverage', () => {
     expect(screen.getByText(/Testnet coins have no real-world value/i)).toBeInTheDocument();
   });
 
+  it('shows testnet4 warning with distinct network styling', () => {
+    render(<ConfigurationStep {...baseProps} network="testnet4" />);
+
+    const warning = screen.getByText(/This wallet will operate on Testnet4/i);
+    expect(warning).toBeInTheDocument();
+    expect(warning.closest('div')).toHaveClass('text-teal-700');
+    expect(screen.getByText('Testnet4').closest('div')).toHaveClass('border-teal-200');
+  });
+
   it('shows signet warning message branch', () => {
     render(<ConfigurationStep {...baseProps} network="signet" />);
 

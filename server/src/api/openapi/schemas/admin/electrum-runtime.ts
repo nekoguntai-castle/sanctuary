@@ -51,6 +51,7 @@ export const adminElectrumRuntimeSchemas = {
       host: { type: 'string', minLength: 1 },
       port: nodeConfigPortInputSchema,
       useSsl: { type: 'boolean', default: false },
+      network: { type: 'string', enum: [...ELECTRUM_NETWORK_VALUES] },
     },
     required: ['host', 'port'],
     additionalProperties: false,

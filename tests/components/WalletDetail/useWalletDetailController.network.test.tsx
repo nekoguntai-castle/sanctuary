@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useWalletDetailController } from '../../../components/WalletDetail/useWalletDetailController';
 
 const controllerState = vi.hoisted(() => ({
-  activeNetwork: 'mainnet' as 'mainnet' | 'testnet3' | 'signet',
+  activeNetwork: 'mainnet' as 'mainnet' | 'testnet3' | 'testnet4' | 'signet',
   walletNetwork: 'signet' as string | undefined,
   setSelectedNetwork: vi.fn(),
   bitcoinStatusNetworks: [] as Array<string | undefined>,
@@ -253,6 +253,22 @@ describe('useWalletDetailController network preference alignment', () => {
     await waitFor(() => {
       expect(controllerState.setSelectedNetwork).toHaveBeenCalledWith('signet');
     });
+  });
+
+  it('does not force the active network back after the wallet has been aligned once', async () => {
+    controllerState.walletNetwork = 'testnet4';
+
+    const { rerender } = renderHook(() => useWalletDetailController());
+
+    await waitFor(() => {
+      expect(controllerState.setSelectedNetwork).toHaveBeenCalledWith('testnet4');
+    });
+
+    controllerState.setSelectedNetwork.mockClear();
+    controllerState.activeNetwork = 'mainnet';
+    rerender();
+
+    expect(controllerState.setSelectedNetwork).not.toHaveBeenCalled();
   });
 
   it('uses the current active network for wallet-detail Bitcoin status', () => {

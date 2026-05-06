@@ -3,7 +3,12 @@ import { connectNetwork, setupEventHandlers, subscribeHeaders } from '../../../.
 import { scheduleReconnect } from '../../../../src/worker/electrumManager/reconnection';
 import { subscribeAddressBatch, subscribeAllAddresses, subscribeNetworkAddresses } from '../../../../src/worker/electrumManager/addressSubscriptions';
 import { checkHealth } from '../../../../src/worker/electrumManager/healthMonitoring';
-import type { BitcoinNetwork, NetworkState } from '../../../../src/worker/electrumManager/types';
+import {
+  getAddressSubscriptionKey,
+  type AddressWalletInfo,
+  type BitcoinNetwork,
+  type NetworkState,
+} from '../../../../src/worker/electrumManager/types';
 import {
   manager,
   mockClient,
@@ -19,7 +24,7 @@ export function registerElectrumManagerStandaloneContracts() {
   describe('standalone function behavior', () => {
     // Helper to get internal state
     const getNetworks = () => (manager as any).networks as Map<BitcoinNetwork, NetworkState>;
-    const getAddressToWallet = () => (manager as any).addressToWallet as Map<string, { walletId: string; network: BitcoinNetwork }>;
+    const getAddressToWallet = () => (manager as any).addressToWallet as Map<string, AddressWalletInfo>;
 
     it('handles connectNetwork fast-path and connection failure reconnect scheduling', async () => {
       const networks = getNetworks();
@@ -211,7 +216,7 @@ export function registerElectrumManagerStandaloneContracts() {
         reconnectAttempts: 0,
       };
       const disconnected: NetworkState = {
-        network: 'testnet',
+        network: 'testnet3',
         client: mockClient as any,
         connected: false,
         subscribedToHeaders: false,
@@ -221,8 +226,8 @@ export function registerElectrumManagerStandaloneContracts() {
         reconnectAttempts: 0,
       };
       networks.set('mainnet', state);
-      networks.set('testnet', disconnected);
-      addressToWallet.set('addr-main', { walletId: 'w-main', network: 'mainnet' });
+      networks.set('testnet3', disconnected);
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr-main'), { walletId: 'w-main', network: 'mainnet' });
 
       await subscribeNetworkAddresses('mainnet', networks, addressToWallet);
       expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-main']);
@@ -251,24 +256,24 @@ export function registerElectrumManagerStandaloneContracts() {
         reconnectAttempts: 0,
       };
       networks.set('mainnet', state);
-      addressToWallet.set('addr1', { walletId: 'wallet1', network: 'mainnet' });
-      addressToWallet.set('addr2', { walletId: 'wallet2', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr1'), { walletId: 'wallet1', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr2'), { walletId: 'wallet2', network: 'mainnet' });
 
       manager.unsubscribeWalletAddresses('wallet1');
 
-      expect(addressToWallet.has('addr1')).toBe(false);
-      expect(addressToWallet.has('addr2')).toBe(true);
+      expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'addr1'))).toBe(false);
+      expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'addr2'))).toBe(true);
       expect(state.subscribedAddresses.has('addr1')).toBe(false);
       expect(state.subscribedAddresses.has('addr2')).toBe(true);
     });
 
     it('removes wallet addresses even when network state no longer exists', () => {
       const addressToWallet = getAddressToWallet();
-      addressToWallet.set('orphan-addr', { walletId: 'wallet-orphan', network: 'signet' });
+      addressToWallet.set(getAddressSubscriptionKey('signet', 'orphan-addr'), { walletId: 'wallet-orphan', network: 'signet' });
 
       manager.unsubscribeWalletAddresses('wallet-orphan');
 
-      expect(addressToWallet.has('orphan-addr')).toBe(false);
+      expect(addressToWallet.has(getAddressSubscriptionKey('signet', 'orphan-addr'))).toBe(false);
     });
 
     it('reconciles with connected network subscriptions and subscribed-address cleanup', async () => {
@@ -286,7 +291,7 @@ export function registerElectrumManagerStandaloneContracts() {
         reconnectAttempts: 0,
       };
       networks.set('mainnet', state);
-      addressToWallet.set('old-address', { walletId: 'wallet-old', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'old-address'), { walletId: 'wallet-old', network: 'mainnet' });
 
       vi.mocked(prisma.address.findMany)
         .mockResolvedValueOnce([
@@ -318,7 +323,7 @@ export function registerElectrumManagerStandaloneContracts() {
 
       (manager as any).isRunningFlag = true;
       networks.set('mainnet', state);
-      addressToWallet.set('addr1', { walletId: 'wallet1', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr1'), { walletId: 'wallet1', network: 'mainnet' });
       (manager as any).subscriptionLock = { key: 'k', token: 't' };
       vi.mocked(releaseLock).mockResolvedValue(true);
 
@@ -495,7 +500,7 @@ export function registerElectrumManagerStandaloneContracts() {
         reconnectTimer: null,
         reconnectAttempts: 0,
       });
-      addressToWallet.set('addr-manager-reconnect', { walletId: 'wallet-reconnect', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr-manager-reconnect'), { walletId: 'wallet-reconnect', network: 'mainnet' });
       (manager as any).isRunningFlag = true;
 
       (manager as any).doScheduleReconnect('mainnet');
@@ -590,7 +595,7 @@ export function registerElectrumManagerStandaloneContracts() {
         reconnectTimer: null,
         reconnectAttempts: 0,
       });
-      addressToWallet.set('addr-test-only', { walletId: 'w-test', network: 'testnet' });
+      addressToWallet.set(getAddressSubscriptionKey('testnet3', 'addr-test-only'), { walletId: 'w-test', network: 'testnet3' });
 
       await subscribeNetworkAddresses('mainnet', networks, addressToWallet);
       expect(mockClient.subscribeAddressBatch).not.toHaveBeenCalled();

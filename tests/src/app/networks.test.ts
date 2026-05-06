@@ -4,8 +4,10 @@ import {
   countByNetwork,
   filterByNetwork,
   formatNetworkTitle,
+  getNetworkColorClass,
   isMainnetNetwork,
   isTabNetwork,
+  networkConfigs,
   networksShareCoinType,
   suppressFiatForNetwork,
   toTabNetwork,
@@ -33,6 +35,14 @@ describe('network helpers', () => {
     expect(toTabNetwork('regtest', 'testnet4')).toBe('testnet4');
     expect(formatNetworkTitle('testnet3')).toBe('Testnet3');
     expect(formatNetworkTitle('testnet4')).toBe('Testnet4');
+  });
+
+  it('assigns unique visible colors to each tab network', () => {
+    expect(new Set(Object.values(networkConfigs).map(config => config.dotColor)).size).toBe(4);
+    expect(networkConfigs.testnet3.dotColor).toBe('bg-testnet-500');
+    expect(networkConfigs.testnet4.dotColor).toBe('bg-teal-500');
+    expect(getNetworkColorClass('testnet3', 'activeTab')).toContain('text-testnet-600');
+    expect(getNetworkColorClass('testnet4', 'activeTab')).toContain('text-teal-600');
   });
 
   it('classifies mainnet, fiat suppression, and coin types', () => {

@@ -117,6 +117,7 @@ export async function testElectrumConnection(config: {
   host: string;
   port: number;
   useSsl: boolean;
+  network?: string;
 }): Promise<{
   success: boolean;
   message: string;

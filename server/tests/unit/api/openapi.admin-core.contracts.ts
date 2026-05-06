@@ -303,6 +303,9 @@ export function registerOpenApiAdminCoreTests() {
         type: 'string',
         pattern: '^\\d+$',
       });
+    expect(openApiSpec.components.schemas.AdminNodeConfigTestRequest.properties.network).toMatchObject({
+      enum: ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'],
+    });
     expect(openApiSpec.paths['/admin/node-config/test'].post.responses[200].content['application/json'].schema)
       .toEqual({
         $ref: '#/components/schemas/AdminNodeConfigTestSuccessResponse',
@@ -444,6 +447,9 @@ export function registerOpenApiAdminCoreTests() {
         type: 'string',
         pattern: '^\\d+$',
       });
+    expect(openApiSpec.components.schemas.AdminElectrumConnectionTestRequest.properties.network).toMatchObject({
+      enum: ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'],
+    });
     expect(openApiSpec.paths['/admin/electrum-servers/test-connection'].post.responses[200].content['application/json'].schema)
       .toEqual({
         $ref: '#/components/schemas/AdminElectrumConnectionTestResponse',

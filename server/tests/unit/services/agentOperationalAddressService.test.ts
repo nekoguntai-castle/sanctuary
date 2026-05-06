@@ -4,7 +4,7 @@ import { INITIAL_ADDRESS_COUNT } from "../../../src/constants";
 const {
   mockFindNextUnusedReceive,
   mockFindDerivationPaths,
-  mockFindByAddressWithWallet,
+  mockFindByWalletIdAndAddressWithWallet,
   mockCreateMany,
   mockFindWalletById,
   mockWithAgentFundingLock,
@@ -12,7 +12,7 @@ const {
 } = vi.hoisted(() => ({
   mockFindNextUnusedReceive: vi.fn(),
   mockFindDerivationPaths: vi.fn(),
-  mockFindByAddressWithWallet: vi.fn(),
+  mockFindByWalletIdAndAddressWithWallet: vi.fn(),
   mockCreateMany: vi.fn(),
   mockFindWalletById: vi.fn(),
   mockWithAgentFundingLock: vi.fn(),
@@ -23,7 +23,7 @@ vi.mock("../../../src/repositories", () => ({
   addressRepository: {
     findNextUnusedReceive: mockFindNextUnusedReceive,
     findDerivationPaths: mockFindDerivationPaths,
-    findByAddressWithWallet: mockFindByAddressWithWallet,
+    findByWalletIdAndAddressWithWallet: mockFindByWalletIdAndAddressWithWallet,
     createMany: mockCreateMany,
   },
   agentRepository: {
@@ -353,7 +353,7 @@ describe("agentOperationalAddressService", () => {
   });
 
   it("verifies known linked receive addresses", async () => {
-    mockFindByAddressWithWallet.mockResolvedValueOnce(
+    mockFindByWalletIdAndAddressWithWallet.mockResolvedValueOnce(
       addressRecord({
         address: "tb1qknown",
         derivationPath: "m/84'/1'/0'/0/7",
@@ -373,10 +373,14 @@ describe("agentOperationalAddressService", () => {
       derivationPath: "m/84'/1'/0'/0/7",
       index: 7,
     });
+    expect(mockFindByWalletIdAndAddressWithWallet).toHaveBeenCalledWith(
+      "operational-wallet",
+      "tb1qknown",
+    );
   });
 
   it("fails verification for unknown, wrong-wallet, or change addresses without leaking metadata", async () => {
-    mockFindByAddressWithWallet
+    mockFindByWalletIdAndAddressWithWallet
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(
         addressRecord({ walletId: "other-wallet", address: "tb1qother" }),

@@ -1,6 +1,141 @@
+# Active Task: Testnet4 Sidebar And Balance Regressions 2026-05-06
+
+Status: in progress
+
+Goal: fix the local UI getting stuck on a Testnet4 wallet view, prevent Testnet4 balance data from being misattributed through testnet-family address reuse, and make Electrum connection tests verify the selected network instead of only checking socket connectivity.
+
+## Plan
+
+- [x] Reproduce the sidebar selection behavior from code and running logs.
+- [x] Confirm why the Testnet4 wallet balance is missing in wallet view.
+- [x] Make wallet detail network alignment one-shot per wallet load so sidebar network clicks are not forced back.
+- [x] Scope UTXO uniqueness and outpoint lookups by wallet so duplicate testnet-family chains do not collide or overwrite balance ownership.
+- [x] Add Electrum chain identity validation to the Node Configuration test path and runtime client setup.
+- [x] Add focused regression tests and run targeted verification.
+- [ ] Rebuild or restart the local stack and verify the local UI/backend state.
+
+## Review
+
+- Wallet detail currently writes the global selected network every time `selectedNetwork` changes, so while viewing a Testnet4 wallet every sidebar click is immediately forced back to Testnet4.
+- The running database has two received transactions for Testnet4 wallet `082d135c-71cd-4833-9fee-41d341d5feff`, but the unspent outputs are attached to Testnet3 wallet `76e93e4a-2dba-4f50-bc3c-c1de4db9bcda` because UTXOs still use global `txid,vout` uniqueness.
+- The local Testnet4 Electrum configuration points at `electrum.blockstream.info:60002`; that endpoint reports a Testnet3-height chain, so the connection test must verify chain identity, not just connectivity.
+- Implemented one-shot wallet detail network alignment, wallet-scoped UTXO uniqueness/lookups, and Electrum genesis-hash validation for both runtime clients and admin test connection paths.
+- Verification passed before rebuild: focused frontend tests for wallet detail and Node Configuration test controls; focused backend unit tests for network identity, node client, UTXO repository, admin Electrum/node-config APIs, OpenAPI, and migration SQL; disposable Postgres integration test for UTXO repository; frontend app/test typechecks; backend source/test typechecks; `git diff --check`; touched-file lizard.
+
+---
+
+# Active Task: Testnet4 Ledger Receive Address 2026-05-06
+
+Status: complete; implementation verified and local stack rebuilt
+
+Goal: fix Testnet4 Ledger wallets that fail to show a receive address because initial address generation collides with existing testnet-family addresses, and make all visible network indicators use distinct colors.
+
+## Plan
+
+- [x] Confirm the database and repository assumptions behind address uniqueness for testnet-family wallets.
+- [x] Update the backend so the same derived address can exist in separate wallet/network scopes without breaking wallet-local dedupe.
+- [x] Add focused regression tests for creating or auto-generating Testnet4 addresses when matching Testnet3 addresses already exist.
+- [x] Update shared network color mapping so Mainnet, Testnet3, Testnet4, and Signet are visually distinct.
+- [x] Run focused backend/frontend tests, typechecks, diff review, and touched-file complexity checks.
+- [x] Rebuild the local running instance and verify health.
+
+## Review
+
+- Investigation from the local stack showed Testnet4 wallet `082d135c-71cd-4833-9fee-41d341d5feff` failed address generation with `Unique constraint failed on fields: (address)`.
+- The frontend empty state `No receive address available. Please link a hardware device with an xpub first.` is downstream of that backend insert failure, not proof that the Ledger xpub was missing.
+- Implemented migration `20260506000000_scope_address_uniqueness_to_wallet`, replacing the global `addresses(address)` unique index with `@@unique([walletId, address])` plus a non-unique address lookup index.
+- Updated address balance summary SQL to join UTXOs to addresses by both address string and wallet ID, and updated Electrum subscription tracking to key duplicate address strings by network.
+- Updated agent operational address verification to use a wallet-scoped address lookup.
+- Updated shared frontend network color classes so Mainnet is blue, Testnet3 is amber, Testnet4 is teal, and Signet is purple across tabs, badges, dashboard status, node config, and create/import network context.
+- Verification passed: backend focused unit tests for address repository, agent operational addresses, Electrum manager, and migration SQL; frontend focused network/color/component tests; disposable Postgres integration test for address repository with migrations; frontend app/test typechecks; backend source/test typechecks; frontend build; `git diff --check`; direct touched-file lizard check.
+- Rebuilt the local stack with `./start.sh --rebuild`; the migration applied successfully in the running Postgres container, `https://localhost:8443/api/v1/health` returned `200`, and the Testnet4 Ledger wallet now has 43 generated addresses.
+
+---
+
+# Active Task: Sidebar Network Selector Grid 2026-05-06
+
+Status: complete; PR #282 merged, main verified, local instance rebuilt
+
+Goal: make all four networks fit clearly in the sidebar by using a sidebar-specific 2x2 selector, deliver the change through PR merge, and rebuild the local running instance afterward.
+
+## Plan
+
+- [x] Confirm the current sidebar selector uses shared horizontal `NetworkTabs` and all four network labels are already first-class.
+- [x] Create a clean PR branch from `origin/main` while preserving uncommitted local task notes.
+- [x] Add a sidebar-safe grid variant to the shared network tab component without changing horizontal tabs elsewhere.
+- [x] Update the sidebar selector to use the 2x2 grid layout.
+- [x] Add focused tests for the grid layout, selected state, disabled handling, and sidebar usage.
+- [x] Run focused frontend verification and review the diff for layout regressions.
+- [x] Commit, push, open a PR, monitor checks, merge, and verify `origin/main`.
+- [x] Rebuild the local running instance and verify health after the merged change is deployed locally.
+
+## Review
+
+- Implemented a `layout="grid"` variant on `NetworkTabs` that renders a two-column, full-width selector without the horizontal sliding indicator.
+- Updated `SidebarNetworkSelector` to use the grid variant, preserving the default horizontal tab behavior for all other `NetworkTabs` consumers.
+- Focused verification passed: `npm run test:run -- tests/components/NetworkTabs.test.tsx tests/components/Layout/SidebarNetworkSelector.test.tsx`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm run build`; `git diff --check`; touched-file lizard for the edited TS/TSX files.
+- Committed `3f09e511384fd6b27143a662c1f7fd868ceeef6c` (`feat: fit sidebar network selector`) and opened PR #282 in the local Forgejo instance.
+- PR #282 merged on 2026-05-06 at 06:44:09 -10:00 with merge commit `144af1a5e798ded36dc87bd1e890e1b522da9ff9`.
+- Post-merge `main` verification for `144af1a5e798ded36dc87bd1e890e1b522da9ff9` passed: commit status `success`, 30/30 contexts passed or intentionally skipped, zero failures.
+- Switched the local checkout to `main` at `origin/main`, rebuilt the local instance with `./start.sh --rebuild`, and verified `https://localhost:8443/api/v1/health` returned `200` with core components healthy.
+
+---
+
+# Active Task: Local Instance Rebuild 2026-05-06
+
+Status: complete; local stack rebuilt and healthy
+
+Goal: rebuild and restart the local running Sanctuary instance from the current checked-out code, then verify the application is healthy.
+
+## Plan
+
+- [x] Review local lessons, task notes, git state, and the repo's supported local start/rebuild path.
+- [x] Run the supported rebuild/start flow for the existing Compose stack.
+- [x] Verify container state and application health after the rebuild.
+- [x] Record the result, verification, and any follow-up in this task note.
+
+## Review
+
+- Rebuilt fresh local images with `./start.sh --rebuild`; the helper used the runtime env file, rebuilt backend/frontend/gateway/AI images, reconciled Postgres credentials, and restarted the existing Compose stack.
+- `docker compose ps` with the runtime environment loaded reported postgres, redis, backend, worker, frontend, gateway, and AI services up, with application services healthy.
+- `GET https://localhost:8443/api/v1/health` returned `200` and reported healthy database, Redis, Electrum, sync, job queue, cache invalidation, circuit breakers, memory, and disk components.
+- Local app URL: `https://localhost:8443`.
+
+---
+
+# Active Task: Network-Specific External Services 2026-05-05
+
+Status: complete; PR #281 merged and post-merge main verified
+
+Goal: update Node Configuration External Services so mainnet, testnet3, testnet4, and signet each use the correct block explorer and mempool fee API URLs, then deliver the follow-up PR through the full merge workflow.
+
+## Plan
+
+- [x] Resume from the merged PR #280 state and create a follow-up branch from `origin/main`.
+- [x] Inspect the existing UI, API, persistence, mempool, and network-status paths for global explorer/fee URL assumptions.
+- [x] Add network-specific External Services config fields while preserving existing mainnet/backward-compatible fields.
+- [x] Update the Node Configuration UI to expose network tabs or equivalent controls for per-network explorer and fee-source settings.
+- [x] Update backend API, OpenAPI, Prisma, mempool API selection, and network status responses to honor per-network External Services URLs.
+- [x] Add focused frontend/backend tests for defaults, user edits, API contracts, and mempool/status behavior.
+- [x] Run focused verification, typechecks, diff review, and touched-file complexity checks where practical.
+- [x] Commit only the follow-up code changes, push, open the PR, monitor checks, merge, and verify `origin/main`.
+
+## Review
+
+- PR #280 is merged and verified on `origin/main` with merge commit `9efbd7a4547f2c09dd1e810fac1c049a769bddfe`, so the deferred External Services work can proceed as a separate PR.
+- Implemented per-network External Services fields for testnet3, testnet4, and signet while preserving existing global `explorerUrl` and `feeEstimatorUrl` as mainnet/backward-compatible fields.
+- Node Configuration now exposes External Services network tabs for Mainnet, Testnet3, Testnet4, and Signet; presets map to `mempool.space`, `mempool.space/testnet`, `mempool.space/testnet4`, `mempool.space/signet`, and the supported Blockstream mainnet/testnet3 URLs.
+- Backend API, OpenAPI, Prisma schema/migration, seed data, mempool API URL selection, and Bitcoin network status explorer URLs now honor network-specific external-service configuration.
+- Verification passed: frontend NodeConfig External Services/data tests; backend mempool, admin node-config, bitcoin API, and OpenAPI tests; frontend app/test typechecks; backend source/test typechecks; API body validation; OpenAPI route coverage; `git diff --check`; lizard-only quality with the known one-warning repository baseline; touched-file lizard checks.
+- Opened PR #281 in the local Forgejo instance.
+- PR #281 merged on 2026-05-06 at 03:03:42 -10:00 with merge commit `793205b23b08d04264b770e772a50a97f63b0bff`.
+- Post-merge `main` verification for `793205b23b08d04264b770e772a50a97f63b0bff` passed: Architecture, Docker Build, Install Tests, and Test Suite all completed successfully.
+
+---
+
 # Active Task: CI Docker Resource Cleanup 2026-05-05
 
-Status: repo-side prevention verified; PR delivery can resume next
+Status: complete; PR delivery unblocked
 
 Goal: stop Forgejo CI from failing before checkout with Docker address-pool exhaustion by adding deterministic repo-owned cleanup, while keeping host daemon pool expansion and destructive runner cleanup as explicit operator actions.
 
@@ -12,7 +147,7 @@ Goal: stop Forgejo CI from failing before checkout with Docker address-pool exha
 - [x] Add fake-docker regression tests for cleanup selection, dry-run behavior, protected project safety, runner leftovers, and stale prefix exclusion.
 - [x] Wire install/upgrade Docker cleanup paths and workflow `always()` cleanup steps through the shared entrypoint without weakening explicit debug keep flags.
 - [x] Run focused syntax, cleanup regression, install helper, workflow lint/runtime, and dry-run checks.
-- [ ] After repo-side prevention is verified, resume PR #280 delivery and address any remaining concrete CI/test failures.
+- [x] After repo-side prevention is verified, resume PR #280 delivery and address any remaining concrete CI/test failures.
 
 ## Review
 
@@ -21,12 +156,14 @@ Goal: stop Forgejo CI from failing before checkout with Docker address-pool exha
 - Added bounded timeouts around cleanup Docker queries/commands after a real dry-run showed `docker volume ls` could hang on the current daemon state.
 - Verification passed: cleanup fake-Docker regression, install upgrade helper unit tests, shell syntax checks, workflow `actionlint`, GitHub action runtime guard, `git diff --check`, and a bounded real Docker dry-run. Touched-file lizard was skipped because `lizard` is not installed in this workspace.
 - Host-side recovery is still required if Forgejo cannot start jobs at all. Repo cleanup prevents recurrence after jobs can start; it cannot free a daemon before checkout when the runner cannot allocate the job network.
+- Operator ran the cleanup code on the affected runner host; resume by watching PR #280 checks for concrete repository/test failures.
+- PR #280 moved through repository/test failures after host cleanup and merged successfully; no further Docker address-pool blocker remained on that PR.
 
 ---
 
 # Active Task: Explicit Testnet3 And Testnet4 Support 2026-05-05
 
-Status: delivery in progress
+Status: complete; follow-up external services work pending
 
 Goal: add first-class `testnet3` and `testnet4` support across Sanctuary while preserving existing legacy `testnet` wallets/config as `testnet3`, so testnet4 wallets sync against configured Electrum/electrs endpoints instead of the legacy testnet3 endpoint.
 
@@ -43,8 +180,8 @@ Goal: add first-class `testnet3` and `testnet4` support across Sanctuary while p
 - [x] Fix pre-commit changed-file backend test failures without widening the product scope.
 - [x] Rerun the focused failing suites plus backend typechecks and the changed-file backend test lane.
 - [x] Commit, push, and open PR #280.
-- [ ] Monitor delivery checks through the PR workflow, fix any failures, merge when checks are green, and verify the target branch.
-- [ ] After PR #280 is merged, fix the deferred Node Configuration External Services network-specific URL behavior.
+- [x] Monitor delivery checks through the PR workflow, fix any failures, merge when checks are green, and verify the target branch.
+- [x] After PR #280 is merged, split the deferred Node Configuration External Services network-specific URL behavior into a follow-up task.
 
 ## Review
 
@@ -70,6 +207,11 @@ Goal: add first-class `testnet3` and `testnet4` support across Sanctuary while p
 - The refreshed PR #280 run reached the Architecture workflow and correctly failed on stale generated dependency graphs. Regenerating the graphs updated `docs/architecture/generated/frontend.md`; local architecture lint plus Docusaurus typecheck/build passed.
 - Quick render E2E exposed stale legacy Testnet selectors in Playwright contracts after Testnet3/Testnet4 became separate visible tabs. E2E mocks and selectors now use explicit `testnet3`/`Testnet3`, and the render regression plus focused create-wallet/user-journey E2E checks pass locally.
 - Repeated PR #280 reruns showed Forgejo job-start failures in the PR quick lane while several quick jobs started together. The Test Suite quick lane now serializes backend typecheck, related backend tests, integration smoke, mutation, frontend, browser, and render checks without removing coverage.
+- After operator cleanup on the affected runner host, PR head `3b20269e` moved past job-container startup: Architecture, Docker Build, Install Tests, and Verify Vectors went green. Test Suite then exposed a real backend unit coverage failure: all backend unit tests passed locally, but the strict 100% coverage gate dropped to statements 99.92%, branches 99.69%, functions 99.9%, lines 99.94%.
+- Final delivery fixes restored stale E2E fixtures to explicit `testnet3`: the admin wallet import fixture now uses `testnet3`, and the dark-mode network sync test targets `Testnet3 Sync`.
+- Local verification for those delivery fixes passed: focused admin wallet E2E, full `admin-auth` browser group, focused dark-mode network sync E2E, full `wallet-experience` browser group, `npm run typecheck:tests`, `scripts/ci/browser-e2e-groups.sh --check`, and `git diff --check`.
+- PR #280 merged on 2026-05-05 at 22:12:08 -10:00 with merge commit `9efbd7a4547f2c09dd1e810fac1c049a769bddfe` on `origin/main`.
+- Post-merge `main` status for merge commit `9efbd7a4547f2c09dd1e810fac1c049a769bddfe` completed green with 30/30 successful contexts.
 
 ---
 

@@ -72,7 +72,7 @@ describe('NetworkTabs', () => {
       expect(dots).toHaveLength(4);
       expect(dots[0]).toHaveClass('bg-mainnet-500');
       expect(dots[1]).toHaveClass('bg-testnet-500');
-      expect(dots[2]).toHaveClass('bg-testnet-500');
+      expect(dots[2]).toHaveClass('bg-teal-500');
       expect(dots[3]).toHaveClass('bg-signet-500');
     });
 

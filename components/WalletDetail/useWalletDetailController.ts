@@ -42,6 +42,7 @@ export const useWalletDetailController = () => {
   const { selectedNetwork, setSelectedNetwork } = useActiveNetwork();
   const locationState = location.state as WalletDetailLocationState | null;
   const highlightTxId = locationState?.highlightTxId;
+  const alignedWalletIdRef = useRef<string | null>(null);
   const appliedConsoleFilterRef = useRef<string | null>(null);
   const consoleTransactionFilter = useMemo(
     () =>
@@ -78,6 +79,9 @@ export const useWalletDetailController = () => {
 
   useEffect(() => {
     if (!wallet) return;
+    if (alignedWalletIdRef.current === wallet.id) return;
+
+    alignedWalletIdRef.current = wallet.id;
     const walletNetwork = toTabNetwork(wallet.network);
     if (walletNetwork !== selectedNetwork) {
       setSelectedNetwork(walletNetwork);

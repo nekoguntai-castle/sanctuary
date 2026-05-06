@@ -6,6 +6,7 @@ import {
 } from './electrumManagerTestHarness';
 import prisma from '../../../../src/models/prisma';
 import { acquireLock } from '../../../../src/infrastructure';
+import { getAddressSubscriptionKey } from '../../../../src/worker/electrumManager/types';
 
 export function registerElectrumManagerEventContracts() {
   describe('event handling', () => {
@@ -17,7 +18,7 @@ export function registerElectrumManagerEventContracts() {
 
       (manager as unknown as { addressToWallet: Map<string, { walletId: string; network: string }> })
         .addressToWallet
-        .set('addr1', { walletId: 'wallet1', network: 'mainnet' });
+        .set(getAddressSubscriptionKey('mainnet', 'addr1'), { walletId: 'wallet1', network: 'mainnet' });
 
       mockClient.emit('newBlock', { height: 123, hex: 'a'.repeat(80) });
       mockClient.emit('addressActivity', { scriptHash: 'hash', address: 'addr1', status: 'updated' });

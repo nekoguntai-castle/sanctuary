@@ -3,12 +3,12 @@ import { describe,expect,it,vi } from 'vitest';
 import { NetworkConnectionsSection } from '../../../components/NodeConfig/NetworkConnectionsSection';
 
 vi.mock('../../../components/NetworkConnectionCard', () => ({
-  NetworkConnectionCard: ({ servers, onConfigChange, onServersChange, onTestConnection }: any) => (
+  NetworkConnectionCard: ({ network, servers, onConfigChange, onServersChange, onTestConnection }: any) => (
     <div data-testid="network-connection-card">
       <div data-testid="network-server-count">{servers.length}</div>
       <button onClick={() => onConfigChange({ mainnetPoolMin: 9 })}>update-config</button>
       <button onClick={() => onServersChange([{ id: 'updated-mainnet' }])}>update-servers</button>
-      <button onClick={() => onTestConnection('host.example', 50002, true)}>test-connection</button>
+      <button onClick={() => onTestConnection(network, 'host.example', 50002, true)}>test-connection</button>
     </div>
   ),
 }));
@@ -66,7 +66,7 @@ describe('NetworkConnectionsSection branch coverage', () => {
     expect(onServersChange).toHaveBeenCalledWith('mainnet', [{ id: 'updated-mainnet' }]);
 
     fireEvent.click(screen.getByText('test-connection'));
-    expect(onTestConnection).toHaveBeenCalledWith('host.example', 50002, true);
+    expect(onTestConnection).toHaveBeenCalledWith('mainnet', 'host.example', 50002, true);
 
     fireEvent.click(screen.getByRole('button', { name: /network connections/i }));
     expect(onToggle).toHaveBeenCalled();

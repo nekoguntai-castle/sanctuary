@@ -1,15 +1,8 @@
 import type { NodeConfig as NodeConfigType } from '../../types';
 import type { NetworkTab } from './types';
-import { formatNetworkTitle } from '../../src/app/networks';
+import { formatNetworkTitle, getNetworkColorClass } from '../../src/app/networks';
 
 const NETWORK_TABS: NetworkTab[] = ['mainnet', 'testnet3', 'testnet4', 'signet'];
-
-const NETWORK_COLORS: Record<NetworkTab, string> = {
-  mainnet: 'border-mainnet-500 text-mainnet-600 dark:text-mainnet-400',
-  testnet3: 'border-testnet-500 text-testnet-600 dark:text-testnet-400',
-  testnet4: 'border-testnet-500 text-testnet-600 dark:text-testnet-400',
-  signet: 'border-signet-500 text-signet-600 dark:text-signet-400',
-};
 
 export function NetworkTabsRow({
   nodeConfig,
@@ -86,6 +79,6 @@ function isNetworkEnabled(config: NodeConfigType, network: NetworkTab): boolean 
 
 function networkTabClass(network: NetworkTab, active: boolean): string {
   return active
-    ? NETWORK_COLORS[network]
+    ? getNetworkColorClass(network, 'activeTab')
     : 'border-transparent text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300';
 }

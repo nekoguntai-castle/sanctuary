@@ -420,7 +420,7 @@ export async function getAddressSummary(walletId: string) {
       prisma.$queryRaw<Array<{ used: boolean; balance: bigint }>>`
       SELECT a."used" as used, COALESCE(SUM(u."amount"), 0) as balance
       FROM "utxos" u
-      JOIN "addresses" a ON a."address" = u."address"
+      JOIN "addresses" a ON a."address" = u."address" AND a."walletId" = u."walletId"
       WHERE u."walletId" = ${walletId} AND u."spent" = false
       GROUP BY a."used"
     `,
@@ -650,6 +650,19 @@ export async function findByAddressWithWallet(address: string) {
 }
 
 /**
+ * Find a wallet-scoped address record by address string with wallet included.
+ */
+export async function findByWalletIdAndAddressWithWallet(
+  walletId: string,
+  address: string,
+) {
+  return prisma.address.findFirst({
+    where: { walletId, address },
+    include: { wallet: true },
+  });
+}
+
+/**
  * Create a single address
  */
 export async function create(data: {
@@ -694,6 +707,7 @@ export const addressRepository = {
   findAllWithWalletNetworkPaginated,
   findByAddress,
   findByAddressWithWallet,
+  findByWalletIdAndAddressWithWallet,
   create,
 };
 

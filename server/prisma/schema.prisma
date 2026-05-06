@@ -323,7 +323,7 @@ model WalletDevice {
 model Address {
   id             String   @id @default(uuid())
   walletId       String
-  address        String   @unique
+  address        String
   derivationPath String // e.g., m/84'/0'/0'/0/0
   index          Int
   used           Boolean  @default(false)
@@ -334,8 +334,10 @@ model Address {
   addressLabels AddressLabel[]
 
   @@index([walletId]) // For address listing queries
+  @@index([address]) // For cross-wallet ownership and monitoring lookups
   @@index([walletId, used])
   @@index([walletId, used, index]) // For unused address lookup (gap limit)
+  @@unique([walletId, address])
   @@map("addresses")
 }
 
@@ -457,7 +459,8 @@ model UTXO {
   wallet    Wallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
   draftLock DraftUtxoLock? // If locked by a draft, points to the lock record
 
-  @@unique([txid, vout])
+  @@unique([walletId, txid, vout])
+  @@index([txid, vout])
   @@index([walletId]) // For balance calculations
   @@index([walletId, spent])
   @@index([walletId, frozen]) // For UTXO selection excluding frozen

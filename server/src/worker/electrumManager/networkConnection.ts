@@ -9,7 +9,13 @@ import { getElectrumClientForNetwork } from '../../services/bitcoin/electrum';
 import { setCachedBlockHeight } from '../../services/bitcoin/blockchain';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
-import type { BitcoinNetwork, NetworkState, ElectrumManagerCallbacks } from './types';
+import {
+  getAddressSubscriptionKey,
+  type AddressWalletInfo,
+  type BitcoinNetwork,
+  type NetworkState,
+  type ElectrumManagerCallbacks,
+} from './types';
 
 const log = createLogger('WORKER:ELECTRUM_NET');
 
@@ -20,7 +26,7 @@ const log = createLogger('WORKER:ELECTRUM_NET');
 export async function connectNetwork(
   network: BitcoinNetwork,
   networks: Map<BitcoinNetwork, NetworkState>,
-  addressToWallet: Map<string, { walletId: string; network: BitcoinNetwork }>,
+  addressToWallet: Map<string, AddressWalletInfo>,
   callbacks: ElectrumManagerCallbacks,
   isRunning: () => boolean,
   scheduleReconnect: (network: BitcoinNetwork) => void
@@ -105,7 +111,7 @@ export async function subscribeHeaders(state: NetworkState): Promise<void> {
  */
 export function setupEventHandlers(
   state: NetworkState,
-  addressToWallet: Map<string, { walletId: string; network: BitcoinNetwork }>,
+  addressToWallet: Map<string, AddressWalletInfo>,
   callbacks: ElectrumManagerCallbacks,
   isRunning: () => boolean,
   scheduleReconnect: (network: BitcoinNetwork) => void
@@ -129,7 +135,9 @@ export function setupEventHandlers(
       return;
     }
 
-    const walletInfo = addressToWallet.get(address);
+    const walletInfo = addressToWallet.get(
+      getAddressSubscriptionKey(network, address),
+    );
     if (walletInfo && walletInfo.network === network) {
       log.info(`Address activity on ${network}: ${address} (wallet: ${walletInfo.walletId})`);
       callbacks.onAddressActivity(network, walletInfo.walletId, address);

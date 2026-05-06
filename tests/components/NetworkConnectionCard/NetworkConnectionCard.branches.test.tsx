@@ -217,7 +217,7 @@ describe('NetworkConnectionCard branch coverage', () => {
 
     await user.click(screen.getByRole('button', { name: 'trigger-test-first-server' }));
     await waitFor(() => {
-      expect(props.onTestConnection).toHaveBeenCalledWith('one.example.com', 50002, true);
+      expect(props.onTestConnection).toHaveBeenCalledWith('mainnet', 'one.example.com', 50002, true);
     });
     await user.click(screen.getByRole('button', { name: 'trigger-test-first-server' }));
     await waitFor(() => {

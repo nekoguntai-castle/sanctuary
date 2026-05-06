@@ -7,7 +7,7 @@
 import React from 'react';
 import { Shield } from 'lucide-react';
 import { WalletType, Device } from '../../types';
-import { formatNetworkTitle } from '../../src/app/networks';
+import { formatNetworkTitle, getNetworkColorClass } from '../../src/app/networks';
 import type { ScriptType, Network } from './types';
 
 interface ReviewStepProps {
@@ -19,8 +19,6 @@ interface ReviewStepProps {
   selectedDeviceIds: Set<string>;
   availableDevices: Device[];
 }
-
-const isTestnetFamily = (network: Network): boolean => network === 'testnet3' || network === 'testnet4';
 
 export const ReviewStep: React.FC<ReviewStepProps> = ({
   walletName,
@@ -49,13 +47,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
               <div className="px-6 py-4 grid grid-cols-2 gap-4">
                   <dt className="text-sm text-sanctuary-500">Network</dt>
                   <dd className="text-sm font-medium">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                          network === 'mainnet'
-                              ? 'bg-mainnet-100/50 dark:bg-mainnet-900/20 text-mainnet-700 dark:text-mainnet-300 border border-mainnet-200 dark:border-mainnet-700'
-                              : isTestnetFamily(network)
-                              ? 'bg-testnet-100/50 dark:bg-testnet-900/20 text-testnet-700 dark:text-testnet-300 border border-testnet-200 dark:border-testnet-700'
-                              : 'bg-signet-100/50 dark:bg-signet-900/20 text-signet-700 dark:text-signet-300 border border-signet-200 dark:border-signet-700'
-                      }`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getNetworkColorClass(network, 'borderedBadge')}`}>
                           {formatNetworkTitle(network)}
                       </span>
                   </dd>

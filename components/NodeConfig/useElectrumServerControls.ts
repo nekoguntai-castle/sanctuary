@@ -12,9 +12,14 @@ export function useElectrumServerControls({
   allServers: ElectrumServer[];
   setAllServers: Dispatch<SetStateAction<ElectrumServer[]>>;
 }) {
-  const handleTestConnection = async (host: string, port: number, ssl: boolean) => {
+  const handleTestConnection = async (
+    network: NetworkTab,
+    host: string,
+    port: number,
+    ssl: boolean,
+  ) => {
     try {
-      return await adminApi.testElectrumConnection({ host, port, useSsl: ssl });
+      return await adminApi.testElectrumConnection({ host, port, useSsl: ssl, network });
     } catch (error) {
       return {
         success: false,

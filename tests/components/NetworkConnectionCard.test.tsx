@@ -202,6 +202,7 @@ describe("NetworkConnectionCard", () => {
       await user.click(screen.getByText("Test Connection"));
 
       expect(defaultProps.onTestConnection).toHaveBeenCalledWith(
+        "mainnet",
         "electrum.blockstream.info",
         50002,
         true,
@@ -411,6 +412,7 @@ describe("NetworkConnectionCard", () => {
       await user.click(testButtons[0]);
 
       expect(defaultProps.onTestConnection).toHaveBeenCalledWith(
+        "mainnet",
         "electrum.blockstream.info",
         50002,
         true,

@@ -58,6 +58,45 @@ export function registerAdminNodeConfigTestEndpointTests(): void {
       });
     });
 
+    it('passes network identity through to node test endpoint', async () => {
+      mockTestNodeConfig.mockResolvedValue({
+        success: false,
+        message: 'Testnet4 chain identity mismatch',
+      });
+
+      const response = await request(getAdminNodeConfigApp())
+        .post('/api/v1/admin/node-config/test')
+        .send({
+          type: 'electrum',
+          host: 'electrum.blockstream.info',
+          port: 60002,
+          useSsl: true,
+          network: 'testnet4',
+        });
+
+      expect(response.status).toBe(500);
+      expect(mockTestNodeConfig).toHaveBeenCalledWith({
+        host: 'electrum.blockstream.info',
+        port: 60002,
+        protocol: 'ssl',
+        network: 'testnet4',
+      });
+    });
+
+    it('rejects invalid node test networks before testing connection', async () => {
+      const response = await request(getAdminNodeConfigApp())
+        .post('/api/v1/admin/node-config/test')
+        .send({
+          type: 'electrum',
+          host: 'electrum.example.com',
+          port: 50002,
+          network: 'testnet',
+        });
+
+      expect(response.status).toBe(400);
+      expect(mockTestNodeConfig).not.toHaveBeenCalled();
+    });
+
     it('validates required node test fields', async () => {
       const response = await request(getAdminNodeConfigApp())
         .post('/api/v1/admin/node-config/test')

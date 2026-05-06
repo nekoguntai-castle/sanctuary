@@ -3,7 +3,12 @@ import { Wallet, isMultisigType, getQuorumM, getQuorumN } from '../../types';
 import type { WalletAgentLinkBadge } from './WalletHeader';
 import type { SyncRetryInfo } from './types';
 import { WalletSyncStatusBadge } from './WalletSyncStatusBadge';
-import { formatNetworkTitle, toTabNetwork, type TabNetwork } from '../../src/app/networks';
+import {
+  formatNetworkTitle,
+  getNetworkColorClass,
+  toTabNetwork,
+  type TabNetwork,
+} from '../../src/app/networks';
 
 interface WalletBadgesProps {
   wallet: Wallet;
@@ -16,11 +21,7 @@ type WalletUserRole = 'owner' | 'signer' | 'viewer' | string | null | undefined;
 type NonMainnetTabNetwork = Exclude<TabNetwork, 'mainnet'>;
 
 function getNetworkBadgeClass(network: NonMainnetTabNetwork): string {
-  if (network === 'signet') {
-    return 'bg-signet-100 text-signet-800 border-signet-200 dark:bg-signet-50 dark:text-signet-950 dark:border-signet-500/40';
-  }
-
-  return 'bg-testnet-100 text-testnet-800 border-testnet-200 dark:bg-testnet-50 dark:text-testnet-950 dark:border-testnet-500/40';
+  return getNetworkColorClass(network, 'borderedBadge');
 }
 
 function getRoleBadgeClass(role: WalletUserRole): string {

@@ -157,13 +157,14 @@ describe('admin electrum servers router', () => {
   it('POST /test-connection proxies to nodeClient test', async () => {
     const response = await request(app)
       .post('/api/v1/admin/electrum-servers/test-connection')
-      .send({ host: 'electrum.example.com', port: '50002', useSsl: true });
+      .send({ host: 'electrum.example.com', port: '50002', useSsl: true, network: 'testnet4' });
 
     expect(response.status).toBe(200);
     expect(mocks.testNodeConfig).toHaveBeenCalledWith({
       host: 'electrum.example.com',
       port: 50002,
       protocol: 'ssl',
+      network: 'testnet4',
     });
     expect(response.body).toMatchObject({
       success: true,

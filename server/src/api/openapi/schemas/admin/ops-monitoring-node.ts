@@ -1,5 +1,6 @@
 import {
   DEAD_LETTER_CATEGORY_VALUES,
+  ELECTRUM_NETWORK_VALUES,
   MONITORING_SERVICE_VALUES,
   NODE_CONFIG_TYPE_VALUES,
   nodeConfigPortInputSchema,
@@ -199,6 +200,7 @@ export const adminOpsMonitoringNodeSchemas = {
       host: { type: 'string' },
       port: nodeConfigPortInputSchema,
       useSsl: { type: 'boolean', default: false },
+      network: { type: 'string', enum: [...ELECTRUM_NETWORK_VALUES] },
     },
     required: ['type', 'host', 'port'],
     additionalProperties: false,

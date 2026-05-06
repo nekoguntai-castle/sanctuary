@@ -120,7 +120,8 @@ async function processUtxos(
   const utxos = await client.getAddressUTXOs(addressRecord.address);
   await fetchMissingUtxoTransactions(client, utxos, txDetailsMap);
 
-  const existingUtxoSet = await utxoRepository.findExistingByOutpointsGlobal(
+  const existingUtxoSet = await utxoRepository.findExistingByOutpoints(
+    addressRecord.walletId,
     utxos.map(utxo => ({ txid: utxo.tx_hash, vout: utxo.tx_pos }))
   );
   const utxosToCreate = await collectNewUtxos(utxos, existingUtxoSet, txDetailsMap, addressRecord, network);

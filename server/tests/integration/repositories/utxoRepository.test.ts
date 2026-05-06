@@ -50,7 +50,7 @@ describeIfDatabase('UTXORepository Integration Tests', () => {
       });
     });
 
-    it('should enforce unique txid:vout', async () => {
+    it('should enforce unique txid:vout within one wallet', async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
@@ -61,6 +61,30 @@ describeIfDatabase('UTXORepository Integration Tests', () => {
         await expect(
           createTestUtxo(tx, wallet.id, { txid, vout: 0 })
         ).rejects.toThrow();
+      });
+    });
+
+    it('should allow same txid:vout in separate wallet network scopes', async () => {
+      await withTestTransaction(async (tx) => {
+        const user = await createTestUser(tx);
+        const testnet3Wallet = await createTestWallet(tx, user.id, { network: 'testnet3' });
+        const testnet4Wallet = await createTestWallet(tx, user.id, { network: 'testnet4' });
+        const txid = generateTxid();
+        const address = generateTestnetAddress();
+
+        const testnet3Utxo = await createTestUtxo(tx, testnet3Wallet.id, {
+          txid,
+          vout: 0,
+          address,
+        });
+        const testnet4Utxo = await createTestUtxo(tx, testnet4Wallet.id, {
+          txid,
+          vout: 0,
+          address,
+        });
+
+        expect(testnet3Utxo.walletId).toBe(testnet3Wallet.id);
+        expect(testnet4Utxo.walletId).toBe(testnet4Wallet.id);
       });
     });
 

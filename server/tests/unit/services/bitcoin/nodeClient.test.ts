@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   getElectrumClientForNetwork: vi.fn(),
   resetElectrumClient: vi.fn(),
   electrumClientCtor: vi.fn(),
+  verifyNodeClientNetwork: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../../../src/models/prisma", async () => {
@@ -53,6 +54,10 @@ vi.mock("../../../../src/services/bitcoin/electrum", () => ({
   },
   getElectrumClientForNetwork: mocks.getElectrumClientForNetwork,
   resetElectrumClient: mocks.resetElectrumClient,
+}));
+
+vi.mock("../../../../src/services/bitcoin/networkIdentity", () => ({
+  verifyNodeClientNetwork: mocks.verifyNodeClientNetwork,
 }));
 
 vi.mock("../../../../src/utils/logger", () => ({
@@ -176,6 +181,7 @@ describe("nodeClient service", () => {
       connect: vi.fn().mockResolvedValue(undefined),
       disconnect: vi.fn(),
       getBlockHeight: vi.fn().mockResolvedValue(850000),
+      getBlockHeader: vi.fn(),
       testVerboseSupport: vi.fn().mockResolvedValue(true),
     }));
 
@@ -191,6 +197,36 @@ describe("nodeClient service", () => {
     expect(first).toBe(poolSubscriptionClient);
     expect(second).toBe(first);
     expect(mocks.getElectrumPoolForNetwork).toHaveBeenCalledTimes(1);
+  });
+
+  it("disconnects uncached clients that fail network identity verification", async () => {
+    mocks.verifyNodeClientNetwork.mockRejectedValueOnce(
+      new Error("Testnet4 chain identity mismatch"),
+    );
+    mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(
+      buildNodeConfig({
+        testnet4Enabled: true,
+        testnet4Mode: "singleton",
+      }),
+    );
+    const testnet4Singleton = {
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+      isConnected: vi.fn().mockReturnValue(true),
+      getBlockHeight: vi.fn(),
+    };
+    mocks.getElectrumClientForNetwork.mockImplementation((network: string) => {
+      if (network === "testnet4") return testnet4Singleton;
+      return mainnetSingleton;
+    });
+
+    await expect(getNodeClient("testnet4")).rejects.toThrow(
+      "Testnet4 chain identity mismatch",
+    );
+
+    expect(testnet4Singleton.disconnect).toHaveBeenCalledTimes(1);
+    await expect(getNodeClient("testnet4")).resolves.toBe(testnet4Singleton);
+    expect(mocks.getElectrumClientForNetwork).toHaveBeenCalledTimes(2);
   });
 
   it("falls back to singleton client when pool initialization fails", async () => {
@@ -710,6 +746,56 @@ describe("nodeClient service", () => {
       supportsVerbose: true,
     });
     expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("verifies configured network identity when testing node config", async () => {
+    const testClient = {
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+      getBlockHeight: vi.fn().mockResolvedValue(133929),
+      getBlockHeader: vi.fn(),
+      testVerboseSupport: vi.fn().mockResolvedValue(true),
+    };
+    mocks.electrumClientCtor.mockImplementationOnce(() => testClient);
+
+    const result = await testNodeConfig({
+      host: "electrum-testnet4.example.com",
+      port: 60002,
+      protocol: "ssl",
+      network: "testnet4",
+    });
+
+    expect(result.success).toBe(true);
+    expect(mocks.electrumClientCtor).toHaveBeenCalledWith(
+      expect.objectContaining({ network: "testnet4" }),
+    );
+    expect(mocks.verifyNodeClientNetwork).toHaveBeenCalledWith(testClient, "testnet4");
+  });
+
+  it("disconnects test node clients that fail network identity verification", async () => {
+    const testClient = {
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+      getBlockHeight: vi.fn().mockResolvedValue(4959040),
+      getBlockHeader: vi.fn(),
+      testVerboseSupport: vi.fn().mockResolvedValue(true),
+    };
+    mocks.electrumClientCtor.mockImplementationOnce(() => testClient);
+    mocks.verifyNodeClientNetwork.mockRejectedValueOnce(
+      new Error("Testnet4 chain identity mismatch"),
+    );
+
+    const result = await testNodeConfig({
+      host: "electrum.blockstream.example",
+      port: 60002,
+      protocol: "ssl",
+      network: "testnet4",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("Testnet4 chain identity mismatch");
+    expect(testClient.disconnect).toHaveBeenCalledTimes(1);
+    expect(testClient.testVerboseSupport).not.toHaveBeenCalled();
   });
 
   it("handles verbose capability probe failures but still succeeds", async () => {

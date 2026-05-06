@@ -11,7 +11,12 @@ export interface NetworkConnectionCardProps {
   poolStats?: bitcoinApi.PoolStats | null; // Pool stats with health history
   onConfigChange: (updates: Partial<NodeConfigType>) => void;
   onServersChange: (servers: ElectrumServer[]) => void;
-  onTestConnection: (host: string, port: number, ssl: boolean) => Promise<{ success: boolean; message: string }>;
+  onTestConnection: (
+    network: NetworkType,
+    host: string,
+    port: number,
+    ssl: boolean
+  ) => Promise<{ success: boolean; message: string }>;
 }
 
 export interface NetworkColors {

@@ -3,15 +3,16 @@ import {
   manager,
 } from './electrumManagerTestHarness';
 import prisma from '../../../../src/models/prisma';
+import { getAddressSubscriptionKey } from '../../../../src/worker/electrumManager/types';
 
 export function registerElectrumManagerReconcileContracts() {
   describe('reconcileSubscriptions', () => {
     it('should remove addresses that no longer exist in database', async () => {
       // Setup: Manager has addresses tracked
       const addressToWallet = (manager as unknown as { addressToWallet: Map<string, unknown> }).addressToWallet;
-      addressToWallet.set('addr1', { walletId: 'wallet1', network: 'mainnet' });
-      addressToWallet.set('addr2', { walletId: 'wallet1', network: 'mainnet' });
-      addressToWallet.set('addr3', { walletId: 'wallet2', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr1'), { walletId: 'wallet1', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr2'), { walletId: 'wallet1', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr3'), { walletId: 'wallet2', network: 'mainnet' });
 
       // Database only has addr1 (addr2 and addr3 were deleted)
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
@@ -23,9 +24,9 @@ export function registerElectrumManagerReconcileContracts() {
       expect(result.removed).toBe(2);
       expect(result.added).toBe(0);
       expect(addressToWallet.size).toBe(1);
-      expect(addressToWallet.has('addr1')).toBe(true);
-      expect(addressToWallet.has('addr2')).toBe(false);
-      expect(addressToWallet.has('addr3')).toBe(false);
+      expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'addr1'))).toBe(true);
+      expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'addr2'))).toBe(false);
+      expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'addr3'))).toBe(false);
     });
 
     it('should add new addresses from database', async () => {
@@ -44,8 +45,31 @@ export function registerElectrumManagerReconcileContracts() {
       expect(result.removed).toBe(0);
       expect(result.added).toBe(2);
       expect(addressToWallet.size).toBe(2);
-      expect(addressToWallet.has('addr1')).toBe(true);
-      expect(addressToWallet.has('addr2')).toBe(true);
+      expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'addr1'))).toBe(true);
+      expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'addr2'))).toBe(true);
+    });
+
+    it('should track the same address string separately per network', async () => {
+      const addressToWallet = (manager as unknown as { addressToWallet: Map<string, unknown> }).addressToWallet;
+
+      vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
+        { id: '1', address: 'tb1qshared', walletId: 'wallet-testnet3', wallet: { network: 'testnet3' } },
+        { id: '2', address: 'tb1qshared', walletId: 'wallet-testnet4', wallet: { network: 'testnet4' } },
+      ]);
+
+      const result = await manager.reconcileSubscriptions();
+
+      expect(result.removed).toBe(0);
+      expect(result.added).toBe(2);
+      expect(addressToWallet.size).toBe(2);
+      expect(addressToWallet.get(getAddressSubscriptionKey('testnet3', 'tb1qshared'))).toEqual({
+        walletId: 'wallet-testnet3',
+        network: 'testnet3',
+      });
+      expect(addressToWallet.get(getAddressSubscriptionKey('testnet4', 'tb1qshared'))).toEqual({
+        walletId: 'wallet-testnet4',
+        network: 'testnet4',
+      });
     });
 
     it('should default to mainnet when reconciling addresses with missing wallet network', async () => {
@@ -60,7 +84,7 @@ export function registerElectrumManagerReconcileContracts() {
 
       expect(result.added).toBe(1);
       expect(result.removed).toBe(0);
-      expect(addressToWallet.get('addr-fallback')).toEqual({
+      expect(addressToWallet.get(getAddressSubscriptionKey('mainnet', 'addr-fallback'))).toEqual({
         walletId: 'wallet-fallback',
         network: 'mainnet',
       });
@@ -69,9 +93,9 @@ export function registerElectrumManagerReconcileContracts() {
     it('should handle mixed add and remove operations', async () => {
       // Setup: Manager has some addresses
       const addressToWallet = (manager as unknown as { addressToWallet: Map<string, unknown> }).addressToWallet;
-      addressToWallet.set('old1', { walletId: 'wallet1', network: 'mainnet' });
-      addressToWallet.set('keep', { walletId: 'wallet1', network: 'mainnet' });
-      addressToWallet.set('old2', { walletId: 'wallet2', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'old1'), { walletId: 'wallet1', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'keep'), { walletId: 'wallet1', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'old2'), { walletId: 'wallet2', network: 'mainnet' });
 
       // Database has one existing and one new
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([
@@ -84,16 +108,16 @@ export function registerElectrumManagerReconcileContracts() {
       expect(result.removed).toBe(2); // old1, old2 removed
       expect(result.added).toBe(1); // new1 added
       expect(addressToWallet.size).toBe(2);
-      expect(addressToWallet.has('keep')).toBe(true);
-      expect(addressToWallet.has('new1')).toBe(true);
-      expect(addressToWallet.has('old1')).toBe(false);
-      expect(addressToWallet.has('old2')).toBe(false);
+      expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'keep'))).toBe(true);
+      expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'new1'))).toBe(true);
+      expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'old1'))).toBe(false);
+      expect(addressToWallet.has(getAddressSubscriptionKey('mainnet', 'old2'))).toBe(false);
     });
 
     it('should handle empty database', async () => {
       // Setup: Manager has addresses
       const addressToWallet = (manager as unknown as { addressToWallet: Map<string, unknown> }).addressToWallet;
-      addressToWallet.set('addr1', { walletId: 'wallet1', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr1'), { walletId: 'wallet1', network: 'mainnet' });
 
       // Database is empty
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([]);
@@ -140,8 +164,8 @@ export function registerElectrumManagerReconcileContracts() {
     it('should not count existing addresses as added', async () => {
       // Setup: Manager already has some addresses
       const addressToWallet = (manager as unknown as { addressToWallet: Map<string, unknown> }).addressToWallet;
-      addressToWallet.set('addr1', { walletId: 'wallet1', network: 'mainnet' });
-      addressToWallet.set('addr2', { walletId: 'wallet1', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr1'), { walletId: 'wallet1', network: 'mainnet' });
+      addressToWallet.set(getAddressSubscriptionKey('mainnet', 'addr2'), { walletId: 'wallet1', network: 'mainnet' });
 
       // Database has the same addresses
       vi.mocked(prisma.address.findMany).mockResolvedValueOnce([

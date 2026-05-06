@@ -53,6 +53,15 @@ describe('CreateWallet ReviewStep branch coverage', () => {
     expect(screen.queryByText('Script')).not.toBeInTheDocument();
   });
 
+  it('renders distinct testnet4 badge styling', () => {
+    const { container } = renderStep({
+      network: 'testnet4',
+    });
+
+    expect(screen.getByText('Testnet4')).toBeInTheDocument();
+    expect(container.querySelector('.text-teal-700')).toBeInTheDocument();
+  });
+
   it('renders else-branch network badge styling for signet', () => {
     const { container } = renderStep({
       network: 'signet',

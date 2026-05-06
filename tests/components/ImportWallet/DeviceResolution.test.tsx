@@ -143,6 +143,7 @@ describe('DeviceResolutionStep', () => {
   it.each([
     ['mainnet', 'Mainnet', 'text-mainnet-700'],
     ['testnet3', 'Testnet3', 'text-testnet-700'],
+    ['testnet4', 'Testnet4', 'text-teal-700'],
     ['signet', 'Signet', 'text-signet-700'],
   ] as const)(
     'applies active network styling for %s',

@@ -59,7 +59,7 @@ export async function createCPFPTransaction(
   parentVout: number,
   targetFeeRate: number,
   recipientAddress: string,
-  _walletId: string,
+  walletId: string,
   network: BitcoinNetwork = 'mainnet'
 ): Promise<{
   psbt: bitcoin.Psbt;
@@ -79,7 +79,7 @@ export async function createCPFPTransaction(
   const parentVsize = bitcoin.Transaction.fromHex(parentTx.hex).virtualSize();
 
   // Get the UTXO from parent transaction
-  const utxo = await utxoRepository.findByOutpoint(parentTxid, parentVout);
+  const utxo = await utxoRepository.findByOutpoint(walletId, parentTxid, parentVout);
 
   if (!utxo) {
     throw new Error('UTXO not found');

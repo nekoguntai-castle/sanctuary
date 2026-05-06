@@ -17,6 +17,7 @@ import { nodeConfigRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { getNetworkModeConfig } from './nodeClientConfig';
+import { verifyNodeClientNetwork } from './networkIdentity';
 
 const log = createLogger('BITCOIN:SVC_NODE_CLIENT');
 
@@ -24,6 +25,7 @@ export interface NodeConfig {
   host: string;
   port: number;
   protocol?: 'tcp' | 'ssl';
+  network?: NetworkType;
   // Pool mode - when true, use multi-server pool; when false, use single server
   poolEnabled?: boolean;
 }
@@ -69,6 +71,14 @@ let activeClient: NodeClientInterface | null = null;
 
 // Per-network client cache
 const networkClients = new Map<NetworkType, NodeClientInterface>();
+
+function disconnectQuietly(client: Pick<NodeClientInterface, 'disconnect'>, context: string): void {
+  try {
+    client.disconnect();
+  } catch (error) {
+    log.debug(`${context} disconnect failed`, { error: getErrorMessage(error) });
+  }
+}
 
 /**
  * Load node configuration from database
@@ -175,6 +185,13 @@ export async function getNodeClient(network: NetworkType = 'mainnet'): Promise<N
     log.info(`Using Electrum singleton for ${network} at ${host}:${port}`);
   }
 
+  try {
+    await verifyNodeClientNetwork(client, network);
+  } catch (error) {
+    disconnectQuietly(client, `Rejected ${network} client`);
+    throw error;
+  }
+
   // Cache the client
   networkClients.set(network, client);
 
@@ -276,28 +293,31 @@ export async function testNodeConfig(config: NodeConfig): Promise<{
     supportsVerbose?: boolean;
   };
 }> {
+  let testClient: (NodeClientInterface & { testVerboseSupport?: () => Promise<boolean> }) | null = null;
   try {
     const ElectrumClientClass = (await import('./electrum')).ElectrumClient;
-    const testClient = new ElectrumClientClass({
+    testClient = new ElectrumClientClass({
       host: config.host,
       port: config.port,
       protocol: config.protocol || 'ssl',
-    });
+      network: config.network,
+    }) as NodeClientInterface & { testVerboseSupport?: () => Promise<boolean> };
 
     await testClient.connect();
     const height = await testClient.getBlockHeight();
+    if (config.network) {
+      await verifyNodeClientNetwork(testClient, config.network);
+    }
 
     // Test verbose transaction support
     let supportsVerbose: boolean | undefined;
     try {
-      supportsVerbose = await testClient.testVerboseSupport();
+      supportsVerbose = await testClient.testVerboseSupport?.();
       log.debug(`Server ${config.host}:${config.port} verbose support: ${supportsVerbose}`);
     } catch (capabilityError) {
       // Capability check failed, leave as unknown
       log.debug(`Could not determine verbose capability for ${config.host}:${config.port}: ${getErrorMessage(capabilityError)}`);
     }
-
-    testClient.disconnect();
 
     const verboseStatus = supportsVerbose === true ? ' (verbose: yes)' :
                           supportsVerbose === false ? ' (verbose: no)' : '';
@@ -312,5 +332,9 @@ export async function testNodeConfig(config: NodeConfig): Promise<{
       success: false,
       message: `Connection failed: ${getErrorMessage(error)}`,
     };
+  } finally {
+    if (testClient) {
+      disconnectQuietly(testClient, `Test client ${config.host}:${config.port}`);
+    }
   }
 }

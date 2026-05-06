@@ -618,6 +618,29 @@ describe("Address Repository", () => {
     });
   });
 
+  describe("findByWalletIdAndAddressWithWallet", () => {
+    it("should scope address lookup to a wallet when including wallet metadata", async () => {
+      const addressWithWallet = {
+        ...mockAddress,
+        walletId: "wallet-456",
+        wallet: { id: "wallet-456", name: "Testnet4", network: "testnet4" },
+      };
+      (prisma.address.findFirst as Mock).mockResolvedValue(addressWithWallet);
+
+      const result =
+        await addressRepository.findByWalletIdAndAddressWithWallet(
+          "wallet-456",
+          "tb1qshared",
+        );
+
+      expect(result).toEqual(addressWithWallet);
+      expect(prisma.address.findFirst).toHaveBeenCalledWith({
+        where: { walletId: "wallet-456", address: "tb1qshared" },
+        include: { wallet: true },
+      });
+    });
+  });
+
   describe("create", () => {
     it("should create a single address", async () => {
       const newAddr = {

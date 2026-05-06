@@ -9,6 +9,23 @@ import type { ElectrumClient } from '../../services/bitcoin/electrum';
 
 export type BitcoinNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
 
+export interface AddressWalletInfo {
+  walletId: string;
+  network: BitcoinNetwork;
+}
+
+export function getAddressSubscriptionKey(
+  network: BitcoinNetwork,
+  address: string,
+): string {
+  return `${network}:${address}`;
+}
+
+export function getAddressFromSubscriptionKey(key: string): string {
+  const separatorIndex = key.indexOf(':');
+  return separatorIndex === -1 ? key : key.slice(separatorIndex + 1);
+}
+
 export interface ElectrumManagerCallbacks {
   /** Called when a new block is received */
   onNewBlock: (network: BitcoinNetwork, height: number, hash: string) => void;

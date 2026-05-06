@@ -99,6 +99,7 @@ const NodeConfigTestBodySchema = z.object({
   host: z.string().min(1),
   port: NodeStringOrNumberSchema,
   useSsl: z.boolean().optional(),
+  network: z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']).optional(),
 }).strict();
 
 function hasNodeConfigRequiredFields(body: unknown): boolean {
@@ -120,7 +121,9 @@ function parseNodeConfigBody(body: unknown): NodeConfigInput | null {
   return parsed.success ? parsed.data as NodeConfigInput : null;
 }
 
-function parseNodeConfigTestBody(body: unknown): Pick<NodeConfigInput, 'type' | 'host' | 'port' | 'useSsl'> | null {
+function parseNodeConfigTestBody(
+  body: unknown,
+): Pick<NodeConfigInput, 'type' | 'host' | 'port' | 'useSsl'> & { network?: NodeConfig['network'] } | null {
   const parsed = NodeConfigTestBodySchema.safeParse(body);
   return parsed.success ? parsed.data : null;
 }
@@ -304,6 +307,7 @@ router.post('/node-config/test', authenticate, requireAdmin, asyncHandler(async 
     host,
     port: parseInt(port.toString(), 10),
     protocol: useSsl ? 'ssl' : 'tcp',
+    ...(nodeConfigBody.network ? { network: nodeConfigBody.network } : {}),
   };
 
   // Test the connection using the nodeClient abstraction

@@ -80,10 +80,10 @@ export async function findUnspent(
 /**
  * Mark UTXOs as spent
  */
-export async function markAsSpent(txid: string, vout: number): Promise<UTXO | null> {
+export async function markAsSpent(walletId: string, txid: string, vout: number): Promise<UTXO | null> {
   try {
     return await prisma.uTXO.update({
-      where: { txid_vout: { txid, vout } },
+      where: { walletId_txid_vout: { walletId, txid, vout } },
       data: { spent: true },
     });
   } catch {
@@ -635,11 +635,12 @@ export async function findByIdsForPrivacy(utxoIds: string[]) {
  * Find a UTXO by outpoint (txid:vout compound key)
  */
 export async function findByOutpoint(
+  walletId: string,
   txid: string,
   vout: number
 ): Promise<UTXO | null> {
   return prisma.uTXO.findUnique({
-    where: { txid_vout: { txid, vout } },
+    where: { walletId_txid_vout: { walletId, txid, vout } },
   });
 }
 

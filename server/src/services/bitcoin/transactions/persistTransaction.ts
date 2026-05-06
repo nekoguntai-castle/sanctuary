@@ -45,7 +45,8 @@ export async function persistTransaction(
     for (const utxo of metadata.utxos) {
       await tx.uTXO.update({
         where: {
-          txid_vout: {
+          walletId_txid_vout: {
+            walletId,
             txid: utxo.txid,
             vout: utxo.vout,
           },

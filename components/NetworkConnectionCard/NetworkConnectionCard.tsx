@@ -6,7 +6,7 @@ import { PoolConfig } from "./PoolConfig";
 import { ConnectionModeSelector } from "./NetworkConnectionCard/ConnectionModeSelector";
 import { useNetworkConnectionCardController } from "./NetworkConnectionCard/useNetworkConnectionCardController";
 import { Toggle } from "../ui/Toggle";
-import { formatNetworkTitle } from "../../src/app/networks";
+import { formatNetworkTitle, getNetworkColorClass } from "../../src/app/networks";
 
 export const NetworkConnectionCard: React.FC<NetworkConnectionCardProps> = ({
   network,
@@ -160,18 +160,13 @@ function NetworkSyncSwitch({
   network: Exclude<NetworkType, "mainnet">;
   label: string;
 }) {
-  const activeClass =
-    network === "testnet3" || network === "testnet4"
-      ? "border-testnet-500 bg-testnet-500"
-      : "border-signet-500 bg-signet-500";
-
   return (
     <Toggle
       checked={checked}
       onChange={onChange}
       ariaLabel={label}
       className="flex-shrink-0 border"
-      activeClassName={activeClass}
+      activeClassName={getNetworkColorClass(network, "switchActive")}
       inactiveClassName="border-sanctuary-600 bg-sanctuary-700 dark:border-sanctuary-700 dark:bg-sanctuary-800"
       thumbClassName="bg-sanctuary-950 shadow-sm ring-1 ring-white/20 dark:bg-sanctuary-950"
     />

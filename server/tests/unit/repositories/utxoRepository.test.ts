@@ -15,6 +15,7 @@ vi.mock('../../../src/models/prisma', () => ({
       aggregate: vi.fn(),
       groupBy: vi.fn(),
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
       deleteMany: vi.fn(),
@@ -201,11 +202,11 @@ describe('UTXO Repository', () => {
       const spentUtxo = { ...mockUtxo, spent: true };
       (prisma.uTXO.update as Mock).mockResolvedValue(spentUtxo);
 
-      const result = await utxoRepository.markAsSpent('abc123def456', 0);
+      const result = await utxoRepository.markAsSpent('wallet-456', 'abc123def456', 0);
 
       expect(result?.spent).toBe(true);
       expect(prisma.uTXO.update).toHaveBeenCalledWith({
-        where: { txid_vout: { txid: 'abc123def456', vout: 0 } },
+        where: { walletId_txid_vout: { walletId: 'wallet-456', txid: 'abc123def456', vout: 0 } },
         data: { spent: true },
       });
     });
@@ -213,7 +214,7 @@ describe('UTXO Repository', () => {
     it('should return null when UTXO not found', async () => {
       (prisma.uTXO.update as Mock).mockRejectedValue(new Error('Record not found'));
 
-      const result = await utxoRepository.markAsSpent('nonexistent', 0);
+      const result = await utxoRepository.markAsSpent('wallet-456', 'nonexistent', 0);
 
       expect(result).toBeNull();
     });
@@ -368,6 +369,25 @@ describe('UTXO Repository', () => {
 
       expect(result).toEqual([]);
       expect(prisma.uTXO.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findByOutpoint', () => {
+    it('should look up an outpoint within a wallet scope', async () => {
+      (prisma.uTXO.findUnique as Mock).mockResolvedValue(mockUtxo);
+
+      const result = await utxoRepository.findByOutpoint('wallet-456', 'abc123def456', 0);
+
+      expect(result).toEqual(mockUtxo);
+      expect(prisma.uTXO.findUnique).toHaveBeenCalledWith({
+        where: {
+          walletId_txid_vout: {
+            walletId: 'wallet-456',
+            txid: 'abc123def456',
+            vout: 0,
+          },
+        },
+      });
     });
   });
 

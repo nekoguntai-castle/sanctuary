@@ -153,6 +153,24 @@ describe('adminElectrumServerService', () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
+  it('passes network identity through arbitrary Electrum endpoint tests', async () => {
+    const { testElectrumConnection } = await loadService();
+
+    await testElectrumConnection({
+      host: 'electrum-testnet4.example.com',
+      port: 60002,
+      useSsl: true,
+      network: 'testnet4',
+    });
+
+    expect(mocks.testNodeConfig).toHaveBeenCalledWith({
+      host: 'electrum-testnet4.example.com',
+      port: 60002,
+      protocol: 'ssl',
+      network: 'testnet4',
+    });
+  });
+
   it('creates servers with duplicate protection, default config bootstrap, max priority, and pool reload', async () => {
     const { createElectrumServer } = await loadService();
 
