@@ -56,7 +56,11 @@ run_project_compose() {
     local project_dir="${1:-.}"
     shift
 
-    local -a compose_cmd=(docker compose -f "$project_dir/docker-compose.yml")
+    local -a compose_cmd=(docker compose)
+    if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
+        compose_cmd+=(-p "$COMPOSE_PROJECT_NAME")
+    fi
+    compose_cmd+=(-f "$project_dir/docker-compose.yml")
 
     if [ "${ENABLE_MONITORING:-no}" = "yes" ] && [ -f "$project_dir/docker-compose.monitoring.yml" ]; then
         compose_cmd+=(-f "$project_dir/docker-compose.monitoring.yml")
@@ -258,9 +262,20 @@ get_container_status() {
 # Stop and remove all Sanctuary containers
 cleanup_containers() {
     local project_dir="${1:-.}"
-    local project="${COMPOSE_PROJECT_NAME:-sanctuary}"
+    local project="${COMPOSE_PROJECT_NAME:-}"
 
-    log_info "Cleaning up Sanctuary containers..."
+    if [ -z "$project" ]; then
+        log_error "cleanup_containers refused: COMPOSE_PROJECT_NAME must be set explicitly to a test-only name"
+        log_error "  Refusing to default to 'sanctuary' — that would wipe production volumes."
+        return 1
+    fi
+    if [ "$project" = "sanctuary" ]; then
+        log_error "cleanup_containers refused: project name 'sanctuary' is protected"
+        log_error "  Tests must use a unique COMPOSE_PROJECT_NAME (e.g. sanctuary-test-\$RUN_ID)."
+        return 1
+    fi
+
+    log_info "Cleaning up Sanctuary containers (project: $project)..."
 
     (
         cd "$project_dir"

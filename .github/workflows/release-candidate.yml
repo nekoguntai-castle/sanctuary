@@ -206,24 +206,42 @@ jobs:
     needs: fresh-install-test
     continue-on-error: true  # Non-blocking - failures are warnings
     timeout-minutes: 15
+    env:
+      COMPOSE_PROJECT_NAME: sanctuary-rc-health-${{ github.run_id }}
+      HTTPS_PORT: '15643'
+      HTTP_PORT: '15280'
+      GATEWAY_PORT: '15200'
+      PORT_OFFSET: '1'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
+          clean: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
+      - name: Check Docker
+        run: scripts/ci/wait-for-docker.sh
+
       - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
+
+      - name: Prepare isolated install workspace
+        run: |
+          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible container-health)"
+          echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+
+      - name: Assign run-specific ports
+        run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
 
       - name: Start containers
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-          HTTP_PORT: ${{ env.HTTP_PORT }}
         run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
           # Generate all required secrets
           JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
           ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
@@ -232,20 +250,22 @@ jobs:
           AI_CONFIG_SECRET=$(openssl rand -hex 32)
           REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
           cd docker/nginx/ssl && ./generate-certs.sh localhost && cd ../../..
-          # Build first, then start (migrate container needs backend image)
-          JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
-            GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
-            HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-            docker compose build
-          JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
-            GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
-            HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-            docker compose up -d
+          scripts/ci/with-runner-lock.sh e2e bash -c "
+            JWT_SECRET='$JWT_SECRET' ENCRYPTION_KEY='$ENCRYPTION_KEY' \
+              GATEWAY_SECRET='$GATEWAY_SECRET' POSTGRES_PASSWORD='$POSTGRES_PASSWORD' \
+              AI_CONFIG_SECRET='$AI_CONFIG_SECRET' REDIS_PASSWORD='$REDIS_PASSWORD' \
+              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
+              docker compose build &&
+            JWT_SECRET='$JWT_SECRET' ENCRYPTION_KEY='$ENCRYPTION_KEY' \
+              GATEWAY_SECRET='$GATEWAY_SECRET' POSTGRES_PASSWORD='$POSTGRES_PASSWORD' \
+              AI_CONFIG_SECRET='$AI_CONFIG_SECRET' REDIS_PASSWORD='$REDIS_PASSWORD' \
+              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
+              docker compose up -d
+          "
 
       - name: Wait for migration to complete
         run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
           echo "Waiting for migration container to finish..."
           for i in {1..60}; do
             STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -oE '^[A-Za-z]+' || echo "not_found")
@@ -275,13 +295,15 @@ jobs:
           done
 
       - name: Run container health tests
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-        run: ./tests/install/e2e/container-health.test.sh --verbose
+        run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          ./tests/install/e2e/container-health.test.sh --verbose
 
       - name: Cleanup
         if: always()
-        run: docker compose down -v --remove-orphans || true
+        run: |
+          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
+          docker compose down -v --remove-orphans || true
 
   # ============================================
   # Authentication Flow Test (non-blocking)
@@ -292,24 +314,42 @@ jobs:
     needs: fresh-install-test
     continue-on-error: true  # Non-blocking - failures are warnings
     timeout-minutes: 15
+    env:
+      COMPOSE_PROJECT_NAME: sanctuary-rc-auth-${{ github.run_id }}
+      HTTPS_PORT: '15743'
+      HTTP_PORT: '15380'
+      GATEWAY_PORT: '15300'
+      PORT_OFFSET: '2'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
+          clean: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
+      - name: Check Docker
+        run: scripts/ci/wait-for-docker.sh
+
       - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
+
+      - name: Prepare isolated install workspace
+        run: |
+          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible auth-flow)"
+          echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+
+      - name: Assign run-specific ports
+        run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
 
       - name: Start containers
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-          HTTP_PORT: ${{ env.HTTP_PORT }}
         run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
           # Generate all 4 required secrets
           JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
           ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
@@ -318,23 +358,25 @@ jobs:
           AI_CONFIG_SECRET=$(openssl rand -hex 32)
           REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
           cd docker/nginx/ssl && ./generate-certs.sh localhost && cd ../../..
-          # Build first, then start (migrate container needs backend image)
           # Raise auth rate limits for stressy auth-flow test sequences
-          JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
-            GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
-            HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-            RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
-            docker compose build
-          JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
-            GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
-            HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-            RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
-            docker compose up -d
+          scripts/ci/with-runner-lock.sh e2e bash -c "
+            JWT_SECRET='$JWT_SECRET' ENCRYPTION_KEY='$ENCRYPTION_KEY' \
+              GATEWAY_SECRET='$GATEWAY_SECRET' POSTGRES_PASSWORD='$POSTGRES_PASSWORD' \
+              AI_CONFIG_SECRET='$AI_CONFIG_SECRET' REDIS_PASSWORD='$REDIS_PASSWORD' \
+              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
+              RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
+              docker compose build &&
+            JWT_SECRET='$JWT_SECRET' ENCRYPTION_KEY='$ENCRYPTION_KEY' \
+              GATEWAY_SECRET='$GATEWAY_SECRET' POSTGRES_PASSWORD='$POSTGRES_PASSWORD' \
+              AI_CONFIG_SECRET='$AI_CONFIG_SECRET' REDIS_PASSWORD='$REDIS_PASSWORD' \
+              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
+              RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
+              docker compose up -d
+          "
 
       - name: Wait for migration to complete
         run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
           echo "Waiting for migration container to finish..."
           for i in {1..60}; do
             STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -oE '^[A-Za-z]+' || echo "not_found")
@@ -364,13 +406,15 @@ jobs:
           done
 
       - name: Run auth flow tests
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-        run: ./tests/install/e2e/auth-flow.test.sh --verbose
+        run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          ./tests/install/e2e/auth-flow.test.sh --verbose
 
       - name: Cleanup
         if: always()
-        run: docker compose down -v --remove-orphans || true
+        run: |
+          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
+          docker compose down -v --remove-orphans || true
 
   # ============================================
   # Upgrade Matrix (release blocking)
@@ -386,16 +430,24 @@ jobs:
         include:
           - source_ref: latest-stable
             fixture: baseline
+            port_offset: 10
           - source_ref: n-2
             fixture: baseline
+            port_offset: 11
           - source_ref: latest-stable
             fixture: browser-origin-ip
+            port_offset: 12
           - source_ref: latest-stable
             fixture: legacy-runtime-env
+            port_offset: 13
           - source_ref: latest-stable
             fixture: notification-delivery
+            port_offset: 14
           - source_ref: latest-stable
             fixture: optional-profiles
+            port_offset: 15
+    env:
+      PORT_OFFSET: ${{ matrix.port_offset }}
 
     steps:
       - name: Checkout repository
@@ -403,25 +455,41 @@ jobs:
         with:
           ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
           fetch-depth: 0
+          clean: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
+      - name: Check Docker
+        run: scripts/ci/wait-for-docker.sh
+
       - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
+
+      - name: Prepare isolated install workspace
+        run: |
+          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }})"
+          echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+
+      - name: Assign run-specific ports
+        run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
 
       - name: Run core upgrade test
         env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-          HTTP_PORT: ${{ env.HTTP_PORT }}
           SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || inputs.upgrade_source_ref || matrix.source_ref }}
           SANCTUARY_UPGRADE_FIXTURE: ${{ matrix.fixture }}
           SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
-        run: ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "${{ matrix.fixture }}" --verbose
+        run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "upgrade ${{ matrix.source_ref }} ${{ matrix.fixture }}" \
+            ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "${{ matrix.fixture }}" --verbose
 
       - name: Show container logs on failure
         if: failure()
         run: |
+          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
           docker compose ps || true
           docker compose logs --tail 50 postgres 2>&1 || true
           docker compose logs --tail 100 backend 2>&1 || true
@@ -431,12 +499,14 @@ jobs:
         uses: ./.github/actions/upload-artifact
         with:
           name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
-          path: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
+          path: ${{ env.SANCTUARY_INSTALL_WORKSPACE }}/.tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
           if-no-files-found: ignore
 
       - name: Cleanup
         if: always()
-        run: docker compose down -v --remove-orphans || true
+        run: |
+          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
+          docker compose down -v --remove-orphans || true
 
   upgrade-full-recovery-test:
     name: Upgrade Full Recovery

@@ -191,7 +191,9 @@ run_e2e_suites() {
 
     if [ "$SKIP_CLEANUP" = "false" ]; then
         log_info "Cleaning up containers..."
-        cleanup_containers "$(cd "$SCRIPT_DIR/../.." && pwd)" 2>/dev/null || true
+        local cleanup_project="${COMPOSE_PROJECT_NAME:-sanctuary-run-all-$(generate_test_run_id)}"
+        COMPOSE_PROJECT_NAME="$cleanup_project" \
+            cleanup_containers "$(cd "$SCRIPT_DIR/../.." && pwd)" 2>/dev/null || true
     fi
 
     [ "$suite_failed" = "false" ]

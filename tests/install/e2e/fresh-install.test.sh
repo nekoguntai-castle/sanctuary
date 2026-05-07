@@ -63,6 +63,7 @@ done
 
 # Test configuration
 TEST_ID=$(generate_test_run_id)
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sanctuary-fresh-${TEST_ID}}"
 TEST_ROOT=$(default_install_test_root "$PROJECT_ROOT")
 TEST_INSTALL_DIR=$(create_test_directory "$TEST_ROOT" "sanctuary-install-test")
 TEST_DOCKER_INSTALL_DIR=$(docker_visible_path "$TEST_INSTALL_DIR")
