@@ -118,7 +118,7 @@ jobs:
   lockfile-peer-resolution:
     name: Lockfile peer resolution
     runs-on: ubuntu-latest
-    needs: [determine-scope, lint]
+    needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
@@ -144,7 +144,7 @@ jobs:
   dependency-audit:
     name: Dependency audit (npm)
     runs-on: ubuntu-latest
-    needs: [determine-scope, lockfile-peer-resolution]
+    needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
@@ -203,7 +203,7 @@ jobs:
   gitleaks:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
-    needs: [determine-scope, dependency-audit]
+    needs: [determine-scope]
     if: always()
     steps:
       - name: Checkout
@@ -249,7 +249,7 @@ jobs:
   semgrep-sast:
     name: SAST (Semgrep)
     runs-on: ubuntu-latest
-    needs: [determine-scope, gitleaks]
+    needs: [determine-scope]
     if: |
       always() &&
       (needs.determine-scope.outputs.run_repo_quality == 'true' ||
@@ -325,7 +325,7 @@ jobs:
   workflow-lint:
     name: Workflow lint (actionlint)
     runs-on: ubuntu-latest
-    needs: [determine-scope, semgrep-sast]
+    needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_workflow_quality == 'true'
     steps:
       - name: Checkout
@@ -351,7 +351,7 @@ jobs:
   workflow-action-runtime-guard:
     name: Workflow action runtime guard
     runs-on: ubuntu-latest
-    needs: [determine-scope, workflow-lint]
+    needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_workflow_quality == 'true'
     steps:
       - name: Checkout
@@ -370,7 +370,7 @@ jobs:
   ci-classifier-tests:
     name: CI classifier tests
     runs-on: ubuntu-latest
-    needs: [determine-scope, workflow-action-runtime-guard]
+    needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_ci_classifier_tests == 'true'
     steps:
       - name: Checkout
@@ -479,7 +479,7 @@ jobs:
   lizard:
     name: Cyclomatic complexity (lizard)
     runs-on: ubuntu-latest
-    needs: [determine-scope, ci-classifier-tests]
+    needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
@@ -498,7 +498,7 @@ jobs:
   jscpd:
     name: Duplication (jscpd)
     runs-on: ubuntu-latest
-    needs: [determine-scope, lizard]
+    needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
@@ -537,7 +537,7 @@ jobs:
   large-file-classification:
     name: Large-file classification
     runs-on: ubuntu-latest
-    needs: [determine-scope, jscpd]
+    needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout

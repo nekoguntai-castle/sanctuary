@@ -1,3 +1,33 @@
+# Active Task: CI Runner Capacity Acceleration 2026-05-07
+
+Status: in progress
+
+Goal: work through the runner-capacity acceleration plan, implement workflow changes that can use more Forgejo runners safely, deliver through PR, merge, and verify post-merge state.
+
+## Plan
+
+- [x] Phase 0: capture whatever baseline evidence is available from local tooling without committing private runner details.
+- [x] Phase 1: document and preserve safe runner-capacity assumptions; keep existing locks until isolated-runner rehearsals prove they can be removed.
+- [x] Phase 2: remove false full-lane dependencies in Test Suite while preserving required aggregate checks.
+- [x] Phase 3: split frontend coverage shards into real parallel jobs with one threshold-enforcing merge job.
+- [x] Phase 4: split backend integration groups into real parallel jobs while preserving `Full Backend Tests`.
+- [x] Phase 5: re-evaluate browser/render E2E and keep it serialized unless isolation is proven.
+- [x] Phase 6: parallelize Code Quality jobs only where temp-clone/scanner isolation already protects shared checkout state.
+- [ ] Phase 7: run local verification, deliver with `$pr-delivery`, monitor CI, merge, and verify target branch.
+
+## Review
+
+- Baseline evidence from the Forgejo API, without storing runner details: recent successful runs included `test.yml` PR #282 at 74m14s wall / 70m01s run, `test.yml` PR #281 at 63m25s wall / 58m09s run, `quality.yml` PR #284 at 46m50s wall / 40m53s run, `quality.yml` PR #283 at 71m14s wall / 66m59s run, and `install-test.yml` PR #283 at 57m58s wall / 54m47s run. The GitHub-oriented `scripts/ci/report-workflow-trends.sh` cannot query this Forgejo remote through `gh`, so the baseline used the local Forgejo API credentials from the git credential helper.
+- Implemented the conservative runner-capacity path: false full-lane dependencies were removed, frontend coverage now runs as two independent shard jobs plus one threshold-enforcing merge job, backend integration groups now run as a real matrix, and gateway / AI proxy / mutation / build lanes start from `full-lane-ready` instead of unrelated package aggregates.
+- Preserved known unsafe areas: browser E2E remains one serialized job under the `e2e` lock, render still waits for browser, and Node-heavy setup/build/test bodies continue using the `node-toolchain` lock where the added job fan-out can overlap on a shared runner.
+- Self-review removed an accidental nested `node-toolchain` lock around `setup-server-dependencies.sh`; that helper already self-locks, so an outer lock would have deadlocked the browser backend setup step.
+- Parallelized `Code Quality` children behind `determine-scope` while keeping the aggregate `Code Quality Required Checks` unchanged. Jobs that mutate dependency state already use temp clones, isolated workspaces, temp caches, or read-only scans; the aggregate still enforces every relevant child result.
+- Added workflow runtime-guard checks for the stable `Test Suite` name, frontend coverage shard/merge topology, backend integration groups, backend/frontend aggregate dependencies, and the removed false full-lane dependencies.
+- Updated `docs/reference/ci-cd-strategy.md` so it documents the current browser serialization boundary instead of implying browser matrix fan-out.
+- Local verification passed so far: actionlint on `test.yml` and `quality.yml`; `npm run check:github-action-runtimes`; `node tests/ci/check-github-action-runtimes.test.mjs`; `bash tests/ci/classify-test-changes.test.sh`; `bash tests/ci/classify-quality-scope.test.sh`; `bash tests/ci/backend-integration-groups.test.sh`; `bash tests/ci/frontend-coverage-scripts.test.sh`; `bash scripts/ci/backend-integration-groups.sh --check`; `node --check` on the runtime guard and its test; touched-file lizard on the runtime guard/test; `git diff --check`.
+
+---
+
 # Active Task: Testnet4 Sidebar And Balance Regressions 2026-05-06
 
 Status: in progress

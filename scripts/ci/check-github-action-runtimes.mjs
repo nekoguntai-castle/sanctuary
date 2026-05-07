@@ -484,6 +484,7 @@ function inspectStrictFullTestSummaryGate(workflow, relativePath, state) {
     return;
   }
 
+  inspectTestSuiteWorkflowName(workflow, relativePath, state);
   if (workflow.includes('Test Suite / Full Test Summary (pull_request)')) {
     addUniqueError(
       state,
@@ -525,16 +526,194 @@ function inspectStrictFullTestSummaryGate(workflow, relativePath, state) {
     );
   }
 
+  inspectFullLaneParallelization(workflow, relativePath, state);
+  inspectFalseFullLaneDependencies(workflow, relativePath, state);
+
   const browserJobBody =
-    workflow.match(
-      /\n\s{2}full-browser-e2e-tests:\n(?<body>[\s\S]*?)(?:\n\s{2}[A-Za-z0-9_-]+:\n|$)/,
-    )?.groups?.body ?? '';
+    extractWorkflowJobBody(workflow, 'full-browser-e2e-tests');
   if (/\n\s+matrix:/.test(browserJobBody)) {
     addUniqueError(
       state,
       `${relativePath}: full-browser-e2e-tests must stay sequential; Forgejo matrix children have failed before checkout on the shared runner`,
     );
   }
+}
+
+function inspectTestSuiteWorkflowName(workflow, relativePath, state) {
+  if (!/^\s*name:\s*Test Suite\s*$/m.test(workflow)) {
+    addUniqueError(
+      state,
+      `${relativePath}: workflow must be named "Test Suite" so required check contexts stay stable`,
+    );
+  }
+}
+
+function inspectFullLaneParallelization(workflow, relativePath, state) {
+  requireJobBody(workflow, relativePath, state, 'full-frontend-coverage-shard-1');
+  requireJobBody(workflow, relativePath, state, 'full-frontend-coverage-shard-2');
+
+  const coverageMergeBody = requireJobBody(
+    workflow,
+    relativePath,
+    state,
+    'full-frontend-coverage-merge',
+  );
+  requireJobNeeds(
+    coverageMergeBody,
+    relativePath,
+    state,
+    'full-frontend-coverage-merge',
+    'full-frontend-coverage-shard-1',
+  );
+  requireJobNeeds(
+    coverageMergeBody,
+    relativePath,
+    state,
+    'full-frontend-coverage-merge',
+    'full-frontend-coverage-shard-2',
+  );
+  requireJobText(
+    coverageMergeBody,
+    relativePath,
+    state,
+    'full-frontend-coverage-merge',
+    "needs.full-frontend-coverage-shard-1.result == 'success'",
+    'must require shard 1 success before merging frontend coverage',
+  );
+  requireJobText(
+    coverageMergeBody,
+    relativePath,
+    state,
+    'full-frontend-coverage-merge',
+    "needs.full-frontend-coverage-shard-2.result == 'success'",
+    'must require shard 2 success before merging frontend coverage',
+  );
+
+  const frontendAggregateBody = requireJobBody(
+    workflow,
+    relativePath,
+    state,
+    'full-frontend-tests',
+  );
+  requireJobNeeds(
+    frontendAggregateBody,
+    relativePath,
+    state,
+    'full-frontend-tests',
+    'full-frontend-typechecks',
+  );
+  requireJobNeeds(
+    frontendAggregateBody,
+    relativePath,
+    state,
+    'full-frontend-tests',
+    'full-frontend-coverage-merge',
+  );
+
+  const backendIntegrationBody = requireJobBody(
+    workflow,
+    relativePath,
+    state,
+    'full-backend-integration-tests',
+  );
+  for (const group of ['flows', 'ops-workers', 'repositories-core', 'repositories-sharing']) {
+    requireJobText(
+      backendIntegrationBody,
+      relativePath,
+      state,
+      'full-backend-integration-tests',
+      group,
+      `must include backend integration group "${group}"`,
+    );
+  }
+
+  const backendAggregateBody = requireJobBody(
+    workflow,
+    relativePath,
+    state,
+    'full-backend-tests',
+  );
+  requireJobNeeds(
+    backendAggregateBody,
+    relativePath,
+    state,
+    'full-backend-tests',
+    'full-backend-integration-tests',
+  );
+}
+
+function inspectFalseFullLaneDependencies(workflow, relativePath, state) {
+  const forbiddenNeeds = [
+    ['full-frontend-typechecks', 'full-backend-tests'],
+    ['full-frontend-coverage-shard-1', 'full-frontend-typechecks'],
+    ['full-frontend-coverage-shard-2', 'full-frontend-typechecks'],
+    ['full-gateway-tests', 'full-frontend-tests'],
+    ['full-ai-proxy-tests', 'full-gateway-tests'],
+    ['full-critical-mutation', 'full-ai-proxy-tests'],
+    ['full-browser-e2e-tests', 'full-critical-mutation'],
+    ['full-build-check', 'full-render-e2e-tests'],
+  ];
+
+  for (const [jobId, forbiddenNeed] of forbiddenNeeds) {
+    forbidJobNeeds(
+      extractWorkflowJobBody(workflow, jobId),
+      relativePath,
+      state,
+      jobId,
+      forbiddenNeed,
+    );
+  }
+}
+
+function requireJobBody(workflow, relativePath, state, jobId) {
+  const body = extractWorkflowJobBody(workflow, jobId);
+  if (!body) {
+    addUniqueError(state, `${relativePath}: required workflow job "${jobId}" is missing`);
+  }
+  return body;
+}
+
+function extractWorkflowJobBody(workflow, jobId) {
+  const escapedJobId = escapeRegExp(jobId);
+  return workflow.match(
+    new RegExp(`\\n\\s{2}${escapedJobId}:\\n(?<body>[\\s\\S]*?)(?:\\n\\s{2}[A-Za-z0-9_-]+:\\n|$)`),
+  )?.groups?.body ?? '';
+}
+
+function requireJobNeeds(jobBody, relativePath, state, jobId, requiredNeed) {
+  if (!jobBody || jobNeedsJob(jobBody, requiredNeed)) {
+    return;
+  }
+  addUniqueError(
+    state,
+    `${relativePath}: workflow job "${jobId}" must need "${requiredNeed}"`,
+  );
+}
+
+function forbidJobNeeds(jobBody, relativePath, state, jobId, forbiddenNeed) {
+  if (!jobBody || !jobNeedsJob(jobBody, forbiddenNeed)) {
+    return;
+  }
+  addUniqueError(
+    state,
+    `${relativePath}: workflow job "${jobId}" must not need "${forbiddenNeed}"`,
+  );
+}
+
+function jobNeedsJob(jobBody, neededJob) {
+  const needsMatch = jobBody.match(/\n\s+needs:\s*(?<needs>[^\n]*(?:\n\s+-\s*[A-Za-z0-9_-]+)*)/);
+  return new RegExp(`\\b${escapeRegExp(neededJob)}\\b`).test(needsMatch?.groups?.needs ?? '');
+}
+
+function requireJobText(jobBody, relativePath, state, jobId, text, message) {
+  if (!jobBody || jobBody.includes(text)) {
+    return;
+  }
+  addUniqueError(state, `${relativePath}: workflow job "${jobId}" ${message}`);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export async function checkActionRuntimes(rawOptions = {}) {

@@ -337,6 +337,114 @@ jobs:
   assert.equal(result.findings.length, 0);
 }
 
+function validTestSuiteWorkflow() {
+  return `
+name: Test Suite
+on: pull_request
+jobs:
+  # ============================================
+  # Full Lane (pull requests, merge queue, main, nightly, manual)
+  # ============================================
+  full-backend-integration-tests:
+    name: Full Backend Integration Tests (\${{ matrix.group }})
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready]
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - flows
+          - ops-workers
+          - repositories-core
+          - repositories-sharing
+    steps:
+      - run: echo integration group "\${{ matrix.group }}"
+  full-backend-tests:
+    name: Full Backend Tests
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready, full-backend-integration-tests]
+    steps:
+      - run: echo backend aggregate
+  full-frontend-typechecks:
+    name: Full Frontend Typecheck
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready]
+    steps:
+      - run: echo typecheck
+  full-frontend-coverage-shard-1:
+    name: Full Frontend Coverage Shard 1/2
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready]
+    steps:
+      - run: echo shard 1
+  full-frontend-coverage-shard-2:
+    name: Full Frontend Coverage Shard 2/2
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready]
+    steps:
+      - run: echo shard 2
+  full-frontend-coverage-merge:
+    name: Full Frontend Coverage Merge
+    if: >-
+      always() &&
+      needs.full-frontend-coverage-shard-1.result == 'success' &&
+      needs.full-frontend-coverage-shard-2.result == 'success'
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1, full-frontend-coverage-shard-2]
+    steps:
+      - run: echo merge coverage
+  full-frontend-tests:
+    name: Full Frontend Tests
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready, full-frontend-typechecks, full-frontend-coverage-merge]
+    steps:
+      - run: echo frontend aggregate
+  full-gateway-tests:
+    name: Full Gateway Tests
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready]
+    steps:
+      - run: echo gateway
+  full-ai-proxy-tests:
+    name: Full AI Proxy Tests
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready]
+    steps:
+      - run: echo ai proxy
+  full-critical-mutation:
+    name: Full Critical Mutation Gate
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready]
+    steps:
+      - run: echo mutation
+  full-browser-e2e-tests:
+    name: Full Browser E2E Tests
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready]
+    steps:
+      - run: echo browser
+  full-render-e2e-tests:
+    name: Full Render E2E Tests
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready, full-browser-e2e-tests]
+    steps:
+      - run: echo render
+  full-build-check:
+    name: Full Build Check
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready]
+    steps:
+      - run: echo build
+  full-test-summary:
+    name: Full Test Summary
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready, full-backend-tests, full-frontend-tests, full-gateway-tests, full-ai-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
+    steps:
+      - run: echo full
+`;
+}
+
 async function assertBlocksManualFullTestSummaryStatusPost() {
   const result = await runFixture(
     `
@@ -465,6 +573,93 @@ jobs:
   );
 }
 
+async function assertBlocksMissingFrontendCoverageSplit() {
+  const workflow = validTestSuiteWorkflow().replace(
+    /\n  full-frontend-coverage-shard-2:\n[\s\S]*?(?=\n  full-frontend-coverage-merge:\n)/,
+    '\n',
+  );
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs: {}
+`,
+    (rootDir) => {
+      writeFile(path.join(rootDir, '.github/workflows/test.yml'), workflow);
+    },
+  );
+
+  assert.equal(result.findings.length, 0);
+  assert.match(
+    result.errors.join('\n'),
+    /required workflow job "full-frontend-coverage-shard-2" is missing/,
+  );
+}
+
+async function assertBlocksFalseFullLaneDependency() {
+  const workflow = validTestSuiteWorkflow().replace(
+    /(  full-gateway-tests:[\s\S]*?    needs: )\[detect-changes, full-lane-ready\]/,
+    '$1[detect-changes, full-lane-ready, full-frontend-tests]',
+  );
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs: {}
+`,
+    (rootDir) => {
+      writeFile(path.join(rootDir, '.github/workflows/test.yml'), workflow);
+    },
+  );
+
+  assert.equal(result.findings.length, 0);
+  assert.match(
+    result.errors.join('\n'),
+    /workflow job "full-gateway-tests" must not need "full-frontend-tests"/,
+  );
+}
+
+async function assertBlocksRenamedTestSuiteWorkflow() {
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs: {}
+`,
+    (rootDir) => {
+      writeFile(
+        path.join(rootDir, '.github/workflows/test.yml'),
+        validTestSuiteWorkflow().replace('name: Test Suite', 'name: Tests'),
+      );
+    },
+  );
+
+  assert.equal(result.findings.length, 0);
+  assert.match(result.errors.join('\n'), /workflow must be named "Test Suite"/);
+}
+
+async function assertBlocksMissingBackendIntegrationGroup() {
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs: {}
+`,
+    (rootDir) => {
+      writeFile(
+        path.join(rootDir, '.github/workflows/test.yml'),
+        validTestSuiteWorkflow().replace('\n          - repositories-sharing', ''),
+      );
+    },
+  );
+
+  assert.equal(result.findings.length, 0);
+  assert.match(
+    result.errors.join('\n'),
+    /workflow job "full-backend-integration-tests" must include backend integration group "repositories-sharing"/,
+  );
+}
+
 async function assertAllowsRealFullTestSummaryGate() {
   const result = await runFixture(
     `
@@ -475,20 +670,7 @@ jobs: {}
     (rootDir) => {
       writeFile(
         path.join(rootDir, '.github/workflows/test.yml'),
-        `
-name: Test Suite
-on: pull_request
-jobs:
-  # ============================================
-  # Full Lane (pull requests, merge queue, main, nightly, manual)
-  # ============================================
-  full-test-summary:
-    name: Full Test Summary
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo full
-`,
+        validTestSuiteWorkflow(),
       );
     },
   );
@@ -511,5 +693,9 @@ await assertAllowsWorkspaceAbsoluteCiHelperCalls();
 await assertBlocksManualFullTestSummaryStatusPost();
 await assertBlocksSkippedAsSuccessfulFullLanePrerequisite();
 await assertBlocksBrowserE2eMatrixFanout();
+await assertBlocksMissingFrontendCoverageSplit();
+await assertBlocksFalseFullLaneDependency();
+await assertBlocksRenamedTestSuiteWorkflow();
+await assertBlocksMissingBackendIntegrationGroup();
 await assertAllowsRealFullTestSummaryGate();
 console.log('github action runtime guard regression checks passed');

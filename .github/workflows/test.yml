@@ -845,20 +845,23 @@ jobs:
           retention-days: 14
 
   full-backend-integration-tests:
-    name: Full Backend Integration Tests
+    name: Full Backend Integration Tests (${{ matrix.group }})
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      (needs.full-backend-unit-coverage.result == 'success' ||
-       (needs.full-backend-unit-coverage.result == 'skipped' &&
-        needs.detect-changes.outputs.full_scan != 'true' &&
-        needs.detect-changes.outputs.test_suite_changed != 'true' &&
-        needs.detect-changes.outputs.backend_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-backend-unit-coverage]
+    needs: [detect-changes, full-lane-ready]
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - flows
+          - ops-workers
+          - repositories-core
+          - repositories-sharing
     defaults:
       run:
         working-directory: server
@@ -914,25 +917,23 @@ jobs:
           NODE_ENV: test
           SANCTUARY_VITEST_INFRA_ATTEMPTS: '5'
         run: |
-          groups=(flows ops-workers repositories-core repositories-sharing)
+          group="${{ matrix.group }}"
+          mapfile -t specs < <("${{ github.workspace }}/scripts/ci/backend-integration-groups.sh" "$group")
 
-          for group in "${groups[@]}"; do
-            echo "::group::Backend integration ${group}"
-            mapfile -t specs < <("${{ github.workspace }}/scripts/ci/backend-integration-groups.sh" "$group")
+          if [ "${#specs[@]}" -eq 0 ]; then
+            echo "::error::No backend integration specs found for group ${group}"
+            exit 1
+          fi
 
-            if [ "${#specs[@]}" -eq 0 ]; then
-              echo "::error::No backend integration specs found for group ${group}"
-              exit 1
-            fi
+          printf "Running backend integration group %s:\n" "$group"
+          printf "  %s\n" "${specs[@]}"
 
-            "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
-              "${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh" \
-              "backend integration ${group}" \
-              "${{ github.workspace }}/scripts/ci/time-command.sh" \
-              "backend integration ${group}" \
-              npm run test:run:ci -- "${specs[@]}"
-            echo "::endgroup::"
-          done
+          "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
+            "${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh" \
+            "backend integration ${group}" \
+            "${{ github.workspace }}/scripts/ci/time-command.sh" \
+            "backend integration ${group}" \
+            npm run test:run:ci -- "${specs[@]}"
 
   full-backend-tests:
     name: Full Backend Tests
@@ -1026,17 +1027,11 @@ jobs:
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      (needs.full-backend-tests.result == 'success' ||
-       (needs.full-backend-tests.result == 'skipped' &&
-        needs.detect-changes.outputs.full_scan != 'true' &&
-        needs.detect-changes.outputs.test_suite_changed != 'true' &&
-        needs.detect-changes.outputs.backend_changed != 'true' &&
-        needs.detect-changes.outputs.backend_integration_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-backend-tests]
+    needs: [detect-changes, full-lane-ready]
     strategy:
       fail-fast: false
       matrix:
@@ -1052,27 +1047,36 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
-        run: npm ci
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-command.sh "frontend typecheck npm ci"
+          scripts/ci/time-command.sh "frontend typecheck npm ci"
+          npm ci --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Run strict app typecheck
         if: matrix.target == 'app-typecheck'
-        run: scripts/ci/time-command.sh "frontend app typecheck" npm run typecheck:app
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/time-command.sh "frontend app typecheck"
+          npm run typecheck:app
 
       - name: Run strict test typecheck
         if: matrix.target == 'test-typecheck'
-        run: scripts/ci/time-command.sh "frontend test typecheck" npm run typecheck:tests
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/time-command.sh "frontend test typecheck"
+          npm run typecheck:tests
 
-  full-frontend-coverage-shards:
-    name: Full Frontend Coverage Shards
+  full-frontend-coverage-shard-1:
+    name: Full Frontend Coverage Shard 1/2
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      needs.full-frontend-typechecks.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-frontend-typechecks]
+    needs: [detect-changes, full-lane-ready]
 
     steps:
       - name: Checkout repository
@@ -1094,12 +1098,6 @@ jobs:
           scripts/ci/time-command.sh "frontend coverage shard 1/2"
           npm run test:coverage:shard -- 1 2
 
-      - name: Run frontend coverage shard 2
-        run: >
-          scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/time-command.sh "frontend coverage shard 2/2"
-          npm run test:coverage:shard -- 2 2
-
       - name: Upload frontend coverage blob 1
         if: always()
         uses: ./.github/actions/upload-artifact
@@ -1109,6 +1107,37 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 14
+
+  full-frontend-coverage-shard-2:
+    name: Full Frontend Coverage Shard 2/2
+    if: >-
+      always() &&
+      needs.full-lane-ready.result == 'success' &&
+      (needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true' ||
+       needs.detect-changes.outputs.frontend_changed == 'true')
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-lane-ready]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+
+      - name: Install dependencies
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-command.sh "frontend coverage npm ci"
+          scripts/ci/time-command.sh "frontend coverage npm ci"
+          npm ci --audit=false --fund=false --cache .tmp/npm-cache
+
+      - name: Run frontend coverage shard 2
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/time-command.sh "frontend coverage shard 2/2"
+          npm run test:coverage:shard -- 2 2
 
       - name: Upload frontend coverage blob 2
         if: always()
@@ -1125,12 +1154,13 @@ jobs:
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      needs.full-frontend-coverage-shards.result == 'success' &&
+      needs.full-frontend-coverage-shard-1.result == 'success' &&
+      needs.full-frontend-coverage-shard-2.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-frontend-coverage-shards]
+    needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1, full-frontend-coverage-shard-2]
 
     steps:
       - name: Checkout repository
@@ -1213,16 +1243,11 @@ jobs:
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      (needs.full-frontend-tests.result == 'success' ||
-       (needs.full-frontend-tests.result == 'skipped' &&
-        needs.detect-changes.outputs.full_scan != 'true' &&
-        needs.detect-changes.outputs.test_suite_changed != 'true' &&
-        needs.detect-changes.outputs.frontend_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.gateway_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-frontend-tests]
+    needs: [detect-changes, full-lane-ready]
     defaults:
       run:
         working-directory: gateway
@@ -1235,13 +1260,20 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
-        run: npm ci
+        run: >
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "gateway npm ci"
+          ${{ github.workspace }}/scripts/ci/time-command.sh "gateway npm ci"
+          npm ci --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Run gateway coverage
         env:
           NODE_ENV: test
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
-        run: npm run test:coverage
+        run: >
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          ${{ github.workspace }}/scripts/ci/time-command.sh "gateway coverage"
+          npm run test:coverage
 
       - name: Upload gateway coverage
         if: always()
@@ -1256,16 +1288,11 @@ jobs:
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      (needs.full-gateway-tests.result == 'success' ||
-       (needs.full-gateway-tests.result == 'skipped' &&
-        needs.detect-changes.outputs.full_scan != 'true' &&
-        needs.detect-changes.outputs.test_suite_changed != 'true' &&
-        needs.detect-changes.outputs.gateway_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.ai_proxy_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-gateway-tests]
+    needs: [detect-changes, full-lane-ready]
 
     steps:
       - name: Checkout repository
@@ -1275,32 +1302,41 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Install root test dependencies
-        run: npm ci
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-command.sh "AI proxy root npm ci"
+          scripts/ci/time-command.sh "AI proxy root npm ci"
+          npm ci --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Install AI proxy dependencies
-        run: npm --prefix ai-proxy ci
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-command.sh "AI proxy npm ci"
+          scripts/ci/time-command.sh "AI proxy npm ci"
+          npm --prefix ai-proxy ci --audit=false --fund=false --cache .tmp/npm-cache-ai-proxy
 
       - name: Build AI proxy
-        run: npm --prefix ai-proxy run build
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/time-command.sh "AI proxy build"
+          npm --prefix ai-proxy run build
 
       - name: Run AI proxy tests
-        run: npx vitest run tests/ai-proxy --passWithNoTests
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/time-command.sh "AI proxy tests"
+          npx vitest run tests/ai-proxy --passWithNoTests
 
   full-critical-mutation:
     name: Full Critical Mutation Gate
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      (needs.full-ai-proxy-tests.result == 'success' ||
-       (needs.full-ai-proxy-tests.result == 'skipped' &&
-        needs.detect-changes.outputs.full_scan != 'true' &&
-        needs.detect-changes.outputs.test_suite_changed != 'true' &&
-        needs.detect-changes.outputs.ai_proxy_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.critical_mutation_changed == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: [detect-changes, full-lane-ready, full-ai-proxy-tests]
+    needs: [detect-changes, full-lane-ready]
     defaults:
       run:
         working-directory: server
@@ -1316,7 +1352,10 @@ jobs:
         uses: ./.github/actions/setup-server-deps
 
       - name: Run critical mutation gate
-        run: npm run test:mutation:critical:gate
+        run: >
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          ${{ github.workspace }}/scripts/ci/time-command.sh "critical mutation gate"
+          npm run test:mutation:critical:gate
 
       - name: Upload critical mutation report
         if: always()
@@ -1331,15 +1370,11 @@ jobs:
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      (needs.full-critical-mutation.result == 'success' ||
-       (needs.full-critical-mutation.result == 'skipped' &&
-        needs.detect-changes.outputs.full_scan != 'true' &&
-        needs.detect-changes.outputs.critical_mutation_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.browser_smoke_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-critical-mutation]
+    needs: [detect-changes, full-lane-ready]
 
     services:
       postgres:
@@ -1374,7 +1409,11 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Install frontend dependencies
-        run: scripts/ci/time-command.sh "browser npm ci" npm ci
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-command.sh "browser npm ci"
+          scripts/ci/time-command.sh "browser npm ci"
+          npm ci --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Cache Playwright browsers
         continue-on-error: true
@@ -1389,7 +1428,11 @@ jobs:
         run: scripts/ci/time-command.sh "browser playwright install" scripts/ci/install-playwright-chromium.sh
 
       - name: Build frontend
-        run: scripts/ci/time-command.sh "browser frontend build" scripts/ci/retry-command.sh "browser frontend build" npm run build
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/time-command.sh "browser frontend build"
+          scripts/ci/retry-command.sh "browser frontend build"
+          npm run build
         env:
           VITE_API_URL: http://localhost:3101
 
@@ -1428,6 +1471,7 @@ jobs:
       - name: Build backend
         working-directory: server
         run: >
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           ${{ github.workspace }}/scripts/ci/retry-command.sh "browser backend build"
           ${{ github.workspace }}/scripts/ci/time-command.sh "browser backend build"
           npm --ignore-scripts run build
@@ -1546,7 +1590,11 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
-        run: scripts/ci/time-command.sh "render npm ci" npm ci
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-command.sh "render npm ci"
+          scripts/ci/time-command.sh "render npm ci"
+          npm ci --audit=false --fund=false --cache .tmp/npm-cache
 
       - name: Cache Playwright browsers
         continue-on-error: true
@@ -1561,7 +1609,11 @@ jobs:
         run: scripts/ci/time-command.sh "render playwright install" scripts/ci/install-playwright-chromium.sh
 
       - name: Build frontend
-        run: scripts/ci/time-command.sh "render frontend build" scripts/ci/retry-command.sh "render frontend build" npm run build
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/time-command.sh "render frontend build"
+          scripts/ci/retry-command.sh "render frontend build"
+          npm run build
         env:
           VITE_API_URL: http://localhost:3001
 
@@ -1594,16 +1646,11 @@ jobs:
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      (needs.full-render-e2e-tests.result == 'success' ||
-       (needs.full-render-e2e-tests.result == 'skipped' &&
-        needs.detect-changes.outputs.full_scan != 'true' &&
-        needs.detect-changes.outputs.test_suite_changed != 'true' &&
-        needs.detect-changes.outputs.render_changed != 'true')) &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.build_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-render-e2e-tests]
+    needs: [detect-changes, full-lane-ready]
 
     steps:
       - name: Checkout repository
@@ -1614,14 +1661,21 @@ jobs:
 
       - name: Build frontend
         run: |
-          npm ci
-          scripts/ci/retry-command.sh "build check frontend build" npm run build
+          scripts/ci/with-runner-lock.sh node-toolchain \
+            scripts/ci/retry-command.sh "build check frontend npm ci" \
+            scripts/ci/time-command.sh "build check frontend npm ci" \
+            npm ci --audit=false --fund=false --cache .tmp/npm-cache
+          scripts/ci/with-runner-lock.sh node-toolchain \
+            scripts/ci/retry-command.sh "build check frontend build" \
+            scripts/ci/time-command.sh "build check frontend build" \
+            npm run build
 
       - name: Build backend
         working-directory: server
         run: |
           "${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh"
-          "${{ github.workspace }}/scripts/ci/retry-command.sh" "build check backend build" \
+          "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
+            "${{ github.workspace }}/scripts/ci/retry-command.sh" "build check backend build" \
             "${{ github.workspace }}/scripts/ci/time-command.sh" "build check backend build" \
             npm --ignore-scripts run build
 

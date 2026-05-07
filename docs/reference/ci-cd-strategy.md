@@ -164,7 +164,7 @@ Markdown and MDX files are docs-only for the test classifiers, including package
 - Full gateway coverage for gateway changes, test-workflow changes, or exhaustive runs.
 - Full AI proxy build plus `tests/ai-proxy` for AI proxy changes, test-workflow changes, or exhaustive runs.
 - Critical mutation gate for critical mutation paths or exhaustive runs.
-- Full browser-flow Playwright E2E for browser/API/route/non-render E2E paths, test-workflow changes, or exhaustive runs. This lane starts from path classification instead of waiting behind full coverage lanes and runs deterministic spec groups in parallel, so relevant browser flows prove the merge candidate earlier.
+- Full browser-flow Playwright E2E for browser/API/route/non-render E2E paths, test-workflow changes, or exhaustive runs. This lane starts from path classification instead of waiting behind full coverage lanes, but keeps its deterministic spec groups serialized inside one E2E lock until an isolated-runner rehearsal proves browser fan-out is stable.
 - Full render-regression Playwright E2E for visual/rendering paths and render fixtures/snapshots, test-workflow changes, or exhaustive runs. This lane is frontend-only and does not start backend services.
 - E2E-only changes run the relevant browser/render E2E lanes without also running backend integration, backend unit coverage, or frontend unit coverage. Backend/frontend source changes still trigger their source lanes independently, and test-workflow changes still run the broad full lane.
 - Full frontend/backend build check for package, build config, Docker/image entrypoint, Prisma, test-workflow, or exhaustive runs. It also starts from path classification instead of waiting behind coverage. Typecheck and coverage remain the primary source-level compile gate for ordinary frontend/backend source changes.
@@ -257,7 +257,7 @@ bash scripts/ci/backend-integration-groups.sh --check
 
 This split also trades runner minutes for wall time because each integration group performs its own service setup and migrations. Add more groups only after measuring group balance and duplicated setup cost from workflow durations.
 
-Full browser-flow E2E uses deterministic spec groups in `scripts/ci/browser-e2e-groups.sh`. The wallet lifecycle and wallet transaction flows are split into separate groups because the repeated setup cost is still smaller than the wall-time cost of keeping the long wallet-flow spec set together. Avoid adding a shared build-artifact dependency ahead of the browser matrix unless measured setup/build duplication becomes larger than the extra artifact job and download overhead. Run the group check after adding, removing, or renaming a top-level browser spec:
+Full browser-flow E2E uses deterministic spec groups in `scripts/ci/browser-e2e-groups.sh`. The groups currently run sequentially inside one job because Forgejo browser matrix children have failed before checkout on the shared runner pool. Revisit browser job fan-out only after an isolated-runner rehearsal proves checkout, Docker services, Playwright cache, and artifact upload are stable. Run the group check after adding, removing, or renaming a top-level browser spec:
 
 ```bash
 bash scripts/ci/browser-e2e-groups.sh --check
