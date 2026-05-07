@@ -94,35 +94,35 @@ jobs:
 
       - name: Run address derivation tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/addressDerivation.verified.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/addressDerivation.verified.test.ts
 
       - name: Run derivation path tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/scriptTypes/derivationPaths.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/scriptTypes/derivationPaths.test.ts
 
       - name: Run multisig key ordering tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/multisigKeyOrdering.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/multisigKeyOrdering.test.ts
 
       - name: Run xpub validation tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/xpubValidation.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/xpubValidation.test.ts
 
       - name: Run property-based tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/propertyBased.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/propertyBased.test.ts
 
       - name: Run descriptor checksum tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/descriptorChecksum.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/descriptorChecksum.test.ts
 
       - name: Run PSBT BIP-174 verification tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/psbt.verified.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/psbt.verified.test.ts
 
       - name: Run PSBT property-based tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run -- tests/unit/services/bitcoin/psbt.property.test.ts
+        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/psbt.property.test.ts
 
   # Optional: Regenerate vectors with Bitcoin Core
   # This job runs only on manual trigger and requires Docker
@@ -267,7 +267,7 @@ jobs:
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector server npm ci" npm ci --ignore-scripts
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared schema link" node scripts/ensure-shared-module-resolution.mjs
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector prisma generate" npx prisma generate
-            npm run test:run -- tests/unit/services/bitcoin/psbt.verified.test.ts tests/unit/services/bitcoin/psbt.signed-vectors.test.ts
+            npm run test:run:ci -- tests/unit/services/bitcoin/psbt.verified.test.ts tests/unit/services/bitcoin/psbt.signed-vectors.test.ts
           '
 
   # Summary job

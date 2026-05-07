@@ -181,7 +181,8 @@ ensure_lizard_bin() {
     return 127
   fi
 
-  python3 -m venv "$LIZARD_VENV"
+  retry_setup_command "lizard venv creation" \
+    python3 -m venv --clear "$LIZARD_VENV"
   retry_setup_command "lizard pip upgrade" \
     "$LIZARD_VENV/bin/python" -m pip install --disable-pip-version-check --upgrade pip
   retry_setup_command "lizard dependency install" \

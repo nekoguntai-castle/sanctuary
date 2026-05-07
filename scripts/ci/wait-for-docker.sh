@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Opt-in xtrace for CI diagnostics. The env flag is set by the workflow
+# wrapper (scripts/ci/run-with-log.sh invocations that want to surface
+# Docker probe internals) and is honored only by reviewed low-secret
+# helpers. Do NOT enable global shell xtrace from inside installer/E2E
+# bodies that may handle generated secrets — the wrapper's redactor is a
+# defense-in-depth backstop, not permission to trace secret-heavy flows.
+case "${SANCTUARY_CI_DEBUG_TRACE:-}" in
+  1|true|TRUE|yes|YES)
+    set -x
+    ;;
+esac
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/ci/docker-endpoint-lib.sh
 source "$script_dir/docker-endpoint-lib.sh"

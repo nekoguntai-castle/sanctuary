@@ -138,6 +138,8 @@ jobs:
       HTTP_PORT: '15180'
       GATEWAY_PORT: '15100'
       PORT_OFFSET: '0'
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/fresh-install
+      SANCTUARY_CI_DEBUG_TRACE: '1'
 
     steps:
       - name: Checkout repository
@@ -146,31 +148,49 @@ jobs:
           ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
           clean: false
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      # docker/setup-buildx-action intentionally removed: install E2E disables
+      # Compose Bake and the dedicated Docker Build workflow owns Buildx
+      # coverage. Removing the action shrinks the action-internal blind
+      # spot that diagnostic artifacts cannot reach.
 
-      - name: Check Docker
-        run: scripts/ci/wait-for-docker.sh
+      - name: Pre-flight diagnostics
+        if: always()
+        run: |
+          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
+            scripts/ci/write-preflight-diagnostics.sh
 
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
 
+      - name: Check Docker
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
+            scripts/ci/wait-for-docker.sh
+
       - name: Prepare isolated install workspace
         run: |
-          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible fresh-install)"
-          echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
+            workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible fresh-install)"
+            echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          '
 
       - name: Assign run-specific ports
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -c '
+            cd "$SANCTUARY_INSTALL_WORKSPACE"
+            bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          '
 
       - name: Run fresh install test
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "fresh install e2e" bash -c '
-            ./tests/install/e2e/fresh-install.test.sh --verbose
-          '
+          # Composition: run-with-log → with-runner-lock → time-command → command
+          # Logger outermost so lock wait line, time-command output, and
+          # wrapped-command output all land in $JOB_LOG_DIR/fresh-install.log.
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/fresh-install.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "fresh install e2e" \
+            bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && ./tests/install/e2e/fresh-install.test.sh --verbose"
 
       - name: Show container logs on failure
         if: failure()
@@ -190,6 +210,16 @@ jobs:
           echo ""
           echo "=== Gateway Logs ==="
           docker compose logs --tail 100 gateway 2>&1 || true
+
+      - name: Upload diagnostic logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-fresh-install-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Cleanup
         if: always()
@@ -213,6 +243,8 @@ jobs:
       HTTP_PORT: '15280'
       GATEWAY_PORT: '15200'
       PORT_OFFSET: '1'
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/container-health
+      SANCTUARY_CI_DEBUG_TRACE: '1'
 
     steps:
       - name: Checkout repository
@@ -221,28 +253,39 @@ jobs:
           ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
           clean: false
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      # docker/setup-buildx-action removed (see fresh-install-test rationale).
 
-      - name: Check Docker
-        run: scripts/ci/wait-for-docker.sh
+      - name: Pre-flight diagnostics
+        if: always()
+        run: |
+          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
+            scripts/ci/write-preflight-diagnostics.sh
 
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
 
+      - name: Check Docker
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
+            scripts/ci/wait-for-docker.sh
+
       - name: Prepare isolated install workspace
         run: |
-          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible container-health)"
-          echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
+            workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible container-health)"
+            echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          '
 
       - name: Assign run-specific ports
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -c '
+            cd "$SANCTUARY_INSTALL_WORKSPACE"
+            bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          '
 
       - name: Start containers
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
           # Generate all required secrets
           JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
           ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
@@ -250,55 +293,63 @@ jobs:
           POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
           AI_CONFIG_SECRET=$(openssl rand -hex 32)
           REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-          cd docker/nginx/ssl && ./generate-certs.sh localhost && cd ../../..
-          scripts/ci/with-runner-lock.sh e2e bash -c "
-            JWT_SECRET='$JWT_SECRET' ENCRYPTION_KEY='$ENCRYPTION_KEY' \
-              GATEWAY_SECRET='$GATEWAY_SECRET' POSTGRES_PASSWORD='$POSTGRES_PASSWORD' \
-              AI_CONFIG_SECRET='$AI_CONFIG_SECRET' REDIS_PASSWORD='$REDIS_PASSWORD' \
-              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-              docker compose build &&
-            JWT_SECRET='$JWT_SECRET' ENCRYPTION_KEY='$ENCRYPTION_KEY' \
-              GATEWAY_SECRET='$GATEWAY_SECRET' POSTGRES_PASSWORD='$POSTGRES_PASSWORD' \
-              AI_CONFIG_SECRET='$AI_CONFIG_SECRET' REDIS_PASSWORD='$REDIS_PASSWORD' \
-              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-              docker compose up -d
-          "
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          ( cd docker/nginx/ssl && ./generate-certs.sh localhost )
+          export JWT_SECRET ENCRYPTION_KEY GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET REDIS_PASSWORD
+          cd "${{ github.workspace }}"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "container-health start" \
+            bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && docker compose build && docker compose up -d"
 
       - name: Wait for migration to complete
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          echo "Waiting for migration container to finish..."
-          for i in {1..60}; do
-            STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -oE '^[A-Za-z]+' || echo "not_found")
-            if [ "$STATUS" = "Exited" ]; then
-              EXIT_STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null)
-              if echo "$EXIT_STATUS" | grep -q "(0)"; then
-                echo "Migration completed successfully"
-                break
-              else
-                echo "Migration failed: $EXIT_STATUS"
-                docker compose logs --tail 50 migrate
-                exit 1
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/wait-migration.log" bash -c '
+            cd "$SANCTUARY_INSTALL_WORKSPACE"
+            echo "Waiting for migration container to finish..."
+            for i in {1..60}; do
+              STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -oE "^[A-Za-z]+" || echo "not_found")
+              if [ "$STATUS" = "Exited" ]; then
+                EXIT_STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null)
+                if echo "$EXIT_STATUS" | grep -q "(0)"; then
+                  echo "Migration completed successfully"
+                  break
+                else
+                  echo "Migration failed: $EXIT_STATUS"
+                  docker compose logs --tail 50 migrate
+                  exit 1
+                fi
               fi
-            fi
-            echo "Waiting for migration... (attempt $i/60, status: $STATUS)"
-            sleep 5
-          done
-          # Wait for backend to be healthy after migration
-          echo "Waiting for backend to be healthy..."
-          for i in {1..30}; do
-            if docker compose exec backend wget -q -O - http://localhost:3001/health >/dev/null 2>&1; then
-              echo "Backend is healthy"
-              break
-            fi
-            echo "Waiting for backend... (attempt $i/30)"
-            sleep 2
-          done
+              echo "Waiting for migration... (attempt $i/60, status: $STATUS)"
+              sleep 5
+            done
+            echo "Waiting for backend to be healthy..."
+            for i in {1..30}; do
+              if docker compose exec backend wget -q -O - http://localhost:3001/health >/dev/null 2>&1; then
+                echo "Backend is healthy"
+                break
+              fi
+              echo "Waiting for backend... (attempt $i/30)"
+              sleep 2
+            done
+          '
 
       - name: Run container health tests
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          ./tests/install/e2e/container-health.test.sh --verbose
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-health.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "container-health e2e" \
+            bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && ./tests/install/e2e/container-health.test.sh --verbose"
+
+      - name: Upload diagnostic logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-container-health-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Cleanup
         if: always()
@@ -321,6 +372,8 @@ jobs:
       HTTP_PORT: '15380'
       GATEWAY_PORT: '15300'
       PORT_OFFSET: '2'
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/auth-flow
+      SANCTUARY_CI_DEBUG_TRACE: '1'
 
     steps:
       - name: Checkout repository
@@ -329,87 +382,105 @@ jobs:
           ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
           clean: false
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      # docker/setup-buildx-action removed (see fresh-install-test rationale).
 
-      - name: Check Docker
-        run: scripts/ci/wait-for-docker.sh
+      - name: Pre-flight diagnostics
+        if: always()
+        run: |
+          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
+            scripts/ci/write-preflight-diagnostics.sh
 
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
 
+      - name: Check Docker
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
+            scripts/ci/wait-for-docker.sh
+
       - name: Prepare isolated install workspace
         run: |
-          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible auth-flow)"
-          echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
+            workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible auth-flow)"
+            echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          '
 
       - name: Assign run-specific ports
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -c '
+            cd "$SANCTUARY_INSTALL_WORKSPACE"
+            bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          '
 
       - name: Start containers
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          # Generate all 4 required secrets
+          # Generate required secrets
           JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
           ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
           GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
           POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
           AI_CONFIG_SECRET=$(openssl rand -hex 32)
           REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-          cd docker/nginx/ssl && ./generate-certs.sh localhost && cd ../../..
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          ( cd docker/nginx/ssl && ./generate-certs.sh localhost )
           # Raise auth rate limits for stressy auth-flow test sequences
-          scripts/ci/with-runner-lock.sh e2e bash -c "
-            JWT_SECRET='$JWT_SECRET' ENCRYPTION_KEY='$ENCRYPTION_KEY' \
-              GATEWAY_SECRET='$GATEWAY_SECRET' POSTGRES_PASSWORD='$POSTGRES_PASSWORD' \
-              AI_CONFIG_SECRET='$AI_CONFIG_SECRET' REDIS_PASSWORD='$REDIS_PASSWORD' \
-              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-              RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
-              docker compose build &&
-            JWT_SECRET='$JWT_SECRET' ENCRYPTION_KEY='$ENCRYPTION_KEY' \
-              GATEWAY_SECRET='$GATEWAY_SECRET' POSTGRES_PASSWORD='$POSTGRES_PASSWORD' \
-              AI_CONFIG_SECRET='$AI_CONFIG_SECRET' REDIS_PASSWORD='$REDIS_PASSWORD' \
-              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-              RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
-              docker compose up -d
-          "
+          export JWT_SECRET ENCRYPTION_KEY GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET REDIS_PASSWORD
+          export RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100
+          cd "${{ github.workspace }}"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "auth-flow start" \
+            bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && docker compose build && docker compose up -d"
 
       - name: Wait for migration to complete
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          echo "Waiting for migration container to finish..."
-          for i in {1..60}; do
-            STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -oE '^[A-Za-z]+' || echo "not_found")
-            if [ "$STATUS" = "Exited" ]; then
-              EXIT_STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null)
-              if echo "$EXIT_STATUS" | grep -q "(0)"; then
-                echo "Migration completed successfully"
-                break
-              else
-                echo "Migration failed: $EXIT_STATUS"
-                docker compose logs --tail 50 migrate
-                exit 1
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/wait-migration.log" bash -c '
+            cd "$SANCTUARY_INSTALL_WORKSPACE"
+            echo "Waiting for migration container to finish..."
+            for i in {1..60}; do
+              STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -oE "^[A-Za-z]+" || echo "not_found")
+              if [ "$STATUS" = "Exited" ]; then
+                EXIT_STATUS=$(docker compose ps migrate --format "{{.Status}}" 2>/dev/null)
+                if echo "$EXIT_STATUS" | grep -q "(0)"; then
+                  echo "Migration completed successfully"
+                  break
+                else
+                  echo "Migration failed: $EXIT_STATUS"
+                  docker compose logs --tail 50 migrate
+                  exit 1
+                fi
               fi
-            fi
-            echo "Waiting for migration... (attempt $i/60, status: $STATUS)"
-            sleep 5
-          done
-          # Wait for backend to be healthy after migration
-          echo "Waiting for backend to be healthy..."
-          for i in {1..30}; do
-            if docker compose exec backend wget -q -O - http://localhost:3001/health >/dev/null 2>&1; then
-              echo "Backend is healthy"
-              break
-            fi
-            echo "Waiting for backend... (attempt $i/30)"
-            sleep 2
-          done
+              echo "Waiting for migration... (attempt $i/60, status: $STATUS)"
+              sleep 5
+            done
+            echo "Waiting for backend to be healthy..."
+            for i in {1..30}; do
+              if docker compose exec backend wget -q -O - http://localhost:3001/health >/dev/null 2>&1; then
+                echo "Backend is healthy"
+                break
+              fi
+              echo "Waiting for backend... (attempt $i/30)"
+              sleep 2
+            done
+          '
 
       - name: Run auth flow tests
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          ./tests/install/e2e/auth-flow.test.sh --verbose
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/auth-flow.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "auth-flow e2e" \
+            bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && ./tests/install/e2e/auth-flow.test.sh --verbose"
+
+      - name: Upload diagnostic logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-auth-flow-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Cleanup
         if: always()
@@ -449,6 +520,8 @@ jobs:
             port_offset: 15
     env:
       PORT_OFFSET: ${{ matrix.port_offset }}
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
+      SANCTUARY_CI_DEBUG_TRACE: '1'
 
     steps:
       - name: Checkout repository
@@ -458,24 +531,36 @@ jobs:
           fetch-depth: 0
           clean: false
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      # docker/setup-buildx-action removed (see fresh-install-test rationale).
 
-      - name: Check Docker
-        run: scripts/ci/wait-for-docker.sh
+      - name: Pre-flight diagnostics
+        if: always()
+        run: |
+          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
+            scripts/ci/write-preflight-diagnostics.sh
 
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
 
+      - name: Check Docker
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
+            scripts/ci/wait-for-docker.sh
+
       - name: Prepare isolated install workspace
         run: |
-          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }})"
-          echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
+            workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }})"
+            echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          '
 
       - name: Assign run-specific ports
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -c '
+            cd "$SANCTUARY_INSTALL_WORKSPACE"
+            bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          '
 
       - name: Run core upgrade test
         env:
@@ -483,9 +568,10 @@ jobs:
           SANCTUARY_UPGRADE_FIXTURE: ${{ matrix.fixture }}
           SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "upgrade ${{ matrix.source_ref }} ${{ matrix.fixture }}" \
-            ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "${{ matrix.fixture }}" --verbose
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "upgrade ${{ matrix.source_ref }} ${{ matrix.fixture }}" \
+            bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture \"${{ matrix.fixture }}\" --verbose"
 
       - name: Show container logs on failure
         if: failure()
@@ -497,10 +583,22 @@ jobs:
 
       - name: Upload upgrade artifacts
         if: always()
+        continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
-          name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
+          name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}-${{ github.run_id }}
           path: ${{ env.SANCTUARY_INSTALL_WORKSPACE }}/.tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload diagnostic logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
           if-no-files-found: ignore
 
       - name: Cleanup
@@ -515,6 +613,9 @@ jobs:
     needs: fresh-install-test
     if: ${{ github.event.inputs.include_full_upgrade_recovery == 'true' || inputs.include_full_upgrade_recovery == true }}
     timeout-minutes: 90
+    env:
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-full-recovery
+      SANCTUARY_CI_DEBUG_TRACE: '1'
 
     steps:
       - name: Checkout repository
@@ -523,11 +624,22 @@ jobs:
           ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
           fetch-depth: 0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      # docker/setup-buildx-action removed (see fresh-install-test rationale).
+
+      - name: Pre-flight diagnostics
+        if: always()
+        run: |
+          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
+            scripts/ci/write-preflight-diagnostics.sh
 
       - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
+
+      - name: Check Docker
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
+            scripts/ci/wait-for-docker.sh
 
       - name: Run full recovery upgrade test
         env:
@@ -536,7 +648,11 @@ jobs:
           SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || inputs.upgrade_source_ref || 'latest-stable' }}
           SANCTUARY_UPGRADE_FIXTURE: baseline
           SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/full-recovery
-        run: ./tests/install/e2e/upgrade-install.test.sh --mode full --fixture baseline --verbose
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade-full-recovery.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "upgrade full recovery" \
+            ./tests/install/e2e/upgrade-install.test.sh --mode full --fixture baseline --verbose
 
       - name: Show container logs on failure
         if: failure()
@@ -547,10 +663,22 @@ jobs:
 
       - name: Upload upgrade artifacts
         if: always()
+        continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
-          name: upgrade-full-recovery
+          name: upgrade-full-recovery-${{ github.run_id }}
           path: .tmp/upgrade-artifacts/full-recovery
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload diagnostic logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-upgrade-full-recovery-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
           if-no-files-found: ignore
 
       - name: Cleanup

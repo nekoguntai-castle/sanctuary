@@ -1,50 +1,20 @@
 #!/bin/bash
 # Collect diagnostics for failed upgrade runs.
+#
+# redact_stream/redact_file moved to scripts/ci/redactor.sh so the same
+# behavior backs both upgrade artifact collection and the
+# scripts/ci/run-with-log.sh diagnostic wrapper. We continue to re-export
+# them here so existing source contracts in install-script.test.sh,
+# upgrade-install.test.sh, and upgrade-helpers.test.sh stay valid.
+
+_collect_upgrade_artifacts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_collect_upgrade_artifacts_repo_root="$(cd "$_collect_upgrade_artifacts_dir/../../.." && pwd)"
+# shellcheck source=../../../scripts/ci/redactor.sh
+source "$_collect_upgrade_artifacts_repo_root/scripts/ci/redactor.sh"
+unset _collect_upgrade_artifacts_dir _collect_upgrade_artifacts_repo_root
 
 artifact_log() {
     echo "[upgrade-artifacts] $*"
-}
-
-redact_stream() {
-    awk '
-    {
-        line = $0
-        lower_line = tolower(line)
-        while (match(lower_line, /[a-z0-9_]*(secret|password|token|key|salt|cookie|credential|jobid|job_id)[a-z0-9_]*=[^[:space:]|",;<]+/)) {
-            token = substr(line, RSTART, RLENGTH)
-            key = token
-            sub(/=.*/, "", key)
-            line = substr(line, 1, RSTART - 1) key "=<redacted>" substr(line, RSTART + RLENGTH)
-            lower_line = tolower(line)
-        }
-        while (match(lower_line, /"[a-z0-9_]*(secret|password|token|key|salt|cookie|credential|jobid|job_id)[a-z0-9_]*"[[:space:]]*:[[:space:]]*"[^"<]*"/)) {
-            token = substr(line, RSTART, RLENGTH)
-            sub(/:[[:space:]]*"[^"]*"$/, ": \"<redacted>\"", token)
-            line = substr(line, 1, RSTART - 1) token substr(line, RSTART + RLENGTH)
-            lower_line = tolower(line)
-        }
-        while (match(lower_line, /(authorization|cookie|x-csrf-token):[[:space:]]*[^[:space:]",;<]+/)) {
-            token = substr(line, RSTART, RLENGTH)
-            sub(/:.*/, ": <redacted>", token)
-            line = substr(line, 1, RSTART - 1) token substr(line, RSTART + RLENGTH)
-            lower_line = tolower(line)
-        }
-        print line
-    }' | sed -E \
-        -e 's#https?://(10(\.[0-9]{1,3}){3}|172\.(1[6-9]|2[0-9]|3[0-1])(\.[0-9]{1,3}){2}|192\.168(\.[0-9]{1,3}){2})(:[0-9]+)?[^[:space:]]*#<private-url>#g' \
-        -e 's#(10(\.[0-9]{1,3}){3}|172\.(1[6-9]|2[0-9]|3[0-1])(\.[0-9]{1,3}){2}|192\.168(\.[0-9]{1,3}){2})#<private-ip>#g'
-}
-
-redact_file() {
-    local input_file="$1"
-    local output_file="$2"
-
-    if [ ! -f "$input_file" ]; then
-        echo "File not found: $input_file" > "$output_file"
-        return 0
-    fi
-
-    redact_stream < "$input_file" > "$output_file"
 }
 
 write_container_inspect_summary() {

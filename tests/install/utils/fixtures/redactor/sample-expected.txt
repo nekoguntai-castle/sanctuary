@@ -1,0 +1,20 @@
+env: API_TOKEN=<redacted> PUBLIC=visible
+env: FOO_PASSWORD=<redacted> OTHER=ok
+env: jwt_secret=<redacted> postgres_password=<redacted>
+env: GATEWAY_SECRET=<redacted> job_id=<redacted>
+env: my_credential=<redacted> other=plain
+json: {"apiToken": "<redacted>","public":"visible"}
+json: {"sessionCookie": "<redacted>","keep":"this"}
+json: {"jobId": "<redacted>","other":"x"}
+header: Authorization: <redacted> eyJabc.def.ghi
+header: Cookie: <redacted>; csrf=xyz
+header: X-CSRF-Token: <redacted>
+url: GET <private-url>
+url: connect tcp://<private-ip>:5432/db
+url: <private-url>
+url: https://example.com/public/path
+ip: connection from <private-ip>
+ip: peer <private-ip> connected
+ip: <private-ip> routed
+ip: 8.8.8.8 is public
+plain: nothing to redact here

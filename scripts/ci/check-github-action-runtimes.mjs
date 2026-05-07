@@ -82,7 +82,14 @@ function readText(filePath) {
 }
 
 function unquote(value) {
-  return value.trim().replace(/^['"]|['"]$/g, '');
+  let trimmed = value.trim();
+  if (trimmed.startsWith("'") || trimmed.startsWith('"')) {
+    trimmed = trimmed.slice(1);
+  }
+  if (trimmed.endsWith("'") || trimmed.endsWith('"')) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  return trimmed;
 }
 
 function stripInlineComment(value) {

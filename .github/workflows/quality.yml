@@ -412,6 +412,9 @@ jobs:
           bash -n scripts/ci/report-workflow-trends.sh
           bash -n scripts/ci/report-timing-notices.sh
           bash -n scripts/ci/retry-command.sh
+          bash -n scripts/ci/redactor.sh
+          bash -n scripts/ci/run-with-log.sh
+          bash -n scripts/ci/write-preflight-diagnostics.sh
           bash -n scripts/verify-addresses/verify-repeatable.sh
           # Test files — bash -n syntax sweep.
           bash -n tests/ci/provider-context.test.sh
@@ -439,6 +442,10 @@ jobs:
           bash -n tests/ci/report-timing-notices.test.sh
           bash -n tests/ci/retry-command.test.sh
           bash -n tests/ci/verify-addresses-repeatable.test.sh
+          bash -n tests/ci/redactor-fixture.test.sh
+          bash -n tests/ci/run-with-log.test.sh
+          bash -n tests/ci/write-preflight-diagnostics.test.sh
+          bash -n tests/ci/check-workflow-composition.test.sh
           # Node CI helper tests.
           node tests/ci/check-github-action-runtimes.test.mjs
           node tests/ci/provider-context-node.test.mjs
@@ -465,6 +472,7 @@ jobs:
           bash tests/ci/frontend-coverage-scripts.test.sh
           bash tests/ci/install-test-ports.test.sh
           bash tests/ci/install-semgrep.test.sh
+          bash tests/ci/quality-lizard-bootstrap.test.sh
           bash tests/ci/setup-server-dependencies.test.sh
           bash tests/ci/with-runner-lock.test.sh
           bash tests/ci/run-extended-upgrade-fixtures.test.sh
@@ -475,6 +483,10 @@ jobs:
           bash tests/ci/report-timing-notices.test.sh
           bash tests/ci/retry-command.test.sh
           bash tests/ci/verify-addresses-repeatable.test.sh
+          bash tests/ci/redactor-fixture.test.sh
+          bash tests/ci/run-with-log.test.sh
+          bash tests/ci/write-preflight-diagnostics.test.sh
+          bash tests/ci/check-workflow-composition.test.sh
 
   lizard:
     name: Cyclomatic complexity (lizard)

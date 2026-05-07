@@ -1057,6 +1057,7 @@ jobs:
         if: matrix.target == 'app-typecheck'
         run: >
           scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-command.sh "frontend app typecheck"
           scripts/ci/time-command.sh "frontend app typecheck"
           npm run typecheck:app
 
@@ -1064,6 +1065,7 @@ jobs:
         if: matrix.target == 'test-typecheck'
         run: >
           scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-command.sh "frontend test typecheck"
           scripts/ci/time-command.sh "frontend test typecheck"
           npm run typecheck:tests
 
@@ -1324,8 +1326,9 @@ jobs:
       - name: Run AI proxy tests
         run: >
           scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-vitest-infrastructure-failure.sh "AI proxy tests"
           scripts/ci/time-command.sh "AI proxy tests"
-          npx vitest run tests/ai-proxy --passWithNoTests
+          npx vitest run tests/ai-proxy --passWithNoTests --pool threads --maxWorkers=1 --no-file-parallelism
 
   full-critical-mutation:
     name: Full Critical Mutation Gate
@@ -1469,6 +1472,8 @@ jobs:
             npx prisma migrate deploy
 
       - name: Build backend
+        env:
+          SANCTUARY_RETRY_ATTEMPTS: '5'
         working-directory: server
         run: >
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
@@ -1671,6 +1676,8 @@ jobs:
             npm run build
 
       - name: Build backend
+        env:
+          SANCTUARY_RETRY_ATTEMPTS: '5'
         working-directory: server
         run: |
           "${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh"

@@ -187,6 +187,8 @@ jobs:
       HTTP_PORT: '15080'
       GATEWAY_PORT: '15000'
       PORT_OFFSET: '0'
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/install-fresh-install
+      SANCTUARY_CI_DEBUG_TRACE: '1'
 
     steps:
       - name: Note PR install E2E coverage
@@ -201,49 +203,79 @@ jobs:
         with:
           clean: false
 
+      - name: Pre-flight diagnostics
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
+            scripts/ci/write-preflight-diagnostics.sh
+
       - name: Check Docker
         if: github.event_name != 'pull_request'
-        run: scripts/ci/wait-for-docker.sh
+        run: |
+          chmod +x scripts/ci/run-with-log.sh
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
+            scripts/ci/wait-for-docker.sh
 
       - name: Prepare isolated install workspace
         if: github.event_name != 'pull_request'
         run: |
-          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible fresh-install)"
-          echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
+            workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible fresh-install)"
+            echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          '
 
       - name: Assign run-specific ports
         if: github.event_name != 'pull_request'
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -c '
+            cd "$SANCTUARY_INSTALL_WORKSPACE"
+            bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          '
 
       - name: Run fresh install test
         if: github.event_name != 'pull_request'
         env:
           KEEP_CONTAINERS: ${{ github.event.inputs.keep_containers }}
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "fresh install e2e" bash -c '
-            if [ "${KEEP_CONTAINERS:-false}" = "true" ]; then
-              ./tests/install/e2e/fresh-install.test.sh --keep-containers --verbose
-            else
-              ./tests/install/e2e/fresh-install.test.sh --verbose
-            fi
-          '
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/fresh-install.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "fresh install e2e" \
+            bash -c "
+              cd \"$SANCTUARY_INSTALL_WORKSPACE\"
+              if [ \"\${KEEP_CONTAINERS:-false}\" = \"true\" ]; then
+                ./tests/install/e2e/fresh-install.test.sh --keep-containers --verbose
+              else
+                ./tests/install/e2e/fresh-install.test.sh --verbose
+              fi
+            "
 
       - name: Run install script test
         if: github.event_name != 'pull_request'
         env:
           KEEP_CONTAINERS: ${{ github.event.inputs.keep_containers }}
         run: |
-          cd "$SANCTUARY_INSTALL_WORKSPACE"
-          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "install script e2e" bash -c '
-            if [ "${KEEP_CONTAINERS:-false}" = "true" ]; then
-              ./tests/install/e2e/install-script.test.sh --keep-containers --verbose
-            else
-              ./tests/install/e2e/install-script.test.sh --verbose
-            fi
-          '
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-script.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "install script e2e" \
+            bash -c "
+              cd \"$SANCTUARY_INSTALL_WORKSPACE\"
+              if [ \"\${KEEP_CONTAINERS:-false}\" = \"true\" ]; then
+                ./tests/install/e2e/install-script.test.sh --keep-containers --verbose
+              else
+                ./tests/install/e2e/install-script.test.sh --verbose
+              fi
+            "
+
+      - name: Upload diagnostic logs
+        if: always() && github.event_name != 'pull_request'
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-install-fresh-install-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Show container logs on failure
         if: failure() && github.event_name != 'pull_request'
@@ -692,6 +724,9 @@ jobs:
       (needs.install-stack-smoke.result == 'success' || needs.install-stack-smoke.result == 'skipped') &&
       (needs.auth-flow-test.result == 'success' || needs.auth-flow-test.result == 'skipped')
     timeout-minutes: 120
+    env:
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-baseline
+      SANCTUARY_CI_DEBUG_TRACE: '1'
 
     steps:
       - name: Checkout repository
@@ -700,13 +735,24 @@ jobs:
           clean: false
           fetch-depth: 0
 
+      - name: Pre-flight diagnostics
+        if: always()
+        run: |
+          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
+            scripts/ci/write-preflight-diagnostics.sh
+
       - name: Check Docker
-        run: scripts/ci/wait-for-docker.sh
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
+            scripts/ci/wait-for-docker.sh
 
       - name: Prepare isolated upgrade workspace
         run: |
-          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible upgrade-baseline)"
-          echo "SANCTUARY_UPGRADE_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
+            workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible upgrade-baseline)"
+            echo "SANCTUARY_UPGRADE_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          '
 
       - name: Run baseline upgrades sequentially
         env:
@@ -737,7 +783,11 @@ jobs:
             }
             trap cleanup EXIT
 
-            if scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "upgrade baseline ${source_ref} baseline" ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture baseline --verbose; then
+            local log_path="${JOB_LOG_DIR}/upgrade-baseline-${source_ref}.log"
+            if "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/run-with-log.sh" "$log_path" \
+                 scripts/ci/with-runner-lock.sh e2e \
+                 scripts/ci/time-command.sh "upgrade baseline ${source_ref} baseline" \
+                 ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture baseline --verbose; then
               cleanup
               trap - EXIT
               return 0
@@ -756,12 +806,24 @@ jobs:
 
       - name: Upload baseline upgrade artifacts
         if: always()
+        continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
-          name: upgrade-baseline
+          name: upgrade-baseline-${{ github.run_id }}
           path: |
             .tmp/upgrade-artifacts/latest-stable-baseline
             .tmp/upgrade-artifacts/n-2-baseline
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload diagnostic logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-upgrade-baseline-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
           if-no-files-found: ignore
 
       - name: Cleanup isolated upgrade workspace

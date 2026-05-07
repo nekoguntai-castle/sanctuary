@@ -288,3 +288,48 @@ Initial targets:
 - Gateway-only PRs: under 3 minutes p50.
 - Frontend/backend PRs without E2E-heavy changes: under 8 minutes p50.
 - Merge/main full gate: under 15 minutes p50.
+
+## Diagnostic harness for Docker-backed install jobs
+
+The Docker-backed install jobs in `install-test.yml` and `release-candidate.yml`
+run through a diagnostic logging harness so failures that happen *before* a
+test body executes (Docker readiness, isolated workspace setup, port
+assignment, secret generation, image build) still leave a downloadable,
+redacted log artifact. The artifact contract is what makes those failures
+diagnosable without a Forgejo Web UI session cookie.
+
+**Wrapper composition order** for lock-protected steps:
+
+```
+scripts/ci/run-with-log.sh \
+  scripts/ci/with-runner-lock.sh <lock-name> \
+  scripts/ci/time-command.sh "<label>" \
+  <command body>
+```
+
+`run-with-log.sh` is outermost on purpose: `with-runner-lock.sh` emits its
+"Waiting for runner lock" line before invoking its child, so the logger
+must wrap the lock to capture that wait line in the diagnostic artifact.
+`tests/ci/check-workflow-composition.test.sh` enforces this order across
+both workflows.
+
+**`docker/setup-buildx-action` removed** from the five Docker-backed
+release-candidate install/upgrade jobs (`fresh-install-test`,
+`container-health-test`, `auth-flow-test`, `upgrade-test`,
+`upgrade-full-recovery-test`). Compose Bake is disabled in install E2E
+and the dedicated `Docker Build` workflow owns Buildx coverage, so the
+action's only role in those jobs was creating a buildx context the
+install paths did not use, while expanding the action-internal blind
+spot the diagnostic harness cannot reach. Do not reintroduce it without
+restoring an actual Buildx-dependent invocation.
+
+**Diagnostic artifact retention** is set to 14 days explicitly on every
+`upload-artifact` invocation that writes to `${{ env.JOB_LOG_DIR }}`,
+so retention does not drift with Forgejo instance defaults.
+
+**Trace opt-in**: set `SANCTUARY_CI_DEBUG_TRACE=1` at the workflow env
+level only for jobs whose helpers are reviewed and known not to print
+secrets (today: `wait-for-docker.sh`). Do not enable it globally for
+installer/E2E bodies that may handle generated secrets — the redactor
+in `run-with-log.sh` is a defense-in-depth backstop, not permission to
+trace secret-heavy flows.

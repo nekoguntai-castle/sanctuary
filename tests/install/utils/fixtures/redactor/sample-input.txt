@@ -1,0 +1,20 @@
+env: API_TOKEN=abcdef123456 PUBLIC=visible
+env: FOO_PASSWORD=hunter2 OTHER=ok
+env: jwt_secret=topsecret postgres_password=hunter2
+env: GATEWAY_SECRET=letmein job_id=run-7
+env: my_credential=value other=plain
+json: {"apiToken":"abcdef","public":"visible"}
+json: {"sessionCookie":"abc.def.ghi","keep":"this"}
+json: {"jobId":"run-7","other":"x"}
+header: Authorization: Bearer eyJabc.def.ghi
+header: Cookie: session=abc; csrf=xyz
+header: X-CSRF-Token: ghi-jkl-mno
+url: GET https://10.14.23.20:3000/api/v1/repos/foo
+url: connect tcp://172.20.0.5:5432/db
+url: http://192.168.1.10/admin
+url: https://example.com/public/path
+ip: connection from 10.14.23.93
+ip: peer 172.18.0.1 connected
+ip: 192.168.1.20 routed
+ip: 8.8.8.8 is public
+plain: nothing to redact here

@@ -42,6 +42,16 @@ paths = [
   '''tests/components/BackupRestore\.test\.tsx''',
   '''tests/components/BackupRestore/EncryptionKeyDisplay\.branches\.test\.tsx''',
   '''tests/install/e2e/auth-flow\.test\.sh''',
+  # Redactor regression fixture: deliberately-shaped fake-secret tokens
+  # (`API_TOKEN=abcdef123456`, `Authorization: Bearer eyJ...`) used to
+  # pin the bit-identical historical behavior of redact_stream.
+  # No real credentials. See tests/ci/redactor-fixture.test.sh.
+  '''tests/install/utils/fixtures/redactor/sample-input\.txt''',
+  '''tests/install/utils/fixtures/redactor/sample-expected\.txt''',
+  # Diagnostic logger test embeds matching fake-secret tokens in
+  # assert_contains/assert_not_contains arguments to prove the
+  # redactor stack hides them. No real credentials.
+  '''tests/ci/run-with-log\.test\.sh''',
   '''e2e/admin-operations\.spec\.ts''',
   '''e2e/render-regression\.spec\.ts''',
   '''e2e/render-regression/renderRegressionHarness\.ts''',
