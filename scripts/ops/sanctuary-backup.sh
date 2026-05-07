@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+# Take a host-side pg_dump of the Sanctuary postgres database and rotate
+# old snapshots. Designed to be invoked by a systemd timer (see
+# scripts/ops/install-sanctuary-backup.sh) so backups land outside the
+# docker volume layer — i.e. the CI cleanup_containers wipe path can no
+# longer take prod data with it.
+#
+# Backups are stored as:
+#   <output-dir>/daily/sanctuary-YYYYMMDD-HHMMSS.sql.gz
+#   <output-dir>/weekly/sanctuary-YYYYMMDD-HHMMSS.sql.gz   (only on weekly day)
+#
+# Rotation keeps --keep-daily most recent dailies and --keep-weekly
+# most recent weeklies. Each new backup is verified with gzip -t before
+# rotation runs, so a corrupted dump can never push a good one out.
+
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: scripts/ops/sanctuary-backup.sh [options]
+
+Options:
+  --output-dir DIR         where to write backups (default: $HOME/sanctuary-backups)
+  --postgres-container N   postgres container name (default: sanctuary-postgres-1)
+  --db-name NAME           database name (default: sanctuary)
+  --db-user USER           postgres user (default: sanctuary)
+  --keep-daily N           dailies to retain (default: 7)
+  --keep-weekly N          weeklies to retain (default: 4)
+  --weekly-day DAY         day-of-week for weekly snapshot, 1=Mon..7=Sun (default: 7)
+  --dry-run                show what would happen without writing or deleting
+  -h, --help               show this help
+EOF
+}
+
+fail() {
+  echo "sanctuary-backup: $*" >&2
+  exit 1
+}
+
+log() {
+  printf '[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"
+}
+
+is_positive_integer() {
+  [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -gt 0 ]
+}
+
+is_nonneg_integer() {
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+output_dir="${HOME}/sanctuary-backups"
+postgres_container="sanctuary-postgres-1"
+db_name="sanctuary"
+db_user="sanctuary"
+keep_daily=7
+keep_weekly=4
+weekly_day=7
+dry_run=false
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output-dir)
+      output_dir="${2:-}"
+      shift 2
+      ;;
+    --postgres-container)
+      postgres_container="${2:-}"
+      shift 2
+      ;;
+    --db-name)
+      db_name="${2:-}"
+      shift 2
+      ;;
+    --db-user)
+      db_user="${2:-}"
+      shift 2
+      ;;
+    --keep-daily)
+      keep_daily="${2:-}"
+      shift 2
+      ;;
+    --keep-weekly)
+      keep_weekly="${2:-}"
+      shift 2
+      ;;
+    --weekly-day)
+      weekly_day="${2:-}"
+      shift 2
+      ;;
+    --dry-run)
+      dry_run=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --*)
+      usage
+      fail "unknown option: $1"
+      ;;
+    *)
+      usage
+      fail "unexpected argument: $1"
+      ;;
+  esac
+done
+
+[ -n "$output_dir" ] || fail "--output-dir must not be empty"
+[ -n "$postgres_container" ] || fail "--postgres-container must not be empty"
+[ -n "$db_name" ] || fail "--db-name must not be empty"
+[ -n "$db_user" ] || fail "--db-user must not be empty"
+is_positive_integer "$keep_daily" || fail "--keep-daily must be a positive integer"
+is_positive_integer "$keep_weekly" || fail "--keep-weekly must be a positive integer"
+if ! is_positive_integer "$weekly_day" || [ "$weekly_day" -gt 7 ]; then
+  fail "--weekly-day must be 1..7 (1=Mon, 7=Sun)"
+fi
+
+daily_dir="$output_dir/daily"
+weekly_dir="$output_dir/weekly"
+timestamp="$(date -u '+%Y%m%d-%H%M%S')"
+filename="sanctuary-${timestamp}.sql.gz"
+daily_path="$daily_dir/$filename"
+weekly_path="$weekly_dir/$filename"
+
+# %u is 1..7 in GNU date (Mon..Sun). BSD/macOS users will need GNU date.
+today_dow="$(date '+%u')"
+
+run() {
+  if [ "$dry_run" = true ]; then
+    printf 'DRY-RUN:'
+    printf ' %q' "$@"
+    printf '\n'
+    return 0
+  fi
+  "$@"
+}
+
+ensure_dirs() {
+  if [ "$dry_run" = true ]; then
+    log "would mkdir -p $daily_dir $weekly_dir"
+    return
+  fi
+  mkdir -p "$daily_dir" "$weekly_dir"
+}
+
+verify_postgres_running() {
+  if ! docker ps --filter "name=^${postgres_container}$" --format '{{.Names}}' \
+       | grep -Fxq "$postgres_container"; then
+    fail "postgres container '$postgres_container' is not running"
+  fi
+}
+
+dump_database() {
+  log "dumping database '$db_name' from container '$postgres_container'"
+  if [ "$dry_run" = true ]; then
+    log "would write $daily_path"
+    return
+  fi
+  # pg_dump streamed through gzip; both tools' exit codes are checked via
+  # PIPESTATUS so a partial dump doesn't quietly produce a small valid gz.
+  docker exec "$postgres_container" pg_dump -U "$db_user" "$db_name" \
+    | gzip -9 > "$daily_path"
+  local statuses=("${PIPESTATUS[@]}")
+  if [ "${statuses[0]}" -ne 0 ] || [ "${statuses[1]}" -ne 0 ]; then
+    rm -f "$daily_path"
+    fail "pg_dump failed (exit ${statuses[0]}/${statuses[1]})"
+  fi
+  if ! gzip -t "$daily_path" 2>/dev/null; then
+    rm -f "$daily_path"
+    fail "gzip integrity check failed for $daily_path"
+  fi
+  local size_bytes
+  size_bytes=$(stat -c %s "$daily_path" 2>/dev/null || stat -f %z "$daily_path")
+  log "wrote $daily_path (${size_bytes} bytes)"
+}
+
+copy_to_weekly_if_due() {
+  if [ "$today_dow" != "$weekly_day" ]; then
+    log "today is dow=$today_dow; weekly snapshots run on dow=$weekly_day"
+    return
+  fi
+  if [ "$dry_run" = true ]; then
+    log "would copy $daily_path -> $weekly_path"
+    return
+  fi
+  cp -p "$daily_path" "$weekly_path"
+  log "copied to $weekly_path"
+}
+
+# Rotate a directory: keep the N most recent matching files, delete the
+# rest. Glob matches the timestamped filenames written above.
+rotate_dir() {
+  local dir="$1"
+  local keep="$2"
+  local label="$3"
+
+  if [ ! -d "$dir" ]; then
+    return
+  fi
+
+  local files=()
+  while IFS= read -r -d '' f; do
+    files+=("$f")
+  done < <(find "$dir" -maxdepth 1 -type f -name 'sanctuary-*.sql.gz' -print0 | sort -z)
+
+  local total=${#files[@]}
+  if [ "$total" -le "$keep" ]; then
+    log "$label: $total file(s); within limit $keep"
+    return
+  fi
+
+  local to_remove=$((total - keep))
+  log "$label: $total file(s); removing $to_remove oldest (keeping $keep)"
+  local i
+  for ((i=0; i<to_remove; i++)); do
+    run rm -f -- "${files[$i]}"
+  done
+}
+
+ensure_dirs
+verify_postgres_running
+dump_database
+copy_to_weekly_if_due
+rotate_dir "$daily_dir" "$keep_daily" "daily"
+rotate_dir "$weekly_dir" "$keep_weekly" "weekly"
+log "done"
