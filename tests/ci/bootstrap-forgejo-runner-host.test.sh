@@ -61,6 +61,10 @@ test_generates_runner_host_files() {
   assert_contains "$root/data/runner-config.yml" "shutdown_timeout: 5m"
   assert_contains "$root/docker-compose.yml" "--default-address-pool=base=172.30.0.0/16,size=24"
   assert_contains "$root/docker-compose.yml" "--default-address-pool=base=10.241.0.0/16,size=24"
+  # docker:dind enables TLS automatically when DOCKER_TLS_CERTDIR is non-empty
+  # (the image's entrypoint sets it), which silently overrides --tls=false and
+  # makes the plain-HTTP healthcheck loop. Force it empty.
+  assert_contains "$root/docker-compose.yml" 'DOCKER_TLS_CERTDIR: ""'
   assert_contains "$root/bin/forgejo-runner-dind-cleanup" "docker -H tcp://127.0.0.1:2375"
   assert_contains "$systemd_dir/forgejo-runner-test.service" "After=docker.service network-online.target"
   assert_contains "$systemd_dir/forgejo-runner-test-cleanup.timer" "OnBootSec=20min"

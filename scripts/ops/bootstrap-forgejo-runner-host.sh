@@ -161,7 +161,18 @@ is_positive_integer "$runner_capacity" || fail "--capacity must be a positive in
 [ -n "$shutdown_timeout" ] || fail "--shutdown-timeout must not be empty"
 [ -n "$build_cache_limit" ] || fail "--build-cache-limit must not be empty"
 
-install -d -m 0750 "$runner_root" "$runner_root/data" "$runner_root/bin" "$systemd_dir"
+# Top-level dir is world-traversable so the runner container (uid 1000 by
+# default in data.forgejo.org/forgejo/runner) can reach $runner_root/data;
+# bin scripts are similarly readable. The data subdirectory is owned by the
+# runner uid so the container can read runner-config.yml and write .runner.
+runner_uid="${SANCTUARY_FORGEJO_RUNNER_UID:-1000}"
+runner_gid="${SANCTUARY_FORGEJO_RUNNER_GID:-1000}"
+install -d -m 0755 "$runner_root" "$runner_root/bin" "$systemd_dir"
+if [ "$(id -u)" -eq 0 ]; then
+  install -d -m 0750 -o "$runner_uid" -g "$runner_gid" "$runner_root/data"
+else
+  install -d -m 0755 "$runner_root/data"
+fi
 
 existing_server_block=""
 if [ -f "$runner_root/data/runner-config.yml" ]; then
@@ -227,6 +238,8 @@ services:
     image: ${dind_image}
     container_name: ${service_name}-dind
     privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
     restart: unless-stopped
     command:
       - --host=tcp://0.0.0.0:2375
