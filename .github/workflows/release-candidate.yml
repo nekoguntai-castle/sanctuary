@@ -131,28 +131,50 @@ jobs:
     name: Fresh Install E2E
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: sanctuary-rc-fresh-${{ github.run_id }}
+      HTTPS_PORT: '15543'
+      HTTP_PORT: '15180'
+      GATEWAY_PORT: '15100'
+      PORT_OFFSET: '0'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
+          clean: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
+      - name: Check Docker
+        run: scripts/ci/wait-for-docker.sh
+
       - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
+
+      - name: Prepare isolated install workspace
+        run: |
+          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible fresh-install)"
+          echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+
+      - name: Assign run-specific ports
+        run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
 
       - name: Run fresh install test
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-          HTTP_PORT: ${{ env.HTTP_PORT }}
-        run: ./tests/install/e2e/fresh-install.test.sh --verbose
+        run: |
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "fresh install e2e" bash -c '
+            ./tests/install/e2e/fresh-install.test.sh --verbose
+          '
 
       - name: Show container logs on failure
         if: failure()
         run: |
+          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
           echo "=== Container Status ==="
           docker compose ps || true
           echo ""
@@ -171,6 +193,7 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
+          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
           docker compose down -v --remove-orphans || true
           docker system prune -f || true
 
