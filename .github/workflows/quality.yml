@@ -482,6 +482,7 @@ jobs:
           bash tests/ci/report-workflow-trends.test.sh
           bash tests/ci/report-timing-notices.test.sh
           bash tests/ci/retry-command.test.sh
+          bash tests/ci/retry-playwright-infrastructure-failure.test.sh
           bash tests/ci/verify-addresses-repeatable.test.sh
           bash tests/ci/redactor-fixture.test.sh
           bash tests/ci/run-with-log.test.sh

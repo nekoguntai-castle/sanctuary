@@ -500,7 +500,7 @@ jobs:
             scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick browser npm ci" scripts/ci/time-command.sh "quick browser npm ci" npm ci --audit=false --fund=false --cache .tmp/npm-cache
             scripts/ci/time-command.sh "quick browser playwright install" scripts/ci/install-playwright-chromium.sh
             scripts/ci/time-command.sh "quick browser frontend build" scripts/ci/retry-command.sh "quick browser frontend build" npm run build
-            scripts/ci/time-command.sh "quick browser smoke" npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts
+            scripts/ci/retry-playwright-infrastructure-failure.sh "quick browser smoke" scripts/ci/time-command.sh "quick browser smoke" npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts
           '
 
       - name: Upload quick browser Playwright report
@@ -573,7 +573,7 @@ jobs:
             scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick render npm ci" scripts/ci/time-command.sh "quick render npm ci" npm ci --audit=false --fund=false --cache .tmp/npm-cache
             scripts/ci/time-command.sh "quick render playwright install" scripts/ci/install-playwright-chromium.sh
             scripts/ci/time-command.sh "quick render frontend build" scripts/ci/retry-command.sh "quick render frontend build" npm run build
-            scripts/ci/time-command.sh "quick render regression" npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
+            scripts/ci/retry-playwright-infrastructure-failure.sh "quick render regression" scripts/ci/time-command.sh "quick render regression" npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
           '
 
       - name: Upload quick render Playwright report
@@ -1191,7 +1191,11 @@ jobs:
           path: .vitest-reports/
 
       - name: Merge frontend coverage (threshold-enforced)
-        run: scripts/ci/time-command.sh "frontend coverage merge" npm run test:coverage:merge -- .vitest-reports
+        run: >
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-vitest-infrastructure-failure.sh "frontend coverage merge"
+          scripts/ci/time-command.sh "frontend coverage merge"
+          npm run test:coverage:merge -- .vitest-reports
 
       - name: Upload frontend coverage
         if: always()
@@ -1530,6 +1534,7 @@ jobs:
               printf "Running browser-flow E2E group %s:\n" "$browser_group"
               printf "  %s\n" "${browser_specs[@]}"
               VITE_API_URL="http://localhost:${api_port}" \
+                scripts/ci/retry-playwright-infrastructure-failure.sh "browser-flow E2E ${browser_group}" \
                 scripts/ci/time-command.sh "browser-flow E2E ${browser_group}" \
                 npm run test:e2e -- --project=chromium "${browser_specs[@]}"
 
@@ -1623,7 +1628,11 @@ jobs:
           VITE_API_URL: http://localhost:3001
 
       - name: Run render regression E2E tests
-        run: scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "render regression E2E" npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
+        run: >
+          scripts/ci/with-runner-lock.sh e2e
+          scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"
+          scripts/ci/time-command.sh "render regression E2E"
+          npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
         env:
           CI: 'true'
           NODE_ENV: test

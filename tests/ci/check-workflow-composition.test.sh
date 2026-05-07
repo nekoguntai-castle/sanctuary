@@ -221,6 +221,38 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   'scripts/ci/retry-command.sh" "build check backend build"' \
   "npm --ignore-scripts run build"
 
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick browser Playwright infrastructure retry" \
+  'scripts/ci/retry-playwright-infrastructure-failure.sh "quick browser smoke"' \
+  'scripts/ci/time-command.sh "quick browser smoke"' \
+  "npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick render Playwright infrastructure retry" \
+  'scripts/ci/retry-playwright-infrastructure-failure.sh "quick render regression"' \
+  'scripts/ci/time-command.sh "quick render regression"' \
+  "npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full browser Playwright infrastructure retry" \
+  'scripts/ci/retry-playwright-infrastructure-failure.sh "browser-flow E2E ${browser_group}"' \
+  'scripts/ci/time-command.sh "browser-flow E2E ${browser_group}"' \
+  'npm run test:e2e -- --project=chromium "${browser_specs[@]}"'
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full render Playwright infrastructure retry" \
+  'scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"' \
+  'scripts/ci/time-command.sh "render regression E2E"' \
+  "npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full frontend coverage merge Vitest retry" \
+  "full-frontend-coverage-merge:" \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  'scripts/ci/retry-vitest-infrastructure-failure.sh "frontend coverage merge"' \
+  'scripts/ci/time-command.sh "frontend coverage merge"' \
+  "npm run test:coverage:merge -- .vitest-reports"
+
 # --- summary ----------------------------------------------------------------
 echo
 echo "===================="
