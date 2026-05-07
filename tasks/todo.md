@@ -1,6 +1,35 @@
+# Active Task: Architecture Failure And Runner Bootstrap 2026-05-07
+
+Status: complete; Architecture investigated and runner bootstrap codified
+
+Goal: investigate and fix the current `main` Architecture failure, then codify future Forgejo runner setup so new runner hosts can inherit the durable capacity and cleanup pattern.
+
+## Plan
+
+- [x] Identify the failing Architecture command and decide whether the fix is repo-owned or runner-host-owned.
+- [x] Reproduce the failure locally from `origin/main` or collect enough Forgejo log evidence to pinpoint it.
+- [x] Apply the smallest repo-owned Architecture fix if needed.
+- [x] Add a reusable future-runner setup path for capacity, shutdown timeout, reboot recovery, Docker address pools, and bounded cleanup.
+- [x] Run focused verification for the Architecture fix and runner bootstrap documentation/scripts.
+- [x] Review the diff for private infrastructure details and unintended scope.
+
+## Review
+
+- The previous `main` Architecture failure on `9448ba6751887b4e8f6c78746772c1d235aff4b2` was superseded by a newer `main` commit while investigation was in progress.
+- Local reproduction from the same workflow sequence passed after installing the same root, server, gateway, and website dependency sets: diagram lint, generated dependency graphs, function call graphs, stale generated graph detection, Docusaurus typecheck, and Docusaurus build.
+- Current `main` moved to `790259e185ab62ccee3bd99633c3876780f0fccf`; its Architecture run failed the same way, but the exact current `main` command sequence also passed locally and inside the same `ghcr.io/catthehacker/ubuntu:act-20.04` image used by the runner labels.
+- Verified the additional runner host has image-backed labels in its config and the act image provides Node 24 and npm. The host journal showed no OOM or kernel-level kill around the failed Architecture window, and runner logs only showed task start/cleanup for the Architecture jobs.
+- No deterministic repo-owned Architecture failure was found. The remaining red Architecture status is runner/orchestration-specific unless Forgejo web logs expose a concrete command failure later.
+- Added `scripts/ops/bootstrap-forgejo-runner-host.sh`, a reusable Docker-in-Docker runner bootstrap that writes runner config, compose, systemd boot units, and an hourly bounded cleanup timer. It preserves existing v12 `server:` registration blocks when refreshing an already registered host.
+- Added `docs/how-to/forgejo-runner-host.md` and linked it from `docs/README.md`, documenting token handling, default image-backed labels, capacity, shutdown timeout, address pools, cleanup behavior, reboot proof, and existing-host refresh behavior.
+- Focused verification passed: `bash -n scripts/ops/bootstrap-forgejo-runner-host.sh`; `bash tests/ci/bootstrap-forgejo-runner-host.test.sh`; bootstrap generation into ignored test roots for new and existing-runner config paths; generated compose validation with `docker compose config --quiet`; invalid-capacity rejection; `npm --prefix website run typecheck`; `npm run docs:build`; and `git diff --check`.
+- Privacy review passed: the tracked diff does not include concrete runner hostnames, private host IPs, usernames, or credentials. Documentation uses `forgejo.example.invalid` and generic service names.
+
+---
+
 # Active Task: CI Runner Capacity Acceleration 2026-05-07
 
-Status: in progress
+Status: complete; PR #287 merged and runner capacity verified
 
 Goal: work through the runner-capacity acceleration plan, implement workflow changes that can use more Forgejo runners safely, deliver through PR, merge, and verify post-merge state.
 
@@ -13,7 +42,7 @@ Goal: work through the runner-capacity acceleration plan, implement workflow cha
 - [x] Phase 4: split backend integration groups into real parallel jobs while preserving `Full Backend Tests`.
 - [x] Phase 5: re-evaluate browser/render E2E and keep it serialized unless isolation is proven.
 - [x] Phase 6: parallelize Code Quality jobs only where temp-clone/scanner isolation already protects shared checkout state.
-- [ ] Phase 7: run local verification, deliver with `$pr-delivery`, monitor CI, merge, and verify target branch.
+- [x] Phase 7: run local verification, deliver with `$pr-delivery`, monitor CI, merge, and verify target branch.
 
 ## Review
 
@@ -25,6 +54,10 @@ Goal: work through the runner-capacity acceleration plan, implement workflow cha
 - Added workflow runtime-guard checks for the stable `Test Suite` name, frontend coverage shard/merge topology, backend integration groups, backend/frontend aggregate dependencies, and the removed false full-lane dependencies.
 - Updated `docs/reference/ci-cd-strategy.md` so it documents the current browser serialization boundary instead of implying browser matrix fan-out.
 - Local verification passed so far: actionlint on `test.yml` and `quality.yml`; `npm run check:github-action-runtimes`; `node tests/ci/check-github-action-runtimes.test.mjs`; `bash tests/ci/classify-test-changes.test.sh`; `bash tests/ci/classify-quality-scope.test.sh`; `bash tests/ci/backend-integration-groups.test.sh`; `bash tests/ci/frontend-coverage-scripts.test.sh`; `bash scripts/ci/backend-integration-groups.sh --check`; `node --check` on the runtime guard and its test; touched-file lizard on the runtime guard/test; `git diff --check`.
+- PR #287 merged successfully. The PR head completed green across 30 commit-status contexts, and the target branch contains the squash merge commit. The old merge commit push statuses were superseded after `main` advanced again, so final verification used PR-head status plus target-branch ancestry.
+- Runner-capacity verification completed after the merge: the local runner service is active and enabled with persistent user services, and the additional Docker runner host is active in Forgejo with its compose stack managed by systemd for reboot recovery.
+- Added bounded Docker cleanup timers on both runner hosts. The cleanup process prunes only stopped or unused containers, networks, dangling images, and old build cache; it intentionally leaves active job resources and volumes alone.
+- Future runner caveat: the host-level runner changes are not automatically inherited by new hosts. New runners need the same service, capacity, shutdown-timeout, address-pool, and cleanup-timer pattern applied through a bootstrap script, runbook, or configuration-management path.
 
 ---
 

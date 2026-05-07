@@ -167,6 +167,18 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - If the request is operational and mentions a host, inspect runner/service config before app source.
 - For Forgejo, look for `runner.capacity`, the runner config path, and the service/container manager.
 
+## Confirm The Exact Runner Host Before Operational Changes
+
+**Rule:** Before changing runner services, cleanup timers, or Docker daemon settings, state and verify the exact target host.
+
+**Why:** The user had to confirm which additional runner host was being changed after operational work moved between the local runner and a remote runner.
+
+**How to apply:**
+
+- Name the target host in the working update before making service or Docker changes.
+- Keep host-local changes out of repo-tracked docs unless they are sanitized into a reusable pattern.
+- Verify both the host-level service state and the Forgejo runner registration after any reboot-survival or cleanup change.
+
 ## Scrub Internal Operational Metadata Before Commit
 
 **Rule:** Do not commit private CI/CD hostnames, IP addresses, usernames, service names, config paths, or capacity details into repo-tracked task notes, tests, or docs.
