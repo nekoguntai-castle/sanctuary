@@ -108,11 +108,13 @@ jobs:
           fi
 
       - name: Typecheck Docusaurus site
+        env:
+          SANCTUARY_RETRY_ATTEMPTS: '5'
         run: |
           scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
           set -euo pipefail
           cd "$ARCH_WORKDIR"
-          npm --prefix website run typecheck
+          scripts/ci/retry-command.sh "docs typecheck" scripts/ci/time-command.sh "docs typecheck" npm --prefix website run typecheck
           NODE_LOCK
 
       - name: Build Docusaurus site

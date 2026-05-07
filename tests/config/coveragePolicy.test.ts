@@ -8,6 +8,7 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '../..');
 
 const vitestConfigPath = path.join(projectRoot, 'vitest.config.ts');
+const coverageShardConfigPath = path.join(projectRoot, 'vitest.coverage-shard.config.ts');
 const animatedBackgroundTestPath = path.join(projectRoot, 'tests/components/AnimatedBackground.test.tsx');
 
 const EXPECTED_FRONTEND_COVERAGE_EXCLUDES = [
@@ -84,5 +85,11 @@ describe('frontend coverage policy', () => {
 
     expect(animationTestSource).toMatch(/vi\.mock\('\.\.\/\.\.\/components\/animations\/[^']+'/);
     expect(animationTestSource).toContain('Pattern Registry Consistency');
+  });
+
+  it('gives Forgejo coverage shard fork workers enough teardown time', () => {
+    const shardConfigSource = fs.readFileSync(coverageShardConfigPath, 'utf8');
+
+    expect(shardConfigSource).toContain('teardownTimeout: 60_000');
   });
 });

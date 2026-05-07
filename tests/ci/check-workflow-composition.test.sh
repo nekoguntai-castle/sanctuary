@@ -183,6 +183,18 @@ else
   echo "PASS: verify-vectors.yml uses stable server Vitest CI entrypoint"
 fi
 
+# --- architecture native-toolchain retry stability --------------------------
+ARCHITECTURE_WORKFLOW="$REPO_ROOT/.github/workflows/architecture.yml"
+
+assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+  "architecture docs typecheck retry composition" \
+  "Typecheck Docusaurus site" \
+  "SANCTUARY_RETRY_ATTEMPTS: '5'" \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  'scripts/ci/retry-command.sh "docs typecheck"' \
+  'scripts/ci/time-command.sh "docs typecheck"' \
+  "npm --prefix website run typecheck"
+
 # --- full frontend typecheck retry stability --------------------------------
 TEST_WORKFLOW="$REPO_ROOT/.github/workflows/test.yml"
 

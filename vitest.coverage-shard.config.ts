@@ -32,5 +32,6 @@ export default defineConfig({
     },
     outputFile: {},
     reporters: ['dot', 'blob'],
+    teardownTimeout: 60_000,
   },
 });
