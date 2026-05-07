@@ -99,10 +99,11 @@ describe('Admin Version Routes', () => {
   it('returns release info and uses cache for repeated checks', async () => {
     const releaseJson = {
       tag_name: 'v1.4.0',
-      html_url: 'https://github.com/nekoguntai-castle/sanctuary/releases/tag/v1.4.0',
+      html_url: 'https://codeberg.org/nekoguntai-castle/sanctuary/releases/tag/v1.4.0',
       name: 'v1.4.0',
       published_at: '2026-01-01T00:00:00.000Z',
       body: 'Release notes',
+      prerelease: false,
     };
 
     const { app, fetchMock } = await setupVersionRoute({
@@ -125,13 +126,18 @@ describe('Admin Version Routes', () => {
       releaseName: releaseJson.name,
       publishedAt: releaseJson.published_at,
       releaseNotes: releaseJson.body,
+      prerelease: false,
     });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary/releases/latest',
+      expect.any(Object),
+    );
     expect(secondResponse.status).toBe(200);
     expect(secondResponse.body.latestVersion).toBe('1.4.0');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back release fields when GitHub payload is incomplete and marks downgrade as no update', async () => {
+  it('falls back release fields when Codeberg payload is incomplete and marks downgrade as no update', async () => {
     const { app } = await setupVersionRoute({
       fetchImpl: () =>
         Promise.resolve({
@@ -147,14 +153,15 @@ describe('Admin Version Routes', () => {
       currentVersion: '1.2.3',
       latestVersion: '0.0.0',
       updateAvailable: false,
-      releaseUrl: 'https://github.com/nekoguntai-castle/sanctuary/releases',
+      releaseUrl: 'https://codeberg.org/nekoguntai-castle/sanctuary/releases',
       releaseName: '',
       publishedAt: '',
       releaseNotes: '',
+      prerelease: false,
     });
   });
 
-  it('logs warning and falls back when GitHub release fetch fails', async () => {
+  it('logs warning and falls back when Codeberg release fetch fails', async () => {
     const { app, warn } = await setupVersionRoute({
       fetchImpl: () => Promise.reject(new Error('network down')),
     });
@@ -164,8 +171,9 @@ describe('Admin Version Routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.latestVersion).toBe('1.2.3');
     expect(response.body.updateAvailable).toBe(false);
+    expect(response.body.prerelease).toBe(false);
     expect(warn).toHaveBeenCalledWith(
-      'Failed to fetch latest release from GitHub',
+      'Failed to fetch latest release from Codeberg',
       expect.objectContaining({
         error: expect.stringContaining('network down'),
       })

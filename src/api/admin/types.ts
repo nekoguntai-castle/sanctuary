@@ -226,6 +226,7 @@ export interface VersionInfo {
   releaseName: string;
   publishedAt: string;
   releaseNotes: string;
+  prerelease: boolean;
 }
 
 // ========================================

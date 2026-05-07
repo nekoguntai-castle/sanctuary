@@ -45,13 +45,21 @@ try {
   log.warn('Could not read version from package.json');
 }
 
-// Cache for GitHub release check (avoid rate limiting)
+// Codeberg (Forgejo API) is the source of truth for official releases.
+// /releases/latest filters out drafts and prereleases automatically, so RC
+// tags marked prerelease=true at creation time are correctly excluded.
+const RELEASE_API_URL =
+  'https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary/releases/latest';
+const RELEASES_PAGE_URL =
+  'https://codeberg.org/nekoguntai-castle/sanctuary/releases';
+
 let releaseCache: {
   latestVersion: string;
   releaseUrl: string;
   releaseName: string;
   publishedAt: string;
   body: string;
+  prerelease: boolean;
   checkedAt: number;
 } | null = null;
 const RELEASE_CACHE_TTL = 60 * 60 * 1000; // 1 hour
@@ -64,19 +72,16 @@ const RELEASE_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 router.get('/', asyncHandler(async (_req, res) => {
   const now = Date.now();
 
-  // Check if we need to fetch from GitHub
+  // Check if we need to refresh the cache
   if (!releaseCache || (now - releaseCache.checkedAt) > RELEASE_CACHE_TTL) {
     try {
-      const response = await fetch(
-        'https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest',
-        {
-          headers: {
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'Sanctuary-App',
-          },
-          signal: AbortSignal.timeout(10_000),
-        }
-      );
+      const response = await fetch(RELEASE_API_URL, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Sanctuary-App',
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
 
       if (response.ok) {
         const release = await response.json() as {
@@ -85,6 +90,7 @@ router.get('/', asyncHandler(async (_req, res) => {
           name?: string;
           published_at?: string;
           body?: string;
+          prerelease?: boolean;
         };
         releaseCache = {
           latestVersion: release.tag_name?.replace(/^v/, '') || '0.0.0',
@@ -92,11 +98,12 @@ router.get('/', asyncHandler(async (_req, res) => {
           releaseName: release.name || '',
           publishedAt: release.published_at || '',
           body: release.body || '',
+          prerelease: release.prerelease === true,
           checkedAt: now,
         };
       }
     } catch (fetchError) {
-      log.warn('Failed to fetch latest release from GitHub', { error: String(fetchError) });
+      log.warn('Failed to fetch latest release from Codeberg', { error: String(fetchError) });
     }
   }
 
@@ -120,10 +127,11 @@ router.get('/', asyncHandler(async (_req, res) => {
     currentVersion,
     latestVersion,
     updateAvailable,
-    releaseUrl: releaseCache?.releaseUrl || `https://github.com/nekoguntai-castle/sanctuary/releases`,
+    releaseUrl: releaseCache?.releaseUrl || RELEASES_PAGE_URL,
     releaseName: releaseCache?.releaseName || '',
     publishedAt: releaseCache?.publishedAt || '',
     releaseNotes: releaseCache?.body || '',
+    prerelease: releaseCache?.prerelease ?? false,
   });
 }));
 

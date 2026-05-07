@@ -15,6 +15,7 @@ export const adminCoreSettingsBackupSchemas = {
       releaseName: { type: 'string' },
       publishedAt: { type: 'string' },
       releaseNotes: { type: 'string' },
+      prerelease: { type: 'boolean' },
     },
     required: [
       'currentVersion',
@@ -24,6 +25,7 @@ export const adminCoreSettingsBackupSchemas = {
       'releaseName',
       'publishedAt',
       'releaseNotes',
+      'prerelease',
     ],
   },
   AdminSettings: {

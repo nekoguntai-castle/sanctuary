@@ -284,6 +284,7 @@ describe('useDashboardData', () => {
       releaseName: 'Stability',
       publishedAt: '2026-02-01T00:00:00.000Z',
       releaseNotes: 'Test notes',
+      prerelease: false,
     });
   });
 

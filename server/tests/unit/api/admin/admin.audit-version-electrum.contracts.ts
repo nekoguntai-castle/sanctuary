@@ -160,15 +160,16 @@ export function registerAdminAuditVersionElectrumTests(): void {
   describe('Version Check', () => {
     describe('GET /version', () => {
       it('should return current version info', async () => {
-        // Mock fetch for GitHub API
+        // Mock fetch for Codeberg (Forgejo) API
         global.fetch = vi.fn().mockResolvedValue({
           ok: true,
           json: async () => ({
             tag_name: 'v1.1.0',
-            html_url: 'https://github.com/nekoguntai-castle/sanctuary/releases/tag/v1.1.0',
+            html_url: 'https://codeberg.org/nekoguntai-castle/sanctuary/releases/tag/v1.1.0',
             name: 'Release 1.1.0',
             published_at: '2024-01-01T00:00:00Z',
             body: 'Release notes',
+            prerelease: false,
           }),
         }) as any;
 
@@ -189,7 +190,7 @@ export function registerAdminAuditVersionElectrumTests(): void {
         }
       });
 
-      it('should handle GitHub API failure gracefully', async () => {
+      it('should handle Codeberg API failure gracefully', async () => {
         global.fetch = vi.fn().mockRejectedValue(new Error('Network error')) as any;
 
         const req = createMockRequest({});

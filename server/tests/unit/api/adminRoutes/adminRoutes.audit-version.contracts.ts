@@ -147,10 +147,19 @@ export function registerAdminRoutesAuditVersionContracts(): void {
 
   describe('GET /api/v1/admin/version', () => {
     it('should return version info', async () => {
-      const response = await adminRoutesRequest().get('/api/v1/admin/version');
-
-      expect(response.status).toBe(200);
-      expect(response.body.currentVersion).toBeDefined();
+      // Stub the release lookup so the test does not depend on outbound
+      // network access to Codeberg; route returns its package.json version
+      // even when the upstream call fails.
+      const originalFetch = global.fetch;
+      global.fetch = (() =>
+        Promise.reject(new Error('test stub: no network'))) as typeof fetch;
+      try {
+        const response = await adminRoutesRequest().get('/api/v1/admin/version');
+        expect(response.status).toBe(200);
+        expect(response.body.currentVersion).toBeDefined();
+      } finally {
+        global.fetch = originalFetch;
+      }
     });
   });
 }
