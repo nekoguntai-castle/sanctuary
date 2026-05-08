@@ -116,17 +116,10 @@ assert_contains_in_order "$RC" \
   'scripts/ci/time-command.sh "auth-flow e2e"' \
   "auth-flow.test.sh"
 
-assert_contains_in_order "$RC" \
-  "release-candidate upgrade-test sequential composition" \
-  "Run upgrade fixtures sequentially" \
-  "scripts/ci/run-rc-upgrade-fixtures.sh"
-
-assert_contains_in_order "$RC" \
-  "release-candidate upgrade-full-recovery composition" \
-  "scripts/ci/run-with-log.sh" \
-  "scripts/ci/with-runner-lock.sh e2e" \
-  'scripts/ci/time-command.sh "upgrade full recovery"' \
-  "upgrade-install.test.sh --mode full"
+# release-candidate.yml deliberately does not run an upgrade matrix or
+# upgrade-full-recovery job — install-test.yml's serialized chain owns
+# upgrade coverage on tag pushes. See the "Upgrade coverage note"
+# comment block in release-candidate.yml.
 
 # --- install-test.yml -------------------------------------------------------
 IT="$REPO_ROOT/.github/workflows/install-test.yml"

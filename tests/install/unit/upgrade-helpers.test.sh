@@ -336,18 +336,15 @@ test_optional_profile_ports_follow_install_port_scope() {
 test_optional_profiles_is_in_release_coverage() {
   local install_contents
   local extended_fixtures
-  local rc_script
   local failures=0
-  local rc_count
 
   install_contents="$(cat "$PROJECT_ROOT/.github/workflows/install-test.yml")"
   extended_fixtures="$("$PROJECT_ROOT/scripts/ci/run-extended-upgrade-fixtures.sh" --list)"
-  # release-candidate.yml's previous matrix.fixture entries now live in
-  # the sequential RC fixture wrapper. Forgejo's act_runner ignores
-  # strategy.max-parallel and job-level concurrency, so the matrix
-  # collapsed into one job that calls run-rc-upgrade-fixtures.sh.
-  rc_script="$(cat "$PROJECT_ROOT/scripts/ci/run-rc-upgrade-fixtures.sh")"
-  rc_count=$(grep -c 'optional-profiles' "$PROJECT_ROOT/scripts/ci/run-rc-upgrade-fixtures.sh")
+  # install-test.yml is the canonical upgrade gate on tag pushes;
+  # release-candidate.yml no longer runs upgrade fixtures (the
+  # duplicate matrix it used to carry was unstable on the self-hosted
+  # Forgejo runner — see the "Upgrade coverage note" comment in
+  # release-candidate.yml).
 
   assert_contains "$install_contents" 'scripts/ci/run-extended-upgrade-fixtures.sh' \
     "install workflow should run the extended fixture script" || failures=1
@@ -355,9 +352,6 @@ test_optional_profiles_is_in_release_coverage() {
     "install extended upgrades should include optional profiles once" || failures=1
   assert_equals "1" "$(grep -c '^optional-profiles 30$' <<< "$extended_fixtures")" \
     "install extended upgrades should include optional profiles once" || failures=1
-  assert_contains "$rc_script" 'latest-stable|optional-profiles' \
-    "RC upgrade fixture script should include optional profiles" || failures=1
-  assert_equals "1" "$rc_count" "RC upgrade fixture script should include optional profiles once" || failures=1
 
   return "$failures"
 }

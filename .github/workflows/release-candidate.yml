@@ -525,154 +525,18 @@ jobs:
           docker compose down -v --remove-orphans || true
 
   # ============================================
-  # Upgrade Suite (release blocking)
+  # Upgrade coverage note
   # ============================================
-  # Single sequential job that runs every fixture in turn. The previous
-  # 6-lane matrix shape fan-outed onto the self-hosted Forgejo runner
-  # (runner.capacity=4) and concurrently saturated the dind docker daemon.
-  # Forgejo v12.10.1 honors neither strategy.max-parallel nor job-level
-  # concurrency, so the only reliable serialization is to keep everything
-  # in one job.
-  upgrade-test:
-    name: Upgrade Suite
-    runs-on: ubuntu-latest
-    needs: [fresh-install-test, container-health-test, auth-flow-test]
-    if: always() && needs.fresh-install-test.result == 'success'
-    timeout-minutes: 360
-    env:
-      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-rc
-      SANCTUARY_CI_DEBUG_TRACE: '1'
-      SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE: ${{ github.event.inputs.upgrade_source_ref || inputs.upgrade_source_ref || '' }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
-          fetch-depth: 0
-          clean: false
-
-      - name: Pre-flight diagnostics
-        if: always()
-        run: |
-          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
-            scripts/ci/write-preflight-diagnostics.sh
-
-      - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
-
-      - name: Check Docker
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
-            scripts/ci/wait-for-docker.sh
-
-      - name: Run upgrade fixtures sequentially
-        run: scripts/ci/run-rc-upgrade-fixtures.sh
-
-      - name: Upload upgrade artifacts
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: upgrade-rc-suite-${{ github.run_id }}
-          path: .tmp/upgrade-artifacts/
-          retention-days: 14
-          if-no-files-found: ignore
-
-      - name: Upload diagnostic logs
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: diag-upgrade-rc-suite-${{ github.run_id }}
-          path: ${{ env.JOB_LOG_DIR }}
-          retention-days: 14
-          if-no-files-found: ignore
-
-  upgrade-full-recovery-test:
-    name: Upgrade Full Recovery
-    runs-on: ubuntu-latest
-    concurrency:
-      group: sanctuary-runner-e2e-${{ github.ref }}
-      cancel-in-progress: false
-    needs: [fresh-install-test, upgrade-test]
-    if: |
-      always() && needs.fresh-install-test.result == 'success' &&
-      (github.event.inputs.include_full_upgrade_recovery == 'true' ||
-       inputs.include_full_upgrade_recovery == true)
-    timeout-minutes: 90
-    env:
-      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-full-recovery
-      SANCTUARY_CI_DEBUG_TRACE: '1'
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
-          fetch-depth: 0
-
-      # docker/setup-buildx-action removed (see fresh-install-test rationale).
-
-      - name: Pre-flight diagnostics
-        if: always()
-        run: |
-          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
-            scripts/ci/write-preflight-diagnostics.sh
-
-      - name: Make test scripts executable
-        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh scripts/ci/*.sh
-
-      - name: Check Docker
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
-            scripts/ci/wait-for-docker.sh
-
-      - name: Run full recovery upgrade test
-        env:
-          HTTPS_PORT: ${{ env.HTTPS_PORT }}
-          HTTP_PORT: ${{ env.HTTP_PORT }}
-          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || inputs.upgrade_source_ref || 'latest-stable' }}
-          SANCTUARY_UPGRADE_FIXTURE: baseline
-          SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/full-recovery
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade-full-recovery.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "upgrade full recovery" \
-            ./tests/install/e2e/upgrade-install.test.sh --mode full --fixture baseline --verbose
-
-      - name: Show container logs on failure
-        if: failure()
-        run: |
-          docker compose ps || true
-          docker compose logs --tail 50 postgres 2>&1 || true
-          docker compose logs --tail 100 backend 2>&1 || true
-
-      - name: Upload upgrade artifacts
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: upgrade-full-recovery-${{ github.run_id }}
-          path: .tmp/upgrade-artifacts/full-recovery
-          retention-days: 14
-          if-no-files-found: ignore
-
-      - name: Upload diagnostic logs
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: diag-upgrade-full-recovery-${{ github.run_id }}
-          path: ${{ env.JOB_LOG_DIR }}
-          retention-days: 14
-          if-no-files-found: ignore
-
-      - name: Cleanup
-        if: always()
-        run: docker compose down -v --remove-orphans || true
+  # release-candidate.yml deliberately does NOT run an upgrade matrix.
+  # install-test.yml's serialized chain (Upgrade Baseline + Upgrade
+  # Extended + Upgrade Extended Fixtures) is the canonical upgrade
+  # gate — it fires on the same tag push, runs all six fixtures
+  # sequentially against the same self-hosted runner, and has a
+  # decade of stability behind it. Duplicating that coverage here
+  # produced a long history of false reds (see commits leading up to
+  # v0.8.52) because Forgejo's act_runner does not honor matrix
+  # max-parallel or job-level concurrency, so a parallel matrix in
+  # this workflow saturated the dind docker daemon every run.
 
   # ============================================
   # Validation Summary
@@ -680,7 +544,7 @@ jobs:
   validation-summary:
     name: Validation Summary
     runs-on: ubuntu-latest
-    needs: [unit-tests, fresh-install-test, container-health-test, auth-flow-test, upgrade-test, upgrade-full-recovery-test]
+    needs: [unit-tests, fresh-install-test, container-health-test, auth-flow-test]
     if: always()
 
     steps:
@@ -727,37 +591,20 @@ jobs:
             ALL_PASSED=false
           fi
 
-          # Upgrade matrix
-          if [ "${{ needs.upgrade-test.result }}" == "success" ]; then
-            echo "| Upgrade Matrix | :white_check_mark: Passed | ~10-20m per lane |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| Upgrade Matrix | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
-            ALL_PASSED=false
-          fi
-
-          # Full recovery upgrade lane
-          if [ "${{ needs.upgrade-full-recovery-test.result }}" == "success" ]; then
-            echo "| Upgrade Full Recovery | :white_check_mark: Passed | ~20-35m |" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.upgrade-full-recovery-test.result }}" == "skipped" ]; then
-            echo "| Upgrade Full Recovery | :arrow_right: Skipped | enable include_full_upgrade_recovery to run |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| Upgrade Full Recovery | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
-            ALL_PASSED=false
-          fi
+          # Upgrade coverage lives in install-test.yml (Upgrade Baseline +
+          # Upgrade Extended + Upgrade Extended Fixtures). It fires on the
+          # same tag push and is the canonical upgrade gate — see comment
+          # above where the duplicate matrix used to live.
+          echo "| Upgrade Suite | :information_source: See install-test.yml | covers all 6 fixtures |" >> $GITHUB_STEP_SUMMARY
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Core tests determine release approval. Upgrade matrix is now a
-          # release-blocking core lane because upgrade regressions can lock
-          # operators out of existing nodes.
+          # Core tests determine release approval here.
           CORE_PASSED=true
           if [ "${{ needs.unit-tests.result }}" != "success" ] || \
-             [ "${{ needs.fresh-install-test.result }}" != "success" ] || \
-             [ "${{ needs.upgrade-test.result }}" != "success" ] || \
-             { [ "${{ needs.upgrade-full-recovery-test.result }}" != "success" ] && \
-               [ "${{ needs.upgrade-full-recovery-test.result }}" != "skipped" ]; }; then
+             [ "${{ needs.fresh-install-test.result }}" != "success" ]; then
             CORE_PASSED=false
           fi
 
@@ -789,12 +636,11 @@ jobs:
 
       - name: Check validation result
         run: |
-          # Core tests that MUST pass for release
+          # Core tests that MUST pass for release. Upgrade gates live in
+          # install-test.yml's Install Test Summary — see comment near the
+          # removed upgrade-test job for rationale.
           if [ "${{ needs.unit-tests.result }}" != "success" ] || \
-             [ "${{ needs.fresh-install-test.result }}" != "success" ] || \
-             [ "${{ needs.upgrade-test.result }}" != "success" ] || \
-             { [ "${{ needs.upgrade-full-recovery-test.result }}" != "success" ] && \
-               [ "${{ needs.upgrade-full-recovery-test.result }}" != "skipped" ]; }; then
+             [ "${{ needs.fresh-install-test.result }}" != "success" ]; then
             echo "::error::Release candidate validation FAILED - core tests did not pass."
             exit 1
           fi
