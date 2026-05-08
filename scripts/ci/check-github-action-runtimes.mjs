@@ -556,8 +556,40 @@ function inspectTestSuiteWorkflowName(workflow, relativePath, state) {
 }
 
 function inspectFullLaneParallelization(workflow, relativePath, state) {
-  requireJobBody(workflow, relativePath, state, 'full-frontend-coverage-shard-1');
-  requireJobBody(workflow, relativePath, state, 'full-frontend-coverage-shard-2');
+  const coverageShard1Body = requireJobBody(
+    workflow,
+    relativePath,
+    state,
+    'full-frontend-coverage-shard-1',
+  );
+  forbidJobNeeds(
+    coverageShard1Body,
+    relativePath,
+    state,
+    'full-frontend-coverage-shard-1',
+    'full-frontend-coverage-shard-1',
+  );
+  const coverageShard2Body = requireJobBody(
+    workflow,
+    relativePath,
+    state,
+    'full-frontend-coverage-shard-2',
+  );
+  requireJobNeeds(
+    coverageShard2Body,
+    relativePath,
+    state,
+    'full-frontend-coverage-shard-2',
+    'full-frontend-coverage-shard-1',
+  );
+  requireJobText(
+    coverageShard2Body,
+    relativePath,
+    state,
+    'full-frontend-coverage-shard-2',
+    "needs.full-frontend-coverage-shard-1.result == 'success'",
+    'must run shard 2 only after shard 1 succeeds to avoid concurrent V8 coverage cleanup and worker crashes',
+  );
 
   const coverageMergeBody = requireJobBody(
     workflow,

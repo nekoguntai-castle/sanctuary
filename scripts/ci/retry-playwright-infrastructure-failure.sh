@@ -5,15 +5,27 @@ usage() {
   cat >&2 <<'EOF'
 Usage: scripts/ci/retry-playwright-infrastructure-failure.sh LABEL COMMAND [ARG...]
 
-Retries COMMAND only when Playwright fails with a native/browser infrastructure
-signature such as exit 139 or segmentation-fault text. Test assertion failures
-and ordinary Playwright failures are not retried.
+Retries COMMAND only when Playwright fails, or reports a flaky pass, with a
+native/browser infrastructure signature such as exit 139, segmentation-fault
+text, or a browser target crash. Test assertion failures and ordinary
+Playwright failures are not retried.
 EOF
 }
 
 fail() {
   echo "retry-playwright-infrastructure-failure: $*" >&2
   exit 1
+}
+
+has_playwright_infrastructure_signature() {
+  local log_file="$1"
+  if grep -Eiq \
+    'Segmentation fault|core dumped|browser (has )?closed unexpectedly|browser process .*exited|Target page, context or browser has been closed|Target crashed|(^|[^[:alnum:]_])EPIPE([^[:alnum:]_]|$)|ERR_IPC_CHANNEL_CLOSED' \
+    "$log_file"; then
+    return 0
+  fi
+
+  return 1
 }
 
 is_retryable_playwright_infrastructure_failure() {
@@ -24,13 +36,7 @@ is_retryable_playwright_infrastructure_failure() {
     return 0
   fi
 
-  if grep -Eiq \
-    'Segmentation fault|core dumped|browser (has )?closed unexpectedly|browser process .*exited|Target page, context or browser has been closed|(^|[^[:alnum:]_])EPIPE([^[:alnum:]_]|$)|ERR_IPC_CHANNEL_CLOSED' \
-    "$log_file"; then
-    return 0
-  fi
-
-  return 1
+  has_playwright_infrastructure_signature "$log_file"
 }
 
 main() {
@@ -58,20 +64,28 @@ main() {
     status="${PIPESTATUS[0]}"
     set -e
 
-    if [ "$status" -eq 0 ]; then
+    if [ "$status" -eq 0 ] && ! has_playwright_infrastructure_signature "$log_file"; then
       return 0
     fi
 
-    if ! is_retryable_playwright_infrastructure_failure "$status" "$log_file"; then
+    if [ "$status" -ne 0 ] && ! is_retryable_playwright_infrastructure_failure "$status" "$log_file"; then
       return "$status"
     fi
 
     if [ "$attempt" -eq "$attempts" ]; then
+      if [ "$status" -eq 0 ]; then
+        echo "retry-playwright-infrastructure-failure: ${label} completed with retryable Playwright infrastructure signature after ${attempts} attempt(s)" >&2
+        return 1
+      fi
       echo "retry-playwright-infrastructure-failure: ${label} failed with retryable Playwright infrastructure signature after ${attempts} attempt(s)" >&2
       return "$status"
     fi
 
-    echo "retry-playwright-infrastructure-failure: retrying ${label} after retryable Playwright infrastructure failure (attempt $((attempt + 1))/${attempts})" >&2
+    if [ "$status" -eq 0 ]; then
+      echo "retry-playwright-infrastructure-failure: retrying ${label} after Playwright reported success with retryable infrastructure signature (attempt $((attempt + 1))/${attempts})" >&2
+    else
+      echo "retry-playwright-infrastructure-failure: retrying ${label} after retryable Playwright infrastructure failure (attempt $((attempt + 1))/${attempts})" >&2
+    fi
     sleep $((attempt * 10))
   done
 }

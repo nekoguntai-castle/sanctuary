@@ -76,6 +76,41 @@ retry_setup_command() {
   "$@"
 }
 
+install_lizard() {
+  rm -rf "$LIZARD_VENV"
+  python3 -m venv --clear "$LIZARD_VENV" || return "$?"
+  "$LIZARD_VENV/bin/python" -m pip install --disable-pip-version-check --upgrade pip || return "$?"
+  "$LIZARD_VENV/bin/python" -m pip install --disable-pip-version-check --requirement "$LIZARD_REQUIREMENTS_FILE"
+}
+
+retry_lizard_bootstrap() {
+  local attempts="${SANCTUARY_RETRY_ATTEMPTS:-3}"
+  local delay_seconds="${SANCTUARY_RETRY_DELAY_SECONDS:-10}"
+
+  if [[ ! "$attempts" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'SANCTUARY_RETRY_ATTEMPTS must be a positive integer\n' >&2
+    return 1
+  fi
+  if [[ ! "$delay_seconds" =~ ^[0-9]+$ ]]; then
+    printf 'SANCTUARY_RETRY_DELAY_SECONDS must be a non-negative integer\n' >&2
+    return 1
+  fi
+
+  local attempt status
+  for attempt in $(seq 1 "$attempts"); do
+    printf 'lizard bootstrap, attempt %s\n' "$attempt"
+    status=0
+    install_lizard || status="$?"
+    if [[ "$status" -eq 0 ]]; then
+      return 0
+    fi
+    if [[ "$attempt" -eq "$attempts" ]]; then
+      return "$status"
+    fi
+    sleep $((attempt * delay_seconds))
+  done
+}
+
 gitleaks_asset_platform() {
   local os
   local arch
@@ -181,12 +216,7 @@ ensure_lizard_bin() {
     return 127
   fi
 
-  retry_setup_command "lizard venv creation" \
-    python3 -m venv --clear "$LIZARD_VENV"
-  retry_setup_command "lizard pip upgrade" \
-    "$LIZARD_VENV/bin/python" -m pip install --disable-pip-version-check --upgrade pip
-  retry_setup_command "lizard dependency install" \
-    "$LIZARD_VENV/bin/python" -m pip install --disable-pip-version-check --requirement "$LIZARD_REQUIREMENTS_FILE"
+  retry_lizard_bootstrap
 }
 
 ensure_semgrep_bin() {

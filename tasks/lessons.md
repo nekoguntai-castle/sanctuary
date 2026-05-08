@@ -54,7 +54,7 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 
 ## Use Stable Worker Pools For Frontend Coverage CI
 
-**Rule:** Frontend coverage shard jobs in Forgejo CI should run Vitest with the fork pool, one worker, and no file parallelism unless a later runner rehearsal proves broader parallelism stable.
+**Rule:** Frontend coverage shard jobs in Forgejo CI should run Vitest with the fork pool, one worker, no file parallelism, and an explicit long teardown timeout unless a later runner rehearsal proves broader parallelism stable.
 
 **Why:** The post-merge `main` lane kept backend and frontend typechecks green, then failed in frontend coverage after Vitest reported passed test files but hit fork-worker startup and termination errors.
 
@@ -62,10 +62,63 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 
 - Put worker settings in the shard script, not only in workflow YAML, so local and remote coverage shards share the same execution contract.
 - Prefer serialized forks for frontend jsdom/V8 coverage. Serialized threads removed fork-worker startup errors but caused repeat native segfaults on the Forgejo runner.
+- Give coverage shard workers an explicit teardown timeout in `vitest.coverage-shard.config.ts`; otherwise Vitest can report passed files, then fail the shard because fork workers were slow to terminate.
+- Give each coverage shard its own `coverage.reportsDirectory`; Vitest cleans that directory at startup, so concurrent shards sharing it can delete another shard's V8 temp coverage files.
+- Keep the two full frontend coverage shard jobs sequential on Forgejo. Even with separate report directories, concurrent V8 coverage shards can exhaust or destabilize fork workers and end in native exit 139 after otherwise passing tests.
 - Assert those worker flags in script-level regression tests; do not rely on brittle workflow line numbers.
-- Retry only native Vitest segfault exits, such as 139, at the shard command boundary; do not retry ordinary test assertion or coverage failures.
+- Retry only native Vitest infrastructure signatures, such as exit 139 and worker/IPC failures, at the shard command boundary; do not retry ordinary test assertion or coverage failures.
 - Keep 100% coverage thresholds intact. Worker-pool failures are CI execution architecture problems, not permission to lower the gate.
 - Classify failures by signature before editing tests: assertion failures, coverage misses, workflow graph failures, native process exits, and worker startup failures need different fixes.
+
+## Prove CI Shard Failures From Logs Before Mitigating
+
+**Rule:** For noisy CI shard failures, collect the finalized or live task logs and identify the first causal failure before adding retries, timeouts, or worker-pool changes.
+
+**Why:** A long-running frontend coverage shard looked like a timeout-wrapper problem, but the user correctly pointed out that the real work was to inspect the failing shard logs first.
+
+**How to apply:**
+
+- Pull recent failing task logs and compare them with passing task logs for the same lane.
+- Re-run the named failing test files locally to distinguish product regressions from corrupted worker environments.
+- Treat dependency-read corruption, impossible missing symbols, and jsdom prototype corruption as substrate evidence until a focused local repro proves otherwise.
+- Do not choose a mitigation until the log timeline explains whether the first failure is a test assertion, dependency mutation, worker crash, runner cancellation, or workflow graph issue.
+
+## Treat Playwright Flaky Browser Crashes As Infrastructure Failures
+
+**Rule:** Playwright retries can turn a browser target crash into a "flaky" pass, but CI wrappers should still retry the command when the log contains native/browser crash signatures.
+
+**Why:** A render E2E job reported `41 passed, 2 flaky`, then the enclosing Forgejo run step exited 139. The log showed `Target crashed` during one Playwright retry, so accepting the successful command let a dirty browser/native teardown crash the job after the wrapper returned.
+
+**How to apply:**
+
+- Inspect the E2E log before changing assertions; distinguish a real expectation failure from `Target crashed`, browser-closed, IPC, or segfault text.
+- Retry a Playwright command when its log contains a browser/native infrastructure signature, even if Playwright itself exits 0 after retrying the test.
+- If the final retry still contains the infrastructure signature, fail with a clear wrapper message instead of reporting a green test body followed by an unexplained runner exit.
+
+## Retry Clean Lint Workspaces As A Unit
+
+**Rule:** If Forgejo lint fails inside `node_modules` with TypeScript parser syntax errors, native segfaults, or impossible loader errors, retry the whole clean lint workspace instead of rerunning lint against the same install.
+
+**Why:** Reusing one `node_modules` tree let transient dependency-read or native loader corruption poison every lint retry. The log showed no ESLint rule failure; it failed inside `node_modules/typescript/lib/typescript.js` at different offsets and once with exit 139.
+
+**How to apply:**
+
+- Keep the lint job under the `node-toolchain` lock.
+- Resolve workspace and temp paths through `provider-context.sh`; direct `GITHUB_WORKSPACE` or `RUNNER_TEMP` references fail the provider leak gate.
+- For each retry, create a fresh temp clone, run `npm ci`, run the full lint gate, then remove that temp workspace.
+- Treat real ESLint rule failures as still blocking; retrying the full workspace only separates product lint failures from runner/toolchain corruption.
+
+## Retry Quality Tool Bootstraps As A Unit
+
+**Rule:** When a quality tool venv fails while importing pip or a vendored dependency, recreate the whole venv on retry instead of rerunning pip inside the same venv.
+
+**Why:** A lizard job retried `pip install --upgrade pip` three times in one corrupted venv and failed on the same invalid UTF-8 byte inside pip's vendored `chardet` each time.
+
+**How to apply:**
+
+- Remove the tool venv before each bootstrap attempt.
+- Run venv creation, pip upgrade, and dependency install as one retryable operation.
+- Keep tool-result thresholds separate from bootstrap failures; only complexity warnings should count against the lizard baseline.
 
 ## Use Workspace-Absolute Paths For Repo-Root CI Helpers
 

@@ -14,6 +14,9 @@ const baseCoverage =
   typeof baseTest.coverage === 'object' && baseTest.coverage !== null
     ? baseTest.coverage
     : {};
+const reportsDirectory =
+  process.env.SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR ??
+  './coverage-shards/shard-local';
 
 export default defineConfig({
   ...base,
@@ -22,7 +25,7 @@ export default defineConfig({
     coverage: {
       ...baseCoverage,
       reporter: ['json-summary'],
-      reportsDirectory: './coverage-shards',
+      reportsDirectory,
       thresholds: {
         branches: 0,
         functions: 0,

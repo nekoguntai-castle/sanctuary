@@ -1115,11 +1115,12 @@ jobs:
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
+      needs.full-frontend-coverage-shard-1.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1]
 
     steps:
       - name: Checkout repository

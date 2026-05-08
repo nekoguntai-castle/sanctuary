@@ -1,3 +1,60 @@
+# Active Task: Open PR Triage And Delivery 2026-05-07
+
+Status: in progress; render E2E infrastructure failure diagnosed from finalized Forgejo logs and wrapper fix underway
+
+Goal: review every open Forgejo PR, merge the ones that still make sense, and close/remove PRs that are outdated or no longer useful.
+
+## Plan
+
+- [x] Confirm the local checkout, remote, and Forgejo API access without disturbing unrelated local work.
+- [x] Inventory open PRs with base/head branches, age, draft state, review state, mergeability, checks, and relationship to current `main`.
+- [x] Decide for each PR whether it should merge, needs fixing/retry, or should be closed as outdated.
+- [x] Merge viable PRs only after required checks and mergeability are proven, then verify `main` contains the resulting commit.
+- [x] Close outdated PRs and delete PR branches only when safe and after the PR state is verified.
+- [x] Classify the frontend coverage shard failures from finalized and live logs before choosing the fix.
+- [x] Implement the smallest fix that matches the confirmed root cause.
+- [x] Re-run focused local verification for the coverage shard script/config/workflow guards.
+- [ ] Open, monitor, merge the follow-up PR, then verify the post-merge `main` full lane.
+- [ ] Record final PR outcomes, verification, cleanup, and residual risks.
+
+## Review
+
+- Initial open PRs were #296 and #297. #296 was outdated/unsafe to carry forward because it bundled dependency churn with red CI; deleting `chore/grade-tooling-and-e2e-split` closed it without merge, and the local branch was removed.
+- #297 remains viable. Pushed `f57a8730` to stabilize diagnostics/vector checks, then pushed `9708faba` to harden Code Quality and frontend typecheck retries after current-head CI exposed root-runner and native-toolchain flakes.
+- Forgejo then exposed an AI proxy Vitest worker-fork infrastructure failure after all AI proxy tests passed. Pushed `c79857e3` to run that lane through the existing Vitest infrastructure retry helper and stable thread-pool flags.
+- Forgejo then exposed a full build-check backend `tsc` native exit 139 across three attempts while local server build passed. Pushed `c9878324` to give browser/build-check backend builds the same five-attempt retry budget used by server TypeScript checks.
+- Local verification for the latest #297 head passed: full CI-classifier body; `bash scripts/quality/lizard-only.sh`; `npm run check:github-action-runtimes`; `npm run typecheck:app`; `npm run typecheck:tests`; AI proxy Vitest with stable pool; retry helper regression; `git diff --check`; and pre-commit frontend Vitest suite, 461 files / 6,015 tests.
+- Local verification for the backend build follow-up passed: `npm --prefix server run build --ignore-scripts`; `npm --prefix server run typecheck:tests`; workflow composition guard; `git diff --check`; and pre-commit frontend Vitest suite, 461 files / 6,015 tests.
+- #297 merged as squash commit `2e02e932c2de2ce5f844ccc88ee77056d65ad9bb`; local `main` was fast-forwarded and both the remote/local `feat/ci-diagnostics-harness` branches were deleted.
+- Post-merge `main` exposed a full browser E2E Playwright/native exit 139 before test results were produced. Opened follow-up PR #298 from `fix/playwright-e2e-infra-retry` with `d014f8c2` to retry only Playwright infrastructure signatures.
+- Local verification for #298 passed: new Playwright retry helper test; full CI-classifier body; workflow composition guard; `git diff --check`; and pre-commit frontend Vitest suite, 461 files / 6,015 tests.
+- PR #298 initially proved the Playwright retry path, then exposed a frontend coverage merge Vitest/native exit 139 after both coverage shards completed. Pushed `df60ddf6` to run the coverage merge through the existing Vitest infrastructure retry helper under the `node-toolchain` lock.
+- Local verification for the #298 coverage-merge follow-up passed: `bash tests/ci/retry-vitest-infrastructure-failure.test.sh`; `bash tests/ci/check-workflow-composition.test.sh`; `git diff --check`; and pre-commit frontend Vitest suite, 461 files / 6,015 tests.
+- Forgejo verification for #298 head `df60ddf6f8320debfe9f4d960d5b4540536d668d` passed across Code Quality Required Checks and Test Suite Full Test Summary, including full browser/render E2E, frontend coverage shards, frontend coverage merge, frontend aggregate, backend coverage, build, and mutation lanes.
+- #298 merged as squash commit `492d5052cc03a9e17b198b9a1d4c099b7740633f`; local `main` was fast-forwarded and both the remote/local `fix/playwright-e2e-infra-retry` branches were deleted.
+- Post-merge `main` verification for `492d5052cc03a9e17b198b9a1d4c099b7740633f` passed: Architecture succeeded and Test Suite Full Test Summary succeeded. The open Forgejo PR list is empty.
+- PR #299 appeared while #298 post-merge `main` was being monitored. It was small and viable: coverage summary tooling plus npm audit metadata, with Code Quality Required Checks and Test Suite Full Test Summary green on PR head `df3285de9b1f807bdccfe34a416eb42e64287298`.
+- #299 merged as squash commit `081c8cfab3154403de84508cb9fbb771356c2395`; local `main` was fast-forwarded and both the remote/local `chore/grade-coverage-parser-and-audit-fix` branches were deleted.
+- Post-merge `main` for `081c8cfab3154403de84508cb9fbb771356c2395` exposed `Full Frontend Coverage Shard 2/2` worker-fork failures after three retry attempts. Logs showed repeated `Worker forks emitted error` / `Worker exited unexpectedly` and fork-worker termination timeouts after otherwise passing files, so the follow-up fix is on `fix/frontend-coverage-fork-teardown`.
+- PR #300 added an explicit Vitest coverage-shard teardown timeout and a docs typecheck retry, then merged as squash commit `df7b48d8fb71202443003fe6af4e2755b31b3be4`; local `main` was fast-forwarded and both the remote/local `fix/frontend-coverage-fork-teardown` branches were deleted.
+- Post-merge `main` for `df7b48d8fb71202443003fe6af4e2755b31b3be4` kept all non-coverage lanes green, but both frontend coverage shards remained in long-running worker timeout windows. The next step is definitive log classification, not another speculative shard wrapper change.
+- Finalized shard logs for tasks `17272` and `17273` showed both frontend coverage shards starting in `/workspace/nekoguntai-castle/sanctuary` at `2026-05-07T23:21:12Z`, then failing with worker termination timeouts, native V8 fatal errors, and impossible dependency parse errors.
+- Local controls passed for the named failing test files, a single full shard under local Node `24.14.1`, and a single full shard inside the act image with Node `24.15.0`, so the failure was not a deterministic product test failure or simply the Node patch version.
+- A local two-container reproduction running both shards concurrently against the same workspace failed with Vitest's explicit error that `/workspace/coverage-shards/.tmp-1-2` was removed while shard 1 was running, proving the shared `coverage.reportsDirectory` cleanup as the concrete concurrency bug.
+- The fix gives each shard a shard-specific `coverage.reportsDirectory` and cleans only that shard's directory before each attempt. The same two-container concurrent reproduction now passes both shards under the act image and Node `24.15.0`.
+- Focused local verification passed: `bash -n scripts/ci/frontend-coverage-shard.sh tests/ci/frontend-coverage-scripts.test.sh`; `bash tests/ci/frontend-coverage-scripts.test.sh`; two concurrent act-image coverage shards; act-image `npm run test:coverage:merge -- .vitest-reports`; `npm run typecheck:app`; `npm run typecheck:tests`; direct lizard with `-C 15` on touched logic files; and `git diff --check`.
+- PR #303 initially proved the shared report directory fix was necessary but not sufficient on Forgejo. Shard task `17465` no longer reported removed coverage directories, but still hit repeated fork-worker termination failures and final exit 139 while shard `17464` was running concurrently.
+- The follow-up adjustment serializes full coverage shard 2 after shard 1 succeeds, matching the runner evidence that concurrent V8 coverage shards destabilize fork workers on Forgejo even after report directories are isolated.
+- Local verification for the serialization follow-up passed: `npm run check:github-action-runtimes`; `node tests/ci/check-github-action-runtimes.test.mjs`; `bash tests/ci/check-workflow-composition.test.sh`; direct lizard with `-C 15` on touched logic files; and `git diff --check`.
+- PR #303 head `284f8974` then exposed a separate Code Quality lint infrastructure failure. The lint log had no ESLint rule failure; it failed inside `node_modules/typescript/lib/typescript.js` with parser syntax errors at different offsets and one native `Segmentation fault`, so the fix retries the whole clean lint workspace instead of rerunning against one possibly corrupted install.
+- Local verification for the lint follow-up passed: `SANCTUARY_LINT_ATTEMPTS=1 SANCTUARY_LINT_DELAY_SECONDS=0 bash scripts/ci/run-quality-lint.sh`; `bash -n scripts/ci/run-quality-lint.sh tests/ci/run-quality-lint.test.sh`; `bash tests/ci/run-quality-lint.test.sh`; `npm run check:github-action-runtimes`; `bash tests/ci/check-workflow-composition.test.sh`; direct lizard with `-C 15` on touched CI helper files; and `git diff --check`.
+- PR #303 head `18134486` then exposed a CI classifier provider-leak failure because the lint helper used GitHub-compatible env names directly. The helper now resolves workspace and temp paths through `provider-context.sh`; local provider-leak verification passes.
+- The same head exposed a lizard bootstrap infrastructure failure, not a complexity regression: pip failed importing vendored `chardet` from the lizard venv with the same invalid UTF-8 byte on every retry. The bootstrap now recreates the whole lizard venv for each retry attempt, and the regression test covers a pip failure followed by a clean retry.
+- PR #303 head `c6566e8b` proved the serialized coverage topology in Forgejo: shard 1 succeeded first, shard 2 started afterward and succeeded, then coverage merge, `Full Frontend Tests`, and `Full Test Summary` all passed. The only remaining red status on that head was `Secret scan (gitleaks)`, which failed before checkout because a runner cached `actions/checkout` bundle contained an invalid byte in `dist/index.js`.
+- PR #303 head `056dde3e` cleared Code Quality, but task `17672` (`Full Render E2E Tests`) failed after the render log showed `41 passed, 2 flaky` followed by Forgejo exit 139. The first causal E2E infra signature in that log was `Error: locator.click: Target crashed`; the existing Playwright wrapper only retried non-zero command exits, so it accepted a Playwright-flaky browser crash before the enclosing step died.
+
+---
+
 # Active Task: Architecture Failure And Runner Bootstrap 2026-05-07
 
 Status: complete; Architecture investigated and runner bootstrap codified

@@ -14,16 +14,40 @@ is_positive_integer() {
   [[ "${1:-}" =~ ^[1-9][0-9]*$ ]]
 }
 
+is_safe_relative_path() {
+  case "${1:-}" in
+    ''|/*|.|..|../*|*/..|*/../*)
+      return 1
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
+coverage_reports_dir_for_shard() {
+  local shard_index="$1"
+  local shard_total="$2"
+
+  printf '%s' "${SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR:-coverage-shards/shard-${shard_index}-${shard_total}}"
+}
+
 run_vitest_shard_once() {
   local vitest_bin="$1"
   local shard_index="$2"
   local shard_total="$3"
   local expected_blob="$4"
+  local coverage_reports_dir
+  coverage_reports_dir="$(coverage_reports_dir_for_shard "$shard_index" "$shard_total")"
+
+  is_safe_relative_path "$coverage_reports_dir" || \
+    fail 'SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR must be a safe relative path'
 
   rm -f "$expected_blob"
-  rm -rf coverage-shards
+  rm -rf "$coverage_reports_dir"
+  mkdir -p "$(dirname "$coverage_reports_dir")"
 
-  "$vitest_bin" run \
+  SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR="$coverage_reports_dir" "$vitest_bin" run \
     --pool forks \
     --maxWorkers=1 \
     --no-file-parallelism \

@@ -59,10 +59,12 @@ main() {
 
   local fake_vitest_bin="$TEST_TEMP_DIR/fake-vitest"
   local captured_args="$TEST_TEMP_DIR/vitest-args"
+  local captured_reports_dir="$TEST_TEMP_DIR/coverage-reports-dir"
   cat >"$fake_vitest_bin" <<'FAKE_VITEST'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" >"$CAPTURED_VITEST_ARGS"
+printf '%s\n' "${SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR:-}" >"$CAPTURED_COVERAGE_REPORTS_DIR"
 mkdir -p .vitest-reports
 : > .vitest-reports/blob-1-2.json
 FAKE_VITEST
@@ -70,7 +72,10 @@ FAKE_VITEST
 
   (
     cd "$TEST_TEMP_DIR"
-    CAPTURED_VITEST_ARGS="$captured_args" VITEST_BIN="$fake_vitest_bin" bash "$SHARD_SCRIPT" 1 2
+    CAPTURED_COVERAGE_REPORTS_DIR="$captured_reports_dir" \
+      CAPTURED_VITEST_ARGS="$captured_args" \
+      VITEST_BIN="$fake_vitest_bin" \
+      bash "$SHARD_SCRIPT" 1 2
   )
   assert_file_contains '--pool' "$captured_args"
   assert_file_contains 'forks' "$captured_args"
@@ -78,6 +83,12 @@ FAKE_VITEST
   assert_file_contains '--no-file-parallelism' "$captured_args"
   assert_file_contains '--shard' "$captured_args"
   assert_file_contains '1/2' "$captured_args"
+  assert_file_equals 'coverage-shards/shard-1-2' "$captured_reports_dir"
+
+  assert_fails_with 'SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR must be a safe relative path' \
+    env VITEST_BIN="$fake_vitest_bin" \
+      SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR=/tmp/not-safe \
+      bash "$SHARD_SCRIPT" 1 2
 
   local retry_vitest_bin="$TEST_TEMP_DIR/retry-vitest"
   local retry_count="$TEST_TEMP_DIR/retry-count"

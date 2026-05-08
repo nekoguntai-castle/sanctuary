@@ -88,32 +88,7 @@ jobs:
           lockfile-glob: package-lock.json
 
       - name: Run lint in clean workspace
-        run: |
-          scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
-          set -euo pipefail
-          source_workspace="${GITHUB_WORKSPACE:-$PWD}"
-          lint_tmp_parent="${RUNNER_TEMP:-/tmp}"
-          mkdir -p "$lint_tmp_parent"
-          lint_workdir="$(mktemp -d "$lint_tmp_parent/sanctuary-lint.XXXXXX")"
-          trap 'rm -rf "$lint_workdir" || echo "::warning::Could not fully remove lint temp workspace"' EXIT
-
-          git clone --quiet --no-hardlinks "$source_workspace" "$lint_workdir/repo"
-          cd "$lint_workdir/repo"
-          for attempt in 1 2 3; do
-            echo "npm ci (lint), attempt $attempt"
-            # Tell npm to use the runner-shared cache that the
-            # cache-npm composite restored above; misses fall back to
-            # downloading and the post-step persists the new entries.
-            if npm ci --audit=false --fund=false; then
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-            sleep $((attempt * 10))
-          done
-          scripts/ci/retry-command.sh "quality lint" npm run lint
-          NODE_LOCK
+        run: scripts/ci/with-runner-lock.sh node-toolchain bash scripts/ci/run-quality-lint.sh
 
   lockfile-peer-resolution:
     name: Lockfile peer resolution
@@ -412,6 +387,7 @@ jobs:
           bash -n scripts/ci/report-workflow-trends.sh
           bash -n scripts/ci/report-timing-notices.sh
           bash -n scripts/ci/retry-command.sh
+          bash -n scripts/ci/run-quality-lint.sh
           bash -n scripts/ci/redactor.sh
           bash -n scripts/ci/run-with-log.sh
           bash -n scripts/ci/write-preflight-diagnostics.sh
@@ -441,6 +417,7 @@ jobs:
           bash -n tests/ci/report-workflow-trends.test.sh
           bash -n tests/ci/report-timing-notices.test.sh
           bash -n tests/ci/retry-command.test.sh
+          bash -n tests/ci/run-quality-lint.test.sh
           bash -n tests/ci/verify-addresses-repeatable.test.sh
           bash -n tests/ci/redactor-fixture.test.sh
           bash -n tests/ci/run-with-log.test.sh
@@ -482,6 +459,7 @@ jobs:
           bash tests/ci/report-workflow-trends.test.sh
           bash tests/ci/report-timing-notices.test.sh
           bash tests/ci/retry-command.test.sh
+          bash tests/ci/run-quality-lint.test.sh
           bash tests/ci/retry-playwright-infrastructure-failure.test.sh
           bash tests/ci/verify-addresses-repeatable.test.sh
           bash tests/ci/redactor-fixture.test.sh

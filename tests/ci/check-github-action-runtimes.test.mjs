@@ -379,8 +379,11 @@ jobs:
       - run: echo shard 1
   full-frontend-coverage-shard-2:
     name: Full Frontend Coverage Shard 2/2
+    if: >-
+      always() &&
+      needs.full-frontend-coverage-shard-1.result == 'success'
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready]
+    needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1]
     steps:
       - run: echo shard 2
   full-frontend-coverage-merge:
@@ -596,6 +599,29 @@ jobs: {}
   );
 }
 
+async function assertBlocksCoverageShardSelfDependency() {
+  const workflow = validTestSuiteWorkflow().replace(
+    /(  full-frontend-coverage-shard-1:[\s\S]*?    needs: )\[detect-changes, full-lane-ready\]/,
+    '$1[detect-changes, full-lane-ready, full-frontend-coverage-shard-1]',
+  );
+  const result = await runFixture(
+    `
+name: Runtime Check
+on: pull_request
+jobs: {}
+`,
+    (rootDir) => {
+      writeFile(path.join(rootDir, '.github/workflows/test.yml'), workflow);
+    },
+  );
+
+  assert.equal(result.findings.length, 0);
+  assert.match(
+    result.errors.join('\n'),
+    /workflow job "full-frontend-coverage-shard-1" must not need "full-frontend-coverage-shard-1"/,
+  );
+}
+
 async function assertBlocksFalseFullLaneDependency() {
   const workflow = validTestSuiteWorkflow().replace(
     /(  full-gateway-tests:[\s\S]*?    needs: )\[detect-changes, full-lane-ready\]/,
@@ -694,6 +720,7 @@ await assertBlocksManualFullTestSummaryStatusPost();
 await assertBlocksSkippedAsSuccessfulFullLanePrerequisite();
 await assertBlocksBrowserE2eMatrixFanout();
 await assertBlocksMissingFrontendCoverageSplit();
+await assertBlocksCoverageShardSelfDependency();
 await assertBlocksFalseFullLaneDependency();
 await assertBlocksRenamedTestSuiteWorkflow();
 await assertBlocksMissingBackendIntegrationGroup();
