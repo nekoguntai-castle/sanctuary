@@ -69,8 +69,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.ref || github.event.inputs.ref || github.ref }}
-  cancel-in-progress: true
+  # On tag pushes, share a key with install-test.yml so the two workflows
+  # queue against each other on the self-hosted runner instead of racing
+  # for the dind daemon. Manual / workflow_dispatch runs keep the original
+  # cancel-in-progress shape.
+  group: >-
+    ${{ startsWith(github.ref, 'refs/tags/v') &&
+        format('sanctuary-rc-{0}', github.ref_name) ||
+        format('{0}-{1}', github.workflow, inputs.ref || github.event.inputs.ref || github.ref) }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
 
 env:
   HTTPS_PORT: 8443
@@ -496,48 +503,24 @@ jobs:
           docker compose down -v --remove-orphans || true
 
   # ============================================
-  # Upgrade Matrix (release blocking)
+  # Upgrade Suite (release blocking)
   # ============================================
+  # Single sequential job that runs every fixture in turn. The previous
+  # 6-lane matrix shape fan-outed onto the self-hosted Forgejo runner
+  # (runner.capacity=4) and concurrently saturated the dind docker daemon.
+  # Forgejo v12.10.1 honors neither strategy.max-parallel nor job-level
+  # concurrency, so the only reliable serialization is to keep everything
+  # in one job.
   upgrade-test:
-    name: Upgrade ${{ matrix.source_ref }} / ${{ matrix.fixture }}
+    name: Upgrade Suite
     runs-on: ubuntu-latest
-    # Serialize the upgrade matrix lanes against ALL e2e jobs (this matrix +
-    # other workflows on the same runner). Forgejo's act_runner ignores
-    # strategy.max-parallel because runner.capacity (4) takes precedence, so
-    # we use job-level concurrency: every lane shares the same group key,
-    # which the runner serializes.
-    concurrency:
-      group: sanctuary-runner-e2e-${{ github.ref }}
-      cancel-in-progress: false
     needs: [fresh-install-test, container-health-test, auth-flow-test]
     if: always() && needs.fresh-install-test.result == 'success'
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - source_ref: latest-stable
-            fixture: baseline
-            port_offset: 10
-          - source_ref: n-2
-            fixture: baseline
-            port_offset: 11
-          - source_ref: latest-stable
-            fixture: browser-origin-ip
-            port_offset: 12
-          - source_ref: latest-stable
-            fixture: legacy-runtime-env
-            port_offset: 13
-          - source_ref: latest-stable
-            fixture: notification-delivery
-            port_offset: 14
-          - source_ref: latest-stable
-            fixture: optional-profiles
-            port_offset: 15
+    timeout-minutes: 360
     env:
-      PORT_OFFSET: ${{ matrix.port_offset }}
-      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-rc
       SANCTUARY_CI_DEBUG_TRACE: '1'
+      SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE: ${{ github.event.inputs.upgrade_source_ref || inputs.upgrade_source_ref || '' }}
 
     steps:
       - name: Checkout repository
@@ -546,8 +529,6 @@ jobs:
           ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
           fetch-depth: 0
           clean: false
-
-      # docker/setup-buildx-action removed (see fresh-install-test rationale).
 
       - name: Pre-flight diagnostics
         if: always()
@@ -564,46 +545,16 @@ jobs:
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
             scripts/ci/wait-for-docker.sh
 
-      - name: Prepare isolated install workspace
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
-            workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }})"
-            echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
-          '
-
-      - name: Assign run-specific ports
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -c '
-            cd "$SANCTUARY_INSTALL_WORKSPACE"
-            bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
-          '
-
-      - name: Run core upgrade test
-        env:
-          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || inputs.upgrade_source_ref || matrix.source_ref }}
-          SANCTUARY_UPGRADE_FIXTURE: ${{ matrix.fixture }}
-          SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
-        run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade.log" \
-            scripts/ci/with-runner-lock.sh e2e \
-            scripts/ci/time-command.sh "upgrade ${{ matrix.source_ref }} ${{ matrix.fixture }}" \
-            bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture \"${{ matrix.fixture }}\" --verbose"
-
-      - name: Show container logs on failure
-        if: failure()
-        run: |
-          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
-          docker compose ps || true
-          docker compose logs --tail 50 postgres 2>&1 || true
-          docker compose logs --tail 100 backend 2>&1 || true
+      - name: Run upgrade fixtures sequentially
+        run: scripts/ci/run-rc-upgrade-fixtures.sh
 
       - name: Upload upgrade artifacts
         if: always()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
-          name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}-${{ github.run_id }}
-          path: ${{ env.SANCTUARY_INSTALL_WORKSPACE }}/.tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
+          name: upgrade-rc-suite-${{ github.run_id }}
+          path: .tmp/upgrade-artifacts/
           retention-days: 14
           if-no-files-found: ignore
 
@@ -612,16 +563,10 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
-          name: diag-upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}-${{ github.run_id }}
+          name: diag-upgrade-rc-suite-${{ github.run_id }}
           path: ${{ env.JOB_LOG_DIR }}
           retention-days: 14
           if-no-files-found: ignore
-
-      - name: Cleanup
-        if: always()
-        run: |
-          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
-          docker compose down -v --remove-orphans || true
 
   upgrade-full-recovery-test:
     name: Upgrade Full Recovery

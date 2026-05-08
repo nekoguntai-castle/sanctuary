@@ -117,11 +117,9 @@ assert_contains_in_order "$RC" \
   "auth-flow.test.sh"
 
 assert_contains_in_order "$RC" \
-  "release-candidate upgrade-test matrix composition" \
-  "scripts/ci/run-with-log.sh" \
-  "scripts/ci/with-runner-lock.sh e2e" \
-  "scripts/ci/time-command.sh" \
-  "upgrade-install.test.sh --mode core"
+  "release-candidate upgrade-test sequential composition" \
+  "Run upgrade fixtures sequentially" \
+  "scripts/ci/run-rc-upgrade-fixtures.sh"
 
 assert_contains_in_order "$RC" \
   "release-candidate upgrade-full-recovery composition" \

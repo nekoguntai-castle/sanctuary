@@ -1,21 +1,16 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
-import { resolve, dirname, relative } from 'node:path';
+import { readFile, readdir } from 'node:fs/promises';
+import { resolve, dirname, relative, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const PRODUCTION_DIRS = ['server/src', 'gateway/src'];
 
-const EXCLUDE_GLOBS = [
-  '**/*.test.ts',
-  '**/*.spec.ts',
-  '**/tests/**',
-  '**/__tests__/**',
-  '**/scripts/**',
-];
+const EXCLUDED_BASENAMES = new Set(['__tests__', 'tests']);
+const EXCLUDED_SUFFIXES = ['.test.ts', '.spec.ts'];
 
-const BLOCKING_PATTERN = '\\b(readFileSync|writeFileSync|existsSync|readdirSync|statSync|lstatSync|execSync|spawnSync|appendFileSync|unlinkSync|mkdirSync|rmSync|copyFileSync|chmodSync|renameSync)\\b';
+const BLOCKING_PATTERN = /\b(readFileSync|writeFileSync|existsSync|readdirSync|statSync|lstatSync|execSync|spawnSync|appendFileSync|unlinkSync|mkdirSync|rmSync|copyFileSync|chmodSync|renameSync)\b/;
 
 const ALLOWLIST = new Set([
   'server/src/api/admin/version.ts',
@@ -25,35 +20,43 @@ const ALLOWLIST = new Set([
   'gateway/src/index.ts',
 ]);
 
-const runRipgrep = () => {
-  const args = [
-    '--no-heading',
-    '--with-filename',
-    '--line-number',
-    '--type', 'ts',
-    '-e', BLOCKING_PATTERN,
-  ];
-  for (const ex of EXCLUDE_GLOBS) {
-    args.push('--glob', `!${ex}`);
+async function listTsSources(dir) {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const out = [];
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (EXCLUDED_BASENAMES.has(entry.name)) continue;
+      out.push(...(await listTsSources(full)));
+    } else if (entry.isFile() && entry.name.endsWith('.ts')) {
+      if (EXCLUDED_SUFFIXES.some((suffix) => entry.name.endsWith(suffix))) continue;
+      out.push(full);
+    }
   }
-  args.push(...PRODUCTION_DIRS);
-  try {
-    const out = execFileSync('rg', args, { cwd: repoRoot, encoding: 'utf8' });
-    return out.split('\n').filter(Boolean);
-  } catch (err) {
-    if (err.status === 1) return [];
-    throw err;
-  }
-};
+  return out;
+}
 
-const lines = runRipgrep();
+async function findOffendingLines(file) {
+  const text = await readFile(file, 'utf8');
+  const hits = [];
+  text.split('\n').forEach((line, idx) => {
+    if (BLOCKING_PATTERN.test(line)) {
+      hits.push(`${file}:${idx + 1}:${line.trimEnd()}`);
+    }
+  });
+  return hits;
+}
+
 const offenders = new Map();
-for (const line of lines) {
-  const [filePath] = line.split(':', 1);
-  const rel = relative(repoRoot, resolve(repoRoot, filePath));
-  if (ALLOWLIST.has(rel)) continue;
-  if (!offenders.has(rel)) offenders.set(rel, []);
-  offenders.get(rel).push(line);
+
+for (const dir of PRODUCTION_DIRS) {
+  const files = await listTsSources(resolve(repoRoot, dir));
+  for (const file of files) {
+    const rel = relative(repoRoot, file);
+    if (ALLOWLIST.has(rel)) continue;
+    const hits = await findOffendingLines(file);
+    if (hits.length > 0) offenders.set(rel, hits);
+  }
 }
 
 if (offenders.size === 0) {
