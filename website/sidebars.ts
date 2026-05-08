@@ -11,6 +11,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'docs/architecture/containers',
         'docs/architecture/notification-pipeline',
+        'docs/architecture/RELIABILITY',
         {
           type: 'category',
           label: 'Per-service',
