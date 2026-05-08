@@ -363,7 +363,10 @@ jobs:
   auth-flow-test:
     name: Auth Flow
     runs-on: ubuntu-latest
-    needs: fresh-install-test
+    # Serialize after container-health-test so we never run two RC e2e stacks
+    # against the same docker daemon at once on the self-hosted runner.
+    needs: [fresh-install-test, container-health-test]
+    if: always() && needs.fresh-install-test.result == 'success'
     continue-on-error: true  # Non-blocking - failures are warnings
     timeout-minutes: 15
     env:
@@ -494,10 +497,15 @@ jobs:
   upgrade-test:
     name: Upgrade ${{ matrix.source_ref }} / ${{ matrix.fixture }}
     runs-on: ubuntu-latest
-    needs: fresh-install-test
+    # Run after container-health and auth-flow so the upgrade matrix never
+    # competes with them for the docker daemon. The matrix itself is also
+    # serialized via max-parallel: 1 below.
+    needs: [fresh-install-test, container-health-test, auth-flow-test]
+    if: always() && needs.fresh-install-test.result == 'success'
     timeout-minutes: 60
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - source_ref: latest-stable
@@ -610,8 +618,13 @@ jobs:
   upgrade-full-recovery-test:
     name: Upgrade Full Recovery
     runs-on: ubuntu-latest
-    needs: fresh-install-test
-    if: ${{ github.event.inputs.include_full_upgrade_recovery == 'true' || inputs.include_full_upgrade_recovery == true }}
+    # Serialize after upgrade-test so we never run two RC upgrade stacks at
+    # once on the self-hosted runner.
+    needs: [fresh-install-test, upgrade-test]
+    if: |
+      always() && needs.fresh-install-test.result == 'success' &&
+      (github.event.inputs.include_full_upgrade_recovery == 'true' ||
+       inputs.include_full_upgrade_recovery == true)
     timeout-minutes: 90
     env:
       JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-full-recovery
