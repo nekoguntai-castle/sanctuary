@@ -234,6 +234,9 @@ jobs:
   container-health-test:
     name: Container Health
     runs-on: ubuntu-latest
+    concurrency:
+      group: sanctuary-runner-e2e-${{ github.ref }}
+      cancel-in-progress: false
     needs: fresh-install-test
     continue-on-error: true  # Non-blocking - failures are warnings
     timeout-minutes: 15
@@ -363,8 +366,9 @@ jobs:
   auth-flow-test:
     name: Auth Flow
     runs-on: ubuntu-latest
-    # Serialize after container-health-test so we never run two RC e2e stacks
-    # against the same docker daemon at once on the self-hosted runner.
+    concurrency:
+      group: sanctuary-runner-e2e-${{ github.ref }}
+      cancel-in-progress: false
     needs: [fresh-install-test, container-health-test]
     if: always() && needs.fresh-install-test.result == 'success'
     continue-on-error: true  # Non-blocking - failures are warnings
@@ -497,15 +501,19 @@ jobs:
   upgrade-test:
     name: Upgrade ${{ matrix.source_ref }} / ${{ matrix.fixture }}
     runs-on: ubuntu-latest
-    # Run after container-health and auth-flow so the upgrade matrix never
-    # competes with them for the docker daemon. The matrix itself is also
-    # serialized via max-parallel: 1 below.
+    # Serialize the upgrade matrix lanes against ALL e2e jobs (this matrix +
+    # other workflows on the same runner). Forgejo's act_runner ignores
+    # strategy.max-parallel because runner.capacity (4) takes precedence, so
+    # we use job-level concurrency: every lane shares the same group key,
+    # which the runner serializes.
+    concurrency:
+      group: sanctuary-runner-e2e-${{ github.ref }}
+      cancel-in-progress: false
     needs: [fresh-install-test, container-health-test, auth-flow-test]
     if: always() && needs.fresh-install-test.result == 'success'
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         include:
           - source_ref: latest-stable
@@ -618,8 +626,9 @@ jobs:
   upgrade-full-recovery-test:
     name: Upgrade Full Recovery
     runs-on: ubuntu-latest
-    # Serialize after upgrade-test so we never run two RC upgrade stacks at
-    # once on the self-hosted runner.
+    concurrency:
+      group: sanctuary-runner-e2e-${{ github.ref }}
+      cancel-in-progress: false
     needs: [fresh-install-test, upgrade-test]
     if: |
       always() && needs.fresh-install-test.result == 'success' &&

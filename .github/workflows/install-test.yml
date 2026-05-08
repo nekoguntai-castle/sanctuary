@@ -173,6 +173,9 @@ jobs:
   fresh-install-test:
     name: Fresh Install E2E Test
     runs-on: ubuntu-latest
+    concurrency:
+      group: sanctuary-runner-e2e-${{ github.ref }}
+      cancel-in-progress: false
     needs: [determine-scope, unit-tests]
     if: |
       always() &&
@@ -332,6 +335,9 @@ jobs:
   install-script-test:
     name: Install Script E2E Test
     runs-on: ubuntu-latest
+    concurrency:
+      group: sanctuary-runner-e2e-${{ github.ref }}
+      cancel-in-progress: false
     needs: [determine-scope, fresh-install-test]
     if: |
       always() &&
@@ -358,6 +364,9 @@ jobs:
   install-stack-smoke:
     name: Install Stack Smoke
     runs-on: ubuntu-latest
+    concurrency:
+      group: sanctuary-runner-e2e-${{ github.ref }}
+      cancel-in-progress: false
     needs: [determine-scope, fresh-install-test, install-script-test]
     if: |
       always() &&
@@ -489,6 +498,9 @@ jobs:
   container-health-test:
     name: Container Health Test
     runs-on: ubuntu-latest
+    concurrency:
+      group: sanctuary-runner-e2e-${{ github.ref }}
+      cancel-in-progress: false
     needs: [determine-scope, fresh-install-test, install-script-test]
     if: |
       always() &&
@@ -597,6 +609,9 @@ jobs:
   auth-flow-test:
     name: Authentication Flow Test
     runs-on: ubuntu-latest
+    concurrency:
+      group: sanctuary-runner-e2e-${{ github.ref }}
+      cancel-in-progress: false
     needs: [determine-scope, fresh-install-test, install-script-test, container-health-test]
     if: |
       always() &&
@@ -709,6 +724,9 @@ jobs:
   upgrade-baseline-test:
     name: Upgrade Baseline
     runs-on: ubuntu-latest
+    concurrency:
+      group: sanctuary-runner-e2e-${{ github.ref }}
+      cancel-in-progress: false
     needs: [determine-scope, fresh-install-test, install-script-test, install-stack-smoke, auth-flow-test]
     if: |
       always() &&
@@ -836,6 +854,9 @@ jobs:
   upgrade-extended-fixture-test:
     name: Upgrade Extended Fixtures
     runs-on: ubuntu-latest
+    concurrency:
+      group: sanctuary-runner-e2e-${{ github.ref }}
+      cancel-in-progress: false
     needs: [determine-scope, upgrade-baseline-test]
     if: |
       always() &&
@@ -873,6 +894,9 @@ jobs:
   upgrade-extended-test:
     name: Upgrade Extended
     runs-on: ubuntu-latest
+    concurrency:
+      group: sanctuary-runner-e2e-${{ github.ref }}
+      cancel-in-progress: false
     needs: [determine-scope, upgrade-baseline-test, upgrade-extended-fixture-test]
     if: |
       always() &&
