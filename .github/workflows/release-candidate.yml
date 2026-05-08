@@ -304,7 +304,18 @@ jobs:
           AI_CONFIG_SECRET=$(openssl rand -hex 32)
           REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
           cd "$SANCTUARY_INSTALL_WORKSPACE"
-          ( cd docker/nginx/ssl && ./generate-certs.sh localhost )
+          # Generate SSL certs to a dind-visible path. Without
+          # SANCTUARY_COMPOSE_SSL_DIR set to the docker-visible
+          # translation, the frontend container's bind mount points
+          # at a path the docker daemon (dind) can't see, so it
+          # serves HTTP and the healthcheck on :443 fails.
+          # shellcheck disable=SC1091
+          source tests/install/utils/helpers.sh
+          export SANCTUARY_SSL_DIR="$SANCTUARY_INSTALL_WORKSPACE/docker/nginx/ssl"
+          SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
+          export SANCTUARY_COMPOSE_SSL_DIR
+          mkdir -p "$SANCTUARY_SSL_DIR"
+          ./docker/nginx/ssl/generate-certs.sh localhost
           export JWT_SECRET ENCRYPTION_KEY GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET REDIS_PASSWORD
           cd "${{ github.workspace }}"
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log" \
@@ -437,7 +448,18 @@ jobs:
           AI_CONFIG_SECRET=$(openssl rand -hex 32)
           REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
           cd "$SANCTUARY_INSTALL_WORKSPACE"
-          ( cd docker/nginx/ssl && ./generate-certs.sh localhost )
+          # Generate SSL certs to a dind-visible path. Without
+          # SANCTUARY_COMPOSE_SSL_DIR set to the docker-visible
+          # translation, the frontend container's bind mount points
+          # at a path the docker daemon (dind) can't see, so it
+          # serves HTTP and the healthcheck on :443 fails.
+          # shellcheck disable=SC1091
+          source tests/install/utils/helpers.sh
+          export SANCTUARY_SSL_DIR="$SANCTUARY_INSTALL_WORKSPACE/docker/nginx/ssl"
+          SANCTUARY_COMPOSE_SSL_DIR="$(docker_visible_path "$SANCTUARY_SSL_DIR")"
+          export SANCTUARY_COMPOSE_SSL_DIR
+          mkdir -p "$SANCTUARY_SSL_DIR"
+          ./docker/nginx/ssl/generate-certs.sh localhost
           # Raise auth rate limits for stressy auth-flow test sequences
           export JWT_SECRET ENCRYPTION_KEY GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET REDIS_PASSWORD
           export RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100
