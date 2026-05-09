@@ -101,6 +101,7 @@ export const registerBitcoinTransactionRouteTests = () => {
         mockPrismaClient.wallet.findFirst.mockResolvedValue({
           id: 'wallet-1',
           name: 'Test Wallet',
+          network: 'testnet4',
         });
         mockAdvancedTx.createRBFTransaction.mockResolvedValue({
           psbt: { toBase64: () => 'base64psbt' },
@@ -118,6 +119,12 @@ export const registerBitcoinTransactionRouteTests = () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('psbtBase64', 'base64psbt');
+        expect(mockAdvancedTx.createRBFTransaction).toHaveBeenCalledWith(
+          'abc123',
+          24,
+          'wallet-1',
+          'testnet4'
+        );
       });
 
       it('should return 400 when newFeeRate is missing', async () => {
@@ -150,6 +157,7 @@ export const registerBitcoinTransactionRouteTests = () => {
         mockPrismaClient.wallet.findFirst.mockResolvedValue({
           id: 'wallet-1',
           name: 'Test Wallet',
+          network: 'mainnet',
         });
         mockAdvancedTx.createRBFTransaction.mockRejectedValue(new Error('rbf failed'));
 
@@ -160,11 +168,27 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.status).toBe(500);
         expect(response.body.code).toBe('INTERNAL_ERROR');
       });
+
+      it('should return 400 when wallet network is unsupported', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({
+          id: 'wallet-1',
+          name: 'Test Wallet',
+          network: 'unsupported',
+        });
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/abc123/rbf')
+          .send({ newFeeRate: 24, walletId: 'wallet-1' });
+
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe('INVALID_INPUT');
+        expect(mockAdvancedTx.createRBFTransaction).not.toHaveBeenCalled();
+      });
     });
 
     describe('POST /bitcoin/transaction/cpfp', () => {
       it('should create CPFP transaction', async () => {
-        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1' });
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'testnet' });
         mockAdvancedTx.createCPFPTransaction.mockResolvedValue({
           psbt: { toBase64: () => 'cpfppsbt' },
           childFee: 3000,
@@ -186,6 +210,14 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('psbtBase64', 'cpfppsbt');
         expect(response.body).toHaveProperty('effectiveFeeRate', 20);
+        expect(mockAdvancedTx.createCPFPTransaction).toHaveBeenCalledWith(
+          'parent123',
+          0,
+          30,
+          'bc1qtest',
+          'wallet-1',
+          'testnet3'
+        );
       });
 
       it('should return 400 when required params are missing', async () => {
@@ -213,7 +245,7 @@ export const registerBitcoinTransactionRouteTests = () => {
       });
 
       it('should return 500 when CPFP creation fails', async () => {
-        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1' });
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'mainnet' });
         mockAdvancedTx.createCPFPTransaction.mockRejectedValue(new Error('cpfp failed'));
 
         const response = await request(app)
@@ -233,7 +265,7 @@ export const registerBitcoinTransactionRouteTests = () => {
 
     describe('POST /bitcoin/transaction/batch', () => {
       it('should create batch transaction', async () => {
-        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1' });
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'signet' });
         mockAdvancedTx.createBatchTransaction.mockResolvedValue({
           psbt: { toBase64: () => 'batchpsbt' },
           fee: 10000,
@@ -257,6 +289,16 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('psbtBase64', 'batchpsbt');
         expect(response.body).toHaveProperty('recipientCount', 2);
+        expect(mockAdvancedTx.createBatchTransaction).toHaveBeenCalledWith(
+          [
+            { address: 'bc1qtest1', amount: 250000 },
+            { address: 'bc1qtest2', amount: 250000 },
+          ],
+          20,
+          'wallet-1',
+          undefined,
+          'signet'
+        );
       });
 
       it('should return 400 when recipients is empty', async () => {
@@ -314,7 +356,7 @@ export const registerBitcoinTransactionRouteTests = () => {
       });
 
       it('should return 500 when batch creation fails', async () => {
-        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1' });
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({ id: 'wallet-1', network: 'mainnet' });
         mockAdvancedTx.createBatchTransaction.mockRejectedValue(new Error('batch failed'));
 
         const response = await request(app)

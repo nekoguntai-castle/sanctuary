@@ -454,7 +454,7 @@ export function registerCreateBatchTransactionContracts() {
       const result = await createBatchTransaction(walletId, outputs, 10);
       const psbt = bitcoin.Psbt.fromBase64(result.psbtBase64);
 
-      expect(nodeClient.getNodeClient).toHaveBeenCalled();
+      expect(nodeClient.getNodeClient).toHaveBeenCalledWith("testnet3");
       expect(psbt.data.inputs[0].nonWitnessUtxo).toBeDefined();
     });
 

@@ -370,8 +370,8 @@ export function registerTransactionServicePsbtHelpersLegacyTests(): void {
 
       await createTransaction(walletId, recipient, amount, feeRate);
 
-      // getNodeClient should be called to fetch raw transaction
-      expect(nodeClient.getNodeClient).toHaveBeenCalled();
+      // getNodeClient should be called on the wallet's normalized network to fetch raw transaction
+      expect(nodeClient.getNodeClient).toHaveBeenCalledWith("testnet3");
     });
 
     it("should throw when legacy raw transaction fetch returns no entries", async () => {

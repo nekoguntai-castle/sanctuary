@@ -20,51 +20,6 @@
       "targetRemovalSlice": "Slice 4"
     },
     {
-      "file": "server/src/api/bitcoin/transactions.ts",
-      "functionName": "<module>",
-      "callee": "advancedTx.createRBFTransaction",
-      "issue": "hardcoded-mainnet-network",
-      "reason": "Wallet-scoped RBF creation is still passing a literal mainnet network instead of deriving the wallet network.",
-      "owner": "P0: Remove hardcoded/default mainnet from advanced transaction APIs",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/api/bitcoin/transactions.ts",
-      "functionName": "<module>",
-      "callee": "advancedTx.createCPFPTransaction",
-      "issue": "hardcoded-mainnet-network",
-      "reason": "Wallet-scoped CPFP creation is still passing a literal mainnet network instead of deriving the wallet network.",
-      "owner": "P0: Remove hardcoded/default mainnet from advanced transaction APIs",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/api/bitcoin/transactions.ts",
-      "functionName": "<module>",
-      "callee": "advancedTx.createBatchTransaction",
-      "issue": "hardcoded-mainnet-network",
-      "reason": "Wallet-scoped batch creation is still passing a literal mainnet network instead of deriving the wallet network.",
-      "owner": "P0: Remove hardcoded/default mainnet from advanced transaction APIs",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/services/bitcoin/advancedTx/rbf.ts",
-      "functionName": "canReplaceTransaction",
-      "callee": "getNodeClient",
-      "issue": "missing-required-network-argument",
-      "reason": "RBF replacement checks still select the default node client.",
-      "owner": "P0: Remove hardcoded/default mainnet from advanced transaction APIs",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/services/bitcoin/advancedTx/rbf.ts",
-      "functionName": "createRBFTransaction",
-      "callee": "canReplaceTransaction",
-      "issue": "missing-required-network-argument",
-      "reason": "RBF creation re-checks replaceability without passing its already-known wallet network.",
-      "owner": "P0: Remove hardcoded/default mainnet from advanced transaction APIs",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
       "file": "server/src/services/bitcoin/blockchain/networkOperations.ts",
       "functionName": "getTransactionDetails",
       "callee": "getNodeClient",
@@ -80,42 +35,6 @@
       "issue": "missing-required-network-argument",
       "reason": "Address monitoring must either be removed from default-client helpers or receive explicit network.",
       "owner": "P0: Decide and fix non-wallet Bitcoin endpoint network contracts",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/services/bitcoin/transactions/createBatchTransaction.ts",
-      "functionName": "createBatchTransaction",
-      "callee": "fetchRawTransactionsForLegacy",
-      "issue": "missing-required-network-argument",
-      "reason": "Legacy batch PSBT previous-transaction fetches still use the default node client path.",
-      "owner": "P0: Make legacy PSBT previous-transaction fetches network-aware",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/services/bitcoin/transactions/createTransaction.ts",
-      "functionName": "createTransaction",
-      "callee": "fetchRawTransactionsForLegacy",
-      "issue": "missing-required-network-argument",
-      "reason": "Legacy single-recipient PSBT previous-transaction fetches still use the default node client path.",
-      "owner": "P0: Make legacy PSBT previous-transaction fetches network-aware",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/services/bitcoin/transactions/helpers.ts",
-      "functionName": "getRawTransactionHex",
-      "callee": "getNodeClient",
-      "issue": "missing-required-network-argument",
-      "reason": "Raw previous-transaction helper still selects the default node client.",
-      "owner": "P0: Make legacy PSBT previous-transaction fetches network-aware",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/services/bitcoin/transactions/psbtConstruction.ts",
-      "functionName": "fetchRawTransactionsForLegacy",
-      "callee": "getRawTransactionHex",
-      "issue": "missing-required-network-argument",
-      "reason": "Legacy previous-transaction fetch loop does not pass wallet network into the raw transaction helper.",
-      "owner": "P0: Make legacy PSBT previous-transaction fetches network-aware",
       "targetRemovalSlice": "Slice 4"
     },
     {

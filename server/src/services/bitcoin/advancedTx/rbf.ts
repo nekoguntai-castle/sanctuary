@@ -36,7 +36,10 @@ export function isRBFSignaled(txHex: string): boolean {
 /**
  * Check if a transaction can be replaced (RBF)
  */
-export async function canReplaceTransaction(txid: string): Promise<{
+export async function canReplaceTransaction(
+  txid: string,
+  network: BitcoinNetwork = 'mainnet'
+): Promise<{
   replaceable: boolean;
   reason?: string;
   currentFeeRate?: number;
@@ -44,7 +47,7 @@ export async function canReplaceTransaction(txid: string): Promise<{
 }> {
   try {
     // Use nodeClient which respects poolEnabled setting from node_configs
-    const client = await getNodeClient();
+    const client = await getNodeClient(network);
 
     // Get transaction details
     const txDetails = await client.getTransaction(txid);
@@ -151,7 +154,7 @@ export async function createRBFTransaction(
   }
 
   // Check if transaction can be replaced
-  const rbfCheck = await canReplaceTransaction(originalTxid);
+  const rbfCheck = await canReplaceTransaction(originalTxid, network);
   if (!rbfCheck.replaceable) {
     throw new Error(rbfCheck.reason || 'Transaction cannot be replaced');
   }

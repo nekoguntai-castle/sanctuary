@@ -104,7 +104,7 @@ export async function createBatchTransaction(
 
   // Fetch raw transactions for legacy wallets
   const rawTxCache = isLegacy
-    ? await fetchRawTransactionsForLegacy(utxos.map(u => u.txid))
+    ? await fetchRawTransactionsForLegacy(utxos.map(u => u.txid), network)
     : new Map<string, Buffer>();
 
   const inputPaths = addBatchInputs(psbt, utxos, {

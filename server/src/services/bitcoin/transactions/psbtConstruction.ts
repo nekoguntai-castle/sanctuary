@@ -16,6 +16,7 @@ import { createLogger } from '../../../utils/logger';
 import { mapWithConcurrency } from '../../../utils/async';
 import { getRawTransactionHex } from './helpers';
 import type { WalletSigningInfo } from './types';
+import type { BitcoinNetwork } from '../networks';
 
 const log = createLogger('BITCOIN:SVC_PSBT_BUILD');
 
@@ -227,14 +228,15 @@ export function parseAccountNode(
  * Returns a cache Map of txid -> raw transaction Buffer.
  */
 export async function fetchRawTransactionsForLegacy(
-  utxoTxids: string[]
+  utxoTxids: string[],
+  network: BitcoinNetwork
 ): Promise<Map<string, Buffer>> {
   const rawTxCache = new Map<string, Buffer>();
   const uniqueTxids = Array.from(new Set(utxoTxids));
   const rawTxResults = await mapWithConcurrency(
     uniqueTxids,
     async (txid: string) => {
-      const rawHex = await getRawTransactionHex(txid);
+      const rawHex = await getRawTransactionHex(txid, network);
       return { txid, rawTx: Buffer.from(rawHex, 'hex') };
     },
     5 // Max 5 concurrent requests

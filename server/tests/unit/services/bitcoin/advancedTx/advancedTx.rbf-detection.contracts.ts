@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { mockElectrumClient, createMockTransaction } from '../../../../mocks/electrum';
 import { testnetAddresses, sampleTransactions } from '../../../../fixtures/bitcoin';
 import './advancedTxTestHarness';
+import { getNodeClient } from '../../../../../src/services/bitcoin/nodeClient';
 import {
   canReplaceTransaction,
   isRBFSignaled,
@@ -47,8 +48,9 @@ export function registerRbfDetectionContracts() {
           vout: [{ value: 0.001, scriptPubKey: { hex: '0014' + 'a'.repeat(40) } }],
         });
 
-        const result = await canReplaceTransaction(txid);
+        const result = await canReplaceTransaction(txid, 'testnet4');
 
+        expect(getNodeClient).toHaveBeenCalledWith('testnet4');
         expect(result.replaceable).toBe(true);
         expect(result.currentFeeRate).toBeDefined();
         expect(result.minNewFeeRate).toBeDefined();

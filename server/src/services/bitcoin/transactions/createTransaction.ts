@@ -100,7 +100,7 @@ export async function createTransaction(
 
   // Fetch raw transactions for legacy wallets
   const rawTxCache = isLegacy
-    ? await fetchRawTransactionsForLegacy(selection.utxos.map(u => u.txid))
+    ? await fetchRawTransactionsForLegacy(selection.utxos.map(u => u.txid), network)
     : new Map<string, Buffer>();
 
   // Add inputs with BIP32 derivation info

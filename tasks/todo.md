@@ -1,6 +1,35 @@
+# Active Task: Bug Scrub Slice 4B Advanced Transaction Network Context 2026-05-08
+
+Status: in progress; implementation branch `fix/bug-scrub-slice-4b`
+
+Goal: deliver the wallet-scoped advanced transaction and legacy PSBT portion of Slice 4 by deriving wallet network context for RBF/CPFP/batch creation and using that same network for legacy previous-transaction fetches.
+
+## Plan
+
+- [x] Start a fresh Slice 4B branch from merged Slice 4A `main`.
+- [x] Resolve the authorized wallet network in Bitcoin advanced transaction creation routes instead of passing literal `mainnet`.
+- [x] Pass explicit network context into RBF replaceability checks and node-client lookups.
+- [x] Pass wallet network into legacy PSBT previous-transaction fetch helpers for single and batch transaction construction.
+- [x] Update focused route/service tests to prove network propagation, legacy `testnet` normalization, and invalid wallet-network rejection where applicable.
+- [x] Remove Slice 4B allowlist entries and prove the guard count drops again.
+- [x] Run focused tests, type checks, lint/guard checks, lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [ ] Continue to the remaining non-wallet endpoint and subscription slice after this PR is merged.
+
+## Review
+
+- Wallet-scoped RBF, CPFP, and batch creation routes now derive the authorized wallet network, normalize legacy `testnet` wallets to `testnet3`, and reject unsupported wallet network values before calling advanced transaction services.
+- RBF replaceability checks now call `getNodeClient(network)`, and RBF creation passes its already-known wallet network into that check.
+- Legacy P2PKH PSBT construction now passes wallet network through `fetchRawTransactionsForLegacy` and `getRawTransactionHex`, so raw previous transaction fetches use the same network as PSBT validation/construction.
+- Removed 9 Slice 4B findings from `scripts/quality/bitcoin-network-boundary-allowlist.json`; the guard now passes with 5 allowed findings left.
+- Added `docs/plans/bug-scrub-slice-4b-advanced-transaction-network-context.md` to capture the contract and remaining non-wallet compatibility work.
+- Local verification passed: focused Bitcoin API, advancedTx, and transactionService tests; server test typecheck; server build; `npm run lint:server`; touched-file lizard; and `git diff --check`.
+
+---
+
 # Active Task: Bug Scrub Slice 4A Fee Network Context 2026-05-08
 
-Status: in progress; implementation branch `fix/bug-scrub-slice-4`
+Status: complete; PR #324 merged as `4e886872`
 
 Goal: deliver the fee-estimation portion of Slice 4 by adding explicit network context to fee APIs and fee services, then shrinking the Bitcoin network-boundary allowlist again.
 
@@ -14,8 +43,8 @@ Goal: deliver the fee-estimation portion of Slice 4 by adding explicit network c
 - [x] Update OpenAPI and focused route/service tests for network propagation and invalid network rejection.
 - [x] Remove fee-related Slice 4 allowlist entries and prove the guard count drops.
 - [x] Run focused tests, type checks, lint/guard checks, lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
-- [ ] Continue to the next Slice 4 sub-slice after this PR is merged.
+- [x] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [x] Continue to the next Slice 4 sub-slice after this PR is merged.
 
 ## Review
 
@@ -24,6 +53,7 @@ Goal: deliver the fee-estimation portion of Slice 4 by adding explicit network c
 - Frontend fee API helpers accept optional network context; dashboard and UTXO fee queries now include network in their React Query keys, and the send page loads fees for the wallet network.
 - Added `docs/plans/bug-scrub-slice-4a-fee-network-context.md` to document the compatibility behavior and remaining Slice 4 findings.
 - Local verification passed: focused server Bitcoin API, advancedTx, blockchain, and OpenAPI tests; focused frontend API/query/dashboard/UTXO tests; server source/test typechecks; frontend app/test typechecks; `npm run lint:server`; `npm run lint:app`; touched-file lizard; and `git diff --check`.
+- PR #324 merged at `2026-05-08T16:19:11-10:00` as squash commit `4e886872e866d7b2223b5cc625bd829f29f3c50f`; local `main` was fast-forwarded and the local/remote Slice 4A branches were deleted.
 
 ---
 

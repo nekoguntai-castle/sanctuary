@@ -11,8 +11,9 @@ import { validate } from '../../middleware/validate';
 import * as blockchain from '../../services/bitcoin/blockchain';
 import { walletRepository } from '../../repositories';
 import { asyncHandler } from '../../errors/errorHandler';
-import { ForbiddenError } from '../../errors/ApiError';
+import { ForbiddenError, InvalidInputError } from '../../errors/ApiError';
 import * as advancedTx from '../../services/bitcoin/advancedTx';
+import { isBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 
 const router = Router();
 
@@ -48,6 +49,23 @@ const batchTransactionValidationMessage = (issues: Array<{ path: string }>) => {
     return 'Each recipient must have address and amount';
   }
   return 'recipients (array), feeRate, and walletId are required';
+};
+
+const resolveAdvancedTransactionWalletNetwork = (
+  wallet: { id: string; network?: string | null }
+): BitcoinNetwork => {
+  if (wallet.network === 'testnet') {
+    return 'testnet3';
+  }
+
+  if (isBitcoinNetwork(wallet.network)) {
+    return wallet.network;
+  }
+
+  throw new InvalidInputError('Wallet has unsupported Bitcoin network', 'network', {
+    walletId: wallet.id,
+    network: wallet.network,
+  });
 };
 
 /**
@@ -107,12 +125,13 @@ router.post('/transaction/:txid/rbf', authenticate, validate(
   if (!wallet) {
     throw new ForbiddenError('Insufficient permissions for this wallet');
   }
+  const network = resolveAdvancedTransactionWalletNetwork(wallet);
 
   const result = await advancedTx.createRBFTransaction(
     txid,
     newFeeRate,
     walletId,
-    'mainnet'
+    network
   );
 
   res.json({
@@ -149,6 +168,7 @@ router.post('/transaction/cpfp', authenticate, validate(
   if (!wallet) {
     throw new ForbiddenError('Insufficient permissions for this wallet');
   }
+  const network = resolveAdvancedTransactionWalletNetwork(wallet);
 
   const result = await advancedTx.createCPFPTransaction(
     parentTxid,
@@ -156,7 +176,7 @@ router.post('/transaction/cpfp', authenticate, validate(
     targetFeeRate,
     recipientAddress,
     walletId,
-    'mainnet'
+    network
   );
 
   res.json({
@@ -190,13 +210,14 @@ router.post('/transaction/batch', authenticate, validate(
   if (!wallet) {
     throw new ForbiddenError('Insufficient permissions for this wallet');
   }
+  const network = resolveAdvancedTransactionWalletNetwork(wallet);
 
   const result = await advancedTx.createBatchTransaction(
     recipients,
     feeRate,
     walletId,
     selectedUtxoIds,
-    'mainnet'
+    network
   );
 
   res.json({

@@ -8,6 +8,7 @@
  */
 
 import { getNodeClient } from '../nodeClient';
+import type { BitcoinNetwork } from '../networks';
 export { isUniqueConstraintError } from '../../../utils/errors';
 
 /**
@@ -21,8 +22,8 @@ export function isLegacyScriptType(scriptType: string | null): boolean {
 /**
  * Fetch raw transaction hex for nonWitnessUtxo (required for legacy inputs)
  */
-export async function getRawTransactionHex(txid: string): Promise<string> {
-  const client = await getNodeClient();
+export async function getRawTransactionHex(txid: string, network: BitcoinNetwork): Promise<string> {
+  const client = await getNodeClient(network);
   // getTransaction with verbose=false returns raw hex
   const rawHex = await client.getTransaction(txid, false);
   return rawHex;
