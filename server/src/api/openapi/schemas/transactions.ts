@@ -327,6 +327,7 @@ export const transactionSchemas = {
     properties: {
       signedPsbtBase64: { type: 'string', minLength: 1 },
       rawTxHex: { type: 'string', minLength: 1 },
+      draftId: { type: 'string', minLength: 1 },
       recipient: { type: 'string' },
       amount: { type: 'number' },
       fee: { type: 'number' },
@@ -340,6 +341,7 @@ export const transactionSchemas = {
     anyOf: [
       { required: ['signedPsbtBase64'] },
       { required: ['rawTxHex'] },
+      { required: ['draftId'] },
     ],
   },
   TransactionBroadcastResponse: {

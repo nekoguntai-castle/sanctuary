@@ -283,8 +283,7 @@ describe('useBroadcast', () => {
     ).toBe(false);
   });
 
-  it('logs but ignores draft deletion failure after successful broadcast', async () => {
-    mocks.deleteDraft.mockRejectedValueOnce(new Error('delete failed'));
+  it('passes draftId to broadcast and leaves draft cleanup to the server', async () => {
     const deps = createDeps({
       state: {
         outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
@@ -299,10 +298,10 @@ describe('useBroadcast', () => {
     });
 
     expect(ok).toBe(true);
-    expect(mocks.logger.error).toHaveBeenCalledWith(
-      'Failed to delete draft after broadcast',
-      expect.objectContaining({ error: expect.any(Error) })
-    );
+    expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', expect.objectContaining({
+      draftId: 'draft-1',
+    }));
+    expect(mocks.deleteDraft).not.toHaveBeenCalled();
     expect(mocks.navigate).toHaveBeenCalledWith('/wallets/wallet-1');
   });
 

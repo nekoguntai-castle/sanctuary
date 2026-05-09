@@ -348,6 +348,10 @@ export function registerOpenApiGatewayTests() {
       MOBILE_API_REQUEST_LIMITS.minFeeRate
     );
     expect(openApiSpec.components.schemas.TransactionBroadcastRequest).toBeDefined();
+    expect(openApiSpec.components.schemas.TransactionBroadcastRequest.properties.draftId).toMatchObject({
+      type: 'string',
+      minLength: 1,
+    });
     expect(openApiSpec.components.schemas.PsbtBroadcastResponse).toBeDefined();
   });
 

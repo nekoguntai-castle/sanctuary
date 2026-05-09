@@ -171,7 +171,10 @@ describe('Blockchain Service - UTXO Management', () => {
 
       // Should delete the draft that was using the spent UTXO
       expect(mockPrisma.draftTransaction.deleteMany).toHaveBeenCalledWith({
-        where: { id: { in: ['draft-1'] } },
+        where: {
+          id: { in: ['draft-1'] },
+          status: { in: ['unsigned', 'partial', 'signed'] },
+        },
       });
     });
   });

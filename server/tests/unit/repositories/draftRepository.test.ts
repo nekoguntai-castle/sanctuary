@@ -23,6 +23,7 @@ import {
   create,
   countByStatus,
   countByWalletId,
+  deleteManyByIds,
   deleteExpired,
   draftRepository,
   findById,
@@ -33,6 +34,7 @@ import {
   findByUserId,
   findByWalletId,
   findExpired,
+  BROADCASTED_DRAFT_STATUS,
   remove,
   update,
   updateApprovalStatus,
@@ -50,7 +52,10 @@ describe('draftRepository', () => {
 
     expect(result).toEqual([{ id: 'd1' }]);
     expect(prisma.draftTransaction.findMany).toHaveBeenCalledWith({
-      where: { walletId: 'wallet-1' },
+      where: {
+        walletId: 'wallet-1',
+        status: { in: ['unsigned', 'partial', 'signed'] },
+      },
       orderBy: { createdAt: 'desc' },
     });
   });
@@ -77,11 +82,17 @@ describe('draftRepository', () => {
     await expect(findExpired()).resolves.toEqual([{ id: 'expired-1' }]);
 
     expect(prisma.draftTransaction.findMany).toHaveBeenNthCalledWith(1, {
-      where: { userId: 'user-1' },
+      where: {
+        userId: 'user-1',
+        status: { in: ['unsigned', 'partial', 'signed'] },
+      },
       orderBy: { createdAt: 'desc' },
     });
     expect(prisma.draftTransaction.findMany).toHaveBeenNthCalledWith(2, {
-      where: { expiresAt: { lt: expect.any(Date) } },
+      where: {
+        status: { in: ['unsigned', 'partial', 'signed'] },
+        expiresAt: { lt: expect.any(Date) },
+      },
     });
   });
 
@@ -260,9 +271,10 @@ describe('draftRepository', () => {
     });
   });
 
-  it('update without expectedUpdatedAt performs direct update', async () => {
+  it('update without expectedUpdatedAt only updates actionable drafts', async () => {
     const updated = { id: 'd1', status: 'partial' };
-    (prisma.draftTransaction.update as Mock).mockResolvedValue(updated);
+    (prisma.draftTransaction.updateMany as Mock).mockResolvedValue({ count: 1 });
+    (prisma.draftTransaction.findUnique as Mock).mockResolvedValue(updated);
 
     const result = await update('d1', {
       status: 'partial',
@@ -273,14 +285,33 @@ describe('draftRepository', () => {
     });
 
     expect(result).toEqual(updated);
-    expect(prisma.draftTransaction.update).toHaveBeenCalledWith({
-      where: { id: 'd1' },
+    expect(prisma.draftTransaction.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'd1',
+        status: { in: ['unsigned', 'partial', 'signed'] },
+      },
       data: expect.objectContaining({
         status: 'partial',
         signedDeviceIds: ['dev-1'],
         signedPsbtBase64: 'signed-psbt',
         label: 'label',
         memo: 'memo',
+        updatedAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('update without expectedUpdatedAt throws conflict when draft is archived or missing', async () => {
+    (prisma.draftTransaction.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+    await expect(update('d1', { status: 'signed' })).rejects.toThrow('DRAFT_UPDATE_CONFLICT');
+    expect(prisma.draftTransaction.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'd1',
+        status: { in: ['unsigned', 'partial', 'signed'] },
+      },
+      data: expect.objectContaining({
+        status: 'signed',
         updatedAt: expect.any(Date),
       }),
     });
@@ -323,6 +354,7 @@ describe('draftRepository', () => {
     expect(prisma.draftTransaction.updateMany).toHaveBeenCalledWith({
       where: {
         id: 'd1',
+        status: { in: ['unsigned', 'partial', 'signed'] },
         updatedAt: new Date('2026-01-01T00:00:00.000Z'),
       },
       data: expect.objectContaining({
@@ -346,7 +378,10 @@ describe('draftRepository', () => {
 
     expect(prisma.draftTransaction.delete).toHaveBeenCalledWith({ where: { id: 'd1' } });
     expect(prisma.draftTransaction.deleteMany).toHaveBeenCalledWith({
-      where: { expiresAt: { lt: expect.any(Date) } },
+      where: {
+        status: { in: ['unsigned', 'partial', 'signed'] },
+        expiresAt: { lt: expect.any(Date) },
+      },
     });
     expect(prisma.draftTransaction.count).toHaveBeenNthCalledWith(1, {
       where: { walletId: 'wallet-1' },
@@ -357,6 +392,20 @@ describe('draftRepository', () => {
     expect(expiredCount).toBe(3);
     expect(walletCount).toBe(11);
     expect(statusCount).toBe(4);
+  });
+
+  it('deleteManyByIds only deletes actionable drafts', async () => {
+    (prisma.draftTransaction.deleteMany as Mock).mockResolvedValue({ count: 2 });
+
+    const count = await deleteManyByIds(['draft-1', 'draft-2']);
+
+    expect(count).toBe(2);
+    expect(prisma.draftTransaction.deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['draft-1', 'draft-2'] },
+        status: { in: ['unsigned', 'partial', 'signed'] },
+      },
+    });
   });
 
   describe('updateApprovalStatus', () => {
@@ -394,5 +443,7 @@ describe('draftRepository', () => {
     expect(draftRepository.findPendingAgentDraftsForUser).toBe(findPendingAgentDraftsForUser);
     expect(draftRepository.findPendingAgentDraftByIdForUser).toBe(findPendingAgentDraftByIdForUser);
     expect(draftRepository.findAgentDraftByIdForUser).toBe(findAgentDraftByIdForUser);
+    expect(draftRepository.deleteManyByIds).toBe(deleteManyByIds);
+    expect(BROADCASTED_DRAFT_STATUS).toBe('broadcasted');
   });
 });

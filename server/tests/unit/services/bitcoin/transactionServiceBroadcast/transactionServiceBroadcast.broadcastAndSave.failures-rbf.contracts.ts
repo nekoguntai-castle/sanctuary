@@ -259,6 +259,13 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
       expect(mockPrismaClient.draftUtxoLock.deleteMany).toHaveBeenCalledWith({
         where: { draftId },
       });
+      expect(mockPrismaClient.draftTransaction.updateMany).toHaveBeenCalledWith({
+        where: { id: draftId },
+        data: {
+          status: 'broadcasted',
+          updatedAt: expect.any(Date),
+        },
+      });
     });
   });
 };

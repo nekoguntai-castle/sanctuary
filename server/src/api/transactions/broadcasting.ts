@@ -12,10 +12,14 @@ import { requireWalletAccess } from '../../middleware/walletAccess';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { asyncHandler } from '../../errors/errorHandler';
-import { ForbiddenError } from '../../errors/ApiError';
+import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { auditService, AuditCategory, AuditAction } from '../../services/auditService';
 import { policyEvaluationEngine } from '../../services/vaultPolicy';
 import * as txService from '../../services/bitcoin/transactionService';
+import {
+  ACTIONABLE_DRAFT_STATUSES,
+  draftRepository,
+} from '../../repositories/draftRepository';
 import {
   type MobilePsbtBroadcastRequest,
   MobilePsbtBroadcastRequestSchema,
@@ -24,6 +28,7 @@ import {
 } from '../../../../shared/schemas/mobileApiRequests';
 import { parseTransactionRequestBody } from './requestValidation';
 import { requireAuthenticatedUser } from '../../middleware/auth';
+import type { DraftTransaction } from '../../generated/prisma/client';
 
 const router = Router();
 const log = createLogger('TX_BROADCAST:ROUTE');
@@ -31,6 +36,16 @@ const log = createLogger('TX_BROADCAST:ROUTE');
 type WalletRequest = Request & { walletId?: string };
 type TransactionBroadcastBody = MobileTransactionBroadcastRequest;
 type PsbtBroadcastBody = MobilePsbtBroadcastRequest;
+type BroadcastDraft = DraftTransaction;
+
+const ACTIONABLE_BROADCAST_DRAFT_STATUSES = new Set<string>(ACTIONABLE_DRAFT_STATUSES);
+const APPROVED_BROADCAST_APPROVAL_STATUSES = new Set(['not_required', 'approved']);
+const APPROVAL_REJECTION_REASONS: Record<string, string> = {
+  pending: 'pending_approval',
+  rejected: 'approval_rejected',
+  vetoed: 'approval_vetoed',
+  expired: 'approval_expired',
+};
 
 const resolveTransactionPolicyFields = (
   signedPsbtBase64: string | undefined,
@@ -78,6 +93,42 @@ const assertPolicyAllowsBroadcast = async (
       triggered: policyResult.triggered.map(t => t.policyName),
     });
     throw new ForbiddenError('Transaction blocked by vault policy');
+  }
+};
+
+const loadBroadcastDraft = async (
+  walletId: string,
+  draftId: string | undefined
+): Promise<BroadcastDraft | null> => {
+  if (!draftId) return null;
+
+  const draft = await draftRepository.findByIdInWallet(draftId, walletId);
+  if (!draft) {
+    throw new NotFoundError('Draft not found', undefined, { draftId });
+  }
+
+  assertDraftAllowsBroadcast(draft);
+  return draft;
+};
+
+const assertDraftAllowsBroadcast = (draft: BroadcastDraft): void => {
+  // Broadcast is the terminal side effect; approval and lifecycle gates must be
+  // enforced before policy usage, audit success, or node submission can happen.
+  if (!ACTIONABLE_BROADCAST_DRAFT_STATUSES.has(draft.status)) {
+    throw new ConflictError('Draft is no longer actionable for broadcast', undefined, {
+      draftId: draft.id,
+      status: draft.status,
+      reason: 'duplicate_submission',
+    });
+  }
+
+  if (!APPROVED_BROADCAST_APPROVAL_STATUSES.has(draft.approvalStatus)) {
+    const reason = APPROVAL_REJECTION_REASONS[draft.approvalStatus] ?? 'pending_approval';
+    throw new ForbiddenError('Draft approval is required before broadcast', undefined, {
+      draftId: draft.id,
+      approvalStatus: draft.approvalStatus,
+      reason,
+    });
   }
 };
 
@@ -131,17 +182,112 @@ const pickDefinedBroadcastFields = <K extends keyof TransactionBroadcastBody>(
   ) as Partial<Pick<TransactionBroadcastBody, K>>;
 };
 
+const pickDefinedMetadata = <T extends Record<string, unknown>>(values: T): Partial<T> => {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined)
+  ) as Partial<T>;
+};
+
+const parseDraftUtxoReference = (utxoId: string): { txid: string; vout: number } | null => {
+  // Drafts store selected UTXOs as txid:vout. Invalid legacy values are ignored
+  // so explicit request metadata can still carry the spend set.
+  const separatorIndex = utxoId.lastIndexOf(':');
+  if (separatorIndex <= 0) return null;
+
+  const txid = utxoId.slice(0, separatorIndex);
+  const vout = Number(utxoId.slice(separatorIndex + 1));
+  if (!/^[a-fA-F0-9]{64}$/.test(txid) || !Number.isInteger(vout) || vout < 0) {
+    return null;
+  }
+
+  return { txid, vout };
+};
+
+const getDraftBroadcastAmount = (draft: BroadcastDraft | null): number | undefined => {
+  if (!draft) return undefined;
+  return Number(draft.effectiveAmount ?? draft.amount);
+};
+
+const getDraftBroadcastUtxos = (draft: BroadcastDraft | null): Array<{ txid: string; vout: number }> => {
+  if (!draft) return [];
+  return draft.selectedUtxoIds.flatMap(utxoId => {
+    const parsed = parseDraftUtxoReference(utxoId);
+    return parsed ? [parsed] : [];
+  });
+};
+
+const resolveSignedPsbtForBroadcast = (
+  body: TransactionBroadcastBody,
+  draft: BroadcastDraft | null
+): string | undefined => {
+  if (body.signedPsbtBase64) return body.signedPsbtBase64;
+  if (body.rawTxHex) return undefined;
+  return draft?.signedPsbtBase64 ?? undefined;
+};
+
+const assertBroadcastPayloadAvailable = (
+  body: TransactionBroadcastBody,
+  signedPsbtBase64: string | undefined,
+  draft: BroadcastDraft | null
+): void => {
+  if (body.rawTxHex || signedPsbtBase64) return;
+
+  throw new InvalidInputError(
+    'Draft does not have a signed PSBT to broadcast',
+    'draftId',
+    {
+      draftId: draft?.id,
+      reason: 'missing_witness_data',
+    }
+  );
+};
+
+const resolveBroadcastRecipient = (
+  body: TransactionBroadcastBody,
+  evalRecipient: string | undefined,
+  draft: BroadcastDraft | null
+): string => {
+  if (evalRecipient !== undefined) return evalRecipient;
+  if (body.recipient !== undefined) return body.recipient;
+  return draft?.recipient ?? '';
+};
+
+const resolveBroadcastAmount = (
+  body: TransactionBroadcastBody,
+  evalAmount: number | undefined,
+  draft: BroadcastDraft | null
+): number => {
+  if (evalAmount !== undefined) return evalAmount;
+  if (body.amount !== undefined) return body.amount;
+
+  const draftAmount = getDraftBroadcastAmount(draft);
+  return draftAmount !== undefined ? draftAmount : 0;
+};
+
+const resolveBroadcastFee = (
+  body: TransactionBroadcastBody,
+  draft: BroadcastDraft | null
+): number => {
+  if (body.fee !== undefined) return body.fee;
+  return draft ? Number(draft.fee) : 0;
+};
+
 const buildTransactionBroadcastMetadata = (
   body: TransactionBroadcastBody,
   evalRecipient: string | undefined,
-  evalAmount: number | undefined
+  evalAmount: number | undefined,
+  draft: BroadcastDraft | null
 ) => {
   return {
-    recipient: evalRecipient ?? body.recipient ?? '',
-    amount: evalAmount ?? body.amount ?? 0,
-    fee: body.fee ?? 0,
-    ...pickDefinedBroadcastFields(body, ['label', 'memo'] as const),
-    utxos: body.utxos ?? [],
+    recipient: resolveBroadcastRecipient(body, evalRecipient, draft),
+    amount: resolveBroadcastAmount(body, evalAmount, draft),
+    fee: resolveBroadcastFee(body, draft),
+    ...pickDefinedMetadata({
+      label: body.label ?? draft?.label ?? undefined,
+      memo: body.memo ?? draft?.memo ?? undefined,
+    }),
+    utxos: body.utxos ?? getDraftBroadcastUtxos(draft),
+    ...(draft && { draftId: draft.id }),
     ...pickDefinedBroadcastFields(body, ['rawTxHex'] as const),
   };
 };
@@ -151,10 +297,14 @@ const handleTransactionBroadcast = async (
   walletId: string,
   body: TransactionBroadcastBody
 ) => {
+  const draft = await loadBroadcastDraft(walletId, body.draftId);
+  const signedPsbtBase64 = resolveSignedPsbtForBroadcast(body, draft);
+  assertBroadcastPayloadAvailable(body, signedPsbtBase64, draft);
+
   const { evalRecipient, evalAmount } = resolveTransactionPolicyFields(
-    body.signedPsbtBase64,
-    body.recipient,
-    body.amount
+    signedPsbtBase64,
+    body.recipient ?? draft?.recipient,
+    body.amount ?? getDraftBroadcastAmount(draft)
   );
   await assertPolicyAllowsBroadcast(
     req,
@@ -165,24 +315,27 @@ const handleTransactionBroadcast = async (
   );
 
   try {
+    const metadata = buildTransactionBroadcastMetadata(body, evalRecipient, evalAmount, draft);
     const result = await txService.broadcastAndSave(
       walletId,
-      body.signedPsbtBase64,
-      buildTransactionBroadcastMetadata(body, evalRecipient, evalAmount)
+      signedPsbtBase64,
+      metadata
     );
 
-    recordPolicyUsage(walletId, req, evalAmount || body.amount);
+    recordPolicyUsage(walletId, req, metadata.amount);
     await auditTransactionBroadcastSuccess(req, walletId, {
       txid: result.txid,
-      recipient: body.recipient,
-      amount: body.amount,
-      fee: body.fee,
+      draftId: draft?.id,
+      recipient: metadata.recipient,
+      amount: metadata.amount,
+      fee: metadata.fee,
     });
     return result;
   } catch (error) {
     await auditTransactionBroadcastFailure(req, error, {
-      recipient: body.recipient,
-      amount: body.amount,
+      draftId: draft?.id,
+      recipient: body.recipient ?? draft?.recipient,
+      amount: body.amount ?? getDraftBroadcastAmount(draft),
     });
     throw error;
   }

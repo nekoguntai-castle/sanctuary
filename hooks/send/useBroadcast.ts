@@ -2,14 +2,13 @@
  * useBroadcast Hook
  *
  * Handles transaction broadcasting, including post-broadcast cleanup
- * (query cache refresh, draft deletion, navigation).
+ * (query cache refresh and navigation).
  */
 
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as bitcoin from 'bitcoinjs-lib';
 import * as transactionsApi from '../../src/api/transactions';
-import * as draftsApi from '../../src/api/drafts';
 import { useErrorHandler } from '../useErrorHandler';
 import { useNotificationSound } from '../useNotificationSound';
 import { useCurrency } from '../../contexts/CurrencyContext';
@@ -150,18 +149,6 @@ const refetchBroadcastCaches = async (walletId: string): Promise<void> => {
   queryClient.invalidateQueries({ queryKey: ['transactions', walletId] });
 };
 
-const deleteDraftAfterBroadcast = async (walletId: string, draftId: string | null): Promise<void> => {
-  if (!draftId) {
-    return;
-  }
-
-  try {
-    await draftsApi.deleteDraft(walletId, draftId);
-  } catch (e) {
-    log.error('Failed to delete draft after broadcast', { error: e });
-  }
-};
-
 const getBroadcastErrorMessage = (err: unknown): string => {
   return err instanceof Error ? err.message : 'Failed to broadcast transaction';
 };
@@ -210,6 +197,7 @@ export function useBroadcast({
       const broadcastResult = await transactionsApi.broadcastTransaction(walletId, {
         signedPsbtBase64: payload.psbtToUse ?? undefined,
         rawTxHex: payload.rawTxToUse ?? undefined,
+        ...(state.draftId ? { draftId: state.draftId } : {}),
         recipient: state.outputs[0].address,
         amount: effectiveAmount,
         fee: txData.fee,
@@ -219,7 +207,6 @@ export function useBroadcast({
       showBroadcastSuccess(showSuccess, format, broadcastResult.txid, state.outputs.length, effectiveAmount, txData.fee);
       playEventSound('send');
       await refetchBroadcastCaches(walletId);
-      await deleteDraftAfterBroadcast(walletId, state.draftId);
       navigate(`/wallets/${walletId}`);
       return true;
     } catch (err) {

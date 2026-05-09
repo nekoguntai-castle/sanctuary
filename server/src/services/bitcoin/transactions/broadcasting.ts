@@ -71,6 +71,10 @@ export async function broadcastAndSave(
     log.debug(`Released ${persisted.unlockedCount} UTXO locks for draft ${metadata.draftId}`);
   }
 
+  if (metadata.draftId && persisted.draftArchived) {
+    log.debug(`Archived draft ${metadata.draftId} after accepted broadcast`);
+  }
+
   // Recalculate running balances for all affected wallets
   await recalculateWalletBalances(walletId);
 

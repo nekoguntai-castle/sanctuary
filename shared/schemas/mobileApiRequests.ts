@@ -233,13 +233,14 @@ export const MobileTransactionEstimateRequestSchema = z.object({
 export const MobileTransactionBroadcastRequestSchema = MobileTransactionMetadataSchema.extend({
   signedPsbtBase64: z.string().min(1).optional(),
   rawTxHex: z.string().min(1).optional(),
+  draftId: z.string().min(1).optional(),
   recipient: z.string().optional(),
   amount: z.number().optional(),
   fee: z.number().optional(),
   utxos: z.array(MobileUtxoReferenceSchema).optional(),
 }).refine(
-  (request) => Boolean(request.signedPsbtBase64 || request.rawTxHex),
-  'Either signedPsbtBase64 or rawTxHex is required'
+  (request) => Boolean(request.signedPsbtBase64 || request.rawTxHex || request.draftId),
+  'Either signedPsbtBase64, rawTxHex, or draftId is required'
 );
 
 const MobilePsbtRecipientSchema = z.object({

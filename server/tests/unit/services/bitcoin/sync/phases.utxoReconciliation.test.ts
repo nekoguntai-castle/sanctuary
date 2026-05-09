@@ -182,7 +182,10 @@ describe('Sync Phases', () => {
       await reconcileUtxosPhase(ctx);
 
       expect(mockPrismaClient.draftTransaction.deleteMany).toHaveBeenCalledWith({
-        where: { id: { in: ['draft-1'] } },
+        where: {
+          id: { in: ['draft-1'] },
+          status: { in: ['unsigned', 'partial', 'signed'] },
+        },
       });
       expect(walletLog).toHaveBeenCalledWith(
         'test-wallet',

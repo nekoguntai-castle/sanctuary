@@ -84,6 +84,7 @@ export interface CreateTransactionResponse {
 export interface BroadcastTransactionRequest {
   signedPsbtBase64?: string; // Signed PSBT from Ledger or file upload
   rawTxHex?: string; // Raw transaction hex from Trezor (fully signed)
+  draftId?: string; // Server-owned draft lifecycle marker
   recipient: string;
   amount: number;
   fee: number;

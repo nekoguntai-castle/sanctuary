@@ -153,6 +153,7 @@ export const registerUseSendTransactionActionsSigningContracts = () => {
       expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', {
         signedPsbtBase64: 'signed-psbt',
         rawTxHex: undefined,
+        draftId: 'draft-456',
         recipient: 'bc1qrecipient',
         amount: 10000,
         fee: 123,
@@ -160,7 +161,7 @@ export const registerUseSendTransactionActionsSigningContracts = () => {
       });
       expect(mocks.refetchQueries).toHaveBeenCalledTimes(3);
       expect(mocks.invalidateQueries).toHaveBeenCalledTimes(2);
-      expect(mocks.deleteDraft).toHaveBeenCalledWith('wallet-1', 'draft-456');
+      expect(mocks.deleteDraft).not.toHaveBeenCalled();
       expect(mocks.playEventSound).toHaveBeenCalledWith('send');
       expect(mocks.showSuccess).toHaveBeenCalled();
       expect(mocks.navigate).toHaveBeenCalledWith('/wallets/wallet-1');

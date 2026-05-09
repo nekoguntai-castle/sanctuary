@@ -138,6 +138,12 @@ const isDraftUpdateConflict = (error: unknown): boolean => {
   return error instanceof Error && error.message === 'DRAFT_UPDATE_CONFLICT';
 };
 
+const toDraftUpdateConflictError = (): ConflictError => {
+  return new ConflictError(
+    'Draft was modified concurrently or is no longer actionable. Please reload and retry.'
+  );
+};
+
 const refreshDraftForRetry = async (
   walletId: string,
   draftId: string,
@@ -193,12 +199,16 @@ export async function updateDraft(
       log.info('Updated draft', { draftId, walletId, status: draft.status });
       return draft;
     } catch (error) {
-      if (!requiresOptimisticRetry || !isDraftUpdateConflict(error)) {
+      if (!isDraftUpdateConflict(error)) {
         throw error;
       }
 
+      if (!requiresOptimisticRetry) {
+        throw toDraftUpdateConflictError();
+      }
+
       if (attempt >= maxAttempts - 1) {
-        throw new ConflictError('Draft was modified concurrently. Please retry your update.');
+        throw toDraftUpdateConflictError();
       }
 
       latestDraft = await refreshDraftForRetry(walletId, draftId, attempt + 2);

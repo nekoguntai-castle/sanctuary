@@ -1,6 +1,35 @@
+# Active Task: Bug Scrub Slice 2 Draft Broadcast Lifecycle 2026-05-08
+
+Status: in progress; implementation branch `fix/bug-scrub-slice-2`
+
+Goal: deliver Slice 2 through PR by wiring `draftId` broadcasts, enforcing draft approval before broadcast, making draft cleanup server-owned, and archiving broadcasted drafts instead of client-side deletion.
+
+## Plan
+
+- [x] Start a fresh Slice 2 branch from merged Slice 1 `main`.
+- [x] Add `draftId` to the shared broadcast request contract and OpenAPI schema.
+- [x] Send `draftId` from `useBroadcast` and remove the post-broadcast client draft deletion path.
+- [x] Load draft metadata on the server, reject non-actionable or unapproved drafts before policy evaluation and node broadcast, and support draft-only signed-PSBT broadcast.
+- [x] Archive accepted draft broadcasts as `broadcasted` inside transaction persistence while releasing UTXO locks.
+- [x] Hide `broadcasted` drafts from actionable repository list/update paths.
+- [x] Add focused route, repository, service, OpenAPI, and hook regression tests.
+- [x] Run focused tests, type checks, lint/guard checks, lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [ ] Continue to Slice 3 after Slice 2 is merged.
+
+## Review
+
+- Implemented draft-backed broadcast validation in `server/src/api/transactions/broadcasting.ts` with explicit approval/status gates and metadata fallback from stored drafts.
+- Moved accepted-broadcast draft cleanup to `persistTransaction`, which now releases draft locks and archives the draft row as `broadcasted` in the same persistence transaction.
+- Updated repository list/update/cleanup behavior so archived drafts stay in the database, disappear from actionable draft lists, cannot receive later signature/status updates, and are not removed by expired-draft or spent-UTXO draft cleanup.
+- Added `docs/plans/bug-scrub-slice-2-draft-broadcast-lifecycle.md` to capture the contract, residual race window, and follow-ups.
+- Local verification passed so far: focused server route/OpenAPI/repository/broadcast-service tests, focused frontend `useBroadcast` tests, server test typecheck, server build, frontend app/test typechecks, `npm run lint:server`, touched-file lizard, and `git diff --check`.
+
+---
+
 # Active Task: Bug Scrub Slice 1 Broadcast Contracts 2026-05-08
 
-Status: in progress; implementation branch `fix/bug-scrub-slice-1`
+Status: complete; PR #321 merged as `90b3e849`
 
 Goal: deliver Slice 1 through PR by defining executable broadcast idempotency, structured error, readiness/finality, canonical intent, and draft retention contracts.
 
@@ -11,13 +40,14 @@ Goal: deliver Slice 1 through PR by defining executable broadcast idempotency, s
 - [x] Add focused contract tests for reason codes, retry policy, idempotency basis, draft retention, exactly-once side effects, and canonical intent shape.
 - [x] Add Slice 1 broadcast contract documentation for later implementation slices.
 - [x] Run focused server tests, type checks, lint/guard checks, lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
-- [ ] Continue to Slice 2 after Slice 1 is merged.
+- [x] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [x] Continue to Slice 2 after Slice 1 merged.
 
 ## Review
 
 - Added `broadcastContracts.ts` as the executable Slice 1 contract for reason codes, retry policy, idempotency basis, canonical intent, draft retention, and exactly-once side effects.
 - Local verification passed: focused broadcast contract tests, server test typecheck, server build, `npm run lint:server`, lizard on the new contract module, and `git diff --check`.
+- PR #321 merged at `2026-05-08T15:27:03-10:00` as squash commit `90b3e849556b241d333978b3ce352d7267a332d4`; local `main` was fast-forwarded and the local/remote Slice 1 branches were deleted.
 
 ---
 

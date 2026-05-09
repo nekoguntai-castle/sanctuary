@@ -10,6 +10,7 @@ import {
   mockCreateTransaction,
   mockEstimateTransaction,
   mockEvaluatePolicies,
+  mockDraftFindByIdInWallet,
   mockFetch,
   mockGetCachedBlockHeight,
   mockGetPSBTInfo,
@@ -22,6 +23,23 @@ import {
   walletId,
 } from './transactionsHttpRoutesTestHarness';
 
+const makeBroadcastDraft = (overrides: Record<string, unknown> = {}) => ({
+  id: 'draft-1',
+  walletId,
+  userId: 'test-user-id',
+  recipient: 'tb1qdraftrecipient',
+  amount: BigInt(12000),
+  effectiveAmount: BigInt(12000),
+  fee: BigInt(250),
+  selectedUtxoIds: [`${'c'.repeat(64)}:1`],
+  signedPsbtBase64: 'signed-draft-psbt',
+  status: 'signed',
+  approvalStatus: 'approved',
+  label: 'draft label',
+  memo: 'draft memo',
+  ...overrides,
+});
+
 export function registerTransactionHttpBroadcastTests(): void {
   it('validates broadcast payload before sending', async () => {
     const response = await request(app)
@@ -29,7 +47,7 @@ export function registerTransactionHttpBroadcastTests(): void {
       .send({ recipient: 'tb1qrecipient' });
 
     expect(response.status).toBe(400);
-    expect(response.body.message).toContain('Either signedPsbtBase64 or rawTxHex is required');
+    expect(response.body.message).toContain('Either signedPsbtBase64, rawTxHex, or draftId is required');
   });
 
   it('broadcasts signed transaction and writes audit event', async () => {
@@ -61,6 +79,86 @@ export function registerTransactionHttpBroadcastTests(): void {
       'WALLET',
       expect.objectContaining({ success: true })
     );
+  });
+
+  it('broadcasts a saved draft by draftId and archives through service metadata', async () => {
+    mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft());
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({ draftId: 'draft-1' });
+
+    expect(response.status).toBe(200);
+    expect(mockDraftFindByIdInWallet).toHaveBeenCalledWith('draft-1', walletId);
+    expect(mockEvaluatePolicies).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipient: 'tb1qdraftrecipient',
+        amount: BigInt(12000),
+      })
+    );
+    expect(mockBroadcastAndSave).toHaveBeenCalledWith(walletId, 'signed-draft-psbt', {
+      recipient: 'tb1qdraftrecipient',
+      amount: 12000,
+      fee: 250,
+      label: 'draft label',
+      memo: 'draft memo',
+      utxos: [{ txid: 'c'.repeat(64), vout: 1 }],
+      draftId: 'draft-1',
+    });
+  });
+
+  it('rejects draft broadcasts that still need approval', async () => {
+    mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({
+      approvalStatus: 'pending',
+    }));
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({ draftId: 'draft-1' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.details).toMatchObject({
+      draftId: 'draft-1',
+      approvalStatus: 'pending',
+      reason: 'pending_approval',
+    });
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('rejects draft-only broadcasts when the draft has no signed PSBT', async () => {
+    mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({
+      signedPsbtBase64: null,
+    }));
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({ draftId: 'draft-1' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.details).toMatchObject({
+      field: 'draftId',
+      draftId: 'draft-1',
+      reason: 'missing_witness_data',
+    });
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('rejects archived draft broadcasts before touching the node', async () => {
+    mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({
+      status: 'broadcasted',
+    }));
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({ draftId: 'draft-1' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.details).toMatchObject({
+      draftId: 'draft-1',
+      status: 'broadcasted',
+      reason: 'duplicate_submission',
+    });
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
   });
 
   it('captures failed broadcast attempts in audit log', async () => {

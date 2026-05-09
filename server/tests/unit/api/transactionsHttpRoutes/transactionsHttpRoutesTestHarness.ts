@@ -18,6 +18,7 @@ const {
   mockEvaluatePolicies,
   mockRecordUsage,
   mockWalletFindById,
+  mockDraftFindByIdInWallet,
 } = vi.hoisted(() => ({
   mockGetCachedBlockHeight: vi.fn(),
   mockRecalculateWalletBalances: vi.fn(),
@@ -34,6 +35,7 @@ const {
   mockEvaluatePolicies: vi.fn(),
   mockRecordUsage: vi.fn(),
   mockWalletFindById: vi.fn(),
+  mockDraftFindByIdInWallet: vi.fn(),
 }));
 
 vi.mock('../../../../src/models/prisma', async () => {
@@ -51,6 +53,17 @@ vi.mock('../../../../src/repositories/walletRepository', async (importOriginal) 
     walletRepository: {
       ...actual.walletRepository,
       findById: mockWalletFindById,
+    },
+  };
+});
+
+vi.mock('../../../../src/repositories/draftRepository', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/repositories/draftRepository')>();
+  return {
+    ...actual,
+    draftRepository: {
+      ...actual.draftRepository,
+      findByIdInWallet: mockDraftFindByIdInWallet,
     },
   };
 });
@@ -139,6 +152,7 @@ export function setupTransactionHttpRouteHooks(): void {
     mockWalletCacheSet.mockResolvedValue(undefined);
     mockEvaluatePolicies.mockResolvedValue({ allowed: true, triggered: [] });
     mockRecordUsage.mockResolvedValue(undefined);
+    mockDraftFindByIdInWallet.mockResolvedValue(null);
     mockValidateAddress.mockReturnValue({ valid: true });
     mockAuditLogFromRequest.mockResolvedValue(undefined);
     mockCreateTransaction.mockResolvedValue({
@@ -201,4 +215,5 @@ export {
   mockEvaluatePolicies,
   mockRecordUsage,
   mockWalletFindById,
+  mockDraftFindByIdInWallet,
 };

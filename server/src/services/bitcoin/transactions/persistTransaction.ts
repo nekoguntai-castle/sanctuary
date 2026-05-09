@@ -11,6 +11,7 @@ import { createLogger } from '../../../utils/logger';
 import { isUniqueConstraintError } from './helpers';
 import { storeTransactionInputs, storeTransactionOutputs } from './storeTransactionIO';
 import { createInternalReceivingTransactions } from './internalReceiving';
+import { BROADCAST_DRAFT_RETENTION_POLICY } from './broadcastContracts';
 import type { TransactionInputMetadata, TransactionOutputMetadata } from './types';
 
 const log = createLogger('BITCOIN:SVC_TX_PERSIST');
@@ -38,6 +39,7 @@ export async function persistTransaction(
   txType: 'sent' | 'consolidation';
   mainTransactionCreated: boolean;
   unlockedCount: number;
+  draftArchived: boolean;
   createdReceivingTransactions: Array<{ walletId: string; amount: number; address: string }>;
 }> {
   return withTransaction(async (tx) => {
@@ -59,11 +61,23 @@ export async function persistTransaction(
 
     // Release UTXO locks if broadcasting from a draft
     let unlockedCount = 0;
+    let draftArchived = false;
     if (metadata.draftId) {
       const unlockResult = await tx.draftUtxoLock.deleteMany({
         where: { draftId: metadata.draftId },
       });
       unlockedCount = unlockResult.count;
+
+      // Keep draft archival atomic with transaction persistence so later draft
+      // updates cannot resurrect a broadcasted spend after node acceptance.
+      const archiveResult = await tx.draftTransaction.updateMany({
+        where: { id: metadata.draftId },
+        data: {
+          status: BROADCAST_DRAFT_RETENTION_POLICY.terminalStatus,
+          updatedAt: new Date(),
+        },
+      });
+      draftArchived = archiveResult.count > 0;
     }
 
     // Check if recipient is a wallet address (consolidation) or external (sent)
@@ -174,6 +188,7 @@ export async function persistTransaction(
       txType: txType as 'sent' | 'consolidation',
       mainTransactionCreated,
       unlockedCount,
+      draftArchived,
       createdReceivingTransactions,
     };
   });
