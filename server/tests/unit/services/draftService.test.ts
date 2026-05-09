@@ -73,7 +73,7 @@ import { draftRepository, systemSettingRepository, walletRepository } from '../.
 import { lockUtxosForDraft, resolveUtxoIds } from '../../../src/services/draftLockService';
 import { dispatchDraftNotification } from '../../../src/services/notifications/dispatch';
 import * as bitcoin from 'bitcoinjs-lib';
-import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../../src/errors';
+import { NotFoundError, InvalidInputError, ConflictError } from '../../../src/errors';
 import {
   getDraftsForWallet,
   getDraft,
@@ -82,6 +82,7 @@ import {
   deleteDraft,
   deleteExpiredDrafts,
 } from '../../../src/services/draftService';
+import { registerDraftDeletionTests } from './draftService.delete.contracts';
 
 describe('DraftService', () => {
   const userId = 'user-123';
@@ -741,62 +742,17 @@ describe('DraftService', () => {
     });
   });
 
-  describe('deleteDraft', () => {
-    beforeEach(() => {
-      (draftRepository.findByIdInWallet as Mock).mockResolvedValue(mockDraft);
-      (draftRepository.remove as Mock).mockResolvedValue(undefined);
-    });
-
-    it('should delete draft as creator', async () => {
-      await deleteDraft(walletId, draftId, userId, 'signer');
-
-      expect(draftRepository.remove).toHaveBeenCalledWith(draftId);
-    });
-
-    it('should delete draft as wallet owner', async () => {
-      const differentUser = 'other-user';
-      (draftRepository.findByIdInWallet as Mock).mockResolvedValue({
-        ...mockDraft,
-        userId: 'original-creator',
-      });
-
-      await deleteDraft(walletId, draftId, differentUser, 'owner');
-
-      expect(draftRepository.remove).toHaveBeenCalledWith(draftId);
-    });
-
-    it('should throw ForbiddenError if not creator or owner', async () => {
-      (draftRepository.findByIdInWallet as Mock).mockResolvedValue({
-        ...mockDraft,
-        userId: 'original-creator',
-      });
-
-      await expect(deleteDraft(walletId, draftId, 'other-user', 'signer')).rejects.toThrow(ForbiddenError);
-    });
-
-    it('should throw NotFoundError if draft not found', async () => {
-      (draftRepository.findByIdInWallet as Mock).mockResolvedValue(null);
-
-      await expect(deleteDraft(walletId, draftId, userId, 'owner')).rejects.toThrow(NotFoundError);
-    });
-  });
-
-  describe('deleteExpiredDrafts', () => {
-    it('should delete expired drafts and return count', async () => {
-      (draftRepository.deleteExpired as Mock).mockResolvedValue(5);
-
-      const result = await deleteExpiredDrafts();
-
-      expect(draftRepository.deleteExpired).toHaveBeenCalled();
-      expect(result).toBe(5);
-    });
-
-    it('should return 0 when no expired drafts', async () => {
-      (draftRepository.deleteExpired as Mock).mockResolvedValue(0);
-
-      const result = await deleteExpiredDrafts();
-
-      expect(result).toBe(0);
-    });
+  registerDraftDeletionTests({
+    deleteDraft,
+    deleteExpiredDrafts,
+    draftId,
+    draftRepository: {
+      deleteExpired: draftRepository.deleteExpired as Mock,
+      findByIdInWallet: draftRepository.findByIdInWallet as Mock,
+      remove: draftRepository.remove as Mock,
+    },
+    mockDraft,
+    userId,
+    walletId,
   });
 });

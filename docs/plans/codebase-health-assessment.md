@@ -8,9 +8,9 @@ Status: Draft
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: 291f4ba3 (working tree dirty)
+**Commit**: 95afbd1c (working tree dirty)
 
-This refresh covers `main` after the mempool test split merge plus the current console service test split working tree. The earlier audit found and fixed a real coverage hard-fail in newly added Bitcoin network-context branches; the current maintainability loop is reducing large test-file warnings where a clean split exists.
+This refresh covers `main` after the console service test split merge plus the current draft service test split working tree. The earlier audit found and fixed a real coverage hard-fail in newly added Bitcoin network-context branches; the current maintainability loop has removed all local test-file warnings where a clean split existed.
 
 ---
 
@@ -35,7 +35,7 @@ Important non-blocking findings:
 | --- | ---: | --- |
 | Correctness | 18/20 | Tests, lint, typecheck, API body validation, blocking-I/O guard, and Bitcoin network-boundary guard pass. Functional completeness remains medium until hardware-in-loop signed wallet fixtures are complete. |
 | Reliability | 15/15 | Inspected broadcast, draft-update, node-client, and timeout/retry paths use explicit errors, retry boundaries, and contextual handling. |
-| Maintainability | 14/15 | Lizard passes with zero warnings and jscpd is 1.68%; admin operations E2E, node-client, wallet create-account selection, mempool, and console service tests were split below the warning band, but the largest-file criterion stays partial because one test warning remains in the 500-1000 LOC band. |
+| Maintainability | 14/15 | Lizard passes with zero warnings and jscpd is 1.68%; admin operations E2E, node-client, wallet create-account selection, mempool, console service, and draft service tests were split below the warning band. The largest-file criterion stays partial because one production-source warning remains and one proof harness is intentionally classified in the 800-1000 LOC band. |
 | Security | 15/15 | `npm audit --audit-level=high` reports 0 high/critical advisories; tracked-tree gitleaks is clean; Zod validation remains present at trust boundaries. |
 | Performance | 10/10 | No new hot-path blocking I/O; broadcast/node-client changes preserve async I/O and bounded guardrails. |
 | Test Quality | 15/15 | Full coverage is restored to 100% across frontend, server, and gateway with focused tests for the surfaced edge cases. |
@@ -65,7 +65,7 @@ Important non-blocking findings:
 | secrets | 0 tracked-tree leaks | `GITLEAKS_BIN=/home/nekoguntai/.local/bin/gitleaks bash scripts/gitleaks-tracked-tree.sh` | Security 4.2 -> +4 |
 | complexity | 0 warnings | `npm run quality:lizard` | Maintainability 3.1 -> +5 |
 | duplication | 1.68% duplicated lines, 259 exact clones | `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .` | Maintainability 3.2 -> +3 |
-| largest file | 802 lines (`server/tests/unit/services/draftService.test.ts`); 0 files over 1000 LOC; console service tests are now split into 739 LOC and 84 LOC modules | `node scripts/quality/check-large-files.mjs` | Maintainability 3.3 -> +1 |
+| largest file | unclassified warning: 823 lines (`scripts/ci/check-github-action-runtimes.mjs`); 0 test warnings; 0 files over 1000 LOC; classified proof-harness warning: 949 lines (`scripts/perf/phase3-benchmark.mjs`) | `node scripts/quality/check-large-files.mjs` | Maintainability 3.3 -> +1 |
 | deploy artifacts | 2 | `grade.sh`: Dockerfile/Compose plus GitHub Actions | Operational Readiness 7.1 -> +3 |
 | health endpoints | 198 heuristic hits | `grade.sh` heuristics; prior inspection of `server/src/api/health/routes.ts` | Operational Readiness 7.2 -> +2 |
 | observability library | present | `grade.sh` heuristics; inspected tracing/logging paths | Operational Readiness 7.3 -> +2 |
@@ -82,7 +82,7 @@ Important non-blocking findings:
 - **[2.2] Timeouts and retries - High -> +4**: request-level timeouts and async retry utilities remain in place; draft signature updates retain bounded optimistic retries.
 - **[2.3] Crash-prone paths - High -> +5**: inspected production changes avoid assertion-style crashes and either test or document unreachable legacy fallback behavior.
 - **[3.4] Architecture clarity - High -> +3**: the codebase keeps clear API/service/repository boundaries; large-test splits follow existing helper/register patterns instead of creating new harness styles.
-- **[3.5] Readability/naming - High -> +2**: admin operations, node-client, wallet validation, mempool dashboard-formatting, and console prompt-replay cases are grouped by behavior instead of mixed into oversized proof files.
+- **[3.5] Readability/naming - High -> +2**: admin operations, node-client, wallet validation, mempool dashboard-formatting, console prompt-replay, and draft deletion cases are grouped by behavior instead of mixed into oversized proof files.
 - **[4.3] Input validation quality - High -> +3**: Zod/body-validation guard still passes, and unsupported wallet network values fail before broadcast service calls.
 - **[4.4] Safe system/API usage - High -> +3**: no dangerous user-input shell/eval patterns were added; gitleaks tracked-tree scan is clean.
 - **[5.1] Hot-path efficiency - High -> +5**: broadcast and node-client changes preserve existing async service boundaries.
@@ -103,13 +103,13 @@ Important non-blocking findings:
 ## Top Risks
 
 1. Physical hardware-in-loop wallet proof remains incomplete - real-device PSBT signing confidence still depends on 11 missing required Ledger/Trezor/BitBox fixture rows; 4 Ledger/BitBox multisig rows are now explicitly blocked as unsupported.
-2. The largest-file point remains partial because one test/proof file is still in the 800-1000 LOC warning band; admin operations, node-client, wallet create-account selection, mempool, and console service tests are no longer part of that warning inventory.
+2. The largest-file point remains partial because `scripts/ci/check-github-action-runtimes.mjs` is still an 823-line production-source warning and `scripts/perf/phase3-benchmark.mjs` remains a 949-line classified proof harness; the test warning inventory is now zero.
 3. Low-severity elliptic-family dependency advisories remain with no safe automatic fix; avoid forced upgrades without hardware-wallet compatibility testing.
 
 ## Fastest Improvements
 
 1. Capture the 11 remaining hardware-signed PSBT fixture rows from physical Ledger/Trezor/BitBox devices - expected gain: +2 correctness - effort: hardware-dependent.
-2. Review the remaining large test/proof files and split only where a clean helper boundary exists - expected gain: +1 maintainability if the largest file drops below 500 LOC - effort: incremental.
+2. Review `scripts/ci/check-github-action-runtimes.mjs` for a clean split or explicit classification - expected gain: +1 maintainability if remaining warnings are resolved or justified - effort: incremental.
 3. Keep the Layout no-warning state by avoiding redundant async state setters in render-heavy shell components - expected score movement: none, but protects CI diagnosability - effort: ongoing review.
 
 ## Roadmap To A Grade
@@ -119,7 +119,7 @@ Important non-blocking findings:
 | 1 | Keep A stable | Preserve coverage, lint, typecheck, gitleaks, lizard, jscpd, API body validation, blocking-I/O, and Bitcoin network-boundary gates. | All listed commands pass on each PR. | Holds 97/A |
 | 2 | Cleaner test signal | Preserve the PR #329 Layout no-warning behavior. | Focused Layout tests and full frontend coverage have no repeated Layout act warnings. | No score movement; better diagnosability |
 | 3 | Stronger correctness | Add real hardware-signed PSBT fixture evidence for the 11 required rows. | `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` fixture contract passes. | +2 correctness |
-| 4 | Maintainability polish | Split or formally classify remaining large test/proof files when naturally touching those flows. | Largest-file criterion reaches full credit or the remaining proof files are explicitly justified. | +1 maintainability |
+| 4 | Maintainability polish | Split or formally classify the remaining large production-source warning, and keep the perf proof-harness classification explicit. | Largest-file criterion reaches full credit or the remaining proof files are explicitly justified. | +1 maintainability |
 
 ## Strengths To Preserve
 
@@ -138,7 +138,7 @@ Important non-blocking findings:
 ## Next Slice Queue
 
 1. **Physical Hardware Fixture Capture**: capture the 11 required Ledger/Trezor/BitBox signing artifacts on real devices. Exit with `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` passing.
-2. **Remaining Large Test/Proof Files**: review `server/tests/unit/services/draftService.test.ts` for a clean split/classification opportunity. Exit with the large-file warning inventory reduced or explicitly justified, plus focused tests and lizard.
+2. **CI Runtime Guard Large-File Review**: review `scripts/ci/check-github-action-runtimes.mjs` for a clean helper split or explicit classification. Exit with the production-source warning inventory reduced or justified, plus focused script checks and lizard.
 
 ## Verification Notes
 
@@ -179,4 +179,8 @@ Important non-blocking findings:
 - `npm run typecheck:server:tests` - passed after the console prompt-replay split.
 - `npm run quality:lizard -- server/tests/unit/assistant/consoleService.test.ts server/tests/unit/assistant/consoleService.promptReplay.contracts.ts` - passed after the split.
 - `node scripts/quality/check-large-files.mjs` - passed; `server/tests/unit/assistant/consoleService.test.ts` dropped out of the warning inventory, and the largest remaining test file is 802 LOC.
+- `npm --prefix server test -- --run tests/unit/services/draftService.test.ts` - passed, 48 tests after the draft deletion split.
+- `npm run typecheck:server:tests` - passed after the draft deletion split.
+- `npm run quality:lizard -- server/tests/unit/services/draftService.test.ts server/tests/unit/services/draftService.delete.contracts.ts` - passed after the split.
+- `node scripts/quality/check-large-files.mjs` - passed; `server/tests/unit/services/draftService.test.ts` dropped out of the warning inventory, leaving 0 test-file warnings.
 - `git diff --check` - passed.

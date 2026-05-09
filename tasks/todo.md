@@ -1,6 +1,32 @@
+# Active Task: Draft Service Test Large-File Split 2026-05-08
+
+Status: in progress; branch `test/draft-service-large-file-split`
+
+Goal: reduce the final remaining test-file warning, `server/tests/unit/services/draftService.test.ts` at 802 LOC, while preserving draft deletion and expiration coverage.
+
+## Plan
+
+- [x] Inspect the draft service test setup, shared fixture usage, and end-of-file deletion/expiration scenario groups.
+- [x] Choose the smallest cohesive split that drops the file below the warning band without duplicating service mocks.
+- [x] Move deletion and expiration scenarios into a smaller register module that receives the shared draft fixture.
+- [x] Run focused draft service tests, server test typecheck, touched-file lizard, large-file check, and `git diff --check`.
+- [x] Review for hidden risk: no mock ordering changes, no assertion weakening, and no draft service edits.
+- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+
+## Review
+
+- The smallest clean boundary was the end-of-file `deleteDraft` and `deleteExpiredDrafts` group.
+- Moved those cases into `server/tests/unit/services/draftService.delete.contracts.ts`, passing the existing service functions and mocked repository methods from the parent test to avoid mock-hoisting churn.
+- `server/tests/unit/services/draftService.test.ts` dropped from 802 lines to 758 lines; the deletion module is 96 lines, so this surface left the test warning inventory.
+- Verification passed locally: focused draft service Vitest run (48 tests), server test typecheck, touched-file lizard, large-file classification check, and `git diff --check`.
+- The large-file check now reports 0 test warnings; remaining maintainability warnings are `scripts/ci/check-github-action-runtimes.mjs` at 823 LOC and the classified `scripts/perf/phase3-benchmark.mjs` proof harness at 949 LOC.
+
+---
+
 # Active Task: Console Service Test Large-File Split 2026-05-08
 
-Status: in progress; branch `test/console-service-large-file-split`
+Status: complete; PR #335 merged as `95afbd1c`
 
 Goal: reduce the next largest remaining test-file warning, `server/tests/unit/assistant/consoleService.test.ts` at 808 LOC, while preserving console prompt replay coverage.
 
@@ -11,8 +37,8 @@ Goal: reduce the next largest remaining test-file warning, `server/tests/unit/as
 - [x] Move replay scenarios into a smaller register module that imports the existing test utils.
 - [x] Run focused console service tests, server test typecheck, touched-file lizard, large-file check, and `git diff --check`.
 - [x] Review for hidden risk: no mock ordering changes, no assertion weakening, and no service code edits.
-- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
-- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+- [x] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [x] Re-check the queue after merge; physical hardware capture remains blocked by device access.
 
 ## Review
 
@@ -22,6 +48,8 @@ Goal: reduce the next largest remaining test-file warning, `server/tests/unit/as
 - `server/tests/unit/assistant/consoleService.test.ts` dropped from 808 lines to 739 lines; the replay module is 84 lines, so this surface is no longer in the large-file warning inventory.
 - The large-file check now reports one test warning instead of two; the final local test warning is `server/tests/unit/services/draftService.test.ts` at 802 LOC.
 - Verification passed locally: focused console service Vitest run (26 tests), server test typecheck, touched-file lizard, large-file classification check, and `git diff --check`.
+- PR #335 merged as squash commit `95afbd1c687d23a737164c937ea82c5d74e3b69d`; local `main` was fast-forwarded and the local/remote `test/console-service-large-file-split` branches were deleted.
+- Post-merge `main` verification passed: focused console service Vitest run, 26 tests; large-file classification check passed with console service removed from the warning inventory.
 
 ---
 
