@@ -1,6 +1,32 @@
+# Active Task: Hardware-Signed Fixture Classification 2026-05-08
+
+Status: in progress; branch `docs/hardware-signed-fixture-classification`
+
+Goal: turn the remaining hardware-in-loop fixture gap into an explicit, executable support matrix so the grade report can distinguish missing physical evidence from intentionally unsupported device/script rows.
+
+## Plan
+
+- [x] Inspect the existing hardware wallet validation document, fixture intake file, and PSBT replay tests.
+- [x] Identify which Ledger/Trezor/BitBox/Jade rows are supported, missing physical evidence, or unsupported by current adapter behavior.
+- [x] Add the smallest executable or documented classification that fails only for required missing evidence and records unsupported rows explicitly.
+- [x] Run the focused hardware-signed fixture replay tests and any related docs/type checks needed for the touched files.
+- [x] Review the classification for overclaiming: no physical-device proof unless a committed vendor-signed artifact exists.
+- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [ ] Continue to the next refreshed queue item after merge.
+
+## Review
+
+- Existing fixture intake already had a 15-row required matrix, but no unsupported rows and no committed physical artifacts. That made the grade gap ambiguous: all rows looked equally missing even where the product does not expose signing.
+- Classified Ledger P2WSH/P2SH-P2WSH and BitBox02 P2WSH/P2SH-P2WSH as `blocked` unsupported rows because the current adapters expose single-sig signing paths only: Ledger `DefaultWalletPolicy` templates and BitBox `btcSignSimple` configs.
+- Left 11 rows as required missing physical evidence: Ledger single-sig P2WPKH/P2SH-P2WPKH/P2TR, all five Trezor rows, and BitBox single-sig P2WPKH/P2SH-P2WPKH/P2TR.
+- Updated the hardware validation runbook and health report so the next correctness work is physical fixture capture, not further matrix classification.
+- Verification passed: focused hardware-signed fixture tests, server test typecheck, touched-file lizard, and `git diff --check`. The explicit `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` gate still fails as expected because the 11 required physical artifacts are not committed.
+
+---
+
 # Active Task: Layout Act Warning Cleanup 2026-05-08
 
-Status: in progress; branch `test/layout-act-warning-cleanup`
+Status: complete; PR #329 merged as `e553cf96`
 
 Goal: remove the repeated React `act(...)` warnings from Layout-focused tests while preserving the behavior assertions that make those tests valuable.
 
@@ -11,8 +37,8 @@ Goal: remove the repeated React `act(...)` warnings from Layout-focused tests wh
 - [x] Apply the smallest component fix that avoids redundant async state updates without hiding warnings globally.
 - [x] Run focused Layout tests and a broader frontend coverage or test run to prove the warning signal is clean.
 - [x] Review the diff for assertion weakening, unnecessary waits, timer races, and layout-test brittleness.
-- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
-- [ ] Continue to the next refreshed queue item after merge.
+- [x] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [x] Continue to the next refreshed queue item after merge.
 
 ## Review
 
@@ -21,6 +47,8 @@ Goal: remove the repeated React `act(...)` warnings from Layout-focused tests wh
 - Focused Layout tests now pass without React `act(...)` warnings: `npm run test:run -- tests/components/Layout.test.tsx tests/components/Layout.branches.test.tsx`.
 - Frontend coverage passed at 100% statements/branches/functions/lines with 469 files and 6,022 tests. The run had expected unrelated logger/API stderr/stdout noise, but no Layout `act(...)` warnings.
 - Additional verification passed: `npm run typecheck:app`, `npm run lint:app`, and touched-file lizard via `npm run quality:lizard -- components/Layout/useLayoutController.ts`.
+- PR #329 merged at `2026-05-08T17:58:47-10:00` as squash commit `e553cf96522b978300c2db9b43b4d9e63dd497df`; local `main` was fast-forwarded and the local/remote `test/layout-act-warning-cleanup` branches were deleted.
+- Post-merge `main` verification passed: focused Layout tests remained clean with 51 passing tests and no Layout `act(...)` warnings.
 
 ---
 

@@ -73,6 +73,24 @@ Jade has adapter-level address comparison coverage, but it is not part of the
 required release-grade signing matrix until it has the same no-device signing
 payload assertions as Ledger, Trezor, and BitBox.
 
+### Current Fixture Classification
+
+As of 2026-05-08, no sanitized physical-device signing artifacts are committed
+yet. The executable fixture intake therefore records required rows separately
+from rows that Sanctuary currently blocks at the product level.
+
+| Row | Classification | Evidence |
+| --- | --- | --- |
+| Ledger P2WPKH, P2SH-P2WPKH, P2TR | Required, missing physical fixture | Ledger adapter maps these to single-sig wallet policy templates and still needs vendor-signed artifacts. |
+| Ledger P2WSH, P2SH-P2WSH | Unsupported, product blocked | Ledger adapter currently builds only single-sig `DefaultWalletPolicy` templates; multisig Ledger signing is not exposed. |
+| Trezor P2WPKH, P2SH-P2WPKH, P2TR, P2WSH, P2SH-P2WSH | Required, missing physical fixture | Trezor adapter has raw-transaction and multisig payload/signature extraction paths, but no physical artifacts are committed. |
+| BitBox02 P2WPKH, P2SH-P2WPKH, P2TR | Required, missing physical fixture | BitBox adapter maps these to `btcSignSimple` single-sig script configs and still needs vendor-signed artifacts. |
+| BitBox02 P2WSH, P2SH-P2WSH | Unsupported, product blocked | BitBox adapter currently uses `btcSignSimple` single-sig script configs only; multisig BitBox signing is not exposed. |
+
+This leaves 11 required rows awaiting physical evidence and 4 explicitly blocked
+unsupported rows. The executable source of truth is
+`server/tests/fixtures/hardware-signed-psbt-vectors.ts`.
+
 ## Script Matrix
 
 Run each required device through these rows when the vendor supports the script

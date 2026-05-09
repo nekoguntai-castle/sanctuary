@@ -24,8 +24,8 @@ Resolved during this refresh:
 
 Important non-blocking findings:
 
-- Physical hardware-in-loop wallet proof remains incomplete; this is still the only correctness gap that needs real device access or committed vendor-signed fixtures.
-- Layout tests still emit repeated React `act(...)` warnings during full frontend runs. The suite passes, but the warnings reduce signal quality and should be a local cleanup slice.
+- Physical hardware-in-loop wallet proof remains incomplete; this is still the only correctness gap that needs real device access or committed vendor-signed fixtures. The fixture matrix now distinguishes 11 required missing rows from 4 explicitly blocked unsupported multisig rows.
+- Layout `act(...)` warning noise was removed in PR #329; focused Layout tests and full frontend coverage ran without the repeated Layout warning.
 
 ---
 
@@ -77,7 +77,7 @@ Important non-blocking findings:
 ### Judged Findings
 
 - **[1.4] Suppression density - High -> +4**: suppressions remain low-density and localized to documented dynamic Prisma, response wrapper, Electrum protocol, and test override cases.
-- **[1.5] Functional completeness - Medium -> +1**: the wallet software suite is broad and well-covered, but real hardware-signed PSBT fixture evidence is still incomplete.
+- **[1.5] Functional completeness - Medium -> +1**: the wallet software suite is broad and well-covered, but 11 required real hardware-signed PSBT fixture rows still need physical-device artifacts.
 - **[2.1] Error handling quality - High -> +6**: transaction broadcast and draft update paths now cover unsupported wallet networks, missing drafts, non-actionable approvals, optimistic conflicts, and invalid legacy draft UTXO references with explicit error behavior.
 - **[2.2] Timeouts and retries - High -> +4**: request-level timeouts and async retry utilities remain in place; draft signature updates retain bounded optimistic retries.
 - **[2.3] Crash-prone paths - High -> +5**: inspected production changes avoid assertion-style crashes and either test or document unreachable legacy fallback behavior.
@@ -90,36 +90,35 @@ Important non-blocking findings:
 - **[5.3] No blocking in hot paths - High -> +2**: blocking-I/O guard still passes with the existing allowlist.
 - **[6.2] Test structure - High -> +4**: added targeted behavioral tests for UTXO fee-network normalization, fee API network params, draft broadcast edge cases, draft conflict conversion, and draft archival logging.
 - **[6.3] Edge cases covered - High -> +3**: new tests cover legacy `testnet`, unknown networks, missing drafts, unknown approval statuses, invalid draft UTXO references, null effective amounts, and non-optimistic conflicts.
-- **[6.4] No flaky patterns - High -> +3**: no sleeps or timing-sensitive assertions were added; existing Layout `act(...)` warnings remain a non-blocking cleanup target.
+- **[6.4] No flaky patterns - High -> +3**: no sleeps or timing-sensitive assertions were added; the repeated Layout `act(...)` warnings were removed without suppressing warning output.
 - **[7.4] Logging quality - High -> +3**: broadcast archival logging remains contextual and structured through the existing logger.
 
 ### Missing
 
 - Raw all-files gitleaks scan was not rerun in this slice; tracked-tree gitleaks passed and all changed files are tracked source/tests/docs.
-- Physical hardware-in-loop validation still needs device access or committed vendor-signed fixture evidence.
+- Physical hardware-in-loop validation still needs device access or committed vendor-signed fixture evidence for the 11 required rows.
 
 ---
 
 ## Top Risks
 
-1. Physical hardware-in-loop wallet proof remains incomplete - real-device PSBT signing confidence still depends on missing fixture capture or explicit unsupported rows.
-2. Repeated React `act(...)` warnings in `tests/components/Layout.test.tsx` and `tests/components/Layout.branches.test.tsx` reduce test output signal quality even though the tests pass.
-3. The largest-file point remains partial because `e2e/admin-operations.spec.ts` is 984 LOC; split or classify only when naturally touching that flow.
-4. Low-severity elliptic-family dependency advisories remain with no safe automatic fix; avoid forced upgrades without hardware-wallet compatibility testing.
+1. Physical hardware-in-loop wallet proof remains incomplete - real-device PSBT signing confidence still depends on 11 missing required Ledger/Trezor/BitBox fixture rows; 4 Ledger/BitBox multisig rows are now explicitly blocked as unsupported.
+2. The largest-file point remains partial because `e2e/admin-operations.spec.ts` is 984 LOC; split or classify only when naturally touching that flow.
+3. Low-severity elliptic-family dependency advisories remain with no safe automatic fix; avoid forced upgrades without hardware-wallet compatibility testing.
 
 ## Fastest Improvements
 
-1. Fix the Layout test `act(...)` warnings by awaiting the status/availability update path or tightening mocks - expected score movement: none, but improves CI diagnosability - effort: small local slice.
-2. Capture or explicitly classify the hardware-signed PSBT fixture matrix - expected gain: +2 correctness - effort: hardware-dependent.
-3. Split or classify the 984-line E2E/admin operations test when naturally touching that flow - expected gain: +1 maintainability - effort: 1 hour if a clean boundary exists.
+1. Capture the 11 remaining hardware-signed PSBT fixture rows from physical Ledger/Trezor/BitBox devices - expected gain: +2 correctness - effort: hardware-dependent.
+2. Split or classify the 984-line E2E/admin operations test when naturally touching that flow - expected gain: +1 maintainability - effort: 1 hour if a clean boundary exists.
+3. Keep the Layout no-warning state by avoiding redundant async state setters in render-heavy shell components - expected score movement: none, but protects CI diagnosability - effort: ongoing review.
 
 ## Roadmap To A Grade
 
 | Phase | Target | Work | Exit Criteria | Expected Score Movement |
 | --- | --- | --- | --- | --- |
 | 1 | Keep A stable | Preserve coverage, lint, typecheck, gitleaks, lizard, jscpd, API body validation, blocking-I/O, and Bitcoin network-boundary gates. | All listed commands pass on each PR. | Holds 97/A |
-| 2 | Cleaner test signal | Remove Layout `act(...)` warnings without weakening assertions. | Full frontend test/coverage run has no Layout act warnings. | No score movement; better diagnosability |
-| 3 | Stronger correctness | Add real hardware-signed PSBT fixture evidence or documented unsupported rows. | Hardware fixture contract passes when required. | +2 correctness |
+| 2 | Cleaner test signal | Preserve the PR #329 Layout no-warning behavior. | Focused Layout tests and full frontend coverage have no repeated Layout act warnings. | No score movement; better diagnosability |
+| 3 | Stronger correctness | Add real hardware-signed PSBT fixture evidence for the 11 required rows. | `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` fixture contract passes. | +2 correctness |
 | 4 | Maintainability polish | Split or formally classify oversized E2E/admin proof files when naturally touching that flow. | Largest-file criterion reaches full credit or remains explicitly justified. | +1 maintainability |
 
 ## Strengths To Preserve
@@ -138,9 +137,8 @@ Important non-blocking findings:
 
 ## Next Slice Queue
 
-1. **Layout Act Warning Cleanup**: remove the repeated React `act(...)` warnings from Layout tests while preserving assertions. Exit with focused Layout tests and full frontend coverage.
-2. **Hardware-Signed Fixture Classification**: either capture real signed fixtures or document unsupported hardware rows. Exit with updated hardware validation doc and passing PSBT fixture tests.
-3. **Largest-File Classification/Split**: address `e2e/admin-operations.spec.ts` only if a clean helper boundary is available. Exit with focused Playwright coverage and lizard.
+1. **Physical Hardware Fixture Capture**: capture the 11 required Ledger/Trezor/BitBox signing artifacts on real devices. Exit with `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` passing.
+2. **Largest-File Classification/Split**: address `e2e/admin-operations.spec.ts` only if a clean helper boundary is available. Exit with focused Playwright coverage and lizard.
 
 ## Verification Notes
 
@@ -159,4 +157,6 @@ Important non-blocking findings:
 - `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .` - passed, 1.68% duplication.
 - `npm audit --audit-level=high` - passed with 0 high/critical advisories and 12 low advisories.
 - `GITLEAKS_BIN=/home/nekoguntai/.local/bin/gitleaks bash scripts/gitleaks-tracked-tree.sh` - passed, no leaks found.
+- `npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` - passed, 10 tests after hardware row classification.
+- `REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` - intentionally fails until the 11 required physical artifacts are committed.
 - `git diff --check` - passed.

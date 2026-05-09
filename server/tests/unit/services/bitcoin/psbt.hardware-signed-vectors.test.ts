@@ -90,6 +90,19 @@ describe('Hardware-signed PSBT fixture replay harness', () => {
     expect(REQUIRED_HARDWARE_SIGNED_ROWS).toContainEqual({ vendor: 'bitbox', scriptType: 'p2tr' });
   });
 
+  it('keeps unsupported product rows explicit and documented', () => {
+    expect(UNSUPPORTED_HARDWARE_SIGNED_ROWS).toHaveLength(4);
+    expect(UNSUPPORTED_HARDWARE_SIGNED_ROWS).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ vendor: 'ledger', scriptType: 'p2wsh', productDecision: 'blocked' }),
+        expect.objectContaining({ vendor: 'ledger', scriptType: 'p2sh-p2wsh', productDecision: 'blocked' }),
+        expect.objectContaining({ vendor: 'bitbox', scriptType: 'p2wsh', productDecision: 'blocked' }),
+        expect.objectContaining({ vendor: 'bitbox', scriptType: 'p2sh-p2wsh', productDecision: 'blocked' }),
+      ])
+    );
+    expect(UNSUPPORTED_HARDWARE_SIGNED_ROWS.every((row) => row.reason.length > 20)).toBe(true);
+  });
+
   it('replays every committed hardware-signed fixture when evidence is present', () => {
     HARDWARE_SIGNED_PSBT_VECTORS.forEach((vector) => {
       const result = replayHardwareSignedVector(vector);
@@ -108,6 +121,9 @@ describe('Hardware-signed PSBT fixture replay harness', () => {
     const accountedRows = HARDWARE_SIGNED_PSBT_VECTORS.length + UNSUPPORTED_HARDWARE_SIGNED_ROWS.length + missing.length;
 
     expect(accountedRows).toBe(REQUIRED_HARDWARE_SIGNED_ROWS.length);
+    expect(missing).toHaveLength(11);
+    expect(missing).not.toContainEqual({ vendor: 'ledger', scriptType: 'p2wsh' });
+    expect(missing).not.toContainEqual({ vendor: 'bitbox', scriptType: 'p2sh-p2wsh' });
     if (process.env.REQUIRE_HARDWARE_SIGNED_FIXTURES === '1') {
       expect(missing).toEqual([]);
     }

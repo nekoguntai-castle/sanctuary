@@ -1,9 +1,10 @@
 /**
  * Hardware-signed PSBT fixture intake.
  *
- * This file is intentionally empty until sanitized Ledger, Trezor, and BitBox
- * artifacts are captured from physical devices. The schema and required matrix
- * are committed first so manual hardware evidence has a stable replay contract.
+ * This artifact list is intentionally empty until sanitized Ledger, Trezor, and
+ * BitBox artifacts are captured from physical devices. Unsupported rows are
+ * recorded separately so missing evidence is not confused with blocked product
+ * behavior.
  */
 
 export type HardwareWalletVendor = 'ledger' | 'trezor' | 'bitbox';
@@ -94,6 +95,35 @@ export const REQUIRED_HARDWARE_SIGNED_ROWS: RequiredHardwareSignedRow[] = [
   { vendor: 'bitbox', scriptType: 'p2sh-p2wsh' },
 ];
 
-export const UNSUPPORTED_HARDWARE_SIGNED_ROWS: UnsupportedHardwareSignedRow[] = [];
+export const UNSUPPORTED_HARDWARE_SIGNED_ROWS: UnsupportedHardwareSignedRow[] = [
+  {
+    vendor: 'ledger',
+    scriptType: 'p2wsh',
+    reason: 'Current Ledger signing adapter builds single-sig DefaultWalletPolicy templates only; '
+      + 'multisig Ledger signing is not exposed in the product.',
+    productDecision: 'blocked',
+  },
+  {
+    vendor: 'ledger',
+    scriptType: 'p2sh-p2wsh',
+    reason: 'Current Ledger signing adapter builds single-sig DefaultWalletPolicy templates only; '
+      + 'multisig Ledger signing is not exposed in the product.',
+    productDecision: 'blocked',
+  },
+  {
+    vendor: 'bitbox',
+    scriptType: 'p2wsh',
+    reason: 'Current BitBox02 signing adapter uses btcSignSimple single-sig script configs only; '
+      + 'multisig BitBox signing is not exposed in the product.',
+    productDecision: 'blocked',
+  },
+  {
+    vendor: 'bitbox',
+    scriptType: 'p2sh-p2wsh',
+    reason: 'Current BitBox02 signing adapter uses btcSignSimple single-sig script configs only; '
+      + 'multisig BitBox signing is not exposed in the product.',
+    productDecision: 'blocked',
+  },
+];
 
 export const HARDWARE_SIGNED_PSBT_VECTORS: HardwareSignedPsbtVector[] = [];
