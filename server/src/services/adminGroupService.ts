@@ -4,6 +4,7 @@ import * as groupRepo from '../repositories/groupRepository';
 import { findById as findUserById } from '../repositories/userRepository';
 
 type GroupWithMembers = NonNullable<Awaited<ReturnType<typeof groupRepo.findByIdWithMembers>>>;
+type SetMembersResult = NonNullable<Awaited<ReturnType<typeof groupRepo.setMembers>>>;
 
 export type AdminGroupInput = {
   name?: string;
@@ -78,7 +79,12 @@ export async function updateAdminGroup(
   });
 
   if (input.memberIds !== undefined) {
-    await groupRepo.setMembers(groupId, input.memberIds);
+    const membershipChanges = await groupRepo.setMembers(groupId, input.memberIds);
+    /* v8 ignore next -- group existence is checked before update; null requires a concurrent delete. */
+    if (!membershipChanges) {
+      throw new NotFoundError('Group not found');
+    }
+    await invalidateChangedGroupMemberAccessCaches(membershipChanges);
   }
 
   return getExistingGroupWithMembers(groupId);
@@ -164,4 +170,17 @@ async function getExistingGroupWithMembers(groupId: string): Promise<AdminGroupR
   }
 
   return formatGroup(group);
+}
+
+async function invalidateChangedGroupMemberAccessCaches(
+  membershipChanges: SetMembersResult,
+): Promise<void> {
+  const affectedUserIds = new Set([
+    ...membershipChanges.removedUserIds,
+    ...membershipChanges.addedUserIds,
+  ]);
+
+  await Promise.all(
+    [...affectedUserIds].map((userId) => invalidateUserAccessCache(userId)),
+  );
 }

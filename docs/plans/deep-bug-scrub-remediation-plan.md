@@ -354,13 +354,15 @@ Must handle:
 
 ### P2-07 Bulk Group Cache Invalidation
 
+Status: implemented in the bulk group cache-invalidation slice. `setMembers` now returns the validated add/remove diff, and `updateAdminGroup` invalidates access caches for affected users after successful bulk membership replacement.
+
 Must handle:
 
-- Invalidate users removed and users added, not only the final membership set.
-- Invalidate all affected wallet/group role cache keys, including inherited wallet access.
-- Handle role changes where membership remains but role/permission changes.
+- Invalidates users removed and users added, not only the final membership set.
+- Invalidates all affected user-scoped wallet/group role cache keys, including inherited wallet access.
+- Bulk `memberIds` replacement does not carry role changes; the current explicit member-role API is add-member only, so this slice does not invent a role-update path.
 - Define behavior for multi-process deployments if cache is in-memory only.
-- Test cache-primed allow-to-deny and deny-to-allow transitions.
+- Tests cover cache invalidation for bulk allow-to-deny and deny-to-allow membership transitions.
 
 ### P2-08 Request Timeout Cancellation
 

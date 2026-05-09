@@ -246,7 +246,7 @@ describe('Group Repository', () => {
       (prisma.groupMember.deleteMany as Mock).mockResolvedValue({ count: 1 });
       (prisma.groupMember.createMany as Mock).mockResolvedValue({ count: 1 });
 
-      await groupRepository.setMembers('group-1', ['user-1', 'user-3']);
+      const result = await groupRepository.setMembers('group-1', ['user-1', 'user-3']);
 
       // Should remove user-2
       expect(prisma.groupMember.deleteMany).toHaveBeenCalledWith({
@@ -256,6 +256,10 @@ describe('Group Repository', () => {
       expect(prisma.groupMember.createMany).toHaveBeenCalledWith({
         data: [{ groupId: 'group-1', userId: 'user-3', role: 'member' }],
         skipDuplicates: true,
+      });
+      expect(result).toEqual({
+        addedUserIds: ['user-3'],
+        removedUserIds: ['user-2'],
       });
     });
 
@@ -276,10 +280,14 @@ describe('Group Repository', () => {
       (prisma.user.findMany as Mock).mockResolvedValue([{ id: 'user-2' }]);
       (prisma.groupMember.createMany as Mock).mockResolvedValue({ count: 1 });
 
-      await groupRepository.setMembers('group-1', ['user-1', 'user-2']);
+      const result = await groupRepository.setMembers('group-1', ['user-1', 'user-2']);
 
       expect(prisma.groupMember.deleteMany).not.toHaveBeenCalled();
       expect(prisma.groupMember.createMany).toHaveBeenCalled();
+      expect(result).toEqual({
+        addedUserIds: ['user-2'],
+        removedUserIds: [],
+      });
     });
 
     it('should skip add when no new members', async () => {
@@ -289,12 +297,33 @@ describe('Group Repository', () => {
       });
       (prisma.groupMember.deleteMany as Mock).mockResolvedValue({ count: 1 });
 
-      await groupRepository.setMembers('group-1', ['user-1']);
+      const result = await groupRepository.setMembers('group-1', ['user-1']);
 
       expect(prisma.groupMember.deleteMany).toHaveBeenCalledWith({
         where: { groupId: 'group-1', userId: { in: ['user-2'] } },
       });
       expect(prisma.groupMember.createMany).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        addedUserIds: [],
+        removedUserIds: ['user-2'],
+      });
+    });
+
+    it('should return only validated added member ids', async () => {
+      (prisma.group.findUnique as Mock).mockResolvedValue({
+        ...mockGroup,
+        members: [{ userId: 'user-1' }],
+      });
+      (prisma.user.findMany as Mock).mockResolvedValue([]);
+
+      const result = await groupRepository.setMembers('group-1', ['user-1', 'missing']);
+
+      expect(prisma.groupMember.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.groupMember.createMany).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        addedUserIds: [],
+        removedUserIds: [],
+      });
     });
   });
 

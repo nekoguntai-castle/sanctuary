@@ -1,3 +1,28 @@
+# Active Task: P2-07 Bulk Group Cache Invalidation 2026-05-09
+
+Status: in progress; branch `fix/bulk-group-cache-invalidation`
+
+Goal: make bulk admin group membership replacement invalidate affected wallet-access cache entries the same way dedicated add/remove paths do, so wallet access changes take effect immediately.
+
+## Plan
+
+- [x] Map admin group `setMembers`, add/remove member flows, access-control cache APIs, and existing unit/integration coverage.
+- [x] Add regression tests proving cache entries are invalidated for users removed by bulk replacement and users added by bulk replacement; confirm role changes are outside the bulk `memberIds` API.
+- [x] Implement invalidation around the bulk update using the same access-control cache boundary as dedicated add/remove paths.
+- [x] Update health/remediation/task docs for P2-07 status and any residual role-boundary behavior.
+- [x] Run focused admin group/access-control tests, server typecheck/lint/build as needed, touched-file lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- `groupRepository.setMembers` now returns `{ addedUserIds, removedUserIds }`, with added IDs limited to validated existing users and no empty `createMany` call when all requested additions are invalid.
+- `updateAdminGroup` invalidates access caches for the union of actually added and removed users after successful bulk replacement, matching dedicated add/remove/delete membership paths. Unchanged members are left cached, and failed bulk replacements do not invalidate.
+- Route/service/repository regression tests now cover removed users, added valid users, invalid requested users, empty replacement, idempotent replacement, and failure-before-invalidation behavior.
+- Role changes are outside the bulk `memberIds` API; the current explicit member-role API is add-member only, so this slice documents that boundary rather than adding a new role-update path.
+- Verification passed: focused admin group/access-control tests (117 tests), server test typecheck after rerunning past a parallel Prisma generation race, server build, server lint including API body validation and Bitcoin network-boundary checks, changed-test hygiene, touched-file lizard, `git diff --check`, and full backend unit coverage (9,673 tests, 100% statements/branches/functions/lines).
+
+---
+
 # Active Task: P2-03 AI Proxy Coverage Gate 2026-05-09
 
 Status: completed; PR #352 merged as `8e3fb531`

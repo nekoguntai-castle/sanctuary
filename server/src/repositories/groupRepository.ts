@@ -1,6 +1,11 @@
 import prisma from '../models/prisma';
 import type { Group, GroupMember } from '../generated/prisma/client';
 
+export interface SetMembersResult {
+  addedUserIds: string[];
+  removedUserIds: string[];
+}
+
 const membersInclude = {
   members: {
     include: {
@@ -79,7 +84,10 @@ export async function addMembers(groupId: string, userIds: string[], role = 'mem
  * Replace all members of a group by computing the diff and adding/removing as needed.
  * Validates that new members exist before adding.
  */
-export async function setMembers(groupId: string, memberIds: string[]) {
+export async function setMembers(
+  groupId: string,
+  memberIds: string[],
+): Promise<SetMembersResult | null> {
   const existing = await prisma.group.findUnique({
     where: { id: groupId },
     include: { members: true },
@@ -98,11 +106,16 @@ export async function setMembers(groupId: string, memberIds: string[]) {
 
   if (toAdd.length > 0) {
     const validIds = await findExistingUserIds(toAdd);
-    await prisma.groupMember.createMany({
-      data: validIds.map((userId) => ({ groupId, userId, role: 'member' })),
-      skipDuplicates: true,
-    });
+    if (validIds.length > 0) {
+      await prisma.groupMember.createMany({
+        data: validIds.map((userId) => ({ groupId, userId, role: 'member' })),
+        skipDuplicates: true,
+      });
+    }
+    return { addedUserIds: validIds, removedUserIds: toRemove };
   }
+
+  return { addedUserIds: [], removedUserIds: toRemove };
 }
 
 export async function addMember(

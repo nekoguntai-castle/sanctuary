@@ -304,6 +304,11 @@ describe('Admin Groups Routes', () => {
       data: [{ groupId: 'group-1', userId: 'u3', role: 'member' }],
       skipDuplicates: true,
     });
+    expect(mockInvalidateUserAccessCache).toHaveBeenCalledTimes(2);
+    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u1');
+    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u3');
+    expect(mockInvalidateUserAccessCache).not.toHaveBeenCalledWith('u2');
+    expect(mockInvalidateUserAccessCache).not.toHaveBeenCalledWith('u4');
   });
 
   it('updates explicit description/purpose and skips member mutations when memberIds unchanged', async () => {
@@ -349,6 +354,7 @@ describe('Admin Groups Routes', () => {
     });
     expect(mockPrismaClient.groupMember.deleteMany).not.toHaveBeenCalled();
     expect(mockPrismaClient.groupMember.createMany).not.toHaveBeenCalled();
+    expect(mockInvalidateUserAccessCache).not.toHaveBeenCalled();
   });
 
   it('updates with empty memberIds removes all members', async () => {
@@ -384,6 +390,9 @@ describe('Admin Groups Routes', () => {
       where: { groupId: 'group-1', userId: { in: ['u1', 'u2'] } },
     });
     expect(mockPrismaClient.groupMember.createMany).not.toHaveBeenCalled();
+    expect(mockInvalidateUserAccessCache).toHaveBeenCalledTimes(2);
+    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u1');
+    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u2');
     expect(response.body.members).toHaveLength(0);
   });
 
@@ -421,6 +430,7 @@ describe('Admin Groups Routes', () => {
     expect(response.status).toBe(200);
     expect(mockPrismaClient.groupMember.deleteMany).not.toHaveBeenCalled();
     expect(mockPrismaClient.groupMember.createMany).not.toHaveBeenCalled();
+    expect(mockInvalidateUserAccessCache).not.toHaveBeenCalled();
     expect(response.body.members).toHaveLength(2);
   });
 
@@ -462,6 +472,9 @@ describe('Admin Groups Routes', () => {
       data: [{ groupId: 'group-1', userId: 'u1', role: 'member' }],
       skipDuplicates: true,
     });
+    expect(mockInvalidateUserAccessCache).toHaveBeenCalledTimes(1);
+    expect(mockInvalidateUserAccessCache).toHaveBeenCalledWith('u1');
+    expect(mockInvalidateUserAccessCache).not.toHaveBeenCalledWith('u99');
     expect(response.body.members).toHaveLength(1);
   });
 

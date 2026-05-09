@@ -109,6 +109,96 @@ describe('adminGroupService', () => {
     expect(response.members).toEqual([{ userId: 'user-2', username: 'bob', role: 'member' }]);
   });
 
+  it('updates group members and invalidates caches for added and removed users only', async () => {
+    mocks.findById.mockResolvedValue({
+      id: 'group-2',
+      name: 'Team B',
+      description: null,
+      purpose: null,
+    });
+    mocks.update.mockResolvedValue(undefined);
+    mocks.setMembers.mockResolvedValue({
+      addedUserIds: ['user-3'],
+      removedUserIds: ['user-1'],
+    });
+    mocks.findByIdWithMembers.mockResolvedValue({
+      id: 'group-2',
+      name: 'Team B',
+      description: null,
+      purpose: null,
+      createdAt: new Date('2025-01-03T00:00:00.000Z'),
+      updatedAt: new Date('2025-01-04T00:00:00.000Z'),
+      members: [
+        { userId: 'user-2', role: 'member', user: { id: 'user-2', username: 'bob' } },
+        { userId: 'user-3', role: 'member', user: { id: 'user-3', username: 'cara' } },
+      ],
+    });
+    const { updateAdminGroup } = await loadService();
+
+    const response = await updateAdminGroup('group-2', {
+      memberIds: ['user-2', 'user-3'],
+    });
+
+    expect(mocks.setMembers).toHaveBeenCalledWith('group-2', ['user-2', 'user-3']);
+    expect(mocks.invalidateUserAccessCache).toHaveBeenCalledTimes(2);
+    expect(mocks.invalidateUserAccessCache).toHaveBeenCalledWith('user-1');
+    expect(mocks.invalidateUserAccessCache).toHaveBeenCalledWith('user-3');
+    expect(mocks.invalidateUserAccessCache).not.toHaveBeenCalledWith('user-2');
+    expect(mocks.setMembers.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.invalidateUserAccessCache.mock.invocationCallOrder[0],
+    );
+    expect(response.members).toEqual([
+      { userId: 'user-2', username: 'bob', role: 'member' },
+      { userId: 'user-3', username: 'cara', role: 'member' },
+    ]);
+  });
+
+  it('does not invalidate caches for idempotent bulk member updates', async () => {
+    mocks.findById.mockResolvedValue({
+      id: 'group-2',
+      name: 'Team B',
+      description: null,
+      purpose: null,
+    });
+    mocks.update.mockResolvedValue(undefined);
+    mocks.setMembers.mockResolvedValue({ addedUserIds: [], removedUserIds: [] });
+    mocks.findByIdWithMembers.mockResolvedValue({
+      id: 'group-2',
+      name: 'Team B',
+      description: null,
+      purpose: null,
+      createdAt: new Date('2025-01-03T00:00:00.000Z'),
+      updatedAt: new Date('2025-01-04T00:00:00.000Z'),
+      members: [
+        { userId: 'user-2', role: 'member', user: { id: 'user-2', username: 'bob' } },
+      ],
+    });
+    const { updateAdminGroup } = await loadService();
+
+    await updateAdminGroup('group-2', { memberIds: ['user-2'] });
+
+    expect(mocks.setMembers).toHaveBeenCalledWith('group-2', ['user-2']);
+    expect(mocks.invalidateUserAccessCache).not.toHaveBeenCalled();
+  });
+
+  it('does not invalidate caches when bulk member replacement fails', async () => {
+    mocks.findById.mockResolvedValue({
+      id: 'group-2',
+      name: 'Team B',
+      description: null,
+      purpose: null,
+    });
+    mocks.update.mockResolvedValue(undefined);
+    mocks.setMembers.mockRejectedValue(new Error('membership write failed'));
+    const { updateAdminGroup } = await loadService();
+
+    await expect(updateAdminGroup('group-2', { memberIds: ['user-3'] })).rejects.toThrow(
+      'membership write failed',
+    );
+    expect(mocks.invalidateUserAccessCache).not.toHaveBeenCalled();
+    expect(mocks.findByIdWithMembers).not.toHaveBeenCalled();
+  });
+
   it('deletes groups and invalidates former member access caches', async () => {
     mocks.deleteById.mockResolvedValue({
       id: 'group-3',

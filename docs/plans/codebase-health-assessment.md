@@ -129,7 +129,8 @@ These domain scores are the original scrub scores; per-finding statuses below re
    - `bitcoinApi.getMempoolData()` is called without wallet network while fee estimates correctly pass `apiWallet.network`.
 
 3. **Bulk admin group membership updates leave wallet-access cache stale.**
-   - Dedicated add/remove paths invalidate access cache, but `setMembers` bulk update does not.
+   - Status: fixed in the bulk group cache-invalidation slice by returning the validated add/remove diff from `groupRepository.setMembers()` and invalidating user access caches for actually added and removed users after successful bulk replacement.
+   - Dedicated add/remove paths already invalidated access cache; bulk `memberIds` replacement now matches that behavior. Role changes are not part of the bulk `memberIds` API.
 
 4. **Request timeout does not abort in-flight route work.**
    - The middleware sends 408 after the timeout, but async handlers can keep mutating state after the client sees a timeout.
