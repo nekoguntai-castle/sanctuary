@@ -245,6 +245,7 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
     it('should release UTXO locks when broadcasting from a draft', async () => {
       const draftId = 'draft-to-broadcast';
       mockPrismaClient.draftUtxoLock.deleteMany.mockResolvedValue({ count: 2 });
+      mockPrismaClient.draftTransaction.updateMany.mockResolvedValue({ count: 1 });
 
       const metadata = {
         recipient,

@@ -1,3 +1,31 @@
+# Active Task: Bug Scrub Backlog Refresh 2026-05-08
+
+Status: in progress; local verification complete; PR delivery pending on branch `docs/bug-scrub-backlog-refresh`
+
+Goal: reopen the broader bug-scrub loop after the Bitcoin network-boundary closeout, refresh current evidence, fix the coverage regression found by the audit, separate live findings from stale historical TODOs, and choose the next deliverable slice.
+
+## Plan
+
+- [x] Record the correction lesson: a completed sub-slice is not the same as the whole bug-scrub objective being complete.
+- [x] Run current grade/mechanical audit signals from `main` after the merged network-boundary work.
+- [x] Restore the frontend and backend coverage branches that the audit surfaced before finalizing the report.
+- [x] Update `docs/plans/codebase-health-assessment.md` with current score, confidence, blockers, strengths, gaps, and fastest improvements.
+- [x] Review historical open TODO/task markers and classify them against current evidence instead of treating stale entries as live work.
+- [x] Add a concrete next-slice queue with exit criteria, verification commands, and expected impact.
+- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [ ] Start the next implementation slice from the refreshed queue after the PR is merged.
+
+## Review
+
+- The initial full grade refresh exposed a real coverage hard-fail after the Bitcoin network-boundary work: frontend coverage missed UTXO/API network-context branches, and after those were covered the backend coverage gate exposed broadcast, draft update, node-client, and transaction archival branches.
+- Restored 100% coverage by adding focused frontend fee-network tests, backend transaction-route edge cases, draft conflict coverage, and broadcast archival coverage; simplified redundant broadcast metadata fallback helpers instead of preserving unreachable branches.
+- Pre-commit review flagged the metadata simplification as easy to misread, so the final patch documents the invariant and adds a regression proving caller-supplied recipient/amount metadata is preserved without PSBT parsing.
+- Updated the health report score at 97/A with high confidence. Current hard-fail blockers are none; live gaps are hardware-signed wallet proof, Layout `act(...)` warning noise, and the partial largest-file criterion.
+- `rg` over historical task markers found many stale `in progress` and unchecked entries. They are not being treated as live bug-scrub work unless refreshed evidence still supports them; the current queue is Layout warning cleanup, hardware-signed fixture classification, then largest-file classification/split.
+- Local verification passed: focused frontend and backend tests, server coverage, full root coverage, app/test/server-test typechecks, full lint/guards, lizard, jscpd, high-severity audit, tracked-tree gitleaks, and `git diff --check`.
+
+---
+
 # Active Task: Bug Scrub Slice 4C Non-Wallet Network Context 2026-05-08
 
 Status: complete; PR #326 merged as `c1d5620c`

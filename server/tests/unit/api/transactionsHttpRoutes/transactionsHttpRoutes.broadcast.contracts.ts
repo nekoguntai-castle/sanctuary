@@ -85,7 +85,9 @@ export function registerTransactionHttpBroadcastTests(): void {
   });
 
   it('broadcasts a saved draft by draftId and archives through service metadata', async () => {
-    mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft());
+    mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({
+      effectiveAmount: null,
+    }));
 
     const response = await request(app)
       .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
@@ -111,6 +113,38 @@ export function registerTransactionHttpBroadcastTests(): void {
     });
   });
 
+  it('rejects saved draft broadcasts when the draft cannot be found', async () => {
+    mockDraftFindByIdInWallet.mockResolvedValueOnce(null);
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({ draftId: 'missing-draft' });
+
+    expect(response.status).toBe(404);
+    expect(response.body.message).toContain('Draft not found');
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('ignores invalid legacy selected UTXO draft references during broadcast metadata assembly', async () => {
+    mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({
+      selectedUtxoIds: ['legacy-without-separator', `${'z'.repeat(64)}:1`, `${'c'.repeat(64)}:-1`],
+    }));
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({ draftId: 'draft-1' });
+
+    expect(response.status).toBe(200);
+    expect(mockBroadcastAndSave).toHaveBeenCalledWith(
+      walletId,
+      'signed-draft-psbt',
+      expect.objectContaining({
+        utxos: [],
+        draftId: 'draft-1',
+      })
+    );
+  });
+
   it('rejects draft broadcasts that still need approval', async () => {
     mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({
       approvalStatus: 'pending',
@@ -124,6 +158,24 @@ export function registerTransactionHttpBroadcastTests(): void {
     expect(response.body.details).toMatchObject({
       draftId: 'draft-1',
       approvalStatus: 'pending',
+      reason: 'pending_approval',
+    });
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a pending approval reason for unknown draft approval statuses', async () => {
+    mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({
+      approvalStatus: 'needs_review',
+    }));
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({ draftId: 'draft-1' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.details).toMatchObject({
+      draftId: 'draft-1',
+      approvalStatus: 'needs_review',
       reason: 'pending_approval',
     });
     expect(mockBroadcastAndSave).not.toHaveBeenCalled();
@@ -183,6 +235,30 @@ export function registerTransactionHttpBroadcastTests(): void {
       'TRANSACTION_BROADCAST_FAILED',
       'WALLET',
       expect.objectContaining({ success: false })
+    );
+  });
+
+  it('captures failed draft broadcast attempts with draft metadata in audit log', async () => {
+    mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft());
+    mockBroadcastAndSave.mockRejectedValueOnce(new Error('draft broadcast failed'));
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({ draftId: 'draft-1' });
+
+    expect(response.status).toBe(500);
+    expect(mockAuditLogFromRequest).toHaveBeenCalledWith(
+      expect.any(Object),
+      'TRANSACTION_BROADCAST_FAILED',
+      'WALLET',
+      expect.objectContaining({
+        success: false,
+        details: expect.objectContaining({
+          draftId: 'draft-1',
+          recipient: 'tb1qdraftrecipient',
+          amount: 12000,
+        }),
+      })
     );
   });
 
@@ -469,6 +545,22 @@ export function registerTransactionHttpBroadcastTests(): void {
     expect(mockBroadcastAndSave).not.toHaveBeenCalled();
   });
 
+  it('rejects broadcast when the wallet stores an unsupported Bitcoin network', async () => {
+    mockWalletFindNetwork.mockResolvedValueOnce('unknownnet');
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({
+        rawTxHex: 'deadbeef',
+        recipient: 'tb1qrecipient',
+        amount: 10000,
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Wallet has unsupported Bitcoin network');
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
   it('proceeds without policy eval when PSBT parsing fails and no recipient/amount supplied', async () => {
     mockGetPSBTInfo.mockImplementationOnce(() => {
       throw new Error('corrupt PSBT');
@@ -484,6 +576,33 @@ export function registerTransactionHttpBroadcastTests(): void {
     expect(response.status).toBe(200);
     // Policy evaluation should NOT be called since there's no recipient/amount
     expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+  });
+
+  it('keeps caller-supplied recipient and amount metadata without PSBT parsing', async () => {
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({
+        signedPsbtBase64: 'bad-psbt-data',
+        recipient: 'tb1qcallerrecipient',
+        amount: 21000,
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockGetPSBTInfoWithNetwork).not.toHaveBeenCalled();
+    expect(mockEvaluatePolicies).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipient: 'tb1qcallerrecipient',
+        amount: BigInt(21000),
+      })
+    );
+    expect(mockBroadcastAndSave).toHaveBeenCalledWith(
+      walletId,
+      'bad-psbt-data',
+      expect.objectContaining({
+        recipient: 'tb1qcallerrecipient',
+        amount: 21000,
+      })
+    );
   });
 
   it('swallows recordUsage errors on the broadcast route', async () => {

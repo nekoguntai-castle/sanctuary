@@ -263,26 +263,16 @@ const assertBroadcastPayloadAvailable = (
   );
 };
 
-const resolveBroadcastRecipient = (
-  body: TransactionBroadcastBody,
-  evalRecipient: string | undefined,
-  draft: BroadcastDraft | null
-): string => {
+const resolveBroadcastRecipient = (evalRecipient: string | undefined): string => {
+  // The evaluated fields are seeded from request/draft metadata before optional
+  // PSBT parsing, so they are the canonical broadcast metadata values here.
   if (evalRecipient !== undefined) return evalRecipient;
-  if (body.recipient !== undefined) return body.recipient;
-  return draft?.recipient ?? '';
+  return '';
 };
 
-const resolveBroadcastAmount = (
-  body: TransactionBroadcastBody,
-  evalAmount: number | undefined,
-  draft: BroadcastDraft | null
-): number => {
+const resolveBroadcastAmount = (evalAmount: number | undefined): number => {
   if (evalAmount !== undefined) return evalAmount;
-  if (body.amount !== undefined) return body.amount;
-
-  const draftAmount = getDraftBroadcastAmount(draft);
-  return draftAmount !== undefined ? draftAmount : 0;
+  return 0;
 };
 
 const resolveBroadcastFee = (
@@ -302,8 +292,8 @@ const buildTransactionBroadcastMetadata = (
 ) => {
   return {
     network,
-    recipient: resolveBroadcastRecipient(body, evalRecipient, draft),
-    amount: resolveBroadcastAmount(body, evalAmount, draft),
+    recipient: resolveBroadcastRecipient(evalRecipient),
+    amount: resolveBroadcastAmount(evalAmount),
     fee: resolveBroadcastFee(body, draft),
     ...pickDefinedMetadata({
       label: body.label ?? draft?.label ?? undefined,

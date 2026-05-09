@@ -563,6 +563,17 @@ describe('DraftService', () => {
       }));
     });
 
+    it('throws ConflictError immediately for non-signature update conflicts', async () => {
+      (draftRepository.update as Mock).mockRejectedValueOnce(new Error('DRAFT_UPDATE_CONFLICT'));
+
+      await expect(
+        updateDraft(walletId, draftId, { label: 'conflicting label' })
+      ).rejects.toThrow(ConflictError);
+
+      expect(draftRepository.findByIdInWallet).toHaveBeenCalledTimes(1);
+      expect(draftRepository.update).toHaveBeenCalledTimes(1);
+    });
+
     it('combines existing and new PSBT signatures when signedPsbtBase64 is provided', async () => {
       const existingPsbtObj = {
         data: {

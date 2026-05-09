@@ -2247,3 +2247,16 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Keep the final summary result check strict over `needs.*.result`.
 - Mark report-artifact download steps `continue-on-error: true`; missing reports may reduce summary detail but must not override green upstream tests.
 - Do not make test result artifacts the only proof of execution. The producing jobs must enforce coverage/test thresholds directly before uploading reports.
+
+## Scope Next Steps To The User's Whole Objective
+
+**Rule:** After closing a sub-slice, do not answer "no next steps" unless the user's broader objective is also complete and the current backlog scan proves there are no live follow-on slices.
+
+**Why:** The Bitcoin network-boundary work was complete, but the user's broader request was to keep looping through bug-scrub findings. Saying no next steps blurred "nothing remains for this guardrail" with "nothing remains for the bug-scrub program."
+
+**How to apply:**
+
+- State the scope of any "complete" claim: current PR, current guardrail, current finding family, or full objective.
+- Before giving final next-step guidance, re-check the active `tasks/todo.md` entry, current health report top risks, and any freshly merged slice notes.
+- If stale historical TODOs exist, do not blindly resume them; classify whether each is superseded, still live, or requires fresh measurement.
+- When the user asked for iterative bug-scrub delivery, default to refreshing current evidence and selecting the next slice instead of declaring the loop done after one class of findings closes.

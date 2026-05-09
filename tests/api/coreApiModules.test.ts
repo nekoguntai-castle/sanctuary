@@ -90,6 +90,7 @@ describe('Core API Modules', () => {
 
       await bitcoinApi.getStatus();
       await bitcoinApi.getFeeEstimates();
+      await bitcoinApi.getFeeEstimates('signet');
       await bitcoinApi.validateAddress({ address: 'bc1qabc' });
       await bitcoinApi.getAddressInfo('bc1qabc');
       await bitcoinApi.getAddressInfo('tb1qabc', 'testnet3');
@@ -104,6 +105,7 @@ describe('Core API Modules', () => {
 
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/status', { network: 'mainnet' });
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees', undefined);
+      expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees', { network: 'signet' });
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/address/validate', { address: 'bc1qabc' });
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/address/bc1qabc', undefined);
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/address/tb1qabc', { network: 'testnet3' });
@@ -126,6 +128,7 @@ describe('Core API Modules', () => {
       mockPost.mockResolvedValue({});
 
       await bitcoinApi.getAdvancedFeeEstimates();
+      await bitcoinApi.getAdvancedFeeEstimates('testnet4');
       await bitcoinApi.checkRBF('txid-2');
       await bitcoinApi.checkRBF('txid-3', 'testnet3');
       await bitcoinApi.createRBFTransaction('txid-2', { walletId: 'w1', newFeeRate: 20 });
@@ -146,6 +149,7 @@ describe('Core API Modules', () => {
       await bitcoinApi.lookupAddresses(['bc1q1', 'bc1q2']);
 
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees/advanced', undefined);
+      expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees/advanced', { network: 'testnet4' });
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-2/rbf-check', {});
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-3/rbf-check', { network: 'testnet3' });
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-2/rbf', {

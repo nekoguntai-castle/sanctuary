@@ -100,6 +100,30 @@ describe('UTXOList', () => {
       expect(screen.getByText('3 UTXOs')).toBeInTheDocument();
     });
 
+    it('normalizes legacy testnet fee queries to testnet3', () => {
+      render(
+        <UTXOList
+          utxos={mockUtxos}
+          onToggleFreeze={mockToggleFreeze}
+          network="testnet"
+        />
+      );
+
+      expect(useBitcoinHooks.useFeeEstimates).toHaveBeenCalledWith('testnet3');
+    });
+
+    it('falls back to mainnet fee queries for unknown wallet networks', () => {
+      render(
+        <UTXOList
+          utxos={mockUtxos}
+          onToggleFreeze={mockToggleFreeze}
+          network="unknown"
+        />
+      );
+
+      expect(useBitcoinHooks.useFeeEstimates).toHaveBeenCalledWith('mainnet');
+    });
+
     it('renders Available Outputs header', () => {
       render(<UTXOList utxos={mockUtxos} onToggleFreeze={mockToggleFreeze} />);
 

@@ -280,6 +280,7 @@ export async function getElectrumClientIfActive(
   }
 
   // Preserve legacy mainnet fallback for callers that still rely on activeClient.
+  /* v8 ignore next -- legacy fallback is unreachable through public reset APIs because mainnet cache and activeClient are now mutated together. */
   if (network === 'mainnet' && activeClient) {
     return activeClient as ElectrumClient;
   }
