@@ -8,9 +8,9 @@ Status: Draft
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: 95afbd1c (working tree dirty)
+**Commit**: 55301df4 (working tree dirty)
 
-This refresh covers `main` after the console service test split merge plus the current draft service test split working tree. The earlier audit found and fixed a real coverage hard-fail in newly added Bitcoin network-context branches; the current maintainability loop has removed all local test-file warnings where a clean split existed.
+This refresh covers `main` after the draft service test split merge plus the current admin operations E2E secret-scan fixture follow-up. The earlier audit found and fixed a real coverage hard-fail in newly added Bitcoin network-context branches; the current maintainability loop has removed all local test-file warnings where a clean split existed.
 
 ---
 
@@ -183,4 +183,8 @@ Important non-blocking findings:
 - `npm run typecheck:server:tests` - passed after the draft deletion split.
 - `npm run quality:lizard -- server/tests/unit/services/draftService.test.ts server/tests/unit/services/draftService.delete.contracts.ts` - passed after the split.
 - `node scripts/quality/check-large-files.mjs` - passed; `server/tests/unit/services/draftService.test.ts` dropped out of the warning inventory, leaving 0 test-file warnings.
+- `GITLEAKS_BIN=/home/nekoguntai/.local/bin/gitleaks bash scripts/gitleaks-tracked-tree.sh` - passed after replacing a secret-shaped admin E2E encryption fixture.
+- `npm run typecheck:tests` - passed after the admin E2E fixture cleanup.
+- `npm run test:e2e -- --project=chromium e2e/admin-operations.spec.ts` - passed, 24 tests after the admin E2E fixture cleanup.
+- `npm run quality:lizard -- e2e/adminOperationsApiMock.ts` - passed after the admin E2E fixture cleanup.
 - `git diff --check` - passed.

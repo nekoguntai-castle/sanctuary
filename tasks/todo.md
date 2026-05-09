@@ -1,6 +1,29 @@
+# Active Task: Admin E2E Secret-Scan Fixture Cleanup 2026-05-08
+
+Status: in progress; branch `fix/admin-e2e-gitleaks-fixture`
+
+Goal: remove the tracked-tree gitleaks failure caused by the extracted admin operations E2E mock helper while preserving admin operations E2E behavior.
+
+## Plan
+
+- [x] Identify the failing secret-scan finding and confirm whether it is a real secret or a fixture false positive.
+- [x] Replace the secret-shaped fixture value with a less secret-shaped test placeholder instead of widening `.gitleaks.toml`.
+- [x] Run tracked-tree gitleaks, admin operations E2E, frontend test typecheck, touched-file lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+
+## Review
+
+- PR #336 merged the draft-service split before this follow-up fixture cleanup landed.
+- The failing gitleaks finding was `e2e/adminOperationsApiMock.ts` returning a deliberately fake encryption key/salt with high-entropy-looking suffixes.
+- Changed the mock response to `test-key` and `test-salt`, which keeps the UI/E2E contract the same while avoiding a secret-shaped fixture.
+- Verification passed locally: tracked-tree gitleaks, admin operations E2E (24 tests), frontend test typecheck, touched-file lizard, post-merge focused draft service test, large-file classification check, and `git diff --check`.
+
+---
+
 # Active Task: Draft Service Test Large-File Split 2026-05-08
 
-Status: in progress; branch `test/draft-service-large-file-split`
+Status: complete; PR #336 merged as `55301df4`
 
 Goal: reduce the final remaining test-file warning, `server/tests/unit/services/draftService.test.ts` at 802 LOC, while preserving draft deletion and expiration coverage.
 
@@ -11,8 +34,8 @@ Goal: reduce the final remaining test-file warning, `server/tests/unit/services/
 - [x] Move deletion and expiration scenarios into a smaller register module that receives the shared draft fixture.
 - [x] Run focused draft service tests, server test typecheck, touched-file lizard, large-file check, and `git diff --check`.
 - [x] Review for hidden risk: no mock ordering changes, no assertion weakening, and no draft service edits.
-- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
-- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+- [x] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [x] Re-check the queue after merge; physical hardware capture remains blocked by device access.
 
 ## Review
 
@@ -21,6 +44,7 @@ Goal: reduce the final remaining test-file warning, `server/tests/unit/services/
 - `server/tests/unit/services/draftService.test.ts` dropped from 802 lines to 758 lines; the deletion module is 96 lines, so this surface left the test warning inventory.
 - Verification passed locally: focused draft service Vitest run (48 tests), server test typecheck, touched-file lizard, large-file classification check, and `git diff --check`.
 - The large-file check now reports 0 test warnings; remaining maintainability warnings are `scripts/ci/check-github-action-runtimes.mjs` at 823 LOC and the classified `scripts/perf/phase3-benchmark.mjs` proof harness at 949 LOC.
+- PR #336 merged as squash commit `55301df4af535049f8210c8ea528f910d11b00e3`; a separate follow-up handles the admin E2E secret-scan fixture exposed during delivery.
 
 ---
 

@@ -223,8 +223,8 @@ const getBackupResponse: AdminApiResponder = (
   }
   if (requestKey === "POST /admin/encryption-keys") {
     return mockResponse({
-      encryptionKey: "test-enc-key-abc123",
-      encryptionSalt: "test-salt-xyz789",
+      encryptionKey: "test-key",
+      encryptionSalt: "test-salt",
       hasEncryptionKey: true,
       hasEncryptionSalt: true,
     });
