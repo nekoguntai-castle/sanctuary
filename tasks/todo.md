@@ -1,3 +1,28 @@
+# Active Task: P1-08 Payjoin Parser And Feature Boundary 2026-05-09
+
+Status: in progress; branch `fix/payjoin-text-parser-boundary`
+
+Goal: make the unauthenticated BIP78 receiver endpoint accept real `text/plain` requests under the production parser stack while preserving plain-text errors, body limits, and explicit feature-boundary behavior.
+
+## Plan
+
+- [x] Map production middleware order, Payjoin receiver route ordering, body parser behavior, rate limiting, feature gating, and existing unit/integration coverage.
+- [x] Add production-shaped route tests for `text/plain`, `text/plain; charset=utf-8`, missing/wrong content type, empty body, oversized body, and parser ordering after JSON/urlencoded middleware.
+- [x] Mount a route-local text parser on the BIP78 receiver endpoint before the handler and remove test-only global parser assumptions.
+- [x] Preserve BIP78 plain-text response bodies/content type and document the current receiver feature boundary without advertising unsupported signing completeness.
+- [x] Run focused Payjoin API/service tests, server build/typecheck/lint, touched-file lizard, Semgrep baseline if route comments/docs trip SAST, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Added a route-local `text/plain` parser with a 100 KiB limit to the unauthenticated BIP78 receiver route, preserving plain-text BIP78 errors for empty, wrong/missing content type, and oversized parser failures.
+- Replaced the masking global test text parser with an app-like JSON/urlencoded parser stack and added coverage for `text/plain`, `text/plain; charset=utf-8`, missing content type, wrong JSON content type, empty body, oversized body, and service-call suppression on rejected bodies.
+- OpenAPI, feature-flag, advanced-feature, and health-assessment docs now describe the `text/plain` payload contract, `413` text error, and the current unsigned receiver-proposal boundary.
+- Verification passed before delivery: focused Payjoin API/service/PSBT/OpenAPI tests (237 tests), OpenAPI route coverage, server test typecheck, server build, server lint including API body validation and Bitcoin network-boundary checks, changed-test hygiene, touched-file lizard, and `git diff --check`. The first server test typecheck was rerun after a parallel Prisma generation race and passed.
+- CI triage: PR #350 initially failed `Full Backend Unit Coverage` on an uncovered defensive parser branch. Removed the unreachable branch, added parser decode-error coverage, and locally verified the exact full backend unit coverage command at 100% across 9,669 tests.
+
+---
+
 # Active Task: P1-07 Deployment Fail-Closed Hardening 2026-05-09
 
 Status: completed; PR #348 merged as `e6ade48f`

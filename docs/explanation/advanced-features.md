@@ -190,7 +190,9 @@ Privacy-preserving send and receive flows using BIP78 Payjoin.
 - `GET /api/v1/payjoin/address/:addressId/uri` - Generate BIP21 with `pj=` param
 - `POST /api/v1/payjoin/parse-uri` - Parse BIP21 with Payjoin
 - `POST /api/v1/payjoin/attempt` - Attempt Payjoin send (fallback to regular send on failure)
-- `POST /api/v1/payjoin/:addressId` - Payjoin receiver endpoint (v1)
+- `POST /api/v1/payjoin/:addressId` - Payjoin receiver endpoint (v1, `text/plain` PSBT body, `text/plain` proposal/error response)
+
+Receiver mode is still feature-gated. The current receiver proposal adds the receiver input but does not perform receiver-side input signing yet, so production operators should treat the public BIP78 endpoint as incomplete until that signing boundary is closed.
 
 #### Frontend Components
 - **Files**:

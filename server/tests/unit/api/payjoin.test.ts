@@ -94,7 +94,7 @@ vi.mock('../../../src/utils/logger', () => ({
 
 // Import router and mocked modules after mocks
 import { errorHandler } from '../../../src/errors/errorHandler';
-import payjoinRouter from '../../../src/api/payjoin';
+import payjoinRouter, { PAYJOIN_RECEIVER_BODY_LIMIT_BYTES } from '../../../src/api/payjoin';
 import prisma from '../../../src/models/prisma';
 import {
   processPayjoinRequest,
@@ -130,9 +130,8 @@ describe('Payjoin API Routes', () => {
 
   beforeAll(() => {
     app = express();
-    // Use text parser for BIP78 endpoint (raw PSBT)
-    app.use(express.text({ type: 'text/plain' }));
     app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
     app.use('/api/v1/payjoin', payjoinRouter);
     app.use(errorHandler);
   });
@@ -155,6 +154,38 @@ describe('Payjoin API Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.text).toBe(PROPOSAL_PSBT_BASE64);
+      expect(res.type).toBe('text/plain');
+      expect(mockProcessPayjoinRequest).toHaveBeenCalledWith(TEST_ADDRESS_ID, VALID_PSBT_BASE64, 1);
+    });
+
+    it('should parse text/plain bodies after production JSON and urlencoded parsers', async () => {
+      mockProcessPayjoinRequest.mockResolvedValue({
+        success: true,
+        proposalPsbt: PROPOSAL_PSBT_BASE64,
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1`)
+        .set('Content-Type', 'text/plain')
+        .send(VALID_PSBT_BASE64);
+
+      expect(res.status).toBe(200);
+      expect(res.text).toBe(PROPOSAL_PSBT_BASE64);
+      expect(mockProcessPayjoinRequest).toHaveBeenCalledWith(TEST_ADDRESS_ID, VALID_PSBT_BASE64, 1);
+    });
+
+    it('should parse text/plain bodies with a charset parameter', async () => {
+      mockProcessPayjoinRequest.mockResolvedValue({
+        success: true,
+        proposalPsbt: PROPOSAL_PSBT_BASE64,
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1`)
+        .set('Content-Type', 'text/plain; charset=utf-8')
+        .send(VALID_PSBT_BASE64);
+
+      expect(res.status).toBe(200);
       expect(res.type).toBe('text/plain');
       expect(mockProcessPayjoinRequest).toHaveBeenCalledWith(TEST_ADDRESS_ID, VALID_PSBT_BASE64, 1);
     });
@@ -187,6 +218,8 @@ describe('Payjoin API Routes', () => {
 
       expect(res.status).toBe(400);
       expect(res.text).toBe('original-psbt-rejected');
+      expect(res.type).toBe('text/plain');
+      expect(mockProcessPayjoinRequest).not.toHaveBeenCalled();
     });
 
     it('should use minfeerate query parameter', async () => {
@@ -217,19 +250,54 @@ describe('Payjoin API Routes', () => {
       expect(mockProcessPayjoinRequest).toHaveBeenCalledWith(TEST_ADDRESS_ID, VALID_PSBT_BASE64, 1);
     });
 
-    it('should fall back to body.toString() when request body is not a string', async () => {
-      mockProcessPayjoinRequest.mockResolvedValue({
-        success: true,
-        proposalPsbt: PROPOSAL_PSBT_BASE64,
-      });
+    it('should reject missing content type without calling the service', async () => {
+      const res = await request(app)
+        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1`)
+        .unset('Content-Type')
+        .send(VALID_PSBT_BASE64);
 
+      expect(res.status).toBe(400);
+      expect(res.type).toBe('text/plain');
+      expect(res.text).toBe('original-psbt-rejected');
+      expect(mockProcessPayjoinRequest).not.toHaveBeenCalled();
+    });
+
+    it('should reject JSON bodies without coercing them to a PSBT string', async () => {
       const res = await request(app)
         .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1`)
         .set('Content-Type', 'application/json')
         .send({ psbt: VALID_PSBT_BASE64 });
 
-      expect(res.status).toBe(200);
-      expect(mockProcessPayjoinRequest).toHaveBeenCalledWith(TEST_ADDRESS_ID, '[object Object]', 1);
+      expect(res.status).toBe(400);
+      expect(res.type).toBe('text/plain');
+      expect(res.text).toBe('original-psbt-rejected');
+      expect(mockProcessPayjoinRequest).not.toHaveBeenCalled();
+    });
+
+    it('should reject oversized text bodies before calling the service', async () => {
+      const oversizedPsbt = 'A'.repeat(PAYJOIN_RECEIVER_BODY_LIMIT_BYTES + 1);
+
+      const res = await request(app)
+        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1`)
+        .set('Content-Type', 'text/plain')
+        .send(oversizedPsbt);
+
+      expect(res.status).toBe(413);
+      expect(res.type).toBe('text/plain');
+      expect(res.text).toBe('original-psbt-rejected');
+      expect(mockProcessPayjoinRequest).not.toHaveBeenCalled();
+    });
+
+    it('should map text parser decode errors to a plain-text BIP78 rejection', async () => {
+      const res = await request(app)
+        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1`)
+        .set('Content-Type', 'text/plain; charset=made-up-charset')
+        .send(VALID_PSBT_BASE64);
+
+      expect(res.status).toBe(400);
+      expect(res.type).toBe('text/plain');
+      expect(res.text).toBe('original-psbt-rejected');
+      expect(mockProcessPayjoinRequest).not.toHaveBeenCalled();
     });
 
     it('should return error from service', async () => {

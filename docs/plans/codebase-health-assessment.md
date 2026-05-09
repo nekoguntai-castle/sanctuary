@@ -96,6 +96,7 @@ These domain scores are the original scrub scores; per-finding statuses below re
    - Fix direction: pass wallet network into output validation and gate step progression on network-aware validation for all normal sends, BIP21, Payjoin, and QR paths.
 
 5. **Payjoin receiver requests are rejected in production for real BIP78 clients.**
+   - Status: fixed in the P1-08 slice by mounting a route-local `text/plain` parser on the BIP78 receiver, replacing the masking test parser with an app-like JSON/urlencoded stack, rejecting wrong/missing/empty/oversized bodies as plain-text BIP78 errors, and documenting the unsigned receiver proposal boundary.
    - Evidence: production mounts JSON and URL-encoded parsers only, while `server/src/api/payjoin.ts` expects raw text PSBT bodies. Unit tests mask this by adding `express.text({ type: 'text/plain' })` in the test app.
    - Impact: real `text/plain` BIP78 receiver requests can arrive with an undefined body and be rejected as `original-psbt-rejected`.
    - Fix direction: mount route-local `express.text({ type: 'text/plain', limit: ... })` before the Payjoin receiver route and add a production-shaped parser test. Also keep the receiver clearly marked incomplete until input signing is implemented.

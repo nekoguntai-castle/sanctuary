@@ -154,7 +154,7 @@ export const payjoinPaths = {
     post: {
       tags: ['Payjoin'],
       summary: 'BIP78 Payjoin receiver endpoint',
-      description: 'Unauthenticated BIP78 receiver endpoint that accepts an original PSBT and returns a proposal PSBT.',
+      description: 'Unauthenticated BIP78 receiver endpoint that accepts a text/plain original PSBT and returns a text/plain unsigned receiver proposal PSBT. Receiver-side input signing is not yet completed, so this endpoint remains behind the payjoinSupport feature flag.',
       parameters: [
         addressIdParameter,
         {
@@ -183,13 +183,18 @@ export const payjoinPaths = {
         required: true,
         content: {
           'text/plain': {
-            schema: { type: 'string', minLength: 1, description: 'Original PSBT in base64 format' },
+            schema: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 102400,
+              description: 'Original PSBT in base64 format',
+            },
           },
         },
       },
       responses: {
         200: {
-          description: 'Proposal PSBT in base64 format',
+          description: 'Unsigned receiver proposal PSBT in base64 format',
           content: {
             'text/plain': {
               schema: { type: 'string', minLength: 1 },
@@ -198,6 +203,7 @@ export const payjoinPaths = {
         },
         400: payjoinTextErrorResponse,
         403: payjoinTextErrorResponse,
+        413: payjoinTextErrorResponse,
         429: payjoinTextErrorResponse,
         500: payjoinTextErrorResponse,
       },

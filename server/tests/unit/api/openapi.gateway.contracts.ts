@@ -554,12 +554,16 @@ export function registerOpenApiGatewayTests() {
     expect(receiverPath.requestBody.content['text/plain'].schema).toMatchObject({
       type: 'string',
       minLength: 1,
+      maxLength: 102400,
     });
     expect(receiverPath.responses[200].content['text/plain'].schema).toMatchObject({
       type: 'string',
       minLength: 1,
     });
     expect(receiverPath.responses[400].content['text/plain'].schema).toEqual({
+      $ref: '#/components/schemas/PayjoinReceiverError',
+    });
+    expect(receiverPath.responses[413].content['text/plain'].schema).toEqual({
       $ref: '#/components/schemas/PayjoinReceiverError',
     });
   });

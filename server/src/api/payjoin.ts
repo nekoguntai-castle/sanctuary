@@ -2,11 +2,11 @@
  * Payjoin API Routes (BIP78)
  *
  * Implements the Payjoin receiver endpoint for enhanced transaction privacy.
- * The endpoint accepts an original PSBT from the sender and returns a
- * modified PSBT with the receiver's input added.
+ * The endpoint accepts an original PSBT from the sender and returns an
+ * unsigned receiver proposal PSBT with the receiver's input added.
  */
 
-import { Router } from 'express';
+import express, { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireFeature, isFeatureEnabledAsync } from '../middleware/featureGate';
@@ -32,6 +32,7 @@ import { isBitcoinNetwork, normalizeLegacyBitcoinNetwork } from '../services/bit
 const log = createLogger('PAYJOIN:ROUTE');
 
 const router = Router();
+export const PAYJOIN_RECEIVER_BODY_LIMIT_BYTES = 100 * 1024;
 
 const ParseUriBodySchema = z.object({
   uri: z.string().min(1),
@@ -73,6 +74,35 @@ const payjoinRateLimiter = rateLimitByIpAndKey(
   (req) => req.params.addressId as string,
   { message: PayjoinErrors.RECEIVER_ERROR, responseType: 'text', contentType: 'text/plain' }
 );
+
+type BodyParserError = Error & {
+  status?: number;
+  type?: string;
+};
+
+const payjoinTextBodyParser = express.text({
+  type: 'text/plain',
+  limit: PAYJOIN_RECEIVER_BODY_LIMIT_BYTES,
+});
+
+const parsePayjoinTextBody: RequestHandler = (req, res, next) => {
+  payjoinTextBodyParser(req, res, (error: unknown) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    const parserError = error as BodyParserError;
+    const status = parserError.status === 413 ? 413 : 400;
+
+    log.warn('Payjoin text body rejected by parser', {
+      status,
+      type: parserError.type,
+      message: String(error),
+    });
+    res.status(status).type('text/plain').send(PayjoinErrors.ORIGINAL_PSBT_REJECTED);
+  });
+};
 
 // ========================================
 // Authenticated endpoints for wallet management
@@ -236,7 +266,9 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
  * BIP78 Payjoin endpoint (receiver)
  *
  * This endpoint is called by Payjoin-capable senders.
- * It processes the original PSBT and returns a proposal with the receiver's input added.
+ * It processes the original PSBT and returns an unsigned receiver proposal with
+ * the receiver's input added. Receiver-side input signing is still a feature
+ * boundary documented on the payjoinSupport flag and service layer.
  *
  * IMPORTANT: This route MUST be defined after all specific POST routes (/parse-uri, /attempt)
  * to avoid the parameterized :addressId from capturing those paths.
@@ -246,8 +278,8 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
  *   minfeerate (optional) - Minimum fee rate in sat/vB
  *   maxadditionalfeecontribution (optional) - Max additional fee receiver will pay
  *
- * Body: Original PSBT (text/plain, base64)
- * Returns: Proposal PSBT (text/plain, base64)
+ * Body: Original PSBT (text/plain, base64, 100 KiB max)
+ * Returns: Unsigned proposal PSBT (text/plain, base64)
  */
 router.post('/:addressId', async (req, res, next) => {
   const enabled = await isFeatureEnabledAsync('payjoinSupport');
@@ -256,7 +288,7 @@ router.post('/:addressId', async (req, res, next) => {
     return res.status(403).type('text/plain').send(PayjoinErrors.RECEIVER_ERROR);
   }
   next();
-}, payjoinRateLimiter, async (req, res) => {
+}, payjoinRateLimiter, parsePayjoinTextBody, async (req, res) => {
   const addressId = req.params.addressId as string;
   const { v, minfeerate } = req.query;
 
@@ -266,10 +298,9 @@ router.post('/:addressId', async (req, res, next) => {
     return res.status(400).type('text/plain').send(PayjoinErrors.VERSION_UNSUPPORTED);
   }
 
-  // Get the PSBT from body (raw text)
-  const originalPsbt = typeof req.body === 'string'
-    ? req.body
-    : req.body?.toString?.();
+  // Get the PSBT from the route-local text parser. Wrong or missing content
+  // types must not be coerced from JSON/form bodies into BIP78 payloads.
+  const originalPsbt = typeof req.body === 'string' ? req.body : undefined;
 
   if (!originalPsbt || originalPsbt.length === 0) {
     log.warn('Empty PSBT in Payjoin request');
