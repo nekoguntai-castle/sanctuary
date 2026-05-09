@@ -1,3 +1,28 @@
+# Active Task: Fund-Safety PR B Broadcast Invariant Spec 2026-05-09
+
+Status: in progress
+
+Goal: add the broadcast canonicality contract and focused tests that pin fail-closed metadata, policy, and node-preflight invariants before the production parser/enforcement slice.
+
+## Plan
+
+- [x] Start from the merged Specter/fund-safety plan on a fresh branch.
+- [x] Inspect existing broadcast contracts, route tests, and current metadata-trusting behavior.
+- [x] Add a narrow broadcast invariant spec in the existing contract module.
+- [x] Add focused tests proving request metadata is never authoritative and every broadcast entrypoint must canonical-decode before propagation.
+- [x] Run focused server tests, test typecheck, lizard, and diff checks.
+- [ ] Deliver through PR and merge if CI is green.
+
+## Review
+
+- Added canonical broadcast source values that exclude `request_metadata`; request metadata is now modeled only as conflict-check input for wallet id, network, recipient, amount, fee, UTXO set, and draft id.
+- Extended typed broadcast failure reasons for metadata mismatches, unsupported scripts, unknown change, non-wallet inputs, unknown input values, dust, excessive fees, and node preflight failures.
+- Added a pre-propagation invariant matrix covering decode, policy, and node-preflight requirements for the enforcement slice.
+- Added entrypoint contracts requiring signed-PSBT, draft-backed signed-PSBT, raw-transaction, and PSBT-broadcast paths to canonical-decode and node-preflight before propagation.
+- Verification passed: focused broadcast contract tests, focused broadcast contract coverage at 100%, server test typecheck after wiring the isolated worktree to local server dependencies/generated Prisma, server lint, touched-file lizard, local Verify Bitcoin Vectors workflow reproduction, and `git diff --check`.
+
+---
+
 # Active Task: Specter Benchmark And Fund-Safety Plan Delivery 2026-05-09
 
 Status: completed

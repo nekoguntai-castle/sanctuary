@@ -10,17 +10,26 @@ export const BROADCAST_ERROR_REASON_VALUES = [
   'approval_vetoed',
   'approval_expired',
   'wrong_network',
+  'metadata_mismatch',
   'invalid_psbt',
   'invalid_raw_transaction',
+  'unsupported_script',
   'insufficient_signatures',
   'invalid_signature',
   'signer_metadata_mismatch',
   'missing_witness_data',
   'not_finalizable',
+  'unknown_change',
+  'non_wallet_input',
+  'unknown_input_value',
+  'dust_output',
+  'fee_too_high',
   'fee_too_low',
   'already_known',
   'duplicate_submission',
   'post_acceptance_persistence_race',
+  'node_preflight_unavailable',
+  'node_preflight_rejected',
   'node_timeout',
   'node_failure',
 ] as const;
@@ -59,7 +68,12 @@ export function getBroadcastFailureRetryPolicy(
 }
 
 export type BroadcastPayloadMode = 'signed_psbt' | 'raw_transaction';
-export type BroadcastIntentSource = 'draft' | 'request_metadata';
+export const BROADCAST_CANONICAL_INTENT_SOURCE_VALUES = [
+  'draft',
+  'decoded_payload',
+] as const;
+export type BroadcastIntentSource =
+  typeof BROADCAST_CANONICAL_INTENT_SOURCE_VALUES[number];
 export type BroadcastIntentOutputType = 'recipient' | 'change' | 'decoy';
 
 export interface CanonicalBroadcastInput {
@@ -88,6 +102,221 @@ export interface CanonicalBroadcastIntent {
   changeAddress?: string;
   sendMax?: boolean;
 }
+
+export const BROADCAST_CANONICAL_INTENT_REQUIRED_FIELDS = [
+  'walletId',
+  'network',
+  'source',
+  'mode',
+  'expectedInputs',
+  'expectedOutputs',
+  'expectedFeeSats',
+] as const satisfies readonly (keyof CanonicalBroadcastIntent)[];
+
+export type BroadcastCanonicalIntentField =
+  typeof BROADCAST_CANONICAL_INTENT_REQUIRED_FIELDS[number];
+
+export const BROADCAST_PAYLOAD_DERIVED_FIELDS = [
+  'txid',
+  'wtxid',
+  'inputs',
+  'outputs',
+  'recipientOutputs',
+  'changeOutputs',
+  'feeSats',
+  'vsize',
+  'feeRateSatsPerVbyte',
+] as const;
+
+export type BroadcastPayloadDerivedField =
+  typeof BROADCAST_PAYLOAD_DERIVED_FIELDS[number];
+
+export const BROADCAST_REQUEST_METADATA_CONFLICT_FIELDS = [
+  'walletId',
+  'network',
+  'recipient',
+  'amount',
+  'fee',
+  'utxos',
+  'draftId',
+] as const;
+
+export type BroadcastMetadataConflictField =
+  typeof BROADCAST_REQUEST_METADATA_CONFLICT_FIELDS[number];
+
+export type BroadcastInvariantPhase =
+  | 'decode'
+  | 'policy'
+  | 'node_preflight'
+  | 'persistence';
+
+export type BroadcastAuthoritativeSource =
+  | 'decoded_payload'
+  | 'trusted_wallet_context'
+  | 'wallet_state'
+  | 'node_preflight';
+
+export interface BroadcastInvariantSpec {
+  name: string;
+  phase: BroadcastInvariantPhase;
+  authoritativeSource: BroadcastAuthoritativeSource;
+  failureReason: BroadcastErrorReason;
+  requiredBeforePropagation: true;
+}
+
+export const BROADCAST_PRE_PROPAGATION_INVARIANTS = [
+  {
+    name: 'intent_exists',
+    phase: 'decode',
+    authoritativeSource: 'trusted_wallet_context',
+    failureReason: 'missing_intent',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'signed_psbt_is_parseable',
+    phase: 'decode',
+    authoritativeSource: 'decoded_payload',
+    failureReason: 'invalid_psbt',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'raw_transaction_is_parseable',
+    phase: 'decode',
+    authoritativeSource: 'decoded_payload',
+    failureReason: 'invalid_raw_transaction',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'network_matches_wallet',
+    phase: 'policy',
+    authoritativeSource: 'trusted_wallet_context',
+    failureReason: 'wrong_network',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'request_metadata_matches_decoded_payload',
+    phase: 'policy',
+    authoritativeSource: 'decoded_payload',
+    failureReason: 'metadata_mismatch',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'wallet_owns_all_spent_inputs',
+    phase: 'policy',
+    authoritativeSource: 'wallet_state',
+    failureReason: 'non_wallet_input',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'input_values_are_known',
+    phase: 'policy',
+    authoritativeSource: 'wallet_state',
+    failureReason: 'unknown_input_value',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'change_outputs_are_wallet_owned',
+    phase: 'policy',
+    authoritativeSource: 'wallet_state',
+    failureReason: 'unknown_change',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'outputs_use_supported_scripts',
+    phase: 'policy',
+    authoritativeSource: 'decoded_payload',
+    failureReason: 'unsupported_script',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'outputs_are_not_dust',
+    phase: 'policy',
+    authoritativeSource: 'decoded_payload',
+    failureReason: 'dust_output',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'fee_is_within_wallet_policy',
+    phase: 'policy',
+    authoritativeSource: 'decoded_payload',
+    failureReason: 'fee_too_high',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'fee_meets_relay_policy',
+    phase: 'policy',
+    authoritativeSource: 'node_preflight',
+    failureReason: 'fee_too_low',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'transaction_has_required_signatures',
+    phase: 'policy',
+    authoritativeSource: 'decoded_payload',
+    failureReason: 'insufficient_signatures',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'transaction_is_finalizable',
+    phase: 'policy',
+    authoritativeSource: 'decoded_payload',
+    failureReason: 'not_finalizable',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'node_preflight_is_available_when_required',
+    phase: 'node_preflight',
+    authoritativeSource: 'node_preflight',
+    failureReason: 'node_preflight_unavailable',
+    requiredBeforePropagation: true,
+  },
+  {
+    name: 'node_accepts_final_transaction',
+    phase: 'node_preflight',
+    authoritativeSource: 'node_preflight',
+    failureReason: 'node_preflight_rejected',
+    requiredBeforePropagation: true,
+  },
+] as const satisfies readonly BroadcastInvariantSpec[];
+
+export interface BroadcastEntrypointSpec {
+  name: string;
+  mode: BroadcastPayloadMode;
+  canonicalDecodeRequired: true;
+  requestMetadataRole: 'conflict_check_only';
+  nodePreflightRequired: true;
+}
+
+export const BROADCAST_ENTRYPOINTS = [
+  {
+    name: 'transactions_broadcast_signed_psbt',
+    mode: 'signed_psbt',
+    canonicalDecodeRequired: true,
+    requestMetadataRole: 'conflict_check_only',
+    nodePreflightRequired: true,
+  },
+  {
+    name: 'transactions_broadcast_draft_signed_psbt',
+    mode: 'signed_psbt',
+    canonicalDecodeRequired: true,
+    requestMetadataRole: 'conflict_check_only',
+    nodePreflightRequired: true,
+  },
+  {
+    name: 'transactions_broadcast_raw_transaction',
+    mode: 'raw_transaction',
+    canonicalDecodeRequired: true,
+    requestMetadataRole: 'conflict_check_only',
+    nodePreflightRequired: true,
+  },
+  {
+    name: 'psbt_broadcast_signed_psbt',
+    mode: 'signed_psbt',
+    canonicalDecodeRequired: true,
+    requestMetadataRole: 'conflict_check_only',
+    nodePreflightRequired: true,
+  },
+] as const satisfies readonly BroadcastEntrypointSpec[];
 
 export type BroadcastIdempotencyBasis =
   | { kind: 'txid'; value: string }
