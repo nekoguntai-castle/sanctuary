@@ -1,6 +1,32 @@
+# Active Task: CI Runtime Guard Large-File Split 2026-05-08
+
+Status: in progress; branch `maint/ci-runtime-guard-large-file`
+
+Goal: reduce the remaining production-source large-file warning, `scripts/ci/check-github-action-runtimes.mjs` at 823 LOC, without weakening the GitHub/Forgejo workflow runtime guard.
+
+## Plan
+
+- [x] Inspect the runtime guard structure, exported API, CLI entry point, and existing tests.
+- [x] Choose the smallest cohesive split boundary that drops the entry script below the warning band.
+- [x] Move workflow-policy guard helpers into a dedicated module while keeping `checkActionRuntimes` and the CLI command stable.
+- [x] Run focused CI runtime guard tests, the runtime guard command, touched-file lizard, large-file classification, and `git diff --check`.
+- [x] Review for hidden risk: no parsing behavior changes, no changed required-check policy strings, and no CLI argument drift.
+- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+
+## Review
+
+- The clean split boundary was workflow-policy enforcement: required check-context names, full-lane dependency rules, and workspace-absolute helper invocation checks are separate from action manifest parsing/fetching.
+- Moved those helpers into `scripts/ci/action-runtime-workflow-guards.mjs` and imported only the exported guard functions plus shared `addUniqueError`.
+- `scripts/ci/check-github-action-runtimes.mjs` dropped from 823 lines to 526 lines; the new helper module is 302 lines, so the production-source warning left the inventory.
+- Verification passed locally: CI runtime guard regression tests, the runtime guard command, touched-file lizard, large-file classification check, and `git diff --check`.
+- The large-file check now reports 0 production-source warnings and 0 test warnings; only the classified `scripts/perf/phase3-benchmark.mjs` proof harness remains above the warning band.
+
+---
+
 # Active Task: Admin E2E Secret-Scan Fixture Cleanup 2026-05-08
 
-Status: in progress; branch `fix/admin-e2e-gitleaks-fixture`
+Status: complete; PR #337 merged as `15d2585a`
 
 Goal: remove the tracked-tree gitleaks failure caused by the extracted admin operations E2E mock helper while preserving admin operations E2E behavior.
 
@@ -9,8 +35,8 @@ Goal: remove the tracked-tree gitleaks failure caused by the extracted admin ope
 - [x] Identify the failing secret-scan finding and confirm whether it is a real secret or a fixture false positive.
 - [x] Replace the secret-shaped fixture value with a less secret-shaped test placeholder instead of widening `.gitleaks.toml`.
 - [x] Run tracked-tree gitleaks, admin operations E2E, frontend test typecheck, touched-file lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
-- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+- [x] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [x] Re-check the queue after merge; physical hardware capture remains blocked by device access.
 
 ## Review
 
@@ -18,6 +44,8 @@ Goal: remove the tracked-tree gitleaks failure caused by the extracted admin ope
 - The failing gitleaks finding was `e2e/adminOperationsApiMock.ts` returning a deliberately fake encryption key/salt with high-entropy-looking suffixes.
 - Changed the mock response to `test-key` and `test-salt`, which keeps the UI/E2E contract the same while avoiding a secret-shaped fixture.
 - Verification passed locally: tracked-tree gitleaks, admin operations E2E (24 tests), frontend test typecheck, touched-file lizard, post-merge focused draft service test, large-file classification check, and `git diff --check`.
+- PR #337 merged at `2026-05-08T18:57:26-10:00` as squash commit `15d2585ad8acd6480171bfa4a53d68474d4918e4`; local `main` was fast-forwarded and the local/remote `fix/admin-e2e-gitleaks-fixture` branch was deleted.
+- Post-merge `main` verification passed: tracked-tree gitleaks, focused draft service Vitest run, large-file classification check, and admin operations E2E (24 tests).
 
 ---
 

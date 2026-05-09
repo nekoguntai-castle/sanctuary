@@ -4,13 +4,13 @@ Date: 2026-05-08
 Owner: TBD
 Status: Draft
 
-**Overall Score**: 97/100
+**Overall Score**: 98/100
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: 55301df4 (working tree dirty)
+**Commit**: 15d2585a (working tree dirty)
 
-This refresh covers `main` after the draft service test split merge plus the current admin operations E2E secret-scan fixture follow-up. The earlier audit found and fixed a real coverage hard-fail in newly added Bitcoin network-context branches; the current maintainability loop has removed all local test-file warnings where a clean split existed.
+This refresh covers `main` after the admin operations E2E secret-scan fixture follow-up plus the current CI runtime guard split working tree. The earlier audit found and fixed a real coverage hard-fail in newly added Bitcoin network-context branches; the current maintainability loop has removed all unclassified local large-file warnings where a clean split existed.
 
 ---
 
@@ -35,18 +35,18 @@ Important non-blocking findings:
 | --- | ---: | --- |
 | Correctness | 18/20 | Tests, lint, typecheck, API body validation, blocking-I/O guard, and Bitcoin network-boundary guard pass. Functional completeness remains medium until hardware-in-loop signed wallet fixtures are complete. |
 | Reliability | 15/15 | Inspected broadcast, draft-update, node-client, and timeout/retry paths use explicit errors, retry boundaries, and contextual handling. |
-| Maintainability | 14/15 | Lizard passes with zero warnings and jscpd is 1.68%; admin operations E2E, node-client, wallet create-account selection, mempool, console service, and draft service tests were split below the warning band. The largest-file criterion stays partial because one production-source warning remains and one proof harness is intentionally classified in the 800-1000 LOC band. |
+| Maintainability | 15/15 | Lizard passes with zero warnings and jscpd is 1.68%; admin operations E2E, node-client, wallet create-account selection, mempool, console service, draft service, and the CI runtime guard were split below the warning band. The only warning-band file left is an explicitly classified performance proof harness. |
 | Security | 15/15 | `npm audit --audit-level=high` reports 0 high/critical advisories; tracked-tree gitleaks is clean; Zod validation remains present at trust boundaries. |
 | Performance | 10/10 | No new hot-path blocking I/O; broadcast/node-client changes preserve async I/O and bounded guardrails. |
 | Test Quality | 15/15 | Full coverage is restored to 100% across frontend, server, and gateway with focused tests for the surfaced edge cases. |
 | Operational Readiness | 10/10 | Docker/Compose, GitHub Actions, health/readiness endpoints, observability hooks, and structured logging remain present. |
-| **TOTAL** | **97/100** | |
+| **TOTAL** | **98/100** | |
 
 ---
 
 ## Trend
 
-- vs 2026-05-01 (`working-tree-after-765cf0dd`): overall `+/-0`, grade `A -> A`, confidence `High -> High`.
+- vs 2026-05-01 (`working-tree-after-765cf0dd`): overall `+1`, grade `A -> A`, confidence `High -> High`.
 - The previous deferred correctness gap remains physical hardware-in-loop proof. The new local coverage regression discovered during this refresh was fixed before this report was finalized.
 
 ---
@@ -65,7 +65,7 @@ Important non-blocking findings:
 | secrets | 0 tracked-tree leaks | `GITLEAKS_BIN=/home/nekoguntai/.local/bin/gitleaks bash scripts/gitleaks-tracked-tree.sh` | Security 4.2 -> +4 |
 | complexity | 0 warnings | `npm run quality:lizard` | Maintainability 3.1 -> +5 |
 | duplication | 1.68% duplicated lines, 259 exact clones | `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .` | Maintainability 3.2 -> +3 |
-| largest file | unclassified warning: 823 lines (`scripts/ci/check-github-action-runtimes.mjs`); 0 test warnings; 0 files over 1000 LOC; classified proof-harness warning: 949 lines (`scripts/perf/phase3-benchmark.mjs`) | `node scripts/quality/check-large-files.mjs` | Maintainability 3.3 -> +1 |
+| largest file | 0 production-source warnings; 0 test warnings; 0 files over 1000 LOC; classified proof-harness warning: 949 lines (`scripts/perf/phase3-benchmark.mjs`, reviewWhenTouched=true) | `node scripts/quality/check-large-files.mjs` | Maintainability 3.3 -> +2 |
 | deploy artifacts | 2 | `grade.sh`: Dockerfile/Compose plus GitHub Actions | Operational Readiness 7.1 -> +3 |
 | health endpoints | 198 heuristic hits | `grade.sh` heuristics; prior inspection of `server/src/api/health/routes.ts` | Operational Readiness 7.2 -> +2 |
 | observability library | present | `grade.sh` heuristics; inspected tracing/logging paths | Operational Readiness 7.3 -> +2 |
@@ -81,8 +81,8 @@ Important non-blocking findings:
 - **[2.1] Error handling quality - High -> +6**: transaction broadcast and draft update paths now cover unsupported wallet networks, missing drafts, non-actionable approvals, optimistic conflicts, and invalid legacy draft UTXO references with explicit error behavior.
 - **[2.2] Timeouts and retries - High -> +4**: request-level timeouts and async retry utilities remain in place; draft signature updates retain bounded optimistic retries.
 - **[2.3] Crash-prone paths - High -> +5**: inspected production changes avoid assertion-style crashes and either test or document unreachable legacy fallback behavior.
-- **[3.4] Architecture clarity - High -> +3**: the codebase keeps clear API/service/repository boundaries; large-test splits follow existing helper/register patterns instead of creating new harness styles.
-- **[3.5] Readability/naming - High -> +2**: admin operations, node-client, wallet validation, mempool dashboard-formatting, console prompt-replay, and draft deletion cases are grouped by behavior instead of mixed into oversized proof files.
+- **[3.4] Architecture clarity - High -> +3**: the codebase keeps clear API/service/repository boundaries; large-test splits follow existing helper/register patterns, and the CI runtime guard now separates manifest inspection from workflow policy enforcement.
+- **[3.5] Readability/naming - High -> +2**: admin operations, node-client, wallet validation, mempool dashboard-formatting, console prompt-replay, draft deletion, and CI workflow-policy cases are grouped by behavior instead of mixed into oversized proof files.
 - **[4.3] Input validation quality - High -> +3**: Zod/body-validation guard still passes, and unsupported wallet network values fail before broadcast service calls.
 - **[4.4] Safe system/API usage - High -> +3**: no dangerous user-input shell/eval patterns were added; gitleaks tracked-tree scan is clean.
 - **[5.1] Hot-path efficiency - High -> +5**: broadcast and node-client changes preserve existing async service boundaries.
@@ -103,23 +103,23 @@ Important non-blocking findings:
 ## Top Risks
 
 1. Physical hardware-in-loop wallet proof remains incomplete - real-device PSBT signing confidence still depends on 11 missing required Ledger/Trezor/BitBox fixture rows; 4 Ledger/BitBox multisig rows are now explicitly blocked as unsupported.
-2. The largest-file point remains partial because `scripts/ci/check-github-action-runtimes.mjs` is still an 823-line production-source warning and `scripts/perf/phase3-benchmark.mjs` remains a 949-line classified proof harness; the test warning inventory is now zero.
+2. The only remaining warning-band file is the classified `scripts/perf/phase3-benchmark.mjs` performance proof harness; it is not an unclassified score blocker, but should still be reviewed if that harness is next touched.
 3. Low-severity elliptic-family dependency advisories remain with no safe automatic fix; avoid forced upgrades without hardware-wallet compatibility testing.
 
 ## Fastest Improvements
 
 1. Capture the 11 remaining hardware-signed PSBT fixture rows from physical Ledger/Trezor/BitBox devices - expected gain: +2 correctness - effort: hardware-dependent.
-2. Review `scripts/ci/check-github-action-runtimes.mjs` for a clean split or explicit classification - expected gain: +1 maintainability if remaining warnings are resolved or justified - effort: incremental.
+2. Keep the large-file gate clean by splitting future production/test warning files only at natural boundaries - expected score movement: none, but protects maintainability - effort: ongoing review.
 3. Keep the Layout no-warning state by avoiding redundant async state setters in render-heavy shell components - expected score movement: none, but protects CI diagnosability - effort: ongoing review.
 
 ## Roadmap To A Grade
 
 | Phase | Target | Work | Exit Criteria | Expected Score Movement |
 | --- | --- | --- | --- | --- |
-| 1 | Keep A stable | Preserve coverage, lint, typecheck, gitleaks, lizard, jscpd, API body validation, blocking-I/O, and Bitcoin network-boundary gates. | All listed commands pass on each PR. | Holds 97/A |
+| 1 | Keep A stable | Preserve coverage, lint, typecheck, gitleaks, lizard, jscpd, API body validation, blocking-I/O, and Bitcoin network-boundary gates. | All listed commands pass on each PR. | Holds 98/A |
 | 2 | Cleaner test signal | Preserve the PR #329 Layout no-warning behavior. | Focused Layout tests and full frontend coverage have no repeated Layout act warnings. | No score movement; better diagnosability |
 | 3 | Stronger correctness | Add real hardware-signed PSBT fixture evidence for the 11 required rows. | `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` fixture contract passes. | +2 correctness |
-| 4 | Maintainability polish | Split or formally classify the remaining large production-source warning, and keep the perf proof-harness classification explicit. | Largest-file criterion reaches full credit or the remaining proof files are explicitly justified. | +1 maintainability |
+| 4 | Maintainability polish | Keep the production/test large-file warning inventory empty, and keep the perf proof-harness classification explicit. | `node scripts/quality/check-large-files.mjs` reports 0 production/test warnings. | Complete |
 
 ## Strengths To Preserve
 
@@ -138,7 +138,7 @@ Important non-blocking findings:
 ## Next Slice Queue
 
 1. **Physical Hardware Fixture Capture**: capture the 11 required Ledger/Trezor/BitBox signing artifacts on real devices. Exit with `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` passing.
-2. **CI Runtime Guard Large-File Review**: review `scripts/ci/check-github-action-runtimes.mjs` for a clean helper split or explicit classification. Exit with the production-source warning inventory reduced or justified, plus focused script checks and lizard.
+2. **Classified Perf Proof Harness Watch**: leave `scripts/perf/phase3-benchmark.mjs` cohesive unless it is next touched or a measured maintenance problem appears. Exit with classification metadata still passing.
 
 ## Verification Notes
 
@@ -187,4 +187,8 @@ Important non-blocking findings:
 - `npm run typecheck:tests` - passed after the admin E2E fixture cleanup.
 - `npm run test:e2e -- --project=chromium e2e/admin-operations.spec.ts` - passed, 24 tests after the admin E2E fixture cleanup.
 - `npm run quality:lizard -- e2e/adminOperationsApiMock.ts` - passed after the admin E2E fixture cleanup.
+- `node tests/ci/check-github-action-runtimes.test.mjs` - passed after the CI runtime guard split.
+- `npm run check:github-action-runtimes` - passed after the CI runtime guard split, 16 manifests checked.
+- `npm run quality:lizard -- scripts/ci/check-github-action-runtimes.mjs scripts/ci/action-runtime-workflow-guards.mjs` - passed after the split.
+- `node scripts/quality/check-large-files.mjs` - passed; production/test warning inventories are now 0, with only the classified perf proof harness above the warning band.
 - `git diff --check` - passed.
