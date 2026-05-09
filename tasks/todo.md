@@ -1,6 +1,6 @@
 # Active Task: P2-07 Bulk Group Cache Invalidation 2026-05-09
 
-Status: in progress; branch `fix/bulk-group-cache-invalidation`
+Status: completed; PR #354 merged as `22913fa8`
 
 Goal: make bulk admin group membership replacement invalidate affected wallet-access cache entries the same way dedicated add/remove paths do, so wallet access changes take effect immediately.
 
@@ -11,7 +11,7 @@ Goal: make bulk admin group membership replacement invalidate affected wallet-ac
 - [x] Implement invalidation around the bulk update using the same access-control cache boundary as dedicated add/remove paths.
 - [x] Update health/remediation/task docs for P2-07 status and any residual role-boundary behavior.
 - [x] Run focused admin group/access-control tests, server typecheck/lint/build as needed, touched-file lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -20,6 +20,8 @@ Goal: make bulk admin group membership replacement invalidate affected wallet-ac
 - Route/service/repository regression tests now cover removed users, added valid users, invalid requested users, empty replacement, idempotent replacement, and failure-before-invalidation behavior.
 - Role changes are outside the bulk `memberIds` API; the current explicit member-role API is add-member only, so this slice documents that boundary rather than adding a new role-update path.
 - Verification passed: focused admin group/access-control tests (117 tests), server test typecheck after rerunning past a parallel Prisma generation race, server build, server lint including API body validation and Bitcoin network-boundary checks, changed-test hygiene, touched-file lizard, `git diff --check`, and full backend unit coverage (9,673 tests, 100% statements/branches/functions/lines).
+- Pre-commit verification also passed the changed backend suite with 5,519 tests passing and 241 skipped.
+- Delivery: PR #354 merged at `2026-05-09T05:33:13-10:00` as squash commit `22913fa8c5fb3d1a08a8da3fa967f87babf7d5e6`; all 30 Forgejo checks passed.
 
 ---
 
