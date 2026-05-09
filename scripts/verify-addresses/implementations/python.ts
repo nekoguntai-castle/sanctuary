@@ -46,11 +46,20 @@ function getPythonRunAttempts(): number {
 
 function configuredPythonCommands(): string[] {
   const configuredPython = process.env.VERIFY_ADDRESSES_PYTHON;
-  return configuredPython ? [configuredPython] : ['python3', 'python'];
+  return configuredPython ? [validatePythonCommand(configuredPython)] : ['python3', 'python'];
+}
+
+function validatePythonCommand(command: string): string {
+  if (!command || command.trim() !== command || /[\0\r\n\t ]/.test(command)) {
+    throw new Error('VERIFY_ADDRESSES_PYTHON must be a single executable path or command name');
+  }
+
+  return command;
 }
 
 function runPythonProcess(command: string, args: string[]): Promise<PythonProcessOutcome> {
   return new Promise((resolve, reject) => {
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process -- Owner: platform, 2026-05-09. Required independent bip_utils verifier; shell is disabled and command/env inputs are validated.
     const proc = spawn(command, [PYTHON_SCRIPT, ...args], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });

@@ -92,20 +92,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Display validation context
+        env:
+          VALIDATION_REF: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
+          VALIDATION_VERSION: ${{ github.event.inputs.version || inputs.version || 'N/A' }}
+          FULL_UPGRADE_RECOVERY: ${{ github.event.inputs.include_full_upgrade_recovery || inputs.include_full_upgrade_recovery || false }}
+          TRIGGERED_BY: ${{ github.actor }}
         run: |
-          echo "## Release Candidate Validation" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Git Ref | \`${{ github.event.inputs.ref || inputs.ref || 'main' }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Version | ${{ github.event.inputs.version || inputs.version || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Full Upgrade Recovery | ${{ github.event.inputs.include_full_upgrade_recovery || inputs.include_full_upgrade_recovery || false }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Triggered By | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Time | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "This workflow runs the **full** install test suite including upgrade tests." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Release Candidate Validation"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Git Ref | \`${VALIDATION_REF}\` |"
+            echo "| Version | ${VALIDATION_VERSION} |"
+            echo "| Full Upgrade Recovery | ${FULL_UPGRADE_RECOVERY} |"
+            echo "| Triggered By | ${TRIGGERED_BY} |"
+            echo "| Time | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |"
+            echo ""
+            echo "This workflow runs the **full** install test suite including upgrade tests."
+            echo ""
+            echo "---"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ============================================
   # Unit Tests

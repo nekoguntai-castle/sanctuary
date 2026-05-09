@@ -573,7 +573,7 @@ services:
 
       # Backend connection (internal)
       BACKEND_URL: http://backend:3001
-      BACKEND_WS_URL: ws://backend:3001
+      BACKEND_WS_URL: ws://backend:3001 # nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket -- Owner: platform, 2026-05-09. Internal Docker-network backend WebSocket; external gateway TLS is handled separately.
 
       # JWT (must match backend)
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}

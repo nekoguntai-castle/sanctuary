@@ -32,23 +32,34 @@ jobs:
 
       - name: Get version info
         id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          TAG="${{ github.ref_name }}"
+          set -euo pipefail
+          TAG="$REF_NAME"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag must match vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
           VERSION="${TAG#v}"
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           # Get the previous tag for changelog
-          PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "$TAG" | head -1)
-          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v -Fx "$TAG" | head -1 || true)
+          echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
           echo "Current tag: $TAG"
           echo "Previous tag: $PREV_TAG"
 
       - name: Generate changelog
         id: changelog
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          PREVIOUS_TAG: ${{ steps.version.outputs.prev_tag }}
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          PREV_TAG="${{ steps.version.outputs.prev_tag }}"
+          set -euo pipefail
+          TAG="$RELEASE_TAG"
+          PREV_TAG="$PREVIOUS_TAG"
 
           echo "## Changes" > /tmp/changelog.md
           echo "" >> /tmp/changelog.md
@@ -69,9 +80,11 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          VERSION="${{ steps.version.outputs.version }}"
+          TAG="$RELEASE_TAG"
+          VERSION="$RELEASE_VERSION"
 
           echo "Creating release $TAG..."
 

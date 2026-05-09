@@ -3,59 +3,11 @@
   "description": "Baseline of existing Semgrep ERROR findings. The CI gate fails on findings that are not listed here.",
   "entries": [
     {
-      "id": "yaml.github-actions.security.run-shell-injection.run-shell-injection",
-      "path": ".github/workflows/create-release.yml",
-      "startLine": 29,
-      "endLine": 40,
-      "sha256": "26f3604eeb3c016c2939dd9b9d4eabdb6d1a5cb850ca7a40911b23ca6076b862",
-      "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
-    },
-    {
-      "id": "yaml.github-actions.security.run-shell-injection.run-shell-injection",
-      "path": ".github/workflows/release-candidate.yml",
-      "startLine": 88,
-      "endLine": 102,
-      "sha256": "5ac889e961af6bb9c7fbfe42b982c43282581e31097e6b087b733f370ddb8528",
-      "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
-    },
-    {
-      "id": "yaml.github-actions.security.run-shell-injection.run-shell-injection",
-      "path": ".github/workflows/release-offline-bundle.yml",
-      "startLine": 40,
-      "endLine": 48,
-      "sha256": "fc6cfb0dd3de124541d86eaf8e6d616f4fbb1ae30e9472aaf478bc87bf2487bf",
-      "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
-    },
-    {
-      "id": "yaml.github-actions.security.run-shell-injection.run-shell-injection",
-      "path": ".github/workflows/release.yml",
-      "startLine": 55,
-      "endLine": 69,
-      "sha256": "9dee4a86f2aeb734ddbc18d6272237326050b9d9d4e90644780595ace9c87a8b",
-      "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
-    },
-    {
-      "id": "yaml.github-actions.security.run-shell-injection.run-shell-injection",
-      "path": ".github/workflows/release.yml",
-      "startLine": 129,
-      "endLine": 157,
-      "sha256": "8b48ce6b1b54aad7d83c788321f58e178e4a6ce5227ffcebbeea73be713de2ff",
-      "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
-    },
-    {
       "id": "javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket",
       "path": "assets/state-diagram.drawio",
       "startLine": 419,
       "endLine": 419,
       "sha256": "52f03aaef130eb4cfd3eee0ace88998ba9bb50c315d38d664f46acbd09be8011",
-      "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
-    },
-    {
-      "id": "javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket",
-      "path": "docker-compose.yml",
-      "startLine": 574,
-      "endLine": 574,
-      "sha256": "d402cb95c604a04341f79df2322dfe1157793c02ef5d480aaf98536d6e9040a1",
       "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
     },
     {
@@ -112,14 +64,6 @@
       "startLine": 24,
       "endLine": 24,
       "sha256": "86fabe60d335d6398f51b7ebdc696c0066b713e50aa72bec84af1b81a75f3e4f",
-      "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
-    },
-    {
-      "id": "javascript.lang.security.detect-child-process.detect-child-process",
-      "path": "scripts/verify-addresses/implementations/python.ts",
-      "startLine": 54,
-      "endLine": 54,
-      "sha256": "4dd3d272a6844c5a2960a04bb95e00c03679d2f64ebd83aaf592b9747f6050e1",
       "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
     },
     {

@@ -1,6 +1,31 @@
+# Active Task: P1-06 Semgrep Baseline And P2-01 Audit Gates 2026-05-09
+
+Status: in progress; branch `fix/semgrep-audit-gates`
+
+Goal: make the Semgrep baseline gate pass by fixing or explicitly triaging reported workflow/code findings, and address the current production dependency audit failures or document accepted residual risk.
+
+## Plan
+
+- [x] Reproduce `npm run check:semgrep-baseline` and production audit failures for root, server, and AI proxy.
+- [x] Map every reported Semgrep new/stale entry to a concrete workflow/code fix or a dated, owned exception.
+- [x] Harden release workflow shell interpolation by moving expressions into environment variables, validating tags/versions, and quoting shell variables.
+- [x] Resolve or document dependency audit findings without forced incompatible upgrades.
+- [x] Refresh Semgrep/audit baseline artifacts only after fixes or explicit exceptions, then run Semgrep baseline, workflow guard/actionlint checks where available, audits, focused tests/typechecks/lint, lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Reproduced the stale/new Semgrep baseline state and package-level moderate audit failures, then removed stale workflow, Docker Compose, and Python child-process baseline entries only after fixes or explicit dated exceptions.
+- Hardened release, release-candidate, release-offline-bundle, create-release, and install-test shell blocks by moving expression values into environment variables, validating tags/versions/run IDs, and quoting shell/API path inputs.
+- Documented the internal Docker-network WebSocket exception and constrained the address-verification Python command override to a single executable path/command before spawning without a shell.
+- Cleared server and AI proxy moderate production audits by overriding `hono` to `4.12.18` and updating `express-rate-limit` to `8.5.1` / `ip-address` to `10.2.0`; root production audit still exits 0 with only accepted low-severity Trezor `elliptic` advisories.
+- Verification passed before delivery: actionlint 1.7.12 with checked tarball hash, `npm run check:github-action-runtimes`, Semgrep-only `bash scripts/quality.sh`, `npm run check:semgrep-baseline`, production audits for root/server/AI proxy at moderate threshold, `docker compose config --quiet` with dummy required secrets, `npm --prefix server run build`, `npm --prefix ai-proxy run build`, focused Python wrapper test, `npm run typecheck:scripts`, `npm run typecheck:tests`, touched-file `npm run quality:lizard -- ...`, and `git diff --check`.
+
+---
+
 # Active Task: P1-05 Backup Restore Safety 2026-05-09
 
-Status: in progress; branch `fix/backup-restore-safety`
+Status: completed; PR #346 merged as `8a8cf04c`
 
 Goal: make destructive restore fail closed when a backup is partial or core-table deletion fails, so restore cannot wipe existing datasets or report success after failed cleanup.
 
@@ -11,11 +36,16 @@ Goal: make destructive restore fail closed when a backup is partial or core-tabl
 - [x] Add regression tests for missing core tables, non-array core tables, delete failures, route rejection, and successful full restore.
 - [x] Introduce explicit strict destructive-restore validation and fatal core-table deletion handling.
 - [x] Run focused backup service/API tests, server typecheck/lint/build, touched-file lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
-- Pending.
+- Added strict restore-ready backup validation for destructive flows while leaving the preview validator available for non-destructive inspection.
+- The admin validate and restore endpoints now reject partial current-schema backups, future-schema backups, and non-array required restore tables before any destructive transaction starts.
+- Restore now aborts and rolls back on table-delete failures instead of logging and continuing to insert replacement data.
+- Added regression coverage for non-object restore validation, missing schema metadata, missing required tables, non-array required tables, future schema versions, versioned table requirements, delete failures, service-level partial restore rejection, and route-level partial restore rejection.
+- Verification passed: focused backup service/admin route tests (103 tests), `npm run typecheck:server:tests`, full backend unit coverage (9,661 tests, 100% statements/branches/functions/lines), `cd server && npm run build`, `npm run lint:server`, touched-file `npm run quality:lizard -- ...`, `git diff --check`, and pre-commit changed backend tests.
+- Delivery: PR #346 merged at `2026-05-09T02:23:24-10:00` as squash commit `8a8cf04c39206c9452d0f11e57d3804b909cc117`; all 30 Forgejo checks passed and post-merge `origin/main` contains the merge commit.
 
 ---
 

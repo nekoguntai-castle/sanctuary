@@ -89,4 +89,12 @@ describe('verify-addresses Python wrapper', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it('rejects configured Python commands with shell arguments', async () => {
+    process.env.VERIFY_ADDRESSES_PYTHON = 'python3 -c';
+
+    await expect(
+      pythonImpl.deriveMultisig(['xpub-fixture'], 1, 0, 'p2wsh', false, 'testnet')
+    ).rejects.toThrow('VERIFY_ADDRESSES_PYTHON must be a single executable path or command name');
+  });
 });

@@ -780,15 +780,32 @@ jobs:
       - name: Run baseline upgrades sequentially
         env:
           SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE: ${{ github.event.inputs.upgrade_source_ref }}
+          RUN_ID: ${{ github.run_id }}
         run: |
+          set -euo pipefail
           cd "$SANCTUARY_UPGRADE_WORKSPACE"
+          if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::Unexpected workflow run id"
+            exit 1
+          fi
+          if [[ -n "${SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE:-}" && ! "$SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE" =~ ^[A-Za-z0-9._/@-]+$ ]]; then
+            echo "::error::upgrade_source_ref contains unsupported characters"
+            exit 1
+          fi
 
           run_upgrade() {
             local source_ref="$1"
             local port_offset="$2"
             local port_env
+            case "$source_ref" in
+              latest-stable|n-2) ;;
+              *)
+                echo "::error::Unexpected upgrade source ref: $source_ref"
+                return 1
+                ;;
+            esac
 
-            export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${{ github.run_id }}-${source_ref}-baseline"
+            export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${RUN_ID}-${source_ref}-baseline"
             export SANCTUARY_UPGRADE_SOURCE_REF="${SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE:-$source_ref}"
             export SANCTUARY_UPGRADE_FIXTURE="baseline"
             export SANCTUARY_UPGRADE_ARTIFACT_DIR="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/.tmp/upgrade-artifacts/${source_ref}-baseline"

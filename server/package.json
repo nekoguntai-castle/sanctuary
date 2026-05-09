@@ -11,7 +11,7 @@
   },
   "overrides": {
     "@hono/node-server": "1.19.14",
-    "hono": "4.12.14",
+    "hono": "4.12.18",
     "protobufjs": "7.5.5",
     "uuid": "14.0.0"
   },

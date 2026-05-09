@@ -2,10 +2,10 @@
 
 Date: 2026-05-08
 Owner: TBD
-Status: Draft
+Status: In remediation; last updated 2026-05-09
 
-**Overall Score**: 76/100
-**Grade**: C
+**Overall Score**: 76/100 (original scrub score; not yet rescored after remediation slices)
+**Grade**: C (original scrub grade)
 **Confidence**: High
 **Mode**: full deep bug scrub
 **Commit**: ec073c64 (working tree dirty)
@@ -16,12 +16,14 @@ This score is risk-adjusted from a codebase and feature bug scrub. The mechanica
 
 ## Hard-Fail Blockers
 
-1. `npm run check:semgrep-baseline` fails with 8 unbaselined findings and 7 stale baseline entries. The actionable findings include GitHub Actions shell-injection patterns in release workflows, an insecure WebSocket finding in `docker-compose.yml`, and a child-process finding in the address verification script.
-2. Moderate dependency audit fails in package-level scans:
-   - `npm --prefix server audit --omit=dev --audit-level=moderate` fails on `hono` advisories pulled through server tooling.
-   - `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate` fails on `express-rate-limit -> ip-address`.
+Original hard-fail blockers from the scrub are now addressed in the P1-06/P2-01 remediation slice:
 
-The current high/critical policy still passes, but the moderate findings are active and CI policy currently lets them through.
+1. `npm run check:semgrep-baseline` passes after fixing release workflow shell-injection patterns and replacing two remaining reported paths with dated, owned exceptions.
+2. Package-level moderate production audits pass:
+   - `npm --prefix server audit --omit=dev --audit-level=moderate` reports `0` vulnerabilities after overriding `hono` to `4.12.18`.
+   - `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate` reports `0` vulnerabilities after updating `express-rate-limit` to `8.5.1` and `ip-address` to `10.2.0`.
+
+The root production audit still exits 0 at the moderate threshold and reports only accepted low-severity Trezor `elliptic` advisories with no safe upstream fix.
 
 ---
 
@@ -37,6 +39,8 @@ The current high/critical policy still passes, but the moderate findings are act
 | Test Quality | 12/15 | Coverage is excellent, but several important tests assert implementation details or unsafe legacy behavior instead of end-to-end security/business invariants. |
 | Operational Readiness | 8/10 | Docker, Compose, CI, health checks, and observability are present, but fail-closed deployment policy and package-level audit/coverage thresholds are incomplete. |
 | **TOTAL** | **76/100** | |
+
+These domain scores are the original scrub scores; per-finding statuses below record remediated slices until the report is formally rescored.
 
 ---
 
@@ -59,8 +63,8 @@ The current high/critical policy still passes, but the moderate findings are act
 | Typecheck | App, frontend tests, and server tests passed in the grade run. |
 | Secrets | Tracked-tree gitleaks passed with 0 findings in the grade run. |
 | High/critical audit | Root `npm audit --audit-level=high` passed with 0 high/critical advisories in the grade run. |
-| Moderate package audit | Server and AI proxy package-level moderate audits fail. |
-| Semgrep baseline | `npm run check:semgrep-baseline` fails with new and stale findings. |
+| Moderate package audit | Server and AI proxy package-level production audits now pass at the moderate threshold. |
+| Semgrep baseline | `npm run check:semgrep-baseline` now passes with all current findings covered by fixed code or reviewed baseline entries. |
 | Complexity | Lizard reported 0 warnings, average CCN 1.4. |
 | Duplication | `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .` passed with 1.68% duplicated lines. |
 | File size | `node scripts/quality/check-large-files.mjs` passed; only `scripts/perf/phase3-benchmark.mjs` remains as a classified proof harness at 949 LOC. |
@@ -86,6 +90,7 @@ The current high/critical policy still passes, but the moderate findings are act
    - Fix direction: when verification is required, return a pending-verification response without access/refresh cookies, or issue a deliberately limited unverified session that every protected route blocks.
 
 4. **Normal send address validation accepts wrong-network addresses.**
+   - Status: fixed in PR #345 (`1297f538`) by making send output validation network-aware across manual, BIP21, QR/update helper, step-gating, and transaction-creation paths.
    - Evidence: `components/send/steps/OutputsStep/OutputsStep.tsx` uses format-only `validateAddress(output.address)` for normal outputs, while network-aware validation exists separately in `utils/validateAddress.ts`.
    - Impact: users can proceed with a mainnet address in a testnet/signet wallet, or vice versa, until later failure. For a wallet send flow, that is too late.
    - Fix direction: pass wallet network into output validation and gate step progression on network-aware validation for all normal sends, BIP21, Payjoin, and QR paths.
@@ -96,11 +101,13 @@ The current high/critical policy still passes, but the moderate findings are act
    - Fix direction: mount route-local `express.text({ type: 'text/plain', limit: ... })` before the Payjoin receiver route and add a production-shaped parser test. Also keep the receiver clearly marked incomplete until input signing is implemented.
 
 6. **Backup restore can destroy data from partial backups and continue after delete failures.**
+   - Status: fixed in PR #346 (`8a8cf04c`) by adding strict destructive-restore validation and making core-table delete failures abort the restore transaction.
    - Evidence: missing required tables are warnings, not validation failures, and restore deletes existing tables before inserting backup tables. Delete failures are logged and swallowed.
    - Impact: a partial backup can wipe present data and restore an incomplete dataset; failed deletes can leave stale rows behind while the API reports success.
    - Fix direction: make missing core tables fatal for destructive restore unless an explicit partial-restore mode is requested, and abort the transaction on delete failures.
 
 7. **Release workflow Semgrep findings are currently red.**
+   - Status: fixed in the P1-06 slice by moving release workflow expressions into environment variables, validating tags/versions/run IDs, quoting shell variables and API paths, and refreshing the baseline after fixes/exceptions.
    - Evidence: `npm run check:semgrep-baseline` reports unbaselined `yaml.github-actions.security.run-shell-injection` findings in release workflows.
    - Impact: workflow inputs/tags are interpolated into shell in jobs that later use privileged GitHub APIs.
    - Fix direction: pass GitHub expression values through environment variables, quote shell variables, validate tags/version inputs, and refresh the baseline only after fixes or explicit review.
@@ -116,6 +123,7 @@ The current high/critical policy still passes, but the moderate findings are act
    - Normal JSON requests refresh and retry; transfer helpers do direct fetches and fail Unauthorized.
 
 2. **Send page loads mainnet mempool data for non-mainnet wallets.**
+   - Status: fixed in PR #345 (`1297f538`) by passing the selected wallet network into send-page mempool loading and preserving intentional mainnet defaults for other callers.
    - `bitcoinApi.getMempoolData()` is called without wallet network while fee estimates correctly pass `apiWallet.network`.
 
 3. **Bulk admin group membership updates leave wallet-access cache stale.**
@@ -162,7 +170,7 @@ The current high/critical policy still passes, but the moderate findings are act
 - Transaction broadcast needs server-canonical validation. Policy/audit/persistence should derive from decoded signed payloads, not caller-supplied metadata.
 - Frontend network context is still inconsistently threaded through send surfaces.
 - Production deployment defaults warn too often and fail closed too rarely.
-- CI policy thresholds are uneven: high/critical audit passes, but package-level moderate scans fail; Semgrep baseline drift is not clean; AI proxy coverage/test existence is weak.
+- CI policy thresholds are improving: Semgrep and package-level moderate production audits are now clean, but AI proxy coverage/test existence is still weak.
 - Some tests encode current unsafe behavior instead of desired product/security invariants, especially backup restore and missing transaction metadata paths.
 - Hardware-wallet correctness still depends on physical artifacts that are not committed.
 
@@ -186,9 +194,9 @@ Detailed remediation plan: `docs/plans/deep-bug-scrub-remediation-plan.md`
 - `bash /home/nekoguntai/.codex/skills/grade/grade.sh` - completed.
 - `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .` - passed, 1.68% duplication.
 - `node scripts/quality/check-large-files.mjs` - passed.
-- `npm run check:semgrep-baseline` - failed with 8 new findings and 7 stale baseline entries.
-- `npm audit --omit=dev --audit-level=moderate` - root scan exited 0 with low root advisories only.
-- `npm --prefix server audit --omit=dev --audit-level=moderate` - failed on `hono` moderate advisories.
-- `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate` - failed on `ip-address` via `express-rate-limit`.
+- `npm run check:semgrep-baseline` - now passes with 10 current findings covered by baseline entries and no new/stale entries.
+- `npm audit --omit=dev --audit-level=moderate` - root scan exits 0 with accepted low root advisories only.
+- `npm --prefix server audit --omit=dev --audit-level=moderate` - now reports `0` vulnerabilities after the Hono override refresh.
+- `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate` - now reports `0` vulnerabilities after the `express-rate-limit` / `ip-address` refresh.
 
 No production code was changed in this scrub. The only intended repository edits are this report and `tasks/todo.md`.

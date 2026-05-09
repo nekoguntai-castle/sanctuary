@@ -55,11 +55,19 @@ jobs:
     steps:
       - name: Get tag info
         id: info
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
-          TAG="${{ github.ref_name }}"
+          set -euo pipefail
+          TAG="$REF_NAME"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "::error::Release tag must match vMAJOR.MINOR.PATCH or a valid prerelease tag"
+            exit 1
+          fi
           VERSION="${TAG#v}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
 
           # Check if this is a stable version (no -rc, -alpha, -beta suffix)
           if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -83,9 +91,15 @@ jobs:
       - name: Ensure release is a pre-release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          IS_PRERELEASE="${{ github.event.release.prerelease }}"
-          VERSION="${{ github.event.release.tag_name }}"
+          set -euo pipefail
+          VERSION="$RELEASE_TAG"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "::error::Release tag must match vMAJOR.MINOR.PATCH or a valid prerelease tag"
+            exit 1
+          fi
 
           if [ "$IS_PRERELEASE" != "true" ]; then
             echo "::warning::Release $VERSION was published as a full release. Converting to pre-release..."
@@ -129,45 +143,88 @@ jobs:
         id: resolve-sha
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          COMMIT_SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          GH_REPOSITORY: ${{ github.repository }}
         run: |
+          set -euo pipefail
+          if [[ ! "$GH_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::Unexpected repository name"
+            exit 1
+          fi
+
           # Determine the correct SHA and version based on trigger type
-          if [ "${{ github.event_name }}" = "release" ]; then
-            SHA="${{ github.sha }}"
-            VERSION="${{ github.event.release.tag_name }}"
+          if [ "$EVENT_NAME" = "release" ]; then
+            SHA="$COMMIT_SHA"
+            VERSION="$RELEASE_TAG"
             VERSION="${VERSION#v}"
-          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_type }}" = "tag" ]; then
-            SHA="${{ github.sha }}"
-            VERSION="${{ github.ref_name }}"
+          elif [ "$EVENT_NAME" = "push" ] && [ "$REF_TYPE" = "tag" ]; then
+            SHA="$COMMIT_SHA"
+            VERSION="$REF_NAME"
             VERSION="${VERSION#v}"
           else
             # workflow_dispatch - resolve SHA from version tag
-            VERSION="${{ inputs.version }}"
-            SHA=$(gh api repos/${{ github.repository }}/git/ref/tags/v${VERSION} --jq '.object.sha' 2>/dev/null || echo "")
+            VERSION="$INPUT_VERSION"
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+              echo "::error::Version must match MAJOR.MINOR.PATCH or a valid prerelease version"
+              exit 1
+            fi
+            SHA=$(gh api "repos/${GH_REPOSITORY}/git/ref/tags/v${VERSION}" --jq '.object.sha' 2>/dev/null || echo "")
             if [ -z "$SHA" ]; then
               echo "::error::Could not find tag v${VERSION}"
               exit 1
             fi
             # If it's an annotated tag, get the commit it points to
-            OBJ_TYPE=$(gh api repos/${{ github.repository }}/git/tags/${SHA} --jq '.object.type' 2>/dev/null || echo "commit")
+            OBJ_TYPE=$(gh api "repos/${GH_REPOSITORY}/git/tags/${SHA}" --jq '.object.type' 2>/dev/null || echo "commit")
             if [ "$OBJ_TYPE" = "commit" ]; then
-              SHA=$(gh api repos/${{ github.repository }}/git/tags/${SHA} --jq '.object.sha' 2>/dev/null || echo "$SHA")
+              SHA=$(gh api "repos/${GH_REPOSITORY}/git/tags/${SHA}" --jq '.object.sha' 2>/dev/null || echo "$SHA")
             fi
           fi
 
-          echo "sha=$SHA" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "::error::Resolved version is not a valid release version"
+            exit 1
+          fi
+          if [[ ! "$SHA" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "::error::Resolved SHA is not a full commit SHA"
+            exit 1
+          fi
+
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved: version=$VERSION, sha=$SHA"
 
       - name: Wait for Install Tests workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RESOLVED_SHA: ${{ steps.resolve-sha.outputs.sha }}
+          RESOLVED_VERSION: ${{ steps.resolve-sha.outputs.version }}
+          GH_REPOSITORY: ${{ github.repository }}
         run: |
+          set -euo pipefail
+          if [[ ! "$RESOLVED_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "::error::Resolved SHA is not a full commit SHA"
+            exit 1
+          fi
+          if [[ ! "$RESOLVED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "::error::Resolved version is not a valid release version"
+            exit 1
+          fi
+          if [[ ! "$GH_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::Unexpected repository name"
+            exit 1
+          fi
+
           # Pin the poller to the specific Install Tests workflow run for THIS tag push.
           # The prior implementation queried /commits/<sha>/check-runs by name, which
           # accepted the RC tag's older successful summary as proof the stable tag passed
           # (both tags share one SHA). See v0.8.40 post-mortem.
-          SHA="${{ steps.resolve-sha.outputs.sha }}"
-          TAG_REF="v${{ steps.resolve-sha.outputs.version }}"
+          SHA="$RESOLVED_SHA"
+          TAG_REF="v${RESOLVED_VERSION}"
           MAX_ATTEMPTS=60  # 30 minutes at 30-second intervals
           ATTEMPT=0
           RUN_ID=""
@@ -178,17 +235,17 @@ jobs:
             ATTEMPT=$((ATTEMPT + 1))
 
             if [ -z "$RUN_ID" ]; then
-              RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/install-test.yml/runs?head_sha=${SHA}&event=push&per_page=20" \
+              RUN_ID=$(gh api "repos/${GH_REPOSITORY}/actions/workflows/install-test.yml/runs?head_sha=${SHA}&event=push&per_page=20" \
                 --jq "[.workflow_runs[] | select(.head_branch == \"$TAG_REF\")] | .[0].id // empty" 2>/dev/null || echo "")
               if [ -z "$RUN_ID" ]; then
                 echo "[$ATTEMPT/$MAX_ATTEMPTS] No Install Tests run registered for $TAG_REF yet, waiting..."
                 sleep 30
                 continue
               fi
-              echo "Tracking run: https://github.com/${{ github.repository }}/actions/runs/$RUN_ID"
+              echo "Tracking run: https://github.com/${GH_REPOSITORY}/actions/runs/$RUN_ID"
             fi
 
-            RESULT=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}" \
+            RESULT=$(gh api "repos/${GH_REPOSITORY}/actions/runs/${RUN_ID}" \
               --jq '{status: .status, conclusion: .conclusion}' 2>/dev/null || echo "{}")
             STATUS=$(echo "$RESULT" | jq -r '.status // "unknown"')
             CONCLUSION=$(echo "$RESULT" | jq -r '.conclusion // "null"')
