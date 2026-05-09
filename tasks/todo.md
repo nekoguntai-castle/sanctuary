@@ -30,7 +30,7 @@ Goal: make request timeout handling expose and trigger a request-scoped cancella
 
 # Active Task: P3-04 Null Preferences 2026-05-09
 
-Status: in progress; branch `fix/null-preferences`
+Status: completed; PR #364 merged as `f585b5c4`
 
 Goal: let authenticated users with `null` or missing preference objects read defaults and persist new preference changes through the server instead of falling back to anonymous localStorage behavior.
 
@@ -42,7 +42,7 @@ Goal: let authenticated users with `null` or missing preference objects read def
 - [x] Add regression tests for direct context preference updates and `useUserPreference` with null/missing authenticated preferences, including nested preference paths.
 - [x] Update health/remediation/task docs for P3-04 and any touched stale auth/preference comments.
 - [x] Run focused preference tests, app/test typechecks, app lint, changed-test hygiene, touched-file lizard, full frontend coverage, architecture graph checks, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -51,6 +51,7 @@ Goal: let authenticated users with `null` or missing preference objects read def
 - `useUserPreferences` exposes `{}` for authenticated users without preferences, and `useUserPreference` writes server preferences whenever a user is logged in; localStorage is reserved for anonymous state.
 - Regression coverage now proves direct preference saves for null preferences, unknown-key preservation, `useUserPreference` server writes for null/undefined preferences, and nested server updates from null preferences.
 - Verification passed: focused preference tests (64 tests), app typecheck, test typecheck, app lint, changed-test hygiene, touched-file lizard, full frontend coverage (475 files, 6,080 tests, 100% statements/branches/functions/lines), architecture graph regeneration/call extraction with no generated diff, architecture diagram lint, and `git diff --check`.
+- Delivery passed: PR #364 passed all 30 Forgejo checks and merged with squash commit `f585b5c466b035eb4a882b560e5e23e2d135ffa1`.
 
 ---
 
