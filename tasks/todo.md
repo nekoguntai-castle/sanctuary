@@ -1,3 +1,29 @@
+# Active Task: Bug Scrub Slice 0 Network Boundary Guard 2026-05-08
+
+Status: in progress; implementation branch `fix/bug-scrub-slice-0`
+
+Goal: deliver Slice 0 of the bug scrub remediation backlog through PR: add an enforceable Bitcoin network-boundary guard, document API compatibility inventory, and prove the guard with focused regression tests.
+
+## Plan
+
+- [x] Create a dedicated implementation branch from `origin/main` without mixing the unrelated `fix/skip-github-only-workflows-on-forgejo` branch.
+- [x] Add `scripts/check-bitcoin-network-boundaries.mjs` and wire it into the blocking server lint path.
+- [x] Add an accountable allowlist for current default-mainnet and hardcoded-mainnet offenders.
+- [x] Add fixture-backed regression tests for new findings, stale allowlist entries, wrapper calls, and already selected node-client calls.
+- [x] Add Slice 0 API compatibility inventory for broadcast, fees, advanced transaction, non-wallet Bitcoin, and subscription bootstrap contracts.
+- [x] Run focused local verification, type checks, lint guard, lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [ ] Continue to Slice 1 after Slice 0 is merged.
+
+## Review
+
+- The guard intentionally starts with an allowlist so it can be blocking immediately without pulling all later network fixes into this PR.
+- The guard also surfaced one adjacent default-client call outside the original broadcast/fee list: real-time Electrum subscription bootstrap. It is tracked in the allowlist and inventory as a Slice 4 follow-up.
+- Local verification passed: new Vitest fixture tests, `npm run check:bitcoin-network-boundaries`, `npm run typecheck:tests`, `npm run lint:server`, `node --check scripts/check-bitcoin-network-boundaries.mjs`, lizard on the new script, and `git diff --check`.
+- The implementation commit passed the repo pre-commit hook, including the full frontend Vitest suite: 469 files and 6,019 tests.
+
+---
+
 # Active Task: Open PR Triage And Delivery 2026-05-07
 
 Status: in progress; render E2E infrastructure failure diagnosed from finalized Forgejo logs and wrapper fix underway

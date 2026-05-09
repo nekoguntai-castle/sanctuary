@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "file": "server/src/api/bitcoin/fees.ts",
+      "functionName": "<module>",
+      "callee": "getCurrentFeeEstimates",
+      "issue": "missing-required-network-argument",
+      "reason": "Fee endpoints are still network-blind and will be fixed when fee/mempool contracts carry an explicit network source.",
+      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/api/bitcoin/fees.ts",
+      "functionName": "<module>",
+      "callee": "advancedTx.getAdvancedFeeEstimates",
+      "issue": "missing-required-network-argument",
+      "reason": "Advanced fee endpoints currently call global fee services without a request or wallet network.",
+      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/api/bitcoin/fees.ts",
+      "functionName": "<module>",
+      "callee": "advancedTx.estimateOptimalFee",
+      "issue": "missing-required-network-argument",
+      "reason": "Optimal-fee estimation is network-backed but the public endpoint has no network contract yet.",
+      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/api/bitcoin/transactions.ts",
+      "functionName": "<module>",
+      "callee": "blockchain.broadcastTransaction",
+      "issue": "missing-required-network-argument",
+      "reason": "The non-wallet raw broadcast endpoint must either require network or move behind a wallet-scoped contract.",
+      "owner": "P0: Decide and fix non-wallet Bitcoin endpoint network contracts",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/api/bitcoin/transactions.ts",
+      "functionName": "<module>",
+      "callee": "advancedTx.canReplaceTransaction",
+      "issue": "missing-required-network-argument",
+      "reason": "The non-wallet RBF check endpoint has no explicit network source yet.",
+      "owner": "P0: Decide and fix non-wallet Bitcoin endpoint network contracts",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/api/bitcoin/transactions.ts",
+      "functionName": "<module>",
+      "callee": "advancedTx.createRBFTransaction",
+      "issue": "hardcoded-mainnet-network",
+      "reason": "Wallet-scoped RBF creation is still passing a literal mainnet network instead of deriving the wallet network.",
+      "owner": "P0: Remove hardcoded/default mainnet from advanced transaction APIs",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/api/bitcoin/transactions.ts",
+      "functionName": "<module>",
+      "callee": "advancedTx.createCPFPTransaction",
+      "issue": "hardcoded-mainnet-network",
+      "reason": "Wallet-scoped CPFP creation is still passing a literal mainnet network instead of deriving the wallet network.",
+      "owner": "P0: Remove hardcoded/default mainnet from advanced transaction APIs",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/api/bitcoin/transactions.ts",
+      "functionName": "<module>",
+      "callee": "advancedTx.createBatchTransaction",
+      "issue": "hardcoded-mainnet-network",
+      "reason": "Wallet-scoped batch creation is still passing a literal mainnet network instead of deriving the wallet network.",
+      "owner": "P0: Remove hardcoded/default mainnet from advanced transaction APIs",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/api/transactions/broadcasting.ts",
+      "functionName": "resolveTransactionPolicyFields",
+      "callee": "txService.getPSBTInfo",
+      "issue": "missing-required-network-argument",
+      "reason": "Broadcast policy fallback parsing must use the wallet network once broadcast resolves wallet context before PSBT parsing.",
+      "owner": "P0: Make wallet-scoped transaction broadcast network-aware end to end",
+      "targetRemovalSlice": "Slice 3"
+    },
+    {
+      "file": "server/src/api/transactions/broadcasting.ts",
+      "functionName": "getPrimaryPsbtOutput",
+      "callee": "txService.getPSBTInfo",
+      "issue": "missing-required-network-argument",
+      "reason": "PSBT broadcast output extraction must parse with the authorized wallet network.",
+      "owner": "P0: Make wallet-scoped transaction broadcast network-aware end to end",
+      "targetRemovalSlice": "Slice 3"
+    },
+    {
+      "file": "server/src/services/bitcoin/advancedTx/feeEstimation.ts",
+      "functionName": "getAdvancedFeeEstimates",
+      "callee": "getNodeClient",
+      "issue": "missing-required-network-argument",
+      "reason": "Advanced fee estimation still defaults node-client selection until fee APIs carry network context.",
+      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/services/bitcoin/advancedTx/feeEstimation.ts",
+      "functionName": "estimateOptimalFee",
+      "callee": "getAdvancedFeeEstimates",
+      "issue": "missing-required-network-argument",
+      "reason": "Optimal-fee helper calls advanced estimates without network context.",
+      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/services/bitcoin/advancedTx/rbf.ts",
+      "functionName": "canReplaceTransaction",
+      "callee": "getNodeClient",
+      "issue": "missing-required-network-argument",
+      "reason": "RBF replacement checks still select the default node client.",
+      "owner": "P0: Remove hardcoded/default mainnet from advanced transaction APIs",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/services/bitcoin/advancedTx/rbf.ts",
+      "functionName": "createRBFTransaction",
+      "callee": "canReplaceTransaction",
+      "issue": "missing-required-network-argument",
+      "reason": "RBF creation re-checks replaceability without passing its already-known wallet network.",
+      "owner": "P0: Remove hardcoded/default mainnet from advanced transaction APIs",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/services/bitcoin/blockchain/networkOperations.ts",
+      "functionName": "broadcastTransaction",
+      "callee": "getNodeClient",
+      "issue": "missing-required-network-argument",
+      "reason": "Low-level raw broadcast helper still picks the default node client.",
+      "owner": "P0: Make wallet-scoped transaction broadcast network-aware end to end",
+      "targetRemovalSlice": "Slice 3"
+    },
+    {
+      "file": "server/src/services/bitcoin/blockchain/networkOperations.ts",
+      "functionName": "getFeeEstimates",
+      "callee": "getNodeClient",
+      "issue": "missing-required-network-argument",
+      "reason": "Low-level fee helper still picks the default node client.",
+      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/services/bitcoin/blockchain/networkOperations.ts",
+      "functionName": "getTransactionDetails",
+      "callee": "getNodeClient",
+      "issue": "missing-required-network-argument",
+      "reason": "Non-wallet transaction detail lookup has no explicit network source.",
+      "owner": "P0: Decide and fix non-wallet Bitcoin endpoint network contracts",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/services/bitcoin/blockchain/networkOperations.ts",
+      "functionName": "monitorAddress",
+      "callee": "getNodeClient",
+      "issue": "missing-required-network-argument",
+      "reason": "Address monitoring must either be removed from default-client helpers or receive explicit network.",
+      "owner": "P0: Decide and fix non-wallet Bitcoin endpoint network contracts",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/services/bitcoin/feeService.ts",
+      "functionName": "getCurrentFeeEstimates",
+      "callee": "blockchain.getFeeEstimates",
+      "issue": "missing-required-network-argument",
+      "reason": "Current fee estimates call the low-level fee helper without network context.",
+      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/services/bitcoin/transactions/broadcasting.ts",
+      "functionName": "broadcastAndSave",
+      "callee": "broadcastTransaction",
+      "issue": "missing-required-network-argument",
+      "reason": "Wallet-scoped broadcast service does not pass wallet network into raw network broadcast yet.",
+      "owner": "P0: Make wallet-scoped transaction broadcast network-aware end to end",
+      "targetRemovalSlice": "Slice 3"
+    },
+    {
+      "file": "server/src/services/bitcoin/transactions/createBatchTransaction.ts",
+      "functionName": "createBatchTransaction",
+      "callee": "fetchRawTransactionsForLegacy",
+      "issue": "missing-required-network-argument",
+      "reason": "Legacy batch PSBT previous-transaction fetches still use the default node client path.",
+      "owner": "P0: Make legacy PSBT previous-transaction fetches network-aware",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/services/bitcoin/transactions/createTransaction.ts",
+      "functionName": "createTransaction",
+      "callee": "fetchRawTransactionsForLegacy",
+      "issue": "missing-required-network-argument",
+      "reason": "Legacy single-recipient PSBT previous-transaction fetches still use the default node client path.",
+      "owner": "P0: Make legacy PSBT previous-transaction fetches network-aware",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/services/bitcoin/transactions/helpers.ts",
+      "functionName": "getRawTransactionHex",
+      "callee": "getNodeClient",
+      "issue": "missing-required-network-argument",
+      "reason": "Raw previous-transaction helper still selects the default node client.",
+      "owner": "P0: Make legacy PSBT previous-transaction fetches network-aware",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/services/bitcoin/transactions/psbtConstruction.ts",
+      "functionName": "fetchRawTransactionsForLegacy",
+      "callee": "getRawTransactionHex",
+      "issue": "missing-required-network-argument",
+      "reason": "Legacy previous-transaction fetch loop does not pass wallet network into the raw transaction helper.",
+      "owner": "P0: Make legacy PSBT previous-transaction fetches network-aware",
+      "targetRemovalSlice": "Slice 4"
+    },
+    {
+      "file": "server/src/services/sync/subscriptionManager.ts",
+      "functionName": "setupRealTimeSubscriptions",
+      "callee": "getNodeClient",
+      "issue": "missing-required-network-argument",
+      "reason": "Subscription bootstrap checks node connectivity through the default node client even though subscription state is tied to configured network.",
+      "owner": "P1: Make real-time subscription bootstrap network-explicit",
+      "targetRemovalSlice": "Slice 4"
+    }
+  ]
+}
