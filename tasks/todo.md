@@ -1,3 +1,24 @@
+# Active Task: Final Rollup Fatal Handler Coverage 2026-05-09
+
+Status: in progress; branch `fix/fatal-process-coverage`
+
+Goal: close the final rollup server branch-coverage gap in fatal process handler logging so the repo-level coverage gate can proceed through server and gateway coverage.
+
+## Plan
+
+- [x] Reproduce the final rollup coverage failure and identify the uncovered fatal reason branch.
+- [x] Add focused coverage for non-`Error` fatal reasons logging without a stack.
+- [x] Run focused fatal handler tests and server coverage/typecheck gates.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [ ] Rerun the final remediation rollup coverage gate.
+
+## Review
+
+- Added fatal-process handler coverage for non-`Error` unhandled rejection reasons so log metadata records the string reason and omits a stack.
+- Verification passed: focused fatal-process handler test, server test typecheck, full server coverage (443 files, 9,772 passed tests, 508 skipped tests, 100% statements/branches/functions/lines), changed-test hygiene, touched-file lizard, and `git diff --check`.
+
+---
+
 # Active Task: P2-08 Request Timeout Cancellation 2026-05-09
 
 Status: completed; PR #358 merged as `b3303963`

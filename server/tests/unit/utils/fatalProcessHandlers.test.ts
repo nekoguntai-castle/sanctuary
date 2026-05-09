@@ -54,6 +54,23 @@ describe('fatalProcessHandlers', () => {
     );
   });
 
+  it('logs non-Error fatal reasons without a stack', async () => {
+    const { handlers, log, shutdown } = createHarness();
+
+    handlers.unhandledRejection('string reason');
+    await Promise.resolve();
+
+    expect(log.error).toHaveBeenCalledWith(
+      'Fatal process event - shutting down',
+      expect.objectContaining({
+        event: 'unhandledRejection',
+        reason: 'string reason',
+        stack: undefined,
+      })
+    );
+    expect(shutdown).toHaveBeenCalledWith('unhandledRejection', 1);
+  });
+
   it('exits non-zero when fatal shutdown rejects', async () => {
     const { handlers, log, shutdown, exitNow } = createHarness();
     shutdown.mockRejectedValueOnce(new Error('shutdown failed'));
