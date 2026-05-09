@@ -1,6 +1,6 @@
 # Active Task: Final Rollup Fatal Handler Coverage 2026-05-09
 
-Status: in progress; branch `fix/fatal-process-coverage`
+Status: completed; PR #368 merged as `0e7da5c3`
 
 Goal: close the final rollup server branch-coverage gap in fatal process handler logging so the repo-level coverage gate can proceed through server and gateway coverage.
 
@@ -9,13 +9,15 @@ Goal: close the final rollup server branch-coverage gap in fatal process handler
 - [x] Reproduce the final rollup coverage failure and identify the uncovered fatal reason branch.
 - [x] Add focused coverage for non-`Error` fatal reasons logging without a stack.
 - [x] Run focused fatal handler tests and server coverage/typecheck gates.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
-- [ ] Rerun the final remediation rollup coverage gate.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Rerun the final remediation rollup coverage gate.
 
 ## Review
 
 - Added fatal-process handler coverage for non-`Error` unhandled rejection reasons so log metadata records the string reason and omits a stack.
 - Verification passed: focused fatal-process handler test, server test typecheck, full server coverage (443 files, 9,772 passed tests, 508 skipped tests, 100% statements/branches/functions/lines), changed-test hygiene, touched-file lizard, and `git diff --check`.
+- Final rollup coverage passed after the fix: root `npm run coverage` completed frontend, server, and gateway coverage at 100% lines/statements/functions/branches.
+- Delivery passed: PR #368 passed all 30 Forgejo checks on `main` and merged with squash commit `0e7da5c356def49c80926ba16ccd9bc35f2936d8`.
 
 ---
 
