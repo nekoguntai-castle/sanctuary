@@ -206,6 +206,7 @@ export const useLayoutController = () => {
   const [networkAvailability, setNetworkAvailability] = useState<NetworkAvailability>(
     DEFAULT_NETWORK_AVAILABILITY
   );
+  const networkAvailabilityRef = useRef<NetworkAvailability>(DEFAULT_NETWORK_AVAILABILITY);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: wallets = [] } = useWallets();
@@ -219,6 +220,12 @@ export const useLayoutController = () => {
     () => filterDevicesByNetwork(devices, selectedNetwork),
     [devices, selectedNetwork]
   );
+  const applyNetworkAvailability = useCallback((availability: NetworkAvailability) => {
+    if (isSameNetworkAvailability(networkAvailabilityRef.current, availability)) return;
+
+    networkAvailabilityRef.current = availability;
+    setNetworkAvailability(availability);
+  }, []);
 
   useEffect(() => {
     setExpanded(getExpandedState(location.pathname));
@@ -226,7 +233,7 @@ export const useLayoutController = () => {
 
   useEffect(() => {
     if (!user) {
-      setNetworkAvailability(DEFAULT_NETWORK_AVAILABILITY);
+      applyNetworkAvailability(DEFAULT_NETWORK_AVAILABILITY);
       return;
     }
 
@@ -236,9 +243,7 @@ export const useLayoutController = () => {
       const availability = await getSidebarNetworkAvailability();
       /* v8 ignore next -- async unmount race guard; cleanup path prevents setting state after unmount. */
       if (cancelled) return;
-      setNetworkAvailability((current) => (
-        isSameNetworkAvailability(current, availability) ? current : availability
-      ));
+      applyNetworkAvailability(availability);
     };
 
     void refreshNetworkAvailability();
@@ -248,7 +253,7 @@ export const useLayoutController = () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [user]);
+  }, [user, applyNetworkAvailability]);
 
   useEffect(() => {
     if (networkAvailability[selectedNetwork]) return;

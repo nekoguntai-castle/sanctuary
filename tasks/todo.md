@@ -1,6 +1,32 @@
+# Active Task: Layout Act Warning Cleanup 2026-05-08
+
+Status: in progress; branch `test/layout-act-warning-cleanup`
+
+Goal: remove the repeated React `act(...)` warnings from Layout-focused tests while preserving the behavior assertions that make those tests valuable.
+
+## Plan
+
+- [x] Reproduce the Layout warning signal with focused Layout tests and capture the exact state updates involved.
+- [x] Inspect the Layout component, related hooks, and current test harness mocks to identify the async boundary causing updates outside React `act`.
+- [x] Apply the smallest component fix that avoids redundant async state updates without hiding warnings globally.
+- [x] Run focused Layout tests and a broader frontend coverage or test run to prove the warning signal is clean.
+- [x] Review the diff for assertion weakening, unnecessary waits, timer races, and layout-test brittleness.
+- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [ ] Continue to the next refreshed queue item after merge.
+
+## Review
+
+- The repeated warnings came from the sidebar network availability effect, not from user-event interactions. Default Layout test mocks report every network as available, so the async effect was still calling the state setter with the already-current availability after each render.
+- Replaced the redundant setter path with a ref-backed `applyNetworkAvailability` helper that compares the latest committed availability before calling `setNetworkAvailability`. This preserves the real update path for changed availability, including disabled-network reset behavior, while avoiding no-op async state updates.
+- Focused Layout tests now pass without React `act(...)` warnings: `npm run test:run -- tests/components/Layout.test.tsx tests/components/Layout.branches.test.tsx`.
+- Frontend coverage passed at 100% statements/branches/functions/lines with 469 files and 6,022 tests. The run had expected unrelated logger/API stderr/stdout noise, but no Layout `act(...)` warnings.
+- Additional verification passed: `npm run typecheck:app`, `npm run lint:app`, and touched-file lizard via `npm run quality:lizard -- components/Layout/useLayoutController.ts`.
+
+---
+
 # Active Task: Bug Scrub Backlog Refresh 2026-05-08
 
-Status: in progress; local verification complete; PR delivery pending on branch `docs/bug-scrub-backlog-refresh`
+Status: complete; PR #328 merged as `487791bb`
 
 Goal: reopen the broader bug-scrub loop after the Bitcoin network-boundary closeout, refresh current evidence, fix the coverage regression found by the audit, separate live findings from stale historical TODOs, and choose the next deliverable slice.
 
@@ -12,8 +38,8 @@ Goal: reopen the broader bug-scrub loop after the Bitcoin network-boundary close
 - [x] Update `docs/plans/codebase-health-assessment.md` with current score, confidence, blockers, strengths, gaps, and fastest improvements.
 - [x] Review historical open TODO/task markers and classify them against current evidence instead of treating stale entries as live work.
 - [x] Add a concrete next-slice queue with exit criteria, verification commands, and expected impact.
-- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
-- [ ] Start the next implementation slice from the refreshed queue after the PR is merged.
+- [x] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [x] Start the next implementation slice from the refreshed queue after the PR is merged.
 
 ## Review
 
@@ -23,6 +49,8 @@ Goal: reopen the broader bug-scrub loop after the Bitcoin network-boundary close
 - Updated the health report score at 97/A with high confidence. Current hard-fail blockers are none; live gaps are hardware-signed wallet proof, Layout `act(...)` warning noise, and the partial largest-file criterion.
 - `rg` over historical task markers found many stale `in progress` and unchecked entries. They are not being treated as live bug-scrub work unless refreshed evidence still supports them; the current queue is Layout warning cleanup, hardware-signed fixture classification, then largest-file classification/split.
 - Local verification passed: focused frontend and backend tests, server coverage, full root coverage, app/test/server-test typechecks, full lint/guards, lizard, jscpd, high-severity audit, tracked-tree gitleaks, and `git diff --check`.
+- PR #328 merged at `2026-05-08T17:53:54-10:00` as squash commit `487791bb2b8a4a4a7320998560021dc5c4dd4488`; local `main` was fast-forwarded and the local/remote `docs/bug-scrub-backlog-refresh` branches were deleted.
+- Post-merge `main` verification passed: focused frontend UTXO/API tests, transaction HTTP route tests, and the Bitcoin network-boundary guard.
 
 ---
 
