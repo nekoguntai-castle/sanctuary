@@ -13,15 +13,17 @@ describe('Blockchain Service - Broadcasting', () => {
   describe('broadcastTransaction', () => {
     it('should broadcast raw transaction and return txid', async () => {
       const { broadcastTransaction } = await import('../../../../src/services/bitcoin/blockchain');
+      const { getNodeClient } = await import('../../../../src/services/bitcoin/nodeClient');
 
       mockNodeClient.broadcastTransaction.mockResolvedValue('broadcasted-txid');
 
-      const result = await broadcastTransaction('0200000001...');
+      const result = await broadcastTransaction('0200000001...', 'testnet4');
 
       expect(result).toEqual({
         txid: 'broadcasted-txid',
         broadcasted: true,
       });
+      expect(getNodeClient).toHaveBeenCalledWith('testnet4');
       expect(mockNodeClient.broadcastTransaction).toHaveBeenCalledWith('0200000001...');
     });
 
@@ -32,7 +34,7 @@ describe('Blockchain Service - Broadcasting', () => {
         new Error('Transaction rejected: insufficient fee')
       );
 
-      await expect(broadcastTransaction('invalid-tx')).rejects.toThrow(
+      await expect(broadcastTransaction('invalid-tx', 'testnet4')).rejects.toThrow(
         'Failed to broadcast transaction: Transaction rejected: insufficient fee'
       );
     });

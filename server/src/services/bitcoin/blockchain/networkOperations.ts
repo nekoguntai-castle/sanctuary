@@ -16,13 +16,19 @@ import type { FeeEstimates, CheckAddressResult } from './types';
 const log = createLogger('BITCOIN:SVC_BLOCKCHAIN');
 
 /**
- * Broadcast a transaction to the network
+ * Broadcast a transaction to the selected network.
+ *
+ * The network remains optional for legacy walletless API callers that are still
+ * tracked in the Slice 4 compatibility backlog.
  */
-export async function broadcastTransaction(rawTx: string): Promise<{
+export async function broadcastTransaction(
+  rawTx: string,
+  network?: BitcoinNetwork
+): Promise<{
   txid: string;
   broadcasted: boolean;
 }> {
-  const client = await getNodeClient();
+  const client = await getNodeClient(network);
 
   try {
     const txid = await client.broadcastTransaction(rawTx);

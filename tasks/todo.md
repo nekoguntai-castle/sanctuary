@@ -1,6 +1,34 @@
+# Active Task: Bug Scrub Slice 3 Broadcast Network Context 2026-05-08
+
+Status: in progress; implementation branch `fix/bug-scrub-slice-3`
+
+Goal: deliver Slice 3 through PR by deriving wallet network context before broadcast parsing/submission, passing that network through wallet-scoped broadcast persistence, and shrinking the Bitcoin network-boundary allowlist.
+
+## Plan
+
+- [x] Start a fresh Slice 3 branch from merged Slice 2 `main`.
+- [x] Resolve wallet network once in the wallet-scoped transaction and PSBT broadcast routes.
+- [x] Parse PSBT policy/output data with the authorized wallet network instead of default mainnet parsing.
+- [x] Pass wallet network into `broadcastAndSave` metadata and onward to raw node broadcast.
+- [x] Make low-level raw broadcast call `getNodeClient` with an explicit network argument while preserving the legacy non-wallet endpoint as a Slice 4 compatibility item.
+- [x] Remove Slice 3 entries from the Bitcoin network-boundary allowlist.
+- [x] Add focused route, broadcast-service, blockchain-helper, and guard regression coverage.
+- [x] Run focused tests, type checks, lint/guard checks, lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [ ] Continue to Slice 4 after Slice 3 is merged.
+
+## Review
+
+- Wallet-scoped transaction and PSBT broadcast routes now resolve the authorized wallet network before policy/output PSBT parsing and before service submission. Legacy `testnet` wallet values normalize to `testnet3`; missing or unsupported wallet networks fail before node submission.
+- `broadcastAndSave` now requires a network in metadata and passes it into raw transaction broadcast. The low-level raw broadcast helper calls `getNodeClient(network)`, while the walletless raw Bitcoin endpoint remains a Slice 4 compatibility decision.
+- Added `docs/plans/bug-scrub-slice-3-broadcast-network-context.md` to capture the network-context contract and remaining non-wallet compatibility boundary.
+- Local verification passed: focused transaction HTTP route, broadcast-service, and blockchain service tests; server test typecheck; server build; `npm run lint:server`; touched-file lizard; and `git diff --check`.
+
+---
+
 # Active Task: Bug Scrub Slice 2 Draft Broadcast Lifecycle 2026-05-08
 
-Status: in progress; implementation branch `fix/bug-scrub-slice-2`
+Status: complete; PR #322 merged as `b7746ff9`
 
 Goal: deliver Slice 2 through PR by wiring `draftId` broadcasts, enforcing draft approval before broadcast, making draft cleanup server-owned, and archiving broadcasted drafts instead of client-side deletion.
 
@@ -14,8 +42,8 @@ Goal: deliver Slice 2 through PR by wiring `draftId` broadcasts, enforcing draft
 - [x] Hide `broadcasted` drafts from actionable repository list/update paths.
 - [x] Add focused route, repository, service, OpenAPI, and hook regression tests.
 - [x] Run focused tests, type checks, lint/guard checks, lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
-- [ ] Continue to Slice 3 after Slice 2 is merged.
+- [x] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [x] Continue to Slice 3 after Slice 2 is merged.
 
 ## Review
 
@@ -24,6 +52,7 @@ Goal: deliver Slice 2 through PR by wiring `draftId` broadcasts, enforcing draft
 - Updated repository list/update/cleanup behavior so archived drafts stay in the database, disappear from actionable draft lists, cannot receive later signature/status updates, and are not removed by expired-draft or spent-UTXO draft cleanup.
 - Added `docs/plans/bug-scrub-slice-2-draft-broadcast-lifecycle.md` to capture the contract, residual race window, and follow-ups.
 - Local verification passed so far: focused server route/OpenAPI/repository/broadcast-service tests, focused frontend `useBroadcast` tests, server test typecheck, server build, frontend app/test typechecks, `npm run lint:server`, touched-file lizard, and `git diff --check`.
+- PR #322 merged at `2026-05-08T15:53:17-10:00` as squash commit `b7746ff9ec3439331c3412e2bbb12e877cd2521d`; local `main` was fast-forwarded and the local/remote Slice 2 branches were deleted.
 
 ---
 

@@ -14,10 +14,12 @@ const {
   mockBroadcastAndSave,
   mockEstimateTransaction,
   mockGetPSBTInfo,
+  mockGetPSBTInfoWithNetwork,
   mockFetch,
   mockEvaluatePolicies,
   mockRecordUsage,
   mockWalletFindById,
+  mockWalletFindNetwork,
   mockDraftFindByIdInWallet,
 } = vi.hoisted(() => ({
   mockGetCachedBlockHeight: vi.fn(),
@@ -31,10 +33,12 @@ const {
   mockBroadcastAndSave: vi.fn(),
   mockEstimateTransaction: vi.fn(),
   mockGetPSBTInfo: vi.fn(),
+  mockGetPSBTInfoWithNetwork: vi.fn(),
   mockFetch: vi.fn(),
   mockEvaluatePolicies: vi.fn(),
   mockRecordUsage: vi.fn(),
   mockWalletFindById: vi.fn(),
+  mockWalletFindNetwork: vi.fn(),
   mockDraftFindByIdInWallet: vi.fn(),
 }));
 
@@ -53,6 +57,7 @@ vi.mock('../../../../src/repositories/walletRepository', async (importOriginal) 
     walletRepository: {
       ...actual.walletRepository,
       findById: mockWalletFindById,
+      findNetwork: mockWalletFindNetwork,
     },
   };
 });
@@ -111,6 +116,7 @@ vi.mock('../../../../src/services/bitcoin/transactionService', () => ({
   broadcastAndSave: mockBroadcastAndSave,
   estimateTransaction: mockEstimateTransaction,
   getPSBTInfo: mockGetPSBTInfo,
+  getPSBTInfoWithNetwork: mockGetPSBTInfoWithNetwork,
 }));
 
 vi.mock('../../../../src/services/vaultPolicy', () => ({
@@ -152,6 +158,7 @@ export function setupTransactionHttpRouteHooks(): void {
     mockWalletCacheSet.mockResolvedValue(undefined);
     mockEvaluatePolicies.mockResolvedValue({ allowed: true, triggered: [] });
     mockRecordUsage.mockResolvedValue(undefined);
+    mockWalletFindNetwork.mockResolvedValue('testnet4');
     mockDraftFindByIdInWallet.mockResolvedValue(null);
     mockValidateAddress.mockReturnValue({ valid: true });
     mockAuditLogFromRequest.mockResolvedValue(undefined);
@@ -192,6 +199,7 @@ export function setupTransactionHttpRouteHooks(): void {
       outputs: [{ address: 'tb1qrecipient', value: 20000 }],
       inputs: [{ txid: 'b'.repeat(64), vout: 0 }],
     });
+    mockGetPSBTInfoWithNetwork.mockImplementation(mockGetPSBTInfo);
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({ weight: 560, fee: 500 }),
@@ -211,9 +219,11 @@ export {
   mockBroadcastAndSave,
   mockEstimateTransaction,
   mockGetPSBTInfo,
+  mockGetPSBTInfoWithNetwork,
   mockFetch,
   mockEvaluatePolicies,
   mockRecordUsage,
   mockWalletFindById,
+  mockWalletFindNetwork,
   mockDraftFindByIdInWallet,
 };

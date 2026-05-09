@@ -6,6 +6,12 @@ import { testnetAddresses } from '../../../../fixtures/bitcoin';
 
 export const broadcastWalletId = 'test-wallet-id';
 export const broadcastRecipient = testnetAddresses.nativeSegwit[0];
+export const broadcastNetwork = 'testnet4' as const;
+
+export const withBroadcastNetwork = <T extends object>(metadata: T): T & { network: typeof broadcastNetwork } => ({
+  network: broadcastNetwork,
+  ...metadata,
+});
 
 export const setupBroadcastAndSaveDefaults = () => {
   // Reset broadcast mock

@@ -14,12 +14,14 @@ import {
   mockFetch,
   mockGetCachedBlockHeight,
   mockGetPSBTInfo,
+  mockGetPSBTInfoWithNetwork,
   mockRecalculateWalletBalances,
   mockRecordUsage,
   mockValidateAddress,
   mockWalletCacheGet,
   mockWalletCacheSet,
   mockWalletFindById,
+  mockWalletFindNetwork,
   walletId,
 } from './transactionsHttpRoutesTestHarness';
 
@@ -65,6 +67,7 @@ export function registerTransactionHttpBroadcastTests(): void {
     expect(response.status).toBe(200);
     expect(response.body.txid).toHaveLength(64);
     expect(mockBroadcastAndSave).toHaveBeenCalledWith(walletId, undefined, {
+      network: 'testnet4',
       recipient: 'tb1qrecipient',
       amount: 10000,
       fee: 150,
@@ -97,6 +100,7 @@ export function registerTransactionHttpBroadcastTests(): void {
       })
     );
     expect(mockBroadcastAndSave).toHaveBeenCalledWith(walletId, 'signed-draft-psbt', {
+      network: 'testnet4',
       recipient: 'tb1qdraftrecipient',
       amount: 12000,
       fee: 250,
@@ -329,6 +333,7 @@ export function registerTransactionHttpBroadcastTests(): void {
       walletId,
       'cHNi',
       expect.objectContaining({
+        network: 'testnet4',
         recipient: 'tb1qdest',
         amount: 25000,
         fee: 450,
@@ -368,6 +373,7 @@ export function registerTransactionHttpBroadcastTests(): void {
       walletId,
       'cHNi',
       expect.objectContaining({
+        network: 'testnet4',
         recipient: '',
         amount: 0,
       })
@@ -415,10 +421,52 @@ export function registerTransactionHttpBroadcastTests(): void {
       walletId,
       'cHNi',
       expect.objectContaining({
+        network: 'testnet4',
         recipient: 'tb1qpsbt-recipient',
         amount: 42000,
       })
     );
+    expect(mockGetPSBTInfoWithNetwork).toHaveBeenCalledWith('cHNi', 'testnet4');
+  });
+
+  it('normalizes legacy testnet wallets before PSBT parsing and broadcast', async () => {
+    mockWalletFindNetwork.mockResolvedValueOnce('testnet');
+    mockGetPSBTInfo.mockReturnValue({
+      outputs: [{ address: 'tb1qpsbt-recipient', value: 42000 }],
+      inputs: [{ txid: 'a'.repeat(64), vout: 0 }],
+      fee: 300,
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({
+        signedPsbtBase64: 'cHNi',
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockGetPSBTInfoWithNetwork).toHaveBeenCalledWith('cHNi', 'testnet3');
+    expect(mockBroadcastAndSave).toHaveBeenCalledWith(
+      walletId,
+      'cHNi',
+      expect.objectContaining({
+        network: 'testnet3',
+      })
+    );
+  });
+
+  it('rejects broadcast when the wallet network is unavailable', async () => {
+    mockWalletFindNetwork.mockResolvedValueOnce(null);
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({
+        rawTxHex: 'deadbeef',
+        recipient: 'tb1qrecipient',
+        amount: 10000,
+      });
+
+    expect(response.status).toBe(404);
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
   });
 
   it('proceeds without policy eval when PSBT parsing fails and no recipient/amount supplied', async () => {

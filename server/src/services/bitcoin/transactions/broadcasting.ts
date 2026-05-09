@@ -16,6 +16,7 @@ import { transactionBroadcastsTotal } from '../../../observability/metrics';
 import { parseMultisigScript, finalizeMultisigInput } from '../psbtBuilder';
 import { persistTransaction } from './persistTransaction';
 import type { TransactionInputMetadata, TransactionOutputMetadata, BroadcastResult } from './types';
+import type { BitcoinNetwork } from '../networks';
 
 const log = createLogger('BITCOIN:SVC_TX_BROADCAST');
 
@@ -33,6 +34,7 @@ export async function broadcastAndSave(
     recipient: string;
     amount: number;
     fee: number;
+    network: BitcoinNetwork;
     label?: string;
     memo?: string;
     utxos: Array<{ txid: string; vout: number }>;
@@ -56,7 +58,7 @@ export async function broadcastAndSave(
   const { rawTx, txid } = extractRawTransaction(signedPsbtBase64, metadata.rawTxHex);
 
   // Broadcast to network
-  const broadcastResult = await broadcastTransaction(rawTx);
+  const broadcastResult = await broadcastTransaction(rawTx, metadata.network);
 
   if (!broadcastResult.broadcasted) {
     transactionBroadcastsTotal.inc({ status: 'failure' });

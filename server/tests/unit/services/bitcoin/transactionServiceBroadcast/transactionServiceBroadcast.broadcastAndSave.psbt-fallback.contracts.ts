@@ -1,4 +1,8 @@
-import { broadcastRecipient as recipient, broadcastWalletId as walletId } from './transactionServiceBroadcast.broadcastAndSave.shared';
+import {
+  broadcastRecipient as recipient,
+  broadcastWalletId as walletId,
+  withBroadcastNetwork,
+} from './transactionServiceBroadcast.broadcastAndSave.shared';
 import { expect, it, vi } from 'vitest';
 import { createRawTxHex, flushPromises, mockEmitTransactionReceived, mockEmitTransactionSent, mockNotifyNewTransactions } from './transactionServiceBroadcastTestHarness';
 import * as bitcoin from 'bitcoinjs-lib';
@@ -48,7 +52,7 @@ export const registerBroadcastAndSavePsbtFallbackContracts = () => {
       utxos: [{ txid: sampleUtxos[0].txid, vout: sampleUtxos[0].vout }],
     };
 
-    const result = await broadcastAndSave(walletId, 'signed-psbt-base64', metadata);
+    const result = await broadcastAndSave(walletId, 'signed-psbt-base64', withBroadcastNetwork(metadata));
 
     expect(result.broadcasted).toBe(true);
     expect(finalizeMultisigSpy).toHaveBeenCalledWith(fakePsbt, 1);
@@ -84,7 +88,7 @@ export const registerBroadcastAndSavePsbtFallbackContracts = () => {
       utxos: [{ txid: sampleUtxos[0].txid, vout: sampleUtxos[0].vout }],
     };
 
-    const result = await broadcastAndSave(walletId, 'already-finalized-psbt', metadata);
+    const result = await broadcastAndSave(walletId, 'already-finalized-psbt', withBroadcastNetwork(metadata));
 
     expect(result.broadcasted).toBe(true);
     expect(finalizeInput).not.toHaveBeenCalled();
@@ -121,7 +125,7 @@ export const registerBroadcastAndSavePsbtFallbackContracts = () => {
     ]);
     mockPrismaClient.address.findMany.mockResolvedValue([]);
 
-    await broadcastAndSave(walletId, undefined, metadata);
+    await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -151,7 +155,7 @@ export const registerBroadcastAndSavePsbtFallbackContracts = () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'testnet' });
     mockPrismaClient.address.findMany.mockResolvedValue([]);
 
-    await broadcastAndSave(walletId, undefined, metadata);
+    await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     expect(mockPrismaClient.transactionOutput.createMany).not.toHaveBeenCalled();
     fromHexSpy.mockRestore();
@@ -179,7 +183,7 @@ export const registerBroadcastAndSavePsbtFallbackContracts = () => {
       rawTxHex,
     };
 
-    await broadcastAndSave(walletId, undefined, metadata);
+    await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     expect(mockEmitTransactionReceived).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -240,7 +244,7 @@ export const registerBroadcastAndSavePsbtFallbackContracts = () => {
       rawTxHex,
     };
 
-    await broadcastAndSave(walletId, undefined, metadata);
+    await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
     await flushPromises();
 
     expect(mockPrismaClient.transactionOutput.createMany).toHaveBeenCalledWith(

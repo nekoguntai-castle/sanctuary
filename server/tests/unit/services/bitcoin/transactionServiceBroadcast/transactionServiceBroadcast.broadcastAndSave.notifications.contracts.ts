@@ -1,4 +1,8 @@
-import { broadcastRecipient as recipient, broadcastWalletId as walletId } from './transactionServiceBroadcast.broadcastAndSave.shared';
+import {
+  broadcastRecipient as recipient,
+  broadcastWalletId as walletId,
+  withBroadcastNetwork,
+} from './transactionServiceBroadcast.broadcastAndSave.shared';
 import { expect, it, vi, type Mock } from 'vitest';
 import { createRawTxHex, flushPromises, mockEmitTransactionReceived, mockNotifyNewTransactions } from './transactionServiceBroadcastTestHarness';
 import * as bitcoin from 'bitcoinjs-lib';
@@ -25,7 +29,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
       rawTxHex: createRawTxHex([{ address: recipient, value: 30_000 }]),
     };
 
-    const result = await broadcastAndSave(walletId, undefined, metadata);
+    const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
     await flushPromises();
     if (typeof (vi as any).dynamicImportSettled === 'function') {
       await (vi as any).dynamicImportSettled();
@@ -80,7 +84,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
       rawTxHex,
     };
 
-    const result = await broadcastAndSave(walletId, undefined, metadata);
+    const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
     await flushPromises();
     if (typeof (vi as any).dynamicImportSettled === 'function') {
       await (vi as any).dynamicImportSettled();
@@ -139,7 +143,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
       rawTxHex,
     };
 
-    await broadcastAndSave(walletId, undefined, metadata);
+    await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     expect(mockPrismaClient.transaction.create).toHaveBeenCalledTimes(1);
   });
@@ -188,7 +192,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
       rawTxHex,
     };
 
-    const result = await broadcastAndSave(walletId, undefined, metadata);
+    const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
     expect(result.broadcasted).toBe(true);
   });
 
@@ -221,7 +225,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
       rawTxHex,
     };
 
-    const result = await broadcastAndSave(walletId, undefined, metadata);
+    const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
     expect(result.broadcasted).toBe(true);
 
     fromHexSpy.mockRestore();
@@ -266,7 +270,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
       rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
     };
 
-    const result = await broadcastAndSave(walletId, undefined, metadata);
+    const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     expect(result.broadcasted).toBe(true);
     expect(mockPrismaClient.transaction.findUnique).toHaveBeenCalled();
@@ -297,7 +301,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
     };
 
     await expect(
-      broadcastAndSave(walletId, undefined, metadata)
+      broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata))
     ).rejects.toThrow('Unique constraint failed');
   });
 
@@ -332,7 +336,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
       rawTxHex,
     };
 
-    await broadcastAndSave(walletId, undefined, metadata);
+    await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     expect(mockPrismaClient.transactionOutput.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -386,7 +390,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
       rawTxHex,
     };
 
-    const result = await broadcastAndSave(walletId, undefined, metadata);
+    const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     expect(result.broadcasted).toBe(true);
   });
@@ -433,7 +437,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
       rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
     };
 
-    const result = await broadcastAndSave(walletId, undefined, metadata);
+    const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     expect(result.broadcasted).toBe(true);
     expect(mockPrismaClient.transaction.findUnique).toHaveBeenCalled();
@@ -466,7 +470,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
       rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
     };
 
-    const result = await broadcastAndSave(walletId, undefined, metadata);
+    const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
     expect(result.broadcasted).toBe(true);
   });
 };

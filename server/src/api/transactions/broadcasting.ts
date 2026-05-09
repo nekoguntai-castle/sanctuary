@@ -20,6 +20,8 @@ import {
   ACTIONABLE_DRAFT_STATUSES,
   draftRepository,
 } from '../../repositories/draftRepository';
+import { walletRepository } from '../../repositories/walletRepository';
+import { isBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import {
   type MobilePsbtBroadcastRequest,
   MobilePsbtBroadcastRequestSchema,
@@ -47,8 +49,27 @@ const APPROVAL_REJECTION_REASONS: Record<string, string> = {
   expired: 'approval_expired',
 };
 
+/**
+ * Resolve the wallet's broadcast network. Older wallet rows may store `testnet`
+ * from before Testnet3/Testnet4 were split; those rows map to Testnet3.
+ */
+const resolveWalletNetwork = async (walletId: string): Promise<BitcoinNetwork> => {
+  const network = await walletRepository.findNetwork(walletId);
+  if (network === null) {
+    throw new NotFoundError('Wallet not found', undefined, { walletId });
+  }
+  if (network === 'testnet') {
+    return 'testnet3';
+  }
+  if (isBitcoinNetwork(network)) {
+    return network;
+  }
+  throw new InvalidInputError('Wallet has unsupported Bitcoin network', 'network', { walletId, network });
+};
+
 const resolveTransactionPolicyFields = (
   signedPsbtBase64: string | undefined,
+  network: BitcoinNetwork,
   recipient: string | undefined,
   amount: number | undefined
 ): { evalRecipient?: string; evalAmount?: number } => {
@@ -57,7 +78,7 @@ const resolveTransactionPolicyFields = (
 
   if (signedPsbtBase64 && (!evalRecipient || !evalAmount)) {
     try {
-      const psbtInfo = txService.getPSBTInfo(signedPsbtBase64);
+      const psbtInfo = txService.getPSBTInfoWithNetwork(signedPsbtBase64, network);
       const firstOutput = psbtInfo.outputs[0];
       if (firstOutput) {
         evalRecipient = evalRecipient || firstOutput.address;
@@ -274,11 +295,13 @@ const resolveBroadcastFee = (
 
 const buildTransactionBroadcastMetadata = (
   body: TransactionBroadcastBody,
+  network: BitcoinNetwork,
   evalRecipient: string | undefined,
   evalAmount: number | undefined,
   draft: BroadcastDraft | null
 ) => {
   return {
+    network,
     recipient: resolveBroadcastRecipient(body, evalRecipient, draft),
     amount: resolveBroadcastAmount(body, evalAmount, draft),
     fee: resolveBroadcastFee(body, draft),
@@ -297,12 +320,14 @@ const handleTransactionBroadcast = async (
   walletId: string,
   body: TransactionBroadcastBody
 ) => {
+  const network = await resolveWalletNetwork(walletId);
   const draft = await loadBroadcastDraft(walletId, body.draftId);
   const signedPsbtBase64 = resolveSignedPsbtForBroadcast(body, draft);
   assertBroadcastPayloadAvailable(body, signedPsbtBase64, draft);
 
   const { evalRecipient, evalAmount } = resolveTransactionPolicyFields(
     signedPsbtBase64,
+    network,
     body.recipient ?? draft?.recipient,
     body.amount ?? getDraftBroadcastAmount(draft)
   );
@@ -315,7 +340,7 @@ const handleTransactionBroadcast = async (
   );
 
   try {
-    const metadata = buildTransactionBroadcastMetadata(body, evalRecipient, evalAmount, draft);
+    const metadata = buildTransactionBroadcastMetadata(body, network, evalRecipient, evalAmount, draft);
     const result = await txService.broadcastAndSave(
       walletId,
       signedPsbtBase64,
@@ -341,12 +366,12 @@ const handleTransactionBroadcast = async (
   }
 };
 
-const getPrimaryPsbtOutput = (signedPsbt: string): {
-  psbtInfo: ReturnType<typeof txService.getPSBTInfo>;
+const getPrimaryPsbtOutput = (signedPsbt: string, network: BitcoinNetwork): {
+  psbtInfo: ReturnType<typeof txService.getPSBTInfoWithNetwork>;
   amount: number;
   recipientAddress: string;
 } => {
-  const psbtInfo = txService.getPSBTInfo(signedPsbt);
+  const psbtInfo = txService.getPSBTInfoWithNetwork(signedPsbt, network);
   const recipientOutput = psbtInfo.outputs[0];
   return {
     psbtInfo,
@@ -360,7 +385,8 @@ const handlePsbtBroadcast = async (
   walletId: string,
   body: PsbtBroadcastBody
 ) => {
-  const { psbtInfo, amount, recipientAddress } = getPrimaryPsbtOutput(body.signedPsbt);
+  const network = await resolveWalletNetwork(walletId);
+  const { psbtInfo, amount, recipientAddress } = getPrimaryPsbtOutput(body.signedPsbt, network);
 
   await assertPolicyAllowsBroadcast(
     req,
@@ -377,6 +403,7 @@ const handlePsbtBroadcast = async (
       fee: psbtInfo.fee,
       label: body.label,
       memo: body.memo,
+      network,
       utxos: psbtInfo.inputs.map(i => ({ txid: i.txid, vout: i.vout })),
     });
 

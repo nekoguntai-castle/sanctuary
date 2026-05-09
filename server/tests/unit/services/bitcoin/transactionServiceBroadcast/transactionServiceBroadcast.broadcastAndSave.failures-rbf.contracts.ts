@@ -1,4 +1,8 @@
-import { broadcastRecipient as recipient, broadcastWalletId as walletId } from './transactionServiceBroadcast.broadcastAndSave.shared';
+import {
+  broadcastRecipient as recipient,
+  broadcastWalletId as walletId,
+  withBroadcastNetwork,
+} from './transactionServiceBroadcast.broadcastAndSave.shared';
 import { describe, expect, it, type Mock } from 'vitest';
 import { broadcastAndSave } from '../../../../../src/services/bitcoin/transactionService';
 import { broadcastTransaction, recalculateWalletBalances } from '../../../../../src/services/bitcoin/blockchain';
@@ -21,7 +25,7 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
     };
 
     try {
-      await broadcastAndSave(walletId, undefined, metadata);
+      await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
     } catch {
       // Expected to fail
     }
@@ -49,7 +53,7 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
     // If recalculateWalletBalances errors are caught, broadcast succeeds
     // If they propagate, broadcast throws
     try {
-      const result = await broadcastAndSave(walletId, undefined, metadata);
+      const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
       // If we get here, the implementation catches balance calculation errors
       expect(result.broadcasted).toBe(true);
       expect(result.txid).toBeDefined();
@@ -90,7 +94,7 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
         rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
       };
 
-      await broadcastAndSave(walletId, undefined, metadata);
+      await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
       // Verify original transaction was marked as replaced
       expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith(
@@ -136,7 +140,7 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
         rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
       };
 
-      await broadcastAndSave(walletId, undefined, metadata);
+      await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
       expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -168,7 +172,7 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
         rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
       };
 
-      await broadcastAndSave(walletId, undefined, metadata);
+      await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
       expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -195,7 +199,7 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
       };
 
       // Should not throw - gracefully handle missing original
-      await expect(broadcastAndSave(walletId, undefined, metadata)).resolves.toBeDefined();
+      await expect(broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata))).resolves.toBeDefined();
 
       // Should still create the new transaction with replacementForTxid
       expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
@@ -222,7 +226,7 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
         rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
       };
 
-      await broadcastAndSave(walletId, undefined, metadata);
+      await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
       // Should create transaction without RBF fields
       expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
@@ -254,7 +258,7 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
         draftId,
       };
 
-      await broadcastAndSave(walletId, undefined, metadata);
+      await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
       expect(mockPrismaClient.draftUtxoLock.deleteMany).toHaveBeenCalledWith({
         where: { draftId },

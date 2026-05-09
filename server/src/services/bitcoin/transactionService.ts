@@ -54,5 +54,5 @@ export { createAndBroadcastTransaction } from './transactions/createAndBroadcast
 // Re-exports from pre-existing sub-modules (for backward compatibility)
 export { selectUTXOs, UTXOSelectionStrategy } from './utxoSelection';
 export { estimateTransaction } from './estimation';
-export { getPSBTInfo } from './psbtInfo';
+export { getPSBTInfo, getPSBTInfoWithNetwork } from './psbtInfo';
 export { buildMultisigBip32Derivations, buildMultisigWitnessScript, generateDecoyAmounts } from './psbtBuilder';

@@ -4,6 +4,7 @@ import { broadcastAndSave } from '../../../../../src/services/bitcoin/transactio
 import { broadcastTransaction, recalculateWalletBalances } from '../../../../../src/services/bitcoin/blockchain';
 import { mockPrismaClient } from '../../../../mocks/prisma';
 import { sampleUtxos, testnetAddresses } from '../../../../fixtures/bitcoin';
+import { withBroadcastNetwork } from './transactionServiceBroadcast.broadcastAndSave.shared';
 
 export const registerBroadcastEdgeCaseTests = () => {
   describe('Error Handling - Broadcast Edge Cases', () => {
@@ -39,7 +40,7 @@ export const registerBroadcastEdgeCaseTests = () => {
 
       // Should throw when database update fails
       await expect(
-        broadcastAndSave(walletId, undefined, metadata)
+        broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata))
       ).rejects.toThrow('DB connection lost');
     });
 
@@ -55,7 +56,7 @@ export const registerBroadcastEdgeCaseTests = () => {
       };
 
       await expect(
-        broadcastAndSave(walletId, undefined, metadata)
+        broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata))
       ).rejects.toThrow('Constraint violation');
     });
 
@@ -69,7 +70,7 @@ export const registerBroadcastEdgeCaseTests = () => {
       };
 
       // Should still broadcast (UTXOs from rawTxHex)
-      const result = await broadcastAndSave(walletId, undefined, metadata);
+      const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
       expect(result.broadcasted).toBe(true);
     });
 
@@ -85,7 +86,7 @@ export const registerBroadcastEdgeCaseTests = () => {
       };
 
       await expect(
-        broadcastAndSave(walletId, undefined, metadata)
+        broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata))
       ).rejects.toThrow('Network timeout');
     });
 
@@ -99,7 +100,7 @@ export const registerBroadcastEdgeCaseTests = () => {
       };
 
       await expect(
-        broadcastAndSave(walletId, undefined, metadata)
+        broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata))
       ).rejects.toThrow();
     });
 

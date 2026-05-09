@@ -74,24 +74,6 @@
       "targetRemovalSlice": "Slice 4"
     },
     {
-      "file": "server/src/api/transactions/broadcasting.ts",
-      "functionName": "resolveTransactionPolicyFields",
-      "callee": "txService.getPSBTInfo",
-      "issue": "missing-required-network-argument",
-      "reason": "Broadcast policy fallback parsing must use the wallet network once broadcast resolves wallet context before PSBT parsing.",
-      "owner": "P0: Make wallet-scoped transaction broadcast network-aware end to end",
-      "targetRemovalSlice": "Slice 3"
-    },
-    {
-      "file": "server/src/api/transactions/broadcasting.ts",
-      "functionName": "getPrimaryPsbtOutput",
-      "callee": "txService.getPSBTInfo",
-      "issue": "missing-required-network-argument",
-      "reason": "PSBT broadcast output extraction must parse with the authorized wallet network.",
-      "owner": "P0: Make wallet-scoped transaction broadcast network-aware end to end",
-      "targetRemovalSlice": "Slice 3"
-    },
-    {
       "file": "server/src/services/bitcoin/advancedTx/feeEstimation.ts",
       "functionName": "getAdvancedFeeEstimates",
       "callee": "getNodeClient",
@@ -129,15 +111,6 @@
     },
     {
       "file": "server/src/services/bitcoin/blockchain/networkOperations.ts",
-      "functionName": "broadcastTransaction",
-      "callee": "getNodeClient",
-      "issue": "missing-required-network-argument",
-      "reason": "Low-level raw broadcast helper still picks the default node client.",
-      "owner": "P0: Make wallet-scoped transaction broadcast network-aware end to end",
-      "targetRemovalSlice": "Slice 3"
-    },
-    {
-      "file": "server/src/services/bitcoin/blockchain/networkOperations.ts",
       "functionName": "getFeeEstimates",
       "callee": "getNodeClient",
       "issue": "missing-required-network-argument",
@@ -171,15 +144,6 @@
       "reason": "Current fee estimates call the low-level fee helper without network context.",
       "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
       "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/services/bitcoin/transactions/broadcasting.ts",
-      "functionName": "broadcastAndSave",
-      "callee": "broadcastTransaction",
-      "issue": "missing-required-network-argument",
-      "reason": "Wallet-scoped broadcast service does not pass wallet network into raw network broadcast yet.",
-      "owner": "P0: Make wallet-scoped transaction broadcast network-aware end to end",
-      "targetRemovalSlice": "Slice 3"
     },
     {
       "file": "server/src/services/bitcoin/transactions/createBatchTransaction.ts",

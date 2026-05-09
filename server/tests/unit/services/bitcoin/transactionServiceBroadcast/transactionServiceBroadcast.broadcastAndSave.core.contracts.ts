@@ -1,4 +1,9 @@
-import { broadcastRecipient as recipient, broadcastWalletId as walletId } from './transactionServiceBroadcast.broadcastAndSave.shared';
+import {
+  broadcastNetwork,
+  broadcastRecipient as recipient,
+  broadcastWalletId as walletId,
+  withBroadcastNetwork,
+} from './transactionServiceBroadcast.broadcastAndSave.shared';
 import { expect, it, type Mock } from 'vitest';
 import { broadcastAndSave } from '../../../../../src/services/bitcoin/transactionService';
 import { broadcastTransaction, recalculateWalletBalances } from '../../../../../src/services/bitcoin/blockchain';
@@ -13,6 +18,7 @@ export const registerBroadcastAndSaveCoreContracts = () => {
     // the same database logic, so this effectively tests that code path.
 
     const metadata = {
+      network: broadcastNetwork,
       recipient,
       amount: 50000,
       fee: 1000,
@@ -22,7 +28,7 @@ export const registerBroadcastAndSaveCoreContracts = () => {
       rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
     };
 
-    const result = await broadcastAndSave(walletId, undefined, metadata);
+    const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     expect(result.broadcasted).toBe(true);
     expect(result.txid).toBeDefined();
@@ -50,6 +56,7 @@ export const registerBroadcastAndSaveCoreContracts = () => {
     const rawTxHex = '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000';
 
     const metadata = {
+      network: broadcastNetwork,
       recipient,
       amount: 50000,
       fee: 1000,
@@ -57,11 +64,11 @@ export const registerBroadcastAndSaveCoreContracts = () => {
       rawTxHex,
     };
 
-    const result = await broadcastAndSave(walletId, undefined, metadata);
+    const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     expect(result.broadcasted).toBe(true);
     expect(result.txid).toBeDefined();
-    expect(broadcastTransaction).toHaveBeenCalled();
+    expect(broadcastTransaction).toHaveBeenCalledWith(rawTxHex, broadcastNetwork);
   });
 
   it('should mark spent UTXOs after broadcast', async () => {
@@ -76,7 +83,7 @@ export const registerBroadcastAndSaveCoreContracts = () => {
       rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
     };
 
-    await broadcastAndSave(walletId, undefined, metadata);
+    await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     // Should update each UTXO as spent
     expect(mockPrismaClient.uTXO.update).toHaveBeenCalledTimes(2);
@@ -108,7 +115,7 @@ export const registerBroadcastAndSaveCoreContracts = () => {
       rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
     };
 
-    await broadcastAndSave(walletId, undefined, metadata);
+    await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     // Transaction should be created with type 'consolidation'
     expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
@@ -129,7 +136,7 @@ export const registerBroadcastAndSaveCoreContracts = () => {
     };
 
     await expect(
-      broadcastAndSave(walletId, undefined, metadata)
+      broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata))
     ).rejects.toThrow('Either signedPsbtBase64 or rawTxHex is required');
   });
 
@@ -148,7 +155,7 @@ export const registerBroadcastAndSaveCoreContracts = () => {
     };
 
     await expect(
-      broadcastAndSave(walletId, undefined, metadata)
+      broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata))
     ).rejects.toThrow('Failed to broadcast transaction');
   });
 
@@ -161,7 +168,7 @@ export const registerBroadcastAndSaveCoreContracts = () => {
       rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
     };
 
-    await broadcastAndSave(walletId, undefined, metadata);
+    await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     // Verify recalculateWalletBalances was called with the correct walletId
     expect(recalculateWalletBalances).toHaveBeenCalledWith(walletId);
@@ -194,7 +201,7 @@ export const registerBroadcastAndSaveCoreContracts = () => {
       rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
     };
 
-    await broadcastAndSave(walletId, undefined, metadata);
+    await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
