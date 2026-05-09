@@ -1,6 +1,6 @@
 # Active Task: Bug Scrub Slice 4C Non-Wallet Network Context 2026-05-08
 
-Status: in progress; implementation branch `fix/bug-scrub-slice-4c`
+Status: complete; PR #326 merged as `c1d5620c`
 
 Goal: remove the final Bitcoin network-boundary allowlist entries by adding explicit network context to non-wallet Bitcoin endpoints, blockchain network helpers, and subscription bootstrap.
 
@@ -12,8 +12,8 @@ Goal: remove the final Bitcoin network-boundary allowlist entries by adding expl
 - [x] Pass configured Bitcoin network into real-time subscription bootstrap.
 - [x] Update frontend API types, OpenAPI, focused route/service tests, and remove the remaining allowlist entries.
 - [x] Run focused tests, type checks, lint/guard checks, lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
-- [ ] Confirm the network-boundary guard has zero findings and continue to the next bug-scrub slice.
+- [x] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [x] Confirm the network-boundary guard has zero findings; no further Bitcoin network-boundary slice remains.
 
 ## Review
 
@@ -23,6 +23,8 @@ Goal: remove the final Bitcoin network-boundary allowlist entries by adding expl
 - Frontend Bitcoin API helpers and OpenAPI schemas now expose the optional network fields for non-wallet transaction detail, broadcast, and RBF-check callers.
 - Removed the final 5 entries from `scripts/quality/bitcoin-network-boundary-allowlist.json`; the Bitcoin network-boundary guard now passes with zero findings.
 - Local verification passed: focused Bitcoin API, OpenAPI, blockchainService, syncService, nodeClient, and frontend core API tests; server source/test typechecks; frontend app/test typechecks; server build; `npm run lint:server`; `npm run lint:app`; touched-file lizard; and `git diff --check`.
+- PR #326 merged at `2026-05-08T16:40:15-10:00` as squash commit `c1d5620cdff52ca63aac34177a42f05844fa9e53`; local `main` was fast-forwarded and the local/remote Slice 4C branches were deleted.
+- Post-merge `main` verification passed: `npm run check:bitcoin-network-boundaries` reports zero findings and zero allowed findings.
 
 ---
 
