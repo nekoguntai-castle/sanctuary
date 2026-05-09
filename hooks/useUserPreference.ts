@@ -22,6 +22,12 @@ const log = createLogger('useUserPreference');
 
 const STORAGE_PREFIX = 'sanctuary_pref_';
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
 /**
  * Get a nested value from an object using a dot-notation path.
  * Returns undefined if any segment is missing.
@@ -55,7 +61,7 @@ function buildNestedUpdate(
   }
 
   const [first, ...rest] = keys;
-  const existingChild = (existing[first] as Record<string, unknown>) ?? {};
+  const existingChild = asRecord(existing[first]);
 
   return {
     [first]: {
@@ -72,6 +78,7 @@ export function useUserPreference<T>(
   const user = useCurrentUser();
   const { preferences, updatePreferences } = useUserPreferences();
   const isLoggedIn = !!user;
+  const serverPreferences = asRecord(preferences);
 
   // Read initial value from localStorage for unauthenticated fallback
   const [localValue, setLocalValue] = useState<T>(() => {
@@ -87,8 +94,8 @@ export function useUserPreference<T>(
   });
 
   // Derive the current value: server preferences take priority when logged in
-  const serverValue = preferences
-    ? (getNestedValue(preferences as unknown as Record<string, unknown>, key) as T | undefined)
+  const serverValue = isLoggedIn
+    ? (getNestedValue(serverPreferences, key) as T | undefined)
     : undefined;
 
   const currentValue = isLoggedIn
@@ -108,18 +115,18 @@ export function useUserPreference<T>(
 
   const setValue = useCallback(
     (newValue: T) => {
-      if (isLoggedIn && preferences) {
+      if (isLoggedIn) {
         const update = buildNestedUpdate(
           key,
           newValue,
-          preferences as unknown as Record<string, unknown>
+          serverPreferences
         );
         updatePreferences(update);
       } else {
         setLocalValue(newValue);
       }
     },
-    [isLoggedIn, preferences, key, updatePreferences]
+    [isLoggedIn, serverPreferences, key, updatePreferences]
   );
 
   return [currentValue, setValue];

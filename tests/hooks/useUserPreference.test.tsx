@@ -153,6 +153,39 @@ describe('useUserPreference', () => {
 
       expect(mockUpdatePreferences).toHaveBeenCalledWith({ theme: 'dark' });
     });
+
+    it('should write to server when logged in and preferences are null', () => {
+      mockPreferences = null;
+
+      const { result } = renderHook(() =>
+        useUserPreference('theme', 'light')
+      );
+
+      act(() => {
+        result.current[1]('dark');
+      });
+
+      expect(result.current[0]).toBe('light');
+      expect(mockUpdatePreferences).toHaveBeenCalledWith({ theme: 'dark' });
+      expect(mockSetItem).not.toHaveBeenCalledWith(
+        'sanctuary_pref_theme',
+        JSON.stringify('dark')
+      );
+    });
+
+    it('should write to server when logged in and preferences are undefined', () => {
+      mockPreferences = undefined;
+
+      const { result } = renderHook(() =>
+        useUserPreference('theme', 'light')
+      );
+
+      act(() => {
+        result.current[1]('dark');
+      });
+
+      expect(mockUpdatePreferences).toHaveBeenCalledWith({ theme: 'dark' });
+    });
   });
 
   describe('Dot-notation keys (nested preferences)', () => {
@@ -205,6 +238,27 @@ describe('useUserPreference', () => {
     it('should create nested structure when parent keys do not exist in server preferences', () => {
       mockUser = { id: 1, name: 'Test User' };
       mockPreferences = {};
+
+      const { result } = renderHook(() =>
+        useUserPreference('viewSettings.wallets.layout', 'list')
+      );
+
+      act(() => {
+        result.current[1]('grid');
+      });
+
+      expect(mockUpdatePreferences).toHaveBeenCalledWith({
+        viewSettings: {
+          wallets: {
+            layout: 'grid',
+          },
+        },
+      });
+    });
+
+    it('should create nested server preference updates when preferences are null', () => {
+      mockUser = { id: 1, name: 'Test User' };
+      mockPreferences = null;
 
       const { result } = renderHook(() =>
         useUserPreference('viewSettings.wallets.layout', 'list')

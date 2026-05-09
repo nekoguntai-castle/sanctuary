@@ -9,6 +9,22 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('UserContext');
 
+const DEFAULT_AUTHENTICATED_PREFERENCES: UserPreferences = {
+  darkMode: true,
+  theme: 'sanctuary',
+  background: 'zen',
+  unit: 'sats',
+  fiatCurrency: 'USD',
+  showFiat: true,
+  priceProvider: 'auto',
+};
+
+type UserPreferenceRecord = Partial<UserPreferences> & Record<string, unknown>;
+
+function getUserPreferenceRecord(user: User): UserPreferenceRecord {
+  return (user.preferences ?? {}) as UserPreferenceRecord;
+}
+
 interface TwoFactorPending {
   tempToken: string;
 }
@@ -106,8 +122,12 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Initialize theme based on user preferences whenever user changes
   useEffect(() => {
-    if (user && user.preferences) {
-      const { darkMode, theme, background, contrastLevel, patternOpacity, flyoutOpacity } = user.preferences;
+    if (user) {
+      const preferences = {
+        ...DEFAULT_AUTHENTICATED_PREFERENCES,
+        ...getUserPreferenceRecord(user),
+      };
+      const { darkMode, theme, background, contrastLevel, patternOpacity, flyoutOpacity } = preferences;
 
       // Toggle Dark Mode
       if (darkMode) {
@@ -250,9 +270,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updatePreferences = useCallback(async (newPrefs: Partial<UserPreferences>) => {
     setUser(currentUser => {
-      if (!currentUser || !currentUser.preferences) return currentUser;
+      if (!currentUser) return currentUser;
 
-      const updatedPrefs = { ...currentUser.preferences, ...newPrefs };
+      const updatedPrefs = { ...getUserPreferenceRecord(currentUser), ...newPrefs };
       const updatedUser = { ...currentUser, preferences: updatedPrefs };
 
       // Async update in background
@@ -345,7 +365,7 @@ export const useCurrentUser = () => {
 export const useUserPreferences = () => {
   const { user, updatePreferences } = useUser();
   return {
-    preferences: user?.preferences ?? null,
+    preferences: user ? getUserPreferenceRecord(user) : null,
     updatePreferences,
   };
 };

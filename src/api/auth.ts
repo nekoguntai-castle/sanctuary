@@ -16,7 +16,12 @@ export interface User {
   email?: string;
   emailVerified?: boolean;
   isAdmin: boolean;
-  preferences: {
+  preferences: AuthUserPreferences | null;
+  createdAt: string;
+  twoFactorEnabled?: boolean;
+}
+
+export interface AuthUserPreferences {
     darkMode?: boolean;
     theme?: string;
     background?: string;
@@ -29,9 +34,6 @@ export interface User {
     showFiat?: boolean;
     priceProvider?: string;
     telegram?: TelegramConfig;
-  };
-  createdAt: string;
-  twoFactorEnabled?: boolean;
 }
 
 export type { TelegramConfig, WalletTelegramSettings };
@@ -148,7 +150,7 @@ export async function getCurrentUser(): Promise<User> {
 /**
  * Update user preferences
  */
-export async function updatePreferences(preferences: Partial<User['preferences']>): Promise<User> {
+export async function updatePreferences(preferences: Partial<AuthUserPreferences>): Promise<User> {
   return apiClient.patch<User>('/auth/me/preferences', preferences);
 }
 

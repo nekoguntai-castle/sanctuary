@@ -537,6 +537,75 @@ describe('UserContext', () => {
       });
     });
 
+    it('persists preferences for authenticated users with null preferences', async () => {
+      const user = userEvent.setup();
+      vi.mocked(authApi.login).mockResolvedValue({
+        user: { ...mockUser, preferences: null },
+      });
+      vi.mocked(authApi.requires2FA).mockReturnValue(false);
+      vi.mocked(authApi.updatePreferences).mockResolvedValue({
+        ...mockUser,
+        preferences: { ...mockUser.preferences, darkMode: false },
+      });
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('loading')).toHaveTextContent('false');
+      });
+
+      await user.click(screen.getByTestId('login'));
+      await waitFor(() => {
+        expect(screen.getByTestId('authenticated')).toHaveTextContent('true');
+      });
+
+      await user.click(screen.getByTestId('update-prefs'));
+
+      await waitFor(() => {
+        expect(authApi.updatePreferences).toHaveBeenCalledWith(
+          expect.objectContaining({ darkMode: false })
+        );
+      });
+    });
+
+    it('preserves unknown preference keys when merging direct updates', async () => {
+      const user = userEvent.setup();
+      const legacyPreferences = {
+        ...mockUser.preferences,
+        experimentalPane: { enabled: true },
+      };
+      vi.mocked(authApi.login).mockResolvedValue({
+        user: { ...mockUser, preferences: legacyPreferences },
+      });
+      vi.mocked(authApi.requires2FA).mockReturnValue(false);
+      vi.mocked(authApi.updatePreferences).mockResolvedValue({
+        ...mockUser,
+        preferences: { ...legacyPreferences, darkMode: false },
+      });
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('loading')).toHaveTextContent('false');
+      });
+
+      await user.click(screen.getByTestId('login'));
+      await waitFor(() => {
+        expect(screen.getByTestId('authenticated')).toHaveTextContent('true');
+      });
+
+      await user.click(screen.getByTestId('update-prefs'));
+
+      await waitFor(() => {
+        expect(authApi.updatePreferences).toHaveBeenCalledWith(
+          expect.objectContaining({
+            darkMode: false,
+            experimentalPane: { enabled: true },
+          })
+        );
+      });
+    });
+
     it('does not call updatePreferences when no authenticated user is loaded', async () => {
       const user = userEvent.setup();
       vi.mocked(authApi.getCurrentUser).mockRejectedValue(new ApiError('Unauthorized', 401));

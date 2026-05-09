@@ -56,7 +56,7 @@ export interface User {
   email?: string;
   isAdmin: boolean;
   password?: string; // Simple mock password
-  preferences?: UserPreferences;
+  preferences?: Partial<UserPreferences> | null;
   twoFactorEnabled?: boolean;
   usingDefaultPassword?: boolean;
 }

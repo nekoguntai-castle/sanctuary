@@ -424,6 +424,8 @@ Must handle:
 
 ### P3-04 Null Preferences
 
+Status: implemented in the null-preferences slice. Authenticated users with `null` or missing preference objects now read preference defaults from a server-backed empty preference record, persist direct and `useUserPreference` updates through `/auth/me/preferences`, preserve existing and unknown preference keys in optimistic merges, and use localStorage fallback only while anonymous.
+
 Must handle:
 
 - `null`, `undefined`, empty object, partial object, and unknown preference keys.

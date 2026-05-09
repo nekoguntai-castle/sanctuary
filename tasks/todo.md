@@ -28,6 +28,32 @@ Goal: make request timeout handling expose and trigger a request-scoped cancella
 
 ---
 
+# Active Task: P3-04 Null Preferences 2026-05-09
+
+Status: in progress; branch `fix/null-preferences`
+
+Goal: let authenticated users with `null` or missing preference objects read defaults and persist new preference changes through the server instead of falling back to anonymous localStorage behavior.
+
+## Plan
+
+- [x] Map frontend user preference state, `updatePreferences`, `useUserPreference`, server merge behavior, and existing preference tests.
+- [x] Treat authenticated `null`/`undefined` preferences as an empty server preference object for reads and writes while preserving anonymous localStorage fallback.
+- [x] Keep optimistic preference saves merging existing server-provided keys and new updates without dropping unknown preference keys.
+- [x] Add regression tests for direct context preference updates and `useUserPreference` with null/missing authenticated preferences, including nested preference paths.
+- [x] Update health/remediation/task docs for P3-04 and any touched stale auth/preference comments.
+- [x] Run focused preference tests, app/test typechecks, app lint, changed-test hygiene, touched-file lizard, full frontend coverage, architecture graph checks, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- `UserContext.updatePreferences` now persists for authenticated users even when `user.preferences` is `null` or `undefined`; the optimistic merge starts from an empty preference record and preserves existing/unknown keys when present.
+- Authenticated theme application now fills missing preference fields from the existing server defaults instead of treating a logged-in user with null preferences as the anonymous/public theme fallback.
+- `useUserPreferences` exposes `{}` for authenticated users without preferences, and `useUserPreference` writes server preferences whenever a user is logged in; localStorage is reserved for anonymous state.
+- Regression coverage now proves direct preference saves for null preferences, unknown-key preservation, `useUserPreference` server writes for null/undefined preferences, and nested server updates from null preferences.
+- Verification passed: focused preference tests (64 tests), app typecheck, test typecheck, app lint, changed-test hygiene, touched-file lizard, full frontend coverage (475 files, 6,080 tests, 100% statements/branches/functions/lines), architecture graph regeneration/call extraction with no generated diff, architecture diagram lint, and `git diff --check`.
+
+---
+
 # Active Task: P3-03/P3-05 Frontend Route Capability And Auth Bootstrap Gates 2026-05-09
 
 Status: completed; PR #362 merged as `e028b581`
