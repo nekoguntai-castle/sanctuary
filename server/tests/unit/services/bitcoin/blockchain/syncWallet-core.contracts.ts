@@ -207,7 +207,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
 
       mockElectrumClient.broadcastTransaction.mockResolvedValue(expectedTxid);
 
-      const result = await getBlockchainService().broadcastTransaction(rawTx);
+      const result = await getBlockchainService().broadcastTransaction(rawTx, 'testnet4');
 
       expect(result.txid).toBe(expectedTxid);
       expect(result.broadcasted).toBe(true);
@@ -218,7 +218,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
         new Error('Transaction rejected: insufficient fee')
       );
 
-      await expect(getBlockchainService().broadcastTransaction('invalid-tx')).rejects.toThrow(
+      await expect(getBlockchainService().broadcastTransaction('invalid-tx', 'testnet4')).rejects.toThrow(
         'Failed to broadcast transaction'
       );
     });
@@ -276,7 +276,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
 
       mockElectrumClient.getTransaction.mockResolvedValue(mockTx);
 
-      const result = await getBlockchainService().getTransactionDetails(txid);
+      const result = await getBlockchainService().getTransactionDetails(txid, 'testnet4');
 
       expect(result.txid).toBe(txid);
       expect(result.blockheight).toBe(800000);

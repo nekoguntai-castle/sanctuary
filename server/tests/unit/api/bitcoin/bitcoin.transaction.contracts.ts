@@ -27,6 +27,17 @@ export const registerBitcoinTransactionRouteTests = () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual(txDetails);
+        expect(mockBlockchain.getTransactionDetails).toHaveBeenCalledWith('abc123', 'mainnet');
+      });
+
+      it('should pass query network to transaction details', async () => {
+        const txDetails = { txid: 'abc123', confirmations: 0 };
+        mockBlockchain.getTransactionDetails.mockResolvedValue(txDetails);
+
+        const response = await request(app).get('/bitcoin/transaction/abc123?network=testnet4');
+
+        expect(response.status).toBe(200);
+        expect(mockBlockchain.getTransactionDetails).toHaveBeenCalledWith('abc123', 'testnet4');
       });
 
       it('should return 500 when transaction not found', async () => {
@@ -51,6 +62,30 @@ export const registerBitcoinTransactionRouteTests = () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('txid', 'newtxid123');
+        expect(mockBlockchain.broadcastTransaction).toHaveBeenCalledWith('0200000001...', 'mainnet');
+      });
+
+      it('should broadcast raw transaction on requested network', async () => {
+        mockBlockchain.broadcastTransaction.mockResolvedValue({
+          txid: 'newtxid123',
+          success: true,
+        });
+
+        const response = await request(app)
+          .post('/bitcoin/broadcast')
+          .send({ rawTx: '0200000001...', network: 'signet' });
+
+        expect(response.status).toBe(200);
+        expect(mockBlockchain.broadcastTransaction).toHaveBeenCalledWith('0200000001...', 'signet');
+      });
+
+      it('should return 400 when broadcast network is invalid', async () => {
+        const response = await request(app)
+          .post('/bitcoin/broadcast')
+          .send({ rawTx: '0200000001...', network: 'invalid' });
+
+        expect(response.status).toBe(400);
+        expect(mockBlockchain.broadcastTransaction).not.toHaveBeenCalled();
       });
 
       it('should return 400 when rawTx is missing', async () => {
@@ -85,6 +120,20 @@ export const registerBitcoinTransactionRouteTests = () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('canReplace', true);
+        expect(mockAdvancedTx.canReplaceTransaction).toHaveBeenCalledWith('abc123', 'mainnet');
+      });
+
+      it('should check RBF eligibility on requested network', async () => {
+        mockAdvancedTx.canReplaceTransaction.mockResolvedValue({
+          canReplace: true,
+        });
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/abc123/rbf-check')
+          .send({ network: 'testnet' });
+
+        expect(response.status).toBe(200);
+        expect(mockAdvancedTx.canReplaceTransaction).toHaveBeenCalledWith('abc123', 'testnet3');
       });
 
       it('should return 500 on error', async () => {

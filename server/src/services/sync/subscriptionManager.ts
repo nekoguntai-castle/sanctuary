@@ -37,6 +37,10 @@ type AddressRecord = Awaited<
   ReturnType<typeof addressRepository.findAllWithWalletNetwork>
 >[number];
 
+function getConfiguredSubscriptionNetwork() {
+  return normalizeLegacyBitcoinNetwork(getConfig().bitcoin.network, "mainnet");
+}
+
 /**
  * Set up real-time subscriptions for block and address notifications.
  *
@@ -75,11 +79,13 @@ export async function setupRealTimeSubscriptions(
     startSubscriptionLockRefresh(state, updateAllConfirmations);
     log.info("[SYNC] Acquired Electrum subscription ownership");
 
-    // Get the node client to ensure it's connected
-    await getNodeClient();
+    const subscriptionNetwork = getConfiguredSubscriptionNetwork();
+
+    // Get the node client to ensure the configured subscription network is connected
+    await getNodeClient(subscriptionNetwork);
 
     // Only Electrum supports real-time subscriptions
-    const electrumClient = await getElectrumClientIfActive();
+    const electrumClient = await getElectrumClientIfActive(subscriptionNetwork);
     if (!electrumClient) {
       log.info(
         "[SYNC] Real-time subscriptions only available with Electrum (current node type does not support it)",
@@ -110,7 +116,7 @@ export async function setupRealTimeSubscriptions(
       );
 
       // Cache the current block height for the configured network
-      setCachedBlockHeight(currentHeader.height, getConfig().bitcoin.network);
+      setCachedBlockHeight(currentHeader.height, subscriptionNetwork);
 
       // Listen for new blocks
       electrumClient.on(
@@ -219,7 +225,7 @@ export async function subscribeAllWalletAddresses(
     return;
   }
 
-  const electrumClient = await getElectrumClientIfActive();
+  const electrumClient = await getElectrumClientIfActive(getConfiguredSubscriptionNetwork());
   if (!electrumClient) return;
 
   const addressRecords = await addressRepository.findAllWithWalletNetwork();
@@ -294,7 +300,7 @@ export async function unsubscribeWalletAddresses(
     return;
   }
 
-  const electrumClient = await getElectrumClientIfActive();
+  const electrumClient = await getElectrumClientIfActive(getConfiguredSubscriptionNetwork());
 
   let unsubscribed = 0;
   for (const [address, wId] of state.addressToWalletMap.entries()) {
@@ -400,7 +406,7 @@ async function subscribeMissingReconciledAddresses(
 ): Promise<number> {
   if (state.subscriptionOwnership !== "self") return 0;
 
-  const electrumClient = await getElectrumClientIfActive();
+  const electrumClient = await getElectrumClientIfActive(getConfiguredSubscriptionNetwork());
   /* v8 ignore next -- inactive client fallback is covered through standalone manager tests */
   if (!electrumClient) return 0;
 
@@ -483,7 +489,7 @@ export async function subscribeNewWalletAddresses(
     return;
   }
 
-  const electrumClient = await getElectrumClientIfActive();
+  const electrumClient = await getElectrumClientIfActive(getConfiguredSubscriptionNetwork());
   if (!electrumClient) return;
 
   const addressStrings = await addressRepository.findAddressStrings(walletId);
@@ -514,7 +520,7 @@ export async function teardownRealTimeSubscriptions(
 ): Promise<void> {
   state.subscribedToHeaders = false;
 
-  const electrumClient = await getElectrumClientIfActive();
+  const electrumClient = await getElectrumClientIfActive(getConfiguredSubscriptionNetwork());
   if (electrumClient && state.addressToWalletMap.size > 0) {
     for (const address of state.addressToWalletMap.keys()) {
       try {
@@ -578,7 +584,7 @@ export async function handleNewBlock(
   log.info(`[SYNC] New block received at height ${block.height}`);
 
   // Update cached block height for the configured network
-  const network = getConfig().bitcoin.network;
+  const network = getConfiguredSubscriptionNetwork();
   setCachedBlockHeight(block.height, network);
 
   // Emit new block event (handles both event bus and WebSocket)

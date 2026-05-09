@@ -273,6 +273,11 @@ export const bitcoinSchemas = {
     type: "object",
     properties: {
       rawTx: { type: "string", description: "Signed raw transaction hex." },
+      network: {
+        type: "string",
+        enum: ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
+        default: "mainnet",
+      },
     },
     required: ["rawTx"],
     additionalProperties: false,
@@ -296,6 +301,17 @@ export const bitcoinSchemas = {
     },
     required: ["replaceable"],
     additionalProperties: true,
+  },
+  RbfCheckRequest: {
+    type: "object",
+    properties: {
+      network: {
+        type: "string",
+        enum: ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
+        default: "mainnet",
+      },
+    },
+    additionalProperties: false,
   },
   RbfRequest: {
     type: "object",

@@ -577,12 +577,66 @@ describe("nodeClient service", () => {
     mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce(
       buildNodeConfig({ poolEnabled: true }),
     );
-    mocks.getElectrumPool.mockImplementationOnce(() => {
-      throw new Error("pool unavailable");
-    });
+    mocks.getElectrumPoolForNetwork.mockRejectedValueOnce(
+      new Error("pool unavailable"),
+    );
 
     const active = await getElectrumClientIfActive();
     expect(active).toBe(mainnetSingleton);
+  });
+
+  it("returns requested network singleton client when active", async () => {
+    mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(
+      buildNodeConfig({
+        testnet3Enabled: true,
+        testnet3Mode: "singleton",
+      }),
+    );
+    testnetSingleton.isConnected.mockReturnValue(false);
+
+    await getNodeClient("testnet3");
+    const active = await getElectrumClientIfActive("testnet3");
+
+    expect(active).toBe(testnetSingleton);
+    expect(mocks.getElectrumClientForNetwork).toHaveBeenCalledWith("testnet3");
+  });
+
+  it("returns requested network pool subscription client when pool is initialized", async () => {
+    mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(
+      buildNodeConfig({
+        testnet3Enabled: true,
+        testnet3Mode: "pool",
+      }),
+    );
+
+    const active = await getElectrumClientIfActive("testnet3");
+
+    expect(active).toBe(poolSubscriptionClient);
+    expect(mocks.getElectrumPoolForNetwork).toHaveBeenCalledWith("testnet3");
+  });
+
+  it("swallows requested network pool errors and returns singleton fallback", async () => {
+    mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(
+      buildNodeConfig({
+        testnet3Enabled: true,
+        testnet3Mode: "singleton",
+      }),
+    );
+    testnetSingleton.isConnected.mockReturnValue(false);
+    await getNodeClient("testnet3");
+
+    mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce(
+      buildNodeConfig({
+        testnet3Enabled: true,
+        testnet3Mode: "pool",
+      }),
+    );
+    mocks.getElectrumPoolForNetwork.mockRejectedValueOnce(
+      new Error("pool unavailable"),
+    );
+
+    const active = await getElectrumClientIfActive("testnet3");
+    expect(active).toBe(testnetSingleton);
   });
 
   it("falls back to active singleton client when pool mode is disabled", async () => {
@@ -598,6 +652,17 @@ describe("nodeClient service", () => {
     const active = await getElectrumClientIfActive();
 
     expect(active).toBe(mainnetSingleton);
+  });
+
+  it("returns null from getElectrumClientIfActive when no pool or active singleton exists", async () => {
+    await resetNodeClient();
+    mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce(
+      buildNodeConfig({ poolEnabled: false, mainnetMode: "singleton" }),
+    );
+
+    const active = await getElectrumClientIfActive();
+
+    expect(active).toBeNull();
   });
 
   it("saves node config and returns it as active config", async () => {
@@ -702,29 +767,6 @@ describe("nodeClient service", () => {
 
     expect(client).toBe(mainnetSingleton);
     expect(mainnetSingleton.connect).not.toHaveBeenCalled();
-  });
-
-  it("reuses cached active config in getElectrumClientIfActive without reloading node config", async () => {
-    await resetNodeClient();
-    mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce(
-      buildNodeConfig({ poolEnabled: false }),
-    );
-
-    await getElectrumClientIfActive();
-    await getElectrumClientIfActive();
-
-    expect(mockPrismaClient.nodeConfig.findFirst).toHaveBeenCalledTimes(1);
-  });
-
-  it("returns null from getElectrumClientIfActive when no pool or active singleton exists", async () => {
-    await resetNodeClient();
-    mockPrismaClient.nodeConfig.findFirst.mockResolvedValueOnce(
-      buildNodeConfig({ poolEnabled: false }),
-    );
-
-    const active = await getElectrumClientIfActive();
-
-    expect(active).toBeNull();
   });
 
   it("tests node config successfully with verbose capability info", async () => {

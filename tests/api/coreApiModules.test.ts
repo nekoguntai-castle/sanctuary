@@ -96,7 +96,8 @@ describe('Core API Modules', () => {
       await bitcoinApi.syncWallet('w1');
       await bitcoinApi.syncAddress('addr-1');
       await bitcoinApi.getTransactionDetails('txid-1');
-      await bitcoinApi.broadcastTransaction({ rawTx: 'deadbeef' });
+      await bitcoinApi.getTransactionDetails('txid-3', 'testnet4');
+      await bitcoinApi.broadcastTransaction({ rawTx: 'deadbeef', network: 'signet' });
       await bitcoinApi.updateConfirmations('w1');
       await bitcoinApi.getBlockHeader(840000);
       await bitcoinApi.estimateFee({ inputCount: 1, outputCount: 2, feeRate: 10 });
@@ -108,8 +109,9 @@ describe('Core API Modules', () => {
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/address/tb1qabc', { network: 'testnet3' });
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/wallet/w1/sync');
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/address/addr-1/sync');
-      expect(mockGet).toHaveBeenCalledWith('/bitcoin/transaction/txid-1');
-      expect(mockPost).toHaveBeenCalledWith('/bitcoin/broadcast', { rawTx: 'deadbeef' });
+      expect(mockGet).toHaveBeenCalledWith('/bitcoin/transaction/txid-1', undefined);
+      expect(mockGet).toHaveBeenCalledWith('/bitcoin/transaction/txid-3', { network: 'testnet4' });
+      expect(mockPost).toHaveBeenCalledWith('/bitcoin/broadcast', { rawTx: 'deadbeef', network: 'signet' });
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/wallet/w1/update-confirmations');
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/block/840000');
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/utils/estimate-fee', {
@@ -125,6 +127,7 @@ describe('Core API Modules', () => {
 
       await bitcoinApi.getAdvancedFeeEstimates();
       await bitcoinApi.checkRBF('txid-2');
+      await bitcoinApi.checkRBF('txid-3', 'testnet3');
       await bitcoinApi.createRBFTransaction('txid-2', { walletId: 'w1', newFeeRate: 20 });
       await bitcoinApi.createCPFPTransaction({
         walletId: 'w1',
@@ -144,6 +147,7 @@ describe('Core API Modules', () => {
 
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees/advanced', undefined);
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-2/rbf-check', {});
+      expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-3/rbf-check', { network: 'testnet3' });
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-2/rbf', {
         walletId: 'w1',
         newFeeRate: 20,

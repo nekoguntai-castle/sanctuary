@@ -14,12 +14,18 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { ForbiddenError, InvalidInputError } from '../../errors/ApiError';
 import * as advancedTx from '../../services/bitcoin/advancedTx';
 import { isBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
+import { resolveBitcoinNetworkParam } from './networkParam';
 
 const router = Router();
 
 const BroadcastBodySchema = z.object({
   rawTx: z.string().min(1),
+  network: z.string().optional(),
 });
+
+const RbfCheckBodySchema = z.object({
+  network: z.string().optional(),
+}).default({});
 
 const RbfBodySchema = z.object({
   newFeeRate: z.number().positive(),
@@ -74,8 +80,9 @@ const resolveAdvancedTransactionWalletNetwork = (
  */
 router.get('/transaction/:txid', asyncHandler(async (req, res) => {
   const { txid } = req.params;
+  const network = resolveBitcoinNetworkParam(req.query.network);
 
-  const txDetails = await blockchain.getTransactionDetails(txid);
+  const txDetails = await blockchain.getTransactionDetails(txid, network);
 
   res.json(txDetails);
 }));
@@ -89,8 +96,9 @@ router.post('/broadcast', authenticate, validate(
   { message: 'rawTx is required' }
 ), asyncHandler(async (req, res) => {
   const { rawTx } = req.body;
+  const network = resolveBitcoinNetworkParam(req.body.network);
 
-  const result = await blockchain.broadcastTransaction(rawTx);
+  const result = await blockchain.broadcastTransaction(rawTx, network);
 
   res.json(result);
 }));
@@ -99,10 +107,13 @@ router.post('/broadcast', authenticate, validate(
  * POST /api/v1/bitcoin/transaction/:txid/rbf-check
  * Check if a transaction can be replaced with RBF
  */
-router.post('/transaction/:txid/rbf-check', authenticate, asyncHandler(async (req, res) => {
+router.post('/transaction/:txid/rbf-check', authenticate, validate(
+  { body: RbfCheckBodySchema }
+), asyncHandler(async (req, res) => {
   const { txid } = req.params;
+  const network = resolveBitcoinNetworkParam(req.body.network ?? req.query.network);
 
-  const result = await advancedTx.canReplaceTransaction(txid);
+  const result = await advancedTx.canReplaceTransaction(txid, network);
 
   res.json(result);
 }));

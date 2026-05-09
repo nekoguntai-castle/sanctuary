@@ -111,6 +111,7 @@ export interface SyncResult {
 
 export interface BroadcastTransactionRequest {
   rawTx: string;
+  network?: BitcoinFeeNetwork;
 }
 
 export interface BroadcastTransactionResponse {
@@ -177,8 +178,14 @@ export async function syncAddress(addressId: string): Promise<SyncResult> {
 /**
  * Get transaction details from blockchain
  */
-export async function getTransactionDetails(txid: string): Promise<BitcoinTransactionDetails> {
-  return apiClient.get<BitcoinTransactionDetails>(`/bitcoin/transaction/${txid}`);
+export async function getTransactionDetails(
+  txid: string,
+  network?: BitcoinFeeNetwork
+): Promise<BitcoinTransactionDetails> {
+  return apiClient.get<BitcoinTransactionDetails>(
+    `/bitcoin/transaction/${txid}`,
+    network ? { network } : undefined
+  );
 }
 
 /**
@@ -316,8 +323,14 @@ export async function getAdvancedFeeEstimates(network?: BitcoinFeeNetwork): Prom
 /**
  * Check if a transaction can be replaced with RBF
  */
-export async function checkRBF(txid: string): Promise<RBFCheckResult> {
-  return apiClient.post<RBFCheckResult>(`/bitcoin/transaction/${txid}/rbf-check`, {});
+export async function checkRBF(
+  txid: string,
+  network?: BitcoinFeeNetwork
+): Promise<RBFCheckResult> {
+  return apiClient.post<RBFCheckResult>(
+    `/bitcoin/transaction/${txid}/rbf-check`,
+    network ? { network } : {}
+  );
 }
 
 /**

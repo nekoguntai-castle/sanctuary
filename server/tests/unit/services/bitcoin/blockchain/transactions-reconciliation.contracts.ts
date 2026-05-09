@@ -238,7 +238,7 @@ export function registerBlockchainTransactionsReconciliationTests(): void {
 
       mockElectrumClient.subscribeAddress.mockResolvedValue(subscriptionId);
 
-      const result = await getBlockchainService().monitorAddress(address);
+      const result = await getBlockchainService().monitorAddress(address, 'testnet4');
 
       expect(result).toBe(subscriptionId);
       expect(mockElectrumClient.subscribeAddress).toHaveBeenCalledWith(address);
@@ -249,7 +249,7 @@ export function registerBlockchainTransactionsReconciliationTests(): void {
 
       mockElectrumClient.subscribeAddress.mockRejectedValue(new Error('Subscription failed'));
 
-      await expect(getBlockchainService().monitorAddress(address)).rejects.toThrow('Subscription failed');
+      await expect(getBlockchainService().monitorAddress(address, 'testnet4')).rejects.toThrow('Subscription failed');
     });
 
     it('should propagate error when client not connected', async () => {
@@ -257,7 +257,7 @@ export function registerBlockchainTransactionsReconciliationTests(): void {
 
       mockElectrumClient.subscribeAddress.mockRejectedValue(new Error('Not connected'));
 
-      await expect(getBlockchainService().monitorAddress(address)).rejects.toThrow('Not connected');
+      await expect(getBlockchainService().monitorAddress(address, 'testnet4')).rejects.toThrow('Not connected');
     });
   });
 

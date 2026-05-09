@@ -66,6 +66,8 @@ export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServic
 
       await context.syncService['setupRealTimeSubscriptions']();
 
+      expect(mockGetNodeClient).toHaveBeenCalledWith('testnet3');
+      expect(mockGetElectrumClientIfActive).toHaveBeenCalledWith('testnet3');
       expect(mockElectrumClient.subscribeHeaders).toHaveBeenCalled();
       expect(context.syncService['subscriptionOwnership']).toBe('self');
     });
@@ -356,7 +358,7 @@ export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServic
       await context.syncService['handleNewBlock']({ height: 201, hex: 'b'.repeat(80) });
 
       expect(updateSpy).toHaveBeenCalledTimes(2);
-      expect(eventService.emitNewBlock).toHaveBeenCalledWith('testnet', 200, 'a'.repeat(64));
+      expect(eventService.emitNewBlock).toHaveBeenCalledWith('testnet3', 200, 'a'.repeat(64));
       expect(mockNotificationService.broadcastNewBlock).toHaveBeenCalledWith({ height: 200 });
     });
 

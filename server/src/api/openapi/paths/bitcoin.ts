@@ -486,7 +486,7 @@ export const bitcoinPaths = {
       summary: "Get Bitcoin transaction details",
       description:
         "Get transaction details from the configured blockchain data source.",
-      parameters: [txidParameter],
+      parameters: [txidParameter, addressNetworkQueryParameter],
       responses: {
         200: jsonResponse(
           "Transaction details",
@@ -526,6 +526,9 @@ export const bitcoinPaths = {
         "Check whether a transaction can be replaced with Replace-By-Fee.",
       security: bearerAuth,
       parameters: [txidParameter],
+      requestBody: optionalJsonRequestBody(
+        "#/components/schemas/RbfCheckRequest",
+      ),
       responses: {
         200: jsonResponse(
           "RBF eligibility result",

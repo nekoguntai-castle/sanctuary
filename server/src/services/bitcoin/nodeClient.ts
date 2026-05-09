@@ -8,7 +8,6 @@
 import { ElectrumClient, getElectrumClientForNetwork, resetElectrumClient } from './electrum';
 import {
   resetElectrumPool,
-  getElectrumPool,
   getElectrumPoolForNetwork,
   resetElectrumPoolForNetwork,
   type NetworkType,
@@ -252,19 +251,19 @@ export async function resetNodeClient(network?: NetworkType): Promise<void> {
 }
 
 /**
- * Get the underlying Electrum client for subscriptions
+ * Get the underlying Electrum client for subscriptions on a network.
  * Used for subscribing to real-time notifications
  * Returns the dedicated subscription connection from the pool
  */
-export async function getElectrumClientIfActive(): Promise<ElectrumClient | null> {
-  if (!activeConfig) {
-    activeConfig = await loadNodeConfig();
-  }
+export async function getElectrumClientIfActive(
+  network: NetworkType = 'mainnet'
+): Promise<ElectrumClient | null> {
+  const networkConfig = await getNetworkModeConfig(network);
 
   // Only use pool for subscriptions if pool mode is enabled
-  if (activeConfig?.poolEnabled) {
+  if (networkConfig.mode === 'pool') {
     try {
-      const pool = getElectrumPool();
+      const pool = await getElectrumPoolForNetwork(network);
       if (pool.isPoolInitialized()) {
         // Return the dedicated subscription connection
         return await pool.getSubscriptionConnection();
@@ -275,9 +274,16 @@ export async function getElectrumClientIfActive(): Promise<ElectrumClient | null
   }
 
   // Fall back to singleton client (or use singleton when pool disabled)
-  if (activeClient) {
+  const networkClient = networkClients.get(network);
+  if (networkClient) {
+    return networkClient as ElectrumClient;
+  }
+
+  // Preserve legacy mainnet fallback for callers that still rely on activeClient.
+  if (network === 'mainnet' && activeClient) {
     return activeClient as ElectrumClient;
   }
+
   return null;
 }
 

@@ -1,6 +1,34 @@
+# Active Task: Bug Scrub Slice 4C Non-Wallet Network Context 2026-05-08
+
+Status: in progress; implementation branch `fix/bug-scrub-slice-4c`
+
+Goal: remove the final Bitcoin network-boundary allowlist entries by adding explicit network context to non-wallet Bitcoin endpoints, blockchain network helpers, and subscription bootstrap.
+
+## Plan
+
+- [x] Start a fresh Slice 4C branch from merged Slice 4B `main`.
+- [x] Add optional network input to non-wallet transaction details, raw broadcast, and RBF-check API contracts while preserving default-mainnet compatibility.
+- [x] Require explicit network arguments in transaction detail and address monitor helpers.
+- [x] Pass configured Bitcoin network into real-time subscription bootstrap.
+- [x] Update frontend API types, OpenAPI, focused route/service tests, and remove the remaining allowlist entries.
+- [x] Run focused tests, type checks, lint/guard checks, lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [ ] Confirm the network-boundary guard has zero findings and continue to the next bug-scrub slice.
+
+## Review
+
+- Non-wallet transaction details, raw broadcast, and RBF-check routes now parse optional network context and default missing values to mainnet. Legacy `testnet` still maps to `testnet3`, and invalid values fail before service calls.
+- `broadcastTransaction`, `getTransactionDetails`, and `monitorAddress` now require explicit network context at the blockchain helper layer.
+- Real-time subscription setup now checks the node client and resolves the active Electrum subscription client for the configured Bitcoin network; block-height/event updates normalize legacy configured `testnet` to `testnet3`.
+- Frontend Bitcoin API helpers and OpenAPI schemas now expose the optional network fields for non-wallet transaction detail, broadcast, and RBF-check callers.
+- Removed the final 5 entries from `scripts/quality/bitcoin-network-boundary-allowlist.json`; the Bitcoin network-boundary guard now passes with zero findings.
+- Local verification passed: focused Bitcoin API, OpenAPI, blockchainService, syncService, nodeClient, and frontend core API tests; server source/test typechecks; frontend app/test typechecks; server build; `npm run lint:server`; `npm run lint:app`; touched-file lizard; and `git diff --check`.
+
+---
+
 # Active Task: Bug Scrub Slice 4B Advanced Transaction Network Context 2026-05-08
 
-Status: in progress; implementation branch `fix/bug-scrub-slice-4b`
+Status: complete; PR #325 merged as `fe0c3135`
 
 Goal: deliver the wallet-scoped advanced transaction and legacy PSBT portion of Slice 4 by deriving wallet network context for RBF/CPFP/batch creation and using that same network for legacy previous-transaction fetches.
 
@@ -13,8 +41,8 @@ Goal: deliver the wallet-scoped advanced transaction and legacy PSBT portion of 
 - [x] Update focused route/service tests to prove network propagation, legacy `testnet` normalization, and invalid wallet-network rejection where applicable.
 - [x] Remove Slice 4B allowlist entries and prove the guard count drops again.
 - [x] Run focused tests, type checks, lint/guard checks, lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
-- [ ] Continue to the remaining non-wallet endpoint and subscription slice after this PR is merged.
+- [x] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [x] Continue to the remaining non-wallet endpoint and subscription slice after this PR is merged.
 
 ## Review
 
@@ -24,6 +52,7 @@ Goal: deliver the wallet-scoped advanced transaction and legacy PSBT portion of 
 - Removed 9 Slice 4B findings from `scripts/quality/bitcoin-network-boundary-allowlist.json`; the guard now passes with 5 allowed findings left.
 - Added `docs/plans/bug-scrub-slice-4b-advanced-transaction-network-context.md` to capture the contract and remaining non-wallet compatibility work.
 - Local verification passed: focused Bitcoin API, advancedTx, and transactionService tests; server test typecheck; server build; `npm run lint:server`; touched-file lizard; and `git diff --check`.
+- PR #325 merged at `2026-05-08T16:27:31-10:00` as squash commit `fe0c313567aaebcf3ef7eb4bcff97f92fb06e659`; local `main` was fast-forwarded and the local/remote Slice 4B branches were deleted.
 
 ---
 

@@ -18,12 +18,10 @@ const log = createLogger('BITCOIN:SVC_BLOCKCHAIN');
 /**
  * Broadcast a transaction to the selected network.
  *
- * The network remains optional for legacy walletless API callers that are still
- * tracked in the Slice 4 compatibility backlog.
  */
 export async function broadcastTransaction(
   rawTx: string,
-  network?: BitcoinNetwork
+  network: BitcoinNetwork
 ): Promise<{
   txid: string;
   broadcasted: boolean;
@@ -76,8 +74,11 @@ export async function getFeeEstimates(network: BitcoinNetwork): Promise<FeeEstim
 /**
  * Get transaction details from blockchain
  */
-export async function getTransactionDetails(txid: string): Promise<TransactionDetails> {
-  const client = await getNodeClient();
+export async function getTransactionDetails(
+  txid: string,
+  network: BitcoinNetwork
+): Promise<TransactionDetails> {
+  const client = await getNodeClient(network);
 
   return client.getTransaction(txid, true);
 }
@@ -86,8 +87,11 @@ export async function getTransactionDetails(txid: string): Promise<TransactionDe
  * Monitor address for new transactions
  * Subscribe to address and get notifications
  */
-export async function monitorAddress(address: string): Promise<string | null> {
-  const client = await getNodeClient();
+export async function monitorAddress(
+  address: string,
+  network: BitcoinNetwork
+): Promise<string | null> {
+  const client = await getNodeClient(network);
 
   return client.subscribeAddress(address);
 }
