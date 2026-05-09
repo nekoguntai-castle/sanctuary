@@ -8,9 +8,9 @@ Status: Draft
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: 242b4e60 (working tree dirty)
+**Commit**: 03cb38b8 (working tree dirty)
 
-This refresh covers `main` after the node-client test split merge plus the current wallet create-account selection split working tree. The earlier audit found and fixed a real coverage hard-fail in newly added Bitcoin network-context branches; the current maintainability loop is reducing large test-file warnings where a clean split exists.
+This refresh covers `main` after the wallet create-account selection split merge plus the current mempool test split working tree. The earlier audit found and fixed a real coverage hard-fail in newly added Bitcoin network-context branches; the current maintainability loop is reducing large test-file warnings where a clean split exists.
 
 ---
 
@@ -35,7 +35,7 @@ Important non-blocking findings:
 | --- | ---: | --- |
 | Correctness | 18/20 | Tests, lint, typecheck, API body validation, blocking-I/O guard, and Bitcoin network-boundary guard pass. Functional completeness remains medium until hardware-in-loop signed wallet fixtures are complete. |
 | Reliability | 15/15 | Inspected broadcast, draft-update, node-client, and timeout/retry paths use explicit errors, retry boundaries, and contextual handling. |
-| Maintainability | 14/15 | Lizard passes with zero warnings and jscpd is 1.68%; admin operations E2E, node-client tests, and wallet create-account selection tests were split below the warning band, but the largest-file criterion stays partial because remaining test warnings are still in the 500-1000 LOC band. |
+| Maintainability | 14/15 | Lizard passes with zero warnings and jscpd is 1.68%; admin operations E2E, node-client, wallet create-account selection, and mempool tests were split below the warning band, but the largest-file criterion stays partial because remaining test warnings are still in the 500-1000 LOC band. |
 | Security | 15/15 | `npm audit --audit-level=high` reports 0 high/critical advisories; tracked-tree gitleaks is clean; Zod validation remains present at trust boundaries. |
 | Performance | 10/10 | No new hot-path blocking I/O; broadcast/node-client changes preserve async I/O and bounded guardrails. |
 | Test Quality | 15/15 | Full coverage is restored to 100% across frontend, server, and gateway with focused tests for the surfaced edge cases. |
@@ -65,7 +65,7 @@ Important non-blocking findings:
 | secrets | 0 tracked-tree leaks | `GITLEAKS_BIN=/home/nekoguntai/.local/bin/gitleaks bash scripts/gitleaks-tracked-tree.sh` | Security 4.2 -> +4 |
 | complexity | 0 warnings | `npm run quality:lizard` | Maintainability 3.1 -> +5 |
 | duplication | 1.68% duplicated lines, 259 exact clones | `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .` | Maintainability 3.2 -> +3 |
-| largest file | 850 lines (`server/tests/unit/services/bitcoin/mempool.test.ts`); 0 files over 1000 LOC; wallet create-account selection is now split into 731 LOC and 234 LOC modules | `node scripts/quality/check-large-files.mjs` | Maintainability 3.3 -> +1 |
+| largest file | 808 lines (`server/tests/unit/assistant/consoleService.test.ts`); 0 files over 1000 LOC; mempool tests are now split into 656 LOC and 277 LOC modules | `node scripts/quality/check-large-files.mjs` | Maintainability 3.3 -> +1 |
 | deploy artifacts | 2 | `grade.sh`: Dockerfile/Compose plus GitHub Actions | Operational Readiness 7.1 -> +3 |
 | health endpoints | 198 heuristic hits | `grade.sh` heuristics; prior inspection of `server/src/api/health/routes.ts` | Operational Readiness 7.2 -> +2 |
 | observability library | present | `grade.sh` heuristics; inspected tracing/logging paths | Operational Readiness 7.3 -> +2 |
@@ -81,8 +81,8 @@ Important non-blocking findings:
 - **[2.1] Error handling quality - High -> +6**: transaction broadcast and draft update paths now cover unsupported wallet networks, missing drafts, non-actionable approvals, optimistic conflicts, and invalid legacy draft UTXO references with explicit error behavior.
 - **[2.2] Timeouts and retries - High -> +4**: request-level timeouts and async retry utilities remain in place; draft signature updates retain bounded optimistic retries.
 - **[2.3] Crash-prone paths - High -> +5**: inspected production changes avoid assertion-style crashes and either test or document unreachable legacy fallback behavior.
-- **[3.4] Architecture clarity - High -> +3**: the codebase keeps clear API/service/repository boundaries; the admin operations, node-client, and wallet create-account splits follow existing helper/register patterns instead of creating new harness styles.
-- **[3.5] Readability/naming - High -> +2**: admin operations scenarios now read as browser behaviors, node-client tests are grouped by service behavior, and wallet validation cases are isolated from account-selection scenarios.
+- **[3.4] Architecture clarity - High -> +3**: the codebase keeps clear API/service/repository boundaries; large-test splits follow existing helper/register patterns instead of creating new harness styles.
+- **[3.5] Readability/naming - High -> +2**: admin operations, node-client, wallet validation, and mempool dashboard-formatting cases are grouped by behavior instead of mixed into oversized proof files.
 - **[4.3] Input validation quality - High -> +3**: Zod/body-validation guard still passes, and unsupported wallet network values fail before broadcast service calls.
 - **[4.4] Safe system/API usage - High -> +3**: no dangerous user-input shell/eval patterns were added; gitleaks tracked-tree scan is clean.
 - **[5.1] Hot-path efficiency - High -> +5**: broadcast and node-client changes preserve existing async service boundaries.
@@ -103,7 +103,7 @@ Important non-blocking findings:
 ## Top Risks
 
 1. Physical hardware-in-loop wallet proof remains incomplete - real-device PSBT signing confidence still depends on 11 missing required Ledger/Trezor/BitBox fixture rows; 4 Ledger/BitBox multisig rows are now explicitly blocked as unsupported.
-2. The largest-file point remains partial because three test/proof files are still in the 800-1000 LOC warning band; `e2e/admin-operations.spec.ts`, `server/tests/unit/services/bitcoin/nodeClient.test.ts`, and `server/tests/unit/services/wallet/create-account-selection.contracts.ts` are no longer part of that warning inventory.
+2. The largest-file point remains partial because two test/proof files are still in the 800-1000 LOC warning band; admin operations, node-client, wallet create-account selection, and mempool tests are no longer part of that warning inventory.
 3. Low-severity elliptic-family dependency advisories remain with no safe automatic fix; avoid forced upgrades without hardware-wallet compatibility testing.
 
 ## Fastest Improvements
@@ -138,7 +138,7 @@ Important non-blocking findings:
 ## Next Slice Queue
 
 1. **Physical Hardware Fixture Capture**: capture the 11 required Ledger/Trezor/BitBox signing artifacts on real devices. Exit with `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` passing.
-2. **Remaining Large Test/Proof Files**: review `server/tests/unit/services/bitcoin/mempool.test.ts`, `server/tests/unit/assistant/consoleService.test.ts`, and `server/tests/unit/services/draftService.test.ts` for clean split/classification opportunities. Exit with the large-file warning inventory reduced or explicitly justified, plus focused tests and lizard.
+2. **Remaining Large Test/Proof Files**: review `server/tests/unit/assistant/consoleService.test.ts` and `server/tests/unit/services/draftService.test.ts` for clean split/classification opportunities. Exit with the large-file warning inventory reduced or explicitly justified, plus focused tests and lizard.
 
 ## Verification Notes
 
@@ -171,4 +171,8 @@ Important non-blocking findings:
 - `npm run typecheck:server:tests` - passed after the wallet create-account validation split.
 - `npm run quality:lizard -- server/tests/unit/services/wallet/create-account-selection.contracts.ts server/tests/unit/services/wallet/create-account-selection.validation.contracts.ts` - passed after the split.
 - `node scripts/quality/check-large-files.mjs` - passed; `server/tests/unit/services/wallet/create-account-selection.contracts.ts` dropped out of the warning inventory, and the largest remaining test file is 850 LOC.
+- `npm --prefix server test -- --run tests/unit/services/bitcoin/mempool.test.ts` - passed, 29 tests after the mempool dashboard-formatting split.
+- `npm run typecheck:server:tests` - passed after the mempool dashboard-formatting split.
+- `npm run quality:lizard -- server/tests/unit/services/bitcoin/mempool.test.ts server/tests/unit/services/bitcoin/mempool.dashboard-formatting.contracts.ts` - passed after the split.
+- `node scripts/quality/check-large-files.mjs` - passed; `server/tests/unit/services/bitcoin/mempool.test.ts` dropped out of the warning inventory, and the largest remaining test file is 808 LOC.
 - `git diff --check` - passed.

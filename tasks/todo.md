@@ -1,6 +1,34 @@
+# Active Task: Mempool Test Large-File Split 2026-05-08
+
+Status: in progress; branch `test/mempool-large-file-split`
+
+Goal: reduce the next largest remaining test-file warning, `server/tests/unit/services/bitcoin/mempool.test.ts` at 850 LOC, without changing mempool service behavior or weakening branch coverage.
+
+## Plan
+
+- [x] Inspect the current mempool test setup, helper usage, and dashboard/formatting scenario groups.
+- [x] Choose a cohesive split boundary that drops the file below the warning band without duplicating axios/prisma mock setup.
+- [x] Move the selected scenarios into a smaller register module, passing shared mocks/helpers explicitly.
+- [x] Run focused mempool tests, server test typecheck, touched-file lizard, large-file check, and `git diff --check`.
+- [x] Review for hidden risk: no fake timer leaks, no assertion weakening, and no service code edits.
+- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+
+## Review
+
+- The clean boundary was the dashboard confirmed-block formatting and aggregation fallback scenarios at the bottom of `mempool.test.ts`.
+- Moved those cases into `server/tests/unit/services/bitcoin/mempool.dashboard-formatting.contracts.ts`, passing the existing hoisted axios/prisma mocks, `mockBlocks`, and `getBlocksAndMempool` explicitly.
+- Kept the axios/prisma `vi.mock` setup in `mempool.test.ts`; the new module imports no service implementation directly except a type-only reference.
+- Wrapped the moved fake-timer scenario in `try/finally` so `vi.useRealTimers()` runs even if an assertion fails.
+- `server/tests/unit/services/bitcoin/mempool.test.ts` dropped from 850 lines to 656 lines; the new module is 277 lines, so this surface is no longer in the large-file warning inventory.
+- The large-file check now reports two test warnings instead of three; the next largest local candidate is `server/tests/unit/assistant/consoleService.test.ts` at 808 LOC.
+- Verification passed locally: focused mempool Vitest run (29 tests), server test typecheck, touched-file lizard, large-file classification check, and `git diff --check`.
+
+---
+
 # Active Task: Wallet Create-Account Selection Large-File Split 2026-05-08
 
-Status: in progress; branch `test/wallet-create-account-large-file-split`
+Status: complete; PR #333 merged as `03cb38b8`
 
 Goal: reduce the next largest remaining test-file warning, `server/tests/unit/services/wallet/create-account-selection.contracts.ts` at 948 LOC, while preserving the wallet account-selection proof shape.
 
@@ -12,8 +40,8 @@ Goal: reduce the next largest remaining test-file warning, `server/tests/unit/se
 - [x] Remove imports that become provably unused after the split.
 - [x] Run focused wallet service tests, server test typecheck, touched-file lizard, large-file check, and `git diff --check`.
 - [x] Review for hidden risk: no assertion weakening, no wallet service behavior edits, and no mock setup changes.
-- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
-- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+- [x] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [x] Re-check the queue after merge; physical hardware capture remains blocked by device access.
 
 ## Review
 
@@ -23,6 +51,8 @@ Goal: reduce the next largest remaining test-file warning, `server/tests/unit/se
 - `server/tests/unit/services/wallet/create-account-selection.contracts.ts` dropped from 948 lines to 731 lines; the validation module is 234 lines, so this surface is no longer in the large-file warning inventory.
 - The large-file check now reports three test warnings instead of four; the next largest local candidate is `server/tests/unit/services/bitcoin/mempool.test.ts` at 850 LOC.
 - Verification passed locally: focused wallet service Vitest run (66 tests), server test typecheck, touched-file lizard, large-file classification check, and `git diff --check`.
+- PR #333 merged at `2026-05-08T18:31:50-10:00` as squash commit `03cb38b85fad43606dda1a5ed34e09c2c5af6679`; local `main` was fast-forwarded and the local/remote `test/wallet-create-account-large-file-split` branches were deleted.
+- Post-merge `main` verification passed: focused wallet service Vitest run, 66 tests; large-file classification check passed with wallet create-account selection removed from the warning inventory.
 
 ---
 
