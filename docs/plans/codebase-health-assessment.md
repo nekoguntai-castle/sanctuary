@@ -189,6 +189,19 @@ These domain scores are the original scrub scores; per-finding statuses below re
 - Some tests encode current unsafe behavior instead of desired product/security invariants, especially backup restore and missing transaction metadata paths.
 - Hardware-wallet correctness still depends on physical artifacts that are not committed.
 
+## External Benchmark Addendum: Specter Desktop
+
+Added 2026-05-09: `docs/plans/specter-desktop-comparison.md` compares Sanctuary against Specter Desktop at `cryptoadvance/specter-desktop@9e43afb`. The follow-up remediation plan is `docs/plans/fund-safety-gap-closure-plan.md`.
+
+Benchmark takeaways:
+
+- Specter is stronger as a mature Bitcoin-domain reference: Bitcoin Core/HWI orientation, broad airgapped hardware-wallet support, descriptor/xpub checks, PSBT-first flows, `testmempoolaccept` broadcast preflight, live `bitcoind`/`elementsd` CI, and user-verifiable release checksums/signatures.
+- Sanctuary should keep its stricter engineering/security gates: typed API validation, cookie/CSRF auth, token revocation work, fail-closed deployment defaults, npm audit, gitleaks, Semgrep, actionlint, lizard, jscpd, large-file checks, and release-gate documentation.
+- Sanctuary should not copy Specter's weaker patterns: high-complexity funds/auth functions, broad exception handling in transaction paths, localhost-oriented auth defaults, conditional release signing, and untriaged example secrets.
+- The highest-trust gap for Sanctuary remains release-grade hardware evidence: physical Ledger/Trezor/BitBox signed artifacts are still missing from the fixture matrix, so the current posture remains software-vector-grade rather than full hardware-in-loop funds-loss-grade.
+
+Verification note from the 2026-05-09 benchmark run: elevated `CI=true GRADE_TIMEOUT=180 bash /home/nekoguntai/.codex/skills/grade/grade.sh` passed 6,063 root Vitest tests, but aggregate coverage was 99.98% lines/statements/functions and 99.95% branches instead of the strict 100% target, and lizard reported 2 warnings. Follow-up baseline cleanup restored the strict mechanical baseline: `npm run coverage` now reports frontend, server, and gateway at 100% lines/statements/functions/branches.
+
 ---
 
 ## Fastest Improvements

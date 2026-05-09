@@ -1,3 +1,25 @@
+# Active Task: Specter Benchmark And Fund-Safety Plan Delivery 2026-05-09
+
+Status: completed
+
+Goal: deliver the Specter Desktop comparison report and implementation-grade fund-safety gap-closure plan after the strict baseline cleanup landed on `main`.
+
+## Plan
+
+- [x] Move the Specter comparison and gap-closure plan onto a fresh branch from `origin/main`.
+- [x] Preserve the current strict baseline status from PR #368/#369 instead of recommitting stale local branch changes.
+- [x] Cross-link the report and closure plan from the health assessment.
+- [x] Run documentation/diff verification and deliver through PR.
+
+## Review
+
+- Added `docs/plans/specter-desktop-comparison.md`, benchmarking Specter Desktop at `9e43afb` against Sanctuary's current architecture, quality gates, hardware-wallet validation runbook, release gate docs, and health report.
+- Added `docs/plans/fund-safety-gap-closure-plan.md`, with sequenced workstreams for baseline cleanup, canonical broadcast invariants, physical hardware signing evidence, release artifact verification, descriptor/xpub validation, fail-closed safety code, and threat-model/external-review readiness.
+- Cross-linked both docs from `docs/plans/codebase-health-assessment.md` and recorded that the strict mechanical baseline is now restored by the final rollup coverage work.
+- Verification: `git diff --check`, `npx vitest run tests/docs/readme-links.test.ts tests/docs/remarkMermaidClickRewrite.test.ts`, and `npm run docs:build` passed. `npm run test:docs` is not defined in this repository.
+
+---
+
 # Active Task: Final Rollup Fatal Handler Coverage 2026-05-09
 
 Status: completed; PR #368 merged as `0e7da5c3`
