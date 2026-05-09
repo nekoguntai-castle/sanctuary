@@ -177,6 +177,11 @@ export const bitcoinSchemas = {
       outputCount: { type: "integer", minimum: 1 },
       priority: { $ref: "#/components/schemas/BitcoinFeePriority" },
       scriptType: { $ref: "#/components/schemas/BitcoinScriptType" },
+      network: {
+        type: "string",
+        enum: ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
+        default: "mainnet",
+      },
     },
     required: ["inputCount", "outputCount"],
     additionalProperties: false,

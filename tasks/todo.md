@@ -1,6 +1,35 @@
+# Active Task: Bug Scrub Slice 4A Fee Network Context 2026-05-08
+
+Status: in progress; implementation branch `fix/bug-scrub-slice-4`
+
+Goal: deliver the fee-estimation portion of Slice 4 by adding explicit network context to fee APIs and fee services, then shrinking the Bitcoin network-boundary allowlist again.
+
+## Plan
+
+- [x] Start a fresh Slice 4 branch from merged Slice 3 `main`.
+- [x] Add a shared Bitcoin network request parser for `/api/v1/bitcoin` routes.
+- [x] Make `/bitcoin/fees`, `/bitcoin/fees/advanced`, and `/bitcoin/utils/estimate-optimal-fee` accept optional network context while preserving default-mainnet compatibility.
+- [x] Thread fee network context through `getCurrentFeeEstimates`, advanced fee estimation, and low-level Electrum fee estimates.
+- [x] Update frontend fee API typing and the send-page fee load to pass the wallet network.
+- [x] Update OpenAPI and focused route/service tests for network propagation and invalid network rejection.
+- [x] Remove fee-related Slice 4 allowlist entries and prove the guard count drops.
+- [x] Run focused tests, type checks, lint/guard checks, lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [ ] Continue to the next Slice 4 sub-slice after this PR is merged.
+
+## Review
+
+- Added `resolveBitcoinNetworkParam` for Bitcoin routes so optional network values default to mainnet, legacy `testnet` maps to Testnet3, and invalid values are rejected before backend services run.
+- Fee routes now pass explicit network context into current fee estimates, advanced fee estimates, and optimal fee estimation. `getCurrentFeeEstimates` selects the configured mempool estimator for the requested network when configured and otherwise falls back to Electrum on that network.
+- Frontend fee API helpers accept optional network context; dashboard and UTXO fee queries now include network in their React Query keys, and the send page loads fees for the wallet network.
+- Added `docs/plans/bug-scrub-slice-4a-fee-network-context.md` to document the compatibility behavior and remaining Slice 4 findings.
+- Local verification passed: focused server Bitcoin API, advancedTx, blockchain, and OpenAPI tests; focused frontend API/query/dashboard/UTXO tests; server source/test typechecks; frontend app/test typechecks; `npm run lint:server`; `npm run lint:app`; touched-file lizard; and `git diff --check`.
+
+---
+
 # Active Task: Bug Scrub Slice 3 Broadcast Network Context 2026-05-08
 
-Status: in progress; implementation branch `fix/bug-scrub-slice-3`
+Status: complete; PR #323 merged as `eb6c0f84`
 
 Goal: deliver Slice 3 through PR by deriving wallet network context before broadcast parsing/submission, passing that network through wallet-scoped broadcast persistence, and shrinking the Bitcoin network-boundary allowlist.
 
@@ -14,8 +43,8 @@ Goal: deliver Slice 3 through PR by deriving wallet network context before broad
 - [x] Remove Slice 3 entries from the Bitcoin network-boundary allowlist.
 - [x] Add focused route, broadcast-service, blockchain-helper, and guard regression coverage.
 - [x] Run focused tests, type checks, lint/guard checks, lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
-- [ ] Continue to Slice 4 after Slice 3 is merged.
+- [x] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [x] Continue to Slice 4 after Slice 3 is merged.
 
 ## Review
 
@@ -23,6 +52,7 @@ Goal: deliver Slice 3 through PR by deriving wallet network context before broad
 - `broadcastAndSave` now requires a network in metadata and passes it into raw transaction broadcast. The low-level raw broadcast helper calls `getNodeClient(network)`, while the walletless raw Bitcoin endpoint remains a Slice 4 compatibility decision.
 - Added `docs/plans/bug-scrub-slice-3-broadcast-network-context.md` to capture the network-context contract and remaining non-wallet compatibility boundary.
 - Local verification passed: focused transaction HTTP route, broadcast-service, and blockchain service tests; server test typecheck; server build; `npm run lint:server`; touched-file lizard; and `git diff --check`.
+- PR #323 merged at `2026-05-08T16:06:32-10:00` as squash commit `eb6c0f84e2531215c0c67bde7e1359f4eef31359`; local `main` was fast-forwarded and the local/remote Slice 3 branches were deleted.
 
 ---
 

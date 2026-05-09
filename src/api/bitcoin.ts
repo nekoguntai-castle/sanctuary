@@ -88,6 +88,7 @@ export interface AddressInfo {
 
 export type BitcoinDashboardNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet';
 export type BitcoinStatusNetwork = BitcoinDashboardNetwork;
+export type BitcoinFeeNetwork = BitcoinStatusNetwork | 'regtest';
 
 export interface ValidateAddressRequest {
   address: string;
@@ -140,8 +141,8 @@ export async function getStatus(network: BitcoinStatusNetwork = 'mainnet'): Prom
 /**
  * Get current fee estimates
  */
-export async function getFeeEstimates(): Promise<FeeEstimates> {
-  return apiClient.get<FeeEstimates>('/bitcoin/fees');
+export async function getFeeEstimates(network?: BitcoinFeeNetwork): Promise<FeeEstimates> {
+  return apiClient.get<FeeEstimates>('/bitcoin/fees', network ? { network } : undefined);
 }
 
 /**
@@ -295,6 +296,7 @@ export interface OptimalFeeRequest {
   outputCount: number;
   priority?: 'fastest' | 'fast' | 'medium' | 'slow' | 'minimum';
   scriptType?: 'legacy' | 'nested_segwit' | 'native_segwit' | 'taproot';
+  network?: BitcoinFeeNetwork;
 }
 
 export interface OptimalFeeResponse {
@@ -307,8 +309,8 @@ export interface OptimalFeeResponse {
 /**
  * Get advanced fee estimates with time predictions
  */
-export async function getAdvancedFeeEstimates(): Promise<AdvancedFeeEstimates> {
-  return apiClient.get<AdvancedFeeEstimates>('/bitcoin/fees/advanced');
+export async function getAdvancedFeeEstimates(network?: BitcoinFeeNetwork): Promise<AdvancedFeeEstimates> {
+  return apiClient.get<AdvancedFeeEstimates>('/bitcoin/fees/advanced', network ? { network } : undefined);
 }
 
 /**

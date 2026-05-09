@@ -2,33 +2,6 @@
   "version": 1,
   "entries": [
     {
-      "file": "server/src/api/bitcoin/fees.ts",
-      "functionName": "<module>",
-      "callee": "getCurrentFeeEstimates",
-      "issue": "missing-required-network-argument",
-      "reason": "Fee endpoints are still network-blind and will be fixed when fee/mempool contracts carry an explicit network source.",
-      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/api/bitcoin/fees.ts",
-      "functionName": "<module>",
-      "callee": "advancedTx.getAdvancedFeeEstimates",
-      "issue": "missing-required-network-argument",
-      "reason": "Advanced fee endpoints currently call global fee services without a request or wallet network.",
-      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/api/bitcoin/fees.ts",
-      "functionName": "<module>",
-      "callee": "advancedTx.estimateOptimalFee",
-      "issue": "missing-required-network-argument",
-      "reason": "Optimal-fee estimation is network-backed but the public endpoint has no network contract yet.",
-      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
       "file": "server/src/api/bitcoin/transactions.ts",
       "functionName": "<module>",
       "callee": "blockchain.broadcastTransaction",
@@ -74,24 +47,6 @@
       "targetRemovalSlice": "Slice 4"
     },
     {
-      "file": "server/src/services/bitcoin/advancedTx/feeEstimation.ts",
-      "functionName": "getAdvancedFeeEstimates",
-      "callee": "getNodeClient",
-      "issue": "missing-required-network-argument",
-      "reason": "Advanced fee estimation still defaults node-client selection until fee APIs carry network context.",
-      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/services/bitcoin/advancedTx/feeEstimation.ts",
-      "functionName": "estimateOptimalFee",
-      "callee": "getAdvancedFeeEstimates",
-      "issue": "missing-required-network-argument",
-      "reason": "Optimal-fee helper calls advanced estimates without network context.",
-      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
       "file": "server/src/services/bitcoin/advancedTx/rbf.ts",
       "functionName": "canReplaceTransaction",
       "callee": "getNodeClient",
@@ -111,15 +66,6 @@
     },
     {
       "file": "server/src/services/bitcoin/blockchain/networkOperations.ts",
-      "functionName": "getFeeEstimates",
-      "callee": "getNodeClient",
-      "issue": "missing-required-network-argument",
-      "reason": "Low-level fee helper still picks the default node client.",
-      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/services/bitcoin/blockchain/networkOperations.ts",
       "functionName": "getTransactionDetails",
       "callee": "getNodeClient",
       "issue": "missing-required-network-argument",
@@ -134,15 +80,6 @@
       "issue": "missing-required-network-argument",
       "reason": "Address monitoring must either be removed from default-client helpers or receive explicit network.",
       "owner": "P0: Decide and fix non-wallet Bitcoin endpoint network contracts",
-      "targetRemovalSlice": "Slice 4"
-    },
-    {
-      "file": "server/src/services/bitcoin/feeService.ts",
-      "functionName": "getCurrentFeeEstimates",
-      "callee": "blockchain.getFeeEstimates",
-      "issue": "missing-required-network-argument",
-      "reason": "Current fee estimates call the low-level fee helper without network context.",
-      "owner": "P0: Make fee, advanced fee, and mempool estimates network-aware",
       "targetRemovalSlice": "Slice 4"
     },
     {

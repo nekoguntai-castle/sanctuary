@@ -6,6 +6,7 @@
  */
 
 import { getNodeClient } from '../nodeClient';
+import type { BitcoinNetwork } from '../networks';
 import { estimateTransactionSize, calculateFee } from '../utils';
 import { getErrorMessage } from '../../../utils/errors';
 import { log } from './shared';
@@ -13,7 +14,7 @@ import { log } from './shared';
 /**
  * Get detailed fee estimates with time predictions
  */
-export async function getAdvancedFeeEstimates(): Promise<{
+export async function getAdvancedFeeEstimates(network: BitcoinNetwork = 'mainnet'): Promise<{
   fastest: { feeRate: number; blocks: number; minutes: number };
   fast: { feeRate: number; blocks: number; minutes: number };
   medium: { feeRate: number; blocks: number; minutes: number };
@@ -21,7 +22,7 @@ export async function getAdvancedFeeEstimates(): Promise<{
   minimum: { feeRate: number; blocks: number; minutes: number };
 }> {
   // Use nodeClient which respects poolEnabled setting from node_configs
-  const client = await getNodeClient();
+  const client = await getNodeClient(network);
 
   try {
     const [fastest, fast, medium, slow, minimum] = await Promise.all([
@@ -59,14 +60,15 @@ export async function estimateOptimalFee(
   inputCount: number,
   outputCount: number,
   priority: 'fastest' | 'fast' | 'medium' | 'slow' | 'minimum' = 'medium',
-  scriptType: 'legacy' | 'nested_segwit' | 'native_segwit' | 'taproot' = 'native_segwit'
+  scriptType: 'legacy' | 'nested_segwit' | 'native_segwit' | 'taproot' = 'native_segwit',
+  network: BitcoinNetwork = 'mainnet'
 ): Promise<{
   fee: number;
   feeRate: number;
   size: number;
   confirmationTime: string;
 }> {
-  const fees = await getAdvancedFeeEstimates();
+  const fees = await getAdvancedFeeEstimates(network);
   const feeData = fees[priority];
   const size = estimateTransactionSize(inputCount, outputCount, scriptType);
   const fee = calculateFee(size, feeData.feeRate);

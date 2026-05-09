@@ -44,8 +44,8 @@ export async function broadcastTransaction(
 /**
  * Get fee estimates for different confirmation targets
  */
-export async function getFeeEstimates(): Promise<FeeEstimates> {
-  const client = await getNodeClient();
+export async function getFeeEstimates(network: BitcoinNetwork): Promise<FeeEstimates> {
+  const client = await getNodeClient(network);
 
   try {
     const [fastest, halfHour, hour, economy] = await Promise.all([

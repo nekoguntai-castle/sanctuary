@@ -29,6 +29,7 @@ export const registerBitcoinFeeRouteTests = () => {
         const response = await request(app).get('/bitcoin/fees');
 
         expect(response.status).toBe(200);
+        expect(mockMempool.getRecommendedFees).toHaveBeenCalledWith('mainnet');
         expect(response.body).toMatchObject({
           fastest: 50,
           halfHour: 30,
@@ -55,6 +56,7 @@ export const registerBitcoinFeeRouteTests = () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('source', 'electrum');
+        expect(mockBlockchain.getFeeEstimates).toHaveBeenCalledWith('mainnet');
       });
 
       it('should use electrum when no feeEstimatorUrl configured', async () => {
@@ -72,6 +74,34 @@ export const registerBitcoinFeeRouteTests = () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('source', 'electrum');
+        expect(mockBlockchain.getFeeEstimates).toHaveBeenCalledWith('mainnet');
+      });
+
+      it('passes query network to the configured network fee estimator', async () => {
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({
+          feeEstimatorUrl: 'https://mempool.space',
+          testnet4FeeEstimatorUrl: 'https://mempool.space/testnet4',
+        });
+        mockMempool.getRecommendedFees.mockResolvedValue({
+          fastestFee: 3,
+          halfHourFee: 2,
+          hourFee: 1,
+          economyFee: 1,
+          minimumFee: 1,
+        });
+
+        const response = await request(app).get('/bitcoin/fees?network=testnet4');
+
+        expect(response.status).toBe(200);
+        expect(mockMempool.getRecommendedFees).toHaveBeenCalledWith('testnet4');
+      });
+
+      it('rejects invalid fee networks', async () => {
+        const response = await request(app).get('/bitcoin/fees?network=dogecoin');
+
+        expect(response.status).toBe(400);
+        expect(mockMempool.getRecommendedFees).not.toHaveBeenCalled();
+        expect(mockBlockchain.getFeeEstimates).not.toHaveBeenCalled();
       });
 
       it('should default minimum fee to 1 when electrum economy fee is missing', async () => {
@@ -116,6 +146,16 @@ export const registerBitcoinFeeRouteTests = () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual(advancedFees);
+        expect(mockAdvancedTx.getAdvancedFeeEstimates).toHaveBeenCalledWith('mainnet');
+      });
+
+      it('passes query network to advanced fee estimates', async () => {
+        mockAdvancedTx.getAdvancedFeeEstimates.mockResolvedValue({});
+
+        const response = await request(app).get('/bitcoin/fees/advanced?network=signet');
+
+        expect(response.status).toBe(200);
+        expect(mockAdvancedTx.getAdvancedFeeEstimates).toHaveBeenCalledWith('signet');
       });
 
       it('should return 500 on error', async () => {
@@ -215,7 +255,17 @@ export const registerBitcoinFeeRouteTests = () => {
           .post('/bitcoin/utils/estimate-optimal-fee')
           .send({ inputCount: 2, outputCount: 2, priority: 'high' });
 
-        expect(mockAdvancedTx.estimateOptimalFee).toHaveBeenCalledWith(2, 2, 'high', 'native_segwit');
+        expect(mockAdvancedTx.estimateOptimalFee).toHaveBeenCalledWith(2, 2, 'high', 'native_segwit', 'mainnet');
+      });
+
+      it('passes request network to optimal fee estimation', async () => {
+        mockAdvancedTx.estimateOptimalFee.mockResolvedValue({});
+
+        await request(app)
+          .post('/bitcoin/utils/estimate-optimal-fee')
+          .send({ inputCount: 2, outputCount: 2, network: 'testnet3' });
+
+        expect(mockAdvancedTx.estimateOptimalFee).toHaveBeenCalledWith(2, 2, 'medium', 'native_segwit', 'testnet3');
       });
 
       it('should return 400 when inputCount is missing', async () => {

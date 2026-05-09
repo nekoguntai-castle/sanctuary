@@ -327,6 +327,7 @@ export const bitcoinPaths = {
       tags: ["Bitcoin"],
       summary: "Get fee estimates",
       description: "Get current Bitcoin network fee estimates",
+      parameters: [addressNetworkQueryParameter],
       responses: {
         200: {
           description: "Fee estimates",
@@ -345,6 +346,7 @@ export const bitcoinPaths = {
       summary: "Get advanced fee estimates",
       description:
         "Get fee estimates with confirmation-target block and minute predictions.",
+      parameters: [addressNetworkQueryParameter],
       responses: {
         200: jsonResponse(
           "Advanced fee estimates",

@@ -232,7 +232,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
         .mockResolvedValueOnce(15) // 6 blocks
         .mockResolvedValueOnce(5);  // 12 blocks
 
-      const estimates = await getBlockchainService().getFeeEstimates();
+      const estimates = await getBlockchainService().getFeeEstimates('testnet4');
 
       expect(estimates.fastest).toBe(50);
       expect(estimates.halfHour).toBe(30);
@@ -247,7 +247,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
         .mockResolvedValueOnce(0.5)
         .mockResolvedValueOnce(-5);
 
-      const estimates = await getBlockchainService().getFeeEstimates();
+      const estimates = await getBlockchainService().getFeeEstimates('testnet4');
 
       expect(estimates.fastest).toBeGreaterThanOrEqual(1);
       expect(estimates.halfHour).toBeGreaterThanOrEqual(1);
@@ -258,7 +258,7 @@ export function registerBlockchainSyncWalletCoreTests(): void {
     it('should return defaults on error', async () => {
       mockElectrumClient.estimateFee.mockRejectedValue(new Error('Network error'));
 
-      const estimates = await getBlockchainService().getFeeEstimates();
+      const estimates = await getBlockchainService().getFeeEstimates('testnet4');
 
       expect(estimates.fastest).toBeGreaterThan(0);
       expect(estimates.economy).toBeGreaterThan(0);

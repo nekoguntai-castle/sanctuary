@@ -43,14 +43,16 @@ describe('Blockchain Service - Broadcasting', () => {
   describe('getFeeEstimates', () => {
     it('should return fee estimates for different confirmation targets', async () => {
       const { getFeeEstimates } = await import('../../../../src/services/bitcoin/blockchain');
+      const { getNodeClient } = await import('../../../../src/services/bitcoin/nodeClient');
 
       mockNodeClient.estimateFee.mockImplementation((blocks: number) => {
         const fees: Record<number, number> = { 1: 25, 3: 20, 6: 15, 12: 10 };
         return Promise.resolve(fees[blocks] || 10);
       });
 
-      const estimates = await getFeeEstimates();
+      const estimates = await getFeeEstimates('testnet4');
 
+      expect(getNodeClient).toHaveBeenCalledWith('testnet4');
       expect(estimates).toEqual({
         fastest: 25,
         halfHour: 20,
@@ -64,7 +66,7 @@ describe('Blockchain Service - Broadcasting', () => {
 
       mockNodeClient.estimateFee.mockResolvedValue(0);
 
-      const estimates = await getFeeEstimates();
+      const estimates = await getFeeEstimates('testnet4');
 
       expect(estimates.fastest).toBe(1);
       expect(estimates.halfHour).toBe(1);
@@ -77,7 +79,7 @@ describe('Blockchain Service - Broadcasting', () => {
 
       mockNodeClient.estimateFee.mockRejectedValue(new Error('Network error'));
 
-      const estimates = await getFeeEstimates();
+      const estimates = await getFeeEstimates('testnet4');
 
       expect(estimates).toEqual({
         fastest: 20,

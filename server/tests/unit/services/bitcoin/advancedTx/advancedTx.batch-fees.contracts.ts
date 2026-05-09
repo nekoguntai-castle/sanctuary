@@ -11,6 +11,7 @@ import {
   MIN_RBF_FEE_BUMP,
   RBF_SEQUENCE,
 } from "../../../../../src/services/bitcoin/advancedTx";
+import { getNodeClient } from "../../../../../src/services/bitcoin/nodeClient";
 import {
   changeAddressRow,
   mockAddressFindManyByQuery,
@@ -163,7 +164,8 @@ export function registerBatchFeeAndConstantContracts() {
         .mockResolvedValueOnce(0.2)
         .mockResolvedValueOnce(0.01);
 
-      const fees = await getAdvancedFeeEstimates();
+      const fees = await getAdvancedFeeEstimates("testnet4");
+      expect(getNodeClient).toHaveBeenCalledWith("testnet4");
       expect(fees.fastest.feeRate).toBe(3);
       expect(fees.fast.feeRate).toBe(2);
       expect(fees.medium.feeRate).toBe(1);

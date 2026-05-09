@@ -71,7 +71,7 @@ export function useDashboardData() {
 
   // React Query hooks for data fetching
   const { data: apiWallets, isLoading: walletsLoading } = useWallets();
-  const { data: feeEstimates } = useFeeEstimates();
+  const { data: feeEstimates } = useFeeEstimates(selectedNetwork);
   const { data: bitcoinStatus, isLoading: statusLoading } = useBitcoinStatus(selectedNetwork);
   const { data: mempoolData, refetch: refetchMempool, isFetching: mempoolRefreshing } = useMempoolData(selectedNetwork);
 

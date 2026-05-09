@@ -11,6 +11,7 @@ import * as utils from '../../services/bitcoin/utils';
 import { asyncHandler } from '../../errors/errorHandler';
 import * as advancedTx from '../../services/bitcoin/advancedTx';
 import { getCurrentFeeEstimates } from '../../services/bitcoin/feeService';
+import { resolveBitcoinNetworkParam } from './networkParam';
 
 const router = Router();
 
@@ -26,22 +27,25 @@ const EstimateOptimalFeeBodySchema = z.object({
   outputCount: z.number().int().positive(),
   priority: z.string().optional().default('medium'),
   scriptType: z.string().optional().default('native_segwit'),
+  network: z.string().optional(),
 });
 
 /**
  * GET /api/v1/bitcoin/fees
  * Get current fee estimates from configured source (mempool.space API or Electrum)
  */
-router.get('/fees', asyncHandler(async (_req, res) => {
-  res.json(await getCurrentFeeEstimates());
+router.get('/fees', asyncHandler(async (req, res) => {
+  const network = resolveBitcoinNetworkParam(req.query.network);
+  res.json(await getCurrentFeeEstimates(network));
 }));
 
 /**
  * GET /api/v1/bitcoin/fees/advanced
  * Get advanced fee estimates with time predictions
  */
-router.get('/fees/advanced', asyncHandler(async (_req, res) => {
-  const fees = await advancedTx.getAdvancedFeeEstimates();
+router.get('/fees/advanced', asyncHandler(async (req, res) => {
+  const network = resolveBitcoinNetworkParam(req.query.network);
+  const fees = await advancedTx.getAdvancedFeeEstimates(network);
 
   res.json(fees);
 }));
@@ -84,13 +88,16 @@ router.post('/utils/estimate-optimal-fee', validate(
     outputCount,
     priority = 'medium',
     scriptType = 'native_segwit',
+    network: networkInput,
   } = req.body;
+  const network = resolveBitcoinNetworkParam(networkInput);
 
   const result = await advancedTx.estimateOptimalFee(
     inputCount,
     outputCount,
     priority,
-    scriptType
+    scriptType,
+    network
   );
 
   res.json(result);

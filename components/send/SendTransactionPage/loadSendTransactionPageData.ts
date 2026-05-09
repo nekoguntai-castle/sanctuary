@@ -43,7 +43,7 @@ export async function loadSendTransactionPageData({
   const wallet = formatWallet(apiWallet, userId);
   const [utxoData, feeEstimates, mempoolData, addressData, allDevices] = await Promise.all([
     transactionsApi.getUTXOs(walletId),
-    bitcoinApi.getFeeEstimates(),
+    bitcoinApi.getFeeEstimates(apiWallet.network),
     bitcoinApi.getMempoolData().catch(() => null),
     transactionsApi.getAddresses(walletId).catch(() => []),
     devicesApi.getDevices().catch(() => []),

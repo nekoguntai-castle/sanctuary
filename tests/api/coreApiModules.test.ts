@@ -102,7 +102,7 @@ describe('Core API Modules', () => {
       await bitcoinApi.estimateFee({ inputCount: 1, outputCount: 2, feeRate: 10 });
 
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/status', { network: 'mainnet' });
-      expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees');
+      expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees', undefined);
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/address/validate', { address: 'bc1qabc' });
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/address/bc1qabc', undefined);
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/address/tb1qabc', { network: 'testnet3' });
@@ -142,7 +142,7 @@ describe('Core API Modules', () => {
       await bitcoinApi.getMempoolData();
       await bitcoinApi.lookupAddresses(['bc1q1', 'bc1q2']);
 
-      expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees/advanced');
+      expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees/advanced', undefined);
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-2/rbf-check', {});
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-2/rbf', {
         walletId: 'w1',

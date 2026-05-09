@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { UTXO } from '../../types';
 import { useCurrency } from '../../contexts/CurrencyContext';
 import { useFeeEstimates } from '../../hooks/queries/useBitcoin';
+import type { BitcoinFeeNetwork } from '../../src/api/bitcoin';
 import type { UtxoPrivacyInfo, WalletPrivacySummary } from '../../src/api/transactions';
 import { UTXOSummaryBanners } from './UTXOSummaryBanners';
 import { UTXOGarden } from './UTXOGarden';
@@ -14,6 +15,13 @@ import {
   getDustStats,
   getSelectedAmount,
 } from './UTXOList/utxoListModel';
+
+const FEE_NETWORKS = new Set<string>(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
+
+function toFeeNetwork(network: string): BitcoinFeeNetwork {
+  if (network === 'testnet') return 'testnet3';
+  return FEE_NETWORKS.has(network) ? network as BitcoinFeeNetwork : 'mainnet';
+}
 
 interface UTXOListProps {
   utxos: UTXO[];
@@ -44,7 +52,8 @@ export const UTXOList: React.FC<UTXOListProps> = ({
 }) => {
   const { format } = useCurrency();
   const explorerUrl = useExplorerUrl();
-  const { data: feeEstimates } = useFeeEstimates();
+  const feeNetwork = toFeeNetwork(network);
+  const { data: feeEstimates } = useFeeEstimates(feeNetwork);
 
   const [selectedUtxoForPrivacy, setSelectedUtxoForPrivacy] = useState<string | null>(null);
 

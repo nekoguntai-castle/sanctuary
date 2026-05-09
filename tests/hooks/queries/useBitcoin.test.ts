@@ -48,7 +48,8 @@ describe('useBitcoin hooks', () => {
       expect(bitcoinKeys.all).toEqual(['bitcoin']);
       expect(bitcoinKeys.status()).toEqual(['bitcoin', 'status', 'mainnet']);
       expect(bitcoinKeys.status('testnet3')).toEqual(['bitcoin', 'status', 'testnet3']);
-      expect(bitcoinKeys.fees()).toEqual(['bitcoin', 'fees']);
+      expect(bitcoinKeys.fees()).toEqual(['bitcoin', 'fees', 'mainnet']);
+      expect(bitcoinKeys.fees('testnet4')).toEqual(['bitcoin', 'fees', 'testnet4']);
       expect(bitcoinKeys.mempool()).toEqual(['bitcoin', 'mempool', 'mainnet']);
       expect(bitcoinKeys.mempool('signet')).toEqual(['bitcoin', 'mempool', 'signet']);
     });
@@ -129,7 +130,28 @@ describe('useBitcoin hooks', () => {
       });
 
       expect(result.current.data).toEqual(mockFees);
-      expect(bitcoinApi.getFeeEstimates).toHaveBeenCalled();
+      expect(bitcoinApi.getFeeEstimates).toHaveBeenCalledWith('mainnet');
+    });
+
+    it('fetches selected network fee estimates', async () => {
+      const mockFees = {
+        fastest: 5,
+        halfHour: 3,
+        hour: 2,
+        economy: 1,
+      };
+      vi.mocked(bitcoinApi.getFeeEstimates).mockResolvedValue(mockFees);
+
+      const { result } = renderHook(() => useFeeEstimates('testnet4'), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(result.current.data).toEqual(mockFees);
+      expect(bitcoinApi.getFeeEstimates).toHaveBeenCalledWith('testnet4');
     });
   });
 
