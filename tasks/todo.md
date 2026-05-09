@@ -1,6 +1,6 @@
 # Active Task: P1-08 Payjoin Parser And Feature Boundary 2026-05-09
 
-Status: in progress; branch `fix/payjoin-text-parser-boundary`
+Status: completed; PR #350 merged as `5abdd81e`
 
 Goal: make the unauthenticated BIP78 receiver endpoint accept real `text/plain` requests under the production parser stack while preserving plain-text errors, body limits, and explicit feature-boundary behavior.
 
@@ -11,7 +11,7 @@ Goal: make the unauthenticated BIP78 receiver endpoint accept real `text/plain` 
 - [x] Mount a route-local text parser on the BIP78 receiver endpoint before the handler and remove test-only global parser assumptions.
 - [x] Preserve BIP78 plain-text response bodies/content type and document the current receiver feature boundary without advertising unsupported signing completeness.
 - [x] Run focused Payjoin API/service tests, server build/typecheck/lint, touched-file lizard, Semgrep baseline if route comments/docs trip SAST, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -20,6 +20,7 @@ Goal: make the unauthenticated BIP78 receiver endpoint accept real `text/plain` 
 - OpenAPI, feature-flag, advanced-feature, and health-assessment docs now describe the `text/plain` payload contract, `413` text error, and the current unsigned receiver-proposal boundary.
 - Verification passed before delivery: focused Payjoin API/service/PSBT/OpenAPI tests (237 tests), OpenAPI route coverage, server test typecheck, server build, server lint including API body validation and Bitcoin network-boundary checks, changed-test hygiene, touched-file lizard, and `git diff --check`. The first server test typecheck was rerun after a parallel Prisma generation race and passed.
 - CI triage: PR #350 initially failed `Full Backend Unit Coverage` on an uncovered defensive parser branch. Removed the unreachable branch, added parser decode-error coverage, and locally verified the exact full backend unit coverage command at 100% across 9,669 tests.
+- Delivery: PR #350 merged at `2026-05-09T04:35:36-10:00` as squash commit `5abdd81e8f2872282f776df44263782d6c132e7f`; all 30 Forgejo checks passed after the coverage fix.
 
 ---
 
