@@ -73,6 +73,27 @@ assert_contains_in_order() {
   fi
 }
 
+assert_not_contains() {
+  local file="$1"
+  local label="$2"
+  local forbidden="$3"
+
+  if [ ! -f "$file" ]; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: file not found: $file")
+    return 1
+  fi
+
+  if grep -Fq "$forbidden" "$file"; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: forbidden text found in $file: $forbidden")
+    echo "FAIL: $label" >&2
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  fi
+}
+
 # Each assertion below identifies one lock-protected wrapper invocation
 # and asserts the canonical order. The "command body" anchor (last needle)
 # distinguishes which step we are asserting on so two distinct lock-protected
@@ -204,11 +225,21 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "npm run typecheck:tests"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
-  "full AI proxy Vitest retry composition" \
+  "quick AI proxy package test composition" \
+  "quick-ai-proxy-tests:" \
+  "npm --prefix ai-proxy run build" \
+  "npm --prefix ai-proxy run test"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full AI proxy Vitest coverage retry composition" \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
-  'scripts/ci/retry-vitest-infrastructure-failure.sh "AI proxy tests"' \
-  'scripts/ci/time-command.sh "AI proxy tests"' \
-  "npx vitest run tests/ai-proxy --passWithNoTests --pool threads --maxWorkers=1 --no-file-parallelism"
+  'scripts/ci/retry-vitest-infrastructure-failure.sh "AI proxy coverage"' \
+  'scripts/ci/time-command.sh "AI proxy coverage"' \
+  "npm --prefix ai-proxy run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism"
+
+assert_not_contains "$TEST_WORKFLOW" \
+  "AI proxy CI must not allow zero discovered tests" \
+  "npx vitest run tests/ai-proxy --passWithNoTests"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full browser backend build retry budget" \

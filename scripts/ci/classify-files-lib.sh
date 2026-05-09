@@ -185,7 +185,7 @@ is_full_scan_trigger_file() {
     package.json|package-lock.json|server/package.json|server/package-lock.json|gateway/package.json|gateway/package-lock.json|ai-proxy/package.json|ai-proxy/package-lock.json)
       return 0
       ;;
-    vitest.config.*|vitest.coverage-shard.config.ts|server/vitest.config.*|gateway/vitest.config.*|tsconfig*.json|server/tsconfig*.json|gateway/tsconfig*.json)
+    vitest.config.*|vitest.coverage-shard.config.ts|server/vitest.config.*|gateway/vitest.config.*|ai-proxy/vitest.config.*|tsconfig*.json|server/tsconfig*.json|gateway/tsconfig*.json)
       return 0
       ;;
     .github/workflows/*.yml|.github/workflows/*.yaml|.github/actions/*/action.yml)

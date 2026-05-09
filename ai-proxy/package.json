@@ -8,6 +8,9 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "vitest run --config vitest.config.ts",
+    "test:coverage": "vitest run --config vitest.config.ts --coverage",
+    "coverage": "npm run test:coverage",
     "start": "node dist/index.js",
     "dev": "tsc --watch"
   },

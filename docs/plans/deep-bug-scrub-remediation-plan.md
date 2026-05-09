@@ -315,12 +315,14 @@ Must handle:
 
 ### P2-03 AI Proxy Coverage
 
+Status: implemented in the AI proxy coverage-gate slice. The AI proxy package now owns `test`, `test:coverage`, and `coverage` scripts backed by `ai-proxy/vitest.config.ts`; full CI runs the coverage script without `--passWithNoTests` and uploads/reports the AI proxy coverage artifact.
+
 Must handle:
 
-- Add package-local `test` and `coverage` scripts.
-- Remove `--passWithNoTests` or replace it with an explicit test-discovery assertion.
-- Include `ai-proxy/src/**` in a meaningful coverage gate without destabilizing unrelated root coverage.
-- Cover auth, rate limiting, upstream errors/timeouts, request validation, streaming/non-streaming responses if supported, and secret redaction.
+- Added package-local `test` and `coverage` scripts.
+- Removed `--passWithNoTests` from AI proxy CI so missing tests fail.
+- Included `ai-proxy/src/**` in a dedicated coverage gate without destabilizing unrelated root coverage.
+- Added or preserved behavioral coverage for auth, rate limiting, upstream errors/timeouts, request validation, provider/config routes, model-pull streaming progress, and secret redaction. Remaining baseline improvement work is concentrated in insight, label-query, and backend-context routes.
 
 ### P2-04 Send Mempool Network Context
 

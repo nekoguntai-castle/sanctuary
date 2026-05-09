@@ -452,7 +452,7 @@ jobs:
         run: npm --prefix ai-proxy run build
 
       - name: Run AI proxy tests
-        run: npx vitest run tests/ai-proxy --passWithNoTests
+        run: npm --prefix ai-proxy run test
 
   quick-browser-smoke:
     name: Quick Browser Smoke
@@ -1328,12 +1328,22 @@ jobs:
           scripts/ci/time-command.sh "AI proxy build"
           npm --prefix ai-proxy run build
 
-      - name: Run AI proxy tests
+      - name: Run AI proxy tests with coverage
         run: >
           scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/retry-vitest-infrastructure-failure.sh "AI proxy tests"
-          scripts/ci/time-command.sh "AI proxy tests"
-          npx vitest run tests/ai-proxy --passWithNoTests --pool threads --maxWorkers=1 --no-file-parallelism
+          scripts/ci/retry-vitest-infrastructure-failure.sh "AI proxy coverage"
+          scripts/ci/time-command.sh "AI proxy coverage"
+          npm --prefix ai-proxy run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism
+
+      - name: Upload AI proxy coverage
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ai-proxy-coverage
+          path: |
+            ai-proxy/coverage/
+            ai-proxy/junit.xml
+          retention-days: 14
 
   full-critical-mutation:
     name: Full Critical Mutation Gate
@@ -1727,6 +1737,14 @@ jobs:
           name: gateway-coverage
           path: gateway-results/
 
+      - name: Download AI proxy coverage
+        if: needs.full-ai-proxy-tests.result == 'success' || needs.full-ai-proxy-tests.result == 'failure'
+        continue-on-error: true
+        uses: ./.github/actions/download-artifact
+        with:
+          name: ai-proxy-coverage
+          path: ai-proxy-results/
+
       - name: Download critical mutation report
         if: needs.full-critical-mutation.result == 'success' || needs.full-critical-mutation.result == 'failure'
         continue-on-error: true
@@ -1797,6 +1815,14 @@ jobs:
             echo "### AI Proxy: Skipped" >> $GITHUB_STEP_SUMMARY
           else
             echo "### AI Proxy: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f ai-proxy-results/coverage/coverage-summary.json ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "#### AI Proxy Coverage" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Coverage |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|----------|" >> $GITHUB_STEP_SUMMARY
+            jq -r '.total | to_entries[] | "| \(.key) | \(.value.pct)% |"' ai-proxy-results/coverage/coverage-summary.json >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY

@@ -1,3 +1,28 @@
+# Active Task: P2-03 AI Proxy Coverage Gate 2026-05-09
+
+Status: in progress; branch `fix/ai-proxy-coverage-gate`
+
+Goal: make AI proxy tests package-owned, fail when no tests are discovered, and enforce coverage for `ai-proxy/src/**` in CI instead of relying on root Vitest exclusions.
+
+## Plan
+
+- [x] Map AI proxy test files, package scripts, Vitest coverage config, workflow gating, and workflow composition tests.
+- [x] Add package-local AI proxy test and coverage scripts/config that include `ai-proxy/src/**` only and fail if tests are missing.
+- [x] Update quick/full AI proxy CI to use package scripts without `--passWithNoTests`; run coverage in the full lane and upload/report AI proxy coverage.
+- [x] Update workflow composition/runtime tests plus health-assessment/task docs for the closed coverage gap.
+- [x] Run AI proxy tests/coverage/build, workflow guard tests, action runtime guard, lizard/diff checks, and any needed typechecks.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Added package-owned AI proxy test scripts and `ai-proxy/vitest.config.ts`, measuring `ai-proxy/src/**` with a baseline gate of 78% statements, 69% branches, 90% functions, and 81% lines.
+- Removed AI proxy `--passWithNoTests` usage from quick/full CI; quick CI now runs `npm --prefix ai-proxy run test`, and full CI runs the package coverage gate, uploads `ai-proxy-coverage`, and includes AI proxy coverage in the full-test summary.
+- Added AI proxy tests for runtime endpoint helpers, sanitized config routes, provider route behavior, and Ollama model-pull streaming/error progress. The package suite now has 17 files and 103 tests.
+- Updated CI classification/composition guards so AI proxy package config changes trigger both full scan and AI proxy classification, and so the forbidden zero-test AI proxy command cannot return.
+- Verification passed locally: `npm --prefix ai-proxy run test -- --pool threads --maxWorkers=1 --no-file-parallelism`; `npm --prefix ai-proxy run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism`; `npm --prefix ai-proxy run build`; `bash tests/ci/check-workflow-composition.test.sh`; `bash tests/ci/classify-test-changes.test.sh`; `npm run check:github-action-runtimes`; `npm run typecheck:tests`; `npm run test:hygiene -- ...`; `npm run quality:lizard -- ...`; `git diff --check`.
+
+---
+
 # Active Task: P1-08 Payjoin Parser And Feature Boundary 2026-05-09
 
 Status: completed; PR #350 merged as `5abdd81e`

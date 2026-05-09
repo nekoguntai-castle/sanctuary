@@ -142,7 +142,9 @@ These domain scores are the original scrub scores; per-finding statuses below re
    - The prebuilt-image compose path can be launched with `sanctuary` defaults and open internal Redis.
 
 7. **AI proxy tests are not covered by the root coverage gate, and CI allows no tests.**
-   - Root coverage excludes `ai-proxy/src/**`; CI uses `--passWithNoTests` for AI proxy test jobs.
+   - Status: fixed in the AI proxy coverage-gate slice by adding package-local `test`/`test:coverage` scripts, a dedicated `ai-proxy/vitest.config.ts` coverage gate over `ai-proxy/src/**`, CI commands without `--passWithNoTests`, and full-lane coverage artifact/summary reporting.
+   - Added route/runtime tests for sanitized config responses, provider detection/model management, endpoint-policy runtime helpers, and Ollama model-pull streaming/error progress. The initial enforced baseline is 78% statements, 69% branches, 90% functions, and 81% lines.
+   - Original issue: root coverage excluded `ai-proxy/src/**`, and CI used `--passWithNoTests` for AI proxy test jobs.
 
 8. **Physical hardware-in-loop signing proof remains incomplete.**
    - The prior fixture matrix still needs 11 required Ledger/Trezor/BitBox signed fixture rows; normal tests pass without requiring those artifacts.
@@ -175,7 +177,7 @@ These domain scores are the original scrub scores; per-finding statuses below re
 - Transaction broadcast needs server-canonical validation. Policy/audit/persistence should derive from decoded signed payloads, not caller-supplied metadata.
 - Frontend network context is still inconsistently threaded through send surfaces.
 - Production deployment defaults warn too often and fail closed too rarely.
-- CI policy thresholds are improving: Semgrep and package-level moderate production audits are now clean, but AI proxy coverage/test existence is still weak.
+- CI policy thresholds are improving: Semgrep and package-level moderate production audits are now clean, and AI proxy tests now have a package-local coverage/existence gate. Remaining AI proxy coverage gaps should be raised from the new baseline as insight/label-query/backend-context routes get direct behavioral tests.
 - Some tests encode current unsafe behavior instead of desired product/security invariants, especially backup restore and missing transaction metadata paths.
 - Hardware-wallet correctness still depends on physical artifacts that are not committed.
 
@@ -203,5 +205,6 @@ Detailed remediation plan: `docs/plans/deep-bug-scrub-remediation-plan.md`
 - `npm audit --omit=dev --audit-level=moderate` - root scan exits 0 with accepted low root advisories only.
 - `npm --prefix server audit --omit=dev --audit-level=moderate` - now reports `0` vulnerabilities after the Hono override refresh.
 - `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate` - now reports `0` vulnerabilities after the `express-rate-limit` / `ip-address` refresh.
+- `npm --prefix ai-proxy run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism` - now measures `ai-proxy/src/**` with a package-local baseline gate and fails if no AI proxy tests are discovered.
 
-No production code was changed in this scrub. The only intended repository edits are this report and `tasks/todo.md`.
+This report started as a scrub-only artifact; subsequent remediation slices now update status lines as fixes land.

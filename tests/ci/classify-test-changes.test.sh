@@ -291,6 +291,25 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "false"
 
   base_sha="$head_sha"
+  mkdir -p "$repo_dir/ai-proxy"
+  printf 'export default {};\n' > "$repo_dir/ai-proxy/vitest.config.ts"
+  git -C "$repo_dir" add ai-proxy/vitest.config.ts
+  git -C "$repo_dir" commit -qm "ai proxy vitest config"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "full_scan" "true"
+  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "backend_integration_changed" "false"
+  assert_exact_output "$output_file" "gateway_changed" "false"
+  assert_exact_output "$output_file" "ai_proxy_changed" "true"
+  assert_exact_output "$output_file" "critical_mutation_changed" "false"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "build_changed" "false"
+
+  base_sha="$head_sha"
   mkdir -p "$repo_dir/.github/workflows"
   printf 'name: Test Suite\non: pull_request\njobs: {}\n' > "$repo_dir/.github/workflows/test.yml"
   git -C "$repo_dir" add .github/workflows/test.yml

@@ -141,6 +141,10 @@ while IFS= read -r file; do
   fi
 
   if is_full_scan_trigger_file "$file"; then
+    if is_ai_proxy_file "$file"; then
+      ai_proxy_changed=true
+      append_file ai_proxy_files "$file"
+    fi
     mark_full_scan
     break
   fi

@@ -34,6 +34,10 @@ cd server && npx tsc --noEmit && npx vitest run
 
 # Frontend
 cd .. && npx tsc --noEmit && npx vitest run
+
+# AI proxy
+npm --prefix ai-proxy run build
+npm --prefix ai-proxy run test
 ```
 
 When targeting coverage thresholds, run coverage locally:
@@ -41,6 +45,7 @@ When targeting coverage thresholds, run coverage locally:
 ```bash
 cd server && npx vitest run --coverage  # backend: 99% threshold
 npx vitest run --coverage               # frontend: 100% threshold
+npm --prefix ai-proxy run test:coverage # AI proxy: package-local baseline gate
 ```
 
 Run `git commit` in the foreground; pre-commit hooks run validation whose feedback must be reviewed.
