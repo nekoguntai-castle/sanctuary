@@ -729,6 +729,13 @@ For production deployments with a domain name, replace the certificates in `dock
 - `fullchain.pem` — Your certificate chain
 - `privkey.pem` — Your private key
 
+The frontend and gateway containers run as UID/GID `1001`. Do not bind-mount a live Let's Encrypt `privkey.pem` that is `0600 root:root`; copy the certificate pair into `SANCTUARY_SSL_DIR` and make the copies readable by UID/GID `1001`, for example:
+
+```bash
+sudo install -m 0640 -o 1001 -g 1001 /etc/letsencrypt/live/yourdomain/fullchain.pem "$SANCTUARY_SSL_DIR/fullchain.pem"
+sudo install -m 0640 -o 1001 -g 1001 /etc/letsencrypt/live/yourdomain/privkey.pem "$SANCTUARY_SSL_DIR/privkey.pem"
+```
+
 ### Connecting to Your Own Electrum Server
 
 For maximum privacy, connect Sanctuary to your own Electrum server infrastructure.

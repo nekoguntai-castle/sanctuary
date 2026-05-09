@@ -298,10 +298,11 @@ The gateway supports HTTPS directly, eliminating the need for a reverse proxy. T
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GATEWAY_TLS_ENABLED` | `false` | Enable HTTPS (`true` to enable) |
+| `GATEWAY_TLS_ENABLED` | `true` in Compose | Enable HTTPS (`true` to enable); production HTTP fails closed unless explicitly overridden |
 | `TLS_CERT_PATH` | `/app/config/ssl/fullchain.pem` | Path to certificate file |
 | `TLS_KEY_PATH` | `/app/config/ssl/privkey.pem` | Path to private key file |
 | `GATEWAY_TLS_MIN_VERSION` | `TLSv1.2` | Minimum TLS version (`TLSv1.2` or `TLSv1.3`) |
+| `GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP` | `false` | Set to `true` only when the gateway is bound to a trusted internal network and TLS terminates elsewhere |
 
 ### Using Let's Encrypt Certificates
 
@@ -314,10 +315,9 @@ sudo apt install certbot
 # Get certificates (standalone mode)
 sudo certbot certonly --standalone -d gateway.yourdomain.com
 
-# Copy to gateway ssl directory
-sudo cp /etc/letsencrypt/live/gateway.yourdomain.com/fullchain.pem ./docker/nginx/ssl/
-sudo cp /etc/letsencrypt/live/gateway.yourdomain.com/privkey.pem ./docker/nginx/ssl/
-sudo chown $USER:$USER ./docker/nginx/ssl/*.pem
+# Copy readable certificates for the non-root container user (UID/GID 1001)
+sudo install -m 0640 -o 1001 -g 1001 /etc/letsencrypt/live/gateway.yourdomain.com/fullchain.pem ./docker/nginx/ssl/fullchain.pem
+sudo install -m 0640 -o 1001 -g 1001 /etc/letsencrypt/live/gateway.yourdomain.com/privkey.pem ./docker/nginx/ssl/privkey.pem
 ```
 
 ### TLS Security Settings

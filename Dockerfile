@@ -69,11 +69,15 @@ RUN chown -R sanctuary:sanctuary /usr/share/nginx/html && \
     chown -R sanctuary:sanctuary /etc/nginx/ssl
 
 # Expose ports (HTTP and HTTPS)
-EXPOSE 80 443
+EXPOSE 8080 8443
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:80/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+
+# Run nginx as the non-root runtime user created above. The nginx templates
+# listen on high internal ports so no privileged bind is required.
+USER sanctuary
 
 # Use custom entrypoint
 ENTRYPOINT ["/docker-entrypoint.sh"]

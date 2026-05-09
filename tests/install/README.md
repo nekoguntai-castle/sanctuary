@@ -124,7 +124,7 @@ Tests setup/install behavior and host recovery helpers without requiring Docker:
 - `check_git()` - Git availability check
 - `check_openssl()` - OpenSSL availability check
 - Environment variable handling
-- Fresh installs generate a unique `ENCRYPTION_SALT`; legacy encrypted installs with existing `ENCRYPTION_KEY` plus missing `ENCRYPTION_SALT` keep the legacy default salt instead of rotating encryption material
+- Fresh installs generate a unique `ENCRYPTION_SALT`; legacy encrypted installs with existing `ENCRYPTION_KEY` plus missing `ENCRYPTION_SALT` fail with migration guidance instead of writing the rejected legacy default or rotating encryption material
 - `reset-user-2fa.sh` status/reset SQL generation, explicit confirmation, backup creation, file permissions, and abort behavior
 - `create-upgrade-backup.sh` single-file local upgrade backup creation, internal checksums, runtime secret/TLS capture, and explicit sidecar behavior
 - Offline bundle signature/checksum verification, unsigned-dev override behavior, and unsafe archive rejection

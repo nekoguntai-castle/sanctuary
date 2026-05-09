@@ -21,6 +21,7 @@
  * - `TLS_KEY_PATH` - Path to private key file (privkey.pem)
  * - `TLS_CA_PATH` - Path to CA certificate chain file (optional, for intermediate certs)
  * - `TLS_MIN_VERSION` - Minimum TLS version (default: TLSv1.2)
+ * - `GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP` - Explicit internal-only override for production HTTP
  *
  * ### Backend Connection
  * - `BACKEND_URL` - Backend HTTP URL (default: http://backend:3000)
@@ -69,6 +70,7 @@ export const config = {
     keyPath: process.env.TLS_KEY_PATH || '/app/config/ssl/privkey.pem',
     caPath: process.env.TLS_CA_PATH || '', // Optional CA certificate chain
     minVersion: (process.env.TLS_MIN_VERSION || 'TLSv1.2') as 'TLSv1.2' | 'TLSv1.3',
+    allowInsecureProductionHttp: process.env.GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP === 'true',
   },
 
   // Backend connection (internal network)
@@ -147,7 +149,15 @@ export function validateConfig(): void {
       errors.push('TLS_KEY_PATH is required when TLS is enabled');
     }
   } else if (config.nodeEnv === 'production') {
-    warnings.push('TLS is disabled in production - mobile connections will be unencrypted');
+    if (config.tls.allowInsecureProductionHttp) {
+      warnings.push(
+        'TLS is disabled in production because GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP=true; bind this gateway only to a trusted internal network'
+      );
+    } else {
+      errors.push(
+        'TLS is required in production. Set TLS_ENABLED=true or set GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP=true only for an internal-only deployment.'
+      );
+    }
   }
 
   if (warnings.length > 0) {

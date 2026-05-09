@@ -651,10 +651,19 @@ load_or_generate_secrets() {
     fi
 
     if [ -n "$ENCRYPTION_SALT" ]; then
+        if [ "$ENCRYPTION_SALT" = "$LEGACY_DEFAULT_ENCRYPTION_SALT" ]; then
+            echo -e "${RED}✗${NC} ENCRYPTION_SALT uses the legacy default value, which production now rejects."
+            echo "  Keep your existing ENCRYPTION_KEY, but migrate encrypted data before setting a unique ENCRYPTION_SALT."
+            echo "  Restore the previous release if needed, export or re-enter encrypted secrets, then run setup again."
+            return 1
+        fi
         echo "  - ENCRYPTION_SALT: using existing"
     elif [ "$had_existing_encryption_key" = true ]; then
-        ENCRYPTION_SALT="$LEGACY_DEFAULT_ENCRYPTION_SALT"
-        echo "  - ENCRYPTION_SALT: using legacy default for existing encryption key"
+        echo -e "${RED}✗${NC} Existing ENCRYPTION_KEY found without ENCRYPTION_SALT."
+        echo "  Production now requires an explicit unique ENCRYPTION_SALT and rejects the legacy default."
+        echo "  Do not generate a new salt over encrypted data; that would make existing 2FA secrets and node passwords unreadable."
+        echo "  Restore the previous release if needed, export or re-enter encrypted secrets, set ENCRYPTION_SALT, then run setup again."
+        return 1
     else
         ENCRYPTION_SALT=$(openssl rand -base64 16 2>/dev/null || generate_password)
         echo "  - ENCRYPTION_SALT: generated"

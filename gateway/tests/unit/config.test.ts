@@ -397,7 +397,7 @@ describe('Gateway Config', () => {
       expect(warnCalls).not.toContain('GATEWAY_SECRET');
     });
 
-    it('should warn when TLS is disabled in production', async () => {
+    it('should exit when TLS is disabled in production without the internal-only override', async () => {
       process.env.JWT_SECRET = 'my-secret';
       process.env.GATEWAY_SECRET = 'this-is-a-32-character-secret!!!';
       process.env.NODE_ENV = 'production';
@@ -406,8 +406,24 @@ describe('Gateway Config', () => {
 
       validateConfig();
 
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+      const errorCall = consoleErrorSpy.mock.calls.flat().join(' ');
+      expect(errorCall).toContain('TLS is required in production');
+    });
+
+    it('should allow production HTTP only with the explicit internal-only override', async () => {
+      process.env.JWT_SECRET = 'my-secret';
+      process.env.GATEWAY_SECRET = 'this-is-a-32-character-secret!!!';
+      process.env.NODE_ENV = 'production';
+      process.env.TLS_ENABLED = 'false';
+      process.env.GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP = 'true';
+      const { validateConfig } = await import('../../src/config');
+
+      validateConfig();
+
+      expect(processExitSpy).not.toHaveBeenCalled();
       const warnCall = consoleWarnSpy.mock.calls.flat().join(' ');
-      expect(warnCall).toContain('TLS is disabled');
+      expect(warnCall).toContain('GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP=true');
     });
 
     it('should not warn about TLS in development', async () => {

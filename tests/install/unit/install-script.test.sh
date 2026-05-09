@@ -1503,10 +1503,11 @@ test_setup_script_reconciles_postgres_after_starting_database() {
     fi
 }
 
-test_setup_script_preserves_legacy_default_salt_for_existing_key() {
+test_setup_script_rejects_missing_salt_for_existing_key() {
     local env_file="$TEST_TMP_DIR/legacy-missing-salt.env"
     local ssl_dir="$TEST_TMP_DIR/ssl"
     local output=""
+    local exit_code=0
 
     cat > "$env_file" << 'EOF'
 JWT_SECRET=legacy-jwt-secret-value-for-upgrade-tests
@@ -1522,6 +1523,7 @@ ENABLE_MONITORING=no
 ENABLE_TOR=no
 EOF
 
+    set +e
     output=$(
         export SANCTUARY_ENV_FILE="$env_file"
         export SANCTUARY_SSL_DIR="$ssl_dir"
@@ -1531,21 +1533,72 @@ EOF
         export ENABLE_MONITORING=no
         export ENABLE_TOR=no
         bash "$SETUP_SCRIPT" --force --non-interactive --no-start --skip-ssl --skip-prereqs 2>&1
-    ) || {
-        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should handle legacy env missing ENCRYPTION_SALT"
-        echo "$output"
-        return 1
-    }
+    )
+    exit_code=$?
+    set -e
 
-    if ! grep -q '^ENCRYPTION_SALT=sanctuary-node-config$' "$env_file"; then
-        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should write the legacy default salt for existing encrypted installs"
-        echo "  Env file:"
-        cat "$env_file"
+    if [ "$exit_code" -eq 0 ]; then
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should reject legacy env missing ENCRYPTION_SALT"
+        echo "$output"
         return 1
     fi
 
-    assert_contains "$output" "using legacy default for existing encryption key" \
-        "setup.sh should explain legacy salt preservation"
+    if grep -q '^ENCRYPTION_SALT=sanctuary-node-config$' "$env_file"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should not write the rejected legacy default salt"
+        return 1
+    fi
+
+    assert_contains "$output" "Existing ENCRYPTION_KEY found without ENCRYPTION_SALT" \
+        "setup.sh should explain missing salt rejection"
+    assert_contains "$output" "Do not generate a new salt over encrypted data" \
+        "setup.sh should warn against breaking encrypted data"
+}
+
+test_setup_script_rejects_legacy_default_salt() {
+    local env_file="$TEST_TMP_DIR/legacy-default-salt.env"
+    local ssl_dir="$TEST_TMP_DIR/ssl-legacy-default"
+    local output=""
+    local exit_code=0
+
+    cat > "$env_file" << 'EOF'
+JWT_SECRET=legacy-jwt-secret-value-for-upgrade-tests
+ENCRYPTION_KEY=legacy-encryption-key-value-for-upgrade-tests-123456
+ENCRYPTION_SALT=sanctuary-node-config
+GATEWAY_SECRET=legacy-gateway-secret-value-for-upgrade-tests
+POSTGRES_PASSWORD=legacy-postgres-password
+AI_CONFIG_SECRET=legacy-ai-config-secret
+REDIS_PASSWORD=legacy-redis-password
+HTTPS_PORT=58445
+HTTP_PORT=58082
+GATEWAY_PORT=54002
+ENABLE_MONITORING=no
+ENABLE_TOR=no
+EOF
+
+    set +e
+    output=$(
+        export SANCTUARY_ENV_FILE="$env_file"
+        export SANCTUARY_SSL_DIR="$ssl_dir"
+        export HTTPS_PORT=58445
+        export HTTP_PORT=58082
+        export GATEWAY_PORT=54002
+        export ENABLE_MONITORING=no
+        export ENABLE_TOR=no
+        bash "$SETUP_SCRIPT" --force --non-interactive --no-start --skip-ssl --skip-prereqs 2>&1
+    )
+    exit_code=$?
+    set -e
+
+    if [ "$exit_code" -eq 0 ]; then
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should reject the legacy default ENCRYPTION_SALT"
+        echo "$output"
+        return 1
+    fi
+
+    assert_contains "$output" "legacy default value" \
+        "setup.sh should explain legacy default salt rejection"
+    assert_contains "$output" "production now rejects" \
+        "setup.sh should align with production config validation"
 }
 
 test_setup_script_generates_unique_salt_for_fresh_install() {
@@ -1786,7 +1839,8 @@ main() {
     run_test "setup script defaults to external SSL dir" test_setup_script_defaults_to_external_ssl_dir
     run_test "setup script skips Postgres reconcile with --no-start" test_setup_script_skips_postgres_reconcile_when_no_start
     run_test "setup script reconciles Postgres after starting database" test_setup_script_reconciles_postgres_after_starting_database
-    run_test "setup script preserves legacy default salt for existing key" test_setup_script_preserves_legacy_default_salt_for_existing_key
+    run_test "setup script rejects missing salt for existing key" test_setup_script_rejects_missing_salt_for_existing_key
+    run_test "setup script rejects legacy default salt" test_setup_script_rejects_legacy_default_salt
     run_test "setup script generates unique salt for fresh install" test_setup_script_generates_unique_salt_for_fresh_install
     echo ""
 

@@ -93,6 +93,13 @@ mkcert -key-file "${HOME}/.config/sanctuary/ssl/privkey.pem" \
   localhost 127.0.0.1
 ```
 
+Production containers run as UID/GID `1001`. If you use Let's Encrypt or another CA, copy certificates into `SANCTUARY_SSL_DIR` instead of bind-mounting the live CA directory, and make the copies readable by UID/GID `1001`:
+
+```bash
+sudo install -m 0640 -o 1001 -g 1001 /etc/letsencrypt/live/yourdomain/fullchain.pem "${SANCTUARY_SSL_DIR}/fullchain.pem"
+sudo install -m 0640 -o 1001 -g 1001 /etc/letsencrypt/live/yourdomain/privkey.pem "${SANCTUARY_SSL_DIR}/privkey.pem"
+```
+
 ## Verification
 
 After migration, the full working-tree secret scan should be clean:

@@ -3,8 +3,8 @@
 # =============================================
 #
 # HTTPS only - HTTP redirects to HTTPS
-# - HTTPS (port 443): Full app with WebUSB support for hardware wallets
-# - HTTP (port 80): Redirects to HTTPS
+# - HTTPS (${NGINX_HTTPS_PORT}): Full app with WebUSB support for hardware wallets
+# - HTTP (${NGINX_HTTP_PORT}): Redirects to HTTPS
 #
 # Environment variables (substituted at container startup):
 # - ${BACKEND_HOST}: Backend API hostname (default: backend)
@@ -19,8 +19,8 @@ upstream backend {
 
 # HTTP server - redirects all traffic to HTTPS
 server {
-    listen 80;
-    listen [::]:80;
+    listen ${NGINX_HTTP_PORT};
+    listen [::]:${NGINX_HTTP_PORT};
     server_name _;
 
     # Health check endpoint (keep on HTTP for container health checks)
@@ -38,8 +38,8 @@ server {
 
 # HTTPS server (all content served here)
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen ${NGINX_HTTPS_PORT} ssl http2;
+    listen [::]:${NGINX_HTTPS_PORT} ssl http2;
     server_name _;
 
     # Redirect HTTP requests sent to HTTPS port (error 497)

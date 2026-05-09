@@ -35,6 +35,7 @@ dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 // Singleton config instance
 let configInstance: CombinedConfig | null = null;
+const LEGACY_DEFAULT_ENCRYPTION_SALT = 'sanctuary-node-config';
 
 /**
  * Get the application configuration
@@ -195,6 +196,12 @@ const requireEncryptionSalt = (config: CombinedConfig): void => {
   if (!config.security.encryptionSalt) {
     throw new Error(
       'ENCRYPTION_SALT is required in production. ' +
+      'Generate one with: openssl rand -base64 16'
+    );
+  }
+  if (config.security.encryptionSalt === LEGACY_DEFAULT_ENCRYPTION_SALT) {
+    throw new Error(
+      'ENCRYPTION_SALT must be unique in production; the legacy sanctuary-node-config default is not allowed. ' +
       'Generate one with: openssl rand -base64 16'
     );
   }

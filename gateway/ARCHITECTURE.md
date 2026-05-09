@@ -137,11 +137,12 @@ The gateway terminates TLS directly — no nginx or reverse proxy is required in
 | `GATEWAY_PORT` | No | `4000` | Listening port |
 | `BACKEND_URL` | No | `http://backend:3000` | Backend HTTP base URL |
 | `BACKEND_WS_URL` | No | `ws://backend:3000` | Backend WebSocket base URL |
-| `TLS_ENABLED` | No | `false` | Enable HTTPS (`true` to activate) |
+| `TLS_ENABLED` | No | `false` | Enable HTTPS (`true` to activate); required in production unless the explicit internal-only HTTP override is set |
 | `TLS_CERT_PATH` | If TLS | `/app/config/ssl/fullchain.pem` | Certificate chain path |
 | `TLS_KEY_PATH` | If TLS | `/app/config/ssl/privkey.pem` | Private key path |
 | `TLS_CA_PATH` | No | — | Optional intermediate CA chain |
 | `TLS_MIN_VERSION` | No | `TLSv1.2` | `TLSv1.2` or `TLSv1.3` |
+| `GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP` | No | `false` | Allows production HTTP only for explicitly internal-only deployments |
 | `RATE_LIMIT_WINDOW_MS` | No | `60000` | Default rate limit window (ms) |
 | `RATE_LIMIT_MAX` | No | `60` | Max requests per default window |
 | `RATE_LIMIT_MAX_REQUESTS` | No | `60` | Compatibility alias used only when `RATE_LIMIT_MAX` is unset |

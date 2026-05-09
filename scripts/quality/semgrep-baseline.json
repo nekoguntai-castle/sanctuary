@@ -11,22 +11,6 @@
       "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
     },
     {
-      "id": "dockerfile.security.missing-user-entrypoint.missing-user-entrypoint",
-      "path": "Dockerfile",
-      "startLine": 79,
-      "endLine": 79,
-      "sha256": "3279de8deb61925eca8dd583fd42793b9a90e94e9fbbda69094726e2e82bd0a9",
-      "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
-    },
-    {
-      "id": "dockerfile.security.missing-user.missing-user",
-      "path": "Dockerfile",
-      "startLine": 82,
-      "endLine": 82,
-      "sha256": "80f5528db7ba90dd8b08331f6adddb19266aeff0f7a25c2776e8c6663d1e6029",
-      "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
-    },
-    {
       "id": "javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket",
       "path": "gateway/ARCHITECTURE.md",
       "startLine": 139,

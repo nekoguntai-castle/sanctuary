@@ -113,6 +113,7 @@ These domain scores are the original scrub scores; per-finding statuses below re
    - Fix direction: pass GitHub expression values through environment variables, quote shell variables, validate tags/version inputs, and refresh the baseline only after fixes or explicit review.
 
 8. **Mobile gateway can run cleartext HTTP in production by default.**
+   - Status: fixed in the deployment hardening slice by making production HTTP a startup error unless `GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP=true` is set, and by defaulting Compose gateway TLS on.
    - Evidence: `docker-compose.yml` defaults `GATEWAY_TLS_ENABLED` to `false` while exposing gateway port `4000`; gateway config warns but still starts.
    - Impact: bearer tokens and mobile API traffic can be exposed if the default gateway port is deployed outside a trusted network.
    - Fix direction: fail closed when `NODE_ENV=production` and TLS is disabled unless an explicit internal-only override is set.
@@ -136,6 +137,7 @@ These domain scores are the original scrub scores; per-finding statuses below re
    - Server, gateway, and AI proxy entrypoints log unhandled promise rejections without exiting, which can leave degraded services marked healthy.
 
 6. **GHCR compose defaults include predictable database credentials and unauthenticated Redis.**
+   - Status: fixed in the deployment hardening slice by requiring explicit Postgres and Redis passwords, requiring a production encryption salt, wiring authenticated Redis URLs, and adding Redis auth health checks.
    - The prebuilt-image compose path can be launched with `sanctuary` defaults and open internal Redis.
 
 7. **AI proxy tests are not covered by the root coverage gate, and CI allows no tests.**
@@ -150,7 +152,9 @@ These domain scores are the original scrub scores; per-finding statuses below re
 2. Logged-in users with missing/null preferences cannot persist preference changes.
 3. Authenticated refresh can briefly render the login screen during auth bootstrap.
 4. Frontend Dockerfile creates a non-root user but does not switch to it.
+   - Status: fixed in the deployment hardening slice by switching the runtime image to UID `1001`, moving nginx to high internal ports, and making SSL startup fail clearly when mounted certificates are missing or unreadable.
 5. `ENCRYPTION_SALT` has a static deployment default.
+   - Status: fixed in the deployment hardening slice by rejecting missing/default production salts in server config and making setup refuse legacy default salt states instead of writing an unusable env file.
 6. Some comments still describe old cookie-auth/CSRF phase behavior and should be refreshed when those files are next touched.
 
 ---

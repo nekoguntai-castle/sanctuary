@@ -1,6 +1,32 @@
+# Active Task: P1-07 Deployment Fail-Closed Hardening 2026-05-09
+
+Status: in progress; branch `fix/deployment-fail-closed-hardening`
+
+Goal: make production deployment defaults fail closed for mobile gateway TLS, GHCR database/Redis secrets, encryption salt, and frontend container user hardening.
+
+## Plan
+
+- [x] Map gateway TLS validation, server production secret validation, GHCR Compose defaults, Redis auth wiring, and frontend nginx runtime permissions.
+- [x] Add focused tests proving production gateway cleartext fails unless an explicit internal-only override is set, and production server config rejects missing/default encryption salt.
+- [x] Implement gateway TLS fail-closed behavior with an auditable internal-only override and update docs/Compose defaults accordingly.
+- [x] Harden GHCR Compose by requiring explicit DB password, Redis password, encryption salt, and matching Redis URLs/health checks.
+- [x] Switch the frontend runtime image to the existing non-root user or document a tested exception if nginx permissions block it.
+- [x] Run focused gateway/server tests, Docker/Compose config checks, builds where relevant, touched-file lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Gateway config now fails production startup when TLS is disabled unless `GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP=true` is deliberately set; Compose defaults the gateway to TLS-enabled and docs describe the internal-only override.
+- Base and GHCR Compose now require explicit Postgres password, Redis password, and encryption salt; Redis starts with `--requirepass`, health checks authenticate, and backend/worker/MCP URLs include the Redis password.
+- Server production config rejects missing `ENCRYPTION_SALT` and the legacy `sanctuary-node-config` default; setup now refuses legacy missing/default salt upgrade states instead of writing a config the server will reject.
+- Frontend nginx now runs as UID `1001`, listens on high internal ports `8080`/`8443`, fails clearly when `ENABLE_SSL=true` lacks readable certs, and docs explain UID/GID `1001` certificate copies for production CA material.
+- Verification passed before delivery: focused gateway/server config tests, install-script unit tests, gateway/server builds, server test typecheck, gateway/server lint, base/GHCR/SSL Compose config checks including negative missing-secret checks and SSL overlay port-count checks, frontend Docker build plus non-root SSL smoke, Semgrep-only quality gate, touched-file lizard, and `git diff --check`.
+
+---
+
 # Active Task: P1-06 Semgrep Baseline And P2-01 Audit Gates 2026-05-09
 
-Status: in progress; branch `fix/semgrep-audit-gates`
+Status: completed; PR #347 merged as `bebb5527`
 
 Goal: make the Semgrep baseline gate pass by fixing or explicitly triaging reported workflow/code findings, and address the current production dependency audit failures or document accepted residual risk.
 
@@ -11,7 +37,7 @@ Goal: make the Semgrep baseline gate pass by fixing or explicitly triaging repor
 - [x] Harden release workflow shell interpolation by moving expressions into environment variables, validating tags/versions, and quoting shell variables.
 - [x] Resolve or document dependency audit findings without forced incompatible upgrades.
 - [x] Refresh Semgrep/audit baseline artifacts only after fixes or explicit exceptions, then run Semgrep baseline, workflow guard/actionlint checks where available, audits, focused tests/typechecks/lint, lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -20,6 +46,7 @@ Goal: make the Semgrep baseline gate pass by fixing or explicitly triaging repor
 - Documented the internal Docker-network WebSocket exception and constrained the address-verification Python command override to a single executable path/command before spawning without a shell.
 - Cleared server and AI proxy moderate production audits by overriding `hono` to `4.12.18` and updating `express-rate-limit` to `8.5.1` / `ip-address` to `10.2.0`; root production audit still exits 0 with only accepted low-severity Trezor `elliptic` advisories.
 - Verification passed before delivery: actionlint 1.7.12 with checked tarball hash, `npm run check:github-action-runtimes`, Semgrep-only `bash scripts/quality.sh`, `npm run check:semgrep-baseline`, production audits for root/server/AI proxy at moderate threshold, `docker compose config --quiet` with dummy required secrets, `npm --prefix server run build`, `npm --prefix ai-proxy run build`, focused Python wrapper test, `npm run typecheck:scripts`, `npm run typecheck:tests`, touched-file `npm run quality:lizard -- ...`, and `git diff --check`.
+- Delivery: PR #347 merged at `2026-05-09T03:28:22-10:00` as squash commit `bebb552744b7983494a40d4d15e2df663bdba16c`; all 30 Forgejo checks passed after rerunning transient frontend coverage and critical mutation CI failures that both passed locally (`npm run test:coverage:shard -- 1 2` with temp coverage output and `npm run test:mutation:critical:backend`).
 
 ---
 

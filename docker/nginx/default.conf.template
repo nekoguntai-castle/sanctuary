@@ -7,8 +7,8 @@ upstream backend {
 }
 
 server {
-    listen 80;
-    listen [::]:80;
+    listen ${NGINX_HTTP_PORT};
+    listen [::]:${NGINX_HTTP_PORT};
     server_name _;
 
     root /usr/share/nginx/html;
