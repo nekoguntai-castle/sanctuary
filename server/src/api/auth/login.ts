@@ -154,8 +154,8 @@ export function createLoginRouter(
       log.warn('SMTP not configured, skipping verification email', { userId: user.id });
     }
 
-    // Email verification is required if the setting is enabled
-    emailVerificationRequired = verificationRequired;
+    // Email verification blocks authentication only while this user remains unverified.
+    emailVerificationRequired = verificationRequired && !user.emailVerified;
 
     if (emailVerificationRequired && !user.emailVerified) {
       return res.status(201).json({
@@ -191,6 +191,8 @@ export function createLoginRouter(
     // schedule proactive refresh without reading tokens from the body.
     setAuthCookies(req, res, { accessToken: token, refreshToken });
 
+    // Required-and-unverified registrations returned above as pending. Any response
+    // that reaches this point is authenticated, so no verification block remains.
     res.status(201).json({
       expiresIn: 3600, // 1 hour in seconds
       user: {
@@ -201,11 +203,9 @@ export function createLoginRouter(
         isAdmin: user.isAdmin,
         preferences: user.preferences,
       },
-      emailVerificationRequired,
+      emailVerificationRequired: false,
       verificationEmailSent,
-      message: emailVerificationRequired
-        ? 'Registration successful. Please check your email to verify your account.'
-        : 'Registration successful.',
+      message: 'Registration successful.',
     });
   }));
 

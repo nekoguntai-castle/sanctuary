@@ -6,6 +6,8 @@ import {
   createMockResponse,
 } from '../../../helpers/testUtils';
 import {
+  callHandler,
+  findRouteLayer,
   getAdminRouter,
   mockAuditLogFromRequest,
   mockRevokeAllUserTokens,
@@ -313,6 +315,41 @@ export function registerAdminUserTests(): void {
           );
           expect(mockRevokeAllUserTokens).toHaveBeenCalledWith('user-1', 'admin_role_change');
         }
+      });
+
+      it('should revoke sessions once when password and admin status change together', async () => {
+        const existingUser = {
+          id: 'user-1',
+          username: 'testuser',
+          email: 'test@example.com',
+          isAdmin: false,
+          password: 'old-hash',
+        };
+
+        mockPrismaClient.user.findUnique.mockResolvedValue(existingUser);
+        mockPrismaClient.user.update.mockResolvedValue({
+          ...existingUser,
+          isAdmin: true,
+          updatedAt: new Date(),
+        });
+
+        const req = createMockRequest({
+          user: { userId: 'admin-1', username: 'admin', isAdmin: true },
+          params: { userId: 'user-1' },
+          body: { password: 'NewSecurePass123', isAdmin: true },
+        });
+        const { res, getResponse } = createMockResponse();
+
+        const routeLayer = findRouteLayer(getAdminRouter(), '/:userId', 'put');
+        const handler = routeLayer?.route?.stack?.at(-1)?.handle;
+
+        expect(handler).toBeTypeOf('function');
+        await callHandler(handler, req, res);
+
+        const response = getResponse();
+        expect(response.statusCode).toBe(200);
+        expect(mockRevokeAllUserTokens).toHaveBeenCalledTimes(1);
+        expect(mockRevokeAllUserTokens).toHaveBeenCalledWith('user-1', 'admin_security_update');
       });
 
       it('should not revoke sessions when admin status is submitted unchanged', async () => {

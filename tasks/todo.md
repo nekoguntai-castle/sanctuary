@@ -1,6 +1,30 @@
+# Active Task: P1-03 Backend Coverage Follow-Up 2026-05-09
+
+Status: in progress; branch `fix/backend-coverage-p1-03-followup`
+
+Goal: fix the late full backend unit coverage failure that appeared after PR #343 merged.
+
+## Plan
+
+- [x] Reproduce the Forgejo full backend unit coverage failure locally on merged `main`.
+- [x] Identify uncovered branches introduced or exposed by the P1-02/P1-03 auth work.
+- [x] Add focused tests and remove unreachable branch logic where the parser already enforces the invariant.
+- [x] Re-run focused backend tests, full backend unit coverage, typecheck/lint where relevant, lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Local reproduction: `JWT_SECRET=test-jwt-secret-for-ci-minimum-32-chars ENCRYPTION_KEY='test-encryption-key-32-chars-long!' NODE_ENV=test SANCTUARY_VITEST_INFRA_ATTEMPTS=1 npm --prefix server run test:run:ci -- tests/unit --coverage` passed all 9,649 unit tests but failed 100% global coverage on small branch/line gaps in auth registration, admin user update revocation reason selection, and refresh-token payload parsing.
+- Auth registration now reports `emailVerificationRequired: false` on the authenticated response path, matching the frontend response type and leaving the pending verification response as the only required-verification state.
+- Kept the defensive refresh-token type check after strict payload parsing with an explicit coverage ignore, and added focused regression coverage for non-object refresh payloads and invalid optional access-token claims.
+- Added a mounted-router admin update test proving simultaneous password and admin-role changes revoke sessions once with `admin_security_update`; the handler lookup is now asserted so route-stack drift cannot silently skip the case.
+- Verification passed: focused backend tests for auth registration/admin/JWT (249 tests), the exact full backend unit coverage command (9,653 tests, 100% statements/branches/functions/lines), `cd server && npm run build`, `npm run typecheck:server:tests`, `npm run lint:server`, touched-file `npm run quality:lizard -- ...`, and `git diff --check`.
+
+---
+
 # Active Task: P1-03 Email Verification Registration Session 2026-05-09
 
-Status: in progress; branch `fix/email-verification-registration-session`
+Status: completed; PR #343 merged as `f2e38e0b`
 
 Goal: when email verification is required, registration must create a pending user without issuing access/refresh cookies or authenticated frontend state.
 
@@ -11,7 +35,7 @@ Goal: when email verification is required, registration must create a pending us
 - [x] Update backend registration/auth behavior so unverified users cannot receive or use a live session while verification is required.
 - [x] Update frontend registration handling to show pending verification without setting authenticated user state.
 - [x] Run focused backend/frontend tests, typechecks/lint for touched areas, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -20,6 +44,7 @@ Goal: when email verification is required, registration must create a pending us
 - `/auth/email/verify` now remains public in the real auth router order; the authenticated email resend/update routes still enforce auth internally.
 - Frontend registration response typing now distinguishes authenticated vs pending-verification results, and `UserContext` shows a notice without setting authenticated user state.
 - Verification passed: `npm --prefix server run test:run -- tests/unit/api/auth.routes.registration.test.ts tests/unit/middleware/auth.test.ts tests/unit/api/email.test.ts` (191 tests), `npm run test:run -- tests/api/auth.test.ts tests/contexts/UserContext.test.tsx tests/components/Login/useLoginFlow.test.ts tests/components/Login/LoginForm.test.tsx tests/components/Login.test.tsx` (101 tests), `./scripts/run-integration-tests.sh tests/integration/flows/auth.integration.test.ts` (43 tests, fresh migrations applied), `cd server && npm run build`, `npm run build`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:server`, `npm run lint:app`, touched-file `npm run quality:lizard -- ...`, `npm run arch:check`, and `git diff --check`.
+- Delivery: PR #343 merged at `2026-05-09T00:29:15-10:00` as squash commit `f2e38e0b153bfc6a851255d93d3d4bfbfba3ddfe`; a late full backend unit coverage failure is being handled in the follow-up task above.
 - Remaining follow-up outside this slice: public or admin-mediated resend UX for users whose verification email was not delivered, because `/auth/email/resend` is intentionally still authenticated.
 
 ---

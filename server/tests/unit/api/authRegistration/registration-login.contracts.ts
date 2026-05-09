@@ -183,6 +183,32 @@ export function registerAuthRegistrationLoginTests(): void {
       expect(response.body.emailVerificationRequired).toBe(false);
     });
 
+    it('should authenticate immediately when a created user is already email verified', async () => {
+      mockEnabledPublicRegistration();
+      mockUniqueRegistrationIdentity();
+      mockPrismaClient.user.create.mockResolvedValue({
+        id: 'new-user-id',
+        username: 'newuser',
+        email: 'new@example.com',
+        emailVerified: true,
+        isAdmin: false,
+        sessionVersion: 0,
+        preferences: { darkMode: true },
+      });
+      mockIsVerificationRequired.mockResolvedValue(true);
+      mockIsSmtpConfigured.mockResolvedValue(false);
+
+      const response = await request(app)
+        .post('/api/v1/auth/register')
+        .send({ username: 'newuser', password: 'StrongPassword123!', email: 'new@example.com' });
+
+      expect(response.status).toBe(201);
+      expect(response.headers['set-cookie']).toBeDefined();
+      expect(response.body.user.emailVerified).toBe(true);
+      expect(response.body.emailVerificationRequired).toBe(false);
+      expect(response.body.message).toBe('Registration successful.');
+    });
+
     it('should create a pending verification account without auth cookies when verification is required', async () => {
       const { createRefreshToken } = await import('../../../../src/services/refreshTokenService');
       const createRefreshTokenMock = vi.mocked(createRefreshToken);

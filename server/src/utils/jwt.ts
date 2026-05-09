@@ -282,6 +282,7 @@ export async function verifyRefreshToken(token: string): Promise<RefreshTokenPay
       throw new Error('Refresh token has been revoked');
     }
 
+    /* v8 ignore next -- parseRefreshTokenPayload already rejects non-refresh types; keep this as defense-in-depth. */
     if (decoded.type !== 'refresh') {
       throw new Error('Invalid refresh token type');
     }

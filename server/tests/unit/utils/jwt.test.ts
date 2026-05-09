@@ -280,6 +280,20 @@ describe('JWT Utilities', () => {
       await expect(verifyToken(token, TokenAudience.ACCESS)).rejects.toThrow('Invalid or expired token');
     });
 
+    it('should reject invalid optional access-token claims after signature verification', async () => {
+      const token = jwt.sign(
+        {
+          ...mockPayload,
+          usingDefaultPassword: 'yes',
+          aud: TokenAudience.ACCESS,
+        },
+        mockConfig.jwtSecret,
+        { expiresIn: '1h' }
+      );
+
+      await expect(verifyToken(token, TokenAudience.ACCESS)).rejects.toThrow('Invalid or expired token');
+    });
+
     it('should reject empty user ids after signature verification', async () => {
       const token = jwt.sign(
         {
@@ -411,6 +425,16 @@ describe('JWT Utilities', () => {
 
     it('should throw for invalid token', async () => {
       await expect(verifyRefreshToken('invalid')).rejects.toThrow('Invalid refresh token');
+    });
+
+    it('should throw for signed refresh-audience payload that is not an object', async () => {
+      const verifySpy = vi.spyOn(jwt, 'verify').mockReturnValue('not-an-object' as never);
+
+      try {
+        await expect(verifyRefreshToken('string-payload-token')).rejects.toThrow('Invalid refresh token');
+      } finally {
+        verifySpy.mockRestore();
+      }
     });
 
     it('should throw for refresh audience token with wrong type', async () => {
