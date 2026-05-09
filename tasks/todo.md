@@ -1,6 +1,6 @@
 # Active Task: P2-03 AI Proxy Coverage Gate 2026-05-09
 
-Status: in progress; branch `fix/ai-proxy-coverage-gate`
+Status: completed; PR #352 merged as `8e3fb531`
 
 Goal: make AI proxy tests package-owned, fail when no tests are discovered, and enforce coverage for `ai-proxy/src/**` in CI instead of relying on root Vitest exclusions.
 
@@ -11,7 +11,7 @@ Goal: make AI proxy tests package-owned, fail when no tests are discovered, and 
 - [x] Update quick/full AI proxy CI to use package scripts without `--passWithNoTests`; run coverage in the full lane and upload/report AI proxy coverage.
 - [x] Update workflow composition/runtime tests plus health-assessment/task docs for the closed coverage gap.
 - [x] Run AI proxy tests/coverage/build, workflow guard tests, action runtime guard, lizard/diff checks, and any needed typechecks.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -20,6 +20,8 @@ Goal: make AI proxy tests package-owned, fail when no tests are discovered, and 
 - Added AI proxy tests for runtime endpoint helpers, sanitized config routes, provider route behavior, and Ollama model-pull streaming/error progress. The package suite now has 17 files and 103 tests.
 - Updated CI classification/composition guards so AI proxy package config changes trigger both full scan and AI proxy classification, and so the forbidden zero-test AI proxy command cannot return.
 - Verification passed locally: `npm --prefix ai-proxy run test -- --pool threads --maxWorkers=1 --no-file-parallelism`; `npm --prefix ai-proxy run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism`; `npm --prefix ai-proxy run build`; `bash tests/ci/check-workflow-composition.test.sh`; `bash tests/ci/classify-test-changes.test.sh`; `npm run check:github-action-runtimes`; `npm run typecheck:tests`; `npm run test:hygiene -- ...`; `npm run quality:lizard -- ...`; `git diff --check`.
+- Pre-commit verification also passed the full frontend Vitest suite with 6,056 tests.
+- Delivery: PR #352 merged at `2026-05-09T05:15:34-10:00` as squash commit `8e3fb5317f519f9b1b4365176ecbd6793da1545f`; all 30 Forgejo checks passed.
 
 ---
 
