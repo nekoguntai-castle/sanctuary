@@ -10,7 +10,6 @@ const apiClientMocks = vi.hoisted(() => ({
   put: vi.fn(),
 }));
 
-// Phase 4: setToken/getToken were removed from the apiClient surface.
 // Browser auth lives in HttpOnly cookies, so this mock only covers request verbs.
 vi.mock("../../src/api/client", () => ({
   default: {

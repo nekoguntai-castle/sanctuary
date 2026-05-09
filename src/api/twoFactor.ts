@@ -65,7 +65,7 @@ export async function disable2FA(data: TwoFactorDisableRequest): Promise<{ succe
 /**
  * Verify 2FA code during login.
  *
- * ADR 0001 / 0002 Phase 4: no token persistence on the browser side.
+ * ADR 0001 / 0002: no token persistence on the browser side.
  * The backend sets the sanctuary_access / _refresh / _csrf cookies on
  * this response and the ApiClient reads the X-Access-Expires-At header
  * to schedule the next refresh. The caller receives the user object

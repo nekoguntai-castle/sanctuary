@@ -73,9 +73,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Check for existing authentication on mount.
   //
-  // ADR 0001 / 0002 Phase 4: the browser has no access to the
-  // HttpOnly access cookie, so "am I authenticated?" is determined by
-  // calling /auth/me and interpreting the response. 200 → hydrate the
+  // ADR 0001 / 0002: browser auth is cookie-backed. The frontend cannot
+  // read the HttpOnly access cookie, so "am I authenticated?" is
+  // determined by calling /auth/me and interpreting the response. 200 → hydrate the
   // user object and schedule the next refresh from the
   // X-Access-Expires-At header (ApiClient forwards it automatically).
   // 401 after the ApiClient has attempted one refresh means the user is

@@ -89,13 +89,13 @@ export const registerApiClientRetryContracts = () => {
     });
 
     it('should NOT retry on 401 Unauthorized via the exponential-backoff path', async () => {
-      // Phase 4: 401 now triggers the refresh interceptor instead of
-      // the exponential-backoff retry loop. This test asserts the
+      // 401 triggers the refresh interceptor instead of the
+      // exponential-backoff retry loop. This test asserts the
       // *backoff* loop does not fire — it should run zero retries and
       // surface the 401 cleanly. Mock the refresh to fail so the
       // interceptor bails out and returns the original 401 without
-      // the retry-once Phase 4 path kicking in. The Phase 4 describe
-      // block below has dedicated tests for the refresh-then-retry flow.
+      // the retry-once refresh path kicking in. The cookie-auth contract
+      // block has dedicated tests for the refresh-then-retry flow.
       mockFetch.mockResolvedValue({
         ok: false,
         status: 401,

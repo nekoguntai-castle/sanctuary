@@ -35,7 +35,7 @@ export const useWebSocket = (): UseWebSocketReturn => {
     websocketClient.onConnectionChange(handleConnectionChange);
 
     // Connect if not already connected.
-    // ADR 0001 / 0002 Phase 3-4: same-origin WebSocket upgrades carry the
+    // ADR 0001 / 0002: same-origin WebSocket upgrades carry the
     // sanctuary_access HttpOnly cookie automatically, and the server's
     // extractToken in websocket/auth.ts reads it on upgrade. The frontend
     // no longer has the access token in JavaScript, so no auth-message

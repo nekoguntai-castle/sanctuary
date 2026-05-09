@@ -12,7 +12,6 @@ const mockGet = vi.fn();
 const mockPost = vi.fn();
 const mockPatch = vi.fn();
 const mockDownload = vi.fn();
-const mockGetToken = vi.fn().mockReturnValue('test-token');
 
 vi.mock('../../src/api/client', () => ({
   default: {
@@ -20,7 +19,6 @@ vi.mock('../../src/api/client', () => ({
     post: (...args: unknown[]) => mockPost(...args),
     patch: (...args: unknown[]) => mockPatch(...args),
     download: (...args: unknown[]) => mockDownload(...args),
-    getToken: () => mockGetToken(),
   },
   API_BASE_URL: '/api/v1',
 }));

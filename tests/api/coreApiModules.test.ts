@@ -16,7 +16,6 @@ const mockPatch = vi.fn();
 const mockPut = vi.fn();
 const mockDelete = vi.fn();
 const mockDownload = vi.fn();
-const mockSetToken = vi.fn();
 
 vi.mock('../../src/api/client', () => ({
   default: {
@@ -26,7 +25,6 @@ vi.mock('../../src/api/client', () => ({
     put: (...args: unknown[]) => mockPut(...args),
     delete: (...args: unknown[]) => mockDelete(...args),
     download: (...args: unknown[]) => mockDownload(...args),
-    setToken: (...args: unknown[]) => mockSetToken(...args),
   },
 }));
 

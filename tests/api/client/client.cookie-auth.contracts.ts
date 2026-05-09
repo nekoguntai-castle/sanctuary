@@ -8,7 +8,7 @@ import {
 } from './clientTestHarness';
 
 export const registerApiClientCookieAuthContracts = () => {
-  describe('Phase 4 — cookie auth + CSRF + X-Access-Expires-At + 401 interceptor', () => {
+  describe('cookie auth + CSRF + X-Access-Expires-At + 401 interceptor', () => {
     function okResponse(body: unknown = {}, headers?: Record<string, string>) {
       const headersMap = new Map<string, string>(Object.entries(headers ?? {}));
       return {
@@ -174,8 +174,8 @@ export const registerApiClientCookieAuthContracts = () => {
     });
 
     it('DOES trigger refresh on 401 from /auth/me (valid-session recovery on boot)', async () => {
-      // ADR 0001/0002: a 401 from /auth/me with a still-valid refresh
-      // cookie should refresh + retry, hydrating the user. Excluding
+      // ADR 0001 / 0002: a 401 from /auth/me with a still-valid refresh
+      // cookie should refresh and retry, hydrating the user. Excluding
       // /auth/me from the interceptor would force-logout users on
       // every reload after their access token expired.
       mockFetch

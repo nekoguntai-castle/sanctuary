@@ -2,15 +2,13 @@
  * Auth API Tests
  *
  * Tests for authentication API: login, register, logout,
- * 2FA handling, token management, and user profile functions.
+ * 2FA handling, cookie-backed session behavior, and user profile functions.
  */
 
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 
-// Mock the API client. ADR 0001 / 0002 Phase 4: no more setToken/
-// isAuthenticated — auth state lives in the backend cookies, and the
-// frontend just calls the endpoints and lets credentials:'include' do
-// the attaching automatically.
+// Mock the API client. ADR 0001 / 0002: auth state lives in backend
+// cookies, and the frontend calls endpoints through credentials:'include'.
 const mockGet = vi.fn();
 const mockPost = vi.fn();
 const mockPatch = vi.fn();
@@ -76,9 +74,8 @@ describe('Auth API', () => {
   // ========================================
   describe('register', () => {
     it('should POST registration data and return the auth response', async () => {
-      // Phase 6: the backend sets the browser auth cookies on this
-      // response; the response body carries only the user object for
-      // UserContext hydration. Tokens are delivered via Set-Cookie.
+      // The backend sets the browser auth cookies on this response; the
+      // response body carries only the user object for UserContext hydration.
       const mockResponse: AuthResponse = {
         user: {
           id: 'user-1',
@@ -183,10 +180,9 @@ describe('Auth API', () => {
     });
 
     it('should swallow backend errors so local cleanup still runs', async () => {
-      // Phase 4 logout is best-effort on the backend call — the local
-      // refresh-module cleanup and React state reset in UserContext
-      // always run, even if the backend request fails (e.g. network
-      // offline). The authApi.logout() helper wraps the call in a
+      // Logout is best-effort on the backend call: refresh-module cleanup
+      // and React state reset in UserContext still run if the request fails
+      // (for example, while offline). authApi.logout() wraps the call in a
       // try/catch to guarantee this.
       mockPost.mockRejectedValue(new Error('network down'));
       await expect(logout()).resolves.toBeUndefined();
@@ -228,8 +224,8 @@ describe('Auth API', () => {
     });
   });
 
-  // The legacy `isAuthenticated()` helper was removed in Phase 4 — auth
-  // state lives in the backend cookies, and the frontend determines
+  // The legacy `isAuthenticated()` helper is intentionally absent: auth
+  // state lives in backend cookies, and the frontend determines
   // "am I authenticated?" by calling /auth/me and interpreting the
   // response status. See tests/contexts/UserContext.test.tsx for the
   // /auth/me hydration test.

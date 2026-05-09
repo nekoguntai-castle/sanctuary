@@ -28,6 +28,29 @@ Goal: make request timeout handling expose and trigger a request-scoped cancella
 
 ---
 
+# Active Task: P3-06 Auth Comment Hygiene 2026-05-09
+
+Status: in progress; branch `chore/auth-comment-hygiene`
+
+Goal: replace stale auth/CSRF comments that still describe migration phases, token storage, or legacy auth helpers with stable cookie-auth and CSRF wording in high-risk auth files.
+
+## Plan
+
+- [x] Search frontend auth, refresh, WebSocket, API-client, and auth test comments for stale phase/token-era wording.
+- [x] Update only misleading auth/CSRF comments; avoid behavior changes and unrelated comment churn.
+- [x] Mark P3-06 implemented in health/remediation docs.
+- [x] Run focused static checks for changed comment-only files, architecture graph checks if needed, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Replaced stale phase-number comments in frontend auth, refresh, WebSocket, API-client, and auth API tests with stable descriptions of cookie-backed auth, CSRF, refresh-on-401, and `X-Access-Expires-At` behavior.
+- Removed stale `setToken`/`getToken` mocks from API module tests where the real client no longer exposes those token helper APIs.
+- Confirmed `contexts`, `src/api`, `hooks/websocket`, and `tests/api` no longer contain the searched stale auth-phase/token helper terms.
+- Verification passed: focused auth/API tests (181 tests), app typecheck, test typecheck, app lint, changed-test hygiene, touched-file lizard, architecture graph regeneration/call extraction with no generated diff, architecture diagram lint, and `git diff --check`.
+
+---
+
 # Active Task: P3-04 Null Preferences 2026-05-09
 
 Status: completed; PR #364 merged as `f585b5c4`

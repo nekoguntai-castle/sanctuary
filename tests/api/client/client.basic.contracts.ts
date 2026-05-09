@@ -87,9 +87,9 @@ export const registerApiClientBasicContracts = () => {
       expect(calledUrl).not.toContain("?");
     });
 
-    // ADR 0001 / 0002 Phase 4: the Authorization header is no longer
-    // set by the browser client. See the "Phase 4 — cookie auth + CSRF"
-    // describe block at the end of this file for cookie-path assertions.
+    // ADR 0001 / 0002: the browser client authenticates with cookies, not
+    // an Authorization header. See the cookie auth + CSRF contracts for
+    // cookie-path assertions.
   });
 
   // ========================================

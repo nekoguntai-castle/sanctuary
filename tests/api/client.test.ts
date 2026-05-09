@@ -2,7 +2,7 @@
  * API Client Tests
  *
  * Tests for the base HTTP client: request/response handling,
- * retry with exponential backoff, auth token management, and error handling.
+ * retry with exponential backoff, cookie auth, CSRF, and error handling.
  */
 
 import { afterEach, beforeEach, describe } from 'vitest';

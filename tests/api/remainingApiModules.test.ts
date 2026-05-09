@@ -361,17 +361,16 @@ describe("Remaining API Modules", () => {
 
   describe("Two-Factor API", () => {
     it("calls setup, enable, disable, verify, and backup endpoints", async () => {
-      // Phase 4: verify2FA no longer sets a JS token — the backend sets
-      // browser auth cookies on this response and the ApiClient parses
-      // X-Access-Expires-At from the headers. The helper just returns
-      // the response payload.
+      // verify2FA does not set a JavaScript token; the backend sets browser
+      // auth cookies and ApiClient parses X-Access-Expires-At from the
+      // headers. The helper just returns the response payload.
       mockPost.mockResolvedValue({});
 
       await twoFactorApi.setup2FA();
       await twoFactorApi.enable2FA("123456");
       await twoFactorApi.disable2FA({ password: "p", token: "123456" });
 
-      // Phase 6: verify2FA response body no longer carries a token field.
+      // verify2FA response bodies carry user data, not a token field.
       const verifyResponse = { user: { id: "u1" } };
       mockPost.mockResolvedValueOnce(verifyResponse);
       const result = await twoFactorApi.verify2FA({

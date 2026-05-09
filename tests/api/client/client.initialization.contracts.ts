@@ -16,10 +16,10 @@ export const registerApiClientInitializationContracts = () => {
   });
 
   // =========================================================================
-  // Phase 4 — cookie auth + CSRF + X-Access-Expires-At + 401 interceptor
+  // Cookie auth + CSRF + X-Access-Expires-At + 401 interceptor
   // =========================================================================
   //
-  // ADR 0001 / 0002 Phase 4 changes to the client:
+  // ADR 0001 / 0002 client behavior:
   //   - Every request carries `credentials: 'include'` so the browser
   //     attaches sanctuary_access / sanctuary_refresh / sanctuary_csrf
   //     cookies automatically.

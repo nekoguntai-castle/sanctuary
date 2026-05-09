@@ -446,6 +446,8 @@ Must handle:
 
 ### P3-06 Stale Comments
 
+Status: implemented in the auth comment-hygiene slice. Frontend auth, refresh, WebSocket, API-client, and auth API test comments now use stable cookie-auth/CSRF wording instead of old migration phase or JavaScript-token terminology; stale token helper mocks were also removed from API module tests.
+
 Must handle:
 
 - Update comments in files touched by auth/CSRF fixes so comments describe current cookie auth and CSRF behavior.

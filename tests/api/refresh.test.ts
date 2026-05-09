@@ -1,5 +1,5 @@
 /**
- * Refresh module tests (ADR 0002 Phase 4)
+ * Refresh module tests (ADR 0002)
  *
  * Covers the single-flight behavior within a tab, the cross-tab Web Lock
  * serialization, the freshness check inside the lock, the proactive

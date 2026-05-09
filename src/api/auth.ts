@@ -50,8 +50,8 @@ export interface RegisterRequest {
 }
 
 /**
- * ADR 0001 / 0002 Phase 6: browser auth is cookie-only. The response
- * body no longer carries a `token` field — the access and refresh JWTs
+ * ADR 0001 / 0002: browser auth is cookie-only. The response body does
+ * not carry a JavaScript-readable access token; access and refresh JWTs
  * are set via `Set-Cookie` (sanctuary_access / sanctuary_refresh) and
  * the `X-Access-Expires-At` header drives the refresh scheduler. The
  * caller only needs the user object for UserContext hydration.
@@ -100,8 +100,8 @@ export function isPendingEmailVerification(
 /**
  * Register a new user.
  *
- * ADR 0001 / 0002 Phase 4: the browser no longer stores or sends the
- * JSON access token. The backend sets the sanctuary_access / _refresh /
+ * ADR 0001 / 0002: the browser no longer stores or sends a JSON access
+ * token. The backend sets the sanctuary_access / _refresh /
  * _csrf cookies on this response, and the ApiClient reads the
  * X-Access-Expires-At header to schedule the next refresh. The caller
  * receives the user object for context hydration only.
@@ -114,7 +114,7 @@ export async function register(data: RegisterRequest): Promise<RegisterResponse>
  * Login user
  * Returns either a full auth response or a 2FA required response.
  *
- * Phase 4 cookie path: no token persistence on the browser side.
+ * Cookie-auth path: no token persistence on the browser side.
  */
 export async function login(data: LoginRequest): Promise<LoginResponse> {
   // Disable retries — auto-retrying failed logins worsens server-side rate limiting

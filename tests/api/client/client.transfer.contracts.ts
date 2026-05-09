@@ -56,8 +56,8 @@ export const registerApiClientTransferContracts = () => {
       expect(calledOptions.body).toBe(formData);
       // Should NOT set Content-Type (browser sets it with boundary)
       expect(calledOptions.headers["Content-Type"]).toBeUndefined();
-      // Phase 4: credentials: 'include' replaces the Bearer header for
-      // browser callers. See the "Phase 4" describe block.
+      // Browser callers authenticate via HttpOnly cookies, so transfer
+      // helpers send credentials: 'include' instead of a Bearer header.
       expect(calledOptions.credentials).toBe("include");
     });
 
@@ -167,7 +167,7 @@ export const registerApiClientTransferContracts = () => {
       expect(mockFetch.mock.calls[0][0]).toContain("from=2026-01-01");
       expect(mockFetch.mock.calls[0][0]).toContain("to=2026-01-31");
       expect(mockFetch.mock.calls[0][1].method).toBe("POST");
-      // Phase 4: browser auth is via HttpOnly cookies, not Bearer header.
+      // Browser auth is via HttpOnly cookies, not a Bearer header.
       expect(mockFetch.mock.calls[0][1].credentials).toBe("include");
     });
 
@@ -399,7 +399,7 @@ export const registerApiClientTransferContracts = () => {
       });
 
       expect(mockFetch.mock.calls[0][0]).toContain("/admin/backup?walletId=w1");
-      // Phase 4: cookie-based auth via credentials:'include'.
+      // Cookie-based auth uses credentials:'include'.
       expect(mockFetch.mock.calls[0][1].credentials).toBe("include");
       expect(mockDownloadBlob).toHaveBeenCalledWith(blob, "backup-2026.tar.gz");
     });

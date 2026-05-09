@@ -1,5 +1,5 @@
 /**
- * Refresh flow (ADR 0002 Phase 4)
+ * Refresh flow (ADR 0002)
  *
  * Self-contained module that owns the frontend access-token refresh lifecycle:
  *

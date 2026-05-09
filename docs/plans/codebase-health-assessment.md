@@ -166,6 +166,7 @@ These domain scores are the original scrub scores; per-finding statuses below re
 5. `ENCRYPTION_SALT` has a static deployment default.
    - Status: fixed in the deployment hardening slice by rejecting missing/default production salts in server config and making setup refuse legacy default salt states instead of writing an unusable env file.
 6. Some comments still describe old cookie-auth/CSRF phase behavior and should be refreshed when those files are next touched.
+   - Status: fixed in the auth comment-hygiene slice by replacing stale phase/token-era comments in frontend auth, refresh, WebSocket, API-client, and auth API tests with stable cookie-auth/CSRF wording.
 
 ---
 
