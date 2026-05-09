@@ -1,6 +1,34 @@
+# Active Task: Wallet Create-Account Selection Large-File Split 2026-05-08
+
+Status: in progress; branch `test/wallet-create-account-large-file-split`
+
+Goal: reduce the next largest remaining test-file warning, `server/tests/unit/services/wallet/create-account-selection.contracts.ts` at 948 LOC, while preserving the wallet account-selection proof shape.
+
+## Plan
+
+- [x] Inspect the current create-account selection contract file, imports, helper usage, and scenario groups.
+- [x] Choose the smallest split boundary that drops the file below the warning band without broad wallet-test churn.
+- [x] Move only cohesive scenarios into a smaller register module, passing shared helpers explicitly.
+- [x] Remove imports that become provably unused after the split.
+- [x] Run focused wallet service tests, server test typecheck, touched-file lizard, large-file check, and `git diff --check`.
+- [x] Review for hidden risk: no assertion weakening, no wallet service behavior edits, and no mock setup changes.
+- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+
+## Review
+
+- The smallest clean boundary was the `Validation` scenario group: it is cohesive, uses only the shared `userId` and `createMockDevice` helper plus wallet-test harness mocks, and can be registered under the same parent `describe`.
+- Moved validation cases into `server/tests/unit/services/wallet/create-account-selection.validation.contracts.ts` and passed the shared helper explicitly, avoiding a circular import and avoiding changes to `walletTestHarness`.
+- Removed imports from the main account-selection contract that became provably unused after the split.
+- `server/tests/unit/services/wallet/create-account-selection.contracts.ts` dropped from 948 lines to 731 lines; the validation module is 234 lines, so this surface is no longer in the large-file warning inventory.
+- The large-file check now reports three test warnings instead of four; the next largest local candidate is `server/tests/unit/services/bitcoin/mempool.test.ts` at 850 LOC.
+- Verification passed locally: focused wallet service Vitest run (66 tests), server test typecheck, touched-file lizard, large-file classification check, and `git diff --check`.
+
+---
+
 # Active Task: Node Client Test Large-File Split 2026-05-08
 
-Status: in progress; branch `test/node-client-large-file-split`
+Status: complete; PR #332 merged as `242b4e60`
 
 Goal: reduce the next largest remaining test-file warning, `server/tests/unit/services/bitcoin/nodeClient.test.ts` at 961 LOC, without weakening the node-client coverage or destabilizing Vitest module mocks.
 
@@ -12,8 +40,8 @@ Goal: reduce the next largest remaining test-file warning, `server/tests/unit/se
 - [x] Move cohesive scenario groups into smaller files or register modules, preserving test names and behavior.
 - [x] Run focused node-client tests, server test typecheck, touched-file lizard, large-file check, and `git diff --check`.
 - [x] Review for hidden risk: no mock ordering regressions, no assertion weakening, no broad wallet/node-service refactor.
-- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
-- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+- [x] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [x] Re-check the queue after merge; physical hardware capture remains blocked by device access.
 
 ## Review
 
@@ -23,6 +51,8 @@ Goal: reduce the next largest remaining test-file warning, `server/tests/unit/se
 - `server/tests/unit/services/bitcoin/nodeClient.test.ts` dropped from 961 lines to 217 lines. The new scenario modules are 362, 257, and 200 lines, so the node-client surface is no longer in the large-file warning inventory.
 - The large-file check now reports four test warnings instead of five; the next largest local candidate is `server/tests/unit/services/wallet/create-account-selection.contracts.ts` at 948 LOC.
 - Verification passed locally: focused node-client Vitest run (40 tests), server test typecheck, touched-file lizard, large-file classification check, and `git diff --check`.
+- PR #332 merged at `2026-05-08T18:25:25-10:00` as squash commit `242b4e60fb2b77f1465b0e84d7b05fef80ed5b95`; local `main` was fast-forwarded and the local/remote `test/node-client-large-file-split` branches were deleted.
+- Post-merge `main` verification passed: focused node-client Vitest run, 40 tests; large-file classification check passed with node-client removed from the warning inventory.
 
 ---
 
