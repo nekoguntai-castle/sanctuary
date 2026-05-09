@@ -18,6 +18,7 @@ import {
 import { processRecord, camelToSnakeCase } from './serialization';
 import { migrateBackup } from './migration';
 import { TABLE_ORDER, CACHE_TABLES } from './constants';
+import { validateBackupForRestore } from './validation';
 import type { BackupRecord, SanctuaryBackup, RestoreResult } from './types';
 
 const log = createLogger('BACKUP:SVC');
@@ -30,6 +31,17 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
   const warnings: string[] = [];
   let tablesRestored = 0;
   let recordsRestored = 0;
+
+  const validation = await validateBackupForRestore(backup);
+  if (!validation.valid) {
+    return {
+      success: false,
+      tablesRestored: 0,
+      recordsRestored: 0,
+      warnings: validation.warnings,
+      error: `Backup validation failed: ${validation.issues.join('; ')}`,
+    };
+  }
 
   // Get current schema version
   const currentSchemaVersion = await migrationService.getSchemaVersion();
@@ -76,7 +88,9 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
           await tx[table].deleteMany({});
           log.debug(`[BACKUP] Deleted all records from ${table}`);
         } catch (error) {
-          log.warn(`[BACKUP] Failed to delete from ${table}`, { error: getErrorMessage(error) });
+          const errorMsg = `Failed to delete table ${table}: ${getErrorMessage(error)}`;
+          log.error('[BACKUP] ' + errorMsg);
+          throw new Error(errorMsg);
         }
       }
 

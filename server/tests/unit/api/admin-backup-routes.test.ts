@@ -5,14 +5,14 @@ import { errorHandler } from '../../../src/errors/errorHandler';
 
 const {
   mockCreateBackup,
-  mockValidateBackup,
+  mockValidateBackupForRestore,
   mockRestoreFromBackup,
   mockAuditLogFromRequest,
   mockVerifyPassword,
   mockPrismaUserFindUnique,
 } = vi.hoisted(() => ({
   mockCreateBackup: vi.fn(),
-  mockValidateBackup: vi.fn(),
+  mockValidateBackupForRestore: vi.fn(),
   mockRestoreFromBackup: vi.fn(),
   mockAuditLogFromRequest: vi.fn(),
   mockVerifyPassword: vi.fn(),
@@ -33,7 +33,7 @@ vi.mock('../../../src/middleware/auth', () => ({
 vi.mock('../../../src/services/backupService', () => ({
   backupService: {
     createBackup: mockCreateBackup,
-    validateBackup: mockValidateBackup,
+    validateBackupForRestore: mockValidateBackupForRestore,
     restoreFromBackup: mockRestoreFromBackup,
   },
 }));
@@ -137,7 +137,7 @@ describe('Admin Backup Routes', () => {
     mockVerifyPassword.mockResolvedValue(true);
     mockPrismaUserFindUnique.mockResolvedValue({ password: 'hashed-password' });
     mockCreateBackup.mockResolvedValue(makeBackup());
-    mockValidateBackup.mockResolvedValue({
+    mockValidateBackupForRestore.mockResolvedValue({
       valid: true,
       issues: [],
       warnings: [],
@@ -293,12 +293,12 @@ describe('Admin Backup Routes', () => {
       .send({ backup });
 
     expect(response.status).toBe(200);
-    expect(mockValidateBackup).toHaveBeenCalledWith(backup);
+    expect(mockValidateBackupForRestore).toHaveBeenCalledWith(backup);
     expect(response.body.valid).toBe(true);
   });
 
   it('returns validation failure when backup validation throws', async () => {
-    mockValidateBackup.mockRejectedValue(new Error('invalid file'));
+    mockValidateBackupForRestore.mockRejectedValue(new Error('invalid file'));
 
     const response = await request(app)
       .post('/api/v1/admin/backup/validate')
@@ -327,7 +327,7 @@ describe('Admin Backup Routes', () => {
   });
 
   it('rejects restore when validation reports issues', async () => {
-    mockValidateBackup.mockResolvedValue({
+    mockValidateBackupForRestore.mockResolvedValue({
       valid: false,
       issues: ['Missing user table'],
       warnings: [],
@@ -350,6 +350,29 @@ describe('Admin Backup Routes', () => {
       message: 'Backup validation failed',
       issues: ['Missing user table'],
     });
+  });
+
+  it('rejects destructive restore when strict restore validation reports a partial backup', async () => {
+    mockValidateBackupForRestore.mockResolvedValue({
+      valid: false,
+      issues: ['Missing required restore table: wallet'],
+      warnings: ['Missing table: wallet'],
+      info: {
+        createdAt: '2025-01-01T00:00:00.000Z',
+        appVersion: '1.2.3',
+        schemaVersion: 12,
+        totalRecords: 2,
+        tables: ['user'],
+      },
+    });
+
+    const response = await request(app)
+      .post('/api/v1/admin/restore')
+      .send({ backup: makeBackup(), confirmationCode: 'CONFIRM_RESTORE' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.issues).toContain('Missing required restore table: wallet');
+    expect(mockRestoreFromBackup).not.toHaveBeenCalled();
   });
 
   it('returns restore failure when backup service reports unsuccessful restore', async () => {
@@ -422,7 +445,7 @@ describe('Admin Backup Routes', () => {
   });
 
   it('returns 500 when restore flow throws unexpectedly', async () => {
-    mockValidateBackup.mockRejectedValue(new Error('validator crashed'));
+    mockValidateBackupForRestore.mockRejectedValue(new Error('validator crashed'));
 
     const response = await request(app)
       .post('/api/v1/admin/restore')

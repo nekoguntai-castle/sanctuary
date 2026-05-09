@@ -55,7 +55,7 @@
 
 import { migrationService } from '../migrationService';
 import { createBackup } from './creation';
-import { validateBackup } from './validation';
+import { validateBackup, validateBackupForRestore } from './validation';
 import { restoreFromBackup } from './restore';
 import { BACKUP_FORMAT_VERSION } from './constants';
 import type { SanctuaryBackup, BackupOptions, ValidationResult, RestoreResult } from './types';
@@ -76,6 +76,13 @@ export class BackupService {
    */
   async validateBackup(backup: unknown): Promise<ValidationResult> {
     return validateBackup(backup);
+  }
+
+  /**
+   * Validate a backup using destructive-restore safety rules.
+   */
+  async validateBackupForRestore(backup: unknown): Promise<ValidationResult> {
+    return validateBackupForRestore(backup);
   }
 
   /**

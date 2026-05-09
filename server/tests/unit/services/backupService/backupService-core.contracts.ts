@@ -6,6 +6,7 @@ import { BackupService, type SanctuaryBackup, type BackupMeta } from '../../../.
 import { camelToSnakeCase } from '../../../../src/services/backupService/serialization';
 import { migrateBackup } from '../../../../src/services/backupService/migration';
 import * as encryption from '../../../../src/utils/encryption';
+import { migrationService } from '../../../../src/services/migrationService';
 
 export function registerBackupServiceCoreTests(): void {
 describe('BackupService', () => {
@@ -15,52 +16,53 @@ describe('BackupService', () => {
     backupService = new BackupService();
     resetPrismaMocks();
     vi.clearAllMocks();
+    vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(1);
+  });
+
+  const createValidBackup = (): SanctuaryBackup => ({
+    meta: {
+      version: '1.0.0',
+      appVersion: '0.4.0',
+      schemaVersion: 1,
+      createdAt: new Date().toISOString(),
+      createdBy: 'admin',
+      includesCache: false,
+      recordCounts: { user: 1, wallet: 1 },
+    },
+    data: {
+      user: [
+        {
+          id: 'user-1',
+          username: 'admin',
+          password: '$2a$10$hash',
+          isAdmin: true,
+          twoFactorEnabled: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+      wallet: [],
+      walletUser: [],
+      device: [],
+      walletDevice: [],
+      address: [],
+      transaction: [],
+      uTXO: [],
+      label: [],
+      transactionLabel: [],
+      addressLabel: [],
+      group: [],
+      groupMember: [],
+      nodeConfig: [],
+      systemSetting: [],
+      auditLog: [],
+      hardwareDeviceModel: [],
+      pushDevice: [],
+      draftTransaction: [],
+    },
   });
 
   describe('validateBackup', () => {
-    const createValidBackup = (): SanctuaryBackup => ({
-      meta: {
-        version: '1.0.0',
-        appVersion: '0.4.0',
-        schemaVersion: 1,
-        createdAt: new Date().toISOString(),
-        createdBy: 'admin',
-        includesCache: false,
-        recordCounts: { user: 1, wallet: 1 },
-      },
-      data: {
-        user: [
-          {
-            id: 'user-1',
-            username: 'admin',
-            password: '$2a$10$hash',
-            isAdmin: true,
-            twoFactorEnabled: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ],
-        wallet: [],
-        walletUser: [],
-        device: [],
-        walletDevice: [],
-        address: [],
-        transaction: [],
-        uTXO: [],
-        label: [],
-        transactionLabel: [],
-        addressLabel: [],
-        group: [],
-        groupMember: [],
-        nodeConfig: [],
-        systemSetting: [],
-        auditLog: [],
-        hardwareDeviceModel: [],
-        pushDevice: [],
-        draftTransaction: [],
-      },
-    });
-
     it('should validate a properly structured backup', async () => {
       const backup = createValidBackup();
       const result = await backupService.validateBackup(backup);
@@ -248,10 +250,10 @@ describe('BackupService', () => {
       const backup = createValidBackup();
       (backup.data as any).wallet = 'not an array';
 
-      // The validation currently doesn't catch this gracefully - it throws when
-      // trying to .map() on non-array. This test documents current behavior.
-      // In a future improvement, validation should catch this earlier.
-      await expect(backupService.validateBackup(backup)).rejects.toThrow();
+      const result = await backupService.validateBackup(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Table wallet is not an array');
     });
 
     it('should include info in result', async () => {
@@ -308,6 +310,70 @@ describe('BackupService', () => {
       const result = await backupService.validateBackup(backup);
       expect(result.valid).toBe(true);
       expect(result.info.totalRecords).toBeGreaterThan(0);
+    });
+  });
+
+  describe('validateBackupForRestore', () => {
+    it('should return structure validation for non-object restore input', async () => {
+      const result = await backupService.validateBackupForRestore(null);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Invalid backup format: not an object');
+    });
+
+    it('should return metadata validation before restore completeness checks', async () => {
+      const backup = createValidBackup() as any;
+      delete backup.meta.schemaVersion;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Missing schema version');
+      expect(result.issues).not.toContain('Missing required restore table: wallet');
+    });
+
+    it('should reject a partial destructive restore backup missing a baseline table', async () => {
+      const backup = createValidBackup() as any;
+      delete backup.data.wallet;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Missing required restore table: wallet');
+    });
+
+    it('should reject a destructive restore when a required table is not array-shaped', async () => {
+      const backup = createValidBackup() as any;
+      backup.data.wallet = 'not an array';
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Required restore table wallet must be an array');
+    });
+
+    it('should reject future-schema backups for destructive restore', async () => {
+      const backup = createValidBackup();
+      backup.meta.schemaVersion = 5;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(
+        result.issues.some((issue) => issue.includes('Cannot perform destructive restore from a future schema version'))
+      ).toBe(true);
+    });
+
+    it('should require tables that are known for the backup schema version', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createValidBackup() as any;
+      backup.meta.schemaVersion = 61;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Missing required restore table: walletAgent');
+      expect(result.issues).toContain('Missing required restore table: consoleSession');
     });
   });
 

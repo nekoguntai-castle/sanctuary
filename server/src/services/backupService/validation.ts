@@ -6,7 +6,7 @@
  */
 
 import { migrationService } from '../migrationService';
-import { TABLE_ORDER } from './constants';
+import { getRequiredRestoreTables, TABLE_ORDER } from './constants';
 import type { BackupRecord, BackupMeta, ValidationResult } from './types';
 
 /**
@@ -42,6 +42,44 @@ export async function validateBackup(backup: unknown): Promise<ValidationResult>
   validateWalletUserReferences(data, issues);
 
   return createValidationResult(issues.length === 0, issues, warnings, meta, tables, data);
+}
+
+/**
+ * Validate a backup for destructive restore.
+ *
+ * Preview validation may warn about tables that were not part of an older
+ * backup schema. Restore validation is stricter: if the backup claims a schema
+ * version where a table is known, that table must be present and array-shaped.
+ */
+export async function validateBackupForRestore(backup: unknown): Promise<ValidationResult> {
+  const result = await validateBackup(backup);
+  if (!isBackupRecord(backup)) {
+    return result;
+  }
+
+  const meta = backup.meta as BackupMeta | undefined;
+  const data = backup.data as Record<string, BackupRecord[]> | undefined;
+  if (!meta || !data || typeof meta.schemaVersion !== 'number') {
+    return result;
+  }
+
+  const currentSchemaVersion = await migrationService.getSchemaVersion();
+  const issues = [...result.issues];
+  const warnings = [...result.warnings];
+
+  if (meta.schemaVersion > currentSchemaVersion) {
+    issues.push(
+      `Backup schema version (${meta.schemaVersion}) is newer than current (${currentSchemaVersion}). Cannot perform destructive restore from a future schema version.`
+    );
+  }
+
+  validateRestoreCompleteness(
+    data,
+    getRequiredRestoreTables(meta.schemaVersion, meta.includesCache === true),
+    issues
+  );
+
+  return createValidationResult(issues.length === 0, issues, warnings, meta, Object.keys(data), data);
 }
 
 const createEmptyInfo = (): ValidationResult['info'] => ({
@@ -94,6 +132,9 @@ const validateBackupStructure = (backupObj: BackupRecord, issues: string[]): boo
 
   return issues.length === 0;
 };
+
+const isBackupRecord = (backup: unknown): backup is BackupRecord =>
+  backup !== null && typeof backup === 'object';
 
 const validateBackupMeta = (
   meta: BackupMeta,
@@ -168,7 +209,7 @@ const validateDeviceReferences = (
   data: Record<string, BackupRecord[]>,
   issues: string[]
 ): void => {
-  if (data.user && data.device) {
+  if (Array.isArray(data.user) && Array.isArray(data.device)) {
     const userIds = new Set(data.user.map((u: BackupRecord) => u.id));
     for (const device of data.device) {
       if (!userIds.has(device.userId)) {
@@ -182,7 +223,7 @@ const validateWalletUserReferences = (
   data: Record<string, BackupRecord[]>,
   issues: string[]
 ): void => {
-  if (data.wallet && data.walletUser && data.user) {
+  if (Array.isArray(data.wallet) && Array.isArray(data.walletUser) && Array.isArray(data.user)) {
     const walletIds = new Set(data.wallet.map((w: BackupRecord) => w.id));
     const userIds = new Set(data.user.map((u: BackupRecord) => u.id));
     for (const wu of data.walletUser) {
@@ -192,6 +233,23 @@ const validateWalletUserReferences = (
       if (!userIds.has(wu.userId)) {
         issues.push(`WalletUser references non-existent user ${wu.userId}`);
       }
+    }
+  }
+};
+
+const validateRestoreCompleteness = (
+  data: Record<string, BackupRecord[]>,
+  requiredTables: string[],
+  issues: string[]
+): void => {
+  for (const table of requiredTables) {
+    if (!Object.prototype.hasOwnProperty.call(data, table)) {
+      issues.push(`Missing required restore table: ${table}`);
+      continue;
+    }
+
+    if (!Array.isArray(data[table])) {
+      issues.push(`Required restore table ${table} must be an array`);
     }
   }
 };

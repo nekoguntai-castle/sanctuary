@@ -1,6 +1,27 @@
+# Active Task: P1-05 Backup Restore Safety 2026-05-09
+
+Status: in progress; branch `fix/backup-restore-safety`
+
+Goal: make destructive restore fail closed when a backup is partial or core-table deletion fails, so restore cannot wipe existing datasets or report success after failed cleanup.
+
+## Plan
+
+- [x] Start the P1-05 branch and refresh the task tracker after the merged P1-04 slice.
+- [x] Map backup validation, destructive restore, admin route behavior, table ordering, and existing test fixtures.
+- [x] Add regression tests for missing core tables, non-array core tables, delete failures, route rejection, and successful full restore.
+- [x] Introduce explicit strict destructive-restore validation and fatal core-table deletion handling.
+- [x] Run focused backup service/API tests, server typecheck/lint/build, touched-file lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Pending.
+
+---
+
 # Active Task: P1-04 Send Network Validation And Mempool Context 2026-05-09
 
-Status: in progress; branch `fix/send-network-validation`
+Status: completed; PR #345 merged as `1297f538`
 
 Goal: ensure send flows reject wrong-network recipient addresses before review/signing, and ensure send page mempool data is requested for the wallet network.
 
@@ -11,11 +32,15 @@ Goal: ensure send flows reject wrong-network recipient addresses before review/s
 - [x] Thread wallet network into output validation using the repo's canonical network/address helpers.
 - [x] Thread wallet network into send-page mempool loading while preserving intended mainnet defaults for other callers.
 - [x] Run focused frontend tests, typechecks/lint for touched areas, lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
-- Pending.
+- Send recipient validation now distinguishes malformed addresses from valid addresses for the wrong Bitcoin network and blocks manual, BIP21, QR/update-helper, and step-gating paths before review/signing.
+- Send transaction creation has a defense-in-depth network check so a valid wrong-network address cannot bypass UI validation, and send-page fee/mempool loading now uses the selected wallet network with regtest returning no external mempool context.
+- CI failures fixed during delivery: quick test hygiene rejected a pre-existing `toBeTruthy()` in a touched test, architecture checks required the regenerated frontend graph, and full frontend coverage exposed missing mempool-helper and `clearNotice` branch coverage.
+- Verification passed locally: focused send/API/UserContext tests, `npm run test:hygiene` for changed frontend tests, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, touched-file `npm run quality:lizard -- ...`, `npm run arch:check`, `npm run test:coverage` (6,038 frontend tests, 100%), `git diff --check`, and `npm run build`.
+- Delivery: PR #345 merged at `2026-05-09T02:22:19-10:00` as squash commit `1297f538fedf163daf6dc893ea010fd621809820`; post-merge `origin/main` contains the merge commit.
 
 ---
 

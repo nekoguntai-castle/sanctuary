@@ -81,8 +81,9 @@ describe('Restore Error Handling', () => {
 
   it('should handle foreign key constraint violations', async () => {
     const backup = createValidBackup();
+    backup.data.wallet = [{ id: 'wallet-1', name: 'Wallet' }];
     backup.data.walletUser = [
-      { walletId: 'nonexistent-wallet', userId: 'user-1', role: 'owner' },
+      { walletId: 'wallet-1', userId: 'user-1', role: 'owner' },
     ];
 
     mockPrismaClient.$transaction.mockRejectedValue(
@@ -133,7 +134,7 @@ describe('Restore Error Handling', () => {
     expect(result.success).toBe(true);
   });
 
-  it('should continue restore when deleting an existing table fails', async () => {
+  it('should abort and roll back when deleting an existing table fails', async () => {
     const backup = createValidBackup();
 
     mockPrismaClient.$queryRaw.mockResolvedValue([
@@ -155,7 +156,20 @@ describe('Restore Error Handling', () => {
     client.wallet.deleteMany.mockRejectedValueOnce(new Error('delete failed'));
 
     const result = await backupService.restoreFromBackup(backup);
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Failed to delete table wallet');
+    expect(client.user.createMany).not.toHaveBeenCalled();
+  });
+
+  it('should reject a partial backup before deleting existing data', async () => {
+    const backup = createValidBackup() as any;
+    delete backup.data.wallet;
+
+    const result = await backupService.restoreFromBackup(backup);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Missing required restore table: wallet');
+    expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
   });
 
   it('should return wrapped table restore errors from createMany failures', async () => {

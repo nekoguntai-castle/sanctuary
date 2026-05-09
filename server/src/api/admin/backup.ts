@@ -126,7 +126,7 @@ router.post('/backup', authenticate, requireAdmin, asyncHandler(async (req, res)
 router.post('/backup/validate', largeBodyParser, authenticate, requireAdmin, asyncHandler(async (req, res) => {
   const { backup } = parseAdminRequestBody(RestoreBackupSchema, req.body, 'Missing backup data');
 
-  const validation = await backupService.validateBackup(backup);
+  const validation = await backupService.validateBackupForRestore(backup);
   res.json(validation);
 }));
 
@@ -154,7 +154,7 @@ router.post('/restore', largeBodyParser, authenticate, requireAdmin, asyncHandle
   const backupToRestore = backup as unknown as SanctuaryBackup;
 
   // Validate before restore
-  const validation = await backupService.validateBackup(backupToRestore);
+  const validation = await backupService.validateBackupForRestore(backupToRestore);
   if (!validation.valid) {
     return res.status(400).json({
       error: 'Invalid Backup',
