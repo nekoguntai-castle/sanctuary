@@ -1,6 +1,6 @@
 # Active Task: P1-07 Deployment Fail-Closed Hardening 2026-05-09
 
-Status: in progress; branch `fix/deployment-fail-closed-hardening`
+Status: completed; PR #348 merged as `e6ade48f`
 
 Goal: make production deployment defaults fail closed for mobile gateway TLS, GHCR database/Redis secrets, encryption salt, and frontend container user hardening.
 
@@ -12,7 +12,7 @@ Goal: make production deployment defaults fail closed for mobile gateway TLS, GH
 - [x] Harden GHCR Compose by requiring explicit DB password, Redis password, encryption salt, and matching Redis URLs/health checks.
 - [x] Switch the frontend runtime image to the existing non-root user or document a tested exception if nginx permissions block it.
 - [x] Run focused gateway/server tests, Docker/Compose config checks, builds where relevant, touched-file lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -21,6 +21,7 @@ Goal: make production deployment defaults fail closed for mobile gateway TLS, GH
 - Server production config rejects missing `ENCRYPTION_SALT` and the legacy `sanctuary-node-config` default; setup now refuses legacy missing/default salt upgrade states instead of writing a config the server will reject.
 - Frontend nginx now runs as UID `1001`, listens on high internal ports `8080`/`8443`, fails clearly when `ENABLE_SSL=true` lacks readable certs, and docs explain UID/GID `1001` certificate copies for production CA material.
 - Verification passed before delivery: focused gateway/server config tests, install-script unit tests, gateway/server builds, server test typecheck, gateway/server lint, base/GHCR/SSL Compose config checks including negative missing-secret checks and SSL overlay port-count checks, frontend Docker build plus non-root SSL smoke, Semgrep-only quality gate, touched-file lizard, and `git diff --check`.
+- Delivery: PR #348 merged at `2026-05-09T03:58:18-10:00` as squash commit `e6ade48fb87d5a54c92300e6dc75a6584b572b36`; all 30 Forgejo checks passed after removing stale Dockerfile Semgrep baseline entries made obsolete by the non-root runtime fix.
 
 ---
 
