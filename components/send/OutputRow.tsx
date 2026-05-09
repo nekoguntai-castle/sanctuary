@@ -43,6 +43,7 @@ export interface OutputRowProps {
   index: number;
   totalOutputs: number;
   isValid: boolean | null;
+  validationMessage?: string | null;
 
   // Handlers
   onAddressChange: (index: number, value: string) => void;
@@ -275,15 +276,17 @@ function AddressSection({
 function ValidationError({
   isConsolidation,
   isValid,
+  message,
 }: {
   isConsolidation: boolean;
   isValid: boolean | null;
+  message?: string | null;
 }) {
   if (isConsolidation || isValid !== false) {
     return null;
   }
 
-  return <p className="text-xs text-rose-500">Invalid Bitcoin address</p>;
+  return <p className="text-xs text-rose-500">{message ?? "Invalid Bitcoin address"}</p>;
 }
 
 function PayjoinIndicator({
@@ -550,6 +553,7 @@ export function OutputRow({
   index,
   totalOutputs,
   isValid,
+  validationMessage = null,
   onAddressChange,
   onAmountChange,
   onAmountBlur,
@@ -644,7 +648,11 @@ export function OutputRow({
         onAddressChange={onAddressChange}
         onScanQR={onScanQR}
       />
-      <ValidationError isConsolidation={isConsolidation} isValid={isValid} />
+      <ValidationError
+        isConsolidation={isConsolidation}
+        isValid={isValid}
+        message={validationMessage}
+      />
       <PayjoinIndicator hasPayjoin={hasPayjoin} payjoinStatus={payjoinStatus} />
       <ScannerPanel
         isScanningThis={isScanningThis}

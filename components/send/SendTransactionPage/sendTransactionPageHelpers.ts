@@ -33,6 +33,7 @@ export function formatWallet(apiWallet: Wallet, userId: string): Wallet {
     type: walletType,
     balance: apiWallet.balance,
     scriptType: apiWallet.scriptType,
+    network: apiWallet.network,
     derivationPath: apiWallet.descriptor || '',
     fingerprint: apiWallet.fingerprint || '',
     label: apiWallet.name,

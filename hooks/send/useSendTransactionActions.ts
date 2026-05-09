@@ -13,6 +13,7 @@ import * as transactionsApi from '../../src/api/transactions';
 import * as payjoinApi from '../../src/api/payjoin';
 import { ApiError } from '../../src/api/client';
 import { createLogger } from '../../utils/logger';
+import { addressMatchesNetwork, validateAddress } from '../../utils/validateAddress';
 import { useUsbSigning } from './useUsbSigning';
 import { useQrSigning } from './useQrSigning';
 import { useDraftManagement } from './useDraftManagement';
@@ -29,12 +30,19 @@ const log = createLogger('SendTxActions');
 type PayjoinStatus = TransactionState['payjoinStatus'];
 type PayjoinAttemptRef = { current: boolean };
 type SetPayjoinStatus = (status: PayjoinStatus) => void;
+type WalletValidationNetwork = Parameters<typeof addressMatchesNetwork>[1];
 
-function getOutputValidationError(outputs: OutputEntry[]): string | null {
+function getOutputValidationError(outputs: OutputEntry[], walletNetwork: Wallet['network']): string | null {
+  const validationNetwork = (walletNetwork || 'mainnet') as WalletValidationNetwork;
+
   for (let i = 0; i < outputs.length; i++) {
     const output = outputs[i];
-    if (!output.address) {
+    const address = output.address.trim();
+    if (!address) {
       return `Output ${i + 1}: Please enter a recipient address`;
+    }
+    if (validateAddress(address) && !addressMatchesNetwork(address, validationNetwork)) {
+      return `Output ${i + 1}: Recipient address is for a different Bitcoin network`;
     }
     if (!output.sendMax && (!output.amount || parseInt(output.amount, 10) <= 0)) {
       return `Output ${i + 1}: Please enter a valid amount`;
@@ -188,7 +196,7 @@ export function useSendTransactionActions({
     setError(null);
 
     try {
-      const validationError = getOutputValidationError(state.outputs);
+      const validationError = getOutputValidationError(state.outputs, wallet.network);
       if (validationError) {
         setError(validationError);
         return null;

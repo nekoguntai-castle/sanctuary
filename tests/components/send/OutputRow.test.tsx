@@ -140,6 +140,15 @@ describe('OutputRow', () => {
       expect(screen.getByText('Invalid Bitcoin address')).toBeInTheDocument();
     });
 
+    it('should show custom validation error message when provided', () => {
+      renderRow({
+        isValid: false,
+        validationMessage: 'Address is valid, but it is for a different Bitcoin network',
+      });
+
+      expect(screen.getByText('Address is valid, but it is for a different Bitcoin network')).toBeInTheDocument();
+    });
+
     it('should not show validation error in consolidation mode', () => {
       renderRow({ isValid: false, isConsolidation: true });
 

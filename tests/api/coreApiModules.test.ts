@@ -146,6 +146,7 @@ describe('Core API Modules', () => {
       });
       await bitcoinApi.estimateOptimalFee({ inputCount: 1, outputCount: 2, priority: 'fast' });
       await bitcoinApi.getMempoolData();
+      await bitcoinApi.getMempoolData('signet');
       await bitcoinApi.lookupAddresses(['bc1q1', 'bc1q2']);
 
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees/advanced', undefined);
@@ -174,6 +175,7 @@ describe('Core API Modules', () => {
         priority: 'fast',
       });
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/mempool', { network: 'mainnet' });
+      expect(mockGet).toHaveBeenCalledWith('/bitcoin/mempool', { network: 'signet' });
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/address-lookup', { addresses: ['bc1q1', 'bc1q2'] });
     });
   });

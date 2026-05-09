@@ -13,6 +13,7 @@ import type { OutputEntry, TransactionType, WalletAddress } from '../../../../..
 interface RecipientsSectionProps {
   outputs: OutputEntry[];
   outputsValid: (boolean | null)[];
+  outputValidationMessages: (string | null)[];
   transactionType: TransactionType | null;
   scanningOutputIndex: number | null;
   payjoinUrl: string | null;
@@ -34,6 +35,7 @@ interface RecipientsSectionProps {
 export const RecipientsSection: React.FC<RecipientsSectionProps> = ({
   outputs,
   outputsValid,
+  outputValidationMessages,
   transactionType,
   scanningOutputIndex,
   payjoinUrl,
@@ -66,6 +68,7 @@ export const RecipientsSection: React.FC<RecipientsSectionProps> = ({
           index={index}
           totalOutputs={outputs.length}
           isValid={outputsValid[index]}
+          validationMessage={outputValidationMessages[index] ?? null}
           onAddressChange={onAddressChange}
           onAmountChange={onAmountChange}
           onAmountBlur={onAmountBlur}

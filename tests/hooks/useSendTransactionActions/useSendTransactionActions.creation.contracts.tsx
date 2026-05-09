@@ -48,6 +48,26 @@ export const registerUseSendTransactionActionsCreationContracts = () => {
       });
     });
 
+    it('validates recipient network before creating a transaction', async () => {
+      const state = createState({
+        outputs: [{ address: `tb1q${'b'.repeat(38)}`, amount: '1000', sendMax: false }],
+      });
+
+      const { result } = renderSendTransactionActions({ state });
+
+      let response = null;
+      await act(async () => {
+        response = await result.current.createTransaction();
+      });
+      expect(response).toBeNull();
+
+      await waitFor(() => {
+        expect(result.current.error).toBe('Output 1: Recipient address is for a different Bitcoin network');
+      });
+      expect(mocks.createTransaction).not.toHaveBeenCalled();
+      expect(mocks.createBatchTransaction).not.toHaveBeenCalled();
+    });
+
     it('creates a single-output transaction and stores tx state', async () => {
       const state = createState({
         outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],

@@ -1,6 +1,27 @@
+# Active Task: P1-04 Send Network Validation And Mempool Context 2026-05-09
+
+Status: in progress; branch `fix/send-network-validation`
+
+Goal: ensure send flows reject wrong-network recipient addresses before review/signing, and ensure send page mempool data is requested for the wallet network.
+
+## Plan
+
+- [x] Map manual output, BIP21, QR/update helper, step-gating, and mempool-data code paths.
+- [x] Add failing regression tests for wrong-network manual/BIP21/QR-derived outputs and `canProceedFromStep` gating.
+- [x] Thread wallet network into output validation using the repo's canonical network/address helpers.
+- [x] Thread wallet network into send-page mempool loading while preserving intended mainnet defaults for other callers.
+- [x] Run focused frontend tests, typechecks/lint for touched areas, lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Pending.
+
+---
+
 # Active Task: P1-03 Backend Coverage Follow-Up 2026-05-09
 
-Status: in progress; branch `fix/backend-coverage-p1-03-followup`
+Status: completed; PR #344 merged as `a2bbc8be`
 
 Goal: fix the late full backend unit coverage failure that appeared after PR #343 merged.
 
@@ -10,7 +31,7 @@ Goal: fix the late full backend unit coverage failure that appeared after PR #34
 - [x] Identify uncovered branches introduced or exposed by the P1-02/P1-03 auth work.
 - [x] Add focused tests and remove unreachable branch logic where the parser already enforces the invariant.
 - [x] Re-run focused backend tests, full backend unit coverage, typecheck/lint where relevant, lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -19,6 +40,7 @@ Goal: fix the late full backend unit coverage failure that appeared after PR #34
 - Kept the defensive refresh-token type check after strict payload parsing with an explicit coverage ignore, and added focused regression coverage for non-object refresh payloads and invalid optional access-token claims.
 - Added a mounted-router admin update test proving simultaneous password and admin-role changes revoke sessions once with `admin_security_update`; the handler lookup is now asserted so route-stack drift cannot silently skip the case.
 - Verification passed: focused backend tests for auth registration/admin/JWT (249 tests), the exact full backend unit coverage command (9,653 tests, 100% statements/branches/functions/lines), `cd server && npm run build`, `npm run typecheck:server:tests`, `npm run lint:server`, touched-file `npm run quality:lizard -- ...`, and `git diff --check`.
+- Delivery: PR #344 merged at `2026-05-09T01:14:00-10:00` as squash commit `a2bbc8bef21b2df3b0a0082a7b2d8b95f10a3a9d`; post-merge `origin/main` contains the merge commit.
 
 ---
 

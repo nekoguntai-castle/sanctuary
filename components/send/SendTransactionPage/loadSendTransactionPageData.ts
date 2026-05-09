@@ -1,9 +1,10 @@
 import * as bitcoinApi from '../../../src/api/bitcoin';
 import * as devicesApi from '../../../src/api/devices';
+import type { BitcoinDashboardNetwork } from '../../../src/api/bitcoin';
 import type { DraftTransaction } from '../../../src/api/drafts';
 import * as transactionsApi from '../../../src/api/transactions';
 import * as walletsApi from '../../../src/api/wallets';
-import type { Device } from '../../../types';
+import type { Device, Wallet } from '../../../types';
 import { createLogger } from '../../../utils/logger';
 import {
   buildDraftTxData,
@@ -27,6 +28,12 @@ interface LoadSendTransactionPageDataParams {
   walletId: string;
 }
 
+function getMempoolNetwork(walletNetwork: Wallet['network']): BitcoinDashboardNetwork | null {
+  if (!walletNetwork) return 'mainnet';
+  if (walletNetwork === 'regtest') return null;
+  return walletNetwork;
+}
+
 export async function loadSendTransactionPageData({
   draftData,
   preSelectedUTXOs,
@@ -41,10 +48,12 @@ export async function loadSendTransactionPageData({
   }
 
   const wallet = formatWallet(apiWallet, userId);
+  const walletNetwork = apiWallet.network ?? 'mainnet';
+  const mempoolNetwork = getMempoolNetwork(apiWallet.network);
   const [utxoData, feeEstimates, mempoolData, addressData, allDevices] = await Promise.all([
     transactionsApi.getUTXOs(walletId),
-    bitcoinApi.getFeeEstimates(apiWallet.network),
-    bitcoinApi.getMempoolData().catch(() => null),
+    bitcoinApi.getFeeEstimates(walletNetwork),
+    mempoolNetwork ? bitcoinApi.getMempoolData(mempoolNetwork).catch(() => null) : Promise.resolve(null),
     transactionsApi.getAddresses(walletId).catch(() => []),
     devicesApi.getDevices().catch(() => []),
   ]);

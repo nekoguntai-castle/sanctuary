@@ -67,6 +67,7 @@ vi.mock('../../../components/send/SendTransactionWizard', () => ({
   SendTransactionWizard: (props: any) => (
     <div data-testid="send-wizard">
       <span data-testid="wizard-wallet-name">{props.wallet?.name}</span>
+      <span data-testid="wizard-wallet-network">{props.wallet?.network ?? ''}</span>
       <span data-testid="wizard-utxo-count">{props.utxos?.length}</span>
       <span data-testid="wizard-initial-step">{props.initialState?.currentStep ?? ''}</span>
       <span data-testid="wizard-draft-id">{props.initialState?.draftId ?? ''}</span>
@@ -84,6 +85,7 @@ describe('SendTransactionPage', () => {
     type: 'single_sig:native_segwit',
     balance: 100000,
     scriptType: 'native_segwit',
+    network: 'mainnet',
     userRole: 'owner',
   };
 
@@ -180,7 +182,7 @@ describe('SendTransactionPage', () => {
       renderPage();
 
       await waitFor(() => {
-        expect(bitcoinApi.getFeeEstimates).toHaveBeenCalled();
+        expect(bitcoinApi.getFeeEstimates).toHaveBeenCalledWith('mainnet');
       });
     });
 
@@ -188,8 +190,61 @@ describe('SendTransactionPage', () => {
       renderPage();
 
       await waitFor(() => {
-        expect(bitcoinApi.getMempoolData).toHaveBeenCalled();
+        expect(bitcoinApi.getMempoolData).toHaveBeenCalledWith('mainnet');
       });
+    });
+
+    it('uses mainnet fee and mempool defaults when a wallet has no network', async () => {
+      vi.mocked(walletsApi.getWallet).mockResolvedValue({
+        id: mockWallet.id,
+        name: mockWallet.name,
+        type: mockWallet.type,
+        balance: mockWallet.balance,
+        scriptType: mockWallet.scriptType,
+        userRole: mockWallet.userRole,
+      } as any);
+
+      renderPage();
+
+      await waitFor(() => {
+        expect(bitcoinApi.getFeeEstimates).toHaveBeenCalledWith('mainnet');
+        expect(bitcoinApi.getMempoolData).toHaveBeenCalledWith('mainnet');
+      });
+      expect(screen.getByTestId('wizard-wallet-network')).toHaveTextContent('');
+    });
+
+    it.each(['testnet3', 'testnet4', 'signet'] as const)(
+      'fetches fee estimates and mempool data for %s wallets',
+      async (network) => {
+        vi.mocked(walletsApi.getWallet).mockResolvedValue({
+          ...mockWallet,
+          network,
+        } as any);
+
+        renderPage();
+
+        await waitFor(() => {
+          expect(bitcoinApi.getFeeEstimates).toHaveBeenCalledWith(network);
+          expect(bitcoinApi.getMempoolData).toHaveBeenCalledWith(network);
+        });
+        expect(screen.getByTestId('wizard-wallet-network')).toHaveTextContent(network);
+      },
+    );
+
+    it('does not fetch mainnet mempool data for regtest wallets', async () => {
+      vi.mocked(walletsApi.getWallet).mockResolvedValue({
+        ...mockWallet,
+        network: 'regtest',
+      } as any);
+
+      renderPage();
+
+      await waitFor(() => {
+        expect(bitcoinApi.getFeeEstimates).toHaveBeenCalledWith('regtest');
+        expect(screen.getByTestId('send-wizard')).toBeInTheDocument();
+      });
+      expect(bitcoinApi.getMempoolData).not.toHaveBeenCalled();
+      expect(screen.getByTestId('wizard-wallet-network')).toHaveTextContent('regtest');
     });
 
     it('fetches devices', async () => {

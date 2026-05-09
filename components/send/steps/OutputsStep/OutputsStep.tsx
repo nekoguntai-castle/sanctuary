@@ -5,7 +5,7 @@
  * All transaction composition happens here so max calculations are accurate.
  */
 
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useMemo, useState } from 'react';
 import { WizardNavigation } from '../../WizardNavigation';
 import { useSendTransaction } from '../../../../contexts/send';
 import { useCurrency } from '../../../../contexts/CurrencyContext';
@@ -21,6 +21,33 @@ import { WarningsSection } from './sections/WarningsSection';
 import { RecipientsSection } from './sections/RecipientsSection';
 
 const log = createLogger('OutputsStep');
+
+type WalletValidationNetwork = Parameters<typeof addressMatchesNetwork>[1];
+
+const INVALID_ADDRESS_MESSAGE = 'Invalid Bitcoin address';
+const WRONG_NETWORK_ADDRESS_MESSAGE = 'Address is valid, but it is for a different Bitcoin network';
+
+interface OutputAddressValidation {
+  isValid: boolean | null;
+  message: string | null;
+}
+
+function validateOutputAddress(address: string, walletNetwork: WalletValidationNetwork): OutputAddressValidation {
+  const trimmedAddress = address.trim();
+  if (!trimmedAddress) {
+    return { isValid: null, message: null };
+  }
+
+  if (!validateAddress(trimmedAddress)) {
+    return { isValid: false, message: INVALID_ADDRESS_MESSAGE };
+  }
+
+  if (!addressMatchesNetwork(trimmedAddress, walletNetwork)) {
+    return { isValid: false, message: WRONG_NETWORK_ADDRESS_MESSAGE };
+  }
+
+  return { isValid: true, message: null };
+}
 
 export function OutputsStep() {
   const {
@@ -57,6 +84,7 @@ export function OutputsStep() {
 
   const isConsolidation = state.transactionType === 'consolidation';
   const isSweep = state.transactionType === 'sweep';
+  const walletNetwork = (wallet.network || 'mainnet') as WalletValidationNetwork;
 
   // Transaction composition hook (UTXO grouping, max calc, fee warnings, privacy)
   const {
@@ -115,7 +143,6 @@ export function OutputsStep() {
         }
 
         if (parsed.payjoinUrl) {
-          const walletNetwork = (wallet.network || 'mainnet') as Parameters<typeof addressMatchesNetwork>[1];
           const addressMatches = addressMatchesNetwork(parsed.address, walletNetwork);
 
           if (addressMatches) {
@@ -140,17 +167,25 @@ export function OutputsStep() {
     if (index === 0 && state.payjoinUrl) {
       dispatch({ type: 'SET_PAYJOIN_URL', url: null });
     }
-  }, [updateOutputAddress, updateOutputAmount, dispatch, state.payjoinUrl, wallet.network]);
+  }, [updateOutputAddress, updateOutputAmount, dispatch, state.payjoinUrl, walletNetwork]);
+
+  const outputAddressValidations = useMemo(
+    () => state.outputs.map((output) => validateOutputAddress(output.address, walletNetwork)),
+    [state.outputs, walletNetwork],
+  );
+
+  const outputValidationMessages = useMemo(
+    () => outputAddressValidations.map((validation) => validation.message),
+    [outputAddressValidations],
+  );
 
   // Validate addresses on change
   useEffect(() => {
-    const validationResults = state.outputs.map((output) => {
-      if (!output.address.trim()) return null;
-      return validateAddress(output.address);
+    dispatch({
+      type: 'SET_OUTPUTS_VALID',
+      valid: outputAddressValidations.map((validation) => validation.isValid),
     });
-
-    dispatch({ type: 'SET_OUTPUTS_VALID', valid: validationResults });
-  }, [state.outputs, dispatch]);
+  }, [outputAddressValidations, dispatch]);
 
   // Handle QR scan
   const handleScanQR = useCallback((index: number) => {
@@ -266,6 +301,7 @@ export function OutputsStep() {
       <RecipientsSection
         outputs={state.outputs}
         outputsValid={state.outputsValid}
+        outputValidationMessages={outputValidationMessages}
         transactionType={state.transactionType}
         scanningOutputIndex={state.scanningOutputIndex}
         payjoinUrl={state.payjoinUrl}

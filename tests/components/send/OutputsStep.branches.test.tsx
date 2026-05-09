@@ -83,6 +83,8 @@ const mockDispatch = vi.fn();
 const mockUpdateOutputAddress = vi.fn();
 const mockUpdateOutputAmount = vi.fn();
 const mockToggleCoinControl = vi.fn();
+const MAINNET_ADDRESS = `bc1q${'a'.repeat(38)}`;
+const TESTNET_ADDRESS = `tb1q${'b'.repeat(38)}`;
 
 function makeContext(overrides: Record<string, unknown> = {}) {
   return {
@@ -159,10 +161,76 @@ describe('OutputsStep branch coverage', () => {
     );
 
     render(<OutputsStep />);
-    await waitFor(() => expect(capture.outputRows[0]).toBeTruthy());
+    await waitFor(() => expect(capture.outputRows[0]).toBeDefined());
 
     // OutputRow receives the output; sendMax undefined causes ?? false path
     expect(screen.getByTestId('output-row-0')).toBeInTheDocument();
+  });
+
+  it('marks malformed addresses invalid without checking the wallet network', async () => {
+    vi.mocked(validate.validateAddress).mockReturnValue(false as never);
+    vi.mocked(SendContext.useSendTransaction).mockReturnValue(
+      makeContext({
+        state: {
+          ...makeContext().state,
+          outputs: [{ address: 'not-address', amount: '1000', sendMax: false }],
+        },
+      }) as never,
+    );
+
+    render(<OutputsStep />);
+
+    await waitFor(() => {
+      expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_OUTPUTS_VALID', valid: [false] });
+    });
+    expect(validate.validateAddress).toHaveBeenCalledWith('not-address');
+    expect(validate.addressMatchesNetwork).not.toHaveBeenCalled();
+    expect(capture.outputRows[0].validationMessage).toBe('Invalid Bitcoin address');
+  });
+
+  it('marks valid addresses from another Bitcoin network invalid', async () => {
+    vi.mocked(validate.validateAddress).mockReturnValue(true as never);
+    vi.mocked(validate.addressMatchesNetwork).mockReturnValue(false);
+    vi.mocked(SendContext.useSendTransaction).mockReturnValue(
+      makeContext({
+        state: {
+          ...makeContext().state,
+          outputs: [{ address: TESTNET_ADDRESS, amount: '1000', sendMax: false }],
+        },
+      }) as never,
+    );
+
+    render(<OutputsStep />);
+
+    await waitFor(() => {
+      expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_OUTPUTS_VALID', valid: [false] });
+    });
+    expect(validate.addressMatchesNetwork).toHaveBeenCalledWith(TESTNET_ADDRESS, 'mainnet');
+    expect(capture.outputRows[0].validationMessage).toBe(
+      'Address is valid, but it is for a different Bitcoin network',
+    );
+  });
+
+  it('accepts testnet-family addresses for signet wallets', async () => {
+    vi.mocked(validate.validateAddress).mockReturnValue(true as never);
+    vi.mocked(validate.addressMatchesNetwork).mockReturnValue(true);
+    vi.mocked(SendContext.useSendTransaction).mockReturnValue(
+      makeContext({
+        wallet: { id: 'wallet-1', name: 'Signet', network: 'signet' },
+        state: {
+          ...makeContext().state,
+          outputs: [{ address: TESTNET_ADDRESS, amount: '1000', sendMax: false }],
+        },
+      }) as never,
+    );
+
+    render(<OutputsStep />);
+
+    await waitFor(() => {
+      expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_OUTPUTS_VALID', valid: [true] });
+    });
+    expect(validate.addressMatchesNetwork).toHaveBeenCalledWith(TESTNET_ADDRESS, 'signet');
+    expect(capture.outputRows[0].validationMessage).toBeNull();
   });
 
   it('auto-selects consolidation destination from first unused receive address and fallback', async () => {
@@ -237,23 +305,23 @@ describe('OutputsStep branch coverage', () => {
     await waitFor(() => expect(capture.outputRows[0]?.onAddressChange).toEqual(expect.any(Function)));
 
     vi.mocked(bip21.parseBip21Uri).mockReturnValueOnce({
-      address: 'bc1qpayjoin',
+      address: MAINNET_ADDRESS,
       amount: 0.001,
       payjoinUrl: 'https://payjoin.example',
     } as never);
     vi.mocked(validate.addressMatchesNetwork).mockReturnValueOnce(true);
-    capture.outputRows[0].onAddressChange(0, 'bitcoin:bc1qpayjoin?amount=0.001&pj=https://payjoin.example');
-    expect(mockUpdateOutputAddress).toHaveBeenCalledWith(0, 'bc1qpayjoin');
+    capture.outputRows[0].onAddressChange(0, `bitcoin:${MAINNET_ADDRESS}?amount=0.001&pj=https://payjoin.example`);
+    expect(mockUpdateOutputAddress).toHaveBeenCalledWith(0, MAINNET_ADDRESS);
     expect(mockUpdateOutputAmount).toHaveBeenCalledWith(0, '0.001');
     expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_PAYJOIN_URL', url: 'https://payjoin.example' });
 
     vi.mocked(bip21.parseBip21Uri).mockReturnValueOnce({
-      address: 'tb1qpayjoin',
+      address: TESTNET_ADDRESS,
       amount: 0.002,
       payjoinUrl: 'https://payjoin.bad',
     } as never);
     vi.mocked(validate.addressMatchesNetwork).mockReturnValueOnce(false);
-    capture.outputRows[0].onAddressChange(0, 'bitcoin:tb1qpayjoin?amount=0.002&pj=https://payjoin.bad');
+    capture.outputRows[0].onAddressChange(0, `bitcoin:${TESTNET_ADDRESS}?amount=0.002&pj=https://payjoin.bad`);
     expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_PAYJOIN_URL', url: null });
     expect(loggerSpies.warn).toHaveBeenCalledWith(
       'Payjoin disabled: Address network mismatch',

@@ -293,6 +293,17 @@ describe('stepValidation', () => {
       expect(canProceedToNextStep(validState)).toBe(true);
       expect(canProceedToNextStep(invalidState)).toBe(false);
     });
+
+    it('blocks outputs step after wrong-network validation marks an output invalid', () => {
+      const state = createMockState({
+        currentStep: 'outputs',
+        outputs: [{ address: `tb1q${'b'.repeat(38)}`, amount: '100000' }],
+        outputsValid: [false],
+        feeRate: 1,
+      });
+
+      expect(canProceedToNextStep(state)).toBe(false);
+    });
   });
 
   describe('getStepErrors', () => {

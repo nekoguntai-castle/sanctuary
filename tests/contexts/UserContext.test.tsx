@@ -429,6 +429,10 @@ describe('UserContext', () => {
         expect(screen.getByTestId('authenticated')).toHaveTextContent('false');
         expect(screen.getByTestId('notice')).toHaveTextContent('Please check your email');
       });
+
+      await user.click(screen.getByTestId('clear-notice'));
+
+      expect(screen.getByTestId('notice')).toHaveTextContent('null');
     });
 
     it('handles registration error', async () => {
