@@ -1,6 +1,27 @@
+# Active Task: Bug Scrub Loop Closeout 2026-05-08
+
+Status: in progress; branch `docs/bug-scrub-loop-closeout`
+
+Goal: record the current end state after the CI runtime guard split and make the remaining blocked/unblocked queue explicit.
+
+## Plan
+
+- [x] Re-measure the post-merge large-file inventory and CI runtime guard behavior on `main`.
+- [x] Mark the CI runtime guard split as merged and record post-merge verification.
+- [x] Update the health report to point at the merged CI runtime guard split commit.
+- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+
+## Review
+
+- Post-merge `main` after PR #338 has 0 production-source warnings and 0 test warnings in `node scripts/quality/check-large-files.mjs`.
+- `npm run check:github-action-runtimes` and `node tests/ci/check-github-action-runtimes.test.mjs` passed on merged `main`.
+- No further unblocked local code slice remains from the current scrub queue. Physical hardware fixture capture remains blocked on real Ledger/Trezor/BitBox access; the remaining warning-band file is the explicitly classified performance proof harness.
+
+---
+
 # Active Task: CI Runtime Guard Large-File Split 2026-05-08
 
-Status: in progress; branch `maint/ci-runtime-guard-large-file`
+Status: complete; PR #338 merged as `1a1786dc`
 
 Goal: reduce the remaining production-source large-file warning, `scripts/ci/check-github-action-runtimes.mjs` at 823 LOC, without weakening the GitHub/Forgejo workflow runtime guard.
 
@@ -11,8 +32,8 @@ Goal: reduce the remaining production-source large-file warning, `scripts/ci/che
 - [x] Move workflow-policy guard helpers into a dedicated module while keeping `checkActionRuntimes` and the CLI command stable.
 - [x] Run focused CI runtime guard tests, the runtime guard command, touched-file lizard, large-file classification, and `git diff --check`.
 - [x] Review for hidden risk: no parsing behavior changes, no changed required-check policy strings, and no CLI argument drift.
-- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
-- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+- [x] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [x] Re-check the queue after merge; physical hardware capture remains blocked by device access.
 
 ## Review
 
@@ -21,6 +42,8 @@ Goal: reduce the remaining production-source large-file warning, `scripts/ci/che
 - `scripts/ci/check-github-action-runtimes.mjs` dropped from 823 lines to 526 lines; the new helper module is 302 lines, so the production-source warning left the inventory.
 - Verification passed locally: CI runtime guard regression tests, the runtime guard command, touched-file lizard, large-file classification check, and `git diff --check`.
 - The large-file check now reports 0 production-source warnings and 0 test warnings; only the classified `scripts/perf/phase3-benchmark.mjs` proof harness remains above the warning band.
+- PR #338 merged at `2026-05-08T19:06:43-10:00` as squash commit `1a1786dc5d50ebde7df4b14122b0c4e61a7e5f8f`; local `main` was fast-forwarded and the local/remote `maint/ci-runtime-guard-large-file` branches were deleted.
+- Post-merge `main` verification passed: CI runtime guard regression tests, runtime guard command, and large-file classification check.
 
 ---
 

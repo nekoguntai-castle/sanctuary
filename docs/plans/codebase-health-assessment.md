@@ -8,9 +8,9 @@ Status: Draft
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: 15d2585a (working tree dirty)
+**Commit**: 1a1786dc (working tree dirty)
 
-This refresh covers `main` after the admin operations E2E secret-scan fixture follow-up plus the current CI runtime guard split working tree. The earlier audit found and fixed a real coverage hard-fail in newly added Bitcoin network-context branches; the current maintainability loop has removed all unclassified local large-file warnings where a clean split existed.
+This refresh covers `main` after the CI runtime guard split merge plus the current loop-closeout working tree. The earlier audit found and fixed a real coverage hard-fail in newly added Bitcoin network-context branches; the maintainability loop has removed all unclassified local large-file warnings where a clean split existed.
 
 ---
 
@@ -137,8 +137,8 @@ Important non-blocking findings:
 
 ## Next Slice Queue
 
-1. **Physical Hardware Fixture Capture**: capture the 11 required Ledger/Trezor/BitBox signing artifacts on real devices. Exit with `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` passing.
-2. **Classified Perf Proof Harness Watch**: leave `scripts/perf/phase3-benchmark.mjs` cohesive unless it is next touched or a measured maintenance problem appears. Exit with classification metadata still passing.
+1. **Physical Hardware Fixture Capture**: capture the 11 required Ledger/Trezor/BitBox signing artifacts on real devices. Status: blocked until real devices or vendor-signed artifacts are available. Exit with `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` passing.
+2. **Classified Perf Proof Harness Watch**: leave `scripts/perf/phase3-benchmark.mjs` cohesive unless it is next touched or a measured maintenance problem appears. Status: accepted/classified; exit with classification metadata still passing.
 
 ## Verification Notes
 
@@ -191,4 +191,7 @@ Important non-blocking findings:
 - `npm run check:github-action-runtimes` - passed after the CI runtime guard split, 16 manifests checked.
 - `npm run quality:lizard -- scripts/ci/check-github-action-runtimes.mjs scripts/ci/action-runtime-workflow-guards.mjs` - passed after the split.
 - `node scripts/quality/check-large-files.mjs` - passed; production/test warning inventories are now 0, with only the classified perf proof harness above the warning band.
+- `node tests/ci/check-github-action-runtimes.test.mjs` - passed on merged `main` after PR #338.
+- `npm run check:github-action-runtimes` - passed on merged `main` after PR #338.
+- `node scripts/quality/check-large-files.mjs` - passed on merged `main` after PR #338.
 - `git diff --check` - passed.
