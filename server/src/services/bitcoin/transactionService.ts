@@ -11,6 +11,7 @@
  * - transactions/createTransaction.ts: Single-recipient transaction creation
  * - transactions/createBatchTransaction.ts: Multi-output batch transactions
  * - transactions/broadcasting.ts: Broadcast + database persistence
+ * - transactions/broadcastContracts.ts: Broadcast contracts shared by later remediation slices
  *
  * Additional sub-modules (pre-existing, unchanged):
  * - psbtBuilder.ts: PSBT construction utilities (BIP32 derivations, witness scripts)
@@ -26,6 +27,26 @@ export { broadcastAndSave } from './transactions/broadcasting';
 
 // Types
 export type { TransactionInputMetadata, TransactionOutputMetadata, TransactionOutput } from './transactions/types';
+export type {
+  BroadcastErrorReason,
+  BroadcastFailureRetryPolicy,
+  BroadcastIdempotencyBasis,
+  BroadcastIdempotencyInput,
+  BroadcastIntentOutputType,
+  BroadcastIntentSource,
+  BroadcastPayloadMode,
+  CanonicalBroadcastInput,
+  CanonicalBroadcastIntent,
+  CanonicalBroadcastOutput,
+} from './transactions/broadcastContracts';
+export {
+  BROADCAST_DRAFT_RETENTION_POLICY,
+  BROADCAST_ERROR_REASON_VALUES,
+  BROADCAST_EXACTLY_ONCE_SIDE_EFFECTS,
+  getBroadcastFailureRetryPolicy,
+  isBroadcastErrorReason,
+  selectBroadcastIdempotencyBasis,
+} from './transactions/broadcastContracts';
 
 // Convenience wrapper (kept here as it's trivial)
 export { createAndBroadcastTransaction } from './transactions/createAndBroadcastTransaction';

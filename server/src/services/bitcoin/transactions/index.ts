@@ -17,6 +17,26 @@ export type {
   PendingOutput,
   UtxoSelection,
 } from './types';
+export type {
+  BroadcastErrorReason,
+  BroadcastFailureRetryPolicy,
+  BroadcastIdempotencyBasis,
+  BroadcastIdempotencyInput,
+  BroadcastIntentOutputType,
+  BroadcastIntentSource,
+  BroadcastPayloadMode,
+  CanonicalBroadcastInput,
+  CanonicalBroadcastIntent,
+  CanonicalBroadcastOutput,
+} from './broadcastContracts';
+export {
+  BROADCAST_DRAFT_RETENTION_POLICY,
+  BROADCAST_ERROR_REASON_VALUES,
+  BROADCAST_EXACTLY_ONCE_SIDE_EFFECTS,
+  getBroadcastFailureRetryPolicy,
+  isBroadcastErrorReason,
+  selectBroadcastIdempotencyBasis,
+} from './broadcastContracts';
 
 // Transaction creation
 export { createTransaction } from './createTransaction';

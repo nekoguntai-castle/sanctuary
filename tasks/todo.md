@@ -1,6 +1,29 @@
+# Active Task: Bug Scrub Slice 1 Broadcast Contracts 2026-05-08
+
+Status: in progress; implementation branch `fix/bug-scrub-slice-1`
+
+Goal: deliver Slice 1 through PR by defining executable broadcast idempotency, structured error, readiness/finality, canonical intent, and draft retention contracts.
+
+## Plan
+
+- [x] Start a fresh Slice 1 branch from the merged Slice 0 `main`.
+- [x] Add executable broadcast contract constants, types, and helpers.
+- [x] Add focused contract tests for reason codes, retry policy, idempotency basis, draft retention, exactly-once side effects, and canonical intent shape.
+- [x] Add Slice 1 broadcast contract documentation for later implementation slices.
+- [x] Run focused server tests, type checks, lint/guard checks, lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [ ] Continue to Slice 2 after Slice 1 is merged.
+
+## Review
+
+- Added `broadcastContracts.ts` as the executable Slice 1 contract for reason codes, retry policy, idempotency basis, canonical intent, draft retention, and exactly-once side effects.
+- Local verification passed: focused broadcast contract tests, server test typecheck, server build, `npm run lint:server`, lizard on the new contract module, and `git diff --check`.
+
+---
+
 # Active Task: Bug Scrub Slice 0 Network Boundary Guard 2026-05-08
 
-Status: in progress; implementation branch `fix/bug-scrub-slice-0`
+Status: complete; PR #320 merged as `03eed84a`
 
 Goal: deliver Slice 0 of the bug scrub remediation backlog through PR: add an enforceable Bitcoin network-boundary guard, document API compatibility inventory, and prove the guard with focused regression tests.
 
@@ -12,8 +35,8 @@ Goal: deliver Slice 0 of the bug scrub remediation backlog through PR: add an en
 - [x] Add fixture-backed regression tests for new findings, stale allowlist entries, wrapper calls, and already selected node-client calls.
 - [x] Add Slice 0 API compatibility inventory for broadcast, fees, advanced transaction, non-wallet Bitcoin, and subscription bootstrap contracts.
 - [x] Run focused local verification, type checks, lint guard, lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
-- [ ] Continue to Slice 1 after Slice 0 is merged.
+- [x] Commit, push, open PR, monitor CI, merge, verify `main`, and clean up using `/pr-delivery`.
+- [x] Continue to Slice 1 after Slice 0 is merged.
 
 ## Review
 
@@ -21,6 +44,7 @@ Goal: deliver Slice 0 of the bug scrub remediation backlog through PR: add an en
 - The guard also surfaced one adjacent default-client call outside the original broadcast/fee list: real-time Electrum subscription bootstrap. It is tracked in the allowlist and inventory as a Slice 4 follow-up.
 - Local verification passed: new Vitest fixture tests, `npm run check:bitcoin-network-boundaries`, `npm run typecheck:tests`, `npm run lint:server`, `node --check scripts/check-bitcoin-network-boundaries.mjs`, lizard on the new script, and `git diff --check`.
 - The implementation commit passed the repo pre-commit hook, including the full frontend Vitest suite: 469 files and 6,019 tests.
+- PR #320 merged at `2026-05-08T15:18:40-10:00` as squash commit `03eed84a9345ea5c38c8c7a84732254e55bc3c66`; local `main` was fast-forwarded and the local/remote Slice 0 branches were deleted.
 
 ---
 
