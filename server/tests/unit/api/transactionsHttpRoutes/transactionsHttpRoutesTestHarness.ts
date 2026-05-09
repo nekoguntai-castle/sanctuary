@@ -21,6 +21,8 @@ const {
   mockWalletFindById,
   mockWalletFindNetwork,
   mockDraftFindByIdInWallet,
+  mockFindAddressStrings,
+  mockFindUtxosByOutpointsForWallet,
 } = vi.hoisted(() => ({
   mockGetCachedBlockHeight: vi.fn(),
   mockRecalculateWalletBalances: vi.fn(),
@@ -40,6 +42,8 @@ const {
   mockWalletFindById: vi.fn(),
   mockWalletFindNetwork: vi.fn(),
   mockDraftFindByIdInWallet: vi.fn(),
+  mockFindAddressStrings: vi.fn(),
+  mockFindUtxosByOutpointsForWallet: vi.fn(),
 }));
 
 vi.mock('../../../../src/models/prisma', async () => {
@@ -73,6 +77,25 @@ vi.mock('../../../../src/repositories/draftRepository', async (importOriginal) =
   };
 });
 
+vi.mock('../../../../src/repositories/addressRepository', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/repositories/addressRepository')>();
+  return {
+    ...actual,
+    addressRepository: {
+      ...actual.addressRepository,
+      findAddressStrings: mockFindAddressStrings,
+    },
+  };
+});
+
+vi.mock('../../../../src/repositories/utxoRepository', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/repositories/utxoRepository')>();
+  return {
+    ...actual,
+    findByOutpointsForWallet: mockFindUtxosByOutpointsForWallet,
+  };
+});
+
 vi.mock('../../../../src/middleware/walletAccess', () => ({
   requireWalletAccess: () => (req: any, _res: any, next: () => void) => {
     req.walletId = req.params.walletId || req.params.id;
@@ -93,9 +116,13 @@ vi.mock('../../../../src/services/cache', () => ({
   },
 }));
 
-vi.mock('../../../../src/services/bitcoin/utils', () => ({
-  validateAddress: mockValidateAddress,
-}));
+vi.mock('../../../../src/services/bitcoin/utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/services/bitcoin/utils')>();
+  return {
+    ...actual,
+    validateAddress: mockValidateAddress,
+  };
+});
 
 vi.mock('../../../../src/services/auditService', () => ({
   auditService: {
@@ -160,6 +187,8 @@ export function setupTransactionHttpRouteHooks(): void {
     mockRecordUsage.mockResolvedValue(undefined);
     mockWalletFindNetwork.mockResolvedValue('testnet4');
     mockDraftFindByIdInWallet.mockResolvedValue(null);
+    mockFindAddressStrings.mockResolvedValue([]);
+    mockFindUtxosByOutpointsForWallet.mockResolvedValue([]);
     mockValidateAddress.mockReturnValue({ valid: true });
     mockAuditLogFromRequest.mockResolvedValue(undefined);
     mockCreateTransaction.mockResolvedValue({
@@ -226,4 +255,6 @@ export {
   mockWalletFindById,
   mockWalletFindNetwork,
   mockDraftFindByIdInWallet,
+  mockFindAddressStrings,
+  mockFindUtxosByOutpointsForWallet,
 };

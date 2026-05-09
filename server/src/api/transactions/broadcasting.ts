@@ -16,11 +16,14 @@ import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError } from 
 import { auditService, AuditCategory, AuditAction } from '../../services/auditService';
 import { policyEvaluationEngine } from '../../services/vaultPolicy';
 import * as txService from '../../services/bitcoin/transactionService';
+import { parseTransaction } from '../../services/bitcoin/utils';
 import {
   ACTIONABLE_DRAFT_STATUSES,
   draftRepository,
 } from '../../repositories/draftRepository';
 import { walletRepository } from '../../repositories/walletRepository';
+import { addressRepository } from '../../repositories/addressRepository';
+import { findByOutpointsForWallet } from '../../repositories/utxoRepository';
 import { isBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import {
   type MobilePsbtBroadcastRequest,
@@ -31,6 +34,10 @@ import {
 import { parseTransactionRequestBody } from './requestValidation';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 import type { DraftTransaction } from '../../generated/prisma/client';
+import type {
+  TransactionInputMetadata,
+  TransactionOutputMetadata,
+} from '../../services/bitcoin/transactions/types';
 
 const router = Router();
 const log = createLogger('TX_BROADCAST:ROUTE');
@@ -39,6 +46,15 @@ type WalletRequest = Request & { walletId?: string };
 type TransactionBroadcastBody = MobileTransactionBroadcastRequest;
 type PsbtBroadcastBody = MobilePsbtBroadcastRequest;
 type BroadcastDraft = DraftTransaction;
+type BroadcastOutpoint = { txid: string; vout: number };
+type RawBroadcastIntent = {
+  recipient: string;
+  amount: number;
+  fee: number;
+  utxos: BroadcastOutpoint[];
+  inputs: TransactionInputMetadata[];
+  outputs: TransactionOutputMetadata[];
+};
 
 const ACTIONABLE_BROADCAST_DRAFT_STATUSES = new Set<string>(ACTIONABLE_DRAFT_STATUSES);
 const APPROVED_BROADCAST_APPROVAL_STATUSES = new Set(['not_required', 'approved']);
@@ -283,13 +299,276 @@ const resolveBroadcastFee = (
   return draft ? Number(draft.fee) : 0;
 };
 
+// Raw-hex broadcasts must derive policy/audit metadata from the decoded
+// transaction so callers cannot understate recipient, amount, fee, or inputs.
+const outpointKey = (outpoint: BroadcastOutpoint): string => `${outpoint.txid}:${outpoint.vout}`;
+
+const assertUniqueOutpoints = (outpoints: BroadcastOutpoint[], field: string): void => {
+  const keys = outpoints.map(outpointKey);
+  if (new Set(keys).size === keys.length) return;
+
+  throw new InvalidInputError('Raw transaction contains duplicate inputs', field, {
+    reason: 'duplicate_inputs',
+  });
+};
+
+const assertExactOutpointsMatch = (
+  expected: BroadcastOutpoint[],
+  actual: BroadcastOutpoint[] | undefined,
+  source: string
+): void => {
+  if (actual === undefined) return;
+
+  const expectedKeys = expected.map(outpointKey).sort();
+  const actualKeys = actual.map(outpointKey).sort();
+  const matches = expectedKeys.length === actualKeys.length
+    && expectedKeys.every((key, index) => key === actualKeys[index]);
+  if (matches) return;
+
+  throw new InvalidInputError('Raw transaction metadata does not match decoded transaction', source, {
+    reason: 'metadata_mismatch',
+    expected: expectedKeys,
+    actual: actualKeys,
+  });
+};
+
+const assertMetadataFieldMatches = (
+  field: 'recipient' | 'amount' | 'fee',
+  expected: string | number,
+  actual: string | number | undefined
+): void => {
+  if (actual === undefined || actual === expected) return;
+
+  throw new InvalidInputError('Raw transaction metadata does not match decoded transaction', field, {
+    reason: 'metadata_mismatch',
+    expected,
+    actual,
+  });
+};
+
+const findMissingOutpoints = (
+  requested: BroadcastOutpoint[],
+  found: BroadcastOutpoint[]
+): string[] => {
+  const foundKeys = new Set(found.map(outpointKey));
+  return requested.map(outpointKey).filter(key => !foundKeys.has(key));
+};
+
+const assertRawInputsBelongToWallet = (
+  requested: BroadcastOutpoint[],
+  found: BroadcastOutpoint[]
+): void => {
+  const missing = findMissingOutpoints(requested, found);
+  if (missing.length === 0) return;
+
+  throw new InvalidInputError('Raw transaction spends inputs not controlled by wallet', 'rawTxHex', {
+    reason: 'unknown_inputs',
+    missingOutpoints: missing,
+  });
+};
+
+const assertDraftLocksAllowSpend = (
+  draft: BroadcastDraft | null,
+  utxos: Awaited<ReturnType<typeof findByOutpointsForWallet>>
+): void => {
+  const lockedByOtherDraft = utxos.find(utxo =>
+    utxo.draftLock?.draftId && utxo.draftLock.draftId !== draft?.id
+  );
+  if (!lockedByOtherDraft) return;
+
+  throw new ConflictError('Raw transaction spends UTXOs locked by another draft', undefined, {
+    reason: 'utxo_locked',
+    txid: lockedByOtherDraft.txid,
+    vout: lockedByOtherDraft.vout,
+    draftId: lockedByOtherDraft.draftLock?.draftId,
+  });
+};
+
+const resolveRawRecipientAndAmount = (
+  outputs: ReturnType<typeof parseTransaction>['outputs'],
+  walletAddressSet: Set<string>
+): { recipient: string; amount: number } => {
+  const paidUnknownOutput = outputs.find(output => !output.address && output.value > 0);
+  if (paidUnknownOutput) {
+    throw new InvalidInputError('Raw transaction has paid output without a standard address', 'rawTxHex', {
+      reason: 'unknown_paid_output',
+      scriptPubKey: paidUnknownOutput.scriptPubKey,
+    });
+  }
+
+  const externalOutputs = outputs.filter(output =>
+    output.address && output.value > 0 && !walletAddressSet.has(output.address)
+  );
+  if (externalOutputs.length > 1) {
+    // Policy evaluation currently models one external raw recipient; reject
+    // multi-recipient raw hex until the policy contract can represent batches.
+    throw new InvalidInputError('Raw transaction has multiple external recipients', 'rawTxHex', {
+      reason: 'multiple_external_recipients',
+      recipients: externalOutputs.map(output => output.address),
+    });
+  }
+
+  if (externalOutputs[0]?.address) {
+    return { recipient: externalOutputs[0].address, amount: externalOutputs[0].value };
+  }
+
+  // All-wallet outputs are consolidation/change-only transactions; no external
+  // value leaves the wallet, so policy amount is zero while fees still apply.
+  const ownOutput = outputs.find(output => output.address && walletAddressSet.has(output.address));
+  if (ownOutput?.address) {
+    return { recipient: ownOutput.address, amount: 0 };
+  }
+
+  throw new InvalidInputError('Raw transaction has no standard wallet or recipient outputs', 'rawTxHex', {
+    reason: 'missing_standard_outputs',
+  });
+};
+
+const buildRawInputMetadata = (
+  inputOutpoints: BroadcastOutpoint[],
+  utxos: Awaited<ReturnType<typeof findByOutpointsForWallet>>
+): TransactionInputMetadata[] => {
+  const utxosByOutpoint = new Map(utxos.map(utxo => [outpointKey(utxo), utxo]));
+  return inputOutpoints.map(input => {
+    const utxo = utxosByOutpoint.get(outpointKey(input));
+    /* v8 ignore next 6 -- assertRawInputsBelongToWallet unconditionally validates every input first */
+    if (!utxo) {
+      throw new InvalidInputError('Raw transaction spends inputs not controlled by wallet', 'rawTxHex', {
+        reason: 'unknown_inputs',
+        missingOutpoints: [outpointKey(input)],
+      });
+    }
+    return {
+      txid: input.txid,
+      vout: input.vout,
+      address: utxo.address,
+      amount: Number(utxo.amount),
+    };
+  });
+};
+
+const buildRawOutputMetadata = (
+  outputs: ReturnType<typeof parseTransaction>['outputs'],
+  recipient: string,
+  walletAddressSet: Set<string>
+): TransactionOutputMetadata[] => {
+  // Downstream persistence uses this classification for audit/display. Paid
+  // non-address outputs are rejected before metadata construction.
+  return outputs.map(output => {
+    const address = output.address ?? '';
+    const isOurs = address.length > 0 && walletAddressSet.has(address);
+    return {
+      address,
+      amount: output.value,
+      outputType: address === recipient && !isOurs ? 'recipient' : isOurs ? 'change' : 'unknown',
+      isOurs,
+      scriptPubKey: output.scriptPubKey,
+    };
+  });
+};
+
+const assertNonNegativeFee = (fee: number): void => {
+  if (fee >= 0) return;
+
+  // Fee is inferred only after every decoded input has been matched to a wallet
+  // UTXO, so total input value is known instead of caller supplied.
+  throw new InvalidInputError('Raw transaction spends more than wallet input value', 'rawTxHex', {
+    reason: 'negative_fee',
+    fee,
+  });
+};
+
+const parseRawTransactionForBroadcast = (
+  rawTxHex: string,
+  network: BitcoinNetwork
+): ReturnType<typeof parseTransaction> => {
+  try {
+    return parseTransaction(rawTxHex, network);
+  } catch (error) {
+    throw new InvalidInputError('Invalid raw transaction hex', 'rawTxHex', {
+      reason: 'invalid_raw_transaction',
+      message: getErrorMessage(error),
+    });
+  }
+};
+
+const assertRawMetadataMatches = (
+  body: TransactionBroadcastBody,
+  draft: BroadcastDraft | null,
+  intent: RawBroadcastIntent
+): void => {
+  assertMetadataFieldMatches('recipient', intent.recipient, body.recipient ?? draft?.recipient);
+  assertMetadataFieldMatches('amount', intent.amount, body.amount ?? getDraftBroadcastAmount(draft));
+  assertMetadataFieldMatches('fee', intent.fee, body.fee ?? (draft ? Number(draft.fee) : undefined));
+  assertExactOutpointsMatch(intent.utxos, body.utxos, 'utxos');
+  if (draft) {
+    assertExactOutpointsMatch(intent.utxos, getDraftBroadcastUtxos(draft), 'draftId');
+  }
+};
+
+const resolveRawBroadcastIntent = async (
+  walletId: string,
+  rawTxHex: string,
+  network: BitcoinNetwork,
+  body: TransactionBroadcastBody,
+  draft: BroadcastDraft | null
+): Promise<RawBroadcastIntent> => {
+  const parsed = parseRawTransactionForBroadcast(rawTxHex, network);
+  const inputOutpoints = parsed.inputs.map(input => ({ txid: input.txid, vout: input.vout }));
+  assertUniqueOutpoints(inputOutpoints, 'rawTxHex');
+
+  const [walletAddresses, walletUtxos] = await Promise.all([
+    addressRepository.findAddressStrings(walletId),
+    findByOutpointsForWallet(walletId, inputOutpoints),
+  ]);
+  assertRawInputsBelongToWallet(inputOutpoints, walletUtxos);
+  assertDraftLocksAllowSpend(draft, walletUtxos);
+
+  const totalInput = walletUtxos.reduce((sum, utxo) => sum + Number(utxo.amount), 0);
+  const totalOutput = parsed.outputs.reduce((sum, output) => sum + output.value, 0);
+  const fee = totalInput - totalOutput;
+  assertNonNegativeFee(fee);
+
+  const walletAddressSet = new Set(walletAddresses);
+  const { recipient, amount } = resolveRawRecipientAndAmount(parsed.outputs, walletAddressSet);
+  const intent = {
+    recipient,
+    amount,
+    fee,
+    utxos: inputOutpoints,
+    inputs: buildRawInputMetadata(inputOutpoints, walletUtxos),
+    outputs: buildRawOutputMetadata(parsed.outputs, recipient, walletAddressSet),
+  };
+  assertRawMetadataMatches(body, draft, intent);
+  return intent;
+};
+
 const buildTransactionBroadcastMetadata = (
   body: TransactionBroadcastBody,
   network: BitcoinNetwork,
   evalRecipient: string | undefined,
   evalAmount: number | undefined,
-  draft: BroadcastDraft | null
+  draft: BroadcastDraft | null,
+  rawIntent: RawBroadcastIntent | null = null
 ) => {
+  if (rawIntent) {
+    return {
+      network,
+      recipient: rawIntent.recipient,
+      amount: rawIntent.amount,
+      fee: rawIntent.fee,
+      ...pickDefinedMetadata({
+        label: body.label ?? draft?.label ?? undefined,
+        memo: body.memo ?? draft?.memo ?? undefined,
+      }),
+      utxos: rawIntent.utxos,
+      inputs: rawIntent.inputs,
+      outputs: rawIntent.outputs,
+      ...(draft && { draftId: draft.id }),
+      ...pickDefinedBroadcastFields(body, ['rawTxHex'] as const),
+    };
+  }
+
   return {
     network,
     recipient: resolveBroadcastRecipient(evalRecipient),
@@ -314,12 +593,15 @@ const handleTransactionBroadcast = async (
   const draft = await loadBroadcastDraft(walletId, body.draftId);
   const signedPsbtBase64 = resolveSignedPsbtForBroadcast(body, draft);
   assertBroadcastPayloadAvailable(body, signedPsbtBase64, draft);
+  const rawIntent = body.rawTxHex
+    ? await resolveRawBroadcastIntent(walletId, body.rawTxHex, network, body, draft)
+    : null;
 
   const { evalRecipient, evalAmount } = resolveTransactionPolicyFields(
     signedPsbtBase64,
     network,
-    body.recipient ?? draft?.recipient,
-    body.amount ?? getDraftBroadcastAmount(draft)
+    rawIntent?.recipient ?? body.recipient ?? draft?.recipient,
+    rawIntent?.amount ?? body.amount ?? getDraftBroadcastAmount(draft)
   );
   await assertPolicyAllowsBroadcast(
     req,
@@ -330,7 +612,7 @@ const handleTransactionBroadcast = async (
   );
 
   try {
-    const metadata = buildTransactionBroadcastMetadata(body, network, evalRecipient, evalAmount, draft);
+    const metadata = buildTransactionBroadcastMetadata(body, network, evalRecipient, evalAmount, draft, rawIntent);
     const result = await txService.broadcastAndSave(
       walletId,
       signedPsbtBase64,

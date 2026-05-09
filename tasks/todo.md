@@ -1,3 +1,29 @@
+# Active Task: P1-01 Raw Broadcast Canonical Validation 2026-05-08
+
+Status: in progress; branch `fix/raw-broadcast-canonical-validation`
+
+Goal: close P1-01 by deriving raw transaction broadcast policy/persistence metadata from decoded raw hex and wallet DB state before network broadcast.
+
+## Plan
+
+- [x] Deliver Phase 0 planning/refinement docs through PR #340 and fast-forward local `main`.
+- [x] Add regression tests proving raw-hex broadcasts cannot skip policy or lie with metadata.
+- [x] Implement canonical raw transaction intent derivation from decoded transaction, wallet UTXOs, and wallet addresses.
+- [x] Reject missing input ownership, unknown paid outputs, multiple external recipients, negative fees, and caller metadata mismatches before `broadcastAndSave`.
+- [x] Run focused backend tests, typecheck/lint checks for touched files, and diff review.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Added raw broadcast contract coverage for omitted metadata, change-only sends, matching and mismatched drafts, contradictory amount/fee/UTXO metadata, unknown wallet inputs, duplicate inputs, UTXOs locked by another draft, malformed hex, paid non-address outputs, missing standard outputs, negative fee, and multiple external recipients.
+- Split raw-broadcast route contracts into `transactionsHttpRoutes.rawBroadcast.contracts.ts` so the existing broadcast contract stays below the large-file quality threshold.
+- `broadcasting.ts` now decodes raw hex before policy evaluation, confirms all inputs belong to the wallet, rejects UTXOs locked by other drafts, derives canonical recipient/amount/fee/input/output metadata, and rejects request or draft metadata mismatches before `broadcastAndSave`.
+- Verification passed: `npm --prefix server test -- --run tests/unit/api/transactions-http-routes.test.ts` (102 tests), `JWT_SECRET=test-jwt-secret-for-ci-minimum-32-chars ENCRYPTION_KEY='test-encryption-key-32-chars-long!' NODE_ENV=test SANCTUARY_VITEST_INFRA_ATTEMPTS=1 npm --prefix server run test:run:ci -- tests/unit --coverage` (9,626 tests, 100% coverage), `npm run lint:server`, `cd server && npm run build`, `npm run typecheck:server:tests`, `npm run quality:lizard -- server/src/api/transactions/broadcasting.ts server/tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.broadcast.contracts.ts server/tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.rawBroadcast.contracts.ts server/tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutesTestHarness.ts`, and `git diff --check`.
+- CI triage: after Forgejo `Full Browser E2E Tests` failed without retrievable job logs, local CI-style browser verification passed for `admin-auth`, `wallet-lifecycle`, `wallet-transactions`, and `wallet-experience` against fresh Postgres/Redis services.
+- Broader baseline: `cd server && npm run typecheck:tests:full` currently fails on pre-existing type errors across unrelated test files; no raw-broadcast files appeared in the reported failures.
+
+---
+
 # Active Task: Deep Bug Scrub Remediation Plan Refinement 2026-05-08
 
 Status: completed

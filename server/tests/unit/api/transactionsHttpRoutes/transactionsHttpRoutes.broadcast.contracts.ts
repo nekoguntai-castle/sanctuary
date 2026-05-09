@@ -52,38 +52,6 @@ export function registerTransactionHttpBroadcastTests(): void {
     expect(response.body.message).toContain('Either signedPsbtBase64, rawTxHex, or draftId is required');
   });
 
-  it('broadcasts signed transaction and writes audit event', async () => {
-    const response = await request(app)
-      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
-      .send({
-        rawTxHex: 'deadbeef',
-        recipient: 'tb1qrecipient',
-        amount: 10000,
-        fee: 150,
-        label: 'hardware wallet send',
-        memo: 'coldcard raw hex path',
-      });
-
-    expect(response.status).toBe(200);
-    expect(response.body.txid).toHaveLength(64);
-    expect(mockBroadcastAndSave).toHaveBeenCalledWith(walletId, undefined, {
-      network: 'testnet4',
-      recipient: 'tb1qrecipient',
-      amount: 10000,
-      fee: 150,
-      label: 'hardware wallet send',
-      memo: 'coldcard raw hex path',
-      utxos: [],
-      rawTxHex: 'deadbeef',
-    });
-    expect(mockAuditLogFromRequest).toHaveBeenCalledWith(
-      expect.any(Object),
-      'TRANSACTION_BROADCAST',
-      'WALLET',
-      expect.objectContaining({ success: true })
-    );
-  });
-
   it('broadcasts a saved draft by draftId and archives through service metadata', async () => {
     mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({
       effectiveAmount: null,
@@ -483,6 +451,7 @@ export function registerTransactionHttpBroadcastTests(): void {
       .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
       .send({
         signedPsbtBase64: 'cHNi',
+        fee: 300,
         // No recipient or amount — should be extracted from PSBT
       });
 
@@ -500,6 +469,7 @@ export function registerTransactionHttpBroadcastTests(): void {
         network: 'testnet4',
         recipient: 'tb1qpsbt-recipient',
         amount: 42000,
+        fee: 300,
       })
     );
     expect(mockGetPSBTInfoWithNetwork).toHaveBeenCalledWith('cHNi', 'testnet4');
