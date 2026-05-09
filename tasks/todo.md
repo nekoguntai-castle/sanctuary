@@ -30,7 +30,7 @@ Goal: make request timeout handling expose and trigger a request-scoped cancella
 
 # Active Task: P3-03/P3-05 Frontend Route Capability And Auth Bootstrap Gates 2026-05-09
 
-Status: in progress; branch `fix/frontend-route-bootstrap-gates`
+Status: completed; PR #362 merged as `e028b581`
 
 Goal: prevent direct access to capability-gated routes when a feature is unavailable, and prevent protected routes from flashing the login screen while the boot auth probe is still loading.
 
@@ -42,7 +42,7 @@ Goal: prevent direct access to capability-gated routes when a feature is unavail
 - [x] Update route tests for direct `#/intelligence` access when Intelligence is loading, unavailable, and available, plus authenticated bootstrap and unauthenticated final states.
 - [x] Reconcile remediation docs for P3-01/P3-02 already-fixed deployment hardening and mark P3-03/P3-05 implemented after the slice.
 - [x] Run focused App route/capability/API client tests, app/test typechecks, full frontend coverage, touched-file lizard, hygiene, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -52,6 +52,7 @@ Goal: prevent direct access to capability-gated routes when a feature is unavail
 - The frontend coverage gate also exposed missing API client edge-contract coverage from earlier transfer-helper work; this slice adds the contracts for header normalization, existing-query param appends, replayable transfer bodies, and non-replayable `ReadableStream`/`Response` bodies, while tightening the executor retry options type to the actual required call contract.
 - Remediation docs now reflect that P3-01/P3-02 were already fixed by deployment hardening and that this slice implements P3-03/P3-05.
 - Verification passed: focused route/capability tests (17 tests), focused API client tests (93 tests), app typecheck, test typecheck, app lint, changed-test hygiene, touched-file lizard, full frontend coverage (475 files, 6,075 tests, 100% statements/branches/functions/lines), and `git diff --check`.
+- Delivery passed: PR #362 merged with squash commit `e028b581078ff4b1311e74fc100c61f7da9d7c8d`. The architecture workflow reported stale generated frontend graph drift after merge; this record follow-up regenerates `docs/architecture/generated/frontend.md` and verifies the architecture graph drift check locally.
 
 ---
 
