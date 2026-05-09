@@ -113,6 +113,26 @@ export const registerApiClientBasicContracts = () => {
       expect(calledOptions.headers["Content-Type"]).toBe("application/json");
     });
 
+    it("should preserve caller JSON content type regardless of header casing", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: 1 }),
+      });
+
+      await apiClient.post(
+        "/resource",
+        { field: "value" },
+        { headers: { "content-type": "application/merge-patch+json" } },
+      );
+
+      const calledOptions = mockFetch.mock.calls[0][1];
+      expect(calledOptions.headers["content-type"]).toBe(
+        "application/merge-patch+json",
+      );
+      expect(calledOptions.headers["Content-Type"]).toBeUndefined();
+    });
+
     it("should handle POST without body", async () => {
       mockFetch.mockResolvedValue({
         ok: true,

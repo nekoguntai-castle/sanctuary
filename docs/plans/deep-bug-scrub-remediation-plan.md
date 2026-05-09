@@ -392,6 +392,8 @@ Must handle:
 
 ### P3-01 Frontend Container Runtime User
 
+Status: implemented in the deployment hardening slice. The frontend runtime image now switches to UID `1001`, nginx listens on high internal ports, SSL startup fails clearly when mounted certificates are missing or unreadable, and production docs cover UID/GID `1001` certificate ownership.
+
 Must handle:
 
 - Nginx needs permission to read static files and write any required pid/cache/temp paths as non-root.
@@ -399,6 +401,8 @@ Must handle:
 - Keep `no-new-privileges` and consider read-only filesystem/capability drops if compatible.
 
 ### P3-02 Static Encryption Salt
+
+Status: implemented in the deployment hardening slice. Server production config rejects missing or legacy default `ENCRYPTION_SALT` values, GHCR/deployment Compose requires explicit secrets, and setup refuses legacy missing/default salt upgrade states instead of writing unusable production config.
 
 Must handle:
 
@@ -408,6 +412,8 @@ Must handle:
 - Document rotation implications: changing salt may make existing encrypted values unreadable unless migration path exists.
 
 ### P3-03 Capability-Gated Intelligence Route
+
+Status: implemented in the frontend route-gate slice. Intelligence route metadata now carries `requiredCapabilities`; direct `#/intelligence` rendering is gated for loading, unavailable, and available capability states, while sidebar filtering keeps using the same capability source.
 
 Must handle:
 
@@ -426,6 +432,8 @@ Must handle:
 - Multi-tab preference updates and race behavior should match existing auth/session patterns.
 
 ### P3-05 Auth Bootstrap Login Flash
+
+Status: implemented in the frontend route-gate slice. Protected routes now render a neutral bootstrap skeleton while the boot `/auth/me` probe is loading, then render login only after unauthenticated resolution; authenticated deep links continue to resolve to their intended route.
 
 Must handle:
 

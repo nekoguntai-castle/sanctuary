@@ -156,8 +156,10 @@ These domain scores are the original scrub scores; per-finding statuses below re
 ### P3 Findings
 
 1. Capability-gated Intelligence nav is hidden, but direct `#/intelligence` route access is not route-gated.
+   - Status: fixed in the frontend route-gate slice by moving `requiredCapabilities` onto route metadata, gating direct route rendering for loading/unavailable/available capability states, and adding direct hash-route tests.
 2. Logged-in users with missing/null preferences cannot persist preference changes.
 3. Authenticated refresh can briefly render the login screen during auth bootstrap.
+   - Status: fixed in the frontend route-gate slice by rendering a neutral authenticated-route bootstrap skeleton while `/auth/me` is still loading, then rendering login only after unauthenticated resolution.
 4. Frontend Dockerfile creates a non-root user but does not switch to it.
    - Status: fixed in the deployment hardening slice by switching the runtime image to UID `1001`, moving nginx to high internal ports, and making SSL startup fail clearly when mounted certificates are missing or unreadable.
 5. `ENCRYPTION_SALT` has a static deployment default.

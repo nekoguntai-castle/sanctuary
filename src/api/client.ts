@@ -88,7 +88,7 @@ interface RefreshableOperation<T> {
   endpoint: string;
   operation: () => Promise<T>;
   retryContext?: string;
-  retryOptions?: RetryOptions;
+  retryOptions: RetryOptions;
   isRefreshRetry?: boolean;
 }
 
@@ -472,7 +472,7 @@ export class ApiClient {
   private async executeApiOperation<T>(
     input: RefreshableOperation<T>,
   ): Promise<T> {
-    const retryOptions = input.retryOptions ?? {};
+    const retryOptions = input.retryOptions;
     const retryContext = input.retryContext ?? input.endpoint;
 
     try {

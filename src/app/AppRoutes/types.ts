@@ -9,6 +9,7 @@ export interface AppPreferenceState {
 
 export interface AppRoutesController {
   isAuthenticated: boolean;
+  isLoading: boolean;
   logout: () => void;
   notifications: Notification[];
   removeNotification: (id: string) => void;

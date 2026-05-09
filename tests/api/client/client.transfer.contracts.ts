@@ -171,6 +171,75 @@ export const registerApiClientTransferContracts = () => {
       expect(mockFetch.mock.calls[0][1].credentials).toBe("include");
     });
 
+    it("should append blob params to endpoints that already include a query string", async () => {
+      const blob = new Blob(["file-bytes"]);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(blob),
+      });
+
+      await apiClient.fetchBlob("/exports/archive?format=csv", {
+        params: { from: "2026-01-01" },
+      });
+
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        "/api/v1/exports/archive?format=csv&from=2026-01-01",
+      );
+    });
+
+    it("should normalize Headers instances on blob requests", async () => {
+      const blob = new Blob(["file-bytes"]);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(blob),
+      });
+
+      await apiClient.fetchBlob("/exports/archive", {
+        headers: new Headers([["X-Trace-Id", "trace-headers"]]),
+      });
+
+      expect(mockFetch.mock.calls[0][1].headers["x-trace-id"]).toBe(
+        "trace-headers",
+      );
+    });
+
+    it("should normalize tuple-array headers on blob requests", async () => {
+      const blob = new Blob(["file-bytes"]);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(blob),
+      });
+
+      await apiClient.fetchBlob("/exports/archive", {
+        headers: [["X-Trace-Id", "trace-array"]],
+      });
+
+      expect(mockFetch.mock.calls[0][1].headers["X-Trace-Id"]).toBe(
+        "trace-array",
+      );
+    });
+
+    it("should allow replayable blob request bodies", async () => {
+      const blob = new Blob(["file-bytes"]);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(blob),
+      });
+
+      await expect(
+        apiClient.fetchBlob("/exports/archive", {
+          method: "POST",
+          body: "payload",
+        }),
+      ).resolves.toBe(blob);
+
+      expect(mockFetch.mock.calls[0][1].body).toBe("payload");
+    });
+
     it("should refresh and retry fetchBlob once after a 401", async () => {
       const blob = new Blob(["retried-bytes"], {
         type: "application/octet-stream",
@@ -229,6 +298,40 @@ export const registerApiClientTransferContracts = () => {
         method: "POST",
         body: "payload",
       }) as unknown as BodyInit;
+
+      await expect(
+        apiClient.fetchBlob("/exports/archive", {
+          method: "POST",
+          body: requestBody,
+        }),
+      ).rejects.toMatchObject({
+        status: 0,
+        message: "Blob request body is not replayable after an auth refresh",
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+    });
+
+    it("should reject readable stream blob request bodies before fetching", async () => {
+      const requestBody = new ReadableStream() as unknown as BodyInit;
+
+      await expect(
+        apiClient.fetchBlob("/exports/archive", {
+          method: "POST",
+          body: requestBody,
+        }),
+      ).rejects.toMatchObject({
+        status: 0,
+        message: "Blob request body is not replayable after an auth refresh",
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+    });
+
+    it("should reject response blob request bodies before fetching", async () => {
+      const requestBody = new Response("payload") as unknown as BodyInit;
 
       await expect(
         apiClient.fetchBlob("/exports/archive", {

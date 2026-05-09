@@ -64,6 +64,7 @@ export interface AppRouteDefinition {
   path: string;
   component: LazyRouteComponent;
   fallback: ReactNode;
+  requiredCapabilities?: readonly AppCapability[];
   nav?: AppRouteNavDefinition;
 }
 
@@ -253,11 +254,11 @@ export const appRouteDefinitions: AppRouteDefinition[] = [
     path: "/intelligence",
     component: Intelligence,
     fallback: <DashboardSkeleton />,
+    requiredCapabilities: ["intelligence"],
     nav: {
       label: "Intelligence",
       icon: Brain,
       section: "primary",
-      requiredCapabilities: ["intelligence"],
     },
   },
   {
@@ -401,7 +402,7 @@ export const appNavItems: AppNavItem[] = appRouteDefinitions.flatMap(
         label: route.nav.label,
         icon: route.nav.icon,
         section: route.nav.section,
-        requiredCapabilities: route.nav.requiredCapabilities,
+        requiredCapabilities: route.nav.requiredCapabilities ?? route.requiredCapabilities,
       },
     ];
   },

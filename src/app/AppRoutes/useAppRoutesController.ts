@@ -11,7 +11,7 @@ import type { AppRoutesController } from './types';
 const log = createLogger('App');
 
 export function useAppRoutesController(): AppRoutesController {
-  const { isAuthenticated, logout, user, updatePreferences } = useUser();
+  const { isAuthenticated, isLoading, logout, user, updatePreferences } = useUser();
   const { notifications, removeNotification } = useNotifications();
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const preferences = getAppPreferenceState(user);
@@ -41,6 +41,7 @@ export function useAppRoutesController(): AppRoutesController {
 
   return {
     isAuthenticated,
+    isLoading,
     logout,
     notifications,
     removeNotification,

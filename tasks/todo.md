@@ -28,6 +28,33 @@ Goal: make request timeout handling expose and trigger a request-scoped cancella
 
 ---
 
+# Active Task: P3-03/P3-05 Frontend Route Capability And Auth Bootstrap Gates 2026-05-09
+
+Status: in progress; branch `fix/frontend-route-bootstrap-gates`
+
+Goal: prevent direct access to capability-gated routes when a feature is unavailable, and prevent protected routes from flashing the login screen while the boot auth probe is still loading.
+
+## Plan
+
+- [x] Map current authenticated route rendering, capability availability hooks, Intelligence route metadata, and existing App route tests.
+- [x] Add route-level capability gating that handles loading, unavailable, and available states for direct hash navigation without relying only on sidebar filtering.
+- [x] Add an auth bootstrap route state so protected routes show a neutral loading surface while `/auth/me` is still in flight, then render login only after unauthenticated resolution.
+- [x] Update route tests for direct `#/intelligence` access when Intelligence is loading, unavailable, and available, plus authenticated bootstrap and unauthenticated final states.
+- [x] Reconcile remediation docs for P3-01/P3-02 already-fixed deployment hardening and mark P3-03/P3-05 implemented after the slice.
+- [x] Run focused App route/capability/API client tests, app/test typechecks, full frontend coverage, touched-file lizard, hygiene, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Route definitions now own `requiredCapabilities`; nav metadata inherits it, and direct route rendering gates the Intelligence route for loading, unavailable, and available states.
+- Authenticated app routes now render a neutral bootstrap skeleton while auth is still loading, so `/auth/me` startup no longer flashes the login screen before unauthenticated resolution.
+- App branch tests cover auth bootstrap, final unauthenticated login, direct Intelligence loading/unavailable states, and the existing available route path. Capability model tests cover multi-capability loading and unavailable precedence.
+- The frontend coverage gate also exposed missing API client edge-contract coverage from earlier transfer-helper work; this slice adds the contracts for header normalization, existing-query param appends, replayable transfer bodies, and non-replayable `ReadableStream`/`Response` bodies, while tightening the executor retry options type to the actual required call contract.
+- Remediation docs now reflect that P3-01/P3-02 were already fixed by deployment hardening and that this slice implements P3-03/P3-05.
+- Verification passed: focused route/capability tests (17 tests), focused API client tests (93 tests), app typecheck, test typecheck, app lint, changed-test hygiene, touched-file lizard, full frontend coverage (475 files, 6,075 tests, 100% statements/branches/functions/lines), and `git diff --check`.
+
+---
+
 # Active Task: P2-09 Unhandled Rejection Fatal Shutdown 2026-05-09
 
 Status: completed; PR #360 merged as `8bf82a6f`

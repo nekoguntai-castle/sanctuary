@@ -18,12 +18,14 @@ const {
   mockGetCurrentUser,
   mockUseWebSocketQueryInvalidation,
   mockReloadCurrentDocument,
+  mockUseAppCapabilityStates,
 } = vi.hoisted(() => ({
   mockUseUser: vi.fn(),
   mockUseNotifications: vi.fn(),
   mockGetCurrentUser: vi.fn(),
   mockUseWebSocketQueryInvalidation: vi.fn(),
   mockReloadCurrentDocument: vi.fn(),
+  mockUseAppCapabilityStates: vi.fn(),
 }));
 
 vi.mock("../hooks/websocket", () => ({
@@ -38,6 +40,12 @@ vi.mock("../src/app/browserNavigation", () => ({
 
 vi.mock("../src/api/auth", () => ({
   getCurrentUser: (...args: unknown[]) => mockGetCurrentUser(...args),
+}));
+
+vi.mock("../hooks/useAppCapabilities", () => ({
+  useAppCapabilities: vi.fn(() => ({ console: true, intelligence: true })),
+  useAppCapabilityStates: (...args: unknown[]) =>
+    mockUseAppCapabilityStates(...args),
 }));
 
 vi.mock("../contexts/UserContext", () => ({
@@ -258,11 +266,31 @@ describe("App branch coverage", () => {
     });
     mockUseWebSocketQueryInvalidation.mockImplementation(() => {});
     mockGetCurrentUser.mockResolvedValue({ id: "user-1" });
+    mockUseAppCapabilityStates.mockReturnValue({
+      console: { available: true, loading: false },
+      intelligence: { available: true, loading: false },
+    });
+  });
+
+  it("renders a neutral bootstrap state while auth is loading", () => {
+    mockUseUser.mockReturnValue({
+      isAuthenticated: false,
+      isLoading: true,
+      logout: vi.fn(),
+      user: null,
+      updatePreferences: vi.fn(),
+    });
+
+    render(<App />);
+
+    expect(screen.getByTestId("auth-bootstrap-loading")).toBeInTheDocument();
+    expect(screen.queryByText("Login Screen")).not.toBeInTheDocument();
   });
 
   it("renders login view when unauthenticated", () => {
     mockUseUser.mockReturnValue({
       isAuthenticated: false,
+      isLoading: false,
       logout: vi.fn(),
       user: null,
       updatePreferences: vi.fn(),
@@ -395,6 +423,50 @@ describe("App branch coverage", () => {
       rendered.unmount();
     }
   }, 15_000);
+
+  it("shows a loading state for direct capability-gated route access", async () => {
+    mockUseUser.mockReturnValue({
+      isAuthenticated: true,
+      logout: vi.fn(),
+      user: {
+        usingDefaultPassword: false,
+        preferences: {},
+      },
+      updatePreferences: vi.fn(),
+    });
+    mockUseAppCapabilityStates.mockReturnValue({
+      console: { available: true, loading: false },
+      intelligence: { available: false, loading: true },
+    });
+    window.location.hash = "#/intelligence";
+
+    render(<App />);
+
+    expect(await screen.findByTestId("route-capability-loading")).toBeInTheDocument();
+    expect(screen.queryByText("Intelligence Page")).not.toBeInTheDocument();
+  });
+
+  it("blocks direct capability-gated route access when unavailable", async () => {
+    mockUseUser.mockReturnValue({
+      isAuthenticated: true,
+      logout: vi.fn(),
+      user: {
+        usingDefaultPassword: false,
+        preferences: {},
+      },
+      updatePreferences: vi.fn(),
+    });
+    mockUseAppCapabilityStates.mockReturnValue({
+      console: { available: true, loading: false },
+      intelligence: { available: false, loading: false },
+    });
+    window.location.hash = "#/intelligence";
+
+    render(<App />);
+
+    expect(await screen.findByTestId("route-capability-unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Intelligence Page")).not.toBeInTheDocument();
+  });
 
   it("handles password refresh success and failure during forced password change", async () => {
     const baseUser = {
