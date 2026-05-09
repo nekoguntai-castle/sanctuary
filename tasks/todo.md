@@ -1,6 +1,6 @@
 # Active Task: P2-06 Transfer Helper Session Refresh 2026-05-09
 
-Status: in progress; branch `fix/transfer-helper-refresh-retry`
+Status: completed; PR #356 merged as `f219a475`
 
 Goal: make frontend blob, download, and upload helpers recover from an expired access token with the same single refresh-and-retry behavior as JSON API requests, while only retrying replayable request bodies.
 
@@ -12,7 +12,7 @@ Goal: make frontend blob, download, and upload helpers recover from an expired a
 - [x] Preserve download filename extraction and upload body semantics; document or enforce the boundary for non-replayable stream bodies.
 - [x] Update health/remediation/task docs for P2-06 status and any residual replay-safety behavior.
 - [x] Run focused API client tests, frontend test/typecheck/lint where relevant, touched-file lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -21,6 +21,7 @@ Goal: make frontend blob, download, and upload helpers recover from an expired a
 - Downloads preserve `Content-Disposition` filename extraction from the retried response, and `createBackup()` delegates to `apiClient.fetchBlob()` so admin backup blobs share credentials, CSRF, timeout, error, and refresh behavior.
 - Regression coverage now proves blob/download/upload refresh success, refresh failure, second-401 stop behavior, CSRF replay, filename/body preservation, and non-replayable body rejection.
 - Verification passed: focused API tests (95 tests), app typecheck, test typecheck, app lint, browser-auth static contract, changed-test hygiene, touched-file lizard, `git diff --check`, and frontend production build.
+- PR #356 passed all 30 Forgejo checks and merged as `f219a4755d9bf2278ede306461b24d0997e70d64`. Pre-commit also passed the full frontend Vitest suite with 6,061 tests.
 
 ---
 
