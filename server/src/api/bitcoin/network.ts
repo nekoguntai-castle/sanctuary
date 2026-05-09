@@ -11,6 +11,7 @@ import * as mempool from '../../services/bitcoin/mempool';
 import { getBitcoinNetworkStatus } from '../../services/bitcoin/networkStatusService';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { getRequestAbortSignal } from '../../utils/requestAbort';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ValidationError } from '../../errors/ApiError';
 
@@ -98,7 +99,9 @@ router.get('/mempool', asyncHandler(async (req: Request, res: Response) => {
   }
 
   try {
-    const data = await mempool.getBlocksAndMempool(network);
+    const data = await mempool.getBlocksAndMempool(network, {
+      signal: getRequestAbortSignal(req),
+    });
     mempoolCache.set(network, { data, timestamp: now });
     res.json(data);
   } catch (error) {
@@ -124,7 +127,9 @@ router.get('/mempool', asyncHandler(async (req: Request, res: Response) => {
 router.get('/blocks/recent', asyncHandler(async (req, res) => {
   /* v8 ignore next -- fallback is a schema safety net for malformed query input */
   const count = RecentBlocksCountSchema.safeParse(req.query.count).data ?? 10;
-  const blocks = await mempool.getRecentBlocks(count);
+  const blocks = await mempool.getRecentBlocks(count, 'mainnet', {
+    signal: getRequestAbortSignal(req),
+  });
 
   res.json(blocks);
 }));

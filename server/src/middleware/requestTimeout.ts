@@ -11,6 +11,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { createLogger } from '../utils/logger';
 import { requestContext } from '../utils/requestContext';
+import { abortRequest, ensureRequestAbortController } from '../utils/requestAbort';
 
 const log = createLogger('MW:TIMEOUT');
 
@@ -83,10 +84,13 @@ export function requestTimeout(req: Request, res: Response, next: NextFunction):
   }
 
   let timedOut = false;
+  let completed = false;
+  ensureRequestAbortController(req);
 
   // Set up the timeout
   const timeoutHandle = setTimeout(() => {
     timedOut = true;
+    abortRequest(req, 'timeout');
 
     const requestId = requestContext.getRequestId();
     const duration = requestContext.getDuration();
@@ -112,11 +116,15 @@ export function requestTimeout(req: Request, res: Response, next: NextFunction):
 
   // Clean up timeout when response finishes
   res.on('finish', () => {
+    completed = true;
     clearTimeout(timeoutHandle);
   });
 
   res.on('close', () => {
     clearTimeout(timeoutHandle);
+    if (!completed && !timedOut) {
+      abortRequest(req, 'client_closed');
+    }
   });
 
   // Wrap next to prevent further processing after timeout
@@ -141,9 +149,12 @@ export function requestTimeout(req: Request, res: Response, next: NextFunction):
 export function withTimeout(timeoutMs: number) {
   return (req: Request, res: Response, next: NextFunction): void => {
     let timedOut = false;
+    let completed = false;
+    ensureRequestAbortController(req);
 
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
+      abortRequest(req, 'timeout');
 
       const requestId = requestContext.getRequestId();
       log.error('Custom route timeout', {
@@ -162,8 +173,16 @@ export function withTimeout(timeoutMs: number) {
       }
     }, timeoutMs);
 
-    res.on('finish', () => clearTimeout(timeoutHandle));
-    res.on('close', () => clearTimeout(timeoutHandle));
+    res.on('finish', () => {
+      completed = true;
+      clearTimeout(timeoutHandle);
+    });
+    res.on('close', () => {
+      clearTimeout(timeoutHandle);
+      if (!completed && !timedOut) {
+        abortRequest(req, 'client_closed');
+      }
+    });
 
     if (!timedOut) {
       next();

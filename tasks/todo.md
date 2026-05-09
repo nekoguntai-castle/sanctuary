@@ -1,3 +1,31 @@
+# Active Task: P2-08 Request Timeout Cancellation 2026-05-09
+
+Status: in progress; branch `fix/request-timeout-cancellation`
+
+Goal: make request timeout handling expose and trigger a request-scoped cancellation signal so long-running route work can stop or explicitly document non-cancellable/idempotent boundaries instead of continuing silently after a 408.
+
+## Plan
+
+- [x] Map timeout middleware, request typing, representative long-running routes/services, and existing timeout/request lifecycle tests.
+- [x] Add regression tests proving a timeout aborts the request-scoped signal, client disconnect aborts it, completed responses do not abort it, and at least one representative downstream workflow receives the signal.
+- [x] Implement a request-scoped `AbortSignal` boundary that is attached early, aborts on middleware timeout/client close, and avoids double responses.
+- [x] Thread the signal through supported external I/O boundaries where low risk; document destructive/non-cancellable workflows that need a future job/idempotency design rather than unsafe cancellation.
+- [x] Update health/remediation/task docs for P2-08 status and residual cancellation boundaries.
+- [x] Run focused timeout/route/service tests, server typecheck/lint/build as needed, touched-file lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- `requestTimeout` and `withTimeout` now attach `req.requestAbortSignal`, abort it with reason `timeout` when the timer fires, abort it with reason `client_closed` when the response closes before `finish`, and leave it un-aborted for normal `finish` then `close`.
+- Added `server/src/utils/requestAbort.ts` to centralize request abort controller setup, request abort reason typing, and optional signal composition helpers for downstream I/O.
+- Mempool read-only routes now pass the request signal into `getBlocksAndMempool`/`getRecentBlocks`; mempool Axios calls preserve their 3s endpoint timeout and also honor the request signal.
+- Destructive or state-mutating backup/restore, sync, and broadcast workflows remain documented as non-cancellable boundaries for now; they need explicit job or idempotency semantics before it is safe to stop them mid-flight.
+- Regression coverage now proves timeout abort, client-close abort, normal-finish non-abort, custom timeout abort, route signal propagation, and mempool Axios signal forwarding.
+- Browser E2E CI was also hardened while delivering this slice: the full-lane frontend build now points at `/api/v1`, the browser lane is scoped to browser-relevant changes, reserves a per-job backend port, runs one backend for all groups, tails backend startup logs on readiness failure, keeps a 120-second readiness window, and forces external Electrum startup probes to fail fast in the E2E harness.
+- Verification passed: focused server tests (179 tests), server test typecheck, server build, server lint including API body validation and Bitcoin network-boundary checks, changed-test hygiene, touched-file lizard, full backend unit coverage, browser E2E group repros, workflow composition/runtime guards, local E2E backend startup with temporary Postgres/Redis, and `git diff --check`.
+
+---
+
 # Active Task: P2-06 Transfer Helper Session Refresh 2026-05-09
 
 Status: completed; PR #356 merged as `f219a475`

@@ -32,6 +32,7 @@ vi.mock('../../../src/utils/requestContext', () => ({
 }));
 
 import { requestTimeout, withTimeout } from '../../../src/middleware/requestTimeout';
+import { abortRequest } from '../../../src/utils/requestAbort';
 
 describe('Request Timeout Middleware', () => {
   let req: any;
@@ -121,6 +122,8 @@ describe('Request Timeout Middleware', () => {
         requestTimeout(req, res, next);
 
         expect(next).toHaveBeenCalled();
+        expect(req.requestAbortSignal).toBeDefined();
+        expect(req.requestAbortSignal.aborted).toBe(false);
 
         // Should not timeout before 30s
         vi.advanceTimersByTime(29000);
@@ -134,6 +137,29 @@ describe('Request Timeout Middleware', () => {
           message: 'The request took too long to process',
           timeout: '30000ms',
         });
+      });
+
+      it('should abort the request-scoped signal when timeout occurs', () => {
+        req.path = '/api/v1/wallets';
+
+        requestTimeout(req, res, next);
+        vi.advanceTimersByTime(31000);
+
+        expect(req.requestAbortReason).toBe('timeout');
+        expect(req.requestAbortSignal.aborted).toBe(true);
+      });
+
+      it('should abort the request-scoped signal when the client connection closes before finish', () => {
+        req.path = '/api/v1/wallets';
+
+        requestTimeout(req, res, next);
+        res.emit('close');
+
+        expect(req.requestAbortReason).toBe('client_closed');
+        expect(req.requestAbortSignal.aborted).toBe(true);
+
+        vi.advanceTimersByTime(35000);
+        expect(res.status).not.toHaveBeenCalled();
       });
 
       it('should log error when timeout occurs', () => {
@@ -175,6 +201,7 @@ describe('Request Timeout Middleware', () => {
         // Advance past timeout - should not trigger
         vi.advanceTimersByTime(35000);
         expect(res.status).not.toHaveBeenCalled();
+        expect(req.requestAbortSignal.aborted).toBe(false);
       });
 
       it('should clear timeout when connection closes', () => {
@@ -188,6 +215,17 @@ describe('Request Timeout Middleware', () => {
         // Advance past timeout - should not trigger
         vi.advanceTimersByTime(35000);
         expect(res.status).not.toHaveBeenCalled();
+      });
+
+      it('should not abort when response close follows a normal finish', () => {
+        req.path = '/api/v1/wallets';
+
+        requestTimeout(req, res, next);
+        res.emit('finish');
+        res.emit('close');
+
+        expect(req.requestAbortReason).toBeUndefined();
+        expect(req.requestAbortSignal.aborted).toBe(false);
       });
 
       it('should not call next when timeout callback fires before wrapped next executes', () => {
@@ -341,6 +379,7 @@ describe('Request Timeout Middleware', () => {
       customTimeoutMiddleware(req, res, next);
 
       expect(next).toHaveBeenCalled();
+      expect(req.requestAbortSignal).toBeDefined();
 
       // Should not timeout before 5s
       vi.advanceTimersByTime(4000);
@@ -354,6 +393,8 @@ describe('Request Timeout Middleware', () => {
         message: 'The request took too long to process',
         timeout: '5000ms',
       });
+      expect(req.requestAbortReason).toBe('timeout');
+      expect(req.requestAbortSignal.aborted).toBe(true);
     });
 
     it('should log custom route timeout', () => {
@@ -381,6 +422,19 @@ describe('Request Timeout Middleware', () => {
       expect(res.status).not.toHaveBeenCalled();
     });
 
+    it('should not abort when response close follows custom timeout finish', () => {
+      const customTimeoutMiddleware = withTimeout(5000);
+
+      customTimeoutMiddleware(req, res, next);
+      res.emit('finish');
+      res.emit('close');
+
+      vi.advanceTimersByTime(10000);
+      expect(res.status).not.toHaveBeenCalled();
+      expect(req.requestAbortReason).toBeUndefined();
+      expect(req.requestAbortSignal.aborted).toBe(false);
+    });
+
     it('should clear timeout when connection closes', () => {
       const customTimeoutMiddleware = withTimeout(5000);
 
@@ -389,6 +443,8 @@ describe('Request Timeout Middleware', () => {
 
       vi.advanceTimersByTime(10000);
       expect(res.status).not.toHaveBeenCalled();
+      expect(req.requestAbortReason).toBe('client_closed');
+      expect(req.requestAbortSignal.aborted).toBe(true);
     });
 
     it('should not send response if headers already sent', () => {
@@ -414,6 +470,18 @@ describe('Request Timeout Middleware', () => {
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(408);
       setTimeoutSpy.mockRestore();
+    });
+  });
+
+  describe('request abort utility', () => {
+    it('should not overwrite the first abort reason', () => {
+      abortRequest(req, 'timeout');
+      const abortReason = req.requestAbortSignal.reason;
+
+      abortRequest(req, 'client_closed');
+
+      expect(req.requestAbortReason).toBe('timeout');
+      expect(req.requestAbortSignal.reason).toBe(abortReason);
     });
   });
 });

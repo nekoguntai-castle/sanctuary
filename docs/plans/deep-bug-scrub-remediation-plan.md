@@ -368,6 +368,8 @@ Must handle:
 
 ### P2-08 Request Timeout Cancellation
 
+Status: partially implemented in the request-timeout cancellation slice. The timeout middleware now attaches `req.requestAbortSignal`, aborts it on middleware timeout or pre-finish client disconnect, leaves normally finished responses un-aborted, and read-only mempool routes propagate the signal into Axios while preserving endpoint-local timeouts. Backup/restore, sync, and transaction broadcast are intentionally documented as non-cancellable in this slice because they can mutate durable state or submit irreversible network broadcasts; those paths need job/idempotency semantics before cancellation can be made safe.
+
 Must handle:
 
 - Express request lifecycle should expose an `AbortSignal` or equivalent cancellation context to downstream services.

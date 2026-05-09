@@ -280,7 +280,8 @@ EOF_DOC
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_exact_output "$output_file" "full_scan" "true"
-  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "frontend_changed" "true"
+  assert_contains_output "$output_file" "frontend_files" "vitest.coverage-shard.config.ts"
   assert_exact_output "$output_file" "backend_changed" "false"
   assert_exact_output "$output_file" "backend_integration_changed" "false"
   assert_exact_output "$output_file" "gateway_changed" "false"

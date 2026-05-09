@@ -152,6 +152,9 @@ class RequestBuilder {
         body: this.body ?? {},
         query,
       };
+      const requestAbortController = new AbortController();
+      req.requestAbortController = requestAbortController;
+      req.requestAbortSignal = requestAbortController.signal;
 
       const res: any = {
         statusCode: 200,

@@ -69,6 +69,43 @@ mark_full_scan() {
   full_scan=true
 }
 
+classify_full_scan_trigger_file() {
+  local file="$1"
+
+  if is_ai_proxy_file "$file"; then
+    ai_proxy_changed=true
+    append_file ai_proxy_files "$file"
+  fi
+
+  if is_frontend_file "$file"; then
+    frontend_changed=true
+    append_file frontend_files "$file"
+  fi
+
+  if is_backend_file "$file"; then
+    backend_changed=true
+    append_file backend_files "$file"
+  fi
+
+  if is_backend_integration_file "$file"; then
+    backend_integration_changed=true
+  fi
+
+  if is_critical_mutation_file "$file"; then
+    critical_mutation_changed=true
+    append_file critical_mutation_files "$file"
+  fi
+
+  if is_gateway_file "$file"; then
+    gateway_changed=true
+    append_file gateway_files "$file"
+  fi
+
+  if is_build_file "$file"; then
+    build_changed=true
+  fi
+}
+
 if [ "$event_name" = "schedule" ] || [ "$event_name" = "workflow_dispatch" ]; then
   mark_full_scan
   emit_outputs
@@ -141,10 +178,7 @@ while IFS= read -r file; do
   fi
 
   if is_full_scan_trigger_file "$file"; then
-    if is_ai_proxy_file "$file"; then
-      ai_proxy_changed=true
-      append_file ai_proxy_files "$file"
-    fi
+    classify_full_scan_trigger_file "$file"
     mark_full_scan
     break
   fi

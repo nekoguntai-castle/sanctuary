@@ -1074,9 +1074,7 @@ jobs:
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      (needs.detect-changes.outputs.full_scan == 'true' ||
-       needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.frontend_changed == 'true')
+      needs.detect-changes.outputs.frontend_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
 
@@ -1116,9 +1114,7 @@ jobs:
       always() &&
       needs.full-lane-ready.result == 'success' &&
       needs.full-frontend-coverage-shard-1.result == 'success' &&
-      (needs.detect-changes.outputs.full_scan == 'true' ||
-       needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.frontend_changed == 'true')
+      needs.detect-changes.outputs.frontend_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1]
 
@@ -1159,9 +1155,7 @@ jobs:
       needs.full-lane-ready.result == 'success' &&
       needs.full-frontend-coverage-shard-1.result == 'success' &&
       needs.full-frontend-coverage-shard-2.result == 'success' &&
-      (needs.detect-changes.outputs.full_scan == 'true' ||
-       needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.frontend_changed == 'true')
+      needs.detect-changes.outputs.frontend_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1, full-frontend-coverage-shard-2]
 
@@ -1221,6 +1215,7 @@ jobs:
     steps:
       - name: Check frontend lane result
         env:
+          FRONTEND_CHANGED: ${{ needs.detect-changes.outputs.frontend_changed }}
           FRONTEND_TYPECHECKS: ${{ needs.full-frontend-typechecks.result }}
           FRONTEND_COVERAGE: ${{ needs.full-frontend-coverage-merge.result }}
         run: |
@@ -1238,8 +1233,27 @@ jobs:
             fi
           }
 
+          allow_success_or_skipped() {
+            name="$1"
+            result="$2"
+
+            case "$result" in
+              success|skipped)
+                echo "$name: $result"
+                ;;
+              *)
+                echo "::error::$name result was $result; expected success or skipped"
+                failed=true
+                ;;
+            esac
+          }
+
           require_success "Full Frontend Typechecks" "$FRONTEND_TYPECHECKS"
-          require_success "Full Frontend Coverage Merge" "$FRONTEND_COVERAGE"
+          if [ "$FRONTEND_CHANGED" = "true" ]; then
+            require_success "Full Frontend Coverage Merge" "$FRONTEND_COVERAGE"
+          else
+            allow_success_or_skipped "Full Frontend Coverage Merge" "$FRONTEND_COVERAGE"
+          fi
 
           if [ "$failed" = "true" ]; then
             exit 1
@@ -1388,9 +1402,7 @@ jobs:
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      (needs.detect-changes.outputs.full_scan == 'true' ||
-       needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.browser_smoke_changed == 'true')
+      needs.detect-changes.outputs.browser_smoke_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
 
@@ -1445,14 +1457,31 @@ jobs:
       - name: Install Playwright browsers
         run: scripts/ci/time-command.sh "browser playwright install" scripts/ci/install-playwright-chromium.sh
 
+      - name: Reserve browser API port
+        run: |
+          api_port="$(node <<'NODE'
+          const net = require('net');
+          const server = net.createServer();
+          server.listen(0, '127.0.0.1', () => {
+            const address = server.address();
+            if (!address || typeof address === 'string') {
+              throw new Error('Failed to reserve a TCP port');
+            }
+            console.log(address.port);
+            server.close();
+          });
+          NODE
+          )"
+          echo "BROWSER_E2E_API_PORT=${api_port}" >> "$GITHUB_ENV"
+          echo "BROWSER_E2E_API_URL=http://localhost:${api_port}/api/v1" >> "$GITHUB_ENV"
+
       - name: Build frontend
-        run: >
-          scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/time-command.sh "browser frontend build"
-          scripts/ci/retry-command.sh "browser frontend build"
-          npm run build
-        env:
-          VITE_API_URL: http://localhost:3101
+        run: |
+          VITE_API_URL="${BROWSER_E2E_API_URL:?}" \
+            scripts/ci/with-runner-lock.sh node-toolchain \
+            scripts/ci/time-command.sh "browser frontend build" \
+            scripts/ci/retry-command.sh "browser frontend build" \
+            npm run build
 
       - name: Resolve service endpoints
         env:
@@ -1501,17 +1530,42 @@ jobs:
           scripts/ci/with-runner-lock.sh e2e bash -c '
             set -euo pipefail
 
-            readonly api_port=3101
+            readonly api_port="${BROWSER_E2E_API_PORT:?}"
             BACKEND_PID=""
 
             cleanup_backend() {
               if [ -n "${BACKEND_PID:-}" ]; then
-                kill "$BACKEND_PID" 2>/dev/null || true
+                kill -- "-${BACKEND_PID}" 2>/dev/null || kill "$BACKEND_PID" 2>/dev/null || true
                 wait "$BACKEND_PID" 2>/dev/null || true
                 BACKEND_PID=""
               fi
             }
             trap cleanup_backend EXIT
+
+            backend_log=".tmp/browser-e2e-backend.log"
+            mkdir -p "$(dirname "$backend_log")"
+            setsid bash -c "cd server; PORT=\"\$1\" npm run start" _ "$api_port" >"$backend_log" 2>&1 &
+            BACKEND_PID="$!"
+
+            echo "Waiting for backend server..."
+            for i in {1..60}; do
+              if curl -s "http://localhost:${api_port}/health" > /dev/null 2>&1; then
+                echo "Backend is ready!"
+                break
+              fi
+              if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+                echo "Backend process exited before becoming ready"
+                tail -200 "$backend_log" || true
+                exit 1
+              fi
+              if [ "$i" -eq 60 ]; then
+                echo "Backend failed to start"
+                tail -200 "$backend_log" || true
+                exit 1
+              fi
+              echo "Attempt $i: Backend not ready yet..."
+              sleep 2
+            done
 
             while IFS= read -r browser_group; do
               echo "::group::Browser E2E ${browser_group}"
@@ -1522,41 +1576,15 @@ jobs:
                 continue
               fi
 
-              (
-                cd server
-                PORT="$api_port" npm run start
-              ) &
-              BACKEND_PID="$!"
-
-              echo "Waiting for backend server..."
-              for i in {1..30}; do
-                if curl -s "http://localhost:${api_port}/health" > /dev/null 2>&1; then
-                  echo "Backend is ready!"
-                  break
-                fi
-                if [ "$i" -eq 30 ]; then
-                  echo "Backend failed to start"
-                  exit 1
-                fi
-                echo "Attempt $i: Backend not ready yet..."
-                sleep 2
-              done
-
               printf "Running browser-flow E2E group %s:\n" "$browser_group"
               printf "  %s\n" "${browser_specs[@]}"
-              VITE_API_URL="http://localhost:${api_port}" \
+              VITE_API_URL="${BROWSER_E2E_API_URL:?}" \
                 scripts/ci/retry-playwright-infrastructure-failure.sh "browser-flow E2E ${browser_group}" \
                 scripts/ci/time-command.sh "browser-flow E2E ${browser_group}" \
                 npm run test:e2e -- --project=chromium "${browser_specs[@]}"
 
-              cleanup_backend
               echo "::endgroup::"
             done < <(scripts/ci/browser-e2e-groups.sh --groups)
-
-            if [ -n "${BACKEND_PID:-}" ]; then
-              echo "Backend process was still running after browser E2E groups"
-              exit 1
-            fi
           '
         env:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
@@ -1564,6 +1592,15 @@ jobs:
           GATEWAY_SECRET: test-gateway-secret-for-ci-minimum-32-chars
           ENCRYPTION_SALT: test-encryption-salt-for-ci
           NODE_ENV: test
+          CLIENT_URL: http://localhost:5173
+          CORS_ALLOWED_ORIGINS: http://localhost:5173
+          ELECTRUM_HOST: 127.0.0.1
+          ELECTRUM_PORT: '1'
+          ELECTRUM_PROTOCOL: tcp
+          ELECTRUM_CONNECTION_TIMEOUT_MS: '1000'
+          ELECTRUM_REQUEST_TIMEOUT_MS: '1000'
+          ELECTRUM_POOL_ENABLED: 'false'
+          PRICE_PROVIDERS_ENABLED: mempool
           # E2E harness starts only the server, not the paired worker, so
           # disable the critical worker-heartbeat startup gate.
           WORKER_HEALTH_MONITOR_ENABLED: 'false'
@@ -1594,12 +1631,8 @@ jobs:
       needs.full-lane-ready.result == 'success' &&
       (needs.full-browser-e2e-tests.result == 'success' ||
        (needs.full-browser-e2e-tests.result == 'skipped' &&
-        needs.detect-changes.outputs.full_scan != 'true' &&
-        needs.detect-changes.outputs.test_suite_changed != 'true' &&
         needs.detect-changes.outputs.browser_smoke_changed != 'true')) &&
-      (needs.detect-changes.outputs.full_scan == 'true' ||
-       needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.render_changed == 'true')
+      needs.detect-changes.outputs.render_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready, full-browser-e2e-tests]
 
@@ -1943,8 +1976,6 @@ jobs:
             gateway_required=true
             ai_proxy_required=true
             critical_mutation_required=true
-            browser_e2e_required=true
-            render_e2e_required=true
             build_required=true
           fi
 
@@ -1953,8 +1984,6 @@ jobs:
             frontend_required=true
             gateway_required=true
             ai_proxy_required=true
-            browser_e2e_required=true
-            render_e2e_required=true
             build_required=true
           fi
 

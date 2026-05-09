@@ -108,6 +108,21 @@ describe('mempool service', () => {
     );
   });
 
+  it('passes request abort signals through mempool endpoint calls', async () => {
+    const controller = new AbortController();
+    hoisted.axiosGet.mockResolvedValue({ data: mockBlocks(1000) });
+
+    await getRecentBlocks(1, 'mainnet', { signal: controller.signal });
+
+    expect(hoisted.axiosGet).toHaveBeenCalledWith(
+      'https://mempool.space/api/v1/blocks',
+      expect.objectContaining({
+        timeout: 3000,
+        signal: controller.signal,
+      }),
+    );
+  });
+
   it('keeps feeEstimatorUrl unchanged when it already includes /api', async () => {
     hoisted.nodeConfig.findFirst.mockResolvedValue({
       isDefault: true,

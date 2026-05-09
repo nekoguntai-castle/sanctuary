@@ -408,7 +408,10 @@ export const registerBitcoinNetworkRouteTests = () => {
         expect(response.status).toBe(200);
         // Response may be cached from previous test runs, just check it's valid
         expect(response.body).toBeDefined();
-        expect(mockMempool.getBlocksAndMempool).toHaveBeenCalledWith('mainnet');
+        expect(mockMempool.getBlocksAndMempool).toHaveBeenCalledWith(
+          'mainnet',
+          expect.objectContaining({ signal: expect.any(Object) }),
+        );
       });
 
       it('should request mempool data for the selected network', async () => {
@@ -423,7 +426,10 @@ export const registerBitcoinNetworkRouteTests = () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual(mempoolData);
-        expect(mockMempool.getBlocksAndMempool).toHaveBeenCalledWith('testnet3');
+        expect(mockMempool.getBlocksAndMempool).toHaveBeenCalledWith(
+          'testnet3',
+          expect.objectContaining({ signal: expect.any(Object) }),
+        );
       });
 
       it('rejects legacy testnet mempool network input', async () => {
@@ -528,7 +534,11 @@ export const registerBitcoinNetworkRouteTests = () => {
 
         await request(app).get('/bitcoin/blocks/recent?count=5');
 
-        expect(mockMempool.getRecentBlocks).toHaveBeenCalledWith(5);
+        expect(mockMempool.getRecentBlocks).toHaveBeenCalledWith(
+          5,
+          'mainnet',
+          expect.objectContaining({ signal: expect.any(Object) }),
+        );
       });
 
       it('should cap excessive count parameter values', async () => {
@@ -536,7 +546,11 @@ export const registerBitcoinNetworkRouteTests = () => {
 
         await request(app).get('/bitcoin/blocks/recent?count=999');
 
-        expect(mockMempool.getRecentBlocks).toHaveBeenCalledWith(100);
+        expect(mockMempool.getRecentBlocks).toHaveBeenCalledWith(
+          100,
+          'mainnet',
+          expect.objectContaining({ signal: expect.any(Object) }),
+        );
       });
 
       it('should return 500 on fetch error', async () => {

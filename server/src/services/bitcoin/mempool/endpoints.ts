@@ -12,18 +12,28 @@ import type { MempoolBlock, MempoolInfo, FeeEstimates, ProjectedMempoolBlock } f
 
 const log = createLogger('BITCOIN:SVC_MEMPOOL');
 
+export interface MempoolRequestOptions {
+  signal?: AbortSignal;
+}
+
+function axiosRequestOptions(options: MempoolRequestOptions = {}) {
+  return {
+    timeout: 3000,
+    ...(options.signal ? { signal: options.signal } : {}),
+  };
+}
+
 /**
  * Get recent blocks from mempool.space
  */
 export async function getRecentBlocks(
   count: number = 10,
   network: MempoolNetwork = 'mainnet',
+  options: MempoolRequestOptions = {},
 ): Promise<MempoolBlock[]> {
   try {
     const apiBase = await getMempoolApiBase(network);
-    const response = await axios.get(`${apiBase}/v1/blocks`, {
-      timeout: 3000,
-    });
+    const response = await axios.get(`${apiBase}/v1/blocks`, axiosRequestOptions(options));
 
     // Return only the requested number of blocks
     return response.data.slice(0, count);
@@ -36,12 +46,13 @@ export async function getRecentBlocks(
 /**
  * Get mempool information
  */
-export async function getMempoolInfo(network: MempoolNetwork = 'mainnet'): Promise<MempoolInfo> {
+export async function getMempoolInfo(
+  network: MempoolNetwork = 'mainnet',
+  options: MempoolRequestOptions = {},
+): Promise<MempoolInfo> {
   try {
     const apiBase = await getMempoolApiBase(network);
-    const response = await axios.get(`${apiBase}/mempool`, {
-      timeout: 3000,
-    });
+    const response = await axios.get(`${apiBase}/mempool`, axiosRequestOptions(options));
 
     return response.data;
   } catch (error) {
@@ -54,15 +65,19 @@ export async function getMempoolInfo(network: MempoolNetwork = 'mainnet'): Promi
  * Get recommended fee estimates from mempool.space
  * Uses projected blocks API for decimal precision, falls back to recommended endpoint
  */
-export async function getRecommendedFees(network: MempoolNetwork = 'mainnet'): Promise<FeeEstimates> {
+export async function getRecommendedFees(
+  network: MempoolNetwork = 'mainnet',
+  options: MempoolRequestOptions = {},
+): Promise<FeeEstimates> {
   try {
     const apiBase = await getMempoolApiBase(network);
 
     // Try projected blocks first for decimal precision
     try {
-      const projectedResponse = await axios.get(`${apiBase}/v1/fees/mempool-blocks`, {
-        timeout: 3000,
-      });
+      const projectedResponse = await axios.get(
+        `${apiBase}/v1/fees/mempool-blocks`,
+        axiosRequestOptions(options),
+      );
 
       const blocks: ProjectedMempoolBlock[] = projectedResponse.data;
 
@@ -96,9 +111,10 @@ export async function getRecommendedFees(network: MempoolNetwork = 'mainnet'): P
     }
 
     // Fallback to recommended endpoint (returns integers)
-    const response = await axios.get(`${apiBase}/v1/fees/recommended`, {
-      timeout: 3000,
-    });
+    const response = await axios.get(
+      `${apiBase}/v1/fees/recommended`,
+      axiosRequestOptions(options),
+    );
 
     return {
       fastestFee: response.data.fastestFee,
@@ -119,12 +135,11 @@ export async function getRecommendedFees(network: MempoolNetwork = 'mainnet'): P
 export async function getBlock(
   hash: string,
   network: MempoolNetwork = 'mainnet',
+  options: MempoolRequestOptions = {},
 ): Promise<MempoolBlock> {
   try {
     const apiBase = await getMempoolApiBase(network);
-    const response = await axios.get(`${apiBase}/block/${hash}`, {
-      timeout: 3000,
-    });
+    const response = await axios.get(`${apiBase}/block/${hash}`, axiosRequestOptions(options));
 
     return response.data;
   } catch (error) {
@@ -139,12 +154,14 @@ export async function getBlock(
 export async function getBlockAtHeight(
   height: number,
   network: MempoolNetwork = 'mainnet',
+  options: MempoolRequestOptions = {},
 ): Promise<string> {
   try {
     const apiBase = await getMempoolApiBase(network);
-    const response = await axios.get(`${apiBase}/block-height/${height}`, {
-      timeout: 3000,
-    });
+    const response = await axios.get(
+      `${apiBase}/block-height/${height}`,
+      axiosRequestOptions(options),
+    );
 
     // Returns block hash
     return response.data;
@@ -157,12 +174,13 @@ export async function getBlockAtHeight(
 /**
  * Get current block height (tip)
  */
-export async function getTipHeight(network: MempoolNetwork = 'mainnet'): Promise<number> {
+export async function getTipHeight(
+  network: MempoolNetwork = 'mainnet',
+  options: MempoolRequestOptions = {},
+): Promise<number> {
   try {
     const apiBase = await getMempoolApiBase(network);
-    const response = await axios.get(`${apiBase}/blocks/tip/height`, {
-      timeout: 3000,
-    });
+    const response = await axios.get(`${apiBase}/blocks/tip/height`, axiosRequestOptions(options));
 
     return response.data;
   } catch (error) {
@@ -177,12 +195,14 @@ export async function getTipHeight(network: MempoolNetwork = 'mainnet'): Promise
  */
 export async function getProjectedMempoolBlocks(
   network: MempoolNetwork = 'mainnet',
+  options: MempoolRequestOptions = {},
 ): Promise<ProjectedMempoolBlock[]> {
   try {
     const apiBase = await getMempoolApiBase(network);
-    const response = await axios.get(`${apiBase}/v1/fees/mempool-blocks`, {
-      timeout: 3000,
-    });
+    const response = await axios.get(
+      `${apiBase}/v1/fees/mempool-blocks`,
+      axiosRequestOptions(options),
+    );
 
     return response.data;
   } catch (error) {

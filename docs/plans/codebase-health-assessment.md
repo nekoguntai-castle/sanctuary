@@ -134,6 +134,7 @@ These domain scores are the original scrub scores; per-finding statuses below re
    - Dedicated add/remove paths already invalidated access cache; bulk `memberIds` replacement now matches that behavior. Role changes are not part of the bulk `memberIds` API.
 
 4. **Request timeout does not abort in-flight route work.**
+   - Status: partially fixed in the request-timeout cancellation slice by adding a request-scoped `AbortSignal` that aborts on middleware timeout or client disconnect, and by propagating it into read-only mempool HTTP calls. Destructive/non-cancellable backup, restore, sync, and broadcast workflows remain documented boundaries until they can move to explicit job/idempotency semantics.
    - The middleware sends 408 after the timeout, but async handlers can keep mutating state after the client sees a timeout.
 
 5. **Service unhandled-rejection handlers log and keep running.**
