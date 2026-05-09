@@ -12,6 +12,7 @@ import { rateLimitService } from './services/rateLimiting';
 import { createLogger } from './utils/logger';
 import { getErrorMessage } from './utils/errors';
 import { exitNow } from './utils/processExit';
+import { registerFatalProcessHandlers } from './utils/fatalProcessHandlers';
 import { createMcpHttpApp } from './mcp/transport';
 
 const log = createLogger('MCP:ENTRY');
@@ -19,6 +20,7 @@ const SHUTDOWN_TIMEOUT_MS = 15_000;
 
 let httpServer: Server | null = null;
 let shuttingDown = false;
+let shutdownExitCode: 0 | 1 = 0;
 
 async function startMcpServer(): Promise<void> {
   if (!config.mcp.enabled) {
@@ -44,11 +46,15 @@ async function startMcpServer(): Promise<void> {
   });
 }
 
-async function shutdown(signal: string): Promise<void> {
+async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
   if (shuttingDown) {
+    if (exitCode === 1) {
+      shutdownExitCode = 1;
+    }
     return;
   }
   shuttingDown = true;
+  shutdownExitCode = exitCode;
   log.info(`${signal} received, shutting down MCP server`);
 
   const forceExit = setTimeout(() => {
@@ -73,7 +79,7 @@ async function shutdown(signal: string): Promise<void> {
 
   clearTimeout(forceExit);
   log.info('MCP server stopped');
-  exitNow(0);
+  exitNow(shutdownExitCode);
 }
 
 process.on('SIGTERM', () => {
@@ -90,14 +96,7 @@ process.on('SIGINT', () => {
   });
 });
 
-process.on('uncaughtException', (error: Error) => {
-  log.error('Uncaught MCP exception', { error: error.message, stack: error.stack });
-  exitNow(1);
-});
-
-process.on('unhandledRejection', (reason: unknown) => {
-  log.error('Unhandled MCP rejection', { error: getErrorMessage(reason) });
-});
+registerFatalProcessHandlers({ log, shutdown, exitNow });
 
 startMcpServer().catch(error => {
   log.error('Failed to start MCP server', { error: getErrorMessage(error) });

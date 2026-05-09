@@ -442,6 +442,49 @@ describe('worker entrypoint', () => {
     expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
   });
 
+  it('treats unhandled rejections as fatal and shuts down with code 1', async () => {
+    const handlers: Record<string, Array<(...args: any[]) => any>> = {};
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      handlers[event] ??= [];
+      handlers[event].push(handler);
+      return process;
+    }) as any);
+
+    const processExitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as any);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    handlers.unhandledRejection?.[0](new Error('promise boom'));
+    for (let i = 0; i < 20 && !processExitSpy.mock.calls.length; i += 1) {
+      await Promise.resolve();
+    }
+
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Fatal process event - shutting down',
+      expect.objectContaining({
+        event: 'unhandledRejection',
+        reason: 'promise boom',
+      })
+    );
+    expect(mocks.healthServerHandle.close).toHaveBeenCalledTimes(1);
+    expect(mocks.electrumInstance.stop).toHaveBeenCalledTimes(1);
+    expect(mocks.queueInstance.shutdown).toHaveBeenCalledTimes(1);
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+
+    handlers.uncaughtException?.[0](new Error('second boom'));
+    expect(mocks.healthServerHandle.close).toHaveBeenCalledTimes(1);
+    expect(mocks.logger.warn).toHaveBeenCalledWith(
+      'Fatal process event ignored; shutdown already in progress',
+      expect.objectContaining({
+        event: 'uncaughtException',
+        reason: 'second boom',
+      })
+    );
+  });
+
   it('covers timer, queue-error handlers, process handlers, and graceful shutdown branches', async () => {
     const handlers: Record<string, Array<(...args: any[]) => any>> = {};
     let intervalCallback: (() => Promise<void> | void) | undefined;
@@ -559,24 +602,6 @@ describe('worker entrypoint', () => {
       'Failed to queue sync job',
       expect.objectContaining({ error: 'cannot queue sync' })
     );
-
-    handlers.unhandledRejection?.[0](new Error('promise boom'));
-    expect(mocks.logger.error).toHaveBeenCalledWith(
-      'Unhandled promise rejection in worker',
-      expect.objectContaining({ reason: 'promise boom' })
-    );
-    handlers.unhandledRejection?.[0]('plain boom');
-    expect(mocks.logger.error).toHaveBeenCalledWith(
-      'Unhandled promise rejection in worker',
-      expect.objectContaining({ reason: 'plain boom', stack: undefined })
-    );
-
-    handlers.uncaughtException?.[0](new Error('uncaught boom'));
-    expect(mocks.logger.error).toHaveBeenCalledWith(
-      'Uncaught exception - worker will exit',
-      expect.objectContaining({ error: 'uncaught boom' })
-    );
-    expect(processExitSpy).toHaveBeenCalledWith(1);
 
     mocks.healthServerHandle.close.mockRejectedValueOnce(new Error('health close failed'));
     mocks.electrumInstance.stop.mockRejectedValueOnce(new Error('electrum stop failed'));

@@ -8,9 +8,9 @@
 
 import express, { Request, Response, NextFunction } from "express";
 import type { AiConfig } from "./aiClient";
-import { extractErrorMessage } from "./utils";
 import { createLogger } from "./logger";
-import { exitAfterDelay } from "./processExit";
+import { exitNow } from "./processExit";
+import { registerFatalProcessHandlers } from "./fatalProcessHandlers";
 import { registerConsoleRoutes } from "./consoleRoutes";
 import { requireAIServiceSecret } from "./auth";
 import { applyConfigUpdate, createDefaultAiConfig } from "./aiProxyRuntime";
@@ -21,21 +21,6 @@ import { registerInsightRoutes } from "./insightRoutes";
 import type { ConfigBody } from "./requestSchemas";
 
 const log = createLogger("AI");
-
-process.on("uncaughtException", (error: Error) => {
-  log.error("FATAL: Uncaught exception - process will exit", {
-    error: error.message,
-    stack: error.stack,
-  });
-  exitAfterDelay(1, 1000);
-});
-
-process.on("unhandledRejection", (reason: unknown) => {
-  log.error("Unhandled promise rejection", {
-    reason: extractErrorMessage(reason),
-    stack: reason instanceof Error ? reason.stack : undefined,
-  });
-});
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -88,7 +73,36 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: "Internal error" });
 });
 
-app.listen(PORT, () => {
+let isShuttingDown = false;
+let shutdownExitCode: 0 | 1 = 0;
+
+function shutdown(signal: string, exitCode: 0 | 1 = 0): void {
+  if (isShuttingDown) {
+    if (exitCode === 1) {
+      shutdownExitCode = 1;
+    }
+    log.warn(`Received ${signal} while shutdown is already in progress`);
+    return;
+  }
+  isShuttingDown = true;
+  shutdownExitCode = exitCode;
+
+  log.info(`Received ${signal}, shutting down AI proxy...`);
+
+  const forceExit = setTimeout(() => {
+    log.error("Forced AI proxy shutdown after timeout");
+    exitNow(1);
+  }, 10000);
+  forceExit.unref();
+
+  server.close(() => {
+    clearTimeout(forceExit);
+    log.info("AI proxy shutdown complete");
+    exitNow(shutdownExitCode);
+  });
+}
+
+const server = app.listen(PORT, () => {
   log.info(`Sanctuary AI Container started on port ${PORT}`);
   log.info("Backend URL", { url: BACKEND_URL });
   log.info(
@@ -104,3 +118,7 @@ app.listen(PORT, () => {
     log.info("Config secret: configured via environment");
   }
 });
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+registerFatalProcessHandlers({ log, shutdown, exitNow });

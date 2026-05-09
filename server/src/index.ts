@@ -27,7 +27,8 @@ import { initializeWebSocketServer, initializeGatewayWebSocketServer } from './w
 import { initializeRedisBridge, shutdownRedisBridge } from './websocket/redisBridge';
 import { createLogger } from './utils/logger';
 import { getErrorMessage } from './utils/errors';
-import { exitAfterDelay, exitNow } from './utils/processExit';
+import { exitNow } from './utils/processExit';
+import { registerFatalProcessHandlers } from './utils/fatalProcessHandlers';
 import { validateEncryptionKey } from './utils/encryption';
 import { requestLogger } from './middleware/requestLogger';
 import { requestTimeout } from './middleware/requestTimeout';
@@ -58,29 +59,6 @@ import { getActiveStats } from './repositories/maintenanceRepository';
 
 const log = createLogger('SERVER');
 const COARSE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-
-// ========================================
-// GLOBAL EXCEPTION HANDLERS
-// ========================================
-// Catch unhandled errors to prevent silent crashes
-
-process.on('uncaughtException', (error: Error) => {
-  log.error('Uncaught exception - process will exit', {
-    error: error.message,
-    stack: error.stack,
-  });
-  // Give time for logs to flush
-  exitAfterDelay(1, 1000);
-});
-
-process.on('unhandledRejection', (reason: unknown, _promise: Promise<unknown>) => {
-  log.error('Unhandled promise rejection', {
-    reason: getErrorMessage(reason),
-    stack: reason instanceof Error ? reason.stack : undefined,
-  });
-  // Don't exit for unhandled rejections, but log them
-  // In production, you might want to exit here too
-});
 
 // Encryption key is validated asynchronously during startup (see async IIFE below)
 // to avoid blocking the event loop with scrypt key derivation.
@@ -362,16 +340,21 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
 // Graceful shutdown configuration
 const SHUTDOWN_TIMEOUT_MS = 30000; // 30 seconds to drain connections
 let isShuttingDown = false;
+let shutdownExitCode: 0 | 1 = 0;
 let activeStatsTimer: NodeJS.Timeout | null = null;
 
 // Graceful shutdown handler with connection draining
-const handleShutdown = async (signal: string) => {
+const handleShutdown = async (signal: string, exitCode: 0 | 1 = 0) => {
   // Prevent multiple shutdown attempts
   if (isShuttingDown) {
+    if (exitCode === 1) {
+      shutdownExitCode = 1;
+    }
     log.warn(`${signal} received again, already shutting down...`);
     return;
   }
   isShuttingDown = true;
+  shutdownExitCode = exitCode;
 
   log.info(`${signal} received, starting graceful shutdown (${SHUTDOWN_TIMEOUT_MS / 1000}s timeout)...`);
 
@@ -442,12 +425,13 @@ const handleShutdown = async (signal: string) => {
   httpServer.close(() => {
     clearTimeout(forceExitTimeout);
     log.info('Server closed gracefully');
-    exitNow(0);
+    exitNow(shutdownExitCode);
   });
 };
 
 // Graceful shutdown on SIGTERM and SIGINT
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 process.on('SIGINT', () => handleShutdown('SIGINT'));
+registerFatalProcessHandlers({ log, shutdown: handleShutdown, exitNow });
 
 export default app;

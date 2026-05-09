@@ -20,7 +20,8 @@ import http from 'http';
 import fs from 'fs';
 import { config, validateConfig } from './config';
 import { createLogger } from './utils/logger';
-import { exitAfterDelay, exitNow } from './utils/processExit';
+import { exitNow } from './utils/processExit';
+import { registerFatalProcessHandlers } from './utils/fatalProcessHandlers';
 import { requestLogger } from './middleware/requestLogger';
 import { authRateLimiter, cleanupBackoffTracker } from './middleware/rateLimit';
 import { normalizeTrailingSlash } from './middleware/trailingSlash';
@@ -31,26 +32,6 @@ import { startBackendEvents, stopBackendEvents } from './services/backendEvents'
 
 const log = createLogger('GATEWAY');
 const COARSE_GATEWAY_LIMIT_MULTIPLIER = 10;
-
-// ========================================
-// GLOBAL EXCEPTION HANDLERS
-// ========================================
-// Catch unhandled errors to prevent silent crashes
-
-process.on('uncaughtException', (error: Error) => {
-  log.error('Uncaught exception - process will exit', {
-    error: error.message,
-    stack: error.stack,
-  });
-  exitAfterDelay(1, 1000);
-});
-
-process.on('unhandledRejection', (reason: unknown) => {
-  log.error('Unhandled promise rejection', {
-    reason: reason instanceof Error ? reason.message : String(reason),
-    stack: reason instanceof Error ? reason.stack : undefined,
-  });
-});
 
 // Validate configuration
 validateConfig();
@@ -205,6 +186,8 @@ const tlsOptions = loadTlsCertificates();
 
 // Periodic cleanup interval for rate limit backoff tracker
 let backoffCleanupInterval: NodeJS.Timeout | null = null;
+let isShuttingDown = false;
+let shutdownExitCode: 0 | 1 = 0;
 
 if (tlsOptions) {
   // HTTPS server
@@ -246,10 +229,28 @@ if (tlsOptions) {
 }
 
 // Graceful shutdown
-function shutdown(signal: string): void {
+function shutdown(signal: string, exitCode: 0 | 1 = 0): void {
+  if (isShuttingDown) {
+    if (exitCode === 1) {
+      shutdownExitCode = 1;
+    }
+    log.warn(`Received ${signal} while shutdown is already in progress`);
+    return;
+  }
+  isShuttingDown = true;
+  shutdownExitCode = exitCode;
+
   log.info(`Received ${signal}, shutting down...`);
 
+  // Force exit after 10 seconds
+  const forceExit = setTimeout(() => {
+    log.error('Forced shutdown after timeout');
+    exitNow(1);
+  }, 10000);
+  forceExit.unref();
+
   server.close(() => {
+    clearTimeout(forceExit);
     log.info('HTTP server closed');
 
     // Cleanup services
@@ -262,15 +263,10 @@ function shutdown(signal: string): void {
     }
 
     log.info('Gateway shutdown complete');
-    exitNow(0);
+    exitNow(shutdownExitCode);
   });
-
-  // Force exit after 10 seconds
-  setTimeout(() => {
-    log.error('Forced shutdown after timeout');
-    exitNow(1);
-  }, 10000);
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+registerFatalProcessHandlers({ log, shutdown, exitNow });

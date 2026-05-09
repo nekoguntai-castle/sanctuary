@@ -28,6 +28,32 @@ Goal: make request timeout handling expose and trigger a request-scoped cancella
 
 ---
 
+# Active Task: P2-09 Unhandled Rejection Fatal Shutdown 2026-05-09
+
+Status: in progress; branch `fix/unhandled-rejection-fatal-shutdown`
+
+Goal: make service-level unhandled promise rejections fail closed by logging a fatal event, reusing each entrypoint's bounded graceful shutdown path, and exiting non-zero instead of leaving degraded processes marked healthy.
+
+## Plan
+
+- [x] Map current process handlers and graceful shutdown paths for server, worker, MCP, gateway, and AI proxy.
+- [x] Add testable fatal process-event helpers for server-side, gateway, and AI proxy runtimes, including single-shutdown and shutdown-failure behavior.
+- [x] Wire `unhandledRejection` and `uncaughtException` to fatal graceful shutdown with non-zero exit codes across all entrypoints.
+- [x] Update worker entrypoint tests to prove unhandled rejections now trigger shutdown/exit rather than only logging.
+- [x] Update health/remediation/task docs for P2-09 status and residual supervisor assumptions.
+- [x] Run focused process-handler tests, relevant typechecks/builds/lint/lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Added fatal process-event helpers for server, gateway, and AI proxy runtimes. They log structured fatal details, invoke the supplied shutdown path with exit code 1, ignore repeat fatal events while teardown is in progress, and force exit code 1 if shutdown itself fails.
+- Server, worker, MCP, gateway, and AI proxy entrypoints now route `unhandledRejection` and `uncaughtException` through graceful shutdown instead of logging and continuing. Shutdown paths preserve signal behavior with exit code 0, but fatal events upgrade any in-progress shutdown to exit code 1.
+- Gateway and AI proxy shutdown now guard against duplicate teardown and use bounded forced exits; AI proxy now closes its HTTP server on SIGTERM/SIGINT as well as fatal process events.
+- Regression coverage proves fatal helper behavior for server, gateway, and AI proxy, plus worker entrypoint behavior for fatal unhandled rejection shutdown and duplicate fatal-event suppression.
+- Verification passed: focused server/worker tests (13 tests), gateway fatal handler tests (2 tests), AI proxy fatal handler tests (2 tests), server test typecheck, root test typecheck, server/gateway/AI builds, server/gateway lint, changed-test hygiene, touched-file lizard, and `git diff --check`.
+
+---
+
 # Active Task: P2-06 Transfer Helper Session Refresh 2026-05-09
 
 Status: completed; PR #356 merged as `f219a475`

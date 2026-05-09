@@ -24,7 +24,8 @@ import os from 'node:os';
 import { getConfig } from './config';
 import { createLogger } from './utils/logger';
 import { getErrorMessage } from './utils/errors';
-import { exitAfterDelay, exitNow } from './utils/processExit';
+import { registerFatalProcessHandlers } from './utils/fatalProcessHandlers';
+import { exitNow } from './utils/processExit';
 // Initialize Prometheus metrics collection for the worker process
 import { metricsService } from './observability/metrics/registry';
 import { updateJobQueueMetrics } from './observability/metrics/helpers';
@@ -48,6 +49,7 @@ let healthServer: HealthServerHandle | null = null;
 let reconciliationTimer: NodeJS.Timeout | null = null;
 let metricsTimer: NodeJS.Timeout | null = null;
 let isShuttingDown = false;
+let shutdownExitCode: 0 | 1 = 0;
 
 // Reconciliation interval - clean up stale subscriptions every 15 minutes
 const RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
@@ -63,25 +65,6 @@ function toBullPriority(priority: 'high' | 'normal' | 'low'): number {
       return 3;
   }
 }
-
-// =============================================================================
-// Exception Handlers
-// =============================================================================
-
-process.on('uncaughtException', (error: Error) => {
-  log.error('Uncaught exception - worker will exit', {
-    error: error.message,
-    stack: error.stack,
-  });
-  exitAfterDelay(1, 1000);
-});
-
-process.on('unhandledRejection', (reason: unknown) => {
-  log.error('Unhandled promise rejection in worker', {
-    reason: getErrorMessage(reason),
-    stack: reason instanceof Error ? reason.stack : undefined,
-  });
-});
 
 // =============================================================================
 // Worker Startup
@@ -572,9 +555,15 @@ function setupStaleWalletHandler(): void {
 // Graceful Shutdown
 // =============================================================================
 
-async function shutdown(signal: string): Promise<void> {
-  if (isShuttingDown) return;
+async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
+  if (isShuttingDown) {
+    if (exitCode === 1) {
+      shutdownExitCode = 1;
+    }
+    return;
+  }
   isShuttingDown = true;
+  shutdownExitCode = exitCode;
 
   log.info(`${signal} received, shutting down worker...`);
 
@@ -640,7 +629,7 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   log.info('Worker shutdown complete');
-  exitNow(0);
+  exitNow(shutdownExitCode);
 }
 
 // =============================================================================
@@ -656,3 +645,4 @@ startWorker().catch((error) => {
 // Graceful shutdown handlers
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+registerFatalProcessHandlers({ log, shutdown, exitNow });

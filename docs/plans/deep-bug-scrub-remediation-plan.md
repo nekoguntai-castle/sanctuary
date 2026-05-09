@@ -381,6 +381,8 @@ Must handle:
 
 ### P2-09 Unhandled Rejection Shutdown
 
+Status: implemented in the unhandled-rejection fatal-shutdown slice. Server, worker, MCP, gateway, and AI proxy entrypoints now treat `unhandledRejection` and `uncaughtException` as fatal process events, log structured details, stop accepting new requests through the existing graceful shutdown paths, and exit with code 1 after bounded cleanup. Repeated fatal events during shutdown are logged but do not start duplicate teardown. Restart remains delegated to the service supervisor/container runtime.
+
 Must handle:
 
 - Extract process handlers into testable modules or test via child processes.

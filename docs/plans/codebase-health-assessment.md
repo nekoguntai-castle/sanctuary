@@ -138,6 +138,7 @@ These domain scores are the original scrub scores; per-finding statuses below re
    - The middleware sends 408 after the timeout, but async handlers can keep mutating state after the client sees a timeout.
 
 5. **Service unhandled-rejection handlers log and keep running.**
+   - Status: fixed in the unhandled-rejection shutdown slice by routing server, worker, MCP, gateway, and AI proxy `unhandledRejection`/`uncaughtException` events through fatal logging plus each entrypoint's bounded graceful shutdown path with exit code 1. Runtime restart remains the supervisor/container orchestrator's responsibility.
    - Server, gateway, and AI proxy entrypoints log unhandled promise rejections without exiting, which can leave degraded services marked healthy.
 
 6. **GHCR compose defaults include predictable database credentials and unauthenticated Redis.**
