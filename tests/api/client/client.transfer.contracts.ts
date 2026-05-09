@@ -1,6 +1,41 @@
 import { describe, expect, it } from "vitest";
 
-import { apiClient, mockDownloadBlob, mockFetch } from "./clientTestHarness";
+import {
+  apiClient,
+  mockDownloadBlob,
+  mockFetch,
+  mockRefreshAccessToken,
+} from "./clientTestHarness";
+
+function okJsonResponse(body: unknown = {}) {
+  return {
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(body),
+  };
+}
+
+function okBlobResponse(blob: Blob, headers?: Record<string, string>) {
+  const headersMap = new Map<string, string>(Object.entries(headers ?? {}));
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: (name: string) => headersMap.get(name) ?? null },
+    blob: () => Promise.resolve(blob),
+  };
+}
+
+function errorResponse(
+  status: number,
+  body: unknown = { message: "Unauthorized" },
+) {
+  return {
+    ok: false,
+    status,
+    statusText: status === 401 ? "Unauthorized" : "Error",
+    json: () => Promise.resolve(body),
+  };
+}
 
 export const registerApiClientTransferContracts = () => {
   describe("Upload", () => {
@@ -43,6 +78,66 @@ export const registerApiClientTransferContracts = () => {
         status: 500,
       });
     });
+
+    it("should refresh and retry uploads once after a 401", async () => {
+      const formData = new FormData();
+      formData.append("file", new Blob(["test"]), "test.txt");
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(401))
+        .mockResolvedValueOnce(okJsonResponse({ uploaded: true }));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      const result = await apiClient.upload<{ uploaded: boolean }>(
+        "/upload",
+        formData,
+        { enabled: false },
+      );
+
+      expect(result).toEqual({ uploaded: true });
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[0][1].body).toBe(formData);
+      expect(mockFetch.mock.calls[1][1].body).toBe(formData);
+      expect(mockFetch.mock.calls[1][1].headers["Content-Type"]).toBeUndefined();
+    });
+
+    it("should re-read CSRF before replaying an upload after refresh", async () => {
+      document.cookie = "sanctuary_csrf=old-csrf; path=/";
+      const formData = new FormData();
+      formData.append("file", new Blob(["test"]), "test.txt");
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(401))
+        .mockResolvedValueOnce(okJsonResponse({ uploaded: true }));
+      mockRefreshAccessToken.mockImplementationOnce(() => {
+        document.cookie = "sanctuary_csrf=new-csrf; path=/";
+        return Promise.resolve();
+      });
+
+      await apiClient.upload("/upload", formData, { enabled: false });
+
+      expect(mockFetch.mock.calls[0][1].headers["X-CSRF-Token"]).toBe(
+        "old-csrf",
+      );
+      expect(mockFetch.mock.calls[1][1].headers["X-CSRF-Token"]).toBe(
+        "new-csrf",
+      );
+    });
+
+    it("should reject non-FormData upload bodies before fetching", async () => {
+      await expect(
+        apiClient.upload(
+          "/upload",
+          { stream: true } as unknown as FormData,
+          { enabled: false },
+        ),
+      ).rejects.toMatchObject({
+        status: 0,
+        message: "Upload body must be FormData to support auth refresh retry",
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+    });
   });
 
   // ========================================
@@ -74,6 +169,79 @@ export const registerApiClientTransferContracts = () => {
       expect(mockFetch.mock.calls[0][1].method).toBe("POST");
       // Phase 4: browser auth is via HttpOnly cookies, not Bearer header.
       expect(mockFetch.mock.calls[0][1].credentials).toBe("include");
+    });
+
+    it("should refresh and retry fetchBlob once after a 401", async () => {
+      const blob = new Blob(["retried-bytes"], {
+        type: "application/octet-stream",
+      });
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(401))
+        .mockResolvedValueOnce(okBlobResponse(blob));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      const result = await apiClient.fetchBlob("/exports/archive", {
+        method: "POST",
+        params: { from: "2026-01-01" },
+      });
+
+      expect(result).toBe(blob);
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[0][0]).toBe(mockFetch.mock.calls[1][0]);
+      expect(mockFetch.mock.calls[1][1].method).toBe("POST");
+    });
+
+    it("should surface the original fetchBlob 401 when refresh fails", async () => {
+      mockFetch.mockResolvedValueOnce(errorResponse(401));
+      mockRefreshAccessToken.mockRejectedValueOnce(new Error("refresh failed"));
+
+      await expect(
+        apiClient.fetchBlob("/exports/archive"),
+      ).rejects.toMatchObject({
+        status: 401,
+        message: "Unauthorized",
+      });
+
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should not refresh fetchBlob again when the replay also returns 401", async () => {
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(401))
+        .mockResolvedValueOnce(errorResponse(401, { message: "Still unauthorized" }));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      await expect(
+        apiClient.fetchBlob("/exports/archive"),
+      ).rejects.toMatchObject({
+        status: 401,
+        message: "Still unauthorized",
+      });
+
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should reject non-replayable blob request bodies before fetching", async () => {
+      const requestBody = new Request("https://example.test/upload", {
+        method: "POST",
+        body: "payload",
+      }) as unknown as BodyInit;
+
+      await expect(
+        apiClient.fetchBlob("/exports/archive", {
+          method: "POST",
+          body: requestBody,
+        }),
+      ).rejects.toMatchObject({
+        status: 0,
+        message: "Blob request body is not replayable after an auth refresh",
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockRefreshAccessToken).not.toHaveBeenCalled();
     });
 
     it("should throw ApiError with HTTP fallback when fetchBlob error body is not JSON", async () => {
@@ -131,6 +299,30 @@ export const registerApiClientTransferContracts = () => {
       // Phase 4: cookie-based auth via credentials:'include'.
       expect(mockFetch.mock.calls[0][1].credentials).toBe("include");
       expect(mockDownloadBlob).toHaveBeenCalledWith(blob, "backup-2026.tar.gz");
+    });
+
+    it("should refresh and retry downloads once while preserving retry filename", async () => {
+      const blob = new Blob(["backup-bytes"], { type: "application/gzip" });
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(401))
+        .mockResolvedValueOnce(
+          okBlobResponse(blob, {
+            "Content-Disposition": 'attachment; filename="backup-after-refresh.tar.gz"',
+          }),
+        );
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      await apiClient.download("/admin/backup", "fallback.tar.gz", {
+        method: "POST",
+      });
+
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockDownloadBlob).toHaveBeenCalledTimes(1);
+      expect(mockDownloadBlob).toHaveBeenCalledWith(
+        blob,
+        "backup-after-refresh.tar.gz",
+      );
     });
 
     it("should use default download filename when none is provided", async () => {

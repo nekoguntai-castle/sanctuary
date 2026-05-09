@@ -1,3 +1,29 @@
+# Active Task: P2-06 Transfer Helper Session Refresh 2026-05-09
+
+Status: in progress; branch `fix/transfer-helper-refresh-retry`
+
+Goal: make frontend blob, download, and upload helpers recover from an expired access token with the same single refresh-and-retry behavior as JSON API requests, while only retrying replayable request bodies.
+
+## Plan
+
+- [x] Map JSON request refresh flow, `authPolicy` exemptions, CSRF header handling, blob/download/upload helpers, and current API client tests.
+- [x] Add regression tests for blob/download/upload 401 refresh success, refresh failure, header/filename preservation after retry, CSRF behavior, and non-replayable upload-body handling.
+- [x] Refactor shared API-client fetch handling so JSON, blob, download, and safe uploads use one refresh-on-401 path without retrying exempt auth endpoints.
+- [x] Preserve download filename extraction and upload body semantics; document or enforce the boundary for non-replayable stream bodies.
+- [x] Update health/remediation/task docs for P2-06 status and any residual replay-safety behavior.
+- [x] Run focused API client tests, frontend test/typecheck/lint where relevant, touched-file lizard, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- `ApiClient` now routes JSON, blob, download, and upload requests through one refresh-on-401 executor. The retry is limited by the existing `authPolicy` exemptions and `isRefreshRetry` guard, and transfer helpers rebuild headers on replay so a refreshed CSRF cookie is observed.
+- Blob fetches now accept optional replayable request bodies/headers/timeouts/signals, reject one-shot `Request`/`Response`/`ReadableStream` bodies before fetch, and do not add transient backoff retries. Upload remains `FormData`-only and keeps its existing transient retry behavior.
+- Downloads preserve `Content-Disposition` filename extraction from the retried response, and `createBackup()` delegates to `apiClient.fetchBlob()` so admin backup blobs share credentials, CSRF, timeout, error, and refresh behavior.
+- Regression coverage now proves blob/download/upload refresh success, refresh failure, second-401 stop behavior, CSRF replay, filename/body preservation, and non-replayable body rejection.
+- Verification passed: focused API tests (95 tests), app typecheck, test typecheck, app lint, browser-auth static contract, changed-test hygiene, touched-file lizard, `git diff --check`, and frontend production build.
+
+---
+
 # Active Task: P2-07 Bulk Group Cache Invalidation 2026-05-09
 
 Status: completed; PR #354 merged as `22913fa8`

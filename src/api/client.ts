@@ -73,6 +73,25 @@ interface ApiRequestOptions extends RequestInit {
   timeoutMs?: number;
 }
 
+type QueryParams = Record<string, string>;
+
+interface TransferRequestOptions {
+  method?: string;
+  params?: QueryParams;
+  headers?: HeadersInit;
+  body?: BodyInit | null;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
+interface RefreshableOperation<T> {
+  endpoint: string;
+  operation: () => Promise<T>;
+  retryContext?: string;
+  retryOptions?: RetryOptions;
+  isRefreshRetry?: boolean;
+}
+
 /**
  * Sleep for specified milliseconds with jitter
  */
@@ -183,6 +202,52 @@ const API_BASE_URL = getApiBaseUrl();
 
 // Export for use by functions that need direct fetch (e.g., file downloads)
 export { API_BASE_URL };
+
+const NO_RETRY: RetryOptions = { enabled: false };
+
+function headersInitToRecord(headersInit: HeadersInit | undefined): Record<string, string> {
+  if (!headersInit) return {};
+
+  if (typeof Headers !== "undefined" && headersInit instanceof Headers) {
+    const headers: Record<string, string> = {};
+    headersInit.forEach((value, key) => {
+      headers[key] = value;
+    });
+    return headers;
+  }
+
+  if (Array.isArray(headersInit)) return Object.fromEntries(headersInit);
+
+  return { ...(headersInit as Record<string, string>) };
+}
+
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  const normalizedName = name.toLowerCase();
+  return Object.keys(headers).some(
+    (headerName) => headerName.toLowerCase() === normalizedName,
+  );
+}
+
+function buildJsonHeaders(
+  headersInit: HeadersInit | undefined,
+  method: string,
+): Record<string, string> {
+  const headers = headersInitToRecord(headersInit);
+  if (!hasHeader(headers, "Content-Type")) {
+    headers["Content-Type"] = "application/json";
+  }
+  attachCsrfHeader(headers, method);
+  return headers;
+}
+
+function buildTransferHeaders(
+  headersInit: HeadersInit | undefined,
+  method: string,
+): Record<string, string> {
+  const headers = headersInitToRecord(headersInit);
+  attachCsrfHeader(headers, method);
+  return headers;
+}
 
 /**
  * Inspect a response for the X-Access-Expires-At header and schedule the
@@ -355,6 +420,93 @@ export class ApiError extends Error {
 }
 
 export class ApiClient {
+  private appendQueryParams(endpoint: string, params: QueryParams): string {
+    const queryString = new URLSearchParams(params).toString();
+    if (!queryString) return endpoint;
+
+    const separator = endpoint.includes("?") ? "&" : "?";
+    return endpoint + separator + queryString;
+  }
+
+  private isNonReplayableBody(body: unknown): boolean {
+    const bodyTag = Object.prototype.toString.call(body);
+    return (
+      bodyTag === "[object ReadableStream]" ||
+      bodyTag === "[object Request]" ||
+      bodyTag === "[object Response]"
+    );
+  }
+
+  private assertReplayableBody(body: unknown, label: string): void {
+    if (body == null) return;
+
+    if (this.isNonReplayableBody(body)) {
+      throw new ApiError(
+        `${label} body is not replayable after an auth refresh`,
+        0,
+      );
+    }
+  }
+
+  private assertFormDataUploadBody(formData: FormData): void {
+    if (typeof FormData !== "undefined" && formData instanceof FormData) {
+      return;
+    }
+
+    throw new ApiError(
+      "Upload body must be FormData to support auth refresh retry",
+      0,
+    );
+  }
+
+  private resolveDownloadFilename(response: Response, fallback?: string): string {
+    let resolvedFilename = fallback || "download";
+    const contentDisposition = response.headers.get("Content-Disposition");
+    if (!contentDisposition) return resolvedFilename;
+
+    const match = contentDisposition.match(/filename="?([^"]+)"?/);
+    if (match) resolvedFilename = match[1];
+    return resolvedFilename;
+  }
+
+  private async executeApiOperation<T>(
+    input: RefreshableOperation<T>,
+  ): Promise<T> {
+    const retryOptions = input.retryOptions ?? {};
+    const retryContext = input.retryContext ?? input.endpoint;
+
+    try {
+      return await withRetry(input.operation, retryOptions, retryContext);
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        shouldAttemptRefreshAfterUnauthorized({
+          endpoint: input.endpoint,
+          status: error.status,
+          isRefreshRetry: input.isRefreshRetry ?? false,
+        })
+      ) {
+        try {
+          await refreshAccessToken();
+        } catch (refreshErr) {
+          if (refreshErr instanceof RefreshFailedError) {
+            throw error;
+          }
+          throw error;
+        }
+
+        return this.executeApiOperation<T>({
+          ...input,
+          retryOptions,
+          retryContext,
+          isRefreshRetry: true,
+        });
+      }
+
+      throw error;
+    }
+  }
+
   /**
    * Make HTTP request with automatic retry for transient failures and
    * a refresh-on-401 interceptor for non-exempt endpoints.
@@ -370,20 +522,9 @@ export class ApiClient {
     // explicitly before calling request, so we trust it is defined here.
     const method = (options.method as string).toUpperCase();
 
-    // Set default headers
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...((options.headers as Record<string, string>) || {}),
-    };
-
-    // Inject CSRF token on state-changing requests when the cookie is
-    // available. A fresh unauthenticated session will not have the cookie
-    // yet — the backend's skipCsrfProtection lets those requests through
-    // because there is no sanctuary_access cookie either.
-    attachCsrfHeader(headers, method);
-
     const performRequest = async (): Promise<T> => {
       const { timeoutMs, ...fetchOptions } = options;
+      const headers = buildJsonHeaders(fetchOptions.headers, method);
       const response = await fetch(url, {
         ...fetchOptions,
         credentials: "include",
@@ -412,38 +553,12 @@ export class ApiClient {
       return unwrapSuccessfulJsonBody<T>(data, response);
     };
 
-    try {
-      return await withRetry(performRequest, retryOptions, endpoint);
-    } catch (error) {
-      if (
-        error instanceof ApiError &&
-        shouldAttemptRefreshAfterUnauthorized({
-          endpoint,
-          status: error.status,
-          isRefreshRetry,
-        })
-      ) {
-        // Reactive refresh. Call refreshAccessToken and replay the
-        // original request once. If the refresh itself fails terminally,
-        // surface the refresh error (which the caller can distinguish).
-        // If the retry also returns 401, surface the second error
-        // without attempting a third refresh cycle.
-        try {
-          await refreshAccessToken();
-        } catch (refreshErr) {
-          if (refreshErr instanceof RefreshFailedError) {
-            // Terminal logout already broadcast by refresh.ts. Bubble the
-            // original 401 up to the caller.
-            throw error;
-          }
-          // Transient refresh error: surface the original 401 so the
-          // caller knows the retry was not attempted.
-          throw error;
-        }
-        return this.request<T>(endpoint, options, retryOptions, true);
-      }
-      throw error;
-    }
+    return this.executeApiOperation<T>({
+      endpoint,
+      operation: performRequest,
+      retryOptions,
+      isRefreshRetry,
+    });
   }
 
   /**
@@ -564,30 +679,38 @@ export class ApiClient {
    */
   async fetchBlob(
     endpoint: string,
-    options: { method?: string; params?: Record<string, string> } = {},
+    options: TransferRequestOptions = {},
   ): Promise<Blob> {
-    let url = `${API_BASE_URL}${endpoint}`;
-    if (options.params) {
-      const searchParams = new URLSearchParams(options.params);
-      url += `?${searchParams}`;
-    }
-
+    this.assertReplayableBody(options.body, "Blob request");
+    const requestEndpoint = this.appendQueryParams(endpoint, options.params ?? {});
+    const url = `${API_BASE_URL}${requestEndpoint}`;
     const method = (options.method ?? "GET").toUpperCase();
-    const headers: Record<string, string> = {};
-    attachCsrfHeader(headers, method);
 
-    const response = await fetch(url, {
-      method: options.method || "GET",
-      credentials: "include",
-      headers,
-      signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
+    const performFetchBlob = async (): Promise<Blob> => {
+      const headers = buildTransferHeaders(options.headers, method);
+      const response = await fetch(url, {
+        method: options.method || "GET",
+        credentials: "include",
+        headers,
+        body: options.body ?? undefined,
+        signal:
+          options.signal ??
+          AbortSignal.timeout(options.timeoutMs ?? FILE_TRANSFER_TIMEOUT_MS),
+      });
+
+      handleAccessExpiryHeader(response);
+
+      if (!response.ok) await throwApiErrorFromResponse(response);
+
+      return response.blob();
+    };
+
+    return this.executeApiOperation<Blob>({
+      endpoint: requestEndpoint,
+      operation: performFetchBlob,
+      retryContext: `blob:${requestEndpoint}`,
+      retryOptions: NO_RETRY,
     });
-
-    handleAccessExpiryHeader(response);
-
-    if (!response.ok) await throwApiErrorFromResponse(response);
-
-    return response.blob();
   }
 
   /**
@@ -599,39 +722,34 @@ export class ApiClient {
     filename?: string,
     options: { method?: string; params?: Record<string, string> } = {},
   ): Promise<void> {
-    let url = `${API_BASE_URL}${endpoint}`;
-    if (options.params) {
-      const searchParams = new URLSearchParams(options.params);
-      url += `?${searchParams}`;
-    }
-
+    const requestEndpoint = this.appendQueryParams(endpoint, options.params ?? {});
+    const url = `${API_BASE_URL}${requestEndpoint}`;
     const method = (options.method ?? "GET").toUpperCase();
-    const headers: Record<string, string> = {};
-    attachCsrfHeader(headers, method);
 
-    const response = await fetch(url, {
-      method: options.method || "GET",
-      credentials: "include",
-      headers,
-      signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
+    const performDownload = async (): Promise<void> => {
+      const headers = buildTransferHeaders(undefined, method);
+      const response = await fetch(url, {
+        method: options.method || "GET",
+        credentials: "include",
+        headers,
+        signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
+      });
+
+      handleAccessExpiryHeader(response);
+
+      if (!response.ok) await throwApiErrorFromResponse(response);
+
+      const resolvedFilename = this.resolveDownloadFilename(response, filename);
+      const blob = await response.blob();
+      downloadBlob(blob, resolvedFilename);
+    };
+
+    await this.executeApiOperation<void>({
+      endpoint: requestEndpoint,
+      operation: performDownload,
+      retryContext: `download:${requestEndpoint}`,
+      retryOptions: NO_RETRY,
     });
-
-    handleAccessExpiryHeader(response);
-
-    if (!response.ok) await throwApiErrorFromResponse(response);
-
-    // Prefer Content-Disposition filename from server, fall back to provided filename
-    let resolvedFilename = filename || "download";
-    const contentDisposition = response.headers.get("Content-Disposition");
-    if (contentDisposition) {
-      const match = contentDisposition.match(/filename="?([^"]+)"?/);
-      if (match) {
-        resolvedFilename = match[1];
-      }
-    }
-
-    const blob = await response.blob();
-    downloadBlob(blob, resolvedFilename);
   }
 
   /**
@@ -642,13 +760,11 @@ export class ApiClient {
     formData: FormData,
     retryOptions: RetryOptions = {},
   ): Promise<T> {
+    this.assertFormDataUploadBody(formData);
     const url = `${API_BASE_URL}${endpoint}`;
 
-    // Upload is always POST → always a state-changing request.
-    const headers: Record<string, string> = {};
-    attachCsrfHeader(headers, "POST");
-
     const performUpload = async (): Promise<T> => {
+      const headers = buildTransferHeaders(undefined, "POST");
       const response = await fetch(url, {
         method: "POST",
         credentials: "include",
@@ -667,7 +783,12 @@ export class ApiClient {
       return unwrapSuccessfulJsonBody<T>(data, response);
     };
 
-    return withRetry(performUpload, retryOptions, `upload:${endpoint}`);
+    return this.executeApiOperation<T>({
+      endpoint,
+      operation: performUpload,
+      retryContext: `upload:${endpoint}`,
+      retryOptions,
+    });
   }
 }
 

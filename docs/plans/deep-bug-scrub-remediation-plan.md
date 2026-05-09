@@ -344,6 +344,8 @@ Must handle:
 
 ### P2-06 Transfer Helper Session Refresh
 
+Status: implemented in the transfer helper session-refresh slice. `ApiClient` now uses one refresh-on-401 executor for JSON, blob, download, and upload paths; transfer retries rebuild headers so refreshed CSRF cookies are observed, downloads preserve the retried response filename, upload keeps its existing transient retry behavior, and non-replayable blob/upload bodies are rejected before fetch. `createBackup()` now delegates to `apiClient.fetchBlob()` so backup blobs use the same session refresh path.
+
 Must handle:
 
 - GET downloads, blob fetches, uploads with `File`/`Blob`, and any stream body that cannot be replayed after a failed request.

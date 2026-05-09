@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   mockDelete,
-  mockFetch,
+  mockFetchBlob,
   mockGet,
   mockPatch,
   mockPost,
@@ -72,103 +72,26 @@ describe("Remaining Admin API Modules", () => {
       expect(mockGet).toHaveBeenCalledWith("/admin/version");
     });
 
-    it("creates backup blob via fetch with cookie credentials and throws on error", async () => {
-      // Phase 4: createBackup sends `credentials: 'include'` so the
-      // browser attaches the sanctuary_access cookie automatically; the
-      // legacy Authorization: Bearer header is gone. CSRF token is read
-      // from the sanctuary_csrf cookie when available.
+    it("creates backup blob through the shared API client transfer helper", async () => {
       const blob = new Blob(["backup-data"], { type: "application/json" });
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        blob: () => Promise.resolve(blob),
-      });
+      mockFetchBlob.mockResolvedValueOnce(blob);
 
       const result = await adminBackupApi.createBackup({
         includeAuditLogs: true,
       } as any);
       expect(result).toEqual(blob);
-      const [calledUrl, calledOptions] = mockFetch.mock.calls[0];
-      expect(calledUrl).toBe("/api/v1/admin/backup");
+      const [calledEndpoint, calledOptions] = mockFetchBlob.mock.calls[0];
+      expect(calledEndpoint).toBe("/admin/backup");
       expect(calledOptions.method).toBe("POST");
-      expect(calledOptions.credentials).toBe("include");
       expect(calledOptions.headers["Content-Type"]).toBe("application/json");
-      expect(calledOptions.headers["Authorization"]).toBeUndefined();
       expect(calledOptions.body).toBe(
         JSON.stringify({ includeAuditLogs: true }),
       );
 
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        json: () => Promise.resolve({ message: "Backup failed" }),
-      });
+      mockFetchBlob.mockRejectedValueOnce(new Error("Backup failed"));
       await expect(adminBackupApi.createBackup()).rejects.toThrow(
         "Backup failed",
       );
-    });
-
-    it("createBackup sends X-CSRF-Token header when sanctuary_csrf cookie is set", async () => {
-      // Phase 4: createBackup reads the sanctuary_csrf cookie and
-      // injects the X-CSRF-Token header on the POST. Same defense
-      // every other state-changing browser request gets.
-      document.cookie = "sanctuary_csrf=csrf-from-document; path=/";
-      const blob = new Blob(["backup-data"], { type: "application/json" });
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        blob: () => Promise.resolve(blob),
-      });
-
-      await adminBackupApi.createBackup();
-
-      const calledOptions = mockFetch.mock.calls[0][1];
-      expect(calledOptions.credentials).toBe("include");
-      expect(calledOptions.headers["X-CSRF-Token"]).toBe("csrf-from-document");
-
-      // Cleanup
-      document.cookie =
-        "sanctuary_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
-    });
-
-    it("createBackup parses a multi-entry Cookie header to extract sanctuary_csrf", async () => {
-      document.cookie = "unrelated=value; path=/";
-      document.cookie = "sanctuary_csrf=needed%2Bvalue; path=/";
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        blob: () => Promise.resolve(new Blob(["ok"])),
-      });
-
-      await adminBackupApi.createBackup();
-
-      const calledOptions = mockFetch.mock.calls[0][1];
-      // decodeURIComponent should turn '%2B' back into '+'.
-      expect(calledOptions.headers["X-CSRF-Token"]).toBe("needed+value");
-
-      document.cookie =
-        "sanctuary_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
-      document.cookie =
-        "unrelated=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
-    });
-
-    it("createBackup omits X-CSRF-Token when the cookie jar has other cookies but no sanctuary_csrf", async () => {
-      // Exercises the "loop completed without finding sanctuary_csrf"
-      // branch in readCsrfCookieValue (the explicit `return null` at
-      // the end of the function, not the early-return for an empty
-      // document.cookie).
-      document.cookie = "cookie1=foo; path=/";
-      document.cookie = "cookie2=bar; path=/";
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        blob: () => Promise.resolve(new Blob(["ok"])),
-      });
-
-      await adminBackupApi.createBackup();
-
-      const calledOptions = mockFetch.mock.calls[0][1];
-      expect(calledOptions.headers["X-CSRF-Token"]).toBeUndefined();
-
-      document.cookie =
-        "cookie1=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
-      document.cookie =
-        "cookie2=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
     });
 
     it("covers backup API fallback and optional query branches", async () => {
@@ -201,20 +124,15 @@ describe("Remaining Admin API Modules", () => {
       await adminBackupApi.getAuditLogStats(0);
       expect(mockGet).toHaveBeenCalledWith("/admin/audit-logs/stats");
 
-      // createBackup with no options sends empty object and falls back to default error text
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        json: () => Promise.resolve({}),
-      });
-      await expect(adminBackupApi.createBackup()).rejects.toThrow(
-        "Backup creation failed",
-      );
-      const lastCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
-      expect(lastCall[0]).toBe("/api/v1/admin/backup");
+      // createBackup with no options sends an empty JSON object through
+      // apiClient.fetchBlob, which owns credentials, CSRF, and refresh retry.
+      mockFetchBlob.mockResolvedValueOnce(new Blob(["ok"]));
+      await adminBackupApi.createBackup();
+      const lastCall =
+        mockFetchBlob.mock.calls[mockFetchBlob.mock.calls.length - 1];
+      expect(lastCall[0]).toBe("/admin/backup");
       expect(lastCall[1].method).toBe("POST");
-      expect(lastCall[1].credentials).toBe("include");
       expect(lastCall[1].headers["Content-Type"]).toBe("application/json");
-      expect(lastCall[1].headers["Authorization"]).toBeUndefined();
       expect(lastCall[1].body).toBe(JSON.stringify({}));
     });
   });

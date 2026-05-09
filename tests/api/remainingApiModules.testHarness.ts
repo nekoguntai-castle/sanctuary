@@ -2,6 +2,7 @@ import { beforeEach, vi } from "vitest";
 
 const apiClientMocks = vi.hoisted(() => ({
   delete: vi.fn(),
+  fetchBlob: vi.fn(),
   fetch: vi.fn(),
   get: vi.fn(),
   patch: vi.fn(),
@@ -14,6 +15,7 @@ const apiClientMocks = vi.hoisted(() => ({
 vi.mock("../../src/api/client", () => ({
   default: {
     delete: (...args: unknown[]) => apiClientMocks.delete(...args),
+    fetchBlob: (...args: unknown[]) => apiClientMocks.fetchBlob(...args),
     get: (...args: unknown[]) => apiClientMocks.get(...args),
     patch: (...args: unknown[]) => apiClientMocks.patch(...args),
     post: (...args: unknown[]) => apiClientMocks.post(...args),
@@ -23,6 +25,7 @@ vi.mock("../../src/api/client", () => ({
 }));
 
 export const mockDelete = apiClientMocks.delete;
+export const mockFetchBlob = apiClientMocks.fetchBlob;
 export const mockFetch = apiClientMocks.fetch;
 export const mockGet = apiClientMocks.get;
 export const mockPatch = apiClientMocks.patch;

@@ -4,8 +4,7 @@
  * Database backup, restore, encryption keys, and audit log API calls (admin only)
  */
 
-import apiClient, { API_BASE_URL } from '../client';
-import { attachCsrfHeader } from '../authPolicy';
+import apiClient from '../client';
 import type {
   EncryptionKeysResponse,
   SanctuaryBackup,
@@ -43,26 +42,11 @@ export async function getEncryptionKeys(password: string): Promise<EncryptionKey
  * This returns a Blob for file download.
  */
 export async function createBackup(options?: BackupOptions): Promise<Blob> {
-  // ADR 0001 Phase 4: authenticate via HttpOnly cookies (credentials:
-  // 'include') + double-submit CSRF header instead of a JS-readable Bearer.
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  attachCsrfHeader(headers, 'POST');
-
-  const response = await fetch(`${API_BASE_URL}/admin/backup`, {
+  return apiClient.fetchBlob('/admin/backup', {
     method: 'POST',
-    credentials: 'include',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(options || {}),
   });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Backup creation failed');
-  }
-
-  return response.blob();
 }
 
 /**

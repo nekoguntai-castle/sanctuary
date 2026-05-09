@@ -122,6 +122,7 @@ These domain scores are the original scrub scores; per-finding statuses below re
 ### P2 Findings
 
 1. **Client download/upload/blob helpers do not refresh expired sessions on 401.**
+   - Status: fixed in the transfer helper session-refresh slice by moving JSON, blob, download, upload, and admin backup blob calls onto a shared one-shot refresh/replay path with replayable-body guards.
    - Normal JSON requests refresh and retry; transfer helpers do direct fetches and fail Unauthorized.
 
 2. **Send page loads mainnet mempool data for non-mainnet wallets.**

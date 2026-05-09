@@ -145,9 +145,20 @@ assert(refreshExec.includes('navigator.locks.request'), 'refresh.ts must seriali
 
 const backup = read('src/api/admin/backup.ts');
 const backupExec = stripComments(backup);
-assert(backupExec.includes('attachCsrfHeader'), 'admin backup blob fetch must attach CSRF');
-assert(/fetch\s*\([^)]*\/admin\/backup/.test(backupExec), 'admin backup must own the direct blob fetch');
-assert(/credentials:\s*['"]include['"]/.test(backupExec), 'admin backup direct fetch must include cookies');
+assert(
+  /apiClient\.fetchBlob\s*\(\s*['"]\/admin\/backup['"]/.test(backupExec),
+  'admin backup blob fetch must delegate to apiClient.fetchBlob'
+);
+assert(/method:\s*['"]POST['"]/.test(backupExec), 'admin backup blob fetch must use POST');
+assert(
+  /['"]Content-Type['"]\s*:\s*['"]application\/json['"]/.test(backupExec),
+  'admin backup blob fetch must preserve the JSON content type'
+);
+assert(
+  /body:\s*JSON\.stringify\s*\(\s*options\s*\|\|\s*\{\}\s*\)/.test(backupExec),
+  'admin backup blob fetch must send an empty JSON object by default'
+);
+assert(!/\bfetch\s*\(/.test(backupExec), 'admin backup must not bypass the API client transfer helper');
 
 for (const filePath of walk('src/api')) {
   if (filePath === 'src/api/authPolicy.ts') {
