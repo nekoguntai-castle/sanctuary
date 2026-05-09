@@ -8,9 +8,9 @@ Status: Draft
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: c925e2e8 (working tree dirty)
+**Commit**: f15ddbfc (working tree dirty)
 
-This refresh covers `main` after the Bitcoin network-boundary closeout plus the current coverage-restoration working tree. The audit initially found a real coverage hard-fail in newly added Bitcoin network-context branches; this slice restores the 100% frontend/server/gateway coverage gate and keeps the Bitcoin network-boundary guard at zero findings.
+This refresh covers `main` after the hardware-signed fixture classification merge plus the current admin operations E2E split working tree. The earlier audit found and fixed a real coverage hard-fail in newly added Bitcoin network-context branches; the current slice removes `e2e/admin-operations.spec.ts` from the large-file warning inventory while preserving its focused browser proof.
 
 ---
 
@@ -35,7 +35,7 @@ Important non-blocking findings:
 | --- | ---: | --- |
 | Correctness | 18/20 | Tests, lint, typecheck, API body validation, blocking-I/O guard, and Bitcoin network-boundary guard pass. Functional completeness remains medium until hardware-in-loop signed wallet fixtures are complete. |
 | Reliability | 15/15 | Inspected broadcast, draft-update, node-client, and timeout/retry paths use explicit errors, retry boundaries, and contextual handling. |
-| Maintainability | 14/15 | Lizard passes with zero warnings and jscpd is 1.68%; largest file remains 984 LOC, so the file-size criterion stays partial. |
+| Maintainability | 14/15 | Lizard passes with zero warnings and jscpd is 1.68%; admin operations E2E was split from 984 LOC to 634 LOC plus a 354 LOC helper, but the largest-file criterion stays partial because remaining test warnings are still in the 500-1000 LOC band. |
 | Security | 15/15 | `npm audit --audit-level=high` reports 0 high/critical advisories; tracked-tree gitleaks is clean; Zod validation remains present at trust boundaries. |
 | Performance | 10/10 | No new hot-path blocking I/O; broadcast/node-client changes preserve async I/O and bounded guardrails. |
 | Test Quality | 15/15 | Full coverage is restored to 100% across frontend, server, and gateway with focused tests for the surfaced edge cases. |
@@ -65,7 +65,7 @@ Important non-blocking findings:
 | secrets | 0 tracked-tree leaks | `GITLEAKS_BIN=/home/nekoguntai/.local/bin/gitleaks bash scripts/gitleaks-tracked-tree.sh` | Security 4.2 -> +4 |
 | complexity | 0 warnings | `npm run quality:lizard` | Maintainability 3.1 -> +5 |
 | duplication | 1.68% duplicated lines, 259 exact clones | `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .` | Maintainability 3.2 -> +3 |
-| largest file | 984 lines (`e2e/admin-operations.spec.ts`) | prior full `grade.sh` file-size scan; unchanged by this slice | Maintainability 3.3 -> +1 |
+| largest file | 961 lines (`server/tests/unit/services/bitcoin/nodeClient.test.ts`); 0 files over 1000 LOC; admin operations E2E is now 634 LOC plus a 354 LOC mock helper | `node scripts/quality/check-large-files.mjs` | Maintainability 3.3 -> +1 |
 | deploy artifacts | 2 | `grade.sh`: Dockerfile/Compose plus GitHub Actions | Operational Readiness 7.1 -> +3 |
 | health endpoints | 198 heuristic hits | `grade.sh` heuristics; prior inspection of `server/src/api/health/routes.ts` | Operational Readiness 7.2 -> +2 |
 | observability library | present | `grade.sh` heuristics; inspected tracing/logging paths | Operational Readiness 7.3 -> +2 |
@@ -81,14 +81,14 @@ Important non-blocking findings:
 - **[2.1] Error handling quality - High -> +6**: transaction broadcast and draft update paths now cover unsupported wallet networks, missing drafts, non-actionable approvals, optimistic conflicts, and invalid legacy draft UTXO references with explicit error behavior.
 - **[2.2] Timeouts and retries - High -> +4**: request-level timeouts and async retry utilities remain in place; draft signature updates retain bounded optimistic retries.
 - **[2.3] Crash-prone paths - High -> +5**: inspected production changes avoid assertion-style crashes and either test or document unreachable legacy fallback behavior.
-- **[3.4] Architecture clarity - High -> +3**: the codebase keeps clear API/service/repository boundaries; this slice reduced redundant broadcast metadata fallback branches instead of expanding controller logic.
-- **[3.5] Readability/naming - High -> +2**: broadcast metadata helpers and focused route/service tests use domain-specific names and explicit scenario setup.
+- **[3.4] Architecture clarity - High -> +3**: the codebase keeps clear API/service/repository boundaries; the admin operations E2E split follows the existing fixture/state helper pattern instead of creating a new test harness style.
+- **[3.5] Readability/naming - High -> +2**: admin operations scenarios now read as browser behaviors, while the route mock responders are named by API surface in `e2e/adminOperationsApiMock.ts`.
 - **[4.3] Input validation quality - High -> +3**: Zod/body-validation guard still passes, and unsupported wallet network values fail before broadcast service calls.
 - **[4.4] Safe system/API usage - High -> +3**: no dangerous user-input shell/eval patterns were added; gitleaks tracked-tree scan is clean.
 - **[5.1] Hot-path efficiency - High -> +5**: broadcast and node-client changes preserve existing async service boundaries.
 - **[5.2] Data access patterns - High -> +3**: no new N+1 or unbounded query patterns were introduced.
 - **[5.3] No blocking in hot paths - High -> +2**: blocking-I/O guard still passes with the existing allowlist.
-- **[6.2] Test structure - High -> +4**: added targeted behavioral tests for UTXO fee-network normalization, fee API network params, draft broadcast edge cases, draft conflict conversion, and draft archival logging.
+- **[6.2] Test structure - High -> +4**: added targeted behavioral tests for UTXO fee-network normalization, fee API network params, draft broadcast edge cases, draft conflict conversion, and draft archival logging; the admin operations E2E proof now separates route mocking from browser scenarios.
 - **[6.3] Edge cases covered - High -> +3**: new tests cover legacy `testnet`, unknown networks, missing drafts, unknown approval statuses, invalid draft UTXO references, null effective amounts, and non-optimistic conflicts.
 - **[6.4] No flaky patterns - High -> +3**: no sleeps or timing-sensitive assertions were added; the repeated Layout `act(...)` warnings were removed without suppressing warning output.
 - **[7.4] Logging quality - High -> +3**: broadcast archival logging remains contextual and structured through the existing logger.
@@ -103,13 +103,13 @@ Important non-blocking findings:
 ## Top Risks
 
 1. Physical hardware-in-loop wallet proof remains incomplete - real-device PSBT signing confidence still depends on 11 missing required Ledger/Trezor/BitBox fixture rows; 4 Ledger/BitBox multisig rows are now explicitly blocked as unsupported.
-2. The largest-file point remains partial because `e2e/admin-operations.spec.ts` is 984 LOC; split or classify only when naturally touching that flow.
+2. The largest-file point remains partial because several test/proof files are still in the 800-1000 LOC warning band; `e2e/admin-operations.spec.ts` is no longer part of that warning inventory.
 3. Low-severity elliptic-family dependency advisories remain with no safe automatic fix; avoid forced upgrades without hardware-wallet compatibility testing.
 
 ## Fastest Improvements
 
 1. Capture the 11 remaining hardware-signed PSBT fixture rows from physical Ledger/Trezor/BitBox devices - expected gain: +2 correctness - effort: hardware-dependent.
-2. Split or classify the 984-line E2E/admin operations test when naturally touching that flow - expected gain: +1 maintainability - effort: 1 hour if a clean boundary exists.
+2. Review the remaining large test/proof files and split only where a clean helper boundary exists - expected gain: +1 maintainability if the largest file drops below 500 LOC - effort: incremental.
 3. Keep the Layout no-warning state by avoiding redundant async state setters in render-heavy shell components - expected score movement: none, but protects CI diagnosability - effort: ongoing review.
 
 ## Roadmap To A Grade
@@ -119,7 +119,7 @@ Important non-blocking findings:
 | 1 | Keep A stable | Preserve coverage, lint, typecheck, gitleaks, lizard, jscpd, API body validation, blocking-I/O, and Bitcoin network-boundary gates. | All listed commands pass on each PR. | Holds 97/A |
 | 2 | Cleaner test signal | Preserve the PR #329 Layout no-warning behavior. | Focused Layout tests and full frontend coverage have no repeated Layout act warnings. | No score movement; better diagnosability |
 | 3 | Stronger correctness | Add real hardware-signed PSBT fixture evidence for the 11 required rows. | `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` fixture contract passes. | +2 correctness |
-| 4 | Maintainability polish | Split or formally classify oversized E2E/admin proof files when naturally touching that flow. | Largest-file criterion reaches full credit or remains explicitly justified. | +1 maintainability |
+| 4 | Maintainability polish | Split or formally classify remaining large test/proof files when naturally touching those flows. | Largest-file criterion reaches full credit or the remaining proof files are explicitly justified. | +1 maintainability |
 
 ## Strengths To Preserve
 
@@ -138,7 +138,7 @@ Important non-blocking findings:
 ## Next Slice Queue
 
 1. **Physical Hardware Fixture Capture**: capture the 11 required Ledger/Trezor/BitBox signing artifacts on real devices. Exit with `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` passing.
-2. **Largest-File Classification/Split**: address `e2e/admin-operations.spec.ts` only if a clean helper boundary is available. Exit with focused Playwright coverage and lizard.
+2. **Remaining Large Test/Proof Files**: review `server/tests/unit/services/bitcoin/nodeClient.test.ts`, `server/tests/unit/services/wallet/create-account-selection.contracts.ts`, `server/tests/unit/services/bitcoin/mempool.test.ts`, `server/tests/unit/assistant/consoleService.test.ts`, and `server/tests/unit/services/draftService.test.ts` for clean split/classification opportunities. Exit with the large-file warning inventory reduced or explicitly justified, plus focused tests and lizard.
 
 ## Verification Notes
 
@@ -159,4 +159,8 @@ Important non-blocking findings:
 - `GITLEAKS_BIN=/home/nekoguntai/.local/bin/gitleaks bash scripts/gitleaks-tracked-tree.sh` - passed, no leaks found.
 - `npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` - passed, 10 tests after hardware row classification.
 - `REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` - intentionally fails until the 11 required physical artifacts are committed.
+- `npm run typecheck:tests` - passed after the admin operations E2E split.
+- `npm run quality:lizard -- e2e/admin-operations.spec.ts e2e/adminOperationsApiMock.ts` - passed after the split.
+- `npm run test:e2e -- --project=chromium e2e/admin-operations.spec.ts` - passed, 24 tests after the split.
+- `node scripts/quality/check-large-files.mjs` - passed; `e2e/admin-operations.spec.ts` dropped out of the warning inventory, and the largest remaining test file is 961 LOC.
 - `git diff --check` - passed.

@@ -1,6 +1,32 @@
+# Active Task: Admin Operations E2E Largest-File Classification 2026-05-08
+
+Status: in progress; branch `test/admin-operations-e2e-classification`
+
+Goal: address the remaining largest-file finding for `e2e/admin-operations.spec.ts` by either splitting along a clean helper/spec boundary or documenting why the current 984-line proof should remain cohesive for now.
+
+## Plan
+
+- [x] Inspect `e2e/admin-operations.spec.ts` structure, fixtures, helper usage, and test grouping.
+- [x] Decide whether a small split reduces maintenance risk without duplicating setup or weakening the admin operations E2E proof.
+- [x] If a clean boundary exists, extract it; otherwise add an explicit classification documenting why the file remains below the 1000-line warning threshold and should be split only when naturally touched.
+- [x] Run focused Playwright/static checks that cover the touched E2E surface, plus lizard and `git diff --check`.
+- [x] Review the result for churn: no broad E2E reshuffle unless it improves maintainability now.
+- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [ ] Re-check the refreshed queue after merge; physical hardware capture may remain blocked by device access.
+
+## Review
+
+- The clean boundary existed: the first 350 lines were an admin API route mock harness, while the rest of the file was browser scenario coverage.
+- Extracted the harness to `e2e/adminOperationsApiMock.ts`, following the existing fixture/state helper naming around `adminOperationsFixtures.ts` and `adminOperationsApiState.ts`.
+- `e2e/admin-operations.spec.ts` dropped from 984 lines to 634 lines; the new helper is 354 lines. This removes the admin operations spec from the large-file warning inventory without splitting scenario coverage across multiple specs.
+- The large-file criterion remains partial overall because other existing test/proof files are still in the 800-1000 LOC warning band; the health report now lists those instead of the resolved admin operations spec.
+- Verification passed locally: `npm run typecheck:tests`, `npm run quality:lizard -- e2e/admin-operations.spec.ts e2e/adminOperationsApiMock.ts`, `npm run test:e2e -- --project=chromium e2e/admin-operations.spec.ts` (24 tests), `node scripts/quality/check-large-files.mjs`, and `git diff --check`.
+
+---
+
 # Active Task: Hardware-Signed Fixture Classification 2026-05-08
 
-Status: in progress; branch `docs/hardware-signed-fixture-classification`
+Status: complete; PR #330 merged as `f15ddbfc`
 
 Goal: turn the remaining hardware-in-loop fixture gap into an explicit, executable support matrix so the grade report can distinguish missing physical evidence from intentionally unsupported device/script rows.
 
@@ -11,8 +37,8 @@ Goal: turn the remaining hardware-in-loop fixture gap into an explicit, executab
 - [x] Add the smallest executable or documented classification that fails only for required missing evidence and records unsupported rows explicitly.
 - [x] Run the focused hardware-signed fixture replay tests and any related docs/type checks needed for the touched files.
 - [x] Review the classification for overclaiming: no physical-device proof unless a committed vendor-signed artifact exists.
-- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
-- [ ] Continue to the next refreshed queue item after merge.
+- [x] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [x] Continue to the next refreshed queue item after merge.
 
 ## Review
 
@@ -21,6 +47,8 @@ Goal: turn the remaining hardware-in-loop fixture gap into an explicit, executab
 - Left 11 rows as required missing physical evidence: Ledger single-sig P2WPKH/P2SH-P2WPKH/P2TR, all five Trezor rows, and BitBox single-sig P2WPKH/P2SH-P2WPKH/P2TR.
 - Updated the hardware validation runbook and health report so the next correctness work is physical fixture capture, not further matrix classification.
 - Verification passed: focused hardware-signed fixture tests, server test typecheck, touched-file lizard, and `git diff --check`. The explicit `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` gate still fails as expected because the 11 required physical artifacts are not committed.
+- PR #330 merged at `2026-05-08T18:03:59-10:00` as squash commit `f15ddbfce2a92da4c516cd42ec68d4cfbdba4d3c`; local `main` was fast-forwarded and the local/remote `docs/hardware-signed-fixture-classification` branches were deleted.
+- Post-merge `main` verification passed: focused hardware-signed fixture replay tests, 10 tests.
 
 ---
 
