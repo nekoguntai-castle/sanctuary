@@ -1,6 +1,6 @@
 # Active Task: P2-08 Request Timeout Cancellation 2026-05-09
 
-Status: in progress; branch `fix/request-timeout-cancellation`
+Status: completed; PR #358 merged as `b3303963`
 
 Goal: make request timeout handling expose and trigger a request-scoped cancellation signal so long-running route work can stop or explicitly document non-cancellable/idempotent boundaries instead of continuing silently after a 408.
 
@@ -12,7 +12,7 @@ Goal: make request timeout handling expose and trigger a request-scoped cancella
 - [x] Thread the signal through supported external I/O boundaries where low risk; document destructive/non-cancellable workflows that need a future job/idempotency design rather than unsafe cancellation.
 - [x] Update health/remediation/task docs for P2-08 status and residual cancellation boundaries.
 - [x] Run focused timeout/route/service tests, server typecheck/lint/build as needed, touched-file lizard, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -22,7 +22,9 @@ Goal: make request timeout handling expose and trigger a request-scoped cancella
 - Destructive or state-mutating backup/restore, sync, and broadcast workflows remain documented as non-cancellable boundaries for now; they need explicit job or idempotency semantics before it is safe to stop them mid-flight.
 - Regression coverage now proves timeout abort, client-close abort, normal-finish non-abort, custom timeout abort, route signal propagation, and mempool Axios signal forwarding.
 - Browser E2E CI was also hardened while delivering this slice: the full-lane frontend build now points at `/api/v1`, the browser lane is scoped to browser-relevant changes, reserves a per-job backend port, runs one backend for all groups, tails backend startup logs on readiness failure, keeps a 120-second readiness window, and forces external Electrum startup probes to fail fast in the E2E harness.
+- CI delivery found the x300 runner was spending this backend/workflow slice on unrelated frontend coverage. The classifier now preserves frontend relevance for frontend full-scan triggers, while full frontend coverage only runs when `frontend_changed` is true; full frontend typechecks still run for broad full-scan/test-suite changes.
 - Verification passed: focused server tests (179 tests), server test typecheck, server build, server lint including API body validation and Bitcoin network-boundary checks, changed-test hygiene, touched-file lizard, full backend unit coverage, browser E2E group repros, workflow composition/runtime guards, local E2E backend startup with temporary Postgres/Redis, and `git diff --check`.
+- Delivery passed: PR #358 was green across 30 checks and merged with squash commit `b3303963`.
 
 ---
 
