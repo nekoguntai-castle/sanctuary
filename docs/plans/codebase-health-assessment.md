@@ -4,28 +4,24 @@ Date: 2026-05-08
 Owner: TBD
 Status: Draft
 
-**Overall Score**: 98/100
-**Grade**: A
+**Overall Score**: 76/100
+**Grade**: C
 **Confidence**: High
-**Mode**: full
-**Commit**: 1a1786dc (working tree dirty)
+**Mode**: full deep bug scrub
+**Commit**: ec073c64 (working tree dirty)
 
-This refresh covers `main` after the CI runtime guard split merge plus the current loop-closeout working tree. The earlier audit found and fixed a real coverage hard-fail in newly added Bitcoin network-context branches; the maintainability loop has removed all unclassified local large-file warnings where a clean split existed.
+This score is risk-adjusted from a codebase and feature bug scrub. The mechanical engineering signals are still unusually strong, but this pass found multiple high-impact correctness, security, and operational invariants that are either unenforced or tested in the wrong direction.
 
 ---
 
 ## Hard-Fail Blockers
 
-None in the current working tree.
+1. `npm run check:semgrep-baseline` fails with 8 unbaselined findings and 7 stale baseline entries. The actionable findings include GitHub Actions shell-injection patterns in release workflows, an insecure WebSocket finding in `docker-compose.yml`, and a child-process finding in the address verification script.
+2. Moderate dependency audit fails in package-level scans:
+   - `npm --prefix server audit --omit=dev --audit-level=moderate` fails on `hono` advisories pulled through server tooling.
+   - `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate` fails on `express-rate-limit -> ip-address`.
 
-Resolved during this refresh:
-
-- Full coverage initially failed at frontend statements 99.99% and branches 99.96%; after frontend tests were added, backend coverage then exposed missing branches at 99.97/99.96/99.87. The current `npm run coverage` run is 100% for frontend, server, and gateway.
-
-Important non-blocking findings:
-
-- Physical hardware-in-loop wallet proof remains incomplete; this is still the only correctness gap that needs real device access or committed vendor-signed fixtures. The fixture matrix now distinguishes 11 required missing rows from 4 explicitly blocked unsupported multisig rows.
-- Layout `act(...)` warning noise was removed in PR #329; focused Layout tests and full frontend coverage ran without the repeated Layout warning.
+The current high/critical policy still passes, but the moderate findings are active and CI policy currently lets them through.
 
 ---
 
@@ -33,165 +29,163 @@ Important non-blocking findings:
 
 | Domain | Score | Notes |
 | --- | ---: | --- |
-| Correctness | 18/20 | Tests, lint, typecheck, API body validation, blocking-I/O guard, and Bitcoin network-boundary guard pass. Functional completeness remains medium until hardware-in-loop signed wallet fixtures are complete. |
-| Reliability | 15/15 | Inspected broadcast, draft-update, node-client, and timeout/retry paths use explicit errors, retry boundaries, and contextual handling. |
-| Maintainability | 15/15 | Lizard passes with zero warnings and jscpd is 1.68%; admin operations E2E, node-client, wallet create-account selection, mempool, console service, draft service, and the CI runtime guard were split below the warning band. The only warning-band file left is an explicitly classified performance proof harness. |
-| Security | 15/15 | `npm audit --audit-level=high` reports 0 high/critical advisories; tracked-tree gitleaks is clean; Zod validation remains present at trust boundaries. |
-| Performance | 10/10 | No new hot-path blocking I/O; broadcast/node-client changes preserve async I/O and bounded guardrails. |
-| Test Quality | 15/15 | Full coverage is restored to 100% across frontend, server, and gateway with focused tests for the surfaced edge cases. |
-| Operational Readiness | 10/10 | Docker/Compose, GitHub Actions, health/readiness endpoints, observability hooks, and structured logging remain present. |
-| **TOTAL** | **98/100** | |
+| Correctness | 14/20 | Core tests pass, but raw broadcast policy, wrong-network sends, Payjoin production parsing, backup restore behavior, and hardware-wallet proof gaps leave real user-facing risk. |
+| Reliability | 10/15 | Good logging, retries, and request guards exist, but restore can continue after delete failures, request timeout does not cancel in-flight handlers, group access cache can go stale, and unhandled rejections do not fail services closed. |
+| Maintainability | 15/15 | Lizard has 0 warnings, duplication is 1.68%, large-file guard is clean for unclassified production/test files, and code organization is generally disciplined. |
+| Security | 8/15 | Session revocation, email verification, gateway TLS defaults, release workflow interpolation, default deployment secrets, and raw broadcast policy enforcement need hardening. |
+| Performance | 9/10 | No major hot-path performance bug surfaced; blocking-I/O guard passes. |
+| Test Quality | 12/15 | Coverage is excellent, but several important tests assert implementation details or unsafe legacy behavior instead of end-to-end security/business invariants. |
+| Operational Readiness | 8/10 | Docker, Compose, CI, health checks, and observability are present, but fail-closed deployment policy and package-level audit/coverage thresholds are incomplete. |
+| **TOTAL** | **76/100** | |
 
 ---
 
 ## Trend
 
-- vs 2026-05-01 (`working-tree-after-765cf0dd`): overall `+1`, grade `A -> A`, confidence `High -> High`.
-- The previous deferred correctness gap remains physical hardware-in-loop proof. The new local coverage regression discovered during this refresh was fixed before this report was finalized.
+- vs previous report at `1a1786dc`: `98/A -> 76/C`.
+- This is mostly a deeper-inspection correction, not a collapse in mechanical quality. The prior report over-weighted passing coverage/lint/typecheck and under-weighted feature-level security and correctness invariants.
 
 ---
 
 ## Evidence
 
-### Mechanical
+### Mechanical Signals
 
-| Signal | Value | Tool | Scoring criterion |
-| --- | --- | --- | --- |
-| tests | pass; frontend 469 files/6,022 tests, server 441 passed/22 skipped files with 9,697 passed/507 skipped tests, gateway 21 files/528 tests | `npm run coverage` | Correctness 1.1 -> +6 |
-| lint | pass | `npm run lint` | Correctness 1.3 -> +3 |
-| typecheck | pass for app, frontend tests, and server tests | `npm run typecheck:app`; `npm run typecheck:tests`; `npm run typecheck:server:tests` | Correctness 1.2 -> +4 |
-| coverage | 100% statements/branches/functions/lines for frontend, server, and gateway | `npm run coverage` | Test Quality 6.1 -> +5 |
-| dependency vulnerabilities | 0 high/critical; 12 low root advisories in elliptic-family transitive deps | `npm audit --audit-level=high` | Security 4.1 -> +5 |
-| secrets | 0 tracked-tree leaks | `GITLEAKS_BIN=/home/nekoguntai/.local/bin/gitleaks bash scripts/gitleaks-tracked-tree.sh` | Security 4.2 -> +4 |
-| complexity | 0 warnings | `npm run quality:lizard` | Maintainability 3.1 -> +5 |
-| duplication | 1.68% duplicated lines, 259 exact clones | `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .` | Maintainability 3.2 -> +3 |
-| largest file | 0 production-source warnings; 0 test warnings; 0 files over 1000 LOC; classified proof-harness warning: 949 lines (`scripts/perf/phase3-benchmark.mjs`, reviewWhenTouched=true) | `node scripts/quality/check-large-files.mjs` | Maintainability 3.3 -> +2 |
-| deploy artifacts | 2 | `grade.sh`: Dockerfile/Compose plus GitHub Actions | Operational Readiness 7.1 -> +3 |
-| health endpoints | 198 heuristic hits | `grade.sh` heuristics; prior inspection of `server/src/api/health/routes.ts` | Operational Readiness 7.2 -> +2 |
-| observability library | present | `grade.sh` heuristics; inspected tracing/logging paths | Operational Readiness 7.3 -> +2 |
-| suppression count | 23 | `grade.sh` heuristics plus prior `rg` inspection | Correctness 1.4 judged High -> +4 |
-| timeout/retry count | 1306 | `grade.sh` heuristics plus inspection | Reliability 2.2 judged High -> +4 |
-| blocking I/O guard | pass; 5 allow-listed production files | `npm run check:blocking-io` via `npm run lint` | Performance/Reliability judged High where hot paths are async |
-| logging call count | 338 | `grade.sh` heuristics plus inspection | Operational Readiness 7.4 judged High -> +3 |
+| Signal | Result |
+| --- | --- |
+| Grade workflow | `bash /home/nekoguntai/.codex/skills/grade/grade.sh` completed. |
+| Tests and coverage | `npm run coverage` passed; frontend, server, and gateway reported 100% statements/branches/functions/lines in the grade run. |
+| Lint | `npm run lint` passed in the grade run, including API body validation, Bitcoin network-boundary guard, gateway lint, and blocking-I/O guard. |
+| Typecheck | App, frontend tests, and server tests passed in the grade run. |
+| Secrets | Tracked-tree gitleaks passed with 0 findings in the grade run. |
+| High/critical audit | Root `npm audit --audit-level=high` passed with 0 high/critical advisories in the grade run. |
+| Moderate package audit | Server and AI proxy package-level moderate audits fail. |
+| Semgrep baseline | `npm run check:semgrep-baseline` fails with new and stale findings. |
+| Complexity | Lizard reported 0 warnings, average CCN 1.4. |
+| Duplication | `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .` passed with 1.68% duplicated lines. |
+| File size | `node scripts/quality/check-large-files.mjs` passed; only `scripts/perf/phase3-benchmark.mjs` remains as a classified proof harness at 949 LOC. |
 
-### Judged Findings
+### P1 Findings
 
-- **[1.4] Suppression density - High -> +4**: suppressions remain low-density and localized to documented dynamic Prisma, response wrapper, Electrum protocol, and test override cases.
-- **[1.5] Functional completeness - Medium -> +1**: the wallet software suite is broad and well-covered, but 11 required real hardware-signed PSBT fixture rows still need physical-device artifacts.
-- **[2.1] Error handling quality - High -> +6**: transaction broadcast and draft update paths now cover unsupported wallet networks, missing drafts, non-actionable approvals, optimistic conflicts, and invalid legacy draft UTXO references with explicit error behavior.
-- **[2.2] Timeouts and retries - High -> +4**: request-level timeouts and async retry utilities remain in place; draft signature updates retain bounded optimistic retries.
-- **[2.3] Crash-prone paths - High -> +5**: inspected production changes avoid assertion-style crashes and either test or document unreachable legacy fallback behavior.
-- **[3.4] Architecture clarity - High -> +3**: the codebase keeps clear API/service/repository boundaries; large-test splits follow existing helper/register patterns, and the CI runtime guard now separates manifest inspection from workflow policy enforcement.
-- **[3.5] Readability/naming - High -> +2**: admin operations, node-client, wallet validation, mempool dashboard-formatting, console prompt-replay, draft deletion, and CI workflow-policy cases are grouped by behavior instead of mixed into oversized proof files.
-- **[4.3] Input validation quality - High -> +3**: Zod/body-validation guard still passes, and unsupported wallet network values fail before broadcast service calls.
-- **[4.4] Safe system/API usage - High -> +3**: no dangerous user-input shell/eval patterns were added; gitleaks tracked-tree scan is clean.
-- **[5.1] Hot-path efficiency - High -> +5**: broadcast and node-client changes preserve existing async service boundaries.
-- **[5.2] Data access patterns - High -> +3**: no new N+1 or unbounded query patterns were introduced.
-- **[5.3] No blocking in hot paths - High -> +2**: blocking-I/O guard still passes with the existing allowlist.
-- **[6.2] Test structure - High -> +4**: added targeted behavioral tests for UTXO fee-network normalization, fee API network params, draft broadcast edge cases, draft conflict conversion, and draft archival logging; large proofs now separate route/mock harnesses from scenario groups where touched.
-- **[6.3] Edge cases covered - High -> +3**: new tests cover legacy `testnet`, unknown networks, missing drafts, unknown approval statuses, invalid draft UTXO references, null effective amounts, and non-optimistic conflicts.
-- **[6.4] No flaky patterns - High -> +3**: no sleeps or timing-sensitive assertions were added; the repeated Layout `act(...)` warnings were removed without suppressing warning output.
-- **[7.4] Logging quality - High -> +3**: broadcast archival logging remains contextual and structured through the existing logger.
+1. **Raw transaction broadcast can bypass policy with self-reported or missing intent.**
+   - Evidence: broadcast policy returns early when `recipient` or `amount` is absent in `server/src/api/transactions/broadcasting.ts`; raw-hex broadcasts rely on caller metadata instead of decoding canonical outputs before policy and audit.
+   - Impact: a permitted broadcaster can submit signed raw hex whose actual outputs differ from policy metadata, or omit metadata and skip policy evaluation before irreversible network broadcast.
+   - Fix direction: decode raw transactions server-side before broadcast, derive canonical recipient/amount/fee/inputs, evaluate policy from decoded data, persist from decoded data, and reject ambiguous payloads.
 
-### Missing
+2. **Existing access JWTs survive logout-all, revocation, role changes, and deletion until expiry.**
+   - Evidence: `/auth/logout-all` calls `revokeAllUserTokens`, but `server/src/services/tokenRevocation.ts` delegates to `sessionRepository.revokeAllUserTokens`, which deletes refresh-token rows only. `requireAdmin` trusts the `isAdmin` claim already embedded in the access token.
+   - Impact: demoted, deleted, or logged-out users can keep using already-issued access tokens until expiry; a demoted admin token can still satisfy `requireAdmin`.
+   - Fix direction: add a user token-version/session-version or revocation watermark checked by `authenticate`, and force it to advance on password change/reset, logout-all, role change, user disable/delete, and security events.
 
-- Raw all-files gitleaks scan was not rerun in this slice; tracked-tree gitleaks passed and all changed files are tracked source/tests/docs.
-- Physical hardware-in-loop validation still needs device access or committed vendor-signed fixture evidence for the 11 required rows.
+3. **Registration issues a live session even when email verification is required.**
+   - Evidence: registration creates `emailVerified: false`, computes `emailVerificationRequired`, then still generates access/refresh tokens and sets auth cookies. Later login correctly blocks the same unverified user.
+   - Impact: email verification is bypassable for the first registration session and refresh chain.
+   - Fix direction: when verification is required, return a pending-verification response without access/refresh cookies, or issue a deliberately limited unverified session that every protected route blocks.
+
+4. **Normal send address validation accepts wrong-network addresses.**
+   - Evidence: `components/send/steps/OutputsStep/OutputsStep.tsx` uses format-only `validateAddress(output.address)` for normal outputs, while network-aware validation exists separately in `utils/validateAddress.ts`.
+   - Impact: users can proceed with a mainnet address in a testnet/signet wallet, or vice versa, until later failure. For a wallet send flow, that is too late.
+   - Fix direction: pass wallet network into output validation and gate step progression on network-aware validation for all normal sends, BIP21, Payjoin, and QR paths.
+
+5. **Payjoin receiver requests are rejected in production for real BIP78 clients.**
+   - Evidence: production mounts JSON and URL-encoded parsers only, while `server/src/api/payjoin.ts` expects raw text PSBT bodies. Unit tests mask this by adding `express.text({ type: 'text/plain' })` in the test app.
+   - Impact: real `text/plain` BIP78 receiver requests can arrive with an undefined body and be rejected as `original-psbt-rejected`.
+   - Fix direction: mount route-local `express.text({ type: 'text/plain', limit: ... })` before the Payjoin receiver route and add a production-shaped parser test. Also keep the receiver clearly marked incomplete until input signing is implemented.
+
+6. **Backup restore can destroy data from partial backups and continue after delete failures.**
+   - Evidence: missing required tables are warnings, not validation failures, and restore deletes existing tables before inserting backup tables. Delete failures are logged and swallowed.
+   - Impact: a partial backup can wipe present data and restore an incomplete dataset; failed deletes can leave stale rows behind while the API reports success.
+   - Fix direction: make missing core tables fatal for destructive restore unless an explicit partial-restore mode is requested, and abort the transaction on delete failures.
+
+7. **Release workflow Semgrep findings are currently red.**
+   - Evidence: `npm run check:semgrep-baseline` reports unbaselined `yaml.github-actions.security.run-shell-injection` findings in release workflows.
+   - Impact: workflow inputs/tags are interpolated into shell in jobs that later use privileged GitHub APIs.
+   - Fix direction: pass GitHub expression values through environment variables, quote shell variables, validate tags/version inputs, and refresh the baseline only after fixes or explicit review.
+
+8. **Mobile gateway can run cleartext HTTP in production by default.**
+   - Evidence: `docker-compose.yml` defaults `GATEWAY_TLS_ENABLED` to `false` while exposing gateway port `4000`; gateway config warns but still starts.
+   - Impact: bearer tokens and mobile API traffic can be exposed if the default gateway port is deployed outside a trusted network.
+   - Fix direction: fail closed when `NODE_ENV=production` and TLS is disabled unless an explicit internal-only override is set.
+
+### P2 Findings
+
+1. **Client download/upload/blob helpers do not refresh expired sessions on 401.**
+   - Normal JSON requests refresh and retry; transfer helpers do direct fetches and fail Unauthorized.
+
+2. **Send page loads mainnet mempool data for non-mainnet wallets.**
+   - `bitcoinApi.getMempoolData()` is called without wallet network while fee estimates correctly pass `apiWallet.network`.
+
+3. **Bulk admin group membership updates leave wallet-access cache stale.**
+   - Dedicated add/remove paths invalidate access cache, but `setMembers` bulk update does not.
+
+4. **Request timeout does not abort in-flight route work.**
+   - The middleware sends 408 after the timeout, but async handlers can keep mutating state after the client sees a timeout.
+
+5. **Service unhandled-rejection handlers log and keep running.**
+   - Server, gateway, and AI proxy entrypoints log unhandled promise rejections without exiting, which can leave degraded services marked healthy.
+
+6. **GHCR compose defaults include predictable database credentials and unauthenticated Redis.**
+   - The prebuilt-image compose path can be launched with `sanctuary` defaults and open internal Redis.
+
+7. **AI proxy tests are not covered by the root coverage gate, and CI allows no tests.**
+   - Root coverage excludes `ai-proxy/src/**`; CI uses `--passWithNoTests` for AI proxy test jobs.
+
+8. **Physical hardware-in-loop signing proof remains incomplete.**
+   - The prior fixture matrix still needs 11 required Ledger/Trezor/BitBox signed fixture rows; normal tests pass without requiring those artifacts.
+
+### P3 Findings
+
+1. Capability-gated Intelligence nav is hidden, but direct `#/intelligence` route access is not route-gated.
+2. Logged-in users with missing/null preferences cannot persist preference changes.
+3. Authenticated refresh can briefly render the login screen during auth bootstrap.
+4. Frontend Dockerfile creates a non-root user but does not switch to it.
+5. `ENCRYPTION_SALT` has a static deployment default.
+6. Some comments still describe old cookie-auth/CSRF phase behavior and should be refreshed when those files are next touched.
 
 ---
 
-## Top Risks
+## What The Codebase Does Well
 
-1. Physical hardware-in-loop wallet proof remains incomplete - real-device PSBT signing confidence still depends on 11 missing required Ledger/Trezor/BitBox fixture rows; 4 Ledger/BitBox multisig rows are now explicitly blocked as unsupported.
-2. The only remaining warning-band file is the classified `scripts/perf/phase3-benchmark.mjs` performance proof harness; it is not an unclassified score blocker, but should still be reviewed if that harness is next touched.
-3. Low-severity elliptic-family dependency advisories remain with no safe automatic fix; avoid forced upgrades without hardware-wallet compatibility testing.
+- Mechanical quality is strong: tests, coverage, lint, typecheck, lizard, duplication, large-file checks, gitleaks, API body validation, Bitcoin network-boundary checks, and blocking-I/O checks are all present.
+- Complexity discipline is excellent: lizard reports 0 warnings and the average CCN is low.
+- Architecture is generally clean: backend API/service/repository boundaries are clear, frontend components/hooks/helpers are separated, and gateway validation is explicit.
+- Validation and security middleware are broad: Zod schemas, CSRF/cookie auth, rate limits, request timeouts, auth contracts, and route-level guards are consistently visible.
+- Observability is mature for the project size: structured logging, health/readiness endpoints, metrics/tracing hooks, Docker/Compose, and monitoring stack artifacts are present.
+- The test suite is large and behavior-oriented in many areas, especially auth flows, admin operations, transaction broadcasting, gateway validation, and frontend API client behavior.
+
+## What Is Lacking
+
+- Security state transitions need end-to-end invariants: access-token revocation, role changes, email verification, account deletion, and cache invalidation are not consistently proven.
+- Transaction broadcast needs server-canonical validation. Policy/audit/persistence should derive from decoded signed payloads, not caller-supplied metadata.
+- Frontend network context is still inconsistently threaded through send surfaces.
+- Production deployment defaults warn too often and fail closed too rarely.
+- CI policy thresholds are uneven: high/critical audit passes, but package-level moderate scans fail; Semgrep baseline drift is not clean; AI proxy coverage/test existence is weak.
+- Some tests encode current unsafe behavior instead of desired product/security invariants, especially backup restore and missing transaction metadata paths.
+- Hardware-wallet correctness still depends on physical artifacts that are not committed.
+
+---
 
 ## Fastest Improvements
 
-1. Capture the 11 remaining hardware-signed PSBT fixture rows from physical Ledger/Trezor/BitBox devices - expected gain: +2 correctness - effort: hardware-dependent.
-2. Keep the large-file gate clean by splitting future production/test warning files only at natural boundaries - expected score movement: none, but protects maintainability - effort: ongoing review.
-3. Keep the Layout no-warning state by avoiding redundant async state setters in render-heavy shell components - expected score movement: none, but protects CI diagnosability - effort: ongoing review.
+Detailed remediation plan: `docs/plans/deep-bug-scrub-remediation-plan.md`
 
-## Roadmap To A Grade
-
-| Phase | Target | Work | Exit Criteria | Expected Score Movement |
-| --- | --- | --- | --- | --- |
-| 1 | Keep A stable | Preserve coverage, lint, typecheck, gitleaks, lizard, jscpd, API body validation, blocking-I/O, and Bitcoin network-boundary gates. | All listed commands pass on each PR. | Holds 98/A |
-| 2 | Cleaner test signal | Preserve the PR #329 Layout no-warning behavior. | Focused Layout tests and full frontend coverage have no repeated Layout act warnings. | No score movement; better diagnosability |
-| 3 | Stronger correctness | Add real hardware-signed PSBT fixture evidence for the 11 required rows. | `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` fixture contract passes. | +2 correctness |
-| 4 | Maintainability polish | Keep the production/test large-file warning inventory empty, and keep the perf proof-harness classification explicit. | `node scripts/quality/check-large-files.mjs` reports 0 production/test warnings. | Complete |
-
-## Strengths To Preserve
-
-- High-volume behavioral tests with strict 100% coverage gates.
-- Guardrail scripts for API body validation, Bitcoin network boundaries, blocking I/O, lizard, duplication, and secrets.
-- Zod validation at backend and gateway trust boundaries.
-- Structured, redacted, request-aware logging.
-- Clear API/service/repository and frontend component/hook/helper separation.
-
-## Work To Defer Or Avoid
-
-- Do not chase historical `tasks/todo.md` unchecked boxes without first re-measuring current evidence; many older active sections are superseded.
-- Do not split cohesive production modules solely for the remaining file-size point.
-- Do not force dependency upgrades for the low-severity elliptic-family advisories without hardware-wallet compatibility testing.
-
-## Next Slice Queue
-
-1. **Physical Hardware Fixture Capture**: capture the 11 required Ledger/Trezor/BitBox signing artifacts on real devices. Status: blocked until real devices or vendor-signed artifacts are available. Exit with `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` passing.
-2. **Classified Perf Proof Harness Watch**: leave `scripts/perf/phase3-benchmark.mjs` cohesive unless it is next touched or a measured maintenance problem appears. Status: accepted/classified; exit with classification metadata still passing.
+1. Fix raw transaction broadcast canonical validation and add tests for mismatched/missing metadata.
+2. Add token-version or revocation-watermark enforcement in `authenticate`, then cover logout-all, role demotion, password reset, user deletion, and refresh chains.
+3. Stop issuing full auth cookies on registration when email verification is required.
+4. Make send output validation network-aware for all output paths.
+5. Fix Payjoin text parsing with production-shaped tests.
+6. Clean Semgrep release workflow findings and enforce a fresh baseline.
+7. Fail production gateway startup unless TLS is enabled or an explicit internal-only override is set.
+8. Harden backup restore validation and transactional delete behavior.
 
 ## Verification Notes
 
-- `bash /home/nekoguntai/.codex/skills/grade/grade.sh` - initial refresh completed and exposed the coverage hard-fail plus current mechanical signals.
-- `npm run test:run -- tests/components/UTXOList.test.tsx tests/api/coreApiModules.test.ts` - passed, 35 tests.
-- `cd server && npm test -- tests/unit/api/transactions-http-routes.test.ts tests/unit/services/draftService.test.ts tests/unit/services/bitcoin/nodeClient.test.ts tests/unit/services/bitcoin/transactionService.broadcast.test.ts` - passed, 211 tests.
-- `cd server && npm test -- tests/unit/api/transactions-http-routes.test.ts tests/unit/services/bitcoin/nodeClient.test.ts` - passed, 125 tests after the broadcast metadata simplification.
-- `cd server && npm test -- tests/unit/api/transactions-http-routes.test.ts` - passed, 87 tests after reviewer hardening.
-- `cd server && npm run test:coverage` - passed, 100% server statements/branches/functions/lines.
-- `npm run coverage` - passed, 100% frontend/server/gateway statements/branches/functions/lines.
-- `npm run typecheck:app` - passed.
-- `npm run typecheck:tests` - passed.
-- `npm run typecheck:server:tests` - passed.
-- `npm run lint` - passed, including API body validation, Bitcoin network-boundary guard at 0 allowed findings, gateway lint, and blocking-I/O guard.
-- `npm run quality:lizard` - passed with zero warnings.
+- `bash /home/nekoguntai/.codex/skills/grade/grade.sh` - completed.
 - `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .` - passed, 1.68% duplication.
-- `npm audit --audit-level=high` - passed with 0 high/critical advisories and 12 low advisories.
-- `GITLEAKS_BIN=/home/nekoguntai/.local/bin/gitleaks bash scripts/gitleaks-tracked-tree.sh` - passed, no leaks found.
-- `npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` - passed, 10 tests after hardware row classification.
-- `REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` - intentionally fails until the 11 required physical artifacts are committed.
-- `npm run typecheck:tests` - passed after the admin operations E2E split.
-- `npm run quality:lizard -- e2e/admin-operations.spec.ts e2e/adminOperationsApiMock.ts` - passed after the split.
-- `npm run test:e2e -- --project=chromium e2e/admin-operations.spec.ts` - passed, 24 tests after the split.
-- `node scripts/quality/check-large-files.mjs` - passed; `e2e/admin-operations.spec.ts` dropped out of the warning inventory, and the largest remaining test file is 961 LOC.
-- `npm --prefix server test -- --run tests/unit/services/bitcoin/nodeClient.test.ts` - passed, 40 tests after the node-client test split.
-- `npm run typecheck:server:tests` - passed after the node-client test split.
-- `npm run quality:lizard -- server/tests/unit/services/bitcoin/nodeClient.test.ts server/tests/unit/services/bitcoin/nodeClient.client-selection.contracts.ts server/tests/unit/services/bitcoin/nodeClient.active-config.contracts.ts server/tests/unit/services/bitcoin/nodeClient.test-node-config.contracts.ts server/tests/unit/services/bitcoin/nodeClientTestContext.ts` - passed after the split.
-- `node scripts/quality/check-large-files.mjs` - passed; `server/tests/unit/services/bitcoin/nodeClient.test.ts` dropped out of the warning inventory, and the largest remaining test file is 948 LOC.
-- `npm --prefix server test -- --run tests/unit/services/wallet.test.ts` - passed, 66 tests after the wallet create-account validation split.
-- `npm run typecheck:server:tests` - passed after the wallet create-account validation split.
-- `npm run quality:lizard -- server/tests/unit/services/wallet/create-account-selection.contracts.ts server/tests/unit/services/wallet/create-account-selection.validation.contracts.ts` - passed after the split.
-- `node scripts/quality/check-large-files.mjs` - passed; `server/tests/unit/services/wallet/create-account-selection.contracts.ts` dropped out of the warning inventory, and the largest remaining test file is 850 LOC.
-- `npm --prefix server test -- --run tests/unit/services/bitcoin/mempool.test.ts` - passed, 29 tests after the mempool dashboard-formatting split.
-- `npm run typecheck:server:tests` - passed after the mempool dashboard-formatting split.
-- `npm run quality:lizard -- server/tests/unit/services/bitcoin/mempool.test.ts server/tests/unit/services/bitcoin/mempool.dashboard-formatting.contracts.ts` - passed after the split.
-- `node scripts/quality/check-large-files.mjs` - passed; `server/tests/unit/services/bitcoin/mempool.test.ts` dropped out of the warning inventory, and the largest remaining test file is 808 LOC.
-- `npm --prefix server test -- --run tests/unit/assistant/consoleService.test.ts` - passed, 26 tests after the console prompt-replay split.
-- `npm run typecheck:server:tests` - passed after the console prompt-replay split.
-- `npm run quality:lizard -- server/tests/unit/assistant/consoleService.test.ts server/tests/unit/assistant/consoleService.promptReplay.contracts.ts` - passed after the split.
-- `node scripts/quality/check-large-files.mjs` - passed; `server/tests/unit/assistant/consoleService.test.ts` dropped out of the warning inventory, and the largest remaining test file is 802 LOC.
-- `npm --prefix server test -- --run tests/unit/services/draftService.test.ts` - passed, 48 tests after the draft deletion split.
-- `npm run typecheck:server:tests` - passed after the draft deletion split.
-- `npm run quality:lizard -- server/tests/unit/services/draftService.test.ts server/tests/unit/services/draftService.delete.contracts.ts` - passed after the split.
-- `node scripts/quality/check-large-files.mjs` - passed; `server/tests/unit/services/draftService.test.ts` dropped out of the warning inventory, leaving 0 test-file warnings.
-- `GITLEAKS_BIN=/home/nekoguntai/.local/bin/gitleaks bash scripts/gitleaks-tracked-tree.sh` - passed after replacing a secret-shaped admin E2E encryption fixture.
-- `npm run typecheck:tests` - passed after the admin E2E fixture cleanup.
-- `npm run test:e2e -- --project=chromium e2e/admin-operations.spec.ts` - passed, 24 tests after the admin E2E fixture cleanup.
-- `npm run quality:lizard -- e2e/adminOperationsApiMock.ts` - passed after the admin E2E fixture cleanup.
-- `node tests/ci/check-github-action-runtimes.test.mjs` - passed after the CI runtime guard split.
-- `npm run check:github-action-runtimes` - passed after the CI runtime guard split, 16 manifests checked.
-- `npm run quality:lizard -- scripts/ci/check-github-action-runtimes.mjs scripts/ci/action-runtime-workflow-guards.mjs` - passed after the split.
-- `node scripts/quality/check-large-files.mjs` - passed; production/test warning inventories are now 0, with only the classified perf proof harness above the warning band.
-- `node tests/ci/check-github-action-runtimes.test.mjs` - passed on merged `main` after PR #338.
-- `npm run check:github-action-runtimes` - passed on merged `main` after PR #338.
-- `node scripts/quality/check-large-files.mjs` - passed on merged `main` after PR #338.
-- `git diff --check` - passed.
+- `node scripts/quality/check-large-files.mjs` - passed.
+- `npm run check:semgrep-baseline` - failed with 8 new findings and 7 stale baseline entries.
+- `npm audit --omit=dev --audit-level=moderate` - root scan exited 0 with low root advisories only.
+- `npm --prefix server audit --omit=dev --audit-level=moderate` - failed on `hono` moderate advisories.
+- `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate` - failed on `ip-address` via `express-rate-limit`.
+
+No production code was changed in this scrub. The only intended repository edits are this report and `tasks/todo.md`.

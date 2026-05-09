@@ -1,3 +1,74 @@
+# Active Task: Deep Bug Scrub Remediation Plan Refinement 2026-05-08
+
+Status: completed
+
+Goal: refine the remediation plan until it covers all known corner cases, dependencies, rollout risks, and verification details from the deep bug scrub.
+
+## Plan
+
+- [x] Audit the remediation plan against `docs/plans/codebase-health-assessment.md`.
+- [x] Add a prompt coverage checklist proving every P1/P2/P3 finding is represented.
+- [x] Add cross-cutting design decisions and implementation sequencing.
+- [x] Add per-issue corner-case coverage for broadcast, auth, registration, send validation, restore, CI/deployment, wallet features, reliability, and UX items.
+- [x] Re-run documentation diff checks.
+
+## Review
+
+- Expanded `docs/plans/deep-bug-scrub-remediation-plan.md` with prompt coverage, cross-cutting design decisions, recommended PR order, and detailed per-issue corner-case matrix.
+- The refined plan now covers migration/rollback concerns, multi-client auth behavior, concurrency, network identity, destructive restore safety, workflow injection handling, dependency audit policy, feature flags, and rollup verification.
+- Verification: `git diff --check` passed.
+- No production code was changed.
+
+---
+
+# Active Task: Deep Bug Scrub Remediation Plan 2026-05-08
+
+Status: completed
+
+Goal: create a sequenced, verifiable plan to address every issue found in the deep bug scrub without starting implementation before check-in.
+
+## Plan
+
+- [x] Re-read the health assessment and current task log.
+- [x] Group findings by severity, dependency, and reviewable implementation slice.
+- [x] Define exit criteria and focused verification for each finding.
+- [x] Write the remediation plan to `docs/plans/deep-bug-scrub-remediation-plan.md`.
+- [x] Link the remediation plan from `docs/plans/codebase-health-assessment.md`.
+
+## Review
+
+- Created `docs/plans/deep-bug-scrub-remediation-plan.md` covering all P1/P2/P3 findings from the scrub.
+- Proposed four implementation phases: critical user/security invariants; CI and deployment fail-closed hardening; wallet feature correctness and feature boundaries; reliability and session UX consistency.
+- Added per-finding approach, exit criteria, and focused verification commands or test targets.
+- Did not change production code. Implementation should start only after selecting the first slice.
+
+---
+
+# Active Task: Deep Bug Scrub And Codebase Health Audit 2026-05-08
+
+Status: completed
+
+Goal: perform a repo-wide bug scrub across codebase quality, feature behavior, reliability, security, tests, and operations; return a prioritized list of issues plus strengths and gaps.
+
+## Plan
+
+- [x] Collect mechanical quality signals using the grade audit workflow.
+- [x] Inspect backend, frontend, API/security, CI/operations, and test surfaces for concrete bug risks.
+- [x] Cross-check findings against existing docs, tests, and current task history.
+- [x] Write or update `docs/plans/codebase-health-assessment.md` with scored evidence and recommendations.
+- [x] Add a review section with commands run, limitations, strengths, and attention-worthy findings.
+
+## Review
+
+- Wrote the consolidated deep scrub report to `docs/plans/codebase-health-assessment.md` with a risk-adjusted score of 76/100, Grade C, Confidence High.
+- Highest-priority findings: raw transaction broadcast policy can be bypassed with self-reported/missing intent; access JWTs survive logout-all/role changes/deletion until expiry; registration issues live sessions even when email verification is required; normal send validation accepts wrong-network addresses; Payjoin receiver parsing is not production-shaped; backup restore can destroy data from partial backups and continue after delete failures; Semgrep release workflow findings are red; gateway TLS can default to cleartext in production.
+- What the codebase does well: mechanical gates are broad and strong, lizard has 0 warnings, duplication is 1.68%, coverage is 100% in frontend/server/gateway, architecture boundaries are generally clean, and observability/security middleware coverage is above average.
+- What is lacking: end-to-end security state-transition invariants, server-canonical transaction validation, consistent network context propagation, fail-closed deployment defaults, package-level audit/coverage thresholds, and physical hardware-wallet signing fixture proof.
+- Verification run: `bash /home/nekoguntai/.codex/skills/grade/grade.sh`; `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .`; `node scripts/quality/check-large-files.mjs`; `npm run check:semgrep-baseline`; `npm audit --omit=dev --audit-level=moderate`; `npm --prefix server audit --omit=dev --audit-level=moderate`; `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate`.
+- Notable failing checks: `npm run check:semgrep-baseline`, `npm --prefix server audit --omit=dev --audit-level=moderate`, and `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate`.
+
+---
+
 # Active Task: Bug Scrub Loop Closeout 2026-05-08
 
 Status: in progress; branch `docs/bug-scrub-loop-closeout`
