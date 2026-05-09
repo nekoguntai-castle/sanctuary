@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { app } from './authRegistrationTestHarness';
 import request from 'supertest';
 import { hashPassword } from '../../../../src/utils/password';
@@ -59,6 +59,31 @@ export function registerAuthRegistrationLoginTests(): void {
   });
 
   describe('POST /auth/register - Register New User', () => {
+    function mockEnabledPublicRegistration(): void {
+      mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
+        key: 'registrationEnabled',
+        value: 'true',
+      });
+    }
+
+    function mockUniqueRegistrationIdentity(): void {
+      mockPrismaClient.user.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+    }
+
+    function mockCreatedUnverifiedUser(): void {
+      mockPrismaClient.user.create.mockResolvedValue({
+        id: 'new-user-id',
+        username: 'newuser',
+        email: 'new@example.com',
+        emailVerified: false,
+        isAdmin: false,
+        sessionVersion: 0,
+        preferences: { darkMode: true },
+      });
+    }
+
     it('should reject when registration is disabled', async () => {
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
         key: 'registrationEnabled',
@@ -140,19 +165,11 @@ export function registerAuthRegistrationLoginTests(): void {
       expect(response.body.message).toContain('Username already exists');
     });
 
-    it('should successfully register a new user', async () => {
-      mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
-        key: 'registrationEnabled',
-        value: 'true',
-      });
-      mockPrismaClient.user.findUnique.mockResolvedValue(null);
-      mockPrismaClient.user.create.mockResolvedValue({
-        id: 'new-user-id',
-        username: 'newuser',
-        email: 'new@example.com',
-        isAdmin: false,
-        preferences: { darkMode: true },
-      });
+    it('should successfully register and authenticate a new user when verification is not required', async () => {
+      mockEnabledPublicRegistration();
+      mockUniqueRegistrationIdentity();
+      mockCreatedUnverifiedUser();
+      mockIsVerificationRequired.mockResolvedValue(false);
 
       const response = await request(app)
         .post('/api/v1/auth/register')
@@ -163,6 +180,29 @@ export function registerAuthRegistrationLoginTests(): void {
       expect(response.body.token).toBeUndefined();
       expect(response.body.refreshToken).toBeUndefined();
       expect(response.body.user.username).toBe('newuser');
+      expect(response.body.emailVerificationRequired).toBe(false);
+    });
+
+    it('should create a pending verification account without auth cookies when verification is required', async () => {
+      const { createRefreshToken } = await import('../../../../src/services/refreshTokenService');
+      const createRefreshTokenMock = vi.mocked(createRefreshToken);
+      createRefreshTokenMock.mockClear();
+      mockEnabledPublicRegistration();
+      mockUniqueRegistrationIdentity();
+      mockCreatedUnverifiedUser();
+
+      const response = await request(app)
+        .post('/api/v1/auth/register')
+        .send({ username: 'newuser', password: 'StrongPassword123!', email: 'new@example.com' });
+
+      expect(response.status).toBe(201);
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(response.headers['x-access-expires-at']).toBeUndefined();
+      expect(createRefreshTokenMock).not.toHaveBeenCalled();
+      expect(response.body.user).toBeUndefined();
+      expect(response.body.emailVerificationRequired).toBe(true);
+      expect(response.body.verificationEmailSent).toBe(false);
+      expect(response.body.email).toBe('new@example.com');
     });
 
     it('should handle database errors gracefully', async () => {
@@ -215,19 +255,10 @@ export function registerAuthRegistrationLoginTests(): void {
     });
 
     it('should create user with emailVerified false', async () => {
-      mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
-        key: 'registrationEnabled',
-        value: 'true',
-      });
-      mockPrismaClient.user.findUnique.mockResolvedValue(null);
-      mockPrismaClient.user.create.mockResolvedValue({
-        id: 'new-user-id',
-        username: 'newuser',
-        email: 'new@example.com',
-        emailVerified: false,
-        isAdmin: false,
-        preferences: { darkMode: true },
-      });
+      mockEnabledPublicRegistration();
+      mockUniqueRegistrationIdentity();
+      mockCreatedUnverifiedUser();
+      mockIsVerificationRequired.mockResolvedValue(false);
 
       const response = await request(app)
         .post('/api/v1/auth/register')
@@ -238,19 +269,9 @@ export function registerAuthRegistrationLoginTests(): void {
     });
 
     it('should send verification email when SMTP is configured', async () => {
-      mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
-        key: 'registrationEnabled',
-        value: 'true',
-      });
-      mockPrismaClient.user.findUnique.mockResolvedValue(null);
-      mockPrismaClient.user.create.mockResolvedValue({
-        id: 'new-user-id',
-        username: 'newuser',
-        email: 'new@example.com',
-        emailVerified: false,
-        isAdmin: false,
-        preferences: { darkMode: true },
-      });
+      mockEnabledPublicRegistration();
+      mockUniqueRegistrationIdentity();
+      mockCreatedUnverifiedUser();
       mockIsSmtpConfigured.mockResolvedValue(true);
       mockCreateVerificationToken.mockResolvedValue({ success: true });
 
@@ -259,6 +280,8 @@ export function registerAuthRegistrationLoginTests(): void {
         .send({ username: 'newuser', password: 'StrongPassword123!', email: 'new@example.com' });
 
       expect(response.status).toBe(201);
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(response.body.user).toBeUndefined();
       expect(response.body.emailVerificationRequired).toBe(true);
       expect(response.body.verificationEmailSent).toBe(true);
       expect(mockCreateVerificationToken).toHaveBeenCalledWith(
@@ -269,19 +292,9 @@ export function registerAuthRegistrationLoginTests(): void {
     });
 
     it('should still register when verification email delivery fails', async () => {
-      mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
-        key: 'registrationEnabled',
-        value: 'true',
-      });
-      mockPrismaClient.user.findUnique.mockResolvedValue(null);
-      mockPrismaClient.user.create.mockResolvedValue({
-        id: 'new-user-id',
-        username: 'newuser',
-        email: 'new@example.com',
-        emailVerified: false,
-        isAdmin: false,
-        preferences: { darkMode: true },
-      });
+      mockEnabledPublicRegistration();
+      mockUniqueRegistrationIdentity();
+      mockCreatedUnverifiedUser();
       mockIsSmtpConfigured.mockResolvedValue(true);
       mockCreateVerificationToken.mockResolvedValue({ success: false, error: 'SMTP failure' });
 
@@ -290,6 +303,8 @@ export function registerAuthRegistrationLoginTests(): void {
         .send({ username: 'newuser', password: 'StrongPassword123!', email: 'new@example.com' });
 
       expect(response.status).toBe(201);
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(response.body.user).toBeUndefined();
       expect(response.body.emailVerificationRequired).toBe(true);
       expect(response.body.verificationEmailSent).toBe(false);
     });

@@ -1,6 +1,32 @@
+# Active Task: P1-03 Email Verification Registration Session 2026-05-09
+
+Status: in progress; branch `fix/email-verification-registration-session`
+
+Goal: when email verification is required, registration must create a pending user without issuing access/refresh cookies or authenticated frontend state.
+
+## Plan
+
+- [x] Map registration, verification, resend, refresh, and frontend registration state flows.
+- [x] Add regression tests proving required-verification registration returns a pending state with no auth cookies and protected routes remain inaccessible.
+- [x] Update backend registration/auth behavior so unverified users cannot receive or use a live session while verification is required.
+- [x] Update frontend registration handling to show pending verification without setting authenticated user state.
+- [x] Run focused backend/frontend tests, typechecks/lint for touched areas, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Registration now returns a pending email-verification response without `Set-Cookie`, `X-Access-Expires-At`, `user`, or refresh-token persistence when verification is required.
+- Existing unverified access JWTs and refresh-token chains are blocked while email verification is required, covering legacy sessions minted before this fix.
+- `/auth/email/verify` now remains public in the real auth router order; the authenticated email resend/update routes still enforce auth internally.
+- Frontend registration response typing now distinguishes authenticated vs pending-verification results, and `UserContext` shows a notice without setting authenticated user state.
+- Verification passed: `npm --prefix server run test:run -- tests/unit/api/auth.routes.registration.test.ts tests/unit/middleware/auth.test.ts tests/unit/api/email.test.ts` (191 tests), `npm run test:run -- tests/api/auth.test.ts tests/contexts/UserContext.test.tsx tests/components/Login/useLoginFlow.test.ts tests/components/Login/LoginForm.test.tsx tests/components/Login.test.tsx` (101 tests), `./scripts/run-integration-tests.sh tests/integration/flows/auth.integration.test.ts` (43 tests, fresh migrations applied), `cd server && npm run build`, `npm run build`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:server`, `npm run lint:app`, touched-file `npm run quality:lizard -- ...`, `npm run arch:check`, and `git diff --check`.
+- Remaining follow-up outside this slice: public or admin-mediated resend UX for users whose verification email was not delivered, because `/auth/email/resend` is intentionally still authenticated.
+
+---
+
 # Active Task: P1-02 Access JWT Revocation Foundation 2026-05-08
 
-Status: in progress; branch `fix/access-jwt-revocation-foundation`
+Status: completed; PR #342 merged as `b9aed6ab`
 
 Goal: make existing access JWTs fail immediately after logout-all, password/security revocation, admin role changes, user disable/delete, and refresh-token revocation state changes.
 
@@ -12,7 +38,7 @@ Goal: make existing access JWTs fail immediately after logout-all, password/secu
 - [x] Enforce the marker in shared authentication and refresh-token flows without trusting stale JWT role claims.
 - [x] Advance the marker in all revocation-triggering workflows and emit structured audit/log events where existing patterns support it.
 - [x] Run focused auth tests, server typecheck/lint/build, touched-file lizard, migration checks, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -22,6 +48,7 @@ Goal: make existing access JWTs fail immediately after logout-all, password/secu
 - `revokeAllUserTokens` now advances the per-user session version before deleting refresh tokens; logout-all uses that single path, password changes inherit it, and admin password reset, admin role change, and user delete all trigger it.
 - Regression coverage added for stale access/refresh/session-version behavior in unit, WebSocket, route, and Docker-backed integration flows.
 - Verification passed: `npm --prefix server run test:run -- tests/unit/utils/jwt.test.ts tests/unit/middleware/auth.test.ts tests/unit/websocket/auth.test.ts tests/unit/services/tokenRevocation.test.ts tests/unit/services/refreshTokenService.test.ts tests/unit/api/auth.routes.registration.test.ts tests/unit/api/auth.routes.2fa.test.ts tests/unit/api/admin.test.ts tests/unit/api/admin-routes.test.ts` (481 tests), `./scripts/run-integration-tests.sh tests/integration/flows/auth.integration.test.ts tests/integration/flows/admin.integration.test.ts` (97 tests, fresh migrations applied), `cd server && npm run build`, `npm run lint:server`, `npm run typecheck:server:tests`, touched-file `npm run quality:lizard -- ...`, and `git diff --check`.
+- Delivery: PR #342 merged at `2026-05-09T00:07:00-10:00` as squash commit `b9aed6ab0939f491b77cbd8c790f795bf29309a6`; post-merge `origin/main` contains the merge commit.
 
 ---
 

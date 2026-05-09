@@ -12,6 +12,7 @@ import { InvalidInputError, UnauthorizedError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
 import { generateToken, verifyRefreshToken, decodeToken } from '../../utils/jwt';
 import { revokeToken, revokeAllUserTokens } from '../../services/tokenRevocation';
+import { isEmailVerificationBlockingAuth } from '../../services/accessTokenSessionService';
 import * as refreshTokenService from '../../services/refreshTokenService';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../services/auditService';
 import { authenticate, requireAuthenticatedUser } from '../../middleware/auth';
@@ -118,6 +119,12 @@ router.post('/refresh', validate({ body: RefreshBodySchema }), asyncHandler(asyn
     log.warn('Refresh token rejected because user session version changed', { userId: user.id });
     clearAuthCookies(res);
     throw new UnauthorizedError('Refresh token has been revoked');
+  }
+
+  if (await isEmailVerificationBlockingAuth(user)) {
+    log.warn('Refresh token rejected because email verification is required', { userId: user.id });
+    clearAuthCookies(res);
+    throw new UnauthorizedError('Email verification required');
   }
 
   // Generate new access token

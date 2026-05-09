@@ -15,6 +15,7 @@ export interface LoginFormProps {
    *  submit button is disabled but the label stays "Sign In". */
   isBootLoading: boolean;
   error: string | null;
+  notice: string | null;
   onUsernameChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onEmailChange: (value: string) => void;

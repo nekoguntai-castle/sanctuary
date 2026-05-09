@@ -16,6 +16,7 @@ const mockRegister = vi.fn();
 const mockVerify2FA = vi.fn();
 const mockCancel2FA = vi.fn();
 const mockClearError = vi.fn();
+const mockClearNotice = vi.fn();
 
 vi.mock('../../contexts/UserContext', () => ({
   useUser: () => ({
@@ -26,7 +27,9 @@ vi.mock('../../contexts/UserContext', () => ({
     twoFactorPending: null,
     isLoading: false,
     error: null,
+    notice: null,
     clearError: mockClearError,
+    clearNotice: mockClearNotice,
   }),
 }));
 
@@ -363,7 +366,9 @@ describe('Login Component - 2FA Flow', () => {
         twoFactorPending: { tempToken: 'test-token' },
         isLoading: false,
         error: null,
+        notice: null,
         clearError: mockClearError,
+        clearNotice: mockClearNotice,
       }),
     }));
 
@@ -387,7 +392,9 @@ describe('Login Component - 2FA Flow', () => {
         twoFactorPending: { tempToken: 'test-token' },
         isLoading: false,
         error: null,
+        notice: null,
         clearError: mockClearError,
+        clearNotice: mockClearNotice,
       }),
     }));
 
@@ -417,7 +424,9 @@ describe('Login Component - 2FA Flow', () => {
         twoFactorPending: { tempToken: 'test-token' },
         isLoading: false,
         error: null,
+        notice: null,
         clearError: mockClearError,
+        clearNotice: mockClearNotice,
       }),
     }));
 
@@ -461,7 +470,9 @@ describe('Login Component - Error Display', () => {
         twoFactorPending: null,
         isLoading: false,
         error: 'Invalid credentials',
+        notice: null,
         clearError: mockClearError,
+        clearNotice: mockClearNotice,
       }),
     }));
 
@@ -537,7 +548,9 @@ describe('Login Component - Loading branches', () => {
         twoFactorPending: { tempToken: 'test-token' },
         isLoading: false,
         error: 'Invalid code',
+        notice: null,
         clearError: mockClearError,
+        clearNotice: mockClearNotice,
       }),
     }));
 
@@ -578,7 +591,9 @@ describe('Login Component - Loading branches', () => {
         twoFactorPending: null,
         isLoading: false,
         error: null,
+        notice: null,
         clearError: mockClearError,
+        clearNotice: mockClearNotice,
       }),
     }));
 

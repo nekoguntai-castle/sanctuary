@@ -23,13 +23,14 @@ vi.mock('../../src/api/client', () => ({
   },
 }));
 
-import type { AuthResponse,TwoFactorRequiredResponse } from '../../src/api/auth';
+import type { AuthResponse, PendingEmailVerificationResponse, TwoFactorRequiredResponse } from '../../src/api/auth';
 import {
 changePassword,
 fetchTelegramChatId,
 getCurrentUser,
 getRegistrationStatus,
 getUserGroups,
+isPendingEmailVerification,
 login,
 logout,
 register,
@@ -95,6 +96,8 @@ describe('Auth API', () => {
         username: 'newuser',
         password: 'securepass',
       });
+      expect(isPendingEmailVerification(result)).toBe(false);
+      if (isPendingEmailVerification(result)) throw new Error('expected authenticated response');
       expect(result.user.username).toBe('newuser');
     });
 
@@ -108,6 +111,25 @@ describe('Auth API', () => {
         password: 'pass',
         email: 'user@example.com',
       });
+    });
+
+    it('should return the pending email verification response shape', async () => {
+      const mockResponse: PendingEmailVerificationResponse = {
+        emailVerificationRequired: true,
+        verificationEmailSent: true,
+        email: 'user@example.com',
+        message: 'Registration successful. Please check your email to verify your account.',
+      };
+      mockPost.mockResolvedValue(mockResponse);
+
+      const result = await register({
+        username: 'user',
+        password: 'pass',
+        email: 'user@example.com',
+      });
+
+      expect(isPendingEmailVerification(result)).toBe(true);
+      expect(result).not.toHaveProperty('user');
     });
   });
 

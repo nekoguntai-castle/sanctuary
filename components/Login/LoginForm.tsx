@@ -18,6 +18,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   isLoading,
   isBootLoading,
   error,
+  notice,
   onUsernameChange,
   onPasswordChange,
   onEmailChange,
@@ -49,6 +50,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           isLoading={isLoading}
           isBootLoading={isBootLoading}
           error={error}
+          notice={notice}
           onToggleMode={onToggleMode}
         />
       </form>

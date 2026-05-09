@@ -148,6 +148,40 @@ export function registerAuthCookieExpiryTests(): void {
       assertAccessExpiresAtHeader(response.headers);
     });
 
+    it('register does not issue browser auth cookies when email verification is required', async () => {
+      mockIsVerificationRequired.mockResolvedValueOnce(true);
+      mockPrismaClient.user.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
+        key: 'registrationEnabled',
+        value: 'true',
+      });
+      mockPrismaClient.user.create.mockResolvedValue({
+        id: 'new-user-id',
+        username: 'newuser',
+        email: 'new@example.com',
+        emailVerified: false,
+        isAdmin: false,
+        sessionVersion: 0,
+        preferences: {},
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/register')
+        .send({
+          username: 'newuser',
+          password: 'StrongP@ssword123',
+          email: 'new@example.com',
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect(response.headers['x-access-expires-at']).toBeUndefined();
+      expect(response.body.emailVerificationRequired).toBe(true);
+      expect(response.body.user).toBeUndefined();
+    });
+
     // -- Refresh ---------------------------------------------------------
     it('refresh from body rotates all three cookies and sets expiry header', async () => {
       mockPrismaClient.user.findUnique.mockResolvedValue({
@@ -272,6 +306,27 @@ export function registerAuthCookieExpiryTests(): void {
 
       expect(response.status).toBe(401);
       expect(response.body.message).toContain('User not found');
+      assertAuthCookiesCleared(response.headers['set-cookie']);
+    });
+
+    it('refresh clears browser auth cookies when email verification is required for the user', async () => {
+      mockIsVerificationRequired.mockResolvedValueOnce(true);
+      mockPrismaClient.user.findUnique.mockResolvedValueOnce({
+        id: 'test-user-id',
+        username: 'testuser',
+        email: 'test@example.com',
+        emailVerified: false,
+        isAdmin: false,
+        sessionVersion: 0,
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', ['sanctuary_refresh=unverified-refresh-token'])
+        .send({});
+
+      expect(response.status).toBe(401);
+      expect(response.body.message).toContain('Email verification required');
       assertAuthCookiesCleared(response.headers['set-cookie']);
     });
 

@@ -27,6 +27,7 @@ export function TestConsumer() {
     isAuthenticated,
     isLoading,
     error,
+    notice,
     twoFactorPending,
     login,
     verify2FA,
@@ -35,6 +36,7 @@ export function TestConsumer() {
     logout,
     updatePreferences,
     clearError,
+    clearNotice,
   } = useUser();
 
   return (
@@ -43,6 +45,7 @@ export function TestConsumer() {
       <span data-testid="authenticated">{isAuthenticated.toString()}</span>
       <span data-testid="loading">{isLoading.toString()}</span>
       <span data-testid="error">{error ?? 'null'}</span>
+      <span data-testid="notice">{notice ?? 'null'}</span>
       <span data-testid="2fa-pending">{twoFactorPending ? 'yes' : 'no'}</span>
       <button data-testid="login" onClick={() => login('testuser', 'password')}>Login</button>
       <button data-testid="register" onClick={() => register('newuser', 'password', 'new@example.com')}>Register</button>
@@ -51,6 +54,7 @@ export function TestConsumer() {
       <button data-testid="cancel-2fa" onClick={cancel2FA}>Cancel 2FA</button>
       <button data-testid="update-prefs" onClick={() => updatePreferences({ darkMode: false })}>Update Prefs</button>
       <button data-testid="clear-error" onClick={clearError}>Clear Error</button>
+      <button data-testid="clear-notice" onClick={clearNotice}>Clear Notice</button>
     </div>
   );
 }

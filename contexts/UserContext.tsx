@@ -19,19 +19,31 @@ interface LoginResult {
   tempToken?: string;
 }
 
+/**
+ * Result of submitting the registration form. When `pendingVerification` is
+ * true, the account was created but no authenticated session was started.
+ */
+interface RegistrationResult {
+  success: boolean;
+  pendingVerification?: boolean;
+  message?: string;
+}
+
 interface UserContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  notice: string | null;
   twoFactorPending: TwoFactorPending | null;
   login: (username: string, password: string) => Promise<LoginResult>;
   verify2FA: (code: string) => Promise<boolean>;
   cancel2FA: () => void;
-  register: (username: string, password: string, email?: string) => Promise<boolean>;
+  register: (username: string, password: string, email?: string) => Promise<RegistrationResult>;
   logout: () => void;
   updatePreferences: (prefs: Partial<UserPreferences>) => Promise<void>;
   clearError: () => void;
+  clearNotice: () => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -40,6 +52,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [twoFactorPending, setTwoFactorPending] = useState<TwoFactorPending | null>(null);
 
   // Check for existing authentication on mount.
@@ -87,6 +100,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setTwoFactorPending(null);
       setError(null);
+      setNotice(null);
     });
   }, []);
 
@@ -133,6 +147,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = useCallback(async (username: string, password: string): Promise<LoginResult> => {
     setIsLoading(true);
     setError(null);
+    setNotice(null);
 
     try {
       const response = await authApi.login({ username, password });
@@ -145,6 +160,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Full login success (no 2FA)
       setUser(response.user as User);
+      setNotice(null);
       return { success: true };
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Login failed';
@@ -163,6 +179,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setIsLoading(true);
     setError(null);
+    setNotice(null);
 
     try {
       const response = await twoFactorApi.verify2FA({
@@ -171,6 +188,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       setUser(response.user as User);
       setTwoFactorPending(null);
+      setNotice(null);
       return true;
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Invalid verification code';
@@ -186,18 +204,31 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setError(null);
   }, []);
 
-  const register = useCallback(async (username: string, password: string, email?: string): Promise<boolean> => {
+  const register = useCallback(async (username: string, password: string, email?: string): Promise<RegistrationResult> => {
     setIsLoading(true);
     setError(null);
+    setNotice(null);
 
     try {
-      const { user: authUser } = await authApi.register({ username, password, email });
-      setUser(authUser as User);
-      return true;
+      const response = await authApi.register({ username, password, email });
+      if (authApi.isPendingEmailVerification(response)) {
+        setUser(null);
+        setNotice(response.message);
+        return {
+          success: true,
+          pendingVerification: true,
+          message: response.message,
+        };
+      }
+
+      setUser(response.user as User);
+      setNotice(null);
+      return { success: true };
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Registration failed';
       setError(message);
-      return false;
+      setNotice(null);
+      return { success: false, message };
     } finally {
       setIsLoading(false);
     }
@@ -214,6 +245,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setTwoFactorPending(null);
     setError(null);
+    setNotice(null);
   }, []);
 
   const updatePreferences = useCallback(async (newPrefs: Partial<UserPreferences>) => {
@@ -241,12 +273,17 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setError(null);
   }, []);
 
+  const clearNotice = useCallback(() => {
+    setNotice(null);
+  }, []);
+
   // Memoize context value to prevent unnecessary re-renders
   const value = useMemo<UserContextType>(() => ({
     user,
     isAuthenticated: !!user,
     isLoading,
     error,
+    notice,
     twoFactorPending,
     login,
     verify2FA,
@@ -255,10 +292,12 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
     updatePreferences,
     clearError,
+    clearNotice,
   }), [
     user,
     isLoading,
     error,
+    notice,
     twoFactorPending,
     login,
     verify2FA,
@@ -267,6 +306,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
     updatePreferences,
     clearError,
+    clearNotice,
   ]);
 
   return (
@@ -287,8 +327,8 @@ export const useUser = () => {
  * Reduces re-renders when user preferences change
  */
 export const useAuth = () => {
-  const { isAuthenticated, isLoading, error, login, logout, register, clearError } = useUser();
-  return { isAuthenticated, isLoading, error, login, logout, register, clearError };
+  const { isAuthenticated, isLoading, error, notice, login, logout, register, clearError, clearNotice } = useUser();
+  return { isAuthenticated, isLoading, error, notice, login, logout, register, clearError, clearNotice };
 };
 
 /**

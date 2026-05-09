@@ -68,16 +68,19 @@ The current high/critical policy still passes, but the moderate findings are act
 ### P1 Findings
 
 1. **Raw transaction broadcast can bypass policy with self-reported or missing intent.**
+   - Status: fixed in PR #341 (`4ff18340`) by decoding raw transactions server-side and evaluating policy/persistence from canonical derived intent.
    - Evidence: broadcast policy returns early when `recipient` or `amount` is absent in `server/src/api/transactions/broadcasting.ts`; raw-hex broadcasts rely on caller metadata instead of decoding canonical outputs before policy and audit.
    - Impact: a permitted broadcaster can submit signed raw hex whose actual outputs differ from policy metadata, or omit metadata and skip policy evaluation before irreversible network broadcast.
    - Fix direction: decode raw transactions server-side before broadcast, derive canonical recipient/amount/fee/inputs, evaluate policy from decoded data, persist from decoded data, and reject ambiguous payloads.
 
 2. **Existing access JWTs survive logout-all, revocation, role changes, and deletion until expiry.**
+   - Status: fixed in PR #342 (`b9aed6ab`) by adding per-user `sessionVersion` claims and checking current database user state in HTTP/WebSocket auth and refresh flows.
    - Evidence: `/auth/logout-all` calls `revokeAllUserTokens`, but `server/src/services/tokenRevocation.ts` delegates to `sessionRepository.revokeAllUserTokens`, which deletes refresh-token rows only. `requireAdmin` trusts the `isAdmin` claim already embedded in the access token.
    - Impact: demoted, deleted, or logged-out users can keep using already-issued access tokens until expiry; a demoted admin token can still satisfy `requireAdmin`.
    - Fix direction: add a user token-version/session-version or revocation watermark checked by `authenticate`, and force it to advance on password change/reset, logout-all, role change, user disable/delete, and security events.
 
 3. **Registration issues a live session even when email verification is required.**
+   - Status: fixed in the P1-03 slice by returning pending-verification registration responses without auth cookies, blocking unverified legacy access/refresh sessions while verification is required, and keeping `/auth/email/verify` public in the real route order.
    - Evidence: registration creates `emailVerified: false`, computes `emailVerificationRequired`, then still generates access/refresh tokens and sets auth cookies. Later login correctly blocks the same unverified user.
    - Impact: email verification is bypassable for the first registration session and refresh chain.
    - Fix direction: when verification is required, return a pending-verification response without access/refresh cookies, or issue a deliberately limited unverified session that every protected route blocks.

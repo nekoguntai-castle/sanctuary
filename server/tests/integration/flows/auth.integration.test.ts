@@ -15,6 +15,7 @@ import { vi } from 'vitest';
  */
 
 import request from 'supertest';
+import { createHash } from 'crypto';
 import { setupTestDatabase, cleanupTestData, teardownTestDatabase, canRunIntegrationTests } from '../setup/testDatabase';
 import { createIsolatedTestApp, createTestApp, resetTestApp } from '../setup/testServer';
 import { getTestUser, getTestAdmin, createTestUser, loginTestUser, extractAuthTokens } from '../setup/helpers';
@@ -22,6 +23,8 @@ import { PrismaClient } from '../../../src/generated/prisma/client';
 import { Express } from 'express';
 import { mockElectrumForAuthIntegration, setAuthIntegrationContext } from './authIntegrationTestHarness';
 import { registerAuthTwoFactorContracts } from './auth/twoFactor.contracts';
+import { generateToken } from '../../../src/utils/jwt';
+import { createRefreshToken } from '../../../src/services/refreshTokenService';
 
 // Increase timeout for integration tests
 vi.setConfig({ testTimeout: 30000 });
@@ -49,6 +52,20 @@ describeWithDb('Authentication Integration', () => {
   beforeEach(async () => {
     await cleanupTestData();
   });
+
+  async function setSystemSetting(key: string, value: string): Promise<void> {
+    await prisma.systemSetting.upsert({
+      where: { key },
+      update: { value },
+      create: { key, value },
+    });
+  }
+
+  async function deleteSystemSettings(keys: string[]): Promise<void> {
+    await prisma.systemSetting.deleteMany({
+      where: { key: { in: keys } },
+    });
+  }
 
   describe('Login Flow', () => {
     it('should login with valid credentials', async () => {
@@ -139,6 +156,86 @@ describeWithDb('Authentication Integration', () => {
       expect(response.body.error).toBe('Forbidden');
       expect(response.body.code).toBe('FORBIDDEN');
       expect(response.body.message).toBe('Not allowed by CORS');
+    });
+  });
+
+  describe('Email Verification Registration', () => {
+    const registrationSettingKeys = ['registrationEnabled', 'email.verificationRequired'];
+
+    it('keeps required-verification registrations unauthenticated until email verification completes', async () => {
+      const testUser = getTestUser();
+      await setSystemSetting('registrationEnabled', 'true');
+      await setSystemSetting('email.verificationRequired', 'true');
+
+      try {
+        const registrationResponse = await request(app)
+          .post('/api/v1/auth/register')
+          .send({
+            username: testUser.username,
+            password: testUser.password,
+            email: testUser.email,
+          })
+          .expect(201);
+
+        expect(registrationResponse.headers['set-cookie']).toBeUndefined();
+        expect(registrationResponse.headers['x-access-expires-at']).toBeUndefined();
+        expect(registrationResponse.body.user).toBeUndefined();
+        expect(registrationResponse.body.emailVerificationRequired).toBe(true);
+
+        const pendingUser = await prisma.user.findUniqueOrThrow({
+          where: { username: testUser.username },
+        });
+        expect(pendingUser.emailVerified).toBe(false);
+
+        const legacyAccessToken = generateToken({
+          userId: pendingUser.id,
+          username: pendingUser.username,
+          isAdmin: pendingUser.isAdmin,
+          sessionVersion: pendingUser.sessionVersion,
+        });
+        await request(app)
+          .get('/api/v1/auth/me')
+          .set('Authorization', `Bearer ${legacyAccessToken}`)
+          .expect(401);
+
+        const legacyRefreshToken = await createRefreshToken(
+          pendingUser.id,
+          { userAgent: 'integration-test', ipAddress: '127.0.0.1' },
+          pendingUser.sessionVersion,
+        );
+        const refreshResponse = await request(app)
+          .post('/api/v1/auth/refresh')
+          .send({ refreshToken: legacyRefreshToken })
+          .expect(401);
+        expect(refreshResponse.body.message).toContain('Email verification required');
+
+        const verificationToken = `verify-${Date.now()}`;
+        await prisma.emailVerificationToken.create({
+          data: {
+            userId: pendingUser.id,
+            email: testUser.email,
+            tokenHash: createHash('sha256').update(verificationToken).digest('hex'),
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          },
+        });
+
+        await request(app)
+          .post('/api/v1/auth/email/verify')
+          .send({ token: verificationToken })
+          .expect(200);
+
+        const loginResponse = await request(app)
+          .post('/api/v1/auth/login')
+          .send({
+            username: testUser.username,
+            password: testUser.password,
+          })
+          .expect(200);
+
+        expect(extractAuthTokens(loginResponse).token).not.toBe('');
+      } finally {
+        await deleteSystemSettings(registrationSettingKeys);
+      }
     });
   });
 

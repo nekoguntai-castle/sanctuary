@@ -9,13 +9,20 @@ const hoistedMocks = vi.hoisted(() => ({
   userRepository: {
     findByIdWithSelect: vi.fn(),
   },
+  emailService: {
+    isVerificationRequired: vi.fn(),
+  },
 }));
 export const mockUserRepository = hoistedMocks.userRepository;
+export const mockIsVerificationRequired = hoistedMocks.emailService.isVerificationRequired;
 
 vi.mock('../../../../src/utils/jwt');
 vi.mock('../../../../src/services/tokenRevocation');
 vi.mock('../../../../src/repositories', () => ({
   userRepository: mockUserRepository,
+}));
+vi.mock('../../../../src/services/email', () => ({
+  isVerificationRequired: mockIsVerificationRequired,
 }));
 vi.mock('../../../../src/utils/requestContext', () => ({
   requestContext: {
@@ -50,7 +57,11 @@ export function registerAuthTestSetup() {
         username: payload.username,
         isAdmin: payload.isAdmin,
         sessionVersion: payload.sessionVersion,
+        email: `${payload.username}@example.com`,
+        emailVerified: true,
       };
     });
+    mockIsVerificationRequired.mockReset();
+    mockIsVerificationRequired.mockResolvedValue(true);
   });
 }

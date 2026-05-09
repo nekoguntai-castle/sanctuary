@@ -14,6 +14,7 @@ export interface User {
   id: string;
   username: string;
   email?: string;
+  emailVerified?: boolean;
   isAdmin: boolean;
   preferences: {
     darkMode?: boolean;
@@ -55,7 +56,20 @@ export interface RegisterRequest {
  */
 export interface AuthResponse {
   user: User;
+  expiresIn?: number;
+  emailVerificationRequired?: false;
+  verificationEmailSent?: boolean;
+  message?: string;
 }
+
+export interface PendingEmailVerificationResponse {
+  emailVerificationRequired: true;
+  verificationEmailSent: boolean;
+  message: string;
+  email?: string;
+}
+
+export type RegisterResponse = AuthResponse | PendingEmailVerificationResponse;
 
 export interface TwoFactorRequiredResponse {
   requires2FA: true;
@@ -72,6 +86,16 @@ export function requires2FA(response: LoginResponse): response is TwoFactorRequi
 }
 
 /**
+ * Registration returns this shape when email verification is required. The
+ * backend has created the account but deliberately did not issue auth cookies.
+ */
+export function isPendingEmailVerification(
+  response: RegisterResponse,
+): response is PendingEmailVerificationResponse {
+  return 'emailVerificationRequired' in response && response.emailVerificationRequired === true;
+}
+
+/**
  * Register a new user.
  *
  * ADR 0001 / 0002 Phase 4: the browser no longer stores or sends the
@@ -80,8 +104,8 @@ export function requires2FA(response: LoginResponse): response is TwoFactorRequi
  * X-Access-Expires-At header to schedule the next refresh. The caller
  * receives the user object for context hydration only.
  */
-export async function register(data: RegisterRequest): Promise<AuthResponse> {
-  return apiClient.post<AuthResponse>('/auth/register', data);
+export async function register(data: RegisterRequest): Promise<RegisterResponse> {
+  return apiClient.post<RegisterResponse>('/auth/register', data);
 }
 
 /**

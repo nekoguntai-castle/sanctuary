@@ -15,7 +15,9 @@ export function useLoginFlow() {
     twoFactorPending,
     isLoading: isBootLoading,
     error,
+    notice,
     clearError,
+    clearNotice,
   } = useUser();
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [username, setUsername] = useState('');
@@ -114,6 +116,7 @@ export function useLoginFlow() {
     // cannot sneak past the button state and race the /auth/me probe.
     if (isBootLoading || isSubmitting) return;
     clearError();
+    clearNotice();
     setIsSubmitting(true);
     try {
       if (isRegisterMode) {
@@ -130,6 +133,7 @@ export function useLoginFlow() {
     e.preventDefault();
     if (isBootLoading || isSubmitting) return;
     clearError();
+    clearNotice();
     setIsSubmitting(true);
     try {
       await verify2FA(twoFactorCode);
@@ -141,15 +145,17 @@ export function useLoginFlow() {
   const handleCancel2FA = () => {
     setTwoFactorCode('');
     cancel2FA();
+    clearNotice();
   };
 
   const toggleMode = useCallback(() => {
     setIsRegisterMode(prev => !prev);
     clearError();
+    clearNotice();
     setUsername('');
     setPassword('');
     setEmail('');
-  }, [clearError]);
+  }, [clearError, clearNotice]);
 
   return {
     // State
@@ -166,6 +172,7 @@ export function useLoginFlow() {
     isLoading: isSubmitting,
     isBootLoading,
     error,
+    notice,
 
     // Setters
     setUsername,

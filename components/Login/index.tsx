@@ -24,6 +24,7 @@ export const Login: React.FC = () => {
     isLoading,
     isBootLoading,
     error,
+    notice,
     setUsername,
     setPassword,
     setEmail,
@@ -62,6 +63,7 @@ export const Login: React.FC = () => {
       isLoading={isLoading}
       isBootLoading={isBootLoading}
       error={error}
+      notice={notice}
       onUsernameChange={setUsername}
       onPasswordChange={setPassword}
       onEmailChange={setEmail}

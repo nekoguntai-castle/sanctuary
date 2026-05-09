@@ -32,6 +32,7 @@ const defaultProps = {
   isLoading: false,
   isBootLoading: false,
   error: null as string | null,
+  notice: null as string | null,
   onUsernameChange: vi.fn(),
   onPasswordChange: vi.fn(),
   onEmailChange: vi.fn(),
@@ -138,6 +139,11 @@ describe('LoginForm', () => {
   it('shows error alert when error is provided', () => {
     renderForm({ error: 'Invalid credentials' });
     expect(screen.getByText('Invalid credentials')).toBeInTheDocument();
+  });
+
+  it('shows notice alert when notice is provided', () => {
+    renderForm({ notice: 'Please check your email to verify your account.' });
+    expect(screen.getByText('Please check your email to verify your account.')).toBeInTheDocument();
   });
 
   it('hides toggle button when registration is disabled and in login mode', () => {

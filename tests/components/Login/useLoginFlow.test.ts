@@ -6,6 +6,7 @@ const mockRegister = vi.fn();
 const mockVerify2FA = vi.fn();
 const mockCancel2FA = vi.fn();
 const mockClearError = vi.fn();
+const mockClearNotice = vi.fn();
 // Mutable state object so individual tests can flip the UserContext
 // boot-loading flag without re-mocking the module.
 const mockUserContextState = {
@@ -21,7 +22,9 @@ vi.mock('../../../contexts/UserContext', () => ({
     twoFactorPending: false,
     isLoading: mockUserContextState.isLoading,
     error: null,
+    notice: null,
     clearError: mockClearError,
+    clearNotice: mockClearNotice,
   }),
 }));
 
@@ -58,6 +61,7 @@ describe('useLoginFlow', () => {
     expect(result.current.password).toBe('');
     expect(result.current.email).toBe('');
     expect(result.current.twoFactorCode).toBe('');
+    expect(result.current.notice).toBeNull();
     await waitForInitialChecks(result);
   });
 
@@ -76,6 +80,7 @@ describe('useLoginFlow', () => {
     expect(result.current.password).toBe('');
     expect(result.current.email).toBe('');
     expect(mockClearError).toHaveBeenCalled();
+    expect(mockClearNotice).toHaveBeenCalled();
   });
 
   it('handleSubmit calls login in login mode', async () => {
@@ -90,6 +95,7 @@ describe('useLoginFlow', () => {
 
     expect(mockEvent.preventDefault).toHaveBeenCalled();
     expect(mockClearError).toHaveBeenCalled();
+    expect(mockClearNotice).toHaveBeenCalled();
     expect(mockLogin).toHaveBeenCalledWith('alice', 'password123');
   });
 

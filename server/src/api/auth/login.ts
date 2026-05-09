@@ -157,6 +157,17 @@ export function createLoginRouter(
     // Email verification is required if the setting is enabled
     emailVerificationRequired = verificationRequired;
 
+    if (emailVerificationRequired && !user.emailVerified) {
+      return res.status(201).json({
+        emailVerificationRequired: true,
+        verificationEmailSent,
+        email: user.email,
+        message: verificationEmailSent
+          ? 'Registration successful. Please check your email to verify your account.'
+          : 'Registration successful. Email verification is required, but the verification email could not be sent. Please contact an administrator.',
+      });
+    }
+
     // Get device info from request
     const { ipAddress, userAgent } = getClientInfo(req);
     const deviceInfo = {

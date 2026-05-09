@@ -60,16 +60,16 @@ router.use('/', tokensRouter);
 // - Other 2FA routes require authentication
 router.use('/', createTwoFactorRouter(twoFactorLimiter));
 
-// Protected routes (require authentication)
-router.use('/', authenticate, profileRouter);
-router.use('/', authenticate, createPasswordRouter(passwordChangeLimiter));
-router.use('/', authenticate, telegramRouter);
-router.use('/', authenticate, sessionsRouter);
-
 // Email verification routes - mixed auth requirements:
 // - /email/verify is public (uses token from email)
 // - /email/resend requires authentication
 // - /me/email requires authentication
 router.use('/', createEmailRouter(emailVerifyLimiter, emailResendLimiter, emailUpdateLimiter));
+
+// Protected routes (require authentication)
+router.use('/', authenticate, profileRouter);
+router.use('/', authenticate, createPasswordRouter(passwordChangeLimiter));
+router.use('/', authenticate, telegramRouter);
+router.use('/', authenticate, sessionsRouter);
 
 export default router;

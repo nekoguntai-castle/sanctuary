@@ -5,7 +5,7 @@ import './authTestHarness';
 import { authenticate } from '../../../../src/middleware/auth';
 import { verifyToken, extractTokenFromHeader, TokenAudience } from '../../../../src/utils/jwt';
 import { requestContext } from '../../../../src/utils/requestContext';
-import { mockUserRepository, validPayload } from './authTestHarness';
+import { mockIsVerificationRequired, mockUserRepository, validPayload } from './authTestHarness';
 
 export function registerAuthenticateMiddlewareContracts() {
   describe('authenticate middleware', () => {
@@ -109,6 +109,61 @@ export function registerAuthenticateMiddlewareContracts() {
         expect(response.statusCode).toBe(401);
         expect(response.body.message).toBe('Invalid or expired token');
         expect(next).not.toHaveBeenCalled();
+      });
+
+      it('should reject tokens for unverified users when email verification is required', async () => {
+        const token = 'unverified-user-token';
+        (extractTokenFromHeader as Mock).mockReturnValue(token);
+        (verifyToken as Mock).mockResolvedValue(validPayload);
+        mockIsVerificationRequired.mockResolvedValueOnce(true);
+        mockUserRepository.findByIdWithSelect.mockResolvedValueOnce({
+          id: validPayload.userId,
+          username: validPayload.username,
+          isAdmin: validPayload.isAdmin,
+          sessionVersion: validPayload.sessionVersion,
+          email: 'test@example.com',
+          emailVerified: false,
+        });
+
+        const req = createMockRequest({
+          headers: { authorization: `Bearer ${token}` },
+        });
+        const { res, getResponse } = createMockResponse();
+        const next = createMockNext();
+
+        await authenticate(req as any, res as any, next);
+
+        const response = getResponse();
+        expect(response.statusCode).toBe(401);
+        expect(response.body.message).toBe('Invalid or expired token');
+        expect(next).not.toHaveBeenCalled();
+        expect((req as any).user).toBeUndefined();
+      });
+
+      it('should allow unverified users when email verification is not required', async () => {
+        const token = 'unverified-user-token';
+        (extractTokenFromHeader as Mock).mockReturnValue(token);
+        (verifyToken as Mock).mockResolvedValue(validPayload);
+        mockIsVerificationRequired.mockResolvedValueOnce(false);
+        mockUserRepository.findByIdWithSelect.mockResolvedValueOnce({
+          id: validPayload.userId,
+          username: validPayload.username,
+          isAdmin: validPayload.isAdmin,
+          sessionVersion: validPayload.sessionVersion,
+          email: 'test@example.com',
+          emailVerified: false,
+        });
+
+        const req = createMockRequest({
+          headers: { authorization: `Bearer ${token}` },
+        });
+        const { res } = createMockResponse();
+        const next = createMockNext();
+
+        await authenticate(req as any, res as any, next);
+
+        expect((req as any).user).toEqual(validPayload);
+        expect(next).toHaveBeenCalled();
       });
 
       it('should reject expired token', async () => {

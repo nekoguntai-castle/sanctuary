@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '../../ui/Button';
 import { ErrorAlert } from '../../ui/ErrorAlert';
+import { NoticeAlert } from '../../ui/NoticeAlert';
 
 const getSubmitLabel = (isLoading: boolean, isRegisterMode: boolean): string => {
   if (isLoading) {
@@ -24,6 +25,7 @@ interface LoginFormActionsProps {
   isLoading: boolean;
   isBootLoading: boolean;
   error: string | null;
+  notice: string | null;
   onToggleMode: () => void;
 }
 
@@ -33,9 +35,11 @@ export const LoginFormActions: React.FC<LoginFormActionsProps> = ({
   isLoading,
   isBootLoading,
   error,
+  notice,
   onToggleMode,
 }) => (
   <>
+    <NoticeAlert message={notice} className="text-center" />
     <ErrorAlert message={error} className="text-center" />
 
     <div className="space-y-3 login-reveal-4">

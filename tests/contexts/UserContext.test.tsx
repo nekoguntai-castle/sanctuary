@@ -40,6 +40,7 @@ vi.mock('../../src/api/auth', () => ({
   register: vi.fn(),
   updatePreferences: vi.fn(),
   requires2FA: vi.fn(() => false),
+  isPendingEmailVerification: vi.fn((response) => response?.emailVerificationRequired === true),
 }));
 
 vi.mock('../../src/api/twoFactor', () => ({
@@ -403,6 +404,30 @@ describe('UserContext', () => {
       await waitFor(() => {
         expect(screen.getByTestId('user')).toHaveTextContent('testuser');
         expect(screen.getByTestId('authenticated')).toHaveTextContent('true');
+      });
+    });
+
+    it('keeps the user unauthenticated when registration requires email verification', async () => {
+      const user = userEvent.setup();
+      vi.mocked(authApi.register).mockResolvedValue({
+        emailVerificationRequired: true,
+        verificationEmailSent: true,
+        email: 'new@example.com',
+        message: 'Registration successful. Please check your email to verify your account.',
+      });
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('loading')).toHaveTextContent('false');
+      });
+
+      await user.click(screen.getByTestId('register'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('user')).toHaveTextContent('null');
+        expect(screen.getByTestId('authenticated')).toHaveTextContent('false');
+        expect(screen.getByTestId('notice')).toHaveTextContent('Please check your email');
       });
     });
 
