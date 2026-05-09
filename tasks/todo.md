@@ -30,7 +30,7 @@ Goal: make request timeout handling expose and trigger a request-scoped cancella
 
 # Active Task: P3-06 Auth Comment Hygiene 2026-05-09
 
-Status: in progress; branch `chore/auth-comment-hygiene`
+Status: completed; PR #366 merged as `f3fc323e`
 
 Goal: replace stale auth/CSRF comments that still describe migration phases, token storage, or legacy auth helpers with stable cookie-auth and CSRF wording in high-risk auth files.
 
@@ -40,7 +40,7 @@ Goal: replace stale auth/CSRF comments that still describe migration phases, tok
 - [x] Update only misleading auth/CSRF comments; avoid behavior changes and unrelated comment churn.
 - [x] Mark P3-06 implemented in health/remediation docs.
 - [x] Run focused static checks for changed comment-only files, architecture graph checks if needed, and `git diff --check`.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -48,6 +48,7 @@ Goal: replace stale auth/CSRF comments that still describe migration phases, tok
 - Removed stale `setToken`/`getToken` mocks from API module tests where the real client no longer exposes those token helper APIs.
 - Confirmed `contexts`, `src/api`, `hooks/websocket`, and `tests/api` no longer contain the searched stale auth-phase/token helper terms.
 - Verification passed: focused auth/API tests (181 tests), app typecheck, test typecheck, app lint, changed-test hygiene, touched-file lizard, architecture graph regeneration/call extraction with no generated diff, architecture diagram lint, and `git diff --check`.
+- Delivery passed: PR #366 merged with squash commit `f3fc323e46919ac1c946185fc805e64971e8cd64`; the post-merge `main` push run reached 29/30 green after a 30-minute poll, with only `Test Suite / Full Frontend Coverage Shard 2/2 (push)` still pending and no failed checks reported.
 
 ---
 
