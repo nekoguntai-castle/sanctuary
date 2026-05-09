@@ -1,6 +1,33 @@
+# Active Task: Console Service Test Large-File Split 2026-05-08
+
+Status: in progress; branch `test/console-service-large-file-split`
+
+Goal: reduce the next largest remaining test-file warning, `server/tests/unit/assistant/consoleService.test.ts` at 808 LOC, while preserving console prompt replay coverage.
+
+## Plan
+
+- [x] Inspect the console service test setup, shared test utils, and replay-related scenario group.
+- [x] Choose the smallest cohesive split that drops the file below the warning band without duplicating mock setup.
+- [x] Move replay scenarios into a smaller register module that imports the existing test utils.
+- [x] Run focused console service tests, server test typecheck, touched-file lizard, large-file check, and `git diff --check`.
+- [x] Review for hidden risk: no mock ordering changes, no assertion weakening, and no service code edits.
+- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+
+## Review
+
+- The smallest clean boundary was the prompt replay scenario cluster at the end of `consoleService.test.ts`.
+- Moved those cases into `server/tests/unit/assistant/consoleService.promptReplay.contracts.ts`, reusing the existing `consoleService.testUtils` mocks and fixtures.
+- Kept the shared `beforeEach` and mock setup in `consoleService.test.ts`; the new module registers tests under the existing parent `describe`.
+- `server/tests/unit/assistant/consoleService.test.ts` dropped from 808 lines to 739 lines; the replay module is 84 lines, so this surface is no longer in the large-file warning inventory.
+- The large-file check now reports one test warning instead of two; the final local test warning is `server/tests/unit/services/draftService.test.ts` at 802 LOC.
+- Verification passed locally: focused console service Vitest run (26 tests), server test typecheck, touched-file lizard, large-file classification check, and `git diff --check`.
+
+---
+
 # Active Task: Mempool Test Large-File Split 2026-05-08
 
-Status: in progress; branch `test/mempool-large-file-split`
+Status: complete; PR #334 merged as `291f4ba3`
 
 Goal: reduce the next largest remaining test-file warning, `server/tests/unit/services/bitcoin/mempool.test.ts` at 850 LOC, without changing mempool service behavior or weakening branch coverage.
 
@@ -11,8 +38,8 @@ Goal: reduce the next largest remaining test-file warning, `server/tests/unit/se
 - [x] Move the selected scenarios into a smaller register module, passing shared mocks/helpers explicitly.
 - [x] Run focused mempool tests, server test typecheck, touched-file lizard, large-file check, and `git diff --check`.
 - [x] Review for hidden risk: no fake timer leaks, no assertion weakening, and no service code edits.
-- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
-- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+- [x] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [x] Re-check the queue after merge; physical hardware capture remains blocked by device access.
 
 ## Review
 
@@ -23,6 +50,8 @@ Goal: reduce the next largest remaining test-file warning, `server/tests/unit/se
 - `server/tests/unit/services/bitcoin/mempool.test.ts` dropped from 850 lines to 656 lines; the new module is 277 lines, so this surface is no longer in the large-file warning inventory.
 - The large-file check now reports two test warnings instead of three; the next largest local candidate is `server/tests/unit/assistant/consoleService.test.ts` at 808 LOC.
 - Verification passed locally: focused mempool Vitest run (29 tests), server test typecheck, touched-file lizard, large-file classification check, and `git diff --check`.
+- PR #334 merged at `2026-05-08T18:37:22-10:00` as squash commit `291f4ba3ecceb8d2bdbefd3cc0f495b92e50c2d9`; local `main` was fast-forwarded and the local/remote `test/mempool-large-file-split` branches were deleted.
+- Post-merge `main` verification passed: focused mempool Vitest run, 29 tests; large-file classification check passed with mempool removed from the warning inventory.
 
 ---
 
