@@ -15,6 +15,12 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
+    # GitHub-only: this workflow uses `gh release create` against
+    # api.github.com which requires a real GitHub token. Forgejo's
+    # GITHUB_TOKEN is a Forgejo token and the call always fails there.
+    # The Forgejo+Codeberg Release objects are created by
+    # `scripts/create-forge-release.sh`, not by this workflow.
+    if: github.server_url == 'https://github.com'
     permissions:
       contents: write
 

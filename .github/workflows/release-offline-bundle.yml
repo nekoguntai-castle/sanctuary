@@ -33,7 +33,18 @@ jobs:
     timeout-minutes: 60
     # Skip RC/alpha/beta/dev tags — operators only consume the final stable
     # bundle. Manual `workflow_dispatch` is unaffected (it always runs).
-    if: ${{ github.event_name == 'workflow_dispatch' || (!contains(github.ref_name, '-rc') && !contains(github.ref_name, '-alpha') && !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-dev')) }}
+    # Also skip on Forgejo Actions: this workflow uploads to a GitHub Release
+    # via gh release upload, which needs a GitHub token. Forgejo's
+    # GITHUB_TOKEN is not a github.com token, so the upload step always
+    # fails there. The Forgejo Release object is created by
+    # `scripts/create-forge-release.sh`, not by this workflow.
+    if: |
+      github.server_url == 'https://github.com' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (!contains(github.ref_name, '-rc') &&
+        !contains(github.ref_name, '-alpha') &&
+        !contains(github.ref_name, '-beta') &&
+        !contains(github.ref_name, '-dev')))
     steps:
       - name: Resolve target tag
         id: tag

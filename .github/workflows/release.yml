@@ -42,7 +42,12 @@ jobs:
   resolve-tag:
     name: Resolve Tag Info
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    # GitHub-only: downstream jobs in this workflow use `gh` against
+    # api.github.com and `secrets.GITHUB_TOKEN` for GHCR pushes — none of
+    # which work on Forgejo Actions. Skip the entire chain when running
+    # outside GitHub. (The Forgejo+Codeberg Release objects are created by
+    # `scripts/create-forge-release.sh`.)
+    if: github.server_url == 'https://github.com' && github.event_name == 'push' && github.ref_type == 'tag'
     outputs:
       version: ${{ steps.info.outputs.version }}
       sha: ${{ steps.info.outputs.sha }}
@@ -71,7 +76,7 @@ jobs:
   verify-prerelease:
     name: Verify Pre-release
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
+    if: github.server_url == 'https://github.com' && github.event_name == 'release'
     permissions:
       contents: write
     steps:
@@ -107,7 +112,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [verify-prerelease, resolve-tag]
     if: |
-      always() &&
+      always() && github.server_url == 'https://github.com' &&
       (
         (github.event_name == 'release' && needs.verify-prerelease.result == 'success') ||
         (github.event_name == 'workflow_dispatch') ||
@@ -211,7 +216,8 @@ jobs:
     name: Release Candidate
     needs: wait-for-install-tests
     if: |
-      always() && needs.wait-for-install-tests.result == 'success' &&
+      always() && github.server_url == 'https://github.com' &&
+      needs.wait-for-install-tests.result == 'success' &&
       (github.event_name == 'release' || github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'push' && github.ref_type == 'tag'))
     uses: ./.github/workflows/release-candidate.yml
@@ -228,7 +234,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     needs: [release-candidate, wait-for-install-tests]
     if: |
-      always() && needs.release-candidate.result == 'success' &&
+      always() && github.server_url == 'https://github.com' &&
+      needs.release-candidate.result == 'success' &&
       (github.event_name == 'release' || github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'push' && github.ref_type == 'tag'))
     permissions:
