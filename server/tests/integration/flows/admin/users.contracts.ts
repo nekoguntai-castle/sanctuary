@@ -271,7 +271,7 @@ export function registerAdminUserManagementContracts(): void {
 
       it('should demote admin to regular user', async () => {
         const { token: superAdminToken } = await createAdminAndLogin();
-        const { adminId } = await createAdminAndLogin(); // Another admin
+        const { adminId, token: demotedAdminToken } = await createAdminAndLogin(); // Another admin
 
         const response = await request(app)
           .put(`/api/v1/admin/users/${adminId}`)
@@ -280,6 +280,11 @@ export function registerAdminUserManagementContracts(): void {
           .expect(200);
 
         expect(response.body.isAdmin).toBe(false);
+
+        await request(app)
+          .get('/api/v1/admin/users')
+          .set(authHeader(demotedAdminToken))
+          .expect(401);
       });
 
       it('should return 404 for non-existent user', async () => {
@@ -313,7 +318,7 @@ export function registerAdminUserManagementContracts(): void {
     describe('DELETE /api/v1/admin/users/:userId', () => {
       it('should delete a user', async () => {
         const { token } = await createAdminAndLogin();
-        const { userId, username } = await createUserAndLogin();
+        const { userId, token: deletedUserToken, username } = await createUserAndLogin();
 
         await request(app)
           .delete(`/api/v1/admin/users/${userId}`)
@@ -328,6 +333,11 @@ export function registerAdminUserManagementContracts(): void {
         await request(app)
           .post('/api/v1/auth/login')
           .send({ username, password: 'UserPass123!' })
+          .expect(401);
+
+        await request(app)
+          .get('/api/v1/auth/me')
+          .set(authHeader(deletedUserToken))
           .expect(401);
       });
 

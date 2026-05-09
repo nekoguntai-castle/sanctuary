@@ -114,11 +114,18 @@ router.post('/refresh', validate({ body: RefreshBodySchema }), asyncHandler(asyn
     throw new UnauthorizedError('User not found');
   }
 
+  if (decoded.sessionVersion !== user.sessionVersion) {
+    log.warn('Refresh token rejected because user session version changed', { userId: user.id });
+    clearAuthCookies(res);
+    throw new UnauthorizedError('Refresh token has been revoked');
+  }
+
   // Generate new access token
   const newAccessToken = generateToken({
     userId: user.id,
     username: user.username,
     isAdmin: user.isAdmin,
+    sessionVersion: user.sessionVersion,
   });
 
   // Get device info for rotation
@@ -126,7 +133,7 @@ router.post('/refresh', validate({ body: RefreshBodySchema }), asyncHandler(asyn
   const deviceInfo = { userAgent, ipAddress };
 
   // Always rotate refresh token (security: limits window of stolen tokens)
-  const newRefreshToken = await refreshTokenService.rotateRefreshToken(refreshTokenStr, deviceInfo);
+  const newRefreshToken = await refreshTokenService.rotateRefreshToken(refreshTokenStr, deviceInfo, user.sessionVersion);
 
   if (!newRefreshToken) {
     // Transient server error, NOT a terminal auth failure. The refresh
@@ -232,11 +239,7 @@ router.post('/logout', authenticate, validate({ body: LogoutSchema }), asyncHand
 router.post('/logout-all', authenticate, asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
 
-  // Revoke all refresh tokens for this user
-  const revokedCount = await refreshTokenService.revokeAllUserRefreshTokens(userId);
-
-  // Also revoke all access tokens (via the token revocation list)
-  await revokeAllUserTokens(userId, 'logout_all_devices');
+  const revokedCount = await revokeAllUserTokens(userId, 'logout_all_devices');
 
   // Clear the browser auth cookies on this response. Other tabs on this
   // device will be signalled via the BroadcastChannel propagation added

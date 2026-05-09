@@ -88,6 +88,8 @@ describe('Refresh Token Service', () => {
       const token = await createRefreshToken(testUserId, testDeviceInfo);
 
       expect(token).toBe(testToken);
+      const jwt = await import('../../../src/utils/jwt');
+      expect(jwt.generateRefreshToken).toHaveBeenCalledWith(testUserId, 0);
       expect(mockSessionRepository.createRefreshToken).toHaveBeenCalledWith({
         userId: testUserId,
         token: testToken,
@@ -115,6 +117,18 @@ describe('Refresh Token Service', () => {
           deviceName: undefined,
         })
       );
+    });
+
+    it('should include the supplied session version in the refresh JWT', async () => {
+      mockSessionRepository.createRefreshToken.mockResolvedValue({
+        id: testSessionId,
+        userId: testUserId,
+      });
+
+      await createRefreshToken(testUserId, undefined, 9);
+
+      const jwt = await import('../../../src/utils/jwt');
+      expect(jwt.generateRefreshToken).toHaveBeenCalledWith(testUserId, 9);
     });
 
     it('should throw error on repository failure', async () => {
@@ -206,6 +220,26 @@ describe('Refresh Token Service', () => {
 
       expect(newToken).toBe(testToken);
       expect(mockSessionRepository.revokeRefreshToken).toHaveBeenCalledWith(oldToken);
+    });
+
+    it('should carry the current session version into rotated refresh tokens', async () => {
+      const oldToken = 'old-refresh-token-versioned';
+      mockSessionRepository.findRefreshToken.mockResolvedValue({
+        id: testSessionId,
+        userId: testUserId,
+        deviceId: null,
+        deviceName: null,
+      });
+      mockSessionRepository.revokeRefreshToken.mockResolvedValue(undefined);
+      mockSessionRepository.createRefreshToken.mockResolvedValue({
+        id: faker.string.uuid(),
+        userId: testUserId,
+      });
+
+      await rotateRefreshToken(oldToken, undefined, 12);
+
+      const jwt = await import('../../../src/utils/jwt');
+      expect(jwt.generateRefreshToken).toHaveBeenLastCalledWith(testUserId, 12);
     });
 
     it('should return null for non-existent token', async () => {

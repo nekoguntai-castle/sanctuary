@@ -6,6 +6,7 @@
  * ## Security Features (SEC-003, SEC-005, SEC-006)
  *
  * - jti claims for token revocation
+ * - sessionVersion claims for per-user access/refresh token revocation
  * - aud (audience) claims to differentiate token types
  * - Shorter access tokens (1h) with refresh tokens (7d)
  */
@@ -40,37 +41,92 @@ export interface JWTPayload {
   isAdmin: boolean;
   pending2FA?: boolean; // True when awaiting 2FA verification
   usingDefaultPassword?: boolean; // True when using default 'sanctuary' password
+  // Per-user revocation marker. Mismatch with the current DB value forces re-authentication.
+  sessionVersion?: number;
   jti?: string; // JWT ID for revocation (SEC-003)
   aud?: string | string[]; // Audience claim (SEC-006)
 }
 
 export interface RefreshTokenPayload {
   userId: string;
+  sessionVersion: number;
   jti: string;
   aud: string;
   type: 'refresh';
 }
 
-function assertJwtPayload(value: unknown): asserts value is JWTPayload {
+type DecodedTokenPayload = Partial<JWTPayload & RefreshTokenPayload> & { exp?: number; iat?: number };
+
+const isValidSessionVersion = (value: unknown): boolean => {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+};
+
+const sessionVersionOrZero = (sessionVersion: number | undefined): number => {
+  if (!isValidSessionVersion(sessionVersion)) {
+    return 0;
+  }
+  return sessionVersion as number;
+};
+
+const ensureSessionVersion = (value: unknown): void => {
+  if (!isValidSessionVersion(value)) {
+    throw new Error('Invalid token payload');
+  }
+};
+
+const isNonEmptyString = (value: unknown): value is string => {
+  return typeof value === 'string' && value.length > 0;
+};
+
+const hasRequiredJwtClaims = (payload: Partial<JWTPayload>): boolean => {
+  return (
+    isNonEmptyString(payload.userId) &&
+    isNonEmptyString(payload.username) &&
+    typeof payload.isAdmin === 'boolean'
+  );
+};
+
+const hasValidOptionalJwtClaims = (payload: Partial<JWTPayload>): boolean => {
+  return (
+    (payload.pending2FA === undefined || typeof payload.pending2FA === 'boolean') &&
+    (payload.usingDefaultPassword === undefined || typeof payload.usingDefaultPassword === 'boolean') &&
+    (payload.sessionVersion === undefined || isValidSessionVersion(payload.sessionVersion)) &&
+    (payload.jti === undefined || typeof payload.jti === 'string')
+  );
+};
+
+const parseJwtPayload = (value: unknown): JWTPayload => {
   if (!value || typeof value !== 'object') {
     throw new Error('Invalid token payload');
   }
 
   const payload = value as Partial<JWTPayload>;
-  /* v8 ignore next 11 -- malformed claim branches are covered by focused JWT tests; V8 maps the OR chain unevenly. */
+  if (!hasRequiredJwtClaims(payload) || !hasValidOptionalJwtClaims(payload)) {
+    throw new Error('Invalid token payload');
+  }
+
+  return payload as JWTPayload;
+};
+
+const parseRefreshTokenPayload = (value: unknown): RefreshTokenPayload => {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Invalid refresh token payload');
+  }
+
+  const payload = value as Partial<RefreshTokenPayload>;
   if (
     typeof payload.userId !== 'string' ||
     payload.userId.length === 0 ||
-    typeof payload.username !== 'string' ||
-    payload.username.length === 0 ||
-    typeof payload.isAdmin !== 'boolean' ||
-    (payload.pending2FA !== undefined && typeof payload.pending2FA !== 'boolean') ||
-    (payload.usingDefaultPassword !== undefined && typeof payload.usingDefaultPassword !== 'boolean') ||
-    (payload.jti !== undefined && typeof payload.jti !== 'string')
+    typeof payload.jti !== 'string' ||
+    payload.jti.length === 0 ||
+    payload.type !== 'refresh' ||
+    !isValidSessionVersion(payload.sessionVersion)
   ) {
-    throw new Error('Invalid token payload');
+    throw new Error('Invalid refresh token payload');
   }
-}
+
+  return payload as RefreshTokenPayload;
+};
 
 /**
  * Generate a unique JWT ID (jti)
@@ -93,7 +149,10 @@ export function hashToken(token: string): string {
  */
 export function generateToken(payload: JWTPayload, expiresIn?: string): string {
   const jti = generateJti();
-  const accessPayload: JWTPayload = { ...payload };
+  const accessPayload: JWTPayload = {
+    ...payload,
+    sessionVersion: sessionVersionOrZero(payload.sessionVersion),
+  };
   delete accessPayload.pending2FA;
   return jwt.sign(
     {
@@ -117,6 +176,7 @@ export function generate2FAToken(payload: JWTPayload): string {
   return jwt.sign(
     {
       ...payload,
+      sessionVersion: sessionVersionOrZero(payload.sessionVersion),
       pending2FA: true,
       jti,
       aud: TokenAudience.TWO_FACTOR, // SEC-006: Distinct audience for 2FA tokens
@@ -131,12 +191,14 @@ export function generate2FAToken(payload: JWTPayload): string {
 /**
  * Generate a refresh token (SEC-005)
  * @param userId - User ID
+ * @param sessionVersion - Per-user revocation marker
  */
-export function generateRefreshToken(userId: string): string {
+export function generateRefreshToken(userId: string, sessionVersion = 0): string {
   const jti = generateJti();
   return jwt.sign(
     {
       userId,
+      sessionVersion: sessionVersionOrZero(sessionVersion),
       jti,
       aud: TokenAudience.REFRESH,
       type: 'refresh',
@@ -162,8 +224,10 @@ export async function verifyToken(token: string, expectedAudience?: TokenAudienc
       options.audience = expectedAudience;
     }
 
-    const verified = jwt.verify(token, config.jwtSecret, options);
-    assertJwtPayload(verified);
+    const verified = parseJwtPayload(jwt.verify(token, config.jwtSecret, options));
+    if (expectedAudience === TokenAudience.ACCESS || expectedAudience === TokenAudience.TWO_FACTOR) {
+      ensureSessionVersion(verified.sessionVersion);
+    }
     decoded = verified;
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
@@ -209,9 +273,9 @@ export async function verify2FAToken(token: string): Promise<JWTPayload> {
  */
 export async function verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
   try {
-    const decoded = jwt.verify(token, config.jwtSecret, {
+    const decoded = parseRefreshTokenPayload(jwt.verify(token, config.jwtSecret, {
       audience: TokenAudience.REFRESH,
-    }) as RefreshTokenPayload;
+    }));
 
     // Check if token is revoked
     if (decoded.jti && await isTokenRevoked(decoded.jti)) {
@@ -235,9 +299,9 @@ export async function verifyRefreshToken(token: string): Promise<RefreshTokenPay
  * Decode a token without verification (for getting claims like jti, exp)
  * Use only when you need to access claims from an already-verified token
  */
-export function decodeToken(token: string): JWTPayload & { exp?: number } | null {
+export function decodeToken(token: string): DecodedTokenPayload | null {
   try {
-    return jwt.decode(token) as JWTPayload & { exp?: number };
+    return jwt.decode(token) as DecodedTokenPayload;
   } catch {
     return null;
   }

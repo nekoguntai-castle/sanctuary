@@ -22,6 +22,8 @@ import {
 } from '../../helpers/testUtils';
 import * as bcrypt from 'bcryptjs';
 
+const mockResolveCurrentAccessTokenPayload = vi.hoisted(() => vi.fn(async (payload) => payload));
+
 // Mock Prisma BEFORE other imports
 vi.mock('../../../src/models/prisma', async () => {
   const { mockPrismaClient: prisma } = await import('../../mocks/prisma');
@@ -58,6 +60,10 @@ vi.mock('../../../src/services/tokenRevocation', () => ({
   revokeToken: vi.fn().mockResolvedValue(undefined),
   initializeRevocationService: vi.fn(),
   shutdownRevocationService: vi.fn(),
+}));
+
+vi.mock('../../../src/services/accessTokenSessionService', () => ({
+  resolveCurrentAccessTokenPayload: mockResolveCurrentAccessTokenPayload,
 }));
 
 // Mock audit service
@@ -118,6 +124,7 @@ describe('Authentication', () => {
     mockIsVerificationRequired.mockResolvedValue(true); // Default to required
     mockIsSmtpConfigured.mockResolvedValue(false);
     mockCreateVerificationToken.mockResolvedValue({ success: false });
+    mockResolveCurrentAccessTokenPayload.mockImplementation(async (payload) => payload);
   });
 
   describe('JWT Utilities', () => {

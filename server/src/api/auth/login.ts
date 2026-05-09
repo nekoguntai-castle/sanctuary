@@ -169,8 +169,9 @@ export function createLoginRouter(
       userId: user.id,
       username: user.username,
       isAdmin: user.isAdmin,
+      sessionVersion: user.sessionVersion,
     });
-    const refreshToken = await refreshTokenService.createRefreshToken(user.id, deviceInfo);
+    const refreshToken = await refreshTokenService.createRefreshToken(user.id, deviceInfo, user.sessionVersion);
 
     // ADR 0001 / 0002 — Phase 6: browser auth is cookie-only. Access and
     // refresh tokens are set via HttpOnly cookies; the JSON body no longer
@@ -274,6 +275,7 @@ export function createLoginRouter(
         userId: user.id,
         username: user.username,
         isAdmin: user.isAdmin,
+        sessionVersion: user.sessionVersion,
         usingDefaultPassword, // Pass through for after 2FA verification
       });
 
@@ -295,8 +297,9 @@ export function createLoginRouter(
       userId: user.id,
       username: user.username,
       isAdmin: user.isAdmin,
+      sessionVersion: user.sessionVersion,
     });
-    const refreshToken = await refreshTokenService.createRefreshToken(user.id, deviceInfo);
+    const refreshToken = await refreshTokenService.createRefreshToken(user.id, deviceInfo, user.sessionVersion);
 
     // Audit successful login
     await auditService.log({

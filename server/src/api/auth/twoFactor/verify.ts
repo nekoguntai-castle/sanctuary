@@ -49,6 +49,11 @@ export function createVerifyRouter(twoFactorLimiter: RequestHandler): Router {
       throw new UnauthorizedError('Invalid authentication state');
     }
 
+    // Password, role, or logout-all changes invalidate pending 2FA login tokens too.
+    if (decoded.sessionVersion !== user.sessionVersion) {
+      throw new UnauthorizedError('Invalid or expired temporary token');
+    }
+
     // Check if it's a TOTP code or backup code
     let codeValid = false;
     let usedBackupCode = false;
@@ -98,8 +103,9 @@ export function createVerifyRouter(twoFactorLimiter: RequestHandler): Router {
       userId: user.id,
       username: user.username,
       isAdmin: user.isAdmin,
+      sessionVersion: user.sessionVersion,
     });
-    const refreshToken = await refreshTokenService.createRefreshToken(user.id, deviceInfo);
+    const refreshToken = await refreshTokenService.createRefreshToken(user.id, deviceInfo, user.sessionVersion);
 
     // Audit successful login with 2FA
     await auditService.log({

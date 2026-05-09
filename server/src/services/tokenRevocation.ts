@@ -19,7 +19,7 @@
  * 3. In auth middleware, call isTokenRevoked(jti)
  */
 
-import { sessionRepository } from '../repositories';
+import { sessionRepository, userRepository } from '../repositories';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { getNamespacedCache } from '../infrastructure/redis';
@@ -167,10 +167,12 @@ export async function revokeAllUserTokens(userId: string, reason?: string): Prom
   log.info('Revoke all user tokens requested', { userId, reason });
 
   try {
+    const sessionVersion = await userRepository.incrementSessionVersion(userId);
+
     // Delete all refresh tokens for the user
     const count = await sessionRepository.revokeAllUserTokens(userId);
 
-    log.info('Revoked all user tokens', { userId, count });
+    log.info('Revoked all user tokens', { userId, count, sessionVersion });
     return count;
   } catch (error) {
     log.error('Failed to revoke all user tokens', { error: getErrorMessage(error), userId });

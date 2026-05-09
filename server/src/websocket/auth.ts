@@ -20,6 +20,7 @@ import { IncomingMessage } from 'http';
 import { parse as parseCookieHeader } from 'cookie';
 import { verifyToken, TokenAudience, type JWTPayload } from '../utils/jwt';
 import { createLogger } from '../utils/logger';
+import { resolveCurrentAccessTokenPayload } from '../services/accessTokenSessionService';
 // Import from authCookieNames (zero-import module) rather than csrf so the
 // WebSocket upgrade path does NOT transitively load `../config`, which
 // runs `getConfig()` at module load and would fail in tests that mock
@@ -43,7 +44,7 @@ async function verifyWebSocketAccessToken(token: string): Promise<JWTPayload> {
     throw new Error('2FA verification required');
   }
 
-  return decoded;
+  return resolveCurrentAccessTokenPayload(decoded);
 }
 
 /**

@@ -42,10 +42,11 @@ export interface Session {
  */
 export async function createRefreshToken(
   userId: string,
-  deviceInfo?: DeviceInfo
+  deviceInfo?: DeviceInfo,
+  sessionVersion = 0
 ): Promise<string> {
   // Generate the actual refresh token
-  const refreshToken = generateRefreshToken(userId);
+  const refreshToken = generateRefreshToken(userId, sessionVersion);
 
   // Decode to get expiration
   const decoded = decodeToken(refreshToken);
@@ -106,7 +107,8 @@ export async function verifyRefreshTokenExists(token: string): Promise<boolean> 
  */
 export async function rotateRefreshToken(
   oldToken: string,
-  deviceInfo?: DeviceInfo
+  deviceInfo?: DeviceInfo,
+  sessionVersion?: number
 ): Promise<string | null> {
   try {
     // Find the old token
@@ -128,7 +130,9 @@ export async function rotateRefreshToken(
       ipAddress: deviceInfo?.ipAddress,
     };
 
-    const newToken = await createRefreshToken(oldTokenRecord.userId, newDeviceInfo);
+    const decodedOldToken = decodeToken(oldToken);
+    const newSessionVersion = sessionVersion ?? decodedOldToken?.sessionVersion ?? 0;
+    const newToken = await createRefreshToken(oldTokenRecord.userId, newDeviceInfo, newSessionVersion);
     log.debug('Refresh token rotated', { userId: oldTokenRecord.userId });
 
     return newToken;

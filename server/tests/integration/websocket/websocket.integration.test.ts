@@ -9,7 +9,16 @@ vi.mock('../../../src/utils/jwt', () => ({
   TokenAudience: {
     ACCESS: 'sanctuary:access',
   },
-  verifyToken: vi.fn(async (token: string) => ({ userId: token === 'good-token' ? 'user-1' : 'user-2' })),
+  verifyToken: vi.fn(async (token: string) => ({
+    userId: token === 'good-token' ? 'user-1' : 'user-2',
+    username: token === 'good-token' ? 'alice' : 'bob',
+    isAdmin: false,
+    sessionVersion: 0,
+  })),
+}));
+
+vi.mock('../../../src/services/accessTokenSessionService', () => ({
+  resolveCurrentAccessTokenPayload: vi.fn(async (payload) => payload),
 }));
 
 vi.mock('../../../src/services/accessControl', () => ({

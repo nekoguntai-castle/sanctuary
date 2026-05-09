@@ -1,6 +1,33 @@
+# Active Task: P1-02 Access JWT Revocation Foundation 2026-05-08
+
+Status: in progress; branch `fix/access-jwt-revocation-foundation`
+
+Goal: make existing access JWTs fail immediately after logout-all, password/security revocation, admin role changes, user disable/delete, and refresh-token revocation state changes.
+
+## Plan
+
+- [x] Map access/refresh token issuance, auth middleware, admin user mutation, logout-all, password reset/change, disable/delete, and refresh routes.
+- [x] Add regression tests proving stale access tokens and refresh chains fail after each revocation state transition.
+- [x] Add a per-user revocation marker/version to persistence and token claims, with a migration-safe behavior for legacy tokens.
+- [x] Enforce the marker in shared authentication and refresh-token flows without trusting stale JWT role claims.
+- [x] Advance the marker in all revocation-triggering workflows and emit structured audit/log events where existing patterns support it.
+- [x] Run focused auth tests, server typecheck/lint/build, touched-file lizard, migration checks, and `git diff --check`.
+- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+
+## Review
+
+- Added `User.sessionVersion` with migration `20260508010000_add_user_session_version` and propagated the claim through access, refresh, and 2FA tokens.
+- Added shared current-user/session validation for HTTP auth middleware and WebSocket auth so stale tokens fail even when the JWT signature and audience are valid; current DB username/admin role replaces stale token claims.
+- Refresh and 2FA completion now reject mismatched session versions, and refresh-token rotation carries the current version into the next refresh token.
+- `revokeAllUserTokens` now advances the per-user session version before deleting refresh tokens; logout-all uses that single path, password changes inherit it, and admin password reset, admin role change, and user delete all trigger it.
+- Regression coverage added for stale access/refresh/session-version behavior in unit, WebSocket, route, and Docker-backed integration flows.
+- Verification passed: `npm --prefix server run test:run -- tests/unit/utils/jwt.test.ts tests/unit/middleware/auth.test.ts tests/unit/websocket/auth.test.ts tests/unit/services/tokenRevocation.test.ts tests/unit/services/refreshTokenService.test.ts tests/unit/api/auth.routes.registration.test.ts tests/unit/api/auth.routes.2fa.test.ts tests/unit/api/admin.test.ts tests/unit/api/admin-routes.test.ts` (481 tests), `./scripts/run-integration-tests.sh tests/integration/flows/auth.integration.test.ts tests/integration/flows/admin.integration.test.ts` (97 tests, fresh migrations applied), `cd server && npm run build`, `npm run lint:server`, `npm run typecheck:server:tests`, touched-file `npm run quality:lizard -- ...`, and `git diff --check`.
+
+---
+
 # Active Task: P1-01 Raw Broadcast Canonical Validation 2026-05-08
 
-Status: in progress; branch `fix/raw-broadcast-canonical-validation`
+Status: completed; PR #341 merged as `4ff18340`
 
 Goal: close P1-01 by deriving raw transaction broadcast policy/persistence metadata from decoded raw hex and wallet DB state before network broadcast.
 
@@ -11,7 +38,7 @@ Goal: close P1-01 by deriving raw transaction broadcast policy/persistence metad
 - [x] Implement canonical raw transaction intent derivation from decoded transaction, wallet UTXOs, and wallet addresses.
 - [x] Reject missing input ownership, unknown paid outputs, multiple external recipients, negative fees, and caller metadata mismatches before `broadcastAndSave`.
 - [x] Run focused backend tests, typecheck/lint checks for touched files, and diff review.
-- [ ] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
+- [x] Commit, push, open PR, monitor checks, fix failures, merge, and clean up.
 
 ## Review
 
@@ -20,6 +47,7 @@ Goal: close P1-01 by deriving raw transaction broadcast policy/persistence metad
 - `broadcasting.ts` now decodes raw hex before policy evaluation, confirms all inputs belong to the wallet, rejects UTXOs locked by other drafts, derives canonical recipient/amount/fee/input/output metadata, and rejects request or draft metadata mismatches before `broadcastAndSave`.
 - Verification passed: `npm --prefix server test -- --run tests/unit/api/transactions-http-routes.test.ts` (102 tests), `JWT_SECRET=test-jwt-secret-for-ci-minimum-32-chars ENCRYPTION_KEY='test-encryption-key-32-chars-long!' NODE_ENV=test SANCTUARY_VITEST_INFRA_ATTEMPTS=1 npm --prefix server run test:run:ci -- tests/unit --coverage` (9,626 tests, 100% coverage), `npm run lint:server`, `cd server && npm run build`, `npm run typecheck:server:tests`, `npm run quality:lizard -- server/src/api/transactions/broadcasting.ts server/tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.broadcast.contracts.ts server/tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.rawBroadcast.contracts.ts server/tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutesTestHarness.ts`, and `git diff --check`.
 - CI triage: after Forgejo `Full Browser E2E Tests` failed without retrievable job logs, local CI-style browser verification passed for `admin-auth`, `wallet-lifecycle`, `wallet-transactions`, and `wallet-experience` against fresh Postgres/Redis services.
+- Delivery: PR #341 merged at `2026-05-08T23:28:44-10:00` as squash commit `4ff18340ee2a4dc983a01bf5a32d07d01ef5bc92`; post-merge `main` checks completed successfully.
 - Broader baseline: `cd server && npm run typecheck:tests:full` currently fails on pre-existing type errors across unrelated test files; no raw-broadcast files appeared in the reported failures.
 
 ---

@@ -189,6 +189,11 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(401);
+
       const loginResponse = await request(app)
         .post('/api/v1/auth/login')
         .send({
@@ -431,6 +436,16 @@ describeWithDb('Authentication Integration', () => {
       await request(app)
         .post('/api/v1/auth/refresh')
         .send({ refreshToken: tokens2.refreshToken })
+        .expect(401);
+
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${tokens1.token}`)
+        .expect(401);
+
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${tokens2.token}`)
         .expect(401);
     });
   });

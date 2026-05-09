@@ -97,10 +97,11 @@ export function generateTestToken(payload: {
   userId: string;
   username: string;
   isAdmin: boolean;
+  sessionVersion?: number;
   pending2FA?: boolean;
 }): string {
   return jwt.sign(
-    { ...payload, aud: 'sanctuary:access' },
+    { ...payload, sessionVersion: payload.sessionVersion ?? 0, aud: 'sanctuary:access' },
     TEST_JWT_SECRET,
     { expiresIn: '1h' }
   );
@@ -113,9 +114,10 @@ export function generateExpiredToken(payload: {
   userId: string;
   username: string;
   isAdmin: boolean;
+  sessionVersion?: number;
 }): string {
   return jwt.sign(
-    { ...payload, aud: 'sanctuary:access' },
+    { ...payload, sessionVersion: payload.sessionVersion ?? 0, aud: 'sanctuary:access' },
     TEST_JWT_SECRET,
     { expiresIn: '-1h' }
   );
@@ -128,9 +130,10 @@ export function generateInvalidSignatureToken(payload: {
   userId: string;
   username: string;
   isAdmin: boolean;
+  sessionVersion?: number;
 }): string {
   return jwt.sign(
-    { ...payload, aud: 'sanctuary:access' },
+    { ...payload, sessionVersion: payload.sessionVersion ?? 0, aud: 'sanctuary:access' },
     'wrong-secret',
     { expiresIn: '1h' }
   );
@@ -143,9 +146,10 @@ export function generate2FATestToken(payload: {
   userId: string;
   username: string;
   isAdmin: boolean;
+  sessionVersion?: number;
 }): string {
   return jwt.sign(
-    { ...payload, pending2FA: true, aud: 'sanctuary:2fa' },
+    { ...payload, sessionVersion: payload.sessionVersion ?? 0, pending2FA: true, aud: 'sanctuary:2fa' },
     TEST_JWT_SECRET,
     { expiresIn: '5m' }
   );
@@ -156,7 +160,7 @@ export function generate2FATestToken(payload: {
  */
 export function generateRefreshTestToken(userId: string): string {
   return jwt.sign(
-    { userId, type: 'refresh', aud: 'sanctuary:refresh' },
+    { userId, sessionVersion: 0, jti: 'test-refresh-jti', type: 'refresh', aud: 'sanctuary:refresh' },
     TEST_JWT_SECRET,
     { expiresIn: '7d' }
   );

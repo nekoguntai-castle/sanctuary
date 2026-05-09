@@ -5,7 +5,7 @@ import './authTestHarness';
 import { optionalAuth } from '../../../../src/middleware/auth';
 import { verifyToken, extractTokenFromHeader, TokenAudience } from '../../../../src/utils/jwt';
 import { requestContext } from '../../../../src/utils/requestContext';
-import { validPayload } from './authTestHarness';
+import { mockUserRepository, validPayload } from './authTestHarness';
 
 export function registerOptionalAuthMiddlewareContracts() {
   describe('optionalAuth middleware', () => {
@@ -30,6 +30,30 @@ export function registerOptionalAuthMiddlewareContracts() {
           validPayload.userId,
           validPayload.username
         );
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('should continue without user when the token session version is stale', async () => {
+        const token = 'stale-token';
+        (extractTokenFromHeader as Mock).mockReturnValue(token);
+        (verifyToken as Mock).mockResolvedValue(validPayload);
+        mockUserRepository.findByIdWithSelect.mockResolvedValueOnce({
+          id: validPayload.userId,
+          username: validPayload.username,
+          isAdmin: validPayload.isAdmin,
+          sessionVersion: validPayload.sessionVersion + 1,
+        });
+
+        const req = createMockRequest({
+          headers: { authorization: `Bearer ${token}` },
+        });
+        const { res } = createMockResponse();
+        const next = createMockNext();
+
+        await optionalAuth(req as any, res as any, next);
+
+        expect((req as any).user).toBeUndefined();
+        expect(requestContext.setUser).not.toHaveBeenCalled();
         expect(next).toHaveBeenCalled();
       });
 

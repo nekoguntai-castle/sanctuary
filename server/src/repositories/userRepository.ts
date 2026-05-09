@@ -141,6 +141,18 @@ export async function updateWithSelect<T extends Prisma.UserSelect>(
 }
 
 /**
+ * Advance a user's session version to invalidate existing access and refresh JWTs.
+ */
+export async function incrementSessionVersion(id: string): Promise<number> {
+  const user = await prisma.user.update({
+    where: { id },
+    data: { sessionVersion: { increment: 1 } },
+    select: { sessionVersion: true },
+  });
+  return user.sessionVersion;
+}
+
+/**
  * Delete a user by ID
  */
 export async function deleteById(id: string): Promise<void> {
@@ -368,6 +380,7 @@ export const userRepository = {
   createWithSelect,
   update,
   updateWithSelect,
+  incrementSessionVersion,
   deleteById,
   updateEmailVerification,
   updateEmail,

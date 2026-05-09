@@ -8,6 +8,7 @@ import {
 import {
   getAdminRouter,
   mockAuditLogFromRequest,
+  mockRevokeAllUserTokens,
 } from './adminTestHarness';
 
 export function registerAdminUserTests(): void {
@@ -270,6 +271,7 @@ export function registerAdminUserTests(): void {
           const response = getResponse();
           expect(response.statusCode).toBe(200);
           expect(mockPrismaClient.user.update).toHaveBeenCalled();
+          expect(mockRevokeAllUserTokens).toHaveBeenCalledWith('user-1', 'admin_password_reset');
         }
       });
 
@@ -309,6 +311,40 @@ export function registerAdminUserTests(): void {
             expect.anything(),
             expect.anything()
           );
+          expect(mockRevokeAllUserTokens).toHaveBeenCalledWith('user-1', 'admin_role_change');
+        }
+      });
+
+      it('should not revoke sessions when admin status is submitted unchanged', async () => {
+        const existingUser = {
+          id: 'user-1',
+          username: 'testuser',
+          email: 'test@example.com',
+          isAdmin: true,
+        };
+
+        mockPrismaClient.user.findUnique.mockResolvedValue(existingUser);
+        mockPrismaClient.user.update.mockResolvedValue({
+          ...existingUser,
+          updatedAt: new Date(),
+        });
+
+        const req = createMockRequest({
+          user: { userId: 'admin-1', username: 'admin', isAdmin: true },
+          params: { userId: 'user-1' },
+          body: { isAdmin: true },
+        });
+        const { res, getResponse } = createMockResponse();
+
+        const handler = getAdminRouter().stack.find((layer: any) =>
+          layer.route?.path === '/users/:userId' && layer.route?.methods?.put
+        )?.route?.stack?.[2]?.handle;
+
+        if (handler) {
+          await handler(req, res);
+          const response = getResponse();
+          expect(response.statusCode).toBe(200);
+          expect(mockRevokeAllUserTokens).not.toHaveBeenCalled();
         }
       });
 
@@ -396,6 +432,7 @@ export function registerAdminUserTests(): void {
           expect(mockPrismaClient.user.delete).toHaveBeenCalledWith({
             where: { id: 'user-1' },
           });
+          expect(mockRevokeAllUserTokens).toHaveBeenCalledWith('user-1', 'admin_user_delete');
           expect(mockAuditLogFromRequest).toHaveBeenCalled();
         }
       });

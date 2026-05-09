@@ -257,6 +257,7 @@ export function registerAuthPasswordTokenTests(): void {
         id: 'test-user-id',
         username: 'testuser',
         isAdmin: false,
+        sessionVersion: 0,
       });
 
       const response = await request(app)
@@ -280,6 +281,7 @@ export function registerAuthPasswordTokenTests(): void {
         id: 'test-user-id',
         username: 'testuser',
         isAdmin: false,
+        sessionVersion: 0,
       });
 
       const response = await request(app)
@@ -308,6 +310,7 @@ export function registerAuthPasswordTokenTests(): void {
         id: 'test-user-id',
         username: 'testuser',
         isAdmin: false,
+        sessionVersion: 0,
       });
 
       const { rotateRefreshToken } = await import('../../../../src/services/refreshTokenService');
@@ -343,6 +346,35 @@ export function registerAuthPasswordTokenTests(): void {
         );
         expect(clearing).toBeUndefined();
       }
+    });
+
+    it('should reject refresh tokens with stale session versions and clear browser cookies', async () => {
+      const { verifyRefreshToken } = await import('../../../../src/utils/jwt');
+      vi.mocked(verifyRefreshToken).mockResolvedValueOnce({
+        userId: 'test-user-id',
+        jti: 'refresh-jti',
+        aud: 'sanctuary:refresh',
+        type: 'refresh',
+        sessionVersion: 1,
+      });
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: 'test-user-id',
+        username: 'testuser',
+        isAdmin: false,
+        sessionVersion: 2,
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', ['sanctuary_refresh=stale-version-refresh'])
+        .send({});
+
+      expect(response.status).toBe(401);
+      expect(response.body.message).toContain('Refresh token has been revoked');
+      const setCookie = response.headers['set-cookie'];
+      const cookieHeader = Array.isArray(setCookie) ? setCookie.join('\n') : String(setCookie);
+      expect(cookieHeader).toContain('sanctuary_access=;');
+      expect(cookieHeader).toContain('sanctuary_refresh=;');
     });
 
     it('should handle errors gracefully', async () => {
@@ -441,6 +473,8 @@ export function registerAuthPasswordTokenTests(): void {
 
   describe('POST /auth/logout-all - Logout All Devices', () => {
     it('should logout from all devices successfully', async () => {
+      const { revokeAllUserTokens } = await import('../../../../src/services/tokenRevocation');
+
       const response = await request(app)
         .post('/api/v1/auth/logout-all')
         .set('Authorization', 'Bearer valid-token')
@@ -450,11 +484,12 @@ export function registerAuthPasswordTokenTests(): void {
       expect(response.body.success).toBe(true);
       expect(response.body.message).toContain('Logged out from all devices');
       expect(response.body.sessionsRevoked).toBe(5);
+      expect(revokeAllUserTokens).toHaveBeenCalledWith('test-user-id', 'logout_all_devices');
     });
 
     it('should handle errors gracefully', async () => {
-      const { revokeAllUserRefreshTokens } = await import('../../../../src/services/refreshTokenService');
-      const mockRevokeAll = vi.mocked(revokeAllUserRefreshTokens);
+      const { revokeAllUserTokens } = await import('../../../../src/services/tokenRevocation');
+      const mockRevokeAll = vi.mocked(revokeAllUserTokens);
       mockRevokeAll.mockRejectedValueOnce(new Error('Revocation error'));
 
       const response = await request(app)

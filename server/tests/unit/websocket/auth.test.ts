@@ -3,12 +3,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedWebSocket } from '../../../src/websocket/types';
 
 const mockVerifyToken = vi.hoisted(() => vi.fn());
+const mockResolveCurrentAccessTokenPayload = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../src/utils/jwt', () => ({
   TokenAudience: {
     ACCESS: 'sanctuary:access',
   },
   verifyToken: mockVerifyToken,
+}));
+
+vi.mock('../../../src/services/accessTokenSessionService', () => ({
+  resolveCurrentAccessTokenPayload: mockResolveCurrentAccessTokenPayload,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -68,7 +73,9 @@ describe('websocket auth', () => {
       userId: 'user-1',
       username: 'alice',
       isAdmin: false,
+      sessionVersion: 0,
     });
+    mockResolveCurrentAccessTokenPayload.mockImplementation(async (payload) => payload);
   });
 
   it('verifies upgrade tokens with the access-token audience', async () => {
@@ -80,8 +87,24 @@ describe('websocket auth', () => {
 
     expect(isAsync).toBe(true);
     expect(mockVerifyToken).toHaveBeenCalledWith('access-token', 'sanctuary:access');
+    expect(mockResolveCurrentAccessTokenPayload).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1', sessionVersion: 0 })
+    );
     expect(callbacks.trackUserConnection).toHaveBeenCalledWith('user-1', client);
     expect(callbacks.completeClientRegistration).toHaveBeenCalledWith(client);
+  });
+
+  it('rejects stale session-version tokens during upgrade authentication', async () => {
+    mockResolveCurrentAccessTokenPayload.mockRejectedValueOnce(new Error('Token has been revoked'));
+    const client = createClient();
+    const callbacks = createCallbacks();
+
+    authenticateOnUpgrade(client, createRequest('stale-token'), callbacks);
+    await flushMicrotasks();
+
+    expect(mockVerifyToken).toHaveBeenCalledWith('stale-token', 'sanctuary:access');
+    expect(client.close).toHaveBeenCalledWith(1008, 'Authentication failed');
+    expect(callbacks.completeClientRegistration).not.toHaveBeenCalled();
   });
 
   it('rejects pending 2FA tokens during upgrade authentication', async () => {
@@ -113,6 +136,24 @@ describe('websocket auth', () => {
     expect(callbacks.sendToClient).toHaveBeenCalledWith(
       client,
       expect.objectContaining({ type: 'authenticated' })
+    );
+  });
+
+  it('rejects stale session-version tokens during auth-message authentication', async () => {
+    mockResolveCurrentAccessTokenPayload.mockRejectedValueOnce(new Error('Token has been revoked'));
+    const client = createClient();
+    const callbacks = createCallbacks();
+
+    await handleAuthMessage(client, { token: 'stale-message-token' }, callbacks);
+
+    expect(mockVerifyToken).toHaveBeenCalledWith('stale-message-token', 'sanctuary:access');
+    expect(client.userId).toBeUndefined();
+    expect(callbacks.sendToClient).toHaveBeenCalledWith(
+      client,
+      {
+        type: 'error',
+        data: { message: 'Authentication failed' },
+      }
     );
   });
 

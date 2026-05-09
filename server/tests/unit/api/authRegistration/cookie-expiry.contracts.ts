@@ -154,6 +154,7 @@ export function registerAuthCookieExpiryTests(): void {
         id: 'test-user-id',
         username: 'testuser',
         isAdmin: false,
+        sessionVersion: 0,
       });
 
       const response = await request(app)
@@ -174,6 +175,7 @@ export function registerAuthCookieExpiryTests(): void {
         id: 'test-user-id',
         username: 'testuser',
         isAdmin: false,
+        sessionVersion: 0,
       });
 
       const response = await request(app)
@@ -201,6 +203,7 @@ export function registerAuthCookieExpiryTests(): void {
         id: 'test-user-id',
         username: 'testuser',
         isAdmin: false,
+        sessionVersion: 0,
       });
 
       await request(app)
@@ -213,10 +216,12 @@ export function registerAuthCookieExpiryTests(): void {
       expect(rotateMock).toHaveBeenCalledWith(
         'cookie-refresh-token',
         expect.any(Object),
+        0,
       );
       expect(rotateMock).not.toHaveBeenCalledWith(
         'body-refresh-token',
         expect.any(Object),
+        expect.anything(),
       );
     });
 

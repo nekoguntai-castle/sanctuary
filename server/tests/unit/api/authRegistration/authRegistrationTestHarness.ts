@@ -48,7 +48,7 @@ vi.mock('../../../../src/config', () => ({
 vi.mock('../../../../src/services/tokenRevocation', () => ({
   isTokenRevoked: vi.fn().mockResolvedValue(false),
   revokeToken: vi.fn().mockResolvedValue(undefined),
-  revokeAllUserTokens: vi.fn().mockResolvedValue(undefined),
+  revokeAllUserTokens: vi.fn().mockResolvedValue(5),
   initializeRevocationService: vi.fn(),
   shutdownRevocationService: vi.fn(),
 }));
@@ -103,8 +103,8 @@ vi.mock('../../../../src/middleware/auth', () => ({
   authenticate: (req: any, _res: any, next: any) => {
     const omitUsername = req.headers['x-test-no-username'] === '1';
     req.user = omitUsername
-      ? { userId: 'test-user-id', isAdmin: false }
-      : { userId: 'test-user-id', username: 'testuser', isAdmin: false };
+      ? { userId: 'test-user-id', isAdmin: false, sessionVersion: 0 }
+      : { userId: 'test-user-id', username: 'testuser', isAdmin: false, sessionVersion: 0 };
     next();
   },
   requireAdmin: (req: any, res: any, next: any) => {
@@ -149,10 +149,10 @@ vi.mock('../../../../src/utils/jwt', async (importOriginal) => {
   return {
     ...actual,
     hashToken: vi.fn().mockReturnValue('hashed-token'),
-    verifyRefreshToken: vi.fn().mockResolvedValue({ userId: 'test-user-id', username: 'testuser' }),
+    verifyRefreshToken: vi.fn().mockResolvedValue({ userId: 'test-user-id', username: 'testuser', sessionVersion: 0 }),
     decodeToken: vi.fn().mockReturnValue({ jti: 'token-jti', exp: Math.floor(Date.now() / 1000) + 3600, userId: 'test-user-id' }),
     generate2FAToken: vi.fn().mockReturnValue('mock-2fa-token'),
-    verify2FAToken: vi.fn().mockResolvedValue({ userId: 'test-user-id', username: 'testuser', isAdmin: false }),
+    verify2FAToken: vi.fn().mockResolvedValue({ userId: 'test-user-id', username: 'testuser', isAdmin: false, sessionVersion: 0 }),
   };
 });
 

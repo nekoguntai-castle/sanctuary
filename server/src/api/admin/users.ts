@@ -191,6 +191,26 @@ async function auditUserUpdate(
   );
 }
 
+function getSessionRevocationReason(
+  existingUser: ExistingUserForUpdate,
+  updateData: Record<string, unknown>,
+): string | null {
+  const passwordChanged = "password" in updateData;
+  const adminRoleChanged =
+    "isAdmin" in updateData && updateData.isAdmin !== existingUser.isAdmin;
+
+  if (passwordChanged && adminRoleChanged) {
+    return "admin_security_update";
+  }
+  if (passwordChanged) {
+    return "admin_password_reset";
+  }
+  if (adminRoleChanged) {
+    return "admin_role_change";
+  }
+  return null;
+}
+
 async function handleUpdateUser(
   req: TypedRequest,
   res: Response,
@@ -210,6 +230,18 @@ async function handleUpdateUser(
     formatUpdateUserValidation,
   ) as AdminUserUpdateInput;
   const updateData = await buildUserUpdateData(existingUser, updateInput);
+  const sessionRevocationReason = getSessionRevocationReason(
+    existingUser,
+    updateData,
+  );
+
+  if (sessionRevocationReason) {
+    await revokeAllUserTokens(userId, sessionRevocationReason);
+    log.info("User sessions invalidated after admin security update", {
+      userId,
+      reason: sessionRevocationReason,
+    });
+  }
 
   // Update user
   const user = await userRepository.updateWithSelect(userId, updateData, {
@@ -221,14 +253,6 @@ async function handleUpdateUser(
     createdAt: true,
     updatedAt: true,
   });
-
-  // If password was changed by admin, invalidate all user sessions
-  if ("password" in updateData) {
-    await revokeAllUserTokens(userId, "admin_password_reset");
-    log.info("User sessions invalidated after admin password reset", {
-      userId,
-    });
-  }
 
   log.info("User updated:", { userId, changes: Object.keys(updateData) });
   await auditUserUpdate(req, userId, user.username, updateData);
@@ -361,6 +385,8 @@ router.delete(
     if (!existingUser) {
       throw new NotFoundError("User not found");
     }
+
+    await revokeAllUserTokens(userId, "admin_user_delete");
 
     // Delete user
     await userRepository.deleteById(userId);

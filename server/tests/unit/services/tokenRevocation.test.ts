@@ -20,6 +20,9 @@ const { mockPrisma, mockCache, mockLogger } = vi.hoisted(() => {
       findMany: vi.fn(),
       deleteMany: vi.fn(),
     },
+    user: {
+      update: vi.fn(),
+    },
   };
 
   const mockCache = {
@@ -68,6 +71,7 @@ describe('Token Revocation Service', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrisma.user.update.mockResolvedValue({ sessionVersion: 1 });
   });
 
   afterEach(() => {
@@ -229,7 +233,8 @@ describe('Token Revocation Service', () => {
   });
 
   describe('revokeAllUserTokens', () => {
-    it('should delete all refresh tokens for user', async () => {
+    it('should advance the user session version and delete all refresh tokens for user', async () => {
+      mockPrisma.user.update.mockResolvedValue({ sessionVersion: 2 });
       mockPrisma.refreshToken.findMany.mockResolvedValue([
         { id: 'token-1' },
         { id: 'token-2' },
@@ -239,16 +244,30 @@ describe('Token Revocation Service', () => {
       const count = await revokeAllUserTokens(testUserId, 'security concern');
 
       expect(count).toBe(2);
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: testUserId },
+        data: { sessionVersion: { increment: 1 } },
+        select: { sessionVersion: true },
+      });
       expect(mockPrisma.refreshToken.deleteMany).toHaveBeenCalledWith({
         where: { userId: testUserId },
       });
     });
 
     it('should throw error on database failure', async () => {
+      mockPrisma.user.update.mockResolvedValue({ sessionVersion: 2 });
       mockPrisma.refreshToken.findMany.mockResolvedValue([]);
       mockPrisma.refreshToken.deleteMany.mockRejectedValue(new Error('DB error'));
 
       await expect(revokeAllUserTokens(testUserId)).rejects.toThrow('DB error');
+    });
+
+    it('should not delete refresh tokens when the session version cannot be advanced', async () => {
+      mockPrisma.user.update.mockRejectedValue(new Error('version update failed'));
+
+      await expect(revokeAllUserTokens(testUserId)).rejects.toThrow('version update failed');
+
+      expect(mockPrisma.refreshToken.deleteMany).not.toHaveBeenCalled();
     });
   });
 

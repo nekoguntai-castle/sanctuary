@@ -43,6 +43,7 @@ export function registerTwoFactorVerifyContracts() {
       id: 'test-user-id',
       username: 'testuser',
       isAdmin: false,
+      sessionVersion: 0,
       twoFactorEnabled: true,
       twoFactorSecret: 'some-secret',
       twoFactorBackupCodes: null,
@@ -59,12 +60,39 @@ export function registerTwoFactorVerifyContracts() {
     expect(response.body.message).toContain('Invalid verification code');
   });
 
+  it('should return 401 when the temporary token session version is stale', async () => {
+    const { verify2FAToken } = await import('../../../../src/utils/jwt');
+    vi.mocked(verify2FAToken).mockResolvedValueOnce({
+      userId: 'test-user-id',
+      username: 'testuser',
+      isAdmin: false,
+      sessionVersion: 1,
+    });
+    mockPrismaClient.user.findUnique.mockResolvedValue({
+      id: 'test-user-id',
+      username: 'testuser',
+      isAdmin: false,
+      sessionVersion: 2,
+      twoFactorEnabled: true,
+      twoFactorSecret: 'some-secret',
+      twoFactorBackupCodes: null,
+    });
+
+    const response = await request(app)
+      .post('/api/v1/auth/2fa/verify')
+      .send({ tempToken: 'stale-token', code: '123456' });
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toContain('Invalid or expired temporary token');
+  });
+
   it('should successfully verify 2FA and return tokens', async () => {
     mockPrismaClient.user.findUnique.mockResolvedValue({
       id: 'test-user-id',
       username: 'testuser',
       email: 'test@example.com',
       isAdmin: false,
+      sessionVersion: 0,
       twoFactorEnabled: true,
       twoFactorSecret: 'some-secret',
       preferences: { darkMode: true },
@@ -87,6 +115,7 @@ export function registerTwoFactorVerifyContracts() {
       username: 'testuser',
       email: 'test@example.com',
       isAdmin: false,
+      sessionVersion: 0,
       twoFactorEnabled: true,
       twoFactorSecret: 'some-secret',
       twoFactorBackupCodes: '[{"hash":"h1"}]',
@@ -116,6 +145,7 @@ export function registerTwoFactorVerifyContracts() {
       username: 'testuser',
       email: 'test@example.com',
       isAdmin: false,
+      sessionVersion: 0,
       twoFactorEnabled: true,
       twoFactorSecret: 'some-secret',
       twoFactorBackupCodes: '[{"hash":"h1"}]',
@@ -141,6 +171,7 @@ export function registerTwoFactorVerifyContracts() {
       id: 'test-user-id',
       username: 'testuser',
       isAdmin: false,
+      sessionVersion: 0,
       twoFactorEnabled: true,
       twoFactorSecret: 'some-secret',
       twoFactorBackupCodes: '[{"hash":"h1"}]',
@@ -184,6 +215,7 @@ export function registerTwoFactorVerifyContracts() {
       username: 'testuser',
       email: 'test@example.com',
       isAdmin: false,
+      sessionVersion: 0,
       twoFactorEnabled: true,
       twoFactorSecret: 'some-secret',
       preferences: { darkMode: true },

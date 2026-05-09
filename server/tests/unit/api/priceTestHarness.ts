@@ -6,6 +6,8 @@ import express, {
 } from "express";
 import { vi } from "vitest";
 
+const mockResolveCurrentAccessTokenPayload = vi.hoisted(() => vi.fn(async (payload) => payload));
+
 vi.mock("jsonwebtoken", () => ({
   default: {
     verify: vi.fn((token: string) => {
@@ -15,6 +17,7 @@ vi.mock("jsonwebtoken", () => ({
           username: "admin",
           type: "access",
           isAdmin: true,
+          sessionVersion: 0,
         };
       }
       if (token === "user-token") {
@@ -23,11 +26,16 @@ vi.mock("jsonwebtoken", () => ({
           username: "user",
           type: "access",
           isAdmin: false,
+          sessionVersion: 0,
         };
       }
       throw new Error("Invalid token");
     }),
   },
+}));
+
+vi.mock("../../../src/services/accessTokenSessionService", () => ({
+  resolveCurrentAccessTokenPayload: mockResolveCurrentAccessTokenPayload,
 }));
 
 vi.mock("../../../src/models/prisma", () => ({
@@ -139,6 +147,7 @@ export function createPriceTestApp(): Express {
 
 export function resetPriceMocks() {
   vi.clearAllMocks();
+  mockResolveCurrentAccessTokenPayload.mockImplementation(async (payload) => payload);
   rateLimitHits.length = 0;
   mockPriceService.getSupportedCurrencies.mockReturnValue([
     "USD",

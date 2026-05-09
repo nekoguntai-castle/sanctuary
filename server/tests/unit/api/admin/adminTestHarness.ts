@@ -44,6 +44,7 @@ const mockAuditGetStats = vi.fn().mockResolvedValue({
   byCategory: {},
   byUser: {},
 });
+const mockRevokeAllUserTokens = vi.hoisted(() => vi.fn().mockResolvedValue(0));
 
 vi.mock('../../../../src/services/auditService', () => ({
   auditService: {
@@ -75,6 +76,10 @@ vi.mock('../../../../src/services/auditService', () => ({
     SYSTEM: 'system',
   },
   getClientInfo: vi.fn().mockReturnValue({ ipAddress: '127.0.0.1', userAgent: 'test' }),
+}));
+
+vi.mock('../../../../src/services/tokenRevocation', () => ({
+  revokeAllUserTokens: mockRevokeAllUserTokens,
 }));
 
 // Mock backup service
@@ -256,6 +261,7 @@ export {
   mockAuditGetStats,
   mockAuditLogFromRequest,
   mockAuditQuery,
+  mockRevokeAllUserTokens,
   mockCreateBackup,
   mockReloadElectrumServers,
   mockResetNodeClient,

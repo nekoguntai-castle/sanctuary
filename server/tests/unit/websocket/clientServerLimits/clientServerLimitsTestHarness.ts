@@ -3,7 +3,13 @@ import { WebSocket } from 'ws';
 
 const clientServerLimitMocks = vi.hoisted(() => {
   const mockCheckWalletAccess = vi.fn(async () => ({ hasAccess: true, canEdit: true, role: 'owner' }));
-  const mockVerifyToken = vi.fn(async () => ({ userId: 'user-1' }));
+  const mockVerifyToken = vi.fn(async () => ({
+    userId: 'user-1',
+    username: 'alice',
+    isAdmin: false,
+    sessionVersion: 0,
+  }));
+  const mockResolveCurrentAccessTokenPayload = vi.fn(async (payload) => payload);
   const mockPublishBroadcast = vi.fn();
 
   const metricMocks = {
@@ -18,6 +24,7 @@ const clientServerLimitMocks = vi.hoisted(() => {
     metricMocks,
     mockCheckWalletAccess,
     mockPublishBroadcast,
+    mockResolveCurrentAccessTokenPayload,
     mockVerifyToken,
   };
 });
@@ -31,6 +38,10 @@ vi.mock('../../../../src/utils/jwt', () => ({
     ACCESS: 'sanctuary:access',
   },
   verifyToken: clientServerLimitMocks.mockVerifyToken,
+}));
+
+vi.mock('../../../../src/services/accessTokenSessionService', () => ({
+  resolveCurrentAccessTokenPayload: clientServerLimitMocks.mockResolveCurrentAccessTokenPayload,
 }));
 
 vi.mock('../../../../src/websocket/redisBridge', () => ({
@@ -50,9 +61,21 @@ vi.mock('../../../../src/utils/logger', () => ({
 
 vi.mock('../../../../src/observability/metrics', () => clientServerLimitMocks.metricMocks);
 
-const { metricMocks, mockCheckWalletAccess, mockPublishBroadcast, mockVerifyToken } = clientServerLimitMocks;
+const {
+  metricMocks,
+  mockCheckWalletAccess,
+  mockPublishBroadcast,
+  mockResolveCurrentAccessTokenPayload,
+  mockVerifyToken,
+} = clientServerLimitMocks;
 
-export { metricMocks, mockCheckWalletAccess, mockPublishBroadcast, mockVerifyToken };
+export {
+  metricMocks,
+  mockCheckWalletAccess,
+  mockPublishBroadcast,
+  mockResolveCurrentAccessTokenPayload,
+  mockVerifyToken,
+};
 
 export const loadModule = async () => {
   vi.resetModules();
@@ -135,7 +158,13 @@ export const setupClientServerLimitMocks = () => {
   process.env.WS_MAX_QUEUE_SIZE = '100';
   process.env.WS_QUEUE_OVERFLOW_POLICY = 'drop_oldest';
   mockCheckWalletAccess.mockResolvedValue({ hasAccess: true, canEdit: true, role: 'owner' });
-  mockVerifyToken.mockResolvedValue({ userId: 'user-1' });
+  mockResolveCurrentAccessTokenPayload.mockImplementation(async (payload) => payload);
+  mockVerifyToken.mockResolvedValue({
+    userId: 'user-1',
+    username: 'alice',
+    isAdmin: false,
+    sessionVersion: 0,
+  });
 };
 
 export const cleanupClientServerLimitMocks = () => {

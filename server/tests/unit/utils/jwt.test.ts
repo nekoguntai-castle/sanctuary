@@ -98,6 +98,20 @@ describe('JWT Utilities', () => {
       expect(decoded.aud).toBe(TokenAudience.ACCESS);
     });
 
+    it('should include a default sessionVersion claim', () => {
+      const token = generateToken(mockPayload);
+      const decoded = jwt.decode(token) as any;
+
+      expect(decoded.sessionVersion).toBe(0);
+    });
+
+    it('should preserve an explicit sessionVersion claim', () => {
+      const token = generateToken({ ...mockPayload, sessionVersion: 7 });
+      const decoded = jwt.decode(token) as any;
+
+      expect(decoded.sessionVersion).toBe(7);
+    });
+
     it('should use default expiration', () => {
       const token = generateToken(mockPayload);
       const decoded = jwt.decode(token) as any;
@@ -143,6 +157,13 @@ describe('JWT Utilities', () => {
       expect(decoded.aud).toBe(TokenAudience.TWO_FACTOR);
     });
 
+    it('should include a sessionVersion claim', () => {
+      const token = generate2FAToken({ ...mockPayload, sessionVersion: 3 });
+      const decoded = jwt.decode(token) as any;
+
+      expect(decoded.sessionVersion).toBe(3);
+    });
+
     it('should have short expiration', () => {
       const token = generate2FAToken(mockPayload);
       const decoded = jwt.decode(token) as any;
@@ -185,6 +206,13 @@ describe('JWT Utilities', () => {
       expect(decoded.type).toBe('refresh');
     });
 
+    it('should include a sessionVersion claim', () => {
+      const token = generateRefreshToken('user-123', 5);
+      const decoded = jwt.decode(token) as any;
+
+      expect(decoded.sessionVersion).toBe(5);
+    });
+
     it('should include jti claim', () => {
       const token = generateRefreshToken('user-123');
       const decoded = jwt.decode(token) as any;
@@ -213,6 +241,7 @@ describe('JWT Utilities', () => {
       const token = jwt.sign(
         {
           ...mockPayload,
+          sessionVersion: 0,
           pending2FA: true,
           aud: TokenAudience.ACCESS,
         },
@@ -221,6 +250,19 @@ describe('JWT Utilities', () => {
       );
 
       await expect(verifyToken(token, TokenAudience.ACCESS)).rejects.toThrow('2FA verification required');
+    });
+
+    it('should reject access-audience tokens missing sessionVersion', async () => {
+      const token = jwt.sign(
+        {
+          ...mockPayload,
+          aud: TokenAudience.ACCESS,
+        },
+        mockConfig.jwtSecret,
+        { expiresIn: '1h' }
+      );
+
+      await expect(verifyToken(token, TokenAudience.ACCESS)).rejects.toThrow('Invalid or expired token');
     });
 
     it('should reject malformed access payloads after signature verification', async () => {
@@ -332,6 +374,7 @@ describe('JWT Utilities', () => {
       const token = jwt.sign(
         {
           ...mockPayload,
+          sessionVersion: 0,
           aud: TokenAudience.TWO_FACTOR,
         },
         mockConfig.jwtSecret,
@@ -348,6 +391,7 @@ describe('JWT Utilities', () => {
       const decoded = await verifyRefreshToken(token);
 
       expect(decoded.userId).toBe('user-123');
+      expect(decoded.sessionVersion).toBe(0);
       expect(decoded.type).toBe('refresh');
     });
 
@@ -373,9 +417,25 @@ describe('JWT Utilities', () => {
       const token = jwt.sign(
         {
           userId: 'user-123',
+          sessionVersion: 0,
           jti: 'jti-wrong-type',
           aud: TokenAudience.REFRESH,
           type: 'access',
+        },
+        mockConfig.jwtSecret,
+        { expiresIn: '7d' }
+      );
+
+      await expect(verifyRefreshToken(token)).rejects.toThrow('Invalid refresh token');
+    });
+
+    it('should throw for refresh token missing sessionVersion', async () => {
+      const token = jwt.sign(
+        {
+          userId: 'user-123',
+          jti: 'jti-no-session-version',
+          aud: TokenAudience.REFRESH,
+          type: 'refresh',
         },
         mockConfig.jwtSecret,
         { expiresIn: '7d' }

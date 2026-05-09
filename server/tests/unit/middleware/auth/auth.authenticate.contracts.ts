@@ -5,7 +5,7 @@ import './authTestHarness';
 import { authenticate } from '../../../../src/middleware/auth';
 import { verifyToken, extractTokenFromHeader, TokenAudience } from '../../../../src/utils/jwt';
 import { requestContext } from '../../../../src/utils/requestContext';
-import { validPayload } from './authTestHarness';
+import { mockUserRepository, validPayload } from './authTestHarness';
 
 export function registerAuthenticateMiddlewareContracts() {
   describe('authenticate middleware', () => {
@@ -31,6 +31,84 @@ export function registerAuthenticateMiddlewareContracts() {
           validPayload.username
         );
         expect(next).toHaveBeenCalled();
+      });
+
+      it('should attach current database user details instead of stale token role claims', async () => {
+        const token = 'valid-jwt-token';
+        const currentPayload = {
+          ...validPayload,
+          username: 'fresh-name',
+          isAdmin: true,
+        };
+        (extractTokenFromHeader as Mock).mockReturnValue(token);
+        (verifyToken as Mock).mockResolvedValue(validPayload);
+        mockUserRepository.findByIdWithSelect.mockResolvedValueOnce({
+          id: validPayload.userId,
+          username: currentPayload.username,
+          isAdmin: currentPayload.isAdmin,
+          sessionVersion: validPayload.sessionVersion,
+        });
+
+        const req = createMockRequest({
+          headers: { authorization: `Bearer ${token}` },
+        });
+        const { res } = createMockResponse();
+        const next = createMockNext();
+
+        await authenticate(req as any, res as any, next);
+
+        expect((req as any).user).toEqual(currentPayload);
+        expect(requestContext.setUser).toHaveBeenCalledWith(
+          validPayload.userId,
+          currentPayload.username
+        );
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('should reject tokens with stale session versions', async () => {
+        const token = 'stale-session-token';
+        (extractTokenFromHeader as Mock).mockReturnValue(token);
+        (verifyToken as Mock).mockResolvedValue(validPayload);
+        mockUserRepository.findByIdWithSelect.mockResolvedValueOnce({
+          id: validPayload.userId,
+          username: validPayload.username,
+          isAdmin: validPayload.isAdmin,
+          sessionVersion: validPayload.sessionVersion + 1,
+        });
+
+        const req = createMockRequest({
+          headers: { authorization: `Bearer ${token}` },
+        });
+        const { res, getResponse } = createMockResponse();
+        const next = createMockNext();
+
+        await authenticate(req as any, res as any, next);
+
+        const response = getResponse();
+        expect(response.statusCode).toBe(401);
+        expect(response.body.message).toBe('Invalid or expired token');
+        expect(next).not.toHaveBeenCalled();
+        expect((req as any).user).toBeUndefined();
+      });
+
+      it('should reject tokens for deleted users', async () => {
+        const token = 'deleted-user-token';
+        (extractTokenFromHeader as Mock).mockReturnValue(token);
+        (verifyToken as Mock).mockResolvedValue(validPayload);
+        mockUserRepository.findByIdWithSelect.mockResolvedValueOnce(null);
+
+        const req = createMockRequest({
+          headers: { authorization: `Bearer ${token}` },
+        });
+        const { res, getResponse } = createMockResponse();
+        const next = createMockNext();
+
+        await authenticate(req as any, res as any, next);
+
+        const response = getResponse();
+        expect(response.statusCode).toBe(401);
+        expect(response.body.message).toBe('Invalid or expired token');
+        expect(next).not.toHaveBeenCalled();
       });
 
       it('should reject expired token', async () => {
@@ -505,6 +583,7 @@ export function registerAuthenticateMiddlewareContracts() {
           userId: 'user-123',
           username: 'testuser',
           isAdmin: false,
+          sessionVersion: 0,
         };
 
         (extractTokenFromHeader as Mock).mockReturnValue(token);

@@ -27,6 +27,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, extractTokenFromHeader, JWTPayload, TokenAudience, TWO_FACTOR_REQUIRED_MESSAGE } from '../utils/jwt';
 import { requestContext } from '../utils/requestContext';
+import { resolveCurrentAccessTokenPayload } from '../services/accessTokenSessionService';
 import { UnauthorizedError } from '../errors/ApiError';
 import { SANCTUARY_ACCESS_COOKIE_NAME } from './authCookieNames';
 
@@ -84,12 +85,13 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
 
     // SEC-006: Verify token with expected audience
     const payload = await verifyToken(token, TokenAudience.ACCESS);
+    const currentPayload = await resolveCurrentAccessTokenPayload(payload);
 
     // Attach user to request
-    req.user = payload;
+    req.user = currentPayload;
 
     // Set user in request context for logging correlation
-    requestContext.setUser(payload.userId, payload.username);
+    requestContext.setUser(currentPayload.userId, currentPayload.username);
 
     next();
   } catch (error) {
@@ -144,10 +146,11 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
     if (token) {
       // SEC-006: Verify with expected audience
       const payload = await verifyToken(token, TokenAudience.ACCESS);
+      const currentPayload = await resolveCurrentAccessTokenPayload(payload);
 
-      req.user = payload;
+      req.user = currentPayload;
       // Set user in request context for logging correlation
-      requestContext.setUser(payload.userId, payload.username);
+      requestContext.setUser(currentPayload.userId, currentPayload.username);
     }
 
     next();
