@@ -1,6 +1,34 @@
+# Active Task: Node Client Test Large-File Split 2026-05-08
+
+Status: in progress; branch `test/node-client-large-file-split`
+
+Goal: reduce the next largest remaining test-file warning, `server/tests/unit/services/bitcoin/nodeClient.test.ts` at 961 LOC, without weakening the node-client coverage or destabilizing Vitest module mocks.
+
+## Plan
+
+- [x] Inspect the current node-client test setup, mock-hoisting constraints, and scenario groups.
+- [x] Choose the smallest split boundary that materially reduces the largest-file warning without duplicating fragile `vi.mock` setup.
+- [x] Extract shared fixtures/helpers only where they stay safe under Vitest import and mock ordering.
+- [x] Move cohesive scenario groups into smaller files or register modules, preserving test names and behavior.
+- [x] Run focused node-client tests, server test typecheck, touched-file lizard, large-file check, and `git diff --check`.
+- [x] Review for hidden risk: no mock ordering regressions, no assertion weakening, no broad wallet/node-service refactor.
+- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [ ] Re-check the queue after merge; physical hardware capture remains blocked by device access.
+
+## Review
+
+- Kept all `vi.mock` setup in `server/tests/unit/services/bitcoin/nodeClient.test.ts` so the module-under-test import ordering remains the same.
+- Moved scenario groups into register modules by behavior: client selection/reset, active config/active client lookup, and `testNodeConfig` probing.
+- Added a small context type so the register modules receive the existing mocks, fixture builder, and service functions without importing the mocked service themselves.
+- `server/tests/unit/services/bitcoin/nodeClient.test.ts` dropped from 961 lines to 217 lines. The new scenario modules are 362, 257, and 200 lines, so the node-client surface is no longer in the large-file warning inventory.
+- The large-file check now reports four test warnings instead of five; the next largest local candidate is `server/tests/unit/services/wallet/create-account-selection.contracts.ts` at 948 LOC.
+- Verification passed locally: focused node-client Vitest run (40 tests), server test typecheck, touched-file lizard, large-file classification check, and `git diff --check`.
+
+---
+
 # Active Task: Admin Operations E2E Largest-File Classification 2026-05-08
 
-Status: in progress; branch `test/admin-operations-e2e-classification`
+Status: complete; PR #331 merged as `39e775f4`
 
 Goal: address the remaining largest-file finding for `e2e/admin-operations.spec.ts` by either splitting along a clean helper/spec boundary or documenting why the current 984-line proof should remain cohesive for now.
 
@@ -11,8 +39,8 @@ Goal: address the remaining largest-file finding for `e2e/admin-operations.spec.
 - [x] If a clean boundary exists, extract it; otherwise add an explicit classification documenting why the file remains below the 1000-line warning threshold and should be split only when naturally touched.
 - [x] Run focused Playwright/static checks that cover the touched E2E surface, plus lizard and `git diff --check`.
 - [x] Review the result for churn: no broad E2E reshuffle unless it improves maintainability now.
-- [ ] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
-- [ ] Re-check the refreshed queue after merge; physical hardware capture may remain blocked by device access.
+- [x] Commit, push, open PR, monitor checks, merge, and clean up using `/pr-delivery`.
+- [x] Re-check the refreshed queue after merge; physical hardware capture may remain blocked by device access.
 
 ## Review
 
@@ -21,6 +49,8 @@ Goal: address the remaining largest-file finding for `e2e/admin-operations.spec.
 - `e2e/admin-operations.spec.ts` dropped from 984 lines to 634 lines; the new helper is 354 lines. This removes the admin operations spec from the large-file warning inventory without splitting scenario coverage across multiple specs.
 - The large-file criterion remains partial overall because other existing test/proof files are still in the 800-1000 LOC warning band; the health report now lists those instead of the resolved admin operations spec.
 - Verification passed locally: `npm run typecheck:tests`, `npm run quality:lizard -- e2e/admin-operations.spec.ts e2e/adminOperationsApiMock.ts`, `npm run test:e2e -- --project=chromium e2e/admin-operations.spec.ts` (24 tests), `node scripts/quality/check-large-files.mjs`, and `git diff --check`.
+- PR #331 merged at `2026-05-08T18:12:17-10:00` as squash commit `39e775f4b8049c654451052c05729e1666ab94ac`; local `main` was fast-forwarded and the local/remote `test/admin-operations-e2e-classification` branches were deleted.
+- Post-merge `main` verification passed: focused admin operations Playwright spec, 24 tests; large-file classification check passed with `e2e/admin-operations.spec.ts` removed from the warning inventory.
 
 ---
 
