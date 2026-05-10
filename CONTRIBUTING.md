@@ -103,6 +103,17 @@ Small font sizes (`text-[9px]`, `text-[10px]`, `text-[11px]`) are intentional fo
 
 Coverage threshold failures are the most common CI blocker. Run coverage locally first.
 
+### Retrigger discipline
+
+CI flake on this repo is dominated by host-side runner / DIND issues, not test bugs (audit 2026-05-10: 9/9 recent retriggers were runner/substrate, 0 were vitest). Bare retriggers absorb engineering oxygen and risk masking real regressions.
+
+Before pushing a `chore: retrigger CI` commit, the commit MUST do at least one of:
+
+1. **Include a stability fix in the same commit** — a workflow tweak, a runner-config nudge, a `continue-on-error` matrix change, or a `test.retry()` for a genuinely flaky vitest case.
+2. **Reference a tracking issue in the commit body** — name the failing job, paste a short error fragment, link the issue.
+
+Bare `chore: retrigger CI` with no body is no longer acceptable. Diagnostic artifacts from `scripts/ci/write-diagnostic-summary.sh` are uploaded on every failed lane — consult them before assuming flake.
+
 ### Version management
 
 Versions must stay synchronized across `package.json`, `server/package.json`, `gateway/package.json`, and `ai-proxy/package.json`. Use `./scripts/bump-version.sh` to bump all at once. (The Umbrel manifest in [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) updates itself via `repository_dispatch` from this repo's release workflow.)
