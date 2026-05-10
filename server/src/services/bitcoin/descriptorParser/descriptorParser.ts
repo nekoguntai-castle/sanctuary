@@ -17,6 +17,10 @@ import {
   isChangeDescriptor,
   extractQuorum,
 } from './descriptorUtils';
+import {
+  validateParsedDescriptorDomain,
+  validateRawDescriptorDomain,
+} from './domainValidation';
 import type { ParsedDevice, ParsedDescriptor, DescriptorParseError } from './types';
 
 const log = createLogger('BITCOIN:SVC_DESCRIPTOR');
@@ -28,6 +32,7 @@ export function parseDescriptorForImport(descriptor: string): ParsedDescriptor {
   // Clean up descriptor
   let cleanDescriptor = removeChecksum(descriptor.trim());
   log.debug('parseDescriptorForImport', { cleanDescriptor: cleanDescriptor.substring(0, 100), startsWithWsh: cleanDescriptor.toLowerCase().startsWith('wsh(') });
+  validateRawDescriptorDomain(cleanDescriptor, 0);
 
   // Detect script type
   const scriptType = detectScriptType(cleanDescriptor);
@@ -41,6 +46,7 @@ export function parseDescriptorForImport(descriptor: string): ParsedDescriptor {
   if (keyExpressions.length === 0) {
     throw new Error('No valid key expressions found in descriptor');
   }
+  validateRawDescriptorDomain(cleanDescriptor, keyExpressions.length);
 
   // Parse each key expression into device info
   const devices: ParsedDevice[] = [];
@@ -68,6 +74,10 @@ export function parseDescriptorForImport(descriptor: string): ParsedDescriptor {
     result.totalSigners = devices.length;
   }
 
+  validateParsedDescriptorDomain(result, {
+    allowAccountRootPath: false,
+    enforceScriptPurpose: true,
+  });
   return result;
 }
 

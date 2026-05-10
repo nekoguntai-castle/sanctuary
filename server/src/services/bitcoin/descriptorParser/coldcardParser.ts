@@ -7,6 +7,7 @@
 
 import { normalizeDerivationPath } from '../../../../../shared/utils/bitcoin';
 import { ColdcardDetectionSchema } from '../../import/schemas';
+import { validateParsedDescriptorDomain } from './domainValidation';
 import { detectNetwork } from './descriptorUtils';
 import type { ParsedDevice, ParsedDescriptor, ScriptType, ColdcardJsonExport } from './types';
 
@@ -46,15 +47,17 @@ export function parseColdcardExport(cc: ColdcardJsonExport): { parsed: ParsedDes
   };
 
   const network = detectNetwork(device.xpub, device.derivationPath);
+  const parsed: ParsedDescriptor = {
+    type: 'single_sig',
+    scriptType: selectedPath.scriptType,
+    devices: [device],
+    network,
+    isChange: false,
+  };
+  validateParsedDescriptorDomain(parsed);
 
   return {
-    parsed: {
-      type: 'single_sig',
-      scriptType: selectedPath.scriptType,
-      devices: [device],
-      network,
-      isChange: false,
-    },
+    parsed,
     availablePaths,
   };
 }

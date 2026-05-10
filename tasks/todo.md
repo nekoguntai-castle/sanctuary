@@ -1,6 +1,35 @@
-# Active Task: Fund-Safety Release Artifact Verification 2026-05-09
+# Active Task: Fund-Safety Descriptor/Xpub Validation 2026-05-09
 
 Status: in progress
+
+Goal: harden descriptor, xpub, and wallet-policy imports so malformed, wrong-network, private-key, duplicate-cosigner, and unsupported branch descriptors fail before wallet state is created.
+
+## Plan
+
+- [x] Start from `origin/main` after PR #378 merged.
+- [x] Confirm physical hardware fixture capture remains the final fund-safety task; continue with descriptor/xpub validation next.
+- [x] Inventory descriptor parser utilities, JSON/BlueWallet/Coldcard import paths, wallet import service, xpub validation route, and current descriptor/import tests.
+- [x] Add focused descriptor domain-safety tests for private extended keys, wrong-network xpub/path combinations, mixed cosigner networks, invalid branch wildcards, quorum overflow, duplicate cosigners, and script/path mismatches.
+- [x] Implement shared descriptor domain validation used by raw descriptors and parsed import formats without requiring Bitcoin Core, hardware devices, or new runtime dependencies.
+- [x] Update release/fund-safety docs and task review with measured evidence only.
+- [ ] Run focused descriptor/import suites, server test typecheck/lint as needed, touched-file lizard, post-merge CI check for PR #378, and `git diff --check`.
+- [ ] Deliver through PR and merge if CI is green.
+
+## Review
+
+- Added `domainValidation.ts` as a shared parser-domain gate for raw descriptors and parsed JSON/BlueWallet/Coldcard imports.
+- Raw descriptors now reject private extended keys, wrong-network xpub/path pairs, mixed-network multisig cosigners, unsupported `/0/*` or `/1/*` suffixes, fixed child indexes, malformed cosigner suffixes, malformed cosigner xpubs that could otherwise shrink an imported quorum, quorum overflow, duplicate cosigner keys, and script/path purpose mismatches.
+- Parsed imports keep legacy compatibility for existing JSON/BlueWallet/Coldcard path formats while still enforcing private-key rejection, network consistency, quorum shape, and duplicate multisig cosigner rejection.
+- Network detection no longer treats the first hardened component as coin type; it uses parsed derivation-path coin type and xpub prefix consistency instead.
+- Updated `docs/reference/release-gates.md` and `docs/plans/fund-safety-gap-closure-plan.md` with the runtime-local parser gate and remaining follow-ups.
+- Local verification passed: focused descriptor parser suite, server test typecheck, server lint with API-body and Bitcoin-network-boundary guards, server build, docs link/Mermaid tests, lizard zero-warning gate, and `git diff --check`.
+- PR #378 post-merge push status was rechecked; all visible jobs are green except `Test Suite / Full Critical Mutation Gate (push)`, which is still pending.
+
+---
+
+# Active Task: Fund-Safety Release Artifact Verification 2026-05-09
+
+Status: completed; PR #378 merged as `1f0bc593`
 
 Goal: make stable Sanctuary release artifacts manifest-backed and locally verifiable without adding runtime requirements outside the release/operator verification path.
 
@@ -14,7 +43,7 @@ Goal: make stable Sanctuary release artifacts manifest-backed and locally verifi
 - [x] Document the clean-machine/operator verification path and the release-gate expectation.
 - [x] Review the plan and diff for corner cases, especially prerelease handling, Forgejo/GitHub release differences, offline-bundle trust anchors, remote image digest checks, missing OpenSSL/public keys, and path traversal.
 - [x] Run focused release verifier tests, syntax checks, action-runtime guard, touched-file lizard, and `git diff --check`.
-- [ ] Deliver through PR and merge if CI is green, then continue to the next non-hardware slice.
+- [x] Deliver through PR and merge if CI is green, then continue to the next non-hardware slice.
 
 ## Review
 

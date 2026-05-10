@@ -224,13 +224,10 @@ aabbccdd: xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4ko
   });
 
   describe('Checksum Validation', () => {
-    it('should accept descriptor when checksum cannot be computed due to unsupported characters', () => {
+    it('should reject descriptors with unsupported key expression suffixes', () => {
       const descriptor = 'wpkh([d34db33f/84h/0h/0h]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/0/*:foo)#abcd1234';
 
-      const result = parseDescriptorForImport(descriptor);
-
-      expect(result.type).toBe('single_sig');
-      expect(result.devices[0].fingerprint).toBe('d34db33f');
+      expect(() => parseDescriptorForImport(descriptor)).toThrow('No valid key expressions found in descriptor');
     });
 
     it('should accept descriptors whose payload length leaves checksum class remainder', () => {

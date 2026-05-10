@@ -5,18 +5,25 @@
  * network detection, key expression parsing, script type detection, etc.
  */
 
-import { normalizeDerivationPath } from '../../../../../shared/utils/bitcoin';
+import { normalizeDerivationPath, parseDerivationPath } from '../../../../../shared/utils/bitcoin';
+import { PUBLIC_EXTENDED_KEY_PATTERN } from './domainValidation';
 import type { ParsedDevice, ScriptType, DetectedNetwork } from './types';
+
+const KEY_EXPRESSION_RE = new RegExp(
+  `\\[([a-fA-F0-9]{8})\\/([^\\]]+)\\](${PUBLIC_EXTENDED_KEY_PATTERN}[a-zA-Z0-9]+)(?=\\/|[,\\)])`
+);
+const KEY_EXPRESSION_GLOBAL_RE = new RegExp(
+  `\\[[a-fA-F0-9]{8}\\/[^\\]]+\\]${PUBLIC_EXTENDED_KEY_PATTERN}[a-zA-Z0-9]+(?:\\/[\\d*]+)*(?=[,\\)])`,
+  'g',
+);
 
 /**
  * Detect network from xpub prefix or derivation path
  */
 export function detectNetwork(xpub: string, derivationPath: string): DetectedNetwork {
-  // Check derivation path coin type
-  const coinTypeMatch = derivationPath.match(/\/(\d+)[h']/);
-  if (coinTypeMatch) {
-    const coinType = coinTypeMatch[1];
-    if (coinType === '1') return 'testnet';
+  const parsedPath = parseDerivationPath(derivationPath);
+  if (parsedPath.valid && parsedPath.coinType === 1) {
+    return 'testnet';
   }
 
   // Check xpub prefix for testnet/regtest
@@ -32,11 +39,7 @@ export function detectNetwork(xpub: string, derivationPath: string): DetectedNet
  * Returns device info with fingerprint, xpub, and derivation path
  */
 export function parseKeyExpression(keyExpr: string): ParsedDevice {
-  // Match [fingerprint/path]xpub pattern
-  // Fingerprint is 8 hex chars, path can use ' or h for hardened
-  const keyMatch = keyExpr.match(
-    /\[([a-fA-F0-9]{8})\/([^\]]+)\]([xyztuvYZTUVpub][a-zA-Z0-9]+)/
-  );
+  const keyMatch = keyExpr.match(KEY_EXPRESSION_RE);
 
   if (!keyMatch) {
     throw new Error('Invalid descriptor key expression');
@@ -58,11 +61,9 @@ export function parseKeyExpression(keyExpr: string): ParsedDevice {
 export function extractKeyExpressions(descriptor: string): string[] {
   const expressions: string[] = [];
 
-  // Find all [fingerprint/path]xpub patterns
-  const regex = /\[[a-fA-F0-9]{8}\/[^\]]+\][xyztuvYZTUVpub][a-zA-Z0-9]+(?:\/[\d*]+)*/g;
   let match;
 
-  while ((match = regex.exec(descriptor)) !== null) {
+  while ((match = KEY_EXPRESSION_GLOBAL_RE.exec(descriptor)) !== null) {
     expressions.push(match[0]);
   }
 

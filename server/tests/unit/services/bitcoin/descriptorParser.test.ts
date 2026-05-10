@@ -13,6 +13,7 @@
 import { describe } from 'vitest';
 import { registerDescriptorParserAutoDetectionContracts } from './descriptorParser/auto-detection.contracts';
 import { registerDescriptorParserDerivationErrorContracts } from './descriptorParser/derivation-errors.contracts';
+import { registerDescriptorParserDomainValidationContracts } from './descriptorParser/domain-validation.contracts';
 import { registerDescriptorParserJsonImportContracts } from './descriptorParser/json-import.contracts';
 import { registerDescriptorParserMultiSigContracts } from './descriptorParser/multi-sig.contracts';
 import { registerDescriptorParserSingleSigContracts } from './descriptorParser/single-sig.contracts';
@@ -22,6 +23,7 @@ describe('Descriptor Parser Service', () => {
   registerDescriptorParserSingleSigContracts();
   registerDescriptorParserMultiSigContracts();
   registerDescriptorParserDerivationErrorContracts();
+  registerDescriptorParserDomainValidationContracts();
   registerDescriptorParserJsonImportContracts();
   registerDescriptorParserAutoDetectionContracts();
   registerDescriptorParserTextColdcardChecksumContracts();

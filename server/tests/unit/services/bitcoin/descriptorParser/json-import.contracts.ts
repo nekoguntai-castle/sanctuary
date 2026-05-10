@@ -352,7 +352,7 @@ export function registerDescriptorParserJsonImportContracts(): void {
         expect(result.network).toBe('testnet');
       });
 
-      it('should detect testnet when first hardened index is coin type 1', () => {
+      it('should not infer testnet from a purpose-less first hardened index', () => {
         const config: JsonImportConfig = {
           type: 'single_sig',
           scriptType: 'native_segwit',
@@ -367,7 +367,7 @@ export function registerDescriptorParserJsonImportContracts(): void {
 
         const result = parseJsonImport(config);
 
-        expect(result.network).toBe('testnet');
+        expect(result.network).toBe('mainnet');
       });
 
       it('should throw for invalid JSON config', () => {

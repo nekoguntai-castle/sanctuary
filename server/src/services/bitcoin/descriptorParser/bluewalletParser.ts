@@ -5,6 +5,7 @@
  */
 
 import { normalizeDerivationPath } from '../../../../../shared/utils/bitcoin';
+import { validateParsedDescriptorDomain } from './domainValidation';
 import { detectNetwork } from './descriptorUtils';
 import type { ParsedDevice, ParsedDescriptor, ScriptType, BlueWalletTextFormat } from './types';
 
@@ -172,5 +173,6 @@ export function parseBlueWalletTextImport(input: string): ParsedDescriptor {
     result.totalSigners = parsed.policy.total;
   }
 
+  validateParsedDescriptorDomain(result);
   return result;
 }

@@ -417,6 +417,8 @@ Rollback rule:
 
 - If a legacy import is rejected by the new parser, ship a one-time migration or explicit compatibility parser only when it produces the same canonical descriptor and has regression tests.
 
+Implementation note, 2026-05-09: PR G started the descriptor/xpub hardening gate with a shared descriptor-domain validator used by raw descriptors plus JSON, BlueWallet, and Coldcard parsed imports. The gate now rejects private extended keys, wrong-network key/path/declaration combinations, mixed-network multisig cosigners, unsupported receive/change branches, fixed child indexes, quorum overflow, duplicate cosigner keys, malformed cosigner suffixes, raw descriptor script/path mismatches, and unsafe first-hardened-index network inference. This is intentionally runtime-local parser validation; Bitcoin Core descriptor cross-checks remain release-lab evidence, not a production requirement. Remaining follow-up items are typed import error normalization, xpub depth/path-depth validation, broader import-surface threading if new import paths are added, and optional Core `getdescriptorinfo`/`deriveaddresses` fixture evidence for release drills.
+
 ## Phase 5 - Fail-Closed Errors And Safety Complexity Gates
 
 Purpose: make safety-critical code easy to audit and prevent broad exception handlers from silently continuing after partial transaction knowledge.

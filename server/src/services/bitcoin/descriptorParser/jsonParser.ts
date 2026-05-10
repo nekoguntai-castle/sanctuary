@@ -6,6 +6,7 @@
 
 import { normalizeDerivationPath } from '../../../../../shared/utils/bitcoin';
 import { JsonImportConfigSchema, WalletExportDetectionSchema } from '../../import/schemas';
+import { validateParsedDescriptorDomain } from './domainValidation';
 import { detectNetwork } from './descriptorUtils';
 import type {
   ParsedDevice,
@@ -60,6 +61,7 @@ export function parseJsonImport(config: JsonImportConfig): ParsedDescriptor {
     result.totalSigners = devices.length;
   }
 
+  validateParsedDescriptorDomain(result);
   return result;
 }
 
