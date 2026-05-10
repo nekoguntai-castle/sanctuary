@@ -103,6 +103,16 @@ Small font sizes (`text-[9px]`, `text-[10px]`, `text-[11px]`) are intentional fo
 
 Coverage threshold failures are the most common CI blocker. Run coverage locally first.
 
+### Diagnosing CI failures
+
+Long-running steps wrap their command with `scripts/ci/run-with-log.sh` and follow up with `scripts/ci/write-diagnostic-summary.sh`. When such a step fails, three diagnostic surfaces are populated automatically — check them in this order:
+
+- **Inline log dump (fastest).** The summary helper echoes the tail (≤256 KiB) of every failed log to the runner's step output inside `::group::` blocks, so the actual crash is visible directly on the failed run page. Look for `Failed log tail (...)` groups in the diagnostic-summary step.
+- **Step-summary metadata table.** The job's summary panel lists each captured log with its `wrapped_exit`, `sink_status`, `truncated`, and byte size — useful for spotting which step failed when several ran in the same job.
+- **Diagnostic artifact (full bytes).** Each lane uploads `ci-diagnostics-<lane>` containing the redacted log files (capped at `SANCTUARY_CI_LOG_CAP_BYTES`, default 32 MiB) plus their `*.status.json` sidecars and a `diagnostic-index.md`. Use this when the 256 KiB inline tail isn't enough or when you need to grep across multiple captured logs. The Forgejo Actions API for downloading artifacts is unreliable on the current runner version — download via the workflow run page in the web UI.
+
+When adding a new long-running CI step, follow the same pattern: wrap with `run-with-log.sh "$DIAGNOSTIC_DIR/<step>.log"` for capture, call `write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "<Lane Name>"` in an `if: always()` step, and upload `$DIAGNOSTIC_DIR` as `ci-diagnostics-<lane>` with `if-no-files-found: ignore`.
+
 ### Retrigger discipline
 
 CI flake on this repo is dominated by host-side runner / DIND issues, not test bugs (audit 2026-05-10: 9/9 recent retriggers were runner/substrate, 0 were vitest). Bare retriggers absorb engineering oxygen and risk masking real regressions.

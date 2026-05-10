@@ -8,8 +8,15 @@
 # The helper is intentionally best-effort: diagnostics must not hide the
 # original build result. It appends a small markdown table to the provider
 # step summary and writes DIAGNOSTIC_DIR/diagnostic-index.md for the uploaded
-# artifact. It never inlines log bodies in the step summary; the full redacted
-# logs remain in the diagnostic artifact.
+# artifact. The step summary itself never inlines log bodies; the full
+# redacted logs remain in the diagnostic artifact.
+#
+# When any captured log has a non-zero `wrapped_exit` in its sidecar JSON,
+# this helper additionally echoes the tail of that log (256 KiB cap, wrapped
+# in `::group::` blocks) to STDERR so the failure is visible in the runner's
+# step output without depending on the artifacts API. Successful logs are
+# never echoed. Logs exceeding the inline cap are still complete in the
+# uploaded artifact. See CONTRIBUTING.md ("Diagnosing CI failures").
 
 set -euo pipefail
 
@@ -211,6 +218,44 @@ else:
     index_lines.append("")
 
 index_tmp.write_text("\n".join(index_lines), encoding="utf-8")
+
+# Echo failed-log bodies to stderr so a non-zero wrapped_exit is
+# investigable in the runner's web UI step output without relying on
+# the artifacts API (which is unreliable on the current Forgejo
+# version). Bounded per-log so the runner output stays readable; the
+# full redacted log is still in the uploaded diagnostic artifact.
+ECHO_TAIL_BYTES = 256 * 1024  # 256 KiB per failed log
+failed_records = [r for r in records if str(r["wrapped_exit"]) not in ("0", "n/a")]
+if failed_records:
+    print("=" * 72, file=sys.stderr)
+    print(
+        f"{title}: dumping captured logs for {len(failed_records)} failed step(s)",
+        file=sys.stderr,
+    )
+    print("=" * 72, file=sys.stderr)
+    for record in failed_records:
+        log_path = diag_dir / record["log"]
+        print(
+            f"::group::Failed log tail ({record['log']}, exit={record['wrapped_exit']})",
+            file=sys.stderr,
+        )
+        try:
+            with log_path.open("rb") as fp:
+                fp.seek(0, 2)
+                size = fp.tell()
+                start = max(0, size - ECHO_TAIL_BYTES)
+                fp.seek(start)
+                body = fp.read().decode("utf-8", errors="replace")
+                if start > 0:
+                    print(
+                        f"... [omitted first {start} bytes; tail follows]",
+                        file=sys.stderr,
+                    )
+                print(body, file=sys.stderr)
+        except OSError as exc:
+            print(f"(could not read log: {exc})", file=sys.stderr)
+        print("::endgroup::", file=sys.stderr)
+
 print("\n".join(summary_lines))
 PY
 
