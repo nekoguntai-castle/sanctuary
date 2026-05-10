@@ -1,321 +1,90 @@
-# Active Task: CI-Owned Failure Diagnostics 2026-05-10
+# Active Task: Post-Forgejo Structural Health Plan 2026-05-10
 
-Status: in progress
+Status: re-verified against `origin/main` 2026-05-10 — 12/13 plan assumptions still valid; 4 small amendments applied. Awaiting user go-ahead to execute Phase 1.
 
-Goal: make failed Forgejo CI lanes self-diagnosing through repo-owned redacted log artifacts and step summaries so API-token-only access is enough to identify root causes without web-session step logs.
+Goal: address the three structural risks surfaced by the post-Forgejo migration health audit — cross-package code drift, CI flake absorption, and the `fatalProcessHandlers` triplication that landed via PRs #360/#361/#368 without consolidation — to reduce the rate at which future feature work produces broken tests.
 
-## Plan
+## Context
 
-- [x] Start from `origin/main` on an isolated diagnostics branch.
-- [x] Inventory existing CI logging, redaction, artifact, and workflow-summary helpers.
-- [x] Add a reusable failure-diagnostics collector that indexes wrapped logs and sidecar JSON without inlining log bodies in job summaries.
-- [x] Wire the collector into Architecture, full frontend typecheck/coverage Test Suite lanes, and Verify Bitcoin Vectors.
-- [x] Add regression tests and workflow syntax coverage for the collector and workflow composition.
-- [x] Run focused CI-helper tests, workflow/runtime guards, and `git diff --check`.
-- [x] Review corner cases: missing logs, truncated logs, wrapped-command failures, skipped jobs, secret redaction, artifact upload failures, and no new runtime requirements.
-- [x] Extend the same diagnostic pattern to the full backend typecheck, unit coverage, and integration lanes after PR CI exposed backend unit coverage as an uncovered failure lane.
-- [x] Extend diagnostic coverage to the remaining full Test Suite leaf jobs: gateway, AI proxy, critical mutation, browser E2E, render E2E, and build check.
-- [x] Extend diagnostic coverage to quick PR Test Suite lanes so quick-lane failures cannot block full diagnostics without their own redacted artifact.
-- [x] Rerun focused workflow/helper checks after the comprehensive Test Suite extension and amend PR #385.
-- [ ] Monitor PR #385 again, merge when green, and verify the post-merge push status.
+Audit of post-migration commits found:
+- ~45% of commits were CI plumbing (`fix(ci):` and `chore: retrigger CI`) rather than product
+- Bug-scrub remediation is structurally sound — repository pattern intact, regression-test discipline mostly held
+- `fatalProcessHandlers` shipped in three places (server/src/utils, gateway/src/utils, ai-proxy/src) with cosmetic and semantic drift; PRs #360/#361/#368 added behavior + coverage without consolidating
+- No `vitest --retry` configured; runner-flake is absorbed by manual re-pushes (9 retriggers since migration cutoff per re-verify)
 
-## Review
+## Critical Constraints (read before executing)
 
-- Existing `scripts/ci/run-with-log.sh` already provides redacted, capped logs plus sidecar status JSON. This slice should reuse that contract rather than inventing a parallel logger.
-- The target behavior is CI-only: upload redacted diagnostic artifacts and write compact job summaries. No production runtime dependency or app requirement should be added.
-- Added `scripts/ci/write-diagnostic-summary.sh` to append compact status tables through `provider-context.sh` and write `diagnostic-index.md` into each uploaded artifact directory.
-- The helper intentionally does not inline log bodies in the step summary; full output remains in redacted `run-with-log.sh` artifacts.
-- Architecture now wraps install, diagram lint, graph generation, stale graph detection, docs typecheck, and docs build with `run-with-log.sh`; it uploads `ci-diagnostics-architecture` on `always()`.
-- Full frontend typecheck, frontend coverage shard, and frontend coverage merge jobs now upload per-job diagnostic artifacts with sidecar-index summaries.
-- PR #385's first CI pass exposed a design gap in this slice: `Full Backend Unit Coverage` could still fail without CI-owned diagnostics. The backend typecheck, unit coverage, and integration full-lane jobs now use the same redacted `run-with-log.sh` + diagnostic summary/upload pattern.
-- User review asked whether this was comprehensive. Follow-up inventory found additional Test Suite blind spots in gateway, AI proxy, mutation, browser/render E2E, build-check, and quick PR lanes. These now emit redacted diagnostic indexes and artifacts as well.
-- Mechanical coverage review confirmed all 23 Test Suite leaf jobs have `run-with-log.sh`, `write-diagnostic-summary.sh`, and a `ci-diagnostics-*` artifact; aggregate-only jobs remain intentionally summary-only.
-- Verify Bitcoin Vectors now uploads `ci-diagnostics-verify-vectors` for Docker readiness, dependency install, cross-implementation verification, and server vector test slices.
-- Loop review finding: backend composition tests originally checked upload artifacts without requiring `write-diagnostic-summary.sh`; tightened them to require both summary generation and artifact upload for backend typecheck, unit coverage, and integration lanes.
-- PR #385's comprehensive CI rerun proved the diagnostics were useful by surfacing a backend unit coverage failure in descriptor-domain validation. The follow-up fix adds real descriptor/parser contracts for unsupported coin types, unsupported xpub prefixes, invalid and out-of-range path components, account-root descriptors, malformed single-sig parsed state, multisig quorum bounds, and multisig script-purpose mismatches.
-- Descriptor domain validation now rejects unsupported derivation-path coin types instead of silently accepting paths outside the Bitcoin mainnet/testnet coin-type families; the prior empty-device defensive branch was removed because descriptor shape and quorum validation already prove non-empty device lists before network consistency checks.
-- Corner-case review: missing/empty directories produce a summary and index; malformed/missing sidecars are indexed as attention records; non-zero wrapped exits and truncation are surfaced; summary/upload steps are `continue-on-error`; no log bodies are pasted into step summaries; no production runtime requirement was added.
-- Local verification passed after comprehensive Test Suite extension: `bash -n scripts/ci/write-diagnostic-summary.sh tests/ci/write-diagnostic-summary.test.sh tests/ci/check-workflow-composition.test.sh`, `bash tests/ci/write-diagnostic-summary.test.sh`, `bash tests/ci/check-workflow-composition.test.sh`, `bash tests/ci/run-with-log.test.sh`, `bash tests/ci/write-preflight-diagnostics.test.sh`, `bash tests/ci/provider-context.test.sh`, `bash tests/ci/redactor-fixture.test.sh`, `bash tests/ci/check-provider-leaks.test.sh`, `bash scripts/ci/check-provider-leaks.sh`, `node tests/ci/check-github-action-runtimes.test.mjs`, `npm run check:github-action-runtimes`, `server/node_modules/.bin/yaml valid` for touched workflows, `test.yml` run-block `bash -n` after expression substitution, mechanical 23-leaf Test Suite diagnostic coverage check, `npm run quality:lizard`, and `git diff --check`.
-- Local verification passed after the backend coverage follow-up: focused descriptor parser suite, server test typecheck, touched-file lizard, and full backend unit coverage with a disposable migrated Postgres database: 439 files, 9,764 tests, 100% statements/branches/functions/lines.
-
----
-
-# Active Task: Post-Merge CI Aggregate Failure 2026-05-09
-
-Status: completed; PR #383 merged as `c668a11f`
-
-Goal: identify why the post-merge `main` CI aggregate is red after PR #382 and fix the workflow, tests, docs, or configuration without changing application runtime requirements.
+- **ai-proxy is intentionally network-isolated.** `ai-proxy/tsconfig.json` sets `rootDir: "./src"` and `include: ["src/**/*"]`; `ai-proxy/Dockerfile` deliberately does NOT `COPY ../shared`; `ai-proxy/src/utils.ts:1-7` documents the boundary explicitly: *"This container doesn't share dependencies with the main app, so these utilities are standalone."* This is a security isolation boundary, not an oversight. **Any plan to import `shared/` into ai-proxy is a boundary-breaking architectural change requiring its own decision, not a silent consolidation.** Phase 1 honors this by leaving ai-proxy's copy in place.
+- **Consolidation is a behavior change, not a no-op.** `gateway/src/utils/fatalProcessHandlers.ts:19-21` redefines `getErrorMessage` as `error instanceof Error ? error.message : String(error)`, which returns `"[object Object]"` for plain-object rejection reasons. `shared/utils/errors.ts`'s `extractErrorMessage` does richer extraction (.message/.error properties, fallback `"An unexpected error occurred"`). Promise rejections can carry arbitrary values, so this matters in practice. Document as an intentional upgrade in the commit message body, not just the PR description.
+- **Convention: cross-package shared imports go through per-package re-exports.** Verified: `grep -rn "from ['\"]\.\./\.\./shared" server/src gateway/src` returns zero hits. Every consumer of `shared/` today goes through a per-package `utils/<name>.ts` that re-exports from shared (e.g., `server/src/utils/errors.ts:28` re-exports from `../../../shared/utils/errors`). Phase 1 follows this convention — the per-package `fatalProcessHandlers.ts` files become one-line re-exports of `shared/utils/fatalProcessHandlers`, so entry-points don't change at all.
+- **PR strategy:** Phase 1 ships as a fresh branch off `main` (the original `fix/unhandled-rejection-fatal-shutdown` work merged via PRs #360/#361/#368 without consolidation). Branch name suggestion: `refactor/consolidate-fatal-process-handlers`.
 
 ## Plan
 
-- [x] Start from `origin/main` after PR #382 merged.
-- [x] Query the post-merge commit status and action runs to isolate the failing workflow/job.
-- [x] Pull or inspect available job logs for the failing Architecture and Test Suite jobs.
-- [x] Separate product regressions from workflow graph, provider, or runner-infrastructure failures.
-- [x] Apply the smallest root-cause fix while preserving existing runtime architecture and CI intent.
-- [x] Run focused verification and `git diff --check`.
-- [x] Review corner cases for any workflow/test/docs change before delivery.
+### Phase 1 — Consolidate where the isolation boundary permits (server + gateway only)
+
+- [ ] **1a. Add `getErrorMessage` alias to `shared/utils/errors.ts`.** Currently only exports `extractErrorMessage`, `isAbortError`, `isNetworkError`, `isTimeoutError` (verified 2026-05-10); the `getErrorMessage` name is a server-side alias at `server/src/utils/errors.ts:151` (`export const getErrorMessage = extractErrorMessage;`). Add `export const getErrorMessage = extractErrorMessage;` to shared so the new shared handler can import it without indirection. Update `server/src/utils/errors.ts` to re-export this alias from shared instead of redefining (keeps backward compat for ~50 server callers).
+- [ ] **1b. Create `shared/utils/fatalProcessHandlers.ts`.** Use the server version verbatim (single-quote style, imports `getErrorMessage` from `./errors`). Define a minimal `FatalProcessLog` interface in the same file accepting `{ error(msg, meta), warn(msg, meta) }` — both server's and gateway's loggers satisfy this structurally (verified). Contingency: if either logger is incompatible, the typed interface forces a compile error at the call site, not a runtime regression.
+- [ ] **1c. Reduce per-package files to one-line re-exports** (preserves the existing convention from Critical Constraints):
+  - `server/src/utils/fatalProcessHandlers.ts` → `export * from '../../../shared/utils/fatalProcessHandlers';`
+  - `gateway/src/utils/fatalProcessHandlers.ts` → `export * from '../../../shared/utils/fatalProcessHandlers';`
+  - **Entry-points (`server/src/index.ts:31`, `server/src/mcp-entry.ts:15`, `server/src/worker.ts:27`, `gateway/src/index.ts:24`) require zero changes** — re-verified 2026-05-10 to import from `./utils/fatalProcessHandlers`. Their existing imports still resolve, just to the re-export shim.
+  - server tsconfig and gateway tsconfig already include `../shared/**/*`; Dockerfiles already `COPY shared ../shared` — no build-config changes needed.
+  - **Add the new shim files to `server/vitest.config.ts` (and gateway equivalent) `coverage.exclude`** mirroring existing precedent (`src/services/aiService.ts` and `src/services/eventService.ts` are excluded with comment *"Re-export shims preserving backward-compatible import paths (zero logic)"* — verified 2026-05-10). Without this, the 100% server-coverage gate will flag the shim as uncovered.
+- [ ] **1d. ai-proxy stays as-is.** Document in PR description: end state is 1 ai-proxy copy + 1 shared copy + 2 thin per-package re-exports (down from 3 fully-divergent copies). Isolation preserved.
+- [ ] **1e. Test files.** Create `tests/shared/fatalProcessHandlers.test.ts` (matches existing flat layout — `tests/shared/errors.test.ts`, `tests/shared/redact.test.ts`, NOT `tests/shared/utils/...`). Merge assertions from `server/tests/unit/utils/fatalProcessHandlers.test.ts` and `gateway/tests/unit/utils/fatalProcessHandlers.test.ts`; delete both. **Keep `tests/ai-proxy/fatalProcessHandlers.test.ts`.** End state: 2 test files (shared + ai-proxy). Cases to preserve in the merged file (re-verified 2026-05-10):
+  - (a) Ignored when second event is a *different fatal type* — `uncaughtException` arriving after `unhandledRejection` already triggered shutdown (currently only in server test).
+  - (b) Ignored when reason is a *non-Error string* — `'plain boom'` and `'string reason'` paths. **Note:** PR #368 added this case to BOTH per-package tests (server gained `'logs non-Error fatal reasons without a stack'`, gateway already had `'plain boom'`); de-dup on merge into one assertion.
+  - (c) Ignored when reason is a *non-Error plain object* — verifies shared's richer extraction returns `.message`/`.error` properties or fallback string, not `"[object Object]"`. **Still missing from both per-package tests** — this is the new test the consolidation must add to validate the gateway behavior upgrade documented in Critical Constraints.
+- [ ] **1f. Coverage policy check.** Inspect `tests/config/coveragePolicy.test.ts` for any `shared/utils/**` exclusion semantics. New `shared/utils/fatalProcessHandlers.ts` has no frontend consumers — confirm frontend coverage gate either excludes `shared/utils/**` by default or accepts the addition without threshold drop. Add to the exclude list if needed (mirror `shared/utils/gatewayAuth.ts` precedent).
+- [ ] **1g. Verification.** In order: ESLint with the new rule from 2a *applied first* (either as the same commit as the consolidation, or as the immediately preceding commit on the branch — never after, otherwise the verification vacuously passes against a repo without the rule); `npx tsc --noEmit` in server / gateway / root; vitest in each affected package; coverage reports (`cd server && npx vitest run --coverage`, root coverage) to confirm gates hold; finally `./start.sh --rebuild` to confirm Docker builds.
+
+### Phase 2 — Prevent the next duplication (ships in same PR as Phase 1)
+
+**Sequencing:** 2a lands in the same commit as Phase 1 so CI proves the consolidation removes the banned local definitions. 2b–2c can land separately if scope grows.
+
+- [ ] **2a. ESLint flat-config rule.** Repo uses `eslint.config.js` (verified). Add a `no-restricted-syntax` rule with selector `FunctionDeclaration[id.name="getErrorMessage"], FunctionDeclaration[id.name="extractErrorMessage"], VariableDeclarator[id.name="getErrorMessage"][init.type="ArrowFunctionExpression"], VariableDeclarator[id.name="extractErrorMessage"][init.type="ArrowFunctionExpression"]` scoped to `**/src/**/*.ts`, with `shared/utils/errors.ts` and `ai-proxy/src/utils.ts` as exceptions. Imports unaffected. Acknowledged blind spots: `const x = function() {}` (`FunctionExpression`) and class methods are not caught — rare forms, would surface in code review.
+- [ ] **2b. Triplicate audit.** Confirmed 2026-05-10: exactly 3 triplicates remain — `fatalProcessHandlers`, `logger.ts`, `processExit.ts`. logger and processExit are likely intentional (logger flavor differs by service; ai-proxy isolation). For each triplicate document the decision (consolidate / intentional-isolation / intentional-divergence) in `shared/utils/README.md`. No new duplications introduced by intervening 25 commits.
+- [ ] **2c. `shared/utils/README.md`.** One paragraph: "Any utility used by ≥2 of {server, gateway} lives here, with thin re-export shims at `<package>/src/utils/<name>.ts` per existing convention. ai-proxy is intentionally network-isolated and re-implements; do not import from shared into ai-proxy without an explicit architectural decision (see fatalProcessHandlers consolidation PR for rationale)."
+
+### Phase 3 — Address the actual CI flake source
+
+Verified: retriggers are DIND TLS, runner-capacity, and substrate flakes — none are vitest. `vitest --retry` would mask nothing here.
+
+- [ ] **3a. Categorize the actual flake layers.** `git log --grep="retrigger CI" --since=2026-05-03 --oneline` (~9 commits in window). Classify each by failure signature: DIND/Docker, runner-capacity, container-teardown, pnpm-install, Playwright, vitest. **Leverage `Add CI diagnostic artifacts for failed lanes` (`466bc986`) artifacts** when categorizing — that commit added instrumentation specifically for this purpose.
+- [ ] **3b. Apply the right fix per layer.**
+  - **DIND/runner-capacity/teardown:** Runner config (`runner.capacity`, runner version, DIND TLS) is **host-side**, not in the repo (verified: no `act_runner*` or `runner.config*` in the worktree; memory `feedback_forgejo_runner_concurrency.md` confirms). In-repo levers are limited to: workflow-level serialization (single bash-loop jobs per memory), job-level `continue-on-error` matrices with explicit re-attempts, and `services.docker.options` tweaks. If runner-side tuning is required, file a host-task issue rather than attempt a code-change fix.
+  - **Vitest (only if 3a finds any):** Scoped `test.retry()` per known-flaky test with a comment pointing to root cause. No blanket `--retry`.
+  - **pnpm-install:** Workflow-level retry step with backoff.
+- [ ] **3c. Update CLAUDE.md.** Rule: "Before pushing `chore: retrigger CI`, either (a) include a stability fix in the same commit, or (b) reference a tracking issue with the failure signature in the commit body."
+
+### Phase 4 — Verification
+
+- [ ] **4a. Run `/simplify`** on Phase 1 changes before opening the PR.
+- [ ] **4b. Edge case audit** of the consolidated handler: missing `shutdown` callback, double-fire of `uncaughtException`/`unhandledRejection`, `shutdown` itself throwing (sync and async), non-Error rejection reasons (the gateway behavior change documented in Critical Constraints).
+- [ ] **4c. Self-review diff:** confirm no behavior was *unintentionally* lost. Gateway's `getErrorMessage` upgrade is intentional — call it out in the commit message body, not just the PR description.
+- [ ] **4d. Confirm `server/tests/unit/worker/worker.entry.test.ts` passes** — the worker entry exercises `registerFatalProcessHandlers` indirectly and a signature change there ripples.
+- [ ] **4e. Pre-commit hook budget.** CLAUDE.md says hooks run AI agents whose feedback must be reviewed. Budget 5–10 minutes per commit attempt and expect at least one round of agent feedback to address.
+- [ ] **4f. Doc sweep.** Check `docs/plans/codebase-health-assessment.md`, `docs/plans/deep-bug-scrub-remediation-plan.md`, and each `ARCHITECTURE.md` (server, gateway, ai-proxy) for stale per-package handler references. **Also verify `c668a11f Fix post-merge architecture and coverage gates` and `4aa2d316 Record post-merge CI repair delivery` did not relax architecture/coverage thresholds that the consolidation should respect** — re-read both to confirm thresholds the plan assumed are still enforced.
+
+## Out of scope (intentionally)
+
+- **Importing `shared/` into ai-proxy.** Breaks the documented network-isolation boundary. Requires a separate architectural decision, not a silent consolidation. Phase 1 explicitly preserves ai-proxy's copy.
+- **ai-proxy logger discipline** — 14 `createLogger` calls, 1 raw `console.*` in src. Audit overstated.
+- **Migrating `shared/` to a real npm workspace package** — current relative-import pattern works for server+gateway; changing it is a separate, larger refactor.
+- **Backfilling regression tests for older fixes** that didn't follow test-first. Going forward only.
+- **Host-side runner config changes** (Phase 3b) — not in-repo actionable; file host-task issues separately.
+- **Mutation-testing (Stryker) integration** — `2e65e393 Gate broadcast canonicality mutation coverage` introduced mutation testing for the broadcast canonicality slice. Adopting it more broadly is a separate workstream worth tracking but out of scope for this plan.
 
 ## Review
 
-- Post-merge commit `97dc8f3e` reports aggregate CI failure. Full status context inspection shows `Build Dev Images / summary` succeeded; the failing contexts are `Architecture / Lint diagrams, regenerate graphs, build site`, `Test Suite / Full Frontend Coverage Merge`, `Test Suite / Full Frontend Tests`, and dependent `Test Suite / Full Test Summary`.
-- The available Forgejo API token can list runs/tasks but cannot read Actions web job logs or log downloads; those endpoints redirect to `/user/login`. Runner container logs show only task lifecycle/network cleanup, not step output.
-- Local architecture reproduction found stale generated graph output: `npm run arch:graphs && npm run arch:calls` adds the missing frontend dependency edge for the new hardware signing support helper.
-- Local frontend coverage reproduction found a real coverage-gate failure, not a Forgejo artifact issue: both shards passed and `npm run test:coverage:merge -- .vitest-reports` failed because new branches in `useUsbSigning.ts` and `signingSupport.ts` were uncovered.
-- Fixed the architecture lane by committing the generated frontend graph edge.
-- Fixed the coverage lane by adding supported-contract tests for account-level BIP48 multisig detection and blocked Ledger multisig signing without a device label.
-- Simplified two impossible fallback branches instead of fabricating invalid test fixtures: `getDeviceDisplayName` only accepts the required `Device`, and `requestHasMultisigPath` now follows the required `PSBTSignRequest.inputPaths` contract.
-- Corner-case review: no Bitcoin RPC/runtime dependency was added; tests stay within Electrum-only app behavior and typed hardware-wallet request contracts; Ledger/BitBox multisig USB still fails before connect/sign; Trezor/file/QR paths are unchanged; Forgejo API-token limits are documented in `tasks/lessons.md`.
-- Local verification passed: focused hardware-wallet tests, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run arch:lint`, full frontend coverage shards and merge with 100% statements/branches/functions/lines, `npm run quality:lizard`, and `git diff --check`.
-- Delivery passed: PR #383 merged with squash commit `c668a11f`. Its target-branch push aggregate is green, including the previously failing Architecture and Test Suite coverage contexts.
-
----
-
-# Active Task: Fund-Safety Hardware Unsupported Signing Product Blocks 2026-05-09
-
-Status: completed; PR #382 merged as `97dc8f3e`
-
-Goal: make documented unsupported hardware multisig rows executable product blocks so Ledger and BitBox cannot attempt unsupported P2WSH or P2SH-P2WSH USB signing before physical fixture capture is available.
-
-## Plan
-
-- [x] Start from `origin/main` after PR #381 merged.
-- [x] Recheck the post-merge push backstop for PR #381 and record any remaining pending lanes.
-- [x] Inventory hardware validation docs, fixture matrix, USB signing hook, Ledger/BitBox/Trezor adapters, and current hardware signing tests.
-- [x] Add a shared hardware signing support guard that recognizes multisig signing requests from wallet type, BIP48 paths, PSBT derivation metadata, or multisig xpub maps.
-- [x] Block Ledger and BitBox multisig USB signing in the send hook and adapter boundaries with a user-safe product-block message.
-- [x] Keep Trezor multisig USB signing and file/QR PSBT workflows available.
-- [x] Add focused tests for Ledger/BitBox multisig blocks, Trezor passthrough, single-sig passthrough, BIP48 detection, PSBT metadata detection, and missing-data behavior.
-- [x] Update hardware validation/release/trust docs and task review with measured evidence only.
-- [x] Review corner cases: direct adapter calls, generic connected-device signing, missing wallet descriptor, BIP48 path with no xpub map, nested multisig, device names, and physical fixture deferral.
-- [x] Run focused hook/adapter/helper tests, app/test typechecks as needed, touched-file lizard, and `git diff --check`.
-- [x] Deliver through PR and merge if CI is green.
-
-## Review
-
-- PR #381 merged as `7e57bb66`. Its push backstop is `pending` with two visible pending statuses and no failures observed immediately after merge.
-- Inventory found a non-physical hardware gap: `server/tests/fixtures/hardware-signed-psbt-vectors.ts` and `docs/reference/hardware-wallet-validation.md` classify Ledger and BitBox P2WSH/P2SH-P2WSH as blocked, but `hooks/send/useUsbSigning.ts` and the Ledger/BitBox adapters did not enforce that product block before attempting USB signing.
-- Added `services/hardwareWallet/signingSupport.ts` to classify multisig signing requests from BIP48 paths, PSBT bip32 metadata, witness scripts, and multisig xpub maps, and to centralize the user-safe product-block message.
-- The send USB flow now refuses Ledger/BitBox multisig before connecting or signing, while existing Trezor multisig tests still exercise the allowed USB path.
-- Ledger and BitBox adapters now reject direct multisig PSBT signing before wallet-policy or `btcSignSimple` payload construction.
-- Loop review found and fixed an error-mapping corner case: the Ledger product-block text contains "blocked", which includes "locked"; the product-block check now runs before generic locked-device mapping.
-- Updated hardware validation, release gates, trust verification, and the fund-safety plan with the executable unsupported-row block. Physical signed artifacts remain pending.
-- Local verification passed: focused signing-support/hook/Ledger/BitBox tests, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, `npm run quality:lizard`, docs link/Mermaid tests, docs build, and `git diff --check`.
-- Delivery passed: PR #382 merged with squash commit `97dc8f3e`. Its target-branch push aggregate is red because Architecture and Test Suite lanes failed; that investigation is tracked in the active CI task above.
-
----
-
-# Active Task: Fund-Safety Threat Model And Trust Package 2026-05-09
-
-Status: completed; PR #381 merged as `7e57bb66`
-
-Goal: make Sanctuary's high-trust claims auditable by documenting assets, actors, trust boundaries, explicit non-goals, release gates, known limitations, and an external-review evidence package without overstating hardware, release, AI, broadcast, or node-trust guarantees.
-
-## Plan
-
-- [x] Start from `origin/main` after PR #380 merged.
-- [x] Recheck the post-merge push backstop for PR #380 and record any remaining pending lanes.
-- [x] Inventory existing trust, release-gate, hardware-validation, AI/MCP, backup, broadcast, and Specter/fund-safety docs.
-- [x] Add a wallet threat model that maps assets, actors, boundaries, threats, controls, gaps, and non-goals.
-- [x] Add or update user-facing trust documentation with what Sanctuary proves today, what remains pending, and how operators/reviewers can reproduce evidence.
-- [x] Add an external-review package index with concrete evidence commands/docs and known limitations.
-- [x] Review corner cases: AI/MCP read-only boundaries, watch-only metadata sensitivity, hardware display mismatch, backup restore risk, release compromise, wrong/malicious node data, and physical fixture deferral.
-- [x] Run docs link/Mermaid tests, docs build if needed, lizard/diff checks as relevant, and `git diff --check`.
-- [x] Deliver through PR and merge if CI is green.
-
-## Review
-
-- PR #380 push backstop remains `pending`; full backend integration, frontend typecheck/coverage, AI proxy, critical mutation, and build lanes are running or queued with no failing statuses observed.
-- Inventory covered release gates, hardware validation, offline bundle verification, AI/MCP docs, runtime secrets, broadcast and address derivation docs, the Specter benchmark, and the fund-safety gap closure plan.
-- Added the threat model, trust/verification guide, and external review package as reference docs; linked them from the docs index, release gates, fund-safety plan, and README security section.
-- Loop review found one overclaim: "private keys never enter Sanctuary" ignored malicious rejected input attempts. Reworded to "never accepted or stored as Sanctuary wallet state."
-- Edge-case review covered AI/MCP read-only authority, watch-only metadata sensitivity, hardware display mismatch, backup restore destructiveness and credential handling, release compromise, wrong or malicious Electrum data, Bitcoin Core as lab-only evidence, and physical fixture deferral. No open doc findings remain.
-- Local verification passed: docs link/Mermaid tests, docs build using the existing website dependency tree, and `git diff --check`. Lizard was not run because this slice changes docs/task files only.
-- Delivery passed: PR #381 merged with squash commit `7e57bb66`. The merge commit reached `origin/main`; its push status was still pending immediately after merge and will be rechecked in the hardware product-block slice.
-
----
-
-# Active Task: Fund-Safety Fail-Closed Safety Guards 2026-05-09
-
-Status: completed; PR #380 merged as `451cc2c3`
-
-Goal: add executable guardrails for safety-critical exception handling and complexity/mutation coverage so fund-moving, import, signing, broadcast, backup, auth, and release paths fail closed instead of silently continuing after unknown or partial-state errors.
-
-## Plan
-
-- [x] Start from `origin/main` after PR #379 merged.
-- [x] Recheck the post-merge push backstop for PR #379 and record any remaining pending lanes.
-- [x] Inventory existing safety-module `catch` patterns, critical mutation config, lizard quality scripts, release gates, and fail-closed helper/error conventions.
-- [x] Add a focused safety exception-handling guard with a reviewed allowlist or approved helper pattern, without blocking unrelated legacy code unless the finding is in touched safety paths.
-- [x] Add or extend safety quality scripts/docs so the guard is release-visible and easy to run locally.
-- [x] Add focused tests for the guard covering approved fail-closed handling, missing handling, allowlisted legacy debt, comments, and path scoping.
-- [x] Review edge cases: hardware cancel/disconnect, node timeouts, post-broadcast persistence failure, logger/redaction failures, generated files, comments/strings, and CI noisiness.
-- [x] Run focused guard tests, safety/lint/type checks as needed, lizard, mutation/config checks if touched, and `git diff --check`.
-- [x] Deliver through PR and merge if CI is green.
-
-## Review
-
-- PR #379 push backstop remains `pending`; Architecture and Build Dev Images are green, while the Test Suite lanes are still blocked behind required conditions.
-- Added `scripts/check-safety-catch-guards.mjs`, which scans backend safety modules plus frontend hardware/signing send paths with the TypeScript AST and fails on new catch blocks that neither throw, return, nor call an approved fail-closed helper.
-- Added `scripts/quality/safety-catch-allowlist.json` with the current grouped baseline of 85 legacy non-terminal catch finding groups. Count increases and stale entries both fail the guard.
-- Wired the guard into `npm run lint:server` as `npm run check:safety-catch-guards`.
-- Added focused script tests for swallowed catches, throw/return/helper approval, allowlist and stale behavior, and comments/strings/test/out-of-scope files.
-- Updated release gates and the fund-safety plan with the executable catch guard and remaining follow-ups.
-- Edge-case review: hardware cancel/disconnect, node timeout, post-broadcast persistence, send-signature persistence, auth/access middleware, backup, release verification, and logger-only catches are covered by the safety path set or its baseline; generated code and tests are excluded; comments/strings are ignored by AST parsing; nested callback returns and conditional-only returns do not satisfy the guard.
-- Local verification passed: focused guard tests, `npm run check:safety-catch-guards`, `npm run lint:server`, root test typecheck, script typecheck, docs link/Mermaid tests, lizard zero-warning gate, and `git diff --check`.
-- Delivery passed: PR #380 merged with squash commit `451cc2c3` after the required PR checks passed. The merge commit reached `origin/main`; its push Test Suite was still queued behind required conditions immediately after merge and will be rechecked in the threat-model slice.
-
----
-
-# Active Task: Fund-Safety Descriptor/Xpub Validation 2026-05-09
-
-Status: completed; PR #379 merged as `832e03ce`
-
-Goal: harden descriptor, xpub, and wallet-policy imports so malformed, wrong-network, private-key, duplicate-cosigner, and unsupported branch descriptors fail before wallet state is created.
-
-## Plan
-
-- [x] Start from `origin/main` after PR #378 merged.
-- [x] Confirm physical hardware fixture capture remains the final fund-safety task; continue with descriptor/xpub validation next.
-- [x] Inventory descriptor parser utilities, JSON/BlueWallet/Coldcard import paths, wallet import service, xpub validation route, and current descriptor/import tests.
-- [x] Add focused descriptor domain-safety tests for private extended keys, wrong-network xpub/path combinations, mixed cosigner networks, invalid branch wildcards, quorum overflow, duplicate cosigners, and script/path mismatches.
-- [x] Implement shared descriptor domain validation used by raw descriptors and parsed import formats without requiring Bitcoin Core, hardware devices, or new runtime dependencies.
-- [x] Update release/fund-safety docs and task review with measured evidence only.
-- [x] Run focused descriptor/import suites, server test typecheck/lint as needed, touched-file lizard, post-merge CI check for PR #378, and `git diff --check`.
-- [x] Deliver through PR and merge if CI is green.
-
-## Review
-
-- Added `domainValidation.ts` as a shared parser-domain gate for raw descriptors and parsed JSON/BlueWallet/Coldcard imports.
-- Raw descriptors now reject private extended keys, wrong-network xpub/path pairs, mixed-network multisig cosigners, unsupported `/0/*` or `/1/*` suffixes, fixed child indexes, malformed cosigner suffixes, malformed cosigner xpubs that could otherwise shrink an imported quorum, quorum overflow, duplicate cosigner keys, and script/path purpose mismatches.
-- Parsed imports keep legacy compatibility for existing JSON/BlueWallet/Coldcard path formats while still enforcing private-key rejection, network consistency, quorum shape, and duplicate multisig cosigner rejection.
-- Network detection no longer treats the first hardened component as coin type; it uses parsed derivation-path coin type and xpub prefix consistency instead.
-- Updated `docs/reference/release-gates.md` and `docs/plans/fund-safety-gap-closure-plan.md` with the runtime-local parser gate and remaining follow-ups.
-- Local verification passed: focused descriptor parser suite, server test typecheck, server lint with API-body and Bitcoin-network-boundary guards, server build, docs link/Mermaid tests, lizard zero-warning gate, and `git diff --check`.
-- PR #378 post-merge push status was rechecked; all visible jobs are green except `Test Suite / Full Critical Mutation Gate (push)`, which is still pending.
-- Delivery passed: PR #379 merged with squash commit `832e03ce` after the required PR checks passed. The merge commit reached `origin/main`; its push Test Suite was still queued behind required conditions immediately after merge and will be rechecked in the next slice.
-
----
-
-# Active Task: Fund-Safety Release Artifact Verification 2026-05-09
-
-Status: completed; PR #378 merged as `1f0bc593`
-
-Goal: make stable Sanctuary release artifacts manifest-backed and locally verifiable without adding runtime requirements outside the release/operator verification path.
-
-## Plan
-
-- [x] Start from `origin/main` after PR #377 merged.
-- [x] Move physical wallet verification/capture to the final fund-safety tasks so non-hardware release, import, safety, and trust controls can proceed first.
-- [x] Inventory release workflows, Forgejo/GitHub release scripts, offline bundle behavior, release-gate docs, and existing script-test conventions.
-- [x] Add a release manifest verifier that checks tag/commit/build evidence, local artifact checksums, stable-release required artifact classes, signed `SHA256SUMS`, SBOM/provenance references, offline bundle metadata, and container image digests.
-- [x] Add focused regression tests for valid stable manifests, missing stable evidence, checksum tampering, unsigned checksum files, bad release identity, and untracked local artifacts.
-- [x] Document the clean-machine/operator verification path and the release-gate expectation.
-- [x] Review the plan and diff for corner cases, especially prerelease handling, Forgejo/GitHub release differences, offline-bundle trust anchors, remote image digest checks, missing OpenSSL/public keys, and path traversal.
-- [x] Run focused release verifier tests, syntax checks, action-runtime guard, touched-file lizard, and `git diff --check`.
-- [x] Deliver through PR and merge if CI is green, then continue to the next non-hardware slice.
-
-## Review
-
-- Moved physical hardware fixture capture to the final two fund-safety PR slots and recorded the correction in `tasks/lessons.md`.
-- Added `scripts/release/release-artifact-verifier.mjs`, `scripts/release/verify-release-artifacts.mjs`, and `scripts/release/verify-release-artifacts.sh` for manifest-backed stable release verification.
-- The verifier checks manifest schema/version identity, stable/prerelease consistency, full commit SHA, builder workflow/run id, relative local paths, local checksums, signed `SHA256SUMS`, checksum coverage, source/install/release-note artifacts, offline bundle SBOM/provenance, frontend/backend container digests, platform digests, and optional registry digest comparison.
-- Added `npm run release:verify-artifacts` and `npm run test:release-artifacts`.
-- Added focused tests for valid stable manifests, unsigned checksum files, missing offline provenance, missing arm64 image digest evidence, tampered artifacts, untracked artifacts, bad release identity, and path traversal.
-- Updated release gates and offline bundle docs with the clean-machine verification path, manifest contract, release trust-anchor boundary, and the explicit non-runtime-dependency scope.
-- Local verification passed: `npm run test:release-artifacts`, `bash -n scripts/release/verify-release-artifacts.sh`, `bash -n scripts/create-forge-release.sh`, `node --check scripts/release/verify-release-artifacts.mjs`, `node --check scripts/release/release-artifact-verifier.mjs`, `npm run check:github-action-runtimes`, focused docs Vitest tests, touched-file lizard with zero warnings, and `git diff --check`. `actionlint` is not installed locally; no workflow files changed in this slice.
-
----
-
-# Active Task: Fund-Safety Electrum Broadcast Preflight 2026-05-09
-
-Status: completed; PR #377 merged as `354f512f`
-
-Goal: make final transaction broadcast fail closed on Electrum-visible stale or unverifiable inputs before propagation, without adding a production Bitcoin Core RPC dependency.
-
-## Plan
-
-- [x] Start from `origin/main` after PR #376 merged.
-- [x] Inventory the transaction broadcast route, service, node client, broadcast contracts, release-gate docs, and critical mutation classifier.
-- [x] Add an Electrum-only pre-propagation boundary that verifies every raw input prevout exists, has a standard decoded address, and is still reported unspent by the configured Electrum backend.
-- [x] Keep Bitcoin Core `testmempoolaccept` as release-lab/fixture evidence only, and document that it is not a production runtime dependency while Sanctuary is Electrum-only.
-- [x] Add focused tests for successful preflight, missing prev transaction, missing vout, unsupported prevout script, stale/spent prevout, Electrum failure, ordering before broadcast, and no persistence/audit-success on failure.
-- [x] Add a reusable Bitcoin validation-evidence runtime-scope contract so address-vector, PSBT-fixture, broadcast, and hardware-lab checks cannot silently become production runtime requirements.
-- [x] Review the plan and diff for corner cases, especially duplicate inputs, coinbase spends, missing addresses, async ordering, typed error propagation, and release-gate evidence.
-- [x] Run focused tests, server test typecheck/lint, touched-file lizard, mutation/release-gate checks as needed, and `git diff --check`.
-- [x] Deliver through PR and merge if CI is green.
-
-## Review
-
-- Added `verifyElectrumBroadcastPreflight` and wired `broadcastTransaction` to reject invalid raw transactions, coinbase-style inputs, duplicate inputs, missing previous transactions, missing vouts, unsupported previous-output scripts, stale/spent outpoints, and mismatched Electrum UTXO values before propagation.
-- Kept production broadcast preflight Electrum-only. Bitcoin Core `testmempoolaccept` and decoder evidence remain lab/fixture evidence, not operator runtime requirements.
-- Added `validationEvidenceContracts.ts` so broadcast, address-vector, PSBT-fixture, and hardware-lab evidence scopes declare runtime requirements, lab-only witnesses, and non-runtime requirements explicitly.
-- Added ordering and failure tests proving preflight runs before Electrum broadcast, stale/unverifiable inputs fail closed, and failed broadcast/preflight does not persist or recalculate a successful transaction.
-- Added release-gate docs and critical mutation classifier/config entries for the new broadcast preflight and validation-evidence scope.
-- Local verification passed: focused broadcast/service tests (191 tests), API broadcast route tests (117 tests), focused preflight coverage at 100% statements/branches/functions/lines, server test typecheck, server lint, touched-file lizard, critical mutation gate raw `69.07%`/weighted `65.56%`, classifier syntax, and `git diff --check`.
-
----
-
-# Active Task: Fund-Safety PR E Hardware Fixture Intake Schema 2026-05-09
-
-Status: completed; PR #376 merged as `e4da807a`
-
-Goal: make physical hardware signing artifacts safe to capture and review by adding an executable intake schema and lab checklist before any real Ledger, Trezor, or BitBox evidence is committed.
-
-## Plan
-
-- [x] Start from `origin/main` after PR #374 merged.
-- [x] Inventory the hardware validation runbook, fixture matrix, replay helper, and current fixture tests.
-- [x] Add fixture intake metadata for address evidence, negative controls, software gates, sanitization review, and Core replay requirements.
-- [x] Add executable validation helpers that reject unsafe or incomplete fixture rows before replay.
-- [x] Update hardware validation/release docs so the lab checklist and executable schema are the required intake path.
-- [x] Add focused tests for valid intake, missing address paths, mismatched device/Core addresses, missing software gates, secret-shaped notes, duplicate/conflicting rows, missing negative controls, and non-test networks.
-- [x] Run focused hardware fixture tests, server test typecheck, touched-file lizard, and `git diff --check`.
-- [x] Deliver through PR and merge if CI is green.
-
-## Review
-
-- Added executable intake fields to `HardwareSignedPsbtVector`: address evidence, negative controls, software gates, sanitization review, and Core replay requirements.
-- Added `hardwareSignedFixtureIntake.ts` validation so replay rejects incomplete lab evidence, duplicate fixture rows, unsupported-row conflicts, non-test networks, missing Core `testmempoolaccept`, missing software gates, mismatched Sanctuary/device/Core addresses, missing negative controls, and secret-shaped string values.
-- Wired replay to run intake validation before finalization/extraction so future committed artifacts cannot bypass the checklist.
-- Updated the hardware validation runbook and release gates with the executable intake checklist and the remaining requirement for 11 physical artifacts or product blocks.
-- Verification passed: focused hardware fixture replay tests, adjacent hardware compatibility tests, server test typecheck, server lint, touched-file lizard, and `git diff --check`.
-- Delivery passed: PR #376 merged after Architecture, install, quality, backend tests/typecheck/unit coverage, and summary checks passed.
-
----
-
-# Active Task: Fund-Safety PR D Broadcast Release Mutation Gate 2026-05-09
-
-Status: completed; PR #374 merged as `2e65e393`
-
-Goal: add a release-visible and CI-enforced mutation gate for the broadcast canonicality invariants without widening the fund-moving code surface beyond a reviewable helper module.
-
-## Plan
-
-- [x] Start from `origin/main` after PR #372 merged.
-- [x] Inventory the critical mutation gate, CI classifier, release gate docs, and broadcast canonicality helpers.
-- [x] Extract signed-PSBT canonical broadcast intent helpers into a small module that can be mutation-tested without mutating the entire route file.
-- [x] Wire the critical mutation config and CI changed-file classifier so broadcast canonicality code and tests run the critical mutation gate.
-- [x] Update release gate documentation with the measured broadcast canonicality/mutation evidence and the remaining node-preflight requirement.
-- [x] Run focused route tests with coverage, server test typecheck/lint, touched-file lizard, critical mutation gate, and `git diff --check`.
-- [x] Deliver through PR and merge if CI is green.
-
-## Review
-
-- Added `server/src/api/transactions/broadcastIntent.ts` for the signed-PSBT canonical decode/conflict helpers, leaving `broadcasting.ts` responsible for route orchestration, raw transaction intent, policy, audit, and broadcast.
-- Added direct broadcast-intent tests for strict draft UTXO parsing, including empty/non-decimal/out-of-range vout rejection, missing payload failure, metadata/outpoint conflict checks including extra outpoints, malformed addressed PSBT output handling, zero-fee PSBTs, zero-value output handling, invalid PSBTs, unknown input values, and unsupported paid non-address outputs.
-- Critical mutation now includes broadcast canonicality code and tests: `server/src/api/transactions/broadcastIntent.ts`, `server/src/services/bitcoin/transactions/broadcastContracts.ts`, route broadcast tests, broadcast contract tests, and the new intent tests.
-- CI changed-file classification now marks broadcast canonicality modules/tests as `critical_mutation_changed`, so the quick/full critical mutation gate appears in the Forgejo UI when this surface changes.
-- `docs/reference/release-gates.md` now lists broadcast canonicality as a release gate and explicitly keeps node `testmempoolaccept` preflight pending before complete broadcast-safety claims.
-- Forced critical mutation result: raw `67.65%` versus `52%` minimum, weighted `65.14%` versus `48%` minimum. Broadcast intent itself improved to `97.13%`; remaining broadcast survivors are equivalent normalization branches for vout parsing and empty-address handling, with the larger survivor set coming from pre-existing address-derivation baseline debt.
-- Verification passed: focused broadcast tests, focused coverage at 100% for `broadcasting.ts`, `broadcastIntent.ts`, and `broadcastContracts.ts`, forced critical mutation gate plus weighted checker, server test typecheck, server lint, touched-file lizard, and `git diff --check`.
-- Delivery passed: PR #374 merged with squash commit `2e65e393` after Code Quality, Architecture, PR Required Checks, Quick Critical Mutation Gate, Full Critical Mutation Gate, Full Backend Tests, Full Backend Unit Coverage, all four Full Backend Integration matrices, Full Browser E2E, and Full Test Summary passed.
+- Pending implementation.
 
 ---
 
 # Active Task: Fund-Safety PR C Signed-PSBT Broadcast Canonicality 2026-05-09
 
-Status: completed; PR #372 merged as `9d560359`
+Status: in progress
 
 Goal: enforce the new broadcast invariant contract for signed-PSBT broadcast paths by rejecting caller metadata that conflicts with the decoded PSBT before policy usage, audit success, persistence, or node submission.
 
@@ -326,7 +95,7 @@ Goal: enforce the new broadcast invariant contract for signed-PSBT broadcast pat
 - [x] Add regression tests for signed-PSBT recipient, amount, fee, UTXO, draft, and missing-metadata cases.
 - [x] Implement canonical signed-PSBT intent resolution using decoded PSBT data, with request/draft metadata used only for conflict checks.
 - [x] Run focused route/service tests, server typecheck/lint, lizard, vector checks where touched, and `git diff --check`.
-- [x] Deliver through PR and merge if CI is green.
+- [ ] Deliver through PR and merge if CI is green.
 
 ## Review
 
@@ -337,7 +106,6 @@ Goal: enforce the new broadcast invariant contract for signed-PSBT broadcast pat
 - CI failure reproduced locally in the full backend `flows` integration group; the legacy cross-wallet broadcast fixture did not mock PSBT decoding, so the new fail-closed parser correctly rejected the fake signed PSBT before broadcast. The fixture now supplies canonical decoded PSBT metadata and asserts the route decodes against the wallet network before `broadcastAndSave`.
 - A later remote-only `repositories-sharing` integration failure was not in the changed broadcast surface and did not reproduce locally; the exact CI matrix group passed locally with 124/124 tests before requesting a clean rerun.
 - Verification passed: `npx vitest run tests/unit/api/transactions-http-routes.test.ts`, focused coverage for `src/api/transactions/broadcasting.ts` at 100%, server test typecheck, server lint, touched-file lizard, backend vector test set, and `git diff --check`.
-- Delivery passed: PR #372 merged with squash commit `9d560359` after the clean rerun passed Code Quality, Architecture, PR Required Checks, Full Backend Tests, Full Backend Unit Coverage, all four Full Backend Integration matrices, Full Browser E2E, and Full Test Summary.
 
 ---
 

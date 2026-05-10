@@ -32,6 +32,10 @@ function getStatusText(result: PriceProviderTestResult | undefined): string {
   return result.error || "Unavailable";
 }
 
+// Predates the shared helper rule and uses stricter "always fall back if not
+// Error" semantics rather than shared's richer extraction. Tracked for follow-up
+// replacement with shared/utils/errors.
+// eslint-disable-next-line no-restricted-syntax
 function getErrorMessage(error: unknown, fallback = "Request failed"): string {
   return error instanceof Error ? error.message : fallback;
 }

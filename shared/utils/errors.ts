@@ -32,6 +32,11 @@ export function extractErrorMessage(
 }
 
 /**
+ * Alias for extractErrorMessage. Some callers prefer this name.
+ */
+export const getErrorMessage = extractErrorMessage;
+
+/**
  * Check if error is an AbortError (from AbortController)
  */
 export function isAbortError(error: unknown): boolean {

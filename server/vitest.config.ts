@@ -39,6 +39,7 @@ export default defineConfig({
         // Re-export shims preserving backward-compatible import paths (zero logic)
         'src/services/aiService.ts',
         'src/services/eventService.ts',
+        'src/utils/fatalProcessHandlers.ts',
         'src/services/maintenanceService.ts',
         'src/services/payjoinService.ts',
         'src/services/syncService.ts',

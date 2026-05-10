@@ -22,7 +22,12 @@ export default defineConfig({
       reporter: ['text', 'lcov', 'html', 'json-summary'],
       reportsDirectory: './coverage',
       include: ['src/**/*.ts'],
-      exclude: ['**/*.d.ts', '**/index.ts'],
+      exclude: [
+        '**/*.d.ts',
+        '**/index.ts',
+        // Re-export shim preserving backward-compatible import path (zero logic)
+        'src/utils/fatalProcessHandlers.ts',
+      ],
       thresholds: {
         branches: 100,
         functions: 98,

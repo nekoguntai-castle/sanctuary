@@ -73,6 +73,9 @@ export interface ErrorHandlerOptions {
  * @param fallbackMessage - Message to use if extraction fails
  * @returns User-friendly error message string
  */
+// Intentional ApiError-aware frontend wrapper that delegates to
+// sharedExtractErrorMessage internally.
+// eslint-disable-next-line no-restricted-syntax
 export function extractErrorMessage(error: unknown, fallbackMessage = 'An unexpected error occurred'): string {
   // Handle ApiError first (frontend-specific)
   if (error instanceof ApiError) {

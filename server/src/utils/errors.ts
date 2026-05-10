@@ -22,12 +22,19 @@ import { createLogger } from './logger';
 // Import and re-export shared error utilities
 import {
   extractErrorMessage,
+  getErrorMessage,
   isAbortError,
   isNetworkError,
   isTimeoutError,
 } from '../../../shared/utils/errors';
 
-export { extractErrorMessage, isAbortError, isNetworkError, isTimeoutError };
+export {
+  extractErrorMessage,
+  getErrorMessage,
+  isAbortError,
+  isNetworkError,
+  isTimeoutError,
+};
 
 const log = createLogger('UTIL:ERROR');
 const PRISMA_UNIQUE_TARGET_MESSAGES: ReadonlyArray<
@@ -143,12 +150,6 @@ export function mapPrismaKnownRequestError(
 export function isMappedPrismaKnownRequestErrorCode(code: string): boolean {
   return PRISMA_MAPPED_REQUEST_ERROR_CODES.has(code);
 }
-
-/**
- * Get error message from unknown error type
- * Alias for extractErrorMessage for backward compatibility
- */
-export const getErrorMessage = extractErrorMessage;
 
 /**
  * Handle Prisma-specific errors and return appropriate HTTP response

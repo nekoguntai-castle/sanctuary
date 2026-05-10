@@ -71,6 +71,12 @@ export default [
           selector: 'CatchClause > BlockStatement[body.length=0]',
           message: 'Empty catch blocks hide failures; log or handle the error.',
         },
+        {
+          selector:
+            'FunctionDeclaration[id.name=/^(getErrorMessage|extractErrorMessage)$/], ' +
+            'VariableDeclarator[id.name=/^(getErrorMessage|extractErrorMessage)$/][init.type=/^(ArrowFunctionExpression|FunctionExpression)$/]',
+          message: 'Import getErrorMessage/extractErrorMessage from shared/utils/errors instead of redefining locally.',
+        },
       ],
     },
   },
@@ -78,6 +84,20 @@ export default [
     files: [
       'server/src/utils/logger.ts',
       'gateway/src/utils/logger.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': 'off',
+    },
+  },
+  {
+    // shared/utils/errors.ts is the canonical home for these helpers, so the
+    // rule that bans local redefinitions must not fire on the source of truth.
+    // ai-proxy is intentionally network-isolated and re-implements equivalents
+    // in ai-proxy/src/utils.ts; importing from shared into ai-proxy would
+    // break that boundary.
+    files: [
+      'shared/utils/errors.ts',
+      'ai-proxy/src/utils.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

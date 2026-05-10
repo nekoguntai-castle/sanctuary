@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { registerFatalProcessHandlers } from '../../../src/utils/fatalProcessHandlers';
+import { registerFatalProcessHandlers } from '../../shared/utils/fatalProcessHandlers';
 
 function createHarness() {
   const handlers: Record<string, (...args: any[]) => void> = {};
@@ -23,11 +23,14 @@ function createHarness() {
 }
 
 describe('fatalProcessHandlers', () => {
-  it('logs and starts one fatal shutdown for unhandled rejections', async () => {
-    const { handlers, log, shutdown, processLike } = createHarness();
-
+  it('registers uncaughtException and unhandledRejection listeners', () => {
+    const { processLike } = createHarness();
     expect(processLike.on).toHaveBeenCalledWith('uncaughtException', expect.any(Function));
     expect(processLike.on).toHaveBeenCalledWith('unhandledRejection', expect.any(Function));
+  });
+
+  it('logs and starts one fatal shutdown for an unhandled Error rejection', async () => {
+    const { handlers, log, shutdown } = createHarness();
 
     handlers.unhandledRejection(new Error('promise boom'));
     await Promise.resolve();
@@ -41,7 +44,13 @@ describe('fatalProcessHandlers', () => {
       })
     );
     expect(shutdown).toHaveBeenCalledWith('unhandledRejection', 1);
+  });
 
+  it('ignores a second fatal event of a different type after shutdown has started', async () => {
+    const { handlers, log, shutdown } = createHarness();
+
+    handlers.unhandledRejection(new Error('promise boom'));
+    await Promise.resolve();
     handlers.uncaughtException(new Error('second boom'));
 
     expect(shutdown).toHaveBeenCalledTimes(1);
@@ -54,7 +63,7 @@ describe('fatalProcessHandlers', () => {
     );
   });
 
-  it('logs non-Error fatal reasons without a stack', async () => {
+  it('logs non-Error string reasons without a stack', async () => {
     const { handlers, log, shutdown } = createHarness();
 
     handlers.unhandledRejection('string reason');
@@ -71,7 +80,42 @@ describe('fatalProcessHandlers', () => {
     expect(shutdown).toHaveBeenCalledWith('unhandledRejection', 1);
   });
 
-  it('exits non-zero when fatal shutdown rejects', async () => {
+  it('extracts message from non-Error plain objects with a message property', async () => {
+    // Regression guard for the gateway behavior upgrade: prior gateway-local
+    // implementation returned "[object Object]" for plain-object reasons.
+    // The shared extractor must surface the inner .message instead.
+    const { handlers, log } = createHarness();
+
+    handlers.unhandledRejection({ message: 'object reason', code: 42 });
+    await Promise.resolve();
+
+    expect(log.error).toHaveBeenCalledWith(
+      'Fatal process event - shutting down',
+      expect.objectContaining({
+        event: 'unhandledRejection',
+        reason: 'object reason',
+        stack: undefined,
+      })
+    );
+  });
+
+  it('falls back to a stable string for plain objects without message or error', async () => {
+    const { handlers, log } = createHarness();
+
+    handlers.unhandledRejection({ unrelated: 'shape' });
+    await Promise.resolve();
+
+    expect(log.error).toHaveBeenCalledWith(
+      'Fatal process event - shutting down',
+      expect.objectContaining({
+        event: 'unhandledRejection',
+        reason: 'An unexpected error occurred',
+        stack: undefined,
+      })
+    );
+  });
+
+  it('exits non-zero when fatal shutdown rejects asynchronously', async () => {
     const { handlers, log, shutdown, exitNow } = createHarness();
     shutdown.mockRejectedValueOnce(new Error('shutdown failed'));
 

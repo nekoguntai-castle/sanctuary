@@ -89,6 +89,10 @@ export function isConsoleSetupError(error: unknown): boolean {
   return getConsoleSetupErrorReason(error) !== null;
 }
 
+// Predates the shared helper rule and uses stricter "always fall back if not
+// Error" semantics rather than shared's richer extraction. Tracked for follow-up
+// replacement with shared/utils/errors.
+// eslint-disable-next-line no-restricted-syntax
 export function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
