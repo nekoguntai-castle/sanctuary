@@ -214,7 +214,7 @@ export function registerTransactionHttpCreationTests(): void {
       .send({
         signedPsbtBase64: 'cHNi',
         recipient: 'tb1qrecipient',
-        amount: 50000,
+        amount: 20000,
       });
 
     expect(response.status).toBe(403);

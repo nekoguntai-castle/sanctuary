@@ -12,6 +12,7 @@ import {
   mockEvaluatePolicies,
   mockDraftFindByIdInWallet,
   mockFetch,
+  mockFindAddressStrings,
   mockGetCachedBlockHeight,
   mockGetPSBTInfo,
   mockGetPSBTInfoWithNetwork,
@@ -42,6 +43,36 @@ const makeBroadcastDraft = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const mockSignedPsbtInfo = ({
+  recipient = 'tb1qrecipient',
+  amount = 20000,
+  fee = 400,
+  txid = 'b'.repeat(64),
+  vout = 0,
+}: {
+  recipient?: string;
+  amount?: number;
+  fee?: number;
+  txid?: string;
+  vout?: number;
+} = {}) => {
+  mockGetPSBTInfo.mockReturnValueOnce({
+    fee,
+    outputs: [{ address: recipient, value: amount }],
+    inputs: [{ txid, vout }],
+  });
+};
+
+const mockDraftSignedPsbtInfo = () => {
+  mockSignedPsbtInfo({
+    recipient: 'tb1qdraftrecipient',
+    amount: 12000,
+    fee: 250,
+    txid: 'c'.repeat(64),
+    vout: 1,
+  });
+};
+
 export function registerTransactionHttpBroadcastTests(): void {
   it('validates broadcast payload before sending', async () => {
     const response = await request(app)
@@ -53,6 +84,7 @@ export function registerTransactionHttpBroadcastTests(): void {
   });
 
   it('broadcasts a saved draft by draftId and archives through service metadata', async () => {
+    mockDraftSignedPsbtInfo();
     mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({
       effectiveAmount: null,
     }));
@@ -93,7 +125,8 @@ export function registerTransactionHttpBroadcastTests(): void {
     expect(mockBroadcastAndSave).not.toHaveBeenCalled();
   });
 
-  it('ignores invalid legacy selected UTXO draft references during broadcast metadata assembly', async () => {
+  it('rejects invalid legacy selected UTXO draft references before broadcast', async () => {
+    mockDraftSignedPsbtInfo();
     mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({
       selectedUtxoIds: ['legacy-without-separator', `${'z'.repeat(64)}:1`, `${'c'.repeat(64)}:-1`],
     }));
@@ -102,15 +135,14 @@ export function registerTransactionHttpBroadcastTests(): void {
       .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
       .send({ draftId: 'draft-1' });
 
-    expect(response.status).toBe(200);
-    expect(mockBroadcastAndSave).toHaveBeenCalledWith(
-      walletId,
-      'signed-draft-psbt',
-      expect.objectContaining({
-        utxos: [],
-        draftId: 'draft-1',
-      })
-    );
+    expect(response.status).toBe(400);
+    expect(response.body.details).toMatchObject({
+      field: 'draftId',
+      reason: 'metadata_mismatch',
+      expected: [`${'c'.repeat(64)}:1`],
+      actual: [],
+    });
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
   });
 
   it('rejects draft broadcasts that still need approval', async () => {
@@ -186,6 +218,7 @@ export function registerTransactionHttpBroadcastTests(): void {
   });
 
   it('captures failed broadcast attempts in audit log', async () => {
+    mockSignedPsbtInfo({ amount: 10000 });
     mockBroadcastAndSave.mockRejectedValueOnce(new Error('broadcast failed'));
 
     const response = await request(app)
@@ -207,6 +240,7 @@ export function registerTransactionHttpBroadcastTests(): void {
   });
 
   it('captures failed draft broadcast attempts with draft metadata in audit log', async () => {
+    mockDraftSignedPsbtInfo();
     mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft());
     mockBroadcastAndSave.mockRejectedValueOnce(new Error('draft broadcast failed'));
 
@@ -424,7 +458,7 @@ export function registerTransactionHttpBroadcastTests(): void {
     );
   });
 
-  it('logs failed PSBT broadcast attempts', async () => {
+  it('rejects invalid PSBT broadcast attempts before node submission', async () => {
     mockGetPSBTInfo.mockImplementationOnce(() => {
       throw new Error('invalid psbt');
     });
@@ -435,8 +469,12 @@ export function registerTransactionHttpBroadcastTests(): void {
         signedPsbt: 'bad-psbt',
       });
 
-    expect(response.status).toBe(500);
-    expect(response.body.code).toBe('INTERNAL_ERROR');
+    expect(response.status).toBe(400);
+    expect(response.body.details).toMatchObject({
+      field: 'signedPsbt',
+      reason: 'invalid_psbt',
+    });
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
     // Audit log is not reached because getPSBTInfo throws before the try/catch block
   });
 
@@ -531,7 +569,7 @@ export function registerTransactionHttpBroadcastTests(): void {
     expect(mockBroadcastAndSave).not.toHaveBeenCalled();
   });
 
-  it('proceeds without policy eval when PSBT parsing fails and no recipient/amount supplied', async () => {
+  it('rejects signed PSBT transaction broadcast when parsing fails', async () => {
     mockGetPSBTInfo.mockImplementationOnce(() => {
       throw new Error('corrupt PSBT');
     });
@@ -543,34 +581,160 @@ export function registerTransactionHttpBroadcastTests(): void {
         // No recipient or amount in body and PSBT parse fails
       });
 
-    expect(response.status).toBe(200);
-    // Policy evaluation should NOT be called since there's no recipient/amount
+    expect(response.status).toBe(400);
+    expect(response.body.details).toMatchObject({
+      field: 'signedPsbtBase64',
+      reason: 'invalid_psbt',
+    });
     expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
   });
 
-  it('keeps caller-supplied recipient and amount metadata without PSBT parsing', async () => {
+  it('rejects caller recipient metadata that conflicts with decoded signed PSBT', async () => {
     const response = await request(app)
       .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
       .send({
-        signedPsbtBase64: 'bad-psbt-data',
+        signedPsbtBase64: 'cHNi',
         recipient: 'tb1qcallerrecipient',
+        amount: 20000,
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.details).toMatchObject({
+      field: 'recipient',
+      reason: 'metadata_mismatch',
+      expected: 'tb1qrecipient',
+      actual: 'tb1qcallerrecipient',
+    });
+    expect(mockGetPSBTInfoWithNetwork).toHaveBeenCalledWith('cHNi', 'testnet4');
+    expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('rejects caller amount metadata that conflicts with decoded signed PSBT', async () => {
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({
+        signedPsbtBase64: 'cHNi',
+        recipient: 'tb1qrecipient',
         amount: 21000,
       });
 
+    expect(response.status).toBe(400);
+    expect(response.body.details).toMatchObject({
+      field: 'amount',
+      reason: 'metadata_mismatch',
+      expected: 20000,
+      actual: 21000,
+    });
+    expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('rejects caller fee metadata that conflicts with decoded signed PSBT', async () => {
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({
+        signedPsbtBase64: 'cHNi',
+        recipient: 'tb1qrecipient',
+        amount: 20000,
+        fee: 399,
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.details).toMatchObject({
+      field: 'fee',
+      reason: 'metadata_mismatch',
+      expected: 400,
+      actual: 399,
+    });
+    expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('rejects caller UTXO metadata that conflicts with decoded signed PSBT', async () => {
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({
+        signedPsbtBase64: 'cHNi',
+        recipient: 'tb1qrecipient',
+        amount: 20000,
+        utxos: [{ txid: 'e'.repeat(64), vout: 1 }],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.details).toMatchObject({
+      field: 'utxos',
+      reason: 'metadata_mismatch',
+      expected: [`${'b'.repeat(64)}:0`],
+      actual: [`${'e'.repeat(64)}:1`],
+    });
+    expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('rejects signed PSBTs when input values cannot produce a non-negative fee', async () => {
+    mockGetPSBTInfo.mockReturnValueOnce({
+      fee: -1,
+      outputs: [{ address: 'tb1qrecipient', value: 20000 }],
+      inputs: [{ txid: 'b'.repeat(64), vout: 0 }],
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({ signedPsbtBase64: 'cHNi' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.details).toMatchObject({
+      field: 'signedPsbtBase64',
+      reason: 'unknown_input_value',
+      fee: -1,
+    });
+    expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('rejects signed PSBTs with paid non-address outputs before policy use', async () => {
+    mockGetPSBTInfo.mockReturnValueOnce({
+      fee: 100,
+      outputs: [{ value: 1 }],
+      inputs: [{ txid: 'b'.repeat(64), vout: 0 }],
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({ signedPsbtBase64: 'cHNi' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.details).toMatchObject({
+      field: 'signedPsbtBase64',
+      reason: 'unsupported_script',
+    });
+    expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
+  it('derives zero-amount policy metadata for change-only signed PSBTs', async () => {
+    mockFindAddressStrings.mockResolvedValueOnce(['tb1qchange']);
+    mockGetPSBTInfo.mockReturnValueOnce({
+      fee: 100,
+      outputs: [{ address: 'tb1qchange', value: 19000 }],
+      inputs: [{ txid: 'b'.repeat(64), vout: 0 }],
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({ signedPsbtBase64: 'cHNi' });
+
     expect(response.status).toBe(200);
-    expect(mockGetPSBTInfoWithNetwork).not.toHaveBeenCalled();
-    expect(mockEvaluatePolicies).toHaveBeenCalledWith(
-      expect.objectContaining({
-        recipient: 'tb1qcallerrecipient',
-        amount: BigInt(21000),
-      })
-    );
+    expect(mockEvaluatePolicies).not.toHaveBeenCalled();
     expect(mockBroadcastAndSave).toHaveBeenCalledWith(
       walletId,
-      'bad-psbt-data',
+      'cHNi',
       expect.objectContaining({
-        recipient: 'tb1qcallerrecipient',
-        amount: 21000,
+        recipient: 'tb1qchange',
+        amount: 0,
+        fee: 100,
       })
     );
   });
@@ -583,7 +747,7 @@ export function registerTransactionHttpBroadcastTests(): void {
       .send({
         signedPsbtBase64: 'cHNi',
         recipient: 'tb1qrecipient',
-        amount: 10000,
+        amount: 20000,
       });
 
     expect(response.status).toBe(200);

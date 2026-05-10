@@ -1,6 +1,33 @@
-# Active Task: Fund-Safety PR B Broadcast Invariant Spec 2026-05-09
+# Active Task: Fund-Safety PR C Signed-PSBT Broadcast Canonicality 2026-05-09
 
 Status: in progress
+
+Goal: enforce the new broadcast invariant contract for signed-PSBT broadcast paths by rejecting caller metadata that conflicts with the decoded PSBT before policy usage, audit success, persistence, or node submission.
+
+## Plan
+
+- [x] Start from `origin/main` after PR #371.
+- [x] Inventory signed-PSBT broadcast helpers, route tests, and PSBT info fields.
+- [x] Add regression tests for signed-PSBT recipient, amount, fee, UTXO, draft, and missing-metadata cases.
+- [x] Implement canonical signed-PSBT intent resolution using decoded PSBT data, with request/draft metadata used only for conflict checks.
+- [x] Run focused route/service tests, server typecheck/lint, lizard, vector checks where touched, and `git diff --check`.
+- [ ] Deliver through PR and merge if CI is green.
+
+## Review
+
+- Signed-PSBT transaction broadcasts now decode the PSBT before policy evaluation and before `broadcastAndSave`; corrupt PSBTs fail closed with `invalid_psbt` even when caller metadata is present.
+- Recipient, amount, fee, and UTXO metadata from the caller or draft must match decoded PSBT outputs/inputs; mismatches return `metadata_mismatch` before policy usage, audit success, persistence, or node broadcast.
+- PSBT broadcasts now reject paid non-address outputs, negative/unknown fee derivation, and derive change-only spends as zero-amount policy events.
+- Removed the metadata-trusting fallback path from transaction broadcast metadata assembly.
+- CI failure reproduced locally in the full backend `flows` integration group; the legacy cross-wallet broadcast fixture did not mock PSBT decoding, so the new fail-closed parser correctly rejected the fake signed PSBT before broadcast. The fixture now supplies canonical decoded PSBT metadata and asserts the route decodes against the wallet network before `broadcastAndSave`.
+- A later remote-only `repositories-sharing` integration failure was not in the changed broadcast surface and did not reproduce locally; the exact CI matrix group passed locally with 124/124 tests before requesting a clean rerun.
+- Verification passed: `npx vitest run tests/unit/api/transactions-http-routes.test.ts`, focused coverage for `src/api/transactions/broadcasting.ts` at 100%, server test typecheck, server lint, touched-file lizard, backend vector test set, and `git diff --check`.
+
+---
+
+# Active Task: Fund-Safety PR B Broadcast Invariant Spec 2026-05-09
+
+Status: completed; PR #371 merged as `7d9ab70d`
 
 Goal: add the broadcast canonicality contract and focused tests that pin fail-closed metadata, policy, and node-preflight invariants before the production parser/enforcement slice.
 
@@ -11,7 +38,7 @@ Goal: add the broadcast canonicality contract and focused tests that pin fail-cl
 - [x] Add a narrow broadcast invariant spec in the existing contract module.
 - [x] Add focused tests proving request metadata is never authoritative and every broadcast entrypoint must canonical-decode before propagation.
 - [x] Run focused server tests, test typecheck, lizard, and diff checks.
-- [ ] Deliver through PR and merge if CI is green.
+- [x] Deliver through PR and merge if CI is green.
 
 ## Review
 
@@ -20,6 +47,7 @@ Goal: add the broadcast canonicality contract and focused tests that pin fail-cl
 - Added a pre-propagation invariant matrix covering decode, policy, and node-preflight requirements for the enforcement slice.
 - Added entrypoint contracts requiring signed-PSBT, draft-backed signed-PSBT, raw-transaction, and PSBT-broadcast paths to canonical-decode and node-preflight before propagation.
 - Verification passed: focused broadcast contract tests, focused broadcast contract coverage at 100%, server test typecheck after wiring the isolated worktree to local server dependencies/generated Prisma, server lint, touched-file lizard, local Verify Bitcoin Vectors workflow reproduction, and `git diff --check`.
+- Delivery passed: PR #371 merged after the rerun head passed Verify Bitcoin Vectors, Test Suite, Code Quality, Architecture, and image-scope checks; the initial vector run was a transient failure and the local vector workflow reproduction was green.
 
 ---
 

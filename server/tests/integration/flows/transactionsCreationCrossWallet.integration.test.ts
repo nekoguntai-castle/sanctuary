@@ -16,6 +16,7 @@ const mockCreateTransaction = vi.fn();
 const mockCreateBatchTransaction = vi.fn();
 const mockBroadcastAndSave = vi.fn();
 const mockEstimateTransaction = vi.fn();
+const mockGetPSBTInfoWithNetwork = vi.fn();
 const mockGetCachedBlockHeight = vi.fn();
 const mockAuditLogFromRequest = vi.fn();
 
@@ -34,6 +35,7 @@ vi.mock('../../../src/services/bitcoin/transactionService', () => ({
   createBatchTransaction: (...args: unknown[]) => mockCreateBatchTransaction(...args),
   broadcastAndSave: (...args: unknown[]) => mockBroadcastAndSave(...args),
   estimateTransaction: (...args: unknown[]) => mockEstimateTransaction(...args),
+  getPSBTInfoWithNetwork: (...args: unknown[]) => mockGetPSBTInfoWithNetwork(...args),
 }));
 
 vi.mock('../../../src/services/bitcoin/blockchain', async () => {
@@ -179,6 +181,11 @@ describeWithDb('Transaction Creation and Cross-Wallet Integration', () => {
         txid: uniqueTxid('broadcast'),
         saved: true,
       });
+      mockGetPSBTInfoWithNetwork.mockReturnValue({
+        fee: 250,
+        outputs: [{ address: 'tb1qrecipient00000000000000000000000000000000', value: 25000 }],
+        inputs: [{ txid: uniqueTxid('input'), vout: 0 }],
+      });
 
       const response = await request(app)
         .post(`/api/v1/transactions/wallets/${walletId}/transactions/broadcast`)
@@ -192,6 +199,7 @@ describeWithDb('Transaction Creation and Cross-Wallet Integration', () => {
         .expect(200);
 
       expect(response.body).toHaveProperty('txid');
+      expect(mockGetPSBTInfoWithNetwork).toHaveBeenCalledWith('cHNidP8BAHECAAAAAQ==', 'testnet3');
       expect(mockBroadcastAndSave).toHaveBeenCalledWith(
         walletId,
         'cHNidP8BAHECAAAAAQ==',
