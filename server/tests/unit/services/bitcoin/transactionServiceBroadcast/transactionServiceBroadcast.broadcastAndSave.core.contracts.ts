@@ -159,6 +159,28 @@ export const registerBroadcastAndSaveCoreContracts = () => {
     ).rejects.toThrow('Failed to broadcast transaction');
   });
 
+  it('should not persist or recalculate balances when broadcast preflight fails', async () => {
+    (broadcastTransaction as Mock).mockRejectedValueOnce(
+      new Error('Broadcast preflight rejected stale or spent input')
+    );
+
+    const metadata = {
+      recipient,
+      amount: 50000,
+      fee: 1000,
+      utxos: [{ txid: sampleUtxos[0].txid, vout: sampleUtxos[0].vout }],
+      rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
+    };
+
+    await expect(
+      broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata))
+    ).rejects.toThrow('Broadcast preflight rejected stale or spent input');
+
+    expect(mockPrismaClient.uTXO.update).not.toHaveBeenCalled();
+    expect(mockPrismaClient.transaction.create).not.toHaveBeenCalled();
+    expect(recalculateWalletBalances).not.toHaveBeenCalled();
+  });
+
   it('should call recalculateWalletBalances after successful broadcast', async () => {
     const metadata = {
       recipient,

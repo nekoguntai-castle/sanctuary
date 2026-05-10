@@ -9,6 +9,7 @@ import {
   BROADCAST_PAYLOAD_DERIVED_FIELDS,
   BROADCAST_PRE_PROPAGATION_INVARIANTS,
   BROADCAST_REQUEST_METADATA_CONFLICT_FIELDS,
+  BROADCAST_RUNTIME_PREFLIGHT_SCOPE,
   getBroadcastFailureRetryPolicy,
   isBroadcastErrorReason,
   selectBroadcastIdempotencyBasis,
@@ -61,11 +62,10 @@ const REQUIRED_PRE_PROPAGATION_INVARIANTS = [
   'outputs_use_supported_scripts',
   'outputs_are_not_dust',
   'fee_is_within_wallet_policy',
-  'fee_meets_relay_policy',
   'transaction_has_required_signatures',
   'transaction_is_finalizable',
   'node_preflight_is_available_when_required',
-  'node_accepts_final_transaction',
+  'configured_electrum_prevouts_are_unspent',
 ] as const;
 
 describe('broadcast contracts', () => {
@@ -214,13 +214,37 @@ describe('broadcast contracts', () => {
         requiredBeforePropagation: true,
       },
       {
-        name: 'node_accepts_final_transaction',
+        name: 'configured_electrum_prevouts_are_unspent',
         phase: 'node_preflight',
         authoritativeSource: 'node_preflight',
         failureReason: 'node_preflight_rejected',
         requiredBeforePropagation: true,
       },
     ]);
+  });
+
+  it('keeps external benchmark checks out of runtime requirements unless supported', () => {
+    expect(BROADCAST_RUNTIME_PREFLIGHT_SCOPE).toEqual({
+      area: 'broadcast_preflight',
+      runtimeRequirements: [
+        'configured_electrum_backend',
+      ],
+      verifiesBeforePropagation: [
+        'raw_transaction_parseable',
+        'previous_transactions_fetchable',
+        'previous_outputs_exist',
+        'previous_outputs_have_standard_addresses',
+        'previous_outputs_are_still_unspent',
+      ],
+      labEvidenceOnly: [
+        'bitcoin_core_testmempoolaccept',
+        'bitcoin_core_decoderawtransaction',
+      ],
+      notRuntimeRequirements: [
+        'bitcoin_core_rpc',
+        'bitcoind',
+      ],
+    });
   });
 
   it('selects txid as the primary idempotency basis before draft payload hash', () => {

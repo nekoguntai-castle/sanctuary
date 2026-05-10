@@ -147,7 +147,7 @@ Specter has many mature domain validations, but much of the web boundary parsing
 
 ## Lessons Learned For Sanctuary
 
-1. **The node must be an independent witness.** Any transaction that may reach the Bitcoin network should be decoded by Sanctuary and checked by the configured node before broadcast. `testmempoolaccept` should be a baseline, not an optional convenience.
+1. **The configured backend must be an independent witness.** Any transaction that may reach the Bitcoin network should be decoded by Sanctuary and checked by the configured production backend before broadcast. While Sanctuary is Electrum-only, that means Electrum-visible prevout and unspent checks at runtime; Bitcoin Core `testmempoolaccept` remains release-lab evidence rather than an added operator requirement. The same boundary applies to address vectors, PSBT fixtures, and hardware-lab evidence: external witnesses improve confidence but do not become runtime requirements unless Sanctuary explicitly supports that feature.
 
 2. **Domain checks beat UI confidence.** The UI can help users understand outputs, but the server must re-derive recipient outputs, change outputs, fees, input ownership, network, script policy, and wallet membership from canonical PSBT/raw transaction data.
 

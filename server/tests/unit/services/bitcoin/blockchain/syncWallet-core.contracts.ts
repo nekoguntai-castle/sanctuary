@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as bitcoin from 'bitcoinjs-lib';
 import { mockPrismaClient, resetPrismaMocks } from '../../../../mocks/prisma';
 import {
   mockElectrumClient,
@@ -11,6 +12,34 @@ import { validateAddress } from '../../../../../src/services/bitcoin/utils';
 import * as addressDerivation from '../../../../../src/services/bitcoin/addressDerivation';
 import * as syncModule from '../../../../../src/services/bitcoin/sync';
 import { getBlockchainService } from './blockchainTestHarness';
+
+const TESTNET = bitcoin.networks.testnet;
+const BROADCAST_PREV_TXID = 'd'.repeat(64);
+const BROADCAST_PREV_VALUE_SATS = 80_000;
+const BROADCAST_PREV_ADDRESS = testnetAddresses.nativeSegwit[0];
+const BROADCAST_RECIPIENT = testnetAddresses.nativeSegwit[1];
+
+const createBroadcastRawTx = (): string => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from(BROADCAST_PREV_TXID, 'hex').reverse(), 0);
+  tx.addOutput(bitcoin.address.toOutputScript(BROADCAST_RECIPIENT, TESTNET), BigInt(1_000));
+  return tx.toHex();
+};
+
+const setupBroadcastPreflight = (): void => {
+  mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[
+    BROADCAST_PREV_TXID,
+    createMockTransaction({
+      txid: BROADCAST_PREV_TXID,
+      outputs: [{ value: BROADCAST_PREV_VALUE_SATS / 100_000_000, address: BROADCAST_PREV_ADDRESS }],
+    }),
+  ]]));
+  mockElectrumClient.getAddressUTXOsBatch.mockResolvedValue(new Map([[
+    BROADCAST_PREV_ADDRESS,
+    [{ tx_hash: BROADCAST_PREV_TXID, tx_pos: 0, height: 1, value: BROADCAST_PREV_VALUE_SATS }],
+  ]]));
+};
 
 export function registerBlockchainSyncWalletCoreTests(): void {
   describe('syncWallet', () => {
@@ -202,23 +231,29 @@ export function registerBlockchainSyncWalletCoreTests(): void {
 
   describe('broadcastTransaction', () => {
     it('should broadcast transaction and return txid', async () => {
-      const rawTx = '0200000001...';
+      const rawTx = createBroadcastRawTx();
       const expectedTxid = 'g'.repeat(64);
 
+      setupBroadcastPreflight();
       mockElectrumClient.broadcastTransaction.mockResolvedValue(expectedTxid);
 
       const result = await getBlockchainService().broadcastTransaction(rawTx, 'testnet4');
 
       expect(result.txid).toBe(expectedTxid);
       expect(result.broadcasted).toBe(true);
+      expect(mockElectrumClient.getTransactionsBatch).toHaveBeenCalledBefore(mockElectrumClient.broadcastTransaction);
+      expect(mockElectrumClient.getAddressUTXOsBatch).toHaveBeenCalledBefore(mockElectrumClient.broadcastTransaction);
     });
 
     it('should throw error on broadcast failure', async () => {
+      const rawTx = createBroadcastRawTx();
+
+      setupBroadcastPreflight();
       mockElectrumClient.broadcastTransaction.mockRejectedValue(
         new Error('Transaction rejected: insufficient fee')
       );
 
-      await expect(getBlockchainService().broadcastTransaction('invalid-tx', 'testnet4')).rejects.toThrow(
+      await expect(getBlockchainService().broadcastTransaction(rawTx, 'testnet4')).rejects.toThrow(
         'Failed to broadcast transaction'
       );
     });

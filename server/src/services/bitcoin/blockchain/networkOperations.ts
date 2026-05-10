@@ -12,6 +12,7 @@ import type { BitcoinNetwork } from '../networks';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import type { FeeEstimates, CheckAddressResult } from './types';
+import { BroadcastPreflightError, verifyElectrumBroadcastPreflight } from './broadcastPreflight';
 
 const log = createLogger('BITCOIN:SVC_BLOCKCHAIN');
 
@@ -29,12 +30,27 @@ export async function broadcastTransaction(
   const client = await getNodeClient(network);
 
   try {
+    const preflight = await verifyElectrumBroadcastPreflight(client, rawTx);
+    log.debug('[BLOCKCHAIN] Broadcast preflight passed', {
+      network,
+      txid: preflight.txid,
+      inputCount: preflight.inputCount,
+    });
+
     const txid = await client.broadcastTransaction(rawTx);
     return {
       txid,
       broadcasted: true,
     };
   } catch (error) {
+    if (error instanceof BroadcastPreflightError) {
+      log.warn('[BLOCKCHAIN] Broadcast preflight failed', {
+        network,
+        reason: error.reason,
+        details: error.details,
+      });
+    }
+
     throw new Error(`Failed to broadcast transaction: ${getErrorMessage(error, 'Unknown error')}`);
   }
 }

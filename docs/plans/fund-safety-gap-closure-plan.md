@@ -102,9 +102,11 @@ Implementation plan:
    - excessive fee or fee rate
    - below-quorum multisig or incomplete signature data
    - policy limits for multi-recipient spends
-6. Run configured-node preflight before propagation:
-   - `testmempoolaccept` for raw final transactions where the node supports it.
-   - deterministic fail-closed behavior if the node cannot provide preflight and the release claim requires it.
+6. Run configured-node preflight before propagation without expanding the supported runtime:
+   - Electrum production runtime checks must verify that each final input's previous transaction is fetchable, the referenced output exists, the output decodes to a standard address, and the configured Electrum backend still reports that outpoint as unspent.
+   - Bitcoin Core `testmempoolaccept` remains valuable release-lab evidence for fixtures and external validation, but it must not become a production dependency unless Sanctuary explicitly supports a Core backend.
+   - Address-vector, PSBT-fixture, hardware-lab, and broadcast evidence scopes must declare their runtime requirements separately from lab-only tools so future benchmark checks cannot add implicit operator dependencies.
+   - deterministic fail-closed behavior if the configured production backend cannot provide the preflight evidence required by the release claim.
 7. Persist audit and transaction records from canonical decoded data, not request metadata.
 8. Define post-broadcast reconciliation:
    - If broadcast succeeds and persistence fails, write a durable recovery/audit record containing txid and raw transaction before returning.
@@ -136,7 +138,8 @@ Acceptance criteria:
 - No broadcast path trusts client metadata over decoded payload data.
 - Mismatched, ambiguous, or unpreflighted transactions fail closed.
 - Audit, notifications, and persistence use canonical decoded values.
-- `testmempoolaccept` or an explicit equivalent node policy check is part of the release gate.
+- Electrum prevout/unspent preflight is part of the production release gate; Bitcoin Core `testmempoolaccept` proof is release-lab fixture evidence, not a runtime requirement while Sanctuary is Electrum-only.
+- Bitcoin validation evidence contracts keep external witnesses lab-scoped unless a runtime feature explicitly supports them.
 
 Verification:
 
@@ -551,7 +554,7 @@ Add these rows to `docs/reference/release-gates.md` when the matching implementa
 
 | Area | Gate | Evidence | Status |
 | --- | --- | --- | --- |
-| Broadcast safety | Canonical decoded intent plus node preflight | Focused broadcast invariant tests, critical mutation gate, and `testmempoolaccept` fixture proof | Required for releases with broadcast enabled |
+| Broadcast safety | Canonical decoded intent plus Electrum prevout preflight | Focused broadcast invariant tests, critical mutation gate, Electrum prevout/unspent preflight tests, and optional Bitcoin Core `testmempoolaccept` fixture proof as lab evidence | Required for releases with broadcast enabled |
 | Physical hardware signing | Real device signed fixtures | `REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` | Required for claimed device/script rows |
 | Release provenance | Checksums, signatures/attestations, SBOM, provenance, verification script | Release manifest and clean-machine verification output | Required for stable releases |
 | Domain import safety | Descriptor/xpub domain validation | Descriptor/import safety suites and address verification scripts | Required when wallet import surfaces change |

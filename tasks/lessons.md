@@ -2,6 +2,19 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Keep Maturity References Within Sanctuary Architecture
+
+**Rule:** When borrowing a safety pattern from another wallet, preserve Sanctuary's declared production architecture unless the user explicitly approves a new runtime dependency.
+
+**Why:** Specter's `testmempoolaccept` pattern is Bitcoin Core-native, but the user clarified Sanctuary should remain Electrum-only at runtime. Adding a production Bitcoin RPC client would close one benchmark gap by opening a larger architecture and operations gap.
+
+**How to apply:**
+
+- Translate Core-specific safety checks into Electrum-compatible runtime checks where possible.
+- Keep Core replay and `testmempoolaccept` as fixture, lab, or release evidence unless Core becomes an explicit supported backend.
+- Update `tasks/todo.md` immediately when a benchmark-inspired plan conflicts with the intended architecture.
+- Say clearly when an Electrum-only check is weaker than Core mempool policy simulation.
+
 ## Verify Network Identity, Not Just Connectivity
 
 **Rule:** Any per-network Electrum or node test must verify chain identity for the selected network, not just socket connectivity and block height.

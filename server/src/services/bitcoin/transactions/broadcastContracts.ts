@@ -1,4 +1,5 @@
 import type { BitcoinNetwork } from '../networks';
+import { BITCOIN_ELECTRUM_BROADCAST_PREFLIGHT_SCOPE } from '../validationEvidenceContracts';
 
 export const BROADCAST_ERROR_REASON_VALUES = [
   'missing_intent',
@@ -243,13 +244,6 @@ export const BROADCAST_PRE_PROPAGATION_INVARIANTS = [
     requiredBeforePropagation: true,
   },
   {
-    name: 'fee_meets_relay_policy',
-    phase: 'policy',
-    authoritativeSource: 'node_preflight',
-    failureReason: 'fee_too_low',
-    requiredBeforePropagation: true,
-  },
-  {
     name: 'transaction_has_required_signatures',
     phase: 'policy',
     authoritativeSource: 'decoded_payload',
@@ -271,13 +265,15 @@ export const BROADCAST_PRE_PROPAGATION_INVARIANTS = [
     requiredBeforePropagation: true,
   },
   {
-    name: 'node_accepts_final_transaction',
+    name: 'configured_electrum_prevouts_are_unspent',
     phase: 'node_preflight',
     authoritativeSource: 'node_preflight',
     failureReason: 'node_preflight_rejected',
     requiredBeforePropagation: true,
   },
 ] as const satisfies readonly BroadcastInvariantSpec[];
+
+export const BROADCAST_RUNTIME_PREFLIGHT_SCOPE = BITCOIN_ELECTRUM_BROADCAST_PREFLIGHT_SCOPE;
 
 export interface BroadcastEntrypointSpec {
   name: string;

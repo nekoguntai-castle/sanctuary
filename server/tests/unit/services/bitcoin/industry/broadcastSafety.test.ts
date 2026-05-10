@@ -10,6 +10,7 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { BROADCAST_RUNTIME_PREFLIGHT_SCOPE } from '../../../../../src/services/bitcoin/transactions/broadcastContracts';
 
 vi.mock('../../../../../src/utils/logger', () => ({
   createLogger: () => ({
@@ -27,7 +28,7 @@ describe('Transaction Broadcasting Safety', () => {
   // STALE UTXO DETECTION
   // ==========================================================================
   describe('Stale UTXO detection before broadcast', () => {
-    it('should document the stale UTXO risk', () => {
+    it('requires Electrum-visible prevout evidence before runtime broadcast', () => {
       // When a user creates a transaction (PSBT), the UTXOs are selected
       // from the wallet's current state. Between PSBT creation and broadcast:
       //
@@ -35,21 +36,21 @@ describe('Transaction Broadcasting Safety', () => {
       // 2. A sync could mark UTXOs as spent from incoming chain data
       // 3. The UTXO could be double-spent by the sender via another path
       //
-      // Current code flow in broadcastAndSave():
-      //   extractRawTransaction() -> broadcastTransaction() -> persistTransaction()
-      //
-      // There is NO step verifying UTXOs are still unspent before broadcasting.
-      //
-      // RECOMMENDATION: Before broadcastTransaction(rawTx), verify each input
-      // UTXO still exists and is unspent in the local database.
-      const broadcastSteps = [
-        'extractRawTransaction',     // Step 1: Extract from PSBT
-        // MISSING: 'verifyUtxosStillUnspent'
-        'broadcastTransaction',       // Step 2: Send to network
-        'persistTransaction',         // Step 3: Save to database
-      ];
-
-      expect(broadcastSteps).not.toContain('verifyUtxosStillUnspent');
+      // Production remains Electrum-only, so the runtime guard is not
+      // Bitcoin Core testmempoolaccept. It is an Electrum witness check that
+      // each final input's prevout is fetchable, standard-address, and still
+      // reported as unspent before propagation.
+      expect(BROADCAST_RUNTIME_PREFLIGHT_SCOPE.runtimeRequirements).toContain(
+        'configured_electrum_backend',
+      );
+      expect(BROADCAST_RUNTIME_PREFLIGHT_SCOPE.verifiesBeforePropagation).toEqual(
+        expect.arrayContaining([
+          'previous_transactions_fetchable',
+          'previous_outputs_exist',
+          'previous_outputs_are_still_unspent',
+        ]),
+      );
+      expect(BROADCAST_RUNTIME_PREFLIGHT_SCOPE.notRuntimeRequirements).toContain('bitcoin_core_rpc');
     });
 
     it('should document race condition between draft lock and broadcast', () => {

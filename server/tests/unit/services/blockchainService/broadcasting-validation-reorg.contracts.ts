@@ -1,8 +1,52 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
+import * as bitcoin from 'bitcoinjs-lib';
 import {
   mockNodeClient,
   mockPrisma,
 } from './blockchainServiceTestHarness';
+import { testnetAddresses } from '../../../fixtures/bitcoin';
+
+const TESTNET = bitcoin.networks.testnet;
+const PREV_TXID = 'b'.repeat(64);
+const PREV_VALUE_SATS = 75_000;
+const PREV_ADDRESS = testnetAddresses.nativeSegwit[0];
+const RECIPIENT = testnetAddresses.nativeSegwit[1];
+
+const createBroadcastRawTx = (): string => {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.from(PREV_TXID, 'hex').reverse(), 0);
+  tx.addOutput(bitcoin.address.toOutputScript(RECIPIENT, TESTNET), BigInt(1_000));
+  return tx.toHex();
+};
+
+const setupBroadcastPreflight = (): void => {
+  mockNodeClient.getTransactionsBatch.mockResolvedValue(new Map([[
+    PREV_TXID,
+    {
+      txid: PREV_TXID,
+      hash: PREV_TXID,
+      version: 2,
+      size: 100,
+      locktime: 0,
+      vin: [],
+      vout: [{
+        value: PREV_VALUE_SATS / 100_000_000,
+        n: 0,
+        scriptPubKey: {
+          hex: Buffer.from(bitcoin.address.toOutputScript(PREV_ADDRESS, TESTNET)).toString('hex'),
+          address: PREV_ADDRESS,
+          addresses: [PREV_ADDRESS],
+        },
+      }],
+      hex: '00',
+    },
+  ]]));
+  mockNodeClient.getAddressUTXOsBatch.mockResolvedValue(new Map([[
+    PREV_ADDRESS,
+    [{ tx_hash: PREV_TXID, tx_pos: 0, height: 1, value: PREV_VALUE_SATS }],
+  ]]));
+};
 
 export function registerBlockchainBroadcastingValidationReorgContracts(): void {
 describe('Blockchain Service - Broadcasting', () => {
@@ -14,29 +58,48 @@ describe('Blockchain Service - Broadcasting', () => {
     it('should broadcast raw transaction and return txid', async () => {
       const { broadcastTransaction } = await import('../../../../src/services/bitcoin/blockchain');
       const { getNodeClient } = await import('../../../../src/services/bitcoin/nodeClient');
+      const rawTx = createBroadcastRawTx();
 
+      setupBroadcastPreflight();
       mockNodeClient.broadcastTransaction.mockResolvedValue('broadcasted-txid');
 
-      const result = await broadcastTransaction('0200000001...', 'testnet4');
+      const result = await broadcastTransaction(rawTx, 'testnet4');
 
       expect(result).toEqual({
         txid: 'broadcasted-txid',
         broadcasted: true,
       });
       expect(getNodeClient).toHaveBeenCalledWith('testnet4');
-      expect(mockNodeClient.broadcastTransaction).toHaveBeenCalledWith('0200000001...');
+      expect(mockNodeClient.getTransactionsBatch).toHaveBeenCalledBefore(mockNodeClient.broadcastTransaction);
+      expect(mockNodeClient.getAddressUTXOsBatch).toHaveBeenCalledBefore(mockNodeClient.broadcastTransaction);
+      expect(mockNodeClient.broadcastTransaction).toHaveBeenCalledWith(rawTx);
     });
 
     it('should throw error on broadcast failure', async () => {
       const { broadcastTransaction } = await import('../../../../src/services/bitcoin/blockchain');
+      const rawTx = createBroadcastRawTx();
 
+      setupBroadcastPreflight();
       mockNodeClient.broadcastTransaction.mockRejectedValue(
         new Error('Transaction rejected: insufficient fee')
       );
 
-      await expect(broadcastTransaction('invalid-tx', 'testnet4')).rejects.toThrow(
+      await expect(broadcastTransaction(rawTx, 'testnet4')).rejects.toThrow(
         'Failed to broadcast transaction: Transaction rejected: insufficient fee'
       );
+    });
+
+    it('should fail closed before broadcast when Electrum cannot witness an input as unspent', async () => {
+      const { broadcastTransaction } = await import('../../../../src/services/bitcoin/blockchain');
+      const rawTx = createBroadcastRawTx();
+
+      setupBroadcastPreflight();
+      mockNodeClient.getAddressUTXOsBatch.mockResolvedValue(new Map([[PREV_ADDRESS, []]]));
+
+      await expect(broadcastTransaction(rawTx, 'testnet4')).rejects.toThrow(
+        'Failed to broadcast transaction: Broadcast preflight rejected stale or spent input'
+      );
+      expect(mockNodeClient.broadcastTransaction).not.toHaveBeenCalled();
     });
   });
 

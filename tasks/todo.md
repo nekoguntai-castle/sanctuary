@@ -1,6 +1,35 @@
+# Active Task: Fund-Safety Electrum Broadcast Preflight 2026-05-09
+
+Status: locally verified; PR delivery pending
+
+Goal: make final transaction broadcast fail closed on Electrum-visible stale or unverifiable inputs before propagation, without adding a production Bitcoin Core RPC dependency.
+
+## Plan
+
+- [x] Start from `origin/main` after PR #376 merged.
+- [x] Inventory the transaction broadcast route, service, node client, broadcast contracts, release-gate docs, and critical mutation classifier.
+- [x] Add an Electrum-only pre-propagation boundary that verifies every raw input prevout exists, has a standard decoded address, and is still reported unspent by the configured Electrum backend.
+- [x] Keep Bitcoin Core `testmempoolaccept` as release-lab/fixture evidence only, and document that it is not a production runtime dependency while Sanctuary is Electrum-only.
+- [x] Add focused tests for successful preflight, missing prev transaction, missing vout, unsupported prevout script, stale/spent prevout, Electrum failure, ordering before broadcast, and no persistence/audit-success on failure.
+- [x] Add a reusable Bitcoin validation-evidence runtime-scope contract so address-vector, PSBT-fixture, broadcast, and hardware-lab checks cannot silently become production runtime requirements.
+- [x] Review the plan and diff for corner cases, especially duplicate inputs, coinbase spends, missing addresses, async ordering, typed error propagation, and release-gate evidence.
+- [x] Run focused tests, server test typecheck/lint, touched-file lizard, mutation/release-gate checks as needed, and `git diff --check`.
+- [ ] Deliver through PR and merge if CI is green.
+
+## Review
+
+- Added `verifyElectrumBroadcastPreflight` and wired `broadcastTransaction` to reject invalid raw transactions, coinbase-style inputs, duplicate inputs, missing previous transactions, missing vouts, unsupported previous-output scripts, stale/spent outpoints, and mismatched Electrum UTXO values before propagation.
+- Kept production broadcast preflight Electrum-only. Bitcoin Core `testmempoolaccept` and decoder evidence remain lab/fixture evidence, not operator runtime requirements.
+- Added `validationEvidenceContracts.ts` so broadcast, address-vector, PSBT-fixture, and hardware-lab evidence scopes declare runtime requirements, lab-only witnesses, and non-runtime requirements explicitly.
+- Added ordering and failure tests proving preflight runs before Electrum broadcast, stale/unverifiable inputs fail closed, and failed broadcast/preflight does not persist or recalculate a successful transaction.
+- Added release-gate docs and critical mutation classifier/config entries for the new broadcast preflight and validation-evidence scope.
+- Local verification passed: focused broadcast/service tests (191 tests), API broadcast route tests (117 tests), focused preflight coverage at 100% statements/branches/functions/lines, server test typecheck, server lint, touched-file lizard, critical mutation gate raw `69.07%`/weighted `65.56%`, classifier syntax, and `git diff --check`.
+
+---
+
 # Active Task: Fund-Safety PR E Hardware Fixture Intake Schema 2026-05-09
 
-Status: in progress
+Status: completed; PR #376 merged as `e4da807a`
 
 Goal: make physical hardware signing artifacts safe to capture and review by adding an executable intake schema and lab checklist before any real Ledger, Trezor, or BitBox evidence is committed.
 
@@ -13,7 +42,7 @@ Goal: make physical hardware signing artifacts safe to capture and review by add
 - [x] Update hardware validation/release docs so the lab checklist and executable schema are the required intake path.
 - [x] Add focused tests for valid intake, missing address paths, mismatched device/Core addresses, missing software gates, secret-shaped notes, duplicate/conflicting rows, missing negative controls, and non-test networks.
 - [x] Run focused hardware fixture tests, server test typecheck, touched-file lizard, and `git diff --check`.
-- [ ] Deliver through PR and merge if CI is green.
+- [x] Deliver through PR and merge if CI is green.
 
 ## Review
 
@@ -22,6 +51,7 @@ Goal: make physical hardware signing artifacts safe to capture and review by add
 - Wired replay to run intake validation before finalization/extraction so future committed artifacts cannot bypass the checklist.
 - Updated the hardware validation runbook and release gates with the executable intake checklist and the remaining requirement for 11 physical artifacts or product blocks.
 - Verification passed: focused hardware fixture replay tests, adjacent hardware compatibility tests, server test typecheck, server lint, touched-file lizard, and `git diff --check`.
+- Delivery passed: PR #376 merged after Architecture, install, quality, backend tests/typecheck/unit coverage, and summary checks passed.
 
 ---
 
