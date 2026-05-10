@@ -1,6 +1,6 @@
 # Active Task: Post-Merge CI Aggregate Failure 2026-05-09
 
-Status: completed locally; delivery pending
+Status: completed; PR #383 merged as `c668a11f`
 
 Goal: identify why the post-merge `main` CI aggregate is red after PR #382 and fix the workflow, tests, docs, or configuration without changing application runtime requirements.
 
@@ -25,6 +25,7 @@ Goal: identify why the post-merge `main` CI aggregate is red after PR #382 and f
 - Simplified two impossible fallback branches instead of fabricating invalid test fixtures: `getDeviceDisplayName` only accepts the required `Device`, and `requestHasMultisigPath` now follows the required `PSBTSignRequest.inputPaths` contract.
 - Corner-case review: no Bitcoin RPC/runtime dependency was added; tests stay within Electrum-only app behavior and typed hardware-wallet request contracts; Ledger/BitBox multisig USB still fails before connect/sign; Trezor/file/QR paths are unchanged; Forgejo API-token limits are documented in `tasks/lessons.md`.
 - Local verification passed: focused hardware-wallet tests, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run arch:lint`, full frontend coverage shards and merge with 100% statements/branches/functions/lines, `npm run quality:lizard`, and `git diff --check`.
+- Delivery passed: PR #383 merged with squash commit `c668a11f`. Its target-branch push aggregate is green, including the previously failing Architecture and Test Suite coverage contexts.
 
 ---
 
