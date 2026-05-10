@@ -1,0 +1,770 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "file": "server/src/api/transactions/addresses.ts",
+      "functionName": "<module>",
+      "issue": "non-terminal-catch",
+      "count": 3,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/api/transactions/walletTransactions/exportTransactions.ts",
+      "functionName": "createExportRouter",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/advancedTx/rbf.ts",
+      "functionName": "canReplaceTransaction",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/blockchain/syncAddress.ts",
+      "functionName": "storeTransactionIOForCreatedTransactions",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/blockchain/syncWallet.ts",
+      "functionName": "subscribeGeneratedAddresses",
+      "issue": "non-terminal-catch",
+      "count": 2,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/blockchain/syncWallet.ts",
+      "functionName": "syncWallet",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrum/electrumClient.ts",
+      "functionName": "openConnection",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrum/methods.ts",
+      "functionName": "decodeRawTransaction",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrum/protocol.ts",
+      "functionName": "parseResponseBuffer",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrumPool/connectionManager.ts",
+      "functionName": "reconnectConnection",
+      "issue": "non-terminal-catch",
+      "count": 2,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrumPool/connectionManager.ts",
+      "functionName": "disconnectServerConnections",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrumPool/connectionManager.ts",
+      "functionName": "cleanupIdleConnections",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrumPool/connectionManager.ts",
+      "functionName": "ensureMinimumConnections",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrumPool/connectionManager.ts",
+      "functionName": "handleConnectionError",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrumPool/electrumPool.ts",
+      "functionName": "reloadServers",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrumPool/electrumPool.ts",
+      "functionName": "shutdown",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrumPool/electrumPool.ts",
+      "functionName": "acquireInternal",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrumPool/healthChecker.ts",
+      "functionName": "performConnectionHealthChecks",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrumPool/healthChecker.ts",
+      "functionName": "sendKeepalives",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/electrumPool/poolConfig.ts",
+      "functionName": "loadPoolConfigFromDatabase",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/feeService.ts",
+      "functionName": "getCurrentFeeEstimates",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/mempool/config.ts",
+      "functionName": "getMempoolApiBase",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/mempool/endpoints.ts",
+      "functionName": "getRecommendedFees",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/networkStatusService.ts",
+      "functionName": "getBitcoinNetworkStatus",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/nodeClient.ts",
+      "functionName": "disconnectQuietly",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/nodeClient.ts",
+      "functionName": "loadNodeConfig",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/nodeClient.ts",
+      "functionName": "getNodeClient",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/nodeClient.ts",
+      "functionName": "getElectrumClientIfActive",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/nodeClient.ts",
+      "functionName": "testNodeConfig",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/psbtBuilder/bip32Derivations.ts",
+      "functionName": "buildMultisigBip32Derivations",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/psbtBuilder/witnessScript.ts",
+      "functionName": "deriveMultisigPubkeys",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/psbtInfo.ts",
+      "functionName": "getPSBTInfoWithNetwork",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/psbtValidation.ts",
+      "functionName": "getPsbtOutputs",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/psbtValidation.ts",
+      "functionName": "validatePsbtStructure",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/psbtValidation.ts",
+      "functionName": "validatePayjoinProposal",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/addressDiscovery.ts",
+      "functionName": "ensureGapLimit",
+      "issue": "non-terminal-catch",
+      "count": 2,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/confirmations/counterpartyPopulation.ts",
+      "functionName": "populateCounterpartyAddress",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/confirmations/feePopulation.ts",
+      "functionName": "populateFee",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/confirmations/processUpdates.ts",
+      "functionName": "processTransactionUpdates",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/phases/fetchHistories.ts",
+      "functionName": "fetchHistoriesPhase",
+      "issue": "non-terminal-catch",
+      "count": 2,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/phases/fetchUtxos.ts",
+      "functionName": "fetchUtxosPhase",
+      "issue": "non-terminal-catch",
+      "count": 2,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/phases/gapLimit.ts",
+      "functionName": "gapLimitPhase",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/phases/insertUtxos.ts",
+      "functionName": "insertUtxosPhase",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/phases/processTransactions/addressLabels.ts",
+      "functionName": "applyAddressLabels",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/phases/processTransactions/notifications.ts",
+      "functionName": "sendNotifications",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/phases/processTransactions/processTransactionsPhase.ts",
+      "functionName": "processTransactionsPhase",
+      "issue": "non-terminal-catch",
+      "count": 2,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/phases/processTransactions/processTransactionsPhase.ts",
+      "functionName": "prefetchPreviousTransactions",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/sync/phases/processTransactions/transactionIO.ts",
+      "functionName": "storeTransactionIO",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/transactions/internalReceiving.ts",
+      "functionName": "createInternalReceivingTransactions",
+      "issue": "non-terminal-catch",
+      "count": 3,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/transactions/persistTransaction.ts",
+      "functionName": "persistTransaction",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/transactions/psbtInputConstruction.ts",
+      "functionName": "addSingleSigBip32Info",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/transactions/storeTransactionIO.ts",
+      "functionName": "storeTransactionOutputs",
+      "issue": "non-terminal-catch",
+      "count": 2,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/bitcoin/utils.ts",
+      "functionName": "parseTransaction",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/walletImport/walletImportService.ts",
+      "functionName": "createWalletTransaction",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/backupService/creation.ts",
+      "functionName": "createBackup",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/middleware/agentAuth.ts",
+      "functionName": "authenticateAgent",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/middleware/auth.ts",
+      "functionName": "optionalAuth",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/middleware/featureGate.ts",
+      "functionName": "requireFeature",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/middleware/featureGate.ts",
+      "functionName": "requireAllFeatures",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/middleware/featureGate.ts",
+      "functionName": "requireAnyFeature",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/middleware/metrics.ts",
+      "functionName": "metricsHandler",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/middleware/rateLimit.ts",
+      "functionName": "rateLimit",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/middleware/rateLimit.ts",
+      "functionName": "rateLimitByUser",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/middleware/rateLimit.ts",
+      "functionName": "rateLimitByIpAndKey",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/middleware/rateLimit.ts",
+      "functionName": "rateLimitByKey",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/middleware/validate.ts",
+      "functionName": "validate",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "server/src/services/accessControl.ts",
+      "functionName": "getUserWalletRole",
+      "issue": "non-terminal-catch",
+      "count": 2,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "services/hardwareWallet/adapters/bitbox/bitboxAdapter.ts",
+      "functionName": "connect",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "services/hardwareWallet/adapters/bitbox/bitboxAdapter.ts",
+      "functionName": "disconnect",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "services/hardwareWallet/adapters/bitbox/pathUtils.ts",
+      "functionName": "getOutputType",
+      "issue": "non-terminal-catch",
+      "count": 2,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "services/hardwareWallet/adapters/jade.ts",
+      "functionName": "readResponse",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "services/hardwareWallet/adapters/jade.ts",
+      "functionName": "disconnect",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "services/hardwareWallet/adapters/ledger/ledgerAdapter.ts",
+      "functionName": "connect",
+      "issue": "non-terminal-catch",
+      "count": 4,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "services/hardwareWallet/adapters/ledger/ledgerAdapter.ts",
+      "functionName": "disconnect",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "services/hardwareWallet/adapters/trezor/refTxs.ts",
+      "functionName": "fetchRefTxs",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "services/hardwareWallet/adapters/trezor/signPsbtSignatures.ts",
+      "functionName": "applyTrezorMultisigSignatures",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "services/hardwareWallet/service.ts",
+      "functionName": "getDevices",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "services/hardwareWallet/service.ts",
+      "functionName": "connect",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "services/hardwareWallet/service.ts",
+      "functionName": "getAllXpubsWithFailures",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "hooks/send/useBroadcast.ts",
+      "functionName": "logMultisigPsbtSignatures",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "hooks/send/useQrSigning.ts",
+      "functionName": "persistUploadedSignatureToDraft",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "hooks/send/useQrSigning.ts",
+      "functionName": "persistQrSignatureToDraft",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "hooks/send/useSendTransactionActions.ts",
+      "functionName": "applyPayjoinIfNeeded",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "hooks/send/useUsbSigning.ts",
+      "functionName": "persistDeviceSignatureToDraft",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    },
+    {
+      "file": "scripts/release/verify-release-artifacts.mjs",
+      "functionName": "<module>",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "fail-closed-safety-follow-up"
+    }
+  ]
+}

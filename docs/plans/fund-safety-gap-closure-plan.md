@@ -484,6 +484,8 @@ Rollback rule:
 
 - If the guard is too noisy, keep it advisory for one PR while producing a reviewed allowlist, then make it blocking. Do not permanently suppress the safety module set.
 
+Implementation note, 2026-05-09: PR H started the safety-error gate with `scripts/check-safety-catch-guards.mjs`, a TypeScript-AST guard that scans safety modules for catch blocks that do not throw, return, or call an approved fail-closed helper. Existing non-terminal catch debt is grouped by file/function in `scripts/quality/safety-catch-allowlist.json`; new groups, count increases, stale entries, or incomplete allowlist metadata fail the check. The guard is part of `npm run lint:server` through `npm run check:safety-catch-guards`, making new broad catch behavior visible before safety-path changes merge. Follow-up work remains to reduce the baseline entries, add typed error taxonomy coverage, and expand mutation weighting for descriptor/import checks.
+
 ## Phase 6 - Threat Model, Trust Page, And External Review Package
 
 Purpose: make trust claims auditable by users and independent reviewers.

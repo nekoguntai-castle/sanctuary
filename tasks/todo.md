@@ -1,6 +1,37 @@
-# Active Task: Fund-Safety Descriptor/Xpub Validation 2026-05-09
+# Active Task: Fund-Safety Fail-Closed Safety Guards 2026-05-09
 
 Status: in progress
+
+Goal: add executable guardrails for safety-critical exception handling and complexity/mutation coverage so fund-moving, import, signing, broadcast, backup, auth, and release paths fail closed instead of silently continuing after unknown or partial-state errors.
+
+## Plan
+
+- [x] Start from `origin/main` after PR #379 merged.
+- [x] Recheck the post-merge push backstop for PR #379 and record any remaining pending lanes.
+- [x] Inventory existing safety-module `catch` patterns, critical mutation config, lizard quality scripts, release gates, and fail-closed helper/error conventions.
+- [x] Add a focused safety exception-handling guard with a reviewed allowlist or approved helper pattern, without blocking unrelated legacy code unless the finding is in touched safety paths.
+- [x] Add or extend safety quality scripts/docs so the guard is release-visible and easy to run locally.
+- [x] Add focused tests for the guard covering approved fail-closed handling, missing handling, allowlisted legacy debt, comments, and path scoping.
+- [x] Review edge cases: hardware cancel/disconnect, node timeouts, post-broadcast persistence failure, logger/redaction failures, generated files, comments/strings, and CI noisiness.
+- [x] Run focused guard tests, safety/lint/type checks as needed, lizard, mutation/config checks if touched, and `git diff --check`.
+- [ ] Deliver through PR and merge if CI is green.
+
+## Review
+
+- PR #379 push backstop remains `pending`; Architecture and Build Dev Images are green, while the Test Suite lanes are still blocked behind required conditions.
+- Added `scripts/check-safety-catch-guards.mjs`, which scans backend safety modules plus frontend hardware/signing send paths with the TypeScript AST and fails on new catch blocks that neither throw, return, nor call an approved fail-closed helper.
+- Added `scripts/quality/safety-catch-allowlist.json` with the current grouped baseline of 85 legacy non-terminal catch finding groups. Count increases and stale entries both fail the guard.
+- Wired the guard into `npm run lint:server` as `npm run check:safety-catch-guards`.
+- Added focused script tests for swallowed catches, throw/return/helper approval, allowlist and stale behavior, and comments/strings/test/out-of-scope files.
+- Updated release gates and the fund-safety plan with the executable catch guard and remaining follow-ups.
+- Edge-case review: hardware cancel/disconnect, node timeout, post-broadcast persistence, send-signature persistence, auth/access middleware, backup, release verification, and logger-only catches are covered by the safety path set or its baseline; generated code and tests are excluded; comments/strings are ignored by AST parsing; nested callback returns and conditional-only returns do not satisfy the guard.
+- Local verification passed: focused guard tests, `npm run check:safety-catch-guards`, `npm run lint:server`, root test typecheck, script typecheck, docs link/Mermaid tests, lizard zero-warning gate, and `git diff --check`.
+
+---
+
+# Active Task: Fund-Safety Descriptor/Xpub Validation 2026-05-09
+
+Status: completed; PR #379 merged as `832e03ce`
 
 Goal: harden descriptor, xpub, and wallet-policy imports so malformed, wrong-network, private-key, duplicate-cosigner, and unsupported branch descriptors fail before wallet state is created.
 
@@ -12,8 +43,8 @@ Goal: harden descriptor, xpub, and wallet-policy imports so malformed, wrong-net
 - [x] Add focused descriptor domain-safety tests for private extended keys, wrong-network xpub/path combinations, mixed cosigner networks, invalid branch wildcards, quorum overflow, duplicate cosigners, and script/path mismatches.
 - [x] Implement shared descriptor domain validation used by raw descriptors and parsed import formats without requiring Bitcoin Core, hardware devices, or new runtime dependencies.
 - [x] Update release/fund-safety docs and task review with measured evidence only.
-- [ ] Run focused descriptor/import suites, server test typecheck/lint as needed, touched-file lizard, post-merge CI check for PR #378, and `git diff --check`.
-- [ ] Deliver through PR and merge if CI is green.
+- [x] Run focused descriptor/import suites, server test typecheck/lint as needed, touched-file lizard, post-merge CI check for PR #378, and `git diff --check`.
+- [x] Deliver through PR and merge if CI is green.
 
 ## Review
 
@@ -24,6 +55,7 @@ Goal: harden descriptor, xpub, and wallet-policy imports so malformed, wrong-net
 - Updated `docs/reference/release-gates.md` and `docs/plans/fund-safety-gap-closure-plan.md` with the runtime-local parser gate and remaining follow-ups.
 - Local verification passed: focused descriptor parser suite, server test typecheck, server lint with API-body and Bitcoin-network-boundary guards, server build, docs link/Mermaid tests, lizard zero-warning gate, and `git diff --check`.
 - PR #378 post-merge push status was rechecked; all visible jobs are green except `Test Suite / Full Critical Mutation Gate (push)`, which is still pending.
+- Delivery passed: PR #379 merged with squash commit `832e03ce` after the required PR checks passed. The merge commit reached `origin/main`; its push Test Suite was still queued behind required conditions immediately after merge and will be rechecked in the next slice.
 
 ---
 
