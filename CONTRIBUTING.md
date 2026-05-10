@@ -105,11 +105,12 @@ Coverage threshold failures are the most common CI blocker. Run coverage locally
 
 ### Diagnosing CI failures
 
-Long-running steps wrap their command with `scripts/ci/run-with-log.sh` and follow up with `scripts/ci/write-diagnostic-summary.sh`. When such a step fails, three diagnostic surfaces are populated automatically — check them in this order:
+Long-running steps wrap their command with `scripts/ci/run-with-log.sh` and follow up with `scripts/ci/write-diagnostic-summary.sh`. When such a step fails, four diagnostic surfaces are populated automatically — check them in this order:
 
 - **Inline log dump (fastest).** The summary helper echoes the tail (≤256 KiB) of every failed log to the runner's step output inside `::group::` blocks, so the actual crash is visible directly on the failed run page. Look for `Failed log tail (...)` groups in the diagnostic-summary step.
 - **Step-summary metadata table.** The job's summary panel lists each captured log with its `wrapped_exit`, `sink_status`, `truncated`, and byte size — useful for spotting which step failed when several ran in the same job.
 - **Diagnostic artifact (full bytes).** Each lane uploads `ci-diagnostics-<lane>` containing the redacted log files (capped at `SANCTUARY_CI_LOG_CAP_BYTES`, default 32 MiB) plus their `*.status.json` sidecars and a `diagnostic-index.md`. Use this when the 256 KiB inline tail isn't enough or when you need to grep across multiple captured logs. The Forgejo Actions API for downloading artifacts is unreliable on the current runner version — download via the workflow run page in the web UI.
+- **LAN log sink (workaround for missing logs API).** Every failed-step log tail is also `PUT` to a LAN-only HTTP service so tools (LLM agents, dashboards) can fetch failures programmatically: `curl -H "Authorization: Bearer $(cat ~/.config/sanctuary/ci-log-sink-token)" http://10.14.23.20:9090/runs/<run_id>/<job_safe_name>/<log_basename>`. **This is a workaround for Forgejo 15.0.1 not exposing the Gitea-upstream `/actions/jobs/<job_id>/logs` endpoint.** Once a future Forgejo version ships the endpoint, the entire workaround should be removed — see `tools/ci-log-sink/README.md` ("When to retire this service" section) for a concrete checklist (delete the tree, drop the workflow env vars, remove the Forgejo variable + secret, stop the daemon).
 
 When adding a new long-running CI step, follow the same pattern: wrap with `run-with-log.sh "$DIAGNOSTIC_DIR/<step>.log"` for capture, call `write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "<Lane Name>"` in an `if: always()` step, and upload `$DIAGNOSTIC_DIR` as `ci-diagnostics-<lane>` with `if-no-files-found: ignore`.
 

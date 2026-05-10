@@ -1,0 +1,48 @@
+[Unit]
+Description=Sanctuary CI log sink (LAN-only HTTP service for runner failure logs)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env python3 /opt/sanctuary-ci-log-sink/server.py
+Restart=on-failure
+RestartSec=5
+
+# Sandboxing — the service stores files under /var/lib/sanctuary-ci-logs only
+# and accepts no auth, so harden the process aggressively.
+DynamicUser=yes
+StateDirectory=sanctuary-ci-logs
+StateDirectoryMode=0750
+Environment=SANCTUARY_CI_LOG_SINK_DATA_DIR=/var/lib/sanctuary-ci-logs
+# Operator: replace with the LAN IP of this host. Binding to 0.0.0.0 also
+# works but exposes the port to every interface; pinning to one IP is the
+# recommended deployment.
+Environment=SANCTUARY_CI_LOG_SINK_BIND_HOST=0.0.0.0
+Environment=SANCTUARY_CI_LOG_SINK_BIND_PORT=9090
+# Operator: drop a file with the bearer token at /etc/sanctuary-ci-log-sink/env
+# and uncomment the EnvironmentFile line. The file should be:
+#   SANCTUARY_CI_LOG_SINK_TOKEN=<32+ random bytes hex>
+# permissioned 0600 root:root.
+#EnvironmentFile=/etc/sanctuary-ci-log-sink/env
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

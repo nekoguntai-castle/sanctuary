@@ -31,6 +31,8 @@ concurrency:
 env:
   NODE_VERSION: '24'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
+  SANCTUARY_CI_LOG_SINK_URL: ${{ vars.SANCTUARY_CI_LOG_SINK_URL }}
+  SANCTUARY_CI_LOG_SINK_TOKEN: ${{ secrets.SANCTUARY_CI_LOG_SINK_TOKEN }}
 
 jobs:
   build:

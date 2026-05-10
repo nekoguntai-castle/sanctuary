@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Sanctuary CI log sink — macOS LaunchAgent for the LAN HTTP service.
+
+  Install path (per-user, no sudo):
+    ~/Library/LaunchAgents/dev.sanctuary.ci-log-sink.plist
+
+  Service binary path is ~/sanctuary-ci-log-sink/server.py (override with
+  the SANCTUARY_CI_LOG_SINK_HOME environment variable below if installing
+  elsewhere).
+
+  Data directory defaults to ~/sanctuary-ci-log-sink/data.
+
+  Load:
+    launchctl load -w ~/Library/LaunchAgents/dev.sanctuary.ci-log-sink.plist
+  Unload:
+    launchctl unload -w ~/Library/LaunchAgents/dev.sanctuary.ci-log-sink.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.sanctuary.ci-log-sink</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>python3</string>
+        <string>HOME_PATH/sanctuary-ci-log-sink/server.py</string>
+    </array>
+
+    <!--
+      The shared bearer token is NOT in this file. The install script
+      reads $HOME/sanctuary-ci-log-sink/token (mode 0600, never committed)
+      and substitutes the value into BIND_HOST_PLACEHOLDER and
+      AUTH_TOKEN_PLACEHOLDER below. See README.md for the install path.
+    -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>SANCTUARY_CI_LOG_SINK_BIND_HOST</key>
+        <string>BIND_HOST_PLACEHOLDER</string>
+        <key>SANCTUARY_CI_LOG_SINK_BIND_PORT</key>
+        <string>9090</string>
+        <key>SANCTUARY_CI_LOG_SINK_DATA_DIR</key>
+        <string>HOME_PATH/sanctuary-ci-log-sink/data</string>
+        <key>SANCTUARY_CI_LOG_SINK_RETENTION_DAYS</key>
+        <string>30</string>
+        <key>SANCTUARY_CI_LOG_SINK_TOKEN</key>
+        <string>AUTH_TOKEN_PLACEHOLDER</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <key>StandardOutPath</key>
+    <string>HOME_PATH/sanctuary-ci-log-sink/sink.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>HOME_PATH/sanctuary-ci-log-sink/sink.log</string>
+</dict>
+</plist>

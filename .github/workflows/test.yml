@@ -72,6 +72,11 @@ concurrency:
 env:
   NODE_VERSION: '24'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
+  # LAN-only HTTP sink for failed-step log tails. Set as a Forgejo workflow
+  # variable; when unset, scripts/ci/publish-failed-logs.sh is a no-op.
+  # See tools/ci-log-sink/README.md.
+  SANCTUARY_CI_LOG_SINK_URL: ${{ vars.SANCTUARY_CI_LOG_SINK_URL }}
+  SANCTUARY_CI_LOG_SINK_TOKEN: ${{ secrets.SANCTUARY_CI_LOG_SINK_TOKEN }}
 
 jobs:
   # ============================================
