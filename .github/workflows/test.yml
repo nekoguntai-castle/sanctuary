@@ -631,7 +631,20 @@ jobs:
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
 
+      # Cache key includes package.json + package-lock.json so a manual
+      # package.json edit (without npm install regenerating the lockfile)
+      # still invalidates the cache and forces npm ci's desync validation.
+      - name: Restore gateway node_modules cache
+        id: cache-quick-gateway-node-modules
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: gateway/node_modules
+          key: ${{ runner.os }}-${{ runner.arch }}-gateway-node-modules-node-${{ hashFiles('.nvmrc') }}-${{ hashFiles('gateway/package.json', 'gateway/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-gateway-node-modules-node-${{ hashFiles('.nvmrc') }}-
+
       - name: Install dependencies
+        if: steps.cache-quick-gateway-node-modules.outputs.cache-hit != 'true'
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
           npm ci
@@ -676,12 +689,32 @@ jobs:
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
 
+      - name: Restore root node_modules cache
+        id: cache-quick-aiproxy-root-node-modules
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-${{ runner.arch }}-root-node-modules-node-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package.json', 'package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-root-node-modules-node-${{ hashFiles('.nvmrc') }}-
+
       - name: Install root test dependencies
+        if: steps.cache-quick-aiproxy-root-node-modules.outputs.cache-hit != 'true'
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/root-install-dependencies.log"
           npm ci
 
+      - name: Restore ai-proxy node_modules cache
+        id: cache-quick-aiproxy-node-modules
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ai-proxy/node_modules
+          key: ${{ runner.os }}-${{ runner.arch }}-ai-proxy-node-modules-node-${{ hashFiles('.nvmrc') }}-${{ hashFiles('ai-proxy/package.json', 'ai-proxy/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-ai-proxy-node-modules-node-${{ hashFiles('.nvmrc') }}-
+
       - name: Install AI proxy dependencies
+        if: steps.cache-quick-aiproxy-node-modules.outputs.cache-hit != 'true'
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-install-dependencies.log"
           npm --prefix ai-proxy ci
