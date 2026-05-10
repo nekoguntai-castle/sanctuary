@@ -64,6 +64,8 @@
     "check:semgrep-baseline": "node scripts/quality/check-semgrep-baseline.mjs reports/semgrep/semgrep.json scripts/quality/semgrep-baseline.json",
     "check:api-body-validation": "node scripts/check-api-body-validation.mjs",
     "check:blocking-io": "node scripts/check-blocking-io.mjs",
+    "release:verify-artifacts": "scripts/release/verify-release-artifacts.sh",
+    "test:release-artifacts": "node tests/release/verify-release-artifacts.test.mjs",
     "test:mutation": "stryker run",
     "test:mutation:backend": "cd server && npx stryker run",
     "test:mutation:critical:backend": "cd server && npm run test:mutation:critical:gate",

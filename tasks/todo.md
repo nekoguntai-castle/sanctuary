@@ -1,6 +1,36 @@
+# Active Task: Fund-Safety Release Artifact Verification 2026-05-09
+
+Status: in progress
+
+Goal: make stable Sanctuary release artifacts manifest-backed and locally verifiable without adding runtime requirements outside the release/operator verification path.
+
+## Plan
+
+- [x] Start from `origin/main` after PR #377 merged.
+- [x] Move physical wallet verification/capture to the final fund-safety tasks so non-hardware release, import, safety, and trust controls can proceed first.
+- [x] Inventory release workflows, Forgejo/GitHub release scripts, offline bundle behavior, release-gate docs, and existing script-test conventions.
+- [x] Add a release manifest verifier that checks tag/commit/build evidence, local artifact checksums, stable-release required artifact classes, signed `SHA256SUMS`, SBOM/provenance references, offline bundle metadata, and container image digests.
+- [x] Add focused regression tests for valid stable manifests, missing stable evidence, checksum tampering, unsigned checksum files, bad release identity, and untracked local artifacts.
+- [x] Document the clean-machine/operator verification path and the release-gate expectation.
+- [x] Review the plan and diff for corner cases, especially prerelease handling, Forgejo/GitHub release differences, offline-bundle trust anchors, remote image digest checks, missing OpenSSL/public keys, and path traversal.
+- [x] Run focused release verifier tests, syntax checks, action-runtime guard, touched-file lizard, and `git diff --check`.
+- [ ] Deliver through PR and merge if CI is green, then continue to the next non-hardware slice.
+
+## Review
+
+- Moved physical hardware fixture capture to the final two fund-safety PR slots and recorded the correction in `tasks/lessons.md`.
+- Added `scripts/release/release-artifact-verifier.mjs`, `scripts/release/verify-release-artifacts.mjs`, and `scripts/release/verify-release-artifacts.sh` for manifest-backed stable release verification.
+- The verifier checks manifest schema/version identity, stable/prerelease consistency, full commit SHA, builder workflow/run id, relative local paths, local checksums, signed `SHA256SUMS`, checksum coverage, source/install/release-note artifacts, offline bundle SBOM/provenance, frontend/backend container digests, platform digests, and optional registry digest comparison.
+- Added `npm run release:verify-artifacts` and `npm run test:release-artifacts`.
+- Added focused tests for valid stable manifests, unsigned checksum files, missing offline provenance, missing arm64 image digest evidence, tampered artifacts, untracked artifacts, bad release identity, and path traversal.
+- Updated release gates and offline bundle docs with the clean-machine verification path, manifest contract, release trust-anchor boundary, and the explicit non-runtime-dependency scope.
+- Local verification passed: `npm run test:release-artifacts`, `bash -n scripts/release/verify-release-artifacts.sh`, `bash -n scripts/create-forge-release.sh`, `node --check scripts/release/verify-release-artifacts.mjs`, `node --check scripts/release/release-artifact-verifier.mjs`, `npm run check:github-action-runtimes`, focused docs Vitest tests, touched-file lizard with zero warnings, and `git diff --check`. `actionlint` is not installed locally; no workflow files changed in this slice.
+
+---
+
 # Active Task: Fund-Safety Electrum Broadcast Preflight 2026-05-09
 
-Status: locally verified; PR delivery pending
+Status: completed; PR #377 merged as `354f512f`
 
 Goal: make final transaction broadcast fail closed on Electrum-visible stale or unverifiable inputs before propagation, without adding a production Bitcoin Core RPC dependency.
 
@@ -14,7 +44,7 @@ Goal: make final transaction broadcast fail closed on Electrum-visible stale or 
 - [x] Add a reusable Bitcoin validation-evidence runtime-scope contract so address-vector, PSBT-fixture, broadcast, and hardware-lab checks cannot silently become production runtime requirements.
 - [x] Review the plan and diff for corner cases, especially duplicate inputs, coinbase spends, missing addresses, async ordering, typed error propagation, and release-gate evidence.
 - [x] Run focused tests, server test typecheck/lint, touched-file lizard, mutation/release-gate checks as needed, and `git diff --check`.
-- [ ] Deliver through PR and merge if CI is green.
+- [x] Deliver through PR and merge if CI is green.
 
 ## Review
 

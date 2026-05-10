@@ -44,6 +44,57 @@ pulls or Docker builds.
 The bundle bootstrap script, `install-offline.sh`, includes the same backup
 prompt for machines whose installed checkout predates offline bundle support.
 
+## Release Manifest Verification
+
+Stable releases must publish a release manifest next to the release assets. The
+manifest is the operator-verifiable inventory for release trust: tag, commit,
+builder workflow, signed `SHA256SUMS`, local artifact hashes, SBOM/provenance
+references, offline bundle metadata, and container image digests.
+
+After downloading the manifest, `SHA256SUMS`, `SHA256SUMS.sig`, and the listed
+release assets into one directory, verify the local artifact set from a trusted
+checkout:
+
+```bash
+npm run release:verify-artifacts -- \
+  --manifest /path/to/release-assets/release-manifest.json \
+  --strict-stable \
+  --public-key scripts/offline/keys/sanctuary-offline-release-public.pem
+```
+
+If the verifying machine has registry access and Docker Buildx available, also
+compare the published container manifest-list digests:
+
+```bash
+npm run release:verify-artifacts -- \
+  --manifest /path/to/release-assets/release-manifest.json \
+  --strict-stable \
+  --public-key scripts/offline/keys/sanctuary-offline-release-public.pem \
+  --verify-image-digests
+```
+
+This verification tool is release/operator evidence only. It does not add a
+Bitcoin Core, hardware wallet, registry, or Docker dependency to Sanctuary's
+runtime path.
+
+Minimum manifest contract:
+
+- `schema: 1`.
+- `release.tag`, `release.version`, `release.commit`, and
+  `release.stability`.
+- `builder.workflow` and `builder.runId`.
+- A `checksum-file` artifact for `SHA256SUMS` with an
+  `openssl-rsa-sha256` detached signature.
+- Stable-release artifacts for the offline bundle, source archive, install
+  script, release notes, frontend container image, and backend container image.
+- Local artifact paths are relative to the manifest directory, must stay inside
+  that directory, and must have `sha256` values matching both the file content
+  and `SHA256SUMS`.
+- Offline bundles must include local SBOM and provenance references.
+- Container image artifacts must include the manifest-list digest, linux/amd64
+  and linux/arm64 digests, and local SBOM plus provenance or attestation
+  references.
+
 ## Trust Anchor
 
 The bundle contains a copy of the public key for operator inspection, but that

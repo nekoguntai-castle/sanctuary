@@ -15,6 +15,18 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Update `tasks/todo.md` immediately when a benchmark-inspired plan conflicts with the intended architecture.
 - Say clearly when an Electrum-only check is weaker than Core mempool policy simulation.
 
+## Keep Physical Wallet Evidence Last Unless Explicitly Prioritized
+
+**Rule:** After the hardware evidence intake schema exists, treat physical device capture as the final fund-safety slice unless the user explicitly pulls it forward.
+
+**Why:** The user clarified that physical wallet verification should not block release provenance, descriptor/domain validation, safety guards, and trust documentation. Physical devices are important evidence, but they are lab inputs, not a reason to pause software-side controls that can be closed now.
+
+**How to apply:**
+
+- Move physical capture batches to the end of fund-safety sequencing when planning follow-up slices.
+- Keep hardware fixtures and Bitcoin Core replay as release-lab evidence, not production app requirements.
+- Continue non-hardware hardening slices first when they improve fund safety without adding unsupported runtime dependencies.
+
 ## Verify Network Identity, Not Just Connectivity
 
 **Rule:** Any per-network Electrum or node test must verify chain identity for the selected network, not just socket connectivity and block height.

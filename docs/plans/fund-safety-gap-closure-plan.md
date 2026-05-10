@@ -329,6 +329,7 @@ Verification:
 ```bash
 bash -n scripts/create-forge-release.sh
 bash -n scripts/release/verify-release-artifacts.sh
+npm run test:release-artifacts
 actionlint .github/workflows/release.yml .github/workflows/create-release.yml .github/workflows/release-offline-bundle.yml
 npm run check:github-action-runtimes
 git diff --check
@@ -339,6 +340,8 @@ If `actionlint` is unavailable locally, use the existing workflow lint CI path a
 Rollback rule:
 
 - If a release artifact cannot be verified, keep the release as draft/prerelease and do not promote it to stable.
+
+Implementation note, 2026-05-09: PR F started the release-provenance gate with `scripts/release/verify-release-artifacts.sh` and a dependency-free Node verifier. Stable manifest verification now requires release identity, builder evidence, signed `SHA256SUMS`, checksum coverage for local artifacts and evidence files, offline bundle SBOM/provenance, source archive/install script/release notes coverage, frontend/backend container digests, and local SBOM/provenance or attestation references. Registry digest comparison remains an explicit `--verify-image-digests` operator/release-lab option so the verifier does not add runtime dependencies to Sanctuary.
 
 ## Phase 4 - Descriptor, Xpub, And Wallet Policy Validation
 
@@ -539,12 +542,12 @@ If `npm run test:docs` is unavailable or scoped differently, run the repository'
 3. **PR C: Broadcast canonical parser and policy enforcement.** Implement canonical decode, policy, audit, and node preflight.
 4. **PR D: Broadcast release/mutation gate.** Add mutation coverage and release-gate documentation for broadcast invariants.
 5. **PR E: Hardware fixture intake schema and lab checklist.** Ensure artifacts can be safely captured and reviewed.
-6. **PR F: Physical hardware fixture capture batch 1.** Ledger/Trezor/BitBox single-sig rows.
-7. **PR G: Physical hardware fixture capture batch 2.** Multisig Trezor rows and unsupported-row product blocks.
-8. **PR H: Release manifest and verification script.** Checksums, signatures/attestations, SBOM/provenance, clean-machine verification.
-9. **PR I: Descriptor/xpub validation hardening.** Schema-first plus domain parser coverage.
-10. **PR J: Safety error/complexity guard.** Typed fail-closed errors, safety lizard subset, broad-catch guard.
-11. **PR K: Threat model and external review package.** Public trust docs and reviewer bundle.
+6. **PR F: Release manifest and verification script.** Checksums, signatures/attestations, SBOM/provenance, clean-machine verification.
+7. **PR G: Descriptor/xpub validation hardening.** Schema-first plus domain parser coverage.
+8. **PR H: Safety error/complexity guard.** Typed fail-closed errors, safety lizard subset, broad-catch guard.
+9. **PR I: Threat model and external review package.** Public trust docs and reviewer bundle.
+10. **PR J: Physical hardware fixture capture batch 1.** Ledger/Trezor/BitBox single-sig rows.
+11. **PR K: Physical hardware fixture capture batch 2.** Multisig Trezor rows and unsupported-row product blocks.
 
 Each PR must update `tasks/todo.md`, add or update focused tests first, run touched-file lizard where non-trivial logic changes, and update release-gate docs only with measured evidence.
 
@@ -656,9 +659,24 @@ Resolutions:
 
 Status: no open findings from pass 5.
 
+### Review Pass 6 - User Sequencing Correction
+
+Findings:
+
+1. Physical wallet verification should not block non-hardware fund-safety controls after the intake schema is in place.
+2. Benchmark-inspired test work must keep lab evidence separate from Sanctuary's production runtime requirements.
+
+Resolutions:
+
+- Moved physical hardware fixture capture batches to the final two PR slots.
+- Kept release provenance, descriptor/xpub validation, safety fail-closed guards, and trust documentation ahead of physical capture.
+- Reaffirmed that Bitcoin Core, hardware devices, and third-party witnesses are lab/release evidence unless Sanctuary explicitly supports them as runtime features.
+
+Status: no open findings from pass 6.
+
 ## Final Plan Review Result
 
-No open plan findings remain after five review passes. The remaining unknowns are execution inputs, not plan gaps:
+No open plan findings remain after six review passes. The remaining unknowns are execution inputs, not plan gaps:
 
 - exact owners and target dates for each PR
 - physical access to the listed hardware devices and firmware versions
