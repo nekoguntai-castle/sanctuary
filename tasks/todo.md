@@ -1,6 +1,35 @@
-# Active Task: Fund-Safety Fail-Closed Safety Guards 2026-05-09
+# Active Task: Fund-Safety Threat Model And Trust Package 2026-05-09
 
 Status: in progress
+
+Goal: make Sanctuary's high-trust claims auditable by documenting assets, actors, trust boundaries, explicit non-goals, release gates, known limitations, and an external-review evidence package without overstating hardware, release, AI, broadcast, or node-trust guarantees.
+
+## Plan
+
+- [x] Start from `origin/main` after PR #380 merged.
+- [x] Recheck the post-merge push backstop for PR #380 and record any remaining pending lanes.
+- [x] Inventory existing trust, release-gate, hardware-validation, AI/MCP, backup, broadcast, and Specter/fund-safety docs.
+- [x] Add a wallet threat model that maps assets, actors, boundaries, threats, controls, gaps, and non-goals.
+- [x] Add or update user-facing trust documentation with what Sanctuary proves today, what remains pending, and how operators/reviewers can reproduce evidence.
+- [x] Add an external-review package index with concrete evidence commands/docs and known limitations.
+- [x] Review corner cases: AI/MCP read-only boundaries, watch-only metadata sensitivity, hardware display mismatch, backup restore risk, release compromise, wrong/malicious node data, and physical fixture deferral.
+- [x] Run docs link/Mermaid tests, docs build if needed, lizard/diff checks as relevant, and `git diff --check`.
+- [ ] Deliver through PR and merge if CI is green.
+
+## Review
+
+- PR #380 push backstop remains `pending`; full backend integration, frontend typecheck/coverage, AI proxy, critical mutation, and build lanes are running or queued with no failing statuses observed.
+- Inventory covered release gates, hardware validation, offline bundle verification, AI/MCP docs, runtime secrets, broadcast and address derivation docs, the Specter benchmark, and the fund-safety gap closure plan.
+- Added the threat model, trust/verification guide, and external review package as reference docs; linked them from the docs index, release gates, fund-safety plan, and README security section.
+- Loop review found one overclaim: "private keys never enter Sanctuary" ignored malicious rejected input attempts. Reworded to "never accepted or stored as Sanctuary wallet state."
+- Edge-case review covered AI/MCP read-only authority, watch-only metadata sensitivity, hardware display mismatch, backup restore destructiveness and credential handling, release compromise, wrong or malicious Electrum data, Bitcoin Core as lab-only evidence, and physical fixture deferral. No open doc findings remain.
+- Local verification passed: docs link/Mermaid tests, docs build using the existing website dependency tree, and `git diff --check`. Lizard was not run because this slice changes docs/task files only.
+
+---
+
+# Active Task: Fund-Safety Fail-Closed Safety Guards 2026-05-09
+
+Status: completed; PR #380 merged as `451cc2c3`
 
 Goal: add executable guardrails for safety-critical exception handling and complexity/mutation coverage so fund-moving, import, signing, broadcast, backup, auth, and release paths fail closed instead of silently continuing after unknown or partial-state errors.
 
@@ -14,7 +43,7 @@ Goal: add executable guardrails for safety-critical exception handling and compl
 - [x] Add focused tests for the guard covering approved fail-closed handling, missing handling, allowlisted legacy debt, comments, and path scoping.
 - [x] Review edge cases: hardware cancel/disconnect, node timeouts, post-broadcast persistence failure, logger/redaction failures, generated files, comments/strings, and CI noisiness.
 - [x] Run focused guard tests, safety/lint/type checks as needed, lizard, mutation/config checks if touched, and `git diff --check`.
-- [ ] Deliver through PR and merge if CI is green.
+- [x] Deliver through PR and merge if CI is green.
 
 ## Review
 
@@ -26,6 +55,7 @@ Goal: add executable guardrails for safety-critical exception handling and compl
 - Updated release gates and the fund-safety plan with the executable catch guard and remaining follow-ups.
 - Edge-case review: hardware cancel/disconnect, node timeout, post-broadcast persistence, send-signature persistence, auth/access middleware, backup, release verification, and logger-only catches are covered by the safety path set or its baseline; generated code and tests are excluded; comments/strings are ignored by AST parsing; nested callback returns and conditional-only returns do not satisfy the guard.
 - Local verification passed: focused guard tests, `npm run check:safety-catch-guards`, `npm run lint:server`, root test typecheck, script typecheck, docs link/Mermaid tests, lizard zero-warning gate, and `git diff --check`.
+- Delivery passed: PR #380 merged with squash commit `451cc2c3` after the required PR checks passed. The merge commit reached `origin/main`; its push Test Suite was still queued behind required conditions immediately after merge and will be rechecked in the threat-model slice.
 
 ---
 

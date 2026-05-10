@@ -1141,6 +1141,7 @@ Sanctuary **never** stores:
 - **Backup your hardware wallet seed** — Sanctuary cannot recover funds
 - **Keep Docker updated** for security patches
 - **Use strong passwords** for your Sanctuary account
+- **Verify Sanctuary's trust boundaries** before using larger balances: read the [wallet threat model](docs/reference/wallet-threat-model.md) and [trust and verification guide](docs/reference/trust-and-verification.md)
 
 ### First-Login Security
 

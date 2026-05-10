@@ -38,6 +38,9 @@ Lookup tables, checklists, and specs.
 - [CI/CD strategy](reference/ci-cd-strategy.md) — branch protection, merge queue, and path-aware validation
 - [Frontend architecture](reference/frontend-architecture.md) — React/Vite architecture and frontend packaging
 - [Hardware wallet integration](reference/hardware-wallet-integration.md) — hardware wallet feature specification
+- [Wallet threat model](reference/wallet-threat-model.md) — fund-safety assets, actors, boundaries, non-goals, and limitations
+- [Trust and verification](reference/trust-and-verification.md) — operator-facing safety claims, pending gaps, and verification commands
+- [External review package](reference/external-review-package.md) — reviewer map for fund-safety evidence and known blockers
 - [Release gates](reference/release-gates.md) — release criteria and verification checklist
 - [Upgrade PostgreSQL auth drift findings](reference/upgrade-postgres-auth-drift-findings.md) — incident notes, reliable checks, and manual recovery
 

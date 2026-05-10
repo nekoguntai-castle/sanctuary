@@ -539,6 +539,8 @@ git diff --check
 
 If `npm run test:docs` is unavailable or scoped differently, run the repository's existing docs tests and record the exact command.
 
+Implementation note, 2026-05-09: PR I started the trust-documentation gate with `docs/reference/wallet-threat-model.md`, `docs/reference/trust-and-verification.md`, and `docs/reference/external-review-package.md`. The docs map funds, xpub/descriptor metadata, labels, transaction data, backups, auth tokens, release keys, AI/MCP credentials, CI, actors, trust boundaries, explicit non-goals, current executable gates, and known limitations. The package deliberately keeps physical hardware signed artifacts, formal security audit, responsible disclosure or bug bounty publication, safety-catch baseline reduction, typed error taxonomy expansion, and target-environment performance calibration as visible blockers instead of trust claims.
+
 ## Suggested PR Sequence
 
 1. **PR A: Baseline drift cleanup.** Completed 2026-05-09: restored strict coverage/lizard expectations from the benchmark grade run.
