@@ -90,7 +90,9 @@ export default {
 
   incremental: true,
   incrementalFile: '.stryker-cache/critical-incremental.json',
-  concurrency: 2,
+  // Saturate the 4-vCPU ubuntu-latest runner used by the mutation jobs.
+  // The default `cpus/2` was leaving half the runner idle.
+  concurrency: 4,
   timeoutMS: 30000,
   timeoutFactor: 2,
 };

@@ -476,7 +476,7 @@ jobs:
       (needs.quick-backend-integration-smoke.result == 'success' ||
        needs.quick-backend-integration-smoke.result == 'skipped')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     needs: [detect-changes, quick-backend-integration-smoke]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-critical-mutation
@@ -493,6 +493,18 @@ jobs:
 
       - name: Setup server dependencies
         uses: ./.github/actions/setup-server-deps
+
+      # Stryker's `incremental: true` only helps when the cache file persists
+      # across CI runs. The cache key hashes the mutated source files plus the
+      # Stryker config; restore-keys lets unrelated PRs reuse the most recent
+      # cache as a starting point.
+      - name: Restore Stryker incremental cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: server/.stryker-cache
+          key: stryker-critical-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/api/transactions/broadcastIntent.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/stryker.critical.config.mjs') }}
+          restore-keys: |
+            stryker-critical-
 
       - name: Run critical mutation gate
         run: >
@@ -1759,7 +1771,7 @@ jobs:
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.critical_mutation_changed == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     needs: [detect-changes, full-lane-ready]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/critical-mutation
@@ -1776,6 +1788,18 @@ jobs:
 
       - name: Setup server dependencies
         uses: ./.github/actions/setup-server-deps
+
+      # Stryker's `incremental: true` only helps when the cache file persists
+      # across CI runs. The cache key hashes the mutated source files plus the
+      # Stryker config; restore-keys lets unrelated PRs reuse the most recent
+      # cache as a starting point.
+      - name: Restore Stryker incremental cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: server/.stryker-cache
+          key: stryker-critical-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/api/transactions/broadcastIntent.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/stryker.critical.config.mjs') }}
+          restore-keys: |
+            stryker-critical-
 
       - name: Run critical mutation gate
         run: >
