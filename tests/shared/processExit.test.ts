@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { exitAfterDelay, exitNow } from '../../../src/utils/processExit';
+import { exitAfterDelay, exitNow } from '../../shared/utils/processExit';
 
 describe('processExit utility', () => {
   afterEach(() => {
@@ -35,7 +35,7 @@ describe('processExit utility', () => {
       .mockImplementation(((cb: TimerHandler) => {
         callback = typeof cb === 'function' ? cb as () => void : undefined;
         return 0 as unknown as ReturnType<typeof setTimeout>;
-      }) as typeof setTimeout);
+      }) as unknown as typeof setTimeout);
 
     expect(exitAfterDelay(1, 250)).toBe(0);
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 250);

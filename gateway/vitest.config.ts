@@ -25,8 +25,9 @@ export default defineConfig({
       exclude: [
         '**/*.d.ts',
         '**/index.ts',
-        // Re-export shim preserving backward-compatible import path (zero logic)
+        // Re-export shims preserving backward-compatible import paths (zero logic)
         'src/utils/fatalProcessHandlers.ts',
+        'src/utils/processExit.ts',
       ],
       thresholds: {
         branches: 100,

@@ -40,6 +40,7 @@ export default defineConfig({
         'src/services/aiService.ts',
         'src/services/eventService.ts',
         'src/utils/fatalProcessHandlers.ts',
+        'src/utils/processExit.ts',
         'src/services/maintenanceService.ts',
         'src/services/payjoinService.ts',
         'src/services/syncService.ts',
