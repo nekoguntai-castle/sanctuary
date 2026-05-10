@@ -545,93 +545,11 @@ jobs:
   # max-parallel or job-level concurrency, so a parallel matrix in
   # this workflow saturated the dind docker daemon every run.
 
-  # ============================================
-  # Publish images to Codeberg Packages
-  # ============================================
-  # Multi-arch (linux/amd64 + linux/arm64) build + push for stable
-  # release tags only. RC / alpha / beta / dev tags are excluded —
-  # operators only consume immutable stable tags.
-  #
-  # This job runs after validation-summary so we never publish images
-  # for a tag whose install/upgrade tests failed.
-  #
-  # Single sequential bash loop (NOT a matrix) — Forgejo's act_runner
-  # ignores strategy.max-parallel and job-level concurrency, so the
-  # only reliable serialization is one job that loops over images.
-  # See memory: feedback_forgejo_runner_concurrency.md.
-  publish-images:
-    name: Publish images to Codeberg Packages
-    runs-on: ubuntu-latest
-    needs: validation-summary
-    if: |
-      github.event_name == 'push' && github.ref_type == 'tag'
-      && !contains(github.ref_name, '-rc')
-      && !contains(github.ref_name, '-alpha')
-      && !contains(github.ref_name, '-beta')
-      && !contains(github.ref_name, '-dev')
-      && needs.validation-summary.result == 'success'
-    timeout-minutes: 90  # arm64 cross-build via QEMU is ~3-5x slower than amd64-only
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          ref: ${{ github.ref }}
-
-      - name: Reclaim disk space before multi-arch build
-        run: |
-          # arm64 cross-builds via QEMU pile up large intermediate
-          # layers. Prune anything stale before we start.
-          docker system prune -f || true
-          df -h | head -5
-
-      - name: Bootstrap multi-arch buildx + QEMU
-        # Both docker/setup-qemu-action and docker/setup-buildx-action
-        # are deliberately not used here:
-        #   - setup-qemu-action's pinned versions use node20 (banned by
-        #     scripts/ci/check-github-action-runtimes.mjs).
-        #   - setup-buildx-action is forbidden in release-candidate.yml
-        #     by tests/ci/check-workflow-composition.test.sh.
-        # Inline both: tonistiigi/binfmt is what setup-qemu-action runs
-        # internally, and `docker buildx create --driver docker-container`
-        # gives us the multi-platform builder.
-        run: |
-          docker run --privileged --rm tonistiigi/binfmt:latest --install arm64
-          docker buildx create --name sanctuary-multiarch \
-            --driver docker-container \
-            --platform linux/amd64,linux/arm64 \
-            --use
-          docker buildx inspect --bootstrap
-
-      - name: Log in to Codeberg Packages
-        env:
-          CODEBERG_USER: ${{ secrets.CODEBERG_USER }}
-          CODEBERG_PACKAGE_TOKEN: ${{ secrets.CODEBERG_PACKAGE_TOKEN }}
-        run: |
-          echo "$CODEBERG_PACKAGE_TOKEN" \
-            | docker login codeberg.org -u "$CODEBERG_USER" --password-stdin
-
-      - name: Build and push images
-        env:
-          IMAGE_TAG: ${{ github.ref_name }}
-        run: bash scripts/ci/build-and-push-images.sh
-
-      - name: Upload digest manifest
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: image-digests-${{ github.ref_name }}
-          path: |
-            dist/image-digests-*.json
-            dist/image-build-summary-*.txt
-          retention-days: 90
-          if-no-files-found: warn
-
-      - name: Logout
-        if: always()
-        run: docker logout codeberg.org || true
+  # Codeberg image publishing happens in install-test.yml's
+  # `publish-images` job (gated on test-summary's release-gate step).
+  # release-candidate.yml only fires on RC/alpha/beta/dev tags
+  # (see this file's `on.push.tags` filter), so a publish-images
+  # job here would be unreachable on stable tags.
 
   # ============================================
   # Validation Summary
