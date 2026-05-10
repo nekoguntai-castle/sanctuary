@@ -1,6 +1,34 @@
-# Active Task: Fund-Safety PR C Signed-PSBT Broadcast Canonicality 2026-05-09
+# Active Task: Fund-Safety PR D Broadcast Release Mutation Gate 2026-05-09
 
 Status: in progress
+
+Goal: add a release-visible and CI-enforced mutation gate for the broadcast canonicality invariants without widening the fund-moving code surface beyond a reviewable helper module.
+
+## Plan
+
+- [x] Start from `origin/main` after PR #372 merged.
+- [x] Inventory the critical mutation gate, CI classifier, release gate docs, and broadcast canonicality helpers.
+- [x] Extract signed-PSBT canonical broadcast intent helpers into a small module that can be mutation-tested without mutating the entire route file.
+- [x] Wire the critical mutation config and CI changed-file classifier so broadcast canonicality code and tests run the critical mutation gate.
+- [x] Update release gate documentation with the measured broadcast canonicality/mutation evidence and the remaining node-preflight requirement.
+- [x] Run focused route tests with coverage, server test typecheck/lint, touched-file lizard, critical mutation gate, and `git diff --check`.
+- [ ] Deliver through PR and merge if CI is green.
+
+## Review
+
+- Added `server/src/api/transactions/broadcastIntent.ts` for the signed-PSBT canonical decode/conflict helpers, leaving `broadcasting.ts` responsible for route orchestration, raw transaction intent, policy, audit, and broadcast.
+- Added direct broadcast-intent tests for strict draft UTXO parsing, including empty/non-decimal/out-of-range vout rejection, missing payload failure, metadata/outpoint conflict checks including extra outpoints, malformed addressed PSBT output handling, zero-fee PSBTs, zero-value output handling, invalid PSBTs, unknown input values, and unsupported paid non-address outputs.
+- Critical mutation now includes broadcast canonicality code and tests: `server/src/api/transactions/broadcastIntent.ts`, `server/src/services/bitcoin/transactions/broadcastContracts.ts`, route broadcast tests, broadcast contract tests, and the new intent tests.
+- CI changed-file classification now marks broadcast canonicality modules/tests as `critical_mutation_changed`, so the quick/full critical mutation gate appears in the Forgejo UI when this surface changes.
+- `docs/reference/release-gates.md` now lists broadcast canonicality as a release gate and explicitly keeps node `testmempoolaccept` preflight pending before complete broadcast-safety claims.
+- Forced critical mutation result: raw `67.65%` versus `52%` minimum, weighted `65.14%` versus `48%` minimum. Broadcast intent itself improved to `97.13%`; remaining broadcast survivors are equivalent normalization branches for vout parsing and empty-address handling, with the larger survivor set coming from pre-existing address-derivation baseline debt.
+- Verification passed: focused broadcast tests, focused coverage at 100% for `broadcasting.ts`, `broadcastIntent.ts`, and `broadcastContracts.ts`, forced critical mutation gate plus weighted checker, server test typecheck, server lint, touched-file lizard, and `git diff --check`.
+
+---
+
+# Active Task: Fund-Safety PR C Signed-PSBT Broadcast Canonicality 2026-05-09
+
+Status: completed; PR #372 merged as `9d560359`
 
 Goal: enforce the new broadcast invariant contract for signed-PSBT broadcast paths by rejecting caller metadata that conflicts with the decoded PSBT before policy usage, audit success, persistence, or node submission.
 
@@ -11,7 +39,7 @@ Goal: enforce the new broadcast invariant contract for signed-PSBT broadcast pat
 - [x] Add regression tests for signed-PSBT recipient, amount, fee, UTXO, draft, and missing-metadata cases.
 - [x] Implement canonical signed-PSBT intent resolution using decoded PSBT data, with request/draft metadata used only for conflict checks.
 - [x] Run focused route/service tests, server typecheck/lint, lizard, vector checks where touched, and `git diff --check`.
-- [ ] Deliver through PR and merge if CI is green.
+- [x] Deliver through PR and merge if CI is green.
 
 ## Review
 
@@ -22,6 +50,7 @@ Goal: enforce the new broadcast invariant contract for signed-PSBT broadcast pat
 - CI failure reproduced locally in the full backend `flows` integration group; the legacy cross-wallet broadcast fixture did not mock PSBT decoding, so the new fail-closed parser correctly rejected the fake signed PSBT before broadcast. The fixture now supplies canonical decoded PSBT metadata and asserts the route decodes against the wallet network before `broadcastAndSave`.
 - A later remote-only `repositories-sharing` integration failure was not in the changed broadcast surface and did not reproduce locally; the exact CI matrix group passed locally with 124/124 tests before requesting a clean rerun.
 - Verification passed: `npx vitest run tests/unit/api/transactions-http-routes.test.ts`, focused coverage for `src/api/transactions/broadcasting.ts` at 100%, server test typecheck, server lint, touched-file lizard, backend vector test set, and `git diff --check`.
+- Delivery passed: PR #372 merged with squash commit `9d560359` after the clean rerun passed Code Quality, Architecture, PR Required Checks, Full Backend Tests, Full Backend Unit Coverage, all four Full Backend Integration matrices, Full Browser E2E, and Full Test Summary.
 
 ---
 

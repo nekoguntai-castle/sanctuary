@@ -19,6 +19,8 @@ const WEIGHTED_PATH_RULES = [
   { prefix: 'src/services/bitcoin/addressDerivation/', weight: 5 },
   { prefix: 'src/services/bitcoin/psbtValidation.ts', weight: 4 },
   { prefix: 'src/services/bitcoin/psbtInfo.ts', weight: 4 },
+  { prefix: 'src/api/transactions/broadcastIntent.ts', weight: 5 },
+  { prefix: 'src/services/bitcoin/transactions/broadcastContracts.ts', weight: 4 },
   { prefix: 'src/middleware/auth.ts', weight: 3 },
   { prefix: 'src/services/accessControl.ts', weight: 3 },
 ];
