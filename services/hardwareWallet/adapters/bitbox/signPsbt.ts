@@ -12,6 +12,10 @@ import { isTestnetPath } from '../../pathUtils';
 import { getSimpleType, getCoin, getOutputType, extractAccountPath } from './pathUtils';
 import type { BitBoxConnection } from './types';
 import type { PSBTSignRequest, PSBTSignResponse } from '../../types';
+import {
+  getUnsupportedMultisigHardwareSigningMessage,
+  isMultisigSigningRequest,
+} from '../../signingSupport';
 
 const log = createLogger('BitBoxAdapter');
 
@@ -217,6 +221,10 @@ export const signPsbtWithBitBox = async (
 ): Promise<PSBTSignResponse> => {
   // Parse PSBT
   const psbt = bitcoin.Psbt.fromBase64(request.psbt);
+
+  if (isMultisigSigningRequest(request, psbt)) {
+    throw new Error(getUnsupportedMultisigHardwareSigningMessage('BitBox02'));
+  }
 
   const accountPath = getAccountPath(request, psbt);
   log.info('Using account path', { accountPath });

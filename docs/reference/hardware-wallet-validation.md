@@ -91,6 +91,16 @@ This leaves 11 required rows awaiting physical evidence and 4 explicitly blocked
 unsupported rows. The executable source of truth is
 `server/tests/fixtures/hardware-signed-psbt-vectors.ts`.
 
+The unsupported Ledger and BitBox multisig rows are enforced in the product, not
+only documented. USB signing refuses those device/script combinations before
+connecting from the send flow, and the Ledger and BitBox adapters reject direct
+multisig PSBT signing requests before constructing wallet-policy or
+`btcSignSimple` payloads. The focused evidence is:
+
+```bash
+npx vitest run tests/services/hardwareWallet.signingSupport.test.ts tests/hooks/useUsbSigning.test.tsx tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts
+```
+
 ## Script Matrix
 
 Run each required device through these rows when the vendor supports the script

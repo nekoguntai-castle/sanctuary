@@ -12,6 +12,10 @@ import { createLogger } from '../../../../utils/logger';
 import { toHex } from '../../../../utils/bufferUtils';
 import type { PSBTSignRequest, PSBTSignResponse } from '../../types';
 import { extractAccountPath, inferScriptTypeFromPath, getDescriptorTemplate } from './utils';
+import {
+  getUnsupportedMultisigHardwareSigningMessage,
+  isMultisigSigningRequest,
+} from '../../signingSupport';
 
 const log = createLogger('LedgerAdapter');
 
@@ -58,6 +62,10 @@ export async function signPsbt(
 
   if (!scriptType) {
     scriptType = inferScriptTypeFromPath(accountPath);
+  }
+
+  if (isMultisigSigningRequest(request, tempPsbt)) {
+    throw new Error(getUnsupportedMultisigHardwareSigningMessage('Ledger'));
   }
 
   log.info('Using account path and script type', { accountPath, scriptType });

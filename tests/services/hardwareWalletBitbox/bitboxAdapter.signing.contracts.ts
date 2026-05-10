@@ -194,6 +194,36 @@ export function registerBitBoxSigningTests(): void {
       );
     });
 
+    it('blocks BitBox multisig signing before simple signing payload creation', async () => {
+      const adapter = createBitBoxAdapter();
+      const mockBtcSignSimple = vi.fn();
+      seedSigningAdapter(adapter, mockBtcSignSimple);
+
+      mockPsbtFromBase64.mockReturnValueOnce({
+        data: {
+          globalMap: { unsignedTx: {} },
+          inputs: [{
+            bip32Derivation: [{ path: "m/48'/0'/0'/2'/0/0" }],
+          }],
+          outputs: [],
+        },
+        txInputs: [],
+        txOutputs: [],
+        version: 2,
+        locktime: 0,
+        updateInput: vi.fn(),
+        finalizeAllInputs: vi.fn(),
+        toBase64: vi.fn(() => 'signed-multisig'),
+      });
+
+      await expect(adapter.signPSBT({
+        psbt: 'multisig-psbt',
+        inputPaths: ["m/48'/0'/0'/2'/0/0"],
+      })).rejects.toThrow('BitBox02 multisig USB signing is blocked in this release.');
+      expect(mockGetKeypathFromString).not.toHaveBeenCalled();
+      expect(mockBtcSignSimple).not.toHaveBeenCalled();
+    });
+
     it('derives account path from request inputPaths, PSBT metadata, and default fallback', async () => {
       const adapter = createBitBoxAdapter();
       const mockBtcSignSimple = vi.fn().mockResolvedValue([]);

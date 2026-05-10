@@ -13,6 +13,10 @@ import { createLogger } from '../../utils/logger';
 import type { Wallet, Device } from '../../types';
 import type { TransactionData } from './types';
 import { getHardwareWalletType, extractXpubsFromDescriptor } from './types';
+import {
+  getUnsupportedMultisigHardwareSigningMessage,
+  isUnsupportedMultisigHardwareSigner,
+} from '../../services/hardwareWallet/signingSupport';
 
 const log = createLogger('UsbSigning');
 
@@ -102,6 +106,25 @@ function getUsbSigningDeviceError(device: Device, hwType: HardwareWalletType): s
     return `${device.type} does not support USB signing. Please use PSBT file signing.`;
   }
   return null;
+}
+
+function getDeviceDisplayName(device: Device | null | undefined): string {
+  return device?.label || device?.type || 'This device';
+}
+
+function getHardwareWalletDeviceDisplayName(device: UseHardwareWalletReturn['device']): string {
+  return device?.name || device?.type || 'This device';
+}
+
+function getMultisigUsbProductBlock(
+  wallet: Wallet,
+  hwType: HardwareWalletType | null,
+  deviceName: string
+): string | null {
+  if (!isMultisigType(wallet.type) || !isUnsupportedMultisigHardwareSigner(hwType)) {
+    return null;
+  }
+  return getUnsupportedMultisigHardwareSigningMessage(deviceName);
 }
 
 function failDeviceSigning(setError: (v: string | null) => void, message: string): false {
@@ -219,6 +242,19 @@ export function useUsbSigning({
       return null;
     }
 
+    const hwType = hardwareWallet.device.type
+      ? getHardwareWalletType(hardwareWallet.device.type)
+      : null;
+    const productBlock = getMultisigUsbProductBlock(
+      wallet,
+      hwType,
+      getHardwareWalletDeviceDisplayName(hardwareWallet.device)
+    );
+    if (productBlock) {
+      setError(productBlock);
+      return null;
+    }
+
     setIsSigning(true);
     setError(null);
 
@@ -260,6 +296,11 @@ export function useUsbSigning({
     const deviceError = getUsbSigningDeviceError(device, hwType);
     if (deviceError) {
       return failDeviceSigning(setError, deviceError);
+    }
+
+    const productBlock = getMultisigUsbProductBlock(wallet, hwType, getDeviceDisplayName(device));
+    if (productBlock) {
+      return failDeviceSigning(setError, productBlock);
     }
 
     setIsSigning(true);

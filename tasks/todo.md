@@ -1,6 +1,39 @@
-# Active Task: Fund-Safety Threat Model And Trust Package 2026-05-09
+# Active Task: Fund-Safety Hardware Unsupported Signing Product Blocks 2026-05-09
 
 Status: in progress
+
+Goal: make documented unsupported hardware multisig rows executable product blocks so Ledger and BitBox cannot attempt unsupported P2WSH or P2SH-P2WSH USB signing before physical fixture capture is available.
+
+## Plan
+
+- [x] Start from `origin/main` after PR #381 merged.
+- [x] Recheck the post-merge push backstop for PR #381 and record any remaining pending lanes.
+- [x] Inventory hardware validation docs, fixture matrix, USB signing hook, Ledger/BitBox/Trezor adapters, and current hardware signing tests.
+- [x] Add a shared hardware signing support guard that recognizes multisig signing requests from wallet type, BIP48 paths, PSBT derivation metadata, or multisig xpub maps.
+- [x] Block Ledger and BitBox multisig USB signing in the send hook and adapter boundaries with a user-safe product-block message.
+- [x] Keep Trezor multisig USB signing and file/QR PSBT workflows available.
+- [x] Add focused tests for Ledger/BitBox multisig blocks, Trezor passthrough, single-sig passthrough, BIP48 detection, PSBT metadata detection, and missing-data behavior.
+- [x] Update hardware validation/release/trust docs and task review with measured evidence only.
+- [x] Review corner cases: direct adapter calls, generic connected-device signing, missing wallet descriptor, BIP48 path with no xpub map, nested multisig, device names, and physical fixture deferral.
+- [x] Run focused hook/adapter/helper tests, app/test typechecks as needed, touched-file lizard, and `git diff --check`.
+- [ ] Deliver through PR and merge if CI is green.
+
+## Review
+
+- PR #381 merged as `7e57bb66`. Its push backstop is `pending` with two visible pending statuses and no failures observed immediately after merge.
+- Inventory found a non-physical hardware gap: `server/tests/fixtures/hardware-signed-psbt-vectors.ts` and `docs/reference/hardware-wallet-validation.md` classify Ledger and BitBox P2WSH/P2SH-P2WSH as blocked, but `hooks/send/useUsbSigning.ts` and the Ledger/BitBox adapters did not enforce that product block before attempting USB signing.
+- Added `services/hardwareWallet/signingSupport.ts` to classify multisig signing requests from BIP48 paths, PSBT bip32 metadata, witness scripts, and multisig xpub maps, and to centralize the user-safe product-block message.
+- The send USB flow now refuses Ledger/BitBox multisig before connecting or signing, while existing Trezor multisig tests still exercise the allowed USB path.
+- Ledger and BitBox adapters now reject direct multisig PSBT signing before wallet-policy or `btcSignSimple` payload construction.
+- Loop review found and fixed an error-mapping corner case: the Ledger product-block text contains "blocked", which includes "locked"; the product-block check now runs before generic locked-device mapping.
+- Updated hardware validation, release gates, trust verification, and the fund-safety plan with the executable unsupported-row block. Physical signed artifacts remain pending.
+- Local verification passed: focused signing-support/hook/Ledger/BitBox tests, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, `npm run quality:lizard`, docs link/Mermaid tests, docs build, and `git diff --check`.
+
+---
+
+# Active Task: Fund-Safety Threat Model And Trust Package 2026-05-09
+
+Status: completed; PR #381 merged as `7e57bb66`
 
 Goal: make Sanctuary's high-trust claims auditable by documenting assets, actors, trust boundaries, explicit non-goals, release gates, known limitations, and an external-review evidence package without overstating hardware, release, AI, broadcast, or node-trust guarantees.
 
@@ -14,7 +47,7 @@ Goal: make Sanctuary's high-trust claims auditable by documenting assets, actors
 - [x] Add an external-review package index with concrete evidence commands/docs and known limitations.
 - [x] Review corner cases: AI/MCP read-only boundaries, watch-only metadata sensitivity, hardware display mismatch, backup restore risk, release compromise, wrong/malicious node data, and physical fixture deferral.
 - [x] Run docs link/Mermaid tests, docs build if needed, lizard/diff checks as relevant, and `git diff --check`.
-- [ ] Deliver through PR and merge if CI is green.
+- [x] Deliver through PR and merge if CI is green.
 
 ## Review
 
@@ -24,6 +57,7 @@ Goal: make Sanctuary's high-trust claims auditable by documenting assets, actors
 - Loop review found one overclaim: "private keys never enter Sanctuary" ignored malicious rejected input attempts. Reworded to "never accepted or stored as Sanctuary wallet state."
 - Edge-case review covered AI/MCP read-only authority, watch-only metadata sensitivity, hardware display mismatch, backup restore destructiveness and credential handling, release compromise, wrong or malicious Electrum data, Bitcoin Core as lab-only evidence, and physical fixture deferral. No open doc findings remain.
 - Local verification passed: docs link/Mermaid tests, docs build using the existing website dependency tree, and `git diff --check`. Lizard was not run because this slice changes docs/task files only.
+- Delivery passed: PR #381 merged with squash commit `7e57bb66`. The merge commit reached `origin/main`; its push status was still pending immediately after merge and will be rechecked in the hardware product-block slice.
 
 ---
 

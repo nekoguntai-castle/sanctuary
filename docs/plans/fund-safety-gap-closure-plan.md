@@ -255,6 +255,8 @@ Rollback rule:
 
 - If a fixture row fails after a vendor library or firmware update, block that device/script combination in the product until the fixture is regenerated or the bug is fixed.
 
+Implementation note, 2026-05-09: the hardware product-block slice made the documented unsupported Ledger and BitBox multisig rows executable. The send USB flow now refuses Ledger/BitBox multisig before connecting, and the Ledger/BitBox adapters reject direct multisig PSBT signing requests before wallet-policy or `btcSignSimple` payload construction. This does not complete physical hardware verification; it prevents unsupported rows from being treated as signable while the 11 required physical artifacts remain pending.
+
 ## Phase 3 - Release Artifact Verification And Supply Chain
 
 Purpose: make installing compromised or unverifiable software harder. Release trust is funds safety.

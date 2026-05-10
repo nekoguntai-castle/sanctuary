@@ -18,6 +18,7 @@ reproduce the main evidence.
 | Descriptor and xpub imports fail closed on unsafe domains | Raw descriptors plus parsed JSON, BlueWallet, and Coldcard imports reject private extended keys, wrong-network keys/paths, unsupported branches, malformed multisig suffixes, quorum overflow, duplicates, and script/path mismatches |
 | New safety-module catches cannot silently continue | `npm run check:safety-catch-guards` scans safety paths and fails on new non-terminal catches unless they return, throw, call an approved fail-closed helper, or update the accountable baseline |
 | Stable releases have an operator verification path | Stable release manifests must cover release identity, builder evidence, signed `SHA256SUMS`, local checksums, offline bundle evidence, SBOM/provenance references, and container image digests |
+| Unsupported hardware signing rows are product-blocked | Ledger and BitBox multisig USB signing is blocked in the send flow and adapter boundaries until physical fixture coverage exists for those device/script families |
 | AI, Console, and MCP are read-only | Tool execution is authenticated and scoped; DTOs exclude private keys, descriptors, xpubs, PSBTs, bearer tokens, and provider API keys; restored MCP keys are revoked |
 | Browser auth is protected against script-readable token theft | Access and refresh tokens use HttpOnly cookies, CSRF protects mutating cookie-auth requests, and WebSocket auth uses cookies instead of query tokens |
 
@@ -49,6 +50,7 @@ Run the smallest command set that matches the claim being reviewed.
 | Descriptor/xpub import safety | `npm --prefix server run test -- --run tests/unit/services/bitcoin/descriptorParser.test.ts` |
 | Safety catch guard | `npm run check:safety-catch-guards` |
 | Hardware fixture replay | `REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` |
+| Hardware unsupported-row product blocks | `npx vitest run tests/services/hardwareWallet.signingSupport.test.ts tests/hooks/useUsbSigning.test.tsx tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts` |
 | Address vectors | `npm --prefix scripts/verify-addresses run verify` |
 | Docs links and Mermaid rewrite tests | `npx vitest run tests/docs/readme-links.test.ts tests/docs/remarkMermaidClickRewrite.test.ts` |
 

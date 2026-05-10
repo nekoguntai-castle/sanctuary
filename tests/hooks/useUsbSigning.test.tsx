@@ -75,6 +75,7 @@ describe('useUsbSigning', () => {
 
   it('signWithHardwareWallet supports multisig xpub extraction and returns rawTx fallback', async () => {
     mocks.hardwareWallet.signPSBT.mockResolvedValueOnce({ rawTx: 'rawtx-hex' });
+    mocks.hardwareWallet.device = { id: 'hw-1', type: 'trezor', name: 'Trezor Safe 3' };
     const deps = createDeps({
       wallet: {
         id: 'wallet-1',
@@ -101,6 +102,30 @@ describe('useUsbSigning', () => {
         a1b2c3d4: expect.stringContaining('xpub'),
       })
     );
+  });
+
+  it('signWithHardwareWallet blocks Ledger multisig USB signing before signer calls', async () => {
+    mocks.hardwareWallet.device = { id: 'ledger-1', type: 'ledger', name: 'Ledger Nano X' };
+    const deps = createDeps({
+      wallet: {
+        id: 'wallet-1',
+        type: 'multi_sig',
+        descriptor: descriptorWithXpub,
+      } as any,
+    });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    let signed: string | null = 'placeholder';
+    await act(async () => {
+      signed = await result.current.signWithHardwareWallet();
+    });
+
+    expect(signed).toBeNull();
+    expect(deps.setError).toHaveBeenCalledWith(expect.stringContaining(
+      'Ledger Nano X multisig USB signing is blocked in this release.'
+    ));
+    expect(mocks.hardwareWallet.signPSBT).not.toHaveBeenCalled();
+    expect(deps.setIsSigning).not.toHaveBeenCalled();
   });
 
   it('signWithHardwareWallet surfaces Error message on failure', async () => {
@@ -191,6 +216,38 @@ describe('useUsbSigning', () => {
       'Coldcard Mk4 does not support USB signing. Please use PSBT file signing.'
     );
     expect(mocks.hardwareWallet.connect).not.toHaveBeenCalled();
+    expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('signWithDevice blocks BitBox multisig USB signing before connecting', async () => {
+    const deps = createDeps({
+      wallet: {
+        id: 'wallet-1',
+        type: 'multi_sig',
+        descriptor: descriptorWithXpub,
+      } as any,
+      txData: {
+        ...baseTxData,
+        inputPaths: ["m/48'/0'/0'/2'/0/0"],
+      } as any,
+    });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.signWithDevice({
+        id: 'bitbox-1',
+        type: 'BitBox02',
+        label: 'Treasury BitBox',
+      } as any);
+    });
+
+    expect(ok).toBe(false);
+    expect(deps.setError).toHaveBeenCalledWith(expect.stringContaining(
+      'Treasury BitBox multisig USB signing is blocked in this release.'
+    ));
+    expect(mocks.hardwareWallet.connect).not.toHaveBeenCalled();
+    expect(mocks.hardwareWallet.signPSBT).not.toHaveBeenCalled();
     expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
   });
 

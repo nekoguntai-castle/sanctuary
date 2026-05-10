@@ -351,6 +351,9 @@ export class BitBoxAdapter implements DeviceAdapter {
       if (message.includes('busy')) {
         throw new Error('BitBox02 is busy. Please close other applications using the device.');
       }
+      if (message.startsWith('BitBox02 multisig USB signing is blocked')) {
+        throw new Error(message);
+      }
 
       throw new Error(`Failed to sign transaction: ${message}`);
     }

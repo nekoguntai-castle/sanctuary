@@ -641,6 +641,50 @@ describe("LedgerAdapter", () => {
     ).rejects.toThrow("Failed to sign transaction: unexpected");
   });
 
+  it("blocks Ledger multisig signing before wallet policy creation", async () => {
+    const adapter = new LedgerAdapter();
+    (adapter as any).connection = {
+      app: {},
+      appClient: {
+        getMasterFingerprint: (...args: unknown[]) =>
+          mockGetMasterFingerprint(...args),
+        getExtendedPubkey: (...args: unknown[]) =>
+          mockGetExtendedPubkey(...args),
+        signPsbt: vi.fn(),
+      },
+      transport: { close: vi.fn() },
+      device: makeUsbDevice(),
+    };
+    (adapter as any).connectedDevice = {
+      id: "ledger-1",
+      type: "ledger",
+      name: "Ledger",
+      model: "Ledger",
+      connected: true,
+      fingerprint: "",
+    };
+
+    mockPsbtFromBase64.mockReturnValueOnce({
+      data: {
+        inputs: [{
+          bip32Derivation: [{ path: "m/48'/0'/0'/2'/0/0" }],
+        }],
+      },
+      toBase64: () => "psbt",
+      updateInput: vi.fn(),
+      finalizeAllInputs: vi.fn(),
+    });
+
+    await expect(
+      adapter.signPSBT({
+        psbt: "multisig-psbt",
+        inputPaths: ["m/48'/0'/0'/2'/0/0"],
+      }),
+    ).rejects.toThrow("Ledger multisig USB signing is blocked in this release.");
+    expect(mockGetMasterFingerprint).not.toHaveBeenCalled();
+    expect(mockGetExtendedPubkey).not.toHaveBeenCalled();
+  });
+
   it("handles non-Error failures and no-op disconnect fallback paths", async () => {
     const connectNonError = new LedgerAdapter();
     mockTransportCreate.mockRejectedValueOnce({

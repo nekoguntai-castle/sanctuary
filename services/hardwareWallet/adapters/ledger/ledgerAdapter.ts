@@ -421,6 +421,9 @@ export class LedgerAdapter implements DeviceAdapter {
       const message = error instanceof Error ? error.message : 'Unknown error';
       log.error('PSBT signing failed', { error: message });
 
+      if (message.startsWith('Ledger multisig USB signing is blocked')) {
+        throw new Error(message);
+      }
       if (message.includes('0x6985') || message.includes('denied') || message.includes('rejected')) {
         throw new Error('Transaction rejected on device. Please approve the transaction on your Ledger.');
       }
