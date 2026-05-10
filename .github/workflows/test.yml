@@ -467,8 +467,12 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-  quick-critical-mutation:
-    name: Quick Critical Mutation Gate
+  # Sharded Stryker runs. Each shard mutates a disjoint subset of files so
+  # they can run in parallel. Reports are merged + gated by
+  # `quick-critical-mutation` below, which downstream `needs:` keep referencing
+  # so existing branch protection / status checks need no changes.
+  quick-critical-mutation-shards:
+    name: Quick Critical Mutation Gate (shard ${{ matrix.shard }})
     if: |
       always() &&
       github.event_name == 'pull_request' &&
@@ -478,8 +482,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: [detect-changes, quick-backend-integration-smoke]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     env:
-      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-critical-mutation
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-critical-mutation-shard-${{ matrix.shard }}
+      MUTATION_SHARD: ${{ matrix.shard }}
     defaults:
       run:
         working-directory: server
@@ -495,45 +504,97 @@ jobs:
         uses: ./.github/actions/setup-server-deps
 
       # Stryker's `incremental: true` only helps when the cache file persists
-      # across CI runs. The cache key hashes the mutated source files plus the
-      # Stryker config; restore-keys lets unrelated PRs reuse the most recent
-      # cache as a starting point.
-      - name: Restore Stryker incremental cache
+      # across CI runs. Each shard has its own incremental file
+      # (`.stryker-cache/critical-incremental.shard-N.json`) and its own cache
+      # key prefix so shards don't invalidate each other's caches.
+      - name: Restore Stryker incremental cache (shard ${{ matrix.shard }})
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: server/.stryker-cache
-          key: stryker-critical-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/api/transactions/broadcastIntent.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/stryker.critical.config.mjs') }}
+          key: stryker-critical-shard-${{ matrix.shard }}-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/api/transactions/broadcastIntent.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/scripts/mutation/shards.mjs', 'server/stryker.critical.config.mjs') }}
           restore-keys: |
-            stryker-critical-
+            stryker-critical-shard-${{ matrix.shard }}-
 
-      - name: Run critical mutation gate
+      - name: Run critical mutation shard ${{ matrix.shard }}
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/critical-mutation-gate.log"
-          npm run test:mutation:critical:gate
+          npm run test:mutation:critical:shard
 
-      - name: Upload critical mutation report
+      - name: Upload critical mutation shard report
         if: always()
         uses: ./.github/actions/upload-artifact
         with:
-          name: critical-mutation-report-pr
+          name: critical-mutation-report-pr-shard-${{ matrix.shard }}
           path: server/reports/mutation/
           retention-days: 14
 
       - name: Write quick critical mutation diagnostic summary
         if: always()
         continue-on-error: true
-        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Critical Mutation"
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Critical Mutation shard ${{ matrix.shard }}"
 
       - name: Upload quick critical mutation diagnostics
         if: always()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
-          name: ci-diagnostics-quick-critical-mutation
-          path: .tmp/ci-diagnostics/quick-critical-mutation/
+          name: ci-diagnostics-quick-critical-mutation-shard-${{ matrix.shard }}
+          path: .tmp/ci-diagnostics/quick-critical-mutation-shard-${{ matrix.shard }}/
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 7
+
+  quick-critical-mutation:
+    name: Quick Critical Mutation Gate
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      needs.detect-changes.outputs.critical_mutation_changed == 'true' &&
+      needs.quick-critical-mutation-shards.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [detect-changes, quick-critical-mutation-shards]
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+
+      - name: Download shard 1 report
+        uses: ./.github/actions/download-artifact
+        with:
+          name: critical-mutation-report-pr-shard-1
+          path: server/reports/mutation/
+
+      - name: Download shard 2 report
+        uses: ./.github/actions/download-artifact
+        with:
+          name: critical-mutation-report-pr-shard-2
+          path: server/reports/mutation/
+
+      - name: Download shard 3 report
+        uses: ./.github/actions/download-artifact
+        with:
+          name: critical-mutation-report-pr-shard-3
+          path: server/reports/mutation/
+
+      - name: Merge shard reports and run gate
+        run: |
+          npm run mutation:merge-shards
+          node scripts/mutation/check-critical-mutation-gate.mjs
+
+      - name: Upload merged critical mutation report
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: critical-mutation-report-pr
+          path: server/reports/mutation/critical-mutation-report.json
+          retention-days: 14
 
   quick-gateway-tests:
     name: Quick Gateway Tests
@@ -1763,8 +1824,12 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  full-critical-mutation:
-    name: Full Critical Mutation Gate
+  # Sharded Stryker runs (full lane). Each shard mutates a disjoint subset of
+  # files so they can run in parallel. Reports are merged + gated by
+  # `full-critical-mutation` below, which downstream `needs:` keep referencing
+  # so existing branch protection / status checks need no changes.
+  full-critical-mutation-shards:
+    name: Full Critical Mutation Gate (shard ${{ matrix.shard }})
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
@@ -1773,8 +1838,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: [detect-changes, full-lane-ready]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     env:
-      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/critical-mutation
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/critical-mutation-shard-${{ matrix.shard }}
+      MUTATION_SHARD: ${{ matrix.shard }}
     defaults:
       run:
         working-directory: server
@@ -1790,46 +1860,96 @@ jobs:
         uses: ./.github/actions/setup-server-deps
 
       # Stryker's `incremental: true` only helps when the cache file persists
-      # across CI runs. The cache key hashes the mutated source files plus the
-      # Stryker config; restore-keys lets unrelated PRs reuse the most recent
-      # cache as a starting point.
-      - name: Restore Stryker incremental cache
+      # across CI runs. Each shard has its own incremental file
+      # (`.stryker-cache/critical-incremental.shard-N.json`) and its own cache
+      # key prefix so shards don't invalidate each other's caches.
+      - name: Restore Stryker incremental cache (shard ${{ matrix.shard }})
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: server/.stryker-cache
-          key: stryker-critical-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/api/transactions/broadcastIntent.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/stryker.critical.config.mjs') }}
+          key: stryker-critical-shard-${{ matrix.shard }}-${{ hashFiles('server/src/services/bitcoin/addressDerivation.ts', 'server/src/services/bitcoin/addressDerivation/**', 'server/src/services/bitcoin/psbtValidation.ts', 'server/src/services/bitcoin/psbtInfo.ts', 'server/src/services/bitcoin/validationEvidenceContracts.ts', 'server/src/services/bitcoin/transactions/broadcastContracts.ts', 'server/src/services/bitcoin/blockchain/broadcastPreflight.ts', 'server/src/api/transactions/broadcastIntent.ts', 'server/src/middleware/auth.ts', 'server/src/services/accessControl.ts', 'server/scripts/mutation/shards.mjs', 'server/stryker.critical.config.mjs') }}
           restore-keys: |
-            stryker-critical-
+            stryker-critical-shard-${{ matrix.shard }}-
 
-      - name: Run critical mutation gate
+      - name: Run critical mutation shard ${{ matrix.shard }}
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/critical-mutation-gate.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
-          ${{ github.workspace }}/scripts/ci/time-command.sh "critical mutation gate"
-          npm run test:mutation:critical:gate
+          ${{ github.workspace }}/scripts/ci/time-command.sh "critical mutation shard ${{ matrix.shard }}"
+          npm run test:mutation:critical:shard
 
-      - name: Upload critical mutation report
+      - name: Upload critical mutation shard report
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: critical-mutation-report-shard-${{ matrix.shard }}
+          path: server/reports/mutation/
+          retention-days: 14
+
+      - name: Write critical mutation shard diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Critical Mutation shard ${{ matrix.shard }}"
+
+      - name: Upload critical mutation shard diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-critical-mutation-shard-${{ matrix.shard }}
+          path: .tmp/ci-diagnostics/critical-mutation-shard-${{ matrix.shard }}/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
+  full-critical-mutation:
+    name: Full Critical Mutation Gate
+    if: >-
+      always() &&
+      needs.full-critical-mutation-shards.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [detect-changes, full-lane-ready, full-critical-mutation-shards]
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+
+      - name: Download shard 1 report
+        uses: ./.github/actions/download-artifact
+        with:
+          name: critical-mutation-report-shard-1
+          path: server/reports/mutation/
+
+      - name: Download shard 2 report
+        uses: ./.github/actions/download-artifact
+        with:
+          name: critical-mutation-report-shard-2
+          path: server/reports/mutation/
+
+      - name: Download shard 3 report
+        uses: ./.github/actions/download-artifact
+        with:
+          name: critical-mutation-report-shard-3
+          path: server/reports/mutation/
+
+      - name: Merge shard reports and run gate
+        run: |
+          npm run mutation:merge-shards
+          node scripts/mutation/check-critical-mutation-gate.mjs
+
+      - name: Upload merged critical mutation report
         if: always()
         uses: ./.github/actions/upload-artifact
         with:
           name: critical-mutation-report
-          path: server/reports/mutation/
-          retention-days: 14
-
-      - name: Write critical mutation diagnostic summary
-        if: always()
-        continue-on-error: true
-        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Critical Mutation"
-
-      - name: Upload critical mutation diagnostics
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: ci-diagnostics-critical-mutation
-          path: .tmp/ci-diagnostics/critical-mutation/
-          if-no-files-found: ignore
-          include-hidden-files: true
+          path: server/reports/mutation/critical-mutation-report.json
           retention-days: 14
 
   full-browser-e2e-tests:

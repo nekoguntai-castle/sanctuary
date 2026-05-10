@@ -1,13 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import {
+  resolveShard,
+  shardIncrementalFileName,
+  shardReportFileName,
+} from './scripts/mutation/shards.mjs';
+
 /**
  * Critical-path mutation testing configuration.
  *
  * Uses Stryker's built-in "command" test runner to avoid current
  * vitest-runner compatibility issues while still mutation-testing
  * high-risk money/auth paths.
+ *
+ * Set MUTATION_SHARD=1|2|3 to mutate only one slice (used by CI to
+ * parallelize). Default ('all') mutates the full list — preserves the
+ * pre-shard behavior for local runs and the merge-script smoke test.
  */
+const SHARD = resolveShard(process.env.MUTATION_SHARD);
 
 const shellQuote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
 
@@ -51,19 +62,7 @@ export default {
   coverageAnalysis: 'off',
   checkers: [],
 
-  mutate: [
-    'src/services/bitcoin/addressDerivation.ts',
-    'src/services/bitcoin/addressDerivation/**/*.ts',
-    'src/services/bitcoin/psbtValidation.ts',
-    'src/services/bitcoin/psbtInfo.ts',
-    'src/services/bitcoin/validationEvidenceContracts.ts',
-    'src/services/bitcoin/transactions/broadcastContracts.ts',
-    'src/services/bitcoin/blockchain/broadcastPreflight.ts',
-    'src/api/transactions/broadcastIntent.ts',
-    'src/middleware/auth.ts',
-    'src/services/accessControl.ts',
-    '!src/**/*.d.ts',
-  ],
+  mutate: SHARD.mutate,
 
   ignorePatterns: [
     'src/generated',
@@ -75,10 +74,10 @@ export default {
 
   reporters: ['clear-text', 'progress', 'json', 'html'],
   jsonReporter: {
-    fileName: 'reports/mutation/critical-mutation-report.json',
+    fileName: shardReportFileName(SHARD.id),
   },
   htmlReporter: {
-    fileName: 'reports/mutation/critical-mutation-report.html',
+    fileName: shardReportFileName(SHARD.id).replace(/\.json$/, '.html'),
   },
 
   thresholds: {
@@ -89,7 +88,7 @@ export default {
   },
 
   incremental: true,
-  incrementalFile: '.stryker-cache/critical-incremental.json',
+  incrementalFile: shardIncrementalFileName(SHARD.id),
   // Saturate the 4-vCPU ubuntu-latest runner used by the mutation jobs.
   // The default `cpus/2` was leaving half the runner idle.
   concurrency: 4,

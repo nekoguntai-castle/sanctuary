@@ -310,16 +310,29 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "ci-diagnostics-ai-proxy"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
-  "full critical mutation diagnostics" \
-  "full-critical-mutation:" \
+  "full critical mutation shards diagnostics" \
+  "full-critical-mutation-shards:" \
+  'matrix:' \
+  'shard: [1, 2, 3]' \
+  'MUTATION_SHARD: ${{ matrix.shard }}' \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/critical-mutation-gate.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
-  'scripts/ci/time-command.sh "critical mutation gate"' \
-  "npm run test:mutation:critical:gate" \
-  "Write critical mutation diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Critical Mutation"' \
-  "Upload critical mutation diagnostics" \
-  "ci-diagnostics-critical-mutation"
+  'scripts/ci/time-command.sh "critical mutation shard ${{ matrix.shard }}"' \
+  "npm run test:mutation:critical:shard" \
+  "Write critical mutation shard diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Critical Mutation shard ${{ matrix.shard }}"' \
+  "Upload critical mutation shard diagnostics" \
+  "ci-diagnostics-critical-mutation-shard-"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full critical mutation aggregate" \
+  "full-critical-mutation:" \
+  "needs.full-critical-mutation-shards.result == 'success'" \
+  "Download shard 1 report" \
+  "Download shard 2 report" \
+  "Download shard 3 report" \
+  "npm run mutation:merge-shards" \
+  "node scripts/mutation/check-critical-mutation-gate.mjs"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full browser E2E diagnostics" \
@@ -417,14 +430,27 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "ci-diagnostics-quick-backend-integration-smoke"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick critical mutation diagnostics" \
-  "quick-critical-mutation:" \
+  "quick critical mutation shards diagnostics" \
+  "quick-critical-mutation-shards:" \
+  'matrix:' \
+  'shard: [1, 2, 3]' \
+  'MUTATION_SHARD: ${{ matrix.shard }}' \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/critical-mutation-gate.log"' \
-  "npm run test:mutation:critical:gate" \
+  "npm run test:mutation:critical:shard" \
   "Write quick critical mutation diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Critical Mutation"' \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Critical Mutation shard ${{ matrix.shard }}"' \
   "Upload quick critical mutation diagnostics" \
-  "ci-diagnostics-quick-critical-mutation"
+  "ci-diagnostics-quick-critical-mutation-shard-"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick critical mutation aggregate" \
+  "quick-critical-mutation:" \
+  "needs.quick-critical-mutation-shards.result == 'success'" \
+  "Download shard 1 report" \
+  "Download shard 2 report" \
+  "Download shard 3 report" \
+  "npm run mutation:merge-shards" \
+  "node scripts/mutation/check-critical-mutation-gate.mjs"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "quick gateway diagnostics" \

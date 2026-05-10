@@ -56,6 +56,8 @@
     "pretest:mutation:critical": "node scripts/ensure-shared-module-resolution.mjs",
     "test:mutation:critical": "stryker run stryker.critical.config.mjs",
     "test:mutation:critical:gate": "npm run test:mutation:critical && node scripts/mutation/check-critical-mutation-gate.mjs",
+    "test:mutation:critical:shard": "stryker run stryker.critical.config.mjs",
+    "mutation:merge-shards": "node scripts/mutation/merge-shard-reports.mjs reports/mutation/critical-mutation-report.shard-1.json reports/mutation/critical-mutation-report.shard-2.json reports/mutation/critical-mutation-report.shard-3.json",
     "pretypecheck:tests": "node scripts/ensure-shared-module-resolution.mjs",
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json --pretty false",
     "pretypecheck:tests:full": "node scripts/ensure-shared-module-resolution.mjs",
