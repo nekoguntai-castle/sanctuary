@@ -258,16 +258,29 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "ci-diagnostics-backend-typecheck"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
-  "full backend unit coverage diagnostics" \
-  "full-backend-unit-coverage:" \
+  "full backend unit coverage shards diagnostics" \
+  "full-backend-unit-coverage-shards:" \
+  'matrix:' \
+  'shard: [1, 2]' \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/unit-coverage.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
-  'scripts/ci/retry-vitest-infrastructure-failure.sh "backend unit coverage"' \
-  'scripts/ci/time-command.sh "backend unit coverage"' \
-  "npm run test:run:ci -- tests/unit --coverage" \
-  "Write backend unit coverage diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Unit Coverage"' \
-  "Upload backend unit coverage diagnostics" \
+  'scripts/ci/time-command.sh "backend unit coverage shard ${{ matrix.shard }}"' \
+  'scripts/ci/backend-coverage-shard.sh ${{ matrix.shard }} 2' \
+  "Write backend unit coverage shard diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Unit Coverage shard ${{ matrix.shard }}"' \
+  "Upload backend unit coverage shard diagnostics" \
+  "ci-diagnostics-backend-unit-coverage-shard-"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full backend unit coverage merge aggregate" \
+  "full-backend-unit-coverage:" \
+  "needs.full-backend-unit-coverage-shards.result == 'success'" \
+  "Fail fast if any shard failed" \
+  "needs.full-backend-unit-coverage-shards.result != 'success'" \
+  "Download shard 1 blob" \
+  "Download shard 2 blob" \
+  'scripts/ci/backend-coverage-merge.sh' \
+  "Upload merged backend coverage" \
   "ci-diagnostics-backend-unit-coverage"
 
 assert_contains_in_order "$TEST_WORKFLOW" \

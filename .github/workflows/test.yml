@@ -1079,8 +1079,12 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  full-backend-unit-coverage:
-    name: Full Backend Unit Coverage
+  # Sharded backend unit coverage. Each shard runs vitest with --shard X/N
+  # against tests/unit and writes a blob report; the aggregator merges blobs
+  # via `vitest --mergeReports` and runs the coverage threshold once on the
+  # combined report. Mirrors the frontend coverage-shard pattern.
+  full-backend-unit-coverage-shards:
+    name: Full Backend Unit Coverage (shard ${{ matrix.shard }}/2)
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
@@ -1089,10 +1093,14 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     needs: [detect-changes, full-lane-ready, full-backend-typecheck]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     env:
-      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-unit-coverage
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-unit-coverage-shard-${{ matrix.shard }}
     defaults:
       run:
         working-directory: server
@@ -1144,20 +1152,98 @@ jobs:
           ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit prisma migrate"
           npx prisma migrate deploy
 
-      - name: Run unit tests with coverage
+      - name: Run backend unit coverage shard ${{ matrix.shard }}
         env:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
-          SANCTUARY_VITEST_INFRA_ATTEMPTS: '5'
+          SANCTUARY_BACKEND_COVERAGE_SEGFAULT_ATTEMPTS: '3'
+          SANCTUARY_BACKEND_COVERAGE_LOG_DIR: ${{ github.workspace }}/.tmp/backend-coverage-shard-${{ matrix.shard }}
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/unit-coverage.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
-          ${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh "backend unit coverage"
-          ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit coverage"
-          npm run test:run:ci -- tests/unit --coverage
+          ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit coverage shard ${{ matrix.shard }}"
+          ${{ github.workspace }}/scripts/ci/backend-coverage-shard.sh ${{ matrix.shard }} 2
 
-      - name: Upload backend coverage
+      - name: Upload backend coverage shard blob
+        if: always()
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: backend-coverage-shard-${{ matrix.shard }}-blob
+          path: server/.vitest-reports/
+          retention-days: 14
+
+      - name: Write backend unit coverage shard diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Unit Coverage shard ${{ matrix.shard }}"
+
+      - name: Upload backend unit coverage shard diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-backend-unit-coverage-shard-${{ matrix.shard }}
+          path: .tmp/ci-diagnostics/backend-unit-coverage-shard-${{ matrix.shard }}/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
+  full-backend-unit-coverage:
+    name: Full Backend Unit Coverage
+    # Runs whenever the shards finished (success OR failure). The first step
+    # propagates a shard-level failure as a hard failure of the gate so a
+    # broken shard cannot be silently observed as 'skipped' by the umbrella.
+    # Pattern mirrors #391's mutation-gate fix.
+    if: >-
+      always() &&
+      (needs.full-backend-unit-coverage-shards.result == 'success' ||
+       needs.full-backend-unit-coverage-shards.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [detect-changes, full-lane-ready, full-backend-typecheck, full-backend-unit-coverage-shards]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-unit-coverage
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Fail fast if any shard failed
+        if: needs.full-backend-unit-coverage-shards.result != 'success'
+        run: |
+          echo "::error::One or more Backend Unit Coverage shards failed (result: ${{ needs.full-backend-unit-coverage-shards.result }}). Refusing to run the merge step so the gate cannot be silently bypassed."
+          exit 1
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Verify Node.js toolchain
+        uses: ./.github/actions/setup-node-toolchain
+
+      - name: Setup server dependencies
+        uses: ./.github/actions/setup-server-deps
+
+      - name: Download shard 1 blob
+        uses: ./.github/actions/download-artifact
+        with:
+          name: backend-coverage-shard-1-blob
+          path: server/.vitest-reports/
+
+      - name: Download shard 2 blob
+        uses: ./.github/actions/download-artifact
+        with:
+          name: backend-coverage-shard-2-blob
+          path: server/.vitest-reports/
+
+      - name: Merge shard blobs and run coverage threshold
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/coverage-merge.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          ${{ github.workspace }}/scripts/ci/time-command.sh "backend coverage merge"
+          ${{ github.workspace }}/scripts/ci/backend-coverage-merge.sh
+
+      - name: Upload merged backend coverage
         if: always()
         uses: ./.github/actions/upload-artifact
         with:
@@ -1167,12 +1253,12 @@ jobs:
             server/junit.xml
           retention-days: 14
 
-      - name: Write backend unit coverage diagnostic summary
+      - name: Write backend unit coverage merge diagnostic summary
         if: always()
         continue-on-error: true
-        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Unit Coverage"
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Unit Coverage Merge"
 
-      - name: Upload backend unit coverage diagnostics
+      - name: Upload backend unit coverage merge diagnostics
         if: always()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
