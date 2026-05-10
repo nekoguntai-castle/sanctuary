@@ -47,6 +47,7 @@ jobs:
   determine-scope:
     name: Determine Quality Scope
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       run_repo_quality: ${{ steps.classify.outputs.run_repo_quality }}
       run_workflow_quality: ${{ steps.classify.outputs.run_workflow_quality }}
@@ -71,6 +72,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
@@ -93,6 +95,7 @@ jobs:
   lockfile-peer-resolution:
     name: Lockfile peer resolution
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
@@ -119,6 +122,7 @@ jobs:
   dependency-audit:
     name: Dependency audit (npm)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
@@ -178,6 +182,7 @@ jobs:
   gitleaks:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [determine-scope]
     if: always()
     steps:
@@ -224,6 +229,7 @@ jobs:
   semgrep-sast:
     name: SAST (Semgrep)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: [determine-scope]
     if: |
       always() &&
@@ -300,6 +306,7 @@ jobs:
   workflow-lint:
     name: Workflow lint (actionlint)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_workflow_quality == 'true'
     steps:
@@ -326,6 +333,7 @@ jobs:
   workflow-action-runtime-guard:
     name: Workflow action runtime guard
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_workflow_quality == 'true'
     steps:
@@ -345,6 +353,7 @@ jobs:
   ci-classifier-tests:
     name: CI classifier tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_ci_classifier_tests == 'true'
     steps:
@@ -473,6 +482,7 @@ jobs:
   lizard:
     name: Cyclomatic complexity (lizard)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
@@ -492,6 +502,7 @@ jobs:
   jscpd:
     name: Duplication (jscpd)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
@@ -531,6 +542,7 @@ jobs:
   large-file-classification:
     name: Large-file classification
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
@@ -548,6 +560,7 @@ jobs:
   quality-required-checks:
     name: Code Quality Required Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: always()
     needs: [determine-scope, lint, lockfile-peer-resolution, dependency-audit, gitleaks, semgrep-sast, workflow-lint, workflow-action-runtime-guard, ci-classifier-tests, lizard, jscpd, large-file-classification]
     steps:

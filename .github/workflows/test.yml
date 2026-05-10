@@ -80,6 +80,7 @@ jobs:
   detect-changes:
     name: Detect Changed Files
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       full_scan: ${{ steps.classify.outputs.full_scan }}
       test_suite_changed: ${{ steps.classify.outputs.test_suite_changed }}
@@ -121,6 +122,7 @@ jobs:
     name: Quick Test Hygiene
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.test_files != ''
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-test-hygiene
@@ -184,6 +186,7 @@ jobs:
       (needs.quick-critical-mutation.result == 'success' ||
        needs.quick-critical-mutation.result == 'skipped')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [detect-changes, quick-test-hygiene, quick-critical-mutation]
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-frontend
@@ -241,6 +244,7 @@ jobs:
     name: Quick Backend Typecheck
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.backend_changed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-backend-typecheck
@@ -292,6 +296,7 @@ jobs:
       needs.detect-changes.outputs.backend_changed == 'true' &&
       needs.quick-backend-typecheck.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [detect-changes, quick-backend-typecheck]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-backend-tests
@@ -384,6 +389,7 @@ jobs:
       needs.detect-changes.outputs.backend_integration_changed == 'true' &&
       needs.quick-backend-tests.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: [detect-changes, quick-backend-tests]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-backend-integration-smoke
@@ -610,6 +616,7 @@ jobs:
     name: Quick Gateway Tests
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.gateway_changed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-gateway
@@ -657,6 +664,7 @@ jobs:
     name: Quick AI Proxy Tests
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.ai_proxy_changed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [detect-changes]
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-ai-proxy
@@ -895,6 +903,7 @@ jobs:
     # "skipped == success" semantics for merge-queue eligibility.
     if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs:
       - detect-changes
       - quick-test-hygiene
@@ -977,6 +986,7 @@ jobs:
     name: Full Lane Ready
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [detect-changes, pr-required-checks]
     steps:
       - name: Check full lane prerequisites
@@ -1025,6 +1035,7 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [detect-changes, full-lane-ready]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-typecheck
@@ -1078,6 +1089,7 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [detect-changes, full-lane-ready, full-backend-typecheck]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-unit-coverage
@@ -1180,6 +1192,7 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: [detect-changes, full-lane-ready]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-integration-${{ matrix.group }}
@@ -1297,6 +1310,7 @@ jobs:
        needs.detect-changes.outputs.backend_changed == 'true' ||
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [detect-changes, full-lane-ready, full-backend-typecheck, full-backend-unit-coverage, full-backend-integration-tests]
     steps:
       - name: Check backend lane result
@@ -1383,6 +1397,7 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [detect-changes, full-lane-ready]
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-typecheck-${{ matrix.target }}
@@ -1449,6 +1464,7 @@ jobs:
       needs.full-lane-ready.result == 'success' &&
       needs.detect-changes.outputs.frontend_changed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: [detect-changes, full-lane-ready]
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-coverage-shard-1
@@ -1509,6 +1525,7 @@ jobs:
       needs.full-frontend-coverage-shard-1.result == 'success' &&
       needs.detect-changes.outputs.frontend_changed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1]
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-coverage-shard-2
@@ -1570,6 +1587,7 @@ jobs:
       needs.full-frontend-coverage-shard-2.result == 'success' &&
       needs.detect-changes.outputs.frontend_changed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1, full-frontend-coverage-shard-2]
     env:
       DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-coverage-merge
@@ -1643,6 +1661,7 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [detect-changes, full-lane-ready, full-frontend-typechecks, full-frontend-coverage-merge]
 
     steps:
@@ -1701,6 +1720,7 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.gateway_changed == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: [detect-changes, full-lane-ready]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/gateway
@@ -1766,6 +1786,7 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.ai_proxy_changed == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [detect-changes, full-lane-ready]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/ai-proxy
@@ -1979,6 +2000,7 @@ jobs:
       needs.full-lane-ready.result == 'success' &&
       needs.detect-changes.outputs.browser_smoke_changed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     needs: [detect-changes, full-lane-ready]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/browser-e2e
@@ -2239,6 +2261,7 @@ jobs:
         needs.detect-changes.outputs.browser_smoke_changed != 'true')) &&
       needs.detect-changes.outputs.render_changed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [detect-changes, full-lane-ready, full-browser-e2e-tests]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/render-e2e
@@ -2337,6 +2360,7 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.build_changed == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [detect-changes, full-lane-ready]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/build-check
@@ -2394,6 +2418,7 @@ jobs:
     name: Full Test Summary
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [detect-changes, full-lane-ready, full-backend-tests, full-frontend-tests, full-gateway-tests, full-ai-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
 
     steps:

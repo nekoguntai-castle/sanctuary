@@ -324,6 +324,7 @@ jobs:
   summary:
     needs: [verify-vectors]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: always()
 
     steps:

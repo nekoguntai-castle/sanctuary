@@ -110,6 +110,7 @@ jobs:
   determine-scope:
     name: Determine Test Scope
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       is_release: ${{ steps.check.outputs.is_release }}
       test_suite: ${{ steps.check.outputs.test_suite }}
@@ -150,6 +151,7 @@ jobs:
   unit-tests:
     name: Install Script Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: determine-scope
     if: |
       needs.determine-scope.outputs.should_run == 'true' &&
@@ -916,6 +918,7 @@ jobs:
   upgrade-extended-test:
     name: Upgrade Extended
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     concurrency:
       group: sanctuary-runner-e2e-${{ github.ref }}
       cancel-in-progress: false
@@ -942,6 +945,7 @@ jobs:
   docker-resource-cleanup:
     name: Docker Resource Cleanup
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [determine-scope, fresh-install-test, install-stack-smoke, container-health-test, auth-flow-test, upgrade-baseline-test, upgrade-extended-test]
     if: always() && github.event_name != 'pull_request'
 
@@ -966,6 +970,7 @@ jobs:
   test-summary:
     name: Install Test Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [determine-scope, unit-tests, fresh-install-test, install-script-test, install-stack-smoke, container-health-test, auth-flow-test, upgrade-baseline-test, upgrade-extended-test, docker-resource-cleanup]
     if: always()
 
