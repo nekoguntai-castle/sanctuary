@@ -546,11 +546,15 @@ jobs:
 
   quick-critical-mutation:
     name: Quick Critical Mutation Gate
+    # Runs whenever the shards finished (success OR failure). The first step
+    # propagates a shard-level failure as a hard failure of the gate so a
+    # broken shard cannot be silently observed as 'skipped' by the umbrella.
     if: |
       always() &&
       github.event_name == 'pull_request' &&
       needs.detect-changes.outputs.critical_mutation_changed == 'true' &&
-      needs.quick-critical-mutation-shards.result == 'success'
+      (needs.quick-critical-mutation-shards.result == 'success' ||
+       needs.quick-critical-mutation-shards.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [detect-changes, quick-critical-mutation-shards]
@@ -559,6 +563,12 @@ jobs:
         working-directory: server
 
     steps:
+      - name: Fail fast if any shard failed
+        if: needs.quick-critical-mutation-shards.result != 'success'
+        run: |
+          echo "::error::One or more Quick Critical Mutation shards failed (result: ${{ needs.quick-critical-mutation-shards.result }}). Refusing to run the aggregator so the gate cannot be silently bypassed."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
@@ -1904,9 +1914,13 @@ jobs:
 
   full-critical-mutation:
     name: Full Critical Mutation Gate
+    # Runs whenever the shards finished (success OR failure). The first step
+    # propagates a shard-level failure as a hard failure of the gate so a
+    # broken shard cannot be silently observed as 'skipped' by the umbrella.
     if: >-
       always() &&
-      needs.full-critical-mutation-shards.result == 'success'
+      (needs.full-critical-mutation-shards.result == 'success' ||
+       needs.full-critical-mutation-shards.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [detect-changes, full-lane-ready, full-critical-mutation-shards]
@@ -1915,6 +1929,12 @@ jobs:
         working-directory: server
 
     steps:
+      - name: Fail fast if any shard failed
+        if: needs.full-critical-mutation-shards.result != 'success'
+        run: |
+          echo "::error::One or more Full Critical Mutation shards failed (result: ${{ needs.full-critical-mutation-shards.result }}). Refusing to run the aggregator so the gate cannot be silently bypassed."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 

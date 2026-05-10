@@ -328,6 +328,8 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "full critical mutation aggregate" \
   "full-critical-mutation:" \
   "needs.full-critical-mutation-shards.result == 'success'" \
+  "Fail fast if any shard failed" \
+  "needs.full-critical-mutation-shards.result != 'success'" \
   "Download shard 1 report" \
   "Download shard 2 report" \
   "Download shard 3 report" \
@@ -446,6 +448,8 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "quick critical mutation aggregate" \
   "quick-critical-mutation:" \
   "needs.quick-critical-mutation-shards.result == 'success'" \
+  "Fail fast if any shard failed" \
+  "needs.quick-critical-mutation-shards.result != 'success'" \
   "Download shard 1 report" \
   "Download shard 2 report" \
   "Download shard 3 report" \
