@@ -3,12 +3,23 @@ import * as ecc from 'tiny-secp256k1';
 import { describe, expect, it } from 'vitest';
 import { GENERATED_SIGNED_PSBT_VECTORS } from '@fixtures/generated-signed-psbt-vectors';
 import {
+  COMMON_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
   HARDWARE_SIGNED_PSBT_VECTORS,
+  MULTISIG_HARDWARE_SIGNED_NEGATIVE_CONTROLS,
+  REQUIRED_HARDWARE_SIGNED_ADDRESS_PATH_SUFFIXES,
   REQUIRED_HARDWARE_SIGNED_ROWS,
+  REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES,
   UNSUPPORTED_HARDWARE_SIGNED_ROWS,
+  type HardwareSignedAddressEvidence,
   type HardwareSignedExpectedOutput,
+  type HardwareSignedNegativeControlEvidence,
   type HardwareSignedPsbtVector,
+  type HardwareSignedSoftwareGateEvidence,
 } from '@fixtures/hardware-signed-psbt-vectors';
+import {
+  assertHardwareSignedFixtureIntake,
+  validateHardwareSignedFixtureSet,
+} from '../../../helpers/hardwareSignedFixtureIntake';
 import {
   missingHardwareSignedRows,
   replayHardwareSignedVector,
@@ -38,13 +49,43 @@ function inputValueSats(unsignedPsbtBase64: string): number {
   return psbt.data.inputs.reduce((total, input) => total + Number(input.witnessUtxo?.value ?? 0n), 0);
 }
 
+function syntheticAddressEvidence(accountPath = "m/84'/1'/0'"): HardwareSignedAddressEvidence[] {
+  return REQUIRED_HARDWARE_SIGNED_ADDRESS_PATH_SUFFIXES.map((suffix, index) => ({
+    path: `${accountPath}${suffix}`,
+    sanctuaryAddress: `bcrt1qfixtureaddress${index}`,
+    deviceAddress: `bcrt1qfixtureaddress${index}`,
+    coreAddress: `bcrt1qfixtureaddress${index}`,
+  }));
+}
+
+function syntheticSoftwareGates(): HardwareSignedSoftwareGateEvidence[] {
+  return REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES.map(command => ({
+    command,
+    status: 'passed',
+    capturedAt: '2026-05-09T00:00:00.000Z',
+  }));
+}
+
+function syntheticNegativeControls(scriptType = 'p2wpkh'): HardwareSignedNegativeControlEvidence[] {
+  const multisigControls = scriptType === 'p2wsh' || scriptType === 'p2sh-p2wsh'
+    ? MULTISIG_HARDWARE_SIGNED_NEGATIVE_CONTROLS
+    : [];
+  return [...COMMON_HARDWARE_SIGNED_NEGATIVE_CONTROLS, ...multisigControls].map(caseName => ({
+    caseName,
+    expectedFailure: 'fixture must fail closed',
+    observedFailure: 'fixture failed before signing or replay',
+    passed: true,
+  }));
+}
+
 function syntheticHardwareVector(overrides: Partial<HardwareSignedPsbtVector> = {}): HardwareSignedPsbtVector {
   const source = GENERATED_SIGNED_PSBT_VECTORS[0];
+  const scriptType = overrides.scriptType ?? source.scriptType;
   return {
     id: 'ledger-p2wpkh-synthetic-replay',
     description: 'Synthetic hardware fixture replay contract using a Core-accepted software-signed PSBT',
     vendor: 'ledger',
-    scriptType: source.scriptType,
+    scriptType,
     network: 'regtest',
     device: {
       model: 'Ledger Nano S Plus',
@@ -66,6 +107,17 @@ function syntheticHardwareVector(overrides: Partial<HardwareSignedPsbtVector> = 
     expectedVsize: source.expectedVsize,
     expectedTxid: source.expectedTxid,
     expectedOutputs: expectedOutputs(source.finalTxHex),
+    addressEvidence: syntheticAddressEvidence(),
+    negativeControls: syntheticNegativeControls(scriptType),
+    softwareGates: syntheticSoftwareGates(),
+    sanitization: {
+      reviewer: 'fixture-reviewer',
+      nonMainnetFunds: true,
+      dedicatedOrWipeableDevice: true,
+      noSeedsPinsPassphrasesPairingSecrets: true,
+      noHostAuthTokens: true,
+      sanitizedArtifactsReviewed: true,
+    },
     signedBy: [
       {
         fingerprint: 'f00dbabe',
@@ -159,6 +211,89 @@ describe('Hardware-signed PSBT fixture replay harness', () => {
     });
 
     expect(replayHardwareSignedVector(vector).txid).toBe(source.expectedTxid);
+  });
+
+  it('accepts complete hardware fixture intake evidence before replay', () => {
+    const vector = syntheticHardwareVector();
+
+    expect(() => assertHardwareSignedFixtureIntake(vector)).not.toThrow();
+    expect(validateHardwareSignedFixtureSet([vector], UNSUPPORTED_HARDWARE_SIGNED_ROWS)).toEqual([]);
+  });
+
+  it('rejects missing or mismatched address evidence before replay', () => {
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      addressEvidence: syntheticAddressEvidence().filter(evidence => !evidence.path.endsWith('/1/19')),
+    }))).toThrow('missing address evidence for /1/19');
+
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      addressEvidence: syntheticAddressEvidence().map((evidence, index) => index === 0
+        ? { ...evidence, deviceAddress: 'bcrt1qmismatch' }
+        : evidence),
+    }))).toThrow('address mismatch');
+  });
+
+  it('rejects missing software gates and secret-shaped notes before replay', () => {
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      softwareGates: syntheticSoftwareGates().slice(1),
+    }))).toThrow('missing passed software gate');
+
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      evidence: {
+        capturedAt: '2026-04-30T00:00:00.000Z',
+        operator: 'synthetic-test',
+        bitcoinCoreVersion: 'Bitcoin Core /Satoshi:27.0.0/',
+        mempoolAcceptAllowed: true,
+        notes: 'operator accidentally pasted seed words here',
+      },
+    }))).toThrow('secret-shaped material');
+  });
+
+  it('rejects missing negative controls and non-test networks before replay', () => {
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      negativeControls: syntheticNegativeControls().filter(control => control.caseName !== 'tampered-recipient'),
+    }))).toThrow('missing passed negative control tampered-recipient');
+
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      network: 'mainnet' as HardwareSignedPsbtVector['network'],
+    }))).toThrow('regtest, signet, or testnet only');
+  });
+
+  it('rejects missing Core replay evidence before replay', () => {
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      evidence: {
+        capturedAt: '2026-04-30T00:00:00.000Z',
+        operator: 'synthetic-test',
+        mempoolAcceptAllowed: true,
+      },
+    }))).toThrow('missing Bitcoin Core replay version');
+
+    expect(() => assertHardwareSignedFixtureIntake(syntheticHardwareVector({
+      evidence: {
+        capturedAt: '2026-04-30T00:00:00.000Z',
+        operator: 'synthetic-test',
+        bitcoinCoreVersion: 'Bitcoin Core /Satoshi:27.0.0/',
+        mempoolAcceptAllowed: false,
+      },
+    }))).toThrow('Core testmempoolaccept must be allowed');
+  });
+
+  it('rejects duplicate fixture rows and rows blocked by product decisions', () => {
+    expect(validateHardwareSignedFixtureSet([
+      syntheticHardwareVector({ id: 'first-ledger-p2wpkh' }),
+      syntheticHardwareVector({ id: 'second-ledger-p2wpkh' }),
+    ], UNSUPPORTED_HARDWARE_SIGNED_ROWS)).toEqual([
+      expect.objectContaining({ field: 'fixtureSet', message: expect.stringContaining('duplicate') }),
+    ]);
+
+    expect(validateHardwareSignedFixtureSet([
+      syntheticHardwareVector({
+        vendor: 'ledger',
+        scriptType: 'p2wsh',
+        negativeControls: syntheticNegativeControls('p2wsh'),
+      }),
+    ], UNSUPPORTED_HARDWARE_SIGNED_ROWS)).toEqual([
+      expect.objectContaining({ field: 'fixtureSet', message: expect.stringContaining('conflicts') }),
+    ]);
   });
 
   it('accounts for rows covered by fixtures and unsupported decisions', () => {

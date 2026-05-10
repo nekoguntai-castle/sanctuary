@@ -193,11 +193,39 @@ Record one sanitized manifest per run, for example
 Do not commit raw evidence that contains secrets. Testnet/regtest PSBTs, raw
 transactions, xpubs, and decoded summaries may be committed after review.
 
+## Executable Fixture Intake Checklist
+
+Before adding a row to `server/tests/fixtures/hardware-signed-psbt-vectors.ts`,
+the lab operator and reviewer must satisfy the executable intake schema used by
+`server/tests/helpers/hardwareSignedFixtureIntake.ts`.
+
+Each committed row must include:
+
+- Address evidence for receive paths `/0/0`, `/0/1`, `/0/19`, `/0/999` and
+  change paths `/1/0`, `/1/1`, `/1/19`, with exact Sanctuary/device/Core
+  agreement for every path.
+- Passed negative controls for wrong network or account path, tampered recipient,
+  tampered amount or fee, and missing change metadata. Multisig rows must also
+  include wrong cosigner/fingerprint and below-quorum failures.
+- Passed software-gate evidence for address vectors, PSBT vectors, hardware
+  adapter tests, existing hardware fixture replay, app/test/server typechecks,
+  and lizard.
+- Sanitization review affirming non-mainnet funds, wipeable or dedicated test
+  device/account use, no seed/PIN/passphrase/pairing material, no host auth
+  tokens, and reviewer-approved artifacts.
+- Bitcoin Core replay metadata, including Core version and
+  `testmempoolaccept` allowed status.
+
+The intake schema rejects duplicate device/script rows, rows that conflict with
+an unsupported product decision, missing required paths or controls, failed or
+missing software gates, non-test networks, and secret-shaped text such as
+mnemonics, passphrases, PINs, auth tokens, private keys, or xprv/tprv material.
+
 Committed hardware-signed artifacts go in
 `server/tests/fixtures/hardware-signed-psbt-vectors.ts`. Each row must include
 exactly one signed PSBT or raw transaction, the total input value, expected fee,
 expected vsize, expected txid, expected outputs, signer metadata, and device/app
-versions. The replay harness is
+versions, plus the intake checklist fields above. The replay harness is
 `server/tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts`.
 
 To turn the harness into a full hardware evidence gate after physical capture:

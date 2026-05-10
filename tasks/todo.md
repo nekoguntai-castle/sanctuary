@@ -1,6 +1,33 @@
-# Active Task: Fund-Safety PR D Broadcast Release Mutation Gate 2026-05-09
+# Active Task: Fund-Safety PR E Hardware Fixture Intake Schema 2026-05-09
 
 Status: in progress
+
+Goal: make physical hardware signing artifacts safe to capture and review by adding an executable intake schema and lab checklist before any real Ledger, Trezor, or BitBox evidence is committed.
+
+## Plan
+
+- [x] Start from `origin/main` after PR #374 merged.
+- [x] Inventory the hardware validation runbook, fixture matrix, replay helper, and current fixture tests.
+- [x] Add fixture intake metadata for address evidence, negative controls, software gates, sanitization review, and Core replay requirements.
+- [x] Add executable validation helpers that reject unsafe or incomplete fixture rows before replay.
+- [x] Update hardware validation/release docs so the lab checklist and executable schema are the required intake path.
+- [x] Add focused tests for valid intake, missing address paths, mismatched device/Core addresses, missing software gates, secret-shaped notes, duplicate/conflicting rows, missing negative controls, and non-test networks.
+- [x] Run focused hardware fixture tests, server test typecheck, touched-file lizard, and `git diff --check`.
+- [ ] Deliver through PR and merge if CI is green.
+
+## Review
+
+- Added executable intake fields to `HardwareSignedPsbtVector`: address evidence, negative controls, software gates, sanitization review, and Core replay requirements.
+- Added `hardwareSignedFixtureIntake.ts` validation so replay rejects incomplete lab evidence, duplicate fixture rows, unsupported-row conflicts, non-test networks, missing Core `testmempoolaccept`, missing software gates, mismatched Sanctuary/device/Core addresses, missing negative controls, and secret-shaped string values.
+- Wired replay to run intake validation before finalization/extraction so future committed artifacts cannot bypass the checklist.
+- Updated the hardware validation runbook and release gates with the executable intake checklist and the remaining requirement for 11 physical artifacts or product blocks.
+- Verification passed: focused hardware fixture replay tests, adjacent hardware compatibility tests, server test typecheck, server lint, touched-file lizard, and `git diff --check`.
+
+---
+
+# Active Task: Fund-Safety PR D Broadcast Release Mutation Gate 2026-05-09
+
+Status: completed; PR #374 merged as `2e65e393`
 
 Goal: add a release-visible and CI-enforced mutation gate for the broadcast canonicality invariants without widening the fund-moving code surface beyond a reviewable helper module.
 
@@ -12,7 +39,7 @@ Goal: add a release-visible and CI-enforced mutation gate for the broadcast cano
 - [x] Wire the critical mutation config and CI changed-file classifier so broadcast canonicality code and tests run the critical mutation gate.
 - [x] Update release gate documentation with the measured broadcast canonicality/mutation evidence and the remaining node-preflight requirement.
 - [x] Run focused route tests with coverage, server test typecheck/lint, touched-file lizard, critical mutation gate, and `git diff --check`.
-- [ ] Deliver through PR and merge if CI is green.
+- [x] Deliver through PR and merge if CI is green.
 
 ## Review
 
@@ -23,6 +50,7 @@ Goal: add a release-visible and CI-enforced mutation gate for the broadcast cano
 - `docs/reference/release-gates.md` now lists broadcast canonicality as a release gate and explicitly keeps node `testmempoolaccept` preflight pending before complete broadcast-safety claims.
 - Forced critical mutation result: raw `67.65%` versus `52%` minimum, weighted `65.14%` versus `48%` minimum. Broadcast intent itself improved to `97.13%`; remaining broadcast survivors are equivalent normalization branches for vout parsing and empty-address handling, with the larger survivor set coming from pre-existing address-derivation baseline debt.
 - Verification passed: focused broadcast tests, focused coverage at 100% for `broadcasting.ts`, `broadcastIntent.ts`, and `broadcastContracts.ts`, forced critical mutation gate plus weighted checker, server test typecheck, server lint, touched-file lizard, and `git diff --check`.
+- Delivery passed: PR #374 merged with squash commit `2e65e393` after Code Quality, Architecture, PR Required Checks, Quick Critical Mutation Gate, Full Critical Mutation Gate, Full Backend Tests, Full Backend Unit Coverage, all four Full Backend Integration matrices, Full Browser E2E, and Full Test Summary passed.
 
 ---
 

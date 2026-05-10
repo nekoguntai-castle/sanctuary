@@ -7,6 +7,7 @@ import type {
   RequiredHardwareSignedRow,
   UnsupportedHardwareSignedRow,
 } from '../fixtures/hardware-signed-psbt-vectors';
+import { assertHardwareSignedFixtureIntake } from './hardwareSignedFixtureIntake';
 
 interface ReplayOutput {
   index: number;
@@ -127,6 +128,7 @@ function validateOutputs(vector: HardwareSignedPsbtVector, outputs: ReplayOutput
 export function replayHardwareSignedVector(vector: HardwareSignedPsbtVector): HardwareSignedReplayResult {
   validateVectorMetadata(vector);
   validateArtifactChoice(vector);
+  assertHardwareSignedFixtureIntake(vector);
 
   const tx = extractHardwareTransaction(vector);
   const outputs = replayOutputs(tx, networkParams(vector.network));
