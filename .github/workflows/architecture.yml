@@ -14,6 +14,8 @@ on:
       - 'scripts/architecture/**'
       - 'scripts/ci/create-isolated-workspace.sh'
       - 'scripts/ci/retry-command.sh'
+      - 'scripts/ci/run-with-log.sh'
+      - 'scripts/ci/write-diagnostic-summary.sh'
       - 'website/**'
       - '.github/workflows/architecture.yml'
   push:
@@ -55,20 +57,23 @@ jobs:
 
       - name: Install dependencies (root, server, gateway, website)
         run: |
-          scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
-          set -euo pipefail
-          cd "$ARCH_WORKDIR"
+          DIAGNOSTIC_DIR=".tmp/ci-diagnostics/architecture"
+          mkdir -p "$DIAGNOSTIC_DIR"
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log" \
+            scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+              set -euo pipefail
+              cd "$ARCH_WORKDIR"
 
-          scripts/ci/retry-command.sh "root npm ci" npm ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/root"
-          scripts/ci/retry-command.sh "server npm ci" npm --prefix server ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/server"
-          scripts/ci/retry-command.sh "gateway npm ci" npm --prefix gateway ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/gateway"
-          scripts/ci/retry-command.sh "website npm ci" npm --prefix website ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/website"
-          NODE_LOCK
+              scripts/ci/retry-command.sh "root npm ci" npm ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/root"
+              scripts/ci/retry-command.sh "server npm ci" npm --prefix server ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/server"
+              scripts/ci/retry-command.sh "gateway npm ci" npm --prefix gateway ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/gateway"
+              scripts/ci/retry-command.sh "website npm ci" npm --prefix website ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/website"
+            '
 
       - name: Lint diagram click hrefs
         run: |
-          cd "$ARCH_WORKDIR"
-          npm run arch:lint
+          scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/lint-diagrams.log" \
+            bash -c 'cd "$ARCH_WORKDIR" && npm run arch:lint'
 
       - name: Warn on diagram drift (changed files referenced by C4 diagrams)
         if: github.event_name == 'pull_request'
@@ -85,50 +90,57 @@ jobs:
 
       - name: Regenerate dependency graphs
         run: |
-          scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
-          set -euo pipefail
-          cd "$ARCH_WORKDIR"
-          scripts/ci/retry-command.sh "architecture dependency graphs" npm run arch:graphs
-          NODE_LOCK
+          scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/dependency-graphs.log" \
+            scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+              set -euo pipefail
+              cd "$ARCH_WORKDIR"
+              scripts/ci/retry-command.sh "architecture dependency graphs" npm run arch:graphs
+            '
 
       - name: Regenerate function-level call graphs
         run: |
-          scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
-          set -euo pipefail
-          cd "$ARCH_WORKDIR"
-          scripts/ci/retry-command.sh "architecture call graphs" npm run arch:calls
-          NODE_LOCK
+          scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/call-graphs.log" \
+            scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+              set -euo pipefail
+              cd "$ARCH_WORKDIR"
+              scripts/ci/retry-command.sh "architecture call graphs" npm run arch:calls
+            '
 
       - name: Detect stale generated graphs
         run: |
-          cd "$ARCH_WORKDIR"
-          if ! git diff --exit-code -- docs/architecture/generated; then
-            echo "::error::Generated architecture graphs are stale. Run 'npm run arch:graphs && npm run arch:calls' locally and commit the result."
-            exit 1
-          fi
+          scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/stale-generated-graphs.log" \
+            bash -c '
+              cd "$ARCH_WORKDIR"
+              if ! git diff --exit-code -- docs/architecture/generated; then
+                echo "::error::Generated architecture graphs are stale. Run '\''npm run arch:graphs && npm run arch:calls'\'' locally and commit the result."
+                exit 1
+              fi
+            '
 
       - name: Typecheck Docusaurus site
         env:
           SANCTUARY_RETRY_ATTEMPTS: '5'
         run: |
-          scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
-          set -euo pipefail
-          cd "$ARCH_WORKDIR"
-          scripts/ci/retry-command.sh "docs typecheck" scripts/ci/time-command.sh "docs typecheck" npm --prefix website run typecheck
-          NODE_LOCK
+          scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/docs-typecheck.log" \
+            scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+              set -euo pipefail
+              cd "$ARCH_WORKDIR"
+              scripts/ci/retry-command.sh "docs typecheck" scripts/ci/time-command.sh "docs typecheck" npm --prefix website run typecheck
+            '
 
       - name: Build Docusaurus site
         run: |
-          scripts/ci/with-runner-lock.sh node-toolchain bash <<'NODE_LOCK'
-          set -euo pipefail
-          cd "$ARCH_WORKDIR"
-          scripts/ci/retry-command.sh "docs build" npm run docs:build
-          if [ "${GITHUB_EVENT_NAME:-}" = "push" ] && [ "${GITHUB_REF:-}" = "refs/heads/main" ] && [ "${GITHUB_SERVER_URL:-}" = "https://github.com" ]; then
-            rm -rf "${GITHUB_WORKSPACE:-$PWD}/website/build"
-            mkdir -p "${GITHUB_WORKSPACE:-$PWD}/website"
-            cp -a website/build "${GITHUB_WORKSPACE:-$PWD}/website/build"
-          fi
-          NODE_LOCK
+          scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/docs-build.log" \
+            scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+              set -euo pipefail
+              cd "$ARCH_WORKDIR"
+              scripts/ci/retry-command.sh "docs build" npm run docs:build
+              if [ "${GITHUB_EVENT_NAME:-}" = "push" ] && [ "${GITHUB_REF:-}" = "refs/heads/main" ] && [ "${GITHUB_SERVER_URL:-}" = "https://github.com" ]; then
+                rm -rf "${GITHUB_WORKSPACE:-$PWD}/website/build"
+                mkdir -p "${GITHUB_WORKSPACE:-$PWD}/website"
+                cp -a website/build "${GITHUB_WORKSPACE:-$PWD}/website/build"
+              fi
+            '
 
       - name: Upload site artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.server_url == 'https://github.com'
@@ -136,7 +148,24 @@ jobs:
         with:
           path: website/build
 
+      - name: Write architecture diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh ".tmp/ci-diagnostics/architecture" "Architecture"
+
+      - name: Upload architecture diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-architecture
+          path: .tmp/ci-diagnostics/architecture/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
       - name: Clean architecture workspace
+        if: always()
         run: |
           if [ -n "${ARCH_ROOT:-}" ] && [ -d "$ARCH_ROOT" ]; then
             rm -rf "$ARCH_ROOT" || echo "::warning::Could not fully remove architecture temp workspace"

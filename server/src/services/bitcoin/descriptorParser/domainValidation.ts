@@ -173,7 +173,10 @@ const validatePathNetwork = (keyNetwork: NetworkFamily, components: ParsedPathCo
   }
 
   const pathNetwork = coinType === 0 ? 'mainnet' : coinType === 1 ? 'testnet' : null;
-  if (pathNetwork && pathNetwork !== keyNetwork) {
+  if (pathNetwork === null) {
+    throw new Error('Descriptor derivation path coin type is unsupported');
+  }
+  if (pathNetwork !== keyNetwork) {
     throw new Error('xpub network does not match derivation path coin type');
   }
 };
@@ -227,10 +230,7 @@ const validateMultisigPurpose = (
 };
 
 const validateConsistentNetworks = (domains: DeviceDomain[], parsedNetwork: DetectedNetwork): void => {
-  const firstNetwork = domains[0]?.network;
-  if (!firstNetwork) {
-    throw new Error('Descriptor must contain at least one device');
-  }
+  const firstNetwork = domains[0]!.network;
   if (domains.some((domain) => domain.network !== firstNetwork)) {
     throw new Error('All descriptor keys must use the same network family');
   }

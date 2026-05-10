@@ -42,7 +42,9 @@ on:
       - 'scripts/ci/docker-endpoint-lib.sh'
       - 'scripts/ci/ensure-node.sh'
       - 'scripts/ci/ensure-python.sh'
+      - 'scripts/ci/run-with-log.sh'
       - 'scripts/ci/wait-for-docker.sh'
+      - 'scripts/ci/write-diagnostic-summary.sh'
       - '.github/workflows/verify-vectors.yml'
 
 permissions:
@@ -61,6 +63,8 @@ jobs:
   verify-vectors:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors
 
     steps:
       - name: Checkout repository
@@ -76,12 +80,15 @@ jobs:
         run: python3 -m venv --help >/dev/null
 
       - name: Wait for Docker
-        run: ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
+          ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
 
       - name: Install server dependencies
         working-directory: server
         run: |
-          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-server-dependencies.log" \
+            ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
             set -euo pipefail
             ${{ github.workspace }}/scripts/ci/retry-command.sh "vector server npm ci" npm ci --ignore-scripts
             ${{ github.workspace }}/scripts/ci/retry-command.sh "vector shared schema link" node scripts/ensure-shared-module-resolution.mjs
@@ -90,39 +97,82 @@ jobs:
 
       - name: Run cross-implementation address verifier
         working-directory: scripts/verify-addresses
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run verify:repeatable
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/address-verifier.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run verify:repeatable
 
       - name: Run address derivation tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/addressDerivation.verified.test.ts
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/address-derivation-tests.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run test:run:ci -- tests/unit/services/bitcoin/addressDerivation.verified.test.ts
 
       - name: Run derivation path tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/scriptTypes/derivationPaths.test.ts
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/derivation-path-tests.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run test:run:ci -- tests/unit/services/scriptTypes/derivationPaths.test.ts
 
       - name: Run multisig key ordering tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/multisigKeyOrdering.test.ts
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/multisig-key-ordering-tests.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run test:run:ci -- tests/unit/services/bitcoin/multisigKeyOrdering.test.ts
 
       - name: Run xpub validation tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/xpubValidation.test.ts
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/xpub-validation-tests.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run test:run:ci -- tests/unit/services/bitcoin/xpubValidation.test.ts
 
       - name: Run property-based tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/propertyBased.test.ts
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/property-based-tests.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run test:run:ci -- tests/unit/services/bitcoin/propertyBased.test.ts
 
       - name: Run descriptor checksum tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/descriptorChecksum.test.ts
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/descriptor-checksum-tests.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run test:run:ci -- tests/unit/services/bitcoin/descriptorChecksum.test.ts
 
       - name: Run PSBT BIP-174 verification tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/psbt.verified.test.ts
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/psbt-bip174-tests.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run test:run:ci -- tests/unit/services/bitcoin/psbt.verified.test.ts
 
       - name: Run PSBT property-based tests
         working-directory: server
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run test:run:ci -- tests/unit/services/bitcoin/psbt.property.test.ts
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/psbt-property-tests.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run test:run:ci -- tests/unit/services/bitcoin/psbt.property.test.ts
+
+      - name: Write vector diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Verify Bitcoin Vectors"
+
+      - name: Upload vector diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-verify-vectors
+          path: .tmp/ci-diagnostics/verify-vectors/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   # Optional: Regenerate vectors with Bitcoin Core
   # This job runs only on manual trigger and requires Docker

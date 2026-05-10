@@ -122,6 +122,8 @@ jobs:
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.test_files != ''
     runs-on: ubuntu-latest
     needs: [detect-changes]
+    env:
+      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-test-hygiene
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -135,7 +137,7 @@ jobs:
         env:
           CHANGED_TEST_FILES: ${{ needs.detect-changes.outputs.test_files }}
         run: |
-          scripts/ci/run-in-isolated-workspace.sh quick-hygiene bash -c '
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-hygiene.log" scripts/ci/run-in-isolated-workspace.sh quick-hygiene bash -c '
             set -euo pipefail
             for attempt in 1 2 3; do
               echo "npm ci (quick hygiene), attempt $attempt"
@@ -155,6 +157,22 @@ jobs:
             npm run test:hygiene -- $CHANGED_TEST_FILES
           '
 
+      - name: Write quick hygiene diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Test Hygiene"
+
+      - name: Upload quick hygiene diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quick-test-hygiene
+          path: ${{ env.DIAGNOSTIC_DIR }}/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
+
   quick-frontend-tests:
     name: Quick Frontend Tests
     if: |
@@ -167,6 +185,8 @@ jobs:
        needs.quick-critical-mutation.result == 'skipped')
     runs-on: ubuntu-latest
     needs: [detect-changes, quick-test-hygiene, quick-critical-mutation]
+    env:
+      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-frontend
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -180,7 +200,7 @@ jobs:
         env:
           FRONTEND_FILES: ${{ needs.detect-changes.outputs.frontend_files }}
         run: |
-          scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick frontend isolated checks" scripts/ci/run-in-isolated-workspace.sh --keep-on-failure quick-frontend bash -c '
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-frontend.log" scripts/ci/with-runner-lock.sh node-toolchain scripts/ci/retry-command.sh "quick frontend isolated checks" scripts/ci/run-in-isolated-workspace.sh --keep-on-failure quick-frontend bash -c '
             set -euo pipefail
             for attempt in 1 2 3; do
               echo "npm ci (quick frontend), attempt $attempt"
@@ -201,11 +221,29 @@ jobs:
             npx vitest related --run --passWithNoTests --pool threads --maxWorkers=2 --no-file-parallelism "${related_files[@]}"
           '
 
+      - name: Write quick frontend diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Frontend"
+
+      - name: Upload quick frontend diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quick-frontend
+          path: ${{ env.DIAGNOSTIC_DIR }}/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
+
   quick-backend-typecheck:
     name: Quick Backend Typecheck
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.backend_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-backend-typecheck
     defaults:
       run:
         working-directory: server
@@ -224,10 +262,27 @@ jobs:
         env:
           SANCTUARY_RETRY_ATTEMPTS: '5'
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/server-test-typecheck.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend typecheck"
           ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend typecheck"
           npm run typecheck:tests
+
+      - name: Write quick backend typecheck diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Backend Typecheck"
+
+      - name: Upload quick backend typecheck diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quick-backend-typecheck
+          path: .tmp/ci-diagnostics/quick-backend-typecheck/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
 
   quick-backend-tests:
     name: Quick Backend Tests
@@ -238,6 +293,8 @@ jobs:
       needs.quick-backend-typecheck.result == 'success'
     runs-on: ubuntu-latest
     needs: [detect-changes, quick-backend-typecheck]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-backend-tests
     defaults:
       run:
         working-directory: server
@@ -271,17 +328,20 @@ jobs:
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
         run: |
-          if getent hosts postgres >/dev/null 2>&1; then
-            database_host=postgres
-            database_port=5432
-          else
-            database_host=localhost
-            database_port="${POSTGRES_PORT:-5432}"
-          fi
-          echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log" bash -c '
+            if getent hosts postgres >/dev/null 2>&1; then
+              database_host=postgres
+              database_port=5432
+            else
+              database_host=localhost
+              database_port="${POSTGRES_PORT:-5432}"
+            fi
+            echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+          '
 
       - name: Run database migrations
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/prisma-migrate.log"
           ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend prisma migrate"
           ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend prisma migrate"
           npx prisma migrate deploy
@@ -292,12 +352,29 @@ jobs:
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/related-backend-tests.log"
           ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend related tests"
           ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend related tests"
           npx vitest related --run --passWithNoTests
           --pool threads --maxWorkers=2 --no-file-parallelism
           --exclude "tests/integration/**"
           ${{ needs.detect-changes.outputs.backend_files }}
+
+      - name: Write quick backend test diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Backend Tests"
+
+      - name: Upload quick backend test diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quick-backend-tests
+          path: .tmp/ci-diagnostics/quick-backend-tests/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
 
   quick-backend-integration-smoke:
     name: Quick Backend Integration Smoke
@@ -308,6 +385,8 @@ jobs:
       needs.quick-backend-tests.result == 'success'
     runs-on: ubuntu-latest
     needs: [detect-changes, quick-backend-tests]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-backend-integration-smoke
     defaults:
       run:
         working-directory: server
@@ -341,17 +420,20 @@ jobs:
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
         run: |
-          if getent hosts postgres >/dev/null 2>&1; then
-            database_host=postgres
-            database_port=5432
-          else
-            database_host=localhost
-            database_port="${POSTGRES_PORT:-5432}"
-          fi
-          echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log" bash -c '
+            if getent hosts postgres >/dev/null 2>&1; then
+              database_host=postgres
+              database_port=5432
+            else
+              database_host=localhost
+              database_port="${POSTGRES_PORT:-5432}"
+            fi
+            echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+          '
 
       - name: Run database migrations
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/prisma-migrate.log"
           ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend smoke prisma migrate"
           ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend smoke prisma migrate"
           npx prisma migrate deploy
@@ -362,11 +444,28 @@ jobs:
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/integration-smoke.log"
           ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend integration smoke"
           ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend integration smoke"
           npm run test:run:ci --
           tests/integration/websocket/websocket.integration.test.ts
           tests/integration/flows/auth.integration.test.ts
+
+      - name: Write quick backend integration smoke diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Backend Integration Smoke"
+
+      - name: Upload quick backend integration smoke diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quick-backend-integration-smoke
+          path: .tmp/ci-diagnostics/quick-backend-integration-smoke/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
 
   quick-critical-mutation:
     name: Quick Critical Mutation Gate
@@ -379,6 +478,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: [detect-changes, quick-backend-integration-smoke]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-critical-mutation
     defaults:
       run:
         working-directory: server
@@ -394,7 +495,9 @@ jobs:
         uses: ./.github/actions/setup-server-deps
 
       - name: Run critical mutation gate
-        run: npm run test:mutation:critical:gate
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/critical-mutation-gate.log"
+          npm run test:mutation:critical:gate
 
       - name: Upload critical mutation report
         if: always()
@@ -404,11 +507,29 @@ jobs:
           path: server/reports/mutation/
           retention-days: 14
 
+      - name: Write quick critical mutation diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Critical Mutation"
+
+      - name: Upload quick critical mutation diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quick-critical-mutation
+          path: .tmp/ci-diagnostics/quick-critical-mutation/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
+
   quick-gateway-tests:
     name: Quick Gateway Tests
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.gateway_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quick-gateway
     defaults:
       run:
         working-directory: gateway
@@ -421,19 +542,41 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Install dependencies
-        run: npm ci
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
+          npm ci
 
       - name: Run related gateway tests
         env:
           NODE_ENV: test
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
-        run: npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.gateway_files }}
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/related-gateway-tests.log"
+          npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.gateway_files }}
+
+      - name: Write quick gateway diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Gateway"
+
+      - name: Upload quick gateway diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quick-gateway
+          path: .tmp/ci-diagnostics/quick-gateway/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
 
   quick-ai-proxy-tests:
     name: Quick AI Proxy Tests
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.ai_proxy_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes]
+    env:
+      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-ai-proxy
 
     steps:
       - name: Checkout repository
@@ -443,16 +586,40 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Install root test dependencies
-        run: npm ci
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/root-install-dependencies.log"
+          npm ci
 
       - name: Install AI proxy dependencies
-        run: npm --prefix ai-proxy ci
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-install-dependencies.log"
+          npm --prefix ai-proxy ci
 
       - name: Build AI proxy
-        run: npm --prefix ai-proxy run build
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-build.log"
+          npm --prefix ai-proxy run build
 
       - name: Run AI proxy tests
-        run: npm --prefix ai-proxy run test
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-tests.log"
+          npm --prefix ai-proxy run test
+
+      - name: Write quick AI proxy diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick AI Proxy"
+
+      - name: Upload quick AI proxy diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quick-ai-proxy
+          path: ${{ env.DIAGNOSTIC_DIR }}/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
 
   quick-browser-smoke:
     name: Quick Browser Smoke
@@ -465,6 +632,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [detect-changes, quick-frontend-tests]
     timeout-minutes: 30
+    env:
+      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-browser
 
     steps:
       - name: Checkout repository
@@ -491,7 +660,7 @@ jobs:
           SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1200'
           VITE_API_URL: http://localhost:3001
         run: |
-          scripts/ci/with-runner-lock.sh e2e scripts/ci/run-in-isolated-workspace.sh --keep-on-failure quick-browser bash -c '
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-browser-smoke.log" scripts/ci/with-runner-lock.sh e2e scripts/ci/run-in-isolated-workspace.sh --keep-on-failure quick-browser bash -c '
             set -euo pipefail
             collect_artifacts() {
               scripts/ci/collect-playwright-artifacts.sh quick-browser || echo "::warning::Could not collect quick browser Playwright artifacts"
@@ -502,6 +671,22 @@ jobs:
             scripts/ci/time-command.sh "quick browser frontend build" scripts/ci/retry-command.sh "quick browser frontend build" npm run build
             scripts/ci/retry-playwright-infrastructure-failure.sh "quick browser smoke" scripts/ci/time-command.sh "quick browser smoke" npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts
           '
+
+      - name: Write quick browser diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Browser"
+
+      - name: Upload quick browser diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quick-browser
+          path: ${{ env.DIAGNOSTIC_DIR }}/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Upload quick browser Playwright report
         if: always()
@@ -538,6 +723,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [detect-changes, quick-browser-smoke]
     timeout-minutes: 30
+    env:
+      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-render
 
     steps:
       - name: Checkout repository
@@ -564,7 +751,7 @@ jobs:
           SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS: '1200'
           VITE_API_URL: http://localhost:3001
         run: |
-          scripts/ci/with-runner-lock.sh e2e scripts/ci/run-in-isolated-workspace.sh --keep-on-failure quick-render bash -c '
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-render-regression.log" scripts/ci/with-runner-lock.sh e2e scripts/ci/run-in-isolated-workspace.sh --keep-on-failure quick-render bash -c '
             set -euo pipefail
             collect_artifacts() {
               scripts/ci/collect-playwright-artifacts.sh quick-render || echo "::warning::Could not collect quick render Playwright artifacts"
@@ -575,6 +762,22 @@ jobs:
             scripts/ci/time-command.sh "quick render frontend build" scripts/ci/retry-command.sh "quick render frontend build" npm run build
             scripts/ci/retry-playwright-infrastructure-failure.sh "quick render regression" scripts/ci/time-command.sh "quick render regression" npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
           '
+
+      - name: Write quick render diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Render"
+
+      - name: Upload quick render diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quick-render
+          path: ${{ env.DIAGNOSTIC_DIR }}/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Upload quick render Playwright report
         if: always()
@@ -740,6 +943,8 @@ jobs:
        needs.detect-changes.outputs.backend_changed == 'true')
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-typecheck
     defaults:
       run:
         working-directory: server
@@ -758,10 +963,27 @@ jobs:
         env:
           SANCTUARY_RETRY_ATTEMPTS: '5'
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/server-test-typecheck.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           ${{ github.workspace }}/scripts/ci/retry-command.sh "server test typecheck"
           ${{ github.workspace }}/scripts/ci/time-command.sh "server test typecheck"
           npm run typecheck:tests
+
+      - name: Write backend typecheck diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Typecheck"
+
+      - name: Upload backend typecheck diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-backend-typecheck
+          path: .tmp/ci-diagnostics/backend-typecheck/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   full-backend-unit-coverage:
     name: Full Backend Unit Coverage
@@ -774,6 +996,8 @@ jobs:
        needs.detect-changes.outputs.backend_changed == 'true')
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready, full-backend-typecheck]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-unit-coverage
     defaults:
       run:
         working-directory: server
@@ -807,17 +1031,20 @@ jobs:
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
         run: |
-          if getent hosts postgres >/dev/null 2>&1; then
-            database_host=postgres
-            database_port=5432
-          else
-            database_host=localhost
-            database_port="${POSTGRES_PORT:-5432}"
-          fi
-          echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log" bash -c '
+            if getent hosts postgres >/dev/null 2>&1; then
+              database_host=postgres
+              database_port=5432
+            else
+              database_host=localhost
+              database_port="${POSTGRES_PORT:-5432}"
+            fi
+            echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+          '
 
       - name: Run database migrations
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/prisma-migrate.log"
           ${{ github.workspace }}/scripts/ci/retry-command.sh "backend unit prisma migrate"
           ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit prisma migrate"
           npx prisma migrate deploy
@@ -829,6 +1056,7 @@ jobs:
           NODE_ENV: test
           SANCTUARY_VITEST_INFRA_ATTEMPTS: '5'
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/unit-coverage.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           ${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh "backend unit coverage"
           ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit coverage"
@@ -844,6 +1072,22 @@ jobs:
             server/junit.xml
           retention-days: 14
 
+      - name: Write backend unit coverage diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Unit Coverage"
+
+      - name: Upload backend unit coverage diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-backend-unit-coverage
+          path: .tmp/ci-diagnostics/backend-unit-coverage/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   full-backend-integration-tests:
     name: Full Backend Integration Tests (${{ matrix.group }})
     if: >-
@@ -854,6 +1098,8 @@ jobs:
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-integration-${{ matrix.group }}
     strategy:
       fail-fast: false
       matrix:
@@ -895,17 +1141,20 @@ jobs:
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
         run: |
-          if getent hosts postgres >/dev/null 2>&1; then
-            database_host=postgres
-            database_port=5432
-          else
-            database_host=localhost
-            database_port="${POSTGRES_PORT:-5432}"
-          fi
-          echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log" bash -c '
+            if getent hosts postgres >/dev/null 2>&1; then
+              database_host=postgres
+              database_port=5432
+            else
+              database_host=localhost
+              database_port="${POSTGRES_PORT:-5432}"
+            fi
+            echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+          '
 
       - name: Run database migrations
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/prisma-migrate.log"
           ${{ github.workspace }}/scripts/ci/retry-command.sh "backend integration prisma migrate"
           ${{ github.workspace }}/scripts/ci/time-command.sh "backend integration prisma migrate"
           npx prisma migrate deploy
@@ -916,24 +1165,44 @@ jobs:
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
           SANCTUARY_VITEST_INFRA_ATTEMPTS: '5'
+          MATRIX_GROUP: ${{ matrix.group }}
         run: |
-          group="${{ matrix.group }}"
-          mapfile -t specs < <("${{ github.workspace }}/scripts/ci/backend-integration-groups.sh" "$group")
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/integration-tests.log" bash -c '
+            set -euo pipefail
+            group="${MATRIX_GROUP:?}"
+            mapfile -t specs < <("${{ github.workspace }}/scripts/ci/backend-integration-groups.sh" "$group")
 
-          if [ "${#specs[@]}" -eq 0 ]; then
-            echo "::error::No backend integration specs found for group ${group}"
-            exit 1
-          fi
+            if [ "${#specs[@]}" -eq 0 ]; then
+              echo "::error::No backend integration specs found for group ${group}"
+              exit 1
+            fi
 
-          printf "Running backend integration group %s:\n" "$group"
-          printf "  %s\n" "${specs[@]}"
+            printf "Running backend integration group %s:\n" "$group"
+            printf "  %s\n" "${specs[@]}"
 
-          "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
-            "${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh" \
-            "backend integration ${group}" \
-            "${{ github.workspace }}/scripts/ci/time-command.sh" \
-            "backend integration ${group}" \
-            npm run test:run:ci -- "${specs[@]}"
+            "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
+              "${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh" \
+              "backend integration ${group}" \
+              "${{ github.workspace }}/scripts/ci/time-command.sh" \
+              "backend integration ${group}" \
+              npm run test:run:ci -- "${specs[@]}"
+          '
+
+      - name: Write backend integration diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Integration (${{ matrix.group }})"
+
+      - name: Upload backend integration diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-backend-integration-${{ matrix.group }}
+          path: .tmp/ci-diagnostics/backend-integration-${{ matrix.group }}/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   full-backend-tests:
     name: Full Backend Tests
@@ -1032,6 +1301,8 @@ jobs:
        needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
+    env:
+      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-typecheck-${{ matrix.target }}
     strategy:
       fail-fast: false
       matrix:
@@ -1048,6 +1319,7 @@ jobs:
 
       - name: Install dependencies
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "frontend typecheck npm ci"
           scripts/ci/time-command.sh "frontend typecheck npm ci"
@@ -1056,6 +1328,7 @@ jobs:
       - name: Run strict app typecheck
         if: matrix.target == 'app-typecheck'
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/app-typecheck.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "frontend app typecheck"
           scripts/ci/time-command.sh "frontend app typecheck"
@@ -1064,10 +1337,27 @@ jobs:
       - name: Run strict test typecheck
         if: matrix.target == 'test-typecheck'
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/test-typecheck.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "frontend test typecheck"
           scripts/ci/time-command.sh "frontend test typecheck"
           npm run typecheck:tests
+
+      - name: Write frontend typecheck diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Typecheck (${{ matrix.target }})"
+
+      - name: Upload frontend typecheck diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-frontend-typecheck-${{ matrix.target }}
+          path: ${{ env.DIAGNOSTIC_DIR }}/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   full-frontend-coverage-shard-1:
     name: Full Frontend Coverage Shard 1/2
@@ -1077,6 +1367,8 @@ jobs:
       needs.detect-changes.outputs.frontend_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
+    env:
+      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-coverage-shard-1
 
     steps:
       - name: Checkout repository
@@ -1087,6 +1379,7 @@ jobs:
 
       - name: Install dependencies
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "frontend coverage npm ci"
           scripts/ci/time-command.sh "frontend coverage npm ci"
@@ -1094,6 +1387,7 @@ jobs:
 
       - name: Run frontend coverage shard 1
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-1.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/time-command.sh "frontend coverage shard 1/2"
           npm run test:coverage:shard -- 1 2
@@ -1108,6 +1402,22 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+      - name: Write frontend coverage shard 1 diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Coverage Shard 1/2"
+
+      - name: Upload frontend coverage shard 1 diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-frontend-coverage-shard-1
+          path: ${{ env.DIAGNOSTIC_DIR }}/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   full-frontend-coverage-shard-2:
     name: Full Frontend Coverage Shard 2/2
     if: >-
@@ -1117,6 +1427,8 @@ jobs:
       needs.detect-changes.outputs.frontend_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1]
+    env:
+      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-coverage-shard-2
 
     steps:
       - name: Checkout repository
@@ -1127,6 +1439,7 @@ jobs:
 
       - name: Install dependencies
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "frontend coverage npm ci"
           scripts/ci/time-command.sh "frontend coverage npm ci"
@@ -1134,6 +1447,7 @@ jobs:
 
       - name: Run frontend coverage shard 2
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-2.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/time-command.sh "frontend coverage shard 2/2"
           npm run test:coverage:shard -- 2 2
@@ -1148,6 +1462,22 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+      - name: Write frontend coverage shard 2 diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Coverage Shard 2/2"
+
+      - name: Upload frontend coverage shard 2 diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-frontend-coverage-shard-2
+          path: ${{ env.DIAGNOSTIC_DIR }}/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   full-frontend-coverage-merge:
     name: Full Frontend Coverage Merge
     if: >-
@@ -1158,6 +1488,8 @@ jobs:
       needs.detect-changes.outputs.frontend_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1, full-frontend-coverage-shard-2]
+    env:
+      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/frontend-coverage-merge
 
     steps:
       - name: Checkout repository
@@ -1168,6 +1500,7 @@ jobs:
 
       - name: Install dependencies
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "frontend coverage merge npm ci"
           scripts/ci/time-command.sh "frontend coverage merge npm ci"
@@ -1187,6 +1520,7 @@ jobs:
 
       - name: Merge frontend coverage (threshold-enforced)
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-merge.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-vitest-infrastructure-failure.sh "frontend coverage merge"
           scripts/ci/time-command.sh "frontend coverage merge"
@@ -1199,6 +1533,22 @@ jobs:
           name: frontend-coverage
           path: coverage/
           if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Write frontend coverage merge diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Coverage Merge"
+
+      - name: Upload frontend coverage merge diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-frontend-coverage-merge
+          path: ${{ env.DIAGNOSTIC_DIR }}/
+          if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 14
 
   full-frontend-tests:
@@ -1269,6 +1619,8 @@ jobs:
        needs.detect-changes.outputs.gateway_changed == 'true')
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/gateway
     defaults:
       run:
         working-directory: gateway
@@ -1282,6 +1634,7 @@ jobs:
 
       - name: Install dependencies
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           ${{ github.workspace }}/scripts/ci/retry-command.sh "gateway npm ci"
           ${{ github.workspace }}/scripts/ci/time-command.sh "gateway npm ci"
@@ -1292,6 +1645,7 @@ jobs:
           NODE_ENV: test
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/gateway-coverage.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           ${{ github.workspace }}/scripts/ci/time-command.sh "gateway coverage"
           npm run test:coverage
@@ -1304,6 +1658,22 @@ jobs:
           path: gateway/coverage/
           retention-days: 14
 
+      - name: Write gateway diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Gateway"
+
+      - name: Upload gateway diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-gateway
+          path: .tmp/ci-diagnostics/gateway/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   full-ai-proxy-tests:
     name: Full AI Proxy Tests
     if: >-
@@ -1314,6 +1684,8 @@ jobs:
        needs.detect-changes.outputs.ai_proxy_changed == 'true')
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/ai-proxy
 
     steps:
       - name: Checkout repository
@@ -1324,6 +1696,7 @@ jobs:
 
       - name: Install root test dependencies
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/root-install-dependencies.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "AI proxy root npm ci"
           scripts/ci/time-command.sh "AI proxy root npm ci"
@@ -1331,6 +1704,7 @@ jobs:
 
       - name: Install AI proxy dependencies
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-install-dependencies.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "AI proxy npm ci"
           scripts/ci/time-command.sh "AI proxy npm ci"
@@ -1338,12 +1712,14 @@ jobs:
 
       - name: Build AI proxy
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-build.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/time-command.sh "AI proxy build"
           npm --prefix ai-proxy run build
 
       - name: Run AI proxy tests with coverage
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-coverage.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-vitest-infrastructure-failure.sh "AI proxy coverage"
           scripts/ci/time-command.sh "AI proxy coverage"
@@ -1359,6 +1735,22 @@ jobs:
             ai-proxy/junit.xml
           retention-days: 14
 
+      - name: Write AI proxy diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "AI Proxy"
+
+      - name: Upload AI proxy diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-ai-proxy
+          path: .tmp/ci-diagnostics/ai-proxy/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   full-critical-mutation:
     name: Full Critical Mutation Gate
     if: >-
@@ -1369,6 +1761,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: [detect-changes, full-lane-ready]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/critical-mutation
     defaults:
       run:
         working-directory: server
@@ -1385,6 +1779,7 @@ jobs:
 
       - name: Run critical mutation gate
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/critical-mutation-gate.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           ${{ github.workspace }}/scripts/ci/time-command.sh "critical mutation gate"
           npm run test:mutation:critical:gate
@@ -1397,6 +1792,22 @@ jobs:
           path: server/reports/mutation/
           retention-days: 14
 
+      - name: Write critical mutation diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Critical Mutation"
+
+      - name: Upload critical mutation diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-critical-mutation
+          path: .tmp/ci-diagnostics/critical-mutation/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   full-browser-e2e-tests:
     name: Full Browser E2E Tests
     if: >-
@@ -1405,6 +1816,8 @@ jobs:
       needs.detect-changes.outputs.browser_smoke_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/browser-e2e
 
     services:
       postgres:
@@ -1440,6 +1853,7 @@ jobs:
 
       - name: Install frontend dependencies
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-frontend-dependencies.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "browser npm ci"
           scripts/ci/time-command.sh "browser npm ci"
@@ -1455,29 +1869,35 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
-        run: scripts/ci/time-command.sh "browser playwright install" scripts/ci/install-playwright-chromium.sh
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-playwright.log"
+          scripts/ci/time-command.sh "browser playwright install"
+          scripts/ci/install-playwright-chromium.sh
 
       - name: Reserve browser API port
         run: |
-          api_port="$(node <<'NODE'
-          const net = require('net');
-          const server = net.createServer();
-          server.listen(0, '127.0.0.1', () => {
-            const address = server.address();
-            if (!address || typeof address === 'string') {
-              throw new Error('Failed to reserve a TCP port');
-            }
-            console.log(address.port);
-            server.close();
-          });
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/reserve-api-port.log" bash -c '
+            api_port="$(node <<'"'"'NODE'"'"'
+            const net = require("net");
+            const server = net.createServer();
+            server.listen(0, "127.0.0.1", () => {
+              const address = server.address();
+              if (!address || typeof address === "string") {
+                throw new Error("Failed to reserve a TCP port");
+              }
+              console.log(address.port);
+              server.close();
+            });
           NODE
-          )"
-          echo "BROWSER_E2E_API_PORT=${api_port}" >> "$GITHUB_ENV"
-          echo "BROWSER_E2E_API_URL=http://localhost:${api_port}/api/v1" >> "$GITHUB_ENV"
+            )"
+            echo "BROWSER_E2E_API_PORT=${api_port}" >> "$GITHUB_ENV"
+            echo "BROWSER_E2E_API_URL=http://localhost:${api_port}/api/v1" >> "$GITHUB_ENV"
+          '
 
       - name: Build frontend
         run: |
           VITE_API_URL="${BROWSER_E2E_API_URL:?}" \
+            scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-build.log" \
             scripts/ci/with-runner-lock.sh node-toolchain \
             scripts/ci/time-command.sh "browser frontend build" \
             scripts/ci/retry-command.sh "browser frontend build" \
@@ -1488,30 +1908,34 @@ jobs:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
           REDIS_PORT: ${{ job.services.redis.ports['6379'] }}
         run: |
-          if getent hosts postgres >/dev/null 2>&1; then
-            database_host=postgres
-            database_port=5432
-          else
-            database_host=localhost
-            database_port="${POSTGRES_PORT:-5432}"
-          fi
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-service-endpoints.log" bash -c '
+            if getent hosts postgres >/dev/null 2>&1; then
+              database_host=postgres
+              database_port=5432
+            else
+              database_host=localhost
+              database_port="${POSTGRES_PORT:-5432}"
+            fi
 
-          if getent hosts redis >/dev/null 2>&1; then
-            redis_host=redis
-            redis_port=6379
-          else
-            redis_host=localhost
-            redis_port="${REDIS_PORT:-6379}"
-          fi
+            if getent hosts redis >/dev/null 2>&1; then
+              redis_host=redis
+              redis_port=6379
+            else
+              redis_host=localhost
+              redis_port="${REDIS_PORT:-6379}"
+            fi
 
-          echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
-          echo "REDIS_URL=redis://${redis_host}:${redis_port}" >> "$GITHUB_ENV"
+            echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
+            echo "REDIS_URL=redis://${redis_host}:${redis_port}" >> "$GITHUB_ENV"
+          '
 
       - name: Setup backend
         working-directory: server
         run: |
-          "${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh"
-          "${{ github.workspace }}/scripts/ci/retry-command.sh" "browser prisma migrate" \
+          "${{ github.workspace }}/scripts/ci/run-with-log.sh" "$DIAGNOSTIC_DIR/setup-server-dependencies.log" \
+            "${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh"
+          "${{ github.workspace }}/scripts/ci/run-with-log.sh" "$DIAGNOSTIC_DIR/prisma-migrate.log" \
+            "${{ github.workspace }}/scripts/ci/retry-command.sh" "browser prisma migrate" \
             "${{ github.workspace }}/scripts/ci/time-command.sh" "browser prisma migrate" \
             npx prisma migrate deploy
 
@@ -1520,6 +1944,7 @@ jobs:
           SANCTUARY_RETRY_ATTEMPTS: '5'
         working-directory: server
         run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/backend-build.log"
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
           ${{ github.workspace }}/scripts/ci/retry-command.sh "browser backend build"
           ${{ github.workspace }}/scripts/ci/time-command.sh "browser backend build"
@@ -1527,7 +1952,7 @@ jobs:
 
       - name: Run browser-flow E2E tests
         run: |
-          scripts/ci/with-runner-lock.sh e2e bash -c '
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/browser-flow-e2e.log" scripts/ci/with-runner-lock.sh e2e bash -c '
             set -euo pipefail
 
             readonly api_port="${BROWSER_E2E_API_PORT:?}"
@@ -1607,6 +2032,22 @@ jobs:
           # Keep auth-dependent legacy specs skipped until seeded test auth users exist.
           SKIP_AUTH_TESTS: 'true'
 
+      - name: Write browser E2E diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Browser E2E"
+
+      - name: Upload browser E2E diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-browser-e2e
+          path: .tmp/ci-diagnostics/browser-e2e/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
       - name: Upload Playwright report
         if: always()
         uses: ./.github/actions/upload-artifact
@@ -1635,6 +2076,8 @@ jobs:
       needs.detect-changes.outputs.render_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready, full-browser-e2e-tests]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/render-e2e
 
     steps:
       - name: Checkout repository
@@ -1645,6 +2088,7 @@ jobs:
 
       - name: Install dependencies
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/retry-command.sh "render npm ci"
           scripts/ci/time-command.sh "render npm ci"
@@ -1660,10 +2104,14 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
-        run: scripts/ci/time-command.sh "render playwright install" scripts/ci/install-playwright-chromium.sh
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-playwright.log"
+          scripts/ci/time-command.sh "render playwright install"
+          scripts/ci/install-playwright-chromium.sh
 
       - name: Build frontend
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-build.log"
           scripts/ci/with-runner-lock.sh node-toolchain
           scripts/ci/time-command.sh "render frontend build"
           scripts/ci/retry-command.sh "render frontend build"
@@ -1673,6 +2121,7 @@ jobs:
 
       - name: Run render regression E2E tests
         run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/render-regression-e2e.log"
           scripts/ci/with-runner-lock.sh e2e
           scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"
           scripts/ci/time-command.sh "render regression E2E"
@@ -1681,6 +2130,22 @@ jobs:
           CI: 'true'
           NODE_ENV: test
           VITE_API_URL: http://localhost:3001
+
+      - name: Write render E2E diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Render E2E"
+
+      - name: Upload render E2E diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-render-e2e
+          path: .tmp/ci-diagnostics/render-e2e/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
       - name: Upload Playwright report
         if: always()
@@ -1709,6 +2174,8 @@ jobs:
        needs.detect-changes.outputs.build_changed == 'true')
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/build-check
 
     steps:
       - name: Checkout repository
@@ -1719,11 +2186,13 @@ jobs:
 
       - name: Build frontend
         run: |
-          scripts/ci/with-runner-lock.sh node-toolchain \
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-install-dependencies.log" \
+            scripts/ci/with-runner-lock.sh node-toolchain \
             scripts/ci/retry-command.sh "build check frontend npm ci" \
             scripts/ci/time-command.sh "build check frontend npm ci" \
             npm ci --audit=false --fund=false --cache .tmp/npm-cache
-          scripts/ci/with-runner-lock.sh node-toolchain \
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-build.log" \
+            scripts/ci/with-runner-lock.sh node-toolchain \
             scripts/ci/retry-command.sh "build check frontend build" \
             scripts/ci/time-command.sh "build check frontend build" \
             npm run build
@@ -1733,11 +2202,29 @@ jobs:
           SANCTUARY_RETRY_ATTEMPTS: '5'
         working-directory: server
         run: |
-          "${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh"
-          "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
+          "${{ github.workspace }}/scripts/ci/run-with-log.sh" "$DIAGNOSTIC_DIR/setup-server-dependencies.log" \
+            "${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh"
+          "${{ github.workspace }}/scripts/ci/run-with-log.sh" "$DIAGNOSTIC_DIR/backend-build.log" \
+            "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
             "${{ github.workspace }}/scripts/ci/retry-command.sh" "build check backend build" \
             "${{ github.workspace }}/scripts/ci/time-command.sh" "build check backend build" \
             npm --ignore-scripts run build
+
+      - name: Write build-check diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Build Check"
+
+      - name: Upload build-check diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-build-check
+          path: .tmp/ci-diagnostics/build-check/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   full-test-summary:
     name: Full Test Summary

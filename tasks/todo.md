@@ -1,3 +1,45 @@
+# Active Task: CI-Owned Failure Diagnostics 2026-05-10
+
+Status: in progress
+
+Goal: make failed Forgejo CI lanes self-diagnosing through repo-owned redacted log artifacts and step summaries so API-token-only access is enough to identify root causes without web-session step logs.
+
+## Plan
+
+- [x] Start from `origin/main` on an isolated diagnostics branch.
+- [x] Inventory existing CI logging, redaction, artifact, and workflow-summary helpers.
+- [x] Add a reusable failure-diagnostics collector that indexes wrapped logs and sidecar JSON without inlining log bodies in job summaries.
+- [x] Wire the collector into Architecture, full frontend typecheck/coverage Test Suite lanes, and Verify Bitcoin Vectors.
+- [x] Add regression tests and workflow syntax coverage for the collector and workflow composition.
+- [x] Run focused CI-helper tests, workflow/runtime guards, and `git diff --check`.
+- [x] Review corner cases: missing logs, truncated logs, wrapped-command failures, skipped jobs, secret redaction, artifact upload failures, and no new runtime requirements.
+- [x] Extend the same diagnostic pattern to the full backend typecheck, unit coverage, and integration lanes after PR CI exposed backend unit coverage as an uncovered failure lane.
+- [x] Extend diagnostic coverage to the remaining full Test Suite leaf jobs: gateway, AI proxy, critical mutation, browser E2E, render E2E, and build check.
+- [x] Extend diagnostic coverage to quick PR Test Suite lanes so quick-lane failures cannot block full diagnostics without their own redacted artifact.
+- [x] Rerun focused workflow/helper checks after the comprehensive Test Suite extension and amend PR #385.
+- [ ] Monitor PR #385 again, merge when green, and verify the post-merge push status.
+
+## Review
+
+- Existing `scripts/ci/run-with-log.sh` already provides redacted, capped logs plus sidecar status JSON. This slice should reuse that contract rather than inventing a parallel logger.
+- The target behavior is CI-only: upload redacted diagnostic artifacts and write compact job summaries. No production runtime dependency or app requirement should be added.
+- Added `scripts/ci/write-diagnostic-summary.sh` to append compact status tables through `provider-context.sh` and write `diagnostic-index.md` into each uploaded artifact directory.
+- The helper intentionally does not inline log bodies in the step summary; full output remains in redacted `run-with-log.sh` artifacts.
+- Architecture now wraps install, diagram lint, graph generation, stale graph detection, docs typecheck, and docs build with `run-with-log.sh`; it uploads `ci-diagnostics-architecture` on `always()`.
+- Full frontend typecheck, frontend coverage shard, and frontend coverage merge jobs now upload per-job diagnostic artifacts with sidecar-index summaries.
+- PR #385's first CI pass exposed a design gap in this slice: `Full Backend Unit Coverage` could still fail without CI-owned diagnostics. The backend typecheck, unit coverage, and integration full-lane jobs now use the same redacted `run-with-log.sh` + diagnostic summary/upload pattern.
+- User review asked whether this was comprehensive. Follow-up inventory found additional Test Suite blind spots in gateway, AI proxy, mutation, browser/render E2E, build-check, and quick PR lanes. These now emit redacted diagnostic indexes and artifacts as well.
+- Mechanical coverage review confirmed all 23 Test Suite leaf jobs have `run-with-log.sh`, `write-diagnostic-summary.sh`, and a `ci-diagnostics-*` artifact; aggregate-only jobs remain intentionally summary-only.
+- Verify Bitcoin Vectors now uploads `ci-diagnostics-verify-vectors` for Docker readiness, dependency install, cross-implementation verification, and server vector test slices.
+- Loop review finding: backend composition tests originally checked upload artifacts without requiring `write-diagnostic-summary.sh`; tightened them to require both summary generation and artifact upload for backend typecheck, unit coverage, and integration lanes.
+- PR #385's comprehensive CI rerun proved the diagnostics were useful by surfacing a backend unit coverage failure in descriptor-domain validation. The follow-up fix adds real descriptor/parser contracts for unsupported coin types, unsupported xpub prefixes, invalid and out-of-range path components, account-root descriptors, malformed single-sig parsed state, multisig quorum bounds, and multisig script-purpose mismatches.
+- Descriptor domain validation now rejects unsupported derivation-path coin types instead of silently accepting paths outside the Bitcoin mainnet/testnet coin-type families; the prior empty-device defensive branch was removed because descriptor shape and quorum validation already prove non-empty device lists before network consistency checks.
+- Corner-case review: missing/empty directories produce a summary and index; malformed/missing sidecars are indexed as attention records; non-zero wrapped exits and truncation are surfaced; summary/upload steps are `continue-on-error`; no log bodies are pasted into step summaries; no production runtime requirement was added.
+- Local verification passed after comprehensive Test Suite extension: `bash -n scripts/ci/write-diagnostic-summary.sh tests/ci/write-diagnostic-summary.test.sh tests/ci/check-workflow-composition.test.sh`, `bash tests/ci/write-diagnostic-summary.test.sh`, `bash tests/ci/check-workflow-composition.test.sh`, `bash tests/ci/run-with-log.test.sh`, `bash tests/ci/write-preflight-diagnostics.test.sh`, `bash tests/ci/provider-context.test.sh`, `bash tests/ci/redactor-fixture.test.sh`, `bash tests/ci/check-provider-leaks.test.sh`, `bash scripts/ci/check-provider-leaks.sh`, `node tests/ci/check-github-action-runtimes.test.mjs`, `npm run check:github-action-runtimes`, `server/node_modules/.bin/yaml valid` for touched workflows, `test.yml` run-block `bash -n` after expression substitution, mechanical 23-leaf Test Suite diagnostic coverage check, `npm run quality:lizard`, and `git diff --check`.
+- Local verification passed after the backend coverage follow-up: focused descriptor parser suite, server test typecheck, touched-file lizard, and full backend unit coverage with a disposable migrated Postgres database: 439 files, 9,764 tests, 100% statements/branches/functions/lines.
+
+---
+
 # Active Task: Post-Merge CI Aggregate Failure 2026-05-09
 
 Status: completed; PR #383 merged as `c668a11f`

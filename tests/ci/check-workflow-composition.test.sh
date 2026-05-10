@@ -202,16 +202,27 @@ assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "architecture docs typecheck retry composition" \
   "Typecheck Docusaurus site" \
   "SANCTUARY_RETRY_ATTEMPTS: '5'" \
+  "scripts/ci/run-with-log.sh" \
+  ".tmp/ci-diagnostics/architecture/docs-typecheck.log" \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-command.sh "docs typecheck"' \
   'scripts/ci/time-command.sh "docs typecheck"' \
   "npm --prefix website run typecheck"
+
+assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+  "architecture diagnostic summary upload" \
+  "Write architecture diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh ".tmp/ci-diagnostics/architecture" "Architecture"' \
+  "Upload architecture diagnostics" \
+  "ci-diagnostics-architecture"
 
 # --- full frontend typecheck retry stability --------------------------------
 TEST_WORKFLOW="$REPO_ROOT/.github/workflows/test.yml"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend app typecheck retry composition" \
+  "full-frontend-typechecks:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/app-typecheck.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-command.sh "frontend app typecheck"' \
   'scripts/ci/time-command.sh "frontend app typecheck"' \
@@ -219,10 +230,243 @@ assert_contains_in_order "$TEST_WORKFLOW" \
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend test typecheck retry composition" \
+  "full-frontend-typechecks:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/test-typecheck.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-command.sh "frontend test typecheck"' \
   'scripts/ci/time-command.sh "frontend test typecheck"' \
   "npm run typecheck:tests"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full frontend typecheck diagnostic upload" \
+  "Write frontend typecheck diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Typecheck (${{ matrix.target }})"' \
+  "Upload frontend typecheck diagnostics" \
+  'ci-diagnostics-frontend-typecheck-${{ matrix.target }}'
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full backend typecheck diagnostics" \
+  "full-backend-typecheck:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/server-test-typecheck.log"' \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  'scripts/ci/retry-command.sh "server test typecheck"' \
+  'scripts/ci/time-command.sh "server test typecheck"' \
+  "npm run typecheck:tests" \
+  "Write backend typecheck diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Typecheck"' \
+  "Upload backend typecheck diagnostics" \
+  "ci-diagnostics-backend-typecheck"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full backend unit coverage diagnostics" \
+  "full-backend-unit-coverage:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/unit-coverage.log"' \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  'scripts/ci/retry-vitest-infrastructure-failure.sh "backend unit coverage"' \
+  'scripts/ci/time-command.sh "backend unit coverage"' \
+  "npm run test:run:ci -- tests/unit --coverage" \
+  "Write backend unit coverage diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Unit Coverage"' \
+  "Upload backend unit coverage diagnostics" \
+  "ci-diagnostics-backend-unit-coverage"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full backend integration diagnostics" \
+  "full-backend-integration-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/integration-tests.log"' \
+  "scripts/ci/with-runner-lock.sh" \
+  "scripts/ci/retry-vitest-infrastructure-failure.sh" \
+  "backend integration" \
+  "scripts/ci/time-command.sh" \
+  'npm run test:run:ci -- "${specs[@]}"' \
+  "Write backend integration diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Integration (${{ matrix.group }})"' \
+  "Upload backend integration diagnostics" \
+  'ci-diagnostics-backend-integration-${{ matrix.group }}'
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full gateway diagnostics" \
+  "full-gateway-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/gateway-coverage.log"' \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  'scripts/ci/time-command.sh "gateway coverage"' \
+  "npm run test:coverage" \
+  "Write gateway diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Gateway"' \
+  "Upload gateway diagnostics" \
+  "ci-diagnostics-gateway"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full AI proxy diagnostics" \
+  "full-ai-proxy-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-coverage.log"' \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  'scripts/ci/retry-vitest-infrastructure-failure.sh "AI proxy coverage"' \
+  'scripts/ci/time-command.sh "AI proxy coverage"' \
+  "npm --prefix ai-proxy run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism" \
+  "Write AI proxy diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "AI Proxy"' \
+  "Upload AI proxy diagnostics" \
+  "ci-diagnostics-ai-proxy"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full critical mutation diagnostics" \
+  "full-critical-mutation:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/critical-mutation-gate.log"' \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  'scripts/ci/time-command.sh "critical mutation gate"' \
+  "npm run test:mutation:critical:gate" \
+  "Write critical mutation diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Critical Mutation"' \
+  "Upload critical mutation diagnostics" \
+  "ci-diagnostics-critical-mutation"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full browser E2E diagnostics" \
+  "full-browser-e2e-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/browser-flow-e2e.log"' \
+  "scripts/ci/with-runner-lock.sh e2e" \
+  'scripts/ci/retry-playwright-infrastructure-failure.sh "browser-flow E2E ${browser_group}"' \
+  'scripts/ci/time-command.sh "browser-flow E2E ${browser_group}"' \
+  'npm run test:e2e -- --project=chromium "${browser_specs[@]}"' \
+  "Write browser E2E diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Browser E2E"' \
+  "Upload browser E2E diagnostics" \
+  "ci-diagnostics-browser-e2e"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full render E2E diagnostics" \
+  "full-render-e2e-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/render-regression-e2e.log"' \
+  "scripts/ci/with-runner-lock.sh e2e" \
+  'scripts/ci/retry-playwright-infrastructure-failure.sh "render regression E2E"' \
+  'scripts/ci/time-command.sh "render regression E2E"' \
+  "npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts" \
+  "Write render E2E diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Render E2E"' \
+  "Upload render E2E diagnostics" \
+  "ci-diagnostics-render-e2e"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full build-check diagnostics" \
+  "full-build-check:" \
+  "scripts/ci/run-with-log.sh" \
+  '$DIAGNOSTIC_DIR/backend-build.log' \
+  "scripts/ci/with-runner-lock.sh" \
+  "build check backend build" \
+  "npm --ignore-scripts run build" \
+  "Write build-check diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Build Check"' \
+  "Upload build-check diagnostics" \
+  "ci-diagnostics-build-check"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick test hygiene diagnostics" \
+  "quick-test-hygiene:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-hygiene.log"' \
+  "npm run test:hygiene" \
+  "Write quick hygiene diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Test Hygiene"' \
+  "Upload quick hygiene diagnostics" \
+  "ci-diagnostics-quick-test-hygiene"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick frontend diagnostics" \
+  "quick-frontend-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-frontend.log"' \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  'scripts/ci/retry-command.sh "quick frontend isolated checks"' \
+  "npx vitest related --run --passWithNoTests" \
+  "Write quick frontend diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Frontend"' \
+  "Upload quick frontend diagnostics" \
+  "ci-diagnostics-quick-frontend"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick backend typecheck diagnostics" \
+  "quick-backend-typecheck:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/server-test-typecheck.log"' \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  'scripts/ci/retry-command.sh "quick backend typecheck"' \
+  "npm run typecheck:tests" \
+  "Write quick backend typecheck diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Backend Typecheck"' \
+  "Upload quick backend typecheck diagnostics" \
+  "ci-diagnostics-quick-backend-typecheck"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick backend test diagnostics" \
+  "quick-backend-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/related-backend-tests.log"' \
+  'scripts/ci/retry-command.sh "quick backend related tests"' \
+  "npx vitest related --run --passWithNoTests" \
+  "Write quick backend test diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Backend Tests"' \
+  "Upload quick backend test diagnostics" \
+  "ci-diagnostics-quick-backend-tests"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick backend integration smoke diagnostics" \
+  "quick-backend-integration-smoke:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/integration-smoke.log"' \
+  'scripts/ci/retry-command.sh "quick backend integration smoke"' \
+  "npm run test:run:ci -- tests/integration/websocket/websocket.integration.test.ts tests/integration/flows/auth.integration.test.ts" \
+  "Write quick backend integration smoke diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Backend Integration Smoke"' \
+  "Upload quick backend integration smoke diagnostics" \
+  "ci-diagnostics-quick-backend-integration-smoke"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick critical mutation diagnostics" \
+  "quick-critical-mutation:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/critical-mutation-gate.log"' \
+  "npm run test:mutation:critical:gate" \
+  "Write quick critical mutation diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Critical Mutation"' \
+  "Upload quick critical mutation diagnostics" \
+  "ci-diagnostics-quick-critical-mutation"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick gateway diagnostics" \
+  "quick-gateway-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/related-gateway-tests.log"' \
+  "npx vitest related --run --passWithNoTests" \
+  "Write quick gateway diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Gateway"' \
+  "Upload quick gateway diagnostics" \
+  "ci-diagnostics-quick-gateway"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick AI proxy diagnostics" \
+  "quick-ai-proxy-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-tests.log"' \
+  "npm --prefix ai-proxy run test" \
+  "Write quick AI proxy diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick AI Proxy"' \
+  "Upload quick AI proxy diagnostics" \
+  "ci-diagnostics-quick-ai-proxy"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick browser diagnostics" \
+  "quick-browser-smoke:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-browser-smoke.log"' \
+  "scripts/ci/with-runner-lock.sh e2e" \
+  'scripts/ci/retry-playwright-infrastructure-failure.sh "quick browser smoke"' \
+  "Write quick browser diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Browser"' \
+  "Upload quick browser diagnostics" \
+  "ci-diagnostics-quick-browser"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick render diagnostics" \
+  "quick-render-regression:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-render-regression.log"' \
+  "scripts/ci/with-runner-lock.sh e2e" \
+  'scripts/ci/retry-playwright-infrastructure-failure.sh "quick render regression"' \
+  "Write quick render diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Render"' \
+  "Upload quick render diagnostics" \
+  "ci-diagnostics-quick-render"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "quick AI proxy package test composition" \
@@ -232,6 +476,8 @@ assert_contains_in_order "$TEST_WORKFLOW" \
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full AI proxy Vitest coverage retry composition" \
+  "full-ai-proxy-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-coverage.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-vitest-infrastructure-failure.sh "AI proxy coverage"' \
   'scripts/ci/time-command.sh "AI proxy coverage"' \
@@ -282,10 +528,43 @@ assert_contains_in_order "$TEST_WORKFLOW" \
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend coverage merge Vitest retry" \
   "full-frontend-coverage-merge:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-merge.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-vitest-infrastructure-failure.sh "frontend coverage merge"' \
   'scripts/ci/time-command.sh "frontend coverage merge"' \
   "npm run test:coverage:merge -- .vitest-reports"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full frontend coverage shard diagnostics" \
+  "full-frontend-coverage-shard-1:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/frontend-coverage-shard-1.log"' \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  'scripts/ci/time-command.sh "frontend coverage shard 1/2"' \
+  "npm run test:coverage:shard -- 1 2" \
+  "Upload frontend coverage shard 1 diagnostics"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full frontend coverage merge diagnostic upload" \
+  "Write frontend coverage merge diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Coverage Merge"' \
+  "Upload frontend coverage merge diagnostics" \
+  "ci-diagnostics-frontend-coverage-merge"
+
+# --- verify-vectors diagnostic coverage --------------------------------------
+VV="$REPO_ROOT/.github/workflows/verify-vectors.yml"
+
+assert_contains_in_order "$VV" \
+  "verify-vectors wait-for-docker diagnostics" \
+  "Wait for Docker" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"' \
+  "scripts/ci/wait-for-docker.sh"
+
+assert_contains_in_order "$VV" \
+  "verify-vectors diagnostic summary upload" \
+  "Write vector diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Verify Bitcoin Vectors"' \
+  "Upload vector diagnostics" \
+  "ci-diagnostics-verify-vectors"
 
 # --- summary ----------------------------------------------------------------
 echo
