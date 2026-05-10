@@ -2,9 +2,41 @@ name: 'Setup server dependencies'
 description: >-
   Installs server dependencies (npm ci with lifecycle scripts disabled) and
   runs Prisma generation through the repo-owned helper. Provider-agnostic.
+
+  Caches `server/node_modules` keyed on the lockfile + Node version and
+  `server/src/generated/prisma` keyed on the Prisma schema + lockfile so
+  unrelated PRs skip both `npm ci` and `prisma generate` on cache hit.
 runs:
   using: composite
   steps:
+    # Cache key hashes BOTH package.json and package-lock.json. This way a
+    # manual package.json edit without `npm install` (which would also update
+    # the lockfile) still invalidates the cache, so `npm ci` re-runs and its
+    # built-in package.json/package-lock.json desync validation can fire.
+    # Without package.json in the key, a desync would slip through cache hit
+    # and surface as a confusing "Cannot find module" at runtime instead of
+    # the explicit npm ci error.
+    - name: Restore server node_modules cache
+      id: cache-server-node-modules
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      with:
+        path: server/node_modules
+        key: ${{ runner.os }}-${{ runner.arch }}-server-node-modules-node-${{ hashFiles('.nvmrc') }}-${{ hashFiles('server/package.json', 'server/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-server-node-modules-node-${{ hashFiles('.nvmrc') }}-
+
+    - name: Restore server Prisma client cache
+      id: cache-server-prisma
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      with:
+        path: server/src/generated/prisma
+        key: ${{ runner.os }}-${{ runner.arch }}-server-prisma-${{ hashFiles('server/prisma/schema.prisma', 'server/package.json', 'server/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-server-prisma-
+
     - name: Setup server dependencies
       shell: bash
+      env:
+        SERVER_NODE_MODULES_CACHE_HIT: ${{ steps.cache-server-node-modules.outputs.cache-hit }}
+        SERVER_PRISMA_CACHE_HIT: ${{ steps.cache-server-prisma.outputs.cache-hit }}
       run: ${{ github.workspace }}/scripts/ci/setup-server-dependencies.sh

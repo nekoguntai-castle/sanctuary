@@ -90,6 +90,48 @@ main() {
   assert_contains "$log_file" "npx:$server_dir:prisma generate"
   [ "$(cat "$npx_count_file")" = '2' ] || fail 'expected prisma generate to retry once'
 
+  # Cache-hit scenario: both env vars set to 'true' should skip npm ci AND
+  # prisma generate but still run the shared-schema link.
+  local hit_log="$TEST_TEMP_DIR/commands-hit.log"
+  : >"$hit_log"
+  printf '0' >"$npx_count_file"
+  write_mock_commands "$bin_dir" "$hit_log" "$npx_count_file"
+
+  PATH="$bin_dir:$PATH" \
+    SANCTUARY_SERVER_DIR="$server_dir" \
+    SANCTUARY_SERVER_SETUP_NO_LOCK=1 \
+    SANCTUARY_RETRY_DELAY_SECONDS=0 \
+    SERVER_NODE_MODULES_CACHE_HIT=true \
+    SERVER_PRISMA_CACHE_HIT=true \
+    bash "$SCRIPT"
+
+  if grep -Fq "npm:$server_dir:ci" "$hit_log"; then
+    fail 'expected npm ci to be skipped when SERVER_NODE_MODULES_CACHE_HIT=true'
+  fi
+  if grep -Fq "npx:$server_dir:prisma generate" "$hit_log"; then
+    fail 'expected prisma generate to be skipped when SERVER_PRISMA_CACHE_HIT=true'
+  fi
+  assert_contains "$hit_log" "node:$server_dir:scripts/ensure-shared-module-resolution.mjs"
+
+  # Partial-hit scenario: only Prisma cache hit; npm ci still runs.
+  local partial_log="$TEST_TEMP_DIR/commands-partial.log"
+  : >"$partial_log"
+  printf '0' >"$npx_count_file"
+  write_mock_commands "$bin_dir" "$partial_log" "$npx_count_file"
+
+  PATH="$bin_dir:$PATH" \
+    SANCTUARY_SERVER_DIR="$server_dir" \
+    SANCTUARY_SERVER_SETUP_NO_LOCK=1 \
+    SANCTUARY_RETRY_DELAY_SECONDS=0 \
+    SERVER_NODE_MODULES_CACHE_HIT=false \
+    SERVER_PRISMA_CACHE_HIT=true \
+    bash "$SCRIPT"
+
+  assert_contains "$partial_log" "npm:$server_dir:ci --ignore-scripts"
+  if grep -Fq "npx:$server_dir:prisma generate" "$partial_log"; then
+    fail 'expected prisma generate to be skipped when SERVER_PRISMA_CACHE_HIT=true even on partial node_modules miss'
+  fi
+
   echo 'setup-server-dependencies regression checks passed'
 }
 
