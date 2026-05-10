@@ -1,6 +1,36 @@
+# Active Task: Post-Merge CI Aggregate Failure 2026-05-09
+
+Status: completed locally; delivery pending
+
+Goal: identify why the post-merge `main` CI aggregate is red after PR #382 and fix the workflow, tests, docs, or configuration without changing application runtime requirements.
+
+## Plan
+
+- [x] Start from `origin/main` after PR #382 merged.
+- [x] Query the post-merge commit status and action runs to isolate the failing workflow/job.
+- [x] Pull or inspect available job logs for the failing Architecture and Test Suite jobs.
+- [x] Separate product regressions from workflow graph, provider, or runner-infrastructure failures.
+- [x] Apply the smallest root-cause fix while preserving existing runtime architecture and CI intent.
+- [x] Run focused verification and `git diff --check`.
+- [x] Review corner cases for any workflow/test/docs change before delivery.
+
+## Review
+
+- Post-merge commit `97dc8f3e` reports aggregate CI failure. Full status context inspection shows `Build Dev Images / summary` succeeded; the failing contexts are `Architecture / Lint diagrams, regenerate graphs, build site`, `Test Suite / Full Frontend Coverage Merge`, `Test Suite / Full Frontend Tests`, and dependent `Test Suite / Full Test Summary`.
+- The available Forgejo API token can list runs/tasks but cannot read Actions web job logs or log downloads; those endpoints redirect to `/user/login`. Runner container logs show only task lifecycle/network cleanup, not step output.
+- Local architecture reproduction found stale generated graph output: `npm run arch:graphs && npm run arch:calls` adds the missing frontend dependency edge for the new hardware signing support helper.
+- Local frontend coverage reproduction found a real coverage-gate failure, not a Forgejo artifact issue: both shards passed and `npm run test:coverage:merge -- .vitest-reports` failed because new branches in `useUsbSigning.ts` and `signingSupport.ts` were uncovered.
+- Fixed the architecture lane by committing the generated frontend graph edge.
+- Fixed the coverage lane by adding supported-contract tests for account-level BIP48 multisig detection and blocked Ledger multisig signing without a device label.
+- Simplified two impossible fallback branches instead of fabricating invalid test fixtures: `getDeviceDisplayName` only accepts the required `Device`, and `requestHasMultisigPath` now follows the required `PSBTSignRequest.inputPaths` contract.
+- Corner-case review: no Bitcoin RPC/runtime dependency was added; tests stay within Electrum-only app behavior and typed hardware-wallet request contracts; Ledger/BitBox multisig USB still fails before connect/sign; Trezor/file/QR paths are unchanged; Forgejo API-token limits are documented in `tasks/lessons.md`.
+- Local verification passed: focused hardware-wallet tests, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run arch:lint`, full frontend coverage shards and merge with 100% statements/branches/functions/lines, `npm run quality:lizard`, and `git diff --check`.
+
+---
+
 # Active Task: Fund-Safety Hardware Unsupported Signing Product Blocks 2026-05-09
 
-Status: in progress
+Status: completed; PR #382 merged as `97dc8f3e`
 
 Goal: make documented unsupported hardware multisig rows executable product blocks so Ledger and BitBox cannot attempt unsupported P2WSH or P2SH-P2WSH USB signing before physical fixture capture is available.
 
@@ -16,7 +46,7 @@ Goal: make documented unsupported hardware multisig rows executable product bloc
 - [x] Update hardware validation/release/trust docs and task review with measured evidence only.
 - [x] Review corner cases: direct adapter calls, generic connected-device signing, missing wallet descriptor, BIP48 path with no xpub map, nested multisig, device names, and physical fixture deferral.
 - [x] Run focused hook/adapter/helper tests, app/test typechecks as needed, touched-file lizard, and `git diff --check`.
-- [ ] Deliver through PR and merge if CI is green.
+- [x] Deliver through PR and merge if CI is green.
 
 ## Review
 
@@ -28,6 +58,7 @@ Goal: make documented unsupported hardware multisig rows executable product bloc
 - Loop review found and fixed an error-mapping corner case: the Ledger product-block text contains "blocked", which includes "locked"; the product-block check now runs before generic locked-device mapping.
 - Updated hardware validation, release gates, trust verification, and the fund-safety plan with the executable unsupported-row block. Physical signed artifacts remain pending.
 - Local verification passed: focused signing-support/hook/Ledger/BitBox tests, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, `npm run quality:lizard`, docs link/Mermaid tests, docs build, and `git diff --check`.
+- Delivery passed: PR #382 merged with squash commit `97dc8f3e`. Its target-branch push aggregate is red because Architecture and Test Suite lanes failed; that investigation is tracked in the active CI task above.
 
 ---
 

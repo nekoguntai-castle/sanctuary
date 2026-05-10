@@ -108,8 +108,8 @@ function getUsbSigningDeviceError(device: Device, hwType: HardwareWalletType): s
   return null;
 }
 
-function getDeviceDisplayName(device: Device | null | undefined): string {
-  return device?.label || device?.type || 'This device';
+function getDeviceDisplayName(device: Device): string {
+  return device.label || device.type;
 }
 
 function getHardwareWalletDeviceDisplayName(device: UseHardwareWalletReturn['device']): string {

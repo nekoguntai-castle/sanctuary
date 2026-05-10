@@ -251,6 +251,31 @@ describe('useUsbSigning', () => {
     expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
   });
 
+  it('signWithDevice uses device type when a blocked multisig signer has no label', async () => {
+    const deps = createDeps({
+      wallet: {
+        id: 'wallet-1',
+        type: 'multi_sig',
+        descriptor: descriptorWithXpub,
+      } as any,
+    });
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.signWithDevice({
+        id: 'ledger-1',
+        type: 'Ledger Nano X',
+      } as any);
+    });
+
+    expect(ok).toBe(false);
+    expect(deps.setError).toHaveBeenCalledWith(expect.stringContaining(
+      'Ledger Nano X multisig USB signing is blocked in this release.'
+    ));
+    expect(mocks.hardwareWallet.connect).not.toHaveBeenCalled();
+  });
+
   it('signWithDevice accepts rawTx-only result and tolerates draft persistence failures', async () => {
     mocks.hardwareWallet.signPSBT.mockResolvedValueOnce({ rawTx: 'rawtx-from-device' });
     mocks.updateDraft.mockRejectedValueOnce(new Error('persist failed'));

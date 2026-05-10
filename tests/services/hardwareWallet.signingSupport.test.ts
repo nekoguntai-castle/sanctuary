@@ -37,6 +37,12 @@ describe('hardware wallet signing support guards', () => {
     expect(isMultisigSigningRequest({
       psbt: 'psbt',
       inputPaths: [],
+      accountPath: "m/48'/0'/0'/2'",
+    })).toBe(true);
+
+    expect(isMultisigSigningRequest({
+      psbt: 'psbt',
+      inputPaths: [],
     }, {
       data: {
         inputs: [{ bip32Derivation: [{ path: "m/48'/1'/0'/1'/0/5" }] }],

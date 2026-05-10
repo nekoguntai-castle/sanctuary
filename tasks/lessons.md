@@ -15,6 +15,19 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Update `tasks/todo.md` immediately when a benchmark-inspired plan conflicts with the intended architecture.
 - Say clearly when an Electrum-only check is weaker than Core mempool policy simulation.
 
+## Do Not Assume Forgejo API Tokens Can Read Step Logs
+
+**Rule:** Treat Forgejo API tokens as run/task metadata access unless the local Swagger/API proves step-log endpoints exist.
+
+**Why:** The user clarified only API tokens are available, while runners are registered to the Forgejo site itself. In this Forgejo instance, API auth can list Actions runs and tasks but web job log/download endpoints redirect to login, and runner registration does not expose stored step stdout.
+
+**How to apply:**
+
+- Query `swagger.v1.json` for log/artifact endpoints before asking for a broader token.
+- Prefer repo-owned failure artifacts for hard-to-debug CI lanes.
+- Reproduce failing commands locally when API logs are unavailable.
+- Use runner container logs only for lifecycle evidence, not step-output root cause.
+
 ## Keep Physical Wallet Evidence Last Unless Explicitly Prioritized
 
 **Rule:** After the hardware evidence intake schema exists, treat physical device capture as the final fund-safety slice unless the user explicitly pulls it forward.
