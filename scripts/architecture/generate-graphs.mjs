@@ -151,13 +151,59 @@ async function getCruiseOptions(pkg, extractOptions) {
   };
 }
 
+// Stabilize edge ordering: dependency-cruiser's Mermaid emitter produces
+// edges in a Map-iteration order that's not deterministic across Node
+// versions / fs orderings. Sort consecutive `A-->B` lines within each
+// source-node group to give a stable diff.
+export function stabilizeMermaidEdges(mermaid) {
+  const lines = mermaid.split('\n');
+  const edgeRe = /^(\s*)([\w-]+)-->([\w-]+)\s*$/;
+  const out = [];
+  let runStart = -1;
+  let runSource = null;
+  const flush = (end) => {
+    if (runStart < 0 || end - runStart <= 1) {
+      runStart = -1;
+      runSource = null;
+      return;
+    }
+    const block = out.slice(runStart, end).sort();
+    for (let i = 0; i < block.length; i++) out[runStart + i] = block[i];
+    runStart = -1;
+    runSource = null;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const m = edgeRe.exec(line);
+    if (m) {
+      const source = m[2];
+      if (source !== runSource) {
+        flush(out.length);
+        runSource = source;
+        runStart = out.length;
+      }
+      out.push(line);
+    } else {
+      flush(out.length);
+      out.push(line);
+    }
+  }
+  flush(out.length);
+  return out.join('\n');
+}
+
 async function cruiseMermaid(pkg, dependencyCruiser) {
+  // Pre-expand + sort the file list deterministically; dependency-cruiser
+  // assigns node IDs in input order, so passing the original glob patterns
+  // (which `cruise()` re-expands via fast-glob in a non-deterministic order
+  // on some filesystems) produces different graphs across environments.
+  // Passing the sorted file list makes the output reproducible.
   const files = await expandPackageGlobs(pkg);
   const options = await getCruiseOptions(pkg, dependencyCruiser.extractOptions);
-  const result = await dependencyCruiser.cruise(pkg.globs, options);
+  const result = await dependencyCruiser.cruise(files, options);
   const mermaid = String(result.output ?? '');
   assertMermaidGraph(pkg, mermaid, files.length);
-  return mermaid;
+  return stabilizeMermaidEdges(mermaid);
 }
 
 export function wrap(pkg, mermaid) {

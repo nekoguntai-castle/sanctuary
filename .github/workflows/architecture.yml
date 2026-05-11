@@ -117,9 +117,31 @@ jobs:
               cd "$ARCH_WORKDIR"
               if ! git diff --exit-code -- docs/architecture/generated; then
                 echo "::error::Generated architecture graphs are stale. Run '\''npm run arch:graphs && npm run arch:calls'\'' locally and commit the result."
+                echo "--- BEGIN DIFF ---"
+                git diff -- docs/architecture/generated/ | head -300
+                echo "--- END DIFF ---"
                 exit 1
               fi
             '
+
+      - name: Publish stale-graph diff to LAN sink on failure
+        if: failure() && env.SANCTUARY_CI_LOG_SINK_URL != ''
+        run: |
+          set -euo pipefail
+          cd "$ARCH_WORKDIR"
+          log=".tmp/ci-diagnostics/architecture/stale-generated-graphs.log"
+          [ -f "$log" ] || exit 0
+          run_id="${GITHUB_RUN_ID:-unknown}"
+          target="${SANCTUARY_CI_LOG_SINK_URL%/}/runs/${run_id}/architecture/stale-generated-graphs.log"
+          auth_tmp="$(mktemp)"
+          trap 'rm -f "$auth_tmp"' EXIT
+          if [ -n "${SANCTUARY_CI_LOG_SINK_TOKEN:-}" ]; then
+            printf 'Authorization: Bearer %s\n' "$SANCTUARY_CI_LOG_SINK_TOKEN" > "$auth_tmp"
+            curl -fsS -X PUT --data-binary @"$log" -H @"$auth_tmp" "$target" || true
+          else
+            curl -fsS -X PUT --data-binary @"$log" "$target" || true
+          fi
+          echo "Published $log to $target"
 
       - name: Typecheck Docusaurus site
         env:
