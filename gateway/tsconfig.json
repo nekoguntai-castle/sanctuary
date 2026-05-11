@@ -14,8 +14,12 @@
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "baseUrl": "./",
+    "paths": {
+      "@sanctuary/shared/*": ["../shared/dist/*"]
+    }
   },
-  "include": ["src/**/*", "../shared/**/*"],
+  "include": ["src/**/*", "../global.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

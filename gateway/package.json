@@ -32,7 +32,8 @@
     "http-proxy-middleware": "^3.0.5",
     "jsonwebtoken": "^9.0.2",
     "ws": "^8.18.0",
-    "zod": "^4.3.4"
+    "zod": "^4.3.4",
+    "@sanctuary/shared": "*"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
