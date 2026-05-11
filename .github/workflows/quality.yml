@@ -411,6 +411,7 @@ jobs:
           bash -n scripts/ci/redactor.sh
           bash -n scripts/ci/run-with-log.sh
           bash -n scripts/ci/write-preflight-diagnostics.sh
+          bash -n scripts/ci/write-empty-diagnostic-breadcrumb.sh
           bash -n scripts/ci/write-diagnostic-summary.sh
           bash -n scripts/verify-addresses/verify-repeatable.sh
           # Test files — bash -n syntax sweep.
@@ -443,6 +444,7 @@ jobs:
           bash -n tests/ci/redactor-fixture.test.sh
           bash -n tests/ci/run-with-log.test.sh
           bash -n tests/ci/write-preflight-diagnostics.test.sh
+          bash -n tests/ci/write-empty-diagnostic-breadcrumb.test.sh
           bash -n tests/ci/write-diagnostic-summary.test.sh
           bash -n tests/ci/check-workflow-composition.test.sh
           # Node CI helper tests.
@@ -489,6 +491,7 @@ jobs:
           bash tests/ci/redactor-fixture.test.sh
           bash tests/ci/run-with-log.test.sh
           bash tests/ci/write-preflight-diagnostics.test.sh
+          bash tests/ci/write-empty-diagnostic-breadcrumb.test.sh
           bash tests/ci/write-diagnostic-summary.test.sh
           bash tests/ci/check-workflow-composition.test.sh
 

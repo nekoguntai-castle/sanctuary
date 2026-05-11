@@ -266,6 +266,10 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/time-command.sh "backend unit coverage shard ${{ matrix.shard }}"' \
   'scripts/ci/backend-coverage-shard.sh ${{ matrix.shard }} 2' \
+  "Upload backend coverage shard blob" \
+  "Write backend unit coverage shard failure breadcrumb" \
+  'scripts/ci/write-empty-diagnostic-breadcrumb.sh' \
+  '"backend-unit-coverage-shard-${{ matrix.shard }}-failure.log"' \
   "Write backend unit coverage shard diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Unit Coverage shard ${{ matrix.shard }}"' \
   "Upload backend unit coverage shard diagnostics" \

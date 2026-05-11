@@ -1211,6 +1211,15 @@ jobs:
           path: server/.vitest-reports/
           retention-days: 14
 
+      - name: Write backend unit coverage shard failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "backend-unit-coverage-shard-${{ matrix.shard }}-failure.log"
+          "Backend Unit Coverage shard ${{ matrix.shard }}"
+
       - name: Write backend unit coverage shard diagnostic summary
         if: always()
         continue-on-error: true

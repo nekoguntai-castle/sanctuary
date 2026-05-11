@@ -1,3 +1,28 @@
+# Active Task: Forgejo Runner Native Failure Investigation 2026-05-11
+
+Status: serialized-capacity trial passed.
+
+Goal: determine whether recent CI failures are runner capacity/native process instability, then only if that remains the best explanation add diagnostics-only hardening for missing backend coverage shard logs.
+
+## Plan
+
+- [x] Inspect runner host capacity, OOM/kernel evidence, Docker/DIND health, disk pressure, runner config, and current Forgejo job concurrency.
+- [x] Compare host findings with recent failure signatures from the LAN log sink and Forgejo task API.
+- [x] If the failures still point to native runner instability, add diagnostics-only coverage-shard publishing/capture so future failures leave useful logs.
+- [x] Verify with focused shell tests or local workflow-shaped command checks.
+
+## Review
+
+- Host capacity did not show a classic exhaustion signature: memory, swap, root disk, `/tmp`, CPU load, DIND health, and kernel OOM/segfault logs looked normal during inspection.
+- The failure pattern still points at runner/native process instability rather than a deterministic repo test failure: remote logs showed repeat Node/tsc/Vitest/Stryker segfaults and fork-worker deaths, while the current backend coverage shard passed locally.
+- Runner state had drift: cancelled DIND task containers from older runs were still running, and Forgejo reported a current running frontend coverage task with no matching DIND job container. No destructive runner cleanup was performed.
+- Added a backend coverage shard failure breadcrumb so failures outside a failed `run-with-log.sh` sidecar still produce a publishable diagnostic log before `write-diagnostic-summary.sh` runs.
+- Verification passed: `bash -n scripts/ci/write-empty-diagnostic-breadcrumb.sh`, `bash -n tests/ci/write-empty-diagnostic-breadcrumb.test.sh`, `bash tests/ci/write-empty-diagnostic-breadcrumb.test.sh`, `bash tests/ci/write-diagnostic-summary.test.sh`, `bash tests/ci/check-workflow-composition.test.sh`, and `git diff --check`.
+- Fresh run `2416` on commit `c273682a` failed in `frontend-typecheck-test-typecheck` during `npm ci`: `@sanctuary/shared` ran `tsc -p tsconfig.json` and segfaulted with exit 139 on all three retry attempts. Local `npm --workspace shared run build` passed.
+- Capacity trial result: the live runner config is `/opt/forgejo-runner/data/runner-config.yml`, not the stale generated file under `~/.local/state/forgejo-runner/`. The live config is now `runner.capacity: 1`, the runner was gracefully restarted, and retrigger run `2419` passed for `test.yml`; `quality.yml` run `2418` and `docker-build.yml` run `2417` also passed.
+
+---
+
 # Active Task: CI Optimization Implementation 2026-05-10
 
 Status: refined; ready to execute Phase 1.

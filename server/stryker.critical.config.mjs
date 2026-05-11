@@ -41,8 +41,16 @@ const ENSURE_SANDBOX_RUNTIME_LINKS = [
   symlinkSandboxPath(SHARED_PATH, '../shared'),
 ].join(' && ');
 
+// PR #415 saw repeated `[vitest-pool]: Timeout terminating forks worker for
+// test files broadcastContracts.test.ts` errors in dry-run. Switch the
+// Stryker test command from vitest's default forks pool to threads pool
+// — the threads pool doesn't spawn child processes that can hang at
+// shutdown, sidestepping the entire fork-cleanup-timeout failure class.
+// `--no-file-parallelism` keeps the test set deterministic (one test
+// file at a time inside the single worker), matching how the existing
+// test:run:ci script is wired.
 const CRITICAL_TEST_COMMAND = [
-  `${ENSURE_SANDBOX_RUNTIME_LINKS} && npm run test:run --`,
+  `${ENSURE_SANDBOX_RUNTIME_LINKS} && npm run test:run -- --pool=threads --no-file-parallelism`,
   'tests/unit/services/bitcoin/addressDerivation.verified.test.ts',
   'tests/unit/services/bitcoin/psbt.verified.test.ts',
   'tests/unit/services/bitcoin/psbtValidation.test.ts',
