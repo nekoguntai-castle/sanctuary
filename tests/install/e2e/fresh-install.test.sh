@@ -170,6 +170,10 @@ setup() {
 teardown() {
     log_info "Cleaning up test environment..."
 
+    if [ "${TESTS_FAILED:-0}" -gt 0 ]; then
+        capture_compose_failure_diagnostics "$PROJECT_ROOT"
+    fi
+
     if [ "$KEEP_CONTAINERS" = "false" ]; then
         cleanup_containers "$PROJECT_ROOT" 2>/dev/null || true
     else

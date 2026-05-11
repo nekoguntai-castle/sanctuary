@@ -1,6 +1,6 @@
 # Active Task: Fresh Install Runtime/Migration Hotfix 2026-05-11
 
-Status: in progress.
+Status: hotfix merged; post-merge install lane needs follow-up triage.
 
 Goal: restore the post-merge `install-test.yml` fresh-install path on `main` after #416 exposed deterministic migration and backend runtime failures.
 
@@ -11,7 +11,10 @@ Goal: restore the post-merge `install-test.yml` fresh-install path on `main` aft
 - [x] Fix fresh database detection so legacy migrations are not resolved on empty databases.
 - [x] Fix the backend runtime image so server workspace-local production dependencies are available at runtime.
 - [x] Verify with shell syntax checks, backend image runtime smoke tests, and focused fresh-install coverage.
-- [ ] Open/merge the hotfix PR and confirm `main` install-test is green before starting CI optimization Phase 1.
+- [x] Open/merge the hotfix PR.
+- [x] Reduce the x300 runner live capacity to 1 before deeper runner surgery.
+- [ ] Confirm `main` install-test is green before starting CI optimization Phase 1.
+- [ ] Triage the fresh capacity-1 install-test startup health failure.
 
 ## Review
 
@@ -19,6 +22,13 @@ Goal: restore the post-merge `install-test.yml` fresh-install path on `main` aft
 - `docker build -f server/Dockerfile -t sanctuary-backend:fresh-install-fix .` passed.
 - Runtime smoke passed in the built image: `bitcoinjs-lib.initEccLib` accepts the resolved `tiny-secp256k1@2.2.4`, Prisma generated client imports, and `npx prisma --version` works.
 - Focused fresh-install migration coverage passed against a brand-new Postgres container using the built image: the script detected a fresh database, applied all migrations from `20251210175307_initial_setup` through `manual_fix_txid_unique`, and completed the seed.
+- Hotfix PR #417 was squash-merged to `main` as `e044cc7a`.
+- The x300 live runner config was changed from `runner.capacity: 8` to `runner.capacity: 1` and the runner process was restarted without restarting DIND.
+- Fresh capacity-1 `test.yml` run `2458` succeeded; the native `exit 139` / corrupt generated Prisma signatures did not recur in that run.
+- Fresh capacity-1 `install-test.yml` run `2457` failed in `Fresh Install E2E Test` after migration success. The logs no longer show the previous fresh-database migration skip, `P3018`, ECC-library crash, corrupt Prisma JSON, or `exit 139` signature. The observed failure is backend health timing out while the backend is still starting Electrum/price/startup services; frontend and gateway then fail as downstream dependencies.
+- The current install failure diagnostics are insufficient because the post-failure container log step runs after the test cleanup, leaving only the truncated `docker logs --tail 50 | head -30` snippets embedded in `fresh-install.log`.
+- Follow-up diagnostics patch in progress: fresh-install and install-script E2E teardown now capture compose state, container label listing, stats, inspect health logs, and per-service log tails before cleanup when tests fail.
+- Verification for the diagnostics patch passed: `bash -n tests/install/utils/helpers.sh tests/install/e2e/fresh-install.test.sh tests/install/e2e/install-script.test.sh`, `git diff --check`, and a no-container helper smoke with `COMPOSE_PROJECT_NAME=sanctuary-no-such`.
 
 ---
 

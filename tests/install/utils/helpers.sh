@@ -134,6 +134,76 @@ compose_logs() {
     fi
 }
 
+capture_compose_failure_diagnostics() {
+    local project_dir="${1:-.}"
+    local lines="${2:-${SANCTUARY_INSTALL_DIAGNOSTIC_LOG_LINES:-200}}"
+    local project="${COMPOSE_PROJECT_NAME:-sanctuary}"
+    local services=(postgres redis worker backend migrate frontend gateway ai docker-proxy mcp)
+    local state_template
+    local health_template
+
+    state_template='name={{.Name}} status={{.State.Status}} running={{.State.Running}} exitCode={{.State.ExitCode}} oomKilled={{.State.OOMKilled}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} startedAt={{.State.StartedAt}} finishedAt={{.State.FinishedAt}}'
+    health_template='{{if .State.Health}}{{range .State.Health.Log}}start={{.Start}} end={{.End}} exit={{.ExitCode}} output={{printf "%q" .Output}}{{println}}{{end}}{{else}}no healthcheck{{end}}'
+
+    log_warning "Capturing pre-cleanup Docker diagnostics for project '$project'"
+
+    (
+        set +e
+
+        echo ""
+        echo "=== Failure Diagnostic Context ==="
+        echo "project=$project"
+        echo "project_dir=$project_dir"
+        date -u '+captured_at=%Y-%m-%dT%H:%M:%SZ'
+
+        echo ""
+        echo "=== Docker Compose PS ==="
+        run_project_compose "$project_dir" ps -a 2>&1 || true
+
+        echo ""
+        echo "=== Docker Containers By Compose Label ==="
+        docker ps -a \
+            --filter "label=com.docker.compose.project=$project" \
+            --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>&1 || true
+
+        echo ""
+        echo "=== Docker Stats Snapshot ==="
+        local container_ids=()
+        mapfile -t container_ids < <(docker ps --filter "label=com.docker.compose.project=$project" -q 2>/dev/null || true)
+        if [ "${#container_ids[@]}" -gt 0 ]; then
+            docker stats --no-stream "${container_ids[@]}" 2>&1 || true
+        else
+            echo "no running containers"
+        fi
+
+        for service in "${services[@]}"; do
+            local container
+            container=$(get_container_name "$service")
+
+            echo ""
+            echo "=== Inspect: $service ==="
+            if [ -z "$container" ]; then
+                echo "container not found"
+                continue
+            fi
+
+            docker inspect -f "$state_template" "$container" 2>&1 || true
+
+            echo ""
+            echo "=== Health Log: $service ==="
+            docker inspect -f "$health_template" "$container" 2>&1 || true
+
+            echo ""
+            echo "=== Logs: $service (tail $lines) ==="
+            docker logs --tail "$lines" "$container" 2>&1 || true
+        done
+
+        echo ""
+        echo "=== Docker Compose Logs Tail ==="
+        run_project_compose "$project_dir" logs --tail "$lines" 2>&1 || true
+    ) || true
+}
+
 # Service name mappings (old hardcoded -> service name)
 # sanctuary-db -> postgres
 # sanctuary-backend -> backend
