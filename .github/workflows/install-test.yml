@@ -289,6 +289,11 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+      - name: Publish install logs to LAN sink on failure
+        if: failure() && env.SANCTUARY_CI_LOG_SINK_URL != ''
+        run: |
+          bash scripts/ci/publish-failed-logs.sh "$JOB_LOG_DIR" fresh-install-test || true
+
       - name: Show container logs on failure
         if: failure() && github.event_name != 'pull_request'
         run: |
