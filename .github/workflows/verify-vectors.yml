@@ -92,7 +92,6 @@ jobs:
             ${{ github.workspace }}/scripts/ci/retry-command.sh "vector root npm ci" npm ci --ignore-scripts
             ${{ github.workspace }}/scripts/ci/retry-command.sh "vector shared workspace build" npm --workspace shared run build
             cd server
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "vector shared schema link" node scripts/ensure-shared-module-resolution.mjs
             ${{ github.workspace }}/scripts/ci/retry-command.sh "vector prisma generate" npx prisma generate
           '
 
@@ -265,7 +264,6 @@ jobs:
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector root npm ci" npm ci --ignore-scripts
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared workspace build" npm --workspace shared run build
             cd server
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared schema link" node scripts/ensure-shared-module-resolution.mjs
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector prisma generate" npx prisma generate
           '
 
@@ -318,7 +316,6 @@ jobs:
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector root npm ci" npm ci --ignore-scripts
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared workspace build" npm --workspace shared run build
             cd server
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared schema link" node scripts/ensure-shared-module-resolution.mjs
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector prisma generate" npx prisma generate
             npm run test:run:ci -- tests/unit/services/bitcoin/psbt.verified.test.ts tests/unit/services/bitcoin/psbt.signed-vectors.test.ts
           '

@@ -44,10 +44,7 @@ MOCK
   cat >"$bin_dir/node" <<MOCK
 #!/usr/bin/env bash
 printf 'node:%s:%s\\n' "\$PWD" "\$*" >> "$log_file"
-case " \$* " in
-  *" scripts/ensure-shared-module-resolution.mjs "*) exit 0 ;;
-  *) exit 65 ;;
-esac
+exit 0
 MOCK
 
   cat >"$bin_dir/npx" <<MOCK
@@ -74,7 +71,6 @@ main() {
   local npx_count_file="$TEST_TEMP_DIR/npx-count"
   mkdir -p "$server_dir/scripts" "$bin_dir"
   touch "$server_dir/package-lock.json" "$server_dir/package.json"
-  touch "$server_dir/scripts/ensure-shared-module-resolution.mjs"
   : >"$log_file"
   printf '0' >"$npx_count_file"
   write_mock_commands "$bin_dir" "$log_file" "$npx_count_file"
@@ -91,10 +87,13 @@ main() {
     bash "$SCRIPT"
 
   # Phase B: install at root for workspace hoisting; build shared after.
+  # Phase H: ensure-shared-module-resolution.mjs invocation removed.
   assert_contains "$log_file" "npm:$root_dir:ci --ignore-scripts"
   assert_contains "$log_file" "npm:$root_dir:--workspace shared run build"
-  assert_contains "$log_file" "node:$server_dir:scripts/ensure-shared-module-resolution.mjs"
   assert_contains "$log_file" "npx:$server_dir:prisma generate"
+  if grep -Fq "ensure-shared-module-resolution" "$log_file"; then
+    fail 'ensure-shared-module-resolution.mjs invocation should be removed (Phase H)'
+  fi
   [ "$(cat "$npx_count_file")" = '2' ] || fail 'expected prisma generate to retry once'
 
   # Cache-hit scenario: both env vars set to 'true' should skip npm ci AND
@@ -119,7 +118,6 @@ main() {
   if grep -Fq "npx:$server_dir:prisma generate" "$hit_log"; then
     fail 'expected prisma generate to be skipped when SERVER_PRISMA_CACHE_HIT=true'
   fi
-  assert_contains "$hit_log" "node:$server_dir:scripts/ensure-shared-module-resolution.mjs"
   assert_contains "$hit_log" "npm:$root_dir:--workspace shared run build"
 
   # Partial-hit scenario: only Prisma cache hit; npm ci still runs.

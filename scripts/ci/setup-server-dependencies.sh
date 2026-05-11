@@ -38,11 +38,6 @@ run_setup() {
 
   cd "$SERVER_DIR"
 
-  # Always re-link shared module resolution; it's a fast idempotent symlink
-  # operation that depends on the runner workspace, not on cache state.
-  "$ROOT_DIR/scripts/ci/time-command.sh" "server shared schema link" \
-    node scripts/ensure-shared-module-resolution.mjs
-
   # Skip `prisma generate` when the Prisma cache restored an exact match for
   # the schema + lockfile. A schema change invalidates the key and falls back
   # to a fresh generate.
