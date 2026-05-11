@@ -451,6 +451,8 @@ jobs:
           bash tests/ci/portability.test.sh
           bash tests/ci/check-provider-leaks.test.sh
           bash scripts/ci/check-provider-leaks.sh
+          # Phase F3: ai-proxy network-isolation guard.
+          bash scripts/ci/check-ai-proxy-shared-isolation.sh
           # Existing CI helper tests.
           bash tests/ci/playwright-timing-reporter.test.sh
           bash tests/ci/classify-test-changes.test.sh

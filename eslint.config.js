@@ -58,6 +58,26 @@ export default [
         'ts-nocheck': true,
         minimumDescriptionLength: 3,
       }],
+      // Phase F1: relative-path shared/ imports are forbidden in production
+      // source. Use the workspace package: from '@sanctuary/shared/...'.
+      // Patterns scope only relative paths so the new workspace specifier
+      // remains allowed (depth-7 covers the deepest test paths in the repo).
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            group: [
+              '../shared/**',
+              '../../shared/**',
+              '../../../shared/**',
+              '../../../../shared/**',
+              '../../../../../shared/**',
+              '../../../../../../shared/**',
+              '../../../../../../../shared/**',
+            ],
+            message: "Import shared via the workspace package: from '@sanctuary/shared/...'.",
+          },
+        ],
+      }],
       'no-restricted-syntax': ['error',
         {
           selector: "CallExpression[callee.object.name='console'][callee.property.name='log']",
@@ -101,6 +121,40 @@ export default [
     ],
     rules: {
       'no-restricted-syntax': 'off',
+    },
+  },
+  {
+    // shared/ source files import from each other via relative paths inside
+    // the package (e.g. shared/utils/bitcoin.ts -> ../constants/bitcoin).
+    // These intra-package relative imports are correct, not violations of
+    // the cross-package "use the workspace specifier" rule.
+    files: ['shared/**/*.ts'],
+    rules: {
+      'no-restricted-imports': 'off',
+    },
+  },
+  {
+    // Phase F2: ai-proxy is intentionally network-isolated. It must NOT
+    // import from shared/ — neither via the workspace specifier nor via
+    // relative paths. Re-implements equivalents in ai-proxy/src/utils.ts.
+    files: ['ai-proxy/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            group: [
+              '@sanctuary/shared/**',
+              '../shared/**',
+              '../../shared/**',
+              '../../../shared/**',
+              '../../../../shared/**',
+            ],
+            message:
+              'ai-proxy is intentionally network-isolated; do not import from shared/. ' +
+              'See shared/utils/README.md.',
+          },
+        ],
+      }],
     },
   },
 ];
