@@ -68,8 +68,8 @@ jobs:
               cd "$ARCH_WORKDIR"
 
               # Phase B: root npm ci installs all workspaces (shared, server, gateway).
-              # Per-package npm ci is now redundant AND broken (workspace deps don't
-              # publish to the npm registry). website remains standalone.
+              # Per-package npm ci is redundant and broken because workspace deps
+              # do not publish to the npm registry. website remains standalone.
               scripts/ci/retry-command.sh "root npm ci" npm ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/root"
               scripts/ci/retry-command.sh "website npm ci" npm --prefix website ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/website"
             '
@@ -124,24 +124,43 @@ jobs:
               fi
             '
 
-      - name: Publish stale-graph diff to LAN sink on failure
+      - name: Publish stale-graph snapshot to LAN sink on failure
         if: failure() && env.SANCTUARY_CI_LOG_SINK_URL != ''
         run: |
           set -euo pipefail
           cd "$ARCH_WORKDIR"
-          log=".tmp/ci-diagnostics/architecture/stale-generated-graphs.log"
-          [ -f "$log" ] || exit 0
           run_id="${GITHUB_RUN_ID:-unknown}"
-          target="${SANCTUARY_CI_LOG_SINK_URL%/}/runs/${run_id}/architecture/stale-generated-graphs.log"
+          base="${SANCTUARY_CI_LOG_SINK_URL%/}/runs/${run_id}/architecture"
           auth_tmp="$(mktemp)"
           trap 'rm -f "$auth_tmp"' EXIT
           if [ -n "${SANCTUARY_CI_LOG_SINK_TOKEN:-}" ]; then
             printf 'Authorization: Bearer %s\n' "$SANCTUARY_CI_LOG_SINK_TOKEN" > "$auth_tmp"
-            curl -fsS -X PUT --data-binary @"$log" -H @"$auth_tmp" "$target" || true
+            CURL_AUTH=(-H @"$auth_tmp")
           else
-            curl -fsS -X PUT --data-binary @"$log" "$target" || true
+            CURL_AUTH=()
           fi
-          echo "Published $log to $target"
+          # Bundle every diagnostic file the run produced
+          for log in .tmp/ci-diagnostics/architecture/*.log; do
+            [ -f "$log" ] || continue
+            name=$(basename "$log")
+            curl -fsS -X PUT --data-binary @"$log" "${CURL_AUTH[@]}" "${base}/${name}" || true
+          done
+          # Full git diff + regenerated artifacts
+          git diff -- docs/architecture/generated > /tmp/full-diff.txt 2>&1 || true
+          curl -fsS -X PUT --data-binary @/tmp/full-diff.txt "${CURL_AUTH[@]}" "${base}/full-diff.txt" || true
+          if [ -f docs/architecture/generated/frontend.md ]; then
+            curl -fsS -X PUT --data-binary @docs/architecture/generated/frontend.md "${CURL_AUTH[@]}" "${base}/frontend.regenerated.md" || true
+          fi
+          if [ -f docs/architecture/generated/server.md ]; then
+            curl -fsS -X PUT --data-binary @docs/architecture/generated/server.md "${CURL_AUTH[@]}" "${base}/server.regenerated.md" || true
+          fi
+          if [ -f docs/architecture/generated/gateway.md ]; then
+            curl -fsS -X PUT --data-binary @docs/architecture/generated/gateway.md "${CURL_AUTH[@]}" "${base}/gateway.regenerated.md" || true
+          fi
+          # Workspace ls + env
+          { ls -la .tmp/ci-diagnostics/architecture/ 2>&1; echo "---"; node --version; npm --version; uname -a; pwd; } > /tmp/env.txt 2>&1
+          curl -fsS -X PUT --data-binary @/tmp/env.txt "${CURL_AUTH[@]}" "${base}/env.txt" || true
+          echo "Published architecture diagnostics to ${base}/"
 
       - name: Typecheck Docusaurus site
         env:
