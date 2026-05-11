@@ -82,6 +82,28 @@ COPY --from=builder /repo/server/scripts ./scripts
 #   /app/node_modules/@sanctuary/shared/package.json
 #   /app/node_modules/@sanctuary/shared/dist/utils/errors.js
 COPY --from=builder /repo/node_modules ./node_modules
+# Some server dependencies are workspace-local when the root app needs an
+# incompatible version. Overlay them so runtime resolution matches the server
+# workspace instead of falling back to the root package set.
+COPY --from=builder /repo/server/node_modules /tmp/server-node_modules
+RUN if [ -d /tmp/server-node_modules ]; then \
+      for package in /tmp/server-node_modules/*; do \
+        [ -e "$package" ] || continue; \
+        name="$(basename "$package")"; \
+        if [ "${name#@}" != "$name" ]; then \
+          mkdir -p "/app/node_modules/$name"; \
+          for scoped_package in "$package"/*; do \
+            [ -e "$scoped_package" ] || continue; \
+            scoped_name="$(basename "$scoped_package")"; \
+            rm -rf "/app/node_modules/$name/$scoped_name"; \
+          done; \
+        else \
+          rm -rf "/app/node_modules/$name"; \
+        fi; \
+      done; \
+      cp -a /tmp/server-node_modules/. /app/node_modules/; \
+      rm -rf /tmp/server-node_modules; \
+    fi
 RUN rm -rf /app/node_modules/@sanctuary/shared && \
     mkdir -p /app/node_modules/@sanctuary/shared
 COPY --from=builder /repo/shared/package.json /app/node_modules/@sanctuary/shared/package.json

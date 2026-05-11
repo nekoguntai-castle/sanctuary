@@ -5,8 +5,6 @@
 
 set -e
 
-echo "=== Sanctuary Database Migration ==="
-
 # List of migrations that existed before the restructure
 # These need to be marked as applied for existing databases
 LEGACY_MIGRATIONS="
@@ -19,64 +17,113 @@ LEGACY_MIGRATIONS="
 20251211180119_add_labels_system
 "
 
-# Check if this is an existing database (users table exists)
-echo "Checking database state..."
-TABLES_EXIST=$(npx prisma db execute --stdin <<EOF 2>/dev/null || echo "error"
-SELECT EXISTS (
-  SELECT FROM information_schema.tables
-  WHERE table_schema = 'public'
-  AND table_name = 'users'
-);
-EOF
-)
+query_boolean() {
+  sql="$1"
 
-# Check if _prisma_migrations table exists and has our migrations
-MIGRATIONS_TABLE_EXISTS=$(npx prisma db execute --stdin <<EOF 2>/dev/null || echo "error"
-SELECT EXISTS (
-  SELECT FROM information_schema.tables
-  WHERE table_schema = 'public'
-  AND table_name = '_prisma_migrations'
-);
-EOF
-)
+  node - "$sql" <<'NODE'
+const sql = process.argv[2];
+const { PrismaClient } = require('./dist/server/src/generated/prisma/client');
+const { PrismaPg } = require('@prisma/adapter-pg');
 
-# If tables exist but it's a legacy database, we need to resolve migrations
-if echo "$TABLES_EXIST" | grep -q "t" 2>/dev/null; then
-  echo "Existing database detected."
+async function main() {
+  const connectionString = process.env.DATABASE_URL || '';
 
-  # Check if the first legacy migration is already recorded
-  FIRST_MIGRATION_EXISTS=$(npx prisma db execute --stdin <<EOF 2>/dev/null || echo "false"
-SELECT EXISTS (
-  SELECT FROM _prisma_migrations
-  WHERE migration_name = '20251210175307_initial_setup'
-);
-EOF
-)
+  if (!connectionString) {
+    throw new Error('DATABASE_URL is required');
+  }
 
-  if echo "$FIRST_MIGRATION_EXISTS" | grep -q "f" 2>/dev/null; then
-    echo "Legacy database detected - resolving pre-existing migrations..."
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString }),
+  });
 
-    for migration in $LEGACY_MIGRATIONS; do
-      if [ -n "$migration" ]; then
-        echo "  Resolving: $migration"
-        npx prisma migrate resolve --applied "$migration" 2>/dev/null || true
-      fi
-    done
+  try {
+    const rows = await prisma.$queryRawUnsafe(sql);
+    const firstRow = rows && rows[0] ? rows[0] : {};
+    const value = Object.prototype.hasOwnProperty.call(firstRow, 'result')
+      ? firstRow.result
+      : Object.values(firstRow)[0];
 
-    echo "Legacy migrations resolved."
+    console.log(value === true || value === 't' || value === 1 || value === '1' ? 'true' : 'false');
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+main().catch((error) => {
+  console.error(error && error.message ? error.message : error);
+  process.exit(1);
+});
+NODE
+}
+
+table_exists() {
+  table_name="$1"
+
+  query_boolean "SELECT EXISTS (
+    SELECT FROM information_schema.tables
+    WHERE table_schema = 'public'
+    AND table_name = '${table_name}'
+  ) AS result"
+}
+
+migration_recorded() {
+  migration_name="$1"
+
+  query_boolean "SELECT EXISTS (
+    SELECT FROM _prisma_migrations
+    WHERE migration_name = '${migration_name}'
+  ) AS result"
+}
+
+resolve_legacy_migrations() {
+  echo "Legacy database detected - resolving pre-existing migrations..."
+
+  for migration in $LEGACY_MIGRATIONS; do
+    if [ -n "$migration" ]; then
+      echo "  Resolving: $migration"
+      npx prisma migrate resolve --applied "$migration" 2>/dev/null || true
+    fi
+  done
+
+  echo "Legacy migrations resolved."
+}
+
+main() {
+  echo "=== Sanctuary Database Migration ==="
+
+  # Check if this is an existing database (users table exists).
+  echo "Checking database state..."
+  TABLES_EXIST=$(table_exists users)
+  MIGRATIONS_TABLE_EXISTS=$(table_exists _prisma_migrations)
+
+  # If tables exist but it's a legacy database, we need to resolve migrations.
+  if [ "$TABLES_EXIST" = "true" ]; then
+    echo "Existing database detected."
+
+    if [ "$MIGRATIONS_TABLE_EXISTS" = "true" ]; then
+      FIRST_MIGRATION_EXISTS=$(migration_recorded 20251210175307_initial_setup)
+    else
+      FIRST_MIGRATION_EXISTS=false
+    fi
+
+    if [ "$FIRST_MIGRATION_EXISTS" = "false" ]; then
+      resolve_legacy_migrations
+    else
+      echo "Migrations already recorded."
+    fi
   else
-    echo "Migrations already recorded."
+    echo "Fresh database detected."
   fi
-else
-  echo "Fresh database detected."
-fi
 
-# Run migrations
-echo "Applying migrations..."
-npx prisma migrate deploy
+  # Run migrations.
+  echo "Applying migrations..."
+  npx prisma migrate deploy
 
-# Run seed (use compiled JS in production, bypasses prisma.config.ts which needs tsx)
-echo "Running database seed..."
-node dist/prisma/prisma/seed.js
+  # Run seed (use compiled JS in production, bypasses prisma.config.ts which needs tsx).
+  echo "Running database seed..."
+  node dist/prisma/prisma/seed.js
 
-echo "=== Migration Complete ==="
+  echo "=== Migration Complete ==="
+}
+
+main "$@"

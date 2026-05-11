@@ -1,6 +1,30 @@
+# Active Task: Fresh Install Runtime/Migration Hotfix 2026-05-11
+
+Status: in progress.
+
+Goal: restore the post-merge `install-test.yml` fresh-install path on `main` after #416 exposed deterministic migration and backend runtime failures.
+
+## Plan
+
+- [x] Classify the post-merge install failure using the HTTP sink logs.
+- [x] Confirm the failure is not explained by the local capacity-1 runner.
+- [x] Fix fresh database detection so legacy migrations are not resolved on empty databases.
+- [x] Fix the backend runtime image so server workspace-local production dependencies are available at runtime.
+- [x] Verify with shell syntax checks, backend image runtime smoke tests, and focused fresh-install coverage.
+- [ ] Open/merge the hotfix PR and confirm `main` install-test is green before starting CI optimization Phase 1.
+
+## Review
+
+- `bash -n server/scripts/migrate.sh`, `sh -n server/scripts/migrate.sh`, and `git diff --check` passed.
+- `docker build -f server/Dockerfile -t sanctuary-backend:fresh-install-fix .` passed.
+- Runtime smoke passed in the built image: `bitcoinjs-lib.initEccLib` accepts the resolved `tiny-secp256k1@2.2.4`, Prisma generated client imports, and `npx prisma --version` works.
+- Focused fresh-install migration coverage passed against a brand-new Postgres container using the built image: the script detected a fresh database, applied all migrations from `20251210175307_initial_setup` through `manual_fix_txid_unique`, and completed the seed.
+
+---
+
 # Active Task: CI HTTP Sink Visibility Follow-up 2026-05-11
 
-Status: implementation verified locally; PR pending CI.
+Status: merged in #416; post-merge install-test exposed a separate fresh-install failure now tracked above.
 
 Goal: replace the stale post-merge install-test signal with a fresh run, then wire the remaining shell-heavy workflows that lack Forgejo API log visibility into the HTTP sink diagnostic pattern.
 
