@@ -12,7 +12,7 @@ import {
   MobileRefreshTokenRequestSchema,
   MobileTwoFactorVerifyRequestSchema,
   MobileUserPreferencesRequestSchema,
-} from '../../../../shared/schemas/mobileApiRequests';
+} from '@sanctuary/shared/schemas/mobileApiRequests';
 
 // =============================================================================
 // Password Validation

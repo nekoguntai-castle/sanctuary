@@ -88,9 +88,9 @@ vi.mock("../../utils/logger", () => ({
   }),
 }));
 
-vi.mock("../../shared/utils/bitcoin", async (importOriginal) => {
+vi.mock("@sanctuary/shared/utils/bitcoin", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("../../shared/utils/bitcoin")>();
+    await importOriginal<typeof import("@sanctuary/shared/utils/bitcoin")>();
   return {
     ...actual,
     normalizeDerivationPath: (path: string) => path,

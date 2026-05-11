@@ -7,7 +7,7 @@
 import {
   MOBILE_DEVICE_ACCOUNT_PURPOSES,
   MOBILE_DEVICE_SCRIPT_TYPES,
-} from '../../../../../shared/schemas/mobileApiRequests';
+} from '@sanctuary/shared/schemas/mobileApiRequests';
 
 export const deviceSchemas = {
   DeviceModel: {

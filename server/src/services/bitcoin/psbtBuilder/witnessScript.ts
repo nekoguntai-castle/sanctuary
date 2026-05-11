@@ -8,7 +8,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 import bip32 from '../bip32';
 import { convertToStandardXpub, MultisigKeyInfo } from '../addressDerivation';
 import { createLogger } from '../../../utils/logger';
-import { extractChangeAndAddressIndex } from '../../../../../shared/utils/bitcoin';
+import { extractChangeAndAddressIndex } from '@sanctuary/shared/utils/bitcoin';
 
 const log = createLogger('BITCOIN:SVC_PSBT_WITNESS');
 

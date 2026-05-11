@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { PrioritizedRegistry, type RegistryDetectionResult } from '../../shared/utils/priorityRegistry';
+import { PrioritizedRegistry, type RegistryDetectionResult } from '@sanctuary/shared/utils/priorityRegistry';
 
 interface TestEntry {
   id: string;

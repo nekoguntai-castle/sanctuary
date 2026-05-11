@@ -4,7 +4,7 @@
  * Schema definitions for root-mounted internal gateway and AI container endpoints.
  */
 
-import { MOBILE_ACTIONS } from '../../../../../shared/schemas/mobileApiRequests';
+import { MOBILE_ACTIONS } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 const satsMetric = {
   type: 'integer',

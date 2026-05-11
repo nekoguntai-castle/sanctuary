@@ -4,7 +4,7 @@
  * Types and utilities for comparing incoming device accounts
  * against existing accounts to detect new, matching, and conflicting entries.
  */
-import { parseDerivationPath } from "../../../shared/utils/bitcoin";
+import { parseDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 
 /**
  * Account type for multi-account device registration

@@ -4,7 +4,7 @@
  * Schema definitions for wallet label routes exposed through the gateway.
  */
 
-import { MOBILE_API_REQUEST_LIMITS } from '../../../../../shared/schemas/mobileApiRequests';
+import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 export const labelSchemas = {
   Label: {

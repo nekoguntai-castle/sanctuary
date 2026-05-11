@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { exitAfterDelay, exitNow } from '../../shared/utils/processExit';
+import { exitAfterDelay, exitNow } from '@sanctuary/shared/utils/processExit';
 
 describe('processExit utility', () => {
   afterEach(() => {

@@ -76,8 +76,8 @@ import { requestContext } from './requestContext';
 import { safeError, redactObject } from './redact';
 
 // Import shared types from consolidated module
-import { LogLevel, LOG_LEVEL_MAP } from '../../../shared/types/logger';
-import type { Logger } from '../../../shared/types/logger';
+import { LogLevel, LOG_LEVEL_MAP } from '@sanctuary/shared/types/logger';
+import type { Logger } from '@sanctuary/shared/types/logger';
 
 // Re-export shared types for backward compatibility
 export { LogLevel };

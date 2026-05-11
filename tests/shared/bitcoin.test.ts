@@ -19,7 +19,7 @@ import {
   parseDerivationPath,
   SATS_PER_BTC,
   satsToBTC,
-} from "@shared/utils/bitcoin";
+} from "@sanctuary/shared/utils/bitcoin";
 import { describe, expect, it } from "vitest";
 
 describe("Shared Bitcoin Utilities", () => {

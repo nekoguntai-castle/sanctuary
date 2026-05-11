@@ -4,7 +4,7 @@
  * Parses and validates JSON import configurations and wallet export formats.
  */
 
-import { normalizeDerivationPath } from '../../../../../shared/utils/bitcoin';
+import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import { JsonImportConfigSchema, WalletExportDetectionSchema } from '../../import/schemas';
 import { validateParsedDescriptorDomain } from './domainValidation';
 import { detectNetwork } from './descriptorUtils';

@@ -7,7 +7,7 @@ export {
   MOBILE_DEVICE_ACCOUNT_PURPOSES,
   MOBILE_DEVICE_SCRIPT_TYPES,
   MOBILE_DRAFT_STATUS_VALUES,
-} from '../../../../shared/schemas/mobileApiRequests';
+} from '@sanctuary/shared/schemas/mobileApiRequests';
 export {
   TRANSFER_RESOURCE_TYPES,
   TRANSFER_ROLE_FILTER_VALUES,

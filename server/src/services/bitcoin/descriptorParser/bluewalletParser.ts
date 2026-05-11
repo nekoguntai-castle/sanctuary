@@ -4,7 +4,7 @@
  * Parses BlueWallet/Coldcard multisig text export format into standard ParsedDescriptor.
  */
 
-import { normalizeDerivationPath } from '../../../../../shared/utils/bitcoin';
+import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import { validateParsedDescriptorDomain } from './domainValidation';
 import { detectNetwork } from './descriptorUtils';
 import type { ParsedDevice, ParsedDescriptor, ScriptType, BlueWalletTextFormat } from './types';

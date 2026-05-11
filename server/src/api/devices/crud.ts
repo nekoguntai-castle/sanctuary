@@ -16,7 +16,7 @@ import { createLogger } from '../../utils/logger';
 import {
   MobileCreateDeviceRequestSchema,
   MobileUpdateDeviceRequestSchema,
-} from '../../../../shared/schemas/mobileApiRequests';
+} from '@sanctuary/shared/schemas/mobileApiRequests';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();

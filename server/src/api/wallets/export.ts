@@ -11,7 +11,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { exportFormatRegistry, type WalletExportData } from '../../services/export';
 import type { ScriptType, Network } from '../../services/bitcoin/descriptorParser';
-import { parseDerivationPath } from '../../../../shared/utils/bitcoin';
+import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 
 const router = Router();
 

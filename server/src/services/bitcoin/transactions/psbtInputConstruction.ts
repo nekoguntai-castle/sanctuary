@@ -1,7 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import bip32 from '../bip32';
 import { createLogger } from '../../../utils/logger';
-import { normalizeDerivationPath } from '../../../../../shared/utils/bitcoin';
+import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import {
   buildMultisigBip32Derivations,
   buildMultisigWitnessScript,

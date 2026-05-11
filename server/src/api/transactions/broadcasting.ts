@@ -29,7 +29,7 @@ import {
   type MobilePsbtBroadcastRequest,
   MobilePsbtBroadcastRequestSchema,
   MobileTransactionBroadcastRequestSchema,
-} from '../../../../shared/schemas/mobileApiRequests';
+} from '@sanctuary/shared/schemas/mobileApiRequests';
 import { parseTransactionRequestBody } from './requestValidation';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 import type {

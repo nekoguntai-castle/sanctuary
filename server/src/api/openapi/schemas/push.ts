@@ -4,7 +4,7 @@
  * Schema definitions for user-facing push device registration routes.
  */
 
-import { MOBILE_API_REQUEST_LIMITS } from '../../../../../shared/schemas/mobileApiRequests';
+import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 export const pushSchemas = {
   PushRegisterRequest: {

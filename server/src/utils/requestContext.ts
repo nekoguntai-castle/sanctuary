@@ -18,7 +18,7 @@
 import { AsyncLocalStorage } from 'async_hooks';
 
 // Import shared request utilities
-import { generateRequestId } from '../../../shared/utils/request';
+import { generateRequestId } from '@sanctuary/shared/utils/request';
 
 export interface RequestContextData {
   /** Unique request correlation ID for tracing */

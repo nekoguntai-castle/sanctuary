@@ -51,8 +51,8 @@
  */
 
 // Import shared types from consolidated module
-import { LogLevel, LOG_LEVEL_MAP, LOG_LEVEL_NAMES } from '@shared/types/logger';
-import type { Logger } from '@shared/types/logger';
+import { LogLevel, LOG_LEVEL_MAP, LOG_LEVEL_NAMES } from '@sanctuary/shared/types/logger';
+import type { Logger } from '@sanctuary/shared/types/logger';
 
 // Re-export for backward compatibility
 export { LogLevel };

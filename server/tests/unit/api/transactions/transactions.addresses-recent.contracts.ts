@@ -8,7 +8,7 @@ import {
 } from "../../../helpers/testUtils";
 import * as blockchain from "../../../../src/services/bitcoin/blockchain";
 import * as addressDerivation from "../../../../src/services/bitcoin/addressDerivation";
-import { parseAddressDerivationPath } from "../../../../../shared/utils/bitcoin";
+import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 
 export function registerAddressAndRecentTests(): void {
   describe("GET /wallets/:walletId/addresses", () => {

@@ -5,7 +5,7 @@ import {
   useUpdateWalletLabel,
   useWalletLabels,
 } from '../../hooks/queries/useWalletLabels';
-import { extractErrorMessage } from '../../shared/utils/errors';
+import { extractErrorMessage } from '@sanctuary/shared/utils/errors';
 import type { Label } from '../../types';
 import { createLogger } from '../../utils/logger';
 import { PRESET_COLORS } from './constants';

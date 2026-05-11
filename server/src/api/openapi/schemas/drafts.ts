@@ -4,7 +4,7 @@
  * Schema definitions for gateway-exposed draft transaction routes.
  */
 
-import { MOBILE_DRAFT_STATUS_VALUES } from '../../../../../shared/schemas/mobileApiRequests';
+import { MOBILE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 export const draftSchemas = {
   DraftOutput: {

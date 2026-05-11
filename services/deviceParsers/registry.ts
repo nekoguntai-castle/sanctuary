@@ -5,8 +5,8 @@
  * Parsers are checked in priority order (highest first) to detect formats.
  */
 
-import { PrioritizedRegistry } from '../../shared/utils/priorityRegistry';
-import { extractErrorMessage } from '../../shared/utils/errors';
+import { PrioritizedRegistry } from '@sanctuary/shared/utils/priorityRegistry';
+import { extractErrorMessage } from '@sanctuary/shared/utils/errors';
 import { createLogger } from '../../utils/logger';
 import type {
   DeviceParser,

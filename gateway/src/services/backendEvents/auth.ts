@@ -1,5 +1,5 @@
 import { config } from '../../config';
-import { generateGatewaySignature } from '../../../../shared/utils/gatewayAuth';
+import { generateGatewaySignature } from '@sanctuary/shared/utils/gatewayAuth';
 
 /**
  * Generate HMAC signature for gateway requests (SEC-002)

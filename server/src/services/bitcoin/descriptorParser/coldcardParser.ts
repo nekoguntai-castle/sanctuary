@@ -5,7 +5,7 @@
  * Supports both nested format (standard export) and flat format (generic multisig export).
  */
 
-import { normalizeDerivationPath } from '../../../../../shared/utils/bitcoin';
+import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import { ColdcardDetectionSchema } from '../../import/schemas';
 import { validateParsedDescriptorDomain } from './domainValidation';
 import { detectNetwork } from './descriptorUtils';

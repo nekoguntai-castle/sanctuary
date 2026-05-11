@@ -11,7 +11,7 @@ import { createLogger } from '../../../utils/logger';
 import {
   normalizeDerivationPath,
   extractChangeAndAddressIndex,
-} from '../../../../../shared/utils/bitcoin';
+} from '@sanctuary/shared/utils/bitcoin';
 import type { Bip32DerivationEntry } from './types';
 
 const log = createLogger('BITCOIN:SVC_PSBT_DERIV');

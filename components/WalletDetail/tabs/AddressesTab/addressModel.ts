@@ -1,5 +1,5 @@
 import type { Address } from "../../../../types";
-import { parseAddressDerivationPath } from "../../../../shared/utils/bitcoin";
+import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import type { AddressGroups } from "./types";
 
 /**

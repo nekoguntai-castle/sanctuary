@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { registerFatalProcessHandlers } from '../../shared/utils/fatalProcessHandlers';
+import { registerFatalProcessHandlers } from '@sanctuary/shared/utils/fatalProcessHandlers';
 
 function createHarness() {
   const handlers: Record<string, (...args: any[]) => void> = {};

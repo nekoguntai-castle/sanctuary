@@ -7,7 +7,7 @@ import {
   walletRepository,
 } from "../repositories";
 import { deriveAddressFromDescriptor } from "./bitcoin/addressDerivation";
-import { parseAddressDerivationPath } from "../../../shared/utils/bitcoin";
+import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import { isBitcoinNetwork, type BitcoinNetwork } from "./bitcoin/networks";
 
 type SupportedNetwork = BitcoinNetwork;

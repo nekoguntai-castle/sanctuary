@@ -65,7 +65,7 @@ import {
   type PrivacyGrade,
   type HealthStatus,
   type Quorum,
-} from "../shared/types/domain";
+} from "@sanctuary/shared/types/domain";
 
 import type {
   ApiErrorResponse,
@@ -80,7 +80,7 @@ import type {
   FeeEstimates,
   PriceSource,
   AggregatedPrice,
-} from "../shared/types/api";
+} from "@sanctuary/shared/types/api";
 
 export { WalletType };
 export type {

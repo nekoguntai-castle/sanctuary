@@ -4,7 +4,7 @@ import {
   createGatewaySignature,
   generateGatewaySignature,
   hashGatewayBody,
-} from '../../../../shared/utils/gatewayAuth';
+} from '@sanctuary/shared/utils/gatewayAuth';
 
 describe('shared gateway auth utilities', () => {
   it('treats null, undefined, and empty plain objects as an empty body', () => {

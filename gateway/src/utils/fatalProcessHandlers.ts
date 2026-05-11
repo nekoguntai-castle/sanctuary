@@ -1,1 +1,1 @@
-export * from '../../../shared/utils/fatalProcessHandlers';
+export * from '@sanctuary/shared/utils/fatalProcessHandlers';

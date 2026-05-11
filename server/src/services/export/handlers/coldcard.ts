@@ -22,7 +22,7 @@ import type {
   ExportResult,
 } from '../types';
 import { convertXpubToFormat } from '../../bitcoin/addressDerivation';
-import { normalizeDerivationPath } from '../../../../../shared/utils/bitcoin';
+import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 
 /**
  * Map internal script type to Coldcard format string

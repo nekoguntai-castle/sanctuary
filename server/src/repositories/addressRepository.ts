@@ -10,7 +10,7 @@ import { buildWalletAccessWhere } from "./accessControl";
 import {
   parseAddressDerivationPath,
   type DerivationAddressChain,
-} from "../../../shared/utils/bitcoin";
+} from "@sanctuary/shared/utils/bitcoin";
 
 const ADDRESS_CHAIN_SCAN_PAGE_SIZE = 200;
 

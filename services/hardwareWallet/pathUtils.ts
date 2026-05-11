@@ -9,7 +9,7 @@
 import {
   normalizeDerivationPath,
   parseDerivationPath,
-} from "../../shared/utils/bitcoin";
+} from "@sanctuary/shared/utils/bitcoin";
 
 export type ScriptType = "p2wpkh" | "p2sh-p2wpkh" | "p2pkh" | "p2tr";
 

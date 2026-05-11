@@ -5,9 +5,9 @@
 import { config } from '../config';
 
 // Import shared types from consolidated module
-import { LogLevel, LOG_LEVEL_MAP } from '../../../shared/types/logger';
-import type { Logger } from '../../../shared/types/logger';
-import { stringifyRedacted } from '../../../shared/utils/redact';
+import { LogLevel, LOG_LEVEL_MAP } from '@sanctuary/shared/types/logger';
+import type { Logger } from '@sanctuary/shared/types/logger';
+import { stringifyRedacted } from '@sanctuary/shared/utils/redact';
 
 // Re-export for backward compatibility
 export { LogLevel };

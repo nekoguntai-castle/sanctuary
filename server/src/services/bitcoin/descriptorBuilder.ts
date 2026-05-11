@@ -11,7 +11,7 @@ interface DeviceInfo {
   derivationPath?: string;
 }
 
-import { formatPathForDescriptor } from '../../../../shared/utils/bitcoin';
+import { formatPathForDescriptor } from '@sanctuary/shared/utils/bitcoin';
 
 type ScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
 type Network = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';

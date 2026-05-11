@@ -18,7 +18,7 @@ import {
   formatBTCFromSats,
   formatSats,
   SATS_PER_BTC,
-} from '@shared/utils/bitcoin';
+} from '@sanctuary/shared/utils/bitcoin';
 import { describe, expect, it } from 'vitest';
 
 // ============================================================================

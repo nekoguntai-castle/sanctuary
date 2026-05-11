@@ -1,1 +1,1 @@
-export * from '../../../shared/utils/processExit';
+export * from '@sanctuary/shared/utils/processExit';

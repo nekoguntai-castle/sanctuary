@@ -20,7 +20,7 @@ import {
 import * as asyncUtils from "../../../../../src/utils/async";
 import * as nodeClient from "../../../../../src/services/bitcoin/nodeClient";
 import { mockParseDescriptor } from "./transactionServiceCreateTestHarness";
-import { parseAddressDerivationPath } from "../../../../../../shared/utils/bitcoin";
+import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import {
   changeAddressRow,
   inputAddressRow,

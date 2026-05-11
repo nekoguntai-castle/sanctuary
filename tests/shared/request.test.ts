@@ -1,5 +1,5 @@
 import { describe,expect,it,vi } from 'vitest';
-import { extractClientIp,generateRequestId,isSensitivePath,sanitizePath } from '../../shared/utils/request';
+import { extractClientIp,generateRequestId,isSensitivePath,sanitizePath } from '@sanctuary/shared/utils/request';
 
 describe('shared request utilities', () => {
   it('generateRequestId uses crypto.randomUUID when available', () => {

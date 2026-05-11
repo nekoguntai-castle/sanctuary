@@ -12,7 +12,7 @@ import { createLogger } from "../../../utils/logger";
 import { getErrorMessage } from "../../../utils/errors";
 import { walletLog } from "../../../websocket/notifications";
 import { getBlockHeight } from "../utils/blockHeight";
-import { parseAddressDerivationPath } from "../../../../../shared/utils/bitcoin";
+import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 
 import { createSyncContext } from "./context";
 import type {

@@ -28,6 +28,9 @@ export default defineConfig(() => {
         alias: {
           '@': path.resolve(__dirname, '.'),
           '@shared': path.resolve(__dirname, './shared'),
+          // Frontend prod build: alias the workspace package at SOURCE so
+          // tree-shaking + sourcemaps stay aligned with shared/**/*.ts.
+          '@sanctuary/shared': path.resolve(__dirname, './shared'),
         }
       },
       optimizeDeps: {

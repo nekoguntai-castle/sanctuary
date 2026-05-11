@@ -31,7 +31,7 @@ import {
   createGatewaySignature,
   generateGatewaySignature as generateSharedGatewaySignature,
   hashGatewayBody,
-} from '../../../shared/utils/gatewayAuth';
+} from '@sanctuary/shared/utils/gatewayAuth';
 
 const log = createLogger('MW:GATEWAY_AUTH');
 

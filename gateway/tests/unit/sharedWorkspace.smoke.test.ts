@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { extractErrorMessage as viaWorkspace } from '@sanctuary/shared/utils/errors';
-import { extractErrorMessage as viaRelative } from '../../../shared/utils/errors';
+import { extractErrorMessage as viaRelative } from '@sanctuary/shared/utils/errors';
 
 describe('Phase C: gateway resolves @sanctuary/shared via workspace', () => {
   it('workspace import is callable as a function', () => {

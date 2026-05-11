@@ -1,4 +1,4 @@
-import { parseDerivationPath } from "../shared/utils/bitcoin";
+import { parseDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import {
   coinTypeForNetwork,
   networksShareCoinType,

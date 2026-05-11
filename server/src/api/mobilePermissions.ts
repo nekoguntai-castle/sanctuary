@@ -36,7 +36,7 @@ import { ErrorCodes, InvalidInputError } from '../errors/ApiError';
 import {
   MobilePermissionUpdateRequestSchema,
   type MobilePermissionUpdateRequest,
-} from '../../../shared/schemas/mobileApiRequests';
+} from '@sanctuary/shared/schemas/mobileApiRequests';
 
 const publicRouter = Router();
 const internalRouter = Router();

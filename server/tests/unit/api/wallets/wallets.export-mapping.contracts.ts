@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseDerivationPath } from '../../../../../shared/utils/bitcoin';
+import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 
 export const registerWalletExportMappingContracts = () => {
   // ==================== Unit Tests for buildWalletExportData ====================

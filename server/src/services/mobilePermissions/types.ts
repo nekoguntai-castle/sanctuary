@@ -5,7 +5,7 @@
  * Mobile permissions act as additional restrictions on top of wallet roles.
  */
 
-import { MOBILE_ACTIONS, type MobileAction } from '../../../../shared/schemas/mobileApiRequests';
+import { MOBILE_ACTIONS, type MobileAction } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 /**
  * Actions that can be controlled via mobile permissions

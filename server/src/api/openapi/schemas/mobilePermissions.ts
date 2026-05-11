@@ -4,7 +4,7 @@
  * Schema definitions for user-facing mobile permission routes.
  */
 
-import { MOBILE_ACTIONS } from '../../../../../shared/schemas/mobileApiRequests';
+import { MOBILE_ACTIONS } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 const permissionProperties = MOBILE_ACTIONS.reduce<Record<string, { type: 'boolean' }>>((acc, action) => {
   acc[action] = { type: 'boolean' };

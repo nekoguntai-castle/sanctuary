@@ -8,7 +8,7 @@ import type {
   TransactionOutputMetadata,
 } from '../../services/bitcoin/transactions/types';
 import { getErrorMessage } from '../../utils/errors';
-import type { MobileTransactionBroadcastRequest } from '../../../../shared/schemas/mobileApiRequests';
+import type { MobileTransactionBroadcastRequest } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 export type TransactionBroadcastBody = MobileTransactionBroadcastRequest;
 export type BroadcastDraft = DraftTransaction;

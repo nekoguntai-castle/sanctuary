@@ -33,8 +33,8 @@ import { config } from '../config';
 import { AuthenticatedRequest } from './auth';
 import { createLogger } from '../utils/logger';
 import { logSecurityEvent } from './requestLogger';
-import { generateGatewaySignature } from '../../../shared/utils/gatewayAuth';
-import type { MobileAction } from '../../../shared/schemas/mobileApiRequests';
+import { generateGatewaySignature } from '@sanctuary/shared/utils/gatewayAuth';
+import type { MobileAction } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 const log = createLogger('MOBILE-PERM');
 

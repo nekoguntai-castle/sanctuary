@@ -4,7 +4,7 @@
  * Types for users, groups, devices, preferences, and permissions.
  */
 
-import type { DeviceRole } from '../shared/types/domain';
+import type { DeviceRole } from '@sanctuary/shared/types/domain';
 import type { HardwareDevice, HardwareDeviceModel } from './hardware';
 import type {
   ThemeOption,

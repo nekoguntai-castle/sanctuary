@@ -15,7 +15,7 @@ import { validateAddress } from "../../../../../src/services/bitcoin/utils";
 import * as addressDerivation from "../../../../../src/services/bitcoin/addressDerivation";
 import * as syncModule from "../../../../../src/services/bitcoin/sync";
 import { getBlockchainService } from "./blockchainTestHarness";
-import { parseAddressDerivationPath } from "../../../../../../shared/utils/bitcoin";
+import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 
 export function registerBlockchainGapLimitTests(): void {
   describe("ensureGapLimit", () => {

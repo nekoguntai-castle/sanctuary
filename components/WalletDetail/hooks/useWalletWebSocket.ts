@@ -1,5 +1,5 @@
 import { Wallet, Transaction } from '../../../types';
-import { satsToBTC, formatBTC } from '@shared/utils/bitcoin';
+import { satsToBTC, formatBTC } from '@sanctuary/shared/utils/bitcoin';
 import { useWalletEvents } from '../../../hooks/websocket';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import { createLogger } from '../../../utils/logger';

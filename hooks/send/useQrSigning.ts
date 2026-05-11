@@ -13,7 +13,7 @@ import { isMultisigType } from '../../types';
 import { createLogger } from '../../utils/logger';
 import { downloadBinary } from '../../utils/download';
 import { uint8ArrayEquals, toHex } from '../../utils/bufferUtils';
-import { extractErrorMessage } from '../../shared/utils/errors';
+import { extractErrorMessage } from '@sanctuary/shared/utils/errors';
 import type { Wallet } from '../../types';
 import type { TransactionData } from './types';
 

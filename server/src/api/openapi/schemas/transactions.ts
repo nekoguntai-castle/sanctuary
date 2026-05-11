@@ -4,7 +4,7 @@
  * Schema definitions for gateway-relevant transaction routes.
  */
 
-import { MOBILE_API_REQUEST_LIMITS } from '../../../../../shared/schemas/mobileApiRequests';
+import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 export const transactionSchemas = {
   UtxoReference: {

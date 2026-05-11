@@ -22,7 +22,7 @@ import { GenerateAddressesBodySchema } from "../schemas/transactions";
 import {
   parseAddressDerivationPath,
   type DerivationAddressChain,
-} from "../../../../shared/utils/bitcoin";
+} from "@sanctuary/shared/utils/bitcoin";
 import type { WalletNetwork } from "../../services/wallet/types";
 
 const router = Router();

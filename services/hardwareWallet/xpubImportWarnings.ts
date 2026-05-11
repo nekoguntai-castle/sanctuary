@@ -1,4 +1,4 @@
-import { parseDerivationPath } from "../../shared/utils/bitcoin";
+import { parseDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import type { XpubFetchFailure } from "./service";
 
 const MAX_SKIPPED_PATHS_IN_MESSAGE = 3;

@@ -9,7 +9,7 @@ import { deviceRepository } from "../../repositories";
 import { InvalidInputError } from "../../errors";
 import { createLogger } from "../../utils/logger";
 import * as descriptorBuilder from "../bitcoin/descriptorBuilder";
-import { parseDerivationPath } from "../../../../shared/utils/bitcoin";
+import { parseDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import type { CreateWalletInput, WalletNetwork } from "./types";
 
 const log = createLogger("WALLET:SVC_ACCOUNT_SELECTION");

@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback } from 'react';
-import { extractErrorMessage } from '../shared/utils/errors';
+import { extractErrorMessage } from '@sanctuary/shared/utils/errors';
 
 interface LoadingState<T = void> {
   /** Whether an async operation is in progress */

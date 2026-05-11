@@ -1,3 +1,21 @@
+# Active Task: Forgejo-aware PR delivery skills 2026-05-10
+
+Goal: update the shared `pr-delivery` skill for Codex and Claude so it handles both GitHub and Forgejo repositories instead of assuming `gh`/GitHub everywhere.
+
+- [x] Update Codex skill copy at `/home/nekoguntai/.codex/skills/pr-delivery/SKILL.md`.
+- [x] Update Claude marketplace skill copy at `/home/nekoguntai/.claude/plugins/marketplaces/nekoguntai-skills/plugins/pr-delivery/skills/pr-delivery/SKILL.md`.
+- [x] Update Claude cached installed skill copy at `/home/nekoguntai/.claude/plugins/cache/nekoguntai-skills/pr-delivery/1.0.0/skills/pr-delivery/SKILL.md`.
+- [x] Verify the copies are aligned and include Forgejo preflight, PR creation/update, checks, merge scheduling, post-merge ancestry verification, and cleanup guidance.
+
+## Review
+
+- Updated the skill description and body from GitHub-specific delivery to GitHub-or-Forgejo delivery.
+- Added Forgejo REST commands for endpoint discovery, PR find/create/update, commit statuses, Actions runs, reviews, direct merge, scheduled merge, scheduled-merge cancellation, and post-merge verification.
+- Kept GitHub merge-queue guardrails while making Forgejo cleanup depend on git ancestry verification of `merge_commit_sha`.
+- Verification passed: Claude marketplace/cache skill copies are identical; Codex and Claude workflow bodies match; local Forgejo Swagger exposes the documented `pulls`, `statuses`, and `actions/runs` endpoints.
+
+---
+
 # Active Task: shared/ → real npm workspace package (v3.1) 2026-05-10
 
 Status: drafted post-review-iter3 (terminal — review loop stopped after both forks recommended STOP). v3.1 fixes 8 distinct blockers + 6 convergent should-fix items from `tasks/review-findings-iter3-{claude,forkA,forkB,synthesis}.md` — all factual/enumeration errors v3 introduced when applying iter2 fixes. Direction A and phase shape (A→J) unchanged. Awaiting user go-ahead to execute Phase A. **v1 archived at `tasks/archive/shared-workspace-plan-v1-2026-05-10.md`; v2 at `tasks/archive/shared-workspace-plan-v2-2026-05-10.md`; v3 at `tasks/archive/shared-workspace-plan-v3-2026-05-10.md`.**

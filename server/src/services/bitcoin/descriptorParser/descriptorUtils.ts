@@ -5,7 +5,7 @@
  * network detection, key expression parsing, script type detection, etc.
  */
 
-import { normalizeDerivationPath, parseDerivationPath } from '../../../../../shared/utils/bitcoin';
+import { normalizeDerivationPath, parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import { PUBLIC_EXTENDED_KEY_PATTERN } from './domainValidation';
 import type { ParsedDevice, ScriptType, DetectedNetwork } from './types';
 

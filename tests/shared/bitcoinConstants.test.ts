@@ -5,7 +5,7 @@ import {
   isNetworkType,
   isTestnetFamilyNetwork,
   normalizeLegacyNetworkType,
-} from '../../shared/constants/bitcoin';
+} from '@sanctuary/shared/constants/bitcoin';
 
 describe('shared Bitcoin constants', () => {
   it('defines supported canonical network names', () => {

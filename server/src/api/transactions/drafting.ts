@@ -21,7 +21,7 @@ import {
   MobilePsbtCreateRequestSchema,
   MobileTransactionCreateRequestSchema,
   MobileTransactionEstimateRequestSchema,
-} from '../../../../shared/schemas/mobileApiRequests';
+} from '@sanctuary/shared/schemas/mobileApiRequests';
 import { parseTransactionRequestBody } from './requestValidation';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 

@@ -41,8 +41,8 @@ import {
   generateRequestId,
   extractClientIp,
   sanitizePath,
-} from '../../../shared/utils/request';
-import { generateGatewaySignature } from '../../../shared/utils/gatewayAuth';
+} from '@sanctuary/shared/utils/request';
+import { generateGatewaySignature } from '@sanctuary/shared/utils/gatewayAuth';
 
 const log = createLogger('REQUEST');
 

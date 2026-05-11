@@ -15,7 +15,7 @@ import {
   generateTestnetAddress,
   assertCount,
 } from "./setup";
-import { parseAddressDerivationPath } from "../../../../shared/utils/bitcoin";
+import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 
 describeIfDatabase("AddressRepository Integration Tests", () => {
   setupRepositoryTests();

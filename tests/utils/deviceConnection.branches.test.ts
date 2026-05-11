@@ -1,6 +1,6 @@
 import { describe,expect,it,vi } from 'vitest';
 
-vi.mock('../../shared/utils/bitcoin', () => ({
+vi.mock('@sanctuary/shared/utils/bitcoin', () => ({
   normalizeDerivationPath: vi.fn(() => 'm'),
 }));
 

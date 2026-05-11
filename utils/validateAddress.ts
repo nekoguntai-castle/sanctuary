@@ -13,8 +13,8 @@ import {
   detectAddressType,
   isMainnetAddress as sharedIsMainnetAddress,
   isTestnetAddress as sharedIsTestnetAddress,
-} from '@shared/utils/bitcoin';
-import type { AddressType } from '@shared/utils/bitcoin';
+} from '@sanctuary/shared/utils/bitcoin';
+import type { AddressType } from '@sanctuary/shared/utils/bitcoin';
 
 // Re-export shared utilities with frontend-compatible names
 export { isValidAddressFormat, detectAddressType };

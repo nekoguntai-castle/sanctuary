@@ -12,7 +12,7 @@ import { useOptionalActiveNetwork } from "./ActiveNetworkContext";
 import * as priceApi from "../src/api/price";
 import { suppressFiatForNetwork } from "../src/app/networks";
 import { createLogger } from "../utils/logger";
-import { satsToBTC, formatBTC } from "@shared/utils/bitcoin";
+import { satsToBTC, formatBTC } from "@sanctuary/shared/utils/bitcoin";
 
 const log = createLogger("Currency");
 

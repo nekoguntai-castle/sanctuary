@@ -11,7 +11,7 @@ import { getErrorMessage } from "../../../utils/errors";
 import { walletLog } from "../../../websocket/notifications";
 import { ADDRESS_GAP_LIMIT } from "../../../constants";
 import * as addressDerivation from "../addressDerivation";
-import { parseAddressDerivationPath } from "../../../../../shared/utils/bitcoin";
+import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import type { WalletNetwork } from "../../wallet/types";
 
 const log = createLogger("BITCOIN:SVC_ADDR_DISCOVERY");

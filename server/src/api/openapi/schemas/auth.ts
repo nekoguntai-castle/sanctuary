@@ -4,7 +4,7 @@
  * Schema definitions for authentication and authorization.
  */
 
-import { MOBILE_API_REQUEST_LIMITS } from '../../../../../shared/schemas/mobileApiRequests';
+import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 export const authSchemas = {
   LoginRequest: {

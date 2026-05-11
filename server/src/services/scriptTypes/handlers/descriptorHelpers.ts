@@ -1,4 +1,4 @@
-import { formatPathForDescriptor } from '../../../../../shared/utils/bitcoin';
+import { formatPathForDescriptor } from '@sanctuary/shared/utils/bitcoin';
 import type { DescriptorBuildOptions, DeviceKeyInfo, MultiSigBuildOptions, Network } from '../types';
 
 export function buildCoinTypeDerivationPath(purpose: number, network: Network, account: number = 0): string {

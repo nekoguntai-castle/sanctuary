@@ -18,6 +18,10 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, '.'),
       '@shared': path.resolve(__dirname, './shared'),
+      // Frontend: alias the workspace package at SOURCE (not dist) so vitest
+      // instruments shared/**/*.ts files for coverage. Server/gateway aliases
+      // point at dist for runtime parity; frontend prioritizes coverage.
+      '@sanctuary/shared': path.resolve(__dirname, './shared'),
     },
   },
   test: {

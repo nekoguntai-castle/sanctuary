@@ -5,7 +5,7 @@
  * Handlers are checked in priority order (highest first) to detect formats.
  */
 
-import { PrioritizedRegistry } from '../../../../shared/utils/priorityRegistry';
+import { PrioritizedRegistry } from '@sanctuary/shared/utils/priorityRegistry';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import type {

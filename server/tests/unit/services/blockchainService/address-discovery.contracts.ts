@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { mockDeriveAddress, mockPrisma } from "./blockchainServiceTestHarness";
-import { parseAddressDerivationPath } from "../../../../../shared/utils/bitcoin";
+import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 
 export function registerBlockchainAddressDiscoveryContracts(): void {
   describe("Blockchain Service - Address Discovery (Gap Limit)", () => {

@@ -1,4 +1,4 @@
-import { parseAddressDerivationPath } from "../../../../shared/utils/bitcoin";
+import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 
 type RecordLike = Record<string, any>;
 

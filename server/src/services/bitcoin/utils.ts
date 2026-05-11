@@ -21,8 +21,8 @@ import {
   formatSats as sharedFormatSats,
   formatBTC as sharedFormatBTC,
   SATS_PER_BTC,
-} from '../../../../shared/utils/bitcoin';
-import type { LegacyNetworkType, NetworkType, AddressType } from '../../../../shared/constants/bitcoin';
+} from '@sanctuary/shared/utils/bitcoin';
+import type { LegacyNetworkType, NetworkType, AddressType } from '@sanctuary/shared/constants/bitcoin';
 import { bitcoinJsNetworkName } from './networks';
 
 export { satsToBTC, btcToSats, SATS_PER_BTC, NetworkType, AddressType };

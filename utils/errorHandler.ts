@@ -43,7 +43,7 @@ import {
   extractErrorMessage as sharedExtractErrorMessage,
   isAbortError as sharedIsAbortError,
   isNetworkError as sharedIsNetworkError,
-} from '@shared/utils/errors';
+} from '@sanctuary/shared/utils/errors';
 
 /**
  * Options for error handling

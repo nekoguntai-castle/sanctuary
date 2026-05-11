@@ -1,4 +1,4 @@
-import { satsToBTC, formatBTC } from '@shared/utils/bitcoin';
+import { satsToBTC, formatBTC } from '@sanctuary/shared/utils/bitcoin';
 import {
   WalletType,
   type Transaction,

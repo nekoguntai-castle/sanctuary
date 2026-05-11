@@ -1,4 +1,4 @@
-import { parseDerivationPath } from '../../../../../shared/utils/bitcoin';
+import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import { isPrivateExtendedKey } from '../addressDerivation/xpubConversion';
 import type { DetectedNetwork, ParsedDescriptor, ParsedDevice, ScriptType } from './types';
 

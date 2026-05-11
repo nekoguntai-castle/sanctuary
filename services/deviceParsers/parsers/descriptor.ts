@@ -8,7 +8,7 @@
  */
 
 import type { DeviceParser, DeviceParseResult, FormatDetectionResult } from '../types';
-import { normalizeDerivationPath } from '../../../shared/utils/bitcoin';
+import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 
 interface DescriptorJsonFormat {
   descriptor?: string;

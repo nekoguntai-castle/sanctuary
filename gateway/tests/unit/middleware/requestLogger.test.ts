@@ -30,7 +30,7 @@ vi.mock('../../../src/config', () => ({
 }));
 
 // Mock shared request utilities
-vi.mock('../../../shared/utils/request', () => ({
+vi.mock('@sanctuary/shared/utils/request', () => ({
   generateRequestId: vi.fn(() => 'test-request-id-123'),
   extractClientIp: vi.fn((forwarded, fallback) => forwarded?.split(',')[0]?.trim() || fallback || 'unknown'),
   sanitizePath: vi.fn((path) => path.replace(/\/[a-f0-9-]{36}/g, '/:id')),

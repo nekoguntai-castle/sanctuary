@@ -8,7 +8,7 @@ extractErrorMessage,
 isAbortError,
 isNetworkError,
 isTimeoutError,
-} from '@shared/utils/errors';
+} from '@sanctuary/shared/utils/errors';
 import { describe,expect,it } from 'vitest';
 
 describe('Shared Error Utilities', () => {

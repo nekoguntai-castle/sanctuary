@@ -8,7 +8,7 @@ import {
   redact,
   redactDeep,
   stringifyRedacted,
-} from '../../shared/utils/redact';
+} from '@sanctuary/shared/utils/redact';
 
 describe('shared redaction utilities', () => {
   describe('isSensitiveField', () => {

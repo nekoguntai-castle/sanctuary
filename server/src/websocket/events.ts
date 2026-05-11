@@ -37,7 +37,7 @@ export {
   isClientMessage,
   isWalletEvent,
   isGlobalEvent,
-} from '../../../shared/types/websocket';
+} from '@sanctuary/shared/types/websocket';
 
 import type {
   TransactionEvent,
@@ -50,7 +50,7 @@ import type {
   LogEvent,
   ModelDownloadEvent,
   ErrorEvent,
-} from '../../../shared/types/websocket';
+} from '@sanctuary/shared/types/websocket';
 
 // =============================================================================
 // Event Builders (type-safe factory functions)
