@@ -30,6 +30,11 @@ const symlinkSandboxPath = (sourcePath, sandboxPath) => [
   `ln -s ${shellQuote(sourcePath)} ${shellQuote(sandboxPath)}`,
   `test -e ${shellQuote(sandboxPath)}`,
 ].join(' || ');
+// Sandbox runtime symlinks: stryker copies the source tree to a sandbox dir
+// but doesn't pull node_modules / generated / shared. Phase B's workspace
+// install puts @sanctuary/shared at ROOT node_modules, not server's, so the
+// sandbox still needs the explicit `../shared` symlink — server/node_modules
+// alone doesn't surface the workspace package.
 const ENSURE_SANDBOX_RUNTIME_LINKS = [
   symlinkSandboxPath(NODE_MODULES_PATH, 'node_modules'),
   symlinkSandboxPath(GENERATED_PRISMA_PATH, 'src/generated'),
