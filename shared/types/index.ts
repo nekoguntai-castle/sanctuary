@@ -2,7 +2,7 @@
  * Shared Types - Barrel Export
  *
  * Re-exports all shared types from a single entry point.
- * Import from '@shared/types' (frontend) or '../../../shared/types' (server).
+ * Import from '@sanctuary/shared/types' (workspace package — single way).
  *
  * Modules:
  * - domain: Core domain enums and types (WalletType, WalletNetwork, etc.)

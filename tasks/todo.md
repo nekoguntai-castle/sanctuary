@@ -1,632 +1,183 @@
-# Active Task: Forgejo-aware PR delivery skills 2026-05-10
+# Active Task: CI Optimization Implementation 2026-05-10
 
-Goal: update the shared `pr-delivery` skill for Codex and Claude so it handles both GitHub and Forgejo repositories instead of assuming `gh`/GitHub everywhere.
+Status: refined; ready to execute Phase 1.
 
-- [x] Update Codex skill copy at `/home/nekoguntai/.codex/skills/pr-delivery/SKILL.md`.
-- [x] Update Claude marketplace skill copy at `/home/nekoguntai/.claude/plugins/marketplaces/nekoguntai-skills/plugins/pr-delivery/skills/pr-delivery/SKILL.md`.
-- [x] Update Claude cached installed skill copy at `/home/nekoguntai/.claude/plugins/cache/nekoguntai-skills/pr-delivery/1.0.0/skills/pr-delivery/SKILL.md`.
-- [x] Verify the copies are aligned and include Forgejo preflight, PR creation/update, checks, merge scheduling, post-merge ancestry verification, and cleanup guidance.
+Goal: implement the five top recommendations from `reports/ci-optimization-survey-2026-05-10.md`, in ROI/risk order, one PR per phase, looping until all five land.
+
+## Re-verification (2026-05-10)
+
+All five survey claims confirmed against current code:
+- `.github/actions/cache-npm/action.yml` caches only `~/.npm` and `.tmp/npm-cache` — NOT `node_modules` (verified)
+- `server/package.json:33` `test:coverage` is plain `vitest run --coverage` — no shard (verified)
+- 6 of 33 jobs in `test.yml` have `timeout-minutes`; 27 use the 360-min default (verified)
+- `server/stryker.config.mjs` already uses `testRunner: 'vitest'` + `coverageAnalysis: 'perTest'` — confirms the "compatibility issues" comment in `stryker.critical.config.mjs:7-9` is stale (verified)
+- `scripts/ci/frontend-coverage-{shard,merge}.sh` exist as the template for #4 (verified)
+
+## Order
+
+1. **Phase 1 — node_modules + Prisma cache** (highest ROI, lowest risk)
+2. **Phase 2 — fail-fast safety on remaining matrix→aggregator pairs** (mirrors #391)
+3. **Phase 3 — timeout-minutes on the 27 untimed jobs**
+4. **Phase 4 — shard server backend coverage** (mirrors frontend pattern)
+5. **Phase 5 — switch critical Stryker to vitest runner + perTest coverage** (riskiest; spike-style)
+
+Each phase ships as one PR. Don't bundle.
+
+## Phase 1 — Cache `node_modules` + Prisma generated client
+
+### Goal
+Eliminate re-running `npm ci` (10–60s) and `prisma generate` (~5s) on every job. Saves 5–30 min per workflow run.
+
+### Files
+- `.github/actions/cache-npm/action.yml` — extend cache paths to include all four `node_modules` directories; key by lockfile hash + Node version.
+- `.github/actions/setup-server-deps/action.yml` — read it first; if it triggers `prisma generate`, gate on cache hit; cache `server/src/generated/prisma/`.
+
+### Corner cases
+- **node_modules size:** likely 500MB–1.5GB across the 4 packages combined. Confirm Forgejo runner cache supports that size before claiming the win. If not, fall back to caching just the largest (`node_modules` for root frontend) and let smaller packages re-install from `~/.npm` cache (already fast).
+- **Platform-specific binaries** (esbuild, sharp, tiny-secp256k1): cache key MUST include `runner.os` AND `runner.arch` to avoid cross-arch cache hits corrupting the install.
+- **postinstall hook drift:** server's `postinstall: "prisma generate"` only runs when `npm ci` runs. With cache hit, postinstall is skipped — so we need a separate cache for `server/src/generated/prisma/` keyed on `hashFiles('server/prisma/schema.prisma')` AND a fallback step that runs `prisma generate` on Prisma cache miss even when node_modules cache hit.
+- **Lockfile drift between save and restore:** if PR A and PR B both miss the cache, both save with their own lockfile-hash keys; correct (no collision). The hashFiles glob `**/package-lock.json` correctly invalidates when ANY package's lockfile changes.
+- **Husky in `prepare` script:** husky setup may need to re-run; check if it's idempotent on cache hit.
+- **Verification gap:** `npm ci` validates package-lock against installed node_modules; if cache and lockfile drift even slightly, npm ci re-installs. So cache is best-effort; correctness still guaranteed by npm ci's verification.
+
+### Steps
+- [ ] Read `.github/actions/cache-npm/action.yml` and `.github/actions/setup-server-deps/action.yml` end to end.
+- [ ] Add `node_modules` paths to cache-npm composite (with `runner.os` + `runner.arch` in key).
+- [ ] Add a separate cache step in setup-server-deps (or in cache-npm) for `server/src/generated/prisma/` keyed on schema hash. Add a step that runs `prisma generate` only if Prisma cache missed.
+- [ ] Verify locally: nuke `node_modules`, run `npm ci`, observe time; with cache restore, observe time.
+- [ ] Verify Husky/postinstall don't re-run unnecessarily.
+
+### Verification
+- One CI run after this PR lands should show the npm-install step duration drop dramatically on the second run for the same lockfile.
+- No test failures from missing Prisma client or stale node_modules.
+
+### Rollback
+- Revert the cache-paths additions; CI returns to current behavior.
+
+---
+
+## Phase 2 — Fail-fast safety on remaining matrix→aggregator pairs
+
+### Goal
+Close the gate-bypass class (#391-style) for the two remaining matrix → umbrella patterns so a 'skipped' matrix can't silently pass `allow_success_or_skipped`.
+
+### Files
+- `.github/workflows/test.yml`
+
+### Corner cases
+- **Verify the bypass actually exists for these jobs.** GitHub Actions matrix jobs roll up `.result` to the worst of the matrix entries (success/failure/cancelled/skipped). If ALL entries succeed → 'success'. If ANY entry fails → 'failure'. If ALL entries are skipped → 'skipped'. So the bypass is real only when ALL matrix entries can be skipped (e.g., via `if:` conditions on each entry) AND the umbrella uses `allow_success_or_skipped`. Verify each candidate before adding the safety step.
+- **Don't introduce false positives.** If a matrix is INTENDED to be skipped when irrelevant (e.g., `full-frontend-typechecks` skipped on a backend-only PR), the safety step must distinguish "all skipped because not relevant" (OK) from "all skipped because something broke upstream" (NOT OK). Use the relevance flag from `detect-changes` outputs in the safety condition.
+- **No new aggregator job needed for these.** Unlike the mutation gate (which has an explicit aggregator that downloads + merges shard reports), backend integration tests and frontend typechecks consume directly from matrix `.result` in the umbrella. The fix is in the UMBRELLA's pre-evaluation, not a new job: change the umbrella's `allow_success_or_skipped` to a stricter check that rejects 'skipped' when the relevance flag is set.
+
+### Steps
+- [ ] Identify the umbrella jobs (`pr-required-checks`, `full-test-summary`) and the exact `allow_success_or_skipped` calls for each candidate matrix.
+- [ ] For each, change the rule to: skip is OK iff the relevance flag was false; otherwise require success. (The umbrella's `require_when_relevant` helper may already be the right shape — check.)
+- [ ] Update `tests/ci/check-workflow-composition.test.sh` to assert the new pattern.
+
+### Verification
+- Local classifier test passes.
+- A canary PR that intentionally skips one matrix entry should fail the umbrella when the relevance flag is set.
+
+---
+
+## Phase 3 — `timeout-minutes` on 27 untimed jobs
+
+### Goal
+Bound runner-capacity blast radius from the 360-min default to ~1.5× expected runtime.
+
+### Files
+- `.github/workflows/test.yml`, `.github/workflows/install-test.yml`, `.github/workflows/quality.yml`
+
+### Corner cases
+- **Don't set too low.** Spurious timeout-failures masquerading as flakes is worse than the orphan-process problem.
+- **Choose timeouts from observed runtimes**, not guesses. Sample the last 5–10 runs per job from `git log --grep="retrigger"` correlations or from Forgejo runs API where available.
+- **Defensive defaults if observed data unavailable:**
+  - Quick lanes: 15
+  - Full backend tests: 30
+  - Full frontend coverage shard: 30
+  - Typecheck: 20
+  - Build check: 30
+  - Browser/render E2E: 45
+  - Mutation already done in #389 at 60.
+
+### Steps
+- [ ] List the 27 untimed jobs by name.
+- [ ] For each, propose a timeout based on job class.
+- [ ] Apply in one PR (low blast radius — even a too-low timeout fails closed, doesn't bypass).
+
+### Verification
+- Workflow-lint passes.
+- No newly-failing jobs after this lands (would indicate timeout chosen too low).
+
+---
+
+## Phase 4 — Shard server backend coverage
+
+### Goal
+~2× wallclock cut on `full-backend-unit-coverage` (~9,800 tests, currently single process).
+
+### Files
+- New `scripts/ci/backend-coverage-shard.sh` (mirror `frontend-coverage-shard.sh`)
+- New `scripts/ci/backend-coverage-merge.sh` (mirror `frontend-coverage-merge.sh`)
+- `.github/workflows/test.yml`: convert `full-backend-unit-coverage` to a 2-shard matrix + merge-and-gate aggregator.
+- `tests/ci/check-workflow-composition.test.sh`: update assertions.
+
+### Corner cases
+- **Coverage merge is harder than Stryker's report merge.** Vitest emits per-shard coverage as JSON or LCOV. Need to either (a) use `vitest --merge` (if supported in current vitest version), or (b) merge LCOV files via `lcov-result-merger` / similar.
+- **Threshold check happens AFTER merge.** Per-shard coverage thresholds are meaningless. Aggregator runs the merged threshold check.
+- **Test ordering side-effects.** ~9,800 tests in one process may have implicit ordering dependencies. Sharding could expose isolation bugs. Risk mitigation: enable test in canary mode first, observe for cross-shard failures.
+- **Same matrix→aggregator gate-bypass class as the mutation gate** — apply the #391 fail-fast safety step preemptively.
+- **Cache the per-shard coverage outputs** for the aggregator's download step.
+- **Per-shard timeout** — since shard count is 2, each shard runs ~half the tests; observed full coverage is ~25min, so each shard ~12-15min; set `timeout-minutes: 25`.
+
+### Steps
+- [ ] Read `frontend-coverage-shard.sh` and `frontend-coverage-merge.sh` to understand the existing pattern.
+- [ ] Choose merge tool (vitest native vs lcov merger) — verify by trying locally.
+- [ ] Implement the two scripts; smoke-test merge with synthetic per-shard JSON.
+- [ ] Workflow changes mirror the mutation-gate pattern (#390 + #391).
+
+---
+
+## Phase 5 — Switch critical Stryker to vitest runner + perTest coverage
+
+### Goal
+5–20× speedup on cold mutation runs (additive with #389/#390 cache + sharding).
+
+### Files
+- `server/stryker.critical.config.mjs`
+
+### Corner cases (this is a SPIKE, treat accordingly)
+- **The "compatibility issues" comment is stale**, but the broad `stryker.config.mjs` uses vitest+perTest for a DIFFERENT mutate set. Behavior at the critical mutate set may differ.
+- **Test-discovery scope.** With command runner, test files are explicitly listed (12 files at `stryker.critical.config.mjs:30-42`). With vitest runner, Stryker uses vitest's test-discovery + coverage to map mutants → tests. The mutate set + critical test set may not align under perTest.
+- **Sandbox runtime links.** The current command runner does sandbox link setup (`ENSURE_SANDBOX_RUNTIME_LINKS`). Vitest runner may or may not need this.
+- **Performance regression risk.** If perTest coverage analysis fails for some mutants (e.g., because vitest's coverage doesn't see them), Stryker falls back to running ALL tests for that mutant — could be slower than the command baseline.
+- **De-risk plan:**
+  - Try locally with one shard first (`MUTATION_SHARD=1 STRYKER_RUNNER=vitest npm run test:mutation:critical:shard`).
+  - If it works, ship one PR that switches just shard 1 via env var; observe in CI.
+  - If shard 1 stable, switch all shards in a second PR.
+  - Keep command runner as fallback path until vitest confirmed reliable.
+
+### Steps
+- [ ] Spike: switch locally, run `MUTATION_SHARD=1` end-to-end. Compare wallclock + score against baseline.
+- [ ] If green, ship a PR that adds an env var `STRYKER_TEST_RUNNER` defaulting to `'vitest'`, with a fallback to `'command'`. Update CI to use vitest by default.
+- [ ] Monitor next 3 PRs. If no regression, remove the fallback.
+- [ ] Update the stale comment at lines 7-9 to reflect the new state.
+
+---
+
+## Out of scope (deferred per survey)
+
+- TypeScript `incremental: true` + tsBuildInfo — modest savings, complicated by monorepo paths, defer until after Phase 1.
+- Workspace vitest config refactor — larger, isolated current configs work.
+- Removing serial `--maxWorkers=1` from integration tests — DB-shared, serial is correct.
+- Cross-workflow status aggregator UI — Forgejo handles this server-side.
+- Broad `test.retry()` rollout — apply only to documented flakes.
 
 ## Review
 
-- Updated the skill description and body from GitHub-specific delivery to GitHub-or-Forgejo delivery.
-- Added Forgejo REST commands for endpoint discovery, PR find/create/update, commit statuses, Actions runs, reviews, direct merge, scheduled merge, scheduled-merge cancellation, and post-merge verification.
-- Kept GitHub merge-queue guardrails while making Forgejo cleanup depend on git ancestry verification of `merge_commit_sha`.
-- Verification passed: Claude marketplace/cache skill copies are identical; Codex and Claude workflow bodies match; local Forgejo Swagger exposes the documented `pulls`, `statuses`, and `actions/runs` endpoints.
+- Phase 1 not started.
 
 ---
-
-# Active Task: shared/ → real npm workspace package (v3.1) 2026-05-10
-
-Status: drafted post-review-iter3 (terminal — review loop stopped after both forks recommended STOP). v3.1 fixes 8 distinct blockers + 6 convergent should-fix items from `tasks/review-findings-iter3-{claude,forkA,forkB,synthesis}.md` — all factual/enumeration errors v3 introduced when applying iter2 fixes. Direction A and phase shape (A→J) unchanged. Awaiting user go-ahead to execute Phase A. **v1 archived at `tasks/archive/shared-workspace-plan-v1-2026-05-10.md`; v2 at `tasks/archive/shared-workspace-plan-v2-2026-05-10.md`; v3 at `tasks/archive/shared-workspace-plan-v3-2026-05-10.md`.**
-
-Goal: convert `shared/` into a real npm workspace package (`@sanctuary/shared`) **with its own build artifacts under `shared/dist/`**, so module resolution is enforced by the resolver at runtime, not by README discipline or a TS-aware loader. Unblocks Phase 5 (Stryker vitest+perTest), unifies the bifurcated import convention (frontend `@shared/*` vs server/gateway `'../../../shared/...'`), and removes the entire class of "sandbox-creating tool can't reach shared/" failures.
-
-## What changed in v3.1 (per iter3 review)
-
-| v3 issue | v3.1 fix |
-| --- | --- |
-| **B3a dropped `paths` entirely; `moduleResolution: node` ignores `exports`** — `.ts` source resolves first via legacy resolver walk, masking divergence at type-check while runtime resolves dist | B3a + C2 add `paths: { "@sanctuary/shared/*": ["../shared/dist/*"] }` so type-check and runtime resolve the SAME built artifact. Acceptance: tsc must FAIL when shared isn't built (proves the bridge works) |
-| **A1 `extends: "../tsconfig.json"`** inherits `noEmit: true` + `allowImportingTsExtensions: true` — Phase A5 silently produces nothing OR errors with paradox vs `declaration: true` | A1 hand-writes the strict-flag triple at top of shared/tsconfig.json; no `extends:` |
-| **F1b prescribed an unnecessary "separate config block"** based on misreading `eslint.config.js` | F1b corrected: `productionSource` ALREADY includes `server/src/**/*.ts` and `gateway/src/**/*.ts` (verified at lines 14-15). Add the rule to the EXISTING block at lines 38-82 |
-| **F1c programmatic ESLint smoke** loads all plugins, ~3-5s startup, fragile | F1c replaced with config-import unit test (~10 lines, runs in ms) |
-| **H3 "delete `node_modules/.prisma/client`" placebo** — Prisma generates to `server/src/generated/prisma` per schema, default path was never used | H3 replaced with concrete clean-room test that nukes both node_modules trees, runs `npx prisma generate`, removes root node_modules to simulate post-prune, then asserts client.js still resolves |
-| **G2 "same shape as G1"** missed gateway's IDENTICAL `ln -s /app/node_modules /node_modules` hack at line 24 + `--omit=optional` prune flag | G2 explicit: remove gateway's `ln -s` line; G4.5 acceptance covers `--omit=optional` interaction; G1+G2 acceptance probes BOTH `utils/errors` AND `schemas/mobileApiRequests` (zod transitive) |
-| **G5 missed `docker-compose.test.yml`** bind-mounts — frontend test container's workspace symlink would dangle into unmounted `/app/shared` | G5 adds row: bind-mount `./shared:/app/shared:ro` to frontend-test + frontend-coverage services |
-| **D7 "pre-warm on no-op PR"** doesn't help — Stryker content-hash cache invalidates regardless | D7 drops pre-warm option; just budget the slow first run; optionally bump cache prefix to `-v3` so old entries never restore |
-| **A2 `"zod": "<copy version from server>"`** would pin shared at `^4.3.4` while root pins exact `4.3.6` — hoisting could surface different copies, breaking `instanceof ZodError` | A2 pins shared at exact `4.3.6` to align with root |
-| **A2.5 "grep regex" for builtins** misses `node:`-prefixed builtins, sub-builtins, `@types/*`, etc. | A2.5 uses `module.isBuiltin()` (Node ≥ 16) authoritatively; accepts `@types/*` as devDeps |
-| **D1 missed `server/tsconfig.test.full.json`** which has different module resolution | D1 includes it in CONFIGS array; pre-flight `tsc --noEmit --skipLibCheck` per tsconfig before Project instantiation |
-| **F1 patterns top out at depth-5** — codebase has tests at depth ≥ 6 | F1a extended to depth-7 |
-| **B4 vitest alias to `dist/`** — source-map fidelity not verified | B4 acceptance: deliberately throw from a shared util smoke test; assert stack trace points at `.ts:line` not `.js:line` |
-| **H1 "read script for side effects"** was a TODO | H1 inlined: verified the 32-line script's only side effect is the now-redundant `<repo-root>/node_modules` symlink |
-
-## What changed from v2 (per iter2 review)
-
-| v2 gap | v3 fix |
-| --- | --- |
-| `shared/package.json` declared `dependencies: {}` | A2 declares `"zod": "<version>"` (verified the only external import in shared); also adds a CI check that greps `shared/**/*.ts` for non-relative non-builtin imports and fails if any are missing from `dependencies` |
-| `exports` map omitted `.` (root) entry | A2 adds `"."` entry pointing at `dist/index.js` + `dist/index.d.ts`; otherwise `import x from '@sanctuary/shared'` errors `ERR_PACKAGE_PATH_NOT_EXPORTED` |
-| `composite: true` carried for "future-proofing" with no payoff | A1 drops `composite: true`; defer to a separate "enable project references" task if/when needed |
-| Server tsconfig `paths` ↔ runtime `exports` resolved different files (TS source vs CJS dist) | B3 points `paths` at `["../shared/dist/*"]` so type-check and runtime resolve the SAME built artifact; OR drop `paths` entirely and rely on workspace symlink (B3 picks the latter — simpler, removes divergence class entirely) |
-| Phase B3 `rootDir: "./src"` change reshapes server emit tree from `dist/server/src/index.js` → `dist/index.js`; cascade not enumerated | B3 splits into B3a (`include` change only) and a new sub-PR B3b that updates `server/package.json` `main`/`start`, `server/Dockerfile`, `docker-compose.*.yml`, `verify-vectors.yml` start commands, prisma seed, in ONE PR with a container smoke test |
-| Frontend has no resolution path for `@sanctuary/shared/*` after Phase E (root not in workspaces; alias removed only from vitest, not vite) | B1 declares `"@sanctuary/shared": "workspace:*"` in ROOT `dependencies`; E2 removes the alias from BOTH `vite.config.ts` AND `vitest.config.ts` |
-| F1 ESLint pattern `**/shared/**` over-matches the new `@sanctuary/shared/*` workspace specifier | F1 patterns scoped to relative-path forms only: `["../shared/**", "../../shared/**", "../../../shared/**", "../../../../shared/**", "../../../../../shared/**"]`. Smoke import of `@sanctuary/shared/utils/errors` MUST PASS lint. |
-| F1 `productionSource` config block doesn't cover server/gateway | F1 adds a SEPARATE ESLint config block `{ files: ["server/src/**/*.ts", "gateway/src/**/*.ts"], rules: {...} }` so the rule actually fires on the 58 imports the migration aims to police |
-| F4 ai-proxy isolation test runs from root vitest cwd; resolves via root node_modules and falsely passes | F4 references the Per-tool resolution table's Docker-level test as authoritative; npm-only test removed (it can't prove what the Docker test proves) |
-| G1 Dockerfile design left workspace symlink dangling at runtime; symlink hack `RUN ln -s /app/node_modules /node_modules` not removed | G1 explicit: (a) use `cp -L` in production-stage COPY to materialize the symlink target, (b) remove the legacy `ln -s` hack at server/Dockerfile:44, (c) acceptance probe `docker exec server node -e "require('@sanctuary/shared/utils/errors')"` MUST resolve |
-| G5 cache update covers ONE workflow (setup-server-deps); lockfile-collapse cascade hits 6+ workflows + silently degrades peer-resolution gate | G5 enumerates EVERY site (`architecture.yml`, `verify-vectors.yml`, `quality.yml` audit, `scripts/quality/check-lockfile-peer-resolution.sh`, gateway/ai-proxy inline caches from PR #398, Stryker incremental cache, backend coverage shard cache); each gets workspace-aware replacement |
-| Phase H sweep listed only `server/package.json` (20 sites); script also called from CI workflows + setup script | H2 lists all 23 sites: 19 in `server/package.json` + 3 in `verify-vectors.yml` + 1 in `scripts/ci/setup-server-dependencies.sh` |
-| Phase H regression test was placebo (passed before deletion too) | H3 deletes `node_modules/.prisma/client` (the script's symlink target) and verifies Prisma resolution still works under workspaces; if it doesn't, the script was load-bearing |
-| Phase D codemod scope was a single ts-morph Project from `server/tsconfig.json` only; misses tests + frontend + scripts | D1 enumerates separate Project instances for `server/tsconfig.json`, `server/tsconfig.test.json`, `gateway/tsconfig.json`, root `tsconfig.app.json` (frontend), root `tsconfig.tests.json`, root `tsconfig.scripts.json` |
-| Phase D codemod regex covered only relative imports; tests use BOTH `@shared/*` and `../../shared/*` | D codemod visitor handles both regexes per file type (relative for server/gateway/tests-relative; alias for frontend; both for tests/shared which mixes them) |
-| Phase I1 probe described but command not specified; no control case | I1 specifies concrete command (`MUTATION_SHARD=1 npx stryker run stryker.critical.config.mjs --logLevel trace 2>&1 | head -200` plus `cleanTempDir: false`); adds control: probe also runs on `git stash`-of-workspace-changes baseline to confirm migration is what made the difference |
-| Phase A4 (`add shared/dist/ to .gitignore`) was unnecessary work | A4 becomes a no-op verify: confirm root `.gitignore` line 24 `dist/` already covers `shared/dist/`; also add `shared/*.tsbuildinfo` if `composite` is ever re-enabled |
-| Phase J1 README rewrite scope understated (shim convention paragraph is now obsolete, not just a clause update) | J1 rewrites the `shared/utils/README.md` "Convention" section in full; documents the 4 existing per-package shims (`fatalProcessHandlers`, `processExit` × 2 packages) as legacy entries OR removes them in J4 |
-
-## Critical constraints (preserved from v2, refined)
-
-- **ai-proxy stays out of the workspace.** Network-isolation boundary documented in `shared/utils/README.md` and `ai-proxy/src/utils.ts:1-7`. With npm hoisting, workspace omission alone is NOT sufficient; isolation enforced via ESLint + grep gate + **Docker-level** runtime test (Phase F + Per-tool resolution table).
-- **No flag day.** Phases A-E preserve dual-resolution (relative imports + workspace package). Phase F adds enforcement and removes the dual path. ANY change is reversible until Phase F.
-- **`module: commonjs` is the constraint.** Server and gateway compile to CJS. Shared MUST also emit CJS for `require()` interop. ESM consumers (root frontend) work via `tsc --module commonjs`'s output being importable from ESM via Node's interop.
-- **Stryker sandbox behavior is empirical.** Don't assume; probe with control case (Phase I1).
-- **B3 emit-shape change is a multi-file cascade.** `tsc --noEmit` does NOT validate emit shape. Server's `dist/server/src/index.js` path is referenced in 6+ files. Either (a) keep `rootDir: ".."` (compile pollution acceptable), OR (b) update all references in the SAME PR with a container smoke test. v3 picks (b).
-
-## Re-verified facts (2026-05-10)
-
-- npm 11.11.0 (workspace:* fully supported)
-- Node 24.14.1
-- Root `package.json`: `"type": "module"` (ESM), no `workspaces` array
-- Server / gateway / ai-proxy `package.json`: no `"type"` field (CJS default)
-- Server / gateway tsconfig: `module: commonjs`, `moduleResolution: node`, NO `paths`/`baseUrl`, `include` lists `["src/**/*", "../shared/**/*"]`, `rootDir: ".."`
-- `shared/` has NO `package.json`, NO `tsconfig.json`, just source `.ts` files
-- **shared external imports (verified via grep):** ONLY `zod` (in `shared/schemas/mobileApiRequests.ts`); `crypto` is a Node builtin (in `shared/utils/gatewayAuth.ts`)
-- **zod versions across packages:** root pins exact `4.3.6`; server/gateway/ai-proxy use `^4.3.4`. v3.1 A2 pins shared at exact `4.3.6` to align with root.
-- **`server/tsconfig.test.full.json` exists** — extends `tsconfig.test.json`, has different `include` list and module resolution (`module: ESNext`, `moduleResolution: bundler`). v3.1 D1 includes it in CONFIGS.
-- **Root tsconfig excludes `server`, `gateway`, `ai-proxy`, `scripts/verify-addresses`** (lines 34–40) — D1's per-tsconfig Project loop is required, not optional.
-- **ESLint `productionSource` (verified `eslint.config.js:14-15`)** — DOES include `server/src/**/*.ts` AND `gateway/src/**/*.ts`. (v3 misread this; v3.1 F1 corrected.)
-- **Root `tsconfig.json` (verified)** — has `noEmit: true`, `allowImportingTsExtensions: true`, `moduleResolution: bundler`. shared CANNOT extend from this without breaking emit; v3.1 A1 hand-writes strict flags instead.
-- **Server tsconfig moduleResolution (verified):** `node` (legacy resolver — does NOT honor `exports` field). v3.1 B3a re-adds `paths` mapping to bridge.
-- **Gateway tsconfig moduleResolution (verified):** `node` (same as server).
-- **Gateway Dockerfile line 24:** `RUN ln -s /app/node_modules /node_modules` (IDENTICAL to server's hack at line 44 — v3.1 G2 explicit removal).
-- **Gateway prune flag (Dockerfile line 31):** `npm prune --production --omit=optional` (server uses `--production` only). v3.1 G4.5 acceptance covers this.
-- **Tests directory shared imports:** 9 (5 relative + 4 alias-style), not 6 (v3 hand-count was wrong).
-- **`docker-compose.test.yml` bind-mounts** — frontend-test/frontend-coverage mount `./node_modules:/app/node_modules:ro` but NOT `./shared`. After migration the workspace symlink at `/app/node_modules/@sanctuary/shared → /app/shared` would dangle. v3.1 G5 includes a row.
-- **Prisma generator output (verified `server/prisma/schema.prisma:6`):** `../src/generated/prisma`. NOT `node_modules/.prisma/client`. v3.1 H3 corrected.
-- **`ensure-shared-module-resolution.mjs` actual behavior (verified by reading the 32-line script):** ONLY symlinks `<repo-root>/node_modules` → `<server>/node_modules` when `<repo-root>/node_modules` doesn't exist. Under workspaces, `<repo-root>/node_modules` ALWAYS exists → script is a true no-op. No other side effects.
-- **shared internal cross-subdir imports:** `shared/utils/bitcoin.ts → ../constants/bitcoin`; `shared/utils/fatalProcessHandlers.ts → ../types/logger` (covered by `rootDir: "./"`)
-- Imports counts: server/src 47, gateway/src 11, tests/ 6, ai-proxy/src 0, frontend (`@shared/*` style) 12
-- Max import depth: 5 (`'../../../../../shared/utils/bitcoin'`) — 20 hits in server/src
-- Dockerfiles: server + gateway each `COPY shared ../shared`; ai-proxy does NOT copy shared
-- **Server Dockerfile symlink hack:** line 44 `RUN ln -s /app/node_modules /node_modules` (legacy from old layout; v3 G1 removes it)
-- **Server `main`/`start` paths:** `dist/server/src/index.js` (referenced in `package.json:5,25`)
-- `server/scripts/ensure-shared-module-resolution.mjs` invoked at 23 sites: 19 in `server/package.json`, 3 in `.github/workflows/verify-vectors.yml` (lines 94/266/318), 1 in `scripts/ci/setup-server-dependencies.sh:32`
-- Root `.gitignore` line 24: bare `dist/` (covers `shared/dist/` at any depth — Phase A4 verify-only)
-- Root `tsconfig.json:29` `paths: { "@shared/*": ["./shared/*"] }`; `vite.config.ts:30` and `vitest.config.ts:20` both alias `@shared` (E2 must remove from BOTH)
-- ESLint `productionSource` array (verified): frontend paths only — DOES NOT cover `server/src/**` or `gateway/src/**` (F1 must add explicit scope)
-
----
-
-## Phase A — Build shared/ as a real package (NO consumer changes; both old and new paths viable after) — 1 PR
-
-Goal: shared/ becomes a buildable npm package emitting `shared/dist/`. Existing relative-path imports STILL work because shared's source files don't move and consumer tsconfigs still `include: ["../shared/**/*"]`. Pure addition.
-
-- [ ] **A1.** Create `shared/tsconfig.json`:
-  - `target: "ES2020"`, `module: "commonjs"`, `moduleResolution: "node"`, `outDir: "./dist"`, `rootDir: "./"`, `declaration: true`, `declarationMap: true`, `sourceMap: true`
-  - **No `composite: true`** (per iter2 — friction without payoff; defer to a separate "project references" task if ever needed)
-  - **DO NOT use `extends: "../tsconfig.json"`** (per iter3 ForkA B-iter3-4: root has `noEmit: true` AND `allowImportingTsExtensions: true` which are paradox-incompatible with `declaration: true` and would silently break Phase A5). Hand-write the strict-flag triple at top:
-    ```json
-    {
-      "compilerOptions": {
-        "strict": true,
-        "noImplicitAny": true,
-        "strictNullChecks": true,
-        "noImplicitReturns": true,
-        // ... rest
-      }
-    }
-    ```
-  - `include: ["**/*.ts"]`, `exclude: ["dist", "node_modules"]`
-- [ ] **A2.** Create `shared/package.json`:
-  ```json
-  {
-    "name": "@sanctuary/shared",
-    "private": true,
-    "version": "0.0.0",
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
-    "exports": {
-      ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-      "./utils/*": { "types": "./dist/utils/*.d.ts", "default": "./dist/utils/*.js" },
-      "./types/*": { "types": "./dist/types/*.d.ts", "default": "./dist/types/*.js" },
-      "./schemas/*": { "types": "./dist/schemas/*.d.ts", "default": "./dist/schemas/*.js" },
-      "./constants/*": { "types": "./dist/constants/*.d.ts", "default": "./dist/constants/*.js" }
-    },
-    "dependencies": {
-      "zod": "4.3.6"
-    },
-    "scripts": {
-      "build": "tsc -p tsconfig.json",
-      "clean": "rm -rf dist"
-    }
-  }
-  ```
-  - **`.` root entry IS REQUIRED** — without it, `import x from '@sanctuary/shared'` errors `ERR_PACKAGE_PATH_NOT_EXPORTED` (exports map is exhaustive when present).
-  - **`zod` declared at exact `4.3.6`** — matches root's pin (root pins exact, server/gateway use `^4.3.4`; pin to root's exact to avoid hoisting surprises where two zod copies coexist and `instanceof ZodError` checks fail across copies).
-  - No `type: module` (default CJS, matches consumers).
-- [ ] **A2.5.** Add `scripts/quality/check-shared-deps.mjs` — for each unique import specifier in `shared/**/*.ts`, classify via `module.isBuiltin(spec)` (Node ≥ 16 — handles `crypto`, `node:crypto`, `node:fs/promises`, etc. authoritatively); for non-builtin non-relative imports, fail if not declared in `shared/package.json` `dependencies`. Use `.mjs` not `.sh` to access `module.isBuiltin()` directly. Wire into `quality.yml`. Also accept `@types/*` as devDeps (type-only). (Belt-and-suspenders: if a future PR adds a new external import to shared and forgets to declare it, CI catches.)
-- [ ] **A3.** Create `shared/index.ts` (required for `.` exports entry to resolve). Re-export the most common things:
-  ```ts
-  export * from './utils/errors';
-  export * from './utils/safeJson';
-  // ... other commonly-imported barrel re-exports
-  ```
-  Keep sparse initially; consumers should prefer subpath imports. ORDERING: A3 must precede A5 (build).
-- [ ] **A4.** No-op verify: confirm root `.gitignore` line 24 `dist/` covers `shared/dist/`. (No file change unless verification fails.)
-- [ ] **A5.** Build shared/ once locally: `cd shared && npm run build`. Verify:
-  - `shared/dist/utils/errors.js`, `shared/dist/index.js`, `shared/dist/index.d.ts` exist with expected shape
-  - tsc emits no errors (composite-mode-style strict declaration emit may surface inferred-return-type rejections; fix at the source by adding explicit return types)
-- [ ] **A6.** Verify the existing relative imports STILL work: `cd server && npx tsc --noEmit` still passes; server tests still pass; `./start.sh --rebuild server` still passes (because shared/source-files are still where they were).
-- [ ] **A7.** Add a CI step to root or shared `prepare` that runs `npm --workspace shared run build` — ensures `dist/` is fresh on every install. Defer wiring to Phase B (which is when workspaces become live).
-
-**Verification:** `shared/dist/` produced; consumer code unaffected; `check-shared-deps.sh` passes; CI green.
-
-**Rollback:** delete `shared/package.json`, `shared/tsconfig.json`, `shared/dist/`, `shared/index.ts`, `scripts/quality/check-shared-deps.sh`. Zero consumer impact.
-
----
-
-## Phase B — Enable workspaces; wire server consumption — 1 PR (B3 cascade in same commit)
-
-Goal: root becomes a workspace; server depends on `@sanctuary/shared` via the workspace symlink AND drops the inline-compile of shared.
-
-- [ ] **B1.** Root `package.json` adds:
-  ```json
-  "workspaces": ["shared", "server", "gateway"],
-  "dependencies": { ..., "@sanctuary/shared": "workspace:*" }
-  ```
-  Root being the workspace HOST does NOT auto-link `@sanctuary/shared`; must declare as a root dep so frontend (which lives at root) can resolve it. ai-proxy and website intentionally omitted from `workspaces`. (website may already be standalone — verify; if it imports shared, this gets added too.)
-- [ ] **B2.** `server/package.json` adds dependency:
-  ```json
-  "dependencies": { ..., "@sanctuary/shared": "workspace:*" }
-  ```
-- [ ] **B3a. Server tsconfig — `include` change + `paths` mapping:**
-  - REMOVE `"../shared/**/*"` from `include` (was `["src/**/*", "../shared/**/*"]` → `["src/**/*"]`).
-  - Leave `rootDir: ".."` AS-IS (do not change in this sub-step). Avoids the emit-shape cascade.
-  - **ADD `paths: { "@sanctuary/shared/*": ["../shared/dist/*"] }`** (per iter3 convergent C-1 / N-B1: server's `moduleResolution: node` does NOT honor the `exports` field; without `paths`, tsc walks `node_modules/@sanctuary/shared/utils/errors.{ts,d.ts,js}` directly — finds `.ts` SOURCE first because the symlink target IS the source dir, masking the bug at type-check while runtime `require()` honors `exports` and resolves `dist/utils/errors.js`. Two different files for the same import. The `paths → ../shared/dist/*` mapping points type-check at the SAME built artifact runtime sees — eliminates divergence). Add `baseUrl: "./"` if not present.
-  - **Acceptance:** before merging, verify with: `cd server && rm -rf node_modules/@sanctuary && npx tsc --noEmit` errors with `Cannot find module '@sanctuary/shared/utils/errors'` (proves type-check fails when shared isn't built — not silently passing via `.ts` source resolution). Then `cd ../shared && npm run build && cd ../server && npx tsc --noEmit` passes (proves the `paths → dist` mapping works once shared is built).
-- [ ] **B3b. (OPTIONAL — defer to a separate later PR if not needed for v3 scope) `rootDir`/emit-shape cleanup:**
-  Multi-file cascade — must land in ONE commit:
-  1. `server/tsconfig.json`: `rootDir: "./src"`
-  2. `server/package.json`: `main: "dist/index.js"`, `start: "node dist/index.js"`
-  3. `server/Dockerfile`: update CMD/EXPOSE references to `dist/index.js`
-  4. `docker-compose.*.yml`: any `command: node dist/server/src/index.js` → `dist/index.js`
-  5. `.github/workflows/verify-vectors.yml`: any server-start command updated
-  6. Prisma seed compile: if it references `dist/server/...`, update
-  Acceptance: `./start.sh --rebuild server`; container starts; `curl localhost:3001/api/health` returns 200. **If acceptance fails, B3b is rolled back independently of B3a.** Defer entirely if effort exceeds budget — emit-shape cleanliness is cosmetic.
-- [ ] **B4.** `server/vitest.config.ts` adds to `resolve.alias`:
-  ```ts
-  '@sanctuary/shared': path.resolve(__dirname, '../shared/dist')
-  ```
-  **Note:** alias points at `dist/`, NOT source — keeps vitest resolution aligned with runtime resolution. Requires `shared/dist/` to be built before tests run. Add `pretest` hook: `npm --workspace shared run build` (or rely on root prepare from A7).
-  **B4 acceptance (per iter3 ForkB H-1 + Claude N-S1):** add a smoke test that deliberately throws from a shared util; assert the stack trace points at `shared/utils/errors.ts:LINE` NOT `shared/dist/utils/errors.js:LINE`. Proves `sourceMap: true` (A1) flows through vitest's stack-trace resolution. If it fails, source maps aren't being served — fix before proceeding.
-- [ ] **B5.** Run `npm install` at repo root. Verify:
-  - `node_modules/@sanctuary/shared` exists as a symlink to `../shared`
-  - Root `package-lock.json` is created/updated; per-package `server/package-lock.json`/`gateway/package-lock.json` are REMOVED (collapsed into root lock)
-  - `server/node_modules/@sanctuary/shared` resolves (npm 11 may put it under server's node_modules directly OR rely on parent-walk to root)
-  - **EXPECTED INSTALL TIME GROWTH:** root install builds shared+server+gateway transitives at once; expect ~2-3× per-package install time. Verify against any 25-min step timeout in `test.yml` (PRs #389/#390/#398) — bump if needed.
-- [ ] **B6.** Add ONE smoke test import to verify the new path resolves: in `server/tests/unit/utils/errors.test.ts` (or new `tests/smoke/workspace.test.ts`), `import { extractErrorMessage } from '@sanctuary/shared/utils/errors';` and assert deep-equal vs the existing relative-path import. Both styles must work.
-- [ ] **B7.** Run server CI lanes locally: `cd server && npx tsc --noEmit && npm run test:run && cd .. && ./start.sh --rebuild server`.
-- [ ] **B8.** Verify ai-proxy is unaffected: `ls ai-proxy/node_modules/@sanctuary 2>&1` should fail (no such directory). Run `cd ai-proxy && npm test`.
-- [ ] **B9.** **Bare-import smoke from a `.mjs` script** (per iter2 ForkB Vector 1 — ESM-from-CJS interop): from a fresh `scripts/probe-shared-esm.mjs`, run `import { extractErrorMessage } from '@sanctuary/shared/utils/errors'; console.log(typeof extractErrorMessage);` — must print `function`, NOT `undefined`. If undefined, named-export synthesis from CJS isn't working and need to investigate (e.g., switch shared to dual ESM/CJS build).
-
-**Verification:** server uses workspace path AND old relative paths; ai-proxy unchanged; Docker builds pass; ESM bare-import smoke passes.
-
-**Rollback:** revert this PR. Phase A artifacts stay (harmless).
-
----
-
-## Phase C — Wire gateway consumption — 1 PR
-
-Same shape as Phase B (without B3b cascade — gateway has no equivalent emit-shape concern; verify its `rootDir`/`main` first):
-- [ ] **C1.** `gateway/package.json` adds `"@sanctuary/shared": "workspace:*"`
-- [ ] **C2.** `gateway/tsconfig.json` drops `"../shared/**/*"` from `include` AND adds `paths: { "@sanctuary/shared/*": ["../shared/dist/*"] }` + `baseUrl: "./"` (same rationale as B3a — gateway is also `moduleResolution: node`)
-- [ ] **C3.** `gateway/vitest.config.ts` adds `resolve.alias` pointing at `shared/dist/`
-- [ ] **C4.** Smoke test import in gateway tests
-- [ ] **C5.** Run gateway lanes locally + Docker rebuild
-- [ ] **C6.** **Verify gateway emit shape unchanged.** Inspect `gateway/dist/` after build; if any path references `dist/shared/...`, the dual-resolution will work but the shipped image carries dead code. Note for later cleanup; not blocking.
-
----
-
-## Phase D — Sweep imports via ts-morph (NOT sed) — 1 PR (or 3 sub-PRs as in v1)
-
-Goal: rewrite all relative-path shared imports to `@sanctuary/shared/...`. Per fork findings, sed is too fragile (misses depth-5, dynamic imports, `vi.mock()`). Use ts-morph.
-
-- [ ] **D1.** Add `scripts/codemod/rewrite-shared-imports.ts` — instantiate **separate Project instances per tsconfig** (consumer tsconfigs see different file sets):
-  ```ts
-  import { Project, SyntaxKind } from 'ts-morph';
-  const CONFIGS = [
-    { path: 'server/tsconfig.json', regex: /^(\.\.\/)+shared\/(.+)$/ },
-    { path: 'server/tsconfig.test.json', regex: /^(\.\.\/)+shared\/(.+)$/ },
-    { path: 'server/tsconfig.test.full.json', regex: /^(\.\.\/)+shared\/(.+)$/ },  // per iter3 ForkA S-iter3-2: different module resolution may surface different file set
-    { path: 'gateway/tsconfig.json', regex: /^(\.\.\/)+shared\/(.+)$/ },
-    { path: 'tsconfig.app.json', regex: /^@shared\/(.+)$/, replaceFmt: '@sanctuary/shared/$1' },
-    { path: 'tsconfig.tests.json', regex: /^(\.\.\/)+shared\/(.+)$|^@shared\/(.+)$/ },  // tests/ uses BOTH styles (verified 9 hits total)
-    { path: 'tsconfig.scripts.json', regex: /^(\.\.\/)+shared\/(.+)$/ },
-  ];
-  // PRE-FLIGHT (per iter3 ForkB H-3): before instantiating Project per cfg, run `cd <pkg> && npx tsc --noEmit --skipLibCheck` and require exit 0. If type resolution is broken for a tsconfig (e.g., missing @types/node after workspace install), the codemod fails in confusing ways — this catches it cleanly upstream.
-  for (const cfg of CONFIGS) {
-    const project = new Project({ tsConfigFilePath: cfg.path });
-    for (const sf of project.getSourceFiles()) {
-      // Static imports
-      for (const imp of sf.getImportDeclarations()) {
-        const spec = imp.getModuleSpecifierValue();
-        const m = spec.match(cfg.regex);
-        if (m) imp.setModuleSpecifier(`@sanctuary/shared/${m[2] ?? m[1]}`);
-      }
-      // Dynamic import('...')
-      // require('...')
-      // vi.mock('...') / jest.mock('...')
-      for (const call of sf.getDescendantsOfKind(SyntaxKind.CallExpression)) {
-        const expr = call.getExpression().getText();
-        if (expr === 'import' || expr === 'require' || expr === 'vi.mock' || expr === 'jest.mock') {
-          const arg = call.getArguments()[0];
-          if (arg?.getKind() === SyntaxKind.StringLiteral) {
-            const text = (arg as any).getLiteralValue();
-            const m = text.match(cfg.regex);
-            if (m) (arg as any).setLiteralValue(`@sanctuary/shared/${m[2] ?? m[1]}`);
-          }
-        }
-      }
-      sf.saveSync();
-    }
-  }
-  ```
-  **MEMORY NOTE:** server has ~1700 TS files; ts-morph peak memory ~1-2 GB. Run on a dev box, not in CI; document in script header.
-- [ ] **D2.** Run codemod on `server/tsconfig.json` (47 imports). Verify with `grep -rE "from ['\"](\.\./)+shared/" server/src` returns 0.
-- [ ] **D3.** Run codemod on `gateway/tsconfig.json` (11 imports).
-- [ ] **D4.** Run codemod on test tsconfigs. 6 imports + frontend `@shared/*` style mixed in.
-- [ ] **D5.** Run codemod on root frontend (`tsconfig.app.json`). 12 imports.
-- [ ] **D6.** Run `npx tsc --noEmit` per package; vitest per package; full Docker rebuild.
-- [ ] **D7.** **Mutation gate baseline reset.** First run after D will be uncached (~25min vs cached ~3-5min) because every mutated file's hash changed. **Just budget the slow first run** — pre-warming on a no-op PR doesn't help (per iter3 convergent C-2 / N-S3: Stryker's content-hash cache invalidates regardless; pre-warming runs the gate twice for nothing). Optionally bump the cache prefix in `test.yml:525` to `-v3` so the OLD cache is never restored and Stryker starts fresh from a known state.
-
----
-
-## Phase E — Drop the old `@shared/*` path alias — 1 PR
-
-- [ ] **E0. Pre-flight grep gate** (per iter2): `grep -rE "from ['\"]@shared/" --include='*.ts' --include='*.tsx' .` returns 0 BEFORE proceeding to E1. If any remain, D5 missed them — fix and re-grep.
-- [ ] **E1.** Remove `@shared/*` from root `tsconfig.json` `paths`.
-- [ ] **E2.** Remove `@shared` alias from BOTH:
-  - root `vite.config.ts` line 30
-  - root `vitest.config.ts` line 20
-  - any `vite.*.config.ts` variants (search: `find . -name 'vite*.config.*' -not -path '*/node_modules/*'`)
-- [ ] **E3.** Grep gate (CI): `grep -rE "from ['\"]@shared/" --include='*.ts' --include='*.tsx'` returns 0. CI fails if any remain.
-- [ ] **E4.** Update `shared/types/index.ts:5` doc comment from "Import from '@shared/types' (frontend) or '../../../shared/types' (server)" → "Import from `@sanctuary/shared/types`."
-
----
-
-## Phase F — Enforce convention; lock down ai-proxy — 1 PR
-
-- [ ] **F1.** ESLint `no-restricted-imports` rule with **TWO fixes** (per iter3 — F1b reframed):
-  
-  **F1a — pattern scope:** patterns must NOT include `**/shared/**` (it would over-match the new `@sanctuary/shared/*` workspace specifier and block every migrated import). Restrict to relative-path forms only, extended to depth-7 for deep test paths:
-  ```js
-  patterns: [
-    {
-      group: [
-        "../shared/**",
-        "../../shared/**",
-        "../../../shared/**",
-        "../../../../shared/**",
-        "../../../../../shared/**",
-        "../../../../../../shared/**",   // depth-6 (per iter3 ForkB M-3)
-        "../../../../../../../shared/**", // depth-7
-      ],
-      message: "Import shared via the workspace package: from '@sanctuary/shared/...'."
-    }
-  ]
-  ```
-  
-  **F1b — add the rule to the EXISTING `productionSource` block at `eslint.config.js:38-82`** (per iter3 ForkA B-iter3-1: `productionSource` is verified at lines 14-15 to ALREADY include `server/src/**/*.ts` and `gateway/src/**/*.ts`. v3 misread this and prescribed an unnecessary "separate config block." The rule belongs in the existing block, not a new one).
-  
-  **F1c — smoke validation as a config-import unit test** (per iter3 convergent C-4 / N-S2 / H-2: programmatic ESLint loads all plugins, ~3-5s startup, fragile). Instead, add `tests/unit/eslint-config.test.ts`:
-  ```ts
-  import config from '../../eslint.config.js';
-  it('no-restricted-imports does not contain **/shared/** in productionSource block', () => {
-    const block = config.find(c => c.files?.includes('server/src/**/*.ts'));
-    const patterns = block?.rules?.['no-restricted-imports']?.[1]?.patterns?.[0]?.group ?? [];
-    expect(patterns).not.toContain('**/shared/**');
-  });
-  ```
-  ~10 lines, runs in milliseconds, catches the regression without plugin loading.
-
-- [ ] **F2.** Add a SECOND ESLint rule scoped specifically to `ai-proxy/**/*`:
-  ```js
-  {
-    files: ["ai-proxy/**/*.ts"],
-    rules: {
-      "no-restricted-imports": ["error", {
-        patterns: [{
-          group: ["@sanctuary/shared/**", "**/shared/**"],
-          message: "ai-proxy is intentionally network-isolated; do not import from shared/. See shared/utils/README.md."
-        }]
-      }]
-    }
-  }
-  ```
-- [ ] **F3.** Add CI grep gate (mirrors `check-provider-leaks.sh` style): `scripts/ci/check-ai-proxy-shared-isolation.sh` returns nonzero if any ai-proxy file imports `@sanctuary/shared` or `*/shared/*`. Wire into `quality.yml` `ci-classifier-tests` step.
-- [ ] **F4.** ai-proxy isolation runtime test — **defer to the Per-tool resolution table's Docker-level test**. The npm-only test (`tests/ai-proxy/isolation.test.ts` running from root vitest) cannot prove what Docker proves: root vitest's `@sanctuary/shared` resolves via root node_modules, not ai-proxy's. Authoritative test: `docker exec ai-proxy node -e "require('@sanctuary/shared/utils/errors')"` MUST exit non-zero. Wire into Phase G acceptance, NOT a vitest file.
-
----
-
-## Phase G — Dockerfile updates — 1 PR
-
-- [ ] **G1.** `server/Dockerfile`:
-  - Add a builder stage that COPIES `package.json`, `package-lock.json` (root), `shared/`, `server/` from the build context
-  - Run `npm ci --workspaces` from root (or `npm ci --workspace=server` to install only server's tree + shared)
-  - Run `npm --workspace=shared run build` to produce `shared/dist/`
-  - Run `npm --workspace=server run build`
-  - **Production stage COPY strategy** (pick ONE per iter2 ForkA C-B2):
-    - (a) `cp -L` (or `COPY` with `--link` semantics) to materialize the workspace symlink target into a real directory at the destination, OR
-    - (b) Preserve symlink AND copy `shared/` to its expected relative path (`/app/../shared` won't work; restructure to `/srv/shared` + `/srv/app/server` so symlink target is reachable), OR
-    - (c) Replace symlink with a hand-built `node_modules/@sanctuary/shared/` directory containing just `package.json` + `dist/`
-    
-    v3 picks **(c)** — simplest, deterministic, no dangling-symlink surprise across stages.
-  - **REMOVE** the legacy hack at `server/Dockerfile:44`: `RUN ln -s /app/node_modules /node_modules`. This was for the old layout where shared expected to walk up to `/node_modules`; now obsolete.
-  - **Acceptance probes (BOTH required):**
-    1. `docker exec server node -e "require('@sanctuary/shared/utils/errors')"` MUST resolve and print a function reference.
-    2. **`docker exec server node -e "require('@sanctuary/shared/schemas/mobileApiRequests')"` MUST resolve** (per iter3 ForkB H-5 / Claude convergent: this exercises zod transitive resolution. Strategy (c) ships only `package.json` + `dist/` for shared — does NOT bundle zod. Resolution depends on zod existing at `/app/node_modules/zod` via server's own zod dependency. If server ever drops zod from its deps, this silently breaks. Probe catches it.)
-- [ ] **G2.** `gateway/Dockerfile` — explicit list (NOT "same shape as G1" — gateway has its own quirks per iter3 ForkA B-iter3-3):
-  - Apply same builder/production stage restructure as G1, including COPY strategy (c).
-  - **REMOVE the IDENTICAL `ln -s /app/node_modules /node_modules` hack at `gateway/Dockerfile:24`** (verified — present in current source, mirrors server's line 44).
-  - Gateway uses `npm prune --production --omit=optional` (line 31; server uses `--production` only). Verify the workspace symlink + `--omit=optional` interaction in G4.5 (next).
-  - Acceptance probes (both): `docker exec gateway node -e "require('@sanctuary/shared/utils/errors')"` resolves AND `docker exec gateway node -e "require('@sanctuary/shared/schemas/mobileApiRequests')"` resolves.
-- [ ] **G3.** `ai-proxy/Dockerfile`: NO CHANGES (preserves isolation). Acceptance probe (per F4): `docker exec ai-proxy node -e "require('@sanctuary/shared/utils/errors')"` MUST FAIL.
-- [ ] **G4.** Verify all three: `./start.sh --rebuild` succeeds on Linux and macOS host (the Forgejo runner). LAN CI sink (`tools/ci-log-sink/`) provides log access if it fails.
-- [ ] **G4.5.** **`npm prune --production` × workspace symlink check.** Server Dockerfile builder runs `npm prune --production` (~line 57); gateway runs `npm prune --production --omit=optional` (line 31). Confirm for BOTH:
-  1. After prune, `node_modules/@sanctuary/shared` (symlink or copy per G1c) is preserved.
-  2. After `COPY --from=builder /app/node_modules` to production stage, the symlink target is reachable.
-  3. Container `require('@sanctuary/shared/utils/errors')` resolves AND `require('@sanctuary/shared/schemas/mobileApiRequests')` resolves (zod transitive — see G1 acceptance #2).
-  4. **`--omit=optional` extra check (gateway only):** if shared ever declares `optionalDependencies`, gateway's prune drops them while server's keeps them. Today shared has no optional deps; if added, document the interaction.
-- [ ] **G5.** **Cache + workflow cascade — enumerate every site:**
-  
-  | Site | Current behavior | v3 fix |
-  | --- | --- | --- |
-  | `.github/actions/setup-server-deps/action.yml` | Caches `server/node_modules` keyed on `server/package-lock.json` | Hash root `package-lock.json` + `server/package.json`; bump prefix `-v3` |
-  | `gateway/node_modules` cache (inline in `quick-gateway-tests`, PR #398) | Keyed on `gateway/package-lock.json` | Same fix as setup-server-deps; key off root lockfile |
-  | `ai-proxy/node_modules` cache (inline in `quick-ai-proxy-tests`, PR #398) | Keyed on `ai-proxy/package-lock.json` | NO CHANGE — ai-proxy stays out of workspace; its lockfile remains authoritative |
-  | Stryker `.stryker-cache/critical-incremental.shard-N.json` (PR #389) | Keyed on file content | NO CHANGE in key shape, but baseline rebuild expected post-D7 |
-  | Backend coverage shard cache (PR #394) | vitest blob cache | Add `shared/package.json` to cache key |
-  | `architecture.yml:71-73` `npm --prefix server ci` / `--prefix gateway ci` / `--prefix website ci` | Per-package install via `--prefix` | **DELETE the per-package commands** (per iter3 ForkB H-4: root `npm ci` runs first and already installs all workspaces under v3.1; per-package commands are redundant. After server/gateway lockfiles are gone, `npm --prefix server ci` would error "no package-lock.json"). Keep website's command as-is if website remains standalone. |
-  | `verify-vectors.yml:93,265,317` `cd server && npm ci --ignore-scripts` | Server has no lockfile after migration → fails | Replace with `npm ci --workspace=server --ignore-scripts` from root (or `npm ci` at root which installs all workspaces) |
-  | `quality.yml` audit `npm --prefix server audit` | Server has no lockfile → silent skip or error | Replace with `npm audit --workspace=server` from root |
-  | `scripts/quality/check-lockfile-peer-resolution.sh:22` iterates `DIRS=(. server gateway ai-proxy)`, `[ ! -f package-lock.json ] && continue` | **Silently skips** server/gateway after migration → peer-resolution gate degrades quietly | Rewrite to operate from root; iterate workspace packages via `npm query .workspace` (or hardcode `(. ai-proxy)` since server/gateway delegate to root) |
-  | `release.yml`, `release-offline-bundle.yml`, `install-test.yml` | Various per-package `npm ci` | Sweep needed — list every site; replace with workspace-aware command |
-  | **`docker-compose.test.yml` lines 75/110/123-161** | frontend-test/frontend-coverage bind-mount `./node_modules:/app/node_modules:ro` but NOT `./shared` | After migration, `node_modules/@sanctuary/shared` is a symlink to `../shared/` → mount makes it dangle into unmounted `/app/shared` → frontend tests fail. **Fix (per iter3 ForkA B-iter3-3):** add `./shared:/app/shared:ro` bind-mount to frontend-test + frontend-coverage services AT the matching relative location the symlink expects, OR change the workspace strategy to use the hand-built directory layout (G1c) inside the test container too |
-  
-  Each row is a sub-task; G5 is not done until all are addressed.
-
----
-
-## Phase H — Cleanup `ensure-shared-module-resolution.mjs` — 1 PR
-
-The script's purpose was to symlink `repo-root/node_modules` → `server/node_modules` for prisma's schema resolution when there was no root `node_modules`. With workspaces, root ALWAYS has node_modules. The script's first guard makes it a no-op.
-
-- [ ] **H1.** **Verified inline (script read in iter3):** the 32-line script's ONLY side effect is `symlinkSync(serverNodeModules, repoNodeModules)` when `<repo-root>/node_modules` doesn't exist. Under workspaces, `<repo-root>/node_modules` ALWAYS exists → the symlink branch is dead. No other side effects. Safe to delete.
-- [ ] **H2.** Delete `server/scripts/ensure-shared-module-resolution.mjs` AND remove **all 23 invocation sites**:
-  - `server/package.json` (19 sites — `predev`, `prebuild`, `prestart`, `pretest`, `pretest:run`, `pretest:coverage`, `pretest:unit`, `pretest:integration`, `pretest:ci`, `pretest:bitcoin`, `pretest:pool`, `pretest:api`, `pretest:contract`, `pretest:security`, `pretest:fast`, `pretest:mutation`, `pretest:mutation:critical`, `pretypecheck:tests`, `pretypecheck:tests:full`)
-  - `.github/workflows/verify-vectors.yml` (3 sites — lines 94, 266, 318; wrapped in `retry-command.sh`)
-  - `scripts/ci/setup-server-dependencies.sh:32`
-- [ ] **H3.** **Real regression test (per iter3 convergent C-3 / B-iter3-2 / N-B2 — v3's "delete `node_modules/.prisma/client`" was a placebo because Prisma generates to `server/src/generated/prisma` per `schema.prisma:6`, not the default `.prisma/client` location):**
-  
-  Concrete clean-room test:
-  ```bash
-  # In a temp checkout (not the working tree):
-  cd /tmp && rm -rf wt && cp -a /home/nekoguntai/sanctuary wt && cd wt
-  rm -rf node_modules server/node_modules                                # nuke both
-  npm install                                                            # under v3.1 workspace setup
-  cd server && npx prisma generate                                       # writes to src/generated/prisma per schema
-  cd .. && rm -rf node_modules                                           # remove root node_modules to simulate post-prune scenario
-  node -e "require('./server/dist/server/src/generated/prisma/client.js')" # MUST succeed
-  ```
-  If THIS fails after deletion of root `node_modules`, the script was load-bearing for the prisma client resolution path. If it succeeds, the script is genuinely safe to delete.
-  - Belt-and-suspenders also: `cd server && rm -rf node_modules && cd .. && npm install && cd server && npm test` from a clean state — proves no hidden `pretest` setup was masking deletion.
-
----
-
-## Phase I — Stryker probe + Phase 5 unlock — 1 PR (with branch fork-back-to-spike if probe fails)
-
-Goal: with shared/ now a `node_modules`-resolved package, Stryker's vitest+perTest sandbox should resolve cross-package imports correctly. **Verify empirically before switching the config.**
-
-- [ ] **I1. Manual sandbox probe with control case:**
-  
-  **Concrete commands** (per iter2 ForkA C-S8):
-  ```bash
-  # Treatment: probe with workspace migration applied
-  cd server
-  cleanTempDir=false MUTATION_SHARD=1 npx stryker run stryker.critical.config.mjs --logLevel trace 2>&1 | tee /tmp/stryker-treatment.log
-  ls .stryker-tmp/sandbox-*/node_modules/@sanctuary/ 2>&1
-  
-  # Control: stash workspace changes, repeat
-  git stash
-  cleanTempDir=false MUTATION_SHARD=1 npx stryker run stryker.critical.config.mjs --logLevel trace 2>&1 | tee /tmp/stryker-control.log
-  ls .stryker-tmp/sandbox-*/node_modules/@sanctuary/ 2>&1
-  git stash pop
-  
-  diff <(grep -E "@sanctuary|shared" /tmp/stryker-treatment.log | sort -u) <(grep -E "@sanctuary|shared" /tmp/stryker-control.log | sort -u)
-  ```
-  
-  Inspect:
-  - Is `node_modules/@sanctuary/shared` present in TREATMENT sandbox? (must be yes)
-  - Is it absent from CONTROL sandbox? (must be yes — proves migration is what made the difference, not Stryker behavior)
-  - Does TREATMENT sandbox vitest invocation successfully `require('@sanctuary/shared/utils/errors')`?
-- [ ] **I2. If probe succeeds:** switch `server/stryker.critical.config.mjs` to vitest+perTest (the changes from closed PR #397 are already documented in `reports/ci-optimization-survey-2026-05-10.md`). Verify all 3 quick + 3 full mutation shards complete and the merge gate passes.
-- [ ] **I3. If probe fails:** Stryker doesn't dereference symlinks correctly. Two fallback options:
-  - (a) Add a Stryker sandbox-prep plugin/hook that materializes the symlinked package (`cp -r` instead of symlink). Higher effort.
-  - (b) Defer Phase 5; document the blocker; the workspace migration still delivers all the OTHER co-benefits.
-- [ ] **I4.** Append a "2026-XX-XX — Phase 5 unlock outcome" section to `reports/ci-optimization-survey-2026-05-10.md`.
-
----
-
-## Phase J — Documentation + retire markdown debt — 1 PR
-
-- [ ] **J1.** **Rewrite** `shared/utils/README.md` "Convention" section in full (per iter2 ForkA C-S3 — the existing shim-convention paragraph is now obsolete, not just a clause update):
-  - Delete the "per-package re-export shims" paragraph
-  - Document the workspace-package import pattern as the single way
-  - Document the 4 existing shim files (`server/src/utils/fatalProcessHandlers.ts`, `server/src/utils/processExit.ts`, `gateway/src/utils/fatalProcessHandlers.ts`, `gateway/src/utils/processExit.ts`) as legacy entries (or remove them in J4)
-- [ ] **J2.** Update `CONTRIBUTING.md` to reference the workspace import style as the single way.
-- [ ] **J3.** Add a memory entry capturing the lesson: "Workspace migration unblocked sandbox-creating tools and unified the bifurcated import convention. ai-proxy isolation enforced by ESLint + grep gate + Docker-level smoke, NOT by workspace omission alone."
-- [ ] **J4.** (optional cleanup) Remove the 4 legacy shim files; replace direct re-exports with workspace imports at call sites.
-
----
-
-## Per-tool resolution check (Phase B + C acceptance)
-
-Each tool gets a CONCRETE PROBE — not "verify it works", but a specific failing-case test:
-
-| Tool | Probe |
-| --- | --- |
-| `tsc` (server) | `cd server && npx tsc --noEmit` — must error if `@sanctuary/shared/utils/X` is misspelled |
-| `tsc` (gateway) | same |
-| `vitest` (server) | smoke test (B6) imports via workspace path; assert deep-equal vs relative-path import |
-| `vitest` (root) | same probe in a frontend test |
-| **`.mjs` ESM script** | B9 — `import { extractErrorMessage } from '@sanctuary/shared/utils/errors'` from a `.mjs` script; `typeof` must be `function` |
-| Stryker `command` runner | broad config dry-run; verify no resolution failures |
-| Stryker `vitest` runner | I1 (manual probe with control case before switching config) |
-| AppMap | record one server test (e.g. `npx --yes appmap-node npx vitest run tests/unit/services/...`); confirm trace shows shared functions |
-| Docusaurus | `npm run docs:build` clean — no broken links from shared documentation |
-| Docker (server) | `./start.sh --rebuild server` succeeds; container runs; `docker exec server node -e "require('@sanctuary/shared/utils/errors')"` resolves |
-| Docker (gateway) | same |
-| **Docker (ai-proxy) — AUTHORITATIVE ISOLATION TEST** | `./start.sh --rebuild ai-proxy`; container runs; `docker exec ai-proxy node -e "require('@sanctuary/shared/utils/errors')"` MUST FAIL with `Cannot find module` (proves isolation; replaces v2's flawed F4 npm-only test) |
-| Prisma | `cd server && npx prisma generate` produces client at expected path; existing migrations still apply |
-| ESLint | F1c smoke test — fixture file with `@sanctuary/shared/...` import must lint clean; fixture file with `../../../shared/...` import must lint with error |
-
-## Top risks (from review iter1+iter2, designed-in)
-
-| Risk | Mitigation in plan |
-| --- | --- |
-| `exports: ./*.ts` doesn't work at Node runtime | Phase A1: shared/dist/ + CJS build; exports point at `*.js` |
-| `.` root entry missing from exports map | Phase A2 explicitly adds `"."` entry |
-| `zod` undeclared in shared deps | Phase A2 declares; A2.5 adds CI gate against future drift |
-| `paths` ↔ `exports` resolve different files | Phase B3a drops `paths` entirely; workspace symlink handles type-check |
-| B3 `rootDir` change cascades to 6+ files | Phase B3b is OPTIONAL multi-file commit OR deferred entirely |
-| Frontend has no `@sanctuary/shared` resolution path | Phase B1 declares root dep; Phase E2 removes alias from BOTH vite/vitest configs |
-| Stryker symlink behavior unverified | Phase I1: manual probe WITH CONTROL CASE before config switch; Phase I3 fallback |
-| ai-proxy isolation not enforceable by workspace omission | Phase F2 + F3 + Docker-level test in Per-tool table (F4 deprecated) |
-| ESLint rule shape wrong | Phase F1a: relative-path patterns only (no `**/shared/**`); F1c smoke gate |
-| ESLint rule scope misses server/gateway | Phase F1b: separate config block scoped to server/gateway |
-| Sed misses depth-5 imports | Phase D: ts-morph AST visitor (depth-agnostic) with separate Project per tsconfig |
-| Docker symlink dangle at runtime | Phase G1 picks COPY strategy (c) — hand-built `node_modules/@sanctuary/shared/` directory; legacy `ln -s` hack removed |
-| `npm prune --production` × workspace symlink unverified | Phase G4.5 explicit acceptance step |
-| Cache + workflow cascade | Phase G5 enumerates every site (10+ rows); each must be addressed |
-| `ensure-shared-module-resolution.mjs` deletion silent regression | Phase H1 reads script for side effects; H2 lists all 23 sites; H3 replicates failure conditions, not happy-path only |
-| Codemod scope too narrow | Phase D1: separate Project per tsconfig (server, server/test, gateway, frontend, tests, scripts) |
-| Mutation gate baseline rebuild ~25min post-D | Phase D7 budgets it; optional pre-warm on no-op PR |
-| Install time growth ~2-3× under root workspaces | Phase B5 verifies against existing 25-min step timeouts; bump if needed |
-| README "Convention" section obsolete | Phase J1 full rewrite |
-
-## Out of scope (intentionally)
-
-- ai-proxy in workspace (would break isolation)
-- Publishing `@sanctuary/shared` externally (`private: true`)
-- pnpm/bun migration (npm workspaces is the foundation; pnpm later is a separate lift)
-- Refactoring shared/ internal layout (same files, same locations)
-- TypeScript Project References (Direction B from review synthesis; Direction A picked instead)
-- B3b emit-shape cleanup (optional sub-PR; can be deferred entirely)
-
-## Time estimate (revised post-iter2-review)
-
-- Phase A: 0.75 day (build setup + dep audit + verification)
-- Phase B: 1 day (server consumption + B3a + frontend root-dep + per-tool table + ESM smoke)
-- Phase B3b (optional): 0.5 day (rootDir cascade if attempted)
-- Phase C: 0.5 day (gateway, mirrors B)
-- Phase D: 0.75 day (codemod with separate Projects + sweep + verification + mutation baseline budget)
-- Phase E: 0.25 day (alias removal + vite.config.ts + grep gates)
-- Phase F: 1 day (ESLint F1a/b/c + ai-proxy rules + Docker-level test wiring)
-- Phase G: 1.25 day (Dockerfile rewrites with COPY strategy (c) + symlink hack removal + cache cascade enumeration + macOS verification)
-- Phase H: 0.5 day (script side-effect audit + 23-site sweep + real regression test)
-- Phase I: 0.5-1 day (probe with control; if fallback needed, +0.5-1 day for plugin)
-- Phase J: 0.5 day (README rewrite + CONTRIBUTING + memory + optional shim cleanup)
-
-**Total: ~6-8 days focused work, spread over ~10-12 PRs.** Up from v2's 5-6 days estimate. The increase reflects iter2's discovery that the implementation surface (Dockerfile, CI workflow cascade, deletion sweep, frontend resolution) was materially larger than v2 captured.
-
-## Review
-
-- v3.1 drafted post-review-iter3 (2026-05-10) — terminal version. Both fork reviewers independently recommended STOP after v3.1. No iter4 planned.
-- Awaiting user go-ahead to execute Phase A.
-
-## Review iteration 3 — 2026-05-10
-
-Findings applied from `tasks/review-findings-iter3-{claude,forkA,forkB,synthesis}.md`. Both fork reviewers independently recommended STOP after v3.1; no iter4 planned.
-
-**Accepted blockers (8 — all factual/enumeration errors v3 introduced when applying iter2 fixes):**
-- B3a: restore `paths` mapping pointing at `../shared/dist/*` (drop wrong; `moduleResolution: node` ignores `exports`)
-- C2: same fix for gateway tsconfig
-- A1: drop `extends: "../tsconfig.json"`; hand-write strict flags (root inheritance breaks emit via `noEmit: true` + paradox with `declaration: true`)
-- F1b: drop "separate config block"; add rule to existing `productionSource` block (productionSource ALREADY covers server/gateway — verified)
-- F1c: replace programmatic ESLint smoke with config-import unit test
-- G2: explicit removal of gateway/Dockerfile:24 `ln -s` hack; G4.5 covers `--omit=optional` interaction
-- G5: add `docker-compose.test.yml` row for frontend test container bind-mounts
-- D7: drop pre-warm option; budget slow first run instead
-- H3: replace placebo test with concrete clean-room test (Prisma generates to custom path, not `node_modules/.prisma/client`)
-
-**Accepted should-fix (6 convergent):**
-- A2: pin zod at exact `4.3.6` to align with root
-- A2.5: use `module.isBuiltin()` over regex
-- D1: add `server/tsconfig.test.full.json` to CONFIGS; pre-flight `tsc --noEmit --skipLibCheck` per tsconfig
-- F1a: extend patterns to depth-7
-- G1/G2/G4.5: acceptance probes BOTH `utils/errors` AND `schemas/mobileApiRequests` (zod transitive)
-- B4: B6 acceptance — assert shared stack trace points at `.ts:line` not `.js:line`
-- H1: inlined the verification (script is genuinely a no-op under workspaces)
-
-**Rejected:** none — all iter3 findings were validated and accepted.
-
-**Deferred (nice-to-have, tracked for future hardening):**
-- ForkB M-2: `.js` extension audit if consumers ever move to `moduleResolution: node16` (not in v3.1 scope)
-- ForkB L-3: Phase G time estimate may be optimistic (not blocking)
-- ForkA N-iter3-2: ai-proxy Dockerfile COPY-context verification (low risk; ai-proxy stays standalone)
-- ForkA N-iter3-3: type-level `.mts` smoke (subsumed by B9)
-- ForkA S-iter3-4: frontend coverage instrumentation under workspace resolution (verify in J as evidence step)
-- ForkA S-iter3-5: server Dockerfile structural rewrite per stage — partially captured by G1c; may need additional sub-task during execution
-
-## Review iteration 2 — 2026-05-10
-
-Findings applied from `tasks/review-findings-iter2-{claude,coordinator,forkB,synthesis}.md`:
-
-**Accepted (10 blockers, ~10 should-fix):**
-- A2: declare `zod` dep + add `.` exports root entry
-- A2.5: new CI gate against future shared-dep drift
-- A1: drop `composite: true` (defer to project references task)
-- B1: root declares `@sanctuary/shared` dep (frontend resolution path)
-- B3 split into B3a (include change, safe) + B3b (rootDir cascade, optional, multi-file commit)
-- B3a drops `paths` mapping (eliminates source/dist divergence class)
-- B4 alias points at `shared/dist/` (keeps vitest aligned with runtime)
-- B5: install time growth budget against step timeouts
-- B9: ESM-from-CJS bare-import smoke
-- D1: separate ts-morph Projects per tsconfig (server, server/test, gateway, frontend, tests, scripts)
-- D codemod handles BOTH `@shared/*` and `../../shared/*` styles in tests/
-- D7: mutation gate baseline rebuild budget
-- E2: remove alias from BOTH `vite.config.ts` AND `vitest.config.ts`
-- E0: pre-flight grep gate before E1
-- F1 split into F1a (pattern scope: relative-path only, NOT `**/shared/**`), F1b (config scope: explicit server/gateway block), F1c (smoke validation gate)
-- F4: deprecated; replaced by Docker-level test in Per-tool resolution table
-- G1: explicit COPY strategy (c) for symlink materialization; legacy `ln -s` hack removed
-- G4.5: `npm prune --production` × workspace symlink acceptance probe
-- G5: enumerate ALL 10+ workflow/cache sites (was 1 in v2)
-- H1: read script for side effects before deletion
-- H2: 23 invocation sites (was 20 in v2 — added verify-vectors.yml + setup-server-dependencies.sh)
-- H3: real regression test that replicates failure conditions (was placebo in v2)
-- I1: concrete command + control case (stash baseline)
-- J1: full rewrite of `shared/utils/README.md` Convention section (was clause update)
-
-**Rejected:** none — all iter2 findings were validated and accepted.
-
-**Deferred:**
-- ForkB Vector 6 finer-grained concurrency analysis (broader CI capacity question; tracked separately)
-- ForkA C-N1 frontend bundle-size before/after measurement (nice-to-have; add to J as evidence step if desired)
-- ForkA C-N2 target alignment to ES2022 across packages (nice-to-have; not blocking)
-
----
-
 
 # Active Task: Post-Forgejo Structural Health Plan 2026-05-10
 
