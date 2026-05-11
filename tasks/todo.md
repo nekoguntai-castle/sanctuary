@@ -1,3 +1,31 @@
+# Active Task: CI HTTP Sink Visibility Follow-up 2026-05-11
+
+Status: implementation verified locally; PR pending CI.
+
+Goal: replace the stale post-merge install-test signal with a fresh run, then wire the remaining shell-heavy workflows that lack Forgejo API log visibility into the HTTP sink diagnostic pattern.
+
+## Plan
+
+- [x] Dispatch a fresh `install-test.yml` run on `main` because Forgejo exposes workflow dispatch but no run cancel/rerun endpoint in its Swagger.
+- [x] Add sink env and failed-log publishing for `verify-vectors.yml`.
+- [x] Add sink env and failed-log publishing for the `release-candidate.yml` jobs that already write `JOB_LOG_DIR` logs.
+- [x] Expand `install-test.yml` sink coverage beyond the fresh-install job where practical.
+- [x] Wrap the visible shell steps in `docker-build.yml`; note that action internals remain outside this sink pattern.
+- [x] Extend workflow composition tests to lock in the visibility wiring.
+- [x] Verify with focused shell/workflow checks and open a follow-up PR.
+
+## Review
+
+- Forgejo exposes `workflow_dispatch` for `install-test.yml`, but no run cancel/rerun endpoint in Swagger, so a replacement main run was dispatched instead of canceling/retrying the stale run in place.
+- The stale post-merge run `2430` eventually failed in install E2E with native `tsc` crashes during Docker builds (`SIGTRAP` in gateway build, `SIGSEGV` in backend build), matching the runner/native instability pattern rather than the `ENCRYPTION_SALT` fix.
+- Added sink env to `verify-vectors.yml` so its existing `write-diagnostic-summary.sh` step can publish failed logs.
+- Added release-candidate diagnostic summaries for fresh install, container health, and auth flow jobs.
+- Added install-test diagnostics for install unit tests, fresh install container logs, reusable stack smoke, standalone container health, standalone auth flow, upgrade baseline, and extended upgrade fixtures.
+- Added docker-build diagnostics for the Forgejo-visible image-scope classifier. GitHub-only Docker action internals remain outside this sink pattern.
+- Verification passed: `bash -n tests/ci/check-workflow-composition.test.sh scripts/ci/run-with-log.sh scripts/ci/write-diagnostic-summary.sh scripts/ci/publish-failed-logs.sh`, `bash tests/ci/check-workflow-composition.test.sh`, `bash tests/ci/write-diagnostic-summary.test.sh`, `bash tests/ci/run-with-log.test.sh`, `git diff --check`, and actionlint with ShellCheck severity `error` for the touched workflows.
+
+---
+
 # Active Task: Forgejo Runner Native Failure Investigation 2026-05-11
 
 Status: serialized-capacity trial passed.

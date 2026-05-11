@@ -20,10 +20,16 @@ on:
       - 'scripts/ci/docker-endpoint-lib.sh'
       - 'scripts/ci/cleanup-docker-resources.sh'
       - 'scripts/ci/install-test-ports.sh'
+      - 'scripts/ci/provider-context.sh'
+      - 'scripts/ci/publish-failed-logs.sh'
+      - 'scripts/ci/redactor.sh'
       - 'scripts/ci/run-in-isolated-workspace.sh'
       - 'scripts/ci/run-extended-upgrade-fixtures.sh'
+      - 'scripts/ci/run-with-log.sh'
+      - 'scripts/ci/time-command.sh'
       - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/with-runner-lock.sh'
+      - 'scripts/ci/write-diagnostic-summary.sh'
       - 'tests/install/**'
       - '!tests/install/*.md'
       - '!tests/install/**/*.md'
@@ -47,10 +53,16 @@ on:
       - 'scripts/ci/docker-endpoint-lib.sh'
       - 'scripts/ci/cleanup-docker-resources.sh'
       - 'scripts/ci/install-test-ports.sh'
+      - 'scripts/ci/provider-context.sh'
+      - 'scripts/ci/publish-failed-logs.sh'
+      - 'scripts/ci/redactor.sh'
       - 'scripts/ci/run-in-isolated-workspace.sh'
       - 'scripts/ci/run-extended-upgrade-fixtures.sh'
+      - 'scripts/ci/run-with-log.sh'
+      - 'scripts/ci/time-command.sh'
       - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/with-runner-lock.sh'
+      - 'scripts/ci/write-diagnostic-summary.sh'
       - 'tests/install/**'
       - '!tests/install/*.md'
       - '!tests/install/**/*.md'
@@ -158,6 +170,8 @@ jobs:
     if: |
       needs.determine-scope.outputs.should_run == 'true' &&
       needs.determine-scope.outputs.run_unit == 'true'
+    env:
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/install-unit-tests
 
     steps:
       - name: Checkout repository
@@ -168,13 +182,28 @@ jobs:
 
       - name: Run unit tests
         run: |
-          scripts/ci/run-in-isolated-workspace.sh install-unit bash <<'INNER'
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-unit-tests.log" scripts/ci/run-in-isolated-workspace.sh install-unit bash <<'INNER'
           ./tests/install/unit/install-script.test.sh
           ./tests/install/unit/reset-user-2fa-script.test.sh
           ./tests/install/unit/upgrade-helpers.test.sh
           ./tests/install/unit/install-scope.test.sh
           ./tests/install/unit/cleanup-containers-guard.test.sh
           INNER
+
+      - name: Write install unit diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Unit Tests"
+
+      - name: Upload diagnostic logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-install-unit-tests-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
+          if-no-files-found: ignore
 
   # ============================================
   # Fresh Install E2E Test
@@ -279,24 +308,10 @@ jobs:
               fi
             "
 
-      - name: Upload diagnostic logs
-        if: always() && github.event_name != 'pull_request'
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifact
-        with:
-          name: diag-install-fresh-install-${{ github.run_id }}
-          path: ${{ env.JOB_LOG_DIR }}
-          retention-days: 14
-          if-no-files-found: ignore
-
-      - name: Publish install logs to LAN sink on failure
-        if: failure() && env.SANCTUARY_CI_LOG_SINK_URL != ''
-        run: |
-          bash scripts/ci/publish-failed-logs.sh "$JOB_LOG_DIR" fresh-install-test || true
-
       - name: Show container logs on failure
         if: failure() && github.event_name != 'pull_request'
         run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-logs.log" bash <<'INNER' || true
           if [ -d "${SANCTUARY_INSTALL_WORKSPACE:-}" ]; then
             cd "$SANCTUARY_INSTALL_WORKSPACE"
           fi
@@ -317,6 +332,23 @@ jobs:
           echo ""
           echo "=== Migration Logs ==="
           docker compose logs migrate 2>&1 || true
+          exit 1
+          INNER
+
+      - name: Write install diagnostic summary
+        if: always() && github.event_name != 'pull_request'
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Fresh Install"
+
+      - name: Upload diagnostic logs
+        if: always() && github.event_name != 'pull_request'
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-install-fresh-install-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Cleanup
         if: always() && github.event_name != 'pull_request' && github.event.inputs.keep_containers != 'true'
@@ -403,6 +435,7 @@ jobs:
       GATEWAY_PORT: '15002'
       PORT_OFFSET: '6'
       USE_FRESH_INSTALL_STACK_COVERAGE: ${{ needs.determine-scope.outputs.test_suite == 'all' || contains(needs.determine-scope.outputs.scope, 'workflow') }}
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/install-stack-smoke
 
     steps:
       - name: Use fresh install stack coverage
@@ -419,25 +452,32 @@ jobs:
 
       - name: Check Docker
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
-        run: scripts/ci/wait-for-docker.sh
+        run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
 
       - name: Prepare isolated stack workspace
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
         run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash <<'INNER'
           workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible install-stack)"
           echo "SANCTUARY_STACK_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          INNER
 
       - name: Assign run-specific ports
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
         run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash <<'INNER'
           cd "$SANCTUARY_STACK_WORKSPACE"
           bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          INNER
 
       - name: Start reusable stack
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
         run: |
-          cd "$SANCTUARY_STACK_WORKSPACE"
-          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "install stack startup" bash -c '
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-stack.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "install stack startup" \
+            bash -c '
+            cd "$SANCTUARY_STACK_WORKSPACE"
             JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
             ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
 
@@ -469,18 +509,23 @@ jobs:
       - name: Run container health tests
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true' && needs.determine-scope.outputs.run_container_health == 'true'
         run: |
-          cd "$SANCTUARY_STACK_WORKSPACE"
-          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "install stack container health" ./tests/install/e2e/container-health.test.sh --verbose
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-health.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "install stack container health" \
+            bash -c 'cd "$SANCTUARY_STACK_WORKSPACE" && ./tests/install/e2e/container-health.test.sh --verbose'
 
       - name: Run auth flow tests
         if: env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true' && needs.determine-scope.outputs.run_auth_flow == 'true'
         run: |
-          cd "$SANCTUARY_STACK_WORKSPACE"
-          scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "install stack auth flow" ./tests/install/e2e/auth-flow.test.sh --verbose
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/auth-flow.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "install stack auth flow" \
+            bash -c 'cd "$SANCTUARY_STACK_WORKSPACE" && ./tests/install/e2e/auth-flow.test.sh --verbose'
 
       - name: Show container logs on failure
         if: failure() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
         run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-logs.log" bash <<'INNER' || true
           if [ -d "${SANCTUARY_STACK_WORKSPACE:-}" ]; then
             cd "$SANCTUARY_STACK_WORKSPACE"
           fi
@@ -488,6 +533,23 @@ jobs:
           docker compose logs --tail 100 postgres 2>&1 || true
           docker compose logs --tail 100 backend 2>&1 || true
           docker compose logs --tail 100 frontend 2>&1 || true
+          exit 1
+          INNER
+
+      - name: Write install stack diagnostic summary
+        if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Stack Smoke"
+
+      - name: Upload diagnostic logs
+        if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-install-stack-smoke-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Cleanup
         if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true' && github.event.inputs.keep_containers != 'true'
@@ -532,6 +594,7 @@ jobs:
       HTTP_PORT: '15083'
       GATEWAY_PORT: '15003'
       PORT_OFFSET: '9'
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/container-health
 
     steps:
       - name: Checkout repository
@@ -540,22 +603,29 @@ jobs:
           clean: false
 
       - name: Check Docker
-        run: scripts/ci/wait-for-docker.sh
+        run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
 
       - name: Prepare isolated health workspace
         run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash <<'INNER'
           workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible container-health)"
           echo "SANCTUARY_HEALTH_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          INNER
 
       - name: Assign run-specific ports
         run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash <<'INNER'
           cd "$SANCTUARY_HEALTH_WORKSPACE"
           bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          INNER
 
       - name: Start containers
         run: |
-          cd "$SANCTUARY_HEALTH_WORKSPACE"
-          scripts/ci/with-runner-lock.sh e2e bash -c '
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "container health start" \
+            bash -c '
+            cd "$SANCTUARY_HEALTH_WORKSPACE"
             # Generate all required secrets
             JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
             ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
@@ -588,12 +658,15 @@ jobs:
 
       - name: Run container health tests
         run: |
-          cd "$SANCTUARY_HEALTH_WORKSPACE"
-          scripts/ci/with-runner-lock.sh e2e ./tests/install/e2e/container-health.test.sh --verbose
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-health.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "container health e2e" \
+            bash -c 'cd "$SANCTUARY_HEALTH_WORKSPACE" && ./tests/install/e2e/container-health.test.sh --verbose'
 
       - name: Show container logs on failure
         if: failure()
         run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-logs.log" bash <<'INNER' || true
           if [ -d "${SANCTUARY_HEALTH_WORKSPACE:-}" ]; then
             cd "$SANCTUARY_HEALTH_WORKSPACE"
           fi
@@ -601,6 +674,23 @@ jobs:
           docker compose logs --tail 50 postgres 2>&1 || true
           docker compose logs --tail 50 backend 2>&1 || true
           docker compose logs --tail 50 frontend 2>&1 || true
+          exit 1
+          INNER
+
+      - name: Write container health diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Container Health"
+
+      - name: Upload diagnostic logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-container-health-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Cleanup
         if: always()
@@ -647,6 +737,7 @@ jobs:
       HTTP_PORT: '15084'
       GATEWAY_PORT: '15004'
       PORT_OFFSET: '12'
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/auth-flow
 
     steps:
       - name: Checkout repository
@@ -655,22 +746,29 @@ jobs:
           clean: false
 
       - name: Check Docker
-        run: scripts/ci/wait-for-docker.sh
+        run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
 
       - name: Prepare isolated auth workspace
         run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash <<'INNER'
           workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible auth-flow)"
           echo "SANCTUARY_AUTH_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          INNER
 
       - name: Assign run-specific ports
         run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash <<'INNER'
           cd "$SANCTUARY_AUTH_WORKSPACE"
           bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          INNER
 
       - name: Start containers
         run: |
-          cd "$SANCTUARY_AUTH_WORKSPACE"
-          scripts/ci/with-runner-lock.sh e2e bash -c '
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "auth flow start" \
+            bash -c '
+            cd "$SANCTUARY_AUTH_WORKSPACE"
             # Generate all required secrets
             JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
             ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
@@ -707,17 +805,37 @@ jobs:
 
       - name: Run auth flow tests
         run: |
-          cd "$SANCTUARY_AUTH_WORKSPACE"
-          scripts/ci/with-runner-lock.sh e2e ./tests/install/e2e/auth-flow.test.sh --verbose
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/auth-flow.log" \
+            scripts/ci/with-runner-lock.sh e2e \
+            scripts/ci/time-command.sh "auth flow e2e" \
+            bash -c 'cd "$SANCTUARY_AUTH_WORKSPACE" && ./tests/install/e2e/auth-flow.test.sh --verbose'
 
       - name: Show container logs on failure
         if: failure()
         run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-logs.log" bash <<'INNER' || true
           if [ -d "${SANCTUARY_AUTH_WORKSPACE:-}" ]; then
             cd "$SANCTUARY_AUTH_WORKSPACE"
           fi
           docker compose ps || true
           docker compose logs --tail 100 backend 2>&1 || true
+          exit 1
+          INNER
+
+      - name: Write auth flow diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Auth Flow"
+
+      - name: Upload diagnostic logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-auth-flow-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Cleanup
         if: always()
@@ -871,6 +989,11 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+      - name: Write upgrade baseline diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Upgrade Baseline"
+
       - name: Upload diagnostic logs
         if: always()
         continue-on-error: true
@@ -904,6 +1027,8 @@ jobs:
        (needs.upgrade-baseline-test.result == 'skipped' &&
         needs.determine-scope.outputs.run_upgrade_baseline != 'true'))
     timeout-minutes: 120
+    env:
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/upgrade-extended-fixtures
 
     steps:
       - name: Checkout repository
@@ -913,12 +1038,14 @@ jobs:
           fetch-depth: 0
 
       - name: Check Docker
-        run: scripts/ci/wait-for-docker.sh
+        run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
 
       - name: Run extended upgrade fixtures sequentially
         env:
           SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE: ${{ github.event.inputs.upgrade_source_ref }}
-        run: scripts/ci/run-extended-upgrade-fixtures.sh
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade-extended-fixtures.log" \
+            scripts/ci/run-extended-upgrade-fixtures.sh
 
       - name: Upload extended upgrade artifacts
         if: always()
@@ -926,6 +1053,21 @@ jobs:
         with:
           name: upgrade-extended-fixtures
           path: .tmp/upgrade-artifacts/
+          if-no-files-found: ignore
+
+      - name: Write extended upgrade diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Upgrade Extended Fixtures"
+
+      - name: Upload diagnostic logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-upgrade-extended-fixtures-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
           if-no-files-found: ignore
 
   upgrade-extended-test:

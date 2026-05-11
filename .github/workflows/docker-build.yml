@@ -36,6 +36,12 @@ on:
       - 'package*.json'
       - 'tsconfig*.json'
       - 'vite*.ts'
+      - 'scripts/ci/classify-docker-build-images.sh'
+      - 'scripts/ci/provider-context.sh'
+      - 'scripts/ci/run-with-log.sh'
+      - 'scripts/ci/redactor.sh'
+      - 'scripts/ci/write-diagnostic-summary.sh'
+      - 'scripts/ci/publish-failed-logs.sh'
       - '.github/workflows/docker-build.yml'
   pull_request:
     branches:
@@ -65,6 +71,12 @@ on:
       - 'package*.json'
       - 'tsconfig*.json'
       - 'vite*.ts'
+      - 'scripts/ci/classify-docker-build-images.sh'
+      - 'scripts/ci/provider-context.sh'
+      - 'scripts/ci/run-with-log.sh'
+      - 'scripts/ci/redactor.sh'
+      - 'scripts/ci/write-diagnostic-summary.sh'
+      - 'scripts/ci/publish-failed-logs.sh'
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:  # Allow manual trigger
 
@@ -78,11 +90,15 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository }}
+  SANCTUARY_CI_LOG_SINK_URL: ${{ vars.SANCTUARY_CI_LOG_SINK_URL }}
+  SANCTUARY_CI_LOG_SINK_TOKEN: ${{ secrets.SANCTUARY_CI_LOG_SINK_TOKEN }}
 
 jobs:
   detect-image-scope:
     name: Detect Image Scope
     runs-on: ubuntu-latest
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-detect-image-scope
     outputs:
       frontend_image: ${{ steps.classify.outputs.frontend_image }}
       backend_image: ${{ steps.classify.outputs.backend_image }}
@@ -101,7 +117,23 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           WORKFLOW_SHA: ${{ github.sha }}
-        run: bash scripts/ci/classify-docker-build-images.sh
+        run: scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/classify-image-scope.log" bash scripts/ci/classify-docker-build-images.sh
+
+      - name: Write image scope diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Docker Build Image Scope"
+
+      - name: Upload image scope diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-docker-build-detect-image-scope
+          path: .tmp/ci-diagnostics/docker-build-detect-image-scope/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   build-frontend:
     name: Build frontend image

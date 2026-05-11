@@ -42,6 +42,9 @@ on:
       - 'scripts/ci/docker-endpoint-lib.sh'
       - 'scripts/ci/ensure-node.sh'
       - 'scripts/ci/ensure-python.sh'
+      - 'scripts/ci/provider-context.sh'
+      - 'scripts/ci/publish-failed-logs.sh'
+      - 'scripts/ci/redactor.sh'
       - 'scripts/ci/run-with-log.sh'
       - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
@@ -54,6 +57,8 @@ env:
   NODE_VERSION: '24'
   PYTHON_VERSION: '3'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
+  SANCTUARY_CI_LOG_SINK_URL: ${{ vars.SANCTUARY_CI_LOG_SINK_URL }}
+  SANCTUARY_CI_LOG_SINK_TOKEN: ${{ secrets.SANCTUARY_CI_LOG_SINK_TOKEN }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

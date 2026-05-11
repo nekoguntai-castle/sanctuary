@@ -137,6 +137,20 @@ assert_contains_in_order "$RC" \
   'scripts/ci/time-command.sh "auth-flow e2e"' \
   "auth-flow.test.sh"
 
+assert_contains_in_order "$RC" \
+  "release-candidate sink env" \
+  "SANCTUARY_CI_LOG_SINK_URL" \
+  "SANCTUARY_CI_LOG_SINK_TOKEN"
+
+assert_contains_in_order "$RC" \
+  "release-candidate diagnostic summaries publishable" \
+  "Write fresh install diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Fresh Install"' \
+  "Write container health diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Container Health"' \
+  "Write auth flow diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Auth Flow"'
+
 # release-candidate.yml deliberately does not run an upgrade matrix or
 # upgrade-full-recovery job — install-test.yml's serialized chain owns
 # upgrade coverage on tag pushes. See the "Upgrade coverage note"
@@ -165,6 +179,75 @@ assert_contains_in_order "$IT" \
   "scripts/ci/with-runner-lock.sh e2e" \
   "scripts/ci/time-command.sh" \
   "upgrade-install.test.sh --mode core"
+
+assert_contains_in_order "$IT" \
+  "install-test sink env" \
+  "SANCTUARY_CI_LOG_SINK_URL" \
+  "SANCTUARY_CI_LOG_SINK_TOKEN"
+
+assert_contains_in_order "$IT" \
+  "install-test unit diagnostics" \
+  "unit-tests:" \
+  "JOB_LOG_DIR:" \
+  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-unit-tests.log"' \
+  "Write install unit diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Unit Tests"' \
+  "diag-install-unit-tests"
+
+assert_contains_in_order "$IT" \
+  "install-test fresh install sink summary" \
+  "fresh-install-test:" \
+  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-logs.log"' \
+  "Write install diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Fresh Install"' \
+  "diag-install-fresh-install"
+
+assert_contains_in_order "$IT" \
+  "install-test stack smoke diagnostics" \
+  "install-stack-smoke:" \
+  'JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/install-stack-smoke' \
+  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-stack.log"' \
+  'scripts/ci/time-command.sh "install stack startup"' \
+  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-health.log"' \
+  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/auth-flow.log"' \
+  "Write install stack diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Stack Smoke"' \
+  "diag-install-stack-smoke"
+
+assert_contains_in_order "$IT" \
+  "install-test container health diagnostics" \
+  "container-health-test:" \
+  'JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/container-health' \
+  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log"' \
+  'scripts/ci/time-command.sh "container health start"' \
+  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-health.log"' \
+  'scripts/ci/time-command.sh "container health e2e"' \
+  "Write container health diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Container Health"' \
+  "diag-container-health"
+
+assert_contains_in_order "$IT" \
+  "install-test auth flow diagnostics" \
+  "auth-flow-test:" \
+  'JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/auth-flow' \
+  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log"' \
+  'scripts/ci/time-command.sh "auth flow start"' \
+  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/auth-flow.log"' \
+  'scripts/ci/time-command.sh "auth flow e2e"' \
+  "Write auth flow diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Install Auth Flow"' \
+  "diag-auth-flow"
+
+assert_contains_in_order "$IT" \
+  "install-test upgrade diagnostic summaries" \
+  "upgrade-baseline-test:" \
+  "Write upgrade baseline diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Upgrade Baseline"' \
+  "upgrade-extended-fixture-test:" \
+  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade-extended-fixtures.log"' \
+  "Write extended upgrade diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Upgrade Extended Fixtures"' \
+  "diag-upgrade-extended-fixtures"
 
 # --- buildx-action removal regression ---------------------------------------
 # Plan requires removing docker/setup-buildx-action from the five
@@ -608,10 +691,27 @@ assert_contains_in_order "$VV" \
 
 assert_contains_in_order "$VV" \
   "verify-vectors diagnostic summary upload" \
+  "SANCTUARY_CI_LOG_SINK_URL" \
+  "SANCTUARY_CI_LOG_SINK_TOKEN" \
   "Write vector diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Verify Bitcoin Vectors"' \
   "Upload vector diagnostics" \
   "ci-diagnostics-verify-vectors"
+
+# --- docker-build diagnostic coverage ----------------------------------------
+DOCKER_BUILD_WORKFLOW="$REPO_ROOT/.github/workflows/docker-build.yml"
+
+assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build image-scope diagnostics" \
+  "SANCTUARY_CI_LOG_SINK_URL" \
+  "SANCTUARY_CI_LOG_SINK_TOKEN" \
+  "detect-image-scope:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-detect-image-scope' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/classify-image-scope.log" bash scripts/ci/classify-docker-build-images.sh' \
+  "Write image scope diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Docker Build Image Scope"' \
+  "Upload image scope diagnostics" \
+  "ci-diagnostics-docker-build-detect-image-scope"
 
 # --- summary ----------------------------------------------------------------
 echo

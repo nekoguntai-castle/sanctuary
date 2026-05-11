@@ -82,6 +82,8 @@ concurrency:
 env:
   HTTPS_PORT: 8443
   HTTP_PORT: 8080
+  SANCTUARY_CI_LOG_SINK_URL: ${{ vars.SANCTUARY_CI_LOG_SINK_URL }}
+  SANCTUARY_CI_LOG_SINK_TOKEN: ${{ secrets.SANCTUARY_CI_LOG_SINK_TOKEN }}
 
 jobs:
   # ============================================
@@ -224,6 +226,11 @@ jobs:
           echo ""
           echo "=== Gateway Logs ==="
           docker compose logs --tail 100 gateway 2>&1 || true
+
+      - name: Write fresh install diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Fresh Install"
 
       - name: Upload diagnostic logs
         if: always()
@@ -370,6 +377,11 @@ jobs:
             scripts/ci/with-runner-lock.sh e2e \
             scripts/ci/time-command.sh "container-health e2e" \
             bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && ./tests/install/e2e/container-health.test.sh --verbose"
+
+      - name: Write container health diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Container Health"
 
       - name: Upload diagnostic logs
         if: always()
@@ -518,6 +530,11 @@ jobs:
             scripts/ci/with-runner-lock.sh e2e \
             scripts/ci/time-command.sh "auth-flow e2e" \
             bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && ./tests/install/e2e/auth-flow.test.sh --verbose"
+
+      - name: Write auth flow diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Auth Flow"
 
       - name: Upload diagnostic logs
         if: always()
