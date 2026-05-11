@@ -1,98 +1,101 @@
 # =============================================
 # Sanctuary Backend - Multi-stage Dockerfile
-# Optimized for fast builds with bcryptjs (no native deps)
+# Phase G: workspace-aware build (@sanctuary/shared via npm workspaces)
 # =============================================
 
-# Stage 1: Dependencies
+# Stage 1: Dependencies — install at the workspace root
 FROM node:24-alpine AS deps
-WORKDIR /app
+WORKDIR /repo
 
-# Only openssl needed for Prisma (no python/make/g++ since bcryptjs is pure JS)
 RUN apk add --no-cache openssl
 
-# Copy package files first (better layer caching)
-COPY server/package*.json ./
-COPY server/prisma ./prisma/
-COPY server/prisma.config.ts ./
+# Copy root + workspace member package files first for layer caching.
+COPY package*.json ./
+COPY shared/package.json ./shared/
+COPY server/package.json ./server/
+COPY gateway/package.json ./gateway/
+COPY server/prisma ./server/prisma/
+COPY server/prisma.config.ts ./server/
 
-# Install all dependencies (including dev for building)
-RUN npm ci
+# Workspace-aware install. --include-workspace-root pulls in root devDeps
+# (typescript, vitest, etc.) so the builder stage can compile.
+RUN npm ci --include-workspace-root --ignore-scripts
 
-# Generate Prisma client
+# Generate Prisma client.
+WORKDIR /repo/server
 RUN npx prisma generate
 
 # Stage 2: Builder
 FROM node:24-alpine AS builder
-WORKDIR /app
+WORKDIR /repo
 
-# Copy dependencies from deps stage
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/package*.json ./
-COPY --from=deps /app/prisma ./prisma
-COPY --from=deps /app/prisma.config.ts ./
+COPY --from=deps /repo/node_modules ./node_modules
+COPY --from=deps /repo/package*.json ./
+COPY --from=deps /repo/server ./server
+COPY --from=deps /repo/gateway/package.json ./gateway/
 
-# Copy shared directory first (needed for imports)
-COPY shared ../shared
+# Copy shared source (deps stage only has package.json).
+COPY shared ./shared
 
-# Copy only source files needed for build (better cache invalidation)
-COPY server/tsconfig.json ./
-COPY server/scripts ./scripts
-COPY server/src ./src
+# Build shared first (server imports from @sanctuary/shared/dist).
+RUN npm --workspace shared run build
 
-# Shared TypeScript files live outside /app, so their package resolution walks
-# up to /node_modules during the container build.
-RUN ln -s /app/node_modules /node_modules
+# Build server.
+COPY server/tsconfig.json ./server/
+COPY server/scripts ./server/scripts
+COPY server/src ./server/src
+COPY global.d.ts ./
 
-# Build TypeScript (main app)
+WORKDIR /repo/server
 RUN npm run build
 
-# Compile seed script separately
+# Compile seed script separately (matches pre-Phase-G behavior).
 COPY server/prisma/seed.ts ./prisma/
 RUN npx tsc prisma/seed.ts --outDir dist/prisma --esModuleInterop --skipLibCheck --resolveJsonModule --ignoreConfig --types node --module commonjs
 
-# Prune dev dependencies for production
-RUN npm prune --production
+# Prune dev dependencies for production. Workspace symlinks survive prune.
+WORKDIR /repo
+RUN npm prune --production --include-workspace-root --ignore-scripts
 
 # Stage 3: Production
 FROM node:24-alpine AS runner
 WORKDIR /app
 
-# Install dumb-init for proper signal handling and OpenSSL for Prisma
 RUN apk add --no-cache dumb-init openssl
 
-# Create non-root user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 sanctuary
 
-# Set environment
 ENV NODE_ENV=production
 ENV PORT=3001
 
-# Copy only necessary files from builder (already pruned)
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/prisma ./prisma
-COPY --from=deps /app/prisma.config.ts ./
+# Copy server runtime artifacts.
+COPY --from=builder /repo/server/dist ./dist
+COPY --from=builder /repo/server/package.json ./
+COPY --from=builder /repo/server/prisma ./prisma
+COPY --from=builder /repo/server/prisma.config.ts ./
+COPY --from=builder /repo/server/scripts ./scripts
 
-# Copy migration scripts
-COPY server/scripts ./scripts
+# Strategy (c) per v3.1 plan: materialize the workspace symlink as a real
+# directory containing only what shared exports (package.json + dist/).
+# Layout matches what shared's `exports` field references:
+#   /app/node_modules/@sanctuary/shared/package.json
+#   /app/node_modules/@sanctuary/shared/dist/utils/errors.js
+COPY --from=builder /repo/node_modules ./node_modules
+RUN rm -rf /app/node_modules/@sanctuary/shared && \
+    mkdir -p /app/node_modules/@sanctuary/shared
+COPY --from=builder /repo/shared/package.json /app/node_modules/@sanctuary/shared/package.json
+COPY --from=builder /repo/shared/dist /app/node_modules/@sanctuary/shared/dist
 
-# Change ownership
 RUN chown -R sanctuary:nodejs /app
 
-# Switch to non-root user
 USER sanctuary
-
-# Expose port
 EXPOSE 3001
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3001/health || exit 1
 
-# Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the server
-CMD ["node", "dist/app/src/index.js"]
+# Server tsconfig keeps rootDir at ".." so the emit shape is dist/server/src/...
+CMD ["node", "dist/server/src/index.js"]

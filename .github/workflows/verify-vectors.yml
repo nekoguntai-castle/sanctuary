@@ -85,12 +85,13 @@ jobs:
           ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
 
       - name: Install server dependencies
-        working-directory: server
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-server-dependencies.log" \
             ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
             set -euo pipefail
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "vector server npm ci" npm ci --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "vector root npm ci" npm ci --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "vector shared workspace build" npm --workspace shared run build
+            cd server
             ${{ github.workspace }}/scripts/ci/retry-command.sh "vector shared schema link" node scripts/ensure-shared-module-resolution.mjs
             ${{ github.workspace }}/scripts/ci/retry-command.sh "vector prisma generate" npx prisma generate
           '
@@ -258,11 +259,12 @@ jobs:
           exit 1
 
       - name: Install server dependencies
-        working-directory: server
         run: |
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
             set -euo pipefail
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector server npm ci" npm ci --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector root npm ci" npm ci --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared workspace build" npm --workspace shared run build
+            cd server
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared schema link" node scripts/ensure-shared-module-resolution.mjs
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector prisma generate" npx prisma generate
           '
@@ -310,11 +312,12 @@ jobs:
           fi
 
       - name: Run PSBT tests with new vectors
-        working-directory: server
         run: |
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
             set -euo pipefail
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector server npm ci" npm ci --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector root npm ci" npm ci --ignore-scripts
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared workspace build" npm --workspace shared run build
+            cd server
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector shared schema link" node scripts/ensure-shared-module-resolution.mjs
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector prisma generate" npx prisma generate
             npm run test:run:ci -- tests/unit/services/bitcoin/psbt.verified.test.ts tests/unit/services/bitcoin/psbt.signed-vectors.test.ts

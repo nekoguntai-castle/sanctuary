@@ -1,66 +1,79 @@
 # Gateway Dockerfile
+# Phase G: workspace-aware build (@sanctuary/shared via npm workspaces)
 # Multi-stage build for minimal production image
 
-# Build stage
+# Stage 1: Dependencies — install at the workspace root
+FROM node:24-alpine AS deps
+WORKDIR /repo
+
+# Copy root + workspace member package files first for layer caching.
+COPY package*.json ./
+COPY shared/package.json ./shared/
+COPY server/package.json ./server/
+COPY gateway/package.json ./gateway/
+
+# Workspace-aware install. --include-workspace-root pulls root devDeps
+# (typescript, vitest, etc.) so the builder stage can compile.
+RUN npm ci --include-workspace-root --ignore-scripts
+
+# Stage 2: Builder
 FROM node:24-alpine AS builder
+WORKDIR /repo
 
-WORKDIR /app
+COPY --from=deps /repo/node_modules ./node_modules
+COPY --from=deps /repo/package*.json ./
+COPY --from=deps /repo/server/package.json ./server/
+COPY --from=deps /repo/gateway ./gateway
 
-# Copy package files
-COPY gateway/package*.json ./
+# Copy shared source (deps stage only has package.json).
+COPY shared ./shared
 
-# Install dependencies
-RUN npm ci
+# Build shared first (gateway imports from @sanctuary/shared/dist).
+RUN npm --workspace shared run build
 
-# Copy shared directory first (needed for imports)
-COPY shared ../shared
+# Build gateway.
+COPY gateway/tsconfig.json ./gateway/
+COPY gateway/src ./gateway/src
+COPY global.d.ts ./
 
-# Copy source
-COPY gateway/tsconfig.json ./
-COPY gateway/src ./src
-
-# Shared TypeScript files live outside /app, so their package resolution walks
-# up to /node_modules during the container build.
-RUN ln -s /app/node_modules /node_modules
-
-# Build TypeScript
+WORKDIR /repo/gateway
 RUN npm run build
 
-# Prune dev + optional dependencies.
-# firebase-admin optional packages (firestore/storage chain) are not used by gateway push flows.
-RUN npm prune --production --omit=optional
+# Prune dev + optional dependencies. firebase-admin optional packages
+# (firestore/storage chain) are not used by gateway push flows.
+WORKDIR /repo
+RUN npm prune --production --omit=optional --include-workspace-root --ignore-scripts
 
-# Production stage
+# Stage 3: Production
 FROM node:24-alpine AS runner
-
 WORKDIR /app
 
-# Install dumb-init for proper signal handling and zombie reaping
 RUN apk add --no-cache dumb-init
 
-# Add non-root user
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 gateway
 
-# Copy built files and production dependencies
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
+# Copy gateway runtime artifacts.
+COPY --from=builder /repo/gateway/dist ./dist
+COPY --from=builder /repo/gateway/package.json ./
 
-# Set ownership
+# Strategy (c) per v3.1 plan: materialize the workspace symlink as a real
+# directory containing only what shared exports (package.json + dist/).
+COPY --from=builder /repo/node_modules ./node_modules
+RUN rm -rf /app/node_modules/@sanctuary/shared && \
+    mkdir -p /app/node_modules/@sanctuary/shared
+COPY --from=builder /repo/shared/package.json /app/node_modules/@sanctuary/shared/package.json
+COPY --from=builder /repo/shared/dist /app/node_modules/@sanctuary/shared/dist
+
 RUN chown -R gateway:nodejs /app
 
 USER gateway
-
-# Expose port
 EXPOSE 4000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:4000/health || exit 1
 
-# Use dumb-init to handle signals properly and reap zombie processes
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start server
-CMD ["node", "dist/app/src/index.js"]
+# Gateway tsconfig keeps rootDir at ".." so the emit shape is dist/gateway/src/...
+CMD ["node", "dist/gateway/src/index.js"]
