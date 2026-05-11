@@ -260,160 +260,161 @@ subgraph 4W["shared"]
 subgraph 4X["constants"]
 4Y[" "]
 end
-subgraph 4Z["schemas"]
-50[" "]
+4Z["index.ts"]
+subgraph 50["schemas"]
+51[" "]
 end
-subgraph 51["types"]
-52[" "]
+subgraph 52["types"]
+53[" "]
 end
-subgraph 53["utils"]
-54[" "]
-end
-end
-subgraph 55["src"]
-subgraph 56["api"]
-57[" "]
-end
-subgraph 58["app"]
-59[" "]
-end
-subgraph 5A["types"]
-5B[" "]
+subgraph 54["utils"]
+55[" "]
 end
 end
-subgraph 5C["themes"]
-5D["backgroundCategories.ts"]
-subgraph 5E["bamboo"]
-5F[" "]
+subgraph 56["src"]
+subgraph 57["api"]
+58[" "]
 end
-subgraph 5G["copper"]
-5H[" "]
+subgraph 59["app"]
+5A[" "]
 end
-subgraph 5I["cyber"]
-5J[" "]
+subgraph 5B["types"]
+5C[" "]
 end
-subgraph 5K["desert"]
-5L[" "]
 end
-subgraph 5M["forest"]
-5N[" "]
+subgraph 5D["themes"]
+5E["backgroundCategories.ts"]
+subgraph 5F["bamboo"]
+5G[" "]
 end
-5O["index.ts"]
-subgraph 5P["midnight"]
-5Q[" "]
+subgraph 5H["copper"]
+5I[" "]
 end
-subgraph 5R["ocean"]
-5S[" "]
+subgraph 5J["cyber"]
+5K[" "]
 end
-5T["patterns.ts"]
-5U["registry.ts"]
-subgraph 5V["sakura-sumie"]
-5W[" "]
+subgraph 5L["desert"]
+5M[" "]
 end
-subgraph 5X["sakura-yoshino"]
-5Y[" "]
+subgraph 5N["forest"]
+5O[" "]
 end
-subgraph 5Z["sanctuary"]
-60[" "]
+5P["index.ts"]
+subgraph 5Q["midnight"]
+5R[" "]
 end
-subgraph 61["seasonal"]
-62[" "]
+subgraph 5S["ocean"]
+5T[" "]
 end
-subgraph 63["serenity"]
-64[" "]
+5U["patterns.ts"]
+5V["registry.ts"]
+subgraph 5W["sakura-sumie"]
+5X[" "]
 end
-subgraph 65["sunrise"]
-66[" "]
+subgraph 5Y["sakura-yoshino"]
+5Z[" "]
 end
-subgraph 67["sunset"]
-68[" "]
+subgraph 60["sanctuary"]
+61[" "]
 end
-69["types.ts"]
+subgraph 62["seasonal"]
+63[" "]
 end
-subgraph 6A["utils"]
-6B["bip21Parser.ts"]
-6C["bufferUtils.ts"]
-6D["clipboard.ts"]
-6E["derivationPathGroups.ts"]
-6F["deviceConnection.ts"]
-6G["download.ts"]
-6H["errorHandler.ts"]
-6I["explorer.ts"]
-6J["formatters.ts"]
-6K["logger.ts"]
-6L["networkScopedDevices.ts"]
-6M["nodeGlobals.ts"]
-6N["transaction.ts"]
-6O["urDeviceDecoder.ts"]
-6P["urPsbt.ts"]
-6Q["utxoAge.ts"]
-6R["validateAddress.ts"]
+subgraph 64["serenity"]
+65[" "]
 end
-0-->59
+subgraph 66["sunrise"]
+67[" "]
+end
+subgraph 68["sunset"]
+69[" "]
+end
+6A["types.ts"]
+end
+subgraph 6B["utils"]
+6C["bip21Parser.ts"]
+6D["bufferUtils.ts"]
+6E["clipboard.ts"]
+6F["derivationPathGroups.ts"]
+6G["deviceConnection.ts"]
+6H["download.ts"]
+6I["errorHandler.ts"]
+6J["explorer.ts"]
+6K["formatters.ts"]
+6L["logger.ts"]
+6M["networkScopedDevices.ts"]
+6N["nodeGlobals.ts"]
+6O["transaction.ts"]
+6P["urDeviceDecoder.ts"]
+6Q["urPsbt.ts"]
+6R["utxoAge.ts"]
+6S["validateAddress.ts"]
+end
+0-->5A
 2-->4
-4-->57
-4-->6K
+4-->58
+4-->6L
 5-->7
-7-->57
-7-->6K
-9-->57
-9-->6K
+7-->58
+7-->6L
+9-->58
+9-->6L
 9-->45
 9-->4O
-9-->6H
+9-->6I
 B-->3S
 B-->3L
-B-->57
-B-->6K
-B-->6D
-D-->57
-D-->6H
+B-->58
+B-->6L
+B-->6E
+D-->58
+D-->6I
 D-->3L
 F-->3L
-F-->6H
-F-->6K
-F-->57
+F-->6I
+F-->6L
+F-->58
 G-->3P
-H-->5T
+H-->5U
 H-->J
 L-->4H
-L-->57
-L-->6K
+L-->58
+L-->6L
 N-->3L
-N-->57
-N-->6K
+N-->58
+N-->6L
 N-->3O
-N-->6G
-Q-->57
-Q-->6K
+N-->6H
+Q-->58
+Q-->6L
 Q-->3L
 S-->3L
+S-->6G
 S-->6F
-S-->6E
 S-->3X
 S-->4B
 S-->4C
 S-->4D
 S-->4U
 S-->4S
-U-->59
-U-->57
+U-->5A
+U-->58
 W-->2Q
 W-->3Z
-W-->57
-W-->59
+W-->58
+W-->5A
 W-->32
-Y-->59
+Y-->5A
 Y-->3L
 Y-->3N
 Y-->3Z
 Y-->4E
-Y-->57
-Y-->6H
-Y-->6K
-Y-->6E
+Y-->58
+Y-->6I
+Y-->6L
+Y-->6F
 10-->3L
-10-->59
+10-->5A
 10-->P
 10-->G
 10-->2Q
@@ -424,122 +425,122 @@ Y-->6E
 10-->4A
 10-->4J
 10-->4O
-10-->57
-10-->6K
-10-->54
-12-->57
-12-->6H
-12-->6K
+10-->58
+10-->6L
+10-->55
+12-->58
+12-->6I
+12-->6L
 12-->3N
-12-->6E
+12-->6F
 12-->3L
 12-->4U
 12-->3H
 12-->4S
-12-->6O
+12-->6P
 12-->28
 12-->2R
 12-->3S
-12-->59
+12-->5A
 14-->3L
 14-->3N
-14-->6L
+14-->6M
 14-->3E
-14-->59
+14-->5A
 14-->3C
 14-->3S
 14-->4H
-14-->57
-14-->6H
-14-->6K
+14-->58
+14-->6I
+14-->6L
 16-->G
 16-->1A
 16-->2N
-16-->6J
+16-->6K
 16-->3P
 16-->4H
-16-->57
-16-->6G
-16-->6K
+16-->58
+16-->6H
+16-->6L
 19-->4H
-19-->57
+19-->58
 19-->3L
 1A-->3P
 1C-->3N
 1C-->3Z
 1C-->3L
-1C-->59
-1C-->57
+1C-->5A
+1C-->58
 1C-->4U
-1C-->6K
+1C-->6L
 1C-->3H
 1E-->3N
 1E-->3Z
-1E-->59
+1E-->5A
 1E-->3L
-1E-->57
-1E-->6K
+1E-->58
+1E-->6L
 1E-->L
 1F-->1H
 1H-->3Z
-1H-->54
-1H-->6K
+1H-->55
+1H-->6L
 1I-->1K
 1K-->3Z
-1K-->6K
+1K-->6L
 1M-->U
-1M-->59
+1M-->5A
 1M-->3L
 1M-->1Z
 1M-->20
 1M-->3N
-1M-->57
-1M-->6K
+1M-->58
+1M-->6L
 1M-->1W
 1M-->3O
 1M-->3S
 1M-->3Z
 1M-->46
 1M-->47
-1M-->6H
-1M-->6L
+1M-->6I
+1M-->6M
 1O-->H
 1O-->3L
 1O-->3S
-1O-->57
+1O-->58
 1Q-->3L
 1Q-->4H
-1Q-->57
-1S-->59
+1Q-->58
+1S-->5A
 1S-->3L
-1S-->57
-1S-->6H
-1S-->6K
+1S-->58
+1S-->6I
+1S-->6L
 1T-->1V
-1V-->57
-1V-->59
-1V-->6H
-1W-->59
+1V-->58
+1V-->5A
+1V-->6I
+1W-->5A
 1Y-->3L
 1Y-->2B
 1Y-->1S
-1Y-->59
-1Y-->57
-1Y-->6H
-1Y-->6K
+1Y-->5A
+1Y-->58
+1Y-->6I
+1Y-->6L
 20-->3O
 20-->22
 22-->3O
-22-->6K
+22-->6L
 23-->25
-27-->57
+27-->58
 27-->26
 28-->2A
 2A-->3L
 2A-->3S
 2A-->4H
-2A-->57
-2B-->57
+2A-->58
+2B-->58
 2B-->3L
 2C-->3F
 2D-->3P
@@ -548,31 +549,31 @@ Y-->6E
 2F-->3S
 2F-->4J
 2F-->3L
-2F-->57
-2F-->6H
-2F-->6K
-2F-->5O
-2F-->5D
+2F-->58
+2F-->6I
+2F-->6L
+2F-->5P
+2F-->5E
 2G-->3F
 2I-->4H
-2I-->57
+2I-->58
 2I-->3L
 2J-->2L
 2L-->3L
-2L-->57
-2L-->6K
-2M-->57
-2M-->6K
+2L-->58
+2L-->6L
+2M-->58
+2M-->6L
 2M-->3L
 2N-->3P
 2N-->2O
-2O-->6J
-2Q-->6I
-2Q-->6N
+2O-->6K
+2Q-->6J
+2Q-->6O
 2Q-->2J
 2Q-->2N
-2Q-->57
-2Q-->6K
+2Q-->58
+2Q-->6L
 2Q-->2
 2Q-->3P
 2Q-->45
@@ -580,44 +581,44 @@ Y-->6E
 2Q-->1I
 2R-->2T
 2T-->3L
-2T-->57
-2T-->6K
-2V-->6Q
+2T-->58
+2T-->6L
+2V-->6R
 2V-->3P
 2V-->3Z
-2V-->57
-2V-->6K
+2V-->58
+2V-->6L
 2V-->3L
-2V-->6I
+2V-->6J
 2V-->G
 2V-->2C
 2V-->2D
 2X-->3L
 2X-->4E
 2X-->4H
-2X-->57
-2X-->6K
+2X-->58
+2X-->6L
 2Y-->30
 30-->4H
-30-->57
-32-->57
-32-->59
-32-->6N
-32-->6H
-32-->6K
+30-->58
+32-->58
+32-->5A
+32-->6O
+32-->6I
+32-->6L
 32-->3O
 32-->4E
 32-->4L
 32-->3Q
 32-->4O
-32-->54
+32-->55
 32-->49
 32-->3L
 32-->27
 32-->28
 32-->3P
-32-->6I
 32-->6J
+32-->6K
 32-->1I
 32-->16
 32-->3S
@@ -639,182 +640,183 @@ Y-->6E
 34-->3L
 34-->3N
 34-->3C
-34-->59
+34-->5A
 34-->3S
 34-->3E
 34-->1T
 35-->3P
 35-->4A
-35-->59
+35-->5A
 35-->37
-38-->5T
+38-->5U
 3C-->14
 3C-->3L
-3H-->6K
-3H-->6P
+3H-->6L
+3H-->6Q
 3J-->P
 3J-->1A
 3J-->3L
 3J-->3S
 3J-->4E
 3J-->4H
-3J-->6K
-3J-->57
+3J-->6L
+3J-->58
 3J-->3U
 3J-->41
 3J-->4F
 3J-->3P
-3J-->6B
+3J-->6C
+3J-->6S
 3J-->6R
-3J-->6Q
 3J-->2C
 3J-->2G
 3J-->3H
 3J-->2N
 3L-->4M
 3N-->4M
-3N-->59
-3O-->6K
-3P-->57
-3P-->59
-3P-->6K
+3N-->5A
+3O-->6L
+3P-->58
+3P-->5A
+3P-->6L
 3P-->3N
 3P-->3S
-3P-->54
+3P-->55
 3Q-->23
-3S-->57
-3S-->5O
-3S-->6K
+3S-->58
+3S-->5P
+3S-->6L
 3X-->4Q
 3X-->4S
-3X-->6F
-3X-->6K
-3X-->6O
-3Z-->57
-41-->57
-41-->6K
-41-->6R
+3X-->6G
+3X-->6L
+3X-->6P
+3Z-->58
+41-->58
+41-->6L
+41-->6S
 41-->3P
-41-->6C
+41-->6D
 41-->4E
 41-->4J
-41-->54
-41-->6G
+41-->55
+41-->6H
 41-->4U
 41-->4F
 42-->44
-45-->57
+45-->58
 46-->48
 46-->4G
-47-->59
+47-->5A
 48-->45
-49-->6D
+49-->6E
 4B-->4U
-4B-->6F
-4B-->6K
-4C-->57
-4C-->6K
+4B-->6G
+4B-->6L
+4C-->58
+4C-->6L
 4D-->3R
-4D-->57
-4D-->6K
-4E-->57
+4D-->58
+4D-->6L
+4E-->58
 4E-->4K
 4F-->4U
-4F-->6K
-4G-->57
-4H-->54
-4I-->6H
+4F-->6L
+4G-->58
+4H-->55
+4I-->6I
 4J-->3S
-4J-->6K
+4J-->6L
 4J-->42
 4K-->3O
 4K-->3Q
 4M-->3S
-4M-->6K
+4M-->6L
 4O-->4V
-4O-->57
-4O-->6K
-4Q-->6K
-4S-->54
-4S-->6K
-4U-->6K
-4U-->54
-4U-->6C
-4U-->57
-4V-->6K
-54-->4Y
-57-->6K
-57-->6G
-59-->1O
-59-->3L
-59-->Q
-59-->1M
-59-->23
-59-->B
-59-->D
-59-->F
-59-->9
-59-->L
-59-->N
-59-->S
-59-->W
-59-->Y
-59-->10
-59-->12
-59-->14
-59-->17
-59-->19
-59-->1C
-59-->1E
-59-->1Q
-59-->1Y
-59-->3J
-59-->2F
-59-->2I
-59-->2X
-59-->2Y
-59-->32
-59-->34
-59-->H
-59-->46
-59-->3Q
-59-->3S
-59-->4O
-59-->6K
-59-->57
-59-->5T
-5D-->5T
-5O-->6K
-5O-->5F
-5O-->5H
-5O-->5J
-5O-->5L
-5O-->5N
-5O-->5Q
-5O-->5S
-5O-->5T
-5O-->5U
-5O-->5W
-5O-->5Y
-5O-->60
-5O-->62
-5O-->64
-5O-->66
-5O-->68
-5U-->6K
-5U-->62
-6D-->6K
-6E-->54
-6E-->59
-6F-->54
-6H-->57
-6H-->54
-6K-->52
-6L-->59
-6L-->6E
-6O-->4S
-6O-->6K
-6P-->6K
-6P-->6O
-6R-->54
+4O-->58
+4O-->6L
+4Q-->6L
+4S-->55
+4S-->6L
+4U-->6L
+4U-->55
+4U-->6D
+4U-->58
+4V-->6L
+4Z-->55
+55-->4Y
+58-->6L
+58-->6H
+5A-->1O
+5A-->3L
+5A-->Q
+5A-->1M
+5A-->23
+5A-->B
+5A-->D
+5A-->F
+5A-->9
+5A-->L
+5A-->N
+5A-->S
+5A-->W
+5A-->Y
+5A-->10
+5A-->12
+5A-->14
+5A-->17
+5A-->19
+5A-->1C
+5A-->1E
+5A-->1Q
+5A-->1Y
+5A-->3J
+5A-->2F
+5A-->2I
+5A-->2X
+5A-->2Y
+5A-->32
+5A-->34
+5A-->H
+5A-->46
+5A-->3Q
+5A-->3S
+5A-->4O
+5A-->6L
+5A-->58
+5A-->5U
+5E-->5U
+5P-->6L
+5P-->5G
+5P-->5I
+5P-->5K
+5P-->5M
+5P-->5O
+5P-->5R
+5P-->5T
+5P-->5U
+5P-->5V
+5P-->5X
+5P-->5Z
+5P-->61
+5P-->63
+5P-->65
+5P-->67
+5P-->69
+5V-->6L
+5V-->63
+6E-->6L
+6F-->55
+6F-->5A
+6G-->55
+6I-->58
+6I-->55
+6L-->53
+6M-->5A
+6M-->6F
+6P-->4S
+6P-->6L
+6Q-->6L
+6Q-->6P
+6S-->55
 ```

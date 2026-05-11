@@ -67,9 +67,10 @@ jobs:
               set -euo pipefail
               cd "$ARCH_WORKDIR"
 
+              # Phase B: root npm ci installs all workspaces (shared, server, gateway).
+              # Per-package npm ci is now redundant AND broken (workspace deps don't
+              # publish to the npm registry). website remains standalone.
               scripts/ci/retry-command.sh "root npm ci" npm ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/root"
-              scripts/ci/retry-command.sh "server npm ci" npm --prefix server ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/server"
-              scripts/ci/retry-command.sh "gateway npm ci" npm --prefix gateway ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/gateway"
               scripts/ci/retry-command.sh "website npm ci" npm --prefix website ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/website"
             '
 

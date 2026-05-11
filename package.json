@@ -9,6 +9,11 @@
   "overrides": {
     "protobufjs": "7.5.5"
   },
+  "workspaces": [
+    "shared",
+    "server",
+    "gateway"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vite build",

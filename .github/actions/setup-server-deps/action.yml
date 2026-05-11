@@ -16,23 +16,32 @@ runs:
     # Without package.json in the key, a desync would slip through cache hit
     # and surface as a confusing "Cannot find module" at runtime instead of
     # the explicit npm ci error.
-    - name: Restore server node_modules cache
+    # Phase B: under workspaces, npm hoists transitives to root node_modules.
+    # Cache BOTH server/node_modules and root node_modules; cache key includes
+    # root package.json + root package-lock.json so workspace dep changes
+    # invalidate properly. Prefix bumped to -v3 to invalidate stale entries
+    # captured before the workspace migration (which had a different layout).
+    - name: Restore workspace node_modules cache
       id: cache-server-node-modules
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
       with:
-        path: server/node_modules
-        key: ${{ runner.os }}-${{ runner.arch }}-server-node-modules-node-${{ hashFiles('.nvmrc') }}-${{ hashFiles('server/package.json', 'server/package-lock.json') }}
+        path: |
+          node_modules
+          server/node_modules
+          gateway/node_modules
+          shared/dist
+        key: ${{ runner.os }}-${{ runner.arch }}-workspace-node-modules-v3-node-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package.json', 'package-lock.json', 'server/package.json', 'gateway/package.json', 'shared/package.json') }}
         restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-server-node-modules-node-${{ hashFiles('.nvmrc') }}-
+          ${{ runner.os }}-${{ runner.arch }}-workspace-node-modules-v3-node-${{ hashFiles('.nvmrc') }}-
 
     - name: Restore server Prisma client cache
       id: cache-server-prisma
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
       with:
         path: server/src/generated/prisma
-        key: ${{ runner.os }}-${{ runner.arch }}-server-prisma-${{ hashFiles('server/prisma/schema.prisma', 'server/package.json', 'server/package-lock.json') }}
+        key: ${{ runner.os }}-${{ runner.arch }}-server-prisma-v3-${{ hashFiles('server/prisma/schema.prisma', 'package-lock.json', 'server/package.json') }}
         restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-server-prisma-
+          ${{ runner.os }}-${{ runner.arch }}-server-prisma-v3-
 
     - name: Setup server dependencies
       shell: bash

@@ -15,8 +15,12 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "types": ["node"]
+    "types": ["node"],
+    "baseUrl": "./",
+    "paths": {
+      "@sanctuary/shared/*": ["../shared/dist/*"]
+    }
   },
-  "include": ["src/**/*", "../shared/**/*"],
+  "include": ["src/**/*", "../global.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

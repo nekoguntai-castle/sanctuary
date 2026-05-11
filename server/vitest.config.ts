@@ -65,6 +65,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@fixtures': path.resolve(__dirname, './tests/fixtures'),
+      '@sanctuary/shared': path.resolve(__dirname, '../shared/dist'),
     },
   },
 });

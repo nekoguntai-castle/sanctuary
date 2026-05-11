@@ -12,19 +12,31 @@ fail() {
 
 run_setup() {
   [ -d "$SERVER_DIR" ] || fail "server directory not found: $SERVER_DIR"
-  cd "$SERVER_DIR"
 
-  # Skip `npm ci` when the cache restored an exact match for the lockfile +
-  # Node version. Partial restore-key hits leave SERVER_NODE_MODULES_CACHE_HIT
-  # unset/false so we still run npm ci to validate integrity against the
-  # current lockfile.
+  # Phase B: server is now a workspace member. `cd server && npm ci` would
+  # only populate server/node_modules with non-hoisted deps; transitive deps
+  # (dotenv, typescript, etc.) live at root node_modules under workspace
+  # hoisting. Install at root so both root and per-package node_modules are
+  # populated before any per-package script runs (prisma config loader
+  # requires dotenv, vitest needs tsx, etc.).
   if [ "${SERVER_NODE_MODULES_CACHE_HIT:-}" != "true" ]; then
-    "$ROOT_DIR/scripts/ci/retry-command.sh" "server npm ci" \
-      "$ROOT_DIR/scripts/ci/time-command.sh" "server npm ci" \
+    cd "$ROOT_DIR"
+    "$ROOT_DIR/scripts/ci/retry-command.sh" "root npm ci (workspaces)" \
+      "$ROOT_DIR/scripts/ci/time-command.sh" "root npm ci (workspaces)" \
       npm ci --ignore-scripts
   else
     echo "setup-server-dependencies: server node_modules cache hit; skipping npm ci"
   fi
+
+  # Build the shared workspace package. `npm ci --ignore-scripts` skips
+  # shared's `prepare` hook that would normally produce shared/dist; explicit
+  # build ensures the workspace alias `@sanctuary/shared` (vitest) and the
+  # tsconfig `paths` mapping (server tsc) both resolve to a populated dist.
+  cd "$ROOT_DIR"
+  "$ROOT_DIR/scripts/ci/time-command.sh" "shared workspace build" \
+    npm --workspace shared run build
+
+  cd "$SERVER_DIR"
 
   # Always re-link shared module resolution; it's a fast idempotent symlink
   # operation that depends on the runner workspace, not on cache state.

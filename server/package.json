@@ -111,7 +111,8 @@
     "socks-proxy-agent": "^10.0.0",
     "tiny-secp256k1": "^2.2.3",
     "ws": "^8.18.0",
-    "zod": "^4.3.4"
+    "zod": "^4.3.4",
+    "@sanctuary/shared": "*"
   },
   "devDependencies": {
     "@faker-js/faker": "^10.4.0",

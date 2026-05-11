@@ -147,10 +147,10 @@ jobs:
           git clone --quiet --no-hardlinks "$source_workspace" "$audit_workdir/repo"
           cd "$audit_workdir/repo"
 
+          # Phase B: server, gateway, shared are workspace members; root npm audit
+          # covers them transitively. Stand-alone trees audit individually.
           package_dirs=(
             .
-            server
-            gateway
             ai-proxy
             website
             scripts/verify-addresses
@@ -566,6 +566,10 @@ jobs:
     if: always()
     needs: [determine-scope, lint, lockfile-peer-resolution, dependency-audit, gitleaks, semgrep-sast, workflow-lint, workflow-action-runtime-guard, ci-classifier-tests, lizard, jscpd, large-file-classification]
     steps:
+      - name: Checkout (for diagnostic publish)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          clean: false
       - name: Check quality job results
         env:
           RUN_REPO_QUALITY: ${{ needs.determine-scope.outputs.run_repo_quality }}
@@ -583,6 +587,27 @@ jobs:
           JSCPD: ${{ needs.jscpd.result }}
           LARGE_FILE_CLASSIFICATION: ${{ needs.large-file-classification.result }}
         run: |
+          DIAGNOSTIC_DIR=".tmp/ci-diagnostics/quality-required-checks"
+          mkdir -p "$DIAGNOSTIC_DIR"
+          {
+            echo "=== quality-required-checks scope inputs ==="
+            echo "RUN_REPO_QUALITY=$RUN_REPO_QUALITY"
+            echo "RUN_WORKFLOW_QUALITY=$RUN_WORKFLOW_QUALITY"
+            echo "RUN_CI_CLASSIFIER_TESTS=$RUN_CI_CLASSIFIER_TESTS"
+            echo "=== sub-job results ==="
+            echo "LINT=$LINT"
+            echo "LOCKFILE_PEER_RESOLUTION=$LOCKFILE_PEER_RESOLUTION"
+            echo "DEPENDENCY_AUDIT=$DEPENDENCY_AUDIT"
+            echo "GITLEAKS=$GITLEAKS"
+            echo "SEMGREP_SAST=$SEMGREP_SAST"
+            echo "WORKFLOW_LINT=$WORKFLOW_LINT"
+            echo "WORKFLOW_ACTION_RUNTIME_GUARD=$WORKFLOW_ACTION_RUNTIME_GUARD"
+            echo "CI_CLASSIFIER_TESTS=$CI_CLASSIFIER_TESTS"
+            echo "LIZARD=$LIZARD"
+            echo "JSCPD=$JSCPD"
+            echo "LARGE_FILE_CLASSIFICATION=$LARGE_FILE_CLASSIFICATION"
+          } | tee "$DIAGNOSTIC_DIR/sub-job-results.log"
+
           failed=false
 
           require_success() {
@@ -648,3 +673,20 @@ jobs:
           if [ "$failed" = "true" ]; then
             exit 1
           fi
+
+      - name: Publish diagnostic on failure
+        if: failure() && env.SANCTUARY_CI_LOG_SINK_URL != ''
+        run: |
+          set -euo pipefail
+          [ -f .tmp/ci-diagnostics/quality-required-checks/sub-job-results.log ] || exit 0
+          run_id="${GITHUB_RUN_ID:-unknown}"
+          target="${SANCTUARY_CI_LOG_SINK_URL%/}/runs/${run_id}/quality-required-checks/sub-job-results.log"
+          auth_tmp="$(mktemp)"
+          trap 'rm -f "$auth_tmp"' EXIT
+          if [ -n "${SANCTUARY_CI_LOG_SINK_TOKEN:-}" ]; then
+            printf 'Authorization: Bearer %s\n' "$SANCTUARY_CI_LOG_SINK_TOKEN" > "$auth_tmp"
+            curl -fsS -X PUT --data-binary @.tmp/ci-diagnostics/quality-required-checks/sub-job-results.log -H @"$auth_tmp" "$target" || true
+          else
+            curl -fsS -X PUT --data-binary @.tmp/ci-diagnostics/quality-required-checks/sub-job-results.log "$target" || true
+          fi
+          echo "Published diagnostic to $target"

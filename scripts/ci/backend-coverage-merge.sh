@@ -35,9 +35,17 @@ main() {
     fail "no Vitest blob reports found in ${reports_dir}"
   fi
 
-  local vitest_bin="${VITEST_BIN:-./node_modules/.bin/vitest}"
-  if [ ! -x "$vitest_bin" ]; then
-    fail "Vitest binary not found at ${vitest_bin}; run npm ci first"
+  # Workspace-aware binary lookup: cwd first, then walk up for hoisted bins.
+  local vitest_bin="${VITEST_BIN:-}"
+  if [ -z "$vitest_bin" ]; then
+    if [ -x "./node_modules/.bin/vitest" ]; then
+      vitest_bin="./node_modules/.bin/vitest"
+    elif [ -x "../node_modules/.bin/vitest" ]; then
+      vitest_bin="../node_modules/.bin/vitest"
+    fi
+  fi
+  if [ -z "$vitest_bin" ] || [ ! -x "$vitest_bin" ]; then
+    fail "Vitest binary not found in ./node_modules/.bin or ../node_modules/.bin; run npm ci first"
   fi
 
   rm -rf coverage

@@ -36,6 +36,7 @@ write_mock_commands() {
 printf 'npm:%s:%s\\n' "\$PWD" "\$*" >> "$log_file"
 case " \$* " in
   *" ci --ignore-scripts "*) exit 0 ;;
+  *" --workspace shared run build "*) exit 0 ;;
   *) exit 64 ;;
 esac
 MOCK
@@ -78,20 +79,27 @@ main() {
   printf '0' >"$npx_count_file"
   write_mock_commands "$bin_dir" "$log_file" "$npx_count_file"
 
+  # ROOT_DIR is computed by the script from its own location, so it points
+  # at the real repo root regardless of SANCTUARY_SERVER_DIR override.
+  local root_dir
+  root_dir="$(cd "$(dirname "$SCRIPT")/../.." && pwd)"
+
   PATH="$bin_dir:$PATH" \
     SANCTUARY_SERVER_DIR="$server_dir" \
     SANCTUARY_SERVER_SETUP_NO_LOCK=1 \
     SANCTUARY_RETRY_DELAY_SECONDS=0 \
     bash "$SCRIPT"
 
-  assert_contains "$log_file" "npm:$server_dir:ci --ignore-scripts"
-  assert_no_line "$log_file" "npm:$server_dir:ci"
+  # Phase B: install at root for workspace hoisting; build shared after.
+  assert_contains "$log_file" "npm:$root_dir:ci --ignore-scripts"
+  assert_contains "$log_file" "npm:$root_dir:--workspace shared run build"
   assert_contains "$log_file" "node:$server_dir:scripts/ensure-shared-module-resolution.mjs"
   assert_contains "$log_file" "npx:$server_dir:prisma generate"
   [ "$(cat "$npx_count_file")" = '2' ] || fail 'expected prisma generate to retry once'
 
   # Cache-hit scenario: both env vars set to 'true' should skip npm ci AND
-  # prisma generate but still run the shared-schema link.
+  # prisma generate but still run the shared-schema link AND the shared build
+  # (build is unconditional because the cache may not capture shared/dist).
   local hit_log="$TEST_TEMP_DIR/commands-hit.log"
   : >"$hit_log"
   printf '0' >"$npx_count_file"
@@ -105,13 +113,14 @@ main() {
     SERVER_PRISMA_CACHE_HIT=true \
     bash "$SCRIPT"
 
-  if grep -Fq "npm:$server_dir:ci" "$hit_log"; then
+  if grep -Fq "npm:$root_dir:ci --ignore-scripts" "$hit_log"; then
     fail 'expected npm ci to be skipped when SERVER_NODE_MODULES_CACHE_HIT=true'
   fi
   if grep -Fq "npx:$server_dir:prisma generate" "$hit_log"; then
     fail 'expected prisma generate to be skipped when SERVER_PRISMA_CACHE_HIT=true'
   fi
   assert_contains "$hit_log" "node:$server_dir:scripts/ensure-shared-module-resolution.mjs"
+  assert_contains "$hit_log" "npm:$root_dir:--workspace shared run build"
 
   # Partial-hit scenario: only Prisma cache hit; npm ci still runs.
   local partial_log="$TEST_TEMP_DIR/commands-partial.log"
@@ -127,7 +136,8 @@ main() {
     SERVER_PRISMA_CACHE_HIT=true \
     bash "$SCRIPT"
 
-  assert_contains "$partial_log" "npm:$server_dir:ci --ignore-scripts"
+  assert_contains "$partial_log" "npm:$root_dir:ci --ignore-scripts"
+  assert_contains "$partial_log" "npm:$root_dir:--workspace shared run build"
   if grep -Fq "npx:$server_dir:prisma generate" "$partial_log"; then
     fail 'expected prisma generate to be skipped when SERVER_PRISMA_CACHE_HIT=true even on partial node_modules miss'
   fi
