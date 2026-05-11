@@ -1028,6 +1028,18 @@ test_backend_compose_exposes_auth_rate_limit_overrides() {
     fi
 }
 
+test_worker_compose_command_matches_backend_dist_layout() {
+    if grep -Fq 'command: ["node", "dist/server/src/worker.js"]' "$PROJECT_ROOT/docker-compose.yml" \
+        && grep -Fq 'command: ["node", "dist/server/src/worker.js"]' "$PROJECT_ROOT/docker-compose.ghcr.yml" \
+        && ! grep -Fq 'dist/app/src/worker.js' "$PROJECT_ROOT/docker-compose.yml" \
+        && ! grep -Fq 'dist/app/src/worker.js' "$PROJECT_ROOT/docker-compose.ghcr.yml"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} worker compose command should match backend image dist/server layout"
+        return 1
+    fi
+}
+
 # ============================================
 # Unit Tests: Pre-flight checks (new functions)
 # ============================================
@@ -1791,6 +1803,7 @@ main() {
     run_test "start script .env has set -a" test_start_script_env_has_set_a
     run_test "start script .env.local has set -a" test_start_script_env_local_has_set_a
     run_test "backend compose exposes auth rate-limit overrides" test_backend_compose_exposes_auth_rate_limit_overrides
+    run_test "worker compose command matches backend dist layout" test_worker_compose_command_matches_backend_dist_layout
     echo ""
 
     echo -e "${YELLOW}Test Suite: Pre-flight Checks${NC}"

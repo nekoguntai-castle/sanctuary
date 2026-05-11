@@ -219,7 +219,7 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required (at least 32 chars)}
       ENCRYPTION_SALT: ${ENCRYPTION_SALT:?ENCRYPTION_SALT is required}
       GATEWAY_SECRET: ${GATEWAY_SECRET:?GATEWAY_SECRET is required}
-    command: ["node", "dist/app/src/worker.js"]
+    command: ["node", "dist/server/src/worker.js"]
     healthcheck:
       test:
         [

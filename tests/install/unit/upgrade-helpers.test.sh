@@ -503,7 +503,7 @@ services:
       context: .
       dockerfile: server/Dockerfile
     image: sanctuary-backend:local
-    command: ["node", "dist/app/src/worker.js"]
+    command: ["node", "dist/server/src/worker.js"]
   migrate:
     build:
       context: .

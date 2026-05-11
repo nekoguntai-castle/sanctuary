@@ -342,7 +342,7 @@ services:
       GATEWAY_SECRET: ${GATEWAY_SECRET:-}
 
     # Override the default command to start the worker
-    command: ["node", "dist/app/src/worker.js"]
+    command: ["node", "dist/server/src/worker.js"]
     volumes:
       - backup_data:/data/backups
     healthcheck:
