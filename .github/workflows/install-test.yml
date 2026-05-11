@@ -440,6 +440,8 @@ jobs:
           scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "install stack startup" bash -c '
             JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
             ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+
+            ENCRYPTION_SALT=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
             GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
             POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
             AI_CONFIG_SECRET=$(openssl rand -hex 32)
@@ -452,7 +454,7 @@ jobs:
             export SANCTUARY_SSL_DIR SANCTUARY_COMPOSE_SSL_DIR
             bash docker/nginx/ssl/generate-certs.sh localhost
 
-            JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+            JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" ENCRYPTION_SALT="$ENCRYPTION_SALT" \
               GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
               AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
               SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
@@ -557,6 +559,8 @@ jobs:
             # Generate all required secrets
             JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
             ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+
+            ENCRYPTION_SALT=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
             GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
             POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
             AI_CONFIG_SECRET=$(openssl rand -hex 32)
@@ -571,7 +575,7 @@ jobs:
             bash docker/nginx/ssl/generate-certs.sh localhost
 
             # Start containers
-            JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+            JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" ENCRYPTION_SALT="$ENCRYPTION_SALT" \
               GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
               AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
               SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
@@ -670,6 +674,8 @@ jobs:
             # Generate all required secrets
             JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
             ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+
+            ENCRYPTION_SALT=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
             GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
             POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
             AI_CONFIG_SECRET=$(openssl rand -hex 32)
@@ -684,7 +690,7 @@ jobs:
             bash docker/nginx/ssl/generate-certs.sh localhost
 
             # Start containers with higher rate limits for testing
-            JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+            JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" ENCRYPTION_SALT="$ENCRYPTION_SALT" \
               GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
               AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
               SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
