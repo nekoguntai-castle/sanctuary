@@ -62,22 +62,28 @@ jobs:
         run: |
           DIAGNOSTIC_DIR=".tmp/ci-diagnostics/architecture"
           mkdir -p "$DIAGNOSTIC_DIR"
+          # Use heredoc form (quoted delimiter, no inner-shell apostrophe risk)
+          # instead of `bash -c '...'`. Phase G's apostrophe-in-comment bug was a
+          # direct hit on this exact pattern; heredoc with 'EOF' eliminates the
+          # entire class.
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-dependencies.log" \
-            scripts/ci/with-runner-lock.sh node-toolchain bash -c '
-              set -euo pipefail
-              cd "$ARCH_WORKDIR"
-
-              # Phase B: root npm ci installs all workspaces (shared, server, gateway).
-              # Per-package npm ci is redundant and broken because workspace deps
-              # do not publish to the npm registry. website remains standalone.
-              scripts/ci/retry-command.sh "root npm ci" npm ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/root"
-              scripts/ci/retry-command.sh "website npm ci" npm --prefix website ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/website"
-            '
+            scripts/ci/with-runner-lock.sh node-toolchain bash <<'INNER'
+          set -euo pipefail
+          cd "$ARCH_WORKDIR"
+          # Phase B: root npm ci installs all workspaces (shared, server, gateway).
+          # Per-package npm ci is redundant and broken because workspace deps
+          # don't publish to the npm registry. website remains standalone.
+          scripts/ci/retry-command.sh "root npm ci" npm ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/root"
+          scripts/ci/retry-command.sh "website npm ci" npm --prefix website ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/website"
+          INNER
 
       - name: Lint diagram click hrefs
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/lint-diagrams.log" \
-            bash -c 'cd "$ARCH_WORKDIR" && npm run arch:lint'
+            bash <<'INNER'
+          cd "$ARCH_WORKDIR"
+          npm run arch:lint
+          INNER
 
       - name: Warn on diagram drift (changed files referenced by C4 diagrams)
         if: github.event_name == 'pull_request'
@@ -95,34 +101,34 @@ jobs:
       - name: Regenerate dependency graphs
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/dependency-graphs.log" \
-            scripts/ci/with-runner-lock.sh node-toolchain bash -c '
-              set -euo pipefail
-              cd "$ARCH_WORKDIR"
-              scripts/ci/retry-command.sh "architecture dependency graphs" npm run arch:graphs
-            '
+            scripts/ci/with-runner-lock.sh node-toolchain bash <<'INNER'
+          set -euo pipefail
+          cd "$ARCH_WORKDIR"
+          scripts/ci/retry-command.sh "architecture dependency graphs" npm run arch:graphs
+          INNER
 
       - name: Regenerate function-level call graphs
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/call-graphs.log" \
-            scripts/ci/with-runner-lock.sh node-toolchain bash -c '
-              set -euo pipefail
-              cd "$ARCH_WORKDIR"
-              scripts/ci/retry-command.sh "architecture call graphs" npm run arch:calls
-            '
+            scripts/ci/with-runner-lock.sh node-toolchain bash <<'INNER'
+          set -euo pipefail
+          cd "$ARCH_WORKDIR"
+          scripts/ci/retry-command.sh "architecture call graphs" npm run arch:calls
+          INNER
 
       - name: Detect stale generated graphs
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/stale-generated-graphs.log" \
-            bash -c '
-              cd "$ARCH_WORKDIR"
-              if ! git diff --exit-code -- docs/architecture/generated; then
-                echo "::error::Generated architecture graphs are stale. Run '\''npm run arch:graphs && npm run arch:calls'\'' locally and commit the result."
-                echo "--- BEGIN DIFF ---"
-                git diff -- docs/architecture/generated/ | head -300
-                echo "--- END DIFF ---"
-                exit 1
-              fi
-            '
+            bash <<'INNER'
+          cd "$ARCH_WORKDIR"
+          if ! git diff --exit-code -- docs/architecture/generated; then
+            echo "::error::Generated architecture graphs are stale. Run 'npm run arch:graphs && npm run arch:calls' locally and commit the result."
+            echo "--- BEGIN DIFF ---"
+            git diff -- docs/architecture/generated/ | head -300
+            echo "--- END DIFF ---"
+            exit 1
+          fi
+          INNER
 
       - name: Publish stale-graph snapshot to LAN sink on failure
         if: failure() && env.SANCTUARY_CI_LOG_SINK_URL != ''
@@ -140,11 +146,32 @@ jobs:
             CURL_AUTH=()
           fi
           # Bundle every diagnostic file the run produced
-          for log in .tmp/ci-diagnostics/architecture/*.log; do
-            [ -f "$log" ] || continue
-            name=$(basename "$log")
-            curl -fsS -X PUT --data-binary @"$log" "${CURL_AUTH[@]}" "${base}/${name}" || true
-          done
+          shopt -s nullglob
+          log_files=(.tmp/ci-diagnostics/architecture/*.log)
+          shopt -u nullglob
+          if [ ${#log_files[@]} -eq 0 ]; then
+            # BREADCRUMB: no run-with-log.sh wrappers produced output. That means
+            # the failure was UPSTREAM of any wrapped step — typically a workflow
+            # shell parse error or a step that crashed before `run-with-log.sh`
+            # could open its log file. DO NOT chase test/build-output theories;
+            # check the actionlint shellcheck output and the previous step's raw
+            # YAML for unmatched quotes, missing heredoc delimiters, etc.
+            {
+              echo "BREADCRUMB: .tmp/ci-diagnostics/architecture/ contains zero *.log files."
+              echo "Cause: the run-with-log.sh wrapper never executed — failure"
+              echo "is upstream of any wrapped step. Inspect the workflow YAML"
+              echo "and the runner step output for shell parse errors."
+              echo "ARCH_WORKDIR=$ARCH_WORKDIR"
+              echo "pwd=$(pwd)"
+              ls -la .tmp/ci-diagnostics/architecture/ 2>&1 || true
+            } > /tmp/BREADCRUMB-UPSTREAM-FAILURE.txt
+            curl -fsS -X PUT --data-binary @/tmp/BREADCRUMB-UPSTREAM-FAILURE.txt "${CURL_AUTH[@]}" "${base}/BREADCRUMB-UPSTREAM-FAILURE.txt" || true
+          else
+            for log in "${log_files[@]}"; do
+              name=$(basename "$log")
+              curl -fsS -X PUT --data-binary @"$log" "${CURL_AUTH[@]}" "${base}/${name}" || true
+            done
+          fi
           # Full git diff + regenerated artifacts
           git diff -- docs/architecture/generated > /tmp/full-diff.txt 2>&1 || true
           curl -fsS -X PUT --data-binary @/tmp/full-diff.txt "${CURL_AUTH[@]}" "${base}/full-diff.txt" || true
@@ -167,25 +194,25 @@ jobs:
           SANCTUARY_RETRY_ATTEMPTS: '5'
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/docs-typecheck.log" \
-            scripts/ci/with-runner-lock.sh node-toolchain bash -c '
-              set -euo pipefail
-              cd "$ARCH_WORKDIR"
-              scripts/ci/retry-command.sh "docs typecheck" scripts/ci/time-command.sh "docs typecheck" npm --prefix website run typecheck
-            '
+            scripts/ci/with-runner-lock.sh node-toolchain bash <<'INNER'
+          set -euo pipefail
+          cd "$ARCH_WORKDIR"
+          scripts/ci/retry-command.sh "docs typecheck" scripts/ci/time-command.sh "docs typecheck" npm --prefix website run typecheck
+          INNER
 
       - name: Build Docusaurus site
         run: |
           scripts/ci/run-with-log.sh ".tmp/ci-diagnostics/architecture/docs-build.log" \
-            scripts/ci/with-runner-lock.sh node-toolchain bash -c '
-              set -euo pipefail
-              cd "$ARCH_WORKDIR"
-              scripts/ci/retry-command.sh "docs build" npm run docs:build
-              if [ "${GITHUB_EVENT_NAME:-}" = "push" ] && [ "${GITHUB_REF:-}" = "refs/heads/main" ] && [ "${GITHUB_SERVER_URL:-}" = "https://github.com" ]; then
-                rm -rf "${GITHUB_WORKSPACE:-$PWD}/website/build"
-                mkdir -p "${GITHUB_WORKSPACE:-$PWD}/website"
-                cp -a website/build "${GITHUB_WORKSPACE:-$PWD}/website/build"
-              fi
-            '
+            scripts/ci/with-runner-lock.sh node-toolchain bash <<'INNER'
+          set -euo pipefail
+          cd "$ARCH_WORKDIR"
+          scripts/ci/retry-command.sh "docs build" npm run docs:build
+          if [ "${GITHUB_EVENT_NAME:-}" = "push" ] && [ "${GITHUB_REF:-}" = "refs/heads/main" ] && [ "${GITHUB_SERVER_URL:-}" = "https://github.com" ]; then
+            rm -rf "${GITHUB_WORKSPACE:-$PWD}/website/build"
+            mkdir -p "${GITHUB_WORKSPACE:-$PWD}/website"
+            cp -a website/build "${GITHUB_WORKSPACE:-$PWD}/website/build"
+          fi
+          INNER
 
       - name: Upload site artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.server_url == 'https://github.com'

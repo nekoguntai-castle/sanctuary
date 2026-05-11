@@ -317,7 +317,7 @@ jobs:
         with:
           clean: false
 
-      - name: Install actionlint
+      - name: Install actionlint + shellcheck
         run: |
           curl -sSL \
             -o /tmp/actionlint.tar.gz \
@@ -326,11 +326,20 @@ jobs:
           sha256sum -c /tmp/actionlint.sha256
           tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
           /tmp/actionlint -version
+          # Phase G2 retro: shellcheck on `run:` blocks catches the quoting class
+          # that hit us in PR #410 (apostrophe inside `bash -c '...'`).
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y shellcheck
+          shellcheck --version
 
       - name: Run actionlint
-        run: >
-          /tmp/actionlint -color -shellcheck=
-          -ignore 'specifying action "https://data\.forgejo\.org/forgejo/(upload|download)-artifact@v4" in invalid format'
+        run: |
+          # Filter shellcheck to error severity only — captures the shell
+          # syntax class that hit PR #410 (apostrophe inside bash -c '...')
+          # without churning on pre-existing SC2086 quote-style suggestions.
+          /tmp/actionlint -color \
+            -shellcheck='/usr/bin/shellcheck --severity=error' \
+            -ignore 'specifying action "https://data\.forgejo\.org/forgejo/(upload|download)-artifact@v4" in invalid format'
 
   workflow-action-runtime-guard:
     name: Workflow action runtime guard

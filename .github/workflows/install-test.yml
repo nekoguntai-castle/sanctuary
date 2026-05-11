@@ -168,13 +168,13 @@ jobs:
 
       - name: Run unit tests
         run: |
-          scripts/ci/run-in-isolated-workspace.sh install-unit bash -c '
-            ./tests/install/unit/install-script.test.sh
-            ./tests/install/unit/reset-user-2fa-script.test.sh
-            ./tests/install/unit/upgrade-helpers.test.sh
-            ./tests/install/unit/install-scope.test.sh
-            ./tests/install/unit/cleanup-containers-guard.test.sh
-          '
+          scripts/ci/run-in-isolated-workspace.sh install-unit bash <<'INNER'
+          ./tests/install/unit/install-script.test.sh
+          ./tests/install/unit/reset-user-2fa-script.test.sh
+          ./tests/install/unit/upgrade-helpers.test.sh
+          ./tests/install/unit/install-scope.test.sh
+          ./tests/install/unit/cleanup-containers-guard.test.sh
+          INNER
 
   # ============================================
   # Fresh Install E2E Test
@@ -232,18 +232,18 @@ jobs:
       - name: Prepare isolated install workspace
         if: github.event_name != 'pull_request'
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash -c '
-            workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible fresh-install)"
-            echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
-          '
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/isolated-workspace.log" bash <<'INNER'
+          workspace="$(scripts/ci/create-isolated-workspace.sh --docker-visible fresh-install)"
+          echo "SANCTUARY_INSTALL_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          INNER
 
       - name: Assign run-specific ports
         if: github.event_name != 'pull_request'
         run: |
-          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash -c '
-            cd "$SANCTUARY_INSTALL_WORKSPACE"
-            bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
-          '
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/install-ports.log" bash <<'INNER'
+          cd "$SANCTUARY_INSTALL_WORKSPACE"
+          bash scripts/ci/install-test-ports.sh "$PORT_OFFSET"
+          INNER
 
       - name: Run fresh install test
         if: github.event_name != 'pull_request'
