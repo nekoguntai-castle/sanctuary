@@ -1415,3 +1415,102 @@ jobs:
       - name: Logout
         if: always()
         run: docker logout codeberg.org || true
+
+  # ============================================
+  # Notify sanctuary-umbrel of new digests
+  # ============================================
+  # After publish-images succeeds on a stable tag, fire a
+  # workflow_dispatch on sanctuary-umbrel/.github/workflows/
+  # update-on-dispatch.yml so its bot can rewrite the umbrel-app.yml
+  # version + the docker-compose.yml `image:` digests, then commit
+  # and tag a new release on sanctuary-umbrel.
+  #
+  # Forgejo notes:
+  #   * `repository_dispatch` is not exposed by Forgejo's API; we use
+  #     workflow_dispatch with the receiving workflow's input shape.
+  #   * Receiving workflow is sanctuary-umbrel's update-on-dispatch.yml
+  #     (PR #3 in that repo, merged 2026-05-12) — it accepts
+  #     {version, frontend_digest, backend_digest}.
+  notify-umbrel:
+    name: Notify sanctuary-umbrel of new image digests
+    runs-on: ubuntu-latest
+    needs: publish-images
+    if: |
+      always()
+      && needs.publish-images.result == 'success'
+      && github.event_name == 'push'
+      && github.ref_type == 'tag'
+      && !contains(github.ref_name, '-rc')
+      && !contains(github.ref_name, '-alpha')
+      && !contains(github.ref_name, '-beta')
+      && !contains(github.ref_name, '-dev')
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Download digest manifest
+        uses: ./.github/actions/download-artifact
+        with:
+          name: image-digests-${{ github.ref_name }}
+          path: dist
+
+      - name: Fire workflow_dispatch on sanctuary-umbrel
+        env:
+          UMBREL_DISPATCH_TOKEN: ${{ secrets.UMBREL_DISPATCH_TOKEN }}
+          FORGEJO_URL: ${{ github.server_url }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$UMBREL_DISPATCH_TOKEN" ]; then
+            echo "::error::UMBREL_DISPATCH_TOKEN secret missing — set it on this repo (write:repository scope on sanctuary-umbrel)."
+            exit 1
+          fi
+
+          DIGEST_FILE="$(ls dist/image-digests-*.json | head -n1)"
+          if [ -z "$DIGEST_FILE" ] || [ ! -s "$DIGEST_FILE" ]; then
+            echo "::error::digest manifest missing or empty under dist/"
+            ls -la dist/ || true
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          FRONTEND_DIGEST=$(jq -r '.frontend // empty' "$DIGEST_FILE")
+          BACKEND_DIGEST=$(jq -r '.backend // empty' "$DIGEST_FILE")
+
+          if [ -z "$FRONTEND_DIGEST" ] || [ -z "$BACKEND_DIGEST" ]; then
+            echo "::error::digest manifest is missing one of {frontend, backend}: $(cat "$DIGEST_FILE")"
+            exit 1
+          fi
+          for d in "$FRONTEND_DIGEST" "$BACKEND_DIGEST"; do
+            if [[ ! "$d" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::digest '$d' is not a sha256:<64hex> value"
+              exit 1
+            fi
+          done
+
+          BODY=$(jq -n \
+            --arg ver "$VERSION" \
+            --arg fe "$FRONTEND_DIGEST" \
+            --arg be "$BACKEND_DIGEST" \
+            '{ref: "main", inputs: {version: $ver, frontend_digest: $fe, backend_digest: $be}}')
+
+          # Forgejo dispatch endpoint for workflow_dispatch.
+          ENDPOINT="$FORGEJO_URL/api/v1/repos/nekoguntai-castle/sanctuary-umbrel/actions/workflows/update-on-dispatch.yml/dispatches"
+
+          HTTP=$(curl -sS -o /tmp/dispatch-response.txt -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: token $UMBREL_DISPATCH_TOKEN" \
+            -H "Content-Type: application/json" \
+            "$ENDPOINT" \
+            -d "$BODY")
+
+          if [ "$HTTP" = "204" ] || [ "$HTTP" = "200" ]; then
+            echo "✓ Dispatched to sanctuary-umbrel: v$VERSION"
+            echo "  frontend_digest=$FRONTEND_DIGEST"
+            echo "  backend_digest=$BACKEND_DIGEST"
+          else
+            echo "::error::dispatch failed: HTTP $HTTP"
+            cat /tmp/dispatch-response.txt
+            exit 1
+          fi
