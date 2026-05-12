@@ -1,3 +1,25 @@
+# Active Task: Verify Vectors Regeneration Visibility 2026-05-12
+
+Status: PR #421 CI passed; ready to merge.
+
+Goal: wire the remaining manual vector-regeneration workflow jobs into the existing HTTP sink diagnostic pattern without changing their regeneration behavior.
+
+## Plan
+
+- [x] Audit current `verify-vectors.yml` diagnostic coverage.
+- [x] Add log capture, diagnostic summaries, and artifacts for `regenerate-vectors`.
+- [x] Add log capture, diagnostic summaries, and artifacts for `regenerate-psbt-vectors`.
+- [x] Verify workflow composition, shell syntax, and formatting.
+- [x] Push/open the PR and monitor CI on the restored two-runner pool.
+
+## Review
+
+- Current-main audit found the normal `verify-vectors` job already uses `run-with-log` plus diagnostic summary upload, while the manual address and PSBT regeneration jobs still ran Docker/Bitcoin Core/npm work without captured logs.
+- Verification passed: `bash -n tests/ci/check-workflow-composition.test.sh`, workflow YAML parse, changed-run-block `bash -n`, actionlint for `verify-vectors.yml`, `bash tests/ci/check-workflow-composition.test.sh`, `bash tests/ci/run-with-log.test.sh`, `bash tests/ci/write-diagnostic-summary.test.sh`, `bash tests/ci/write-empty-diagnostic-breadcrumb.test.sh`, and `git diff --check`.
+- PR #421 CI passed on the restored two-runner pool. x300 accepted multiple tasks, including full backend integration, frontend typecheck, gateway, critical mutation, and quality work, with no post-start kernel fatal-signal or Docker `archive/tar` evidence observed during the run.
+
+---
+
 # Active Task: Fresh Install Runtime/Migration Hotfix 2026-05-11
 
 Status: worker entrypoint hotfix in progress.

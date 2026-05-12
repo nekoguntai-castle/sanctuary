@@ -185,6 +185,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/regenerate-vectors
 
     steps:
       - name: Checkout repository
@@ -200,14 +202,21 @@ jobs:
         run: python3 -m venv --help >/dev/null
 
       - name: Wait for Docker
-        run: ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
+          ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
 
       - name: Generate address vectors with pinned verifier stack
         working-directory: scripts/verify-addresses
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run generate:repeatable
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/generate-address-vectors.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run generate:repeatable
 
       - name: Check for vector changes
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/check-address-vector-changes.log" bash <<'INNER'
+          set -euo pipefail
           if git diff --quiet scripts/verify-addresses/output/verified-vectors.ts server/tests/fixtures/verified-address-vectors.ts; then
             echo "Vectors unchanged - all implementations agree"
           else
@@ -215,12 +224,31 @@ jobs:
             git diff scripts/verify-addresses/output/verified-vectors.ts server/tests/fixtures/verified-address-vectors.ts
             exit 1
           fi
+          INNER
+
+      - name: Write regenerate vector diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Regenerate Address Vectors"
+
+      - name: Upload regenerate vector diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-regenerate-vectors
+          path: .tmp/ci-diagnostics/regenerate-vectors/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   # Optional: Regenerate PSBT vectors with Bitcoin Core
   regenerate-psbt-vectors:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.regenerate_psbt == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/regenerate-psbt-vectors
 
     steps:
       - name: Checkout repository
@@ -230,10 +258,14 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Wait for Docker
-        run: ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
+          ${{ github.workspace }}/scripts/ci/wait-for-docker.sh
 
       - name: Start Bitcoin Core
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/start-bitcoin-core.log" bash <<'INNER'
+          set -euo pipefail
           docker run -d --name bitcoin-core \
             -p 18443:18443 \
             bitcoin/bitcoin:27.0 \
@@ -246,9 +278,12 @@ jobs:
             -fallbackfee=0.00001 \
             -txindex=1 \
             -printtoconsole=1
+          INNER
 
       - name: Wait for Bitcoin Core
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-bitcoin-core.log" bash <<'INNER'
+          set -euo pipefail
           rpc_url="http://${SANCTUARY_DOCKER_PUBLISHED_HOST:-127.0.0.1}:18443/"
           echo "Waiting for Bitcoin Core to be ready..."
           for i in {1..30}; do
@@ -261,9 +296,11 @@ jobs:
           done
           docker logs bitcoin-core
           exit 1
+          INNER
 
       - name: Install server dependencies
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-server-dependencies.log" \
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
             set -euo pipefail
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector root npm ci" npm ci --ignore-scripts
@@ -274,7 +311,10 @@ jobs:
 
       - name: Install PSBT verification dependencies
         working-directory: scripts/verify-psbt
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm ci
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-psbt-dependencies.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm ci
 
       - name: Generate PSBT vectors
         working-directory: scripts/verify-psbt
@@ -282,6 +322,7 @@ jobs:
           BITCOIN_RPC_HOST="${SANCTUARY_DOCKER_PUBLISHED_HOST:-127.0.0.1}" \
             BITCOIN_RPC_USER=sanctuary \
             BITCOIN_RPC_PASS=sanctuary-verify \
+            ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/generate-psbt-vectors.log" \
             ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run generate
 
       - name: Generate signed PSBT vectors
@@ -290,32 +331,43 @@ jobs:
           BITCOIN_RPC_HOST="${SANCTUARY_DOCKER_PUBLISHED_HOST:-127.0.0.1}" \
             BITCOIN_RPC_USER=sanctuary \
             BITCOIN_RPC_PASS=sanctuary-verify \
+            ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/generate-signed-psbt-vectors.log" \
             ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run generate:signed
 
       - name: Verify generated PSBT vectors are non-empty
         working-directory: scripts/verify-psbt
-        run: ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain npm run verify
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/verify-generated-psbt-vectors.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          npm run verify
 
       - name: Check for PSBT vector changes
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/check-psbt-vector-changes.log" bash <<'INNER'
+          set -euo pipefail
           if git diff --quiet server/tests/fixtures/generated-psbt-vectors.ts 2>/dev/null; then
-            echo "✅ PSBT vectors unchanged"
+            echo "PSBT vectors unchanged"
           else
-            echo "📝 PSBT vectors updated"
+            echo "PSBT vectors updated"
             git diff server/tests/fixtures/generated-psbt-vectors.ts || true
           fi
+          INNER
 
       - name: Check for signed PSBT vector changes
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/check-signed-psbt-vector-changes.log" bash <<'INNER'
+          set -euo pipefail
           if git diff --quiet server/tests/fixtures/generated-signed-psbt-vectors.ts 2>/dev/null; then
-            echo "✅ Signed PSBT vectors unchanged"
+            echo "Signed PSBT vectors unchanged"
           else
-            echo "📝 Signed PSBT vectors updated"
+            echo "Signed PSBT vectors updated"
             git diff server/tests/fixtures/generated-signed-psbt-vectors.ts || true
           fi
+          INNER
 
       - name: Run PSBT tests with new vectors
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/run-psbt-vector-tests.log" \
           ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain bash -c '
             set -euo pipefail
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector root npm ci" npm ci --ignore-scripts
@@ -324,6 +376,22 @@ jobs:
             ${{ github.workspace }}/scripts/ci/retry-command.sh "psbt vector prisma generate" npx prisma generate
             npm run test:run:ci -- tests/unit/services/bitcoin/psbt.verified.test.ts tests/unit/services/bitcoin/psbt.signed-vectors.test.ts
           '
+
+      - name: Write regenerate PSBT vector diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Regenerate PSBT Vectors"
+
+      - name: Upload regenerate PSBT vector diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-regenerate-psbt-vectors
+          path: .tmp/ci-diagnostics/regenerate-psbt-vectors/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   # Summary job
   summary:

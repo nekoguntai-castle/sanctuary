@@ -698,6 +698,40 @@ assert_contains_in_order "$VV" \
   "Upload vector diagnostics" \
   "ci-diagnostics-verify-vectors"
 
+assert_contains_in_order "$VV" \
+  "regenerate-vectors diagnostic coverage" \
+  "regenerate-vectors:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/regenerate-vectors' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/generate-address-vectors.log"' \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  "npm run generate:repeatable" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/check-address-vector-changes.log"' \
+  "Write regenerate vector diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Regenerate Address Vectors"' \
+  "Upload regenerate vector diagnostics" \
+  "ci-diagnostics-regenerate-vectors"
+
+assert_contains_in_order "$VV" \
+  "regenerate-psbt-vectors diagnostic coverage" \
+  "regenerate-psbt-vectors:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/regenerate-psbt-vectors' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/start-bitcoin-core.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-bitcoin-core.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-server-dependencies.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-psbt-dependencies.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/generate-psbt-vectors.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/generate-signed-psbt-vectors.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/verify-generated-psbt-vectors.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/check-psbt-vector-changes.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/check-signed-psbt-vector-changes.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/run-psbt-vector-tests.log"' \
+  "Write regenerate PSBT vector diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Regenerate PSBT Vectors"' \
+  "Upload regenerate PSBT vector diagnostics" \
+  "ci-diagnostics-regenerate-psbt-vectors"
+
 # --- docker-build diagnostic coverage ----------------------------------------
 DOCKER_BUILD_WORKFLOW="$REPO_ROOT/.github/workflows/docker-build.yml"
 
