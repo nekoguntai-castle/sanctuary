@@ -1448,6 +1448,14 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Checkout repository
+        # Required so `uses: ./.github/actions/download-artifact`
+        # below can resolve the local composite action. Without a
+        # checkout, the path does not exist on the runner.
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.ref }}
+
       - name: Download digest manifest
         uses: ./.github/actions/download-artifact
         with:
