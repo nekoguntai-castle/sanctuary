@@ -61,6 +61,8 @@ test_generates_runner_host_files() {
   assert_contains "$root/data/runner-config.yml" "shutdown_timeout: 5m"
   assert_contains "$root/docker-compose.yml" "--default-address-pool=base=172.30.0.0/16,size=24"
   assert_contains "$root/docker-compose.yml" "--default-address-pool=base=10.241.0.0/16,size=24"
+  assert_contains "$root/docker-compose.yml" "--feature=containerd-snapshotter=false"
+  assert_contains "$root/docker-compose.yml" "--storage-driver=overlay2"
   # docker:dind enables TLS automatically when DOCKER_TLS_CERTDIR is non-empty
   # (the image's entrypoint sets it), which silently overrides --tls=false and
   # makes the plain-HTTP healthcheck loop. Force it empty.

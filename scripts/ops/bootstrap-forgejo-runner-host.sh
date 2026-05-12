@@ -245,6 +245,8 @@ services:
       - --host=tcp://0.0.0.0:2375
       - --host=unix:///var/run/docker.sock
       - --tls=false
+      - --feature=containerd-snapshotter=false
+      - --storage-driver=overlay2
 YAML
 
   local pool

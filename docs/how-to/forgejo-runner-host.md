@@ -8,6 +8,29 @@ The bootstrap path creates a Docker-in-Docker runner stack, a systemd service
 that starts it after reboot, and a timer that prunes unused Docker resources so
 the runner does not exhaust containers, networks, images, or build cache.
 
+Runner hosts should not suspend while they are counted as CI capacity. Disable
+sleep before promotion:
+
+```bash
+sudo install -d -m 0755 /etc/systemd/sleep.conf.d /etc/systemd/logind.conf.d
+sudo tee /etc/systemd/sleep.conf.d/10-disable-sleep.conf >/dev/null <<'EOF'
+[Sleep]
+AllowSuspend=no
+AllowHibernation=no
+AllowSuspendThenHibernate=no
+AllowHybridSleep=no
+EOF
+sudo tee /etc/systemd/logind.conf.d/10-disable-sleep.conf >/dev/null <<'EOF'
+[Login]
+HandleLidSwitch=ignore
+HandleLidSwitchExternalPower=ignore
+HandleLidSwitchDocked=ignore
+IdleAction=ignore
+EOF
+sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+sudo systemctl restart systemd-logind.service
+```
+
 ## Prerequisites
 
 - Linux host with Docker Engine and the Docker Compose plugin installed.
@@ -70,6 +93,8 @@ Runner defaults:
   - `172.31.0.0/16` as `/24` networks
   - `10.240.0.0/16` as `/24` networks
   - `10.241.0.0/16` as `/24` networks
+- Docker-in-Docker storage uses classic `overlay2` with Docker's
+  `containerd-snapshotter` feature disabled.
 - Build cache cleanup target: `30GB`
 
 Override capacity or address pools explicitly when sizing a larger host:
