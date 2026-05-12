@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config';
 import path from 'path';
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
+const sharedDistPath =
+  process.env.SANCTUARY_SHARED_DIST ?? path.resolve(__dirname, '../shared/dist');
 
 export default defineConfig({
   test: {
@@ -65,7 +67,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@fixtures': path.resolve(__dirname, './tests/fixtures'),
-      '@sanctuary/shared': path.resolve(__dirname, '../shared/dist'),
+      '@sanctuary/shared': sharedDistPath,
     },
   },
 });
