@@ -274,13 +274,17 @@ test_frontend_nginx_running() {
 test_frontend_serves_content() {
     log_info "Testing frontend serves content..."
 
-    # Try to get the index page
-    local content=$(compose_exec frontend wget -q -O - --no-check-certificate https://localhost:443/ 2>/dev/null | head -20)
+    # nginx binds non-privileged 8080/8443 inside the container (PR #348
+    # hardening — nginx runs as the non-root sanctuary user). Probe new
+    # and legacy ports so the test stays valid for upgrade smoke matrices
+    # that exercise older images.
+    local nginx_https="${NGINX_HTTPS_PORT:-8443}"
+    local nginx_http="${NGINX_HTTP_PORT:-8080}"
 
-    if [ -z "$content" ]; then
-        # Try HTTP
-        content=$(compose_exec frontend wget -q -O - http://localhost:80/ 2>/dev/null | head -20)
-    fi
+    local content=$(compose_exec frontend wget -q -O - --no-check-certificate "https://localhost:${nginx_https}/" 2>/dev/null | head -20)
+    [ -n "$content" ] || content=$(compose_exec frontend wget -q -O - "http://localhost:${nginx_http}/" 2>/dev/null | head -20)
+    [ -n "$content" ] || content=$(compose_exec frontend wget -q -O - --no-check-certificate https://localhost:443/ 2>/dev/null | head -20)
+    [ -n "$content" ] || content=$(compose_exec frontend wget -q -O - http://localhost:80/ 2>/dev/null | head -20)
 
     if [ -n "$content" ]; then
         log_success "Frontend is serving content"
@@ -294,14 +298,14 @@ test_frontend_serves_content() {
 test_frontend_javascript_bundle() {
     log_info "Testing frontend JavaScript bundle..."
 
-    # Get index.html and extract the JS bundle path
-    local index_html=$(compose_exec frontend wget -q -O - --no-check-certificate https://localhost:443/ 2>/dev/null)
+    local nginx_https="${NGINX_HTTPS_PORT:-8443}"
+    local nginx_http="${NGINX_HTTP_PORT:-8080}"
 
-    if [ -z "$index_html" ]; then
-        index_html=$(compose_exec frontend wget -q -O - http://localhost:80/ 2>/dev/null)
-    fi
+    local index_html=$(compose_exec frontend wget -q -O - --no-check-certificate "https://localhost:${nginx_https}/" 2>/dev/null)
+    [ -n "$index_html" ] || index_html=$(compose_exec frontend wget -q -O - "http://localhost:${nginx_http}/" 2>/dev/null)
+    [ -n "$index_html" ] || index_html=$(compose_exec frontend wget -q -O - --no-check-certificate https://localhost:443/ 2>/dev/null)
+    [ -n "$index_html" ] || index_html=$(compose_exec frontend wget -q -O - http://localhost:80/ 2>/dev/null)
 
-    # Extract the main JS bundle path (e.g., /assets/index-ABC123.js)
     local js_path=$(echo "$index_html" | grep -oE 'src="(/assets/index-[^"]+\.js)"' | head -1 | sed 's/src="//;s/"$//')
 
     if [ -z "$js_path" ]; then
@@ -311,12 +315,10 @@ test_frontend_javascript_bundle() {
 
     log_debug "Found JS bundle: $js_path"
 
-    # Fetch the JS bundle
-    local js_content=$(compose_exec frontend wget -q -O - --no-check-certificate "https://localhost:443${js_path}" 2>/dev/null)
-
-    if [ -z "$js_content" ]; then
-        js_content=$(compose_exec frontend wget -q -O - "http://localhost:80${js_path}" 2>/dev/null)
-    fi
+    local js_content=$(compose_exec frontend wget -q -O - --no-check-certificate "https://localhost:${nginx_https}${js_path}" 2>/dev/null)
+    [ -n "$js_content" ] || js_content=$(compose_exec frontend wget -q -O - "http://localhost:${nginx_http}${js_path}" 2>/dev/null)
+    [ -n "$js_content" ] || js_content=$(compose_exec frontend wget -q -O - --no-check-certificate "https://localhost:443${js_path}" 2>/dev/null)
+    [ -n "$js_content" ] || js_content=$(compose_exec frontend wget -q -O - "http://localhost:80${js_path}" 2>/dev/null)
 
     # Check bundle size (at least 50KB — nginx gzip compresses the ~200KB bundle to ~84KB)
     local js_size=${#js_content}
@@ -371,9 +373,16 @@ test_gateway_container_healthy() {
 test_gateway_health_endpoint() {
     log_info "Testing gateway health endpoint..."
 
-    local health_response=$(compose_exec gateway wget -q -O - http://localhost:4000/health 2>/dev/null || echo "FAILED")
+    # GATEWAY_TLS_ENABLED defaults to true since PR #348 — gateway listens
+    # on HTTPS. Probe HTTPS first, fall back to HTTP for older images and
+    # for deployments that explicitly opt out of TLS.
+    local health_response
+    health_response=$(compose_exec gateway wget -q -O - --no-check-certificate https://localhost:4000/health 2>/dev/null)
+    if [ -z "$health_response" ]; then
+        health_response=$(compose_exec gateway wget -q -O - http://localhost:4000/health 2>/dev/null || echo "FAILED")
+    fi
 
-    if [ "$health_response" = "FAILED" ]; then
+    if [ -z "$health_response" ] || [ "$health_response" = "FAILED" ]; then
         log_error "Gateway health endpoint not responding"
         return 1
     fi

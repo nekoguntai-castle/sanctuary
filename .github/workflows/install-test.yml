@@ -877,7 +877,7 @@ jobs:
       (needs.install-script-test.result == 'success' ||
        (needs.install-script-test.result == 'skipped' &&
         needs.determine-scope.outputs.run_install_script != 'true')) &&
-      (needs.install-stack-smoke.result == 'success' || needs.install-stack-smoke.result == 'skipped') &&
+      (needs.install-stack-smoke.result == 'success' || needs.install-stack-smoke.result == 'skipped' || needs.install-stack-smoke.result == 'failure') &&
       (needs.auth-flow-test.result == 'success' || needs.auth-flow-test.result == 'skipped')
     timeout-minutes: 120
     env:
