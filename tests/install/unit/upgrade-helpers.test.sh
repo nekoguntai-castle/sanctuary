@@ -674,6 +674,24 @@ test_upgrade_harness_sources_extracted_helpers() {
     "upgrade harness should emit CI timing notices for passed phases"
 }
 
+test_upgrade_harness_restart_fallback_is_opt_in() {
+  local contents
+  local failures=0
+
+  contents="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
+
+  assert_contains "$contents" 'UPGRADE_ALLOW_RESTART_FALLBACK="${SANCTUARY_UPGRADE_ALLOW_RESTART_FALLBACK:-false}"' \
+    "upgrade harness should default restart fallback to disabled" || failures=1
+  assert_contains "$contents" "did not resolve to an older checkout" \
+    "unresolved symbolic refs should fail instead of silently restarting" || failures=1
+  assert_contains "$contents" "Source and target resolve to the same commit; refusing restart fallback" \
+    "same-commit source and target should fail unless restart fallback is explicit" || failures=1
+  assert_contains "$contents" "Set SANCTUARY_UPGRADE_ALLOW_RESTART_FALLBACK=true only for explicit restart-debug runs" \
+    "restart fallback should require an explicit debug opt-in" || failures=1
+
+  return "$failures"
+}
+
 test_install_workflow_uses_run_scoped_ssl_dirs() {
   local contents
   local checkout_count
@@ -1084,6 +1102,7 @@ main() {
   run_test "legacy shared backend builds are adapted" test_legacy_shared_backend_builds_are_adapted
   run_test "current compose builds shared backend image once" test_current_compose_builds_shared_backend_image_once
   run_test "upgrade harness sources extracted helpers" test_upgrade_harness_sources_extracted_helpers
+  run_test "upgrade harness restart fallback is opt-in" test_upgrade_harness_restart_fallback_is_opt_in
   run_test "install workflow uses run-scoped ssl dirs" test_install_workflow_uses_run_scoped_ssl_dirs
   run_test "install and release workflows use global e2e concurrency" test_install_and_release_workflows_use_global_e2e_concurrency
   run_test "runner lock helper uses cross-UID writable locks" test_runner_lock_helper_uses_cross_uid_writable_locks

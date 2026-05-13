@@ -150,6 +150,7 @@ UPGRADE_SOURCE_CREATED=false
 UPGRADE_CREATED_TARGET_LEGACY_ENV=false
 UPGRADE_SOURCE_LABEL=""
 UPGRADE_TARGET_LABEL="$(git -C "$TARGET_PROJECT_ROOT" describe --tags --always 2>/dev/null || git -C "$TARGET_PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "current-checkout")"
+UPGRADE_ALLOW_RESTART_FALLBACK="${SANCTUARY_UPGRADE_ALLOW_RESTART_FALLBACK:-false}"
 UPGRADE_ARTIFACT_DIR="${SANCTUARY_UPGRADE_ARTIFACT_DIR:-$TARGET_PROJECT_ROOT/.tmp/upgrade-artifacts/${TEST_ID}}"
 TEARDOWN_RAN=false
 
@@ -258,6 +259,12 @@ prepare_upgrade_source_checkout() {
     source_ref=$(discover_upgrade_source_ref 2>/dev/null || true)
 
     if [ -z "$source_ref" ]; then
+        if [ "$UPGRADE_ALLOW_RESTART_FALLBACK" != "true" ]; then
+            log_error "Upgrade source ref '${UPGRADE_SOURCE_REF:-latest-stable}' did not resolve to an older checkout"
+            log_error "Set SANCTUARY_UPGRADE_ALLOW_RESTART_FALLBACK=true only for explicit restart-debug runs"
+            return 1
+        fi
+
         UPGRADE_SOURCE_LABEL="$(describe_checkout_ref "$TARGET_PROJECT_ROOT") (restart fallback)"
         PROJECT_ROOT="$TARGET_PROJECT_ROOT"
         log_warning "No older stable tag was found; upgrade test will fall back to restarting the current checkout"
@@ -1115,6 +1122,11 @@ test_simulate_git_update() {
     fi
 
     if [ "$current_commit" = "$target_commit" ]; then
+        if [ "$UPGRADE_ALLOW_RESTART_FALLBACK" != "true" ]; then
+            log_error "Source and target resolve to the same commit; refusing restart fallback for upgrade validation"
+            log_error "Set SANCTUARY_UPGRADE_ALLOW_RESTART_FALLBACK=true only for explicit restart-debug runs"
+            return 1
+        fi
         log_warning "Source and target resolve to the same commit; upgrade lane is running as a restart fallback"
     else
         log_info "Target checkout ready at $TARGET_PROJECT_ROOT"

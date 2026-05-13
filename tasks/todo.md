@@ -1,6 +1,6 @@
 # Active Task: Upgrade Test CI Speed Implementation Plan 2026-05-12
 
-Status: Phase 6 narrow workflow-only scope relaxation merged; Phase 1 timing/diagnostics and cross-run E2E serialization merged in PR #438. Phase 2/3 upgrade selection and release/schedule/manual-only upgrade policy are in progress on branch `fix/upgrade-selection-contract`.
+Status: Phase 6 narrow workflow-only scope relaxation merged; Phase 1 timing/diagnostics and cross-run E2E serialization merged in PR #438. Phase 2/3 upgrade selection and release/schedule/manual-only upgrade policy merged in PR #439. Follow-up fail-closed upgrade-source handling and selected-upgrade summary hardening are in progress on branch `fix/upgrade-ref-fail-closed`.
 
 Goal: reduce routine upgrade-test wallclock time without weakening the upgrade coverage that protects operators from broken installs and lockout regressions.
 
@@ -80,7 +80,7 @@ Implementation review 2026-05-13:
   - A non-empty `upgrade_source_ref` runs exactly one baseline source-ref entry and uses the same actual source ref for selected extended fixtures.
 - [x] Define source-ref label sanitization for Compose project names, log names, and artifact paths. Include slashes, dots, very long refs, collisions after sanitization, and refs that differ only by punctuation.
 - [x] Record both symbolic selectors (`latest-stable`, `n-2`, manual ref) and resolved git refs/commits in the manifest.
-- [ ] Decide release/schedule behavior when a symbolic source ref cannot resolve or resolves to the target commit. At minimum, manifest it clearly; for release tags, prefer failing over silently accepting a restart fallback.
+- [x] Decide release/schedule behavior when a symbolic source ref cannot resolve or resolves to the target commit. Release/schedule/manual upgrade validation should fail closed instead of silently accepting a restart fallback. Restart fallback remains available only through explicit `SANCTUARY_UPGRADE_ALLOW_RESTART_FALLBACK=true` debug runs.
 
 Expected result: selection behavior is unambiguous before workflow inputs are exposed.
 
@@ -102,10 +102,10 @@ Expected result: selection behavior is unambiguous before workflow inputs are ex
 - [x] When `upgrade_source_ref` overrides the extended source ref, update display labels, Compose project names, timing labels, log names, and artifact directories to use a sanitized representation of the actual selected source ref instead of the hardcoded `latest-stable` label.
 - [x] Replace hardcoded baseline artifact upload paths with a selected-run-safe path such as `.tmp/upgrade-artifacts/`, or generate an upload manifest that includes every selected ref/fixture directory.
 - [x] Write a selected-run manifest or summary file before running and update it after each selected run. Aggregates should use it to distinguish "nothing selected" from "selected fixture did not run."
-- [ ] Keep `upgrade-extended-test` as the aggregate marker, but make it fail clearly if selected extended fixtures were required and did not run successfully.
-- [ ] Update `Install Test Summary` to show selected refs/fixtures and to treat skipped baseline/extended jobs as acceptable only when the classifier says they were not selected.
-- [ ] Add install-scope tests for manual fixture selection, manual source-ref collapse, unsourced fixture files fail-closed, active fixture targeting when path-addressable, multiple fixtures, shared helper changes, workflow changes, release tags, schedules, Prisma-only, and installer-only cases.
-- [ ] Add workflow-composition tests proving the classifier receives manual inputs, `determine-scope` exposes selected outputs, and upgrade jobs consume selected refs/fixtures rather than hardcoded lists.
+- [x] Keep `upgrade-extended-test` as the aggregate marker, but make it fail clearly if selected extended fixtures were required and did not run successfully.
+- [x] Update `Install Test Summary` to show selected refs/fixtures and to treat skipped baseline/extended jobs as acceptable only when the classifier says they were not selected.
+- [x] Add install-scope tests for manual fixture selection, manual source-ref collapse, unsourced fixture files fail-closed, active fixture targeting when path-addressable, multiple fixtures, shared helper changes, workflow changes, release tags, schedules, Prisma-only, and installer-only cases.
+- [x] Add workflow-composition tests proving the classifier receives manual inputs, `determine-scope` exposes selected outputs, and upgrade jobs consume selected refs/fixtures rather than hardcoded lists.
 
 Expected result: routine CI avoids upgrade entries entirely, while manual debugging can run selected upgrade entries and release/schedule gates remain exhaustive.
 
@@ -118,6 +118,14 @@ Implementation review 2026-05-13:
 - Changed baseline upgrades from hardcoded `latest-stable`/`n-2` calls to a validated selected-ref loop with selected-run-safe artifact paths.
 - Changed `scripts/ci/run-extended-upgrade-fixtures.sh` to accept `--fixtures`, `--source-ref`, and `--validate-only`, while preserving all-fixture defaults and stable port offsets.
 - Added tests for release/schedule/manual exhaustive behavior, routine push upgrade deferral, manual fixture/source selection, invalid selector rejection, stable fixture offsets, sanitized labels, and manifest contents.
+
+Follow-up implementation review 2026-05-13:
+
+- Changed the upgrade harness to fail closed when a selected source ref cannot resolve to an older checkout, or when source and target resolve to the same commit. The old restart fallback is now an explicit debug-only path through `SANCTUARY_UPGRADE_ALLOW_RESTART_FALLBACK=true`.
+- Updated the `upgrade-extended-test` marker to report the selected extended fixture list when the underlying fixture job is skipped or failed.
+- Updated `Install Test Summary` so selected baseline or extended upgrade work fails the summary when the classifier selected it but the job did not pass. Skipped upgrade jobs remain acceptable only when `run_upgrade_baseline` or `run_upgrade_extended` is false.
+- Added focused regression coverage in `tests/install/unit/upgrade-helpers.test.sh` and `tests/ci/check-workflow-composition.test.sh`.
+- Per the temporary CI-speed policy, local verification intentionally skipped Docker upgrade E2E and broad frontend/pre-commit suites while iterating. The useful local signal for this follow-up is shell syntax, upgrade helper unit coverage, workflow composition checks, diff hygiene, and complexity review.
 
 ## Phase 4 - Measured Optimization Experiments
 
@@ -224,6 +232,12 @@ Implementation review 2026-05-13:
 - [x] `bash tests/ci/check-workflow-composition.test.sh`
 - [x] Shell syntax checks for touched shell scripts.
 - [x] `git diff --check`
+- [x] Follow-up 2026-05-13 focused checks: `bash -n tests/install/e2e/upgrade-install.test.sh tests/install/unit/upgrade-helpers.test.sh tests/ci/check-workflow-composition.test.sh`
+- [x] Follow-up 2026-05-13 focused checks: `bash tests/install/unit/upgrade-helpers.test.sh`
+- [x] Follow-up 2026-05-13 focused checks: `bash tests/ci/check-workflow-composition.test.sh`
+- [x] Follow-up 2026-05-13 focused checks: `git diff --check`
+- [x] Follow-up 2026-05-13 complexity review: `lizard tests/install/e2e/upgrade-install.test.sh tests/install/unit/upgrade-helpers.test.sh tests/ci/check-workflow-composition.test.sh` ran; no new high-complexity function was introduced. One existing warning remains in `test_diagnostic_redaction_hides_log_secrets`.
+- [ ] Docker upgrade E2E intentionally not run locally for the follow-up fail-closed patch; release/schedule/manual CI paths own that coverage.
 - [ ] Manual dispatch with one extended fixture proves only that fixture runs.
 - [ ] Manual dispatch with `upgrade_source_ref` proves baseline runs that ref once, not twice.
 - [ ] Manual dispatch with `upgrade_source_ref` plus one extended fixture proves extended logs/artifacts use the selected source-ref label, not `latest-stable`.
@@ -250,7 +264,8 @@ PR2 focused verification 2026-05-13:
 
 - [x] PR 1: timing plus warning-only cleanup diagnostics. Merged in PR #438.
 - [x] Include the cross-run E2E lock fix in PR 1 if it can be done narrowly. Merged in PR #438 via global E2E workflow concurrency plus regression tests.
-- [ ] PR 2: selection contract, manual fixture/source inputs, classifier selected outputs, baseline loop, extended fixture selection, selected-run manifest, artifact upload fixes, and release/schedule/manual-only upgrade policy. In progress on branch `fix/upgrade-selection-contract`.
+- [x] PR 2: selection contract, manual fixture/source inputs, classifier selected outputs, baseline loop, extended fixture selection, selected-run manifest, artifact upload fixes, and release/schedule/manual-only upgrade policy. Merged in PR #439.
+- [ ] PR 2b: fail closed on unresolved/same-commit upgrade source refs and harden selected-upgrade summary failures. In progress on branch `fix/upgrade-ref-fail-closed`.
 - [ ] PR 3: cleanup hardening once diagnostics identify exact leftover resources.
 - [ ] PR 4: optional source-ref reduction or build/cache optimization only after timing data supports the tradeoff.
 - [ ] PR 5: workflow-only scope relaxation, after the selection classifier and workflow-composition tests can distinguish pure CI metadata edits from behavioral install/upgrade workflow edits.

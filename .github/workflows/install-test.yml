@@ -1175,12 +1175,13 @@ jobs:
       - name: Check extended upgrade fixtures
         env:
           EXTENDED_FIXTURES: ${{ needs.upgrade-extended-fixture-test.result }}
+          SELECTED_EXTENDED_FIXTURES: ${{ needs.determine-scope.outputs.upgrade_extended_fixtures }}
         run: |
           if [ "$EXTENDED_FIXTURES" != "success" ]; then
-            echo "::error::One or more extended upgrade fixtures failed"
+            echo "::error::Selected extended upgrade fixtures did not pass: ${SELECTED_EXTENDED_FIXTURES:-none} (job result: $EXTENDED_FIXTURES)"
             exit 1
           fi
-          echo "Extended upgrade fixtures passed."
+          echo "Extended upgrade fixtures passed: ${SELECTED_EXTENDED_FIXTURES:-none}."
 
   docker-resource-cleanup:
     name: Docker Resource Cleanup
@@ -1252,6 +1253,8 @@ jobs:
           IS_RELEASE: ${{ needs.determine-scope.outputs.is_release }}
           REASON: ${{ needs.determine-scope.outputs.reason }}
           REF_NAME: ${{ github.ref_name }}
+          RUN_UPGRADE_BASELINE: ${{ needs.determine-scope.outputs.run_upgrade_baseline }}
+          RUN_UPGRADE_EXTENDED: ${{ needs.determine-scope.outputs.run_upgrade_extended }}
           RUN_UNIT: ${{ needs.determine-scope.outputs.run_unit }}
           SCOPE: ${{ needs.determine-scope.outputs.scope }}
           SHOULD_RUN: ${{ needs.determine-scope.outputs.should_run }}
@@ -1331,6 +1334,16 @@ jobs:
           append_status "Baseline Upgrade Install" "$UPGRADE_BASELINE"
           append_status "Extended Upgrade Fixtures" "$UPGRADE_EXTENDED"
 
+          SELECTED_UPGRADE_FAILED=false
+          if [ "$RUN_UPGRADE_BASELINE" = "true" ] && [ "$UPGRADE_BASELINE" != "success" ]; then
+            echo "::error::Selected baseline upgrade refs did not pass: ${UPGRADE_BASELINE_REFS:-none} (job result: $UPGRADE_BASELINE)"
+            SELECTED_UPGRADE_FAILED=true
+          fi
+          if [ "$RUN_UPGRADE_EXTENDED" = "true" ] && [ "$UPGRADE_EXTENDED" != "success" ]; then
+            echo "::error::Selected extended upgrade fixtures did not pass: ${UPGRADE_EXTENDED_FIXTURES:-none} (job result: $UPGRADE_EXTENDED)"
+            SELECTED_UPGRADE_FAILED=true
+          fi
+
           echo "" >> "$summary"
           echo "### Test Configuration" >> "$summary"
           echo "- HTTPS Port: $HTTPS_PORT" >> "$summary"
@@ -1356,6 +1369,10 @@ jobs:
             else
               echo ":stop_sign: **Release validation FAILED!** Do not proceed with release until issues are resolved." >> "$summary"
             fi
+          fi
+
+          if [ "$SELECTED_UPGRADE_FAILED" = "true" ]; then
+            exit 1
           fi
 
       - name: Check release gate

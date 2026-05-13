@@ -295,7 +295,20 @@ assert_contains_in_order "$IT" \
   'scripts/ci/report-timing-notices.sh --log-file "$JOB_LOG_DIR/upgrade-extended-fixtures.log"' \
   "Write extended upgrade diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Upgrade Extended Fixtures"' \
-  "diag-upgrade-extended-fixtures"
+  "diag-upgrade-extended-fixtures" \
+  "upgrade-extended-test:" \
+  "SELECTED_EXTENDED_FIXTURES:" \
+  "Selected extended upgrade fixtures did not pass"
+
+assert_contains_in_order "$IT" \
+  "install-test selected upgrade summary gate" \
+  "test-summary:" \
+  "RUN_UPGRADE_BASELINE:" \
+  "RUN_UPGRADE_EXTENDED:" \
+  "SELECTED_UPGRADE_FAILED=false" \
+  "Selected baseline upgrade refs did not pass" \
+  "Selected extended upgrade fixtures did not pass" \
+  'if [ "$SELECTED_UPGRADE_FAILED" = "true" ]; then'
 
 assert_contains_in_order "$IT" \
   "install-test publish-images DIND telemetry" \
