@@ -839,6 +839,155 @@ assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "Upload image scope diagnostics" \
   "ci-diagnostics-docker-build-detect-image-scope"
 
+# --- quality workflow diagnostic coverage -----------------------------------
+QUALITY_WORKFLOW="$REPO_ROOT/.github/workflows/quality.yml"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality workflow sink env" \
+  "SANCTUARY_CI_LOG_SINK_URL" \
+  "SANCTUARY_CI_LOG_SINK_TOKEN"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality determine-scope diagnostics" \
+  "determine-scope:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-determine-scope' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/classify-quality-scope.log"' \
+  'scripts/ci/retry-command.sh "classify quality scope"' \
+  "scripts/ci/classify-quality-scope.sh" \
+  "Write quality scope failure breadcrumb" \
+  "write-empty-diagnostic-breadcrumb.sh" \
+  "Write quality scope diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Determine Scope"' \
+  "ci-diagnostics-quality-determine-scope"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality lint diagnostics" \
+  "lint:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-lint' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/lint.log"' \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  "scripts/ci/run-quality-lint.sh" \
+  "Write lint diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Lint"' \
+  "ci-diagnostics-quality-lint"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality lockfile diagnostics" \
+  "lockfile-peer-resolution:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-lockfile-peer-resolution' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/lockfile-peer-resolution.log"' \
+  "check-lockfile-peer-resolution.sh" \
+  "Write lockfile peer diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Lockfile Peer Resolution"' \
+  "ci-diagnostics-quality-lockfile-peer-resolution"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality dependency audit diagnostics" \
+  "dependency-audit:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-dependency-audit' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-audit.log"' \
+  "run_audit root npm audit" \
+  "Write dependency audit diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Dependency Audit"' \
+  "ci-diagnostics-quality-dependency-audit"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality gitleaks diagnostics" \
+  "gitleaks:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-gitleaks' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-gitleaks.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/gitleaks.log"' \
+  "scripts/gitleaks-tracked-tree.sh" \
+  "Write gitleaks diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Gitleaks"' \
+  "ci-diagnostics-quality-gitleaks"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality semgrep diagnostics" \
+  "semgrep-sast:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-semgrep' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-semgrep.log"' \
+  "scripts/ci/install-semgrep.sh" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/semgrep-baseline.log"' \
+  "check-semgrep-baseline.mjs" \
+  "Write Semgrep diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Semgrep"' \
+  "ci-diagnostics-quality-semgrep"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality workflow lint diagnostics" \
+  "workflow-lint:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-lint' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-actionlint-shellcheck.log"' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/actionlint.log"' \
+  "/tmp/actionlint -color" \
+  "Write workflow lint diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Workflow Lint"' \
+  "ci-diagnostics-quality-workflow-lint"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality action runtime diagnostics" \
+  "workflow-action-runtime-guard:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-action-runtime-guard' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/action-runtime-guard.log"' \
+  "npm run check:github-action-runtimes" \
+  "Write workflow action runtime guard diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Workflow Action Runtime Guard"' \
+  "ci-diagnostics-quality-workflow-action-runtime-guard"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality ci-classifier diagnostics" \
+  "ci-classifier-tests:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-ci-classifier-tests' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ci-classifier-tests.log"' \
+  "bash tests/ci/check-workflow-composition.test.sh" \
+  "Write CI classifier diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality CI Classifier Tests"' \
+  "ci-diagnostics-quality-ci-classifier-tests"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality lizard diagnostics" \
+  "lizard:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-lizard' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/lizard.log"' \
+  "scripts/quality/lizard-only.sh" \
+  "Write lizard diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Lizard"' \
+  "ci-diagnostics-quality-lizard"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality jscpd diagnostics" \
+  "jscpd:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-jscpd' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/jscpd.log"' \
+  'scripts/ci/retry-command.sh "quality jscpd"' \
+  "Write jscpd diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality JSCPD"' \
+  "ci-diagnostics-quality-jscpd"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality large-file diagnostics" \
+  "large-file-classification:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-large-file-classification' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/large-file-classification.log"' \
+  "check-large-files.mjs" \
+  "Write large-file classification diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Large File Classification"' \
+  "ci-diagnostics-quality-large-file-classification"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality required-checks diagnostics" \
+  "quality-required-checks:" \
+  'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-required-checks' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quality-required-checks.log"' \
+  'RUN_REPO_QUALITY=$RUN_REPO_QUALITY' \
+  'DETERMINE_SCOPE=$DETERMINE_SCOPE' \
+  "Determine Quality Scope" \
+  "Secret scan (gitleaks)" \
+  "Write quality required checks diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Required Checks"' \
+  "ci-diagnostics-quality-required-checks"
+
 # --- summary ----------------------------------------------------------------
 echo
 echo "===================="

@@ -50,6 +50,8 @@ jobs:
     name: Determine Quality Scope
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-determine-scope
     outputs:
       run_repo_quality: ${{ steps.classify.outputs.run_repo_quality }}
       run_workflow_quality: ${{ steps.classify.outputs.run_workflow_quality }}
@@ -69,7 +71,35 @@ jobs:
           MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
           WORKFLOW_SHA: ${{ github.sha }}
-        run: scripts/ci/retry-command.sh "classify quality scope" bash scripts/ci/classify-quality-scope.sh
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/classify-quality-scope.log"
+          ${{ github.workspace }}/scripts/ci/retry-command.sh "classify quality scope"
+          bash ${{ github.workspace }}/scripts/ci/classify-quality-scope.sh
+
+      - name: Write quality scope failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-determine-scope-failure.log"
+          "Quality Determine Scope"
+
+      - name: Write quality scope diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Determine Scope"
+
+      - name: Upload quality scope diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-determine-scope
+          path: .tmp/ci-diagnostics/quality-determine-scope/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   lint:
     name: Lint
@@ -77,6 +107,8 @@ jobs:
     timeout-minutes: 25
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-lint
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -92,7 +124,35 @@ jobs:
           lockfile-glob: package-lock.json
 
       - name: Run lint in clean workspace
-        run: scripts/ci/with-runner-lock.sh node-toolchain bash scripts/ci/run-quality-lint.sh
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/lint.log"
+          ${{ github.workspace }}/scripts/ci/with-runner-lock.sh node-toolchain
+          bash ${{ github.workspace }}/scripts/ci/run-quality-lint.sh
+
+      - name: Write lint failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-lint-failure.log"
+          "Quality Lint"
+
+      - name: Write lint diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Lint"
+
+      - name: Upload lint diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-lint
+          path: .tmp/ci-diagnostics/quality-lint/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   lockfile-peer-resolution:
     name: Lockfile peer resolution
@@ -100,6 +160,8 @@ jobs:
     timeout-minutes: 15
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-lockfile-peer-resolution
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -111,6 +173,7 @@ jobs:
 
       - name: Check lockfile peer resolution
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/lockfile-peer-resolution.log" bash -euo pipefail <<'QUALITY_LOCKFILE_PEER'
           source_workspace="${GITHUB_WORKSPACE:-$PWD}"
           peer_tmp_parent="${RUNNER_TEMP:-/tmp}"
           mkdir -p "$peer_tmp_parent"
@@ -120,6 +183,32 @@ jobs:
           git clone --quiet --no-hardlinks "$source_workspace" "$peer_workdir/repo"
           cd "$peer_workdir/repo"
           npm_config_cache="$peer_workdir/.npm-cache" bash scripts/quality/check-lockfile-peer-resolution.sh
+          QUALITY_LOCKFILE_PEER
+
+      - name: Write lockfile peer failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-lockfile-peer-resolution-failure.log"
+          "Quality Lockfile Peer Resolution"
+
+      - name: Write lockfile peer diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Lockfile Peer Resolution"
+
+      - name: Upload lockfile peer diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-lockfile-peer-resolution
+          path: .tmp/ci-diagnostics/quality-lockfile-peer-resolution/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   dependency-audit:
     name: Dependency audit (npm)
@@ -127,6 +216,8 @@ jobs:
     timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-dependency-audit
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -138,6 +229,7 @@ jobs:
 
       - name: Run npm audit
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-audit.log" bash -euo pipefail <<'QUALITY_NPM_AUDIT'
           source_workspace="${GITHUB_WORKSPACE:-$PWD}"
           audit_tmp_parent="${RUNNER_TEMP:-/tmp}"
           mkdir -p "$audit_tmp_parent"
@@ -180,6 +272,32 @@ jobs:
               run_audit "$package_dir" npm --prefix "$package_dir" audit --audit-level=high --cache "$audit_workdir/.npm-cache/$cache_name"
             fi
           done
+          QUALITY_NPM_AUDIT
+
+      - name: Write dependency audit failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-dependency-audit-failure.log"
+          "Quality Dependency Audit"
+
+      - name: Write dependency audit diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Dependency Audit"
+
+      - name: Upload dependency audit diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-dependency-audit
+          path: .tmp/ci-diagnostics/quality-dependency-audit/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   gitleaks:
     name: Secret scan (gitleaks)
@@ -187,6 +305,8 @@ jobs:
     timeout-minutes: 20
     needs: [determine-scope]
     if: always()
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-gitleaks
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -196,11 +316,13 @@ jobs:
 
       - name: Install gitleaks
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-gitleaks.log" bash -euo pipefail <<'QUALITY_INSTALL_GITLEAKS'
           curl -sSL \
             -o /tmp/gitleaks.tar.gz \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           /tmp/gitleaks version
+          QUALITY_INSTALL_GITLEAKS
 
       - name: Run gitleaks
         # The repository has older test-fixture/history false positives, so
@@ -212,6 +334,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/gitleaks.log" bash -euo pipefail <<'QUALITY_GITLEAKS'
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             /tmp/gitleaks git . \
               --config .gitleaks.toml \
@@ -227,6 +350,32 @@ jobs:
           fi
           export GITLEAKS_BIN=/tmp/gitleaks
           bash scripts/gitleaks-tracked-tree.sh
+          QUALITY_GITLEAKS
+
+      - name: Write gitleaks failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-gitleaks-failure.log"
+          "Quality Gitleaks"
+
+      - name: Write gitleaks diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Gitleaks"
+
+      - name: Upload gitleaks diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-gitleaks
+          path: .tmp/ci-diagnostics/quality-gitleaks/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   semgrep-sast:
     name: SAST (Semgrep)
@@ -237,6 +386,8 @@ jobs:
       always() &&
       (needs.determine-scope.outputs.run_repo_quality == 'true' ||
        needs.determine-scope.outputs.run_workflow_quality == 'true')
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-semgrep
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -246,10 +397,13 @@ jobs:
       - name: Install Semgrep
         env:
           SEMGREP_REPORT_DIR: /tmp/sanctuary-semgrep-${{ github.run_id }}
-        run: bash ${{ github.workspace }}/scripts/ci/install-semgrep.sh
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-semgrep.log"
+          bash ${{ github.workspace }}/scripts/ci/install-semgrep.sh
 
       - name: Run Semgrep baseline gate
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/semgrep-baseline.log" bash -euo pipefail <<'QUALITY_SEMGREP'
           rm -rf "$SEMGREP_REPORT_DIR"
           mkdir -p "$SEMGREP_REPORT_DIR"
 
@@ -287,6 +441,7 @@ jobs:
           done
 
           node scripts/quality/check-semgrep-baseline.mjs "$SEMGREP_REPORT_DIR/semgrep.json" scripts/quality/semgrep-baseline.json
+          QUALITY_SEMGREP
 
       - name: Upload Semgrep report
         if: always()
@@ -305,12 +460,39 @@ jobs:
           fi
           rm -rf "/tmp/sanctuary-semgrep-${{ github.run_id }}"
 
+      - name: Write Semgrep failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-semgrep-failure.log"
+          "Quality Semgrep"
+
+      - name: Write Semgrep diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Semgrep"
+
+      - name: Upload Semgrep diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-semgrep
+          path: .tmp/ci-diagnostics/quality-semgrep/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   workflow-lint:
     name: Workflow lint (actionlint)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_workflow_quality == 'true'
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-lint
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -319,6 +501,7 @@ jobs:
 
       - name: Install actionlint + shellcheck
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/install-actionlint-shellcheck.log" bash -euo pipefail <<'QUALITY_INSTALL_ACTIONLINT'
           curl -sSL \
             -o /tmp/actionlint.tar.gz \
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
@@ -331,15 +514,43 @@ jobs:
           sudo apt-get -qq update
           sudo apt-get -qq install -y shellcheck
           shellcheck --version
+          QUALITY_INSTALL_ACTIONLINT
 
       - name: Run actionlint
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/actionlint.log" bash -euo pipefail <<'QUALITY_ACTIONLINT'
           # Filter shellcheck to error severity only — captures the shell
           # syntax class that hit PR #410 (apostrophe inside bash -c '...')
           # without churning on pre-existing SC2086 quote-style suggestions.
           /tmp/actionlint -color \
             -shellcheck='/usr/bin/shellcheck --severity=error' \
             -ignore 'specifying action "https://data\.forgejo\.org/forgejo/(upload|download)-artifact@v4" in invalid format'
+          QUALITY_ACTIONLINT
+
+      - name: Write workflow lint failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-workflow-lint-failure.log"
+          "Quality Workflow Lint"
+
+      - name: Write workflow lint diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Workflow Lint"
+
+      - name: Upload workflow lint diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-workflow-lint
+          path: .tmp/ci-diagnostics/quality-workflow-lint/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   workflow-action-runtime-guard:
     name: Workflow action runtime guard
@@ -347,6 +558,8 @@ jobs:
     timeout-minutes: 10
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_workflow_quality == 'true'
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-workflow-action-runtime-guard
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -359,7 +572,34 @@ jobs:
       - name: Check action runtimes
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: npm run check:github-action-runtimes
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/action-runtime-guard.log"
+          npm run check:github-action-runtimes
+
+      - name: Write workflow action runtime guard failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-workflow-action-runtime-guard-failure.log"
+          "Quality Workflow Action Runtime Guard"
+
+      - name: Write workflow action runtime guard diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Workflow Action Runtime Guard"
+
+      - name: Upload workflow action runtime guard diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-workflow-action-runtime-guard
+          path: .tmp/ci-diagnostics/quality-workflow-action-runtime-guard/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   ci-classifier-tests:
     name: CI classifier tests
@@ -367,6 +607,8 @@ jobs:
     timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_ci_classifier_tests == 'true'
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-ci-classifier-tests
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -378,6 +620,7 @@ jobs:
 
       - name: Run CI classifier tests
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ci-classifier-tests.log" bash -euo pipefail <<'QUALITY_CI_CLASSIFIER_TESTS'
           # Production scripts (Phase 1-7 + pre-existing) — bash -n syntax sweep.
           bash -n scripts/ci/provider-context.sh
           bash -n scripts/ci/classify-files-lib.sh
@@ -494,6 +737,32 @@ jobs:
           bash tests/ci/write-empty-diagnostic-breadcrumb.test.sh
           bash tests/ci/write-diagnostic-summary.test.sh
           bash tests/ci/check-workflow-composition.test.sh
+          QUALITY_CI_CLASSIFIER_TESTS
+
+      - name: Write CI classifier failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-ci-classifier-tests-failure.log"
+          "Quality CI Classifier Tests"
+
+      - name: Write CI classifier diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality CI Classifier Tests"
+
+      - name: Upload CI classifier diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-ci-classifier-tests
+          path: .tmp/ci-diagnostics/quality-ci-classifier-tests/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   lizard:
     name: Cyclomatic complexity (lizard)
@@ -501,6 +770,8 @@ jobs:
     timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-lizard
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -513,7 +784,34 @@ jobs:
         # CI-scope baseline is 9 warnings; fail the job if that count grows.
         env:
           QUALITY_BOOTSTRAP_TOOLS: '1'
-        run: bash scripts/quality/lizard-only.sh
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/lizard.log"
+          bash ${{ github.workspace }}/scripts/quality/lizard-only.sh
+
+      - name: Write lizard failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-lizard-failure.log"
+          "Quality Lizard"
+
+      - name: Write lizard diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Lizard"
+
+      - name: Upload lizard diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-lizard
+          path: .tmp/ci-diagnostics/quality-lizard/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   jscpd:
     name: Duplication (jscpd)
@@ -521,6 +819,8 @@ jobs:
     timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-jscpd
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -537,10 +837,12 @@ jobs:
         env:
           JSCPD_REPORT_DIR: /tmp/sanctuary-jscpd-${{ github.run_id }}
         run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/jscpd.log" bash -euo pipefail <<'QUALITY_JSCPD'
           rm -rf "$JSCPD_REPORT_DIR"
           QUALITY_JSCPD_OUTPUT_DIR="$JSCPD_REPORT_DIR" \
             scripts/ci/run-in-isolated-workspace.sh --keep-on-failure jscpd \
               scripts/ci/retry-command.sh "quality jscpd" scripts/quality/jscpd-only.sh
+          QUALITY_JSCPD
 
       - name: Upload jscpd report
         if: always()
@@ -555,12 +857,39 @@ jobs:
         if: always()
         run: rm -rf "/tmp/sanctuary-jscpd-${{ github.run_id }}"
 
+      - name: Write jscpd failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-jscpd-failure.log"
+          "Quality JSCPD"
+
+      - name: Write jscpd diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality JSCPD"
+
+      - name: Upload jscpd diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-jscpd
+          path: .tmp/ci-diagnostics/quality-jscpd/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   large-file-classification:
     name: Large-file classification
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-large-file-classification
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -571,7 +900,34 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Check large-file classification
-        run: node scripts/quality/check-large-files.mjs
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/large-file-classification.log"
+          node scripts/quality/check-large-files.mjs
+
+      - name: Write large-file classification failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-large-file-classification-failure.log"
+          "Quality Large File Classification"
+
+      - name: Write large-file classification diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Large File Classification"
+
+      - name: Upload large-file classification diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-large-file-classification
+          path: .tmp/ci-diagnostics/quality-large-file-classification/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   quality-required-checks:
     name: Code Quality Required Checks
@@ -579,6 +935,8 @@ jobs:
     timeout-minutes: 15
     if: always()
     needs: [determine-scope, lint, lockfile-peer-resolution, dependency-audit, gitleaks, semgrep-sast, workflow-lint, workflow-action-runtime-guard, ci-classifier-tests, lizard, jscpd, large-file-classification]
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-required-checks
     steps:
       - name: Checkout (for diagnostic publish)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -589,6 +947,7 @@ jobs:
           RUN_REPO_QUALITY: ${{ needs.determine-scope.outputs.run_repo_quality }}
           RUN_WORKFLOW_QUALITY: ${{ needs.determine-scope.outputs.run_workflow_quality }}
           RUN_CI_CLASSIFIER_TESTS: ${{ needs.determine-scope.outputs.run_ci_classifier_tests }}
+          DETERMINE_SCOPE: ${{ needs.determine-scope.result }}
           LINT: ${{ needs.lint.result }}
           LOCKFILE_PEER_RESOLUTION: ${{ needs.lockfile-peer-resolution.result }}
           DEPENDENCY_AUDIT: ${{ needs.dependency-audit.result }}
@@ -601,26 +960,24 @@ jobs:
           JSCPD: ${{ needs.jscpd.result }}
           LARGE_FILE_CLASSIFICATION: ${{ needs.large-file-classification.result }}
         run: |
-          DIAGNOSTIC_DIR=".tmp/ci-diagnostics/quality-required-checks"
-          mkdir -p "$DIAGNOSTIC_DIR"
-          {
-            echo "=== quality-required-checks scope inputs ==="
-            echo "RUN_REPO_QUALITY=$RUN_REPO_QUALITY"
-            echo "RUN_WORKFLOW_QUALITY=$RUN_WORKFLOW_QUALITY"
-            echo "RUN_CI_CLASSIFIER_TESTS=$RUN_CI_CLASSIFIER_TESTS"
-            echo "=== sub-job results ==="
-            echo "LINT=$LINT"
-            echo "LOCKFILE_PEER_RESOLUTION=$LOCKFILE_PEER_RESOLUTION"
-            echo "DEPENDENCY_AUDIT=$DEPENDENCY_AUDIT"
-            echo "GITLEAKS=$GITLEAKS"
-            echo "SEMGREP_SAST=$SEMGREP_SAST"
-            echo "WORKFLOW_LINT=$WORKFLOW_LINT"
-            echo "WORKFLOW_ACTION_RUNTIME_GUARD=$WORKFLOW_ACTION_RUNTIME_GUARD"
-            echo "CI_CLASSIFIER_TESTS=$CI_CLASSIFIER_TESTS"
-            echo "LIZARD=$LIZARD"
-            echo "JSCPD=$JSCPD"
-            echo "LARGE_FILE_CLASSIFICATION=$LARGE_FILE_CLASSIFICATION"
-          } | tee "$DIAGNOSTIC_DIR/sub-job-results.log"
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quality-required-checks.log" bash -euo pipefail <<'QUALITY_REQUIRED_CHECKS'
+          echo "=== quality-required-checks scope inputs ==="
+          echo "RUN_REPO_QUALITY=$RUN_REPO_QUALITY"
+          echo "RUN_WORKFLOW_QUALITY=$RUN_WORKFLOW_QUALITY"
+          echo "RUN_CI_CLASSIFIER_TESTS=$RUN_CI_CLASSIFIER_TESTS"
+          echo "=== sub-job results ==="
+          echo "DETERMINE_SCOPE=$DETERMINE_SCOPE"
+          echo "LINT=$LINT"
+          echo "LOCKFILE_PEER_RESOLUTION=$LOCKFILE_PEER_RESOLUTION"
+          echo "DEPENDENCY_AUDIT=$DEPENDENCY_AUDIT"
+          echo "GITLEAKS=$GITLEAKS"
+          echo "SEMGREP_SAST=$SEMGREP_SAST"
+          echo "WORKFLOW_LINT=$WORKFLOW_LINT"
+          echo "WORKFLOW_ACTION_RUNTIME_GUARD=$WORKFLOW_ACTION_RUNTIME_GUARD"
+          echo "CI_CLASSIFIER_TESTS=$CI_CLASSIFIER_TESTS"
+          echo "LIZARD=$LIZARD"
+          echo "JSCPD=$JSCPD"
+          echo "LARGE_FILE_CLASSIFICATION=$LARGE_FILE_CLASSIFICATION"
 
           failed=false
 
@@ -635,6 +992,7 @@ jobs:
             fi
           }
 
+          require_success "Determine Quality Scope" "$DETERMINE_SCOPE"
           require_success "Secret scan (gitleaks)" "$GITLEAKS"
 
           allow_success_or_skipped() {
@@ -687,20 +1045,29 @@ jobs:
           if [ "$failed" = "true" ]; then
             exit 1
           fi
+          QUALITY_REQUIRED_CHECKS
 
-      - name: Publish diagnostic on failure
-        if: failure() && env.SANCTUARY_CI_LOG_SINK_URL != ''
-        run: |
-          set -euo pipefail
-          [ -f .tmp/ci-diagnostics/quality-required-checks/sub-job-results.log ] || exit 0
-          run_id="${GITHUB_RUN_ID:-unknown}"
-          target="${SANCTUARY_CI_LOG_SINK_URL%/}/runs/${run_id}/quality-required-checks/sub-job-results.log"
-          auth_tmp="$(mktemp)"
-          trap 'rm -f "$auth_tmp"' EXIT
-          if [ -n "${SANCTUARY_CI_LOG_SINK_TOKEN:-}" ]; then
-            printf 'Authorization: Bearer %s\n' "$SANCTUARY_CI_LOG_SINK_TOKEN" > "$auth_tmp"
-            curl -fsS -X PUT --data-binary @.tmp/ci-diagnostics/quality-required-checks/sub-job-results.log -H @"$auth_tmp" "$target" || true
-          else
-            curl -fsS -X PUT --data-binary @.tmp/ci-diagnostics/quality-required-checks/sub-job-results.log "$target" || true
-          fi
-          echo "Published diagnostic to $target"
+      - name: Write quality required checks failure breadcrumb
+        if: failure()
+        continue-on-error: true
+        run: >
+          ${{ github.workspace }}/scripts/ci/write-empty-diagnostic-breadcrumb.sh
+          "$DIAGNOSTIC_DIR"
+          "quality-required-checks-failure.log"
+          "Quality Required Checks"
+
+      - name: Write quality required checks diagnostic summary
+        if: always()
+        continue-on-error: true
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Required Checks"
+
+      - name: Upload quality required checks diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: ci-diagnostics-quality-required-checks
+          path: .tmp/ci-diagnostics/quality-required-checks/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14

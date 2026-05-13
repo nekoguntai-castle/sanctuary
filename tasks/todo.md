@@ -474,6 +474,34 @@ Goal: replace the stale post-merge install-test signal with a fresh run, then wi
 
 ---
 
+# Active Task: Quality Workflow HTTP Sink Coverage 2026-05-13
+
+Status: implemented locally; PR delivery in progress
+
+Goal: make Code Quality failures API-visible through the existing HTTP sink pattern without weakening or skipping any quality gates.
+
+## Plan
+
+- [x] Add per-job diagnostic directories to shell-heavy `quality.yml` jobs.
+- [x] Wrap repo-owned quality commands with `scripts/ci/run-with-log.sh` so failures create publishable sidecar status files.
+- [x] Add failure breadcrumbs before diagnostic summaries so setup/action/teardown failures publish a useful placeholder when no wrapped command failed.
+- [x] Add diagnostic summaries and artifacts for quality jobs; rely on `write-diagnostic-summary.sh` to publish failed logs to `SANCTUARY_CI_LOG_SINK_URL`.
+- [x] Keep external action internals, checkout, and setup action failures out of scope except for breadcrumbs; do not try to capture third-party action stdout directly.
+- [x] Extend `tests/ci/check-workflow-composition.test.sh` so quality sink wiring cannot silently regress.
+- [x] Verify with focused shell/workflow checks before opening and merging a PR.
+
+Expected result: every repo-owned Code Quality gate command has the same failure visibility pattern as the main test/install lanes, while external action failures remain visible in Forgejo UI with repo-owned breadcrumbs where possible.
+
+## Review
+
+- Added diagnostic directories, `run-with-log.sh` wrapping, failure breadcrumbs, diagnostic summaries, and diagnostic artifact uploads across Code Quality jobs: quality scope classification, lint, lockfile peer resolution, dependency audit, gitleaks, Semgrep, actionlint, action runtime guard, CI classifier tests, lizard, jscpd, large-file classification, and the required-checks aggregate.
+- Replaced the required-checks aggregate's one-off HTTP PUT with the standard `write-diagnostic-summary.sh` publishing path. The aggregate now also explicitly requires `Determine Quality Scope` to succeed, so a classifier failure cannot be hidden by skipped downstream jobs.
+- Added workflow-composition assertions for every new Code Quality diagnostic lane so future workflow edits must preserve the wrapper, breadcrumb, summary, and artifact pattern.
+- External action internals remain intentionally out of direct log capture. If checkout/setup/action internals fail after checkout, the failure breadcrumb produces a publishable placeholder; if checkout itself fails, the Forgejo task log remains the only source because repo scripts are not available yet.
+- Local verification passed: `bash tests/ci/check-workflow-composition.test.sh`, `bash -n tests/ci/check-workflow-composition.test.sh`, `git diff --check`, Node YAML parse of `.github/workflows/quality.yml`, generated `bash -n` over every `run:` block in `quality.yml`, and pinned actionlint `1.7.12` against `.github/workflows/quality.yml`.
+
+---
+
 # Active Task: Forgejo Runner Native Failure Investigation 2026-05-11
 
 Status: serialized-capacity trial passed.
