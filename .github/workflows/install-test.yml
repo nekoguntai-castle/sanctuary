@@ -1346,6 +1346,19 @@ jobs:
           ref: ${{ github.ref }}
           clean: false
 
+      - name: Resolve DOCKER_HOST
+        # The Forgejo runner injects DOCKER_HOST=tcp://docker-in-docker:2375
+        # but that hostname only resolves on the runner's docker network,
+        # not inside this job container. wait-for-docker.sh probes
+        # candidates (default socket, dind via gateway IP, etc.) and writes
+        # the working DOCKER_HOST to $GITHUB_ENV so subsequent steps use it.
+        # Same step every other docker-bound job in this workflow runs.
+        env:
+          JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/publish-images
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
+            scripts/ci/wait-for-docker.sh
+
       - name: Reclaim disk space before multi-arch build
         run: |
           # arm64 cross-builds via QEMU pile up large intermediate
