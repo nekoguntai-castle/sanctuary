@@ -42,21 +42,34 @@ commit_file() {
   git -C "$repo_dir" commit -qm "$message"
 }
 
-run_classifier() {
+run_classifier_for_event() {
   local repo_dir="$1"
   local base_sha="$2"
   local head_sha="$3"
   local output_file="$4"
+  local event_name="$5"
 
   : > "$output_file"
   (
     cd "$repo_dir"
-    export EVENT_NAME=push
+    export EVENT_NAME="$event_name"
     export GITHUB_OUTPUT="$output_file"
-    export PUSH_BEFORE_SHA="$base_sha"
     export WORKFLOW_SHA="$head_sha"
+    case "$event_name" in
+      pull_request)
+        export PR_BASE_SHA="$base_sha"
+        export PR_HEAD_SHA="$head_sha"
+        ;;
+      push)
+        export PUSH_BEFORE_SHA="$base_sha"
+        ;;
+    esac
     bash "$CLASSIFIER_SCRIPT"
   )
+}
+
+run_classifier() {
+  run_classifier_for_event "$1" "$2" "$3" "$4" push
 }
 
 assert_scope() {
@@ -82,6 +95,105 @@ assert_scope() {
   assert_exact_output "$output_file" "run_upgrade_baseline" "$run_upgrade_baseline"
   assert_exact_output "$output_file" "run_upgrade_extended" "$run_upgrade_extended"
   assert_exact_output "$output_file" "run_reuse_stack" "$run_reuse_stack"
+}
+
+assert_release_critical_scope() {
+  local output_file="$1"
+  assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true"
+}
+
+assert_static_workflow_scope() {
+  local output_file="$1"
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
+  assert_exact_output "$output_file" "scope" "workflow-static"
+}
+
+workflow_variant() {
+  local variant="${1:-base}"
+  local permission=read
+  local concurrency_group=install-tests
+  local run_line='echo unit'
+
+  case "$variant" in
+    permission)
+      permission=write
+      ;;
+    concurrency)
+      concurrency_group=install-tests-changed
+      ;;
+    run-change)
+      run_line='echo changed'
+      ;;
+  esac
+
+  cat <<'EOF'
+name: Install Tests
+
+EOF
+
+  if [ "$variant" = comment ]; then
+    echo '# Workflow-only comment.'
+  fi
+
+  cat <<'EOF'
+on:
+  push:
+    branches:
+      - main
+EOF
+
+  if [ "$variant" = path-filter ]; then
+    cat <<'EOF'
+    paths:
+      - install.sh
+EOF
+  fi
+
+  if [ "$variant" = blank ]; then
+    echo
+  fi
+
+  cat <<EOF
+
+permissions:
+  contents: $permission
+
+concurrency:
+  group: $concurrency_group
+  cancel-in-progress: false
+
+jobs:
+  unit-tests:
+    name: Install Script Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+EOF
+
+  if [ "$variant" = uses ]; then
+    echo '      - uses: actions/checkout@v4'
+  fi
+
+  cat <<'EOF'
+      - name: Run unit tests
+        run: |
+EOF
+
+  if [ "$variant" = run-comment ]; then
+    echo '          # shell comment inside executable run block'
+  fi
+
+  echo "          $run_line"
+}
+
+commit_workflow_variant() {
+  local repo_dir="$1"
+  local message="$2"
+  local variant="${3:-base}"
+
+  mkdir -p "$repo_dir/.github/workflows"
+  workflow_variant "$variant" > "$repo_dir/.github/workflows/install-test.yml"
+  git -C "$repo_dir" add .github/workflows/install-test.yml
+  git -C "$repo_dir" commit -qm "$message"
 }
 
 main() {
@@ -116,7 +228,7 @@ main() {
   assert_scope "$output_file" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false"
 
   base_sha="$head_sha"
-  commit_file "$repo_dir" "tests/install/unit/install-script.test.sh" "echo unit" "unit"
+  commit_file "$repo_dir" "tests/install/utils/classify-install-workflow-diff.sh" "#!/usr/bin/env bash" "workflow diff helper"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
@@ -175,6 +287,77 @@ main() {
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "true" "true" "true" "false"
 
+  base_sha="$head_sha"
+  commit_workflow_variant "$repo_dir" "install workflow base" base
+  base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  commit_workflow_variant "$repo_dir" "install workflow comment" comment
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_static_workflow_scope "$output_file"
+  assert_exact_output "$output_file" "reason" "Install workflow static-only change"
+
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_static_workflow_scope "$output_file"
+
+  base_sha="$head_sha"
+  commit_workflow_variant "$repo_dir" "install workflow blank line" blank
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_static_workflow_scope "$output_file"
+
+  base_sha="$head_sha"
+  commit_workflow_variant "$repo_dir" "install workflow run-block comment" run-comment
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_release_critical_scope "$output_file"
+
+  base_sha="$head_sha"
+  commit_workflow_variant "$repo_dir" "install workflow run block" run-change
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_release_critical_scope "$output_file"
+
+  base_sha="$head_sha"
+  commit_workflow_variant "$repo_dir" "install workflow uses" uses
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_release_critical_scope "$output_file"
+
+  base_sha="$head_sha"
+  commit_workflow_variant "$repo_dir" "install workflow permissions" permission
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_release_critical_scope "$output_file"
+
+  base_sha="$head_sha"
+  commit_workflow_variant "$repo_dir" "install workflow concurrency" concurrency
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_release_critical_scope "$output_file"
+
+  base_sha="$head_sha"
+  commit_workflow_variant "$repo_dir" "install workflow path filter" path-filter
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_release_critical_scope "$output_file"
+
+  base_sha="$head_sha"
+  git -C "$repo_dir" rm -q .github/workflows/install-test.yml
+  git -C "$repo_dir" commit -qm "delete install workflow"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_release_critical_scope "$output_file"
+
+  base_sha="$head_sha"
+  commit_workflow_variant "$repo_dir" "install workflow reset base" base
+  base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  commit_workflow_variant "$repo_dir" "install workflow static again" comment
+  commit_file "$repo_dir" "server/prisma/20260513000000_example/migration.sql" "select 1;" "migration plus workflow"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "true" "true" "false" "false"
+
   : > "$output_file"
   (
     cd "$repo_dir"
@@ -197,7 +380,18 @@ main() {
   )
   assert_exact_output "$output_file" "is_release" "true"
   assert_exact_output "$output_file" "test_suite" "release-critical"
-  assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true"
+  assert_release_critical_scope "$output_file"
+
+  : > "$output_file"
+  (
+    cd "$repo_dir"
+    export EVENT_NAME=schedule
+    export GITHUB_OUTPUT="$output_file"
+    export WORKFLOW_SHA="$head_sha"
+    bash "$CLASSIFIER_SCRIPT"
+  )
+  assert_exact_output "$output_file" "test_suite" "upgrade"
+  assert_scope "$output_file" "true" "false" "false" "false" "false" "false" "true" "true" "true" "false"
 
   echo "install scope classifier regression checks passed"
 }

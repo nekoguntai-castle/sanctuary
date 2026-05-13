@@ -2,11 +2,13 @@
 set -euo pipefail
 
 output_file="${GITHUB_OUTPUT:-/dev/stdout}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 event_name="${EVENT_NAME:-${GITHUB_EVENT_NAME:-}}"
 workflow_sha="${WORKFLOW_SHA:-${GITHUB_SHA:-HEAD}}"
 origin_main_ref="${ORIGIN_MAIN_REF:-origin/main}"
 github_ref="${GITHUB_REF:-}"
 input_test_suite="${WORKFLOW_INPUT_TEST_SUITE:-}"
+workflow_diff_classifier="${INSTALL_WORKFLOW_DIFF_CLASSIFIER:-$script_dir/classify-install-workflow-diff.sh}"
 
 is_release=false
 test_suite=all
@@ -235,6 +237,32 @@ add_scope() {
   fi
 }
 
+classify_install_workflow_change() {
+  local classification
+
+  if ! classification="$(bash "$workflow_diff_classifier" "$base_sha" "$head_sha" 2>/dev/null)"; then
+    classification=unknown
+  fi
+
+  case "$classification" in
+    static)
+      enable_unit
+      add_scope workflow-static
+      reason="Install workflow static-only change"
+      ;;
+    behavioral)
+      enable_release_critical
+      add_scope workflow
+      reason="Install workflow behavioral change"
+      ;;
+    *)
+      enable_release_critical
+      add_scope workflow
+      reason="Install workflow changed; unknown diff uses release-critical scope"
+      ;;
+  esac
+}
+
 while IFS= read -r file; do
   [ -n "$file" ] || continue
 
@@ -242,11 +270,9 @@ while IFS= read -r file; do
     *.md|*.mdx)
       ;;
     .github/workflows/install-test.yml)
-      enable_release_critical
-      add_scope workflow
-      reason="Install workflow changed"
+      classify_install_workflow_change
       ;;
-    tests/install/unit/*|tests/install/utils/classify-install-scope.sh)
+    tests/install/unit/*|tests/install/utils/classify-install-scope.sh|tests/install/utils/classify-install-workflow-diff.sh)
       enable_unit
       add_scope unit-only
       reason="Install unit/docs scope changed"

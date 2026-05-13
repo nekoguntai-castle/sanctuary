@@ -195,6 +195,12 @@ assert_contains_in_order "$IT" \
   "diag-install-unit-tests"
 
 assert_contains_in_order "$IT" \
+  "install-test static workflow validation" \
+  "unit-tests:" \
+  "./tests/install/unit/install-scope.test.sh" \
+  "./tests/ci/check-workflow-composition.test.sh"
+
+assert_contains_in_order "$IT" \
   "install-test fresh install sink summary" \
   "fresh-install-test:" \
   'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-logs.log"' \
