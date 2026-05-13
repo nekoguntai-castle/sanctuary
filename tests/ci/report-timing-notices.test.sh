@@ -47,6 +47,7 @@ main() {
 Full Browser E2E Tests (wallet-experience)	Install frontend dependencies	2026-04-30T02:47:56Z ##[notice]browser npm ci completed in 0m 23s (23s)
 Full Browser E2E Tests (wallet-experience)	Run browser-flow E2E tests	2026-04-30T02:50:10Z ##[notice]browser-flow E2E wallet-experience completed in 1m 7s (67s)
 Quick Browser Smoke	Run browser smoke	2026-04-30T02:50:10Z ::notice title=CI timing::quick browser smoke completed in 0m 8s (8s)
+Upgrade Baseline	Compose build	2026-05-13T02:50:10Z ::error title=CI timing::compose build completed in 0m 2s (2s) upgrade=true no_cache=true with exit code 1
 LOG
 
   bash "$TIMING_SCRIPT" --log-file "$log_file" > "$output_file"
@@ -55,6 +56,7 @@ LOG
   assert_contains "$output_file" '67 | 1m 7s | Full Browser E2E Tests (wallet-experience) | browser-flow E2E wallet-experience'
   assert_contains "$output_file" '23 | 0m 23s | Full Browser E2E Tests (wallet-experience) | browser npm ci'
   assert_contains "$output_file" '8 | 0m 8s | Quick Browser Smoke | quick browser smoke'
+  assert_contains "$output_file" '2 | 0m 2s | Upgrade Baseline | compose build'
 
   local empty_log_file
   empty_log_file="$TEST_TEMP_DIR/empty.log"

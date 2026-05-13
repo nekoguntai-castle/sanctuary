@@ -7,9 +7,9 @@ Usage:
   scripts/ci/report-timing-notices.sh --run RUN_ID [--job-filter TEXT]
   scripts/ci/report-timing-notices.sh --log-file FILE
 
-Parse CI timing notices emitted by scripts/ci/time-command.sh and print a
-duration table. Live mode fetches matching job logs with gh; fixture mode reads
-a raw GitHub Actions log file.
+Parse CI timing notices/errors emitted by scripts/ci/time-command.sh and print
+a duration table. Live mode fetches matching job logs with gh; fixture mode
+reads a raw GitHub Actions log file.
 USAGE
 }
 
@@ -66,8 +66,8 @@ parse_logs() {
     line="$(printf '%s' "$line" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g')"
 
     local label seconds job
-    label="$(printf '%s\n' "$line" | sed -nE 's/^(([^\t]*\t){2})?.*(##\[notice\]|::notice title=CI timing::)(.*) completed in .*\(([0-9]+)s\).*$/\4/p')"
-    seconds="$(printf '%s\n' "$line" | sed -nE 's/^(([^\t]*\t){2})?.*(##\[notice\]|::notice title=CI timing::).* completed in .*\(([0-9]+)s\).*$/\4/p')"
+    label="$(printf '%s\n' "$line" | sed -nE 's/^(([^\t]*\t){2})?.*(##\[(notice|error)\]|::(notice|error) title=CI timing::)(.*) completed in .*\(([0-9]+)s\).*$/\6/p')"
+    seconds="$(printf '%s\n' "$line" | sed -nE 's/^(([^\t]*\t){2})?.*(##\[(notice|error)\]|::(notice|error) title=CI timing::).* completed in .*\(([0-9]+)s\).*$/\6/p')"
 
     if [ -z "$label" ] || [ -z "$seconds" ]; then
       continue

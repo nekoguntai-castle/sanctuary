@@ -143,6 +143,16 @@ assert_contains_in_order "$RC" \
   "SANCTUARY_CI_LOG_SINK_TOKEN"
 
 assert_contains_in_order "$RC" \
+  "release-candidate global E2E workflow concurrency" \
+  "concurrency:" \
+  "group: sanctuary-runner-e2e-workflow" \
+  "cancel-in-progress: false"
+
+assert_not_contains "$RC" \
+  "release-candidate E2E concurrency must not be ref-scoped" \
+  'group: sanctuary-runner-e2e-${{ github.ref }}'
+
+assert_contains_in_order "$RC" \
   "release-candidate diagnostic summaries publishable" \
   "Write fresh install diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Fresh Install"' \
@@ -184,6 +194,17 @@ assert_contains_in_order "$IT" \
   "install-test sink env" \
   "SANCTUARY_CI_LOG_SINK_URL" \
   "SANCTUARY_CI_LOG_SINK_TOKEN"
+
+assert_contains_in_order "$IT" \
+  "install-test global non-PR E2E workflow concurrency" \
+  "concurrency:" \
+  "github.event_name == 'pull_request'" \
+  "'sanctuary-runner-e2e-workflow'" \
+  'cancel-in-progress: ${{ github.event_name == '\''pull_request'\'' }}'
+
+assert_not_contains "$IT" \
+  "install-test E2E concurrency must not be ref-scoped" \
+  'group: sanctuary-runner-e2e-${{ github.ref }}'
 
 assert_contains_in_order "$IT" \
   "install-test unit diagnostics" \
@@ -247,13 +268,37 @@ assert_contains_in_order "$IT" \
 assert_contains_in_order "$IT" \
   "install-test upgrade diagnostic summaries" \
   "upgrade-baseline-test:" \
+  "Post-upgrade DIND diagnostics" \
+  "Write upgrade baseline timing summary" \
+  'scripts/ci/report-timing-notices.sh --log-file "$combined"' \
   "Write upgrade baseline diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Upgrade Baseline"' \
   "upgrade-extended-fixture-test:" \
+  "Pre-flight diagnostics" \
   'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade-extended-fixtures.log"' \
+  "Post-upgrade DIND diagnostics" \
+  "Write extended upgrade timing summary" \
+  'scripts/ci/report-timing-notices.sh --log-file "$JOB_LOG_DIR/upgrade-extended-fixtures.log"' \
   "Write extended upgrade diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Upgrade Extended Fixtures"' \
   "diag-upgrade-extended-fixtures"
+
+assert_contains_in_order "$IT" \
+  "install-test publish-images DIND telemetry" \
+  "publish-images:" \
+  "Pre-publish DIND diagnostics" \
+  'scripts/ci/write-preflight-diagnostics.sh' \
+  "Post-publish DIND diagnostics" \
+  'scripts/ci/write-preflight-diagnostics.sh' \
+  "Upload publish-images job logs"
+
+assert_contains_in_order "$IT" \
+  "install-test cleanup DIND telemetry" \
+  "docker-resource-cleanup:" \
+  "Post-cleanup DIND diagnostics" \
+  'sanctuary-ci-fresh-${{ github.run_id }}' \
+  'sanctuary-ci-upgrade-${{ github.run_id }}' \
+  'diag-docker-resource-cleanup-${{ github.run_id }}'
 
 # --- buildx-action removal regression ---------------------------------------
 # Plan requires removing docker/setup-buildx-action from the five

@@ -554,6 +554,10 @@ test_upgrade_harness_sources_extracted_helpers() {
     "upgrade harness should retry legacy source installs that hide BuildKit failures behind a zero exit"
   assert_contains "$contents" 'run_install_script_attempt "$project_dir" "$install_log" true' \
     "upgrade harness should retry source install once after builder-cache recovery"
+  assert_contains "$contents" 'emit_upgrade_phase_timing "$test_name" "$exit_code"' \
+    "upgrade harness should time each run_test phase" || return 1
+  assert_contains "$contents" '::notice title=CI timing::${message}' \
+    "upgrade harness should emit CI timing notices for passed phases"
 }
 
 test_install_workflow_uses_run_scoped_ssl_dirs() {
@@ -563,7 +567,7 @@ test_install_workflow_uses_run_scoped_ssl_dirs() {
   contents="$(cat "$PROJECT_ROOT/.github/workflows/install-test.yml")"
 
   assert_contains "$contents" 'SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2' \
-    "install workflow should keep runner locks under the checked-out workspace"
+    "install workflow should keep inner runner locks under the checked-out workspace"
   assert_contains "$contents" 'SANCTUARY_SSL_DIR="$(default_install_test_root "$PWD")/ssl-${COMPOSE_PROJECT_NAME}"' \
     "install workflow should generate SSL material under the run-scoped install-test root"
   assert_not_contains "$contents" 'SANCTUARY_SSL_DIR="$PWD/docker/nginx/ssl"' \
@@ -573,6 +577,26 @@ test_install_workflow_uses_run_scoped_ssl_dirs() {
   clean_false_count="$(grep -c 'clean: false' <<< "$contents")"
   assert_equals "$checkout_count" "$clean_false_count" \
     "install workflow checkout steps should not pre-clean shared runner workspaces"
+}
+
+test_install_and_release_workflows_use_global_e2e_concurrency() {
+  local install_contents
+  local rc_contents
+  local failures=0
+
+  install_contents="$(cat "$PROJECT_ROOT/.github/workflows/install-test.yml")"
+  rc_contents="$(cat "$PROJECT_ROOT/.github/workflows/release-candidate.yml")"
+
+  assert_contains "$install_contents" "'sanctuary-runner-e2e-workflow'" \
+    "install workflow should use global non-PR E2E workflow concurrency" || failures=1
+  assert_contains "$rc_contents" "group: sanctuary-runner-e2e-workflow" \
+    "release-candidate workflow should use the same global E2E concurrency key" || failures=1
+  assert_not_contains "$install_contents" 'group: sanctuary-runner-e2e-${{ github.ref }}' \
+    "install E2E job concurrency should not be ref-scoped" || failures=1
+  assert_not_contains "$rc_contents" 'group: sanctuary-runner-e2e-${{ github.ref }}' \
+    "release-candidate E2E job concurrency should not be ref-scoped" || failures=1
+
+  return "$failures"
 }
 
 test_runner_lock_helper_uses_cross_uid_writable_locks() {
@@ -943,6 +967,7 @@ main() {
   run_test "current compose builds shared backend image once" test_current_compose_builds_shared_backend_image_once
   run_test "upgrade harness sources extracted helpers" test_upgrade_harness_sources_extracted_helpers
   run_test "install workflow uses run-scoped ssl dirs" test_install_workflow_uses_run_scoped_ssl_dirs
+  run_test "install and release workflows use global e2e concurrency" test_install_and_release_workflows_use_global_e2e_concurrency
   run_test "runner lock helper uses cross-UID writable locks" test_runner_lock_helper_uses_cross_uid_writable_locks
   run_test "upgrade network defaults respect overrides" test_upgrade_network_defaults_respect_overrides
   run_test "invalid fixture is rejected" test_invalid_fixture_is_rejected

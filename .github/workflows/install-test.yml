@@ -101,12 +101,14 @@ permissions:
   contents: read
 
 concurrency:
-  # On tag pushes share a key with release-candidate.yml so the two
-  # workflows queue instead of racing on the self-hosted runner's dind.
+  # PRs keep the branch-scoped cancel behavior because Docker-backed jobs
+  # do not run there. Non-PR install/release validation shares one global
+  # key with release-candidate.yml so separate pushes/tags/dispatches queue
+  # instead of running no-cache DIND builds concurrently on the same runner.
   group: >-
-    ${{ startsWith(github.ref, 'refs/tags/v') &&
-        format('sanctuary-rc-{0}', github.ref_name) ||
-        format('{0}-{1}-{2}', github.workflow, github.event_name, github.event.pull_request.head.ref || github.ref_name || github.ref) }}
+    ${{ github.event_name == 'pull_request' &&
+        format('{0}-{1}-{2}', github.workflow, github.event_name, github.event.pull_request.head.ref || github.ref_name || github.ref) ||
+        'sanctuary-runner-e2e-workflow' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -213,7 +215,7 @@ jobs:
     name: Fresh Install E2E Test
     runs-on: ubuntu-latest
     concurrency:
-      group: sanctuary-runner-e2e-${{ github.ref }}
+      group: sanctuary-runner-e2e
       cancel-in-progress: false
     needs: [determine-scope, unit-tests]
     if: |
@@ -383,7 +385,7 @@ jobs:
     name: Install Script E2E Test
     runs-on: ubuntu-latest
     concurrency:
-      group: sanctuary-runner-e2e-${{ github.ref }}
+      group: sanctuary-runner-e2e
       cancel-in-progress: false
     needs: [determine-scope, fresh-install-test]
     if: |
@@ -412,7 +414,7 @@ jobs:
     name: Install Stack Smoke
     runs-on: ubuntu-latest
     concurrency:
-      group: sanctuary-runner-e2e-${{ github.ref }}
+      group: sanctuary-runner-e2e
       cancel-in-progress: false
     needs: [determine-scope, fresh-install-test, install-script-test]
     if: |
@@ -578,7 +580,7 @@ jobs:
     name: Container Health Test
     runs-on: ubuntu-latest
     concurrency:
-      group: sanctuary-runner-e2e-${{ github.ref }}
+      group: sanctuary-runner-e2e
       cancel-in-progress: false
     needs: [determine-scope, fresh-install-test, install-script-test]
     if: |
@@ -719,7 +721,7 @@ jobs:
     name: Authentication Flow Test
     runs-on: ubuntu-latest
     concurrency:
-      group: sanctuary-runner-e2e-${{ github.ref }}
+      group: sanctuary-runner-e2e
       cancel-in-progress: false
     needs: [determine-scope, fresh-install-test, install-script-test, container-health-test]
     if: |
@@ -864,7 +866,7 @@ jobs:
     name: Upgrade Baseline
     runs-on: ubuntu-latest
     concurrency:
-      group: sanctuary-runner-e2e-${{ github.ref }}
+      group: sanctuary-runner-e2e
       cancel-in-progress: false
     needs: [determine-scope, fresh-install-test, install-script-test, install-stack-smoke, auth-flow-test]
     if: |
@@ -978,6 +980,31 @@ jobs:
           run_upgrade latest-stable 15
           run_upgrade n-2 18
 
+      - name: Post-upgrade DIND diagnostics
+        if: always()
+        continue-on-error: true
+        env:
+          SANCTUARY_CI_PROJECT_PREFIXES: sanctuary-ci-upgrade-${{ github.run_id }}
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-upgrade-dind.log" \
+            scripts/ci/write-preflight-diagnostics.sh
+
+      - name: Write upgrade baseline timing summary
+        if: always()
+        continue-on-error: true
+        run: |
+          combined="$JOB_LOG_DIR/upgrade-baseline-timing-combined.log"
+          : > "$combined"
+          for log in "$JOB_LOG_DIR"/upgrade-baseline-*.log; do
+            [ -f "$log" ] && cat "$log" >> "$combined"
+          done
+          if [ -s "$combined" ]; then
+            scripts/ci/report-timing-notices.sh --log-file "$combined" > "$JOB_LOG_DIR/upgrade-baseline-timing.md" || \
+              echo "::warning::Could not write upgrade baseline timing summary"
+          else
+            echo "No upgrade baseline logs found for timing summary" > "$JOB_LOG_DIR/upgrade-baseline-timing.md"
+          fi
+
       - name: Upload baseline upgrade artifacts
         if: always()
         continue-on-error: true
@@ -1016,7 +1043,7 @@ jobs:
     name: Upgrade Extended Fixtures
     runs-on: ubuntu-latest
     concurrency:
-      group: sanctuary-runner-e2e-${{ github.ref }}
+      group: sanctuary-runner-e2e
       cancel-in-progress: false
     needs: [determine-scope, upgrade-baseline-test]
     if: |
@@ -1038,6 +1065,13 @@ jobs:
           clean: false
           fetch-depth: 0
 
+      - name: Pre-flight diagnostics
+        if: always()
+        run: |
+          chmod +x scripts/ci/run-with-log.sh scripts/ci/write-preflight-diagnostics.sh
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/preflight.log" \
+            scripts/ci/write-preflight-diagnostics.sh
+
       - name: Check Docker
         run: scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" scripts/ci/wait-for-docker.sh
 
@@ -1047,6 +1081,26 @@ jobs:
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade-extended-fixtures.log" \
             scripts/ci/run-extended-upgrade-fixtures.sh
+
+      - name: Post-upgrade DIND diagnostics
+        if: always()
+        continue-on-error: true
+        env:
+          SANCTUARY_CI_PROJECT_PREFIXES: sanctuary-ci-upgrade-${{ github.run_id }}
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-upgrade-dind.log" \
+            scripts/ci/write-preflight-diagnostics.sh
+
+      - name: Write extended upgrade timing summary
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -f "$JOB_LOG_DIR/upgrade-extended-fixtures.log" ]; then
+            scripts/ci/report-timing-notices.sh --log-file "$JOB_LOG_DIR/upgrade-extended-fixtures.log" > "$JOB_LOG_DIR/upgrade-extended-timing.md" || \
+              echo "::warning::Could not write extended upgrade timing summary"
+          else
+            echo "No extended upgrade log found for timing summary" > "$JOB_LOG_DIR/upgrade-extended-timing.md"
+          fi
 
       - name: Upload extended upgrade artifacts
         if: always()
@@ -1076,7 +1130,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
-      group: sanctuary-runner-e2e-${{ github.ref }}
+      group: sanctuary-runner-e2e
       cancel-in-progress: false
     needs: [determine-scope, upgrade-baseline-test, upgrade-extended-fixture-test]
     if: |
@@ -1104,6 +1158,8 @@ jobs:
     timeout-minutes: 15
     needs: [determine-scope, fresh-install-test, install-stack-smoke, container-health-test, auth-flow-test, upgrade-baseline-test, upgrade-extended-test]
     if: always() && github.event_name != 'pull_request'
+    env:
+      JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/docker-resource-cleanup
 
     steps:
       - name: Checkout repository
@@ -1119,6 +1175,30 @@ jobs:
           fi
           bash scripts/ci/cleanup-docker-resources.sh --runner-leftovers || \
             echo "::warning::Runner leftover cleanup did not complete"
+
+      - name: Post-cleanup DIND diagnostics
+        if: always()
+        continue-on-error: true
+        env:
+          SANCTUARY_CI_PROJECT_PREFIXES: >-
+            sanctuary-ci-fresh-${{ github.run_id }}
+            sanctuary-ci-stack-${{ github.run_id }}
+            sanctuary-ci-health-${{ github.run_id }}
+            sanctuary-ci-auth-${{ github.run_id }}
+            sanctuary-ci-upgrade-${{ github.run_id }}
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-cleanup-dind.log" \
+            scripts/ci/write-preflight-diagnostics.sh
+
+      - name: Upload cleanup diagnostic logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: diag-docker-resource-cleanup-${{ github.run_id }}
+          path: ${{ env.JOB_LOG_DIR }}
+          retention-days: 14
+          if-no-files-found: ignore
 
   # ============================================
   # Test Summary
@@ -1360,6 +1440,15 @@ jobs:
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
             scripts/ci/wait-for-docker.sh
 
+      - name: Pre-publish DIND diagnostics
+        if: always()
+        continue-on-error: true
+        env:
+          JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/publish-images
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/pre-publish-dind.log" \
+            scripts/ci/write-preflight-diagnostics.sh
+
       - name: Reclaim disk space before multi-arch build
         run: |
           # arm64 cross-builds via QEMU pile up large intermediate
@@ -1449,6 +1538,15 @@ jobs:
           else
             echo "SANCTUARY_CI_LOG_SINK_URL not set; skipping sink upload"
           fi
+
+      - name: Post-publish DIND diagnostics
+        if: always()
+        continue-on-error: true
+        env:
+          JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/publish-images
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-publish-dind.log" \
+            scripts/ci/write-preflight-diagnostics.sh
 
       - name: Upload digest manifest
         # notify-umbrel downloads THIS artifact and does

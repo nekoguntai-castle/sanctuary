@@ -69,15 +69,11 @@ permissions:
   contents: read
 
 concurrency:
-  # On tag pushes, share a key with install-test.yml so the two workflows
-  # queue against each other on the self-hosted runner instead of racing
-  # for the dind daemon. Manual / workflow_dispatch runs keep the original
-  # cancel-in-progress shape.
-  group: >-
-    ${{ startsWith(github.ref, 'refs/tags/v') &&
-        format('sanctuary-rc-{0}', github.ref_name) ||
-        format('{0}-{1}', github.workflow, inputs.ref || github.event.inputs.ref || github.ref) }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+  # Share one global key with non-PR install-test.yml runs so release
+  # validation cannot overlap expensive DIND-backed install/upgrade work
+  # from another workflow run on the same runner.
+  group: sanctuary-runner-e2e-workflow
+  cancel-in-progress: false
 
 env:
   HTTPS_PORT: 8443
@@ -227,6 +223,22 @@ jobs:
           echo "=== Gateway Logs ==="
           docker compose logs --tail 100 gateway 2>&1 || true
 
+      - name: Cleanup
+        if: always()
+        run: |
+          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
+          docker compose down -v --remove-orphans || true
+          docker system prune -f || true
+
+      - name: Post-cleanup diagnostics
+        if: always()
+        continue-on-error: true
+        env:
+          SANCTUARY_CI_PROJECT_PREFIXES: sanctuary-rc-fresh-${{ github.run_id }}
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-cleanup.log" \
+            scripts/ci/write-preflight-diagnostics.sh
+
       - name: Write fresh install diagnostic summary
         if: always()
         continue-on-error: true
@@ -242,13 +254,6 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: Cleanup
-        if: always()
-        run: |
-          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
-          docker compose down -v --remove-orphans || true
-          docker system prune -f || true
-
   # ============================================
   # Container Health Test (non-blocking)
   # ============================================
@@ -256,7 +261,7 @@ jobs:
     name: Container Health
     runs-on: ubuntu-latest
     concurrency:
-      group: sanctuary-runner-e2e-${{ github.ref }}
+      group: sanctuary-runner-e2e
       cancel-in-progress: false
     needs: fresh-install-test
     continue-on-error: true  # Non-blocking - failures are warnings
@@ -378,6 +383,21 @@ jobs:
             scripts/ci/time-command.sh "container-health e2e" \
             bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && ./tests/install/e2e/container-health.test.sh --verbose"
 
+      - name: Cleanup
+        if: always()
+        run: |
+          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
+          docker compose down -v --remove-orphans || true
+
+      - name: Post-cleanup diagnostics
+        if: always()
+        continue-on-error: true
+        env:
+          SANCTUARY_CI_PROJECT_PREFIXES: sanctuary-rc-health-${{ github.run_id }}
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-cleanup.log" \
+            scripts/ci/write-preflight-diagnostics.sh
+
       - name: Write container health diagnostic summary
         if: always()
         continue-on-error: true
@@ -393,12 +413,6 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: Cleanup
-        if: always()
-        run: |
-          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
-          docker compose down -v --remove-orphans || true
-
   # ============================================
   # Authentication Flow Test (non-blocking)
   # ============================================
@@ -406,7 +420,7 @@ jobs:
     name: Auth Flow
     runs-on: ubuntu-latest
     concurrency:
-      group: sanctuary-runner-e2e-${{ github.ref }}
+      group: sanctuary-runner-e2e
       cancel-in-progress: false
     needs: [fresh-install-test, container-health-test]
     if: always() && needs.fresh-install-test.result == 'success'
@@ -531,6 +545,21 @@ jobs:
             scripts/ci/time-command.sh "auth-flow e2e" \
             bash -c "cd \"$SANCTUARY_INSTALL_WORKSPACE\" && ./tests/install/e2e/auth-flow.test.sh --verbose"
 
+      - name: Cleanup
+        if: always()
+        run: |
+          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
+          docker compose down -v --remove-orphans || true
+
+      - name: Post-cleanup diagnostics
+        if: always()
+        continue-on-error: true
+        env:
+          SANCTUARY_CI_PROJECT_PREFIXES: sanctuary-rc-auth-${{ github.run_id }}
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/post-cleanup.log" \
+            scripts/ci/write-preflight-diagnostics.sh
+
       - name: Write auth flow diagnostic summary
         if: always()
         continue-on-error: true
@@ -545,12 +574,6 @@ jobs:
           path: ${{ env.JOB_LOG_DIR }}
           retention-days: 14
           if-no-files-found: ignore
-
-      - name: Cleanup
-        if: always()
-        run: |
-          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
-          docker compose down -v --remove-orphans || true
 
   # ============================================
   # Upgrade coverage note

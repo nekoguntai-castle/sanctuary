@@ -390,19 +390,52 @@ declare -a FAILED_TESTS
 # Test Framework
 # ============================================
 
+upgrade_phase_epoch_seconds() {
+    date +%s 2>/dev/null || echo 0
+}
+
+emit_upgrade_phase_timing() {
+    local test_name="$1"
+    local exit_code="$2"
+    local start_epoch="$3"
+    local end_epoch="$4"
+    local duration=0
+    local minutes=0
+    local seconds=0
+    local message
+
+    if [ "$start_epoch" -gt 0 ] 2>/dev/null && [ "$end_epoch" -ge "$start_epoch" ] 2>/dev/null; then
+        duration="$((end_epoch - start_epoch))"
+    fi
+    minutes="$((duration / 60))"
+    seconds="$((duration % 60))"
+    message="upgrade phase ${test_name} completed in ${minutes}m ${seconds}s (${duration}s) mode=${UPGRADE_TEST_MODE} fixture=${UPGRADE_FIXTURE}"
+
+    if [ "$exit_code" -eq 0 ]; then
+        echo "::notice title=CI timing::${message}"
+    else
+        echo "::error title=CI timing::${message} with exit code ${exit_code}"
+    fi
+}
+
 run_test() {
     local test_name="$1"
     local test_func="$2"
+    local start_epoch
+    local end_epoch
 
     TESTS_RUN=$((TESTS_RUN + 1))
     echo ""
     log_info "Running test: $test_name"
     echo "-------------------------------------------"
 
+    start_epoch="$(upgrade_phase_epoch_seconds)"
     set +e
     $test_func
     local exit_code=$?
     set -e
+    end_epoch="$(upgrade_phase_epoch_seconds)"
+    emit_upgrade_phase_timing "$test_name" "$exit_code" "$start_epoch" "$end_epoch"
 
     if [ $exit_code -eq 0 ]; then
         log_success "PASSED: $test_name"

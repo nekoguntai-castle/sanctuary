@@ -1,6 +1,6 @@
 # Active Task: Upgrade Test CI Speed Implementation Plan 2026-05-12
 
-Status: Phase 6 narrow workflow-only scope relaxation implemented locally; broader upgrade timing/selection phases not started.
+Status: Phase 6 narrow workflow-only scope relaxation merged; Phase 1 timing/diagnostics and cross-run E2E serialization implemented locally, pending PR CI and merge.
 
 Goal: reduce routine upgrade-test wallclock time without weakening the upgrade coverage that protects operators from broken installs and lockout regressions.
 
@@ -35,21 +35,32 @@ Goal: reduce routine upgrade-test wallclock time without weakening the upgrade c
 
 ## Phase 1 - Timing And Cleanup Diagnostics
 
-- [ ] Add phase-level timing inside `tests/install/e2e/upgrade-install.test.sh` for source install, source health/migration wait, pre-upgrade data seeding, source stop, git update, target upgrade/startup, migration wait, post-upgrade assertions, and optional extended recovery scenarios.
-- [ ] Add CI-visible timing around `scripts/setup.sh` `run_compose_build`, including whether the build was an upgrade build and whether `--no-cache` was used.
-- [ ] Preserve the existing whole-fixture timing labels around `upgrade baseline ...` and `upgrade extended ...`.
-- [ ] Treat `47m40s`-`53m51s` as the current four-fixture baseline and report future extended runs against that baseline.
-- [ ] Add a selected-run timing summary that reports per-fixture duration and no-cache build duration, not just whole-job duration.
-- [ ] Add a pre-flight lock diagnostic that prints the lock directory, lock file path, device/inode if available, and whether it is on a path shared across action task containers.
-- [ ] Fix or replace the E2E runner lock so it serializes expensive upgrade/install E2E work across concurrent workflow runs on the same DIND daemon. Candidate directions: a host/DIND-mounted lock path, a Docker-container lock primitive, or a workflow-level concurrency group that is truly global for install/upgrade E2E on this runner.
-- [ ] Add a canary check or workflow-composition assertion that install/upgrade E2E jobs do not rely only on `${{ github.workspace }}/.tmp/runner-locks-v2` for cross-run serialization.
-- [ ] Add DIND disk telemetry before and after upgrade and publish-image jobs: image size, build cache size, active BuildKit builders, and buildx state volumes. Use this to distinguish healthy registry-cache growth from leaked local build state.
-- [ ] Add post-cleanup diagnostics for install/upgrade jobs that list leftover Compose projects matching the current run prefix.
-- [ ] Add release-candidate cleanup diagnostics for `sanctuary-rc-fresh-*`, `sanctuary-rc-health-*`, and `sanctuary-rc-auth-*` project prefixes.
-- [ ] Keep cleanup diagnostics warning-only in the first PR unless the exact project belongs to the current run. Do not broadly remove running Forgejo action task containers.
-- [ ] Verify timing wrappers preserve original success/failure exit codes.
+- [x] Add phase-level timing inside `tests/install/e2e/upgrade-install.test.sh` for source install, source health/migration wait, pre-upgrade data seeding, source stop, git update, target upgrade/startup, migration wait, post-upgrade assertions, and optional extended recovery scenarios. Implemented via the existing `run_test` phase boundary so every upgrade assertion/recovery phase emits a CI timing annotation.
+- [x] Add CI-visible timing around `scripts/setup.sh` `run_compose_build`, including whether the build was an upgrade build and whether `--no-cache` was used.
+- [x] Preserve the existing whole-fixture timing labels around `upgrade baseline ...` and `upgrade extended ...`.
+- [x] Treat `47m40s`-`53m51s` as the current four-fixture baseline and report future extended runs against that baseline.
+- [x] Add a selected-run timing summary that reports per-fixture duration and no-cache build duration, not just whole-job duration.
+- [x] Add a pre-flight lock diagnostic that prints the lock directory, lock file path, device/inode if available, and whether it is on a path shared across action task containers.
+- [x] Fix or replace the E2E runner lock so it serializes expensive upgrade/install E2E work across concurrent workflow runs on the same DIND daemon. Candidate directions: a host/DIND-mounted lock path, a Docker-container lock primitive, or a workflow-level concurrency group that is truly global for install/upgrade E2E on this runner. Implemented via global non-PR workflow concurrency plus non-ref-scoped E2E job concurrency while retaining the inner file lock.
+- [x] Add a canary check or workflow-composition assertion that install/upgrade E2E jobs do not rely only on `${{ github.workspace }}/.tmp/runner-locks-v2` for cross-run serialization.
+- [x] Add DIND disk telemetry before and after upgrade and publish-image jobs: image size, build cache size, active BuildKit builders, and buildx state volumes. Use this to distinguish healthy registry-cache growth from leaked local build state.
+- [x] Add post-cleanup diagnostics for install/upgrade jobs that list leftover Compose projects matching the current run prefix.
+- [x] Add release-candidate cleanup diagnostics for `sanctuary-rc-fresh-*`, `sanctuary-rc-health-*`, and `sanctuary-rc-auth-*` project prefixes.
+- [x] Keep cleanup diagnostics warning-only in the first PR unless the exact project belongs to the current run. Do not broadly remove running Forgejo action task containers.
+- [x] Verify timing wrappers preserve original success/failure exit codes.
 
 Expected result: the next slow run identifies the expensive fixture and phase, and cleanup leaks become visible without adding new release risk.
+
+Implementation review 2026-05-13:
+
+- Added upgrade phase timing notices at the `run_test` boundary and compose build timing notices around `scripts/setup.sh` builds/retries. The messages keep the existing `completed in Xm Ys (Ns)` shape so `scripts/ci/report-timing-notices.sh` can summarize them.
+- Extended `scripts/ci/report-timing-notices.sh` to include failed `::error title=CI timing::` lines, so failed build or phase durations are not omitted from timing summaries.
+- Upgrade baseline and extended fixture jobs now upload timing summary markdown files built from their captured job logs.
+- Added bounded preflight DIND telemetry: Docker system df, buildx builders, buildx state volumes, Compose-labeled resources, configured-prefix leftovers, and runner lock path/stat/scope inference.
+- Added pre/post DIND telemetry around upgrade and publish-images jobs, plus final post-cleanup telemetry for install/upgrade project prefixes.
+- Added release-candidate post-cleanup diagnostics for fresh, health, and auth project prefixes.
+- Replaced ref-scoped E2E concurrency with global non-PR workflow concurrency (`sanctuary-runner-e2e-workflow`) plus non-ref-scoped job concurrency (`sanctuary-runner-e2e`). The keys are intentionally distinct to avoid workflow/job self-blocking while still preventing concurrent no-cache DIND builds across non-PR runs.
+- Cleanup diagnostics remain warning-only and scoped to listing current-run prefixes; no broad resource removal was added in this PR.
 
 ## Phase 2 - Define The Selection Contract
 
@@ -186,25 +197,31 @@ Implementation review 2026-05-13:
 
 ## Verification
 
-- [ ] `bash tests/install/unit/install-scope.test.sh`
-- [ ] `bash tests/install/unit/upgrade-helpers.test.sh` when source-ref or fixture validation changes.
-- [ ] `bash tests/install/unit/cleanup-containers-guard.test.sh` when cleanup behavior changes.
-- [ ] `bash tests/ci/check-workflow-composition.test.sh`
-- [ ] Shell syntax checks for touched shell scripts.
-- [ ] `git diff --check`
+- [x] `bash tests/install/unit/install-scope.test.sh`
+- [x] `bash tests/install/unit/upgrade-helpers.test.sh` when source-ref or fixture validation changes.
+- [x] `bash tests/install/unit/install-script.test.sh`
+- [x] `bash tests/ci/write-preflight-diagnostics.test.sh`
+- [x] `bash tests/ci/report-timing-notices.test.sh`
+- [x] `bash tests/ci/with-runner-lock.test.sh`
+- [x] `bash tests/ci/check-provider-leaks.test.sh`
+- [x] `bash scripts/ci/check-provider-leaks.sh`
+- [x] `bash tests/install/unit/cleanup-containers-guard.test.sh` when cleanup behavior changes.
+- [x] `bash tests/ci/check-workflow-composition.test.sh`
+- [x] Shell syntax checks for touched shell scripts.
+- [x] `git diff --check`
 - [ ] Manual dispatch with one extended fixture proves only that fixture runs.
 - [ ] Manual dispatch with `upgrade_source_ref` proves baseline runs that ref once, not twice.
 - [ ] Manual dispatch with `upgrade_source_ref` plus one extended fixture proves extended logs/artifacts use the selected source-ref label, not `latest-stable`.
 - [ ] Release-tag or schedule-equivalent classifier proof expands to both baseline refs and all active extended fixtures.
 - [ ] Workflow-only static classifier proof runs unit/static validation only, while behavioral `install-test.yml` diffs still expand to release-critical coverage.
 - [ ] Artifact upload contains every selected baseline and extended artifact directory.
-- [ ] Cleanup diagnostics show no current-run project leftovers, or explain intentional leftovers when a debug keep-containers path is used.
+- [ ] Cleanup diagnostics show no current-run project leftovers, or explain intentional leftovers when a debug keep-containers path is used. Pending live CI artifact review.
 - [ ] A live-run or controlled canary proves two queued upgrade E2E jobs do not execute no-cache builds concurrently on the same DIND daemon.
 
 ## Rollout Order
 
-- [ ] PR 1: timing plus warning-only cleanup diagnostics. This is independently useful and gives before/after data.
-- [ ] Include the cross-run E2E lock fix in PR 1 if it can be done narrowly. It may reduce current wallclock variance and runner pressure before fixture selection lands.
+- [ ] PR 1: timing plus warning-only cleanup diagnostics. This is independently useful and gives before/after data. In progress on branch `fix/upgrade-ci-timing-lock`.
+- [ ] Include the cross-run E2E lock fix in PR 1 if it can be done narrowly. It may reduce current wallclock variance and runner pressure before fixture selection lands. In progress via global E2E workflow concurrency plus regression tests.
 - [ ] PR 2: selection contract, manual fixture/source inputs, classifier selected outputs, baseline loop, extended fixture selection, selected-run manifest, artifact upload fixes, and static contract tests. Ship as one coherent change so inputs are not half-wired.
 - [ ] PR 3: cleanup hardening once diagnostics identify exact leftover resources.
 - [ ] PR 4: optional source-ref reduction or build/cache optimization only after timing data supports the tradeoff.

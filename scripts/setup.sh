@@ -864,17 +864,60 @@ recover_docker_builder_cache() {
     docker builder prune --force >/dev/null
 }
 
+compose_build_uses_no_cache() {
+    local build_args="$1"
+
+    case " $build_args " in
+        *" --no-cache "*) echo true ;;
+        *) echo false ;;
+    esac
+}
+
+ci_epoch_seconds() {
+    date +%s 2>/dev/null || echo 0
+}
+
+emit_compose_build_timing() {
+    local label="$1"
+    local status="$2"
+    local start_epoch="$3"
+    local end_epoch="$4"
+    local build_args="$5"
+    local duration=0
+    local minutes=0
+    local seconds=0
+    local message
+
+    if [ "$start_epoch" -gt 0 ] 2>/dev/null && [ "$end_epoch" -ge "$start_epoch" ] 2>/dev/null; then
+        duration="$((end_epoch - start_epoch))"
+    fi
+    minutes="$((duration / 60))"
+    seconds="$((duration % 60))"
+    message="${label} completed in ${minutes}m ${seconds}s (${duration}s) upgrade=${OPT_UPGRADE} no_cache=$(compose_build_uses_no_cache "$build_args")"
+
+    if [ "$status" -eq 0 ]; then
+        echo "::notice title=CI timing::${message}"
+    else
+        echo "::error title=CI timing::${message} with exit code ${status}"
+    fi
+}
+
 run_compose_build() {
     local build_args="$*"
     local build_log
     local status
+    local start_epoch
+    local end_epoch
 
     build_log="$(mktemp "${TMPDIR:-/tmp}/sanctuary-compose-build.XXXXXX.log")" || return 1
 
+    start_epoch="$(ci_epoch_seconds)"
     set +e
     docker compose $COMPOSE_FILES build $build_args 2>&1 | tee "$build_log"
     status=${PIPESTATUS[0]}
     set -e
+    end_epoch="$(ci_epoch_seconds)"
+    emit_compose_build_timing "compose build" "$status" "$start_epoch" "$end_epoch" "$build_args"
 
     if [ "$status" -eq 0 ]; then
         rm -f "$build_log"
@@ -891,10 +934,13 @@ run_compose_build() {
         return "$status"
     fi
 
+    start_epoch="$(ci_epoch_seconds)"
     set +e
     docker compose $COMPOSE_FILES build --no-cache 2>&1 | tee -a "$build_log"
     status=${PIPESTATUS[0]}
     set -e
+    end_epoch="$(ci_epoch_seconds)"
+    emit_compose_build_timing "compose build cache-recovery retry" "$status" "$start_epoch" "$end_epoch" "--no-cache"
 
     rm -f "$build_log"
     return "$status"

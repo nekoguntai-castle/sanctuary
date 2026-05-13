@@ -1341,7 +1341,11 @@ EOF
     assert_contains "$log" "compose up:-d --no-build --wait" \
         "setup.sh should start the full stack without rebuilding after build" || return 1
     assert_contains "$output" "Docker builder cache appears to be corrupt" \
-        "setup.sh should explain the targeted BuildKit cache recovery"
+        "setup.sh should explain the targeted BuildKit cache recovery" || return 1
+    assert_contains "$output" "::error title=CI timing::compose build completed in" \
+        "setup.sh should time failed compose builds without hiding the exit code" || return 1
+    assert_contains "$output" "::notice title=CI timing::compose build cache-recovery retry completed in" \
+        "setup.sh should time the cache-recovery compose build retry"
 }
 
 test_start_script_rebuild_uses_no_cache() {
