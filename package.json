@@ -7,7 +7,10 @@
     "node": ">=24 <25"
   },
   "overrides": {
-    "protobufjs": "7.5.5"
+    "protobufjs": "7.5.8",
+    "@opentelemetry/otlp-transformer@0.217.0": {
+      "protobufjs": "8.2.0"
+    }
   },
   "workspaces": [
     "shared",

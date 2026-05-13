@@ -1,10 +1,21 @@
 # =============================================
-# Sanctuary Bitcoin Wallet - Docker Compose (GHCR)
+# Sanctuary Bitcoin Wallet - Docker Compose (pre-built images)
 # =============================================
-# Usage: Pull pre-built images from GitHub Container Registry
-#   docker-compose -f docker-compose.ghcr.yml up -d
+# Usage: Pull pre-built images from Codeberg Packages
+#   IMAGE_TAG=v0.8.53 docker compose -f docker-compose.ghcr.yml up -d
 #
-# Note: Set GITHUB_REPOSITORY to your repo (e.g., nekoguntai-castle/sanctuary)
+# Filename keeps the historical `.ghcr.yml` suffix so prior operator
+# scripts and bookmarks still resolve. The default registry was
+# migrated from `ghcr.io/...` to `codeberg.org/nekoguntai-castle/...`
+# in 2026-05; the GitHub mirror is decommissioned and no new GHCR
+# images have been published since v0.8.49.
+#
+# Required env:
+#   IMAGE_TAG       e.g. v0.8.53. Pinned per release; no `:latest`.
+#
+# Optional env:
+#   IMAGE_REGISTRY  default codeberg.org/nekoguntai-castle. Set to point
+#                   at a private mirror or self-hosted Forgejo Packages.
 # =============================================
 
 services:
@@ -61,10 +72,10 @@ services:
       - sanctuary-network
 
   # ============================================
-  # Backend API Server (from GHCR)
+  # Backend API Server (pre-built)
   # ============================================
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai-castle/sanctuary}-backend:${IMAGE_TAG:-latest}
+    image: ${IMAGE_REGISTRY:-codeberg.org/nekoguntai-castle}/sanctuary-backend:${IMAGE_TAG:?IMAGE_TAG must be set, e.g. v0.8.53}
     container_name: sanctuary-backend
     restart: unless-stopped
     depends_on:
@@ -135,7 +146,7 @@ services:
   # the `mcp` Compose profile and is published to host loopback by default.
   # ============================================
   mcp:
-    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai-castle/sanctuary}-backend:${IMAGE_TAG:-latest}
+    image: ${IMAGE_REGISTRY:-codeberg.org/nekoguntai-castle}/sanctuary-backend:${IMAGE_TAG:?IMAGE_TAG must be set, e.g. v0.8.53}
     container_name: sanctuary-mcp
     restart: unless-stopped
     profiles:
@@ -189,10 +200,10 @@ services:
       - sanctuary-network
 
   # ============================================
-  # Background Worker (from GHCR)
+  # Background Worker (pre-built)
   # ============================================
   worker:
-    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai-castle/sanctuary}-backend:${IMAGE_TAG:-latest}
+    image: ${IMAGE_REGISTRY:-codeberg.org/nekoguntai-castle}/sanctuary-backend:${IMAGE_TAG:?IMAGE_TAG must be set, e.g. v0.8.53}
     container_name: sanctuary-worker
     restart: unless-stopped
     depends_on:
@@ -241,7 +252,7 @@ services:
   # Database Migrations & Seeding (one-time run)
   # ============================================
   migrate:
-    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai-castle/sanctuary}-backend:${IMAGE_TAG:-latest}
+    image: ${IMAGE_REGISTRY:-codeberg.org/nekoguntai-castle}/sanctuary-backend:${IMAGE_TAG:?IMAGE_TAG must be set, e.g. v0.8.53}
     container_name: sanctuary-migrate
     depends_on:
       postgres:
@@ -254,10 +265,10 @@ services:
     restart: "no"
 
   # ============================================
-  # Frontend (Nginx + React) (from GHCR)
+  # Frontend (Nginx + React) (pre-built)
   # ============================================
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai-castle/sanctuary}-frontend:${IMAGE_TAG:-latest}
+    image: ${IMAGE_REGISTRY:-codeberg.org/nekoguntai-castle}/sanctuary-frontend:${IMAGE_TAG:?IMAGE_TAG must be set, e.g. v0.8.53}
     container_name: sanctuary-frontend
     restart: unless-stopped
     depends_on:
