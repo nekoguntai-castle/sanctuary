@@ -4,7 +4,9 @@
 #
 # Updates version across all package.json files. The Umbrel manifest
 # (umbrel-app.yml + docker-compose.yml) lives in nekoguntai-castle/sanctuary-umbrel
-# and updates itself via repository_dispatch from this repo's release.yml.
+# and updates itself via workflow_dispatch fired by install-test.yml's
+# notify-umbrel job after publish-images pushes the stable tag's images
+# to Codeberg Packages.
 #
 # Usage:
 #   ./scripts/bump-version.sh 0.7.20      # Set explicit version
@@ -144,6 +146,7 @@ echo "  7. git tag v$NEW_VERSION-rc1 && git push origin v$NEW_VERSION-rc1   # RC
 echo "  8. After RC CI is green: git tag v$NEW_VERSION && git push origin v$NEW_VERSION"
 echo "  9. ./scripts/create-forge-release.sh v$NEW_VERSION                  # Release object"
 echo ""
-echo "Forgejo's push-mirrors propagate every push to GitHub and Codeberg."
-echo "GitHub's release.yml still runs on the mirrored final tag and dispatches"
-echo "to nekoguntai-castle/sanctuary-umbrel for the Umbrel manifest update."
+echo "Forgejo's push-mirror propagates every push to Codeberg."
+echo "On the stable final tag, install-test.yml's publish-images job pushes"
+echo "frontend+backend images to Codeberg Packages and notify-umbrel fires"
+echo "workflow_dispatch on nekoguntai-castle/sanctuary-umbrel for the manifest."

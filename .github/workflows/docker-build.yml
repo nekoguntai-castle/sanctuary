@@ -1,7 +1,7 @@
 name: Build Dev Images
 
 # Builds bleeding-edge images from main branch.
-# For versioned release images, see release.yml
+# For versioned release images, see install-test.yml's publish-images job.
 #
 # Images built:
 #   - ghcr.io/nekoguntai-castle/sanctuary-frontend:main
