@@ -353,6 +353,7 @@ jobs:
       fail-fast: false
       matrix:
         group:
+          - api
           - flows
           - ops-workers
           - repositories-core

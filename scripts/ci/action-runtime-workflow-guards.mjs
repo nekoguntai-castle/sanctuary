@@ -201,7 +201,7 @@ function inspectFullLaneParallelization(workflow, relativePath, state) {
     state,
     'full-backend-integration-tests',
   );
-  for (const group of ['flows', 'ops-workers', 'repositories-core', 'repositories-sharing']) {
+  for (const group of ['api', 'flows', 'ops-workers', 'repositories-core', 'repositories-sharing']) {
     requireJobText(
       backendIntegrationBody,
       relativePath,

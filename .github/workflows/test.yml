@@ -461,6 +461,7 @@ jobs:
           npm run test:run:ci --
           tests/integration/websocket/websocket.integration.test.ts
           tests/integration/flows/auth.integration.test.ts
+          tests/integration/api/walletApprovalsAudit.test.ts
 
       - name: Write quick backend integration smoke diagnostic summary
         if: always()
@@ -1333,6 +1334,7 @@ jobs:
       fail-fast: false
       matrix:
         group:
+          - api
           - flows
           - ops-workers
           - repositories-core

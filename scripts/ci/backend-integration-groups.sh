@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+readonly GROUP_API='api'
 readonly GROUP_FLOWS='flows'
 readonly GROUP_REPOSITORIES_CORE='repositories-core'
 readonly GROUP_REPOSITORIES_SHARING='repositories-sharing'
@@ -10,6 +11,7 @@ readonly GROUP_OPS_WORKERS='ops-workers'
 
 list_groups() {
   printf '%s\n' \
+    "$GROUP_API" \
     "$GROUP_FLOWS" \
     "$GROUP_REPOSITORIES_CORE" \
     "$GROUP_REPOSITORIES_SHARING" \
@@ -18,6 +20,11 @@ list_groups() {
 
 list_group_specs() {
   case "${1:-}" in
+    "$GROUP_API")
+      printf '%s\n' \
+        tests/integration/api/broadcastIntentAudit.test.ts \
+        tests/integration/api/walletApprovalsAudit.test.ts
+      ;;
     "$GROUP_FLOWS")
       printf '%s\n' \
         tests/integration/flows/admin.integration.test.ts \
