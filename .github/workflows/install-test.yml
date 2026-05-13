@@ -1386,7 +1386,32 @@ jobs:
       - name: Build and push images
         env:
           IMAGE_TAG: ${{ github.ref_name }}
-        run: bash scripts/ci/build-and-push-images.sh
+          JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/publish-images
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/build-and-push.log" \
+            bash scripts/ci/build-and-push-images.sh
+
+      - name: Show build summary on failure
+        if: failure()
+        run: |
+          echo "::group::dist/image-build-summary"
+          for f in dist/image-build-summary-*.txt; do
+            [ -f "$f" ] && { echo "----- $f -----"; tail -200 "$f"; }
+          done
+          echo "::endgroup::"
+          echo "::group::buildx state"
+          docker buildx ls 2>&1 || true
+          echo "::endgroup::"
+          echo "::group::docker info"
+          docker info 2>&1 | head -40 || true
+          echo "::endgroup::"
+
+      - name: Publish failed logs to sink
+        if: failure() && env.SANCTUARY_CI_LOG_SINK_URL != ''
+        continue-on-error: true
+        env:
+          JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/publish-images
+        run: scripts/ci/publish-failed-logs.sh "$JOB_LOG_DIR" publish-images
 
       - name: Upload digest manifest
         if: always()
@@ -1397,6 +1422,7 @@ jobs:
           path: |
             dist/image-digests-*.json
             dist/image-build-summary-*.txt
+            .tmp/job-logs/publish-images/
           retention-days: 90
           if-no-files-found: warn
 
