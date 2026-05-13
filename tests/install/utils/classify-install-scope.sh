@@ -3,12 +3,19 @@ set -euo pipefail
 
 output_file="${GITHUB_OUTPUT:-/dev/stdout}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tests/install/utils/upgrade-selection.sh
+. "$script_dir/upgrade-selection.sh"
+
 event_name="${EVENT_NAME:-${GITHUB_EVENT_NAME:-}}"
 workflow_sha="${WORKFLOW_SHA:-${GITHUB_SHA:-HEAD}}"
 origin_main_ref="${ORIGIN_MAIN_REF:-origin/main}"
 github_ref="${GITHUB_REF:-}"
 input_test_suite="${WORKFLOW_INPUT_TEST_SUITE:-}"
+input_upgrade_fixture="${WORKFLOW_INPUT_UPGRADE_FIXTURE:-all}"
+input_upgrade_source_ref="${WORKFLOW_INPUT_UPGRADE_SOURCE_REF:-}"
 workflow_diff_classifier="${INSTALL_WORKFLOW_DIFF_CLASSIFIER:-$script_dir/classify-install-workflow-diff.sh}"
+default_upgrade_baseline_refs="$(upgrade_default_baseline_refs)"
+default_upgrade_extended_fixtures="$(upgrade_active_extended_fixtures_csv)"
 
 is_release=false
 test_suite=all
@@ -22,6 +29,10 @@ run_upgrade=false
 run_upgrade_baseline=false
 run_upgrade_extended=false
 run_reuse_stack=false
+upgrade_baseline_refs=''
+upgrade_extended_fixtures=''
+upgrade_baseline_refs_set=false
+upgrade_extended_fixtures_set=false
 scope=none
 reason='No install-relevant files changed'
 
@@ -39,9 +50,33 @@ emit_outputs() {
     echo "run_upgrade_baseline=$run_upgrade_baseline"
     echo "run_upgrade_extended=$run_upgrade_extended"
     echo "run_reuse_stack=$run_reuse_stack"
+    echo "upgrade_baseline_refs=$upgrade_baseline_refs"
+    echo "upgrade_extended_fixtures=$upgrade_extended_fixtures"
     echo "scope=$scope"
     echo "reason=$reason"
   } >> "$output_file"
+}
+
+set_upgrade_baseline_refs() {
+  upgrade_baseline_refs="$1"
+  upgrade_baseline_refs_set=true
+}
+
+set_upgrade_extended_fixtures() {
+  upgrade_extended_fixtures="$1"
+  upgrade_extended_fixtures_set=true
+}
+
+ensure_upgrade_baseline_refs() {
+  if [ "$upgrade_baseline_refs_set" != "true" ]; then
+    set_upgrade_baseline_refs "$default_upgrade_baseline_refs"
+  fi
+}
+
+ensure_upgrade_extended_fixtures() {
+  if [ "$upgrade_extended_fixtures_set" != "true" ]; then
+    set_upgrade_extended_fixtures "$default_upgrade_extended_fixtures"
+  fi
 }
 
 enable_unit() {
@@ -73,12 +108,14 @@ enable_upgrade_baseline() {
   should_run=true
   run_upgrade=true
   run_upgrade_baseline=true
+  ensure_upgrade_baseline_refs
 }
 
 enable_upgrade_extended() {
   should_run=true
   run_upgrade=true
   run_upgrade_extended=true
+  ensure_upgrade_extended_fixtures
 }
 
 enable_upgrade() {
@@ -100,6 +137,47 @@ enable_release_critical() {
   enable_upgrade
 }
 
+selected_manual_baseline_refs() {
+  if [ -n "$input_upgrade_source_ref" ]; then
+    if ! upgrade_validate_source_selector "$input_upgrade_source_ref"; then
+      echo "Unsupported upgrade_source_ref: $input_upgrade_source_ref" >&2
+      exit 1
+    fi
+    printf '%s\n' "$input_upgrade_source_ref"
+    return 0
+  fi
+
+  printf '%s\n' "$default_upgrade_baseline_refs"
+}
+
+apply_manual_upgrade_selection() {
+  local fixture_selection="${input_upgrade_fixture:-all}"
+  local baseline_refs
+
+  baseline_refs="$(selected_manual_baseline_refs)"
+
+  case "$fixture_selection" in
+    all)
+      set_upgrade_baseline_refs "$baseline_refs"
+      set_upgrade_extended_fixtures "$default_upgrade_extended_fixtures"
+      enable_upgrade
+      ;;
+    baseline)
+      set_upgrade_baseline_refs "$baseline_refs"
+      set_upgrade_extended_fixtures ''
+      enable_upgrade_baseline
+      ;;
+    *)
+      if ! upgrade_validate_extended_fixture_selection "$fixture_selection"; then
+        exit 1
+      fi
+      set_upgrade_baseline_refs "$baseline_refs"
+      set_upgrade_extended_fixtures "$fixture_selection"
+      enable_upgrade
+      ;;
+  esac
+}
+
 apply_manual_suite() {
   local suite="$1"
 
@@ -112,7 +190,7 @@ apply_manual_suite() {
       enable_unit
       enable_standard_stack
       enable_install_script
-      enable_upgrade
+      apply_manual_upgrade_selection
       scope=all
       ;;
     unit)
@@ -144,11 +222,14 @@ apply_manual_suite() {
       scope=auth-flow
       ;;
     upgrade)
-      enable_upgrade
+      apply_manual_upgrade_selection
       scope=upgrade
       ;;
     release-critical)
-      enable_release_critical
+      enable_unit
+      enable_standard_stack
+      enable_install_script
+      apply_manual_upgrade_selection
       scope=release-critical
       ;;
     *)
@@ -263,6 +344,20 @@ classify_install_workflow_change() {
   esac
 }
 
+defer_automatic_upgrade_e2e() {
+  if [ "$run_upgrade" != "true" ]; then
+    return 0
+  fi
+
+  run_upgrade=false
+  run_upgrade_baseline=false
+  run_upgrade_extended=false
+  upgrade_baseline_refs=''
+  upgrade_extended_fixtures=''
+  add_scope upgrade-deferred
+  reason="${reason}; upgrade E2E reserved for release tags, schedules, or manual dispatch"
+}
+
 while IFS= read -r file; do
   [ -n "$file" ] || continue
 
@@ -330,6 +425,7 @@ while IFS= read -r file; do
       ;;
     server/prisma/*)
       enable_unit
+      enable_fresh_install
       enable_upgrade_baseline
       add_scope upgrade-baseline
       reason="Prisma migration scope changed"
@@ -350,4 +446,5 @@ while IFS= read -r file; do
   esac
 done < <(git diff --name-only "$base_sha" "$head_sha")
 
+defer_automatic_upgrade_e2e
 emit_outputs

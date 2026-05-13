@@ -102,6 +102,21 @@ assert_release_critical_scope() {
   assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true"
 }
 
+assert_release_smoke_scope() {
+  local output_file="$1"
+  assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "false" "false" "false" "true"
+  assert_upgrade_selection "$output_file" "" ""
+}
+
+assert_upgrade_selection() {
+  local output_file="$1"
+  local expected_baseline_refs="$2"
+  local expected_extended_fixtures="$3"
+
+  assert_exact_output "$output_file" "upgrade_baseline_refs" "$expected_baseline_refs"
+  assert_exact_output "$output_file" "upgrade_extended_fixtures" "$expected_extended_fixtures"
+}
+
 assert_static_workflow_scope() {
   local output_file="$1"
   assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
@@ -200,7 +215,8 @@ main() {
   local temp_dir repo_dir output_file base_sha head_sha
 
   unset GITHUB_REF GITHUB_EVENT_NAME GITHUB_SHA \
-    WORKFLOW_INPUT_TEST_SUITE PR_BASE_SHA PR_HEAD_SHA
+    WORKFLOW_INPUT_TEST_SUITE WORKFLOW_INPUT_UPGRADE_FIXTURE WORKFLOW_INPUT_UPGRADE_SOURCE_REF \
+    PR_BASE_SHA PR_HEAD_SHA
 
   temp_dir="$(mktemp -d)"
   trap 'rm -rf "'"$temp_dir"'"' EXIT
@@ -237,31 +253,34 @@ main() {
   commit_file "$repo_dir" "install.sh" "#!/usr/bin/env bash" "installer"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "false" "true" "false" "false" "true" "true" "false" "false"
+  assert_scope "$output_file" "true" "true" "false" "true" "false" "false" "false" "false" "false" "false"
+  assert_upgrade_selection "$output_file" "" ""
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/offline/apply-bundle.sh" "#!/usr/bin/env bash" "offline bundle"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "false" "true" "false" "false" "true" "true" "false" "false"
+  assert_scope "$output_file" "true" "true" "false" "true" "false" "false" "false" "false" "false" "false"
+  assert_upgrade_selection "$output_file" "" ""
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/ci/with-runner-lock.sh" "#!/usr/bin/env bash" "install CI helper"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true"
+  assert_release_smoke_scope "$output_file"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/ci/wait-for-docker.sh" "#!/usr/bin/env bash" "docker readiness helper"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true"
+  assert_release_smoke_scope "$output_file"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/ci/run-extended-upgrade-fixtures.sh" "#!/usr/bin/env bash" "upgrade fixture helper"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "true" "true" "true" "false"
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
+  assert_upgrade_selection "$output_file" "" ""
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "docker-compose.yml" "services: {}" "compose"
@@ -279,13 +298,22 @@ main() {
   commit_file "$repo_dir" "server/prisma/schema.prisma" "datasource db {}" "migration"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "true" "true" "false" "false"
+  assert_scope "$output_file" "true" "true" "true" "false" "false" "false" "false" "false" "false" "false"
+  assert_upgrade_selection "$output_file" "" ""
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "tests/install/e2e/upgrade-install.test.sh" "echo upgrade" "upgrade harness"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "true" "true" "true" "false"
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
+  assert_upgrade_selection "$output_file" "" ""
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "tests/install/fixtures/upgrade/browser-origin-ip.sh" "echo fixture" "upgrade fixture file"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
+  assert_upgrade_selection "$output_file" "" ""
 
   base_sha="$head_sha"
   commit_workflow_variant "$repo_dir" "install workflow base" base
@@ -310,44 +338,44 @@ main() {
   commit_workflow_variant "$repo_dir" "install workflow run-block comment" run-comment
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_release_critical_scope "$output_file"
+  assert_release_smoke_scope "$output_file"
 
   base_sha="$head_sha"
   commit_workflow_variant "$repo_dir" "install workflow run block" run-change
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_release_critical_scope "$output_file"
+  assert_release_smoke_scope "$output_file"
 
   base_sha="$head_sha"
   commit_workflow_variant "$repo_dir" "install workflow uses" uses
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_release_critical_scope "$output_file"
+  assert_release_smoke_scope "$output_file"
 
   base_sha="$head_sha"
   commit_workflow_variant "$repo_dir" "install workflow permissions" permission
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_release_critical_scope "$output_file"
+  assert_release_smoke_scope "$output_file"
 
   base_sha="$head_sha"
   commit_workflow_variant "$repo_dir" "install workflow concurrency" concurrency
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_release_critical_scope "$output_file"
+  assert_release_smoke_scope "$output_file"
 
   base_sha="$head_sha"
   commit_workflow_variant "$repo_dir" "install workflow path filter" path-filter
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_release_critical_scope "$output_file"
+  assert_release_smoke_scope "$output_file"
 
   base_sha="$head_sha"
   git -C "$repo_dir" rm -q .github/workflows/install-test.yml
   git -C "$repo_dir" commit -qm "delete install workflow"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_release_critical_scope "$output_file"
+  assert_release_smoke_scope "$output_file"
 
   base_sha="$head_sha"
   commit_workflow_variant "$repo_dir" "install workflow reset base" base
@@ -356,7 +384,8 @@ main() {
   commit_file "$repo_dir" "server/prisma/20260513000000_example/migration.sql" "select 1;" "migration plus workflow"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "true" "true" "false" "false"
+  assert_scope "$output_file" "true" "true" "true" "false" "false" "false" "false" "false" "false" "false"
+  assert_upgrade_selection "$output_file" "" ""
 
   : > "$output_file"
   (
@@ -368,6 +397,49 @@ main() {
     bash "$CLASSIFIER_SCRIPT"
   )
   assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true"
+  assert_upgrade_selection "$output_file" \
+    "latest-stable,n-2" \
+    "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles"
+
+  : > "$output_file"
+  (
+    cd "$repo_dir"
+    export EVENT_NAME=workflow_dispatch
+    export WORKFLOW_INPUT_TEST_SUITE=upgrade
+    export WORKFLOW_INPUT_UPGRADE_FIXTURE=baseline
+    export GITHUB_OUTPUT="$output_file"
+    export WORKFLOW_SHA="$head_sha"
+    bash "$CLASSIFIER_SCRIPT"
+  )
+  assert_scope "$output_file" "true" "false" "false" "false" "false" "false" "true" "true" "false" "false"
+  assert_upgrade_selection "$output_file" "latest-stable,n-2" ""
+
+  : > "$output_file"
+  (
+    cd "$repo_dir"
+    export EVENT_NAME=workflow_dispatch
+    export WORKFLOW_INPUT_TEST_SUITE=upgrade
+    export WORKFLOW_INPUT_UPGRADE_FIXTURE=optional-profiles
+    export WORKFLOW_INPUT_UPGRADE_SOURCE_REF=release/v0.8.39
+    export GITHUB_OUTPUT="$output_file"
+    export WORKFLOW_SHA="$head_sha"
+    bash "$CLASSIFIER_SCRIPT"
+  )
+  assert_scope "$output_file" "true" "false" "false" "false" "false" "false" "true" "true" "true" "false"
+  assert_upgrade_selection "$output_file" "release/v0.8.39" "optional-profiles"
+
+  : > "$output_file"
+  (
+    cd "$repo_dir"
+    export EVENT_NAME=workflow_dispatch
+    export WORKFLOW_INPUT_TEST_SUITE=upgrade
+    export WORKFLOW_INPUT_UPGRADE_FIXTURE=not-a-fixture
+    export GITHUB_OUTPUT="$output_file"
+    export WORKFLOW_SHA="$head_sha"
+    if bash "$CLASSIFIER_SCRIPT"; then
+      fail "invalid manual upgrade fixture should fail classification"
+    fi
+  )
 
   : > "$output_file"
   (
@@ -381,6 +453,9 @@ main() {
   assert_exact_output "$output_file" "is_release" "true"
   assert_exact_output "$output_file" "test_suite" "release-critical"
   assert_release_critical_scope "$output_file"
+  assert_upgrade_selection "$output_file" \
+    "latest-stable,n-2" \
+    "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles"
 
   : > "$output_file"
   (
@@ -392,6 +467,9 @@ main() {
   )
   assert_exact_output "$output_file" "test_suite" "upgrade"
   assert_scope "$output_file" "true" "false" "false" "false" "false" "false" "true" "true" "true" "false"
+  assert_upgrade_selection "$output_file" \
+    "latest-stable,n-2" \
+    "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles"
 
   echo "install scope classifier regression checks passed"
 }

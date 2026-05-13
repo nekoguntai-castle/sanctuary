@@ -13,6 +13,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$PROJECT_ROOT/tests/install/utils/helpers.sh"
 source "$PROJECT_ROOT/tests/install/utils/upgrade-test-defaults.sh"
 source "$PROJECT_ROOT/tests/install/utils/upgrade-source-refs.sh"
+source "$PROJECT_ROOT/tests/install/utils/upgrade-selection.sh"
 source "$PROJECT_ROOT/tests/install/utils/upgrade-fixtures.sh"
 source "$PROJECT_ROOT/tests/install/utils/collect-upgrade-artifacts.sh"
 source "$PROJECT_ROOT/tests/install/utils/upgrade-assertions.sh"
@@ -352,6 +353,119 @@ test_optional_profiles_is_in_release_coverage() {
     "install extended upgrades should include optional profiles once" || failures=1
   assert_equals "1" "$(grep -c '^optional-profiles 30$' <<< "$extended_fixtures")" \
     "install extended upgrades should include optional profiles once" || failures=1
+
+  return "$failures"
+}
+
+test_active_extended_fixture_selection_contract() {
+  local expected_records
+  local expected_csv
+  local runner_records
+  local failures=0
+
+  expected_records=$'browser-origin-ip 21\nlegacy-runtime-env 24\nnotification-delivery 27\noptional-profiles 30'
+  expected_csv='browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles'
+  runner_records="$("$PROJECT_ROOT/scripts/ci/run-extended-upgrade-fixtures.sh" --list)"
+
+  assert_equals "$expected_records" "$(upgrade_active_extended_fixture_records)" \
+    "active extended fixture registry should be stable" || failures=1
+  assert_equals "$expected_csv" "$(upgrade_active_extended_fixtures_csv)" \
+    "active extended fixture CSV should be stable" || failures=1
+  assert_equals "$expected_records" "$runner_records" \
+    "extended fixture runner should use the shared registry" || failures=1
+  assert_equals "24" "$(upgrade_extended_fixture_port_offset legacy-runtime-env)" \
+    "fixture port offsets should be table lookups, not selected-list positions" || failures=1
+
+  return "$failures"
+}
+
+test_upgrade_selection_rejects_invalid_values() {
+  local failures=0
+
+  upgrade_validate_baseline_ref_selection "latest-stable,n-2" || failures=1
+  upgrade_validate_extended_fixture_selection "browser-origin-ip,optional-profiles" || failures=1
+
+  if upgrade_validate_baseline_ref_selection "latest-stable,bad ref" >/dev/null 2>&1; then
+    echo -e "${RED}ASSERTION FAILED:${NC} invalid source ref selector should fail"
+    failures=1
+  fi
+
+  if upgrade_validate_baseline_ref_selection "latest-stable," >/dev/null 2>&1; then
+    echo -e "${RED}ASSERTION FAILED:${NC} empty source ref selector should fail"
+    failures=1
+  fi
+
+  if upgrade_validate_extended_fixture_selection "browser-origin-ip,not-a-fixture" >/dev/null 2>&1; then
+    echo -e "${RED}ASSERTION FAILED:${NC} invalid extended fixture should fail"
+    failures=1
+  fi
+
+  if upgrade_validate_extended_fixture_selection ",browser-origin-ip" >/dev/null 2>&1; then
+    echo -e "${RED}ASSERTION FAILED:${NC} empty extended fixture selector should fail"
+    failures=1
+  fi
+
+  return "$failures"
+}
+
+test_upgrade_selection_labels_are_sanitized() {
+  local failures=0
+
+  assert_equals "latest-stable" "$(upgrade_sanitize_label latest-stable)" \
+    "simple labels should remain readable" || failures=1
+  assert_contains "$(upgrade_sanitize_label release/v0.8.39)" "release-v0-8-39-" \
+    "punctuation-heavy refs should become Compose-safe labels with a disambiguator" || failures=1
+  assert_contains "$(upgrade_sanitize_label feature.a)" "feature-a-" \
+    "labels that could collide after punctuation removal should include a disambiguator" || failures=1
+  assert_contains "$(upgrade_sanitize_label Feature-A)" "feature-a-" \
+    "case-only label collisions should include a disambiguator" || failures=1
+  assert_not_contains "$(upgrade_sanitize_label release/v0.8.39)" "/" \
+    "sanitized labels should not include slash characters" || failures=1
+  assert_not_contains "$(upgrade_sanitize_label release/v0.8.39)" "." \
+    "sanitized labels should not include dot characters" || failures=1
+
+  return "$failures"
+}
+
+test_upgrade_selection_manifest_records_resolved_refs() {
+  local repo="$TEST_TMP_DIR/manifest-repo"
+  local artifact_dir="$TEST_TMP_DIR/artifacts"
+  local contents
+  local failures=0
+
+  mkdir -p "$repo"
+  git -C "$repo" init -b main >/dev/null
+  git -C "$repo" config user.email test@example.invalid
+  git -C "$repo" config user.name "Upgrade Manifest Test"
+
+  make_commit "$repo" "release-0.8.39"
+  git -C "$repo" tag v0.8.39
+  make_commit "$repo" "release-0.8.40"
+  git -C "$repo" tag v0.8.40
+  make_commit "$repo" "release-0.8.41"
+  git -C "$repo" tag v0.8.41
+  make_commit "$repo" "candidate"
+
+  upgrade_write_selection_manifest \
+    "$repo" \
+    "$artifact_dir" \
+    "latest-stable,n-2" \
+    "optional-profiles" \
+    "v0.8.39" \
+    "12345"
+
+  contents="$(cat "$artifact_dir/selection-manifest.md")"
+
+  assert_contains "$contents" "- Run id: 12345" \
+    "manifest should include the workflow run id" || failures=1
+  assert_contains "$contents" 'selector: `latest-stable`; label: `latest-stable`; resolved: `v0.8.41`' \
+    "manifest should resolve latest-stable" || failures=1
+  assert_contains "$contents" 'selector: `n-2`; label: `n-2`; resolved: `v0.8.40`' \
+    "manifest should resolve n-2" || failures=1
+  assert_contains "$contents" 'selector: `v0.8.39`; label: `v0-8-39-' \
+    "manifest should record the selected extended source ref label" || failures=1
+  assert_contains "$contents" "- optional-profiles: port offset 30" \
+    "manifest should include active fixture registry metadata" || failures=1
 
   return "$failures"
 }
@@ -958,6 +1072,10 @@ main() {
   run_test "baseline browser host uses upgrade network default" test_baseline_browser_host_uses_upgrade_network_default
   run_test "optional profile ports follow install port scope" test_optional_profile_ports_follow_install_port_scope
   run_test "optional profiles is in release coverage" test_optional_profiles_is_in_release_coverage
+  run_test "active extended fixture selection contract" test_active_extended_fixture_selection_contract
+  run_test "upgrade selection rejects invalid values" test_upgrade_selection_rejects_invalid_values
+  run_test "upgrade selection labels are sanitized" test_upgrade_selection_labels_are_sanitized
+  run_test "upgrade selection manifest records resolved refs" test_upgrade_selection_manifest_records_resolved_refs
   run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
   run_test "legacy optional profile compose can use target tor overlay" test_legacy_optional_profile_compose_can_use_target_tor_overlay
   run_test "tor compose uses supported hidden service config" test_tor_compose_uses_supported_hidden_service_config

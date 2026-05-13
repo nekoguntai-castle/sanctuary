@@ -222,6 +222,14 @@ assert_contains_in_order "$IT" \
   "./tests/ci/check-workflow-composition.test.sh"
 
 assert_contains_in_order "$IT" \
+  "install-test upgrade selection inputs and outputs" \
+  "upgrade_fixture:" \
+  "upgrade_baseline_refs:" \
+  "upgrade_extended_fixtures:" \
+  "WORKFLOW_INPUT_UPGRADE_FIXTURE:" \
+  "WORKFLOW_INPUT_UPGRADE_SOURCE_REF:"
+
+assert_contains_in_order "$IT" \
   "install-test fresh install sink summary" \
   "fresh-install-test:" \
   'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/container-logs.log"' \
@@ -268,6 +276,9 @@ assert_contains_in_order "$IT" \
 assert_contains_in_order "$IT" \
   "install-test upgrade diagnostic summaries" \
   "upgrade-baseline-test:" \
+  "UPGRADE_BASELINE_REFS:" \
+  "upgrade_validate_baseline_ref_selection" \
+  "upgrade_sanitize_label" \
   "Post-upgrade DIND diagnostics" \
   "Write upgrade baseline timing summary" \
   'scripts/ci/report-timing-notices.sh --log-file "$combined"' \
@@ -276,6 +287,9 @@ assert_contains_in_order "$IT" \
   "upgrade-extended-fixture-test:" \
   "Pre-flight diagnostics" \
   'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade-extended-fixtures.log"' \
+  "scripts/ci/run-extended-upgrade-fixtures.sh" \
+  '--fixtures "$SANCTUARY_UPGRADE_EXTENDED_FIXTURES"' \
+  '--source-ref "${SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE:-latest-stable}"' \
   "Post-upgrade DIND diagnostics" \
   "Write extended upgrade timing summary" \
   'scripts/ci/report-timing-notices.sh --log-file "$JOB_LOG_DIR/upgrade-extended-fixtures.log"' \

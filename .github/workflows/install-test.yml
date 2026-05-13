@@ -96,6 +96,18 @@ on:
         description: 'Optional older git ref or tag to install before upgrading to the checked-out ref'
         required: false
         type: string
+      upgrade_fixture:
+        description: 'Upgrade fixture selection for workflow_dispatch upgrade debugging'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - baseline
+          - browser-origin-ip
+          - legacy-runtime-env
+          - notification-delivery
+          - optional-profiles
 
 permissions:
   contents: read
@@ -140,6 +152,8 @@ jobs:
       run_reuse_stack: ${{ steps.check.outputs.run_reuse_stack }}
       run_upgrade_baseline: ${{ steps.check.outputs.run_upgrade_baseline }}
       run_upgrade_extended: ${{ steps.check.outputs.run_upgrade_extended }}
+      upgrade_baseline_refs: ${{ steps.check.outputs.upgrade_baseline_refs }}
+      upgrade_extended_fixtures: ${{ steps.check.outputs.upgrade_extended_fixtures }}
       scope: ${{ steps.check.outputs.scope }}
       reason: ${{ steps.check.outputs.reason }}
     steps:
@@ -155,6 +169,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF: ${{ github.ref }}
           WORKFLOW_INPUT_TEST_SUITE: ${{ github.event.inputs.test_suite }}
+          WORKFLOW_INPUT_UPGRADE_FIXTURE: ${{ github.event.inputs.upgrade_fixture }}
+          WORKFLOW_INPUT_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
@@ -915,36 +931,44 @@ jobs:
 
       - name: Run baseline upgrades sequentially
         env:
-          SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE: ${{ github.event.inputs.upgrade_source_ref }}
+          UPGRADE_BASELINE_REFS: ${{ needs.determine-scope.outputs.upgrade_baseline_refs }}
+          UPGRADE_EXTENDED_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref }}
+          UPGRADE_EXTENDED_FIXTURES: ${{ needs.determine-scope.outputs.upgrade_extended_fixtures }}
           RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           cd "$SANCTUARY_UPGRADE_WORKSPACE"
+          source tests/install/utils/upgrade-selection.sh
           if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
             echo "::error::Unexpected workflow run id"
             exit 1
           fi
-          if [[ -n "${SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE:-}" && ! "$SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE" =~ ^[A-Za-z0-9._/@-]+$ ]]; then
-            echo "::error::upgrade_source_ref contains unsupported characters"
+          if ! upgrade_validate_baseline_ref_selection "$UPGRADE_BASELINE_REFS"; then
+            echo "::error::Invalid upgrade baseline ref selection"
             exit 1
           fi
+
+          original_workspace="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}"
+          manifest_dir="$original_workspace/.tmp/upgrade-artifacts"
+          upgrade_write_selection_manifest \
+            "$PWD" \
+            "$manifest_dir" \
+            "$UPGRADE_BASELINE_REFS" \
+            "$UPGRADE_EXTENDED_FIXTURES" \
+            "${UPGRADE_EXTENDED_SOURCE_REF:-latest-stable}" \
+            "$RUN_ID"
 
           run_upgrade() {
             local source_ref="$1"
             local port_offset="$2"
+            local source_label
             local port_env
-            case "$source_ref" in
-              latest-stable|n-2) ;;
-              *)
-                echo "::error::Unexpected upgrade source ref: $source_ref"
-                return 1
-                ;;
-            esac
+            source_label="$(upgrade_sanitize_label "$source_ref")"
 
-            export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${RUN_ID}-${source_ref}-baseline"
-            export SANCTUARY_UPGRADE_SOURCE_REF="${SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE:-$source_ref}"
+            export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${RUN_ID}-${source_label}-baseline"
+            export SANCTUARY_UPGRADE_SOURCE_REF="$source_ref"
             export SANCTUARY_UPGRADE_FIXTURE="baseline"
-            export SANCTUARY_UPGRADE_ARTIFACT_DIR="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/.tmp/upgrade-artifacts/${source_ref}-baseline"
+            export SANCTUARY_UPGRADE_ARTIFACT_DIR="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/.tmp/upgrade-artifacts/${source_label}-baseline"
 
             port_env="$(mktemp)"
             GITHUB_ENV="$port_env" bash scripts/ci/install-test-ports.sh "$port_offset"
@@ -959,7 +983,7 @@ jobs:
             }
             trap cleanup EXIT
 
-            local log_path="${JOB_LOG_DIR}/upgrade-baseline-${source_ref}.log"
+            local log_path="${JOB_LOG_DIR}/upgrade-baseline-${source_label}.log"
             if "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/run-with-log.sh" "$log_path" \
                  scripts/ci/with-runner-lock.sh e2e \
                  scripts/ci/time-command.sh "upgrade baseline ${source_ref} baseline" \
@@ -977,8 +1001,12 @@ jobs:
             return 1
           }
 
-          run_upgrade latest-stable 15
-          run_upgrade n-2 18
+          IFS=',' read -ra selected_refs <<< "$UPGRADE_BASELINE_REFS"
+          port_offset=15
+          for source_ref in "${selected_refs[@]}"; do
+            run_upgrade "$source_ref" "$port_offset"
+            port_offset=$((port_offset + 3))
+          done
 
       - name: Post-upgrade DIND diagnostics
         if: always()
@@ -1011,9 +1039,7 @@ jobs:
         uses: ./.github/actions/upload-artifact
         with:
           name: upgrade-baseline-${{ github.run_id }}
-          path: |
-            .tmp/upgrade-artifacts/latest-stable-baseline
-            .tmp/upgrade-artifacts/n-2-baseline
+          path: .tmp/upgrade-artifacts/
           retention-days: 14
           if-no-files-found: ignore
 
@@ -1078,9 +1104,13 @@ jobs:
       - name: Run extended upgrade fixtures sequentially
         env:
           SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE: ${{ github.event.inputs.upgrade_source_ref }}
+          SANCTUARY_UPGRADE_BASELINE_REFS: ${{ needs.determine-scope.outputs.upgrade_baseline_refs }}
+          SANCTUARY_UPGRADE_EXTENDED_FIXTURES: ${{ needs.determine-scope.outputs.upgrade_extended_fixtures }}
         run: |
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/upgrade-extended-fixtures.log" \
-            scripts/ci/run-extended-upgrade-fixtures.sh
+            scripts/ci/run-extended-upgrade-fixtures.sh \
+              --fixtures "$SANCTUARY_UPGRADE_EXTENDED_FIXTURES" \
+              --source-ref "${SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE:-latest-stable}"
 
       - name: Post-upgrade DIND diagnostics
         if: always()
@@ -1228,7 +1258,9 @@ jobs:
           TEST_SUITE: ${{ needs.determine-scope.outputs.test_suite }}
           UNIT_TESTS: ${{ needs.unit-tests.result }}
           UPGRADE_BASELINE: ${{ needs.upgrade-baseline-test.result }}
+          UPGRADE_BASELINE_REFS: ${{ needs.determine-scope.outputs.upgrade_baseline_refs }}
           UPGRADE_EXTENDED: ${{ needs.upgrade-extended-test.result }}
+          UPGRADE_EXTENDED_FIXTURES: ${{ needs.determine-scope.outputs.upgrade_extended_fixtures }}
         run: |
           summary="$GITHUB_STEP_SUMMARY"
 
@@ -1273,6 +1305,8 @@ jobs:
           echo "" >> "$summary"
           echo "- Scope: \`$SCOPE\`" >> "$summary"
           echo "- Reason: $REASON" >> "$summary"
+          echo "- Upgrade baseline refs: \`${UPGRADE_BASELINE_REFS:-none}\`" >> "$summary"
+          echo "- Upgrade extended fixtures: \`${UPGRADE_EXTENDED_FIXTURES:-none}\`" >> "$summary"
           echo "" >> "$summary"
 
           # Unit tests

@@ -4,6 +4,7 @@ set -euo pipefail
 usage() {
   cat >&2 <<'EOF'
 Usage: scripts/ci/run-extended-upgrade-fixtures.sh [--list]
+       scripts/ci/run-extended-upgrade-fixtures.sh [--fixtures LIST] [--source-ref REF] [--validate-only]
 
 Runs extended install upgrade fixtures sequentially from isolated Docker-visible
 workspaces. The sequential job shape avoids matrix child jobs being scheduled
@@ -20,16 +21,38 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/ci/provider-context.sh
 . "$SCRIPT_DIR/provider-context.sh"
+# shellcheck source=tests/install/utils/upgrade-selection.sh
+. "$ROOT_DIR/tests/install/utils/upgrade-selection.sh"
 
-fixture_names=(browser-origin-ip legacy-runtime-env notification-delivery optional-profiles)
-fixture_offsets=(21 24 27 30)
+selected_fixtures="${SANCTUARY_UPGRADE_EXTENDED_FIXTURES:-$(upgrade_active_extended_fixtures_csv)}"
+source_ref="${SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE:-latest-stable}"
+validate_only=false
 
 list_fixtures() {
-  local index
+  upgrade_active_extended_fixture_records
+}
 
-  for index in "${!fixture_names[@]}"; do
-    printf '%s %s\n' "${fixture_names[$index]}" "${fixture_offsets[$index]}"
+list_selected_fixtures() {
+  local fixture port_offset
+
+  IFS=',' read -ra fixtures <<< "$selected_fixtures"
+  for fixture in "${fixtures[@]}"; do
+    port_offset="$(upgrade_extended_fixture_port_offset "$fixture")"
+    printf '%s %s\n' "$fixture" "$port_offset"
   done
+}
+
+write_selection_manifest() {
+  local original_workspace="$1"
+  local artifact_root="$original_workspace/.tmp/upgrade-artifacts"
+
+  upgrade_write_selection_manifest \
+    "$ROOT_DIR" \
+    "$artifact_root" \
+    "${SANCTUARY_UPGRADE_BASELINE_REFS:-}" \
+    "$selected_fixtures" \
+    "$source_ref" \
+    "$(ci_run_id)"
 }
 
 run_fixture() {
@@ -45,20 +68,23 @@ run_fixture() {
     SANCTUARY_EXTENDED_UPGRADE_FIXTURE="$fixture" \
       SANCTUARY_EXTENDED_UPGRADE_PORT_OFFSET="$port_offset" \
       SANCTUARY_CI_EXTENDED_UPGRADE_RUN_ID="$run_id" \
+      SANCTUARY_EXTENDED_UPGRADE_SOURCE_REF="${SANCTUARY_EXTENDED_UPGRADE_SOURCE_REF:?}" \
+      SANCTUARY_EXTENDED_UPGRADE_SOURCE_LABEL="${SANCTUARY_EXTENDED_UPGRADE_SOURCE_LABEL:?}" \
       scripts/ci/run-in-isolated-workspace.sh --docker-visible "upgrade-extended-${fixture}" bash -c '
       set -euo pipefail
 
-      source_ref="latest-stable"
+      source_ref="$SANCTUARY_EXTENDED_UPGRADE_SOURCE_REF"
+      source_label="$SANCTUARY_EXTENDED_UPGRADE_SOURCE_LABEL"
       fixture="$SANCTUARY_EXTENDED_UPGRADE_FIXTURE"
       port_offset="$SANCTUARY_EXTENDED_UPGRADE_PORT_OFFSET"
       run_id="$SANCTUARY_CI_EXTENDED_UPGRADE_RUN_ID"
       original_workspace="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${SANCTUARY_CI_WORKSPACE_OVERRIDE:-$PWD}}"
       original_workspace="$(cd "$original_workspace" && pwd -P)"
 
-      export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${run_id}-${source_ref}-${fixture}"
-      export SANCTUARY_UPGRADE_SOURCE_REF="${SANCTUARY_UPGRADE_SOURCE_REF_OVERRIDE:-$source_ref}"
+      export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${run_id}-${source_label}-${fixture}"
+      export SANCTUARY_UPGRADE_SOURCE_REF="$source_ref"
       export SANCTUARY_UPGRADE_FIXTURE="$fixture"
-      export SANCTUARY_UPGRADE_ARTIFACT_DIR="$original_workspace/.tmp/upgrade-artifacts/${source_ref}-${fixture}"
+      export SANCTUARY_UPGRADE_ARTIFACT_DIR="$original_workspace/.tmp/upgrade-artifacts/${source_label}-${fixture}"
 
       scripts/ci/wait-for-docker.sh
 
@@ -91,12 +117,31 @@ run_fixture() {
 }
 
 run_all_fixtures() {
-  local index
+  local fixture
   local status=0
+  local port_offset
+  local source_label
+  local original_workspace
 
-  for index in "${!fixture_names[@]}"; do
-    if ! run_fixture "${fixture_names[$index]}" "${fixture_offsets[$index]}"; then
-      ci_emit_error "Extended upgrade fixture failed: ${fixture_names[$index]}"
+  if ! upgrade_validate_source_selector "$source_ref"; then
+    fail "unsupported source ref selector: $source_ref"
+  fi
+  if ! upgrade_validate_extended_fixture_selection "$selected_fixtures"; then
+    exit 1
+  fi
+
+  source_label="$(upgrade_sanitize_label "$source_ref")"
+  original_workspace="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-$ROOT_DIR}"
+  original_workspace="$(cd "$original_workspace" && pwd -P)"
+  write_selection_manifest "$original_workspace"
+
+  IFS=',' read -ra fixtures <<< "$selected_fixtures"
+  for fixture in "${fixtures[@]}"; do
+    port_offset="$(upgrade_extended_fixture_port_offset "$fixture")"
+    if ! SANCTUARY_EXTENDED_UPGRADE_SOURCE_REF="$source_ref" \
+         SANCTUARY_EXTENDED_UPGRADE_SOURCE_LABEL="$source_label" \
+         run_fixture "$fixture" "$port_offset"; then
+      ci_emit_error "Extended upgrade fixture failed: $fixture"
       status=1
     fi
   done
@@ -105,22 +150,43 @@ run_all_fixtures() {
 }
 
 main() {
-  case "${1:-}" in
-    '')
-      ;;
-    --help|-h)
-      usage
-      exit 0
-      ;;
-    --list)
-      list_fixtures
-      exit 0
-      ;;
-    *)
-      usage
-      fail "unknown option: $1"
-      ;;
-  esac
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --help|-h)
+        usage
+        exit 0
+        ;;
+      --list)
+        list_fixtures
+        exit 0
+        ;;
+      --fixtures)
+        [ "$#" -gt 1 ] || fail "--fixtures requires a value"
+        selected_fixtures="$2"
+        shift 2
+        ;;
+      --source-ref)
+        [ "$#" -gt 1 ] || fail "--source-ref requires a value"
+        source_ref="$2"
+        shift 2
+        ;;
+      --validate-only)
+        validate_only=true
+        shift
+        ;;
+      *)
+        usage
+        fail "unknown option: $1"
+        ;;
+    esac
+  done
+
+  if [ "$validate_only" = "true" ]; then
+    upgrade_validate_source_selector "$source_ref" || fail "unsupported source ref selector: $source_ref"
+    upgrade_validate_extended_fixture_selection "$selected_fixtures"
+    list_selected_fixtures
+    exit 0
+  fi
 
   run_all_fixtures
 }
