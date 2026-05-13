@@ -1274,10 +1274,8 @@ jobs:
             FAILED=true
           fi
 
-          if [ "$INSTALL_STACK_SMOKE" != "success" ] && \
-             { [ "$CONTAINER_HEALTH" != "success" ] || [ "$AUTH_FLOW" != "success" ]; }; then
-            echo "::error::Install stack smoke failed - release blocked"
-            FAILED=true
+          if [ "$INSTALL_STACK_SMOKE" != "success" ] && [ "$INSTALL_STACK_SMOKE" != "skipped" ]; then
+            echo "::warning::Install stack smoke failed (non-blocking) - fresh-install-test + install-script-test + upgrade-* are the canonical install gates"
           fi
 
           if [ "$CONTAINER_HEALTH" != "success" ] && [ "$CONTAINER_HEALTH" != "skipped" ]; then
