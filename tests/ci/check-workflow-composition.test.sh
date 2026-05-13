@@ -161,6 +161,15 @@ assert_contains_in_order "$RC" \
   "Write auth flow diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$JOB_LOG_DIR" "Release Candidate Auth Flow"'
 
+assert_contains_in_order "$RC" \
+  "release-candidate exact cleanup verification" \
+  "fresh-install-test:" \
+  'cleanup-docker-resources.sh --project "$project" --verify-empty' \
+  "container-health-test:" \
+  'cleanup-docker-resources.sh --project "$project" --verify-empty' \
+  "auth-flow-test:" \
+  'cleanup-docker-resources.sh --project "$project" --verify-empty'
+
 # release-candidate.yml deliberately does not run an upgrade matrix or
 # upgrade-full-recovery job — install-test.yml's serialized chain owns
 # upgrade coverage on tag pushes. See the "Upgrade coverage note"
@@ -322,8 +331,13 @@ assert_contains_in_order "$IT" \
 assert_contains_in_order "$IT" \
   "install-test cleanup DIND telemetry" \
   "docker-resource-cleanup:" \
+  "Verify current-run Docker cleanup" \
+  "--verify-empty" \
   "Post-cleanup DIND diagnostics" \
   'sanctuary-ci-fresh-${{ github.run_id }}' \
+  'sanctuary-ci-stack-${{ github.run_id }}' \
+  'sanctuary-ci-health-${{ github.run_id }}' \
+  'sanctuary-ci-auth-${{ github.run_id }}' \
   'sanctuary-ci-upgrade-${{ github.run_id }}' \
   'diag-docker-resource-cleanup-${{ github.run_id }}'
 

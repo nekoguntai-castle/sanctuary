@@ -226,9 +226,13 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
+          project="${COMPOSE_PROJECT_NAME:-}"
           cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
           docker compose down -v --remove-orphans || true
           docker system prune -f || true
+          if [ -n "$project" ]; then
+            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
+          fi
 
       - name: Post-cleanup diagnostics
         if: always()
@@ -386,8 +390,12 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
+          project="${COMPOSE_PROJECT_NAME:-}"
           cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
           docker compose down -v --remove-orphans || true
+          if [ -n "$project" ]; then
+            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
+          fi
 
       - name: Post-cleanup diagnostics
         if: always()
@@ -548,8 +556,12 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
+          project="${COMPOSE_PROJECT_NAME:-}"
           cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
           docker compose down -v --remove-orphans || true
+          if [ -n "$project" ]; then
+            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
+          fi
 
       - name: Post-cleanup diagnostics
         if: always()

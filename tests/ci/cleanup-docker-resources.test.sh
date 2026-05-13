@@ -219,6 +219,47 @@ test_dry_run_prints_without_removing() {
   assert_not_contains "$calls" "volume rm -f exact-volume" "dry run should not remove volumes"
 }
 
+test_verify_empty_passes_without_matching_resources() {
+  local tmp="$1" output="$tmp/output.txt" calls
+
+  run_with_fake_docker "$tmp" "$output" --verify-empty --project sanctuary-ci-empty
+  calls="$(cat "$tmp/docker-calls.log")"
+
+  assert_contains "$calls" "label=com.docker.compose.project=sanctuary-ci-empty" \
+    "verify-empty should query the selected exact project"
+  assert_not_contains "$(cat "$output")" "cleanup verification found remaining Compose resources" \
+    "verify-empty should pass when no selected resources remain"
+}
+
+test_verify_empty_fails_when_exact_resources_remain() {
+  local tmp="$1" output="$tmp/output.txt"
+
+  if run_with_fake_docker "$tmp" "$output" --verify-empty --project sanctuary-ci-exact; then
+    fail "verify-empty should fail when exact project resources remain"
+  fi
+
+  assert_contains "$(cat "$output")" "resources remain for Compose project sanctuary-ci-exact" \
+    "verify-empty should identify the leaking exact project"
+  assert_contains "$(cat "$output")" "cleanup verification found remaining Compose resources" \
+    "verify-empty should fail the cleanup command"
+}
+
+test_verify_empty_fails_when_prefix_resources_remain() {
+  local tmp="$1" output="$tmp/output.txt"
+
+  if run_with_fake_docker "$tmp" "$output" \
+      --verify-empty \
+      --prefix sanctuary-ci- \
+      --exclude-project sanctuary-ci-current; then
+    fail "verify-empty should fail when selected prefix resources remain"
+  fi
+
+  assert_contains "$(cat "$output")" "resources remain for Compose project sanctuary-ci-stale" \
+    "verify-empty should report the leaking prefixed project"
+  assert_not_contains "$(cat "$output")" "resources remain for Compose project sanctuary-ci-current" \
+    "verify-empty should honor excluded projects"
+}
+
 main() {
   local tmp
   tmp="$(mktemp -d)"
@@ -230,6 +271,9 @@ main() {
   test_prefix_cleanup_excludes_current_project "$tmp"
   test_runner_leftovers_cleanup "$tmp"
   test_dry_run_prints_without_removing "$tmp"
+  test_verify_empty_passes_without_matching_resources "$tmp"
+  test_verify_empty_fails_when_exact_resources_remain "$tmp"
+  test_verify_empty_fails_when_prefix_resources_remain "$tmp"
 
   echo "cleanup-docker-resources regression checks passed"
 }

@@ -378,7 +378,7 @@ jobs:
           fi
           docker compose down -v --remove-orphans || true
           if [ -n "$project" ]; then
-            bash scripts/ci/cleanup-docker-resources.sh --project "$project" || true
+            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
           fi
 
       - name: Cleanup isolated install workspace
@@ -579,7 +579,7 @@ jobs:
           fi
           docker compose down -v --remove-orphans || true
           if [ -n "$project" ]; then
-            bash scripts/ci/cleanup-docker-resources.sh --project "$project" || true
+            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
           fi
 
       - name: Cleanup isolated stack workspace
@@ -720,7 +720,7 @@ jobs:
           fi
           docker compose down -v --remove-orphans || true
           if [ -n "$project" ]; then
-            bash scripts/ci/cleanup-docker-resources.sh --project "$project" || true
+            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
           fi
 
       - name: Cleanup isolated health workspace
@@ -865,7 +865,7 @@ jobs:
           fi
           docker compose down -v --remove-orphans || true
           if [ -n "$project" ]; then
-            bash scripts/ci/cleanup-docker-resources.sh --project "$project" || true
+            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
           fi
 
       - name: Cleanup isolated auth workspace
@@ -1206,6 +1206,17 @@ jobs:
           fi
           bash scripts/ci/cleanup-docker-resources.sh --runner-leftovers || \
             echo "::warning::Runner leftover cleanup did not complete"
+
+      - name: Verify current-run Docker cleanup
+        if: github.event.inputs.keep_containers != 'true'
+        run: |
+          bash scripts/ci/cleanup-docker-resources.sh \
+            --verify-empty \
+            --prefix sanctuary-ci-fresh-${{ github.run_id }} \
+            --prefix sanctuary-ci-stack-${{ github.run_id }} \
+            --prefix sanctuary-ci-health-${{ github.run_id }} \
+            --prefix sanctuary-ci-auth-${{ github.run_id }} \
+            --prefix sanctuary-ci-upgrade-${{ github.run_id }}
 
       - name: Post-cleanup DIND diagnostics
         if: always()

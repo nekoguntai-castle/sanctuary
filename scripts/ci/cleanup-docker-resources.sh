@@ -10,6 +10,7 @@ Options:
   --prefix <prefix>         Remove Compose projects whose labels start with prefix.
   --exclude-project <name>  Exclude a project from prefix cleanup.
   --runner-leftovers        Remove stale Forgejo/Gitea action leftovers.
+  --verify-empty            Fail if selected Compose project resources remain after cleanup.
   --dry-run                 Print cleanup commands without running them.
   --help, -h                Show this help.
 
@@ -28,6 +29,7 @@ warn() {
 
 dry_run=false
 runner_leftovers=false
+verify_empty=false
 query_timeout="${SANCTUARY_DOCKER_CLEANUP_QUERY_TIMEOUT_SECONDS:-15}"
 command_timeout="${SANCTUARY_DOCKER_CLEANUP_COMMAND_TIMEOUT_SECONDS:-30}"
 projects=()
@@ -140,6 +142,26 @@ remove_ids() {
   esac
 }
 
+collect_project_resource_ids() {
+  local resource="$1"
+  local project="$2"
+
+  case "$resource" in
+    container)
+      docker_query ps -a --filter "label=com.docker.compose.project=$project" -q 2>/dev/null | sed '/^$/d' || true
+      ;;
+    network)
+      docker_query network ls --filter "label=com.docker.compose.project=$project" -q 2>/dev/null | sed '/^$/d' || true
+      ;;
+    volume)
+      docker_query volume ls --filter "label=com.docker.compose.project=$project" -q 2>/dev/null | sed '/^$/d' || true
+      ;;
+    *)
+      fail "unknown Docker resource type: $resource"
+      ;;
+  esac
+}
+
 cleanup_project() {
   local project="$1"
   local -a ids
@@ -149,14 +171,31 @@ cleanup_project() {
     return 0
   fi
 
-  mapfile -t ids < <(docker_query ps -a --filter "label=com.docker.compose.project=$project" -q 2>/dev/null | sed '/^$/d' || true)
+  mapfile -t ids < <(collect_project_resource_ids container "$project")
   remove_ids container "${ids[@]}"
 
-  mapfile -t ids < <(docker_query network ls --filter "label=com.docker.compose.project=$project" -q 2>/dev/null | sed '/^$/d' || true)
+  mapfile -t ids < <(collect_project_resource_ids network "$project")
   remove_ids network "${ids[@]}"
 
-  mapfile -t ids < <(docker_query volume ls --filter "label=com.docker.compose.project=$project" -q 2>/dev/null | sed '/^$/d' || true)
+  mapfile -t ids < <(collect_project_resource_ids volume "$project")
   remove_ids volume "${ids[@]}"
+}
+
+verify_project_empty() {
+  local project="$1"
+  local resource
+  local failed=0
+  local -a ids
+
+  for resource in container network volume; do
+    mapfile -t ids < <(collect_project_resource_ids "$resource" "$project")
+    if [ "${#ids[@]}" -gt 0 ]; then
+      warn "resources remain for Compose project $project ($resource): ${ids[*]}"
+      failed=1
+    fi
+  done
+
+  return "$failed"
 }
 
 collect_projects_by_prefix() {
@@ -180,6 +219,22 @@ cleanup_prefix() {
     fi
     cleanup_project "$project"
   done < <(collect_projects_by_prefix "$prefix")
+}
+
+verify_prefix_empty() {
+  local prefix="$1"
+  local project
+  local failed=0
+
+  while IFS= read -r project; do
+    [ -n "$project" ] || continue
+    if is_excluded_project "$project"; then
+      continue
+    fi
+    verify_project_empty "$project" || failed=1
+  done < <(collect_projects_by_prefix "$prefix")
+
+  return "$failed"
 }
 
 cleanup_action_containers() {
@@ -251,6 +306,10 @@ parse_args() {
         runner_leftovers=true
         shift
         ;;
+      --verify-empty)
+        verify_empty=true
+        shift
+        ;;
       --dry-run)
         dry_run=true
         shift
@@ -269,6 +328,7 @@ parse_args() {
 
 main() {
   local project prefix
+  local verification_failed=false
 
   parse_args "$@"
 
@@ -288,6 +348,20 @@ main() {
   if [ "$runner_leftovers" = true ]; then
     cleanup_action_containers
     cleanup_workflow_networks
+  fi
+
+  if [ "$verify_empty" = true ]; then
+    for project in "${projects[@]}"; do
+      verify_project_empty "$project" || verification_failed=true
+    done
+
+    for prefix in "${prefixes[@]}"; do
+      verify_prefix_empty "$prefix" || verification_failed=true
+    done
+
+    if [ "$verification_failed" = true ]; then
+      fail "cleanup verification found remaining Compose resources"
+    fi
   fi
 }
 

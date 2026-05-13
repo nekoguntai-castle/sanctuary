@@ -1,6 +1,6 @@
 # Active Task: Upgrade Test CI Speed Implementation Plan 2026-05-12
 
-Status: Phase 6 narrow workflow-only scope relaxation merged; Phase 1 timing/diagnostics and cross-run E2E serialization merged in PR #438. Phase 2/3 upgrade selection and release/schedule/manual-only upgrade policy merged in PR #439. Follow-up fail-closed upgrade-source handling and selected-upgrade summary hardening are in progress on branch `fix/upgrade-ref-fail-closed`.
+Status: Phase 6 narrow workflow-only scope relaxation merged; Phase 1 timing/diagnostics and cross-run E2E serialization merged in PR #438. Phase 2/3 upgrade selection and release/schedule/manual-only upgrade policy merged in PR #439. Follow-up fail-closed upgrade-source handling and selected-upgrade summary hardening merged in PR #440. PR3 cleanup hardening is in progress on branch `fix/ci-current-run-cleanup-hardening`.
 
 Goal: reduce routine upgrade-test wallclock time without weakening the upgrade coverage that protects operators from broken installs and lockout regressions.
 
@@ -142,13 +142,30 @@ Expected result: later speedups are based on measured bottlenecks, not assumptio
 
 ## Phase 5 - Cleanup Hardening Follow-up
 
-- [ ] After diagnostics prove the exact leak pattern, add exact-project cleanup hardening for install/upgrade and release-candidate jobs.
-- [ ] Use `cleanup-docker-resources.sh --project "$COMPOSE_PROJECT_NAME"` after `docker compose down -v --remove-orphans` where release-candidate jobs currently only run compose down.
-- [ ] Add a post-cleanup verification step that fails only for resources owned by the current run's project names.
+- [x] After diagnostics prove the exact leak pattern, add exact-project cleanup hardening for install/upgrade and release-candidate jobs.
+- [x] Use `cleanup-docker-resources.sh --project "$COMPOSE_PROJECT_NAME"` after `docker compose down -v --remove-orphans` where release-candidate jobs currently only run compose down.
+- [x] Add a post-cleanup verification step that fails only for resources owned by the current run's project names.
 - [ ] Keep runner-level stale action-container cleanup conservative: stopped/exited task containers can be removed by `--runner-leftovers`; running task containers require a separate operator-approved cleanup path.
-- [ ] Add or extend cleanup guard tests so protected app project names cannot be removed and current-run project prefixes are handled safely.
+- [x] Add or extend cleanup guard tests so protected app project names cannot be removed and current-run project prefixes are handled safely.
 
 Expected result: stale resources stop stealing CI capacity without making cleanup destructive.
+
+PR3 implementation plan 2026-05-13:
+
+- [x] Add an opt-in `--verify-empty` mode to `scripts/ci/cleanup-docker-resources.sh` that re-queries Compose-labeled containers, networks, and volumes after cleanup and exits non-zero only when exact selected project/prefix resources remain.
+- [x] Keep broad stale runner cleanup unchanged: `--runner-leftovers` still removes only stopped/exited action task containers and empty workflow networks; running action task containers remain protected.
+- [x] Update release-candidate fresh, health, and auth cleanup steps to run exact-project cleanup plus `--verify-empty` after `docker compose down -v --remove-orphans`.
+- [x] Add install-workflow current-run prefix verification in the cleanup job for `sanctuary-ci-fresh-*`, `stack-*`, `health-*`, `auth-*`, and `upgrade-*`, while respecting explicit keep-containers debug runs.
+- [x] Extend cleanup-resource and workflow-composition tests for verification mode, exact current-run prefixes, protected project refusal, and release-candidate cleanup wiring.
+- [x] Local verification stays focused: shell syntax, cleanup-resource tests, cleanup guard tests, workflow composition, `git diff --check`, and lizard on touched shell tests/scripts. Docker E2E remains skipped locally because the patch only changes cleanup wiring and verification behavior.
+
+Implementation review 2026-05-13:
+
+- Added `--verify-empty` to `scripts/ci/cleanup-docker-resources.sh`. It keeps normal cleanup warning-tolerant, then fails only when selected exact project or selected prefix resources still exist after cleanup.
+- Preserved the conservative runner-leftover boundary: stopped/exited Forgejo/Gitea task containers and empty `WORKFLOW-*` networks can be swept; running task containers are still skipped.
+- Release-candidate fresh, container-health, and auth cleanup now run exact project cleanup plus verification after Compose teardown.
+- The install cleanup job now verifies current-run `sanctuary-ci-fresh-*`, `stack-*`, `health-*`, `auth-*`, and `upgrade-*` prefixes, and skips that verification for explicit keep-containers debug runs.
+- Added focused regression tests for verify-empty success, exact-project failure, prefix failure, prefix exclusion, and workflow wiring.
 
 ## Phase 6 - Workflow-Only Scope Follow-up
 
@@ -238,6 +255,13 @@ Implementation review 2026-05-13:
 - [x] Follow-up 2026-05-13 focused checks: `git diff --check`
 - [x] Follow-up 2026-05-13 complexity review: `lizard tests/install/e2e/upgrade-install.test.sh tests/install/unit/upgrade-helpers.test.sh tests/ci/check-workflow-composition.test.sh` ran; no new high-complexity function was introduced. One existing warning remains in `test_diagnostic_redaction_hides_log_secrets`.
 - [ ] Docker upgrade E2E intentionally not run locally for the follow-up fail-closed patch; release/schedule/manual CI paths own that coverage.
+- [x] PR3 focused checks: `bash -n scripts/ci/cleanup-docker-resources.sh tests/ci/cleanup-docker-resources.test.sh tests/ci/check-workflow-composition.test.sh`
+- [x] PR3 focused checks: `bash tests/ci/cleanup-docker-resources.test.sh`
+- [x] PR3 focused checks: `bash tests/install/unit/cleanup-containers-guard.test.sh`
+- [x] PR3 focused checks: `bash tests/ci/check-workflow-composition.test.sh`
+- [x] PR3 focused checks: `git diff --check`
+- [x] PR3 complexity review: `lizard scripts/ci/cleanup-docker-resources.sh tests/ci/cleanup-docker-resources.test.sh tests/ci/check-workflow-composition.test.sh` ran with no threshold warnings.
+- [ ] Docker install/upgrade E2E intentionally not run locally for PR3; the patch changes cleanup verification and workflow wiring, not install behavior.
 - [ ] Manual dispatch with one extended fixture proves only that fixture runs.
 - [ ] Manual dispatch with `upgrade_source_ref` proves baseline runs that ref once, not twice.
 - [ ] Manual dispatch with `upgrade_source_ref` plus one extended fixture proves extended logs/artifacts use the selected source-ref label, not `latest-stable`.
@@ -265,8 +289,8 @@ PR2 focused verification 2026-05-13:
 - [x] PR 1: timing plus warning-only cleanup diagnostics. Merged in PR #438.
 - [x] Include the cross-run E2E lock fix in PR 1 if it can be done narrowly. Merged in PR #438 via global E2E workflow concurrency plus regression tests.
 - [x] PR 2: selection contract, manual fixture/source inputs, classifier selected outputs, baseline loop, extended fixture selection, selected-run manifest, artifact upload fixes, and release/schedule/manual-only upgrade policy. Merged in PR #439.
-- [ ] PR 2b: fail closed on unresolved/same-commit upgrade source refs and harden selected-upgrade summary failures. In progress on branch `fix/upgrade-ref-fail-closed`.
-- [ ] PR 3: cleanup hardening once diagnostics identify exact leftover resources.
+- [x] PR 2b: fail closed on unresolved/same-commit upgrade source refs and harden selected-upgrade summary failures. Merged in PR #440.
+- [ ] PR 3: cleanup hardening once diagnostics identify exact leftover resources. In progress on branch `fix/ci-current-run-cleanup-hardening`.
 - [ ] PR 4: optional source-ref reduction or build/cache optimization only after timing data supports the tradeoff.
 - [ ] PR 5: workflow-only scope relaxation, after the selection classifier and workflow-composition tests can distinguish pure CI metadata edits from behavioral install/upgrade workflow edits.
 
