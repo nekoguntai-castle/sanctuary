@@ -1,6 +1,6 @@
 # Active Task: Upgrade Test CI Speed Implementation Plan 2026-05-12
 
-Status: Phase 6 narrow workflow-only scope relaxation merged; Phase 1 timing/diagnostics and cross-run E2E serialization merged in PR #438. Phase 2/3 upgrade selection and release/schedule/manual-only upgrade policy merged in PR #439. Follow-up fail-closed upgrade-source handling merged in PR #440. PR3 cleanup hardening merged in PR #441. Release/manual-only upgrade scheduling is in progress on branch `fix/upgrade-release-manual-only`.
+Status: Actionable CI speed work merged through PR #442. Phase 1 timing/diagnostics and cross-run E2E serialization merged in PR #438; Phase 2/3 upgrade selection and release/manual-only upgrade policy merged in PR #439 and PR #442; fail-closed upgrade-source handling merged in PR #440; cleanup hardening merged in PR #441; workflow-only static relaxation was pulled forward before PR2. Remaining build/cache/source-ref optimization is intentionally deferred until release/manual timing data supports a safe tradeoff.
 
 Goal: reduce routine upgrade-test wallclock time without weakening the upgrade coverage that protects operators from broken installs and lockout regressions.
 
@@ -320,9 +320,18 @@ PR2 focused verification 2026-05-13:
 - [x] PR 2: selection contract, manual fixture/source inputs, classifier selected outputs, baseline loop, extended fixture selection, selected-run manifest, artifact upload fixes, and release/schedule/manual-only upgrade policy. Merged in PR #439.
 - [x] PR 2b: fail closed on unresolved/same-commit upgrade source refs and harden selected-upgrade summary failures. Merged in PR #440.
 - [x] PR 3: cleanup hardening once diagnostics identify exact leftover resources. Merged in PR #441.
-- [ ] PR 4: release/manual-only upgrade scheduling. In progress on branch `fix/upgrade-release-manual-only`.
+- [x] PR 4: release/manual-only upgrade scheduling. Merged in PR #442.
 - [ ] PR 5: optional source-ref reduction or build/cache optimization only after timing data supports the tradeoff.
 - [x] Workflow-only scope relaxation was pulled forward and merged before PR2 as Phase 6.
+
+Closeout review 2026-05-13:
+
+- Routine PRs, routine `main` pushes, and scheduled install CI no longer schedule Docker upgrade E2E.
+- Release tags still run full release-critical install validation, including both baseline refs and all active extended fixtures.
+- Manual `workflow_dispatch` remains the explicit path for exhaustive or selected upgrade debugging.
+- Upgrade jobs are serialized across non-PR runs, emit phase/build timing and DIND diagnostics, fail closed when selected source refs do not resolve to a real older checkout, and fail selected-upgrade summaries when selected work is skipped or failed.
+- Current-run cleanup now verifies exact selected Compose projects/prefixes after cleanup without broad removal of running action task containers.
+- Further no-cache build/cache/source-ref optimization should wait for the captured release/manual timing data. Changing that path now would risk weakening the operator upgrade proof without measured evidence.
 
 ## Success Criteria
 
