@@ -83,17 +83,20 @@ build_one() {
 
   # Registry-based BuildKit cache. arm64 cross-build via QEMU is
   # ~3-5x slower than amd64-only; without a layer cache, every release
-  # rebuilds from scratch and risks the 90-min job timeout. Pushing
+  # rebuilds from scratch and risks the 180-min job timeout. Pushing
   # cache to a dedicated `:cache-${image}` tag in the same Codeberg
   # repo lets the next release reuse most layers, turning a 60-90min
   # first build into a ~10-15min incremental.
   #
-  # cache-from is `mode=ignore-on-pull` so a cold cache (first run on a
-  # new image registry) doesn't fail the build.
+  # `ignore-error=true` is critical for Codeberg Packages: its OCI
+  # registry has rejected (400 Bad request) certain large cache blobs
+  # in the past; without this flag a cache-export failure cancels the
+  # image push and the whole release stalls. Image correctness is the
+  # contract; cache is best-effort.
   local cache_ref="${repo_image}:cache-${image}"
   output_args+=(--cache-from="type=registry,ref=${cache_ref}")
   if [ "$PUSH" = "true" ]; then
-    output_args+=(--cache-to="type=registry,ref=${cache_ref},mode=max")
+    output_args+=(--cache-to="type=registry,ref=${cache_ref},mode=max,ignore-error=true")
   fi
 
   # Build context is always the repo root. shared/ lives there and the
