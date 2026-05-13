@@ -1450,6 +1450,11 @@ jobs:
           fi
 
       - name: Upload digest manifest
+        # notify-umbrel downloads THIS artifact and does
+        # `ls dist/image-digests-*.json`. Keep this artifact to just the
+        # digest + summary files so the unpacked layout stays `dist/...`.
+        # The wrapped job logs go to a SEPARATE artifact below; bundling
+        # them with the digest broke v0.8.53 retag #5's notify step.
         if: always()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
@@ -1458,9 +1463,18 @@ jobs:
           path: |
             dist/image-digests-*.json
             dist/image-build-summary-*.txt
-            .tmp/job-logs/publish-images/
           retention-days: 90
           if-no-files-found: warn
+
+      - name: Upload publish-images job logs
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifact
+        with:
+          name: publish-images-logs-${{ github.ref_name }}
+          path: .tmp/job-logs/publish-images/
+          retention-days: 90
+          if-no-files-found: ignore
 
       - name: Tear down buildx builder
         # Always remove the run-scoped buildx builder so the dind host
