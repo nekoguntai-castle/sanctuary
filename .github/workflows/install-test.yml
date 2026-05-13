@@ -1366,22 +1366,29 @@ jobs:
         # buildkit containers across runs on the self-hosted runner.
         env:
           BUILDX_NAME: sanctuary-multiarch-${{ github.run_id }}
+          JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/publish-images
         run: |
           echo "BUILDX_NAME=$BUILDX_NAME" >> "$GITHUB_ENV"
-          docker run --privileged --rm tonistiigi/binfmt:latest --install arm64
-          docker buildx create --name "$BUILDX_NAME" \
-            --driver docker-container \
-            --platform linux/amd64,linux/arm64 \
-            --use
-          docker buildx inspect --bootstrap
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/bootstrap-buildx.log" bash -c '
+            set -e
+            docker run --privileged --rm tonistiigi/binfmt:latest --install arm64
+            docker buildx create --name "$BUILDX_NAME" \
+              --driver docker-container \
+              --platform linux/amd64,linux/arm64 \
+              --use
+            docker buildx inspect --bootstrap
+          '
 
       - name: Log in to Codeberg Packages
         env:
           CODEBERG_USER: ${{ secrets.CODEBERG_USER }}
           CODEBERG_PACKAGE_TOKEN: ${{ secrets.CODEBERG_PACKAGE_TOKEN }}
+          JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/publish-images
         run: |
-          echo "$CODEBERG_PACKAGE_TOKEN" \
-            | docker login codeberg.org -u "$CODEBERG_USER" --password-stdin
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/codeberg-login.log" bash -c '
+            echo "$CODEBERG_PACKAGE_TOKEN" \
+              | docker login codeberg.org -u "$CODEBERG_USER" --password-stdin
+          '
 
       - name: Build and push images
         env:
@@ -1391,9 +1398,20 @@ jobs:
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/build-and-push.log" \
             bash scripts/ci/build-and-push-images.sh
 
-      - name: Show build summary on failure
+      - name: Show diagnostics on failure
         if: failure()
+        env:
+          JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/publish-images
         run: |
+          echo "::group::tail bootstrap-buildx.log"
+          [ -f "$JOB_LOG_DIR/bootstrap-buildx.log" ] && tail -100 "$JOB_LOG_DIR/bootstrap-buildx.log" || echo "(no log)"
+          echo "::endgroup::"
+          echo "::group::tail codeberg-login.log"
+          [ -f "$JOB_LOG_DIR/codeberg-login.log" ] && tail -50 "$JOB_LOG_DIR/codeberg-login.log" || echo "(no log)"
+          echo "::endgroup::"
+          echo "::group::tail build-and-push.log"
+          [ -f "$JOB_LOG_DIR/build-and-push.log" ] && tail -200 "$JOB_LOG_DIR/build-and-push.log" || echo "(no log)"
+          echo "::endgroup::"
           echo "::group::dist/image-build-summary"
           for f in dist/image-build-summary-*.txt; do
             [ -f "$f" ] && { echo "----- $f -----"; tail -200 "$f"; }
@@ -1407,11 +1425,16 @@ jobs:
           echo "::endgroup::"
 
       - name: Publish failed logs to sink
-        if: failure() && env.SANCTUARY_CI_LOG_SINK_URL != ''
+        if: failure()
         continue-on-error: true
         env:
           JOB_LOG_DIR: ${{ github.workspace }}/.tmp/job-logs/publish-images
-        run: scripts/ci/publish-failed-logs.sh "$JOB_LOG_DIR" publish-images
+        run: |
+          if [ -n "${SANCTUARY_CI_LOG_SINK_URL:-}" ]; then
+            scripts/ci/publish-failed-logs.sh "$JOB_LOG_DIR" publish-images
+          else
+            echo "SANCTUARY_CI_LOG_SINK_URL not set; skipping sink upload"
+          fi
 
       - name: Upload digest manifest
         if: always()
