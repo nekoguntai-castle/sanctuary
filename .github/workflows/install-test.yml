@@ -1336,7 +1336,7 @@ jobs:
       && !contains(github.ref_name, '-alpha')
       && !contains(github.ref_name, '-beta')
       && !contains(github.ref_name, '-dev')
-    timeout-minutes: 90  # arm64 cross-build via QEMU is ~3-5x slower than amd64-only
+    timeout-minutes: 180  # arm64 cross-build via QEMU is ~3-5x slower than amd64-only; first build with cold cache hit the 90min limit, subsequent runs reuse the registry-pushed BuildKit cache and finish in ~10-15min
     permissions:
       contents: read
     steps:

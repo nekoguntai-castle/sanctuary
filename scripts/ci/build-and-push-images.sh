@@ -81,6 +81,21 @@ build_one() {
     output_args+=(--output=type=cacheonly)
   fi
 
+  # Registry-based BuildKit cache. arm64 cross-build via QEMU is
+  # ~3-5x slower than amd64-only; without a layer cache, every release
+  # rebuilds from scratch and risks the 90-min job timeout. Pushing
+  # cache to a dedicated `:cache-${image}` tag in the same Codeberg
+  # repo lets the next release reuse most layers, turning a 60-90min
+  # first build into a ~10-15min incremental.
+  #
+  # cache-from is `mode=ignore-on-pull` so a cold cache (first run on a
+  # new image registry) doesn't fail the build.
+  local cache_ref="${repo_image}:cache-${image}"
+  output_args+=(--cache-from="type=registry,ref=${cache_ref}")
+  if [ "$PUSH" = "true" ]; then
+    output_args+=(--cache-to="type=registry,ref=${cache_ref},mode=max")
+  fi
+
   # Build context is always the repo root. shared/ lives there and the
   # backend Dockerfile copies it.
   if ! docker buildx build \
