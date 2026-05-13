@@ -1,6 +1,6 @@
 # Active Task: Upgrade Test CI Speed Implementation Plan 2026-05-12
 
-Status: Phase 6 narrow workflow-only scope relaxation merged; Phase 1 timing/diagnostics and cross-run E2E serialization merged in PR #438. Phase 2/3 upgrade selection and release/schedule/manual-only upgrade policy merged in PR #439. Follow-up fail-closed upgrade-source handling and selected-upgrade summary hardening merged in PR #440. PR3 cleanup hardening is in progress on branch `fix/ci-current-run-cleanup-hardening`.
+Status: Phase 6 narrow workflow-only scope relaxation merged; Phase 1 timing/diagnostics and cross-run E2E serialization merged in PR #438. Phase 2/3 upgrade selection and release/schedule/manual-only upgrade policy merged in PR #439. Follow-up fail-closed upgrade-source handling merged in PR #440. PR3 cleanup hardening merged in PR #441. Release/manual-only upgrade scheduling is in progress on branch `fix/upgrade-release-manual-only`.
 
 Goal: reduce routine upgrade-test wallclock time without weakening the upgrade coverage that protects operators from broken installs and lockout regressions.
 
@@ -16,26 +16,27 @@ Goal: reduce routine upgrade-test wallclock time without weakening the upgrade c
 - The same overlap reproduced on the later live run: action task containers `35717` and `35718`, run ids `2616` and `2618`, were both in `browser-origin-ip`, both past `flock -w 3600 /.tmp/runner-locks-v2/e2e.lock`, and both executing `docker compose -f docker-compose.yml build --no-cache` concurrently. This is a repeatable lock-scope defect, not a one-off race.
 - The later DIND snapshot grew to `98.19GB` of images, `88.65GB` of build cache, and showed a `buildx_buildkit_sanctuary-multiarch-26100_state` volume. That likely relates to the publish-image fixes and reinforces that build-cache/disk telemetry needs to be part of CI diagnostics while registry cache warms up.
 - Latest main contains publish-image fixes `#431`-`#434`: failure log publishing, `run-with-log` wrapping, `wait-for-docker`, registry BuildKit cache, and a 180-minute timeout for cold arm64 multiarch pushes. Those fixes improve image-publish observability/caching, but they do not address upgrade extended overlap because that lane still uses the workspace-local E2E lock.
-- Earlier planning treated `install-test.yml` and shared install/upgrade CI workflow changes as exhaustive release-critical scope. Phase 6 narrowed static workflow-only edits, and PR2 now reserves Docker upgrade E2E for release tags, schedules, and manual dispatch.
+- Earlier planning treated `install-test.yml` and shared install/upgrade CI workflow changes as exhaustive release-critical scope. Phase 6 narrowed static workflow-only edits, PR2 reserved Docker upgrade E2E for release tags, schedules, and manual dispatch, and Phase 7 narrows schedules to a lightweight heartbeat.
 - PR #438 post-merge `main` verification was intentionally cancelled after `Code Quality` and `Test Suite` passed and `Upgrade Baseline` passed in `32m37s`; `Upgrade Extended Fixtures` was still running. The cancellation was acceptable because the same upgrade coverage will be re-run on the next CI-affecting PR/release path.
-- The working PR2 policy is now stronger than fixture selection alone: Docker upgrade E2E is reserved for release tags, schedules, and manual dispatch. Routine push/PR classifiers may still run install unit, fresh install, install script, stack, health, or auth checks, but upgrade baseline/extended outputs are cleared before jobs are scheduled.
+- The working policy is now stronger than fixture selection alone: Docker upgrade E2E is reserved for release tags and manual dispatch. Routine push/PR/schedule classifiers may still run install unit, fresh install, install script, stack, health, or auth checks, but upgrade baseline/extended outputs are cleared before jobs are scheduled.
 
 ## Guardrails
 
 - Release tags must continue to block on the full six-proof upgrade gate: `latest-stable/baseline`, `n-2/baseline`, `browser-origin-ip`, `legacy-runtime-env`, `notification-delivery`, and `optional-profiles`.
-- Scheduled confidence runs stay exhaustive unless we explicitly split daily smoke from weekly exhaustive coverage in a separate decision.
+- Scheduled confidence runs should stay lightweight by default. Release tags remain exhaustive, and manual dispatch remains the explicit path for selected or exhaustive upgrade debugging.
 - Before the optional source-ref reduction phase, every automatic baseline-triggering path keeps both `latest-stable` and `n-2`. The only early baseline collapse is the explicit manual `upgrade_source_ref` debug path.
 - Classifier uncertainty fails closed to broader upgrade coverage.
 - Do not reintroduce matrix fan-out for upgrade fixtures on the current Forgejo runner pool. The plan reduces selected work while keeping the sequential fixture runner.
 - Do not allow multiple exhaustive upgrade jobs to run concurrently on the same DIND daemon. Workflow `concurrency` and the current file lock are not sufficient if separate workflow runs/action containers do not share the lock path.
 - Pull request behavior stays Docker-free for upgrade E2E, and PR2 now clears upgrade outputs before jobs are scheduled.
-- Routine `push` behavior is intentionally narrowed: automatic `main` pushes do not run upgrade E2E. Release tags, schedules, and manual dispatch are the authoritative automatic/explicit upgrade-validation paths.
-- Automatic fixture-specific selection requires active, path-addressable fixture ownership. The visible files under `tests/install/fixtures/upgrade/*.sh` are currently not sourced by `upgrade-install.test.sh`; changes there rely on release/schedule/manual upgrade validation until that contract is fixed.
+- Routine `push` and scheduled behavior are intentionally narrowed: automatic `main` pushes and daily schedules do not run upgrade E2E. Release tags and manual dispatch are the authoritative upgrade-validation paths.
+- Automatic fixture-specific selection requires active, path-addressable fixture ownership. The visible files under `tests/install/fixtures/upgrade/*.sh` are currently not sourced by `upgrade-install.test.sh`; changes there rely on release/manual upgrade validation until that contract is fixed.
 - Every selected upgrade run must emit log-visible or machine-readable state showing selected symbolic refs, resolved refs, selected fixtures, sanitized labels, artifact paths, and run status.
 - Manual `upgrade_source_ref` must run once under a deterministic sanitized label. It must not run the same override twice under `latest-stable` and `n-2` logical labels.
 - Manual `upgrade_fixture` and `upgrade_source_ref` should apply only to `workflow_dispatch` debug runs. Tag releases ignore manual narrowing and remain exhaustive.
 - For now, do not parallelize baseline refs or extended fixtures on the same shared DIND runner. Parallelism is a future option only when jobs land on isolated runner/Docker daemon capacity; otherwise parallel no-cache builds reintroduce the contention Phase 1 fixed.
-- Any future workflow-only scope relaxation must keep release tags, schedules, and manual upgrade dispatches full when requested. Behavioral workflow edits should still run non-upgrade install smoke/static coverage, while upgrade E2E remains release/schedule/manual-only.
+- Any future workflow-only scope relaxation must keep release tags and manual upgrade dispatches full when requested. Behavioral workflow edits should still run non-upgrade install smoke/static coverage, while upgrade E2E remains release/manual-only.
+- Schedule policy update: scheduled install CI should provide a cheap heartbeat only. Do not spend Docker upgrade E2E on schedules unless we later add a separate, explicitly named weekly exhaustive schedule.
 
 ## Phase 1 - Timing And Cleanup Diagnostics
 
@@ -55,7 +56,7 @@ Goal: reduce routine upgrade-test wallclock time without weakening the upgrade c
 
 Expected result: the next slow run identifies the expensive fixture and phase, and cleanup leaks become visible without adding new release risk.
 
-Implementation review 2026-05-13:
+Phase 1 implementation review 2026-05-13:
 
 - Added upgrade phase timing notices at the `run_test` boundary and compose build timing notices around `scripts/setup.sh` builds/retries. The messages keep the existing `completed in Xm Ys (Ns)` shape so `scripts/ci/report-timing-notices.sh` can summarize them.
 - Extended `scripts/ci/report-timing-notices.sh` to include failed `::error title=CI timing::` lines, so failed build or phase durations are not omitted from timing summaries.
@@ -70,7 +71,7 @@ Implementation review 2026-05-13:
 
 - [x] Centralize or clearly expose the active extended fixture table: `browser-origin-ip`, `legacy-runtime-env`, `notification-delivery`, and `optional-profiles`, with stable port offsets.
 - [x] Add a validator/listing path used by both `scripts/ci/run-extended-upgrade-fixtures.sh` and classifier tests so fixture names and offsets are not duplicated inconsistently.
-- [x] Decide the fate of `tests/install/fixtures/upgrade/*.sh`: automatic push/PR changes to fixture files do not run targeted upgrade E2E; release/schedule/manual paths remain the upgrade validation mechanism until fixture ownership is truly path-addressable.
+- [x] Decide the fate of `tests/install/fixtures/upgrade/*.sh`: automatic push/PR/schedule changes to fixture files do not run targeted upgrade E2E; release/manual paths remain the upgrade validation mechanism until fixture ownership is truly path-addressable.
 - [x] If active fixture ownership is not made path-addressable in PR 2, limit fixture-specific selection to manual dispatch and keep automatic fixture/harness changes out of routine upgrade E2E.
 - [x] Define selected-list outputs as comma-separated values without spaces: `upgrade_baseline_refs` and `upgrade_extended_fixtures`.
 - [x] Define manual fixture semantics:
@@ -80,7 +81,7 @@ Implementation review 2026-05-13:
   - A non-empty `upgrade_source_ref` runs exactly one baseline source-ref entry and uses the same actual source ref for selected extended fixtures.
 - [x] Define source-ref label sanitization for Compose project names, log names, and artifact paths. Include slashes, dots, very long refs, collisions after sanitization, and refs that differ only by punctuation.
 - [x] Record both symbolic selectors (`latest-stable`, `n-2`, manual ref) and resolved git refs/commits in the manifest.
-- [x] Decide release/schedule behavior when a symbolic source ref cannot resolve or resolves to the target commit. Release/schedule/manual upgrade validation should fail closed instead of silently accepting a restart fallback. Restart fallback remains available only through explicit `SANCTUARY_UPGRADE_ALLOW_RESTART_FALLBACK=true` debug runs.
+- [x] Decide release/manual behavior when a symbolic source ref cannot resolve or resolves to the target commit. Release/manual upgrade validation should fail closed instead of silently accepting a restart fallback. Restart fallback remains available only through explicit `SANCTUARY_UPGRADE_ALLOW_RESTART_FALLBACK=true` debug runs.
 
 Expected result: selection behavior is unambiguous before workflow inputs are exposed.
 
@@ -89,8 +90,8 @@ Expected result: selection behavior is unambiguous before workflow inputs are ex
 - [x] Extend `.github/workflows/install-test.yml` `workflow_dispatch` with `upgrade_fixture`.
 - [x] Pass `upgrade_fixture` and `upgrade_source_ref` into `tests/install/utils/classify-install-scope.sh` as explicit environment variables.
 - [x] Extend `classify-install-scope.sh` with `upgrade_baseline_refs` and `upgrade_extended_fixtures` outputs.
-- [x] For release tags and schedules, output the exhaustive set: `latest-stable,n-2` plus all active extended fixtures. Routine install workflow, shared install CI helper, shared upgrade helper, and upgrade harness changes defer upgrade E2E to release/schedule/manual paths.
-- [x] For `server/prisma/*`, installer, setup, reset-2FA, backup, and offline changes, defer upgrade E2E to release/schedule/manual paths; keep non-upgrade install coverage where useful, such as fresh install for Prisma changes.
+- [x] For release tags, output the exhaustive set: `latest-stable,n-2` plus all active extended fixtures. Routine install workflow, shared install CI helper, shared upgrade helper, upgrade harness changes, and schedules defer upgrade E2E to release/manual paths.
+- [x] For `server/prisma/*`, installer, setup, reset-2FA, backup, and offline changes, defer upgrade E2E to release/manual paths; keep non-upgrade install coverage where useful, such as fresh install for Prisma changes.
 - [x] For active fixture-specific changes, keep automatic fixture/harness changes out of routine upgrade E2E until fixture ownership is path-addressable; manual fixture targeting is supported.
 - [x] Update `determine-scope` workflow outputs to expose selected refs and fixtures.
 - [x] Change `upgrade-baseline-test` from hardcoded `latest-stable` and `n-2` calls to a validated loop over selected refs.
@@ -107,17 +108,17 @@ Expected result: selection behavior is unambiguous before workflow inputs are ex
 - [x] Add install-scope tests for manual fixture selection, manual source-ref collapse, unsourced fixture files fail-closed, active fixture targeting when path-addressable, multiple fixtures, shared helper changes, workflow changes, release tags, schedules, Prisma-only, and installer-only cases.
 - [x] Add workflow-composition tests proving the classifier receives manual inputs, `determine-scope` exposes selected outputs, and upgrade jobs consume selected refs/fixtures rather than hardcoded lists.
 
-Expected result: routine CI avoids upgrade entries entirely, while manual debugging can run selected upgrade entries and release/schedule gates remain exhaustive.
+Expected result: routine and scheduled CI avoid upgrade entries entirely, while manual debugging can run selected upgrade entries and release gates remain exhaustive.
 
-Implementation review 2026-05-13:
+Phase 3 implementation review 2026-05-13:
 
 - Added `tests/install/utils/upgrade-selection.sh` as the shared upgrade selection registry for default baseline refs, active extended fixtures, stable fixture port offsets, selector validation, Compose/log/artifact-safe labels, and selected-run manifest generation with resolved refs/commits.
 - Added `workflow_dispatch.upgrade_fixture` and passed `upgrade_fixture` plus `upgrade_source_ref` into the classifier.
 - Added `upgrade_baseline_refs` and `upgrade_extended_fixtures` outputs from `determine-scope` and surfaced them in the install summary.
-- Changed routine push/PR classification so Docker upgrade E2E is cleared before scheduling. Release tags, schedules, and manual dispatch still select upgrade coverage.
+- Changed routine push/PR classification so Docker upgrade E2E is cleared before scheduling. Release tags and manual dispatch select upgrade coverage; schedules are narrowed separately in Phase 7.
 - Changed baseline upgrades from hardcoded `latest-stable`/`n-2` calls to a validated selected-ref loop with selected-run-safe artifact paths.
 - Changed `scripts/ci/run-extended-upgrade-fixtures.sh` to accept `--fixtures`, `--source-ref`, and `--validate-only`, while preserving all-fixture defaults and stable port offsets.
-- Added tests for release/schedule/manual exhaustive behavior, routine push upgrade deferral, manual fixture/source selection, invalid selector rejection, stable fixture offsets, sanitized labels, and manifest contents.
+- Added tests for release/manual exhaustive behavior, routine push upgrade deferral, manual fixture/source selection, invalid selector rejection, stable fixture offsets, sanitized labels, and manifest contents.
 
 Follow-up implementation review 2026-05-13:
 
@@ -132,7 +133,7 @@ Follow-up implementation review 2026-05-13:
 - [ ] Use phase timing to quantify source install, target no-cache build, startup/migration wait, and assertions before changing build behavior.
 - [ ] Re-measure extended fixture duration after the cross-run E2E lock is effective. The observed `47m40s`-`53m51s` baseline may include contention from concurrent no-cache builds.
 - [ ] Re-measure publish-images after registry cache is warm. `#434` expects cold builds to need the 180-minute timeout and warm builds to fall toward `10-15m`; verify with actual task durations before adding more publish-image changes.
-- [ ] Evaluate source-ref reduction only for release/schedule/manual upgrade runs after timing exists. Routine main pushes no longer run Docker upgrade E2E.
+- [ ] Evaluate source-ref reduction only for release/manual upgrade runs after timing exists. Routine main pushes and schedules no longer run Docker upgrade E2E.
 - [ ] Evaluate build/cache reuse only after proving it still exercises the operator upgrade path. Do not simply remove `--no-cache` from upgrade coverage without a regression proving code and Dockerfile changes are not hidden by stale images.
 - [ ] If reducing no-cache rebuild cost, prefer a design that preserves release fidelity, for example prebuilding target images once per selected job and proving the upgrade path uses those exact current-checkout images.
 - [ ] Do not merge baseline and extended jobs until timing shows job setup overhead is material. The current cost is dominated by per-fixture install/upgrade work, not the final marker job.
@@ -159,7 +160,7 @@ PR3 implementation plan 2026-05-13:
 - [x] Extend cleanup-resource and workflow-composition tests for verification mode, exact current-run prefixes, protected project refusal, and release-candidate cleanup wiring.
 - [x] Local verification stays focused: shell syntax, cleanup-resource tests, cleanup guard tests, workflow composition, `git diff --check`, and lizard on touched shell tests/scripts. Docker E2E remains skipped locally because the patch only changes cleanup wiring and verification behavior.
 
-Implementation review 2026-05-13:
+PR3 implementation review 2026-05-13:
 
 - Added `--verify-empty` to `scripts/ci/cleanup-docker-resources.sh`. It keeps normal cleanup warning-tolerant, then fails only when selected exact project or selected prefix resources still exist after cleanup.
 - Preserved the conservative runner-leftover boundary: stopped/exited Forgejo/Gitea task containers and empty `WORKFLOW-*` networks can be swept; running task containers are still skipped.
@@ -177,11 +178,11 @@ Behavior after Phase 6 plus the PR2 policy:
 - Static `.github/workflows/install-test.yml` diffs run unit/static validation only.
 - Behavioral `.github/workflows/install-test.yml` diffs run non-upgrade install smoke/static coverage on routine pushes.
 - Pull requests and routine pushes do not schedule Docker upgrade E2E.
-- Release tags and scheduled runs stay exhaustive. Manual `workflow_dispatch` defaults to exhaustive upgrade coverage, and `upgrade_fixture`/`upgrade_source_ref` can intentionally narrow debug runs.
+- Release tags stay exhaustive. Scheduled runs stay lightweight by default. Manual `workflow_dispatch` defaults to exhaustive upgrade coverage, and `upgrade_fixture`/`upgrade_source_ref` can intentionally narrow debug runs.
 
 Implementation plan:
 
-- [x] Add failing-first classifier tests that document the current cost: a push touching only `.github/workflows/install-test.yml` expands to release-critical, while release tags and schedules remain exhaustive.
+- [x] Add failing-first classifier tests that document the current cost: a push touching only `.github/workflows/install-test.yml` expands to release-critical, while release tags remain exhaustive and schedules become lightweight.
 - [x] Add a small install-workflow diff classifier helper used only from `classify-install-scope.sh`, for example `tests/install/utils/classify-install-workflow-diff.sh`.
 - [x] Make the helper compare `base_sha` and `head_sha` with `git diff --unified=0 -- .github/workflows/install-test.yml` and return one of `static`, `behavioral`, or `unknown`.
 - [x] Treat helper errors, missing commits, file deletion, file rename, binary diff, path ambiguity, parser failures, or unsupported diff shapes as `unknown`, and map `unknown` to the existing release-critical behavior.
@@ -214,7 +215,7 @@ Classifier test matrix:
 - [x] Static workflow tweak plus `server/prisma/*` change => Prisma baseline scope still runs.
 - [ ] Static workflow tweak plus upgrade harness/helper change => full upgrade scope still runs.
 - [x] Tag push with static workflow tweak => release-critical.
-- [x] Scheduled run => upgrade/exhaustive behavior unchanged.
+- [x] Scheduled run => lightweight unit-only heartbeat; no upgrade refs/fixtures selected.
 - [x] Unknown diff or deleted workflow file => release-critical.
 
 Rollout notes:
@@ -225,7 +226,29 @@ Rollout notes:
 
 Expected result: safe workflow-only tweaks avoid paying for full upgrade validation, while workflow edits that can change install or upgrade behavior still receive release-critical coverage.
 
-Implementation review 2026-05-13:
+## Phase 7 - Release/Manual-Only Upgrade Scheduling
+
+Goal: stop daily scheduled install CI from spending the full Docker upgrade E2E budget, while preserving exhaustive upgrade validation for release tags and explicit manual dispatch.
+
+Implementation plan:
+
+- [x] Change `schedule` classification from `test_suite=upgrade` plus full baseline/extended selection to a lightweight `unit-only` heartbeat.
+- [x] Keep release tags on full release-critical coverage: unit, fresh install, install script, stack/auth coverage, baseline refs, and all extended fixtures.
+- [x] Keep `workflow_dispatch` defaults capable of exhaustive upgrade coverage, with `upgrade_fixture` and `upgrade_source_ref` retaining selected debug behavior.
+- [x] Update classifier reason text so skipped scheduled upgrade work is intentional and visible in the install summary.
+- [x] Update install-scope tests to prove schedules no longer select upgrade refs/fixtures, while release tags and manual upgrade dispatch still do.
+- [x] Keep this as a policy-only PR. Do not change the upgrade harness, fixture registry, or no-cache build behavior.
+
+Expected result: scheduled install CI becomes fast and non-Docker-upgrade, and the expensive upgrade suite runs only when cutting a release or when explicitly requested manually.
+
+Phase 7 implementation review 2026-05-13:
+
+- Scheduled install workflow runs now classify as `test_suite=unit`, `scope=unit-only`, with no baseline refs or extended fixtures selected.
+- Release tags still classify as `release-critical` with both baseline refs and all active extended fixtures.
+- Manual `workflow_dispatch` still supports exhaustive `all`/`release-critical`/`upgrade` coverage and selected `upgrade_fixture`/`upgrade_source_ref` debugging.
+- Updated classifier tests to lock the schedule behavior and kept the patch policy-only: no upgrade harness, fixture registry, no-cache build, or workflow job structure changes.
+
+Phase 6 implementation review 2026-05-13:
 
 - Added `tests/install/utils/classify-install-workflow-diff.sh`, which classifies only true YAML comment/blank-line changes outside block scalars as `static`; comments inside `run: |` remain behavioral because they are shell content.
 - Wired `.github/workflows/install-test.yml` classification through the helper. `static` changes now produce `scope=workflow-static`, run install unit/static checks, and skip Docker-backed install/upgrade flags. `behavioral` and `unknown` diffs still use release-critical scope.
@@ -254,7 +277,7 @@ Implementation review 2026-05-13:
 - [x] Follow-up 2026-05-13 focused checks: `bash tests/ci/check-workflow-composition.test.sh`
 - [x] Follow-up 2026-05-13 focused checks: `git diff --check`
 - [x] Follow-up 2026-05-13 complexity review: `lizard tests/install/e2e/upgrade-install.test.sh tests/install/unit/upgrade-helpers.test.sh tests/ci/check-workflow-composition.test.sh` ran; no new high-complexity function was introduced. One existing warning remains in `test_diagnostic_redaction_hides_log_secrets`.
-- [ ] Docker upgrade E2E intentionally not run locally for the follow-up fail-closed patch; release/schedule/manual CI paths own that coverage.
+- [ ] Docker upgrade E2E intentionally not run locally for the follow-up fail-closed patch; release/manual CI paths own that coverage.
 - [x] PR3 focused checks: `bash -n scripts/ci/cleanup-docker-resources.sh tests/ci/cleanup-docker-resources.test.sh tests/ci/check-workflow-composition.test.sh`
 - [x] PR3 focused checks: `bash tests/ci/cleanup-docker-resources.test.sh`
 - [x] PR3 focused checks: `bash tests/install/unit/cleanup-containers-guard.test.sh`
@@ -262,10 +285,16 @@ Implementation review 2026-05-13:
 - [x] PR3 focused checks: `git diff --check`
 - [x] PR3 complexity review: `lizard scripts/ci/cleanup-docker-resources.sh tests/ci/cleanup-docker-resources.test.sh tests/ci/check-workflow-composition.test.sh` ran with no threshold warnings.
 - [ ] Docker install/upgrade E2E intentionally not run locally for PR3; the patch changes cleanup verification and workflow wiring, not install behavior.
+- [x] Phase 7 focused checks: `bash -n tests/install/utils/classify-install-scope.sh tests/install/unit/install-scope.test.sh`
+- [x] Phase 7 focused checks: `bash tests/install/unit/install-scope.test.sh`
+- [x] Phase 7 focused checks: `bash tests/ci/check-workflow-composition.test.sh`
+- [x] Phase 7 focused checks: `git diff --check`
+- [x] Phase 7 complexity review: `lizard tests/install/utils/classify-install-scope.sh tests/install/unit/install-scope.test.sh` ran with no threshold warnings.
+- [ ] Docker upgrade E2E intentionally not run locally for Phase 7; the patch only changes schedule classification policy.
 - [ ] Manual dispatch with one extended fixture proves only that fixture runs.
 - [ ] Manual dispatch with `upgrade_source_ref` proves baseline runs that ref once, not twice.
 - [ ] Manual dispatch with `upgrade_source_ref` plus one extended fixture proves extended logs/artifacts use the selected source-ref label, not `latest-stable`.
-- [ ] Release-tag or schedule-equivalent classifier proof expands to both baseline refs and all active extended fixtures.
+- [ ] Release-tag classifier proof expands to both baseline refs and all active extended fixtures.
 - [ ] Workflow-only static classifier proof runs unit/static validation only, while behavioral `install-test.yml` diffs still expand to release-critical coverage.
 - [ ] Artifact upload contains every selected baseline and extended artifact directory.
 - [ ] Cleanup diagnostics show no current-run project leftovers, or explain intentional leftovers when a debug keep-containers path is used. Pending live CI artifact review.
@@ -282,7 +311,7 @@ PR2 focused verification 2026-05-13:
 - [x] `bash tests/ci/check-provider-leaks.test.sh`
 - [x] `git diff --check`
 - [x] `lizard tests/install/utils/upgrade-selection.sh tests/install/utils/classify-install-scope.sh scripts/ci/run-extended-upgrade-fixtures.sh tests/install/unit/install-scope.test.sh tests/install/unit/upgrade-helpers.test.sh tests/ci/run-extended-upgrade-fixtures.test.sh tests/ci/check-workflow-composition.test.sh` ran; new/changed selection functions are below threshold, with one existing high-CCN warning in `test_diagnostic_redaction_hides_log_secrets`.
-- [ ] Docker upgrade E2E intentionally not run locally for PR2; release/schedule/manual CI paths own that coverage.
+- [ ] Docker upgrade E2E intentionally not run locally for PR2; release/manual CI paths own that coverage.
 
 ## Rollout Order
 
@@ -290,16 +319,17 @@ PR2 focused verification 2026-05-13:
 - [x] Include the cross-run E2E lock fix in PR 1 if it can be done narrowly. Merged in PR #438 via global E2E workflow concurrency plus regression tests.
 - [x] PR 2: selection contract, manual fixture/source inputs, classifier selected outputs, baseline loop, extended fixture selection, selected-run manifest, artifact upload fixes, and release/schedule/manual-only upgrade policy. Merged in PR #439.
 - [x] PR 2b: fail closed on unresolved/same-commit upgrade source refs and harden selected-upgrade summary failures. Merged in PR #440.
-- [ ] PR 3: cleanup hardening once diagnostics identify exact leftover resources. In progress on branch `fix/ci-current-run-cleanup-hardening`.
-- [ ] PR 4: optional source-ref reduction or build/cache optimization only after timing data supports the tradeoff.
-- [ ] PR 5: workflow-only scope relaxation, after the selection classifier and workflow-composition tests can distinguish pure CI metadata edits from behavioral install/upgrade workflow edits.
+- [x] PR 3: cleanup hardening once diagnostics identify exact leftover resources. Merged in PR #441.
+- [ ] PR 4: release/manual-only upgrade scheduling. In progress on branch `fix/upgrade-release-manual-only`.
+- [ ] PR 5: optional source-ref reduction or build/cache optimization only after timing data supports the tradeoff.
+- [x] Workflow-only scope relaxation was pulled forward and merged before PR2 as Phase 6.
 
 ## Success Criteria
 
 - The current four-fixture extended baseline of `47m40s`-`53m51s` is replaced by per-fixture and per-phase timings.
 - Manual debugging can run one source ref plus one extended fixture without editing workflow files.
-- Automatic routine CI avoids Docker upgrade E2E; selected upgrade refs/fixtures are used for manual debugging, while release tags and scheduled exhaustive validation still run all six upgrade proofs.
-- Release tags and scheduled exhaustive validation still run all six upgrade proofs.
+- Automatic routine and scheduled CI avoid Docker upgrade E2E; selected upgrade refs/fixtures are used for manual debugging, while release tags still run all six upgrade proofs.
+- Release tags still run exhaustive validation; schedules are lightweight unless we intentionally add a separately named exhaustive schedule later.
 - Static-only install workflow edits can avoid Docker-backed install/upgrade work, but ambiguous or behavioral workflow edits still fail closed to release-critical scope.
 - Upgrade artifacts and summaries identify selected symbolic refs, resolved refs, selected fixtures, and actual artifact paths.
 - Stale current-run Docker resources are visible and eventually cleaned by exact project name.
@@ -309,7 +339,7 @@ PR2 focused verification 2026-05-13:
 - Prioritize PR 1 first. The measured hour-long extended lane makes timing urgent, and warning-only cleanup diagnostics are low risk.
 - Live CI already proved concurrent extended jobs can run no-cache builds together despite the `e2e` lock. Fixing cross-run serialization is a near-term reliability/speed recommendation, because it reduces DIND contention without changing coverage.
 - Keep PR 2 focused on selection, manifests, and correctness tests. Do not mix in no-cache build changes.
-- Workflow-only scope relaxation shipped first for static edits; PR2 broadens the policy so behavioral workflow edits keep install/static smoke while upgrade E2E remains release/schedule/manual-only.
+- Workflow-only scope relaxation shipped first for static edits; PR2 broadens the policy so behavioral workflow edits keep install/static smoke while upgrade E2E remains release/manual-only.
 - Treat no-cache rebuild optimization as a later experiment. It is likely expensive, but it is also the behavior that makes the upgrade test faithful to real operator upgrades.
 - Do not promise automatic fixture-only speedups until fixture ownership is active and path-addressable. Until then, manual fixture selection still gives immediate operator value.
 

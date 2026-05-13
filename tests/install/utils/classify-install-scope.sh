@@ -256,11 +256,10 @@ if [ -n "$input_test_suite" ]; then
 fi
 
 if [ "$event_name" = "schedule" ]; then
-  should_run=true
-  test_suite=upgrade
-  reason="Scheduled upgrade validation"
-  scope=upgrade
-  enable_upgrade
+  test_suite=unit
+  reason="Scheduled install heartbeat; upgrade E2E reserved for release tags or manual dispatch"
+  scope=unit-only
+  enable_unit
   emit_outputs
   exit 0
 fi
@@ -355,7 +354,7 @@ defer_automatic_upgrade_e2e() {
   upgrade_baseline_refs=''
   upgrade_extended_fixtures=''
   add_scope upgrade-deferred
-  reason="${reason}; upgrade E2E reserved for release tags, schedules, or manual dispatch"
+  reason="${reason}; upgrade E2E reserved for release tags or manual dispatch"
 }
 
 while IFS= read -r file; do

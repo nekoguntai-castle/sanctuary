@@ -123,6 +123,13 @@ assert_static_workflow_scope() {
   assert_exact_output "$output_file" "scope" "workflow-static"
 }
 
+assert_unit_only_scope() {
+  local output_file="$1"
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
+  assert_exact_output "$output_file" "scope" "unit-only"
+  assert_upgrade_selection "$output_file" "" ""
+}
+
 workflow_variant() {
   local variant="${1:-base}"
   local permission=read
@@ -465,11 +472,8 @@ main() {
     export WORKFLOW_SHA="$head_sha"
     bash "$CLASSIFIER_SCRIPT"
   )
-  assert_exact_output "$output_file" "test_suite" "upgrade"
-  assert_scope "$output_file" "true" "false" "false" "false" "false" "false" "true" "true" "true" "false"
-  assert_upgrade_selection "$output_file" \
-    "latest-stable,n-2" \
-    "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles"
+  assert_exact_output "$output_file" "test_suite" "unit"
+  assert_unit_only_scope "$output_file"
 
   echo "install scope classifier regression checks passed"
 }
