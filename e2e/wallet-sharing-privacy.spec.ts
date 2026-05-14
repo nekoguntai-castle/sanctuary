@@ -241,7 +241,7 @@ const getSharedResponse: ShareApiResponder = (
   if (requestKey === "GET /transactions/balance-history")
     return mockResponse([]);
   if (requestKey === "GET /ai/status") {
-    return mockResponse({ available: false, containerAvailable: false });
+    return mockResponse({ available: false, proxyAvailable: false });
   }
   if (requestKey === "GET /intelligence/status") {
     return mockResponse({ available: false, ollamaConfigured: false });

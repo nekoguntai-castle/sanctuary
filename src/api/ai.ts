@@ -20,7 +20,7 @@ export interface AIStatus {
   endpoint?: string;
   error?: string;
   message?: string;
-  containerAvailable?: boolean;
+  proxyAvailable?: boolean;
 }
 
 export interface SuggestLabelRequest {

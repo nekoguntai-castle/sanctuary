@@ -210,7 +210,7 @@ capture_compose_failure_diagnostics() {
 # sanctuary-frontend -> frontend
 # sanctuary-gateway -> gateway
 # sanctuary-migrate -> migrate
-# sanctuary-ai -> ai
+# sanctuary-llm-egress-proxy -> ai
 # sanctuary-ollama -> ollama
 
 # Check if Docker is available and running

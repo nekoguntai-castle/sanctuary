@@ -24,7 +24,7 @@ const PUBLISHED_DOCS_INCLUDE = [
   'docs/README.md',
   'server/ARCHITECTURE.md',
   'gateway/ARCHITECTURE.md',
-  'ai-proxy/ARCHITECTURE.md',
+  'llm-egress-proxy/ARCHITECTURE.md',
   'CONTRIBUTING.md',
 ] as const;
 
@@ -34,7 +34,7 @@ const INTERNAL_MERMAID_DOC_ROUTES = {
   'docs/architecture/notification-pipeline.md': 'docs/architecture/notification-pipeline',
   'server/ARCHITECTURE.md': 'server/ARCHITECTURE',
   'gateway/ARCHITECTURE.md': 'gateway/ARCHITECTURE',
-  'ai-proxy/ARCHITECTURE.md': 'ai-proxy/ARCHITECTURE',
+  'llm-egress-proxy/ARCHITECTURE.md': 'llm-egress-proxy/ARCHITECTURE',
 } as const;
 
 const config: Config = {

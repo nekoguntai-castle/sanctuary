@@ -71,13 +71,13 @@ if [ "$KEEP_DATA" = true ]; then
     echo ""
     echo -e "${GREEN}This will KEEP:${NC}"
     echo "  - Database volume (your wallet data)"
-    echo "  - Ollama models volume"
+    echo "  - Legacy Ollama model volumes, if present"
     echo "  - Your .env file"
     echo ""
 else
     echo -e "${YELLOW}This will permanently delete:${NC}"
     echo "  - All Docker containers"
-    echo "  - All Docker volumes (database, Redis, Ollama models)"
+    echo "  - All Docker volumes (database, Redis, legacy Ollama model volumes)"
     echo "  - All locally built images"
     echo "  - Your .env file with secrets"
     echo "  - SSL certificates"
@@ -125,10 +125,12 @@ if [ "$KEEP_DATA" = false ]; then
     # Remove volumes explicitly (in case compose down -v missed some)
     docker volume rm sanctuary_postgres_data 2>/dev/null || true
     docker volume rm sanctuary_redis_data 2>/dev/null || true
+    # Legacy cleanup from the removed Sanctuary-managed model runtime.
     docker volume rm sanctuary_ollama_data 2>/dev/null || true
     # Also try without project prefix
     docker volume rm postgres_data 2>/dev/null || true
     docker volume rm redis_data 2>/dev/null || true
+    # Legacy cleanup from the removed Sanctuary-managed model runtime.
     docker volume rm ollama_data 2>/dev/null || true
 else
     echo "Removing Redis cache volume (keeping database)..."
@@ -140,7 +142,7 @@ echo "Removing locally built images..."
 docker rmi sanctuary-backend:local 2>/dev/null || true
 docker rmi sanctuary-frontend:local 2>/dev/null || true
 docker rmi sanctuary-gateway:local 2>/dev/null || true
-docker rmi sanctuary-ai:local 2>/dev/null || true
+docker rmi sanctuary-llm-egress-proxy:local 2>/dev/null || true
 
 # Clean up any dangling images from builds
 docker image prune -f 2>/dev/null || true

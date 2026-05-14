@@ -112,12 +112,12 @@ export default [
   {
     // shared/utils/errors.ts is the canonical home for these helpers, so the
     // rule that bans local redefinitions must not fire on the source of truth.
-    // ai-proxy is intentionally network-isolated and re-implements equivalents
-    // in ai-proxy/src/utils.ts; importing from shared into ai-proxy would
+    // llm-egress-proxy is intentionally network-isolated and re-implements equivalents
+    // in llm-egress-proxy/src/utils.ts; importing from shared into llm-egress-proxy would
     // break that boundary.
     files: [
       'shared/utils/errors.ts',
-      'ai-proxy/src/utils.ts',
+      'llm-egress-proxy/src/utils.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',
@@ -134,10 +134,10 @@ export default [
     },
   },
   {
-    // Phase F2: ai-proxy is intentionally network-isolated. It must NOT
+    // Phase F2: llm-egress-proxy is intentionally network-isolated. It must NOT
     // import from shared/ — neither via the workspace specifier nor via
-    // relative paths. Re-implements equivalents in ai-proxy/src/utils.ts.
-    files: ['ai-proxy/**/*.ts'],
+    // relative paths. Re-implements equivalents in llm-egress-proxy/src/utils.ts.
+    files: ['llm-egress-proxy/**/*.ts'],
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [
@@ -150,7 +150,7 @@ export default [
               '../../../../shared/**',
             ],
             message:
-              'ai-proxy is intentionally network-isolated; do not import from shared/. ' +
+              'llm-egress-proxy is intentionally network-isolated; do not import from shared/. ' +
               'See shared/utils/README.md.',
           },
         ],

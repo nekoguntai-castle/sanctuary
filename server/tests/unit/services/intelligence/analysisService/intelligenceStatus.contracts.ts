@@ -2,7 +2,7 @@ import { describe, expect, it, type Mock } from "vitest";
 import {
   mockFetch,
   mockGetAIConfig,
-  mockSyncConfigToContainer,
+  mockSyncConfigToLlmEgressProxy,
   validConfig,
 } from "./analysisServiceTestHarness";
 import { getIntelligenceStatus } from "../../../../../src/services/intelligence/analysisService";
@@ -27,11 +27,11 @@ export function registerIntelligenceStatusContracts(): void {
 
     it("should return available when the configured provider is reachable", async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ compatible: true, endpointType: "container" }),
+        json: async () => ({ compatible: true, endpointType: "host" }),
       });
 
       const result = await getIntelligenceStatus();
@@ -39,13 +39,13 @@ export function registerIntelligenceStatusContracts(): void {
       expect(result).toEqual({
         available: true,
         ollamaConfigured: true,
-        endpointType: "container",
+        endpointType: "host",
       });
     });
 
     it("should return unavailable when provider check returns not compatible", async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -63,7 +63,7 @@ export function registerIntelligenceStatusContracts(): void {
 
     it("should return default reason when provider check is not compatible and reason is falsy", async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -79,9 +79,9 @@ export function registerIntelligenceStatusContracts(): void {
       });
     });
 
-    it("should return unreachable when AI container request fails", async () => {
+    it("should return unreachable when LLM egress proxy request fails", async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -93,13 +93,13 @@ export function registerIntelligenceStatusContracts(): void {
       expect(result).toEqual({
         available: false,
         ollamaConfigured: false,
-        reason: "ai_container_unreachable",
+        reason: "llm_egress_proxy_unreachable",
       });
     });
 
     it("should return unreachable when fetch throws", async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockRejectedValueOnce(new Error("Connection refused"));
 
@@ -108,7 +108,7 @@ export function registerIntelligenceStatusContracts(): void {
       expect(result).toEqual({
         available: false,
         ollamaConfigured: false,
-        reason: "ai_container_unreachable",
+        reason: "llm_egress_proxy_unreachable",
       });
     });
   });

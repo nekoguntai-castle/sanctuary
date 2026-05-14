@@ -9,7 +9,7 @@ import {
   mockGetUtxoAgeDistribution,
   mockGetUtxoHealthProfile,
   mockNotificationChannelRegistry,
-  mockSyncConfigToContainer,
+  mockSyncConfigToLlmEgressProxy,
   validConfig,
 } from './analysisServiceTestHarness';
 import { runAnalysisPipelines } from '../../../../../src/services/intelligence/analysisService';
@@ -17,7 +17,7 @@ import { runAnalysisPipelines } from '../../../../../src/services/intelligence/a
 export function registerRunAnalysisTaxConsolidationContracts(): void {
     it('should run tax pipeline and create insight', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -72,7 +72,7 @@ export function registerRunAnalysisTaxConsolidationContracts(): void {
 
     it('should return null context for tax when both short and long term counts are zero', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -100,7 +100,7 @@ export function registerRunAnalysisTaxConsolidationContracts(): void {
 
     it('should run consolidation pipeline and create insight', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -169,7 +169,7 @@ export function registerRunAnalysisTaxConsolidationContracts(): void {
 
     it('should return null context for consolidation when fewer than 5 utxos', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -204,7 +204,7 @@ export function registerRunAnalysisTaxConsolidationContracts(): void {
 
     it('should handle consolidation with null latest fee snapshot and empty snapshots', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,

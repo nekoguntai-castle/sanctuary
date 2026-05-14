@@ -19,10 +19,10 @@ const lanOllamaProfile = {
 
 describe('AI provider profile domain model', () => {
   it('creates the default Ollama profile from legacy endpoint and model values', () => {
-    expect(createDefaultAIProviderProfile('http://ollama:11434', 'llama3.2:3b')).toMatchObject({
+    expect(createDefaultAIProviderProfile('http://host.docker.internal:11434', 'llama3.2:3b')).toMatchObject({
       id: 'default-ollama',
       providerType: 'ollama',
-      endpoint: 'http://ollama:11434',
+      endpoint: 'http://host.docker.internal:11434',
       model: 'llama3.2:3b',
     });
   });

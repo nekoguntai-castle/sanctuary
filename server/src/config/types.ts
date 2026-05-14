@@ -110,8 +110,8 @@ export interface PriceApisConfig {
 }
 
 export interface AiConfig {
-  containerUrl: string;
-  configSecret: string;
+  llmEgressProxyUrl: string;
+  llmEgressProxySecret: string;
 }
 
 export interface MaintenanceConfig {

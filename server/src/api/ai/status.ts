@@ -72,16 +72,16 @@ export function createStatusRouter(): Router {
         return res.json(incompleteProviderStatus(configStatus));
       }
 
-      const containerAvailable = await aiService.isContainerAvailable();
+      const proxyAvailable = await aiService.isLlmEgressProxyAvailable();
 
       res.json({
         enabled: true,
         configured: true,
-        available: containerAvailable,
+        available: proxyAvailable,
         model: configStatus.model,
         endpoint: configStatus.endpoint,
-        containerAvailable,
-        error: containerAvailable ? undefined : 'AI proxy container is not available',
+        proxyAvailable,
+        error: proxyAvailable ? undefined : 'LLM egress proxy is not available',
       });
     })
   );
@@ -114,7 +114,7 @@ export function createStatusRouter(): Router {
         available: health.available,
         model: health.model,
         endpoint: health.endpoint,
-        containerAvailable: health.containerAvailable,
+        proxyAvailable: health.proxyAvailable,
         error: health.error,
       });
     })

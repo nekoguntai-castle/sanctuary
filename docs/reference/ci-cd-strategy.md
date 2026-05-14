@@ -120,7 +120,7 @@ Run focused commands before pushing:
 Before opening or updating a PR, run the full local gate for the touched package so GitHub Actions is a protection layer, not the first place basic package coverage/build failures are discovered:
 
 - Gateway changes: `cd gateway && npm run test:coverage && npm run build`.
-- AI proxy changes: `npm --prefix ai-proxy run build` plus `npx vitest run tests/ai-proxy`.
+- LLM egress proxy changes: `npm --prefix llm-egress-proxy run build` plus `npx vitest run tests/llm-egress-proxy`.
 - Server security, Bitcoin, auth, access-control, or shared-service changes: focused tests, `npm run typecheck:server:tests`, and the broader changed-server test gate when paths are critical.
 - Frontend changes: strict app/test typechecks plus the relevant coverage command for the changed surface.
 
@@ -137,7 +137,7 @@ The PR quick gate is optimized for repeated branch updates.
 - Backend test typecheck in a DB-free job plus DB-backed related non-integration Vitest tests.
 - Backend integration smoke for backend changes that touch integration-sensitive surfaces, such as API routes, middleware, repositories, Prisma migrations, worker/queue infrastructure, package/config files, or integration tests. Clearly unit-scoped backend helper changes still run backend typecheck and related non-integration tests, but skip the DB-backed smoke lane.
 - Gateway related tests.
-- AI proxy build plus the dedicated `tests/ai-proxy` suite for `ai-proxy/` source/config changes and `tests/ai-proxy/` changes. These paths do not run frontend tests unless a separate frontend path changed.
+- LLM egress proxy build plus the dedicated `tests/llm-egress-proxy` suite for `llm-egress-proxy/` source/config changes and `tests/llm-egress-proxy/` changes. These paths do not run frontend tests unless a separate frontend path changed.
 - Chromium browser smoke only for browser-flow-relevant paths such as app routing, auth/API clients, selected shell routes, server API/routing/auth middleware, and non-render E2E specs.
 - Chromium render regression only for visual/rendering paths such as app shell, components, hooks, providers, themes, utilities, and render-regression fixtures/snapshots.
 - Critical mutation gate for critical Bitcoin/auth/access-control paths.
@@ -154,7 +154,7 @@ The merge/main gate exists to prove the final candidate, not every local-sized c
 
 `Test Suite` full lane runs on `main`, schedule, manual dispatch, and merge queue. On merge-queue and push events, it first classifies changed paths and runs only the relevant full lanes. Schedule and manual dispatch set `full_scan=true` and remain exhaustive.
 
-Markdown and MDX files are docs-only for the test classifiers, including package-local docs under `server/`, `gateway/`, `ai-proxy/`, and `tests/install/`. A docs-only change may still get required aggregate/no-op checks on PRs, but it must not start source tests, DB-backed tests, E2E lanes, install tests, or image builds.
+Markdown and MDX files are docs-only for the test classifiers, including package-local docs under `server/`, `gateway/`, `llm-egress-proxy/`, and `tests/install/`. A docs-only change may still get required aggregate/no-op checks on PRs, but it must not start source tests, DB-backed tests, E2E lanes, install tests, or image builds.
 
 - Full backend typecheck for backend changes, test-workflow changes, or exhaustive runs. This job does not start Postgres or run migrations.
 - Full backend unit coverage for backend changes, test-workflow changes, or exhaustive runs. This remains DB-backed and keeps publishing the stable `backend-coverage` artifact.
@@ -162,7 +162,7 @@ Markdown and MDX files are docs-only for the test classifiers, including package
 - `Full Backend Tests` remains the aggregate backend result consumed by `Full Test Summary`, so branch protection does not depend on path-conditional source or integration leaf jobs.
 - Full frontend app typecheck, test typecheck, and threshold-enforced coverage for frontend changes, test-workflow changes, or exhaustive runs. Typechecks run in a small matrix, while frontend coverage runs as two Vitest shard jobs that upload blob reports. A merge job then combines those blobs, generates the normal `coverage/` output, and enforces the existing coverage thresholds once. The `full-frontend-tests` job remains the aggregate result consumed by `Full Test Summary`.
 - Full gateway coverage for gateway changes, test-workflow changes, or exhaustive runs.
-- Full AI proxy build plus `tests/ai-proxy` for AI proxy changes, test-workflow changes, or exhaustive runs.
+- Full LLM egress proxy build plus `tests/llm-egress-proxy` for LLM egress proxy changes, test-workflow changes, or exhaustive runs.
 - Critical mutation gate for critical mutation paths or exhaustive runs.
 - Full browser-flow Playwright E2E for browser/API/route/non-render E2E paths, test-workflow changes, or exhaustive runs. This lane starts from path classification instead of waiting behind full coverage lanes, but keeps its deterministic spec groups serialized inside one E2E lock until an isolated-runner rehearsal proves browser fan-out is stable.
 - Full render-regression Playwright E2E for visual/rendering paths and render fixtures/snapshots, test-workflow changes, or exhaustive runs. This lane is frontend-only and does not start backend services.

@@ -51,7 +51,7 @@ export function createFeaturesRouter(): Router {
    * Request body:
    *   - transactionId: string - Transaction ID to suggest label for
    *
-   * The AI container fetches sanitized transaction data internally.
+   * The LLM egress proxy fetches sanitized transaction data internally.
    * This ensures no sensitive data (addresses, txids) is exposed.
    */
   router.post(

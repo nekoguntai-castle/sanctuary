@@ -136,7 +136,7 @@ describe('Intelligence API Routes', () => {
 
   describe('GET /status', () => {
     it('returns intelligence status', async () => {
-      const statusData = { available: true, model: 'llama3', endpoint: 'http://ollama:11434' };
+      const statusData = { available: true, model: 'llama3', endpoint: 'http://host.docker.internal:11434' };
       mockAnalysisService.getIntelligenceStatus.mockResolvedValueOnce(statusData);
 
       const req = createMockRequest({

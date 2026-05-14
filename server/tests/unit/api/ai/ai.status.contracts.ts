@@ -12,7 +12,7 @@ export function registerAiStatusContracts() {
       model: 'llama2',
       endpoint: 'http://localhost:11434',
     });
-    (aiService.isContainerAvailable as Mock).mockResolvedValue(true);
+    (aiService.isLlmEgressProxyAvailable as Mock).mockResolvedValue(true);
 
     const response = await request(app)
   .get('/api/v1/ai/status')
@@ -24,7 +24,7 @@ export function registerAiStatusContracts() {
     expect(response.body.available).toBe(true);
     expect(response.body.model).toBe('llama2');
     expect(response.body.endpoint).toBe('http://localhost:11434');
-    expect(response.body.containerAvailable).toBe(true);
+    expect(response.body.proxyAvailable).toBe(true);
     expect(aiService.checkHealth).not.toHaveBeenCalled();
   });
 
@@ -93,7 +93,7 @@ export function registerAiStatusContracts() {
       model: 'llama2',
       endpoint: 'http://localhost:11434',
     });
-    (aiService.isContainerAvailable as Mock).mockResolvedValue(false);
+    (aiService.isLlmEgressProxyAvailable as Mock).mockResolvedValue(false);
 
     const response = await request(app)
   .get('/api/v1/ai/status')
@@ -103,8 +103,8 @@ export function registerAiStatusContracts() {
     expect(response.body.enabled).toBe(true);
     expect(response.body.configured).toBe(true);
     expect(response.body.available).toBe(false);
-    expect(response.body.containerAvailable).toBe(false);
-    expect(response.body.error).toBe('AI proxy container is not available');
+    expect(response.body.proxyAvailable).toBe(false);
+    expect(response.body.error).toBe('LLM egress proxy is not available');
     expect(aiService.checkHealth).not.toHaveBeenCalled();
   });
 
@@ -119,7 +119,7 @@ export function registerAiStatusContracts() {
       available: true,
       model: 'llama2',
       endpoint: 'http://localhost:11434',
-      containerAvailable: true,
+      proxyAvailable: true,
     });
 
     const response = await request(app)
@@ -135,7 +135,7 @@ export function registerAiStatusContracts() {
       available: true,
       model: 'llama2',
       endpoint: 'http://localhost:11434',
-      containerAvailable: true,
+      proxyAvailable: true,
     });
     expect(aiService.checkHealth).toHaveBeenCalledTimes(1);
   });

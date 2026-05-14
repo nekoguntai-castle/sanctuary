@@ -22,7 +22,7 @@ import approvalRoutes from './api/approvals';
 import payjoinRoutes from './api/payjoin';
 import aiRoutes from './api/ai';
 import agentRoutes from './api/agent';
-import aiInternalRoutes from './api/ai-internal';
+import aiInternalRoutes from './api/llm-egress-internal';
 import intelligenceRoutes from './api/intelligence';
 import consoleRoutes from './api/console';
 import healthRoutes from './api/health';

@@ -21,7 +21,7 @@ Sanctuary already has a real read-only MCP foundation: `POST /mcp`, bearer-token
 
 It does not yet meet the stated next-release goal for a LAN-accessible external LLM/client. The default Compose and config surface keep MCP on loopback, docs do not show a correct LAN setup, the prebuilt Compose file does not include MCP, HTTP transport has no built-in TLS, backups currently restore MCP key hashes as still-usable credentials, tests do not prove real client compatibility, and read parity with the GUI is incomplete.
 
-The safer near-term product is the in-app Sanctuary Console path. It can reuse the existing Treasury Intelligence chat and AI proxy architecture, keep the MCP port loopback-only or disabled, enforce browser user auth and wallet access in the backend, and still use the same MCP/read tool registry for answers.
+The safer near-term product is the in-app Sanctuary Console path. It can reuse the existing Treasury Intelligence chat and LLM egress proxy architecture, keep the MCP port loopback-only or disabled, enforce browser user auth and wallet access in the backend, and still use the same MCP/read tool registry for answers.
 
 ## Implemented MCP Surface
 
@@ -47,7 +47,7 @@ The safer near-term product is the in-app Sanctuary Console path. It can reuse t
 - Tool output schemas are generic passthrough objects. Local LLM tool use will be better and safer with precise output schemas for transactions, UTXOs, balances, fees, drafts, and analytics.
 - Strictly requiring `MCP-Protocol-Version` on every POST may reject clients that follow the spec fallback behavior for initial requests.
 - Audit-log reads are correctly admin plus `allowAuditLogs`, but returned audit data can include IP address, user agent, and details. Keep that as an explicit high-privilege scope.
-- The existing AI chat path passes only supplied `walletContext` into the AI proxy and does not have tool-calling. This is a good isolation baseline, but the terminal-like console will need a backend-owned tool execution loop, not arbitrary LLM access to the database or shell.
+- The existing AI chat path passes only supplied `walletContext` into the LLM egress proxy and does not have tool-calling. This is a good isolation baseline, but the terminal-like console will need a backend-owned tool execution loop, not arbitrary LLM access to the database or shell.
 
 ## GUI Read-Parity Gaps
 
@@ -80,9 +80,9 @@ Path 1: Direct external MCP client or LAN LLM
 Path 2: In-app Sanctuary Console
 
 - This should be the preferred general-user path.
-- Build on the existing Treasury Intelligence chat and AI proxy instead of creating a second assistant stack.
+- Build on the existing Treasury Intelligence chat and LLM egress proxy instead of creating a second assistant stack.
 - Do not implement an OS shell. Make it a command/chat console that can call approved Sanctuary tools and show tool-call traces.
-- Keep tool execution in the Sanctuary backend. The browser sends the user's prompt; the backend calls the LAN LLM through the AI proxy; the backend decides which read-only tools can run; the backend executes them under the logged-in user's auth and wallet access.
+- Keep tool execution in the Sanctuary backend. The browser sends the user's prompt; the backend calls the LAN LLM through the LLM egress proxy; the backend decides which read-only tools can run; the backend executes them under the logged-in user's auth and wallet access.
 - Prefer a shared in-process read-tool registry used by both MCP and the console, with MCP as one transport adapter. That avoids the console needing to mint and store an MCP bearer token for itself.
 - If the console consumes the HTTP MCP server anyway, use a loopback-only service token generated for the backend, never expose that token to the browser or LLM.
 - Add explicit consent for any future write-like action. For the next release, keep console tools read-only and generate "open this screen" or "prepare a draft" suggestions rather than mutating state.
@@ -118,5 +118,5 @@ Tests       85 passed (85)
 - MCP resources/tools/prompts: `server/src/mcp/resources/index.ts`, `server/src/mcp/tools/index.ts`, `server/src/mcp/prompts/index.ts`
 - MCP deployment config: `docker-compose.yml`, `server/src/config/index.ts`, `start.sh`, `docs/how-to/mcp-server.md`
 - Backup restore behavior: `server/src/services/backupService/restore.ts`, `server/src/services/backupService/constants.ts`, `server/src/services/backupService/serialization.ts`
-- Existing AI console base: `components/Intelligence/tabs/ChatTab.tsx`, `server/src/services/intelligence/conversationService.ts`, `ai-proxy/src/index.ts`, `server/src/api/ai-internal.ts`
+- Existing AI console base: `components/Intelligence/tabs/ChatTab.tsx`, `server/src/services/intelligence/conversationService.ts`, `llm-egress-proxy/src/index.ts`, `server/src/api/ai-internal.ts`
 - Official MCP references checked: `https://modelcontextprotocol.io/specification/2025-11-25/basic/transports`, `https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization`, `https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices`

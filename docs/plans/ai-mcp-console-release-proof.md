@@ -8,7 +8,7 @@ Status: release-documentation slice in progress; implementation slices complete.
 
 Sanctuary now has two supported AI access paths:
 
-1. **Sanctuary Console** is the recommended user path. It runs inside the authenticated app, uses the configured AI provider through the AI proxy, and executes backend-owned read tools under the logged-in user's permissions.
+1. **Sanctuary Console** is the recommended user path. It runs inside the authenticated app, uses the configured AI provider through the LLM egress proxy, and executes backend-owned read tools under the logged-in user's permissions.
 2. **Direct MCP** is the advanced external-client path. It is read-only, disabled by default, loopback-bound by default, and requires scoped bearer keys. LAN use requires TLS, VPN, or a trusted reverse proxy.
 
 The release remains intentionally read-only for AI/MCP tool execution. Spending, signing, draft creation, label edits, policy changes, shell execution, arbitrary SQL, and public internet MCP exposure are out of scope.
@@ -21,7 +21,7 @@ The release remains intentionally read-only for AI/MCP tool execution. Spending,
 | #183 | `d6112b2c` | Typed AI provider profile foundation |
 | #184 | `89d05c7f` | MCP transport, restore, metadata, Compose, and docs hardening |
 | #185 | `33436668` | Encrypted AI provider credential boundary |
-| #186 | `a7060290` | AI proxy gateway auth, provider egress policy, and credential sync |
+| #186 | `a7060290` | LLM egress proxy gateway auth, provider egress policy, and credential sync |
 | #187 | `48daf765` | Shared assistant read-tool registry foundation |
 | #188 | `77d36fed` | Read-tool parity batch 1: dashboard, wallets, transactions, UTXOs, addresses |
 | #189 | `a13037b4` | Read-tool parity batch 2: labels, policies, drafts, market status, insights, admin summaries |
@@ -37,7 +37,7 @@ The implementation slices recorded these local proof commands across the stack:
 
 - Frontend: focused AI Settings/Console/API suites, `npm run test:coverage`, `npm run test:run`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`.
 - Backend: focused MCP/admin/Console/config/support/routes suites, `npm run test:backend:coverage`, `npm run typecheck:server:tests`, `npm run lint:server`, `npm run check:openapi-route-coverage`, `npm --prefix server run check:prisma-imports`.
-- AI proxy: focused Console/protocol/gateway tests and `npm --prefix ai-proxy run build`.
+- LLM egress proxy: focused Console/protocol/gateway tests and `npm --prefix llm-egress-proxy run build`.
 - Architecture and quality: `npm run arch:graphs`, `npm run arch:calls`, `npm run arch:lint`, touched-file `lizard -C 15`, `git diff --check`, local gitleaks history/tree scans where MCP-token-shaped fixtures were touched.
 - CI: each implementation PR passed protected PR checks before merge; #194 also passed post-merge `main` workflows for Release, Build Dev Images, Architecture, CodeQL, and Test Suite.
 
@@ -58,7 +58,7 @@ Operator-facing docs now cover:
 
 ## Security Evidence
 
-- Model access is mediated by the backend and AI proxy. The browser does not send JWTs, MCP tokens, or provider API keys to the model.
+- Model access is mediated by the backend and LLM egress proxy. The browser does not send JWTs, MCP tokens, or provider API keys to the model.
 - Console and MCP tool execution uses the shared assistant read-tool registry with explicit scopes, sensitivities, redactions, result budgets, and provenance metadata.
 - MCP API keys are scoped, revocable, optionally expiring, hash-stored, and forced revoked on restore.
 - AI provider credentials are encrypted separately from provider metadata, redacted from responses, disabled on restore, and omitted from support packages.

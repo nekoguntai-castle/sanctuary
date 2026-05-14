@@ -4,7 +4,7 @@
  * Endpoints for AI-powered features (transaction labeling, natural language queries).
  * All routes require authentication. AI must be enabled in admin settings.
  *
- * SECURITY: Backend forwards requests to isolated AI container.
+ * SECURITY: Backend forwards requests to isolated LLM egress proxy.
  * The backend NEVER makes external AI calls directly.
  *
  * Rate limited to prevent abuse of AI endpoints.

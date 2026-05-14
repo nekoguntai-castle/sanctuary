@@ -39,7 +39,7 @@ export const aiPaths = {
       tags: ["AI"],
       summary: "Get AI status",
       description:
-        "Check whether AI is enabled, whether provider setup is complete, and whether the AI proxy is reachable. This status check does not run model inference.",
+        "Check whether AI is enabled, whether provider setup is complete, and whether the LLM egress proxy is reachable. This status check does not run model inference.",
       security: bearerAuth,
       responses: {
         200: jsonResponse("AI status", "#/components/schemas/AIStatusResponse"),
@@ -110,7 +110,7 @@ export const aiPaths = {
       tags: ["AI"],
       summary: "Detect Ollama endpoint",
       description:
-        "Ask the isolated AI container to detect a local or configured Ollama endpoint. OpenAI-compatible providers such as LM Studio are listed from the configured endpoint instead.",
+        "Ask the isolated LLM egress proxy to detect a local or configured Ollama endpoint. OpenAI-compatible providers such as LM Studio are listed from the configured endpoint instead.",
       security: bearerAuth,
       responses: {
         200: jsonResponse(
@@ -127,7 +127,7 @@ export const aiPaths = {
       tags: ["AI"],
       summary: "Detect typed AI provider endpoint",
       description:
-        "Ask the isolated AI container to probe an operator-supplied Ollama or OpenAI-compatible endpoint, including LAN LM Studio endpoints.",
+        "Ask the isolated LLM egress proxy to probe an operator-supplied Ollama or OpenAI-compatible endpoint, including LAN LM Studio endpoints.",
       security: bearerAuth,
       requestBody: jsonRequestBody("#/components/schemas/AIDetectProviderRequest"),
       responses: {

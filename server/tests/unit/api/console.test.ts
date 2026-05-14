@@ -246,7 +246,7 @@ describe("console API routes", () => {
   it("returns Console proxy timeout details from failed turns", async () => {
     mocks.runConsoleTurn.mockRejectedValueOnce(
       new ServiceUnavailableError(
-        "AI proxy /console/plan request failed: The request took too long to process",
+        "LLM egress proxy /console/plan request failed: The request took too long to process",
         "SERVICE_UNAVAILABLE",
         {
           path: "/console/plan",
@@ -264,7 +264,7 @@ describe("console API routes", () => {
     expect(response.body).toMatchObject({
       code: "SERVICE_UNAVAILABLE",
       message:
-        "AI proxy /console/plan request failed: The request took too long to process",
+        "LLM egress proxy /console/plan request failed: The request took too long to process",
       details: {
         path: "/console/plan",
         status: 408,

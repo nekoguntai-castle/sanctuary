@@ -41,7 +41,7 @@ This guide explains how to deploy Sanctuary using Docker and Docker Compose.
 | Frontend   | 256MB        | 0.5 core  | Nginx + static files |
 | Gateway    | 256MB        | 0.5 core  | Mobile API gateway |
 | Redis      | 192MB        | 0.5 core  | Cache and pub/sub |
-| AI         | 256MB        | 0.5 core  | AI proxy (idle until enabled) |
+| AI         | 256MB        | 0.5 core  | LLM egress proxy (idle until enabled) |
 
 > **Note**: Local model RAM/CPU requirements apply to the external provider process, such as host-installed Ollama, LM Studio, llama.cpp, or vLLM.
 

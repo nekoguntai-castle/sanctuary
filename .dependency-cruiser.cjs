@@ -23,7 +23,7 @@ module.exports = {
         '/coverage/',
         '/server/',
         '/gateway/',
-        '/ai-proxy/',
+        '/llm-egress-proxy/',
         '/scripts/',
         '/playwright-report/',
         '/test-results/',

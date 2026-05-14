@@ -408,8 +408,8 @@ export function useAISettings(): UseAISettingsReturn {
       log.error("AI provider detection failed", { error });
       setDetectMessage(
         providerType === "openai-compatible"
-          ? "Connection failed. Check the endpoint URL and AI proxy allowlist."
-          : "Detection failed. Check AI container logs.",
+          ? "Connection failed. Check the endpoint URL and LLM egress proxy allowlist."
+          : "Detection failed. Check LLM egress proxy logs.",
       );
     } finally {
       setIsDetecting(false);

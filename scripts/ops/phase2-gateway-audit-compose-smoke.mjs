@@ -62,7 +62,7 @@ const composeEnv = {
   ENCRYPTION_KEY: 'phase2-gateway-audit-encryption-key-32-chars',
   ENCRYPTION_SALT: 'phase2-gateway-audit-encryption-salt',
   GATEWAY_SECRET: gatewaySecret,
-  AI_CONFIG_SECRET: 'phase2-gateway-audit-ai-config-secret-32-characters',
+  LLM_EGRESS_PROXY_SECRET: 'phase2-gateway-audit-llm-egress-proxy-secret-32-characters',
   GATEWAY_TLS_ENABLED: 'false',
   TLS_ENABLED: 'false',
   GATEWAY_PORT: gatewayPort,

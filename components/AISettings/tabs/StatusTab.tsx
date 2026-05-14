@@ -24,7 +24,7 @@ export function StatusTab({
             </h3>
             <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">
               {usesExternalProvider
-                ? "Sanctuary's AI proxy is isolated from private keys, signing operations, and the database. Your configured provider may run outside Sanctuary, so use a trusted endpoint; Sanctuary sends sanitized transaction metadata and never sends addresses or transaction IDs."
+                ? "Sanctuary's LLM egress proxy is isolated from private keys, signing operations, and the database. Your configured provider may run outside Sanctuary, so use a trusted endpoint; Sanctuary sends sanitized transaction metadata and never sends addresses or transaction IDs."
                 : "Sanctuary sends AI requests through a separate proxy/container with no access to private keys, signing operations, or the database. Only sanitized transaction metadata is shared with the configured model. Addresses and transaction IDs are never exposed."}
             </p>
           </div>

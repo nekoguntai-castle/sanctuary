@@ -10,8 +10,8 @@ const analysisServiceMocks = vi.hoisted(() => {
     mockGetRedisClient: vi.fn(() => redis),
     mockIsRedisConnected: vi.fn(() => true),
     mockGetAIConfig: vi.fn(),
-    mockSyncConfigToContainer: vi.fn(),
-    mockGetContainerUrl: vi.fn(() => 'http://ai:3100'),
+    mockSyncConfigToLlmEgressProxy: vi.fn(),
+    mockGetLlmEgressProxyUrl: vi.fn(() => 'http://llm-egress-proxy:3100'),
     mockGetEnabledIntelligenceWallets: vi.fn(),
     mockNotificationChannelRegistry: {
       notifyInsight: vi.fn(),
@@ -39,8 +39,8 @@ vi.mock('../../../../../src/infrastructure', () => ({
 
 vi.mock('../../../../../src/services/ai/config', () => ({
   getAIConfig: analysisServiceMocks.mockGetAIConfig,
-  syncConfigToContainer: analysisServiceMocks.mockSyncConfigToContainer,
-  getContainerUrl: analysisServiceMocks.mockGetContainerUrl,
+  syncConfigToLlmEgressProxy: analysisServiceMocks.mockSyncConfigToLlmEgressProxy,
+  getLlmEgressProxyUrl: analysisServiceMocks.mockGetLlmEgressProxyUrl,
 }));
 
 vi.mock('../../../../../src/repositories/intelligenceRepository', () => ({
@@ -79,8 +79,8 @@ vi.mock('../../../../../src/utils/errors', () => ({
 export const mockGetRedisClient = analysisServiceMocks.mockGetRedisClient;
 export const mockIsRedisConnected = analysisServiceMocks.mockIsRedisConnected;
 export const mockGetAIConfig = analysisServiceMocks.mockGetAIConfig;
-export const mockSyncConfigToContainer = analysisServiceMocks.mockSyncConfigToContainer;
-export const mockGetContainerUrl = analysisServiceMocks.mockGetContainerUrl;
+export const mockSyncConfigToLlmEgressProxy = analysisServiceMocks.mockSyncConfigToLlmEgressProxy;
+export const mockGetLlmEgressProxyUrl = analysisServiceMocks.mockGetLlmEgressProxyUrl;
 export const mockGetEnabledIntelligenceWallets = analysisServiceMocks.mockGetEnabledIntelligenceWallets;
 export const mockNotificationChannelRegistry = analysisServiceMocks.mockNotificationChannelRegistry;
 export const mockCreateInsight = analysisServiceMocks.mockCreateInsight;
@@ -97,7 +97,7 @@ global.fetch = mockFetch;
 
 export const validConfig = {
   enabled: true,
-  endpoint: 'http://ollama:11434',
+  endpoint: 'http://host.docker.internal:11434',
   model: 'llama3',
 };
 

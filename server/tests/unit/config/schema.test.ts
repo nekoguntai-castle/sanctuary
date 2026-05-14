@@ -77,8 +77,8 @@ function buildValidConfig() {
       kraken: 'https://api.kraken.com/0/public',
     },
     ai: {
-      containerUrl: 'http://ai:3100',
-      configSecret: 'ai-secret',
+      llmEgressProxyUrl: 'http://llm-egress-proxy:3100',
+      llmEgressProxySecret: 'llm-egress-proxy-secret',
     },
     maintenance: {
       auditLogRetentionDays: 90,

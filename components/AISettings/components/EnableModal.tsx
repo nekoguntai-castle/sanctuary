@@ -42,7 +42,8 @@ export function EnableModal({
             <p className="text-sm text-blue-800 dark:text-blue-200">
               AI features use an OpenAI-compatible chat endpoint. You can use
               host-installed Ollama, LM Studio, llama.cpp, vLLM, or another
-              trusted local or LAN provider that runs outside Sanctuary.
+              trusted host-local or allowlisted LAN provider that runs outside
+              Sanctuary.
             </p>
           </div>
 

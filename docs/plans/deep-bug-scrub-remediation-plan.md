@@ -32,7 +32,7 @@ A finding is closed only when all of these are true:
 Final completion requires:
 
 - `npm run check:semgrep-baseline` passes.
-- Root, server, and AI proxy dependency audits pass at the agreed threshold.
+- Root, server, and LLM egress proxy dependency audits pass at the agreed threshold.
 - The deep scrub P1/P2/P3 inventory below is either fixed or explicitly accepted with owner/date/rationale.
 - `npm run coverage`, `npm run lint`, typechecks, lizard, jscpd, large-file check, and gitleaks pass.
 
@@ -48,7 +48,7 @@ This plan is complete only if it covers every issue from `docs/plans/codebase-he
 | Address all P2 findings | P2-01 through P2-09 plus P2-01a | Phases 2, 3, and 4 plus the corner-case matrix below. |
 | Address all P3 findings | P3-01 through P3-06 | Phases 2, 3, and 4 plus the corner-case matrix below. |
 | Include verification, not just intent | Per-row focused verification and rollup verification | Each row has focused tests/checks; final rollup lists full commands. |
-| Capture deployment and CI details | Phase 2 | Semgrep, audit policy, gateway TLS, GHCR secrets, Redis, AI proxy coverage, Docker user, and salt defaults are all covered. |
+| Capture deployment and CI details | Phase 2 | Semgrep, audit policy, gateway TLS, GHCR secrets, Redis, LLM egress proxy coverage, Docker user, and salt defaults are all covered. |
 | Capture product behavior details | Phases 1, 3, and 4 | Send, Payjoin, auth, preferences, route capability, and bootstrap UX have expected behavior and edge cases. |
 | Avoid implementation before check-in | Phase 0 | Exit criteria require plan acceptance and first-slice selection before production code changes. |
 
@@ -131,10 +131,10 @@ These items block confidence in releases and production safety. They should be f
 | --- | --- | --- | --- | --- |
 | P1-06 | Semgrep baseline is red, including release workflow shell-injection findings. | Move GitHub expression values into `env`, quote shell variables, validate version/tag input formats, avoid shell interpolation in privileged steps, review the insecure WebSocket and child-process findings, and refresh the Semgrep baseline only after fixes or explicit exceptions. | `npm run check:semgrep-baseline` passes with no new/stale entries. | Semgrep baseline check, actionlint if available, workflow runtime guard tests. |
 | P1-07 | Mobile gateway can run cleartext HTTP in production by default. | Fail gateway startup when `NODE_ENV=production` and TLS is disabled unless an explicit internal-only override is set. Update Compose defaults/docs so exposed production mode is secure by default. | Production gateway cannot start exposed cleartext by accident. | Gateway config tests for production TLS enabled/disabled/override, Compose config review, gateway unit tests. |
-| P2-01 | Package-level moderate audits fail while policy only checks high/critical. | Upgrade or override vulnerable dependency chains for server `hono` and AI proxy `express-rate-limit -> ip-address`. Decide whether CI should fail on moderate for production packages. | Root, server, and AI proxy production audits are clean at the chosen threshold. | `npm audit --omit=dev --audit-level=moderate`, `npm --prefix server audit --omit=dev --audit-level=moderate`, `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate`, plus package tests. |
+| P2-01 | Package-level moderate audits fail while policy only checks high/critical. | Upgrade or override vulnerable dependency chains for server `hono` and LLM egress proxy `express-rate-limit -> ip-address`. Decide whether CI should fail on moderate for production packages. | Root, server, and LLM egress proxy production audits are clean at the chosen threshold. | `npm audit --omit=dev --audit-level=moderate`, `npm --prefix server audit --omit=dev --audit-level=moderate`, `npm --prefix llm-egress-proxy audit --omit=dev --audit-level=moderate`, plus package tests. |
 | P2-01a | Root low elliptic-family advisories remain with no safe automatic fix. | Keep a dependency-audit triage entry for the Trezor/browser crypto chain, avoid forced upgrades without wallet compatibility testing, and periodically re-check whether upstream fixes become available. | The risk is either fixed by a compatible upgrade or explicitly accepted with owner/date/rationale. | Root audit, hardware-wallet compatibility tests, dependency triage review. |
 | P2-02 | GHCR compose defaults include predictable DB credentials and unauthenticated Redis. | Require explicit DB password in GHCR compose, add Redis auth or isolate Redis with no exposed ports plus documented threat model, and fail config when production secrets use known defaults. | Prebuilt-image compose cannot launch production-like services with known DB password or unauthenticated Redis by default. | `docker compose -f docker-compose.ghcr.yml config`, server config tests for default-secret rejection, docs review. |
-| P2-03 | AI proxy tests are excluded from coverage and CI allows no tests. | Add AI proxy test and coverage scripts, include AI proxy in coverage policy or add package-local coverage gate, and remove `--passWithNoTests` from CI for that package. | Missing AI proxy tests fail CI; coverage is measured for security-sensitive proxy code. | AI proxy test command, coverage command, CI workflow test discovery check. |
+| P2-03 | LLM egress proxy tests are excluded from coverage and CI allows no tests. | Add LLM egress proxy test and coverage scripts, include LLM egress proxy in coverage policy or add package-local coverage gate, and remove `--passWithNoTests` from CI for that package. | Missing LLM egress proxy tests fail CI; coverage is measured for security-sensitive proxy code. | LLM egress proxy test command, coverage command, CI workflow test discovery check. |
 | P3-01 | Frontend container creates a non-root user but does not switch to it. | Switch final image to the non-root user if nginx permissions allow it; otherwise document and harden with read-only filesystem/capability drops. | Runtime user matches intended hardening or has explicit reviewed exception. | Docker build/config inspection and smoke run if feasible. |
 | P3-02 | `ENCRYPTION_SALT` has a static deployment default. | Require explicit production salt or generate unique deployment salt. Reject known default salt in production config. | Production cannot start with `sanctuary-node-config` salt. | Server config tests and Compose config review. |
 
@@ -175,7 +175,7 @@ These issues are lower immediate severity than Phase 1, but they reduce operatio
 | P2-06 | Client download/upload/blob helpers do not refresh expired sessions on 401. | Refactor API client 401 refresh/retry into a shared helper used by JSON, blob, download, and upload paths. Ensure retry preserves body/file semantics safely. | Transfer helpers recover from expired access tokens the same way normal requests do. | API client tests for blob/download/upload 401 refresh success, refresh failure, CSRF behavior, and non-retryable methods/body reuse. |
 | P2-07 | Bulk admin group membership updates leave wallet-access cache stale. | Invalidate affected user-wallet/group access cache entries after `setMembers`, matching dedicated add/remove paths. | Added/removed users see correct wallet access immediately after bulk update. | Admin group service tests and integration route tests around cache priming then bulk membership update. |
 | P2-08 | Request timeout does not abort in-flight route work. | Add request-scoped `AbortSignal` or route-level cancellation for external I/O and long DB workflows. For operations that cannot safely cancel, move to explicit job/202 pattern or document idempotency. | Timed-out long-running handlers do not continue unsafe state mutation silently. | Middleware tests proving signal abort; route-specific tests for backup/restore/broadcast/sync behavior where cancellation is supported. |
-| P2-09 | Service unhandled-rejection handlers log and keep running. | Convert server, gateway, and AI proxy unhandled-rejection behavior to fatal logging plus graceful shutdown/exit, with supervisor restart expected. | Unhandled promise rejections do not leave services healthy-but-degraded. | Entrypoint/process-handler tests using isolated child processes or extracted handler modules. |
+| P2-09 | Service unhandled-rejection handlers log and keep running. | Convert server, gateway, and LLM egress proxy unhandled-rejection behavior to fatal logging plus graceful shutdown/exit, with supervisor restart expected. | Unhandled promise rejections do not leave services healthy-but-degraded. | Entrypoint/process-handler tests using isolated child processes or extracted handler modules. |
 | P3-04 | Logged-in users with missing/null preferences cannot persist preference changes. | Normalize missing preferences to defaults on load/update, and persist merged preferences for logged-in users. | Legacy/null-preference users can change and persist preferences. | `UserContext` and `useUserPreference` tests for null/missing preferences. |
 | P3-05 | Authenticated refresh briefly renders login during auth bootstrap. | Add a bootstrap/loading route gate before rendering login for protected routes. | Authenticated refresh shows neutral loading state, not login flash. | App route tests for bootstrapping authenticated session and unauthenticated final state. |
 | P3-06 | Stale cookie-auth/CSRF comments drift from current behavior. | Refresh comments while touching related auth/CSRF files; avoid standalone churn unless those files are already in a slice. | Comments match implemented behavior. | Review-only; no dedicated test required. |
@@ -298,7 +298,7 @@ Must handle:
 Must handle:
 
 - Server `hono` advisories introduced through tooling dependencies; avoid `npm audit fix --force` without checking Prisma/MCP compatibility.
-- AI proxy `express-rate-limit -> ip-address` upgrade path and any API changes.
+- LLM egress proxy `express-rate-limit -> ip-address` upgrade path and any API changes.
 - Root low elliptic-family advisories through Trezor/browser crypto dependencies; avoid forced upgrades without hardware-wallet compatibility tests.
 - Decide and document whether CI blocks moderate production advisories or tracks them with SLA.
 - Ensure lockfiles are updated consistently and no package manager drift is introduced.
@@ -313,15 +313,15 @@ Must handle:
 - Update `.env` examples without committing real secrets.
 - Verify `docker compose -f docker-compose.ghcr.yml config` still works with required env placeholders.
 
-### P2-03 AI Proxy Coverage
+### P2-03 LLM Egress Proxy Coverage
 
-Status: implemented in the AI proxy coverage-gate slice. The AI proxy package now owns `test`, `test:coverage`, and `coverage` scripts backed by `ai-proxy/vitest.config.ts`; full CI runs the coverage script without `--passWithNoTests` and uploads/reports the AI proxy coverage artifact.
+Status: implemented in the LLM egress proxy coverage-gate slice. The LLM egress proxy package now owns `test`, `test:coverage`, and `coverage` scripts backed by `llm-egress-proxy/vitest.config.ts`; full CI runs the coverage script without `--passWithNoTests` and uploads/reports the LLM egress proxy coverage artifact.
 
 Must handle:
 
 - Added package-local `test` and `coverage` scripts.
-- Removed `--passWithNoTests` from AI proxy CI so missing tests fail.
-- Included `ai-proxy/src/**` in a dedicated coverage gate without destabilizing unrelated root coverage.
+- Removed `--passWithNoTests` from LLM egress proxy CI so missing tests fail.
+- Included `llm-egress-proxy/src/**` in a dedicated coverage gate without destabilizing unrelated root coverage.
 - Added or preserved behavioral coverage for auth, rate limiting, upstream errors/timeouts, request validation, provider/config routes, model-pull streaming progress, and secret redaction. Remaining baseline improvement work is concentrated in insight, label-query, and backend-context routes.
 
 ### P2-04 Send Mempool Network Context
@@ -381,14 +381,14 @@ Must handle:
 
 ### P2-09 Unhandled Rejection Shutdown
 
-Status: implemented in the unhandled-rejection fatal-shutdown slice. Server, worker, MCP, gateway, and AI proxy entrypoints now treat `unhandledRejection` and `uncaughtException` as fatal process events, log structured details, stop accepting new requests through the existing graceful shutdown paths, and exit with code 1 after bounded cleanup. Repeated fatal events during shutdown are logged but do not start duplicate teardown. Restart remains delegated to the service supervisor/container runtime.
+Status: implemented in the unhandled-rejection fatal-shutdown slice. Server, worker, MCP, gateway, and LLM egress proxy entrypoints now treat `unhandledRejection` and `uncaughtException` as fatal process events, log structured details, stop accepting new requests through the existing graceful shutdown paths, and exit with code 1 after bounded cleanup. Repeated fatal events during shutdown are logged but do not start duplicate teardown. Restart remains delegated to the service supervisor/container runtime.
 
 Must handle:
 
 - Extract process handlers into testable modules or test via child processes.
 - Fatal path should stop accepting new requests, close servers, flush logs/metrics if practical, and exit with non-zero code after a bounded grace period.
 - Avoid double shutdown on repeated `uncaughtException`/`unhandledRejection`/signals.
-- Test behavior separately for server, gateway, AI proxy, and worker-like entrypoints if present.
+- Test behavior separately for server, gateway, LLM egress proxy, and worker-like entrypoints if present.
 
 ### P3-01 Frontend Container Runtime User
 
@@ -467,7 +467,7 @@ Run this after all phases or before a release candidate:
 6. `npm run check:semgrep-baseline`
 7. `npm audit --omit=dev --audit-level=moderate`
 8. `npm --prefix server audit --omit=dev --audit-level=moderate`
-9. `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate`
+9. `npm --prefix llm-egress-proxy audit --omit=dev --audit-level=moderate`
 10. `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .`
 11. `npm run quality:lizard`
 12. `node scripts/quality/check-large-files.mjs`

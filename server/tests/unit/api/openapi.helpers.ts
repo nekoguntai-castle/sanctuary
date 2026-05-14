@@ -58,7 +58,7 @@ export { openApiSpec };
 // ADR 0001 / ADR 0002 - every browser-mounted protected route advertises
 // two auth alternatives: bearer (mobile/gateway) and cookie + CSRF (browser).
 // The shared shape is imported/exported from `src/api/openapi/security.ts`
-// as `browserOrBearerAuth`. Internal AI container routes continue to use
+// as `browserOrBearerAuth`. Internal LLM egress proxy routes continue to use
 // bearer only and assert against `bearerOnlyAuth` below.
 export const browserOrBearerAuthSecurity = [
   { bearerAuth: [] },

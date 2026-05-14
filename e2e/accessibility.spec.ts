@@ -163,7 +163,7 @@ const A11Y_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /admin/agents': mockResponse([]),
   'GET /transactions/recent': mockResponse([]),
   'GET /transactions/balance-history': mockResponse([]),
-  'GET /ai/status': mockResponse({ available: false, containerAvailable: false }),
+  'GET /ai/status': mockResponse({ available: false, proxyAvailable: false }),
   'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
   'GET /admin/groups': mockResponse([]),
   [`GET /wallets/${WALLET_ID}`]: mockResponse(WALLET),

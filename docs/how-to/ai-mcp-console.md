@@ -2,14 +2,14 @@
 
 Sanctuary now has two AI access paths:
 
-- **Sanctuary Console** is the recommended path for most users. It runs inside the authenticated web app, sends prompts through the AI proxy, and lets the backend execute approved read-only Sanctuary tools.
+- **Sanctuary Console** is the recommended path for most users. It runs inside the authenticated web app, sends prompts through the LLM egress proxy, and lets the backend execute approved read-only Sanctuary tools.
 - **Direct MCP access** is the advanced path for local clients, MCP Inspector, or a trusted LLM on another machine. It uses scoped bearer keys and should stay loopback-only unless you provide a trusted TLS, VPN, or reverse-proxy boundary.
 
 Both paths are read-only in this release. They can answer questions about wallets, transactions, UTXOs, addresses, labels, policies, drafts, fees, prices, insights, and admin operations where the user or MCP key is authorized. They cannot spend, sign, create drafts, edit labels, change policies, run shell commands, or run arbitrary SQL.
 
 ## Prerequisites
 
-1. Start Sanctuary and the AI runtime you trust:
+1. Start Sanctuary and the model provider you trust:
 
    ```bash
    ./start.sh
@@ -39,8 +39,8 @@ Open **Administration -> AI Settings**.
 1. In **Status**, enable AI features.
 2. In **Settings**, configure the active provider profile:
    - **Host Ollama:** `http://host.docker.internal:11434`
-   - **LAN Ollama/OpenAI-compatible:** for example `http://192.168.1.20:11434` or an LM Studio `/v1` endpoint such as `http://192.168.1.20:1234/v1`
-   - **Cloud OpenAI-compatible:** use HTTPS and explicitly allowlist the provider endpoint in the AI proxy environment.
+   - **LAN Ollama/OpenAI-compatible:** for example `http://192.168.1.20:11434` or an LM Studio `/v1` endpoint such as `http://192.168.1.20:1234/v1`; add the LAN range to `LLM_EGRESS_PROXY_ALLOWED_CIDRS`.
+   - **Cloud OpenAI-compatible:** use HTTPS and explicitly allowlist the provider endpoint in the LLM egress proxy environment.
 3. Set the model name, provider type, and capability flags.
 4. Enter an API key only when the provider requires it. API keys are write-only: Sanctuary stores encrypted credential material and later shows only credential status.
 5. Save the provider profile and run the connection test.

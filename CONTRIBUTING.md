@@ -35,9 +35,9 @@ cd server && npx tsc --noEmit && npx vitest run
 # Frontend
 cd .. && npx tsc --noEmit && npx vitest run
 
-# AI proxy
-npm --prefix ai-proxy run build
-npm --prefix ai-proxy run test
+# LLM egress proxy
+npm --prefix llm-egress-proxy run build
+npm --prefix llm-egress-proxy run test
 ```
 
 When targeting coverage thresholds, run coverage locally:
@@ -45,7 +45,7 @@ When targeting coverage thresholds, run coverage locally:
 ```bash
 cd server && npx vitest run --coverage  # backend: 99% threshold
 npx vitest run --coverage               # frontend: 100% threshold
-npm --prefix ai-proxy run test:coverage # AI proxy: package-local baseline gate
+npm --prefix llm-egress-proxy run test:coverage # LLM egress proxy: package-local baseline gate
 ```
 
 Run `git commit` in the foreground; pre-commit hooks run validation whose feedback must be reviewed.
@@ -127,7 +127,7 @@ Bare `chore: retrigger CI` with no body is no longer acceptable. Diagnostic arti
 
 ### Version management
 
-Versions must stay synchronized across `package.json`, `server/package.json`, `gateway/package.json`, and `ai-proxy/package.json`. Use `./scripts/bump-version.sh` to bump all at once. (The Umbrel manifest in [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) updates itself via `repository_dispatch` from this repo's release workflow.)
+Versions must stay synchronized across `package.json`, `server/package.json`, `gateway/package.json`, and `llm-egress-proxy/package.json`. Use `./scripts/bump-version.sh` to bump all at once. (The Umbrel manifest in [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) updates itself via `repository_dispatch` from this repo's release workflow.)
 
 Never bump the version to fix a CI failure. Fix on the current version.
 
@@ -217,7 +217,7 @@ sanctuary/                  # monorepo root
   server/                   # Node.js/Express backend (API, business logic, Bitcoin)
   gateway/                  # Mobile API gateway (rate limiting, push notifications)
   components/, hooks/, src/ # React/Vite frontend (lives at root of monorepo)
-  ai-proxy/                 # AI proxy service
+  llm-egress-proxy/                 # LLM egress proxy service
   themes/                   # Theme definitions
   docs/                     # Project documentation (Diataxis framework)
     explanation/            # Conceptual: why things work this way

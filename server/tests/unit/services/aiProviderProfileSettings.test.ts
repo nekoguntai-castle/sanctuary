@@ -27,7 +27,7 @@ const lanOllamaProfile = {
 describe('AI provider profile settings adapter', () => {
   it('derives a default typed provider profile from legacy endpoint settings', () => {
     const response = {
-      aiEndpoint: 'http://ollama:11434',
+      aiEndpoint: 'http://host.docker.internal:11434',
       aiModel: 'llama3.2:3b',
     };
 
@@ -38,11 +38,11 @@ describe('AI provider profile settings adapter', () => {
       expect.objectContaining({
         id: 'default-ollama',
         providerType: 'ollama',
-        endpoint: 'http://ollama:11434',
+        endpoint: 'http://host.docker.internal:11434',
         model: 'llama3.2:3b',
       }),
     ]);
-    expect(response.aiEndpoint).toBe('http://ollama:11434');
+    expect(response.aiEndpoint).toBe('http://host.docker.internal:11434');
     expect(response.aiModel).toBe('llama3.2:3b');
   });
 

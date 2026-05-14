@@ -48,7 +48,7 @@ describe('useAIStatus', () => {
     it('should trigger API call on mount', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: true,
-        containerAvailable: true,
+        proxyAvailable: true,
       });
 
       renderHook(() => useAIStatus());
@@ -60,10 +60,10 @@ describe('useAIStatus', () => {
   });
 
   describe('Successful Fetch', () => {
-    it('should return correct status when AI is available and container is running', async () => {
+    it('should return correct status when AI is available and LLM egress proxy is reachable', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: true,
-        containerAvailable: true,
+        proxyAvailable: true,
         model: 'llama3.2:1b',
         endpoint: 'http://localhost:11434',
       });
@@ -82,7 +82,7 @@ describe('useAIStatus', () => {
     it('should return disabled when AI is not available', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: false,
-        containerAvailable: false,
+        proxyAvailable: false,
       });
 
       const { result } = renderHook(() => useAIStatus());
@@ -115,10 +115,10 @@ describe('useAIStatus', () => {
       });
     });
 
-    it('should return unavailable when AI is available but container is not running', async () => {
+    it('should return unavailable when AI is available but LLM egress proxy is unavailable', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: true,
-        containerAvailable: false,
+        proxyAvailable: false,
       });
 
       const { result } = renderHook(() => useAIStatus());
@@ -132,10 +132,10 @@ describe('useAIStatus', () => {
       });
     });
 
-    it('should handle containerAvailable being undefined', async () => {
+    it('should handle proxyAvailable being undefined', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: true,
-        // containerAvailable is undefined
+        // proxyAvailable is undefined
       });
 
       const { result } = renderHook(() => useAIStatus());
@@ -144,7 +144,7 @@ describe('useAIStatus', () => {
         expect(result.current).toEqual({
           enabled: true,
           loading: false,
-          available: false, // Should be false when containerAvailable is falsy
+          available: false, // Should be false when proxyAvailable is falsy
         });
       });
     });
@@ -198,7 +198,7 @@ describe('useAIStatus', () => {
     it('should cache result - multiple instances should share cached result', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: true,
-        containerAvailable: true,
+        proxyAvailable: true,
       });
 
       // First hook instance
@@ -245,7 +245,7 @@ describe('useAIStatus', () => {
       expect(mockGetAIStatus).toHaveBeenCalledTimes(1);
 
       // Resolve the promise
-      resolvePromise({ available: true, containerAvailable: true });
+      resolvePromise({ available: true, proxyAvailable: true });
 
       // All hooks should update with the same result
       await waitFor(() => {
@@ -279,7 +279,7 @@ describe('useAIStatus', () => {
     it('should clear cache when invalidateAIStatusCache is called', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: true,
-        containerAvailable: true,
+        proxyAvailable: true,
       });
 
       // First hook instance
@@ -297,7 +297,7 @@ describe('useAIStatus', () => {
       // Mock a different response for the second fetch
       mockGetAIStatus.mockResolvedValue({
         available: false,
-        containerAvailable: false,
+        proxyAvailable: false,
       });
 
       // Second hook instance after invalidation
@@ -324,7 +324,7 @@ describe('useAIStatus', () => {
     it('should trigger fresh API call after cache invalidation', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: true,
-        containerAvailable: true,
+        proxyAvailable: true,
       });
 
       // First fetch
@@ -345,7 +345,7 @@ describe('useAIStatus', () => {
       // Change mock response
       mockGetAIStatus.mockResolvedValue({
         available: false,
-        containerAvailable: false,
+        proxyAvailable: false,
         message: 'AI service is down',
       });
 
@@ -372,7 +372,7 @@ describe('useAIStatus', () => {
     it('should maintain cached state across rerenders', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: true,
-        containerAvailable: true,
+        proxyAvailable: true,
       });
 
       const { result, rerender } = renderHook(() => useAIStatus());
@@ -396,7 +396,7 @@ describe('useAIStatus', () => {
     it('should not reset to loading state on rerender', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: true,
-        containerAvailable: true,
+        proxyAvailable: true,
       });
 
       const { result, rerender } = renderHook(() => useAIStatus());
@@ -424,7 +424,7 @@ describe('useAIStatus', () => {
     it('should handle API returning null values', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: null as any,
-        containerAvailable: null as any,
+        proxyAvailable: null as any,
       });
 
       const { result } = renderHook(() => useAIStatus());
@@ -470,7 +470,7 @@ describe('useAIStatus', () => {
       expect(result.current).toEqual({
         enabled: true,
         loading: false,
-        available: false, // containerAvailable is falsy
+        available: false, // proxyAvailable is falsy
       });
     });
   });
@@ -479,7 +479,7 @@ describe('useAIStatus', () => {
     it('should handle multiple invalidations correctly', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: true,
-        containerAvailable: true,
+        proxyAvailable: true,
       });
 
       // First fetch

@@ -10,7 +10,7 @@ import {
 import type { OpenApiPathKey } from './openapi.helpers';
 
 export function registerOpenApiGatewayInternalTests() {
-  it('documents root-mounted internal gateway and AI container routes', () => {
+  it('documents root-mounted internal gateway and LLM egress proxy routes', () => {
     const routes: Array<[OpenApiPathKey, string]> = [
       ['/internal/mobile-permissions/check', 'post'],
       ['/internal/ai/pull-progress', 'post'],
@@ -48,7 +48,7 @@ export function registerOpenApiGatewayInternalTests() {
 
     expect(openApiSpec.tags).toContainEqual({
       name: 'Internal',
-      description: 'Root-mounted gateway and AI container contracts',
+      description: 'Root-mounted gateway and LLM egress proxy contracts',
     });
     expect(openApiSpec.components.securitySchemes.gatewaySignature).toMatchObject({
       type: 'apiKey',

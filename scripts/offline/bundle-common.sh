@@ -12,7 +12,7 @@ CORE_IMAGES=(
   "sanctuary-backend:local"
   "sanctuary-frontend:local"
   "sanctuary-gateway:local"
-  "sanctuary-ai:local"
+  "sanctuary-llm-egress-proxy:local"
   "postgres:16-alpine"
   "redis:7-alpine"
   "tecnativa/docker-socket-proxy:latest"

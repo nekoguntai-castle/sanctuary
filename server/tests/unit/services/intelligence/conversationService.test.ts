@@ -8,14 +8,14 @@ import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 const {
   mockGetAIConfig,
-  mockSyncConfigToContainer,
-  mockGetContainerUrl,
+  mockSyncConfigToLlmEgressProxy,
+  mockGetLlmEgressProxyUrl,
   mockRepo,
   mockLogger,
 } = vi.hoisted(() => ({
   mockGetAIConfig: vi.fn(),
-  mockSyncConfigToContainer: vi.fn(),
-  mockGetContainerUrl: vi.fn(() => "http://ai:3100"),
+  mockSyncConfigToLlmEgressProxy: vi.fn(),
+  mockGetLlmEgressProxyUrl: vi.fn(() => "http://llm-egress-proxy:3100"),
   mockRepo: {
     createConversation: vi.fn(),
     findConversationById: vi.fn(),
@@ -35,8 +35,8 @@ const {
 
 vi.mock("../../../../src/services/ai/config", () => ({
   getAIConfig: mockGetAIConfig,
-  syncConfigToContainer: mockSyncConfigToContainer,
-  getContainerUrl: mockGetContainerUrl,
+  syncConfigToLlmEgressProxy: mockSyncConfigToLlmEgressProxy,
+  getLlmEgressProxyUrl: mockGetLlmEgressProxyUrl,
 }));
 
 vi.mock("../../../../src/repositories/intelligenceRepository", () => ({
@@ -243,10 +243,10 @@ describe("Conversation Service", () => {
       // AI config
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
-        endpoint: "http://ollama:11434",
+        endpoint: "http://host.docker.internal:11434",
         model: "llama3",
       });
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       // AI response
       mockFetch.mockResolvedValueOnce({
@@ -270,12 +270,12 @@ describe("Conversation Service", () => {
       expect(result.assistantMessage).toEqual(mockAssistantMessage);
       expect(mockRepo.addMessage).toHaveBeenCalledTimes(2);
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://ai:3100/chat",
+        "http://llm-egress-proxy:3100/chat",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
             "Content-Type": "application/json",
-            "X-AI-Service-Secret": "",
+            "X-LLM-Egress-Proxy-Secret": "",
           }),
         }),
       );
@@ -343,10 +343,10 @@ describe("Conversation Service", () => {
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
-        endpoint: "http://ollama:11434",
+        endpoint: "http://host.docker.internal:11434",
         model: "llama3",
       });
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -374,10 +374,10 @@ describe("Conversation Service", () => {
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
-        endpoint: "http://ollama:11434",
+        endpoint: "http://host.docker.internal:11434",
         model: "llama3",
       });
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockRejectedValueOnce(new Error("Connection refused"));
 
@@ -398,10 +398,10 @@ describe("Conversation Service", () => {
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
-        endpoint: "http://ollama:11434",
+        endpoint: "http://host.docker.internal:11434",
         model: "llama3",
       });
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -432,10 +432,10 @@ describe("Conversation Service", () => {
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
-        endpoint: "http://ollama:11434",
+        endpoint: "http://host.docker.internal:11434",
         model: "llama3",
       });
-      (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+      (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,

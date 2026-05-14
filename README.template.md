@@ -1202,7 +1202,7 @@ Sanctuary includes an optional AI assistant that can help with:
 
 ### Setting Up AI
 
-1. **Start or point Sanctuary at an AI runtime outside Sanctuary**
+1. **Start or point Sanctuary at a model provider outside Sanctuary**
 
    **Option A: Host-installed Ollama (Most Private)**
    ```bash
@@ -1216,6 +1216,7 @@ Sanctuary includes an optional AI assistant that can help with:
    **Option B: LAN or desktop OpenAI-compatible provider**
    - LM Studio: use a `/v1` endpoint such as `http://192.168.1.20:1234/v1`
    - llama.cpp, vLLM, or another trusted provider: enter its OpenAI-compatible base URL
+   - Add numeric LAN ranges to `LLM_EGRESS_PROXY_ALLOWED_CIDRS` before using LAN IP endpoints
 
    **Option C: Cloud AI (Less Private)**
    - Enter an OpenAI-compatible endpoint URL
@@ -1234,13 +1235,13 @@ Sanctuary includes an optional AI assistant that can help with:
 
 ### Security
 
-AI requests run through Sanctuary's **security-isolated AI proxy container**:
+AI requests run through Sanctuary's **security-isolated LLM egress proxy container**:
 - Cannot access private keys or signing operations
 - Only receives sanitized metadata (amounts, dates — **no addresses or txids**)
 - Connects only to configured trusted provider endpoints
 - All AI suggestions require user confirmation before applying
 
-See [ai-proxy/README.md](ai-proxy/README.md) for technical details.
+See [llm-egress-proxy/README.md](llm-egress-proxy/README.md) for technical details.
 
 ## Support the Project
 

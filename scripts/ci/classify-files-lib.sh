@@ -76,9 +76,9 @@ is_gateway_file() {
   return 1
 }
 
-is_ai_proxy_file() {
+is_llm_egress_proxy_file() {
   case "$1" in
-    ai-proxy/*|tests/ai-proxy/*)
+    llm-egress-proxy/*|tests/llm-egress-proxy/*)
       return 0
       ;;
   esac
@@ -152,7 +152,7 @@ is_build_file() {
 
 is_test_file() {
   case "$1" in
-    tests/*.test.ts|tests/*.test.tsx|tests/*.spec.ts|tests/*.spec.tsx|tests/ai-proxy/*.test.ts|tests/ai-proxy/*.spec.ts|server/tests/*.test.ts|server/tests/*.spec.ts|gateway/tests/*.test.ts|gateway/tests/*.spec.ts|e2e/*.spec.ts)
+    tests/*.test.ts|tests/*.test.tsx|tests/*.spec.ts|tests/*.spec.tsx|tests/llm-egress-proxy/*.test.ts|tests/llm-egress-proxy/*.spec.ts|server/tests/*.test.ts|server/tests/*.spec.ts|gateway/tests/*.test.ts|gateway/tests/*.spec.ts|e2e/*.spec.ts)
       return 0
       ;;
   esac
@@ -182,10 +182,10 @@ is_docs_only_file() {
 # directory placement alone.
 is_full_scan_trigger_file() {
   case "$1" in
-    package.json|package-lock.json|server/package.json|server/package-lock.json|gateway/package.json|gateway/package-lock.json|ai-proxy/package.json|ai-proxy/package-lock.json)
+    package.json|package-lock.json|server/package.json|server/package-lock.json|gateway/package.json|gateway/package-lock.json|llm-egress-proxy/package.json|llm-egress-proxy/package-lock.json)
       return 0
       ;;
-    vitest.config.*|vitest.coverage-shard.config.ts|server/vitest.config.*|gateway/vitest.config.*|ai-proxy/vitest.config.*|tsconfig*.json|server/tsconfig*.json|gateway/tsconfig*.json)
+    vitest.config.*|vitest.coverage-shard.config.ts|server/vitest.config.*|gateway/vitest.config.*|llm-egress-proxy/vitest.config.*|tsconfig*.json|server/tsconfig*.json|gateway/tsconfig*.json)
       return 0
       ;;
     .github/workflows/*.yml|.github/workflows/*.yaml|.github/actions/*/action.yml)

@@ -102,7 +102,7 @@ function setDefaultMocks() {
     aiModel: '',
   });
   mockUpdateSystemSettings.mockResolvedValue({});
-  mockDetectOllama.mockResolvedValue({ found: true, endpoint: 'http://ollama:11434', models: ['llama3.2:3b'] });
+  mockDetectOllama.mockResolvedValue({ found: true, endpoint: 'http://host.docker.internal:11434', models: ['llama3.2:3b'] });
   mockListModels.mockResolvedValue({ models: [] });
   mockPullModel.mockResolvedValue({ success: true });
   mockDeleteModel.mockResolvedValue({ success: true });
@@ -136,7 +136,7 @@ describe('AISettings logic branches', () => {
   });
 
   it('handles model list load errors when endpoint is configured', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://ollama:11434', aiModel: 'llama3.2:3b' });
+    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: 'llama3.2:3b' });
     mockListModels.mockRejectedValue(new Error('list failed'));
 
     await renderAndWaitForReady();
@@ -147,7 +147,7 @@ describe('AISettings logic branches', () => {
   });
 
   it('shows popular models error for HTTP failure and invalid response format', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://ollama:11434', aiModel: '' });
+    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: '' });
     (global.fetch as any) = vi
       .fn()
       .mockResolvedValueOnce({ ok: false, status: 503 } as Response)
@@ -170,7 +170,7 @@ describe('AISettings logic branches', () => {
   });
 
   it('handles websocket completion updates for the active pull model', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://ollama:11434', aiModel: '' });
+    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: '' });
 
     await renderAndWaitForReady();
     clickTopTab('Models');
@@ -194,7 +194,7 @@ describe('AISettings logic branches', () => {
   });
 
   it('handles websocket error updates for the active pull model', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://ollama:11434', aiModel: '' });
+    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: '' });
 
     await renderAndWaitForReady();
     clickTopTab('Models');
@@ -238,7 +238,7 @@ describe('AISettings logic branches', () => {
   });
 
   it('enables AI without auto-configuring endpoint', async () => {
-    mockDetectOllama.mockResolvedValue({ found: true, endpoint: 'http://ollama:11434', models: ['phi3:mini'] });
+    mockDetectOllama.mockResolvedValue({ found: true, endpoint: 'http://host.docker.internal:11434', models: ['phi3:mini'] });
 
     await renderAndWaitForReady();
     fireEvent.click(screen.getByText('toggle-ai'));
@@ -250,13 +250,13 @@ describe('AISettings logic branches', () => {
 
     expect(mockDetectOllama).not.toHaveBeenCalled();
     expect(mockUpdateSystemSettings).not.toHaveBeenCalledWith({
-      aiEndpoint: 'http://ollama:11434',
+      aiEndpoint: 'http://host.docker.internal:11434',
       aiModel: 'phi3:mini',
     });
   });
 
   it('handles delete model confirmation, failure response, and thrown error', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://ollama:11434', aiModel: 'llama3.2:3b' });
+    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: 'llama3.2:3b' });
     const confirmSpy = vi.spyOn(window, 'confirm');
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
 
@@ -283,7 +283,7 @@ describe('AISettings logic branches', () => {
   });
 
   it('handles manual model selection callback from settings tab', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://ollama:11434', aiModel: '' });
+    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: '' });
 
     await renderAndWaitForReady();
     fireEvent.click(screen.getByText('go-settings-callback'));
@@ -293,7 +293,7 @@ describe('AISettings logic branches', () => {
   });
 
   it('covers formatBytes callback passed to models tab', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://ollama:11434', aiModel: 'llama3.2:3b' });
+    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: 'llama3.2:3b' });
 
     await renderAndWaitForReady();
     clickTopTab('Models');
@@ -301,7 +301,7 @@ describe('AISettings logic branches', () => {
   });
 
   it('supports navigation callbacks passed into status/settings tabs', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://ollama:11434', aiModel: 'llama3.2:3b' });
+    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: 'llama3.2:3b' });
 
     await renderAndWaitForReady();
 

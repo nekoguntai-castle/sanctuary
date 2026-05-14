@@ -131,7 +131,7 @@ frontend_unit_run="false";       frontend_unit_files=()
 backend_unit_run="false";        backend_unit_files=()
 backend_integration_run="false"; backend_integration_files=()
 gateway_unit_run="false";        gateway_unit_files=()
-ai_proxy_unit_run="false";       ai_proxy_unit_files=()
+llm_egress_proxy_unit_run="false";       llm_egress_proxy_unit_files=()
 critical_mutation_run="false";   critical_mutation_files=()
 browser_smoke_run="false"
 render_regression_run="false"
@@ -144,7 +144,7 @@ mark_full_scan() {
   backend_unit_run="true";        backend_unit_files=()
   backend_integration_run="true"; backend_integration_files=()
   gateway_unit_run="true";        gateway_unit_files=()
-  ai_proxy_unit_run="true";       ai_proxy_unit_files=()
+  llm_egress_proxy_unit_run="true";       llm_egress_proxy_unit_files=()
   critical_mutation_run="true";   critical_mutation_files=()
   browser_smoke_run="true"
   render_regression_run="true"
@@ -175,9 +175,9 @@ else
       break
     fi
 
-    if is_ai_proxy_file "$file"; then
-      ai_proxy_unit_run="true"
-      ai_proxy_unit_files+=("$file")
+    if is_llm_egress_proxy_file "$file"; then
+      llm_egress_proxy_unit_run="true"
+      llm_egress_proxy_unit_files+=("$file")
       continue
     fi
     if is_test_suite_file "$file"; then
@@ -273,7 +273,7 @@ emit_lane() {
   emit_lane "backend_unit"        "$backend_unit_run"         "${backend_unit_files[@]:-}"; printf ','
   emit_lane "backend_integration" "$backend_integration_run"  "${backend_integration_files[@]:-}"; printf ','
   emit_lane "gateway_unit"        "$gateway_unit_run"         "${gateway_unit_files[@]:-}"; printf ','
-  emit_lane "ai_proxy_unit"       "$ai_proxy_unit_run"        "${ai_proxy_unit_files[@]:-}"; printf ','
+  emit_lane "llm_egress_proxy_unit"       "$llm_egress_proxy_unit_run"        "${llm_egress_proxy_unit_files[@]:-}"; printf ','
   emit_lane "critical_mutation"   "$critical_mutation_run"    "${critical_mutation_files[@]:-}"; printf ','
   emit_lane "browser_smoke"       "$browser_smoke_run";       printf ','
   emit_lane "render_regression"   "$render_regression_run";   printf ','

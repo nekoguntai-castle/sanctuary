@@ -22,7 +22,7 @@
     "node_modules",
     "server",
     "gateway",
-    "ai-proxy",
+    "llm-egress-proxy",
     "tests",
     "scripts",
     "e2e"

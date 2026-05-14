@@ -95,7 +95,7 @@ export const openApiSpec = {
     { name: 'Agent', description: 'Scoped agent wallet operations' },
     { name: 'Admin', description: 'Administrative operations' },
     { name: 'Health', description: 'Health, readiness, and circuit breaker status' },
-    { name: 'Internal', description: 'Root-mounted gateway and AI container contracts' },
+    { name: 'Internal', description: 'Root-mounted gateway and LLM egress proxy contracts' },
   ],
   paths: {
     ...healthPaths,

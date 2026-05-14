@@ -233,8 +233,8 @@ function inspectFalseFullLaneDependencies(workflow, relativePath, state) {
     ['full-frontend-coverage-shard-1', 'full-frontend-typechecks'],
     ['full-frontend-coverage-shard-2', 'full-frontend-typechecks'],
     ['full-gateway-tests', 'full-frontend-tests'],
-    ['full-ai-proxy-tests', 'full-gateway-tests'],
-    ['full-critical-mutation', 'full-ai-proxy-tests'],
+    ['full-llm-egress-proxy-tests', 'full-gateway-tests'],
+    ['full-critical-mutation', 'full-llm-egress-proxy-tests'],
     ['full-browser-e2e-tests', 'full-critical-mutation'],
     ['full-build-check', 'full-render-e2e-tests'],
   ];

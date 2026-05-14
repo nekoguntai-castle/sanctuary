@@ -142,7 +142,7 @@ export const STATIC_ADMIN_API_RESPONSES: Record<string, MockApiResponse> = {
   }),
   'GET /admin/monitoring/services': mockResponse({ enabled: true, services: [] }),
   'GET /admin/monitoring/grafana': mockResponse({ username: 'admin', password: 'test', anonymousAccess: false }),
-  'GET /ai/status': mockResponse({ available: false, containerAvailable: false }),
+  'GET /ai/status': mockResponse({ available: false, proxyAvailable: false }),
   'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
   'GET /admin/encryption-keys': mockResponse({ hasEncryptionKey: true, hasEncryptionSalt: true }),
 };

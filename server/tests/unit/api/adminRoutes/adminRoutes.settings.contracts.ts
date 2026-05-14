@@ -47,7 +47,7 @@ export function registerAdminRoutesSettingsContracts(): void {
     it('should expose a typed default AI provider profile from existing endpoint settings', async () => {
       mockPrisma.systemSetting.findMany.mockResolvedValue([
         { key: 'aiEnabled', value: 'true' },
-        { key: 'aiEndpoint', value: '"http://ollama:11434"' },
+        { key: 'aiEndpoint', value: '"http://host.docker.internal:11434"' },
         { key: 'aiModel', value: '"llama3.2:3b"' },
       ]);
 
@@ -59,11 +59,11 @@ export function registerAdminRoutesSettingsContracts(): void {
         id: 'default-ollama',
         name: 'Default Ollama',
         providerType: 'ollama',
-        endpoint: 'http://ollama:11434',
+        endpoint: 'http://host.docker.internal:11434',
         model: 'llama3.2:3b',
       });
       expect(response.body.aiProviderProfiles).toHaveLength(1);
-      expect(response.body.aiEndpoint).toBe('http://ollama:11434');
+      expect(response.body.aiEndpoint).toBe('http://host.docker.internal:11434');
       expect(response.body.aiModel).toBe('llama3.2:3b');
     });
 
@@ -222,7 +222,7 @@ export function registerAdminRoutesSettingsContracts(): void {
     it('should mirror endpoint updates into the active typed AI provider profile', async () => {
       mockPrisma.systemSetting.findMany
         .mockResolvedValueOnce([
-          { key: 'aiEndpoint', value: '"http://ollama:11434"' },
+          { key: 'aiEndpoint', value: '"http://host.docker.internal:11434"' },
           { key: 'aiModel', value: '"llama3.2:3b"' },
         ])
         .mockResolvedValueOnce([

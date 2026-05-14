@@ -16,7 +16,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-DIRS=(. server gateway ai-proxy)
+DIRS=(. server gateway llm-egress-proxy)
 PATTERNS='Conflicting peer dependency|EBADPEER|invalid peer|ERESOLVE overriding peer|Could not resolve dependency'
 
 # Allowlisted warnings (one regex per line, comments lines starting with # are ignored). Add a

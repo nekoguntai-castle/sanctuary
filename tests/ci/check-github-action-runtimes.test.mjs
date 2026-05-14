@@ -409,8 +409,8 @@ jobs:
     needs: [detect-changes, full-lane-ready]
     steps:
       - run: echo gateway
-  full-ai-proxy-tests:
-    name: Full AI Proxy Tests
+  full-llm-egress-proxy-tests:
+    name: Full LLM Egress Proxy Tests
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
     steps:
@@ -443,7 +443,7 @@ jobs:
     name: Full Test Summary
     if: always()
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-lane-ready, full-backend-tests, full-frontend-tests, full-gateway-tests, full-ai-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
+    needs: [detect-changes, full-lane-ready, full-backend-tests, full-frontend-tests, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
     steps:
       - run: echo full
 `;

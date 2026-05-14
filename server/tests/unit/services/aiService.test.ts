@@ -23,7 +23,7 @@ describe("aiService", () => {
   it("ignores unknown AI settings keys while parsing config", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
       setting("aiUnknownKey", "ignored"),
     ] as any);
@@ -59,11 +59,11 @@ describe("aiService", () => {
       available: true,
       model: "llama3.2:3b",
       endpoint: "http://lan-llm:11434",
-      containerAvailable: true,
+      proxyAvailable: true,
     });
     expect(mocks.fetch).toHaveBeenNthCalledWith(
       2,
-      "http://ai:3100/config",
+      "http://llm-egress-proxy:3100/config",
       expect.objectContaining({
         body: JSON.stringify({
           enabled: true,
@@ -77,7 +77,7 @@ describe("aiService", () => {
     );
   });
 
-  it("syncs the active provider credential to the AI proxy without exposing inactive credentials", async () => {
+  it("syncs the active provider credential to the LLM egress proxy without exposing inactive credentials", async () => {
     mocks.decrypt.mockReturnValueOnce("active-api-key");
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
@@ -95,7 +95,7 @@ describe("aiService", () => {
           id: "unused",
           name: "Unused",
           providerType: "ollama",
-          endpoint: "http://ollama:11434",
+          endpoint: "http://host.docker.internal:11434",
           model: "llama3.2",
           capabilities: { chat: true, toolCalls: false, strictJson: true },
         },
@@ -121,7 +121,7 @@ describe("aiService", () => {
     expect(mocks.decrypt).toHaveBeenCalledWith("encrypted-active");
     expect(mocks.decrypt).not.toHaveBeenCalledWith("encrypted-unused");
     expect(mocks.fetch).toHaveBeenCalledWith(
-      "http://ai:3100/config",
+      "http://llm-egress-proxy:3100/config",
       expect.objectContaining({
         body: JSON.stringify({
           enabled: true,
@@ -165,7 +165,7 @@ describe("aiService", () => {
 
     expect(mocks.decrypt).not.toHaveBeenCalled();
     expect(mocks.fetch).toHaveBeenCalledWith(
-      "http://ai:3100/config",
+      "http://llm-egress-proxy:3100/config",
       expect.objectContaining({
         body: expect.stringContaining('"apiKey":""'),
       }),
@@ -204,7 +204,7 @@ describe("aiService", () => {
 
     expect(mocks.decrypt).toHaveBeenCalledWith("encrypted-hosted");
     expect(mocks.fetch).toHaveBeenCalledWith(
-      "http://ai:3100/config",
+      "http://llm-egress-proxy:3100/config",
       expect.objectContaining({
         body: expect.stringContaining('"apiKey":""'),
       }),
@@ -214,7 +214,7 @@ describe("aiService", () => {
   it("resyncs when active provider credentials rotate with a new configuredAt", async () => {
     mocks.fetch.mockResolvedValue(okJson({ synced: true }));
 
-    const { syncConfigToContainer } =
+    const { syncConfigToLlmEgressProxy } =
       await import("../../../src/services/ai/config");
     const config = {
       enabled: true,
@@ -226,10 +226,10 @@ describe("aiService", () => {
       credentialConfiguredAt: "2026-04-26T00:00:00.000Z",
     };
 
-    await expect(syncConfigToContainer(config)).resolves.toBe(true);
-    await expect(syncConfigToContainer(config)).resolves.toBe(true);
+    await expect(syncConfigToLlmEgressProxy(config)).resolves.toBe(true);
+    await expect(syncConfigToLlmEgressProxy(config)).resolves.toBe(true);
     await expect(
-      syncConfigToContainer({
+      syncConfigToLlmEgressProxy({
         ...config,
         apiKey: "second-key",
         credentialConfiguredAt: "2026-04-26T01:00:00.000Z",
@@ -238,7 +238,7 @@ describe("aiService", () => {
 
     expect(mocks.fetch).toHaveBeenCalledTimes(2);
     expect(mocks.fetch).toHaveBeenLastCalledWith(
-      "http://ai:3100/config",
+      "http://llm-egress-proxy:3100/config",
       expect.objectContaining({
         body: expect.stringContaining('"apiKey":"second-key"'),
       }),
@@ -252,17 +252,17 @@ describe("aiService", () => {
     await expect(mod.isEnabled()).resolves.toBe(false);
   });
 
-  it("returns false when AI container health endpoint throws", async () => {
+  it("returns false when LLM egress proxy health endpoint throws", async () => {
     mocks.fetch.mockRejectedValueOnce(new Error("unreachable"));
 
     const mod = await import("../../../src/services/aiService");
-    await expect(mod.isContainerAvailable()).resolves.toBe(false);
+    await expect(mod.isLlmEgressProxyAvailable()).resolves.toBe(false);
   });
 
   it("returns disabled health when AI is turned off", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", false),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
 
@@ -273,7 +273,7 @@ describe("aiService", () => {
     expect(health.error).toContain("disabled");
   });
 
-  it("reports container unavailable when /health check fails", async () => {
+  it("reports LLM egress proxy unavailable when /health check fails", async () => {
     mockConfiguredAiSettings();
     mocks.fetch.mockResolvedValueOnce(errJson(503, { error: "down" }));
 
@@ -281,11 +281,11 @@ describe("aiService", () => {
     const health = await mod.checkHealth();
 
     expect(health.available).toBe(false);
-    expect(health.containerAvailable).toBe(false);
-    expect(health.error).toContain("container");
+    expect(health.proxyAvailable).toBe(false);
+    expect(health.error).toContain("LLM egress proxy");
   });
 
-  it("syncs config and reports healthy AI container", async () => {
+  it("syncs config and reports healthy LLM egress proxy", async () => {
     mockConfiguredAiSettings();
     mocks.fetch
       .mockResolvedValueOnce(okJson({ status: "ok" }))
@@ -298,19 +298,19 @@ describe("aiService", () => {
     expect(health).toMatchObject({
       available: true,
       model: "llama3.2",
-      endpoint: "http://ollama:11434",
-      containerAvailable: true,
+      endpoint: "http://host.docker.internal:11434",
+      proxyAvailable: true,
     });
     expect(mocks.fetch).toHaveBeenCalledTimes(3);
     expect(mocks.fetch).toHaveBeenNthCalledWith(
       2,
-      "http://ai:3100/config",
+      "http://llm-egress-proxy:3100/config",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
           "Content-Type": "application/json",
-          "X-AI-Service-Secret": "",
-          "X-AI-Config-Secret": "",
+          "X-LLM-Egress-Proxy-Secret": "",
+          "X-LLM-Egress-Config-Secret": "",
         }),
       }),
     );
@@ -319,7 +319,7 @@ describe("aiService", () => {
   it("reports unavailable when endpoint or model is missing", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
     ] as any);
 
     const mod = await import("../../../src/services/aiService");
@@ -344,9 +344,9 @@ describe("aiService", () => {
     expect(health).toEqual({
       available: false,
       model: "llama3.2",
-      endpoint: "http://ollama:11434",
-      containerAvailable: true,
-      error: "AI container test failed",
+      endpoint: "http://host.docker.internal:11434",
+      proxyAvailable: true,
+      error: "LLM egress proxy test failed",
     });
   });
 
@@ -363,16 +363,16 @@ describe("aiService", () => {
     expect(health).toEqual({
       available: false,
       model: "llama3.2",
-      endpoint: "http://ollama:11434",
-      containerAvailable: true,
-      error: "Invalid response from AI container",
+      endpoint: "http://host.docker.internal:11434",
+      proxyAvailable: true,
+      error: "Invalid response from LLM egress proxy",
     });
   });
 
   it("reports test connection failure when AI test request throws", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch
@@ -386,16 +386,16 @@ describe("aiService", () => {
     expect(health).toEqual({
       available: false,
       model: "llama3.2",
-      endpoint: "http://ollama:11434",
-      containerAvailable: true,
+      endpoint: "http://host.docker.internal:11434",
+      proxyAvailable: true,
       error: "Failed to test AI connection",
     });
   });
 
-  it("suggests transaction labels from AI container", async () => {
+  it("suggests transaction labels from LLM egress proxy", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch
@@ -407,12 +407,12 @@ describe("aiService", () => {
 
     expect(suggestion).toBe("Payroll income");
     expect(mocks.fetch).toHaveBeenLastCalledWith(
-      "http://ai:3100/suggest-label",
+      "http://llm-egress-proxy:3100/suggest-label",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
           Authorization: "Bearer token-abc",
-          "X-AI-Service-Secret": "",
+          "X-LLM-Egress-Proxy-Secret": "",
         }),
       }),
     );
@@ -421,7 +421,7 @@ describe("aiService", () => {
   it("returns null label suggestion when AI is not configured", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
     ] as any);
 
     const mod = await import("../../../src/services/aiService");
@@ -430,10 +430,10 @@ describe("aiService", () => {
     ).resolves.toBeNull();
   });
 
-  it("returns null label suggestion when AI container returns non-ok", async () => {
+  it("returns null label suggestion when LLM egress proxy returns non-ok", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch
@@ -449,7 +449,7 @@ describe("aiService", () => {
   it("returns null label suggestion when non-ok error body is unreadable", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch
@@ -469,7 +469,7 @@ describe("aiService", () => {
   it("returns null label suggestion when response payload is invalid", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch
@@ -485,7 +485,7 @@ describe("aiService", () => {
   it("returns null when label suggestion is an empty string", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch
@@ -501,7 +501,7 @@ describe("aiService", () => {
   it("returns null label suggestion when fetch throws", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch
@@ -517,7 +517,7 @@ describe("aiService", () => {
   it("returns null for invalid natural query response payloads", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch
@@ -541,7 +541,7 @@ describe("aiService", () => {
       .mockReturnValue(timeoutSignal);
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch
@@ -556,7 +556,7 @@ describe("aiService", () => {
 
       expect(timeoutSpy).toHaveBeenCalledWith(125_000);
       expect(mocks.fetch).toHaveBeenLastCalledWith(
-        "http://ai:3100/query",
+        "http://llm-egress-proxy:3100/query",
         expect.objectContaining({ signal: timeoutSignal }),
       );
     } finally {
@@ -575,10 +575,10 @@ describe("aiService", () => {
     ).resolves.toBeNull();
   });
 
-  it("returns null for natural query when AI container returns non-ok", async () => {
+  it("returns null for natural query when LLM egress proxy returns non-ok", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch
@@ -594,7 +594,7 @@ describe("aiService", () => {
   it("returns null for natural query when non-ok error body is unreadable", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch
@@ -614,7 +614,7 @@ describe("aiService", () => {
   it("returns null when natural query response has query=null", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch
@@ -630,7 +630,7 @@ describe("aiService", () => {
   it("returns null for natural query when fetch throws", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
-      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiEndpoint", "http://host.docker.internal:11434"),
       setting("aiModel", "llama3.2"),
     ] as any);
     mocks.fetch

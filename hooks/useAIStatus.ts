@@ -21,7 +21,7 @@ async function fetchAIStatus(): Promise<AIStatusState> {
     return {
       enabled: status.enabled ?? !!status.available,
       loading: false,
-      available: !!status.available && !!status.containerAvailable,
+      available: !!status.available && !!status.proxyAvailable,
     };
   } catch {
     return {

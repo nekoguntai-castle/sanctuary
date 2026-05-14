@@ -32,10 +32,10 @@ describe('Phase F1c: ESLint shared/ import patterns', () => {
     expect(allPatterns.some((p) => p.endsWith('/shared/**') && p.startsWith('..'))).toBe(true);
   });
 
-  it('ai-proxy block bans BOTH the workspace specifier and relative-path shared imports', () => {
+  it('llm-egress-proxy block bans BOTH the workspace specifier and relative-path shared imports', () => {
     const aiProxyBlock = (config as Array<Record<string, unknown>>).find((block) => {
       const files = block.files;
-      return Array.isArray(files) && files[0] === 'ai-proxy/**/*.ts';
+      return Array.isArray(files) && files[0] === 'llm-egress-proxy/**/*.ts';
     });
     expect(aiProxyBlock).toBeDefined();
     const rules = (aiProxyBlock as { rules: Record<string, unknown> }).rules;

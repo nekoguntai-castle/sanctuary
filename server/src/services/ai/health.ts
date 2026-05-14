@@ -5,13 +5,17 @@
  */
 
 import { createLogger } from "../../utils/logger";
-import { getAIConfig, syncConfigToContainer, getContainerUrl } from "./config";
-import { buildAIProxyJsonHeaders } from "./proxyClient";
+import {
+  getAIConfig,
+  getLlmEgressProxyUrl,
+  syncConfigToLlmEgressProxy,
+} from "./config";
+import { buildLlmEgressProxyJsonHeaders } from "./llmEgressProxyClient";
 import { validateResponse } from "./validation";
 import type { AIHealthResponse } from "./types";
 
 const log = createLogger("AI:SVC_HEALTH");
-const AI_CONTAINER_URL = getContainerUrl();
+const LLM_EGRESS_PROXY_URL = getLlmEgressProxyUrl();
 
 /**
  * Get the persisted AI assistant setup state without probing provider health.
@@ -41,17 +45,17 @@ export async function isEnabled(): Promise<boolean> {
 }
 
 /**
- * Check if AI container is available
+ * Check if LLM egress proxy is available
  */
-export async function isContainerAvailable(): Promise<boolean> {
+export async function isLlmEgressProxyAvailable(): Promise<boolean> {
   try {
-    const response = await fetch(`${AI_CONTAINER_URL}/health`, {
+    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/health`, {
       method: "GET",
       signal: AbortSignal.timeout(5000),
     });
     return response.ok;
   } catch (error) {
-    log.debug("AI container health check failed", { error: String(error) });
+    log.debug("LLM egress proxy health check failed", { error: String(error) });
     return false;
   }
 }
@@ -63,7 +67,7 @@ export async function checkHealth(): Promise<{
   available: boolean;
   model?: string;
   endpoint?: string;
-  containerAvailable?: boolean;
+  proxyAvailable?: boolean;
   error?: string;
 }> {
   const config = await getAIConfig();
@@ -82,25 +86,25 @@ export async function checkHealth(): Promise<{
     };
   }
 
-  // Check if AI container is available
-  const containerAvailable = await isContainerAvailable();
-  if (!containerAvailable) {
+  // Check if LLM egress proxy is available
+  const proxyAvailable = await isLlmEgressProxyAvailable();
+  if (!proxyAvailable) {
     return {
       available: false,
       model: config.model,
       endpoint: config.endpoint,
-      containerAvailable: false,
-      error: "AI container is not available",
+      proxyAvailable: false,
+      error: "LLM egress proxy is not available",
     };
   }
 
   // Sync config and test connection
-  await syncConfigToContainer(config);
+  await syncConfigToLlmEgressProxy(config);
 
   try {
-    const response = await fetch(`${AI_CONTAINER_URL}/test`, {
+    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/test`, {
       method: "POST",
-      headers: buildAIProxyJsonHeaders(),
+      headers: buildLlmEgressProxyJsonHeaders(),
       signal: AbortSignal.timeout(15000),
     });
 
@@ -109,8 +113,8 @@ export async function checkHealth(): Promise<{
         available: false,
         model: config.model,
         endpoint: config.endpoint,
-        containerAvailable: true,
-        error: "AI container test failed",
+        proxyAvailable: true,
+        error: "LLM egress proxy test failed",
       };
     }
 
@@ -122,8 +126,8 @@ export async function checkHealth(): Promise<{
         available: false,
         model: config.model,
         endpoint: config.endpoint,
-        containerAvailable: true,
-        error: "Invalid response from AI container",
+        proxyAvailable: true,
+        error: "Invalid response from LLM egress proxy",
       };
     }
 
@@ -131,7 +135,7 @@ export async function checkHealth(): Promise<{
       available: result.available,
       model: config.model,
       endpoint: config.endpoint,
-      containerAvailable: true,
+      proxyAvailable: true,
       error: result.error,
     };
   } catch (error) {
@@ -139,7 +143,7 @@ export async function checkHealth(): Promise<{
       available: false,
       model: config.model,
       endpoint: config.endpoint,
-      containerAvailable: true,
+      proxyAvailable: true,
       error: "Failed to test AI connection",
     };
   }

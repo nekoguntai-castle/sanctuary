@@ -1,6 +1,102 @@
-# Active Task: PR Delivery 2026-05-13
+# Active Task: Rename LLM Egress Proxy 2026-05-14
 
-Status: PR #445 is open; CI classifier and full gateway coverage fixes verified locally; pushing follow-up commit
+Status: completed and verified locally
+
+Goal: keep the sidecar only as a real LLM egress security boundary, remove misleading "AI container" framing, and rename runtime, docs, CI, and code surfaces around external-LLM proxy isolation.
+
+## Plan
+
+- [x] Map all legacy proxy/container/image/env references.
+- [x] Rename the sidecar/package/service/image/tests to an LLM egress proxy boundary.
+- [x] Rename runtime config to LLM egress proxy terms while preserving the security controls that justify the sidecar.
+- [x] Update docs, UI wording, CI lanes, and OpenAPI/support-package surfaces that expose the old container framing.
+- [x] Verify Compose config, proxy tests, backend/frontend focused tests, typechecks, and changed-file complexity checks.
+- [x] Record the final security value and any compatibility notes.
+
+## Review
+
+- Renamed the isolated sidecar from `ai-proxy`/`sanctuary-ai` to `llm-egress-proxy`/`sanctuary-llm-egress-proxy` across Compose, package metadata, CI lanes, dependency tooling, docs, OpenAPI, backend callers, frontend status surfaces, and tests.
+- Preserved the sidecar because it adds real security value: the backend still never calls LLM providers directly, provider secrets stay in the proxy process, the proxy has no database/signing/key access, Compose keeps it off the main app network, and prompt context is fetched through sanitized backend-owned internal routes.
+- Tightened endpoint policy so Docker service names and numeric LAN/public IPs are blocked by default. Host-local and mDNS endpoints remain available, while LAN IPs, container DNS names, and public/cloud endpoints require explicit `LLM_EGRESS_PROXY_ALLOWED_HOSTS`, `LLM_EGRESS_PROXY_ALLOWED_CIDRS`, or `LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS=true`.
+- Added provider-neutral `/check-provider` for intelligence status; `/check-ollama` remains only as a compatibility alias.
+- Removed the obsolete local `sanctuary-ai:local` Docker image after rebuilding the renamed images.
+- Compatibility note: historical task/archive/changelog entries may still mention the old names as history, but active code, docs, CI, tests, and runtime configuration no longer expose the old sidecar/container naming.
+
+Verification:
+
+- `npm --prefix llm-egress-proxy run build && npm --prefix llm-egress-proxy run test` passed, 109 tests.
+- `npm --prefix server run typecheck:tests && npm run typecheck:app && npm run typecheck:tests` passed.
+- Focused backend AI/proxy/intelligence suites passed, 257 tests.
+- Focused frontend AI settings/status suites passed, 94 tests.
+- `npm run lint:server`, `npm run lint:app`, `npm run check:openapi-route-coverage`, and `npm run check:architecture-boundaries` passed.
+- `bash tests/ci/check-workflow-composition.test.sh`, `bash tests/ci/classify-test-changes.test.sh`, and `npm run check:github-action-runtimes` passed.
+- `bash scripts/quality/lizard-only.sh ...` passed for the touched production logic and boundary exception file.
+- `docker compose config --quiet` passed with required interpolation secrets supplied, and the rendered networks show backend on both app/proxy networks while Postgres/Redis stay off the proxy network.
+- `docker compose build backend frontend gateway llm-egress-proxy` passed; Docker now reports rebuilt `sanctuary-backend:local`, `sanctuary-frontend:local`, `sanctuary-gateway:local`, and `sanctuary-llm-egress-proxy:local` images.
+- `git diff --check` passed.
+
+---
+
+# Active Task: Local Sanctuary Container Rebuild 2026-05-14
+
+Status: completed as part of LLM egress proxy rename
+
+Goal: rebuild the Sanctuary local container images from the current workspace and verify Docker reports the rebuilt images.
+
+## Plan
+
+- [x] Identify the repo-supported local Docker build command and required environment.
+- [x] Run the local rebuild.
+- [x] Verify the rebuilt images exist and capture any warnings or failures.
+- [x] Record the result.
+
+## Review
+
+- Started `docker compose build --no-cache`, which began building backend, frontend, gateway, and the ambiguously named old proxy image.
+- Stopped the rebuild before completion after deciding the sidecar should remain only as a clearly named LLM egress isolation boundary.
+- After the rename, ran `docker compose build backend frontend gateway llm-egress-proxy`; all four local images rebuilt successfully.
+- Verified Docker reports `sanctuary-backend:local`, `sanctuary-frontend:local`, `sanctuary-gateway:local`, and `sanctuary-llm-egress-proxy:local`; removed obsolete `sanctuary-ai:local`.
+
+---
+
+# Completed Task: Codebase Grade 2026-05-13
+
+Status: completed; current score is 95/100 (A) with high confidence
+
+Goal: run `$grade` on the current repository HEAD, update `docs/plans/codebase-health-assessment.md`, append trend history, and report the resulting score with verification evidence.
+
+## Plan
+
+- [x] Read grade standards and previous trend/report context.
+- [x] Run project-wide mechanical signal collection.
+- [x] Inspect targeted evidence for judged ISO/IEC 25010 criteria.
+- [x] Score domains, apply hard-fail gates, and append grade history.
+- [x] Write `docs/plans/codebase-health-assessment.md`.
+- [x] Review the report and summarize results.
+
+## Review
+
+- Scored the current repository at 95/100, Grade A, high confidence.
+- Hard-fail blockers: none. Tests, lint, typecheck, high/critical audit, and tracked-tree secret scanning passed.
+- Domain scores: correctness 18/20, reliability 15/15, maintainability 12/15, security 15/15, performance 10/10, test quality 15/15, operational readiness 10/10.
+- Appended trend history to `docs/plans/grade-history/sanctuary_.jsonl`; previous full history entry was 76/C on 2026-05-08, so the current grade is +19 points.
+- Updated `docs/plans/codebase-health-assessment.md` with the current report and carried forward the useful historical context from the prior bug-scrub downgrade.
+
+Verification:
+
+- `bash /home/nekoguntai/.codex/skills/grade/grade.sh` passed.
+- `npx --yes jscpd@4 --silent --reporters json --output .tmp/grade-jscpd .` completed and reported 2.32% duplicated lines.
+- Targeted source inspection covered `contexts/UserContext.tsx`, `components/send/steps/OutputsStep/sections/RecipientsSection.tsx`, `src/api/client.ts`, `server/src/errors/errorHandler.ts`, `server/src/middleware/requestTimeout.ts`, `server/src/middleware/validate.ts`, and wallet approval route tests.
+
+Remaining:
+
+- Physical hardware-in-loop signing proof remains outside the static software grade.
+
+---
+
+# Completed Task: PR Delivery 2026-05-13
+
+Status: completed; PR #445 merged to `origin/main` as squash commit `996e7bc9c83a6b3ade31b6e0d201e2710cf6705e`
 
 Goal: deliver the completed non-hardware bug scrub through a PR, monitor checks, merge when green, and verify the merge commit is on `origin/main`.
 
@@ -9,9 +105,9 @@ Goal: deliver the completed non-hardware bug scrub through a PR, monitor checks,
 - [x] Confirm forge, target branch, current branch, and dirty worktree.
 - [x] Commit only the scrub changes on a feature branch.
 - [x] Push the branch and open or update a PR to `main`.
-- [ ] Monitor required checks and address failures if any.
-- [ ] Merge safely after checks are green.
-- [ ] Fetch `origin/main` and verify the platform merge commit is reachable from the target branch.
+- [x] Monitor required checks and address failures if any.
+- [x] Merge safely after checks are green.
+- [x] Fetch `origin/main` and verify the platform merge commit is reachable from the target branch.
 
 ## Review
 
@@ -22,6 +118,7 @@ Goal: deliver the completed non-hardware bug scrub through a PR, monitor checks,
 - Verified with gateway coverage, the exact `CI classifier tests` command block, `git diff --check`, and touched-file lizard.
 - Reproduced failed `Test Suite / Full Backend Unit Coverage` locally as strict backend coverage missing the new approvals route 404 guard branches.
 - Added unit coverage for missing route-wallet drafts plus missing and mismatched approval requests; backend unit coverage now passes at 100% across 9,772 tests.
+- PR #445 was merged to `origin/main` as squash commit `996e7bc9c83a6b3ade31b6e0d201e2710cf6705e`.
 
 ---
 

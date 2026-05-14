@@ -32,7 +32,7 @@ PACKAGE_FILES=(
   package.json
   server/package.json
   gateway/package.json
-  ai-proxy/package.json
+  llm-egress-proxy/package.json
 )
 
 get_version() {
@@ -118,7 +118,7 @@ echo ""
 # dependencies. `npm version --no-git-tag-version` only touches the version fields; it does not
 # rewrite peer-dep resolutions the way `npm install --package-lock-only` does (the latter
 # silently dropped @bitcoinerlab/descriptors-core peer-optional resolutions in v0.8.47).
-PKG_DIRS=(. server gateway ai-proxy)
+PKG_DIRS=(. server gateway llm-egress-proxy)
 for dir in "${PKG_DIRS[@]}"; do
   if [ -f "$dir/package.json" ]; then
     (cd "$dir" && npm version --no-git-tag-version --allow-same-version "$NEW_VERSION" > /dev/null)

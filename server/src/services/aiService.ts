@@ -10,7 +10,7 @@ export {
   forceSyncConfig,
   getConfigStatus,
   isEnabled,
-  isContainerAvailable,
+  isLlmEgressProxyAvailable,
   checkHealth,
   suggestTransactionLabel,
   executeNaturalQuery,

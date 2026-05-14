@@ -2,7 +2,7 @@
  * Analysis Service
  *
  * Orchestrates the 5 analysis pipelines for Treasury Intelligence.
- * Gathers sanitized wallet data, sends to AI proxy for analysis,
+ * Gathers sanitized wallet data, sends to LLM egress proxy for analysis,
  * persists insights, and dispatches notifications.
  */
 
@@ -12,10 +12,10 @@ import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import {
   getAIConfig,
-  syncConfigToContainer,
-  getContainerUrl,
+  syncConfigToLlmEgressProxy,
+  getLlmEgressProxyUrl,
 } from "../ai/config";
-import { buildAIProxyJsonHeaders } from "../ai/proxyClient";
+import { buildLlmEgressProxyJsonHeaders } from "../ai/llmEgressProxyClient";
 import { intelligenceRepository } from "../../repositories/intelligenceRepository";
 import { getEnabledIntelligenceWallets } from "./settings";
 import { notificationChannelRegistry } from "../notifications/channels";
@@ -24,7 +24,7 @@ import type { CreateInsightInput } from "../../repositories/intelligenceReposito
 
 const log = createLogger("INTELLIGENCE:SVC_ANALYSIS");
 
-const AI_CONTAINER_URL = getContainerUrl();
+const LLM_EGRESS_PROXY_URL = getLlmEgressProxyUrl();
 
 /** Redis key prefix for deduplication (TTL-based) */
 const DEDUP_KEY_PREFIX = "intelligence:dedup:";
@@ -49,8 +49,8 @@ export async function runAnalysisPipelines(): Promise<void> {
       return;
     }
 
-    // Sync config to AI container
-    await syncConfigToContainer(config);
+    // Sync config to LLM egress proxy
+    await syncConfigToLlmEgressProxy(config);
 
     const providerReady = await checkProviderReachable();
     if (!providerReady) {
@@ -108,7 +108,7 @@ async function runPipeline(
     return;
   }
 
-  // Call AI proxy for analysis
+  // Call LLM egress proxy for analysis
   const result = await callAnalysis(type, context);
   if (!result) {
     log.debug("No analysis result", { walletId, type });
@@ -332,16 +332,16 @@ async function gatherConsolidationContext(
 }
 
 /**
- * Call AI proxy's /analyze endpoint.
+ * Call LLM egress proxy's /analyze endpoint.
  */
 async function callAnalysis(
   type: InsightType,
   context: AnalysisContext,
 ): Promise<AnalysisResult | null> {
   try {
-    const response = await fetch(`${AI_CONTAINER_URL}/analyze`, {
+    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/analyze`, {
       method: "POST",
-      headers: buildAIProxyJsonHeaders(),
+      headers: buildLlmEgressProxyJsonHeaders(),
       body: JSON.stringify({ type, context }),
       signal: AbortSignal.timeout(130000),
     });
@@ -373,8 +373,7 @@ async function checkProviderReachable(): Promise<boolean> {
 }
 
 /**
- * Shared helper: call the AI container's provider-check endpoint.
- * The route name is legacy; the proxy now checks the active provider type.
+ * Shared helper: call the LLM egress proxy's provider-check endpoint.
  */
 async function fetchProviderCheck(): Promise<{
   compatible: boolean;
@@ -383,9 +382,9 @@ async function fetchProviderCheck(): Promise<{
   reason?: string;
 } | null> {
   try {
-    const response = await fetch(`${AI_CONTAINER_URL}/check-ollama`, {
+    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/check-provider`, {
       method: "POST",
-      headers: buildAIProxyJsonHeaders(),
+      headers: buildLlmEgressProxyJsonHeaders(),
       signal: AbortSignal.timeout(10000),
     });
 
@@ -442,14 +441,14 @@ export async function getIntelligenceStatus() {
     };
   }
 
-  await syncConfigToContainer(config);
+  await syncConfigToLlmEgressProxy(config);
 
   const result = await fetchProviderCheck();
   if (!result) {
     return {
       available: false,
       ollamaConfigured: false,
-      reason: "ai_container_unreachable",
+      reason: "llm_egress_proxy_unreachable",
     };
   }
 

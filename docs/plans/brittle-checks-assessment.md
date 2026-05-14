@@ -23,9 +23,9 @@ The brittle risk is concentrated in a few places where text matching is standing
 
 Evidence:
 
-- `ai-proxy/src/consoleProtocol.ts` has prompt classifiers for all wallets, current wallet, transaction mentions, dashboard terms, and broad-health prompts.
-- `ai-proxy/src/consoleProtocol.ts` also has legacy date parsing for explicit ISO/month ranges.
-- `ai-proxy/src/naturalQuery.ts` uses prompt regexes to decide whether a returned limit should be honored.
+- `llm-egress-proxy/src/consoleProtocol.ts` has prompt classifiers for all wallets, current wallet, transaction mentions, dashboard terms, and broad-health prompts.
+- `llm-egress-proxy/src/consoleProtocol.ts` also has legacy date parsing for explicit ISO/month ranges.
+- `llm-egress-proxy/src/naturalQuery.ts` uses prompt regexes to decide whether a returned limit should be honored.
 
 Risk:
 
@@ -54,7 +54,7 @@ Suggested refactor:
 
 Evidence:
 
-- `ai-proxy/src/consoleProtocol.ts` normalizes wallet names and checks whether the normalized prompt includes the normalized wallet name.
+- `llm-egress-proxy/src/consoleProtocol.ts` normalizes wallet names and checks whether the normalized prompt includes the normalized wallet name.
 
 Risk:
 

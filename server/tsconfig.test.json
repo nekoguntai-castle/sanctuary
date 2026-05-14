@@ -10,7 +10,7 @@
   "files": [
     "tests/setup.ts",
     "tests/helpers/testUtils.ts",
-    "tests/mocks/aiContainer.ts",
+    "tests/mocks/llmEgressProxy.ts",
     "tests/mocks/repositories.ts",
     "tests/unit/models/prisma.behavior.test.ts",
     "tests/unit/models/prisma.test.ts",

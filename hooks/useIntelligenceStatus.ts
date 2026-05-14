@@ -3,8 +3,8 @@
  *
  * Checks if Treasury Intelligence is available:
  * - Both aiAssistant and treasuryIntelligence feature flags enabled
- * - AI container reachable
- * - Ollama-compatible endpoint configured
+ * - LLM egress proxy reachable
+ * - External provider endpoint configured
  *
  * Returns { available: false } silently if any condition fails.
  * Caches result for 5 minutes.
@@ -16,7 +16,7 @@ import * as intelligenceApi from '../src/api/intelligence';
 interface IntelligenceStatusResult {
   available: boolean;
   loading: boolean;
-  endpointType?: 'container' | 'host' | 'remote';
+  endpointType?: 'host' | 'remote';
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes

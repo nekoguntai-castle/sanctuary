@@ -1,7 +1,7 @@
 /**
  * AI Response Validation
  *
- * Validates responses from the AI container.
+ * Validates responses from the LLM egress proxy.
  */
 
 import { createLogger } from '../../utils/logger';
@@ -9,7 +9,7 @@ import { createLogger } from '../../utils/logger';
 const log = createLogger('AI:VALIDATION');
 
 /**
- * Validate AI container response
+ * Validate LLM egress proxy response
  * @param response The response to validate
  * @param requiredFields Fields that must be present in the response
  * @returns The validated response or null if validation fails

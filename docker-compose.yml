@@ -249,15 +249,15 @@ services:
       # Required for Payjoin to work behind NAT/Tor. Example: http://your-onion.onion
       PAYJOIN_PUBLIC_URL: ${PAYJOIN_PUBLIC_URL:-}
 
-      # AI Container URL (isolated AI service)
-      # Backend forwards all AI requests to this container
-      AI_CONTAINER_URL: ${AI_CONTAINER_URL:-http://ai:3100}
+      # LLM egress proxy URL (isolated provider egress boundary)
+      # Backend forwards all provider-bound AI requests to this proxy.
+      LLM_EGRESS_PROXY_URL: ${LLM_EGRESS_PROXY_URL:-http://llm-egress-proxy:3100}
 
       # Docker proxy for secure Tor container management
       DOCKER_PROXY_URL: http://docker-proxy:2375
 
-      # AI config sync secret (must match ai container)
-      AI_CONFIG_SECRET: "${AI_CONFIG_SECRET:?AI_CONFIG_SECRET is required - generate with openssl rand -hex 32}"
+      # LLM egress proxy sync secret (must match the proxy)
+      LLM_EGRESS_PROXY_SECRET: "${LLM_EGRESS_PROXY_SECRET:?LLM_EGRESS_PROXY_SECRET is required - generate with openssl rand -hex 32}"
     healthcheck:
       test:
         [
@@ -274,6 +274,7 @@ services:
       start_period: 30s
     networks:
       - sanctuary-network
+      - llm-egress-network
     logging:
       driver: "json-file"
       options:
@@ -641,25 +642,27 @@ services:
     memswap_limit: 384M # memory + 128M swap
 
   # ============================================
-  # AI Container (Isolated AI Service)
+  # LLM Egress Proxy (Provider Egress Boundary)
   # ============================================
-  # Security-isolated container for AI operations.
+  # Security-isolated sidecar for external LLM provider calls.
   # Lightweight - idles until AI is enabled in Admin → AI Settings.
   #
   # ISOLATION GUARANTEES:
   # - Cannot access database directly
+  # - Does not join the main app network with Postgres or Redis service DNS
   # - Cannot access private keys or signing
   # - Only receives sanitized transaction metadata
-  # - Backend NEVER makes external AI calls
+  # - Backend never makes external LLM provider calls directly
   #
-  # NETWORK MODES (default: local AI only):
-  # - Remove ai-internal network below to allow internet access for cloud AI
+  # NETWORK MODES:
+  # - Provider endpoint policy defaults to host-local and mDNS endpoints.
+  # - Container DNS names and numeric LAN/public IPs require explicit env allowlisting.
   # ============================================
-  ai:
+  llm-egress-proxy:
     build:
-      context: ./ai-proxy
+      context: ./llm-egress-proxy
       dockerfile: Dockerfile
-    image: sanctuary-ai:local
+    image: sanctuary-llm-egress-proxy:local
     pull_policy: build # Always build locally, never pull
     restart: unless-stopped
     depends_on:
@@ -670,13 +673,13 @@ services:
       PORT: 3100
       # Backend URL for fetching sanitized data
       BACKEND_URL: http://backend:3001
-      # AI config sync secret (must match backend)
-      AI_CONFIG_SECRET: "${AI_CONFIG_SECRET:?AI_CONFIG_SECRET is required - generate with openssl rand -hex 32}"
+      # LLM egress proxy sync secret (must match backend)
+      LLM_EGRESS_PROXY_SECRET: "${LLM_EGRESS_PROXY_SECRET:?LLM_EGRESS_PROXY_SECRET is required - generate with openssl rand -hex 32}"
       # Optional egress policy for public/cloud OpenAI-compatible endpoints.
-      # Local/container/LAN endpoints are allowed by default.
-      AI_PROXY_ALLOWED_HOSTS: ${AI_PROXY_ALLOWED_HOSTS:-}
-      AI_PROXY_ALLOWED_CIDRS: ${AI_PROXY_ALLOWED_CIDRS:-}
-      AI_PROXY_ALLOW_PUBLIC_HTTPS: ${AI_PROXY_ALLOW_PUBLIC_HTTPS:-false}
+      # Container DNS names and numeric LAN/public IPs require explicit allowlists.
+      LLM_EGRESS_PROXY_ALLOWED_HOSTS: ${LLM_EGRESS_PROXY_ALLOWED_HOSTS:-}
+      LLM_EGRESS_PROXY_ALLOWED_CIDRS: ${LLM_EGRESS_PROXY_ALLOWED_CIDRS:-}
+      LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS: ${LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS:-false}
     healthcheck:
       test:
         [
@@ -692,10 +695,7 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - sanctuary-network
-      # Add ai-internal for local-only mode (no internet)
-      # Remove this line to allow internet access for cloud AI
-      - ai-internal
+      - llm-egress-network
     logging:
       driver: "json-file"
       options:
@@ -779,14 +779,8 @@ services:
 networks:
   sanctuary-network:
     driver: bridge
-
-  # Internal network for AI - no internet access
-  # AI container joins this network by default for security
-  # To allow cloud AI, remove ai-internal from AI container's networks
-  ai-internal:
+  llm-egress-network:
     driver: bridge
-    internal: true
-
 # ============================================
 # Volumes
 # ============================================

@@ -1,7 +1,7 @@
 /**
  * Internal OpenAPI Schemas
  *
- * Schema definitions for root-mounted internal gateway and AI container endpoints.
+ * Schema definitions for root-mounted internal gateway and LLM egress proxy endpoints.
  */
 
 import { MOBILE_ACTIONS } from '@sanctuary/shared/schemas/mobileApiRequests';

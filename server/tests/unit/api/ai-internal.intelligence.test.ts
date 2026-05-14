@@ -111,7 +111,7 @@ vi.mock('../../../src/repositories/intelligenceRepository', () => ({
 }));
 
 import prisma from '../../../src/models/prisma';
-import aiInternalRoutes from '../../../src/api/ai-internal';
+import aiInternalRoutes from '../../../src/api/llm-egress-internal';
 
 const mockWalletFindFirst = vi.mocked(prisma.wallet.findFirst);
 const mockTxAggregate = vi.mocked(prisma.transaction.aggregate);

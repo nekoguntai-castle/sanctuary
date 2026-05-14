@@ -160,8 +160,8 @@ function buildPriceApisConfig() {
 
 function buildAiConfig() {
   return {
-    containerUrl: parseStringEnv('AI_CONTAINER_URL', 'http://ai:3100'),
-    configSecret: parseStringEnv('AI_CONFIG_SECRET'),
+    llmEgressProxyUrl: parseStringEnv('LLM_EGRESS_PROXY_URL', 'http://llm-egress-proxy:3100'),
+    llmEgressProxySecret: parseStringEnv('LLM_EGRESS_PROXY_SECRET'),
   };
 }
 

@@ -19,7 +19,7 @@ const EXPECTED_FRONTEND_COVERAGE_EXCLUDES = [
   '**/coverage/**',
   '**/dist/**',
   '**/node_modules/**',
-  'ai-proxy/src/**',
+  'llm-egress-proxy/src/**',
   'components/animations/**',
   'src/types/**/*.ts',
   'shared/types/**/*.ts',
@@ -59,7 +59,7 @@ describe('frontend coverage policy', () => {
     const sourcePathExcludes = readCoverageExcludesFromConfig().filter(pattern => !pattern.startsWith('**/'));
 
     expect(sourcePathExcludes).toEqual([
-      'ai-proxy/src/**',
+      'llm-egress-proxy/src/**',
       'components/animations/**',
       'src/types/**/*.ts',
       'shared/types/**/*.ts',

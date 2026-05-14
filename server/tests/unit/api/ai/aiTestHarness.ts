@@ -36,7 +36,7 @@ vi.mock('../../../../src/services/aiService', () => ({
   aiService: {
     getConfigStatus: vi.fn(),
     isEnabled: vi.fn(),
-    isContainerAvailable: vi.fn(),
+    isLlmEgressProxyAvailable: vi.fn(),
     checkHealth: vi.fn(),
     suggestTransactionLabel: vi.fn(),
     executeNaturalQuery: vi.fn(),

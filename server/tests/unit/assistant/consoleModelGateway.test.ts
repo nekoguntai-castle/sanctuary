@@ -2,23 +2,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getAIConfig: vi.fn(),
-  getContainerUrl: vi.fn(() => "http://ai-proxy:3100"),
-  syncConfigToContainer: vi.fn(),
-  buildAIProxyJsonHeaders: vi.fn(() => ({
+  getLlmEgressProxyUrl: vi.fn(() => "http://llm-egress-proxy:3100"),
+  syncConfigToLlmEgressProxy: vi.fn(),
+  buildLlmEgressProxyJsonHeaders: vi.fn(() => ({
     "Content-Type": "application/json",
-    "X-AI-Service-Secret": "service-secret",
+    "X-LLM-Egress-Proxy-Secret": "service-secret",
   })),
   fetch: vi.fn(),
 }));
 
 vi.mock("../../../src/services/ai/config", () => ({
   getAIConfig: mocks.getAIConfig,
-  getContainerUrl: mocks.getContainerUrl,
-  syncConfigToContainer: mocks.syncConfigToContainer,
+  getLlmEgressProxyUrl: mocks.getLlmEgressProxyUrl,
+  syncConfigToLlmEgressProxy: mocks.syncConfigToLlmEgressProxy,
 }));
 
-vi.mock("../../../src/services/ai/proxyClient", () => ({
-  buildAIProxyJsonHeaders: mocks.buildAIProxyJsonHeaders,
+vi.mock("../../../src/services/ai/llmEgressProxyClient", () => ({
+  buildLlmEgressProxyJsonHeaders: mocks.buildLlmEgressProxyJsonHeaders,
 }));
 
 vi.mock("../../../src/utils/logger", () => ({
@@ -45,10 +45,10 @@ describe("console model gateway", () => {
       model: "llama3.2",
       providerProfileId: "lan-profile",
     });
-    mocks.syncConfigToContainer.mockResolvedValue(true);
+    mocks.syncConfigToLlmEgressProxy.mockResolvedValue(true);
   });
 
-  it("plans tools through the service-authenticated AI proxy without forwarding user bearer tokens", async () => {
+  it("plans tools through the service-authenticated LLM egress proxy without forwarding user bearer tokens", async () => {
     const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     mocks.fetch.mockResolvedValue({
       ok: true,
@@ -81,20 +81,20 @@ describe("console model gateway", () => {
       model: "llama3.2",
       toolCalls: [{ name: "get_fee_estimates" }],
     });
-    expect(mocks.syncConfigToContainer).toHaveBeenCalledWith(
+    expect(mocks.syncConfigToLlmEgressProxy).toHaveBeenCalledWith(
       expect.objectContaining({ model: "llama3.2" }),
     );
     expect(mocks.fetch).toHaveBeenCalledWith(
-      "http://ai-proxy:3100/console/plan",
+      "http://llm-egress-proxy:3100/console/plan",
       expect.objectContaining({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-AI-Service-Secret": "service-secret",
+          "X-LLM-Egress-Proxy-Secret": "service-secret",
         },
       }),
     );
-    expect(mocks.buildAIProxyJsonHeaders).toHaveBeenCalledWith();
+    expect(mocks.buildLlmEgressProxyJsonHeaders).toHaveBeenCalledWith();
     expect(mocks.fetch.mock.calls[0][1].headers).not.toHaveProperty(
       "Authorization",
     );
@@ -231,7 +231,7 @@ describe("console model gateway", () => {
   });
 
   it("fails closed when provider config cannot sync to the proxy", async () => {
-    mocks.syncConfigToContainer.mockResolvedValue(false);
+    mocks.syncConfigToLlmEgressProxy.mockResolvedValue(false);
 
     await expect(
       planConsoleTools({
@@ -271,7 +271,7 @@ describe("console model gateway", () => {
       }),
     ).rejects.toMatchObject({
       message:
-        "AI proxy /console/synthesize request failed: AI endpoint not available",
+        "LLM egress proxy /console/synthesize request failed: AI endpoint not available",
       statusCode: 503,
       details: {
         path: "/console/synthesize",
@@ -299,7 +299,7 @@ describe("console model gateway", () => {
       }),
     ).rejects.toMatchObject({
       message:
-        "AI proxy /console/synthesize request failed: AI endpoint or model is not configured",
+        "LLM egress proxy /console/synthesize request failed: AI endpoint or model is not configured",
       details: {
         path: "/console/synthesize",
         proxyError: "AI endpoint or model is not configured",
@@ -327,7 +327,7 @@ describe("console model gateway", () => {
       }),
     ).rejects.toMatchObject({
       message:
-        "AI proxy /console/synthesize request failed: AI provider configuration could not be synced",
+        "LLM egress proxy /console/synthesize request failed: AI provider configuration could not be synced",
       details: {
         reason: "provider_config_sync_failed",
         status: 503,
@@ -350,7 +350,7 @@ describe("console model gateway", () => {
       }),
     ).rejects.toMatchObject({
       message:
-        "AI proxy /console/synthesize request failed: Provider timed out",
+        "LLM egress proxy /console/synthesize request failed: Provider timed out",
       details: {
         proxyError: "Provider timed out",
         status: 504,
@@ -385,7 +385,7 @@ describe("console model gateway", () => {
       }),
     ).rejects.toMatchObject({
       message:
-        "AI proxy /console/plan request failed: The request took too long to process",
+        "LLM egress proxy /console/plan request failed: The request took too long to process",
       statusCode: 503,
       details: {
         path: "/console/plan",
@@ -409,7 +409,7 @@ describe("console model gateway", () => {
         toolResults: [],
       }),
     ).rejects.toMatchObject({
-      message: "AI proxy /console/synthesize request failed",
+      message: "LLM egress proxy /console/synthesize request failed",
       details: { status: 502 },
     });
 
@@ -426,7 +426,7 @@ describe("console model gateway", () => {
         toolResults: [],
       }),
     ).rejects.toMatchObject({
-      message: "AI proxy /console/synthesize request failed",
+      message: "LLM egress proxy /console/synthesize request failed",
       details: { status: 503 },
     });
   });

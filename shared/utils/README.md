@@ -2,7 +2,7 @@
 
 Cross-package runtime utilities consumed by the **server**, **gateway**, and
 **frontend** packages via the `@sanctuary/shared` npm workspace package.
-The **ai-proxy** package is intentionally isolated from `shared/` and does
+The **llm-egress-proxy** package is intentionally isolated from `shared/` and does
 not consume this directory — see _Isolation boundary_ below.
 
 ## Convention: import via `@sanctuary/shared/...`
@@ -30,44 +30,44 @@ A small handful of legacy re-export shims (`server/src/utils/fatalProcessHandler
 purely for backward compatibility with intra-package imports; new shared
 utilities should NOT add new shims.
 
-## Isolation boundary: ai-proxy
+## Isolation boundary: llm-egress-proxy
 
-`ai-proxy/tsconfig.json` sets `rootDir: "./src"` and
-`include: ["src/**/*"]`; `ai-proxy/Dockerfile` does NOT `COPY ../shared`
+`llm-egress-proxy/tsconfig.json` sets `rootDir: "./src"` and
+`include: ["src/**/*"]`; `llm-egress-proxy/Dockerfile` does NOT `COPY ../shared`
 (compare server/gateway Dockerfiles which build via the workspace);
-`ai-proxy/src/utils.ts` documents the boundary inline.
+`llm-egress-proxy/src/utils.ts` documents the boundary inline.
 
-This is a **security isolation boundary**, not an oversight. The AI proxy
+This is a **security isolation boundary**, not an oversight. The LLM egress proxy
 process is the network-isolation enforcement point for outbound LLM traffic
 and intentionally does not share runtime dependencies with the main app.
 
 **Importing from `@sanctuary/shared` (or relative `../shared/...`) into
-ai-proxy is a boundary-breaking architectural change requiring its own
-decision, not a silent consolidation.** When ai-proxy needs the same
+llm-egress-proxy is a boundary-breaking architectural change requiring its own
+decision, not a silent consolidation.** When llm-egress-proxy needs the same
 utility as server/gateway, it re-implements a standalone copy under
-`ai-proxy/src/`.
+`llm-egress-proxy/src/`.
 
 Phase F enforcement:
 
-- ESLint `no-restricted-imports` rule scoped to `ai-proxy/**/*.ts` bans
+- ESLint `no-restricted-imports` rule scoped to `llm-egress-proxy/**/*.ts` bans
   both `@sanctuary/shared/**` and `../shared/**` patterns
-- `scripts/ci/check-ai-proxy-shared-isolation.sh` belt-and-suspenders
+- `scripts/ci/check-llm-egress-proxy-shared-isolation.sh` belt-and-suspenders
   grep gate runs in CI even when ESLint is skipped
 - The Per-tool resolution table in the v3.1 plan specifies a Docker
-  acceptance probe: `docker exec ai-proxy node -e "require('@sanctuary/shared/...')"`
+  acceptance probe: `docker exec llm-egress-proxy node -e "require('@sanctuary/shared/...')"`
   MUST exit non-zero
 
 ## Status of cross-package utilities
 
 Audit performed 2026-05-10 across `server/src/utils/`, `gateway/src/utils/`,
-and `ai-proxy/src/`:
+and `llm-egress-proxy/src/`:
 
 | Utility | Status | Notes |
 | --- | --- | --- |
-| `errors.ts` (`extractErrorMessage`, `getErrorMessage`, `isAbortError`, `isNetworkError`, `isTimeoutError`) | **Consolidated** | Imported via `@sanctuary/shared/utils/errors`. ai-proxy keeps its own `extractErrorMessage` in `ai-proxy/src/utils.ts`. |
-| `fatalProcessHandlers.ts` | **Consolidated** | Lives at `shared/utils/fatalProcessHandlers.ts`; consumed via `@sanctuary/shared/utils/fatalProcessHandlers`. ai-proxy keeps its own copy per the isolation boundary. |
-| `logger.ts` | **Intentional divergence** | server (~390 LOC) is the rich production logger with redaction and request context; gateway (~55 LOC) is a minimal proxy logger; ai-proxy (~99 LOC) is the isolated copy. All three implement the shared `Logger` interface from `shared/types/logger.ts`. |
-| `processExit.ts` | **Consolidated** | Lives at `shared/utils/processExit.ts`; consumed via `@sanctuary/shared/utils/processExit`. ai-proxy keeps its own copy per the isolation boundary. |
+| `errors.ts` (`extractErrorMessage`, `getErrorMessage`, `isAbortError`, `isNetworkError`, `isTimeoutError`) | **Consolidated** | Imported via `@sanctuary/shared/utils/errors`. llm-egress-proxy keeps its own `extractErrorMessage` in `llm-egress-proxy/src/utils.ts`. |
+| `fatalProcessHandlers.ts` | **Consolidated** | Lives at `shared/utils/fatalProcessHandlers.ts`; consumed via `@sanctuary/shared/utils/fatalProcessHandlers`. llm-egress-proxy keeps its own copy per the isolation boundary. |
+| `logger.ts` | **Intentional divergence** | server (~390 LOC) is the rich production logger with redaction and request context; gateway (~55 LOC) is a minimal proxy logger; llm-egress-proxy (~99 LOC) is the isolated copy. All three implement the shared `Logger` interface from `shared/types/logger.ts`. |
+| `processExit.ts` | **Consolidated** | Lives at `shared/utils/processExit.ts`; consumed via `@sanctuary/shared/utils/processExit`. llm-egress-proxy keeps its own copy per the isolation boundary. |
 
 ## Adding a new shared utility
 
@@ -77,11 +77,11 @@ and `ai-proxy/src/`:
    `scripts/quality/check-shared-deps.mjs` enforces this).
 2. Import from consumers as `@sanctuary/shared/utils/<name>` — no shims
    needed.
-3. Decide explicitly whether ai-proxy should consume the new utility. Default
-   answer is **no** — re-implement under `ai-proxy/src/` instead. Importing
-   `@sanctuary/shared` into ai-proxy requires editing the ESLint scope, the
-   `check-ai-proxy-shared-isolation.sh` allowlist, `ai-proxy/Dockerfile`,
-   and updating the `ai-proxy/src/utils.ts` boundary comment.
+3. Decide explicitly whether llm-egress-proxy should consume the new utility. Default
+   answer is **no** — re-implement under `llm-egress-proxy/src/` instead. Importing
+   `@sanctuary/shared` into llm-egress-proxy requires editing the ESLint scope, the
+   `check-llm-egress-proxy-shared-isolation.sh` allowlist, `llm-egress-proxy/Dockerfile`,
+   and updating the `llm-egress-proxy/src/utils.ts` boundary comment.
 4. Add tests under `tests/shared/<name>.test.ts` (flat layout — match the
    existing `tests/shared/errors.test.ts`, `tests/shared/redact.test.ts`
    siblings).

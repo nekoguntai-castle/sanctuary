@@ -10,7 +10,7 @@ graph TD
     Gateway["Gateway<br/>Express :4000<br/><i>JWT, rate limit, push fan-out</i>"]
     Backend["Backend API<br/>Express :3000<br/><i>routes, services, repositories</i>"]
     Worker["Worker<br/>BullMQ consumer<br/><i>notifications, sync jobs, DLQ</i>"]
-    AiProxy["AI Proxy<br/><i>LLM gateway for intelligence features</i>"]
+    AiProxy["LLM Egress Proxy<br/><i>LLM gateway for intelligence features</i>"]
 
     Postgres[(Postgres<br/>via Prisma)]
     Redis[(Redis<br/>queue + cache + locks)]
@@ -43,7 +43,7 @@ graph TD
     click Gateway href "../../gateway/ARCHITECTURE.md" "Gateway architecture"
     click Backend href "../../server/ARCHITECTURE.md" "Backend architecture"
     click Worker href "../../server/src/worker.ts" "Worker entry point"
-    click AiProxy href "../../ai-proxy/ARCHITECTURE.md" "AI proxy architecture"
+    click AiProxy href "../../llm-egress-proxy/ARCHITECTURE.md" "LLM egress proxy architecture"
     click Telegram href "notification-pipeline.md" "Notification component view"
 ```
 

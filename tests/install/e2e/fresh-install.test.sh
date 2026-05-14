@@ -360,7 +360,7 @@ test_docker_compose_build() {
     local encryption_salt=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
     local gateway_secret=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
     local postgres_password=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-    local ai_config_secret=$(openssl rand -hex 32)
+    local llm_egress_proxy_secret=$(openssl rand -hex 32)
     local redis_password=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
 
     # Build containers
@@ -368,7 +368,7 @@ test_docker_compose_build() {
     if ! JWT_SECRET="$jwt_secret" ENCRYPTION_KEY="$encryption_key" \
          ENCRYPTION_SALT="$encryption_salt" \
          GATEWAY_SECRET="$gateway_secret" POSTGRES_PASSWORD="$postgres_password" \
-         AI_CONFIG_SECRET="$ai_config_secret" REDIS_PASSWORD="$redis_password" \
+         LLM_EGRESS_PROXY_SECRET="$llm_egress_proxy_secret" REDIS_PASSWORD="$redis_password" \
          HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
          docker compose build 2>&1; then
         log_error "Docker Compose build failed"
@@ -394,7 +394,7 @@ test_docker_compose_up() {
     local encryption_salt=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
     local gateway_secret=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
     local postgres_password=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-    local ai_config_secret=$(openssl rand -hex 32)
+    local llm_egress_proxy_secret=$(openssl rand -hex 32)
     local redis_password=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
 
     # Start containers
@@ -402,7 +402,7 @@ test_docker_compose_up() {
     if ! JWT_SECRET="$jwt_secret" ENCRYPTION_KEY="$encryption_key" \
          ENCRYPTION_SALT="$encryption_salt" \
          GATEWAY_SECRET="$gateway_secret" POSTGRES_PASSWORD="$postgres_password" \
-         AI_CONFIG_SECRET="$ai_config_secret" REDIS_PASSWORD="$redis_password" \
+         LLM_EGRESS_PROXY_SECRET="$llm_egress_proxy_secret" REDIS_PASSWORD="$redis_password" \
          HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
          docker compose up -d 2>&1; then
         log_error "Docker Compose up failed"

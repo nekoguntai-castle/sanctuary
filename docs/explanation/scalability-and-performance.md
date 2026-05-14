@@ -16,7 +16,7 @@ This document defines the supported scale-out topology and the first performance
 | Redis | One container | No in current Compose | Cache, BullMQ, event bus, WebSocket bridge | Redis is the coordination dependency for backend and worker scale-out. Production HA requires an external managed Redis or sentinel/cluster design not represented in this Compose file. |
 | Postgres | One container | No in current Compose | Primary data store | Production HA/read replicas are outside current Compose. Do not add backend replicas before Postgres connection limits and latency are observed under load. |
 | Electrum connections | Worker-owned | Partly | Worker Electrum manager and node client pool | Mainnet can use pool mode; recurring subscriptions are worker-owned. Multiple workers need explicit subscription ownership validation. |
-| AI proxy/Ollama | One proxy and optional local container | Not assumed | Backend-to-AI proxy secret | Treat as singleton until AI workloads have separate capacity tests. |
+| LLM egress proxy/provider | One proxy and an externally managed provider endpoint | Not assumed | Backend-to-LLM egress proxy secret | Treat as singleton until AI workloads have separate capacity tests. |
 | Monitoring stack | One stack | Not assumed | Prometheus/Grafana/Loki/Jaeger local stack | Monitoring ports bind to loopback by default. Use it to observe scale runs, not as a scale target itself. |
 
 ## Scale-Out Rules

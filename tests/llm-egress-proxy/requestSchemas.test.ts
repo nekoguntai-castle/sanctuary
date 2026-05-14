@@ -1,0 +1,265 @@
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  AnalyzeBodySchema,
+  ChatBodySchema,
+  ConsolePlanBodySchema,
+  ConsoleSynthesisBodySchema,
+  ConfigBodySchema,
+  DetectOllamaBodySchema,
+  ModelBodySchema,
+  QueryBodySchema,
+  SuggestLabelBodySchema,
+  parseRequestBody,
+} from "../../llm-egress-proxy/src/requestSchemas";
+
+function makeRequest(body: unknown) {
+  return { body } as any;
+}
+
+function makeResponse(): {
+  status: ReturnType<typeof vi.fn>;
+  json: ReturnType<typeof vi.fn>;
+} {
+  const res = {
+    status: vi.fn().mockReturnThis(),
+    json: vi.fn().mockReturnThis(),
+  };
+  return res;
+}
+
+describe("LLM egress proxy request schemas", () => {
+  it("parses valid configuration bodies", () => {
+    const res = makeResponse();
+
+    const body = parseRequestBody(
+      ConfigBodySchema,
+      makeRequest({
+        enabled: true,
+        endpoint: " http://host.docker.internal:11434 ",
+        model: " llama3 ",
+        providerProfileId: " lan ",
+        providerType: " ollama ",
+        apiKey: "provider-secret",
+      }),
+      res as any,
+      "Invalid configuration body",
+    );
+
+    expect(body).toEqual({
+      enabled: true,
+      endpoint: "http://host.docker.internal:11434",
+      model: "llama3",
+      providerProfileId: "lan",
+      providerType: "ollama",
+      apiKey: "provider-secret",
+    });
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed URLs and unknown configuration fields", () => {
+    const res = makeResponse();
+
+    const body = parseRequestBody(
+      ConfigBodySchema,
+      makeRequest({ endpoint: "not a url", extra: true }),
+      res as any,
+      "Invalid configuration body",
+    );
+
+    expect(body).toBeNull();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: "Invalid configuration body",
+        details: expect.arrayContaining([
+          expect.objectContaining({
+            message: expect.any(String),
+            code: expect.any(String),
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it("treats missing request bodies as empty objects", () => {
+    const res = makeResponse();
+
+    const body = parseRequestBody(
+      ConfigBodySchema,
+      makeRequest(undefined),
+      res as any,
+      "Invalid configuration body",
+    );
+
+    expect(body).toEqual({});
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it("validates required transaction, query, and model inputs", () => {
+    expect(SuggestLabelBodySchema.parse({ transactionId: " tx-1 " })).toEqual({
+      transactionId: "tx-1",
+    });
+    expect(
+      QueryBodySchema.parse({
+        query: " largest receives ",
+        walletId: " wallet-1 ",
+      }),
+    ).toEqual({
+      query: "largest receives",
+      walletId: "wallet-1",
+    });
+    expect(ModelBodySchema.parse({ model: " llama3 " })).toEqual({
+      model: "llama3",
+    });
+
+    expect(() => SuggestLabelBodySchema.parse({ transactionId: "" })).toThrow();
+    expect(() => QueryBodySchema.parse({ query: "ok" })).toThrow();
+    expect(() => ModelBodySchema.parse({ model: "" })).toThrow();
+  });
+
+  it("validates Ollama detection endpoints", () => {
+    expect(
+      DetectOllamaBodySchema.parse({
+        customEndpoints: ["https://ai.example.test", "http://192.0.2.10:11434"],
+      }),
+    ).toEqual({
+      customEndpoints: ["https://ai.example.test", "http://192.0.2.10:11434"],
+    });
+
+    expect(() =>
+      DetectOllamaBodySchema.parse({
+        customEndpoints: ["ftp://ai.example.test"],
+      }),
+    ).toThrow();
+    expect(() =>
+      DetectOllamaBodySchema.parse({ customEndpoints: ["::::"] }),
+    ).toThrow();
+  });
+
+  it("validates analysis type and context shape", () => {
+    expect(
+      AnalyzeBodySchema.parse({
+        type: "utxo_health",
+        context: { walletId: "wallet-1" },
+      }),
+    ).toEqual({
+      type: "utxo_health",
+      context: { walletId: "wallet-1" },
+    });
+    expect(
+      AnalyzeBodySchema.parse({
+        type: "fee_timing",
+        context: [{ feerate: 12 }],
+      }),
+    ).toEqual({
+      type: "fee_timing",
+      context: [{ feerate: 12 }],
+    });
+
+    expect(() =>
+      AnalyzeBodySchema.parse({ type: "unknown", context: {} }),
+    ).toThrow();
+    expect(() =>
+      AnalyzeBodySchema.parse({ type: "tax", context: null }),
+    ).toThrow();
+  });
+
+  it("validates chat messages", () => {
+    expect(
+      ChatBodySchema.parse({
+        messages: [{ role: "user", content: " summarize wallet health " }],
+        walletContext: { balance: 1000 },
+      }),
+    ).toEqual({
+      messages: [{ role: "user", content: "summarize wallet health" }],
+      walletContext: { balance: 1000 },
+    });
+
+    expect(() => ChatBodySchema.parse({ messages: [] })).toThrow();
+    expect(() =>
+      ChatBodySchema.parse({ messages: [{ role: "tool", content: "x" }] }),
+    ).toThrow();
+    expect(() =>
+      ChatBodySchema.parse({ messages: [{ role: "user", content: "" }] }),
+    ).toThrow();
+  });
+
+  it("validates console planning and synthesis bodies", () => {
+    expect(
+      ConsolePlanBodySchema.parse({
+        prompt: " how is this wallet doing? ",
+        maxToolCalls: 2,
+        scope: { kind: "wallet", walletIds: ["wallet-1"] },
+        context: {
+          mode: "auto",
+          currentWalletId: "wallet-1",
+          wallets: [{ id: "wallet-1", name: "Vault" }],
+        },
+        tools: [
+          {
+            name: "get_wallet_overview",
+            title: "Wallet Overview",
+            description: "Read wallet totals",
+            sensitivity: "wallet",
+            requiredScope: "wallet",
+            inputFields: ["walletId"],
+          },
+        ],
+      }),
+    ).toEqual({
+      prompt: "how is this wallet doing?",
+      maxToolCalls: 2,
+      scope: { kind: "wallet", walletIds: ["wallet-1"] },
+      context: {
+        mode: "auto",
+        currentWalletId: "wallet-1",
+        wallets: [{ id: "wallet-1", name: "Vault" }],
+      },
+      tools: [
+        {
+          name: "get_wallet_overview",
+          title: "Wallet Overview",
+          description: "Read wallet totals",
+          sensitivity: "wallet",
+          requiredScope: "wallet",
+          inputFields: ["walletId"],
+        },
+      ],
+    });
+
+    expect(
+      ConsoleSynthesisBodySchema.parse({
+        prompt: "summarize",
+        context: { mode: "auto" },
+        toolResults: [
+          {
+            toolName: "get_fee_estimates",
+            status: "completed",
+            input: { walletId: "wallet-1" },
+          },
+        ],
+      }),
+    ).toEqual({
+      prompt: "summarize",
+      context: { mode: "auto" },
+      toolResults: [
+        {
+          toolName: "get_fee_estimates",
+          status: "completed",
+          input: { walletId: "wallet-1" },
+        },
+      ],
+    });
+
+    expect(() =>
+      ConsolePlanBodySchema.parse({ prompt: "x", tools: [] }),
+    ).toThrow();
+    expect(() =>
+      ConsoleSynthesisBodySchema.parse({
+        prompt: "x",
+        toolResults: [{ toolName: "x", status: "write" }],
+      }),
+    ).toThrow();
+  });
+});

@@ -8,16 +8,16 @@ import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import {
   getAIConfig,
-  syncConfigToContainer,
-  getContainerUrl,
+  syncConfigToLlmEgressProxy,
+  getLlmEgressProxyUrl,
 } from "../ai/config";
-import { buildAIProxyJsonHeaders } from "../ai/proxyClient";
+import { buildLlmEgressProxyJsonHeaders } from "../ai/llmEgressProxyClient";
 import { intelligenceRepository } from "../../repositories/intelligenceRepository";
 import type { AIConversation, AIMessage } from "../../generated/prisma/client";
 
 const log = createLogger("INTELLIGENCE:SVC_CHAT");
 
-const AI_CONTAINER_URL = getContainerUrl();
+const LLM_EGRESS_PROXY_URL = getLlmEgressProxyUrl();
 
 /**
  * Create a new conversation.
@@ -98,7 +98,7 @@ export async function sendMessage(
     content: m.content,
   }));
 
-  // Call AI proxy
+  // Call LLM egress proxy
   const config = await getAIConfig();
   if (!config.enabled || !config.endpoint || !config.model) {
     const errorMsg = await intelligenceRepository.addMessage({
@@ -110,12 +110,12 @@ export async function sendMessage(
     return { userMessage, assistantMessage: errorMsg };
   }
 
-  await syncConfigToContainer(config);
+  await syncConfigToLlmEgressProxy(config);
 
   try {
-    const response = await fetch(`${AI_CONTAINER_URL}/chat`, {
+    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/chat`, {
       method: "POST",
-      headers: buildAIProxyJsonHeaders(),
+      headers: buildLlmEgressProxyJsonHeaders(),
       body: JSON.stringify({
         messages: aiMessages,
         walletContext,

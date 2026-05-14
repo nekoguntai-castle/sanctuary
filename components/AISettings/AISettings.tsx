@@ -2,7 +2,7 @@
  * AI Settings Administration Page
  *
  * Manage AI-powered features in an isolated security context.
- * This page configures the separate AI container that handles all AI operations.
+ * This page configures the separate LLM egress proxy that handles all AI operations.
  *
  * Logic is split across focused hooks:
  * - useAISettings: settings state, persistence, detection, model list

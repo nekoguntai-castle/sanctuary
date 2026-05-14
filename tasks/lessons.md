@@ -2,6 +2,19 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Preserve Security Boundaries When Renaming Misleading Components
+
+**Rule:** When the user rejects misleading runtime framing, separate naming/product support concerns from security-boundary value before deleting a component.
+
+**Why:** The LLM sidecar was initially treated as an unsupported "AI container" to purge, but the user clarified that security isolation still matters. The right fix is to keep the useful egress boundary and rename/harden it so it is clearly not a local LLM runtime.
+
+**How to apply:**
+
+- Ask what risk the component controls before removing it.
+- Rename services around their actual job when the implementation remains valuable.
+- Preserve endpoint allowlists, credential isolation, no-DB/no-signing access, and sanitized context boundaries during the rename.
+- Update task notes immediately when a purge changes into a retention-and-rename task.
+
 ## Keep Maturity References Within Sanctuary Architecture
 
 **Rule:** When borrowing a safety pattern from another wallet, preserve Sanctuary's declared production architecture unless the user explicitly approves a new runtime dependency.

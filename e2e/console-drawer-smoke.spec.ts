@@ -124,7 +124,7 @@ const STATIC_RESPONSES: Record<string, MockApiResponse> = {
   "GET /ai/status": mockResponse({
     enabled: true,
     available: true,
-    containerAvailable: true,
+    proxyAvailable: true,
   }),
   "GET /intelligence/status": mockResponse({
     available: false,

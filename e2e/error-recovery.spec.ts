@@ -272,7 +272,7 @@ function recoveryDynamicResponse(route: ParsedApiRoute, priceFailure: boolean): 
     return recoveryPriceResponse(priceFailure);
   }
   if (route.requestKey === 'GET /ai/status') {
-    return mockResponse({ available: false, containerAvailable: false });
+    return mockResponse({ available: false, proxyAvailable: false });
   }
   return null;
 }

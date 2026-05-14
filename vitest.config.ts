@@ -52,9 +52,9 @@ export default defineConfig({
         '**/coverage/**',
         '**/dist/**',
         '**/node_modules/**',
-        // AI proxy internals are package-owned and covered by the AI proxy
+        // LLM egress proxy internals are package-owned and covered by the LLM egress proxy
         // build/test gates; root tests import them only for integration contracts.
-        'ai-proxy/src/**',
+        'llm-egress-proxy/src/**',
         // Canvas animation internals are covered indirectly through AnimatedBackground
         // registry/dispatch tests and guarded by tests/config/coveragePolicy.test.ts.
         'components/animations/**',

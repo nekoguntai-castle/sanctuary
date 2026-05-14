@@ -1,16 +1,16 @@
 import { ServiceUnavailableError } from "../../errors/ApiError";
 import {
   getAIConfig,
-  getContainerUrl,
-  syncConfigToContainer,
+  getLlmEgressProxyUrl,
+  syncConfigToLlmEgressProxy,
 } from "../../services/ai/config";
-import { buildAIProxyJsonHeaders } from "../../services/ai/proxyClient";
+import { buildLlmEgressProxyJsonHeaders } from "../../services/ai/llmEgressProxyClient";
 import { getErrorMessage } from "../../utils/errors";
 import { createLogger } from "../../utils/logger";
 import type { ConsoleScope, ConsoleToolCall } from "./protocol";
 
 const log = createLogger("ASSISTANT:CONSOLE_GATEWAY");
-const AI_CONTAINER_URL = getContainerUrl();
+const LLM_EGRESS_PROXY_URL = getLlmEgressProxyUrl();
 const CONSOLE_GATEWAY_TIMEOUT_DEFAULT_MS = 125_000;
 const CONSOLE_GATEWAY_TIMEOUT_MS = getConsoleGatewayTimeoutMs();
 
@@ -95,7 +95,7 @@ async function ensureConfiguredProvider(): Promise<ConsoleGatewayProviderState> 
       "provider_not_configured",
     );
   }
-  const synced = await syncConfigToContainer(config);
+  const synced = await syncConfigToLlmEgressProxy(config);
   if (!synced) {
     throw consoleSetupError(
       "AI provider configuration could not be synced for Sanctuary Console",
@@ -113,9 +113,9 @@ async function fetchConsoleGateway<TResponse>(
   body: Record<string, unknown>,
 ): Promise<TResponse> {
   try {
-    const response = await fetch(`${AI_CONTAINER_URL}${path}`, {
+    const response = await fetch(`${LLM_EGRESS_PROXY_URL}${path}`, {
       method: "POST",
-      headers: buildAIProxyJsonHeaders(),
+      headers: buildLlmEgressProxyJsonHeaders(),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(CONSOLE_GATEWAY_TIMEOUT_MS),
     });
@@ -124,8 +124,8 @@ async function fetchConsoleGateway<TResponse>(
       const proxyFailure = await readProxyFailure(response);
       throw new ServiceUnavailableError(
         proxyFailure.message
-          ? `AI proxy ${path} request failed: ${proxyFailure.message}`
-          : `AI proxy ${path} request failed`,
+          ? `LLM egress proxy ${path} request failed: ${proxyFailure.message}`
+          : `LLM egress proxy ${path} request failed`,
         "SERVICE_UNAVAILABLE",
         {
           path,
@@ -139,12 +139,12 @@ async function fetchConsoleGateway<TResponse>(
     return (await response.json()) as TResponse;
   } catch (error) {
     if (error instanceof ServiceUnavailableError) throw error;
-    log.error("Console AI proxy request failed", {
+    log.error("Console LLM egress proxy request failed", {
       path,
       error: getErrorMessage(error),
     });
     throw new ServiceUnavailableError(
-      "AI proxy is not available for Sanctuary Console",
+      "LLM egress proxy is not available for Sanctuary Console",
     );
   }
 }

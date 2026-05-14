@@ -8,7 +8,7 @@
     "node_modules",
     "server",
     "gateway",
-    "ai-proxy",
+    "llm-egress-proxy",
     "tests",
     "e2e",
     "scripts/verify-addresses"

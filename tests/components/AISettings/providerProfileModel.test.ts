@@ -56,7 +56,7 @@ describe('AI provider profile model', () => {
   });
 
   it('honors active profile references from the backend response', () => {
-    const defaultProfile = createDefaultProviderProfile('http://ollama:11434', 'llama3.2:3b');
+    const defaultProfile = createDefaultProviderProfile('http://host.docker.internal:11434', 'llama3.2:3b');
     const remoteProfile = {
       ...defaultProfile,
       id: 'remote-openai',

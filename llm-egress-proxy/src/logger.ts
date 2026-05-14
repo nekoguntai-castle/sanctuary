@@ -1,0 +1,99 @@
+/**
+ * LLM Egress Proxy Logger
+ *
+ * Simple structured logger for the isolated LLM egress proxy.
+ * Mirrors the server-side createLogger API for consistency.
+ */
+
+type LogLevel = "debug" | "info" | "warn" | "error";
+
+export interface Logger {
+  debug: (message: string, context?: Record<string, unknown>) => void;
+  info: (message: string, context?: Record<string, unknown>) => void;
+  warn: (message: string, context?: Record<string, unknown>) => void;
+  error: (message: string, context?: Record<string, unknown>) => void;
+}
+
+const LOG_LEVELS: Record<LogLevel, number> = {
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3,
+};
+
+const currentLevel: number =
+  LOG_LEVELS[(process.env.LOG_LEVEL?.toLowerCase() as LogLevel) || "info"] ??
+  LOG_LEVELS.info;
+
+const OTHER_LOG_CONTROL_CHARS =
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
+
+const colors = {
+  reset: "\x1b[0m",
+  dim: "\x1b[2m",
+  red: "\x1b[31m",
+  yellow: "\x1b[33m",
+  blue: "\x1b[34m",
+  cyan: "\x1b[36m",
+  gray: "\x1b[90m",
+};
+
+function sanitizeLogText(value: unknown): string {
+  return String(value)
+    .replace(/\n|\r/g, "")
+    .replace(/\t/g, "\\t")
+    .replace(
+      OTHER_LOG_CONTROL_CHARS,
+      (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
+    );
+}
+
+function stringifyContextValue(value: unknown): string {
+  if (value === undefined || value === null) return "null";
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value) ?? String(value);
+    } catch {
+      return "[Object]";
+    }
+  }
+  return String(value);
+}
+
+function formatContext(context?: Record<string, unknown>): string {
+  if (!context || Object.keys(context).length === 0) return "";
+  const parts = Object.entries(context)
+    .map(
+      ([k, v]) =>
+        `${sanitizeLogText(k)}=${sanitizeLogText(stringifyContextValue(v))}`,
+    )
+    .join(" ");
+  return ` ${colors.dim}${parts}${colors.reset}`;
+}
+
+function log(
+  level: number,
+  levelName: string,
+  color: string,
+  prefix: string,
+  message: string,
+  context?: Record<string, unknown>,
+): void {
+  if (level < currentLevel) return;
+  const ts = new Date().toISOString();
+  const line = `${colors.gray}[${ts}]${colors.reset} ${color}${levelName}${colors.reset} ${colors.cyan}[${sanitizeLogText(prefix)}]${colors.reset} ${sanitizeLogText(message)}${formatContext(context)}`;
+  console.log(line);
+}
+
+export function createLogger(prefix: string): Logger {
+  return {
+    debug: (message, context?) =>
+      log(LOG_LEVELS.debug, "DEBUG", colors.gray, prefix, message, context),
+    info: (message, context?) =>
+      log(LOG_LEVELS.info, "INFO ", colors.blue, prefix, message, context),
+    warn: (message, context?) =>
+      log(LOG_LEVELS.warn, "WARN ", colors.yellow, prefix, message, context),
+    error: (message, context?) =>
+      log(LOG_LEVELS.error, "ERROR", colors.red, prefix, message, context),
+  };
+}

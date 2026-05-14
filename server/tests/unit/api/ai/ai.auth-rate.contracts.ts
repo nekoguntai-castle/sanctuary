@@ -55,7 +55,7 @@ export function registerRateLimitingContracts() {
       enabled: true,
       configured: true,
     });
-    (aiService.isContainerAvailable as Mock).mockResolvedValue(true);
+    (aiService.isLlmEgressProxyAvailable as Mock).mockResolvedValue(true);
 
     // Make a request - rate limiter is applied but not blocking in tests
     const response = await request(app)

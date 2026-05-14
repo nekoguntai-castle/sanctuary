@@ -61,7 +61,7 @@ vi.mock('../../../../src/middleware/auth', () => ({
   },
 }));
 
-import aiInternalRouter from '../../../../src/api/ai-internal';
+import aiInternalRouter from '../../../../src/api/llm-egress-internal';
 import prisma from '../../../../src/models/prisma';
 import { notificationService } from '../../../../src/websocket/notifications';
 

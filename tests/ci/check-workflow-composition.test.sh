@@ -508,17 +508,17 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "ci-diagnostics-gateway"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
-  "full AI proxy diagnostics" \
-  "full-ai-proxy-tests:" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-coverage.log"' \
+  "full LLM egress proxy diagnostics" \
+  "full-llm-egress-proxy-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/llm-egress-proxy-coverage.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
-  'scripts/ci/retry-vitest-infrastructure-failure.sh "AI proxy coverage"' \
-  'scripts/ci/time-command.sh "AI proxy coverage"' \
-  "npm --prefix ai-proxy run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism" \
-  "Write AI proxy diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "AI Proxy"' \
-  "Upload AI proxy diagnostics" \
-  "ci-diagnostics-ai-proxy"
+  'scripts/ci/retry-vitest-infrastructure-failure.sh "LLM egress proxy coverage"' \
+  'scripts/ci/time-command.sh "LLM egress proxy coverage"' \
+  "npm --prefix llm-egress-proxy run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism" \
+  "Write LLM egress proxy diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "LLM Egress Proxy"' \
+  "Upload LLM egress proxy diagnostics" \
+  "ci-diagnostics-llm-egress-proxy"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full critical mutation shards diagnostics" \
@@ -716,14 +716,14 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "Quick PR lane is not required for \$EVENT_NAME."
 
 assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick AI proxy diagnostics" \
-  "quick-ai-proxy-tests:" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-tests.log"' \
-  "npm --prefix ai-proxy run test" \
-  "Write quick AI proxy diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick AI Proxy"' \
-  "Upload quick AI proxy diagnostics" \
-  "ci-diagnostics-quick-ai-proxy"
+  "quick LLM egress proxy diagnostics" \
+  "quick-llm-egress-proxy-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/llm-egress-proxy-tests.log"' \
+  "npm --prefix llm-egress-proxy run test" \
+  "Write quick LLM egress proxy diagnostic summary" \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick LLM Egress Proxy"' \
+  "Upload quick LLM egress proxy diagnostics" \
+  "ci-diagnostics-quick-llm-egress-proxy"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "quick browser diagnostics" \
@@ -748,23 +748,23 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "ci-diagnostics-quick-render"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
-  "quick AI proxy package test composition" \
-  "quick-ai-proxy-tests:" \
-  "npm --prefix ai-proxy run build" \
-  "npm --prefix ai-proxy run test"
+  "quick LLM egress proxy package test composition" \
+  "quick-llm-egress-proxy-tests:" \
+  "npm --prefix llm-egress-proxy run build" \
+  "npm --prefix llm-egress-proxy run test"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
-  "full AI proxy Vitest coverage retry composition" \
-  "full-ai-proxy-tests:" \
-  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-coverage.log"' \
+  "full LLM egress proxy Vitest coverage retry composition" \
+  "full-llm-egress-proxy-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/llm-egress-proxy-coverage.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
-  'scripts/ci/retry-vitest-infrastructure-failure.sh "AI proxy coverage"' \
-  'scripts/ci/time-command.sh "AI proxy coverage"' \
-  "npm --prefix ai-proxy run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism"
+  'scripts/ci/retry-vitest-infrastructure-failure.sh "LLM egress proxy coverage"' \
+  'scripts/ci/time-command.sh "LLM egress proxy coverage"' \
+  "npm --prefix llm-egress-proxy run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism"
 
 assert_not_contains "$TEST_WORKFLOW" \
-  "AI proxy CI must not allow zero discovered tests" \
-  "npx vitest run tests/ai-proxy --passWithNoTests"
+  "LLM egress proxy CI must not allow zero discovered tests" \
+  "npx vitest run tests/llm-egress-proxy --passWithNoTests"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full browser backend build retry budget" \

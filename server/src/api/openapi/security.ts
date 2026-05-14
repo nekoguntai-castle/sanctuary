@@ -14,7 +14,7 @@
  * the above reads as "bearer token OR (cookie AND CSRF token)."
  *
  * `internalBearerAuth` is exported separately for the root-mounted internal AI
- * container routes (`/internal/ai/...`) — those are proxied by the AI container
+ * container routes (`/internal/ai/...`) — those are proxied by the LLM egress proxy
  * with a bearer token and are NOT reachable from browsers, so they do not
  * advertise the cookie alternative.
  */

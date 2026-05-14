@@ -1312,7 +1312,7 @@ Sanctuary includes optional AI surfaces for:
 
 ### Setting Up AI
 
-1. **Start or point Sanctuary at an AI runtime outside Sanctuary**
+1. **Start or point Sanctuary at a model provider outside Sanctuary**
 
    **Option A: Host-installed Ollama (Most Private)**
    ```bash
@@ -1326,6 +1326,7 @@ Sanctuary includes optional AI surfaces for:
    **Option B: LAN or desktop OpenAI-compatible provider**
    - LM Studio: use a `/v1` endpoint such as `http://192.168.1.20:1234/v1`
    - llama.cpp, vLLM, or another trusted provider: enter its OpenAI-compatible base URL
+   - Add numeric LAN ranges to `LLM_EGRESS_PROXY_ALLOWED_CIDRS` before using LAN IP endpoints
 
    **Option C: Cloud AI (Less Private)**
    - Enter an OpenAI-compatible endpoint URL
@@ -1358,7 +1359,7 @@ The AI path is designed around backend-owned read tools:
 - Direct MCP should stay loopback-only unless protected by TLS, VPN, or a trusted reverse proxy.
 - Restored AI provider credentials must be re-entered, and restored MCP keys are revoked.
 
-See [AI Settings, Sanctuary Console, and MCP access](docs/how-to/ai-mcp-console.md), [MCP Server](docs/how-to/mcp-server.md), and [ai-proxy/README.md](ai-proxy/README.md) for technical details.
+See [AI Settings, Sanctuary Console, and MCP access](docs/how-to/ai-mcp-console.md), [MCP Server](docs/how-to/mcp-server.md), and [llm-egress-proxy/README.md](llm-egress-proxy/README.md) for technical details.
 
 ## Support the Project
 

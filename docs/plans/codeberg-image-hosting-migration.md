@@ -52,13 +52,13 @@ produce installable images again with no return to GitHub.
 | `frontend` | `Dockerfile` (root) | ✅ yes | ✅ yes — `web` service |
 | `backend` | `server/Dockerfile` | ✅ yes | ✅ yes — `server` service (also reused by `worker` and `migrate` containers via `image: <backend>` + different command) |
 | `gateway` | `gateway/Dockerfile` | ❌ no — local-build only | ❌ no |
-| `ai-proxy` | `ai-proxy/Dockerfile` | ❌ no — local-build only | ❌ no |
+| `llm-egress-proxy` | `llm-egress-proxy/Dockerfile` | ❌ no — local-build only | ❌ no |
 
 Verified by reading `docker-compose.yml`, `docker-compose.ghcr.yml`,
 and the live `sanctuary-umbrel/sanctuary/docker-compose.yml`.
 
 **Decision (locked)**: publish only `frontend` and `backend`.
-`gateway` and `ai-proxy` stay local-build for self-host
+`gateway` and `llm-egress-proxy` stay local-build for self-host
 deployments. This matches the current Umbrel manifest exactly and
 avoids scope creep. Re-evaluate after Phase D ships clean.
 

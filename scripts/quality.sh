@@ -295,7 +295,7 @@ run_npm_audit() {
     .
     server
     gateway
-    ai-proxy
+    llm-egress-proxy
     website
     scripts/verify-addresses
     scripts/verify-psbt

@@ -87,7 +87,7 @@ export const mockAIStatusUnavailable: AIStatus = {
 
 export const mockAIStatusError: AIStatus = {
   available: false,
-  error: 'AI container is not available',
+  error: 'LLM egress proxy is not available',
 };
 
 export const mockLabelSuggestions: Record<string, string> = {
@@ -230,7 +230,7 @@ export function setupAIUnavailable(): void {
 /**
  * Configure the AI API mock for error state
  */
-export function setupAIError(errorMessage: string = 'AI container is not available'): void {
+export function setupAIError(errorMessage: string = 'LLM egress proxy is not available'): void {
   mockGetAIStatus.mockResolvedValue({ available: false, error: errorMessage });
   mockSuggestLabel.mockRejectedValue(new Error(errorMessage));
   mockExecuteNaturalQuery.mockRejectedValue(new Error(errorMessage));

@@ -420,7 +420,7 @@ const AUTHENTICATED_STATIC_API_RESPONSES: Record<string, MockApiResponse> = {
     byAction: {},
     failedEvents: 0,
   }),
-  'GET /ai/status': mockResponse({ available: false, containerAvailable: false }),
+  'GET /ai/status': mockResponse({ available: false, proxyAvailable: false }),
   'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
 };
 

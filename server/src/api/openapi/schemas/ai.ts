@@ -25,7 +25,7 @@ export const aiSchemas = {
       message: { type: 'string' },
       model: { type: 'string' },
       endpoint: { type: 'string' },
-      containerAvailable: { type: 'boolean' },
+      proxyAvailable: { type: 'boolean' },
       error: { type: 'string' },
     },
     required: ['available'],

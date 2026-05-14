@@ -73,8 +73,8 @@ describe('aiIntelligence collector', () => {
     mockCheckHealth.mockResolvedValue({
       available: true,
       model: 'llama3',
-      endpoint: 'http://ai:3100',
-      containerAvailable: true,
+      endpoint: 'http://llm-egress-proxy:3100',
+      proxyAvailable: true,
     });
     mockGetSupportStats.mockResolvedValue({
       conversationCount: 4,

@@ -683,11 +683,11 @@ load_or_generate_secrets() {
         echo "  - POSTGRES_PASSWORD: generated"
     fi
 
-    if [ -n "$AI_CONFIG_SECRET" ]; then
-        echo "  - AI_CONFIG_SECRET: using existing"
+    if [ -n "$LLM_EGRESS_PROXY_SECRET" ]; then
+        echo "  - LLM_EGRESS_PROXY_SECRET: using existing"
     else
-        AI_CONFIG_SECRET=$(openssl rand -hex 32 2>/dev/null || generate_secret)
-        echo "  - AI_CONFIG_SECRET: generated"
+        LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32 2>/dev/null || generate_secret)
+        echo "  - LLM_EGRESS_PROXY_SECRET: generated"
     fi
 
     if [ -n "$REDIS_PASSWORD" ]; then
@@ -734,7 +734,7 @@ ENCRYPTION_KEY=$ENCRYPTION_KEY
 ENCRYPTION_SALT=$ENCRYPTION_SALT
 GATEWAY_SECRET=$GATEWAY_SECRET
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-AI_CONFIG_SECRET=$AI_CONFIG_SECRET
+LLM_EGRESS_PROXY_SECRET=$LLM_EGRESS_PROXY_SECRET
 REDIS_PASSWORD=$REDIS_PASSWORD
 
 # ============================================
@@ -789,7 +789,7 @@ export_runtime_environment() {
     export SANCTUARY_ENV_FILE="$ENV_FILE"
     export SANCTUARY_SSL_DIR="$SSL_DIR"
     export SANCTUARY_COMPOSE_SSL_DIR="$COMPOSE_SSL_DIR"
-    export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET REDIS_PASSWORD
+    export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET POSTGRES_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
     export HTTPS_PORT HTTP_PORT GATEWAY_PORT ENABLE_MONITORING ENABLE_TOR SANCTUARY_INSTALL_MODE SANCTUARY_OFFLINE_VERSION
 }
 
@@ -803,7 +803,7 @@ validate_offline_images() {
         "sanctuary-backend:local"
         "sanctuary-frontend:local"
         "sanctuary-gateway:local"
-        "sanctuary-ai:local"
+        "sanctuary-llm-egress-proxy:local"
         "postgres:16-alpine"
         "redis:7-alpine"
         "tecnativa/docker-socket-proxy:latest"

@@ -2,10 +2,10 @@
  * AI Configuration and Sync
  *
  * Manages AI configuration from system settings and syncs it
- * to the AI container with hash-based change detection.
+ * to the LLM egress proxy with hash-based change detection.
  *
  * SECURITY: Only syncs when config actually changes (hash-based detection)
- * SECURITY: Requires AI_CONFIG_SECRET for authentication
+ * SECURITY: Requires LLM_EGRESS_PROXY_SECRET for authentication
  */
 
 import { systemSettingRepository } from "../../repositories";
@@ -28,14 +28,15 @@ import {
   AI_PROVIDER_CREDENTIALS_KEY,
   parseAIProviderCredentials,
 } from "./providerCredentials";
-import { buildAIProxyJsonHeaders } from "./proxyClient";
+import { buildLlmEgressProxyJsonHeaders } from "./llmEgressProxyClient";
 
 const log = createLogger("AI:CONFIG");
 
-// AI container URL
-const AI_CONTAINER_URL = process.env.AI_CONTAINER_URL || "http://ai:3100";
+// LLM egress proxy URL
+const LLM_EGRESS_PROXY_URL =
+  process.env.LLM_EGRESS_PROXY_URL || "http://llm-egress-proxy:3100";
 
-// Re-sync config periodically to handle container restarts
+// Re-sync config periodically to handle proxy restarts
 const CONFIG_RESYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 let configSyncState: ConfigSyncState = {
@@ -190,11 +191,11 @@ export async function getAIConfig(): Promise<AIConfig> {
 }
 
 /**
- * Sync configuration to AI container
+ * Sync configuration to LLM egress proxy
  * SECURITY: Only syncs when config actually changes (hash-based detection)
- * SECURITY: Requires AI_CONFIG_SECRET for authentication
+ * SECURITY: Requires LLM_EGRESS_PROXY_SECRET for authentication
  */
-export async function syncConfigToContainer(
+export async function syncConfigToLlmEgressProxy(
   config: AIConfig,
   force = false,
 ): Promise<boolean> {
@@ -202,7 +203,7 @@ export async function syncConfigToContainer(
   const timeSinceLastSync = Date.now() - configSyncState.lastSyncTime;
 
   // Skip sync if config hasn't changed, last sync was successful, and within resync interval
-  // This ensures we re-sync periodically to handle AI container restarts
+  // This ensures we re-sync periodically to handle LLM egress proxy restarts
   if (
     !force &&
     configSyncState.lastHash === currentHash &&
@@ -213,16 +214,16 @@ export async function syncConfigToContainer(
   }
 
   // Warn if no secret is configured
-  if (!process.env.AI_CONFIG_SECRET) {
+  if (!process.env.LLM_EGRESS_PROXY_SECRET) {
     log.warn(
-      "AI_CONFIG_SECRET not set - config sync will be rejected by container",
+      "LLM_EGRESS_PROXY_SECRET not set - config sync will be rejected by LLM egress proxy",
     );
   }
 
   try {
-    const response = await fetch(`${AI_CONTAINER_URL}/config`, {
+    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/config`, {
       method: "POST",
-      headers: buildAIProxyJsonHeaders({ includeConfigSecret: true }),
+      headers: buildLlmEgressProxyJsonHeaders({ includeConfigSecret: true }),
       body: JSON.stringify({
         enabled: config.enabled,
         endpoint: config.endpoint,
@@ -244,16 +245,16 @@ export async function syncConfigToContainer(
     };
 
     if (!success) {
-      log.error("Failed to sync config to AI container", {
+      log.error("Failed to sync config to LLM egress proxy", {
         status: response.status,
       });
     } else {
-      log.info("AI config synced to container");
+      log.info("AI config synced to LLM egress proxy");
     }
 
     return success;
   } catch (error) {
-    log.error("Failed to sync config to AI container", {
+    log.error("Failed to sync config to LLM egress proxy", {
       error: getErrorMessage(error),
     });
     configSyncState.syncSuccess = false;
@@ -262,17 +263,17 @@ export async function syncConfigToContainer(
 }
 
 /**
- * Force sync configuration to AI container
+ * Force sync configuration to LLM egress proxy
  * Called when admin updates AI settings
  */
 export async function forceSyncConfig(): Promise<boolean> {
   const config = await getAIConfig();
-  return syncConfigToContainer(config, true);
+  return syncConfigToLlmEgressProxy(config, true);
 }
 
 /**
- * Get the AI container URL
+ * Get the LLM egress proxy URL
  */
-export function getContainerUrl(): string {
-  return AI_CONTAINER_URL;
+export function getLlmEgressProxyUrl(): string {
+  return LLM_EGRESS_PROXY_URL;
 }

@@ -1,9 +1,9 @@
 /**
  * Shared fatal process handler installer used by server and gateway.
  *
- * ai-proxy intentionally does NOT consume this module — it is a network-isolated
+ * llm-egress-proxy intentionally does NOT consume this module — it is a network-isolated
  * service that does not import from `shared/`. Maintain its own copy at
- * `ai-proxy/src/fatalProcessHandlers.ts` if behavior needs to change there.
+ * `llm-egress-proxy/src/fatalProcessHandlers.ts` if behavior needs to change there.
  */
 
 import type { Logger } from '../types/logger';

@@ -1,9 +1,9 @@
 /**
  * Shared process exit helpers used by server and gateway.
  *
- * ai-proxy intentionally does NOT consume this module — it is a network-isolated
+ * llm-egress-proxy intentionally does NOT consume this module — it is a network-isolated
  * service that does not import from `shared/`. Maintain its own copy at
- * `ai-proxy/src/processExit.ts`.
+ * `llm-egress-proxy/src/processExit.ts`.
  */
 
 type ExitCode = 0 | 1;

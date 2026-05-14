@@ -18,7 +18,7 @@ backend_changed=false
 backend_integration_changed=false
 critical_mutation_changed=false
 gateway_changed=false
-ai_proxy_changed=false
+llm_egress_proxy_changed=false
 e2e_changed=false
 browser_smoke_changed=false
 render_changed=false
@@ -28,7 +28,7 @@ frontend_files=''
 backend_files=''
 critical_mutation_files=''
 gateway_files=''
-ai_proxy_files=''
+llm_egress_proxy_files=''
 test_files=''
 
 append_file() {
@@ -56,8 +56,8 @@ emit_outputs() {
     "critical_mutation_files=$critical_mutation_files" \
     "gateway_changed=$gateway_changed" \
     "gateway_files=$gateway_files" \
-    "ai_proxy_changed=$ai_proxy_changed" \
-    "ai_proxy_files=$ai_proxy_files" \
+    "llm_egress_proxy_changed=$llm_egress_proxy_changed" \
+    "llm_egress_proxy_files=$llm_egress_proxy_files" \
     "e2e_changed=$e2e_changed" \
     "browser_smoke_changed=$browser_smoke_changed" \
     "render_changed=$render_changed" \
@@ -72,9 +72,9 @@ mark_full_scan() {
 classify_full_scan_trigger_file() {
   local file="$1"
 
-  if is_ai_proxy_file "$file"; then
-    ai_proxy_changed=true
-    append_file ai_proxy_files "$file"
+  if is_llm_egress_proxy_file "$file"; then
+    llm_egress_proxy_changed=true
+    append_file llm_egress_proxy_files "$file"
   fi
 
   if is_frontend_file "$file"; then
@@ -183,9 +183,9 @@ while IFS= read -r file; do
     break
   fi
 
-  if is_ai_proxy_file "$file"; then
-    ai_proxy_changed=true
-    append_file ai_proxy_files "$file"
+  if is_llm_egress_proxy_file "$file"; then
+    llm_egress_proxy_changed=true
+    append_file llm_egress_proxy_files "$file"
     if is_test_file "$file"; then
       append_file test_files "$file"
     fi

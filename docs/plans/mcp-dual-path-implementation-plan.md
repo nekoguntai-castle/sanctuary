@@ -8,7 +8,7 @@ Inputs: `docs/plans/mcp-server-release-readiness-audit.md`
 Implement two supported ways for local AI tooling to use Sanctuary safely:
 
 1. Direct MCP path: an external MCP client or LAN agent connects to Sanctuary's MCP server using an authenticated, scoped, auditable credential.
-2. Sanctuary Console path: the Sanctuary GUI exposes a terminal-like assistant that talks to a LAN LLM through the existing AI proxy and uses backend-controlled read tools.
+2. Sanctuary Console path: the Sanctuary GUI exposes a terminal-like assistant that talks to a LAN LLM through the existing LLM egress proxy and uses backend-controlled read tools.
 
 The release target is read-only wallet and network intelligence. Spending, signing, PSBT import/export, address generation, label mutation, wallet mutation, policy mutation, arbitrary SQL, arbitrary network fetches, and OS shell commands are explicitly out of scope for the first implementation.
 
@@ -169,9 +169,9 @@ Do not pass browser JWTs through MCP. Do not expose MCP bearer tokens to the bro
 
 For the Sanctuary Console path, use the logged-in user's existing session and access. The backend creates a console execution context from the authenticated user and selected scope. The scope can be general network, one wallet, selected wallets, a specific wallet object, or admin/audit when authorized. It does not need to mint an MCP key for normal use.
 
-## AI Proxy Direction
+## LLM Egress Proxy Direction
 
-The current AI proxy has the right security instinct: it is isolated from the database, private keys, signing paths, and persistent storage, and the main backend remains the trusted authority. Keep that boundary.
+The current LLM egress proxy has the right security instinct: it is isolated from the database, private keys, signing paths, and persistent storage, and the main backend remains the trusted authority. Keep that boundary.
 
 It is not ideal as-is for the Sanctuary Console. Today it is mostly a prompt-string service with feature-specific routes (`/suggest-label`, `/query`, `/analyze`, `/chat`), endpoint/model-only config, no provider authentication, no explicit tool-call protocol, and no service authentication on normal generation routes beyond Docker network isolation. For console/MCP work, refactor it into a stricter model gateway.
 
@@ -195,7 +195,7 @@ Change these properties before using it for the console:
 - Add OpenAI-compatible `tool_calls` support plus strict JSON fallback for local models that cannot emit native tool calls.
 - Return typed errors: provider unavailable, timeout, invalid model response, context too large, unsupported capability, auth failure, and rate limit.
 - Avoid logging prompts, tool results, or model completions. Log request IDs, provider type, model, duration, status, token estimates/counts when available, and error class.
-- Add streaming support later through backend-mediated SSE/WebSocket. The browser should not connect directly to the AI proxy.
+- Add streaming support later through backend-mediated SSE/WebSocket. The browser should not connect directly to the LLM egress proxy.
 - Keep prompt templates either in the backend orchestrator or in shared files versioned with tests. The proxy should not know wallet business semantics beyond generic model invocation.
 
 Net design: the proxy should not execute tools. It should help the backend ask the model, "what tool calls should we consider?" and later, "synthesize an answer from these sanitized facts." The backend validates every proposed tool call before execution.
@@ -272,8 +272,8 @@ Implementation notes:
 
 - Update `.env.example`, `start.sh`, `docker-compose.yml`, and `docker-compose.ghcr.yml` together.
 - Add explicit profiles/modes for loopback-only MCP, LAN MCP, bundled Ollama, host Ollama, LAN Ollama, and authenticated provider endpoint.
-- Document network requirements separately for direct MCP clients and for the AI proxy calling a LAN LLM.
-- Keep default exposure conservative: MCP loopback-only, AI proxy not host-published, and no cloud/LAN egress unless configured.
+- Document network requirements separately for direct MCP clients and for the LLM egress proxy calling a LAN LLM.
+- Keep default exposure conservative: MCP loopback-only, LLM egress proxy not host-published, and no cloud/LAN egress unless configured.
 
 ### OpenAPI And Frontend API Clients
 
@@ -482,13 +482,13 @@ These items should be resolved during Milestone 0 or explicitly deferred with an
 
 ### Threat Model
 
-Write a short threat model covering the browser, backend, AI proxy, LAN LLM, direct MCP client, database, backup files, support packages, logs, and external provider endpoint. For each boundary, document what the component can read, write, mutate, log, and exfiltrate.
+Write a short threat model covering the browser, backend, LLM egress proxy, LAN LLM, direct MCP client, database, backup files, support packages, logs, and external provider endpoint. For each boundary, document what the component can read, write, mutate, log, and exfiltrate.
 
 Acceptance questions:
 
 - What can a compromised LAN LLM see?
 - What can a compromised MCP client do with its key?
-- What can a compromised AI proxy reach on the network?
+- What can a compromised LLM egress proxy reach on the network?
 - What happens if a browser session is stolen?
 - What remains safe if a backup file is restored on another host?
 
@@ -641,7 +641,7 @@ Acceptance criteria:
 
 ### Provider Egress And SSRF Rules
 
-The AI proxy should not become a general network pivot.
+The LLM egress proxy should not become a general network pivot.
 
 Block by default:
 
@@ -705,7 +705,7 @@ Review:
 - MCP keys
 - agent API keys
 - AI provider credentials
-- AI proxy service secret
+- LLM egress proxy service secret
 - LAN provider endpoints
 - webhooks/notification credentials
 - reverse-proxy or mTLS credentials
@@ -758,7 +758,7 @@ Transition steps:
 1. Add typed provider profile tables and APIs.
 2. Make typed provider profiles the only source of truth for provider endpoint, model, credentials, capability state, health, and egress mode.
 3. Keep `aiEnabled` as a feature toggle and store `activeAiProviderProfileId` as the pointer to the selected profile.
-4. Replace prompt-specific AI proxy routes with normalized planning/synthesis/generation endpoints.
+4. Replace prompt-specific LLM egress proxy routes with normalized planning/synthesis/generation endpoints.
 5. Remove browser-JWT-to-proxy data fetching from AI flows. Backend-owned services derive context, execute tools, and send sanitized facts to the proxy.
 6. Replace or remove existing AI label/query/insight/chat routes as needed. New APIs should be explicit, typed, and backed by provider profiles.
 7. Add support package and backup behavior for the new provider profile model only.
@@ -807,7 +807,7 @@ Acceptance criteria:
 
 - Written design updates cover all surfaces above.
 - Typed AI provider profile model is specified, including encrypted credential fields, active-profile selection, redacted API responses, restore behavior, and support-package shape.
-- Security review confirms no browser-supplied wallet context, no browser JWT to AI proxy, no provider secrets in responses, and no restored reusable external credentials.
+- Security review confirms no browser-supplied wallet context, no browser JWT to LLM egress proxy, no provider secrets in responses, and no restored reusable external credentials.
 - Security review signs off on the threat model, data sensitivity matrix, provider egress rules, and prompt-injection test corpus.
 - Implementation PRs can be split without re-deciding core data model or auth semantics.
 
@@ -902,10 +902,10 @@ Flow:
 Browser
   -> Sanctuary API conversation endpoint
   -> Console orchestrator
-  -> AI proxy asks LAN LLM for answer or tool-call plan
+  -> LLM egress proxy asks LAN LLM for answer or tool-call plan
   -> Backend validates requested tool calls
   -> Shared read-tool registry executes allowed calls
-  -> AI proxy asks LAN LLM to synthesize from sanitized tool results
+  -> LLM egress proxy asks LAN LLM to synthesize from sanitized tool results
   -> Backend stores answer plus tool trace
   -> Browser renders answer and trace
 ```
@@ -913,9 +913,9 @@ Browser
 Tasks:
 
 - Add a console orchestrator service under `server/src/services/intelligence` or a new `server/src/services/assistant` module.
-- Preserve the existing rule that the main backend does not call external AI directly. External model calls still go through `ai-proxy`.
-- Add generic AI proxy endpoints for planning and synthesis. They should support OpenAI-compatible tool calls when the model supports them and a strict JSON planning fallback when it does not.
-- Add service authentication from backend to AI proxy for all console-generation calls.
+- Preserve the existing rule that the main backend does not call external AI directly. External model calls still go through `llm-egress-proxy`.
+- Add generic LLM egress proxy endpoints for planning and synthesis. They should support OpenAI-compatible tool calls when the model supports them and a strict JSON planning fallback when it does not.
+- Add service authentication from backend to LLM egress proxy for all console-generation calls.
 - Remove browser-supplied `walletContext` from console turns. Derive all wallet and network context server-side after scope and access checks.
 - Validate the conversation scope on creation and on every message. Wallet/object scopes require wallet access; general network scope requires only an authenticated user unless an admin-only network tool is requested.
 - Add server-side validation for model-requested tool calls:
@@ -939,7 +939,7 @@ Acceptance criteria:
 
 - Fake-LLM tests prove tool-call planning, tool execution, synthesis, invalid tool rejection, unauthorized wallet rejection, and timeout behavior.
 - Tests prove MCP tokens and browser JWTs are never sent to the LLM payload.
-- Tests prove browser JWTs are not sent to AI proxy console endpoints.
+- Tests prove browser JWTs are not sent to LLM egress proxy console endpoints.
 - Tests prove provider API keys are stored encrypted and never returned to the browser or support packages.
 - Prompt-injection tests prove labels/memos/counterparties are included only as data, not system instructions.
 - Audit logs record console turns and tool calls with enough metadata for investigation.
@@ -1025,7 +1025,7 @@ Tasks:
 - Add an MCP SDK integration test that starts the MCP app with a seeded DB-backed key and calls list/read/call flows.
 - Add a Docker Compose smoke for `./start.sh --with-mcp` in loopback mode.
 - Add a documented LAN smoke path that can be run manually or in a controlled CI network.
-- Add a fake LAN LLM integration test for the Sanctuary Console through `ai-proxy`.
+- Add a fake LAN LLM integration test for the Sanctuary Console through `llm-egress-proxy`.
 - Add docs:
   - direct MCP loopback
   - direct MCP LAN with TLS/VPN/reverse proxy warning
@@ -1046,11 +1046,11 @@ Acceptance criteria:
 1. Cross-app boundary prep: auth vocabulary, typed provider profile schema, trace persistence, audit/metrics/support fields, backup/restore decisions, API shapes, UX cutline.
 2. MCP hardening and docs: restore-key revocation, version/header behavior, LAN docs, env examples, GHCR Compose, focused tests.
 3. AI Settings provider profiles: typed model, removal of generic endpoint/model settings, UI rename, redacted APIs, support/backup behavior.
-4. AI proxy gateway hardening: service auth on generation routes, provider credentials, egress controls, normalized model API, typed errors, no prompt/result logging.
+4. LLM egress proxy gateway hardening: service auth on generation routes, provider credentials, egress controls, normalized model API, typed errors, no prompt/result logging.
 5. Shared read-tool registry: extract existing MCP tool executors and add schemas/budgets/result envelopes.
 6. Read-parity batch 1: dashboard, wallet, transactions, UTXOs, addresses.
 7. Read-parity batch 2: labels, policies, drafts, fees/prices, insights, admin reads.
-8. Console backend and AI proxy protocol: fake-LLM verified orchestrator.
+8. Console backend and LLM egress proxy protocol: fake-LLM verified orchestrator.
 9. Console UI: Intelligence tab console mode with tool traces and provenance.
 10. Admin MCP profiles: UI/API hardening for external credentials.
 11. End-to-end proof and release docs.
@@ -1142,11 +1142,11 @@ These items should be resolved during Milestone 0 or the first Console UI/backen
 ## Verification Matrix
 
 - Unit: schemas, scope checks, redaction, budgets, key expiry, CIDR checks, backup restore key revocation.
-- Integration: MCP SDK client, registry execution against seeded repositories, authenticated fake AI proxy tool-call loop.
+- Integration: MCP SDK client, registry execution against seeded repositories, authenticated fake LLM egress proxy tool-call loop.
 - API: admin MCP profiles, console conversations, denied tool calls, rate limits.
 - UI: console mode, tool trace rendering, key profile management, error states.
 - Compose: `--with-mcp` loopback smoke and documented LAN manual smoke.
-- Security: no shell execution, no arbitrary SQL, no browser-supplied wallet context for console tools, no browser JWT or MCP token in LLM payloads, no browser JWT in AI proxy console calls, no provider API keys in responses or support packages, no reusable restored MCP or agent keys.
+- Security: no shell execution, no arbitrary SQL, no browser-supplied wallet context for console tools, no browser JWT or MCP token in LLM payloads, no browser JWT in LLM egress proxy console calls, no provider API keys in responses or support packages, no reusable restored MCP or agent keys.
 - Quality: focused tests, touched-file lizard, typecheck/build, `git diff --check`.
 
 ## Finalized Implementation Decisions

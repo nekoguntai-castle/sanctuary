@@ -29,7 +29,7 @@ describe('useAISettings', () => {
     vi.clearAllMocks();
     vi.mocked(adminApi.getSystemSettings).mockResolvedValue({
       aiEnabled: true,
-      aiEndpoint: 'http://ollama:11434',
+      aiEndpoint: 'http://host.docker.internal:11434',
       aiModel: '',
     } as never);
     vi.mocked(adminApi.updateSystemSettings).mockResolvedValue({} as never);
@@ -443,7 +443,7 @@ describe('useAISettings', () => {
     });
 
     expect(result.current.detectMessage).toBe(
-      'Detection failed. Check AI container logs.',
+      'Detection failed. Check LLM egress proxy logs.',
     );
   });
 
@@ -533,7 +533,7 @@ describe('useAISettings', () => {
     });
 
     expect(result.current.detectMessage).toBe(
-      'Connection failed. Check the endpoint URL and AI proxy allowlist.',
+      'Connection failed. Check the endpoint URL and LLM egress proxy allowlist.',
     );
   });
 
@@ -628,7 +628,7 @@ describe('useAISettings', () => {
           id: 'default-ollama',
           name: 'Default Ollama',
           providerType: 'ollama',
-          endpoint: 'http://ollama:11434',
+          endpoint: 'http://host.docker.internal:11434',
           model: 'llama3.2:3b',
           capabilities: { chat: true, toolCalls: false, strictJson: true },
         },
@@ -665,7 +665,7 @@ describe('useAISettings', () => {
       result.current.providerProfiles.map((profile) => profile.id),
     ).toEqual(['default-ollama']);
     expect(result.current.activeProviderProfileId).toBe('default-ollama');
-    expect(result.current.aiEndpoint).toBe('http://ollama:11434');
+    expect(result.current.aiEndpoint).toBe('http://host.docker.internal:11434');
 
     act(() => {
       result.current.handleRemoveActiveProviderProfile();

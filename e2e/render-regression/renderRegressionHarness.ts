@@ -663,7 +663,7 @@ const AUTHENTICATED_API_RESPONSES: Record<string, MockApiResponse> = {
   'POST /admin/encryption-keys': mockResponse(ENCRYPTION_KEYS),
   'GET /admin/audit-logs': mockResponse(AUDIT_LOGS_RESPONSE),
   'GET /admin/audit-logs/stats': mockResponse(AUDIT_LOG_STATS),
-  'GET /ai/status': mockResponse({ available: false, containerAvailable: false }),
+  'GET /ai/status': mockResponse({ available: false, proxyAvailable: false }),
   'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
 };
 

@@ -24,11 +24,11 @@ on:
       - 'tests/**'
       - '!tests/*.md'
       - '!tests/**/*.md'
-      - 'ai-proxy/**'
-      - '!ai-proxy/*.md'
-      - '!ai-proxy/**/*.md'
-      - '!ai-proxy/*.mdx'
-      - '!ai-proxy/**/*.mdx'
+      - 'llm-egress-proxy/**'
+      - '!llm-egress-proxy/*.md'
+      - '!llm-egress-proxy/**/*.md'
+      - '!llm-egress-proxy/*.mdx'
+      - '!llm-egress-proxy/**/*.mdx'
       - 'server/**'
       - '!server/*.md'
       - '!server/**/*.md'
@@ -98,8 +98,8 @@ jobs:
       critical_mutation_files: ${{ steps.classify.outputs.critical_mutation_files }}
       gateway_changed: ${{ steps.classify.outputs.gateway_changed }}
       gateway_files: ${{ steps.classify.outputs.gateway_files }}
-      ai_proxy_changed: ${{ steps.classify.outputs.ai_proxy_changed }}
-      ai_proxy_files: ${{ steps.classify.outputs.ai_proxy_files }}
+      llm_egress_proxy_changed: ${{ steps.classify.outputs.llm_egress_proxy_changed }}
+      llm_egress_proxy_files: ${{ steps.classify.outputs.llm_egress_proxy_files }}
       e2e_changed: ${{ steps.classify.outputs.e2e_changed }}
       browser_smoke_changed: ${{ steps.classify.outputs.browser_smoke_changed }}
       render_changed: ${{ steps.classify.outputs.render_changed }}
@@ -691,14 +691,14 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-  quick-ai-proxy-tests:
-    name: Quick AI Proxy Tests
-    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.ai_proxy_changed == 'true'
+  quick-llm-egress-proxy-tests:
+    name: Quick LLM Egress Proxy Tests
+    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.llm_egress_proxy_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [detect-changes]
     env:
-      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-ai-proxy
+      DIAGNOSTIC_DIR: .tmp/ci-diagnostics/quick-llm-egress-proxy
 
     steps:
       - name: Checkout repository
@@ -708,7 +708,7 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Restore root node_modules cache
-        id: cache-quick-aiproxy-root-node-modules
+        id: cache-quick-llmproxy-root-node-modules
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: node_modules
@@ -717,47 +717,47 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-root-node-modules-node-${{ hashFiles('.nvmrc') }}-
 
       - name: Install root test dependencies
-        if: steps.cache-quick-aiproxy-root-node-modules.outputs.cache-hit != 'true'
+        if: steps.cache-quick-llmproxy-root-node-modules.outputs.cache-hit != 'true'
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/root-install-dependencies.log"
           npm ci
 
-      - name: Restore ai-proxy node_modules cache
-        id: cache-quick-aiproxy-node-modules
+      - name: Restore llm-egress-proxy node_modules cache
+        id: cache-quick-llmproxy-node-modules
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
-          path: ai-proxy/node_modules
-          key: ${{ runner.os }}-${{ runner.arch }}-ai-proxy-node-modules-node-${{ hashFiles('.nvmrc') }}-${{ hashFiles('ai-proxy/package.json', 'ai-proxy/package-lock.json') }}
+          path: llm-egress-proxy/node_modules
+          key: ${{ runner.os }}-${{ runner.arch }}-llm-egress-proxy-node-modules-node-${{ hashFiles('.nvmrc') }}-${{ hashFiles('llm-egress-proxy/package.json', 'llm-egress-proxy/package-lock.json') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-ai-proxy-node-modules-node-${{ hashFiles('.nvmrc') }}-
+            ${{ runner.os }}-${{ runner.arch }}-llm-egress-proxy-node-modules-node-${{ hashFiles('.nvmrc') }}-
 
-      - name: Install AI proxy dependencies
-        if: steps.cache-quick-aiproxy-node-modules.outputs.cache-hit != 'true'
+      - name: Install LLM egress proxy dependencies
+        if: steps.cache-quick-llmproxy-node-modules.outputs.cache-hit != 'true'
         run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-install-dependencies.log"
-          npm --prefix ai-proxy ci
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/llm-egress-proxy-install-dependencies.log"
+          npm --prefix llm-egress-proxy ci
 
-      - name: Build AI proxy
+      - name: Build LLM egress proxy
         run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-build.log"
-          npm --prefix ai-proxy run build
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/llm-egress-proxy-build.log"
+          npm --prefix llm-egress-proxy run build
 
-      - name: Run AI proxy tests
+      - name: Run LLM egress proxy tests
         run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-tests.log"
-          npm --prefix ai-proxy run test
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/llm-egress-proxy-tests.log"
+          npm --prefix llm-egress-proxy run test
 
-      - name: Write quick AI proxy diagnostic summary
+      - name: Write quick LLM egress proxy diagnostic summary
         if: always()
         continue-on-error: true
-        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick AI Proxy"
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick LLM Egress Proxy"
 
-      - name: Upload quick AI proxy diagnostics
+      - name: Upload quick LLM egress proxy diagnostics
         if: always()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
-          name: ci-diagnostics-quick-ai-proxy
+          name: ci-diagnostics-quick-llm-egress-proxy
           path: ${{ env.DIAGNOSTIC_DIR }}/
           if-no-files-found: ignore
           include-hidden-files: true
@@ -962,7 +962,7 @@ jobs:
       - quick-backend-integration-smoke
       - quick-critical-mutation
       - quick-gateway-tests
-      - quick-ai-proxy-tests
+      - quick-llm-egress-proxy-tests
       - quick-browser-smoke
       - quick-render-regression
       - full-test-summary
@@ -977,7 +977,7 @@ jobs:
           QUICK_BACKEND_INTEGRATION_SMOKE: ${{ needs.quick-backend-integration-smoke.result }}
           QUICK_CRITICAL_MUTATION: ${{ needs.quick-critical-mutation.result }}
           QUICK_GATEWAY_TESTS: ${{ needs.quick-gateway-tests.result }}
-          QUICK_AI_PROXY_TESTS: ${{ needs.quick-ai-proxy-tests.result }}
+          QUICK_LLM_EGRESS_PROXY_TESTS: ${{ needs.quick-llm-egress-proxy-tests.result }}
           QUICK_BROWSER_SMOKE: ${{ needs.quick-browser-smoke.result }}
           QUICK_RENDER_REGRESSION: ${{ needs.quick-render-regression.result }}
           FULL_TEST_SUMMARY: ${{ needs.full-test-summary.result }}
@@ -1017,7 +1017,7 @@ jobs:
           allow_success_or_skipped "Quick Backend Integration Smoke" "$QUICK_BACKEND_INTEGRATION_SMOKE"
           allow_success_or_skipped "Quick Critical Mutation Gate" "$QUICK_CRITICAL_MUTATION"
           allow_success_or_skipped "Quick Gateway Tests" "$QUICK_GATEWAY_TESTS"
-          allow_success_or_skipped "Quick AI Proxy Tests" "$QUICK_AI_PROXY_TESTS"
+          allow_success_or_skipped "Quick LLM Egress Proxy Tests" "$QUICK_LLM_EGRESS_PROXY_TESTS"
           allow_success_or_skipped "Quick Browser Smoke" "$QUICK_BROWSER_SMOKE"
           allow_success_or_skipped "Quick Render Regression" "$QUICK_RENDER_REGRESSION"
           require_success "Full Test Summary" "$FULL_TEST_SUMMARY"
@@ -1040,7 +1040,7 @@ jobs:
       - quick-backend-integration-smoke
       - quick-critical-mutation
       - quick-gateway-tests
-      - quick-ai-proxy-tests
+      - quick-llm-egress-proxy-tests
       - quick-browser-smoke
       - quick-render-regression
     steps:
@@ -1055,7 +1055,7 @@ jobs:
           QUICK_BACKEND_INTEGRATION_SMOKE: ${{ needs.quick-backend-integration-smoke.result }}
           QUICK_CRITICAL_MUTATION: ${{ needs.quick-critical-mutation.result }}
           QUICK_GATEWAY_TESTS: ${{ needs.quick-gateway-tests.result }}
-          QUICK_AI_PROXY_TESTS: ${{ needs.quick-ai-proxy-tests.result }}
+          QUICK_LLM_EGRESS_PROXY_TESTS: ${{ needs.quick-llm-egress-proxy-tests.result }}
           QUICK_BROWSER_SMOKE: ${{ needs.quick-browser-smoke.result }}
           QUICK_RENDER_REGRESSION: ${{ needs.quick-render-regression.result }}
         run: |
@@ -1097,7 +1097,7 @@ jobs:
               allow_success_or_skipped "Quick Backend Integration Smoke" "$QUICK_BACKEND_INTEGRATION_SMOKE"
               allow_success_or_skipped "Quick Critical Mutation Gate" "$QUICK_CRITICAL_MUTATION"
               allow_success_or_skipped "Quick Gateway Tests" "$QUICK_GATEWAY_TESTS"
-              allow_success_or_skipped "Quick AI Proxy Tests" "$QUICK_AI_PROXY_TESTS"
+              allow_success_or_skipped "Quick LLM Egress Proxy Tests" "$QUICK_LLM_EGRESS_PROXY_TESTS"
               allow_success_or_skipped "Quick Browser Smoke" "$QUICK_BROWSER_SMOKE"
               allow_success_or_skipped "Quick Render Regression" "$QUICK_RENDER_REGRESSION"
               ;;
@@ -1971,19 +1971,19 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  full-ai-proxy-tests:
-    name: Full AI Proxy Tests
+  full-llm-egress-proxy-tests:
+    name: Full LLM Egress Proxy Tests
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.ai_proxy_changed == 'true')
+       needs.detect-changes.outputs.llm_egress_proxy_changed == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [detect-changes, full-lane-ready]
     env:
-      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/ai-proxy
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/llm-egress-proxy
 
     steps:
       - name: Checkout repository
@@ -1996,55 +1996,55 @@ jobs:
         run: >
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/root-install-dependencies.log"
           scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/retry-command.sh "AI proxy root npm ci"
-          scripts/ci/time-command.sh "AI proxy root npm ci"
+          scripts/ci/retry-command.sh "LLM egress proxy root npm ci"
+          scripts/ci/time-command.sh "LLM egress proxy root npm ci"
           npm ci --audit=false --fund=false --cache .tmp/npm-cache
 
-      - name: Install AI proxy dependencies
+      - name: Install LLM egress proxy dependencies
         run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-install-dependencies.log"
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/llm-egress-proxy-install-dependencies.log"
           scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/retry-command.sh "AI proxy npm ci"
-          scripts/ci/time-command.sh "AI proxy npm ci"
-          npm --prefix ai-proxy ci --audit=false --fund=false --cache .tmp/npm-cache-ai-proxy
+          scripts/ci/retry-command.sh "LLM egress proxy npm ci"
+          scripts/ci/time-command.sh "LLM egress proxy npm ci"
+          npm --prefix llm-egress-proxy ci --audit=false --fund=false --cache .tmp/npm-cache-llm-egress-proxy
 
-      - name: Build AI proxy
+      - name: Build LLM egress proxy
         run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-build.log"
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/llm-egress-proxy-build.log"
           scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/time-command.sh "AI proxy build"
-          npm --prefix ai-proxy run build
+          scripts/ci/time-command.sh "LLM egress proxy build"
+          npm --prefix llm-egress-proxy run build
 
-      - name: Run AI proxy tests with coverage
+      - name: Run LLM egress proxy tests with coverage
         run: >
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-coverage.log"
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/llm-egress-proxy-coverage.log"
           scripts/ci/with-runner-lock.sh node-toolchain
-          scripts/ci/retry-vitest-infrastructure-failure.sh "AI proxy coverage"
-          scripts/ci/time-command.sh "AI proxy coverage"
-          npm --prefix ai-proxy run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism
+          scripts/ci/retry-vitest-infrastructure-failure.sh "LLM egress proxy coverage"
+          scripts/ci/time-command.sh "LLM egress proxy coverage"
+          npm --prefix llm-egress-proxy run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism
 
-      - name: Upload AI proxy coverage
+      - name: Upload LLM egress proxy coverage
         if: always()
         uses: ./.github/actions/upload-artifact
         with:
-          name: ai-proxy-coverage
+          name: llm-egress-proxy-coverage
           path: |
-            ai-proxy/coverage/
-            ai-proxy/junit.xml
+            llm-egress-proxy/coverage/
+            llm-egress-proxy/junit.xml
           retention-days: 14
 
-      - name: Write AI proxy diagnostic summary
+      - name: Write LLM egress proxy diagnostic summary
         if: always()
         continue-on-error: true
-        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "AI Proxy"
+        run: scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "LLM Egress Proxy"
 
-      - name: Upload AI proxy diagnostics
+      - name: Upload LLM egress proxy diagnostics
         if: always()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
-          name: ci-diagnostics-ai-proxy
-          path: .tmp/ci-diagnostics/ai-proxy/
+          name: ci-diagnostics-llm-egress-proxy
+          path: .tmp/ci-diagnostics/llm-egress-proxy/
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
@@ -2619,7 +2619,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [detect-changes, full-lane-ready, full-backend-tests, full-frontend-tests, full-gateway-tests, full-ai-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
+    needs: [detect-changes, full-lane-ready, full-backend-tests, full-frontend-tests, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
 
     steps:
       - name: Download backend coverage
@@ -2646,13 +2646,13 @@ jobs:
           name: gateway-coverage
           path: gateway-results/
 
-      - name: Download AI proxy coverage
-        if: needs.full-ai-proxy-tests.result == 'success' || needs.full-ai-proxy-tests.result == 'failure'
+      - name: Download LLM egress proxy coverage
+        if: needs.full-llm-egress-proxy-tests.result == 'success' || needs.full-llm-egress-proxy-tests.result == 'failure'
         continue-on-error: true
         uses: ./.github/actions/download-artifact
         with:
-          name: ai-proxy-coverage
-          path: ai-proxy-results/
+          name: llm-egress-proxy-coverage
+          path: llm-egress-proxy-results/
 
       - name: Download critical mutation report
         if: needs.full-critical-mutation.result == 'success' || needs.full-critical-mutation.result == 'failure'
@@ -2718,20 +2718,20 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ needs.full-ai-proxy-tests.result }}" = "success" ]; then
-            echo "### AI Proxy: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.full-ai-proxy-tests.result }}" = "skipped" ]; then
-            echo "### AI Proxy: Skipped" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.full-llm-egress-proxy-tests.result }}" = "success" ]; then
+            echo "### LLM Egress Proxy: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.full-llm-egress-proxy-tests.result }}" = "skipped" ]; then
+            echo "### LLM Egress Proxy: Skipped" >> $GITHUB_STEP_SUMMARY
           else
-            echo "### AI Proxy: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "### LLM Egress Proxy: Failed" >> $GITHUB_STEP_SUMMARY
           fi
 
-          if [ -f ai-proxy-results/coverage/coverage-summary.json ]; then
+          if [ -f llm-egress-proxy-results/coverage/coverage-summary.json ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "#### AI Proxy Coverage" >> $GITHUB_STEP_SUMMARY
+            echo "#### LLM Egress Proxy Coverage" >> $GITHUB_STEP_SUMMARY
             echo "| Metric | Coverage |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|----------|" >> $GITHUB_STEP_SUMMARY
-            jq -r '.total | to_entries[] | "| \(.key) | \(.value.pct)% |"' ai-proxy-results/coverage/coverage-summary.json >> $GITHUB_STEP_SUMMARY
+            jq -r '.total | to_entries[] | "| \(.key) | \(.value.pct)% |"' llm-egress-proxy-results/coverage/coverage-summary.json >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -2781,14 +2781,14 @@ jobs:
           BACKEND_CHANGED: ${{ needs.detect-changes.outputs.backend_changed }}
           CRITICAL_MUTATION_CHANGED: ${{ needs.detect-changes.outputs.critical_mutation_changed }}
           GATEWAY_CHANGED: ${{ needs.detect-changes.outputs.gateway_changed }}
-          AI_PROXY_CHANGED: ${{ needs.detect-changes.outputs.ai_proxy_changed }}
+          LLM_EGRESS_PROXY_CHANGED: ${{ needs.detect-changes.outputs.llm_egress_proxy_changed }}
           BROWSER_SMOKE_CHANGED: ${{ needs.detect-changes.outputs.browser_smoke_changed }}
           RENDER_CHANGED: ${{ needs.detect-changes.outputs.render_changed }}
           BUILD_CHANGED: ${{ needs.detect-changes.outputs.build_changed }}
           FULL_BACKEND_TESTS: ${{ needs.full-backend-tests.result }}
           FULL_FRONTEND_TESTS: ${{ needs.full-frontend-tests.result }}
           FULL_GATEWAY_TESTS: ${{ needs.full-gateway-tests.result }}
-          FULL_AI_PROXY_TESTS: ${{ needs.full-ai-proxy-tests.result }}
+          FULL_LLM_EGRESS_PROXY_TESTS: ${{ needs.full-llm-egress-proxy-tests.result }}
           FULL_CRITICAL_MUTATION: ${{ needs.full-critical-mutation.result }}
           FULL_BROWSER_E2E_TESTS: ${{ needs.full-browser-e2e-tests.result }}
           FULL_RENDER_E2E_TESTS: ${{ needs.full-render-e2e-tests.result }}
@@ -2840,7 +2840,7 @@ jobs:
           backend_required=false
           frontend_required=false
           gateway_required=false
-          ai_proxy_required=false
+          llm_egress_proxy_required=false
           critical_mutation_required=false
           browser_e2e_required=false
           render_e2e_required=false
@@ -2850,7 +2850,7 @@ jobs:
             backend_required=true
             frontend_required=true
             gateway_required=true
-            ai_proxy_required=true
+            llm_egress_proxy_required=true
             critical_mutation_required=true
             browser_e2e_required=true
             render_e2e_required=true
@@ -2861,7 +2861,7 @@ jobs:
             backend_required=true
             frontend_required=true
             gateway_required=true
-            ai_proxy_required=true
+            llm_egress_proxy_required=true
             browser_e2e_required=true
             render_e2e_required=true
             build_required=true
@@ -2879,8 +2879,8 @@ jobs:
             gateway_required=true
           fi
 
-          if is_true "$AI_PROXY_CHANGED"; then
-            ai_proxy_required=true
+          if is_true "$LLM_EGRESS_PROXY_CHANGED"; then
+            llm_egress_proxy_required=true
           fi
 
           if is_true "$CRITICAL_MUTATION_CHANGED"; then
@@ -2904,7 +2904,7 @@ jobs:
           require_when_relevant "Full Backend Tests" "$FULL_BACKEND_TESTS" "$backend_required"
           require_when_relevant "Full Frontend Tests" "$FULL_FRONTEND_TESTS" "$frontend_required"
           require_when_relevant "Full Gateway Tests" "$FULL_GATEWAY_TESTS" "$gateway_required"
-          require_when_relevant "Full AI Proxy Tests" "$FULL_AI_PROXY_TESTS" "$ai_proxy_required"
+          require_when_relevant "Full LLM Egress Proxy Tests" "$FULL_LLM_EGRESS_PROXY_TESTS" "$llm_egress_proxy_required"
           require_when_relevant "Full Critical Mutation Gate" "$FULL_CRITICAL_MUTATION" "$critical_mutation_required"
           require_when_relevant "Full Browser E2E Tests" "$FULL_BROWSER_E2E_TESTS" "$browser_e2e_required"
           require_when_relevant "Full Render E2E Tests" "$FULL_RENDER_E2E_TESTS" "$render_e2e_required"

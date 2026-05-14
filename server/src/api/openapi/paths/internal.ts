@@ -1,7 +1,7 @@
 /**
  * Internal API Path Definitions
  *
- * OpenAPI path definitions for root-mounted internal gateway and AI container endpoints.
+ * OpenAPI path definitions for root-mounted internal gateway and LLM egress proxy endpoints.
  */
 
 const bearerAuth = [{ bearerAuth: [] }] as const;
@@ -92,7 +92,7 @@ export const internalPaths = {
     post: {
       tags: ['Internal'],
       summary: 'Receive AI model pull progress',
-      description: 'Internal-network-only callback from the AI container that broadcasts model download progress to connected clients.',
+      description: 'Internal-network-only callback from the LLM egress proxy that broadcasts model download progress to connected clients.',
       requestBody: jsonRequestBody('#/components/schemas/InternalAIPullProgressRequest'),
       responses: {
         200: jsonResponse('Pull progress accepted', '#/components/schemas/InternalAIPullProgressResponse'),
@@ -107,7 +107,7 @@ export const internalPaths = {
     get: {
       tags: ['Internal'],
       summary: 'Get sanitized AI transaction context',
-      description: 'Internal AI container route that returns sanitized transaction metadata without txid or address fields.',
+      description: 'Internal LLM egress proxy route that returns sanitized transaction metadata without txid or address fields.',
       security: bearerAuth,
       parameters: [transactionIdParameter],
       responses: {
@@ -124,7 +124,7 @@ export const internalPaths = {
     get: {
       tags: ['Internal'],
       summary: 'Get sanitized AI wallet label context',
-      description: 'Internal AI container route that returns recent label names for a wallet.',
+      description: 'Internal LLM egress proxy route that returns recent label names for a wallet.',
       security: bearerAuth,
       parameters: [walletIdParameter],
       responses: {
@@ -141,7 +141,7 @@ export const internalPaths = {
     get: {
       tags: ['Internal'],
       summary: 'Get sanitized AI wallet context',
-      description: 'Internal AI container route that returns labels and aggregate counts without balances, addresses, or txids.',
+      description: 'Internal LLM egress proxy route that returns labels and aggregate counts without balances, addresses, or txids.',
       security: bearerAuth,
       parameters: [walletIdParameter],
       responses: {
@@ -158,7 +158,7 @@ export const internalPaths = {
     get: {
       tags: ['Internal'],
       summary: 'Get sanitized AI UTXO health',
-      description: 'Internal AI container route that returns aggregate UTXO health without addresses or txids.',
+      description: 'Internal LLM egress proxy route that returns aggregate UTXO health without addresses or txids.',
       security: bearerAuth,
       parameters: [walletIdParameter],
       responses: {
@@ -175,7 +175,7 @@ export const internalPaths = {
     get: {
       tags: ['Internal'],
       summary: 'Get sanitized AI fee history',
-      description: 'Internal AI container route that returns recent fee snapshots and trend information for treasury analysis.',
+      description: 'Internal LLM egress proxy route that returns recent fee snapshots and trend information for treasury analysis.',
       security: bearerAuth,
       parameters: [walletIdParameter],
       responses: {
@@ -192,7 +192,7 @@ export const internalPaths = {
     get: {
       tags: ['Internal'],
       summary: 'Get sanitized AI spending velocity',
-      description: 'Internal AI container route that returns aggregate spending counts and totals for fixed time windows.',
+      description: 'Internal LLM egress proxy route that returns aggregate spending counts and totals for fixed time windows.',
       security: bearerAuth,
       parameters: [walletIdParameter],
       responses: {
@@ -209,7 +209,7 @@ export const internalPaths = {
     get: {
       tags: ['Internal'],
       summary: 'Get sanitized AI UTXO age profile',
-      description: 'Internal AI container route that returns aggregate UTXO tax-age buckets and upcoming long-term milestones.',
+      description: 'Internal LLM egress proxy route that returns aggregate UTXO tax-age buckets and upcoming long-term milestones.',
       security: bearerAuth,
       parameters: [walletIdParameter],
       responses: {

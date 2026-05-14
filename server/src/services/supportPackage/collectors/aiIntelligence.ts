@@ -1,7 +1,7 @@
 /**
  * AI / Treasury Intelligence Collector
  *
- * Reports AI container health plus conversation/message/insight counts.
+ * Reports LLM egress proxy health plus conversation/message/insight counts.
  * Never includes prompts, responses, insight titles, or analysis text —
  * those contain user-authored content and wallet-inferred recommendations.
  */
@@ -31,7 +31,7 @@ registerCollector('aiIntelligence', async () => {
     healthResult.status === 'fulfilled'
       ? {
           available: healthResult.value.available,
-          containerAvailable: healthResult.value.containerAvailable ?? null,
+          proxyAvailable: healthResult.value.proxyAvailable ?? null,
           hasModel: Boolean(healthResult.value.model),
           hasEndpoint: Boolean(healthResult.value.endpoint),
           error: healthResult.value.error ?? null,

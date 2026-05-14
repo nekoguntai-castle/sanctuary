@@ -15,7 +15,7 @@ const sidebars: SidebarsConfig = {
         {
           type: 'category',
           label: 'Per-service',
-          items: ['server/ARCHITECTURE', 'gateway/ARCHITECTURE', 'ai-proxy/ARCHITECTURE'],
+          items: ['server/ARCHITECTURE', 'gateway/ARCHITECTURE', 'llm-egress-proxy/ARCHITECTURE'],
         },
         {
           type: 'category',

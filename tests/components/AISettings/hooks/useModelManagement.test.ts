@@ -55,7 +55,7 @@ describe('useModelManagement', () => {
     const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     const { result } = renderHook(() =>
       useModelManagement({
-        aiEndpoint: 'http://ollama:11434',
+        aiEndpoint: 'http://host.docker.internal:11434',
         aiEnabled: true,
         aiModel: '',
         setAiModel,
@@ -107,7 +107,7 @@ describe('useModelManagement', () => {
     const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     const { result } = renderHook(() =>
       useModelManagement({
-        aiEndpoint: 'http://ollama:11434',
+        aiEndpoint: 'http://host.docker.internal:11434',
         aiEnabled: true,
         aiModel: '',
         setAiModel,
@@ -151,7 +151,7 @@ describe('useModelManagement', () => {
     const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     const { result } = renderHook(() =>
       useModelManagement({
-        aiEndpoint: 'http://ollama:11434',
+        aiEndpoint: 'http://host.docker.internal:11434',
         aiEnabled: true,
         aiModel: '',
         setAiModel,
@@ -198,7 +198,7 @@ describe('useModelManagement', () => {
     const { result, rerender } = renderHook(
       ({ aiModel }) =>
         useModelManagement({
-          aiEndpoint: 'http://ollama:11434',
+          aiEndpoint: 'http://host.docker.internal:11434',
           aiEnabled: true,
           aiModel,
           setAiModel,

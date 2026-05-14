@@ -53,8 +53,8 @@ server/dist
 server/node_modules
 gateway/dist
 gateway/node_modules
-ai-proxy/dist
-ai-proxy/node_modules
+llm-egress-proxy/dist
+llm-egress-proxy/node_modules
 
 # Test files (not needed in production builds)
 **/*.test.ts

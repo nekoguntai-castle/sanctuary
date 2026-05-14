@@ -31,16 +31,16 @@ Priority: highest
 Why first:
 
 - This directly addresses the class of bug that started the discussion.
-- It has limited blast radius: `ai-proxy`, Console planning tests, and natural query conversion.
+- It has limited blast radius: `llm-egress-proxy`, Console planning tests, and natural query conversion.
 - It creates the pattern the rest of the product should follow: LLM for language, schema for contracts.
 
 Scope:
 
-- `ai-proxy/src/consoleProtocol.ts`
-- `ai-proxy/src/naturalQuery.ts`
-- `ai-proxy/src/consoleRoutes.ts`
-- `tests/ai-proxy/consoleProtocol.test.ts`
-- `tests/ai-proxy/naturalQuery.test.ts`
+- `llm-egress-proxy/src/consoleProtocol.ts`
+- `llm-egress-proxy/src/naturalQuery.ts`
+- `llm-egress-proxy/src/consoleRoutes.ts`
+- `tests/llm-egress-proxy/consoleProtocol.test.ts`
+- `tests/llm-egress-proxy/naturalQuery.test.ts`
 
 Plan:
 
@@ -69,8 +69,8 @@ Exit criteria:
 
 Focused verification:
 
-- `npx vitest run tests/ai-proxy/consoleProtocol.test.ts tests/ai-proxy/naturalQuery.test.ts`
-- `npm --prefix ai-proxy run build`
+- `npx vitest run tests/llm-egress-proxy/consoleProtocol.test.ts tests/llm-egress-proxy/naturalQuery.test.ts`
+- `npm --prefix llm-egress-proxy run build`
 - `npm run typecheck:tests`
 - `npm run quality:lizard`
 - `git diff --check`
@@ -85,9 +85,9 @@ Why separate:
 
 Scope:
 
-- `ai-proxy/src/consoleProtocol.ts`
-- New helper module if it reduces complexity, for example `ai-proxy/src/walletReferenceResolver.ts`
-- `tests/ai-proxy/consoleProtocol.test.ts`
+- `llm-egress-proxy/src/consoleProtocol.ts`
+- New helper module if it reduces complexity, for example `llm-egress-proxy/src/walletReferenceResolver.ts`
+- `tests/llm-egress-proxy/consoleProtocol.test.ts`
 
 Plan:
 
@@ -108,8 +108,8 @@ Exit criteria:
 
 Focused verification:
 
-- `npx vitest run tests/ai-proxy/consoleProtocol.test.ts`
-- `npm --prefix ai-proxy run build`
+- `npx vitest run tests/llm-egress-proxy/consoleProtocol.test.ts`
+- `npm --prefix llm-egress-proxy run build`
 - `npm run quality:lizard`
 - `git diff --check`
 

@@ -67,7 +67,7 @@ export interface ConfigSyncState {
 }
 
 /**
- * AI Container Response Interfaces
+ * LLM Egress Proxy Response Interfaces
  */
 export interface AIHealthResponse {
   available: boolean;

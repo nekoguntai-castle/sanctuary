@@ -6,7 +6,7 @@
 #
 # Lanes recognized today:
 #   frontend_unit, backend_unit, backend_integration, gateway_unit,
-#   ai_proxy_unit, critical_mutation, browser_smoke, render_regression,
+#   llm_egress_proxy_unit, critical_mutation, browser_smoke, render_regression,
 #   e2e_full, build
 #
 # The plan is read from --plan PATH or, if omitted, from
@@ -48,7 +48,7 @@ if [ -z "$lane" ]; then
 fi
 
 case "$lane" in
-  frontend_unit|backend_unit|backend_integration|gateway_unit|ai_proxy_unit|critical_mutation|browser_smoke|render_regression|e2e_full|build)
+  frontend_unit|backend_unit|backend_integration|gateway_unit|llm_egress_proxy_unit|critical_mutation|browser_smoke|render_regression|e2e_full|build)
     ;;
   *)
     printf 'run-lane: unknown lane %s\n' "$lane" >&2
@@ -170,8 +170,8 @@ case "$lane" in
   gateway_unit)
     run_vitest_in gateway
     ;;
-  ai_proxy_unit)
-    (cd ai-proxy && exec npm test)
+  llm_egress_proxy_unit)
+    (cd llm-egress-proxy && exec npm test)
     ;;
   critical_mutation)
     (cd server && exec npm run test:critical-mutation)

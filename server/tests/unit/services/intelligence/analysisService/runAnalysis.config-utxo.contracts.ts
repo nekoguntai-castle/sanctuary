@@ -7,7 +7,7 @@ import {
   mockGetUtxoHealthProfile,
   mockLogger,
   mockNotificationChannelRegistry,
-  mockSyncConfigToContainer,
+  mockSyncConfigToLlmEgressProxy,
   redis,
   validConfig,
 } from "./analysisServiceTestHarness";
@@ -23,7 +23,7 @@ export function registerRunAnalysisConfigUtxoContracts(): void {
 
     await runAnalysisPipelines();
 
-    expect(mockSyncConfigToContainer).not.toHaveBeenCalled();
+    expect(mockSyncConfigToLlmEgressProxy).not.toHaveBeenCalled();
     expect(mockGetEnabledIntelligenceWallets).not.toHaveBeenCalled();
   });
 
@@ -36,24 +36,24 @@ export function registerRunAnalysisConfigUtxoContracts(): void {
 
     await runAnalysisPipelines();
 
-    expect(mockSyncConfigToContainer).not.toHaveBeenCalled();
+    expect(mockSyncConfigToLlmEgressProxy).not.toHaveBeenCalled();
   });
 
   it("should skip when AI has no model", async () => {
     (mockGetAIConfig as Mock).mockResolvedValue({
       enabled: true,
-      endpoint: "http://ollama:11434",
+      endpoint: "http://host.docker.internal:11434",
       model: "",
     });
 
     await runAnalysisPipelines();
 
-    expect(mockSyncConfigToContainer).not.toHaveBeenCalled();
+    expect(mockSyncConfigToLlmEgressProxy).not.toHaveBeenCalled();
   });
 
   it("should skip when provider check fails", async () => {
     (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-    (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+    (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
@@ -66,7 +66,7 @@ export function registerRunAnalysisConfigUtxoContracts(): void {
 
   it("should skip when provider check returns not compatible", async () => {
     (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-    (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+    (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ compatible: false }),
@@ -79,7 +79,7 @@ export function registerRunAnalysisConfigUtxoContracts(): void {
 
   it("should skip when no wallets have intelligence enabled", async () => {
     (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-    (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+    (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ compatible: true }),
@@ -93,7 +93,7 @@ export function registerRunAnalysisConfigUtxoContracts(): void {
 
   it("should run analysis for enabled wallets and create insights", async () => {
     (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-    (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+    (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
     // Provider check
     mockFetch.mockResolvedValueOnce({
@@ -171,7 +171,7 @@ export function registerRunAnalysisConfigUtxoContracts(): void {
 
   it("should handle errors in individual wallet analysis gracefully", async () => {
     (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-    (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+    (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
     // Provider check
     mockFetch.mockResolvedValueOnce({
@@ -211,7 +211,7 @@ export function registerRunAnalysisConfigUtxoContracts(): void {
 
   it("should skip pipeline when insight is deduplicated", async () => {
     (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-    (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+    (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -239,7 +239,7 @@ export function registerRunAnalysisConfigUtxoContracts(): void {
 
   it("should skip when gatherContext returns null for utxo_health with 0 utxos", async () => {
     (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
-    (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
+    (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
 
     mockFetch.mockResolvedValueOnce({
       ok: true,

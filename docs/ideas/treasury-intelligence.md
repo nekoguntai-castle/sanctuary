@@ -2,7 +2,7 @@
 
 ## Problem
 
-Sanctuary has powerful data (UTXO sets, fee history, spending patterns, transaction history) but no way to proactively surface insights from it. Users must manually analyze their treasury health. The AI container exists but only does label suggestions and basic NLP queries.
+Sanctuary has powerful data (UTXO sets, fee history, spending patterns, transaction history) but no way to proactively surface insights from it. Users must manually analyze their treasury health. The LLM egress proxy exists as an isolation boundary for external-provider calls and currently supports label suggestions and basic NLP queries.
 
 ## Value Proposition
 
@@ -31,10 +31,7 @@ Sanctuary has powerful data (UTXO sets, fee history, spending patterns, transact
 
 ## Key Requirements
 
-1. **Ollama-compatible LLMs only** — No cloud AI (OpenAI, Anthropic, etc.). Supports three deployment modes:
-   - **Bundled**: Ollama container running alongside Sanctuary in Docker
-   - **Host-local**: Ollama installed on the host machine (e.g., for direct GPU access)
-   - **Remote/Off-box**: Ollama on a dedicated GPU server on the LAN (e.g., `http://gpu-server:11434`)
+1. **External LLM providers only** — No bundled local model runtime. The proxy keeps provider credentials and outbound LLM traffic isolated from the backend.
 2. **Separate notifications** — AI insights have their own Telegram message format and don't clog existing transaction notifications.
 3. **Dedicated UI tab** — "Intelligence" tab with Insights feed, Chat, and Settings sub-tabs.
 4. **Invisible unless enabled** — Zero trace of the feature if AI is disabled or unconfigured.
@@ -42,7 +39,7 @@ Sanctuary has powerful data (UTXO sets, fee history, spending patterns, transact
 ## Existing Building Blocks
 
 - **Treasury Autopilot** (Phase 1): Already monitors fee rates and UTXO health every 10 minutes
-- **AI Container**: Isolated, sandboxed, Ollama integration working
+- **LLM Egress Proxy**: Isolated sidecar for external-provider calls, with endpoint policy and sanitized backend context
 - **Notification Channel Registry**: Pluggable architecture, easy to add new channel
 - **BullMQ Worker**: Cron-style job scheduling with distributed locking
 - **Feature Flag System**: Runtime toggleable with dynamic job scheduling
@@ -51,7 +48,7 @@ Sanctuary has powerful data (UTXO sets, fee history, spending patterns, transact
 
 - New feature flag: `treasuryIntelligence` (separate from `aiAssistant` and `treasuryAutopilot`)
 - 3 new DB tables: `AIInsight`, `AIConversation`, `AIMessage`
-- New AI proxy endpoints: `/analyze` (background analysis), `/chat` (interactive conversation)
+- New LLM egress proxy endpoints: `/analyze` (background analysis), `/chat` (interactive conversation)
 - New notification channel: `ai-insights` with distinct Telegram formatting
 - Background analysis job runs every 30 minutes with deduplication and cooldowns
 - New top-level "Intelligence" tab with Insights, Chat, and Settings sub-tabs
@@ -60,7 +57,7 @@ Sanctuary has powerful data (UTXO sets, fee history, spending patterns, transact
 
 Initial implementation completed 2026-04-03. All 6 phases implemented:
 1. Feature flags + Prisma schema + Repository
-2. Analysis backend (internal endpoints, AI proxy, intelligence service)
+2. Analysis backend (internal endpoints, LLM egress proxy, intelligence service)
 3. Notification channel for AI insights (separate from transaction notifications)
 4. Worker jobs (30-min analysis cycle, daily cleanup)
 5. API routes (status, insights, conversations, settings)

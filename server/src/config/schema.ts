@@ -107,8 +107,8 @@ export const PriceApisConfigSchema = z.object({
 });
 
 export const AiConfigSchema = z.object({
-  containerUrl: z.string(),
-  configSecret: z.string(),
+  llmEgressProxyUrl: z.string(),
+  llmEgressProxySecret: z.string(),
 });
 
 export const MaintenanceConfigSchema = z.object({

@@ -54,7 +54,7 @@ export function getAiServiceMocks() {
 export function mockConfiguredAiSettings() {
   mocks.systemSettingFindMany.mockResolvedValue([
     setting("aiEnabled", true),
-    setting("aiEndpoint", "http://ollama:11434"),
+    setting("aiEndpoint", "http://host.docker.internal:11434"),
     setting("aiModel", "llama3.2"),
   ] as any);
 }

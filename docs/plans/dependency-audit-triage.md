@@ -7,16 +7,16 @@ Commands run:
 - `npm audit --omit=dev --json` (repo root)
 - `npm audit --json` and `npm audit --omit=dev --json` (`server/`)
 - `npm audit --json` and `npm audit --omit=dev --omit=optional --json` (`gateway/`)
-- `npm audit --json` (`ai-proxy/`)
+- `npm audit --json` (`llm-egress-proxy/`)
 
 Latest freshness check:
-- Targeted P2-01/P2-01a refresh on 2026-05-09 Pacific/Honolulu: root production audit at moderate threshold passes with only the accepted low-severity Trezor `elliptic` chain; server and AI proxy production audits report `0` vulnerabilities.
+- Targeted P2-01/P2-01a refresh on 2026-05-09 Pacific/Honolulu: root production audit at moderate threshold passes with only the accepted low-severity Trezor `elliptic` chain; server and LLM egress proxy production audits report `0` vulnerabilities.
 - Full unskipped `npm run quality` passed on 2026-04-15 Pacific/Honolulu. Its high-severity audit lane passed for root, server, and gateway while still surfacing the accepted lower-severity findings below.
 - `npm audit --omit=dev --audit-level=moderate` at the repo root reports `10 low` advisories in the Trezor hardware-wallet `elliptic` chain and no moderate/high/critical advisories.
 - `npm --prefix server audit --omit=dev --audit-level=moderate` reports `0` vulnerabilities after bumping the `hono` override from `4.12.14` to `4.12.18`.
 - `npm audit --json` in `gateway/` reports `8 low` advisories through Firebase/Google optional dependency trees; `npm audit --omit=dev --omit=optional --json` reports `0` vulnerabilities.
-- `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate` reports `0` vulnerabilities after updating `express-rate-limit` to `8.5.1` and transitive `ip-address` to `10.2.0`.
-- Disposition is updated: `fixed` for the server Prisma/MCP Hono moderate chain and AI proxy `ip-address` moderate chain; `accept + monitor` for the remaining root low and gateway optional-dependency low advisories.
+- `npm --prefix llm-egress-proxy audit --omit=dev --audit-level=moderate` reports `0` vulnerabilities after updating `express-rate-limit` to `8.5.1` and transitive `ip-address` to `10.2.0`.
+- Disposition is updated: `fixed` for the server Prisma/MCP Hono moderate chain and LLM egress proxy `ip-address` moderate chain; `accept + monitor` for the remaining root low and gateway optional-dependency low advisories.
 
 ## Current State
 
@@ -25,7 +25,7 @@ Latest freshness check:
 - Server full install and production install: `0` vulnerabilities
 - Gateway full install: `8 low`, `0 moderate`, `0 high`, `0 critical`
 - Gateway production install (`--omit=dev --omit=optional`): `0` vulnerabilities
-- AI proxy full install: `0` vulnerabilities
+- LLM egress proxy full install: `0` vulnerabilities
 
 ## Root Findings
 
@@ -78,25 +78,25 @@ Notes:
 - Production gateway image pruning omits optional dependencies (`npm prune --production --omit=optional` in `gateway/Dockerfile`), which removes this advisory chain from deployed runtime.
 - Validation command: `npm audit --omit=dev --omit=optional --json` in `gateway/` reports `0` vulnerabilities.
 
-## AI Proxy Findings
+## LLM Egress Proxy Findings
 
 Current state:
-- `zod@^4.3.4` is now a direct runtime dependency for request body schemas in `ai-proxy/src/requestSchemas.ts`.
+- `zod@^4.3.4` is now a direct runtime dependency for request body schemas in `llm-egress-proxy/src/requestSchemas.ts`.
 - `express-rate-limit` is updated to `8.5.1`, which pulls `ip-address@10.2.0` and clears the moderate XSS advisory in older `ip-address` HTML-emitting helpers.
-- `npm --prefix ai-proxy audit --omit=dev --audit-level=moderate` reports `0` vulnerabilities for the AI proxy package.
+- `npm --prefix llm-egress-proxy audit --omit=dev --audit-level=moderate` reports `0` vulnerabilities for the LLM egress proxy package.
 
 Notes:
-- Keep AI proxy on the same Zod major line as `server/` and `gateway/` unless a deliberate compatibility reason appears.
-- Re-run `npm audit --json` in `ai-proxy/` whenever AI proxy dependencies change; it is a small package and should stay at `0` advisories.
+- Keep LLM egress proxy on the same Zod major line as `server/` and `gateway/` unless a deliberate compatibility reason appears.
+- Re-run `npm audit --json` in `llm-egress-proxy/` whenever LLM egress proxy dependencies change; it is a small package and should stay at `0` advisories.
 
 ## Decision
 
-Disposition: `fixed` for the server Prisma/MCP Hono moderate advisory and AI proxy `ip-address` moderate advisory; `fix + monitor` for already-remediated Axios/`follow-redirects` advisories; `accept + monitor` for the remaining root low-severity transitive advisories and gateway optional-dependency low advisories.
+Disposition: `fixed` for the server Prisma/MCP Hono moderate advisory and LLM egress proxy `ip-address` moderate advisory; `fix + monitor` for already-remediated Axios/`follow-redirects` advisories; `accept + monitor` for the remaining root low-severity transitive advisories and gateway optional-dependency low advisories.
 
 Reasoning:
 - No high or critical findings remain in any audited package tree.
-- No moderate findings remain in the root production tree, server tree, gateway production tree, or AI proxy tree.
-- AI proxy remains clean after direct Zod validation and the `express-rate-limit` refresh.
+- No moderate findings remain in the root production tree, server tree, gateway production tree, or LLM egress proxy tree.
+- LLM egress proxy remains clean after direct Zod validation and the `express-rate-limit` refresh.
 - Remaining root findings are low-severity upstream hardware-wallet dependency paths where npm reports no available fix.
 - Gateway low findings are in optional Firebase/Google dependency trees; the production install proof path omits optional dependencies and audits clean.
 - The former server moderate advisory is cleared without downgrading Prisma.
@@ -107,7 +107,7 @@ Re-triage immediately if any of the following occur:
 - Any root advisory severity rises above low.
 - Any gateway advisory reaches a runtime-exposed dependency path or severity rises above low.
 - A same-major, non-downgrade remediation path becomes available for `@ledgerhq/*`, `@trezor/*`, `vite-plugin-node-polyfills`, Prisma, MCP SDK, Hono, or `firebase-admin`.
-- Planned upgrades touch the hardware-wallet stack, polyfill stack, Prisma/MCP/Hono stack, Firebase stack, or AI proxy validation stack.
+- Planned upgrades touch the hardware-wallet stack, polyfill stack, Prisma/MCP/Hono stack, Firebase stack, or LLM egress proxy validation stack.
 - The Hono overrides conflict with a future Prisma/MCP upgrade or become redundant.
 
 Recommended cadence:

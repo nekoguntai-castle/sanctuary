@@ -497,7 +497,7 @@ Implementation plan:
 1. Create `docs/reference/wallet-threat-model.md` covering:
    - assets: funds, xpubs, labels, policies, backups, auth tokens, release keys
    - actors: local operator, browser attacker, network attacker, malicious API client, compromised dependency, compromised release pipeline, malicious AI tool/provider, hardware signer mismatch, insider with release access
-   - trust boundaries: browser/backend, gateway/mobile, AI proxy, MCP, Bitcoin node, hardware wallet, backup restore, release pipeline
+   - trust boundaries: browser/backend, gateway/mobile, LLM egress proxy, MCP, Bitcoin node, hardware wallet, backup restore, release pipeline
    - non-goals: hot-wallet custody, AI signing authority, public unauthenticated operation, unverified release installs
 2. Create or update user-facing trust documentation:
    - what Sanctuary will not do
