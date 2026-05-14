@@ -3,6 +3,7 @@ import { expect, it, vi } from 'vitest';
 
 import { app } from './auth2faTestHarness';
 import { mockPrismaClient } from '../auth.testHelpers';
+import { expectCanonicalAuthSessionUser } from '../authSessionUser.contractHelper';
 
 export function registerTwoFactorVerifyContracts() {
   it('should return 400 when tempToken or code is missing', async () => {
@@ -91,6 +92,7 @@ export function registerTwoFactorVerifyContracts() {
       id: 'test-user-id',
       username: 'testuser',
       email: 'test@example.com',
+      emailVerified: true,
       isAdmin: false,
       sessionVersion: 0,
       twoFactorEnabled: true,
@@ -106,7 +108,16 @@ export function registerTwoFactorVerifyContracts() {
     // Phase 6: browser auth is cookie-only; JSON body no longer carries tokens.
     expect(response.body.token).toBeUndefined();
     expect(response.body.refreshToken).toBeUndefined();
-    expect(response.body.user.username).toBe('testuser');
+    expectCanonicalAuthSessionUser(response.body.user, {
+      id: 'test-user-id',
+      username: 'testuser',
+      email: 'test@example.com',
+      emailVerified: true,
+      isAdmin: false,
+      preferences: { darkMode: true },
+      twoFactorEnabled: true,
+      usingDefaultPassword: false,
+    });
   });
 
   it('should successfully verify using backup code', async () => {
@@ -114,6 +125,7 @@ export function registerTwoFactorVerifyContracts() {
       id: 'test-user-id',
       username: 'testuser',
       email: 'test@example.com',
+      emailVerified: true,
       isAdmin: false,
       sessionVersion: 0,
       twoFactorEnabled: true,
@@ -144,6 +156,7 @@ export function registerTwoFactorVerifyContracts() {
       id: 'test-user-id',
       username: 'testuser',
       email: 'test@example.com',
+      emailVerified: true,
       isAdmin: false,
       sessionVersion: 0,
       twoFactorEnabled: true,
@@ -214,6 +227,7 @@ export function registerTwoFactorVerifyContracts() {
       id: 'test-user-id',
       username: 'testuser',
       email: 'test@example.com',
+      emailVerified: true,
       isAdmin: false,
       sessionVersion: 0,
       twoFactorEnabled: true,

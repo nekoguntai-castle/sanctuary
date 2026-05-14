@@ -11,14 +11,12 @@ import { userRepository, systemSettingRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { normalizeEmail } from '../../utils/email';
 import { hashPassword, verifyPassword, validatePasswordStrength } from '../../utils/password';
-import { generateToken, generate2FAToken } from '../../utils/jwt';
+import { generate2FAToken } from '../../utils/jwt';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../services/auditService';
-import * as refreshTokenService from '../../services/refreshTokenService';
 import { SystemSettingSchemas } from '../../utils/safeJson';
 import { isUsingInitialPassword } from './password';
 import { isValidEmail } from '../../utils/validators';
 import { validate } from '../../middleware/validate';
-import { setAuthCookies } from '../../middleware/csrf';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, ValidationError, ConflictError, ForbiddenError, ErrorCodes } from '../../errors/ApiError';
 import { LoginSchema } from '../schemas/auth';
@@ -29,6 +27,7 @@ import {
   createVerificationToken,
   isSmtpConfigured,
 } from '../../services/email';
+import { prepareAuthSession, sendAuthSessionResponse } from './sessionResponse';
 
 const router = Router();
 const log = createLogger('AUTH_LOGIN:ROUTE');
@@ -184,44 +183,26 @@ export function createLoginRouter(
       });
     }
 
-    // Get device info from request
     const { ipAddress, userAgent } = getClientInfo(req);
-    const deviceInfo = {
-      userAgent,
-      ipAddress,
-    };
-
-    // SEC-005: Generate access token (1h) and refresh token (7d)
-    const token = generateToken({
-      userId: user.id,
-      username: user.username,
-      isAdmin: user.isAdmin,
-      sessionVersion: user.sessionVersion,
+    const authSession = await prepareAuthSession(user, {
+      clientInfo: { ipAddress, userAgent },
+      usingDefaultPassword: false,
     });
-    const refreshToken = await refreshTokenService.createRefreshToken(user.id, deviceInfo, user.sessionVersion);
 
     // ADR 0001 / 0002 — Phase 6: browser auth is cookie-only. Access and
     // refresh tokens are set via HttpOnly cookies; the JSON body no longer
     // carries the token/refreshToken fields. The `expiresIn` hint and the
     // X-Access-Expires-At header (via setAuthCookies) let the client
     // schedule proactive refresh without reading tokens from the body.
-    setAuthCookies(req, res, { accessToken: token, refreshToken });
-
     // Required-and-unverified registrations returned above as pending. Any response
     // that reaches this point is authenticated, so no verification block remains.
-    res.status(201).json({
-      expiresIn: 3600, // 1 hour in seconds
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        emailVerified: user.emailVerified,
-        isAdmin: user.isAdmin,
-        preferences: user.preferences,
+    sendAuthSessionResponse(req, res, authSession, {
+      status: 201,
+      body: {
+        emailVerificationRequired: false,
+        verificationEmailSent,
+        message: 'Registration successful.',
       },
-      emailVerificationRequired: false,
-      verificationEmailSent,
-      message: 'Registration successful.',
     });
   }));
 
@@ -313,21 +294,12 @@ export function createLoginRouter(
       });
     }
 
-    // Get device info from request
     const { ipAddress, userAgent } = getClientInfo(req);
-    const deviceInfo = {
-      userAgent,
-      ipAddress,
-    };
-
-    // SEC-005: Generate access token (1h) and refresh token (7d) with DB persistence
-    const token = generateToken({
-      userId: user.id,
-      username: user.username,
-      isAdmin: user.isAdmin,
-      sessionVersion: user.sessionVersion,
+    const usingDefaultPassword = await isUsingInitialPassword(user.id);
+    const authSession = await prepareAuthSession(user, {
+      clientInfo: { ipAddress, userAgent },
+      usingDefaultPassword,
     });
-    const refreshToken = await refreshTokenService.createRefreshToken(user.id, deviceInfo, user.sessionVersion);
 
     // Audit successful login
     await auditService.log({
@@ -340,26 +312,9 @@ export function createLoginRouter(
       success: true,
     });
 
-    // Check if using initial password (for admin user warning)
-    const usingDefaultPassword = await isUsingInitialPassword(user.id);
-
     // ADR 0001 / 0002 — Phase 6: browser auth is cookie-only. See register
     // handler above for the rationale.
-    setAuthCookies(req, res, { accessToken: token, refreshToken });
-
-    res.json({
-      expiresIn: 3600, // 1 hour in seconds
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        emailVerified: user.emailVerified,
-        isAdmin: user.isAdmin,
-        preferences: user.preferences,
-        twoFactorEnabled: user.twoFactorEnabled,
-        usingDefaultPassword,
-      },
-    });
+    sendAuthSessionResponse(req, res, authSession);
   }));
 
   return router;

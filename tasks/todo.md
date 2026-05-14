@@ -1,3 +1,219 @@
+# Active Task: Codebase Divergence Scrub 2026-05-14
+
+Status: Phase 1 locally implemented and verified; PR delivery pending.
+
+Goal: reanalyze the codebase for places where one product workflow or contract is implemented through multiple divergent paths, decide whether each divergence is justified, and identify the consolidations worth doing next.
+
+## Plan
+
+- [x] Re-check the recently fixed login/auth area so the comparison uses the current code, not stale memory.
+- [x] Search frontend hooks, API clients, shared schemas, gateway validation, backend routes, and OpenAPI for duplicate workflow/contract definitions.
+- [x] Classify candidates as justified separation, low-priority duplication, or consolidation-worthy risk.
+- [x] Record concrete file references and recommended next slices.
+
+## Review
+
+- Highest-priority consolidation: auth session issuance and auth user response shaping are still duplicated between register, password login, and 2FA verification. The 2FA response currently omits `emailVerified` while password login/register include it, proving the paths can drift. Create a server-side auth response/session helper used by all three successful session paths, then add 2FA/login/register contract coverage for identical user fields and cookie/header behavior.
+- Worth consolidating: frontend auth API types duplicate `shared/types/api.ts`. Move `src/api/auth.ts` and `src/api/twoFactor.ts` to import shared request/response/user types, keeping frontend-only narrowing helpers local. This avoids client/shared contract drift after cookie-auth changes.
+- Worth consolidating: Bitcoin network values and normalization are defined in shared constants, frontend tab helpers, server service helpers, Electrum pool/client/worker types, descriptor parser types, and individual API modules. Keep UI-only metadata in `src/app/networks.ts`, but import canonical network values/types/legacy normalization from `@sanctuary/shared/constants/bitcoin` throughout frontend/server where feasible.
+- Worth consolidating: transaction broadcast has multiple valid backend semantics, but the frontend exposes a wallet-scoped `transactionsApi.broadcastTransaction` and a raw network `bitcoinApi.broadcastTransaction` under the same name. Rename or namespace the raw `/bitcoin/broadcast` helper so wallet send flow and generic raw broadcast cannot be confused.
+- Acceptable with guardrails: gateway `GATEWAY_ROUTE_CONTRACTS` is now the route-access manifest, while `validateRequest.ts` still has its own schema lookup table. The parity test catches missing validation decisions, so this is acceptable short-term. Longer term, add schema keys/references to the manifest and derive `ROUTE_SCHEMAS` from it.
+- Low/medium priority: preferences use a single backend patch endpoint, but nested preference merge logic is recreated in `useUserPreference`, wallet/device list preferences, sound settings, and feature-specific server settings. Consolidate a small nested preference patch helper before adding more preference surfaces; current paths are mostly justified by different UX contexts.
+- Mostly justified: direct `fetch` in `refresh.ts` avoids `apiClient` recursion and now shares auth policy helpers, so keep it. Direct `/api/v1/health` fetch in login flow is a small divergence; wrap it in a no-auth health API helper that honors the same base URL rules if we touch login availability again.
+- Product-policy decision: LLM egress proxy model pull/delete routes are not containerized AI, but they do let Sanctuary manage an external Ollama provider. If the product line is "external providers only, Sanctuary does not manage provider models," remove `/ai/pull-model`, `/ai/delete-model`, the proxy `/pull-model` and `/delete-model` routes, and the AI Settings pull/delete UI. If host-installed Ollama management remains supported, keep it but rename copy away from "Sanctuary-managed Ollama pulls."
+- Not a tracked-code issue: `ai-proxy/` exists locally as an untracked/ignored workspace artifact; tracked code uses `llm-egress-proxy/`.
+
+## Independent Double-Check
+
+Plan:
+
+- [x] Re-trace auth session responses from server routes and tests without relying on the first pass.
+- [x] Re-trace contract/type duplication from shared schemas/types into frontend and gateway consumers.
+- [x] Re-trace domain-value duplication for Bitcoin networks and transaction broadcast from user-facing entry points.
+- [x] Re-check LLM egress/provider model-management wording and decide whether the earlier classification should change.
+- [x] Compare against the first-pass findings and record confirmations, downgrades, or additions.
+
+Review:
+
+- Confirmed: auth session issuance/response shaping remains the top consolidation. Register and password login include `emailVerified`; 2FA verify omits it. Existing 2FA contract tests assert cookies and username but do not assert parity with the normal login user payload.
+- Addition: registration validation itself has a split path. `server/src/api/schemas/auth.ts` exports `RegisterSchema`, but `server/src/api/auth/login.ts` uses `RegisterPresenceSchema` plus manual username/email/password validation. This should be addressed in the same auth cleanup, with care to preserve current public error messages and registration-disabled ordering.
+- Confirmed with priority adjustment: frontend auth type duplication is real, but it should follow the server response helper. Once the server emits one canonical auth user shape, the frontend can import shared auth request/response/user types with less churn.
+- Confirmed and broader than first pass: Bitcoin network values and legacy normalization are repeated in more places than the initial summary listed, including API schemas, config schemas, Electrum pool/client/worker types, OpenAPI admin constants, import services, and frontend API modules. Consolidate canonical values/types first; keep UI-only tab subsets and color/label maps local.
+- Confirmed: wallet-scoped transaction broadcast and raw `/bitcoin/broadcast` are intentionally different server operations. Consolidation should be naming/namespace cleanup, not endpoint merger.
+- Confirmed: gateway route manifest plus validation map remains acceptable with current parity tests. Do not prioritize this ahead of auth/network cleanup unless a new gateway route exposes another drift.
+- Confirmed: preferences are a lower-priority helper consolidation. There is one backend patch endpoint, but nested patch construction is duplicated in UI hooks; current risk is stale nested overwrites, not a proven route divergence.
+- Confirmed with sharper wording: the LLM egress proxy is not a local model container and should remain as a security boundary. The questionable product surface is model management for external Ollama (`/ai/pull-model`, `/ai/delete-model`, proxy `/pull-model`, proxy `/delete-model`, and "Sanctuary-managed Ollama pulls" UI copy). If Sanctuary should never manage external provider models, remove that surface.
+- Confirmed: no tracked `ai-proxy/` code remains. The local `ai-proxy/` directory only contains ignored `dist/` build output from the old name; it is workspace cleanup, not a repo divergence.
+
+## Reviewed Consolidation Plan
+
+Recommended order:
+
+- [x] Phase 1: consolidate server auth session issuance and user response shaping. Locally verified on `codex/phase-1-auth-session-helper`; PR delivery pending.
+- [ ] Phase 2: align frontend auth API types with shared auth contracts after the server response shape is canonical.
+- [ ] Phase 3: consolidate canonical Bitcoin network values/types/legacy normalization across shared, frontend, server, OpenAPI, config, and Electrum-facing modules.
+- [ ] Phase 4: rename or namespace raw Bitcoin broadcast helpers so they cannot be confused with wallet-scoped transaction broadcast.
+- [ ] Phase 5: decide and execute the external Ollama model-management policy: remove pull/delete support if Sanctuary should never manage provider models, or keep it with clearer wording if host Ollama management remains supported.
+- [ ] Phase 6: lower-priority cleanup for nested preference patch helpers and gateway validation derivation, only after the higher-risk auth/network/broadcast slices are stable.
+
+Phase 1 details:
+
+- Introduce one server helper that issues access/refresh cookies and builds the authenticated `user` payload for register, password login, and 2FA verify.
+- Keep route-specific behavior outside the helper: failed credential audits, email-verification blocking, 2FA temp token issuance, backup-code persistence, and success audit details differ by route.
+- Preserve cookie-only auth: never reintroduce `token` or `refreshToken` in JSON; keep `expiresIn` and `X-Access-Expires-At` behavior.
+- Include a complete canonical auth user payload in all successful session responses, including `emailVerified`, `twoFactorEnabled`, `usingDefaultPassword`, `preferences`, and any fields already expected by `/auth/me`.
+- Keep registration pending-verification responses unauthenticated: no cookies, no refresh token creation, and no authenticated user body when email verification is required.
+- Preserve current public registration ordering carefully. The route currently performs required-field validation before checking `registrationEnabled`, then runs username/email/password-strength validation only after registration is enabled. Do not accidentally leak stronger validation details while registration is disabled.
+- Replace the public-register route's `RegisterPresenceSchema` plus manual validation with a single internal parsing helper only if it preserves the above ordering and error messages.
+- Add contract tests that compare the user payload keys for register success, password login success, and 2FA verify success.
+
+Phase 1 corner cases:
+
+- Mixed-case usernames must continue to canonicalize consistently for register and login.
+- Email should remain normalized for storage and duplicate checks.
+- Login with unverified email must stay blocked before 2FA.
+- 2FA temporary tokens must remain invalidated by session-version changes.
+- Backup-code login must still persist consumed backup codes exactly once.
+- `usingDefaultPassword` source differs: password login can check the marker live; 2FA verify receives the value from the temp token. Preserve that behavior unless the temp-token contract is deliberately changed.
+- Failed refresh-token creation must not leave partial auth cookies.
+
+Phase 1 verification:
+
+- `cd server && npx vitest run tests/unit/api/auth.routes.registration.test.ts tests/unit/api/auth.routes.2fa.test.ts`
+- `npm run typecheck:server:tests`
+- `npm run lint:server`
+- `npm run quality:lizard -- server/src/api/auth server/src/api/schemas/auth.ts`
+- `git diff --check`
+
+Phase 1 review:
+
+- Added `server/src/api/auth/sessionResponse.ts` as the shared successful-auth session path for register, password login, and 2FA verification.
+- Kept route-specific behavior outside the helper: registration-disabled ordering, pending email verification, failed-login audits, 2FA temp-token issuance, backup-code persistence, and success audit details remain in their existing routes.
+- Preserved cookie-only auth. The helper prepares access/refresh credentials and sets HttpOnly cookies only when sending the successful auth response; JSON tokens remain absent.
+- Canonical successful auth `user` payload keys are now `id`, `username`, `email`, `emailVerified`, `isAdmin`, `preferences`, `twoFactorEnabled`, and `usingDefaultPassword` for register, password login, and 2FA verify.
+- Pending email-verification registration still returns no auth cookies, no refresh-token creation, and no authenticated `user` body.
+- The `RegisterPresenceSchema` plus route-local username/email/password validation remains intentionally separate because it preserves the public validation ordering and error wording while registration is disabled. The new session helper removes the higher-risk auth response drift without changing that validation surface.
+- Local verification passed: focused auth route contracts, server test typecheck, server lint, touched-file lizard, and `git diff --check`.
+
+Phase 2 details:
+
+- Move `src/api/auth.ts` request/response/user aliases to `shared/types/api.ts` where possible.
+- Keep frontend-only type guards and UI helper types local.
+- Resolve the `createdAt` mismatch deliberately: shared `AuthUser.createdAt` is optional, while the local API `User` currently requires it.
+- Keep `UserContext` casts and the app-level `types.User` contract coherent; avoid papering over differences with broad `as User` casts.
+
+Phase 2 corner cases:
+
+- Pending email-verification registration responses must remain distinguishable from authenticated responses.
+- 2FA-required responses must remain distinguishable from authenticated login responses.
+- Browser auth stays cookie-backed; no token fields should appear in frontend contracts.
+- `AuthUser.preferences` can be `null` or absent; context defaults must still apply.
+
+Phase 2 verification:
+
+- `npm run typecheck:app`
+- `npm run typecheck:tests`
+- focused frontend auth/login tests if touched, plus `npm run lint:app`
+- `git diff --check`
+
+Phase 3 details:
+
+- Use `@sanctuary/shared/constants/bitcoin` as the source for canonical network values, `NetworkType`, legacy `testnet` normalization, and testnet-family checks.
+- Keep frontend tab networks as a subset that intentionally excludes `regtest`; derive the subset from canonical values where practical.
+- Keep UI labels/colors local, but use shared network identities for validation and data contracts.
+- Replace repeated server unions and zod enums incrementally in API routes, config schemas, Electrum pool/client types, worker types, import services, OpenAPI constants, and frontend API modules.
+- Do not collapse service-specific concepts that are genuinely narrower, such as mempool-dashboard networks that exclude `regtest`.
+
+Phase 3 corner cases:
+
+- Legacy `testnet` must continue to normalize to `testnet3`, not `testnet4`.
+- `testnet3`, `testnet4`, `signet`, and `regtest` share BIP44 coin type `1`; mainnet uses `0`.
+- Regtest may be valid for backend/node operations while intentionally absent from normal UI tabs.
+- OpenAPI enum order should stay stable unless tests are updated deliberately.
+- Database/network persisted values and import/export formats must remain backward compatible.
+- Network identity checks must not regress the earlier testnet3/testnet4 chain-identity fix.
+
+Phase 3 verification:
+
+- `npm run check:bitcoin-network-boundaries`
+- `cd server && npx vitest run tests/unit/api/bitcoin tests/unit/services/bitcoin`
+- `npm run typecheck:app`
+- `npm run typecheck:server:tests`
+- `npm run lint:server`
+- `npm run lint:app`
+- touched-file `npm run quality:lizard -- ...`
+- `git diff --check`
+
+Phase 4 details:
+
+- Do not merge backend endpoints. `/wallets/:walletId/transactions/broadcast` is wallet-scoped and policy/audit-aware; `/bitcoin/broadcast` is raw network broadcast.
+- Rename the frontend raw helper, for example from `bitcoinApi.broadcastTransaction` to `broadcastRawNetworkTransaction`, and update imports/call sites.
+- Keep wallet-scoped `transactionsApi.broadcastTransaction` unchanged for send flow ergonomics.
+- Update OpenAPI/client docs only if public naming or docs currently encourage confusion.
+
+Phase 4 corner cases:
+
+- Hardware-wallet flow posts to `/wallets/:walletId/psbt/broadcast`; do not accidentally redirect it to the raw network helper.
+- Gateway mobile route coverage and mobile permission checks apply to wallet-scoped broadcast; raw `/bitcoin/broadcast` is a different API surface.
+- Existing tests that mock `blockchain.broadcastTransaction` refer to server service internals and should not be renamed merely because the frontend helper changes.
+
+Phase 4 verification:
+
+- focused frontend send/hardware-wallet tests if touched
+- `cd server && npx vitest run tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.broadcast.contracts.ts tests/unit/api/bitcoin/bitcoin.transaction.contracts.ts`
+- `npm run typecheck:app`
+- `npm run typecheck:server:tests`
+- `git diff --check`
+
+Phase 5 details:
+
+- If removing model management, remove frontend `pullModel`/`deleteModel`, backend `/ai/pull-model` and `/ai/delete-model`, proxy `/pull-model` and `/delete-model`, model-pull progress callbacks if they become unused, OpenAPI entries, tests, and UI copy/buttons.
+- Keep provider detection, provider config sync, list-models, external provider calls, endpoint allowlisting, and sanitized-context isolation unless explicitly changing the LLM feature itself.
+- If keeping model management, rename "Sanctuary-managed Ollama pulls" to make clear the provider runs outside Sanctuary and Sanctuary is only sending admin requests to that external provider.
+- The ignored local `ai-proxy/dist` artifact is not a tracked-code concern; clean it separately only as an explicit workspace cleanup.
+
+Phase 5 corner cases:
+
+- Removing pull/delete should not remove external Ollama as a provider type.
+- Removing pull/delete should not break provider model listing for configured OpenAI-compatible providers.
+- WebSocket model-pull progress events may become dead code if pull is removed; delete or document intentionally unused paths.
+- Admin-only and rate-limited behavior must remain for any retained provider-management endpoint.
+- Do not weaken endpoint allowlist/CIDR policy while editing provider routes.
+
+Phase 5 verification:
+
+- focused AI settings tests and AI API tests for changed paths
+- `npm run typecheck:app`
+- `npm run typecheck:server:tests`
+- `npm --prefix llm-egress-proxy run build`
+- focused llm-egress-proxy tests for provider routes if present
+- `npm run check:openapi-route-coverage`
+- `git diff --check`
+
+Phase 6 details:
+
+- Preference helper: centralize nested preference patch construction, but preserve server canonicalization of `fiatCurrency` and `selectedNetwork`.
+- Preference helper: arrays should replace arrays, not deep-merge by index.
+- Preference helper: preserve unauthenticated localStorage fallback in `useUserPreference`.
+- Gateway validation: defer manifest-derived schema lookup unless gateway routes change again; current parity tests are adequate guardrails.
+
+Phase 6 corner cases:
+
+- Optimistic preference updates can race; helper should avoid overwriting unrelated nested keys with stale snapshots where possible.
+- `null`, absent preferences, and non-object legacy preference values must still resolve to defaults.
+- Gateway route body validation should stay fail-closed for write routes with bodies.
+- Manifest/schema derivation must not introduce circular imports or make shared schemas mutable at runtime.
+
+Plan-level quality gates:
+
+- Keep each phase as a separate PR unless a later phase is only mechanical fallout from the previous one.
+- Start every implementation slice by adding or tightening a regression test for the drift being removed.
+- Re-read the diff before opening each PR and remove incidental refactors.
+- Use touched-file lizard for non-trivial logic changes and keep edited functions under `CCN <= 15`.
+- For each PR, note which divergences are intentionally still separate and why.
+
+---
+
 # Completed Task: Phase 6 Gateway Route Manifest And Parity 2026-05-14
 
 Status: merged and verified.

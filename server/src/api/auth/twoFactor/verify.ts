@@ -8,15 +8,14 @@ import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import { userRepository } from '../../../repositories';
 import { createLogger } from '../../../utils/logger';
-import { generateToken, verify2FAToken } from '../../../utils/jwt';
+import { verify2FAToken } from '../../../utils/jwt';
 import * as twoFactorService from '../../../services/twoFactorService';
-import * as refreshTokenService from '../../../services/refreshTokenService';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../../services/auditService';
 import { validate } from '../../../middleware/validate';
-import { setAuthCookies } from '../../../middleware/csrf';
 import { asyncHandler } from '../../../errors/errorHandler';
 import { UnauthorizedError } from '../../../errors/ApiError';
 import { TwoFactorVerifySchema } from '../../schemas/auth';
+import { prepareAuthSession, sendAuthSessionResponse } from '../sessionResponse';
 
 const log = createLogger('AUTH_2FA:ROUTE');
 
@@ -91,21 +90,11 @@ export function createVerifyRouter(twoFactorLimiter: RequestHandler): Router {
       throw new UnauthorizedError('Invalid verification code');
     }
 
-    // Get device info from request
     const { ipAddress, userAgent } = getClientInfo(req);
-    const deviceInfo = {
-      userAgent,
-      ipAddress,
-    };
-
-    // SEC-005: Generate full auth token and refresh token with DB persistence
-    const token = generateToken({
-      userId: user.id,
-      username: user.username,
-      isAdmin: user.isAdmin,
-      sessionVersion: user.sessionVersion,
+    const authSession = await prepareAuthSession(user, {
+      clientInfo: { ipAddress, userAgent },
+      usingDefaultPassword: decoded.usingDefaultPassword || false,
     });
-    const refreshToken = await refreshTokenService.createRefreshToken(user.id, deviceInfo, user.sessionVersion);
 
     // Audit successful login with 2FA
     await auditService.log({
@@ -132,20 +121,7 @@ export function createVerifyRouter(twoFactorLimiter: RequestHandler): Router {
 
     // ADR 0001 / 0002 — Phase 6: browser auth is cookie-only. Tokens are
     // delivered via HttpOnly cookies; the JSON body no longer carries them.
-    setAuthCookies(req, res, { accessToken: token, refreshToken });
-
-    res.json({
-      expiresIn: 3600, // 1 hour in seconds
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        isAdmin: user.isAdmin,
-        preferences: user.preferences,
-        twoFactorEnabled: user.twoFactorEnabled,
-        usingDefaultPassword: decoded.usingDefaultPassword || false,
-      },
-    });
+    sendAuthSessionResponse(req, res, authSession);
   }));
 
   return router;

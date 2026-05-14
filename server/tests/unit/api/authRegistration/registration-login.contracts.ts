@@ -8,8 +8,43 @@ import {
   mockIsSmtpConfigured,
   mockIsVerificationRequired,
 } from '../auth.testHelpers';
+import { expectCanonicalAuthSessionUser } from '../authSessionUser.contractHelper';
 
 export function registerAuthRegistrationLoginTests(): void {
+  describe('auth session response helper', () => {
+    it('uses session-version zero and canonical user defaults for incomplete records', async () => {
+      const { prepareAuthSession } = await import('../../../../src/api/auth/sessionResponse');
+      const { createRefreshToken } = await import('../../../../src/services/refreshTokenService');
+      const createRefreshTokenMock = vi.mocked(createRefreshToken);
+      createRefreshTokenMock.mockClear();
+
+      const session = await prepareAuthSession(
+        {
+          id: 'fallback-user-id',
+          username: 'fallbackuser',
+          isAdmin: false,
+        },
+        { clientInfo: {} },
+      );
+
+      expect(createRefreshTokenMock).toHaveBeenCalledWith(
+        'fallback-user-id',
+        { userAgent: undefined, ipAddress: undefined },
+        0,
+      );
+      expectCanonicalAuthSessionUser(session.responseBody.user, {
+        id: 'fallback-user-id',
+        username: 'fallbackuser',
+        email: null,
+        emailVerified: false,
+        isAdmin: false,
+        preferences: null,
+        twoFactorEnabled: false,
+        usingDefaultPassword: false,
+      });
+    });
+  });
+
   describe('GET /auth/registration-status - Check Registration Status', () => {
     it('should return enabled when registration is enabled', async () => {
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
@@ -80,6 +115,7 @@ export function registerAuthRegistrationLoginTests(): void {
         emailVerified: false,
         isAdmin: false,
         sessionVersion: 0,
+        twoFactorEnabled: false,
         preferences: { darkMode: true },
       });
     }
@@ -234,7 +270,16 @@ export function registerAuthRegistrationLoginTests(): void {
       // Phase 6: browser auth is cookie-only; JSON body no longer carries tokens.
       expect(response.body.token).toBeUndefined();
       expect(response.body.refreshToken).toBeUndefined();
-      expect(response.body.user.username).toBe('newuser');
+      expectCanonicalAuthSessionUser(response.body.user, {
+        id: 'new-user-id',
+        username: 'newuser',
+        email: 'new@example.com',
+        emailVerified: false,
+        isAdmin: false,
+        preferences: { darkMode: true },
+        twoFactorEnabled: false,
+        usingDefaultPassword: false,
+      });
       expect(response.body.emailVerificationRequired).toBe(false);
     });
 
@@ -248,6 +293,7 @@ export function registerAuthRegistrationLoginTests(): void {
         emailVerified: false,
         isAdmin: false,
         sessionVersion: 0,
+        twoFactorEnabled: false,
         preferences: { darkMode: true },
       });
       mockIsVerificationRequired.mockResolvedValue(false);
@@ -277,6 +323,7 @@ export function registerAuthRegistrationLoginTests(): void {
         emailVerified: false,
         isAdmin: false,
         sessionVersion: 0,
+        twoFactorEnabled: false,
         preferences: { darkMode: true },
       });
       mockIsVerificationRequired.mockResolvedValue(false);
@@ -308,6 +355,7 @@ export function registerAuthRegistrationLoginTests(): void {
         emailVerified: true,
         isAdmin: false,
         sessionVersion: 0,
+        twoFactorEnabled: false,
         preferences: { darkMode: true },
       });
       mockIsVerificationRequired.mockResolvedValue(true);
@@ -462,6 +510,8 @@ export function registerAuthRegistrationLoginTests(): void {
         email: 'new@example.com',
         emailVerified: false,
         isAdmin: false,
+        sessionVersion: 0,
+        twoFactorEnabled: false,
         preferences: { darkMode: true },
       });
       mockIsVerificationRequired.mockResolvedValue(false);
@@ -574,6 +624,7 @@ export function registerAuthRegistrationLoginTests(): void {
         emailVerified: true,
         password: hashedPassword,
         isAdmin: false,
+        sessionVersion: 0,
         twoFactorEnabled: false,
         preferences: { darkMode: true },
       });
@@ -587,7 +638,16 @@ export function registerAuthRegistrationLoginTests(): void {
       // Phase 6: browser auth is cookie-only; JSON body no longer carries tokens.
       expect(response.body.token).toBeUndefined();
       expect(response.body.refreshToken).toBeUndefined();
-      expect(response.body.user.username).toBe('testuser');
+      expectCanonicalAuthSessionUser(response.body.user, {
+        id: 'user-id',
+        username: 'testuser',
+        email: 'test@example.com',
+        emailVerified: true,
+        isAdmin: false,
+        preferences: { darkMode: true },
+        twoFactorEnabled: false,
+        usingDefaultPassword: false,
+      });
       expect(response.body.usingDefaultPassword).toBeUndefined();
     });
 
