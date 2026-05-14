@@ -156,10 +156,21 @@ export function registerAdminRoutesUserUpdateDeleteContracts(): void {
 
       const response = await adminRoutesRequest()
         .put('/api/v1/admin/users/user-1')
-        .send({ email: 'new@test.com' });
+        .send({ email: 'New@Test.COM' });
 
       expect(response.status).toBe(200);
       expect(response.body.email).toBe('new@test.com');
+      expect(mockPrisma.user.findUnique).toHaveBeenNthCalledWith(2, {
+        where: { email: 'new@test.com' },
+      });
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            email: 'new@test.com',
+            emailVerified: true,
+          }),
+        })
+      );
     });
 
     it('should remove email and mark it unverified when email is cleared', async () => {

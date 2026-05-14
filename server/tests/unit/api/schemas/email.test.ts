@@ -65,6 +65,18 @@ describe('Email Schemas', () => {
       }
     });
 
+    it('should canonicalize mixed-case email to lowercase', () => {
+      const result = UpdateEmailSchema.safeParse({
+        email: 'Mixed.Case+Tag@Example.COM',
+        password: 'test123',
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.email).toBe('mixed.case+tag@example.com');
+      }
+    });
+
     it('should accept various valid email formats', () => {
       // Note: Zod's email validation is stricter than RFC 5321/5322
       const validEmails = [

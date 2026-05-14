@@ -9,6 +9,7 @@ import type { RequestHandler } from 'express';
 import { z } from 'zod';
 import { userRepository, systemSettingRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
+import { normalizeEmail } from '../../utils/email';
 import { hashPassword, verifyPassword, validatePasswordStrength } from '../../utils/password';
 import { generateToken, generate2FAToken } from '../../utils/jwt';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../services/auditService';
@@ -95,6 +96,7 @@ export function createLoginRouter(
     if (!isValidEmail(email)) {
       throw new InvalidInputError('Invalid email address format');
     }
+    const canonicalEmail = normalizeEmail(email);
 
     // SEC-009: Enforce password strength at registration
     const passwordValidation = validatePasswordStrength(password);
@@ -112,7 +114,7 @@ export function createLoginRouter(
     }
 
     // Check if email is already in use
-    const existingEmail = await userRepository.findByEmail(email.toLowerCase());
+    const existingEmail = await userRepository.findByEmail(canonicalEmail);
 
     if (existingEmail) {
       throw new ConflictError('Email address is already in use');
@@ -125,7 +127,7 @@ export function createLoginRouter(
     const user = await userRepository.create({
       username,
       password: hashedPassword,
-      email: email.toLowerCase(),
+      email: canonicalEmail,
       emailVerified: false,
       preferences: {
         darkMode: true,
@@ -155,12 +157,12 @@ export function createLoginRouter(
     if (smtpConfigured) {
       const verificationResult = await createVerificationToken(
         user.id,
-        email.toLowerCase(),
+        canonicalEmail,
         username
       );
       verificationEmailSent = verificationResult.success;
       if (verificationResult.success) {
-        log.info('Verification email sent for new registration', { userId: user.id, email: email.toLowerCase() });
+        log.info('Verification email sent for new registration', { userId: user.id, email: canonicalEmail });
       } else {
         log.warn('Failed to send verification email', { userId: user.id, error: verificationResult.error });
       }

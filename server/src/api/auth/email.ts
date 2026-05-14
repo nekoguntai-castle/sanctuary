@@ -8,6 +8,7 @@ import { Router, Response } from 'express';
 import type { RequestHandler } from 'express';
 import { verifyEmail, resendVerification, createVerificationToken } from '../../services/email';
 import { userRepository } from '../../repositories';
+import { normalizeEmail } from '../../utils/email';
 import { verifyPassword } from '../../utils/password';
 import { VerifyEmailSchema, UpdateEmailSchema } from '../schemas/email';
 import { createLogger } from '../../utils/logger';
@@ -171,8 +172,10 @@ export function createEmailRouter(
         throw new UnauthorizedError('Invalid password');
       }
 
+      const currentEmail = user.email ? normalizeEmail(user.email) : null;
+
       // Check if email is already in use
-      if (email.toLowerCase() !== user.email?.toLowerCase()) {
+      if (email !== currentEmail) {
         const emailExists = await userRepository.emailExists(email);
         if (emailExists) {
           throw new ConflictError('This email address is already in use');
@@ -180,7 +183,7 @@ export function createEmailRouter(
       }
 
       // Update email (this resets verification status)
-      const updatedUser = await userRepository.updateEmail(userId, email.toLowerCase());
+      const updatedUser = await userRepository.updateEmail(userId, email);
 
       // Audit email update
       const { ipAddress, userAgent } = getClientInfo(req);
@@ -192,19 +195,19 @@ export function createEmailRouter(
         success: true,
         details: {
           oldEmail: user.email,
-          newEmail: email.toLowerCase(),
+          newEmail: email,
         },
         ipAddress,
         userAgent,
       });
 
       // Send verification email to new address
-      const verificationResult = await createVerificationToken(userId, email.toLowerCase(), user.username);
+      const verificationResult = await createVerificationToken(userId, email, user.username);
 
       log.info('Email updated', {
         userId,
         oldEmail: user.email,
-        newEmail: email.toLowerCase(),
+        newEmail: email,
         verificationSent: verificationResult.success,
       });
 

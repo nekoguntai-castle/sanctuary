@@ -1,6 +1,50 @@
-# Active Task: Phase 1 Password Policy Consolidation 2026-05-14
+# Active Task: Phase 2 Email Canonicalization 2026-05-14
 
-Status: verified locally; PR delivery pending
+Status: in progress
+
+Goal: make email validation, duplicate checks, persistence, audit details, and verification-token creation use one canonical lowercase email contract.
+
+## Plan
+
+- [x] Make `UpdateEmailSchema` consume the shared canonical `EmailSchema`.
+- [x] Add a dedicated `normalizeEmail()` helper and use it from schemas/repositories/routes instead of ad hoc lowercase calls.
+- [x] Normalize defensively inside `userRepository.findByEmail()`, `emailExists()`, and `updateEmail()`.
+- [x] Use the parsed canonical email in the auth email update route for duplicate checks, persistence, audit details, verification token creation, and logs.
+- [x] Cover mixed-case update, case-only update, duplicate mixed-case lookup, null existing email, and admin clear-email behavior in tests.
+- [x] Run focused tests, typecheck, lint/complexity checks, and final diff review.
+- [ ] Commit, open PR, monitor checks, merge, and verify target branch ancestry before starting Phase 3.
+
+Corner cases to account for:
+
+- Case-only email updates should not conflict against the same user and should store lowercase.
+- A user with `null` email should still be able to set a mixed-case email and receive verification at the canonical address.
+- Admin update with `email: ''` must still clear email rather than trying to canonicalize an empty address.
+- Invalid email and missing password errors should remain route/schema validation failures.
+- Repository callers should be safe even if they pass mixed-case email directly.
+
+## Review
+
+- Added `normalizeEmail()` as the single lowercase canonicalization helper.
+- `EmailSchema` and `UpdateEmailSchema` now share the same canonical lowercase output.
+- Auth email update now uses the parsed canonical email for duplicate checks, persistence, audit details, verification token creation, and logs.
+- Public registration and admin create/update now use the same helper instead of route-local lowercase calls.
+- `userRepository.findByEmail()`, `emailExists()`, and `updateEmail()` now canonicalize defensively before touching Prisma.
+- Tests cover schema canonicalization, mixed-case public registration/admin create/admin update, mixed-case auth email update with `null` existing email, duplicate mixed-case lookup, repository defensive normalization, and admin email clearing.
+
+Verification so far:
+
+- `npm --prefix server run test:run -- tests/unit/api/schemas/email.test.ts tests/unit/api/schemas/common.test.ts tests/unit/api/email.test.ts tests/unit/repositories/userRepository.test.ts tests/unit/api/auth.routes.registration.test.ts tests/unit/api/admin-routes.test.ts` passed, 269 tests.
+- `npm --prefix server run typecheck:tests` passed.
+- `npm run lint:server` passed, including API body validation, Bitcoin network boundary, and safety catch guard checks.
+- `bash scripts/quality/lizard-only.sh server/src/utils/email.ts server/src/validation/commonSchemas.ts server/src/api/schemas/email.ts server/src/repositories/userRepository.ts server/src/api/auth/email.ts server/src/api/auth/login.ts server/src/api/admin/users.ts` passed.
+- `git diff --check` passed.
+- Pre-commit changed-test sweep passed, 5,804 tests passed and 244 skipped.
+
+---
+
+# Completed Task: Phase 1 Password Policy Consolidation 2026-05-14
+
+Status: merged
 
 Goal: make all password-setting paths use one password policy, enforce a clear bcrypt-safe max for new passwords, preserve existing-login compatibility, update OpenAPI, and verify route/schema behavior.
 
@@ -12,7 +56,7 @@ Goal: make all password-setting paths use one password policy, enforce a clear b
 - [x] Update OpenAPI auth/admin password request schemas with the shared min/max policy.
 - [x] Add route/schema/security tests for boundary cases, including max-byte and Unicode byte-length behavior.
 - [x] Run typecheck, lint, touched-file complexity checks, and final diff review.
-- [ ] Commit, open PR, monitor checks, merge, and verify target branch ancestry before starting Phase 2.
+- [x] Commit, open PR, monitor checks, merge, and verify target branch ancestry before starting Phase 2.
 
 ## Review
 
@@ -31,6 +75,7 @@ Verification so far:
 - `bash scripts/quality/lizard-only.sh server/src/utils/password.ts server/src/api/schemas/auth.ts server/src/api/openapi/schemas/auth.ts server/src/api/openapi/schemas/admin/identity-groups.ts server/src/api/openapi/schemas/common.ts` passed.
 - `git diff --check` passed.
 - After the pre-commit review cleanup, `npm --prefix server run test:run -- tests/unit/api/openapi.test.ts tests/unit/api/schemas.test.ts tests/unit/security/securityAudit.test.ts` passed, 90 tests.
+- PR #448 merged and verified on `origin/main` at `33e475af6f38d2c2b6567e782169d15be223772c`.
 
 Corner cases covered:
 

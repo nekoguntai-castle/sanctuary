@@ -16,6 +16,7 @@ import {
   ConflictError,
 } from "../../errors/ApiError";
 import { createLogger } from "../../utils/logger";
+import { normalizeEmail } from "../../utils/email";
 import { hashPassword } from "../../utils/password";
 import {
   auditService,
@@ -118,8 +119,11 @@ async function applyEmailUpdate(
 ): Promise<void> {
   if (email === undefined) return;
 
-  const normalizedEmail = email ? email.toLowerCase() : null;
-  if (normalizedEmail && normalizedEmail !== existingUser.email) {
+  const normalizedEmail = email ? normalizeEmail(email) : null;
+  const existingEmail = existingUser.email
+    ? normalizeEmail(existingUser.email)
+    : null;
+  if (normalizedEmail && normalizedEmail !== existingEmail) {
     // Check if new email is taken
     const emailTaken = await userRepository.findByEmail(normalizedEmail);
     if (emailTaken) {
@@ -302,7 +306,8 @@ router.post(
     }
 
     // Check if email already exists
-    const existingEmail = await userRepository.findByEmail(email.toLowerCase());
+    const canonicalEmail = normalizeEmail(email);
+    const existingEmail = await userRepository.findByEmail(canonicalEmail);
 
     if (existingEmail) {
       throw new ConflictError("Email already exists");
@@ -316,7 +321,7 @@ router.post(
       {
         username,
         password: hashedPassword,
-        email: email.toLowerCase(),
+        email: canonicalEmail,
         emailVerified: true, // Admin-created users are trusted
         emailVerifiedAt: new Date(),
         isAdmin: isAdmin === true,

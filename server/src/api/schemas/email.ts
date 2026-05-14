@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { EmailSchema } from './common';
 
 /**
  * Schema for verifying email with token
@@ -17,7 +18,7 @@ export const VerifyEmailSchema = z.object({
  * Schema for updating email address
  */
 export const UpdateEmailSchema = z.object({
-  email: z.string().email('Valid email address is required'),
+  email: EmailSchema,
   password: z.string().min(1, 'Current password is required for security'),
 });
 

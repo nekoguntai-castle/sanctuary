@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { normalizeEmail } from '../utils/email';
 import { normalizeUsername } from '../utils/username';
 
 // =============================================================================
@@ -21,7 +22,7 @@ export const NonEmptyStringSchema = z.string().min(1);
 export const OptionalStringSchema = z.string().optional().transform(s => s || undefined);
 
 /** Email address */
-export const EmailSchema = z.string().email().toLowerCase();
+export const EmailSchema = z.string().email().transform(normalizeEmail);
 
 /** Username (alphanumeric, underscores, 3-50 chars) */
 export const UsernameSchema = z

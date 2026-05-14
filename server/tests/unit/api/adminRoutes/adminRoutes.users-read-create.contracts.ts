@@ -115,6 +115,38 @@ export function registerAdminRoutesUserReadCreateContracts(): void {
       );
     });
 
+    it('should store mixed-case emails as lowercase', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue({
+        id: 'new-user',
+        username: 'newuser',
+        email: 'mixed@example.com',
+        isAdmin: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const response = await adminRoutesRequest()
+        .post('/api/v1/admin/users')
+        .send({
+          username: 'newuser',
+          password: 'StrongPass123!',
+          email: 'Mixed@Example.COM',
+        });
+
+      expect(response.status).toBe(201);
+      expect(mockPrisma.user.findUnique).toHaveBeenNthCalledWith(2, {
+        where: { email: 'mixed@example.com' },
+      });
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            email: 'mixed@example.com',
+          }),
+        })
+      );
+    });
+
     it('should reject missing username', async () => {
       const response = await adminRoutesRequest()
         .post('/api/v1/admin/users')

@@ -482,6 +482,50 @@ describe('Email Verification API', () => {
       expect(response.body.emailVerified).toBe(false);
     });
 
+    it('should canonicalize mixed-case email before duplicate check, update, audit, and token creation', async () => {
+      const mixedCaseEmail = 'NewEmail+Tag@Example.COM';
+      const canonicalEmail = 'newemail+tag@example.com';
+
+      (verifyPassword as any).mockResolvedValue(true);
+      mockUserRepository.findById.mockResolvedValue({
+        id: testUserId,
+        username: testUsername,
+        email: null,
+        password: 'hashed-password',
+      });
+      mockUserRepository.emailExists.mockResolvedValue(false);
+      mockUserRepository.updateEmail.mockResolvedValue({
+        id: testUserId,
+        email: canonicalEmail,
+        emailVerified: false,
+      });
+      mockEmailVerificationService.createVerificationToken.mockResolvedValue({
+        success: true,
+      });
+
+      const response = await request(app)
+        .put('/api/v1/auth/me/email')
+        .send({ email: mixedCaseEmail, password: currentPassword });
+
+      expect(response.status).toBe(200);
+      expect(response.body.email).toBe(canonicalEmail);
+      expect(mockUserRepository.emailExists).toHaveBeenCalledWith(canonicalEmail);
+      expect(mockUserRepository.updateEmail).toHaveBeenCalledWith(testUserId, canonicalEmail);
+      expect(mockEmailVerificationService.createVerificationToken).toHaveBeenCalledWith(
+        testUserId,
+        canonicalEmail,
+        testUsername
+      );
+      expect(mockAuditService.auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          details: expect.objectContaining({
+            oldEmail: null,
+            newEmail: canonicalEmail,
+          }),
+        })
+      );
+    });
+
     it('should reject invalid email format', async () => {
       const response = await request(app)
         .put('/api/v1/auth/me/email')
@@ -518,11 +562,12 @@ describe('Email Verification API', () => {
 
       const response = await request(app)
         .put('/api/v1/auth/me/email')
-        .send({ email: newEmail, password: currentPassword });
+        .send({ email: 'NewEmail@Example.COM', password: currentPassword });
 
       expect(response.status).toBe(409);
       expect(response.body.code).toBe('CONFLICT');
       expect(response.body.message).toContain('already in use');
+      expect(mockUserRepository.emailExists).toHaveBeenCalledWith(newEmail);
     });
 
     it('should send verification email to new address', async () => {

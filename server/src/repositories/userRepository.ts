@@ -7,6 +7,7 @@
 import prisma from '../models/prisma';
 import { Prisma } from '../generated/prisma/client';
 import type { User } from '../generated/prisma/client';
+import { normalizeEmail } from '../utils/email';
 import { normalizeUsername } from '../utils/username';
 
 /**
@@ -45,7 +46,7 @@ export async function findByUsername(username: string): Promise<User | null> {
  */
 export async function findByEmail(email: string): Promise<User | null> {
   return prisma.user.findUnique({
-    where: { email },
+    where: { email: normalizeEmail(email) },
   });
 }
 
@@ -188,7 +189,7 @@ export async function updateEmail(
   return prisma.user.update({
     where: { id },
     data: {
-      email,
+      email: normalizeEmail(email),
       emailVerified: false,
       emailVerifiedAt: null,
     },
@@ -267,7 +268,7 @@ export async function update2FA(
  */
 export async function emailExists(email: string): Promise<boolean> {
   const count = await prisma.user.count({
-    where: { email },
+    where: { email: normalizeEmail(email) },
   });
   return count > 0;
 }

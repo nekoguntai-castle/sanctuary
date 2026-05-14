@@ -95,13 +95,13 @@ describe('User Repository', () => {
       expect(result).toBeNull();
     });
 
-    it('should handle case-sensitive email lookup', async () => {
+    it('should canonicalize mixed-case email lookup', async () => {
       (prisma.user.findUnique as Mock).mockResolvedValue(null);
 
       await userRepository.findByEmail('Test@Example.com');
 
       expect(prisma.user.findUnique).toHaveBeenCalledWith({
-        where: { email: 'Test@Example.com' },
+        where: { email: 'test@example.com' },
       });
     });
   });
@@ -219,6 +219,25 @@ describe('User Repository', () => {
       });
     });
 
+    it('should canonicalize mixed-case email before updating', async () => {
+      (prisma.user.update as Mock).mockResolvedValue({
+        id: 'user-123',
+        email: 'new@example.com',
+        emailVerified: false,
+      });
+
+      await userRepository.updateEmail('user-123', 'New@Example.COM');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-123' },
+        data: {
+          email: 'new@example.com',
+          emailVerified: false,
+          emailVerifiedAt: null,
+        },
+      });
+    });
+
     it('should propagate database errors', async () => {
       (prisma.user.update as Mock).mockRejectedValue(new Error('Email update failed'));
 
@@ -245,6 +264,17 @@ describe('User Repository', () => {
       const result = await userRepository.emailExists('new@example.com');
 
       expect(result).toBe(false);
+    });
+
+    it('should canonicalize mixed-case email before counting', async () => {
+      (prisma.user.count as Mock).mockResolvedValue(1);
+
+      const result = await userRepository.emailExists('Existing@Example.COM');
+
+      expect(result).toBe(true);
+      expect(prisma.user.count).toHaveBeenCalledWith({
+        where: { email: 'existing@example.com' },
+      });
     });
 
     it('should handle database errors', async () => {

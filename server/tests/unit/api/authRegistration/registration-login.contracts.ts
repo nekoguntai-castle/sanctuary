@@ -267,6 +267,37 @@ export function registerAuthRegistrationLoginTests(): void {
       );
     });
 
+    it('should store mixed-case registration emails as lowercase', async () => {
+      mockEnabledPublicRegistration();
+      mockUniqueRegistrationIdentity();
+      mockPrismaClient.user.create.mockResolvedValue({
+        id: 'new-user-id',
+        username: 'newuser',
+        email: 'mixed@example.com',
+        emailVerified: false,
+        isAdmin: false,
+        sessionVersion: 0,
+        preferences: { darkMode: true },
+      });
+      mockIsVerificationRequired.mockResolvedValue(false);
+
+      const response = await request(app)
+        .post('/api/v1/auth/register')
+        .send({ username: 'newuser', password: 'StrongPassword123!', email: 'Mixed@Example.COM' });
+
+      expect(response.status).toBe(201);
+      expect(mockPrismaClient.user.findUnique).toHaveBeenNthCalledWith(2, {
+        where: { email: 'mixed@example.com' },
+      });
+      expect(mockPrismaClient.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            email: 'mixed@example.com',
+          }),
+        })
+      );
+    });
+
     it('should authenticate immediately when a created user is already email verified', async () => {
       mockEnabledPublicRegistration();
       mockUniqueRegistrationIdentity();
