@@ -721,6 +721,55 @@ describe('telegramService', () => {
     );
   });
 
+  it('updateWalletTelegramSettings preserves nested fields and stores prototype-like wallet IDs as own data', async () => {
+    const { updateWalletTelegramSettings, getWalletTelegramSettings } = await loadService();
+    (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce({
+      preferences: {
+        locale: 'en',
+        telegram: {
+          botToken: VALID_BOT_TOKEN,
+          chatId: 'chat-id',
+          enabled: true,
+          quietHours: { start: '22:00' },
+          wallets: {
+            'wallet-existing': {
+              enabled: true,
+              notifyDraft: true,
+              notifyReceived: true,
+              notifySent: true,
+              notifyConsolidation: false,
+            },
+          },
+        },
+      },
+    });
+
+    await updateWalletTelegramSettings('user-2', '__proto__', {
+      enabled: false,
+      notifyDraft: false,
+      notifyReceived: true,
+      notifySent: false,
+      notifyConsolidation: true,
+    });
+
+    const updatedPrefs = mockUserRepo.updatePreferences.mock.calls[0][1] as any;
+    const updatedWallets = updatedPrefs.telegram.wallets;
+    expect(updatedPrefs.telegram.quietHours).toEqual({ start: '22:00' });
+    expect(updatedWallets['wallet-existing']).toEqual(expect.objectContaining({ enabled: true }));
+    expect(Object.getPrototypeOf(updatedWallets)).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(updatedWallets, '__proto__')).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(updatedWallets, '__proto__')?.value).toEqual(
+      expect.objectContaining({ enabled: false })
+    );
+
+    (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce({
+      preferences: updatedPrefs,
+    });
+    await expect(getWalletTelegramSettings('user-2', '__proto__')).resolves.toEqual(
+      expect.objectContaining({ enabled: false })
+    );
+  });
+
   it('getWalletTelegramSettings returns null for missing users and missing wallet settings', async () => {
     const { getWalletTelegramSettings } = await loadService();
     (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce(null);

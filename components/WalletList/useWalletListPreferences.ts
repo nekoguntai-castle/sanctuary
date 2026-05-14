@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useUser } from '../../contexts/UserContext';
+import { asPreferenceRecord, buildPreferencePathPatch } from '../../utils/preferencePaths';
 import {
   DEFAULT_WALLET_COLUMN_ORDER,
   DEFAULT_WALLET_VISIBLE_COLUMNS,
@@ -12,12 +13,11 @@ export function useWalletListPreferences() {
   const walletSettings = user?.preferences?.viewSettings?.wallets;
 
   const updateWalletSettings = (patch: Record<string, unknown>) => {
-    updatePreferences({
-      viewSettings: {
-        ...(user?.preferences?.viewSettings ?? {}),
-        wallets: { ...(walletSettings ?? {}), ...patch }
-      }
-    });
+    updatePreferences(buildPreferencePathPatch(
+      'viewSettings.wallets',
+      { ...asPreferenceRecord(walletSettings), ...patch },
+      user?.preferences,
+    ));
   };
 
   const viewMode = (walletSettings?.layout as WalletViewMode) || 'grid';

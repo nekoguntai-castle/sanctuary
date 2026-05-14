@@ -168,6 +168,7 @@ describe('WalletList branch coverage', () => {
         id: 'user-1',
         preferences: {
           viewSettings: {
+            devices: { layout: 'list' },
             wallets: walletPrefs,
           },
         },
@@ -215,6 +216,12 @@ describe('WalletList branch coverage', () => {
     renderWalletList();
 
     await user.click(screen.getByText('sort-name'));
+    expect(updatePreferences).toHaveBeenNthCalledWith(1, {
+      viewSettings: {
+        devices: { layout: 'list' },
+        wallets: { layout: 'table', sortBy: 'name', sortOrder: 'desc' },
+      },
+    });
     expect(updatePreferences).toHaveBeenCalledWith(
       expect.objectContaining({
         viewSettings: expect.objectContaining({

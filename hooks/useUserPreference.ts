@@ -17,59 +17,15 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useCurrentUser, useUserPreferences } from '../contexts/UserContext';
 import { createLogger } from '../utils/logger';
+import {
+  asPreferenceRecord,
+  buildPreferencePathPatch,
+  getPreferencePathValue,
+} from '../utils/preferencePaths';
 
 const log = createLogger('useUserPreference');
 
 const STORAGE_PREFIX = 'sanctuary_pref_';
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-}
-
-/**
- * Get a nested value from an object using a dot-notation path.
- * Returns undefined if any segment is missing.
- */
-function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
-  const keys = path.split('.');
-  let current: unknown = obj;
-  for (const key of keys) {
-    if (current === null || current === undefined || typeof current !== 'object') {
-      return undefined;
-    }
-    current = (current as Record<string, unknown>)[key];
-  }
-  return current;
-}
-
-/**
- * Build a partial preferences object from a dot-notation path and value.
- * e.g., buildNestedUpdate('viewSettings.wallets.layout', 'grid', existingPrefs)
- * returns { viewSettings: { ...existingViewSettings, wallets: { ...existingWallets, layout: 'grid' } } }
- */
-function buildNestedUpdate(
-  path: string,
-  value: unknown,
-  existing: Record<string, unknown>
-): Record<string, unknown> {
-  const keys = path.split('.');
-
-  if (keys.length === 1) {
-    return { [keys[0]]: value };
-  }
-
-  const [first, ...rest] = keys;
-  const existingChild = asRecord(existing[first]);
-
-  return {
-    [first]: {
-      ...existingChild,
-      ...buildNestedUpdate(rest.join('.'), value, existingChild),
-    },
-  };
-}
 
 export function useUserPreference<T>(
   key: string,
@@ -78,7 +34,7 @@ export function useUserPreference<T>(
   const user = useCurrentUser();
   const { preferences, updatePreferences } = useUserPreferences();
   const isLoggedIn = !!user;
-  const serverPreferences = asRecord(preferences);
+  const serverPreferences = asPreferenceRecord(preferences);
 
   // Read initial value from localStorage for unauthenticated fallback
   const [localValue, setLocalValue] = useState<T>(() => {
@@ -95,7 +51,7 @@ export function useUserPreference<T>(
 
   // Derive the current value: server preferences take priority when logged in
   const serverValue = isLoggedIn
-    ? (getNestedValue(serverPreferences, key) as T | undefined)
+    ? (getPreferencePathValue(serverPreferences, key) as T | undefined)
     : undefined;
 
   const currentValue = isLoggedIn
@@ -116,7 +72,7 @@ export function useUserPreference<T>(
   const setValue = useCallback(
     (newValue: T) => {
       if (isLoggedIn) {
-        const update = buildNestedUpdate(
+        const update = buildPreferencePathPatch(
           key,
           newValue,
           serverPreferences

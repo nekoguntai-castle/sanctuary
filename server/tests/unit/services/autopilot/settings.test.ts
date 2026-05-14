@@ -215,6 +215,51 @@ describe('autopilot settings service', () => {
         },
       );
     });
+
+    it('preserves nested fields and stores prototype-like wallet IDs as own data', async () => {
+      (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce({
+        preferences: {
+          language: 'en',
+          autopilot: {
+            notifyDefaults: { telegram: true },
+            wallets: {
+              'wallet-existing': {
+                enabled: true,
+                maxFeeRate: 3,
+                minUtxoCount: 50,
+                dustThreshold: 1500,
+                cooldownHours: 6,
+                notifyTelegram: true,
+                notifyPush: false,
+              },
+            },
+          },
+        },
+      });
+      (mockUserRepo.updatePreferences as Mock).mockResolvedValueOnce({});
+
+      await updateWalletAutopilotSettings('u1', '__proto__', {
+        enabled: false,
+        maxFeeRate: 11,
+        minUtxoCount: 5,
+        dustThreshold: 7000,
+        cooldownHours: 48,
+        notifyTelegram: false,
+        notifyPush: true,
+        minDustCount: 0,
+        maxUtxoSize: 0,
+      });
+
+      const updatedPrefs = mockUserRepo.updatePreferences.mock.calls[0][1] as any;
+      const updatedWallets = updatedPrefs.autopilot.wallets;
+      expect(updatedPrefs.autopilot.notifyDefaults).toEqual({ telegram: true });
+      expect(updatedWallets['wallet-existing']).toEqual(expect.objectContaining({ enabled: true }));
+      expect(Object.getPrototypeOf(updatedWallets)).toBe(Object.prototype);
+      expect(Object.prototype.hasOwnProperty.call(updatedWallets, '__proto__')).toBe(true);
+      expect(Object.getOwnPropertyDescriptor(updatedWallets, '__proto__')?.value).toEqual(
+        expect.objectContaining({ enabled: false })
+      );
+    });
   });
 
   describe('getEnabledAutopilotWallets', () => {

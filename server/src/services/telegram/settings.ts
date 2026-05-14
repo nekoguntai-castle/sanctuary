@@ -8,6 +8,35 @@ import type { Prisma } from '../../generated/prisma/client';
 import { userRepository } from '../../repositories';
 import type { TelegramConfig, WalletTelegramSettings } from './types';
 
+type TelegramPreferenceRecord = Partial<TelegramConfig> & Record<string, unknown>;
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function getOwnWalletSettings(
+  wallets: TelegramConfig['wallets'] | undefined,
+  walletId: string,
+): WalletTelegramSettings | null {
+  const descriptor = wallets
+    ? Object.getOwnPropertyDescriptor(wallets, walletId)
+    : undefined;
+  return descriptor ? descriptor.value as WalletTelegramSettings : null;
+}
+
+function setWalletSettings(
+  telegram: TelegramPreferenceRecord,
+  walletId: string,
+  settings: WalletTelegramSettings,
+): TelegramConfig['wallets'] {
+  return Object.fromEntries([
+    ...Object.entries(asRecord(telegram.wallets)),
+    [walletId, settings],
+  ]) as TelegramConfig['wallets'];
+}
+
 /**
  * Update a user's Telegram settings for a specific wallet
  */
@@ -23,25 +52,17 @@ export async function updateWalletTelegramSettings(
   }
 
   const prefs = (user.preferences as Record<string, unknown>) || {};
-  const telegram = (prefs.telegram as TelegramConfig) || {
-    botToken: '',
-    chatId: '',
-    enabled: false,
-    wallets: {},
-  };
-
-  // Update wallet-specific settings
-  telegram.wallets = telegram.wallets || {};
-  telegram.wallets[walletId] = settings;
+  const telegram = asRecord(prefs.telegram) as TelegramPreferenceRecord;
 
   // Save updated preferences
   const updatedPrefs = {
     ...prefs,
     telegram: {
-      botToken: telegram.botToken,
-      chatId: telegram.chatId,
-      enabled: telegram.enabled,
-      wallets: telegram.wallets,
+      ...telegram,
+      botToken: typeof telegram.botToken === 'string' ? telegram.botToken : '',
+      chatId: typeof telegram.chatId === 'string' ? telegram.chatId : '',
+      enabled: typeof telegram.enabled === 'boolean' ? telegram.enabled : false,
+      wallets: setWalletSettings(telegram, walletId, settings),
     },
   };
 
@@ -62,5 +83,5 @@ export async function getWalletTelegramSettings(
   const prefs = user.preferences as Record<string, unknown> | null;
   const telegram = prefs?.telegram as TelegramConfig | undefined;
 
-  return telegram?.wallets?.[walletId] || null;
+  return getOwnWalletSettings(telegram?.wallets, walletId);
 }

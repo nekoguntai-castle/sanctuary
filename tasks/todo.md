@@ -1,6 +1,6 @@
 # Active Task: Codebase Divergence Scrub 2026-05-14
 
-Status: Phase 3 merged via PR #457 as `5d2f488ef211e097c7ee7e4eb62d7070cef87e0f`; Phase 4 raw-broadcast naming cleanup is in progress on `codex/phase-4-raw-broadcast-name`.
+Status: Phase 5 merged via PR #459 as `42abe4d893420661482e73ddbd9a1f4aff271bd2`; Phase 6 preference helper cleanup is in progress on `codex/phase-6-preference-patches`.
 
 Goal: reanalyze the codebase for places where one product workflow or contract is implemented through multiple divergent paths, decide whether each divergence is justified, and identify the consolidations worth doing next.
 
@@ -52,9 +52,9 @@ Recommended order:
 - [x] Phase 1: consolidate server auth session issuance and user response shaping. Merged via PR #455.
 - [x] Phase 2: align frontend auth API types with shared auth contracts after the server response shape is canonical. Merged via PR #456.
 - [x] Phase 3: consolidate canonical Bitcoin network values/types/legacy normalization across shared, frontend, server, OpenAPI, config, and Electrum-facing modules. Merged via PR #457.
-- [ ] Phase 4: rename or namespace raw Bitcoin broadcast helpers so they cannot be confused with wallet-scoped transaction broadcast.
-- [ ] Phase 5: execute the decided external-LLM policy: keep the LLM egress proxy as a security boundary, but remove Sanctuary-managed provider model pull/delete support.
-- [ ] Phase 6: lower-priority cleanup for nested preference patch helpers and, only if needed by new route work, gateway validation derivation.
+- [x] Phase 4: rename or namespace raw Bitcoin broadcast helpers so they cannot be confused with wallet-scoped transaction broadcast. Merged via PR #458.
+- [x] Phase 5: execute the decided external-LLM policy: keep the LLM egress proxy as a security boundary, but remove Sanctuary-managed provider model pull/delete support. Merged via PR #459.
+- [ ] Phase 6: lower-priority cleanup for nested preference patch helpers and, only if needed by new route work, gateway validation derivation. Local implementation and verification are in progress.
 
 Plan re-review addendum:
 
@@ -110,6 +110,21 @@ Fourth plan re-review addendum:
 - Phase 6 should include server-side nested preference writers in the review boundary, not only frontend hooks. Telegram, autopilot, and intelligence settings rebuild nested preference objects and can overwrite siblings if they use stale preference snapshots.
 - Phase 6 optimistic rollback should have an explicit rule: rollback only the keys written by the failed request and only if no later request generation has updated those keys.
 - Phase 6 helper tests should include null preferences, invalid localStorage JSON, empty paths, double dots, unsafe keys, arrays replacing arrays, scalar replacement, and `selectedNetwork: "testnet"` remaining backend-canonicalized to `testnet3`.
+
+Fifth plan re-review addendum:
+
+- `docs/plans/rationalization-plan.md` is now the canonical durable plan; `tasks/todo.md` should remain the working ledger and should not be the only place future phase decisions live.
+- Phase 5 is no longer a planning problem. Treat it as PR delivery: trust only statuses attached to the current PR head, merge only after required checks are green, verify the merge commit is an ancestor of `origin/main`, and then clean up the phase branch.
+- Phase 6 should start from current code behavior, not an abstract preference API. `useUserPreference.ts` owns dot-path reads and nested patch construction; `UserContext.tsx` owns optimistic merge, API call, and rollback; Telegram/autopilot/intelligence services own server-side nested preference rewrites.
+- Phase 6 should introduce one small preference-path utility with explicit semantics before touching call sites. Required behavior: object nodes merge, arrays replace, scalars replace, existing non-object ancestors become new objects, `undefined` is not deletion, and unsafe keys reject.
+- Phase 6 should reject invalid paths before object access: empty path, leading/trailing dot, double dot, non-string input, `__proto__`, `prototype`, and `constructor`.
+- Phase 6 should prefer sending the smallest correct preference patch rather than full optimistic snapshots. If a full snapshot is retained for compatibility, add a regression test proving a stale full snapshot cannot overwrite an unrelated top-level preference changed by a later local update.
+- Phase 6 rollback needs request generations or equivalent path-scoped guards. A failed earlier request should roll back only the keys/paths it wrote and only if no later request generation has changed those keys/paths.
+- Phase 6 should document and test the remaining API-level concurrency model. Last-write-wins is acceptable for now, but silent sibling loss from helper-built stale nested objects is not.
+- Phase 6 should preserve localStorage behavior exactly for anonymous users: invalid JSON falls back to the default value, write failures do not throw, and authenticated writes do not mirror server preferences into `sanctuary_pref_*`.
+- Phase 6 server-side review should verify Telegram, autopilot, and intelligence preference writers preserve global fields, other wallet IDs, unknown sibling preference keys, and prototype-like wallet IDs as safe JSON data rather than prototype mutations.
+- Phase 6 should not add deletion semantics, JSON Patch, JSON Merge Patch, or database-specific JSON-path updates. Those are separate contract decisions and are broader than the helper convergence goal.
+- Phase 6 acceptance should include focused tests for `hooks/useUserPreference.test.tsx`, `tests/contexts/UserContext.test.tsx`, server setting tests for Telegram/autopilot/intelligence if touched, app/test/server typechecks as applicable, touched-file lizard, and `git diff --check`.
 
 Phase 1 details:
 
@@ -326,6 +341,8 @@ Phase 5 review:
 - Updated `llm-egress-proxy/ARCHITECTURE.md` to describe provider model listing only and to remove model-pull/delete route claims.
 - Negative search for model-management symbols now returns only intentional route-absence assertions and the proxy architecture note explaining that installation/pull/delete is not supported.
 - Local verification passed: focused frontend AI/API/websocket/proxy tests, focused backend AI/internal/OpenAPI/service/websocket tests, app/test/server typechecks, shared build, server build, LLM egress proxy build, OpenAPI route coverage, app/server lint, touched-file lizard, test hygiene for changed tests, and `git diff --check`.
+- PR #459 passed required Architecture, Build Dev Images summary, Code Quality, and Test Suite PR checks on current head, then squash-merged as `42abe4d893420661482e73ddbd9a1f4aff271bd2`.
+- Verified the merge commit as reachable from `origin/main`, fast-forwarded local `main`, and deleted the delivered local/remote Phase 5 branch.
 
 Phase 6 details:
 
@@ -352,6 +369,37 @@ Phase 6 corner cases:
 - Arrays such as visible column IDs and column order should replace the array at that path, not merge entries by index.
 - Invalid localStorage JSON should continue to fall back to the default value and should not block authenticated server preferences after login.
 - Concurrent preference writes from multiple controls can still be last-write-wins at the API level; tests should at least prove a single helper-built patch preserves siblings from the latest available user preference snapshot.
+- Empty preference patches should be no-ops; they should not create request generations, send `{}` to the API, or change rollback state.
+- Pending optimistic preference requests should be ignored whether they succeed or fail after logout, terminal logout, pending-verification registration, or re-login. Same-user re-login is the important trap because user-id-only guards are not enough.
+- Cross-tab and cross-device concurrent writes to the same top-level nested preference object remain last-write-wins under the current backend contract; fixing that would require a deeper server patch or compare-and-swap contract and is intentionally out of Phase 6.
+
+Phase 6 review:
+
+- Added `utils/preferencePaths.ts` as the shared frontend helper for dot-path parsing, nested reads, nested patch construction, top-level patch merging, and key-scoped rollback snapshots.
+- `useUserPreference`, wallet list preferences, and device list preferences now use the helper instead of recreating nested `viewSettings` patch construction locally.
+- Wallet and device list tests now assert exact nested patch payloads so sibling `viewSettings` sections stay preserved.
+- `UserContext.updatePreferences` now sends only the changed preference patch to `/auth/me/preferences`, keeping backend top-level merge/canonicalization authoritative instead of sending stale full snapshots.
+- Optimistic preference writes now use request generations plus in-flight request tracking. Failed writes roll back only the keys they wrote, older successful responses do not overwrite a newer optimistic key, and newer successful responses do not overwrite an older still-pending optimistic key.
+- Auth-session preference epochs now prevent stale in-flight preference successes or failures from mutating state after logout or re-login, and empty preference patches now return without an API call.
+- Preference API responses preserve current user-only fields such as `emailVerified` and `usingDefaultPassword` when the preference endpoint omits them.
+- Telegram and autopilot per-wallet preference writers now follow the safer intelligence settings pattern: preserve unknown nested config fields and store prototype-like wallet IDs as own JSON data instead of mutating object prototypes.
+- Gateway validation derivation remains deferred; no new gateway route-schema work was needed for this phase.
+
+Phase 6 verification so far:
+
+- `npm run test:run -- tests/contexts/UserContext.test.tsx tests/contexts/UserContext.preferences.test.tsx tests/hooks/useUserPreference.test.tsx tests/components/WalletList.branches.test.tsx tests/components/DeviceList/DeviceList.branches.test.tsx tests/utils/preferencePaths.test.ts` passed after splitting the preference coverage out of the large `UserContext` test file, 104 tests.
+- `npm run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism` passed with frontend coverage at 100% statements, branches, functions, and lines across 6112 tests.
+- `npm --prefix server run test:run -- tests/unit/services/telegram/telegramService.test.ts tests/unit/services/autopilot/settings.test.ts tests/unit/services/intelligence/settings.test.ts` passed, 57 tests.
+- `npm run typecheck:app` passed.
+- `npm run typecheck:tests` passed.
+- `npm --prefix server run typecheck:tests` passed.
+- `npm run lint:app` passed.
+- `npm run lint:server` passed, including API body validation, bitcoin network boundaries, and safety catch guards.
+- `npm run test:hygiene -- tests/utils/preferencePaths.test.ts tests/hooks/useUserPreference.test.tsx tests/components/WalletList.branches.test.tsx tests/components/DeviceList/DeviceList.branches.test.tsx tests/contexts/UserContext.test.tsx tests/contexts/UserContext.preferences.test.tsx server/tests/unit/services/autopilot/settings.test.ts server/tests/unit/services/telegram/telegramService.test.ts` passed.
+- `bash scripts/quality/lizard-only.sh utils/preferencePaths.ts hooks/useUserPreference.ts contexts/UserContext.tsx components/WalletList/useWalletListPreferences.ts components/DeviceList/useDeviceListPreferences.ts server/src/services/telegram/settings.ts server/src/services/autopilot/settings.ts tests/utils/preferencePaths.test.ts tests/contexts/UserContext.test.tsx tests/contexts/UserContext.preferences.test.tsx server/tests/unit/services/telegram/telegramService.test.ts server/tests/unit/services/autopilot/settings.test.ts` passed.
+- `node scripts/quality/check-large-files.mjs` passed after splitting preference coverage out of the oversized `UserContext` test file.
+- `npm run arch:graphs` and `npm run arch:calls` regenerated architecture output; the intended `docs/architecture/generated/frontend.md` update is included with this phase.
+- `git diff --check` passed.
 
 Plan-level quality gates:
 

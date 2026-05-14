@@ -10,6 +10,35 @@ import { userRepository } from '../../repositories';
 import type { WalletAutopilotSettings, AutopilotConfig } from './types';
 import { DEFAULT_AUTOPILOT_SETTINGS } from './types';
 
+type AutopilotPreferenceRecord = Partial<AutopilotConfig> & Record<string, unknown>;
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function getOwnWalletSettings(
+  wallets: AutopilotConfig['wallets'] | undefined,
+  walletId: string,
+): WalletAutopilotSettings | null {
+  const descriptor = wallets
+    ? Object.getOwnPropertyDescriptor(wallets, walletId)
+    : undefined;
+  return descriptor ? descriptor.value as WalletAutopilotSettings : null;
+}
+
+function setWalletSettings(
+  autopilot: AutopilotPreferenceRecord,
+  walletId: string,
+  settings: WalletAutopilotSettings,
+): AutopilotConfig['wallets'] {
+  return Object.fromEntries([
+    ...Object.entries(asRecord(autopilot.wallets)),
+    [walletId, settings],
+  ]) as AutopilotConfig['wallets'];
+}
+
 /**
  * Get a user's autopilot settings for a specific wallet
  */
@@ -24,7 +53,7 @@ export async function getWalletAutopilotSettings(
   const prefs = user.preferences as Record<string, unknown> | null;
   const autopilot = prefs?.autopilot as AutopilotConfig | undefined;
 
-  return autopilot?.wallets?.[walletId] || null;
+  return getOwnWalletSettings(autopilot?.wallets, walletId);
 }
 
 /**
@@ -42,15 +71,13 @@ export async function updateWalletAutopilotSettings(
   }
 
   const prefs = (user.preferences as Record<string, unknown>) || {};
-  const autopilot = (prefs.autopilot as AutopilotConfig) || { wallets: {} };
-
-  autopilot.wallets = autopilot.wallets || {};
-  autopilot.wallets[walletId] = settings;
+  const autopilot = asRecord(prefs.autopilot) as AutopilotPreferenceRecord;
 
   const updatedPrefs = {
     ...prefs,
     autopilot: {
-      wallets: autopilot.wallets,
+      ...autopilot,
+      wallets: setWalletSettings(autopilot, walletId, settings),
     },
   };
 

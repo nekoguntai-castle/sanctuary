@@ -191,6 +191,7 @@ const makeUser = (devicesPrefs: Record<string, unknown>) => ({
   id: 'user-1',
   preferences: {
     viewSettings: {
+      wallets: { layout: 'grid' },
       devices: devicesPrefs,
     },
   },
@@ -249,6 +250,19 @@ describe('DeviceList branch coverage', () => {
     await user.click(screen.getByRole('button', { name: 'Sort Label' }));
     await user.click(screen.getByRole('button', { name: 'Sort Type' }));
 
+    expect(mockUpdatePreferences).toHaveBeenNthCalledWith(1, {
+      viewSettings: {
+        wallets: { layout: 'grid' },
+        devices: {
+          layout: 'list',
+          sortBy: 'label',
+          sortOrder: 'desc',
+          ownershipFilter: 'all',
+          visibleColumns: ['label', 'type'],
+          columnOrder: ['label'],
+        },
+      },
+    });
     expect(mockUpdatePreferences).toHaveBeenCalledWith(
       expect.objectContaining({
         viewSettings: expect.objectContaining({

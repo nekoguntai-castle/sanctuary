@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useUser } from '../../contexts/UserContext';
+import { asPreferenceRecord, buildPreferencePathPatch } from '../../utils/preferencePaths';
 import {
   DEFAULT_DEVICE_COLUMN_ORDER,
   DEFAULT_DEVICE_VISIBLE_COLUMNS,
@@ -12,12 +13,11 @@ export function useDeviceListPreferences() {
   const deviceSettings = user?.preferences?.viewSettings?.devices;
 
   const updateDeviceSettings = (patch: Record<string, unknown>) => {
-    updatePreferences({
-      viewSettings: {
-        ...(user?.preferences?.viewSettings ?? {}),
-        devices: { ...(deviceSettings ?? {}), ...patch }
-      }
-    });
+    updatePreferences(buildPreferencePathPatch(
+      'viewSettings.devices',
+      { ...asPreferenceRecord(deviceSettings), ...patch },
+      user?.preferences,
+    ));
   };
 
   const viewMode = (deviceSettings?.layout as ViewMode) || 'list';

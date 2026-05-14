@@ -287,5 +287,15 @@ describe('useUserPreference', () => {
 
       expect(result.current[0]).toBe('list');
     });
+
+    it('should reject unsafe nested update keys', () => {
+      mockUser = { id: 1, name: 'Test User' };
+      mockPreferences = {};
+
+      expect(() => renderHook(() =>
+        useUserPreference('viewSettings.__proto__.layout', 'list')
+      )).toThrow(/unsafe/);
+      expect(mockUpdatePreferences).not.toHaveBeenCalled();
+    });
   });
 });
