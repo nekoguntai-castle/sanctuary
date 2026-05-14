@@ -42,7 +42,7 @@ function ProfileField({
   );
 }
 
-function EmailField({ email }: { email: string | undefined }) {
+function EmailField({ email }: { email: string | null | undefined }) {
   if (!email) return null;
 
   return (

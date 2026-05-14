@@ -5,67 +5,35 @@
  */
 
 import apiClient from './client';
-import type { UserPreferences, TelegramConfig, WalletTelegramSettings } from '../../types';
+import type {
+  AuthResponse,
+  AuthUser,
+  LoginRequest,
+  LoginResponse,
+  PendingEmailVerificationResponse,
+  RegisterRequest,
+  RegisterResponse,
+  TwoFactorRequiredResponse,
+} from '@sanctuary/shared/types/api';
+import type { TelegramConfig, WalletTelegramSettings } from '../../types';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('AuthApi');
 
-export interface User {
-  id: string;
-  username: string;
-  email?: string;
-  emailVerified?: boolean;
-  isAdmin: boolean;
-  preferences: AuthUserPreferences | null;
-  createdAt: string;
-  twoFactorEnabled?: boolean;
-}
+export type User = AuthUser;
+export type AuthUserPreferences = NonNullable<AuthUser['preferences']>;
 
-export type AuthUserPreferences = Partial<UserPreferences> & Record<string, unknown>;
-
-export type { TelegramConfig, WalletTelegramSettings };
-
-export interface LoginRequest {
-  username: string;
-  password: string;
-}
-
-export interface RegisterRequest {
-  username: string;
-  password: string;
-  email: string;
-}
-
-/**
- * ADR 0001 / 0002: browser auth is cookie-only. The response body does
- * not carry a JavaScript-readable access token; access and refresh JWTs
- * are set via `Set-Cookie` (sanctuary_access / sanctuary_refresh) and
- * the `X-Access-Expires-At` header drives the refresh scheduler. The
- * caller only needs the user object for UserContext hydration.
- */
-export interface AuthResponse {
-  user: User;
-  expiresIn?: number;
-  emailVerificationRequired?: false;
-  verificationEmailSent?: boolean;
-  message?: string;
-}
-
-export interface PendingEmailVerificationResponse {
-  emailVerificationRequired: true;
-  verificationEmailSent: boolean;
-  message: string;
-  email?: string;
-}
-
-export type RegisterResponse = AuthResponse | PendingEmailVerificationResponse;
-
-export interface TwoFactorRequiredResponse {
-  requires2FA: true;
-  tempToken: string;
-}
-
-export type LoginResponse = AuthResponse | TwoFactorRequiredResponse;
+export type {
+  AuthResponse,
+  LoginRequest,
+  LoginResponse,
+  PendingEmailVerificationResponse,
+  RegisterRequest,
+  RegisterResponse,
+  TelegramConfig,
+  TwoFactorRequiredResponse,
+  WalletTelegramSettings,
+};
 
 /**
  * Check if a login response requires 2FA

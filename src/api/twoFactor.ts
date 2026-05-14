@@ -5,7 +5,7 @@
  */
 
 import apiClient from './client';
-import type { AuthResponse } from './auth';
+import type { AuthResponse, TwoFactorVerifyRequest } from '@sanctuary/shared/types/api';
 
 export interface TwoFactorSetupResponse {
   secret: string;
@@ -15,11 +15,6 @@ export interface TwoFactorSetupResponse {
 export interface TwoFactorEnableResponse {
   success: boolean;
   backupCodes: string[];
-}
-
-export interface TwoFactorVerifyRequest {
-  tempToken: string;
-  code: string;
 }
 
 export interface TwoFactorDisableRequest {

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { User, UserPreferences } from '../types';
+import type { AuthUser } from '@sanctuary/shared/types/api';
 import { themeRegistry } from '../themes';
 import * as authApi from '../src/api/auth';
 import * as twoFactorApi from '../src/api/twoFactor';
@@ -23,6 +24,20 @@ type UserPreferenceRecord = Partial<UserPreferences> & Record<string, unknown>;
 
 function getUserPreferenceRecord(user: User): UserPreferenceRecord {
   return (user.preferences ?? {}) as UserPreferenceRecord;
+}
+
+function toContextUser(apiUser: AuthUser): User {
+  return {
+    id: apiUser.id,
+    username: apiUser.username,
+    email: apiUser.email,
+    emailVerified: apiUser.emailVerified,
+    isAdmin: apiUser.isAdmin,
+    preferences: apiUser.preferences,
+    createdAt: apiUser.createdAt,
+    twoFactorEnabled: apiUser.twoFactorEnabled,
+    usingDefaultPassword: apiUser.usingDefaultPassword,
+  };
 }
 
 interface TwoFactorPending {
@@ -86,7 +101,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const checkAuth = async () => {
       try {
         const currentUser = await authApi.getCurrentUser();
-        setUser(currentUser as User);
+        setUser(toContextUser(currentUser));
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           // Not authenticated — normal state on fresh boot. Render login.
@@ -179,7 +194,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Full login success (no 2FA)
-      setUser(response.user as User);
+      setUser(toContextUser(response.user));
       setNotice(null);
       return { success: true };
     } catch (err) {
@@ -206,7 +221,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         tempToken: twoFactorPending.tempToken,
         code,
       });
-      setUser(response.user as User);
+      setUser(toContextUser(response.user));
       setTwoFactorPending(null);
       setNotice(null);
       return true;
@@ -241,7 +256,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      setUser(response.user as User);
+      setUser(toContextUser(response.user));
       setNotice(null);
       return { success: true };
     } catch (err) {
@@ -277,7 +292,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Async update in background
       authApi.updatePreferences(updatedPrefs)
-        .then(apiUser => setUser(apiUser as User))
+        .then(apiUser => setUser(toContextUser(apiUser)))
         .catch(err => {
           const message = err instanceof ApiError ? err.message : 'Failed to update preferences';
           setError(message);

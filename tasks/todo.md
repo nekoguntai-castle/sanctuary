@@ -1,6 +1,6 @@
 # Active Task: Codebase Divergence Scrub 2026-05-14
 
-Status: Phase 1 locally implemented and verified; PR delivery pending.
+Status: Phase 2 locally implemented and verified; PR delivery pending.
 
 Goal: reanalyze the codebase for places where one product workflow or contract is implemented through multiple divergent paths, decide whether each divergence is justified, and identify the consolidations worth doing next.
 
@@ -49,8 +49,8 @@ Review:
 
 Recommended order:
 
-- [x] Phase 1: consolidate server auth session issuance and user response shaping. Locally verified on `codex/phase-1-auth-session-helper`; PR delivery pending.
-- [ ] Phase 2: align frontend auth API types with shared auth contracts after the server response shape is canonical.
+- [x] Phase 1: consolidate server auth session issuance and user response shaping. Merged via PR #455.
+- [x] Phase 2: align frontend auth API types with shared auth contracts after the server response shape is canonical. Locally verified on `codex/phase-2-auth-shared-types`; PR delivery pending.
 - [ ] Phase 3: consolidate canonical Bitcoin network values/types/legacy normalization across shared, frontend, server, OpenAPI, config, and Electrum-facing modules.
 - [ ] Phase 4: rename or namespace raw Bitcoin broadcast helpers so they cannot be confused with wallet-scoped transaction broadcast.
 - [ ] Phase 5: decide and execute the external Ollama model-management policy: remove pull/delete support if Sanctuary should never manage provider models, or keep it with clearer wording if host Ollama management remains supported.
@@ -115,6 +115,15 @@ Phase 2 verification:
 - `npm run typecheck:tests`
 - focused frontend auth/login tests if touched, plus `npm run lint:app`
 - `git diff --check`
+
+Phase 2 review:
+
+- Replaced duplicated frontend auth request/response/user contracts in `src/api/auth.ts` with aliases from `@sanctuary/shared/types/api`.
+- Added the shared `TwoFactorVerifyRequest` contract and updated `src/api/twoFactor.ts` to use the shared auth response and 2FA verify request.
+- Updated the shared `AuthUser` type for the server's canonical auth response fields: nullable email, `usingDefaultPassword`, `emailVerified`, and `twoFactorEnabled`.
+- Replaced broad `as User` casts in `UserContext` with a small `toContextUser` mapper, preserving context defaults and nullable preferences.
+- Account email rendering now accepts `null` as a valid API absence value and hides it like `undefined`.
+- Local verification passed: app typecheck, test typecheck, focused auth/API/UserContext/account tests, app lint, and `git diff --check`.
 
 Phase 3 details:
 

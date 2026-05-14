@@ -57,10 +57,12 @@ export interface UserPreferences {
 export interface User {
   id: string;
   username: string;
-  email?: string;
+  email?: string | null;
+  emailVerified?: boolean;
   isAdmin: boolean;
   password?: string; // Simple mock password
   preferences?: Partial<UserPreferences> | null;
+  createdAt?: string;
   twoFactorEnabled?: boolean;
   usingDefaultPassword?: boolean;
 }

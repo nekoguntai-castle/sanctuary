@@ -126,12 +126,13 @@ export interface RegisterRequest {
 export interface AuthUser {
   id: string;
   username: string;
-  email?: string;
+  email?: string | null;
   emailVerified?: boolean;
   isAdmin: boolean;
   preferences?: Record<string, unknown> | null;
   createdAt?: string;
   twoFactorEnabled?: boolean;
+  usingDefaultPassword?: boolean;
 }
 
 /**
@@ -164,6 +165,15 @@ export interface PendingEmailVerificationResponse {
 export interface TwoFactorRequiredResponse {
   requires2FA: true;
   tempToken: string;
+}
+
+/**
+ * 2FA verification request used to finish login after a temporary token was
+ * issued by the password-login route.
+ */
+export interface TwoFactorVerifyRequest {
+  tempToken: string;
+  code: string;
 }
 
 export type RegisterResponse = AuthResponse | PendingEmailVerificationResponse;

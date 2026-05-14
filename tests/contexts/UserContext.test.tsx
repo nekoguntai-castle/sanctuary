@@ -202,6 +202,61 @@ describe('UserContext', () => {
       });
     });
 
+    it('maps shared auth user fields into context user state', async () => {
+      const user = userEvent.setup();
+      vi.mocked(authApi.login).mockResolvedValue({
+        user: {
+          id: 'mapped-user-id',
+          username: 'mappeduser',
+          email: null,
+          emailVerified: true,
+          isAdmin: true,
+          preferences: null,
+          createdAt: '2026-05-14T00:00:00.000Z',
+          twoFactorEnabled: true,
+          usingDefaultPassword: true,
+        },
+      });
+      vi.mocked(authApi.requires2FA).mockReturnValue(false);
+
+      function MappingConsumer() {
+        const currentUser = useCurrentUser();
+        const { login } = useUser();
+        return (
+          <div>
+            <button data-testid="login" onClick={() => login('mappeduser', 'password')}>Login</button>
+            <span data-testid="id">{currentUser?.id ?? 'none'}</span>
+            <span data-testid="email">{currentUser?.email === null ? 'null' : currentUser?.email ?? 'undefined'}</span>
+            <span data-testid="verified">{String(currentUser?.emailVerified)}</span>
+            <span data-testid="admin">{String(currentUser?.isAdmin)}</span>
+            <span data-testid="preferences">{currentUser?.preferences === null ? 'null' : 'not-null'}</span>
+            <span data-testid="created">{currentUser?.createdAt ?? 'none'}</span>
+            <span data-testid="two-factor">{String(currentUser?.twoFactorEnabled)}</span>
+            <span data-testid="default-password">{String(currentUser?.usingDefaultPassword)}</span>
+          </div>
+        );
+      }
+
+      render(<UserProvider><MappingConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('id')).toHaveTextContent('none');
+      });
+
+      await user.click(screen.getByTestId('login'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('id')).toHaveTextContent('mapped-user-id');
+        expect(screen.getByTestId('email')).toHaveTextContent('null');
+        expect(screen.getByTestId('verified')).toHaveTextContent('true');
+        expect(screen.getByTestId('admin')).toHaveTextContent('true');
+        expect(screen.getByTestId('preferences')).toHaveTextContent('null');
+        expect(screen.getByTestId('created')).toHaveTextContent('2026-05-14T00:00:00.000Z');
+        expect(screen.getByTestId('two-factor')).toHaveTextContent('true');
+        expect(screen.getByTestId('default-password')).toHaveTextContent('true');
+      });
+    });
+
     it('handles login error', async () => {
       const user = userEvent.setup();
       vi.mocked(authApi.login).mockRejectedValue(new ApiError('Invalid credentials', 401));
