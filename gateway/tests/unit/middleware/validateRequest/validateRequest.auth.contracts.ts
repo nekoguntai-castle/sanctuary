@@ -137,11 +137,19 @@ export function registerUserPreferencesValidationContracts() {
     mockReq.body = {
       unit: 'sats',
       fiatCurrency: 'usd',
+      selectedNetwork: 'testnet',
+      patternOpacity: 25,
       showFiat: true,
       notificationSounds: {
         enabled: true,
         volume: 65,
+        confirmation: {
+          enabled: true,
+          sound: 'chime',
+          mobileOnlyKey: 'allowed',
+        },
       },
+      customPreference: true,
     };
 
     validateRequest(mockReq as Request, mockRes as Response, mockNext);
@@ -151,10 +159,12 @@ export function registerUserPreferencesValidationContracts() {
 
   it('should reject invalid user preference values', () => {
     mockReq.body = {
-      unit: 'bits',
+      unit: 'mbtc',
+      fiatCurrency: '12A',
       notificationSounds: {
         volume: 101,
       },
+      customPreference: true,
     };
 
     validateRequest(mockReq as Request, mockRes as Response, mockNext);

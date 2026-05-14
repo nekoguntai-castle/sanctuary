@@ -5,7 +5,7 @@
  */
 
 import apiClient from './client';
-import type { TelegramConfig, WalletTelegramSettings } from '../../types';
+import type { UserPreferences, TelegramConfig, WalletTelegramSettings } from '../../types';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('AuthApi');
@@ -21,20 +21,7 @@ export interface User {
   twoFactorEnabled?: boolean;
 }
 
-export interface AuthUserPreferences {
-    darkMode?: boolean;
-    theme?: string;
-    background?: string;
-    contrastLevel?: number;
-    patternOpacity?: number;
-    flyoutOpacity?: number;
-    selectedNetwork?: 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'testnet';
-    unit?: string;
-    fiatCurrency?: string;
-    showFiat?: boolean;
-    priceProvider?: string;
-    telegram?: TelegramConfig;
-}
+export type AuthUserPreferences = Partial<UserPreferences> & Record<string, unknown>;
 
 export type { TelegramConfig, WalletTelegramSettings };
 

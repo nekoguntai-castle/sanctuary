@@ -4,7 +4,7 @@
  * Shared schema definitions used across multiple API domains.
  */
 
-import { PASSWORD_POLICY, PASSWORD_POLICY_MESSAGES } from '../../../utils/password';
+import { PASSWORD_POLICY, PASSWORD_POLICY_MESSAGES } from '../../../utils/passwordPolicy';
 import { USERNAME_POLICY } from '../../../utils/username';
 
 const passwordDescription = [

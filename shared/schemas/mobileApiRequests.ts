@@ -47,6 +47,100 @@ const psbtRecipientRequiredMessage = 'Each recipient must have address and amoun
 const deviceRequiredMessage = 'type, label, and fingerprint are required';
 const deviceAccountRequiredMessage = 'Each account must have purpose, scriptType, derivationPath, and xpub';
 
+export const USER_PREFERENCE_UNIT_VALUES = ['sats', 'btc'] as const;
+export const USER_PREFERENCE_SELECTED_NETWORK_VALUES = [
+  'mainnet',
+  'testnet3',
+  'testnet4',
+  'signet',
+  'testnet',
+] as const;
+
+export const USER_PREFERENCE_LIMITS = {
+  fiatCurrencyLength: 3,
+  patternOpacityMin: 0,
+  patternOpacityMax: 100,
+  flyoutOpacityMin: 50,
+  flyoutOpacityMax: 100,
+  notificationVolumeMin: 0,
+  notificationVolumeMax: 100,
+} as const;
+
+const fiatCurrencyMessage = 'fiatCurrency must be a 3-letter ISO 4217 currency code';
+const fiatCurrencySchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z]{3}$/, fiatCurrencyMessage);
+
+const eventSoundPreferenceSchema = z.object({
+  enabled: z.boolean().optional(),
+  sound: z.string().optional(),
+}).passthrough();
+
+const notificationSoundsPreferenceSchema = z.object({
+  enabled: z.boolean().optional(),
+  volume: z
+    .number()
+    .min(USER_PREFERENCE_LIMITS.notificationVolumeMin)
+    .max(USER_PREFERENCE_LIMITS.notificationVolumeMax)
+    .optional(),
+  confirmation: eventSoundPreferenceSchema.optional(),
+  receive: eventSoundPreferenceSchema.optional(),
+  send: eventSoundPreferenceSchema.optional(),
+  confirmationChime: z.boolean().optional(),
+  soundType: z.string().optional(),
+}).passthrough();
+
+export const UserPreferencesPatchSchema = z.object({
+  darkMode: z.boolean().optional(),
+  theme: z.string().optional(),
+  background: z.string().optional(),
+  unit: z.enum(USER_PREFERENCE_UNIT_VALUES).optional(),
+  fiatCurrency: fiatCurrencySchema.optional(),
+  showFiat: z.boolean().optional(),
+  priceProvider: z.string().optional(),
+  contrastLevel: z.number().optional(),
+  patternOpacity: z
+    .number()
+    .min(USER_PREFERENCE_LIMITS.patternOpacityMin)
+    .max(USER_PREFERENCE_LIMITS.patternOpacityMax)
+    .optional(),
+  flyoutOpacity: z
+    .number()
+    .min(USER_PREFERENCE_LIMITS.flyoutOpacityMin)
+    .max(USER_PREFERENCE_LIMITS.flyoutOpacityMax)
+    .optional(),
+  selectedNetwork: z.enum(USER_PREFERENCE_SELECTED_NETWORK_VALUES).optional(),
+  favoriteBackgrounds: z.array(z.string()).optional(),
+  favoriteThemes: z.array(z.string()).optional(),
+  seasonalBackgrounds: z.record(z.string(), z.string()).optional(),
+  notificationSounds: notificationSoundsPreferenceSchema.optional(),
+  telegram: z.record(z.string(), z.unknown()).optional(),
+  viewSettings: z.record(z.string(), z.unknown()).optional(),
+}).passthrough();
+
+export type UserPreferencesPatch = z.infer<typeof UserPreferencesPatchSchema>;
+
+/**
+ * Normalizes preference values with canonical storage forms. Gateway
+ * validation intentionally does not depend on this helper because proxied
+ * request bodies are not rewritten there; backend persistence applies it
+ * after merging defaults, existing preferences, and the incoming patch.
+ */
+export function canonicalizeUserPreferencesPatch(
+  preferences: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...preferences,
+    ...(typeof preferences.fiatCurrency === 'string'
+      ? { fiatCurrency: preferences.fiatCurrency.trim().toUpperCase() }
+      : {}),
+    ...(preferences.selectedNetwork === 'testnet'
+      ? { selectedNetwork: 'testnet3' }
+      : {}),
+  };
+}
+
 export const MobileLoginRequestSchema = z.object({
   username: z
     .string()
@@ -81,32 +175,7 @@ export const MobileTwoFactorVerifyRequestSchema = z.object({
     .min(1, 'Code is required'),
 });
 
-export const MobileUserPreferencesRequestSchema = z.object({
-  darkMode: z.boolean().optional(),
-  theme: z.string().optional(),
-  background: z.string().optional(),
-  unit: z.enum(['btc', 'sats', 'mbtc']).optional(),
-  fiatCurrency: z.string().length(3).toUpperCase().optional(),
-  showFiat: z.boolean().optional(),
-  priceProvider: z.string().optional(),
-  flyoutOpacity: z.number().min(50).max(100).optional(),
-  notificationSounds: z.object({
-    enabled: z.boolean().optional(),
-    volume: z.number().min(0).max(100).optional(),
-    confirmation: z.object({
-      enabled: z.boolean().optional(),
-      sound: z.string().optional(),
-    }).optional(),
-    receive: z.object({
-      enabled: z.boolean().optional(),
-      sound: z.string().optional(),
-    }).optional(),
-    send: z.object({
-      enabled: z.boolean().optional(),
-      sound: z.string().optional(),
-    }).optional(),
-  }).optional(),
-}).passthrough();
+export const MobileUserPreferencesRequestSchema = UserPreferencesPatchSchema;
 
 export const MobilePushRegisterRequestSchema = z.object({
   token: z

@@ -10,6 +10,9 @@ import {
   MOBILE_DEVICE_ACCOUNT_PURPOSES,
   MOBILE_DEVICE_SCRIPT_TYPES,
   MOBILE_DRAFT_STATUS_VALUES,
+  USER_PREFERENCE_LIMITS,
+  USER_PREFERENCE_SELECTED_NETWORK_VALUES,
+  USER_PREFERENCE_UNIT_VALUES,
   TRANSFER_RESOURCE_TYPES,
   TRANSFER_ROLE_FILTER_VALUES,
   TRANSFER_STATUS_FILTER_VALUES,
@@ -25,7 +28,7 @@ import {
   AI_QUERY_SORT_ORDERS,
 } from './openapi.helpers';
 import { registerOpenApiGatewayInternalTests } from './openapi.gateway-internal.contracts';
-import { PASSWORD_POLICY, PASSWORD_POLICY_MESSAGES } from '../../../src/utils/password';
+import { PASSWORD_POLICY, PASSWORD_POLICY_MESSAGES } from '../../../src/utils/passwordPolicy';
 import { USERNAME_POLICY } from '../../../src/utils/username';
 
 import type { OpenApiPathKey } from './openapi.helpers';
@@ -230,6 +233,41 @@ export function registerOpenApiGatewayTests() {
     expect(loginSchema.properties.password).toMatchObject({
       minLength: MOBILE_API_REQUEST_LIMITS.loginPasswordMinLength,
     });
+
+    expect(openApiSpec.paths['/auth/me/preferences'].patch.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/UpdateUserPreferencesRequest',
+    });
+
+    const userPreferencesSchema = openApiSpec.components.schemas.UserPreferences;
+    const updatePreferencesSchema = openApiSpec.components.schemas.UpdateUserPreferencesRequest;
+
+    expect(userPreferencesSchema.additionalProperties).toBe(true);
+    expect(updatePreferencesSchema.additionalProperties).toBe(true);
+    expect(updatePreferencesSchema.properties.unit.enum).toEqual([...USER_PREFERENCE_UNIT_VALUES]);
+    expect(updatePreferencesSchema.properties.fiatCurrency).toMatchObject({
+      minLength: USER_PREFERENCE_LIMITS.fiatCurrencyLength,
+      maxLength: USER_PREFERENCE_LIMITS.fiatCurrencyLength,
+      pattern: '^[A-Za-z]{3}$',
+      description: expect.stringContaining('stored as an uppercase'),
+    });
+    expect(userPreferencesSchema.properties.fiatCurrency).toMatchObject({
+      pattern: '^[A-Z]{3}$',
+      description: expect.stringContaining('Stored as an uppercase'),
+    });
+    expect(updatePreferencesSchema.properties.patternOpacity).toMatchObject({
+      minimum: USER_PREFERENCE_LIMITS.patternOpacityMin,
+      maximum: USER_PREFERENCE_LIMITS.patternOpacityMax,
+    });
+    expect(updatePreferencesSchema.properties.flyoutOpacity).toMatchObject({
+      minimum: USER_PREFERENCE_LIMITS.flyoutOpacityMin,
+      maximum: USER_PREFERENCE_LIMITS.flyoutOpacityMax,
+    });
+    expect(updatePreferencesSchema.properties.selectedNetwork.enum).toEqual([
+      ...USER_PREFERENCE_SELECTED_NETWORK_VALUES,
+    ]);
+    expect(updatePreferencesSchema.properties.notificationSounds.additionalProperties).toBe(true);
+    expect(updatePreferencesSchema.properties.telegram.additionalProperties).toBe(true);
+    expect(updatePreferencesSchema.properties.viewSettings.additionalProperties).toBe(true);
   });
 
   it('documents secondary auth profile, email, Telegram, and 2FA management routes', () => {

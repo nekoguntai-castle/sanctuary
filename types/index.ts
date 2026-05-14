@@ -34,6 +34,8 @@ export type {
 export type {
   PageViewSettings,
   ViewSettings,
+  BitcoinDisplayUnit,
+  PreferenceSelectedNetwork,
   UserPreferences,
   User,
   Group,

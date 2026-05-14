@@ -94,9 +94,36 @@ export function registerUserPreferencesSchemaContracts() {
   it('should validate known user preference payloads and allow unknown preferences', () => {
     const result = userPreferencesSchema.safeParse({
       fiatCurrency: 'usd',
+      selectedNetwork: 'testnet',
+      patternOpacity: 75,
+      flyoutOpacity: 90,
+      notificationSounds: {
+        enabled: true,
+        volume: 60,
+        confirmation: {
+          sound: 'chime',
+          customNestedSoundKey: 'preserved by backend parser',
+        },
+      },
       customPreference: true,
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it('should accept empty preference patches', () => {
+    expect(userPreferencesSchema.safeParse({}).success).toBe(true);
+  });
+
+  it('should reject unsupported known preference values', () => {
+    const result = userPreferencesSchema.safeParse({
+      unit: 'mbtc',
+      fiatCurrency: 'US1',
+      patternOpacity: 101,
+      flyoutOpacity: 49,
+      customPreference: true,
+    });
+
+    expect(result.success).toBe(false);
   });
 }

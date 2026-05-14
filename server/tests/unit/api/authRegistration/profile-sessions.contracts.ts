@@ -142,6 +142,132 @@ export function registerAuthProfileSessionsTests(): void {
       });
     });
 
+    it('should canonicalize stored preference values and preserve unknown preference keys', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        preferences: {
+          darkMode: false,
+          fiatCurrency: 'EUR',
+          existingUnknown: 'keep-me',
+        },
+      });
+      mockPrismaClient.user.update.mockResolvedValue({
+        id: 'test-user-id',
+        username: 'testuser',
+        email: null,
+        isAdmin: false,
+        preferences: {},
+        twoFactorEnabled: false,
+        createdAt: new Date(),
+      });
+
+      const response = await request(app)
+        .patch('/api/v1/auth/me/preferences')
+        .send({
+          fiatCurrency: ' usd ',
+          selectedNetwork: 'testnet',
+          customPreference: { enabled: true },
+          notificationSounds: {
+            enabled: true,
+            volume: 40,
+            confirmation: {
+              sound: 'chime',
+              mobileOnlyKey: 'preserve nested extension',
+            },
+          },
+        });
+
+      expect(response.status).toBe(200);
+      expect(mockPrismaClient.user.update).toHaveBeenCalledWith({
+        where: { id: 'test-user-id' },
+        data: {
+          preferences: expect.objectContaining({
+            darkMode: false,
+            existingUnknown: 'keep-me',
+            fiatCurrency: 'USD',
+            selectedNetwork: 'testnet3',
+            customPreference: { enabled: true },
+            notificationSounds: expect.objectContaining({
+              enabled: true,
+              volume: 40,
+              confirmation: expect.objectContaining({
+                sound: 'chime',
+                mobileOnlyKey: 'preserve nested extension',
+              }),
+            }),
+          }),
+        },
+        select: expect.any(Object),
+      });
+    });
+
+    it('should accept empty preference patches and preserve existing preferences', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        preferences: {
+          darkMode: false,
+          fiatCurrency: 'eur',
+          selectedNetwork: 'testnet',
+          customPreference: 'existing',
+        },
+      });
+      mockPrismaClient.user.update.mockResolvedValue({
+        id: 'test-user-id',
+        username: 'testuser',
+        email: null,
+        isAdmin: false,
+        preferences: {},
+        twoFactorEnabled: false,
+        createdAt: new Date(),
+      });
+
+      const response = await request(app)
+        .patch('/api/v1/auth/me/preferences')
+        .send({});
+
+      expect(response.status).toBe(200);
+      expect(mockPrismaClient.user.update).toHaveBeenCalledWith({
+        where: { id: 'test-user-id' },
+        data: {
+          preferences: expect.objectContaining({
+            darkMode: false,
+            customPreference: 'existing',
+            unit: 'sats',
+            fiatCurrency: 'EUR',
+            selectedNetwork: 'testnet3',
+          }),
+        },
+        select: expect.any(Object),
+      });
+    });
+
+    it('should ignore malformed stored preferences when merging a valid patch', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        preferences: ['legacy-array-preferences'],
+      });
+      mockPrismaClient.user.update.mockResolvedValue({
+        id: 'test-user-id',
+        username: 'testuser',
+        email: null,
+        isAdmin: false,
+        preferences: {},
+        twoFactorEnabled: false,
+        createdAt: new Date(),
+      });
+
+      const response = await request(app)
+        .patch('/api/v1/auth/me/preferences')
+        .send({ showFiat: false });
+
+      expect(response.status).toBe(200);
+      const preferences = mockPrismaClient.user.update.mock.calls[0][0].data.preferences;
+      expect(Array.isArray(preferences)).toBe(false);
+      expect(preferences).not.toHaveProperty('0');
+      expect(preferences).toEqual(expect.objectContaining({
+        showFiat: false,
+        unit: 'sats',
+        fiatCurrency: 'USD',
+      }));
+    });
+
     it('should reject non-object preference updates', async () => {
       const response = await request(app)
         .patch('/api/v1/auth/me/preferences')
@@ -156,6 +282,21 @@ export function registerAuthProfileSessionsTests(): void {
       const response = await request(app)
         .patch('/api/v1/auth/me/preferences')
         .send({ darkMode: 'yes' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(mockPrismaClient.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should reject invalid known preference values even when unknown keys are valid', async () => {
+      const response = await request(app)
+        .patch('/api/v1/auth/me/preferences')
+        .send({
+          unit: 'mbtc',
+          patternOpacity: -1,
+          flyoutOpacity: 49,
+          customPreference: true,
+        });
 
       expect(response.status).toBe(400);
       expect(response.body.code).toBe('VALIDATION_ERROR');

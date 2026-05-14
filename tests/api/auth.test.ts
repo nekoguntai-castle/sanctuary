@@ -220,7 +220,7 @@ describe('Auth API', () => {
   // ========================================
   describe('updatePreferences', () => {
     it('should PATCH preferences', async () => {
-      const prefs = { darkMode: true, unit: 'sats' };
+      const prefs = { darkMode: true, unit: 'sats' as const };
       mockPatch.mockResolvedValue({ id: '1', preferences: prefs });
 
       await updatePreferences(prefs);

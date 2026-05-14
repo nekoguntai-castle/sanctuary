@@ -4,8 +4,105 @@
  * Schema definitions for authentication and authorization.
  */
 
-import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
+import {
+  MOBILE_API_REQUEST_LIMITS,
+  USER_PREFERENCE_LIMITS,
+  USER_PREFERENCE_SELECTED_NETWORK_VALUES,
+  USER_PREFERENCE_UNIT_VALUES,
+} from '@sanctuary/shared/schemas/mobileApiRequests';
 import { accountUsernamePropertySchema, passwordRequestPropertySchema } from './common';
+
+const preferenceEventSoundSchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    enabled: { type: 'boolean' },
+    sound: { type: 'string' },
+  },
+} as const;
+
+const notificationSoundsPreferenceSchema = {
+  type: 'object',
+  additionalProperties: true,
+  properties: {
+    enabled: { type: 'boolean' },
+    volume: {
+      type: 'number',
+      minimum: USER_PREFERENCE_LIMITS.notificationVolumeMin,
+      maximum: USER_PREFERENCE_LIMITS.notificationVolumeMax,
+    },
+    confirmation: preferenceEventSoundSchema,
+    receive: preferenceEventSoundSchema,
+    send: preferenceEventSoundSchema,
+    confirmationChime: { type: 'boolean' },
+    soundType: { type: 'string' },
+  },
+} as const;
+
+const preferenceProperties = {
+  darkMode: { type: 'boolean' },
+  theme: { type: 'string' },
+  background: { type: 'string' },
+  unit: {
+    type: 'string',
+    enum: [...USER_PREFERENCE_UNIT_VALUES],
+  },
+  fiatCurrency: {
+    type: 'string',
+    minLength: USER_PREFERENCE_LIMITS.fiatCurrencyLength,
+    maxLength: USER_PREFERENCE_LIMITS.fiatCurrencyLength,
+    pattern: '^[A-Z]{3}$',
+    description: 'Stored as an uppercase 3-letter ISO 4217 currency code.',
+  },
+  showFiat: { type: 'boolean' },
+  priceProvider: { type: 'string' },
+  contrastLevel: { type: 'number' },
+  patternOpacity: {
+    type: 'number',
+    minimum: USER_PREFERENCE_LIMITS.patternOpacityMin,
+    maximum: USER_PREFERENCE_LIMITS.patternOpacityMax,
+  },
+  flyoutOpacity: {
+    type: 'number',
+    minimum: USER_PREFERENCE_LIMITS.flyoutOpacityMin,
+    maximum: USER_PREFERENCE_LIMITS.flyoutOpacityMax,
+  },
+  selectedNetwork: {
+    type: 'string',
+    enum: [...USER_PREFERENCE_SELECTED_NETWORK_VALUES],
+    description: 'Legacy "testnet" input is accepted and stored as "testnet3".',
+  },
+  favoriteBackgrounds: {
+    type: 'array',
+    items: { type: 'string' },
+  },
+  favoriteThemes: {
+    type: 'array',
+    items: { type: 'string' },
+  },
+  seasonalBackgrounds: {
+    type: 'object',
+    additionalProperties: { type: 'string' },
+  },
+  notificationSounds: notificationSoundsPreferenceSchema,
+  telegram: {
+    type: 'object',
+    additionalProperties: true,
+  },
+  viewSettings: {
+    type: 'object',
+    additionalProperties: true,
+  },
+} as const;
+
+const updatePreferenceProperties = {
+  ...preferenceProperties,
+  fiatCurrency: {
+    ...preferenceProperties.fiatCurrency,
+    pattern: '^[A-Za-z]{3}$',
+    description: 'Accepts any case and is stored as an uppercase 3-letter ISO 4217 currency code.',
+  },
+} as const;
 
 export const authSchemas = {
   LoginRequest: {
@@ -270,10 +367,14 @@ export const authSchemas = {
   },
   UserPreferences: {
     type: 'object',
+    description: 'Known preference fields with additional top-level extension keys allowed.',
+    properties: preferenceProperties,
     additionalProperties: true,
   },
   UpdateUserPreferencesRequest: {
     type: 'object',
+    description: 'Partial preferences patch. Known fields are validated; unknown top-level keys are preserved.',
+    properties: updatePreferenceProperties,
     additionalProperties: true,
   },
   Session: {

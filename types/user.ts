@@ -14,6 +14,9 @@ import type {
   SeasonalBackgrounds,
 } from './ui';
 
+export type BitcoinDisplayUnit = 'sats' | 'btc';
+export type PreferenceSelectedNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'testnet';
+
 // View settings for a single page/component
 export interface PageViewSettings {
   layout?: string;          // 'grid' | 'table' | 'list' | 'grouped' | etc.
@@ -31,16 +34,17 @@ export interface ViewSettings {
 }
 
 export interface UserPreferences {
+  [key: string]: unknown;
   darkMode: boolean;
-  unit: 'sats' | 'btc';
-  fiatCurrency: 'USD' | 'EUR' | 'GBP' | 'JPY';
+  unit: BitcoinDisplayUnit;
+  fiatCurrency: string;
   showFiat: boolean;
   theme: ThemeOption;
   background: BackgroundOption;
   contrastLevel?: number; // -2 to +2, adjusts background contrast (0 = default)
   patternOpacity?: number; // 0 to 100, controls background visibility (default 50)
   flyoutOpacity?: number; // 50 to 100, controls drawer/flyout surface opacity (default 92)
-  selectedNetwork?: 'mainnet' | 'testnet3' | 'testnet4' | 'signet';
+  selectedNetwork?: PreferenceSelectedNetwork;
   priceProvider?: string;
   telegram?: TelegramConfig;
   notificationSounds?: NotificationSounds;

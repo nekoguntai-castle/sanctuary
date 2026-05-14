@@ -1,6 +1,66 @@
-# Active Task: Phase 3 Auth Contract Types And OpenAPI Parity 2026-05-14
+# Active Task: Phase 4 Preferences Patch Contract 2026-05-14
 
 Status: in progress
+
+Goal: align gateway, backend, frontend types, and OpenAPI around one extensible preferences patch contract with backend-owned canonical storage values.
+
+## Plan
+
+- [x] Move the known preferences patch shape into one shared schema used by gateway validation and backend route validation.
+- [x] Keep top-level unknown preference keys accepted, while validating known fields for type/range/security.
+- [x] Canonicalize stored backend values after validation: uppercase 3-letter fiat currency and map legacy `selectedNetwork: "testnet"` to `testnet3`.
+- [x] Align frontend `AuthUserPreferences` / `UserPreferences` with the shared contract for unit, fiat currency, selected network, sounds, Telegram, view settings, seasonal backgrounds, and favorites.
+- [x] Update OpenAPI `UserPreferences` and `UpdateUserPreferencesRequest` to document known fields plus passthrough extension support.
+- [x] Add gateway, backend route, and OpenAPI tests for valid known fields, invalid known fields, unknown passthrough, empty patches, and canonical stored values.
+- [x] Run focused gateway/server/frontend/shared tests, typechecks, lint/complexity checks, and final diff review.
+- [ ] Commit, open PR, monitor checks, merge, and verify target branch ancestry before starting Phase 5.
+
+Corner cases to account for:
+
+- Empty `{}` preference patch remains valid and only refreshes default/existing preference merge.
+- Unknown top-level keys remain valid and are persisted; invalid known keys still reject the whole patch even if unknown keys are valid.
+- Gateway validation must not depend on transforms it discards before proxying; backend route validation/canonicalization owns persisted output.
+- Fiat currency accepts three ASCII letters in any case and stores uppercase.
+- Legacy `selectedNetwork: "testnet"` remains accepted for compatibility but stores as `testnet3`.
+- `unit` is limited to currently supported display units, `sats` and `btc`; `mbtc` is rejected because frontend formatting/settings do not support it.
+- `patternOpacity` is bounded 0-100 and `flyoutOpacity` 50-100.
+- Nested objects remain top-level merge only. Clients that update nested `viewSettings`, `telegram`, or sound preferences must send the merged nested object they want stored.
+- Nested known extension objects should preserve their unknown subkeys where the backend parses them.
+
+## Review
+
+- Added `UserPreferencesPatchSchema`, shared preference constants, and `canonicalizeUserPreferencesPatch()` to the shared mobile API schema module.
+- Replaced the backend profile route's local preferences schema with the shared schema and canonicalized the final merged stored object so lowercase/whitespace fiat currency and legacy `testnet` converge even on empty or unrelated patches.
+- Kept preference extensibility by preserving unknown top-level keys and passthrough nested sound extension keys while rejecting invalid values for known fields.
+- Added direct canonicalizer tests and a malformed stored-preferences route test for the hook review findings.
+- Split password policy constants into a bcrypt-free `passwordPolicy` module so gateway full coverage can import backend OpenAPI docs after an isolated gateway install.
+- Aligned frontend preference types so API preferences are `Partial<UserPreferences> & Record<string, unknown>`, fiat currency is a generic 3-letter code, selected network includes legacy `testnet`, and exported preference helper types from the central type barrel.
+- Documented known preference fields, numeric bounds, unit/network enums, and additional-property passthrough in OpenAPI.
+
+Verification so far:
+
+- `npm --workspace shared run build` passed.
+- `npm --prefix gateway run test:run -- tests/unit/middleware/validateRequest.test.ts` passed, 77 tests.
+- `NODE_ENV=test JWT_SECRET=test-jwt-secret-for-ci-minimum-32-chars npm run test:coverage` from `gateway/` passed after an isolated `gateway npm ci`, 534 tests.
+- `npm --prefix gateway run build` passed.
+- `npm --prefix server run test:run -- tests/unit/api/auth.routes.registration.test.ts tests/unit/api/openapi.test.ts` passed, 159 tests.
+- `npm --prefix server run test:run -- tests/unit/api/auth.routes.registration.test.ts` passed after canonicalizing the final merged object, 116 tests.
+- `npm --prefix server run test:run -- tests/unit/api/auth.routes.registration.test.ts` passed after adding malformed stored-preferences coverage, 117 tests.
+- `npm --prefix server run test:run -- tests/unit/api/openapi.test.ts tests/unit/api/auth.routes.registration.test.ts tests/unit/api/schemas.test.ts tests/unit/security/securityAudit.test.ts` passed after the password policy split, 207 tests.
+- `npm --prefix server run test:run -- tests/unit/api/openapi.test.ts` passed, 43 tests.
+- `npm run test:run -- tests/api/auth.test.ts tests/contexts/CurrencyContext/settings.test.tsx tests/contexts/UserContext.test.tsx` passed, 57 tests.
+- `npm run test:run -- tests/shared/mobileApiRequests.preferences.test.ts` passed, 4 tests.
+- `npm run typecheck:app`, `npm run typecheck:tests`, and `npm --prefix server run typecheck:tests` passed.
+- `npm run lint:app`, `npm run lint:server`, and `npm run lint:gateway` passed.
+- `npm run check:openapi-route-coverage` passed.
+- `bash scripts/quality/lizard-only.sh shared/schemas/mobileApiRequests.ts server/src/api/auth/profile.ts server/src/api/openapi/schemas/auth.ts src/api/auth.ts types/user.ts types/index.ts` passed.
+- `git diff --check` passed.
+
+---
+
+# Completed Task: Phase 3 Auth Contract Types And OpenAPI Parity 2026-05-14
+
+Status: merged
 
 Goal: align browser auth frontend/shared types and OpenAPI docs with the runtime contract: registration requires email, browser auth responses are cookie-only, and username/password/email constraints are documented consistently.
 
@@ -11,13 +71,13 @@ Goal: align browser auth frontend/shared types and OpenAPI docs with the runtime
 - [x] Replace stale shared token-bearing auth response types with cookie-only browser response shapes.
 - [x] Add/strengthen OpenAPI parity tests for registration username constraints, required email, password policy, admin email clear semantics, and absence of JS-readable auth tokens.
 - [x] Run focused frontend/server/shared tests, typechecks, lint/complexity checks, and final diff review.
-- [ ] Commit, open PR, monitor checks, merge, and verify target branch ancestry before starting Phase 4.
+- [x] Commit, open PR, monitor checks, merge, and verify target branch ancestry before starting Phase 4.
 
-Corner cases to account for:
+Corner cases accounted for:
 
 - Login username remains min length 1 for lookup; registration/admin usernames remain min 3, max 50, alphanumeric/underscore.
 - OpenAPI can document username canonicalization but cannot express the lowercase transform exactly.
-- 2FA still uses `tempToken`; only browser auth success responses must avoid token/refreshToken body fields.
+- 2FA still uses `tempToken`; only browser auth success responses avoid token/refreshToken body fields.
 - Pending email verification registration responses do not contain a `user` object or auth tokens.
 
 ## Review
@@ -40,6 +100,7 @@ Verification so far:
 - `bash scripts/quality/lizard-only.sh server/src/utils/username.ts server/src/validation/commonSchemas.ts server/src/api/openapi/schemas/common.ts server/src/api/openapi/schemas/auth.ts server/src/api/openapi/schemas/admin/identity-groups.ts src/api/auth.ts contexts/UserContext.tsx components/Login/useLoginFlow.ts components/Login/LoginForm/LoginFormFields.tsx shared/types/api.ts` passed.
 - `git diff --check` passed.
 - Pre-commit changed-test sweep passed: backend 5,847 tests passed and 244 skipped; frontend 6,112 tests passed.
+- PR #450 merged and verified on `origin/main` at `94fb581ab4ac4b466346a150bd58b2690b2df8b6`.
 
 ---
 

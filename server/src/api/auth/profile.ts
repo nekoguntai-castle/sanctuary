@@ -5,34 +5,54 @@
  */
 
 import { Router } from 'express';
-import { z } from 'zod';
+import { canonicalizeUserPreferencesPatch } from '@sanctuary/shared/schemas/mobileApiRequests';
+import type { Prisma } from '../../generated/prisma/client';
 import { userRepository, systemSettingRepository, groupRepo as groupRepository } from '../../repositories';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError } from '../../errors/ApiError';
 import { validate } from '../../middleware/validate';
 import { setAccessExpiresAtHeader } from '../../middleware/csrf';
-import { UserSearchQuerySchema } from '../schemas/auth';
+import { PreferencesSchema, type PreferencesInput, UserSearchQuerySchema } from '../schemas/auth';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
-const PreferencesBodySchema = z.object({
-  darkMode: z.boolean().optional(),
-  theme: z.string().optional(),
-  background: z.string().optional(),
-  unit: z.string().optional(),
-  fiatCurrency: z.string().optional(),
-  showFiat: z.boolean().optional(),
-  priceProvider: z.string().optional(),
-  favoriteBackgrounds: z.array(z.string()).optional(),
-  seasonalBackgrounds: z.record(z.string(), z.string()).optional(),
-  contrastLevel: z.number().optional(),
-  patternOpacity: z.number().optional(),
-  flyoutOpacity: z.number().min(50).max(100).optional(),
-  notificationSounds: z.unknown().optional(),
-  telegram: z.unknown().optional(),
-  viewSettings: z.unknown().optional(),
-}).passthrough();
+const DEFAULT_PREFERENCES = {
+  darkMode: true,
+  theme: 'sanctuary',
+  background: 'zen',
+  unit: 'sats',
+  fiatCurrency: 'USD',
+  showFiat: true,
+  priceProvider: 'auto',
+  notificationSounds: {
+    enabled: true,
+    volume: 50,
+    confirmation: { enabled: true, sound: 'chime' },
+    receive: { enabled: true, sound: 'coin' },
+    send: { enabled: true, sound: 'success' },
+  },
+} as const;
+
+function getPreferenceRecord(preferences: unknown): Record<string, unknown> {
+  if (preferences === null || typeof preferences !== 'object' || Array.isArray(preferences)) {
+    return {};
+  }
+  return preferences as Record<string, unknown>;
+}
+
+function mergePreferences(
+  existingPreferences: unknown,
+  newPreferences: PreferencesInput,
+): Prisma.InputJsonObject {
+  const mergedPreferences = {
+    ...DEFAULT_PREFERENCES,
+    ...getPreferenceRecord(existingPreferences),
+    ...newPreferences,
+  };
+
+  return canonicalizeUserPreferencesPatch(mergedPreferences) as Prisma.InputJsonObject;
+}
 
 /**
  * GET /api/v1/auth/me
@@ -67,36 +87,11 @@ router.get('/me', asyncHandler(async (req, res) => {
  * PATCH /api/v1/auth/me/preferences
  * Update user preferences
  */
-router.patch('/me/preferences', validate({ body: PreferencesBodySchema }), asyncHandler(async (req, res) => {
-  const newPreferences = req.body;
-
-  // Default preferences for new users or those with null preferences
-  const defaultPreferences = {
-    darkMode: true,
-    theme: 'sanctuary',
-    background: 'zen',
-    unit: 'sats',
-    fiatCurrency: 'USD',
-    showFiat: true,
-    priceProvider: 'auto',
-    notificationSounds: {
-      enabled: true,
-      volume: 50,
-      confirmation: { enabled: true, sound: 'chime' },
-      receive: { enabled: true, sound: 'coin' },
-      send: { enabled: true, sound: 'success' },
-    },
-  };
-
+router.patch('/me/preferences', validate({ body: PreferencesSchema }), asyncHandler(async (req, res) => {
   // First get current preferences to merge with
   const currentUser = await userRepository.findById(requireAuthenticatedUser(req).userId);
 
-  // Merge: defaults -> existing preferences -> new preferences
-  const mergedPreferences = {
-    ...defaultPreferences,
-    ...(currentUser?.preferences as object || {}),
-    ...newPreferences,
-  };
+  const mergedPreferences = mergePreferences(currentUser?.preferences, req.body as PreferencesInput);
 
   const user = await userRepository.updatePreferences(requireAuthenticatedUser(req).userId, mergedPreferences);
 
