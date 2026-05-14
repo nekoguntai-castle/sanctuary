@@ -5,6 +5,7 @@
  */
 
 import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
+import { passwordRequestPropertySchema } from './common';
 
 export const authSchemas = {
   LoginRequest: {
@@ -26,7 +27,7 @@ export const authSchemas = {
     type: 'object',
     properties: {
       username: { type: 'string', minLength: 1 },
-      password: { type: 'string', minLength: 8 },
+      password: passwordRequestPropertySchema,
       email: { type: 'string', format: 'email' },
     },
     required: ['username', 'password', 'email'],
@@ -158,7 +159,7 @@ export const authSchemas = {
     type: 'object',
     properties: {
       currentPassword: { type: 'string', minLength: 1 },
-      newPassword: { type: 'string', minLength: 8 },
+      newPassword: passwordRequestPropertySchema,
     },
     required: ['currentPassword', 'newPassword'],
   },

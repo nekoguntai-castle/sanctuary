@@ -1,4 +1,5 @@
 import { ADMIN_GROUP_ROLE_VALUES } from './shared';
+import { passwordRequestPropertySchema } from '../common';
 
 export const adminIdentityGroupSchemas = {
   AdminUser: {
@@ -19,11 +20,7 @@ export const adminIdentityGroupSchemas = {
     type: 'object',
     properties: {
       username: { type: 'string', minLength: 3 },
-      password: {
-        type: 'string',
-        minLength: 8,
-        description: 'Must include uppercase, lowercase, and numeric characters.',
-      },
+      password: passwordRequestPropertySchema,
       email: { type: 'string', format: 'email' },
       isAdmin: { type: 'boolean', default: false },
     },
@@ -34,11 +31,7 @@ export const adminIdentityGroupSchemas = {
     type: 'object',
     properties: {
       username: { type: 'string', minLength: 3 },
-      password: {
-        type: 'string',
-        minLength: 8,
-        description: 'Must include uppercase, lowercase, and numeric characters.',
-      },
+      password: passwordRequestPropertySchema,
       email: {
         oneOf: [
           { type: 'string', format: 'email' },

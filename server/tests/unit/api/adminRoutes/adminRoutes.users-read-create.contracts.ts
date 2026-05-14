@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { adminRoutesRequest, mockPrisma } from './adminRoutesTestHarness';
+import { PASSWORD_POLICY } from '../../../../src/utils/password';
 
 export function registerAdminRoutesUserReadCreateContracts(): void {
   describe('GET /api/v1/admin/users', () => {
@@ -130,6 +131,20 @@ export function registerAdminRoutesUserReadCreateContracts(): void {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('security requirements');
+    });
+
+    it('should reject passwords above the UTF-8 byte limit', async () => {
+      const response = await adminRoutesRequest()
+        .post('/api/v1/admin/users')
+        .send({
+          username: 'newuser',
+          password: 'A1' + 'a'.repeat(PASSWORD_POLICY.maxUtf8Bytes - 1),
+          email: 'new@test.com',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('security requirements');
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
     });
 
     it('should reject duplicate username', async () => {

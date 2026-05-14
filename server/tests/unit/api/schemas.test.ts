@@ -8,6 +8,12 @@
 import { describe, it, expect } from 'vitest';
 import { PasswordSchema, RegisterSchema } from '../../../src/api/schemas/auth';
 import {
+  getPasswordUtf8ByteLength,
+  PASSWORD_POLICY,
+  PASSWORD_POLICY_MESSAGES,
+  validatePasswordStrength,
+} from '../../../src/utils/password';
+import {
   AddGroupMemberSchema,
   ConfirmRestoreSchema,
   CreateGroupSchema,
@@ -43,6 +49,35 @@ describe('Auth Schemas', () => {
     it('should reject short password', () => {
       const result = PasswordSchema.safeParse('Ab1');
       expect(result.success).toBe(false);
+    });
+
+    it('should accept password exactly at the UTF-8 byte limit', () => {
+      const password = 'A1' + 'a'.repeat(PASSWORD_POLICY.maxUtf8Bytes - 2);
+      expect(getPasswordUtf8ByteLength(password)).toBe(PASSWORD_POLICY.maxUtf8Bytes);
+
+      const result = PasswordSchema.safeParse(password);
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject password above the UTF-8 byte limit', () => {
+      const password = 'A1' + 'a'.repeat(PASSWORD_POLICY.maxUtf8Bytes - 1);
+      expect(getPasswordUtf8ByteLength(password)).toBe(PASSWORD_POLICY.maxUtf8Bytes + 1);
+
+      const result = PasswordSchema.safeParse(password);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.map(issue => issue.message)).toContain(PASSWORD_POLICY_MESSAGES.maxUtf8Bytes);
+      }
+    });
+
+    it('should reject unicode passwords above the UTF-8 byte limit', () => {
+      const password = 'A1' + 'a'.repeat(PASSWORD_POLICY.maxUtf8Bytes - 5) + '🔥';
+      expect(password.length).toBeLessThanOrEqual(PASSWORD_POLICY.maxUtf8Bytes);
+      expect(getPasswordUtf8ByteLength(password)).toBe(PASSWORD_POLICY.maxUtf8Bytes + 1);
+
+      const result = validatePasswordStrength(password);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain(PASSWORD_POLICY_MESSAGES.maxUtf8Bytes);
     });
   });
 

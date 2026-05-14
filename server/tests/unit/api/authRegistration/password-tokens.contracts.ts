@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { app } from './authRegistrationTestHarness';
 import request from 'supertest';
-import { hashPassword } from '../../../../src/utils/password';
+import { hashPassword, PASSWORD_POLICY } from '../../../../src/utils/password';
 import { mockPrismaClient } from '../../../mocks/prisma';
 import { createCsrfTokenForAccessCookie } from '../auth.testHelpers';
 
@@ -32,6 +32,19 @@ export function registerAuthPasswordTokenTests(): void {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('Password does not meet requirements');
+    });
+
+    it('should reject new passwords above the UTF-8 byte limit', async () => {
+      const response = await request(app)
+        .post('/api/v1/auth/me/change-password')
+        .send({
+          currentPassword: 'OldPassword123!',
+          newPassword: 'A1' + 'a'.repeat(PASSWORD_POLICY.maxUtf8Bytes - 1),
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('Password does not meet requirements');
+      expect(mockPrismaClient.user.findUnique).not.toHaveBeenCalled();
     });
 
     it('should reject when user not found', async () => {

@@ -14,28 +14,22 @@ import {
   MobileUserPreferencesRequestSchema,
 } from '@sanctuary/shared/schemas/mobileApiRequests';
 import { normalizeUsername } from '../../utils/username';
+import { validatePasswordStrength } from '../../utils/password';
 
 // =============================================================================
 // Password Validation
 // =============================================================================
 
 /** Password with strength requirements */
-export const PasswordSchema = z
-  .string()
-  .min(8, 'Password must be at least 8 characters')
-  .max(128, 'Password must be at most 128 characters')
-  .refine(
-    (pwd) => /[a-z]/.test(pwd),
-    'Password must contain at least one lowercase letter'
-  )
-  .refine(
-    (pwd) => /[A-Z]/.test(pwd),
-    'Password must contain at least one uppercase letter'
-  )
-  .refine(
-    (pwd) => /[0-9]/.test(pwd),
-    'Password must contain at least one number'
-  );
+export const PasswordSchema = z.string().superRefine((password, ctx) => {
+  const validation = validatePasswordStrength(password);
+  for (const message of validation.errors) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message,
+    });
+  }
+});
 
 /** Password for login (no strength requirements, just not empty) */
 export const LoginPasswordSchema = z.string().min(1, 'Password is required');

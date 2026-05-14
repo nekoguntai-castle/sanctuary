@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { adminRoutesRequest, mockAuditService, mockPrisma } from './adminRoutesTestHarness';
+import { PASSWORD_POLICY } from '../../../../src/utils/password';
 
 export function registerAdminRoutesUserUpdateDeleteContracts(): void {
   describe('PUT /api/v1/admin/users/:userId', () => {
@@ -234,6 +235,22 @@ export function registerAdminRoutesUserUpdateDeleteContracts(): void {
       const response = await adminRoutesRequest()
         .put('/api/v1/admin/users/user-1')
         .send({ password: 'weak' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('security requirements');
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should reject password updates above the UTF-8 byte limit', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce({
+        id: 'user-1',
+        username: 'testuser',
+        email: 'test@test.com',
+      });
+
+      const response = await adminRoutesRequest()
+        .put('/api/v1/admin/users/user-1')
+        .send({ password: 'A1' + 'a'.repeat(PASSWORD_POLICY.maxUtf8Bytes - 1) });
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('security requirements');

@@ -1,3 +1,320 @@
+# Active Task: Phase 1 Password Policy Consolidation 2026-05-14
+
+Status: verified locally; PR delivery pending
+
+Goal: make all password-setting paths use one password policy, enforce a clear bcrypt-safe max for new passwords, preserve existing-login compatibility, update OpenAPI, and verify route/schema behavior.
+
+## Plan
+
+- [x] Add one shared password policy source with min length, max UTF-8 byte length, and character-class messages.
+- [x] Make `PasswordSchema` consume the same policy as public registration and change-password.
+- [x] Keep login/current-password verification free of the new max-length gate so legacy long-password hashes remain verifiable.
+- [x] Update OpenAPI auth/admin password request schemas with the shared min/max policy.
+- [x] Add route/schema/security tests for boundary cases, including max-byte and Unicode byte-length behavior.
+- [x] Run typecheck, lint, touched-file complexity checks, and final diff review.
+- [ ] Commit, open PR, monitor checks, merge, and verify target branch ancestry before starting Phase 2.
+
+## Review
+
+- Added `PASSWORD_POLICY`, `PASSWORD_POLICY_MESSAGES`, and `getPasswordUtf8ByteLength()` in the password utility.
+- `validatePasswordStrength()` now rejects new passwords above 72 UTF-8 bytes, preventing bcrypt truncation surprises for new or changed passwords.
+- `PasswordSchema` delegates to the shared password policy, so admin create/update and schema-level validation match public registration/change-password decisions.
+- Public registration, change-password, admin create, and admin update tests now cover above-limit password rejection.
+- OpenAPI auth/admin password request schemas now reuse one password property fragment and expose the shared min/max policy.
+- OpenAPI documents the byte-based max explicitly because `maxLength` is only a character-count hint for non-ASCII passwords.
+
+Verification so far:
+
+- `npm --prefix server run test:run -- tests/unit/api/schemas.test.ts tests/unit/security/securityAudit.test.ts tests/unit/api/auth.routes.registration.test.ts tests/unit/api/admin-routes.test.ts tests/unit/api/openapi.test.ts` passed, 272 tests.
+- `npm --prefix server run typecheck:tests` passed.
+- `npm run lint:server` passed, including API body validation, Bitcoin network boundary, and safety catch guard checks.
+- `bash scripts/quality/lizard-only.sh server/src/utils/password.ts server/src/api/schemas/auth.ts server/src/api/openapi/schemas/auth.ts server/src/api/openapi/schemas/admin/identity-groups.ts server/src/api/openapi/schemas/common.ts` passed.
+- `git diff --check` passed.
+- After the pre-commit review cleanup, `npm --prefix server run test:run -- tests/unit/api/openapi.test.ts tests/unit/api/schemas.test.ts tests/unit/security/securityAudit.test.ts` passed, 90 tests.
+
+Corner cases covered:
+
+- Exactly 72 UTF-8 bytes is accepted; 73 ASCII bytes is rejected.
+- Unicode passwords that are below the character max but above 72 UTF-8 bytes are rejected.
+- Existing long-password hash verification remains supported because login/current-password verification does not call the new max-length policy.
+- Public registration, change-password, admin create, and admin update all reject above-limit new passwords before persistence.
+
+---
+
+# Active Task: Divergence Consolidation Fix Plan 2026-05-14
+
+Status: completed; implementation plan recorded
+
+Goal: turn the divergent-contract scrub into an implementation-ready queue with ordering, design notes, corner cases, and verification gates.
+
+## Recommended Order
+
+1. Password policy contract.
+2. Email canonicalization.
+3. Auth/admin OpenAPI and frontend/shared auth types.
+4. Preferences patch contract.
+5. Transaction broadcast typing and PSBT recipient semantics.
+6. Gateway route manifest/parity cleanup.
+
+This order fixes the highest-risk input/security bugs before larger structural cleanup. Gateway manifest work is valuable, but it touches routing/security wiring and should happen after the narrower contract fixes are green.
+
+## Detailed Plan
+
+### 1. Password Policy Contract
+
+- Create one password policy source for all password-setting paths: public registration, change-password, admin create user, and admin update user.
+- Prefer constants/helper in `server/src/utils/password.ts` or a nearby policy module, then make `PasswordSchema` consume that policy. Avoid importing API schemas into low-level password utilities.
+- Include the existing min/character rules and one explicit max rule. Because bcrypt truncates after 72 bytes, decide deliberately between:
+  - enforcing max 72 UTF-8 bytes for new passwords, or
+  - prehashing before bcrypt if product wants longer passwords.
+- Do not enforce the new max on login/current-password verification unless we also have a legacy migration/forced-reset story; otherwise existing users with long passwords could be locked out.
+- Preserve endpoint-specific UX messages where needed, but make the underlying validity decision single-source.
+
+Corner cases:
+
+- Empty password, non-string password, exactly 7 chars, exactly 8 chars.
+- Missing uppercase/lowercase/number.
+- Exactly max boundary and max + 1.
+- Unicode passwords where character count and UTF-8 byte count differ.
+- Existing hashes created from >72-byte passwords; do not accidentally break login verification.
+- Admin-created initial/default password flows must still satisfy the policy or explicitly bypass with a documented reason.
+
+Acceptance checks:
+
+- Unit tests for the shared password policy helper and `PasswordSchema`.
+- Route tests for public registration, change-password, admin create, and admin update using the same boundary cases.
+- Update OpenAPI password max/description to match the chosen rule.
+
+### 2. Email Canonicalization
+
+- Make `UpdateEmailSchema` use the shared canonical `EmailSchema`.
+- Add a small `normalizeEmail()` helper if needed so routes and repositories do not duplicate `toLowerCase()`.
+- Use the parsed/canonical email from validation in duplicate checks, persistence, audit details, and verification email creation.
+- Normalize defensively in `userRepository.findByEmail()` and `emailExists()` or document that callers must pass canonical email only; defensive normalization is safer.
+
+Corner cases:
+
+- Case-only email update should skip duplicate conflict but still store lowercase.
+- Existing user with `null` email.
+- Admin update with `email: ''` clears email; do not break that route when consolidating shared email logic.
+- Invalid email, empty string, whitespace around email, plus-addressing, and Zod's email strictness.
+- Unique index behavior if legacy mixed-case duplicates exist.
+
+Acceptance checks:
+
+- Schema tests prove `UpdateEmailSchema` lowercases.
+- Auth email route tests cover mixed-case input, case-only update, duplicate mixed-case email, and null existing email.
+- Admin user route tests still cover create/update/clear email behavior.
+
+### 3. OpenAPI And Frontend/Shared Auth Types
+
+- Update `src/api/auth.ts` `RegisterRequest.email` to required.
+- Remove or deprecate stale auth request/response shapes from `shared/types/api.ts`; at minimum stop exporting token-bearing auth types from shared barrels if they are not used.
+- Update `tests/api/auth.test.ts` so frontend registration tests always send email.
+- Add OpenAPI schema parity tests for auth/admin request contracts instead of only asserting current manual docs.
+- If full Zod-to-OpenAPI derivation is too large, add focused parity tests first:
+  - username min/max/pattern/canonicalization description;
+  - password min/max/requirements;
+  - registration email required;
+  - admin update email clear behavior;
+  - cookie-only auth response shape, not JS-readable token response.
+
+Corner cases:
+
+- Browser auth and mobile/bearer auth share some OpenAPI components but have different token transport semantics; do not reintroduce token-in-body for browser auth.
+- Login username allows min 1 and canonicalizes for lookup, while account creation usernames require min 3 and pattern. Keep that distinction explicit.
+- OpenAPI cannot express transforms exactly; use descriptions and parity tests for canonical lowercase behavior.
+- External/generated clients may have been relying on optional registration email; this is a breaking type correction but matches runtime.
+
+Acceptance checks:
+
+- Frontend API tests and typecheck.
+- Server OpenAPI tests including new parity assertions.
+- `npm run check:openapi-route-coverage`.
+
+### 4. Preferences Patch Contract
+
+- Define one shared preference patch contract for known fields, with passthrough for unknown/extensible preferences.
+- Decide canonicalization ownership:
+  - backend should own stored canonical values;
+  - gateway should validate shape/security without relying on transforms that it discards.
+- Remove or avoid gateway-only transforms such as `fiatCurrency.toUpperCase()` unless the gateway assigns parsed output before proxying. Prefer backend canonicalization for stored values.
+- Align known fields across `shared/schemas/mobileApiRequests.ts`, backend `PreferencesBodySchema`, frontend `AuthUserPreferences`/`UserPreferences`, and OpenAPI.
+- Decide and document field bounds:
+  - `unit`: currently gateway allows `btc/sats/mbtc`, backend allows any string, frontend domain type omits `mbtc` in one place.
+  - `fiatCurrency`: 3-letter uppercase canonical value.
+  - `patternOpacity`: likely 0-100.
+  - `flyoutOpacity`: 50-100.
+  - `notificationSounds`: whether to validate structure or allow unknown.
+  - `favoriteBackgrounds`, `seasonalBackgrounds`, `telegram`, `viewSettings`, `selectedNetwork`.
+
+Corner cases:
+
+- Unknown preference keys must remain accepted unless we intentionally make preferences strict.
+- Mobile gateway must not reject fields the web frontend/backend accept.
+- Partial nested updates can currently replace nested objects; decide whether to keep top-level merge only or add controlled deep merge for known nested fields.
+- Empty object patch.
+- Invalid known value with extra unknown valid keys.
+- Lowercase fiat input should store uppercase after backend handling.
+
+Acceptance checks:
+
+- Gateway validation tests for known valid/invalid values and unknown passthrough.
+- Backend profile route tests for canonical stored values, unknown keys, empty patch, and invalid known values.
+- Frontend typecheck and settings tests for fields currently written by settings/theme/sound/telegram UI.
+- OpenAPI component updated to document known fields plus passthrough.
+
+### 5. Transaction Broadcast Types And PSBT Recipients
+
+- Change frontend `BroadcastTransactionRequest` to match backend/shared/OpenAPI: require at least one of `signedPsbtBase64`, `rawTxHex`, or `draftId`; make `recipient`, `amount`, `fee`, and `utxos` optional metadata.
+- Prefer importing/infering the shared schema type if package boundaries allow it cleanly.
+- For `/wallets/:walletId/psbt/create`, choose one behavior:
+  - Low-risk now: reject `recipients.length > 1`, add `max(1)` to schema/OpenAPI, and document that batch sends use `/transactions/batch`.
+  - Larger feature: implement true multi-recipient PSBT creation through the batch path and evaluate policies against all outputs.
+- Do not keep silently using `recipients[0]`; that is the bug-prone behavior.
+
+Corner cases:
+
+- Broadcast with `draftId` only.
+- Broadcast with `rawTxHex` only.
+- Broadcast with `signedPsbtBase64` only.
+- Broadcast with more than one signing source; decide whether to allow or reject ambiguous payloads.
+- PSBT create recipients array empty, one item, two items.
+- Policy evaluation for multi-output transactions if we choose implementation over rejection.
+- Mobile gateway schema and backend schema must agree.
+
+Acceptance checks:
+
+- Frontend transaction API tests compile and cover draft-only/raw/signed payloads.
+- Gateway validation tests for broadcast and PSBT create.
+- Backend transaction route tests for PSBT multi-recipient rejection or implemented behavior.
+- OpenAPI schema updated with `maxItems: 1` if we choose single-recipient semantics.
+
+### 6. Gateway Route Manifest And Parity
+
+- Before a broad refactor, add parity tests around current gateway routing:
+  - every explicit proxy route is whitelisted;
+  - every whitelisted route is either registered explicitly or covered by the catch-all authenticated proxy;
+  - every body-bearing write route has a validation decision, either schema or explicit no-body/no-validation reason;
+  - every wallet-scoped write route has a mobile permission decision or explicit backend-only access-control reason.
+- Remove `ROUTE_ACTION_MAP` if it is test-only dead metadata, or generate it from a new manifest if it still has intended value.
+- If refactoring, make a single route manifest include method, path, OpenAPI path, auth mode, rate limiter class, validation schema, and mobile permission action.
+
+Corner cases:
+
+- Dynamic segment naming differences: `:id`, `:walletId`, `:labelId`, `:draftId`.
+- Lowercase UUID whitelist pattern versus any backend UUID parser behavior.
+- Query strings should not affect whitelist matching.
+- Public routes: login, refresh, 2FA verify.
+- Device routes are user-scoped, not wallet-scoped; do not add wallet mobile permissions there.
+- Admin/internal routes must remain blocked through the gateway.
+- Rate limiter differences for transaction create, broadcast, device registration, and address generation must be preserved.
+
+Acceptance checks:
+
+- Gateway proxy route tests and mobile permission tests.
+- A new manifest/parity test suite if the refactor happens.
+- Confirm blocked admin/internal route tests still pass.
+
+## Verification Bundle For The Fix PR
+
+- Server focused tests:
+  - auth schemas;
+  - auth registration/login/change-password;
+  - email routes;
+  - admin user routes;
+  - transaction HTTP routes.
+- Gateway focused tests:
+  - proxy whitelist/routes;
+  - validateRequest;
+  - mobilePermission.
+- Frontend focused tests:
+  - `tests/api/auth.test.ts`;
+  - `tests/api/transactions.test.ts`;
+  - settings/theme/sound/telegram preference tests touched by type changes.
+- Type and quality:
+  - `npm --prefix server run typecheck:tests`;
+  - `npm run typecheck:app`;
+  - `npm run typecheck:tests`;
+  - `npm run lint:server`;
+  - `npm run lint:app`;
+  - `npm run check:openapi-route-coverage`;
+  - touched-file lizard for non-trivial production files.
+
+## Final Review Checklist
+
+- No route accepts a stricter/looser body than its OpenAPI and frontend type imply unless explicitly documented.
+- No gateway schema transform is relied on unless the gateway assigns parsed output before proxying.
+- Canonicalization happens at the backend persistence boundary for username, email, and preferences.
+- Legacy users are not locked out by password max-length enforcement.
+- Unknown preference keys remain intentionally accepted.
+- Mobile gateway remains fail-closed for route exposure and wallet-scoped write permissions.
+
+---
+
+# Active Task: Independent Divergence Review 2026-05-14
+
+Status: completed; second-pass verdict recorded
+
+Goal: independently re-check the divergent-contract scrub findings, confirm which are evidence-backed, identify any overstated items, and add missing consolidation candidates if found.
+
+## Plan
+
+- [x] Start from source files rather than the previous review text.
+- [x] Re-check gateway route/validation/permission metadata for actual drift risk.
+- [x] Re-check auth/admin runtime schemas against OpenAPI, frontend, and shared types.
+- [x] Re-check email, preferences, registration/password, transaction, device, and isolation-boundary findings.
+- [x] Look for missing high-risk duplicate contract paths.
+- [x] Record second-pass verdict and any priority changes.
+
+## Review
+
+- Verdict: the original scrub was mostly correct, but it under-scored password-policy drift and slightly over-described the gateway permission-map risk.
+- Priority increase: password policy should be treated as a high-value consolidation. `PasswordSchema` enforces min/max and character classes, but public registration and change-password use `validatePasswordStrength()` directly. That helper has no max-length rule, and an existing security test documents a 10k-character password as valid. Public auth and admin auth therefore do not share one password contract.
+- Priority unchanged: OpenAPI auth/admin request schemas are still hand-maintained and drift-prone. Existing OpenAPI tests assert the current manual values, not parity with runtime Zod schemas, so they preserve drift rather than catch it.
+- Priority unchanged: frontend auth types are stale. `src/api/auth.ts` and `shared/types/api.ts` still mark registration email optional, and `tests/api/auth.test.ts` still exercises registration without email even though the backend requires email. `shared/types/api.ts` also still describes token-bearing auth responses; that shared auth shape appears unused by runtime imports, so the current risk is reuse/stale documentation rather than an active call path.
+- Priority unchanged: authenticated email update should use the shared canonical `EmailSchema`, and user repository email lookup/update helpers should either receive canonical email only or normalize defensively. Current route behavior lowercases manually in several places, while `findByEmail()` and `emailExists()` are exact lookups.
+- Priority unchanged with stronger evidence: preferences are split across gateway/shared, backend route schema, frontend API/context types, and OpenAPI. Gateway validation discards parsed Zod output, so `fiatCurrency.toUpperCase()` in the shared gateway schema is not applied before the backend stores preferences. Backend accepts broader known fields than the gateway schema and OpenAPI documents only an unconstrained object.
+- Priority adjusted: gateway route consolidation is still useful, but `ROUTE_ACTION_MAP` is not a live runtime source; proxy routing hard-codes `requireMobilePermission(...)`. The real drift is between the whitelist contract, explicit proxy router registrations, and the request-validation route map. `ROUTE_ACTION_MAP` should either be removed or generated from the same manifest.
+- Additional candidate: frontend transaction broadcast request types drift from backend/shared/OpenAPI. `src/api/transactions/types.ts` requires `recipient`, `amount`, `fee`, and `utxos`, while `MobileTransactionBroadcastRequestSchema` and OpenAPI make them optional and require only one of `signedPsbtBase64`, `rawTxHex`, or `draftId`.
+- Confirmed candidate: `/wallets/:walletId/psbt/create` accepts a `recipients` array in shared/OpenAPI schemas but runtime uses only `recipients[0]`. Either reject arrays longer than one or route/implement true multi-recipient behavior.
+- Confirmed justified divergence: gateway login validation being lighter than backend username canonicalization is correct because the gateway should validate shape and the backend should own account canonicalization.
+- Confirmed justified divergence: device create/update and transaction create/estimate/broadcast are mostly centralized through shared mobile schemas across gateway and backend. The remaining transaction issue is frontend type drift and PSBT multi-recipient semantics.
+- Confirmed justified divergence: server/gateway/llm-egress logger and utility differences remain appropriate because the LLM egress proxy is an isolation boundary.
+- Verification: re-read gateway proxy route sources, backend auth/admin schemas and routes, frontend/shared API types, OpenAPI schemas/tests, email/preference tests, password policy tests, transaction schemas/routes/types, and shared utility docs with targeted `rg`/`nl` reads. No production code was changed; no test suite was required for this review-only pass.
+
+---
+
+# Active Task: Divergent Contract Scrub 2026-05-14
+
+Status: completed; recommendations recorded
+
+Goal: find code paths where the same request, validation, or boundary contract is implemented through multiple divergent paths; judge whether each divergence is justified; and rank consolidation candidates.
+
+## Plan
+
+- [x] Define the pattern from the username bug: one logical contract split across multiple validators, routes, schema sources, or service boundaries.
+- [x] Search backend, gateway, shared, frontend API clients, OpenAPI schemas, and tests for duplicated validation or request-shaping paths.
+- [x] Inspect high-risk candidates for behavioral drift, security impact, and whether the split is intentional.
+- [x] Rank consolidation candidates by likely bug-prevention value and implementation risk.
+- [x] Record conclusions and recommended next queue in this task entry.
+
+## Review
+
+- High-value consolidation: route exposure, request validation, and mobile permission action metadata are split across `GATEWAY_ROUTE_CONTRACTS`, `ROUTE_SCHEMAS`, and `ROUTE_ACTION_MAP`. The split is partly justified by different concerns, but the route identity should come from one manifest so new wallet-scoped write routes cannot be exposed without explicit schema and permission decisions.
+- High-value consolidation: auth/admin OpenAPI request schemas are manually maintained and already trail runtime username/email/password canonicalization. Add schema-parity tests or derive the docs from Zod/shared schemas.
+- High-value consolidation: frontend auth/admin request interfaces and `shared/types/api.ts` manually describe auth contracts; `shared/types/api.ts` still documents token-bearing auth responses while browser auth is cookie-only. Prefer generated or inferred types from the same Zod/OpenAPI source, or delete/deprecate stale auth request/response types from the shared barrel.
+- Medium-high consolidation: authenticated email update validates with a local schema and then lowercases manually in several call sites. Reuse `EmailSchema` in `UpdateEmailSchema` and pass the parsed canonical email through the route.
+- Medium-high consolidation: preference update schemas differ between gateway/shared, backend profile route, frontend types, and OpenAPI. The extensible bag is justified, but the known fields should live in one shared schema or the gateway should validate only "object-ness" to avoid rejecting frontend fields the backend accepts.
+- Medium consolidation: public registration and password change intentionally use presence schemas plus manual password-strength/email handling to preserve user-facing error messages. Keep the UX distinction, but extract a single parser/helper so canonical username, canonical email, and strength errors cannot drift again.
+- Medium consolidation: `/wallets/:walletId/psbt/create` accepts a `recipients` array in shared/OpenAPI schemas but runtime only uses `recipients[0]`. Either reject more than one recipient at validation/docs or route multi-recipient requests to the batch transaction path.
+- Justified divergence: gateway login validation is intentionally lighter than backend login canonicalization. The gateway should reject malformed requests without mutating bodies; the backend remains the source of canonical username semantics.
+- Justified divergence: transaction create/estimate/broadcast and device create/update requests are already centralized through shared mobile schemas across gateway and backend. Batch transaction paths are separate because they expose a different backend-only workflow.
+- Justified divergence: server/gateway/llm-egress loggers and some utilities intentionally differ because the LLM egress proxy remains an isolation boundary with restricted dependencies.
+- Verification: inspected representative backend, gateway, shared, frontend, OpenAPI, and tests with `rg`, `nl`, and targeted file reads. No production code was changed for this scrub; no test suite was required.
+
+---
+
 # Active Task: Lowercase Username Canonicalization 2026-05-13
 
 Status: completed and verified locally

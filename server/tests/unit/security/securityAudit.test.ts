@@ -72,7 +72,12 @@ vi.mock('../../../src/services/auditService', () => ({
 }));
 
 // Import utilities after mocks
-import { validatePasswordStrength, hashPassword, verifyPassword } from '../../../src/utils/password';
+import {
+  validatePasswordStrength,
+  hashPassword,
+  verifyPassword,
+  PASSWORD_POLICY_MESSAGES,
+} from '../../../src/utils/password';
 
 describe('Security Audit Tests', () => {
   beforeEach(() => {
@@ -413,9 +418,10 @@ describe('Security Audit Tests', () => {
         const extremelyLongUsername = 'a'.repeat(10000);
         const extremelyLongPassword = 'A1' + 'a'.repeat(10000);
 
-        // Password utility should still work
+        // Password policy should fail closed before bcrypt's 72-byte truncation boundary
         const result = validatePasswordStrength(extremelyLongPassword);
-        expect(result.valid).toBe(true); // Meets all criteria
+        expect(result.valid).toBe(false);
+        expect(result.errors).toContain(PASSWORD_POLICY_MESSAGES.maxUtf8Bytes);
 
         // Very long usernames could be a DoS vector - document this
         expect(extremelyLongUsername.length).toBe(10000);

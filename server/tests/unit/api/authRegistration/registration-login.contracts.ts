@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { app } from './authRegistrationTestHarness';
 import request from 'supertest';
-import { hashPassword } from '../../../../src/utils/password';
+import { hashPassword, PASSWORD_POLICY } from '../../../../src/utils/password';
 import { mockPrismaClient } from '../../../mocks/prisma';
 import {
   mockCreateVerificationToken,
@@ -160,6 +160,25 @@ export function registerAuthRegistrationLoginTests(): void {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('Password does not meet strength requirements');
+    });
+
+    it('should reject passwords above the UTF-8 byte limit', async () => {
+      mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
+        key: 'registrationEnabled',
+        value: 'true',
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/register')
+        .send({
+          username: 'newuser',
+          password: 'A1' + 'a'.repeat(PASSWORD_POLICY.maxUtf8Bytes - 1),
+          email: 'new@example.com',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('Password does not meet strength requirements');
+      expect(mockPrismaClient.user.findUnique).not.toHaveBeenCalled();
     });
 
     it('should reject when username already exists', async () => {

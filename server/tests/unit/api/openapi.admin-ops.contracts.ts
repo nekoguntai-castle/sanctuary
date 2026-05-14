@@ -8,6 +8,7 @@ import {
   AUDIT_DEFAULT_PAGE_SIZE,
   AUDIT_STATS_DAYS,
 } from './openapi.helpers';
+import { PASSWORD_POLICY, PASSWORD_POLICY_MESSAGES } from '../../../src/utils/password';
 
 import type {
   OpenApiPathKey,
@@ -307,7 +308,9 @@ export function registerOpenApiAdminOpsTests() {
       minLength: 3,
     });
     expect(openApiSpec.components.schemas.AdminCreateUserRequest.properties.password).toMatchObject({
-      minLength: 8,
+      minLength: PASSWORD_POLICY.minLength,
+      maxLength: PASSWORD_POLICY.maxUtf8Bytes,
+      description: expect.stringContaining(PASSWORD_POLICY_MESSAGES.maxUtf8Bytes),
     });
     expect(openApiSpec.components.schemas.AdminCreateUserRequest.properties.email).toMatchObject({
       format: 'email',
@@ -320,6 +323,11 @@ export function registerOpenApiAdminOpsTests() {
     expect(openApiSpec.components.schemas.AdminUpdateUserRequest.properties.email.oneOf).toContainEqual({
       type: 'string',
       enum: [''],
+    });
+    expect(openApiSpec.components.schemas.AdminUpdateUserRequest.properties.password).toMatchObject({
+      minLength: PASSWORD_POLICY.minLength,
+      maxLength: PASSWORD_POLICY.maxUtf8Bytes,
+      description: expect.stringContaining(PASSWORD_POLICY_MESSAGES.maxUtf8Bytes),
     });
     expect(openApiSpec.paths['/admin/users'].get.responses[200].content['application/json'].schema).toEqual({
       type: 'array',

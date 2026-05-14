@@ -25,6 +25,7 @@ import {
   AI_QUERY_SORT_ORDERS,
 } from './openapi.helpers';
 import { registerOpenApiGatewayInternalTests } from './openapi.gateway-internal.contracts';
+import { PASSWORD_POLICY, PASSWORD_POLICY_MESSAGES } from '../../../src/utils/password';
 
 import type { OpenApiPathKey } from './openapi.helpers';
 
@@ -260,6 +261,11 @@ export function registerOpenApiGatewayTests() {
 
     expect(openApiSpec.components.schemas.RegistrationStatusResponse.required).toEqual(['enabled']);
     expect(openApiSpec.components.schemas.RegisterRequest.required).toEqual(['username', 'password', 'email']);
+    expect(openApiSpec.components.schemas.RegisterRequest.properties.password).toMatchObject({
+      minLength: PASSWORD_POLICY.minLength,
+      maxLength: PASSWORD_POLICY.maxUtf8Bytes,
+      description: expect.stringContaining(PASSWORD_POLICY_MESSAGES.maxUtf8Bytes),
+    });
     expect(openApiSpec.components.schemas.RegisterRequest.properties.email).toMatchObject({
       type: 'string',
       format: 'email',
@@ -286,6 +292,11 @@ export function registerOpenApiGatewayTests() {
       $ref: '#/components/schemas/ChangePasswordRequest',
     });
     expect(openApiSpec.components.schemas.ChangePasswordRequest.required).toEqual(['currentPassword', 'newPassword']);
+    expect(openApiSpec.components.schemas.ChangePasswordRequest.properties.newPassword).toMatchObject({
+      minLength: PASSWORD_POLICY.minLength,
+      maxLength: PASSWORD_POLICY.maxUtf8Bytes,
+      description: expect.stringContaining(PASSWORD_POLICY_MESSAGES.maxUtf8Bytes),
+    });
     expect(openApiSpec.paths['/auth/users/search'].get.parameters).toContainEqual(
       expect.objectContaining({
         name: 'q',
