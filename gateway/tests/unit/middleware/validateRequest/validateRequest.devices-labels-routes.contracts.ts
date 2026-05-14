@@ -1,7 +1,8 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { Request, Response } from 'express';
 
-import { loginSchema, validateRequest } from '../../../../src/middleware/validateRequest';
+import { findSchemaForRoute, loginSchema, validateRequest } from '../../../../src/middleware/validateRequest';
+import { GATEWAY_ROUTE_CONTRACTS } from '../../../../src/routes/proxy/whitelist';
 import { jsonMock, mockNext, mockReq, mockRes, statusMock } from './validateRequestTestHarness';
 
 export function registerDeviceRequestValidationContracts() {
@@ -175,6 +176,18 @@ export function registerLabelValidationContracts() {
 }
 
 export function registerRoutesWithoutSchemasContracts() {
+  it('keeps manifest validation decisions aligned with validateRequest route schemas', () => {
+    for (const route of GATEWAY_ROUTE_CONTRACTS) {
+      const schema = findSchemaForRoute(route.method, route.samplePath);
+
+      if (route.validation.mode === 'schema') {
+        expect(schema, `${route.method} ${route.samplePath}`).not.toBeNull();
+      } else {
+        expect(schema, `${route.method} ${route.samplePath}`).toBeNull();
+      }
+    }
+  });
+
   it('should pass through GET requests without validation', () => {
     mockReq.method = 'GET';
     mockReq.path = '/api/v1/wallets';

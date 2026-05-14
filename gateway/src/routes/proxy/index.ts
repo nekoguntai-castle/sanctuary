@@ -23,140 +23,61 @@ import {
 } from '../../middleware/rateLimit';
 import { validateRequest } from '../../middleware/validateRequest';
 import { requireMobilePermission } from '../../middleware/mobilePermission';
-import { checkWhitelist } from './whitelist';
+import { checkWhitelist, EXPLICIT_PROXY_ROUTE_CONTRACTS } from './whitelist';
 import { proxy } from './proxyConfig';
+import type { RequestHandler, Router as RouterType } from 'express';
+import type { GatewayRateLimiterClass, GatewayRouteContract } from './whitelist';
 
-export { ALLOWED_ROUTES, GATEWAY_ROUTE_CONTRACTS, isAllowedRoute, checkWhitelist } from './whitelist';
+export {
+  ALLOWED_ROUTES,
+  EXPLICIT_PROXY_ROUTE_CONTRACTS,
+  GATEWAY_ROUTE_CONTRACTS,
+  isAllowedRoute,
+  checkWhitelist,
+} from './whitelist';
 
 const router = Router();
 
-// Public routes (no auth required)
-router.post('/api/v1/auth/login', checkWhitelist, validateRequest, proxy);
-router.post('/api/v1/auth/refresh', checkWhitelist, validateRequest, proxy);
-router.post('/api/v1/auth/2fa/verify', checkWhitelist, validateRequest, proxy);
+const rateLimiters: Record<Exclude<GatewayRateLimiterClass, 'none'>, RequestHandler> = {
+  default: defaultRateLimiter,
+  transactionCreate: transactionCreateRateLimiter,
+  broadcast: broadcastRateLimiter,
+  deviceRegistration: deviceRegistrationRateLimiter,
+  addressGeneration: addressGenerationRateLimiter,
+};
 
-// =============================================================================
-// Protected routes with mobile permission checks
-// =============================================================================
+const routeMethods = {
+  GET: router.get.bind(router),
+  POST: router.post.bind(router),
+  PUT: router.put.bind(router),
+  PATCH: router.patch.bind(router),
+  DELETE: router.delete.bind(router),
+} satisfies Record<GatewayRouteContract['method'], RouterType['get']>;
 
-// Transaction operations
-router.post(
-  '/api/v1/wallets/:id/transactions/create',
-  authenticate,
-  transactionCreateRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('createTransaction'),
-  validateRequest,
-  proxy
-);
+function getProxyMiddlewares(route: GatewayRouteContract): RequestHandler[] {
+  const middlewares: RequestHandler[] = [];
 
-router.post(
-  '/api/v1/wallets/:id/transactions/estimate',
-  authenticate,
-  transactionCreateRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('createTransaction'),
-  validateRequest,
-  proxy
-);
+  if (route.auth === 'authenticated') {
+    middlewares.push(authenticate);
+  }
 
-router.post(
-  '/api/v1/wallets/:id/transactions/broadcast',
-  authenticate,
-  broadcastRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('broadcast'),
-  validateRequest,
-  proxy
-);
+  if (route.rateLimiter !== 'none') {
+    middlewares.push(rateLimiters[route.rateLimiter]);
+  }
 
-// PSBT operations
-router.post(
-  '/api/v1/wallets/:id/psbt/create',
-  authenticate,
-  transactionCreateRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('createTransaction'),
-  validateRequest,
-  proxy
-);
+  middlewares.push(checkWhitelist);
 
-router.post(
-  '/api/v1/wallets/:id/psbt/broadcast',
-  authenticate,
-  broadcastRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('broadcast'),
-  validateRequest,
-  proxy
-);
+  if (route.mobilePermission) {
+    middlewares.push(requireMobilePermission(route.mobilePermission));
+  }
 
-// Address generation
-router.post(
-  '/api/v1/wallets/:id/addresses/generate',
-  authenticate,
-  addressGenerationRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('generateAddress'),
-  validateRequest,
-  proxy
-);
+  middlewares.push(validateRequest, proxy);
+  return middlewares;
+}
 
-// Label management (create - has walletId in path)
-router.post(
-  '/api/v1/wallets/:id/labels',
-  authenticate,
-  defaultRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('manageLabels'),
-  validateRequest,
-  proxy
-);
-
-router.put(
-  '/api/v1/wallets/:id/labels/:labelId',
-  authenticate,
-  defaultRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('manageLabels'),
-  validateRequest,
-  proxy
-);
-
-router.delete(
-  '/api/v1/wallets/:id/labels/:labelId',
-  authenticate,
-  defaultRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('manageLabels'),
-  validateRequest,
-  proxy
-);
-
-// Note: Device management routes (/api/v1/devices) are user-scoped, not wallet-scoped,
-// so they don't use mobile permission middleware. Access control is handled by the
-// backend based on user authentication.
-
-// Push notification device registration (strict rate limit)
-router.post(
-  '/api/v1/push/register',
-  authenticate,
-  deviceRegistrationRateLimiter,
-  checkWhitelist,
-  validateRequest,
-  proxy
-);
-
-// Draft signing (multisig)
-router.patch(
-  '/api/v1/wallets/:id/drafts/:draftId',
-  authenticate,
-  defaultRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('signPsbt'),
-  validateRequest,
-  proxy
-);
+for (const routeContract of EXPLICIT_PROXY_ROUTE_CONTRACTS) {
+  routeMethods[routeContract.method](routeContract.expressPath, ...getProxyMiddlewares(routeContract));
+}
 
 // =============================================================================
 // Protected routes (general - no special permission checks)

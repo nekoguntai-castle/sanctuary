@@ -34,6 +34,7 @@ import { AuthenticatedRequest } from './auth';
 import { createLogger } from '../utils/logger';
 import { logSecurityEvent } from './requestLogger';
 import { generateGatewaySignature } from '@sanctuary/shared/utils/gatewayAuth';
+import { GATEWAY_ROUTE_CONTRACTS } from '../routes/proxy/whitelist';
 import type { MobileAction } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 const log = createLogger('MOBILE-PERM');
@@ -192,21 +193,11 @@ export function requireMobilePermission(action: MobileAction) {
  * control because they are not wallet-scoped.
  */
 export const ROUTE_ACTION_MAP: Record<string, MobileAction> = {
-  // Transaction operations
-  'POST:/wallets/:id/transactions/create': 'createTransaction',
-  'POST:/wallets/:id/transactions/estimate': 'createTransaction',
-  'POST:/wallets/:id/transactions/broadcast': 'broadcast',
-  'POST:/wallets/:id/psbt/create': 'createTransaction',
-  'POST:/wallets/:id/psbt/broadcast': 'broadcast',
+  ...GATEWAY_ROUTE_CONTRACTS.reduce<Record<string, MobileAction>>((actionMap, route) => {
+    if (route.mobilePermission) {
+      actionMap[`${route.method}:${route.expressPath.replace('/api/v1', '')}`] = route.mobilePermission;
+    }
 
-  // Address generation
-  'POST:/wallets/:id/addresses/generate': 'generateAddress',
-
-  // Labels
-  'POST:/wallets/:id/labels': 'manageLabels',
-  'PUT:/wallets/:id/labels/:labelId': 'manageLabels',
-  'DELETE:/wallets/:id/labels/:labelId': 'manageLabels',
-
-  // Drafts (PSBT signing)
-  'PATCH:/wallets/:id/drafts/:draftId': 'signPsbt',
+    return actionMap;
+  }, {}),
 };

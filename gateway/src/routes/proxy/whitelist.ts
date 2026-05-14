@@ -31,14 +31,32 @@
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { logSecurityEvent } from '../../middleware/requestLogger';
+import type { MobileAction } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+export type GatewayAuthMode = 'public' | 'authenticated';
+export type GatewayRateLimiterClass =
+  | 'none'
+  | 'default'
+  | 'transactionCreate'
+  | 'broadcast'
+  | 'deviceRegistration'
+  | 'addressGeneration';
+export type GatewayValidationDecision =
+  | { mode: 'schema' }
+  | { mode: 'none'; reason: string };
 
 export type GatewayRouteContract = {
   method: HttpMethod;
   pattern: RegExp;
   samplePath: string;
   openApiPath: string;
+  expressPath: string;
+  auth: GatewayAuthMode;
+  rateLimiter: GatewayRateLimiterClass;
+  validation: GatewayValidationDecision;
+  mobilePermission?: MobileAction;
+  accessControlReason?: string;
 };
 
 const uuidPattern = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
@@ -50,14 +68,43 @@ function route(
   method: HttpMethod,
   pathPattern: string,
   samplePath: string,
-  openApiPath: string
+  openApiPath: string,
+  metadata: {
+    expressPath: string;
+    auth?: GatewayAuthMode;
+    rateLimiter?: GatewayRateLimiterClass;
+    validation: GatewayValidationDecision;
+    mobilePermission?: MobileAction;
+    accessControlReason?: string;
+  }
 ): GatewayRouteContract {
   return {
     method,
     pattern: new RegExp(`^/api/v1${pathPattern}$`),
     samplePath: `/api/v1${samplePath}`,
     openApiPath,
+    expressPath: metadata.expressPath,
+    auth: metadata.auth ?? 'authenticated',
+    rateLimiter: metadata.rateLimiter ?? 'default',
+    validation: metadata.validation,
+    mobilePermission: metadata.mobilePermission,
+    accessControlReason: metadata.accessControlReason,
   };
+}
+
+const schemaValidation: GatewayValidationDecision = { mode: 'schema' };
+const noBody = (reason: string): GatewayValidationDecision => ({ mode: 'none', reason });
+const backendAccess = 'Backend route enforces authenticated user access for this non-wallet-scoped or administrative mobile operation.';
+const noRequestBody = 'Route does not accept a request body.';
+const readOnlyNoBody = 'Read-only route does not accept a request body.';
+
+function shouldRegisterExplicitProxyRoute(routeContract: GatewayRouteContract): boolean {
+  // The catch-all authenticated proxy handles ordinary default-limited routes.
+  // Routes with public auth, a non-default limiter, or wallet mobile-permission
+  // enforcement need their middleware chain registered before that catch-all.
+  return routeContract.auth === 'public' ||
+    routeContract.rateLimiter !== 'default' ||
+    routeContract.mobilePermission !== undefined;
 }
 
 /**
@@ -71,84 +118,272 @@ function route(
  */
 export const GATEWAY_ROUTE_CONTRACTS: GatewayRouteContract[] = [
   // Authentication
-  route('POST', '/auth/login', '/auth/login', '/auth/login'),
-  route('POST', '/auth/refresh', '/auth/refresh', '/auth/refresh'),
-  route('POST', '/auth/logout', '/auth/logout', '/auth/logout'),
-  route('POST', '/auth/logout-all', '/auth/logout-all', '/auth/logout-all'),
-  route('POST', '/auth/2fa/verify', '/auth/2fa/verify', '/auth/2fa/verify'),
-  route('GET', '/auth/me', '/auth/me', '/auth/me'),
-  route('PATCH', '/auth/me/preferences', '/auth/me/preferences', '/auth/me/preferences'),
+  route('POST', '/auth/login', '/auth/login', '/auth/login', {
+    expressPath: '/api/v1/auth/login',
+    auth: 'public',
+    rateLimiter: 'none',
+    validation: schemaValidation,
+  }),
+  route('POST', '/auth/refresh', '/auth/refresh', '/auth/refresh', {
+    expressPath: '/api/v1/auth/refresh',
+    auth: 'public',
+    rateLimiter: 'none',
+    validation: schemaValidation,
+  }),
+  route('POST', '/auth/logout', '/auth/logout', '/auth/logout', {
+    expressPath: '/api/v1/auth/logout',
+    validation: schemaValidation,
+    accessControlReason: backendAccess,
+  }),
+  route('POST', '/auth/logout-all', '/auth/logout-all', '/auth/logout-all', {
+    expressPath: '/api/v1/auth/logout-all',
+    validation: noBody(noRequestBody),
+    accessControlReason: backendAccess,
+  }),
+  route('POST', '/auth/2fa/verify', '/auth/2fa/verify', '/auth/2fa/verify', {
+    expressPath: '/api/v1/auth/2fa/verify',
+    auth: 'public',
+    rateLimiter: 'none',
+    validation: schemaValidation,
+  }),
+  route('GET', '/auth/me', '/auth/me', '/auth/me', {
+    expressPath: '/api/v1/auth/me',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('PATCH', '/auth/me/preferences', '/auth/me/preferences', '/auth/me/preferences', {
+    expressPath: '/api/v1/auth/me/preferences',
+    validation: schemaValidation,
+    accessControlReason: backendAccess,
+  }),
 
   // Session management
-  route('GET', '/auth/sessions', '/auth/sessions', '/auth/sessions'),
-  route('DELETE', `/auth/sessions/${uuidPattern}`, `/auth/sessions/${sampleUuid}`, '/auth/sessions/{id}'),
+  route('GET', '/auth/sessions', '/auth/sessions', '/auth/sessions', {
+    expressPath: '/api/v1/auth/sessions',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('DELETE', `/auth/sessions/${uuidPattern}`, `/auth/sessions/${sampleUuid}`, '/auth/sessions/{id}', {
+    expressPath: '/api/v1/auth/sessions/:id',
+    validation: noBody(noRequestBody),
+    accessControlReason: backendAccess,
+  }),
 
   // Wallets (read-only + sync)
-  route('GET', '/wallets', '/wallets', '/wallets'),
-  route('GET', `/wallets/${uuidPattern}`, `/wallets/${sampleUuid}`, '/wallets/{walletId}'),
-  route('POST', `/sync/wallet/${uuidPattern}`, `/sync/wallet/${sampleUuid}`, '/sync/wallet/{walletId}'),
+  route('GET', '/wallets', '/wallets', '/wallets', {
+    expressPath: '/api/v1/wallets',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('GET', `/wallets/${uuidPattern}`, `/wallets/${sampleUuid}`, '/wallets/{walletId}', {
+    expressPath: '/api/v1/wallets/:id',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('POST', `/sync/wallet/${uuidPattern}`, `/sync/wallet/${sampleUuid}`, '/sync/wallet/{walletId}', {
+    expressPath: '/api/v1/sync/wallet/:id',
+    validation: noBody(noRequestBody),
+    accessControlReason: 'Backend sync route enforces authenticated wallet access.',
+  }),
 
   // Transactions (read-only)
-  route('GET', `/wallets/${uuidPattern}/transactions`, `/wallets/${sampleUuid}/transactions`, '/wallets/{walletId}/transactions'),
+  route('GET', `/wallets/${uuidPattern}/transactions`, `/wallets/${sampleUuid}/transactions`, '/wallets/{walletId}/transactions', {
+    expressPath: '/api/v1/wallets/:id/transactions',
+    validation: noBody(readOnlyNoBody),
+  }),
   // Transaction detail is canonicalized by txid; backend findByTxidWithAccess enforces per-user wallet access.
-  route('GET', `/transactions/${txidPattern}`, `/transactions/${sampleTxid}`, '/transactions/{txid}'),
+  route('GET', `/transactions/${txidPattern}`, `/transactions/${sampleTxid}`, '/transactions/{txid}', {
+    expressPath: '/api/v1/transactions/:txid',
+    validation: noBody(readOnlyNoBody),
+  }),
 
   // Addresses (read-only + generate)
-  route('GET', `/wallets/${uuidPattern}/addresses/summary`, `/wallets/${sampleUuid}/addresses/summary`, '/wallets/{walletId}/addresses/summary'),
-  route('GET', `/wallets/${uuidPattern}/addresses`, `/wallets/${sampleUuid}/addresses`, '/wallets/{walletId}/addresses'),
-  route('POST', `/wallets/${uuidPattern}/addresses/generate`, `/wallets/${sampleUuid}/addresses/generate`, '/wallets/{walletId}/addresses/generate'),
+  route('GET', `/wallets/${uuidPattern}/addresses/summary`, `/wallets/${sampleUuid}/addresses/summary`, '/wallets/{walletId}/addresses/summary', {
+    expressPath: '/api/v1/wallets/:id/addresses/summary',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('GET', `/wallets/${uuidPattern}/addresses`, `/wallets/${sampleUuid}/addresses`, '/wallets/{walletId}/addresses', {
+    expressPath: '/api/v1/wallets/:id/addresses',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('POST', `/wallets/${uuidPattern}/addresses/generate`, `/wallets/${sampleUuid}/addresses/generate`, '/wallets/{walletId}/addresses/generate', {
+    expressPath: '/api/v1/wallets/:id/addresses/generate',
+    rateLimiter: 'addressGeneration',
+    validation: noBody(noRequestBody),
+    mobilePermission: 'generateAddress',
+  }),
 
   // UTXOs (read-only)
-  route('GET', `/wallets/${uuidPattern}/utxos`, `/wallets/${sampleUuid}/utxos`, '/wallets/{walletId}/utxos'),
+  route('GET', `/wallets/${uuidPattern}/utxos`, `/wallets/${sampleUuid}/utxos`, '/wallets/{walletId}/utxos', {
+    expressPath: '/api/v1/wallets/:id/utxos',
+    validation: noBody(readOnlyNoBody),
+  }),
 
   // Labels (read + write)
-  route('GET', `/wallets/${uuidPattern}/labels`, `/wallets/${sampleUuid}/labels`, '/wallets/{walletId}/labels'),
-  route('POST', `/wallets/${uuidPattern}/labels`, `/wallets/${sampleUuid}/labels`, '/wallets/{walletId}/labels'),
-  route('PUT', `/wallets/${uuidPattern}/labels/${uuidPattern}`, `/wallets/${sampleUuid}/labels/${sampleUuid}`, '/wallets/{walletId}/labels/{labelId}'),
-  route('DELETE', `/wallets/${uuidPattern}/labels/${uuidPattern}`, `/wallets/${sampleUuid}/labels/${sampleUuid}`, '/wallets/{walletId}/labels/{labelId}'),
+  route('GET', `/wallets/${uuidPattern}/labels`, `/wallets/${sampleUuid}/labels`, '/wallets/{walletId}/labels', {
+    expressPath: '/api/v1/wallets/:id/labels',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('POST', `/wallets/${uuidPattern}/labels`, `/wallets/${sampleUuid}/labels`, '/wallets/{walletId}/labels', {
+    expressPath: '/api/v1/wallets/:id/labels',
+    validation: schemaValidation,
+    mobilePermission: 'manageLabels',
+  }),
+  route('PUT', `/wallets/${uuidPattern}/labels/${uuidPattern}`, `/wallets/${sampleUuid}/labels/${sampleUuid}`, '/wallets/{walletId}/labels/{labelId}', {
+    expressPath: '/api/v1/wallets/:id/labels/:labelId',
+    validation: schemaValidation,
+    mobilePermission: 'manageLabels',
+  }),
+  route('DELETE', `/wallets/${uuidPattern}/labels/${uuidPattern}`, `/wallets/${sampleUuid}/labels/${sampleUuid}`, '/wallets/{walletId}/labels/{labelId}', {
+    expressPath: '/api/v1/wallets/:id/labels/:labelId',
+    validation: noBody(noRequestBody),
+    mobilePermission: 'manageLabels',
+  }),
 
   // Bitcoin status
-  route('GET', '/bitcoin/status', '/bitcoin/status', '/bitcoin/status'),
-  route('GET', '/bitcoin/fees', '/bitcoin/fees', '/bitcoin/fees'),
+  route('GET', '/bitcoin/status', '/bitcoin/status', '/bitcoin/status', {
+    expressPath: '/api/v1/bitcoin/status',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('GET', '/bitcoin/fees', '/bitcoin/fees', '/bitcoin/fees', {
+    expressPath: '/api/v1/bitcoin/fees',
+    validation: noBody(readOnlyNoBody),
+  }),
 
   // Price
-  route('GET', '/price', '/price', '/price'),
+  route('GET', '/price', '/price', '/price', {
+    expressPath: '/api/v1/price',
+    validation: noBody(readOnlyNoBody),
+  }),
 
   // Pending transactions
-  route('GET', '/transactions/pending', '/transactions/pending', '/transactions/pending'),
+  route('GET', '/transactions/pending', '/transactions/pending', '/transactions/pending', {
+    expressPath: '/api/v1/transactions/pending',
+    validation: noBody(readOnlyNoBody),
+  }),
 
   // Push notifications (device registration)
-  route('POST', '/push/register', '/push/register', '/push/register'),
-  route('DELETE', '/push/unregister', '/push/unregister', '/push/unregister'),
-  route('GET', '/push/devices', '/push/devices', '/push/devices'),
-  route('DELETE', `/push/devices/${uuidPattern}`, `/push/devices/${sampleUuid}`, '/push/devices/{id}'),
+  route('POST', '/push/register', '/push/register', '/push/register', {
+    expressPath: '/api/v1/push/register',
+    rateLimiter: 'deviceRegistration',
+    validation: schemaValidation,
+    accessControlReason: backendAccess,
+  }),
+  route('DELETE', '/push/unregister', '/push/unregister', '/push/unregister', {
+    expressPath: '/api/v1/push/unregister',
+    validation: schemaValidation,
+    accessControlReason: backendAccess,
+  }),
+  route('GET', '/push/devices', '/push/devices', '/push/devices', {
+    expressPath: '/api/v1/push/devices',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('DELETE', `/push/devices/${uuidPattern}`, `/push/devices/${sampleUuid}`, '/push/devices/{id}', {
+    expressPath: '/api/v1/push/devices/:id',
+    validation: noBody(noRequestBody),
+    accessControlReason: backendAccess,
+  }),
 
   // Transaction building & broadcasting
-  route('POST', `/wallets/${uuidPattern}/transactions/create`, `/wallets/${sampleUuid}/transactions/create`, '/wallets/{walletId}/transactions/create'),
-  route('POST', `/wallets/${uuidPattern}/transactions/estimate`, `/wallets/${sampleUuid}/transactions/estimate`, '/wallets/{walletId}/transactions/estimate'),
-  route('POST', `/wallets/${uuidPattern}/transactions/broadcast`, `/wallets/${sampleUuid}/transactions/broadcast`, '/wallets/{walletId}/transactions/broadcast'),
-  route('POST', `/wallets/${uuidPattern}/psbt/create`, `/wallets/${sampleUuid}/psbt/create`, '/wallets/{walletId}/psbt/create'),
-  route('POST', `/wallets/${uuidPattern}/psbt/broadcast`, `/wallets/${sampleUuid}/psbt/broadcast`, '/wallets/{walletId}/psbt/broadcast'),
+  route('POST', `/wallets/${uuidPattern}/transactions/create`, `/wallets/${sampleUuid}/transactions/create`, '/wallets/{walletId}/transactions/create', {
+    expressPath: '/api/v1/wallets/:id/transactions/create',
+    rateLimiter: 'transactionCreate',
+    validation: schemaValidation,
+    mobilePermission: 'createTransaction',
+  }),
+  route('POST', `/wallets/${uuidPattern}/transactions/estimate`, `/wallets/${sampleUuid}/transactions/estimate`, '/wallets/{walletId}/transactions/estimate', {
+    expressPath: '/api/v1/wallets/:id/transactions/estimate',
+    rateLimiter: 'transactionCreate',
+    validation: schemaValidation,
+    mobilePermission: 'createTransaction',
+  }),
+  route('POST', `/wallets/${uuidPattern}/transactions/broadcast`, `/wallets/${sampleUuid}/transactions/broadcast`, '/wallets/{walletId}/transactions/broadcast', {
+    expressPath: '/api/v1/wallets/:id/transactions/broadcast',
+    rateLimiter: 'broadcast',
+    validation: schemaValidation,
+    mobilePermission: 'broadcast',
+  }),
+  route('POST', `/wallets/${uuidPattern}/psbt/create`, `/wallets/${sampleUuid}/psbt/create`, '/wallets/{walletId}/psbt/create', {
+    expressPath: '/api/v1/wallets/:id/psbt/create',
+    rateLimiter: 'transactionCreate',
+    validation: schemaValidation,
+    mobilePermission: 'createTransaction',
+  }),
+  route('POST', `/wallets/${uuidPattern}/psbt/broadcast`, `/wallets/${sampleUuid}/psbt/broadcast`, '/wallets/{walletId}/psbt/broadcast', {
+    expressPath: '/api/v1/wallets/:id/psbt/broadcast',
+    rateLimiter: 'broadcast',
+    validation: schemaValidation,
+    mobilePermission: 'broadcast',
+  }),
 
   // Hardware wallet device management
-  route('GET', '/devices', '/devices', '/devices'),
-  route('POST', '/devices', '/devices', '/devices'),
-  route('PATCH', `/devices/${uuidPattern}`, `/devices/${sampleUuid}`, '/devices/{deviceId}'),
-  route('DELETE', `/devices/${uuidPattern}`, `/devices/${sampleUuid}`, '/devices/{deviceId}'),
+  route('GET', '/devices', '/devices', '/devices', {
+    expressPath: '/api/v1/devices',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('POST', '/devices', '/devices', '/devices', {
+    expressPath: '/api/v1/devices',
+    validation: schemaValidation,
+    accessControlReason: backendAccess,
+  }),
+  route('PATCH', `/devices/${uuidPattern}`, `/devices/${sampleUuid}`, '/devices/{deviceId}', {
+    expressPath: '/api/v1/devices/:deviceId',
+    validation: schemaValidation,
+    accessControlReason: backendAccess,
+  }),
+  route('DELETE', `/devices/${uuidPattern}`, `/devices/${sampleUuid}`, '/devices/{deviceId}', {
+    expressPath: '/api/v1/devices/:deviceId',
+    validation: noBody(noRequestBody),
+    accessControlReason: backendAccess,
+  }),
 
   // Draft transactions (multisig)
-  route('GET', `/wallets/${uuidPattern}/drafts`, `/wallets/${sampleUuid}/drafts`, '/wallets/{walletId}/drafts'),
-  route('GET', `/wallets/${uuidPattern}/drafts/${uuidPattern}`, `/wallets/${sampleUuid}/drafts/${sampleUuid}`, '/wallets/{walletId}/drafts/{draftId}'),
-  route('PATCH', `/wallets/${uuidPattern}/drafts/${uuidPattern}`, `/wallets/${sampleUuid}/drafts/${sampleUuid}`, '/wallets/{walletId}/drafts/{draftId}'),
+  route('GET', `/wallets/${uuidPattern}/drafts`, `/wallets/${sampleUuid}/drafts`, '/wallets/{walletId}/drafts', {
+    expressPath: '/api/v1/wallets/:id/drafts',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('GET', `/wallets/${uuidPattern}/drafts/${uuidPattern}`, `/wallets/${sampleUuid}/drafts/${sampleUuid}`, '/wallets/{walletId}/drafts/{draftId}', {
+    expressPath: '/api/v1/wallets/:id/drafts/:draftId',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('PATCH', `/wallets/${uuidPattern}/drafts/${uuidPattern}`, `/wallets/${sampleUuid}/drafts/${sampleUuid}`, '/wallets/{walletId}/drafts/{draftId}', {
+    expressPath: '/api/v1/wallets/:id/drafts/:draftId',
+    validation: schemaValidation,
+    mobilePermission: 'signPsbt',
+  }),
 
   // Mobile permissions
-  route('GET', '/mobile-permissions', '/mobile-permissions', '/mobile-permissions'),
-  route('GET', `/wallets/${uuidPattern}/mobile-permissions`, `/wallets/${sampleUuid}/mobile-permissions`, '/wallets/{walletId}/mobile-permissions'),
-  route('PATCH', `/wallets/${uuidPattern}/mobile-permissions`, `/wallets/${sampleUuid}/mobile-permissions`, '/wallets/{walletId}/mobile-permissions'),
-  route('PATCH', `/wallets/${uuidPattern}/mobile-permissions/${uuidPattern}`, `/wallets/${sampleUuid}/mobile-permissions/${sampleUuid}`, '/wallets/{walletId}/mobile-permissions/{userId}'),
-  route('DELETE', `/wallets/${uuidPattern}/mobile-permissions/${uuidPattern}/caps`, `/wallets/${sampleUuid}/mobile-permissions/${sampleUuid}/caps`, '/wallets/{walletId}/mobile-permissions/{userId}/caps'),
-  route('DELETE', `/wallets/${uuidPattern}/mobile-permissions`, `/wallets/${sampleUuid}/mobile-permissions`, '/wallets/{walletId}/mobile-permissions'),
+  route('GET', '/mobile-permissions', '/mobile-permissions', '/mobile-permissions', {
+    expressPath: '/api/v1/mobile-permissions',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('GET', `/wallets/${uuidPattern}/mobile-permissions`, `/wallets/${sampleUuid}/mobile-permissions`, '/wallets/{walletId}/mobile-permissions', {
+    expressPath: '/api/v1/wallets/:id/mobile-permissions',
+    validation: noBody(readOnlyNoBody),
+  }),
+  route('PATCH', `/wallets/${uuidPattern}/mobile-permissions`, `/wallets/${sampleUuid}/mobile-permissions`, '/wallets/{walletId}/mobile-permissions', {
+    expressPath: '/api/v1/wallets/:id/mobile-permissions',
+    validation: schemaValidation,
+    accessControlReason: 'Backend mobile-permissions route enforces wallet ownership/admin access.',
+  }),
+  route('PATCH', `/wallets/${uuidPattern}/mobile-permissions/${uuidPattern}`, `/wallets/${sampleUuid}/mobile-permissions/${sampleUuid}`, '/wallets/{walletId}/mobile-permissions/{userId}', {
+    expressPath: '/api/v1/wallets/:id/mobile-permissions/:userId',
+    validation: schemaValidation,
+    accessControlReason: 'Backend mobile-permissions route enforces wallet ownership/admin access.',
+  }),
+  route('DELETE', `/wallets/${uuidPattern}/mobile-permissions/${uuidPattern}/caps`, `/wallets/${sampleUuid}/mobile-permissions/${sampleUuid}/caps`, '/wallets/{walletId}/mobile-permissions/{userId}/caps', {
+    expressPath: '/api/v1/wallets/:id/mobile-permissions/:userId/caps',
+    validation: noBody(noRequestBody),
+    accessControlReason: 'Backend mobile-permissions route enforces wallet ownership/admin access.',
+  }),
+  route('DELETE', `/wallets/${uuidPattern}/mobile-permissions`, `/wallets/${sampleUuid}/mobile-permissions`, '/wallets/{walletId}/mobile-permissions', {
+    expressPath: '/api/v1/wallets/:id/mobile-permissions',
+    validation: noBody(noRequestBody),
+    accessControlReason: 'Backend mobile-permissions route enforces wallet ownership/admin access.',
+  }),
 ];
+
+/**
+ * Subset consumed by `routes/proxy/index.ts` for routes whose middleware chain
+ * differs from the authenticated default catch-all.
+ */
+export const EXPLICIT_PROXY_ROUTE_CONTRACTS = GATEWAY_ROUTE_CONTRACTS.filter(shouldRegisterExplicitProxyRoute);
 
 export const ALLOWED_ROUTES: Array<{ method: string; pattern: RegExp }> = GATEWAY_ROUTE_CONTRACTS.map(
   ({ method, pattern }) => ({ method, pattern })

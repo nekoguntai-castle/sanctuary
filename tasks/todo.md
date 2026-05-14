@@ -1,6 +1,101 @@
-# Active Task: Phase 5 Transaction Broadcast Contract 2026-05-14
+# Active Task: Phase 6 Gateway Route Manifest And Parity 2026-05-14
 
-Status: implemented and verified locally; PR delivery pending
+Status: local PR blocker remediation committed; force-push and current-head PR check monitoring pending.
+
+Goal: make the gateway proxy surface auditable from one route manifest, remove duplicate route-permission metadata where practical, and add parity tests that prove whitelist, OpenAPI, validation, rate limiting, auth, and mobile permission decisions stay aligned.
+
+## Plan Review Findings
+
+- `GATEWAY_ROUTE_CONTRACTS` already feeds `ALLOWED_ROUTES` and OpenAPI path coverage, so Phase 6 should extend that existing manifest instead of creating a second route list.
+- Runtime routing still has separate manual state in `gateway/src/routes/proxy/index.ts`: public routes, special rate-limit routes, mobile-permission routes, and the authenticated catch-all are maintained separately from the whitelist contracts.
+- `ROUTE_ACTION_MAP` in `gateway/src/middleware/mobilePermission.ts` is duplicate metadata used by tests; it should be generated from the manifest or removed if no production code depends on it.
+- `validateRequest.ts` keeps a private `ROUTE_SCHEMAS` list. It is reasonable for schema objects to stay there, but the manifest needs an explicit validation decision for every body-bearing route so writes cannot silently slip through without either a schema or a documented no-body/no-validation reason.
+- Dynamic segment naming differs across layers (`:id`, `:walletId`, `:labelId`, `:draftId`, `:deviceId`), so parity tests should compare canonicalized route shapes instead of raw Express parameter names.
+- The authenticated catch-all is still useful as a low-risk proxy path for read routes, but sensitive writes should be driven by manifest metadata so rate limiter and mobile permission decisions cannot drift from whitelist exposure.
+- PR #453 failures are reproducible locally in two lanes:
+  - `npm run test:hygiene -- gateway/tests/unit/routes/proxy.test.ts gateway/tests/unit/middleware/mobilePermission.test.ts gateway/tests/unit/middleware/validateRequest/validateRequest.devices-labels-routes.contracts.ts` fails because one new assertion uses `toBeTruthy()`.
+  - `npm run arch:graphs && npm run arch:calls && git diff --exit-code -- docs/architecture/generated` fails because the gateway dependency graph is stale after the proxy route manifest import changes.
+- `Full Lane Ready`, `PR Required Checks`, and `Full Test Summary` are aggregate failures; the root causes to fix first are Quick Test Hygiene and Architecture, then re-check the aggregates on the refreshed PR head.
+- The generated gateway architecture graph changed by one edge from the manifest-driven proxy route registration; commit the regenerated graph if the edge is expected after diff review.
+
+## Plan
+
+- [x] Extend the existing gateway route contract type with method, regex whitelist pattern, sample path, OpenAPI path, Express path, auth mode, rate limiter class, validation decision, optional mobile permission action, and optional explicit no-validation/access-control rationale.
+- [x] Generate `ALLOWED_ROUTES` and `ROUTE_ACTION_MAP` from the same manifest so test-only permission metadata cannot drift.
+- [x] Use manifest metadata for explicit proxy route registration where routes need public auth, non-default rate limiting, mobile permission checks, or other special middleware; preserve the authenticated catch-all for ordinary whitelisted read/general routes.
+- [x] Add parity tests proving every explicit proxy route is whitelisted, every whitelisted route has matching OpenAPI coverage, every body-bearing write route has a validation decision, and every wallet-scoped write route has a mobile permission action or an explicit backend/user-scoped access-control reason.
+- [x] Keep blocked admin/internal route behavior, UUID/txid whitelist boundaries, query-string-insensitive request paths, device user-scoped access, and transaction/address/device rate limiter differences intact.
+- [x] Run focused gateway route, mobile permission, and validation tests; gateway build/lint; touched-file lizard; and `git diff --check`.
+- [x] Replace weak test assertions in changed test files with explicit assertions so Quick Test Hygiene passes.
+- [x] Review the regenerated architecture graph diff for `docs/architecture/generated/gateway.md`; the new middleware-to-routes edge is expected because `mobilePermission.ts` now imports the route manifest.
+- [x] Rerun the exact failed local gates against the committed head: quick test hygiene and `npm run arch:graphs && npm run arch:calls && git diff --exit-code -- docs/architecture/generated`.
+- [x] Rerun the focused gateway verification bundle after remediation to prove no behavior regressed.
+- [ ] Amend or follow up the PR branch, force-push with lease if amending, and verify PR #453 statuses on the new head rather than stale failed attempts.
+- [ ] Commit, open PR, monitor checks, merge, verify target branch ancestry, and clean up.
+
+Corner cases to account for:
+
+- Public routes must remain limited to login, refresh, and 2FA verification; logout, logout-all, sessions, preferences, and auth/me stay authenticated even though they are auth-prefixed.
+- Query strings must not influence whitelist matching because Express request paths exclude them.
+- Lowercase UUID whitelist behavior remains intentional for gateway exposure; do not broaden to uppercase UUIDs unless backend and OpenAPI contracts also change.
+- Transaction txids remain lowercase hex in the gateway whitelist; uppercase or malformed txids stay blocked.
+- Device routes are user-scoped and should not gain wallet mobile permission middleware.
+- Push unregister and push device delete are authenticated but do not need body validation beyond existing behavior; document no-body decisions rather than adding artificial schemas.
+- Wallet-scoped read routes can remain authenticated catch-all routes unless a mobile permission decision already exists for that action.
+- Admin, internal gateway, node configuration, backup/restore, and arbitrary unlisted routes remain blocked before proxying.
+- Body-bearing write routes with schemas should still reject malformed bodies at the gateway before proxying.
+- Backend-owned authorization remains the access-control reason for user-scoped device and push device routes.
+- The manifest must not expose new backend routes merely because they exist in OpenAPI.
+- Public routes must not accidentally inherit the authenticated catch-all first; route registration order should keep explicit public routes before `router.use('/api/v1', authenticate, ...)`.
+- Explicit routes with `rateLimiter: 'none'` must only be public authentication routes unless a future route documents why unauthenticated or unthrottled access is acceptable.
+- A manifest route with `mobilePermission` must stay in the explicit proxy subset; otherwise the catch-all would proxy it without the device permission middleware.
+- Wallet-scoped writes that intentionally rely on backend ownership/admin checks must have an `accessControlReason`; absence of mobile permission should never be silent.
+- Validation `mode: 'none'` is acceptable only for routes that truly have no request body or are read-only; body-bearing routes should use schema validation rather than a narrative exception.
+- OpenAPI parity proves documentation coverage, not safety by itself; blocked sensitive routes still need negative whitelist tests so they cannot be exposed by broad route patterns.
+- Generated architecture graph drift is expected when imports change, but only the generated file should change; unexpected changes to hand-authored architecture docs should trigger a re-review.
+- Test hygiene forbids `test.only`, skipped tests, and weak truthy/falsy assertions in changed files; changed parity tests should use exact string/object/boolean assertions.
+- Quick lane changed-file classification treats nested gateway tests as changed test files, so local verification must include root `npm run test:hygiene` in addition to gateway Vitest.
+- PR status review must compare the current PR head SHA to local `HEAD` before trusting red or green statuses, because older attempts can remain listed after force-pushes.
+
+Acceptance checks:
+
+- Gateway proxy tests assert manifest structure, whitelist/OpenAPI parity, explicit-route whitelist coverage, blocked admin/internal routes, UUID/txid boundaries, and mounted `/api/v1` path handling.
+- Gateway mobile permission tests assert `ROUTE_ACTION_MAP` is generated from manifest entries with `mobilePermission` and still maps transaction, PSBT, address, label, and draft signing routes correctly.
+- Gateway validation tests assert body-bearing route decisions agree with `validateRequest` outcomes for schema-backed routes and documented no-body passthrough routes.
+- Quick hygiene command passes for changed test files: `npm run test:hygiene -- gateway/tests/unit/routes/proxy.test.ts gateway/tests/unit/middleware/mobilePermission.test.ts gateway/tests/unit/middleware/validateRequest/validateRequest.devices-labels-routes.contracts.ts`.
+- Architecture generated graph gate passes with no remaining diff after committing expected generated changes: `npm run arch:graphs && npm run arch:calls && git diff --exit-code -- docs/architecture/generated`.
+- Focused verification commands: `npm --prefix gateway run test:run -- tests/unit/routes/proxy.test.ts tests/unit/middleware/mobilePermission.test.ts tests/unit/middleware/validateRequest.test.ts`, `npm --prefix gateway run build`, `npm run lint:gateway`, touched-file lizard for edited gateway and generated-doc-relevant files/tests, and `git diff --check`.
+- PR delivery acceptance: PR #453 current head matches local head, Quick Test Hygiene and Architecture are green on that head, aggregate checks no longer report the fixed failures, squash merge succeeds, merge commit is an ancestor of `origin/main`, and the feature branch is cleaned up.
+
+## Review
+
+- Extended `GATEWAY_ROUTE_CONTRACTS` into the single gateway route manifest with Express path, auth mode, limiter class, validation decision, mobile permission action, and backend access-control rationale.
+- `ALLOWED_ROUTES`, explicit special proxy route registration, and `ROUTE_ACTION_MAP` now derive from the manifest. The authenticated catch-all remains for ordinary whitelisted authenticated routes.
+- Exported `findSchemaForRoute()` so validation parity tests can prove manifest `schema`/`none` decisions agree with the actual gateway validation middleware.
+- Added parity tests for manifest completeness, explicit-route whitelist coverage, OpenAPI coverage, authenticated writes without mobile permissions, wallet-scoped write permission/access-control decisions, generated route action maps, validation decision alignment, and the composed middleware chain for public, permissioned wallet-write, and catch-all read routes.
+- Pre-commit review flagged missing direct coverage for `getProxyMiddlewares()` branches and missing comments on explicit-route selection; the follow-up patch adds middleware-chain tests and documents the explicit-route subset.
+- `gateway/src/routes/proxy/whitelist.ts` is now 429 lines. That is over the 400-line warning threshold, but it is deliberately table-like route metadata and remains under the 500-line refactor trigger.
+
+Verification so far:
+
+- `npm --prefix gateway run test:run -- tests/unit/routes/proxy.test.ts tests/unit/middleware/mobilePermission.test.ts tests/unit/middleware/validateRequest.test.ts` passed, 197 tests.
+- `npm --prefix gateway run build` passed.
+- `npm run lint:gateway` passed.
+- `bash scripts/quality/lizard-only.sh gateway/src/routes/proxy/whitelist.ts gateway/src/routes/proxy/index.ts gateway/src/middleware/mobilePermission.ts gateway/src/middleware/validateRequest.ts gateway/tests/unit/routes/proxy.test.ts gateway/tests/unit/middleware/mobilePermission.test.ts gateway/tests/unit/middleware/validateRequest/validateRequest.devices-labels-routes.contracts.ts` passed.
+- `git diff --check` passed.
+- `npm run test:hygiene -- gateway/tests/unit/routes/proxy.test.ts gateway/tests/unit/middleware/mobilePermission.test.ts gateway/tests/unit/middleware/validateRequest/validateRequest.devices-labels-routes.contracts.ts` passed after replacing the weak assertion.
+- `npm run arch:graphs && npm run arch:calls` regenerated only the expected gateway dependency graph edge.
+- `npm run arch:lint` passed.
+- `npm --prefix website run typecheck` passed.
+- `npm run docs:build` passed with the existing Docusaurus webpack warning about `vscode-languageserver-types` dynamic require.
+- After amending the remediation commit, `npm run test:hygiene -- gateway/tests/unit/routes/proxy.test.ts gateway/tests/unit/middleware/mobilePermission.test.ts gateway/tests/unit/middleware/validateRequest/validateRequest.devices-labels-routes.contracts.ts` passed against the committed remediation head.
+- After amending the remediation commit, `npm run arch:graphs && npm run arch:calls && git diff --exit-code -- docs/architecture/generated` passed against the committed remediation head.
+
+---
+
+# Completed Task: Phase 5 Transaction Broadcast Contract 2026-05-14
+
+Status: merged
 
 Goal: align frontend, shared/gateway, backend, and OpenAPI around one wallet-scoped transaction broadcast contract, and remove the PSBT-create behavior where a multi-recipient request silently uses only the first recipient.
 
@@ -27,7 +122,7 @@ Goal: align frontend, shared/gateway, backend, and OpenAPI around one wallet-sco
 - [x] Add shared, gateway, backend route, OpenAPI, and frontend API tests for the contract and edge cases below.
 - [x] Run focused tests, typechecks, lint, touched-file lizard checks, `git diff --check`, and final diff review before PR delivery.
 - [x] Reproduce the frontend coverage failure locally, remove the uncovered unreachable broadcast throw with a type-safe payload guard, and rerun the focused hook tests plus full frontend coverage.
-- [ ] Commit, open PR, monitor checks, merge, verify target branch ancestry, then start Phase 6.
+- [x] Commit, open PR #452, monitor checks, merge, verify target branch ancestry, then start Phase 6.
 
 Corner cases to account for:
 
@@ -94,6 +189,7 @@ Verification so far:
 - `npm --prefix gateway run build` and `npm --prefix server run build` passed.
 - `npm run test:coverage` passed after the local `useBroadcast` payload type-guard fix: 484 test files and 6,125 tests passed with 100% statements, branches, functions, and lines.
 - Pre-commit static review flagged an empty-string raw transaction edge case in the first coverage fix; the hook now uses an explicit broadcast source discriminator and has regression coverage for empty raw transaction fallback to PSBT.
+- PR #452 merged and verified on `origin/main` at `c1b9759d91bb5e5a453e86e5744b6e78b8e5ed55`.
 
 ---
 

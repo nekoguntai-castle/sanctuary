@@ -82,7 +82,7 @@ interface RouteSchema {
   schema: z.ZodSchema;
 }
 
-const ROUTE_SCHEMAS: RouteSchema[] = [
+export const ROUTE_SCHEMAS: RouteSchema[] = [
   { method: 'POST', pattern: /^\/api\/v1\/auth\/login$/, schema: loginSchema },
   { method: 'POST', pattern: /^\/api\/v1\/auth\/refresh$/, schema: refreshTokenSchema },
   { method: 'POST', pattern: /^\/api\/v1\/auth\/logout$/, schema: logoutSchema },
@@ -108,7 +108,7 @@ const ROUTE_SCHEMAS: RouteSchema[] = [
 /**
  * Find matching schema for a request
  */
-function findSchemaForRoute(method: string, path: string): z.ZodSchema | null {
+export function findSchemaForRoute(method: string, path: string): z.ZodSchema | null {
   const match = ROUTE_SCHEMAS.find(
     (route) => route.method === method && route.pattern.test(path)
   );

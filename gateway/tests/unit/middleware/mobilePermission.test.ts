@@ -38,6 +38,7 @@ global.fetch = mockFetch;
 // Import the module after mocks
 import { requireMobilePermission, ROUTE_ACTION_MAP } from '../../../src/middleware/mobilePermission';
 import { logSecurityEvent } from '../../../src/middleware/requestLogger';
+import { GATEWAY_ROUTE_CONTRACTS } from '../../../src/routes/proxy/whitelist';
 
 describe('Mobile Permission Middleware', () => {
   let mockReq: Partial<Request>;
@@ -102,6 +103,19 @@ describe('Mobile Permission Middleware', () => {
 
     it('should map draft signing routes', () => {
       expect(ROUTE_ACTION_MAP['PATCH:/wallets/:id/drafts/:draftId']).toBe('signPsbt');
+    });
+
+    it('should be generated from gateway route manifest mobile permission decisions', () => {
+      const manifestActionMap = Object.fromEntries(
+        GATEWAY_ROUTE_CONTRACTS
+          .filter((route) => route.mobilePermission)
+          .map((route) => [
+            `${route.method}:${route.expressPath.replace('/api/v1', '')}`,
+            route.mobilePermission,
+          ])
+      );
+
+      expect(ROUTE_ACTION_MAP).toEqual(manifestActionMap);
     });
   });
 

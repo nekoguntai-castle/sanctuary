@@ -6,7 +6,27 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import express from 'express';
 import { Request, Response } from 'express';
+import request from 'supertest';
+
+const proxyRouteMocks = vi.hoisted(() => {
+  const passThrough = vi.fn((_req: Request, _res: Response, next: () => void) => next());
+  const mobilePermissionMiddleware = vi.fn((_req: Request, _res: Response, next: () => void) => next());
+
+  return {
+    authenticate: vi.fn((_req: Request, _res: Response, next: () => void) => next()),
+    defaultRateLimiter: vi.fn(passThrough),
+    transactionCreateRateLimiter: vi.fn(passThrough),
+    broadcastRateLimiter: vi.fn(passThrough),
+    deviceRegistrationRateLimiter: vi.fn(passThrough),
+    addressGenerationRateLimiter: vi.fn(passThrough),
+    validateRequest: vi.fn((_req: Request, _res: Response, next: () => void) => next()),
+    mobilePermissionMiddleware,
+    requireMobilePermission: vi.fn(() => mobilePermissionMiddleware),
+    proxy: vi.fn((_req: Request, res: Response) => res.status(204).end()),
+  };
+});
 
 // Mock dependencies before importing the module
 vi.mock('../../../src/config', () => ({
@@ -35,38 +55,51 @@ vi.mock('../../../src/middleware/requestLogger', () => ({
 }));
 
 vi.mock('../../../src/middleware/auth', () => ({
-  authenticate: vi.fn((req, res, next) => next()),
+  authenticate: proxyRouteMocks.authenticate,
   AuthenticatedRequest: {},
 }));
 
 vi.mock('../../../src/middleware/rateLimit', () => ({
-  defaultRateLimiter: vi.fn((req, res, next) => next()),
-  transactionCreateRateLimiter: vi.fn((req, res, next) => next()),
-  broadcastRateLimiter: vi.fn((req, res, next) => next()),
-  deviceRegistrationRateLimiter: vi.fn((req, res, next) => next()),
-  addressGenerationRateLimiter: vi.fn((req, res, next) => next()),
+  defaultRateLimiter: proxyRouteMocks.defaultRateLimiter,
+  transactionCreateRateLimiter: proxyRouteMocks.transactionCreateRateLimiter,
+  broadcastRateLimiter: proxyRouteMocks.broadcastRateLimiter,
+  deviceRegistrationRateLimiter: proxyRouteMocks.deviceRegistrationRateLimiter,
+  addressGenerationRateLimiter: proxyRouteMocks.addressGenerationRateLimiter,
 }));
 
 vi.mock('../../../src/middleware/validateRequest', () => ({
-  validateRequest: vi.fn((req, res, next) => next()),
+  validateRequest: proxyRouteMocks.validateRequest,
 }));
 
 vi.mock('../../../src/middleware/mobilePermission', () => ({
-  requireMobilePermission: vi.fn(() => (req: Request, res: Response, next: () => void) => next()),
+  requireMobilePermission: proxyRouteMocks.requireMobilePermission,
 }));
 
 vi.mock('http-proxy-middleware', () => ({
-  createProxyMiddleware: vi.fn(() => (req: Request, res: Response, next: () => void) => next()),
+  createProxyMiddleware: vi.fn(() => proxyRouteMocks.proxy),
 }));
 
 // Import the actual module AFTER mocks are set up
-import { isAllowedRoute, ALLOWED_ROUTES, GATEWAY_ROUTE_CONTRACTS, checkWhitelist } from '../../../src/routes/proxy';
+import proxyRouter, {
+  isAllowedRoute,
+  ALLOWED_ROUTES,
+  EXPLICIT_PROXY_ROUTE_CONTRACTS,
+  GATEWAY_ROUTE_CONTRACTS,
+  checkWhitelist,
+} from '../../../src/routes/proxy';
 import { logSecurityEvent } from '../../../src/middleware/requestLogger';
 import { openApiSpec } from '../../../../server/src/api/openapi/spec';
 
 type OpenApiPathKey = keyof typeof openApiSpec.paths;
 
 describe('Proxy Routes', () => {
+  function createProxyTestApp() {
+    const app = express();
+    app.use(express.json());
+    app.use(proxyRouter);
+    return app;
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -115,6 +148,98 @@ describe('Proxy Routes', () => {
         expect(openApiSpec.paths).toHaveProperty(route.openApiPath);
         expect(openApiSpec.paths[openApiPath]).toHaveProperty(route.method.toLowerCase());
       }
+    });
+
+    it('keeps every gateway route decision explicit in the manifest', () => {
+      for (const route of GATEWAY_ROUTE_CONTRACTS) {
+        expect(route.expressPath).toMatch(/^\/api\/v1\//);
+        expect(['public', 'authenticated']).toContain(route.auth);
+        expect(['none', 'default', 'transactionCreate', 'broadcast', 'deviceRegistration', 'addressGeneration'])
+          .toContain(route.rateLimiter);
+        expect(['schema', 'none']).toContain(route.validation.mode);
+
+        if (route.validation.mode === 'none') {
+          expect(route.validation.reason.length).toBeGreaterThan(0);
+        }
+      }
+    });
+
+    it('keeps explicit proxy route registrations tied to whitelisted manifest entries', () => {
+      expect(EXPLICIT_PROXY_ROUTE_CONTRACTS.length).toBeGreaterThan(0);
+
+      for (const route of EXPLICIT_PROXY_ROUTE_CONTRACTS) {
+        expect(GATEWAY_ROUTE_CONTRACTS).toContain(route);
+        expect(isAllowedRoute(route.method, route.samplePath)).toBe(true);
+      }
+    });
+
+    it('documents access control for authenticated writes without mobile permission middleware', () => {
+      for (const route of GATEWAY_ROUTE_CONTRACTS) {
+        if (
+          route.auth === 'authenticated' &&
+          route.method !== 'GET' &&
+          !route.mobilePermission
+        ) {
+          expect(typeof route.accessControlReason, `${route.method} ${route.expressPath}`).toBe('string');
+          expect(route.accessControlReason?.length ?? 0, `${route.method} ${route.expressPath}`).toBeGreaterThan(0);
+        }
+      }
+    });
+
+    it('requires wallet-scoped write routes to declare mobile permission or backend access control', () => {
+      for (const route of GATEWAY_ROUTE_CONTRACTS) {
+        const isWalletScopedWrite = route.method !== 'GET' &&
+          (/\/api\/v1\/wallets\/:[^/]+/.test(route.expressPath) ||
+            /\/api\/v1\/sync\/wallet\/:[^/]+/.test(route.expressPath));
+
+        if (isWalletScopedWrite) {
+          expect(
+            Boolean(route.mobilePermission || route.accessControlReason),
+            `${route.method} ${route.expressPath}`
+          ).toBe(true);
+        }
+      }
+    });
+  });
+
+  describe('manifest-driven proxy middleware registration', () => {
+    it('keeps public routes unauthenticated while preserving validation and proxying', async () => {
+      await request(createProxyTestApp())
+        .post('/api/v1/auth/login')
+        .send({ username: 'alice', password: 'Password123' })
+        .expect(204);
+
+      expect(proxyRouteMocks.authenticate).not.toHaveBeenCalled();
+      expect(proxyRouteMocks.defaultRateLimiter).not.toHaveBeenCalled();
+      expect(proxyRouteMocks.validateRequest).toHaveBeenCalled();
+      expect(proxyRouteMocks.proxy).toHaveBeenCalled();
+    });
+
+    it('applies manifest rate limiter and mobile permission middleware to wallet writes', async () => {
+      const walletId = '12345678-1234-1234-1234-123456789abc';
+
+      await request(createProxyTestApp())
+        .post(`/api/v1/wallets/${walletId}/transactions/create`)
+        .send({ recipient: 'tb1qrecipient', amount: 1000, feeRate: 1 })
+        .expect(204);
+
+      expect(proxyRouteMocks.authenticate).toHaveBeenCalled();
+      expect(proxyRouteMocks.transactionCreateRateLimiter).toHaveBeenCalled();
+      expect(proxyRouteMocks.mobilePermissionMiddleware).toHaveBeenCalled();
+      expect(proxyRouteMocks.validateRequest).toHaveBeenCalled();
+      expect(proxyRouteMocks.proxy).toHaveBeenCalled();
+    });
+
+    it('uses the authenticated default catch-all for ordinary whitelisted reads', async () => {
+      await request(createProxyTestApp())
+        .get('/api/v1/wallets')
+        .expect(204);
+
+      expect(proxyRouteMocks.authenticate).toHaveBeenCalled();
+      expect(proxyRouteMocks.defaultRateLimiter).toHaveBeenCalled();
+      expect(proxyRouteMocks.mobilePermissionMiddleware).not.toHaveBeenCalled();
+      expect(proxyRouteMocks.validateRequest).toHaveBeenCalled();
+      expect(proxyRouteMocks.proxy).toHaveBeenCalled();
     });
   });
 
