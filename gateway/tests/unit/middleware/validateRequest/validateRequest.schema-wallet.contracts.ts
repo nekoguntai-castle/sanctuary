@@ -71,6 +71,25 @@ export function registerTransactionAndPsbtSchemaContracts() {
     expect(result.success).toBe(true);
   });
 
+  it('should validate draft-bound transaction broadcast payloads', () => {
+    expect(transactionBroadcastSchema.safeParse({
+      draftId: 'draft-1',
+    }).success).toBe(true);
+    expect(transactionBroadcastSchema.safeParse({
+      draftId: 'draft-1',
+      rawTxHex: 'deadbeef',
+    }).success).toBe(true);
+  });
+
+  it('should reject ambiguous transaction broadcast payloads', () => {
+    const result = transactionBroadcastSchema.safeParse({
+      signedPsbtBase64: 'cHNi',
+      rawTxHex: 'deadbeef',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('should validate PSBT create and broadcast payloads', () => {
     expect(psbtCreateSchema.safeParse({
       recipients: [{ address: 'tb1qrecipient', amount: 10000 }],
@@ -79,6 +98,18 @@ export function registerTransactionAndPsbtSchemaContracts() {
     expect(psbtBroadcastSchema.safeParse({
       signedPsbt: 'cHNi',
     }).success).toBe(true);
+  });
+
+  it('should reject multi-recipient PSBT create payloads', () => {
+    const result = psbtCreateSchema.safeParse({
+      recipients: [
+        { address: 'tb1qone', amount: 10000 },
+        { address: 'tb1qtwo', amount: 20000 },
+      ],
+      feeRate: 0.5,
+    });
+
+    expect(result.success).toBe(false);
   });
 }
 

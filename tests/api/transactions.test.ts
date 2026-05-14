@@ -301,6 +301,36 @@ describe('Transactions API', () => {
       await broadcastTransaction('wallet-1', request);
       expect(mockPost).toHaveBeenCalledWith('/wallets/wallet-1/transactions/broadcast', request);
     });
+
+    it('should support signed PSBT broadcasts without caller metadata', async () => {
+      const request = {
+        signedPsbtBase64: 'cHNidP8B...',
+      };
+      mockPost.mockResolvedValue({ txid: 'signed-only-txid', broadcasted: true });
+
+      await broadcastTransaction('wallet-1', request);
+      expect(mockPost).toHaveBeenCalledWith('/wallets/wallet-1/transactions/broadcast', request);
+    });
+
+    it('should support raw hex broadcasts without caller metadata', async () => {
+      const request = {
+        rawTxHex: '020000000001...',
+      };
+      mockPost.mockResolvedValue({ txid: 'raw-only-txid', broadcasted: true });
+
+      await broadcastTransaction('wallet-1', request);
+      expect(mockPost).toHaveBeenCalledWith('/wallets/wallet-1/transactions/broadcast', request);
+    });
+
+    it('should support draft-only broadcasts', async () => {
+      const request = {
+        draftId: 'draft-1',
+      };
+      mockPost.mockResolvedValue({ txid: 'draft-txid', broadcasted: true });
+
+      await broadcastTransaction('wallet-1', request);
+      expect(mockPost).toHaveBeenCalledWith('/wallets/wallet-1/transactions/broadcast', request);
+    });
   });
 
   describe('estimateTransaction', () => {

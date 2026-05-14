@@ -104,10 +104,34 @@ export function registerTransactionRequestValidationContracts() {
     expect(mockNext).toHaveBeenCalled();
   });
 
+  it('should accept draft-only transaction broadcast requests', () => {
+    mockReq.path = '/api/v1/wallets/a1b2c3d4-e5f6-7890-abcd-ef1234567890/transactions/broadcast';
+    mockReq.body = {
+      draftId: 'draft-1',
+    };
+
+    validateRequest(mockReq as Request, mockRes as Response, mockNext);
+
+    expect(mockNext).toHaveBeenCalled();
+  });
+
   it('should reject transaction broadcast requests without signed payload', () => {
     mockReq.path = '/api/v1/wallets/a1b2c3d4-e5f6-7890-abcd-ef1234567890/transactions/broadcast';
     mockReq.body = {
       recipient: 'tb1qrecipient',
+    };
+
+    validateRequest(mockReq as Request, mockRes as Response, mockNext);
+
+    expect(statusMock).toHaveBeenCalledWith(400);
+    expect(mockNext).not.toHaveBeenCalled();
+  });
+
+  it('should reject transaction broadcast requests with ambiguous signed sources', () => {
+    mockReq.path = '/api/v1/wallets/a1b2c3d4-e5f6-7890-abcd-ef1234567890/transactions/broadcast';
+    mockReq.body = {
+      signedPsbtBase64: 'cHNi',
+      rawTxHex: 'deadbeef',
     };
 
     validateRequest(mockReq as Request, mockRes as Response, mockNext);
@@ -138,6 +162,22 @@ export function registerPsbtRequestValidationContracts() {
   it('should reject PSBT create requests without recipients', () => {
     mockReq.path = '/api/v1/wallets/a1b2c3d4-e5f6-7890-abcd-ef1234567890/psbt/create';
     mockReq.body = {
+      feeRate: 1,
+    };
+
+    validateRequest(mockReq as Request, mockRes as Response, mockNext);
+
+    expect(statusMock).toHaveBeenCalledWith(400);
+    expect(mockNext).not.toHaveBeenCalled();
+  });
+
+  it('should reject multi-recipient PSBT create requests', () => {
+    mockReq.path = '/api/v1/wallets/a1b2c3d4-e5f6-7890-abcd-ef1234567890/psbt/create';
+    mockReq.body = {
+      recipients: [
+        { address: 'tb1qone', amount: 10000 },
+        { address: 'tb1qtwo', amount: 20000 },
+      ],
       feeRate: 1,
     };
 

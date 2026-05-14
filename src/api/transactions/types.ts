@@ -4,6 +4,7 @@
  * Type definitions for transaction, UTXO, and privacy API calls
  */
 
+import type { MobileTransactionBroadcastRequest } from '@sanctuary/shared/schemas/mobileApiRequests';
 import type { Transaction, UTXO, SelectionStrategy } from "../../types";
 
 // Re-export types for backward compatibility
@@ -81,17 +82,40 @@ export interface CreateTransactionResponse {
   decoyOutputs?: Array<{ address: string; amount: number }>;
 }
 
-export interface BroadcastTransactionRequest {
-  signedPsbtBase64?: string; // Signed PSBT from Ledger or file upload
-  rawTxHex?: string; // Raw transaction hex from Trezor (fully signed)
-  draftId?: string; // Server-owned draft lifecycle marker
-  recipient: string;
-  amount: number;
-  fee: number;
-  label?: string;
-  memo?: string;
-  utxos: Array<{ txid: string; vout: number }>;
-}
+type BroadcastTransactionMetadata = Omit<
+  MobileTransactionBroadcastRequest,
+  'signedPsbtBase64' | 'rawTxHex' | 'draftId'
+>;
+
+// These source shapes intentionally use `?: never` so browser callers cannot
+// send raw transaction hex and a signed PSBT in the same broadcast request.
+// `draftId` may accompany either explicit payload to bind server draft checks.
+type SignedPsbtBroadcastSource = {
+  // Signed PSBT from Ledger, multisig signing, or file/QR import.
+  signedPsbtBase64: string;
+  rawTxHex?: never;
+  draftId?: string;
+};
+
+type RawTransactionBroadcastSource = {
+  // Fully signed raw transaction hex from single-sig hardware devices.
+  rawTxHex: string;
+  signedPsbtBase64?: never;
+  draftId?: string;
+};
+
+type DraftBroadcastSource = {
+  // Server-owned draft lifecycle marker; backend resolves the stored signed PSBT.
+  draftId: string;
+  signedPsbtBase64?: never;
+  rawTxHex?: never;
+};
+
+export type BroadcastTransactionRequest = BroadcastTransactionMetadata & (
+  | SignedPsbtBroadcastSource
+  | RawTransactionBroadcastSource
+  | DraftBroadcastSource
+);
 
 export interface BroadcastTransactionResponse {
   txid: string;

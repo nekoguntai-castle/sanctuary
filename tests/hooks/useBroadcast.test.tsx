@@ -158,7 +158,6 @@ describe('useBroadcast', () => {
 
     expect(ok).toBe(true);
     expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', {
-      signedPsbtBase64: undefined,
       rawTxHex: 'deadbeef',
       recipient: 'bc1qrecipient',
       amount: 5000,
@@ -168,6 +167,44 @@ describe('useBroadcast', () => {
     expect(mocks.showSuccess).toHaveBeenCalledWith(
       expect.stringContaining('Amount: 5000 sats'),
       'Transaction Broadcast'
+    );
+  });
+
+  it('prefers raw transaction hex over PSBT when both signed sources are available for single-sig', async () => {
+    const deps = createDeps();
+    const { result } = renderHook(() => useBroadcast(deps));
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.broadcastTransaction('passed-psbt', 'passed-rawtx');
+    });
+
+    expect(ok).toBe(true);
+    expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', expect.objectContaining({
+      rawTxHex: 'passed-rawtx',
+    }));
+    expect(mocks.broadcastTransaction).toHaveBeenCalledWith(
+      'wallet-1',
+      expect.not.objectContaining({ signedPsbtBase64: expect.any(String) })
+    );
+  });
+
+  it('falls back to PSBT when a single-sig raw transaction source is empty', async () => {
+    const deps = createDeps({ signedRawTx: '' });
+    const { result } = renderHook(() => useBroadcast(deps));
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.broadcastTransaction();
+    });
+
+    expect(ok).toBe(true);
+    expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', expect.objectContaining({
+      signedPsbtBase64: 'signed-psbt',
+    }));
+    expect(mocks.broadcastTransaction).toHaveBeenCalledWith(
+      'wallet-1',
+      expect.not.objectContaining({ rawTxHex: expect.any(String) })
     );
   });
 
@@ -208,7 +245,6 @@ describe('useBroadcast', () => {
     expect(ok).toBe(true);
     expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', {
       signedPsbtBase64: 'signed-psbt',
-      rawTxHex: undefined,
       recipient: 'bc1qone',
       amount: 10000,
       fee: 123,
@@ -272,7 +308,6 @@ describe('useBroadcast', () => {
     expect(ok).toBe(true);
     expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', {
       signedPsbtBase64: 'signed-psbt',
-      rawTxHex: undefined,
       recipient: 'bc1qrecipient',
       amount: 0,
       fee: 123,

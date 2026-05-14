@@ -405,10 +405,23 @@ export function registerOpenApiGatewayTests() {
     expect(openApiSpec.components.schemas.PsbtCreateRequest.properties.feeRate.minimum).toBe(
       MOBILE_API_REQUEST_LIMITS.minFeeRate
     );
+    expect(openApiSpec.components.schemas.PsbtCreateRequest.properties.recipients).toMatchObject({
+      minItems: 1,
+      maxItems: 1,
+    });
     expect(openApiSpec.components.schemas.TransactionBroadcastRequest).toBeDefined();
     expect(openApiSpec.components.schemas.TransactionBroadcastRequest.properties.draftId).toMatchObject({
       type: 'string',
       minLength: 1,
+    });
+    expect(openApiSpec.components.schemas.TransactionBroadcastRequest.required).toBeUndefined();
+    expect(openApiSpec.components.schemas.TransactionBroadcastRequest.anyOf).toEqual([
+      { required: ['signedPsbtBase64'] },
+      { required: ['rawTxHex'] },
+      { required: ['draftId'] },
+    ]);
+    expect(openApiSpec.components.schemas.TransactionBroadcastRequest.not).toEqual({
+      required: ['signedPsbtBase64', 'rawTxHex'],
     });
     expect(openApiSpec.components.schemas.PsbtBroadcastResponse).toBeDefined();
   });

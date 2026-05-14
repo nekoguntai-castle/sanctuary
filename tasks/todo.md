@@ -1,6 +1,105 @@
-# Active Task: Phase 4 Preferences Patch Contract 2026-05-14
+# Active Task: Phase 5 Transaction Broadcast Contract 2026-05-14
 
-Status: in progress
+Status: implemented and verified locally; PR delivery pending
+
+Goal: align frontend, shared/gateway, backend, and OpenAPI around one wallet-scoped transaction broadcast contract, and remove the PSBT-create behavior where a multi-recipient request silently uses only the first recipient.
+
+## Plan Review Findings
+
+- Shared/gateway/backend already use `MobileTransactionBroadcastRequestSchema` for `/wallets/:walletId/transactions/broadcast`; the remaining active drift is the frontend `src/api/transactions/types.ts` request type requiring metadata fields that the backend treats as optional.
+- `draftId` has two valid roles: it can be the only broadcast source when the stored draft has a signed PSBT, or it can bind an explicit `rawTxHex`/`signedPsbtBase64` payload to draft lifecycle, approval, metadata, and UTXO-lock checks.
+- The current route silently prioritizes `rawTxHex` over `signedPsbtBase64` when both explicit payloads are present. That ambiguity should be rejected at validation instead of relying on precedence.
+- `/wallets/:walletId/psbt/create` currently accepts a `recipients` array but the route uses only `recipients[0]` and evaluates vault policy only for that first output. The low-risk fix for this phase is to make the route explicitly single-recipient with shared schema/OpenAPI `maxItems: 1`; true multi-recipient PSBT creation belongs behind the batch transaction contract.
+- `src/api/bitcoin.ts` has a separate legacy/utility `BroadcastTransactionRequest` with `rawTx`; keep that separate from the wallet-scoped transaction API's `rawTxHex` unless implementation finds an actual route contract conflict.
+- OpenAPI can express the "one or more source fields, but not both explicit source fields" rule with `anyOf` plus `not`; route/shared tests remain the source of truth for exact Zod messages, transforms, and error paths.
+- The frontend send hook must preserve a single payload source before crossing the API boundary. Its type guard should narrow to a source-bearing payload instead of keeping an unreachable defensive throw that can create coverage-only drift.
+- Validation should fail before policy evaluation, transaction creation, node submission, or audit mutation when the request is structurally ambiguous or multi-recipient PSBT create is requested.
+- The PR delivery path now includes a CI recovery step: reproduce remote failures locally, patch the minimal root cause, rerun the failing full gate, amend, force-push with lease, and monitor the replacement head before merging.
+
+## Plan
+
+- [x] Update the frontend wallet-scoped `BroadcastTransactionRequest` to match the shared contract: at least one usable broadcast source, metadata fields optional, `rawTxHex` naming retained.
+- [x] Prefer a type-only import of `MobileTransactionBroadcastRequest` from `@sanctuary/shared/schemas/mobileApiRequests`; if that creates package or bundle friction, keep a local type and add parity coverage.
+- [x] Tighten `MobileTransactionBroadcastRequestSchema` so `rawTxHex` and `signedPsbtBase64` cannot both be present; keep `draftId` allowed by itself or alongside exactly one explicit payload.
+- [x] Tighten `MobilePsbtCreateRequestSchema` to reject `recipients.length > 1` with a clear message before route logic, policy evaluation, or PSBT creation can run.
+- [x] Preserve backend broadcast intent behavior that derives policy/audit metadata from decoded raw transactions or signed PSBTs, then compares optional request/draft metadata instead of trusting caller-supplied metadata.
+- [x] Update OpenAPI `TransactionBroadcastRequest` to document the explicit-payload ambiguity rule and `PsbtCreateRequest.recipients.maxItems: 1`.
+- [x] Add shared, gateway, backend route, OpenAPI, and frontend API tests for the contract and edge cases below.
+- [x] Run focused tests, typechecks, lint, touched-file lizard checks, `git diff --check`, and final diff review before PR delivery.
+- [x] Reproduce the frontend coverage failure locally, remove the uncovered unreachable broadcast throw with a type-safe payload guard, and rerun the focused hook tests plus full frontend coverage.
+- [ ] Commit, open PR, monitor checks, merge, verify target branch ancestry, then start Phase 6.
+
+Corner cases to account for:
+
+- Broadcast with `signedPsbtBase64` only is valid and derives recipient, amount, fee, and UTXOs from the PSBT.
+- Broadcast with `rawTxHex` only is valid and derives recipient, amount, fee, inputs, and outputs from the decoded raw transaction.
+- Broadcast with `draftId` only is valid only when the stored draft is actionable, approval-complete, and has a signed PSBT.
+- Broadcast with `draftId` plus `rawTxHex` remains valid as a draft-bound raw broadcast and must still enforce draft lifecycle, approval, metadata, and UTXO-lock checks.
+- Broadcast with `draftId` plus `signedPsbtBase64` remains valid as a draft-bound signed-PSBT broadcast and must still compare decoded metadata against the draft.
+- Broadcast with both `rawTxHex` and `signedPsbtBase64`, with or without `draftId`, rejects as ambiguous before policy evaluation or node submission.
+- Broadcast with only metadata (`recipient`, `amount`, `fee`, `utxos`, `label`, `memo`) rejects because no signed transaction source exists.
+- Empty string payload fields reject; whitespace-only behavior should follow the existing `z.string().min(1)` contract unless we deliberately add trimming.
+- Explicit `undefined` payload properties from TypeScript callers should be treated like absent fields at runtime; tests should focus on serialized JSON shapes because clients cannot send `undefined` over JSON.
+- `null` payload fields reject because the shared schema only accepts strings for source fields; this protects API callers that accidentally map missing values to `null`.
+- `draftId` plus both explicit payloads rejects the same way as signed-plus-raw without a draft; `draftId` must not make an ambiguous explicit source acceptable.
+- Optional metadata mismatch still rejects after decoding; caller metadata must not override canonical decoded intent.
+- Raw transactions and signed PSBTs with multiple external paid outputs remain rejected until policy/audit contracts can represent batch outputs safely.
+- Duplicate raw transaction inputs remain rejected; duplicate caller-supplied `utxos` should fail metadata comparison.
+- Request-provided `label` and `memo` remain optional metadata only; they should not decide transaction intent, source selection, policy evaluation, or decoded metadata comparisons.
+- Frontend single-sig paths should prefer raw transaction hex when both hardware output forms are available, while multisig paths should continue using the signed PSBT path.
+- Frontend no-source behavior should still surface the existing "No signed transaction available" user-facing error before making an API call.
+- Empty raw transaction strings from a hardware adapter or caller should not become `rawTxHex: ""`; if a PSBT is available the hook should fall back to the PSBT source, otherwise it should follow the no-source path.
+- Drafts that are missing, no longer actionable, not approval-complete, lack signed witness data, or have mismatched selected UTXOs continue to reject with the existing route errors.
+- PSBT create with missing `recipients`, empty `recipients`, invalid nested recipient fields, or `recipients.length > 1` rejects consistently in shared, gateway, backend, and OpenAPI docs.
+- PSBT create with `recipients: null`, non-array recipients, missing recipient address, missing amount, amount `0`, amount below `1`, missing `feeRate`, or fee rate below `MOBILE_API_REQUEST_LIMITS.minFeeRate` should keep failing at validation.
+- PSBT create with one recipient still evaluates policy before `createTransaction()`, preserves `utxoIds` behavior, enables RBF, and returns the existing response shape.
+- PSBT create `utxoIds` remains optional and may be empty unless a separate policy decision changes that; this phase should not add unrelated coin-selection restrictions.
+- `feeRate` keeps the shared minimum boundary from `MOBILE_API_REQUEST_LIMITS.minFeeRate`.
+- Gateway and backend should reject the same invalid shapes even though gateway validation does not run backend transforms or transaction decoding.
+- Error responses should not disclose raw PSBT/transaction contents, selected UTXO details beyond existing behavior, or provider/node internals.
+
+Acceptance checks:
+
+- Shared schema tests cover broadcast signed-only, raw-only, draft-only, draft-bound explicit payloads, metadata-only rejection, raw-plus-signed ambiguity rejection, PSBT one-recipient success, and PSBT multi-recipient rejection.
+- Gateway validation tests cover the same broadcast/PSBT validation decisions through `validateRequest`.
+- Backend route tests prove ambiguous broadcast and multi-recipient PSBT create fail before policy evaluation, transaction creation, or broadcast submission.
+- Backend route tests keep existing draft-only, raw-plus-draft, signed-plus-draft, metadata mismatch, multiple external output, and missing signed-draft behavior green.
+- Frontend transaction API tests compile with draft-only/raw-only/signed-only payloads and keep the API client posting the request body unchanged.
+- Frontend hook tests prove source selection does not call the API without a source, posts only `rawTxHex` for single-sig raw broadcasts, and posts only `signedPsbtBase64` for multisig PSBT broadcasts.
+- Frontend hook tests prove empty raw transaction strings never cross the API boundary as `rawTxHex: ""`.
+- OpenAPI tests assert `TransactionBroadcastRequest` documents `draftId`, `rawTxHex`, `signedPsbtBase64`, optional metadata, and the no-raw-plus-signed rule; `PsbtCreateRequest.recipients` documents `minItems: 1` and `maxItems: 1`.
+- PR recovery checks: after any amended coverage or CI fix, rerun the exact failing gate locally where feasible, rerun focused touched tests, amend the PR head, and re-check Forgejo statuses on the new SHA before merging.
+- Verification bundle: `npm --workspace shared run build`, focused shared/gateway/server/frontend tests, `npm run test:coverage` when frontend coverage is touched or previously failed, `npm run typecheck:app`, `npm run typecheck:tests`, `npm --prefix server run typecheck:tests`, relevant lint commands, touched-file lizard, `npm run check:openapi-route-coverage`, and `git diff --check`.
+
+## Review
+
+- Shared `MobileTransactionBroadcastRequestSchema` now rejects ambiguous `signedPsbtBase64` plus `rawTxHex` payloads while still allowing `draftId` alone or draft-bound explicit broadcasts.
+- Shared `MobilePsbtCreateRequestSchema` now rejects more than one recipient, matching the route's actual single-recipient `createTransaction()` implementation and preventing first-recipient-only policy evaluation.
+- Frontend wallet transaction broadcast typing now derives metadata from `MobileTransactionBroadcastRequest` and represents the three valid source shapes as a union. The send hook now builds one explicit source field, preferring raw hex for single-sig when both raw hex and PSBT are available and keeping multisig PSBT behavior.
+- OpenAPI now documents optional broadcast metadata, the `anyOf` source requirement, the no-raw-plus-signed rule, and PSBT `recipients.maxItems: 1`.
+- Added shared, gateway, server route, OpenAPI, API client, and send-hook coverage for signed-only, raw-only, draft-only, draft-bound explicit payloads, metadata-only rejection, raw-plus-signed ambiguity rejection, and PSBT multi-recipient rejection.
+
+Verification so far:
+
+- `npm --workspace shared run build` passed.
+- `npm run test:run -- tests/shared/mobileApiRequests.transactions.test.ts tests/api/transactions.test.ts tests/hooks/useBroadcast.test.tsx tests/hooks/useSendTransactionActions/useSendTransactionActions.signing.contracts.tsx` passed, 53 tests across 3 matched files.
+- `npm run test:run -- tests/hooks/useSendTransactionActions.test.tsx` passed, 28 tests.
+- `npm --prefix gateway run test:run -- tests/unit/middleware/validateRequest.test.ts` passed, 83 tests.
+- `npm --prefix server run test:run -- tests/unit/api/transactions-http-routes.test.ts tests/unit/api/openapi.test.ts` passed, 154 tests.
+- `npm run typecheck:app`, `npm run typecheck:tests`, and `npm --prefix server run typecheck:tests` passed.
+- `npm run lint:app`, `npm run lint:server`, and `npm run lint:gateway` passed.
+- `npm run check:openapi-route-coverage` passed.
+- `bash scripts/quality/lizard-only.sh shared/schemas/mobileApiRequests.ts src/api/transactions/types.ts hooks/send/useBroadcast.ts server/src/api/openapi/schemas/transactions.ts server/tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.broadcast.contracts.ts gateway/tests/unit/middleware/validateRequest/validateRequest.wallet-transactions.contracts.ts gateway/tests/unit/middleware/validateRequest/validateRequest.schema-wallet.contracts.ts tests/shared/mobileApiRequests.transactions.test.ts tests/api/transactions.test.ts tests/hooks/useBroadcast.test.tsx tests/hooks/useSendTransactionActions/useSendTransactionActions.signing.contracts.tsx` passed.
+- `git diff --check` passed.
+- `npm --prefix gateway run build` and `npm --prefix server run build` passed.
+- `npm run test:coverage` passed after the local `useBroadcast` payload type-guard fix: 484 test files and 6,125 tests passed with 100% statements, branches, functions, and lines.
+- Pre-commit static review flagged an empty-string raw transaction edge case in the first coverage fix; the hook now uses an explicit broadcast source discriminator and has regression coverage for empty raw transaction fallback to PSBT.
+
+---
+
+# Completed Task: Phase 4 Preferences Patch Contract 2026-05-14
+
+Status: merged
 
 Goal: align gateway, backend, frontend types, and OpenAPI around one extensible preferences patch contract with backend-owned canonical storage values.
 
@@ -13,9 +112,9 @@ Goal: align gateway, backend, frontend types, and OpenAPI around one extensible 
 - [x] Update OpenAPI `UserPreferences` and `UpdateUserPreferencesRequest` to document known fields plus passthrough extension support.
 - [x] Add gateway, backend route, and OpenAPI tests for valid known fields, invalid known fields, unknown passthrough, empty patches, and canonical stored values.
 - [x] Run focused gateway/server/frontend/shared tests, typechecks, lint/complexity checks, and final diff review.
-- [ ] Commit, open PR, monitor checks, merge, and verify target branch ancestry before starting Phase 5.
+- [x] Commit, open PR #451, monitor checks, merge, and verify target branch ancestry before starting Phase 5.
 
-Corner cases to account for:
+Corner cases accounted for:
 
 - Empty `{}` preference patch remains valid and only refreshes default/existing preference merge.
 - Unknown top-level keys remain valid and are persisted; invalid known keys still reject the whole patch even if unknown keys are valid.

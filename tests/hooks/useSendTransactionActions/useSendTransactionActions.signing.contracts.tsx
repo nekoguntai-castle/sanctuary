@@ -152,7 +152,6 @@ export const registerUseSendTransactionActionsSigningContracts = () => {
       expect(ok).toBe(true);
       expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', {
         signedPsbtBase64: 'signed-psbt',
-        rawTxHex: undefined,
         draftId: 'draft-456',
         recipient: 'bc1qrecipient',
         amount: 10000,

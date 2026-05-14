@@ -19,17 +19,33 @@ import { toHex } from '../../utils/bufferUtils';
 import type { Wallet } from '../../types';
 import type { TransactionState } from '../../contexts/send/types';
 import type { TransactionData } from './types';
+import type { BroadcastTransactionRequest } from '../../src/api/transactions';
 
 const log = createLogger('Broadcast');
 
 type CurrencyFormatter = (amount: number) => string;
 type ShowSuccess = (message: string, title?: string) => void;
 
-interface BroadcastPayloadSelection {
-  psbtToUse: string | null;
-  rawTxToUse: string | undefined;
+interface BroadcastPayloadBase {
   isMultisig: boolean;
   rawTxSkipped: boolean;
+}
+
+type BroadcastPayloadSelection = BroadcastPayloadBase & (
+  | { source: 'rawTx'; psbtToUse: string | null; rawTxToUse: string }
+  | { source: 'signedPsbt'; psbtToUse: string; rawTxToUse: undefined }
+  | { source: null; psbtToUse: null; rawTxToUse: undefined }
+);
+
+type BroadcastPayloadWithSource =
+  Exclude<BroadcastPayloadSelection, BroadcastPayloadBase & { source: null }>;
+
+interface BroadcastMetadata {
+  draftId?: string;
+  recipient: string;
+  amount: number;
+  fee: number;
+  utxos: TransactionData['utxos'];
 }
 
 export interface UseBroadcastDeps {
@@ -54,20 +70,42 @@ const selectBroadcastPayload = (
   signedPsbt?: string,
   rawTxHex?: string
 ): BroadcastPayloadSelection => {
-  const psbtToUse = signedPsbt || unsignedPsbt;
+  const psbtToUse = signedPsbt || unsignedPsbt || null;
   const isMultisig = isMultisigType(wallet.type);
-  const rawTxCandidate = rawTxHex || signedRawTx;
+  const rawTxCandidate = rawTxHex || signedRawTx || undefined;
+  const rawTxSkipped = isMultisig && !!rawTxCandidate;
+
+  if (!isMultisig && rawTxCandidate) {
+    return {
+      source: 'rawTx',
+      psbtToUse,
+      rawTxToUse: rawTxCandidate,
+      isMultisig,
+      rawTxSkipped,
+    };
+  }
+
+  if (psbtToUse) {
+    return {
+      source: 'signedPsbt',
+      psbtToUse,
+      rawTxToUse: undefined,
+      isMultisig,
+      rawTxSkipped,
+    };
+  }
 
   return {
-    psbtToUse,
-    rawTxToUse: isMultisig ? undefined : rawTxCandidate ?? undefined,
+    source: null,
+    psbtToUse: null,
+    rawTxToUse: undefined,
     isMultisig,
-    rawTxSkipped: isMultisig && !!rawTxCandidate,
+    rawTxSkipped,
   };
 };
 
-const hasBroadcastPayload = (payload: BroadcastPayloadSelection): boolean => {
-  return Boolean(payload.psbtToUse || payload.rawTxToUse);
+const hasBroadcastPayload = (payload: BroadcastPayloadSelection): payload is BroadcastPayloadWithSource => {
+  return payload.source !== null;
 };
 
 const logBroadcastStart = (payload: BroadcastPayloadSelection): void => {
@@ -153,6 +191,31 @@ const getBroadcastErrorMessage = (err: unknown): string => {
   return err instanceof Error ? err.message : 'Failed to broadcast transaction';
 };
 
+const buildBroadcastRequest = (
+  payload: BroadcastPayloadWithSource,
+  metadata: BroadcastMetadata
+): BroadcastTransactionRequest => {
+  const metadataFields = {
+    ...(metadata.draftId ? { draftId: metadata.draftId } : {}),
+    recipient: metadata.recipient,
+    amount: metadata.amount,
+    fee: metadata.fee,
+    utxos: metadata.utxos,
+  };
+
+  if (payload.source === 'rawTx') {
+    return {
+      ...metadataFields,
+      rawTxHex: payload.rawTxToUse,
+    };
+  }
+
+  return {
+    ...metadataFields,
+    signedPsbtBase64: payload.psbtToUse,
+  };
+};
+
 export function useBroadcast({
   walletId,
   wallet,
@@ -194,15 +257,13 @@ export function useBroadcast({
     try {
       const effectiveAmount = getEffectiveAmount(txData);
 
-      const broadcastResult = await transactionsApi.broadcastTransaction(walletId, {
-        signedPsbtBase64: payload.psbtToUse ?? undefined,
-        rawTxHex: payload.rawTxToUse ?? undefined,
-        ...(state.draftId ? { draftId: state.draftId } : {}),
+      const broadcastResult = await transactionsApi.broadcastTransaction(walletId, buildBroadcastRequest(payload, {
+        draftId: state.draftId ?? undefined,
         recipient: state.outputs[0].address,
         amount: effectiveAmount,
         fee: txData.fee,
         utxos: txData.utxos,
-      });
+      }));
 
       showBroadcastSuccess(showSuccess, format, broadcastResult.txid, state.outputs.length, effectiveAmount, txData.fee);
       playEventSound('send');

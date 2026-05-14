@@ -83,6 +83,20 @@ export function registerTransactionHttpBroadcastTests(): void {
     expect(response.body.message).toContain('Either signedPsbtBase64, rawTxHex, or draftId is required');
   });
 
+  it('rejects ambiguous explicit broadcast sources before policy evaluation', async () => {
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({
+        signedPsbtBase64: 'cHNi',
+        rawTxHex: 'deadbeef',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Provide either signedPsbtBase64 or rawTxHex, not both');
+    expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+    expect(mockBroadcastAndSave).not.toHaveBeenCalled();
+  });
+
   it('broadcasts a saved draft by draftId and archives through service metadata', async () => {
     mockDraftSignedPsbtInfo();
     mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft({
@@ -111,6 +125,28 @@ export function registerTransactionHttpBroadcastTests(): void {
       utxos: [{ txid: 'c'.repeat(64), vout: 1 }],
       draftId: 'draft-1',
     });
+  });
+
+  it('broadcasts an explicit signed PSBT bound to a matching draft', async () => {
+    mockDraftSignedPsbtInfo();
+    mockDraftFindByIdInWallet.mockResolvedValueOnce(makeBroadcastDraft());
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({
+        draftId: 'draft-1',
+        signedPsbtBase64: 'cHNi',
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockDraftFindByIdInWallet).toHaveBeenCalledWith('draft-1', walletId);
+    expect(mockBroadcastAndSave).toHaveBeenCalledWith(walletId, 'cHNi', expect.objectContaining({
+      draftId: 'draft-1',
+      recipient: 'tb1qdraftrecipient',
+      amount: 12000,
+      fee: 250,
+      utxos: [{ txid: 'c'.repeat(64), vout: 1 }],
+    }));
   });
 
   it('rejects saved draft broadcasts when the draft cannot be found', async () => {
@@ -338,6 +374,25 @@ export function registerTransactionHttpBroadcastTests(): void {
 
     expect(response.status).toBe(400);
     expect(response.body.message).toContain('Each recipient must have address and amount');
+  });
+
+  it('rejects multi-recipient PSBT creation before policy evaluation', async () => {
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/psbt/create`)
+      .send({
+        feeRate: 1,
+        recipients: [
+          { address: 'tb1qone', amount: 15000 },
+          { address: 'tb1qtwo', amount: 25000 },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain(
+      'PSBT create supports exactly one recipient; use /transactions/batch for multiple recipients'
+    );
+    expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
   });
 
   it('creates PSBT for hardware wallet signing', async () => {

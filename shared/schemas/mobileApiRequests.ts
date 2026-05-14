@@ -43,7 +43,10 @@ export const MOBILE_API_REQUEST_LIMITS = {
 
 const feeRateMinimumMessage = `feeRate must be at least ${MOBILE_API_REQUEST_LIMITS.minFeeRate} sat/vB`;
 const transactionEstimateRequiredMessage = 'recipient, amount, and feeRate are required';
+const transactionBroadcastSourceRequiredMessage = 'Either signedPsbtBase64, rawTxHex, or draftId is required';
+const transactionBroadcastExplicitSourceAmbiguousMessage = 'Provide either signedPsbtBase64 or rawTxHex, not both';
 const psbtRecipientRequiredMessage = 'Each recipient must have address and amount';
+const psbtSingleRecipientMessage = 'PSBT create supports exactly one recipient; use /transactions/batch for multiple recipients';
 const deviceRequiredMessage = 'type, label, and fingerprint are required';
 const deviceAccountRequiredMessage = 'Each account must have purpose, scriptType, derivationPath, and xpub';
 
@@ -309,7 +312,13 @@ export const MobileTransactionBroadcastRequestSchema = MobileTransactionMetadata
   utxos: z.array(MobileUtxoReferenceSchema).optional(),
 }).refine(
   (request) => Boolean(request.signedPsbtBase64 || request.rawTxHex || request.draftId),
-  'Either signedPsbtBase64, rawTxHex, or draftId is required'
+  transactionBroadcastSourceRequiredMessage
+).refine(
+  (request) => !(request.signedPsbtBase64 && request.rawTxHex),
+  {
+    message: transactionBroadcastExplicitSourceAmbiguousMessage,
+    path: ['rawTxHex'],
+  }
 );
 
 const MobilePsbtRecipientSchema = z.object({
@@ -320,7 +329,8 @@ const MobilePsbtRecipientSchema = z.object({
 export const MobilePsbtCreateRequestSchema = z.object({
   recipients: z
     .array(MobilePsbtRecipientSchema, { message: 'recipients array is required' })
-    .min(1, 'recipients array is required'),
+    .min(1, 'recipients array is required')
+    .max(1, psbtSingleRecipientMessage),
   feeRate: z.number({ message: 'feeRate is required' }).min(
     MOBILE_API_REQUEST_LIMITS.minFeeRate,
     feeRateMinimumMessage
