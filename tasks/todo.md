@@ -1,6 +1,6 @@
-# Active Task: Codebase Divergence Scrub 2026-05-14
+# Completed Task: Codebase Divergence Scrub 2026-05-14
 
-Status: Phase 5 merged via PR #459 as `42abe4d893420661482e73ddbd9a1f4aff271bd2`; Phase 6 preference helper cleanup is in progress on `codex/phase-6-preference-patches`.
+Status: complete. Phases 1-6 are merged; Phase 6 merged via PR #460 as `26bbd2d052afe1e22421107dea77b6597e873f4c`.
 
 Goal: reanalyze the codebase for places where one product workflow or contract is implemented through multiple divergent paths, decide whether each divergence is justified, and identify the consolidations worth doing next.
 
@@ -54,7 +54,7 @@ Recommended order:
 - [x] Phase 3: consolidate canonical Bitcoin network values/types/legacy normalization across shared, frontend, server, OpenAPI, config, and Electrum-facing modules. Merged via PR #457.
 - [x] Phase 4: rename or namespace raw Bitcoin broadcast helpers so they cannot be confused with wallet-scoped transaction broadcast. Merged via PR #458.
 - [x] Phase 5: execute the decided external-LLM policy: keep the LLM egress proxy as a security boundary, but remove Sanctuary-managed provider model pull/delete support. Merged via PR #459.
-- [ ] Phase 6: lower-priority cleanup for nested preference patch helpers and, only if needed by new route work, gateway validation derivation. Local implementation and verification are in progress.
+- [x] Phase 6: lower-priority cleanup for nested preference patch helpers. Gateway validation derivation stayed deferred because no new route-schema work required it. Merged via PR #460.
 
 Plan re-review addendum:
 
@@ -63,7 +63,7 @@ Plan re-review addendum:
 - Do not centralize archived docs, historical plans, or prose examples during Phase 3 unless they are generated from or tested against live contracts. The implementation risk is in tracked code paths, OpenAPI, and active tests.
 - Phase 5 policy is no longer open-ended. The egress proxy remains valuable because it isolates provider egress, credentials, endpoint allowlisting, CIDR policy, and sanitized context from the main app; the unsupported surface is model installation/deletion through Sanctuary.
 - The completed gateway manifest work means Phase 6 should not redo gateway routing. Only revisit gateway validation derivation if a future phase touches gateway route schemas and the existing parity tests stop being enough.
-- For every remaining phase, PR acceptance must be tied to the current PR head SHA, not stale Forgejo status rows from earlier attempts, and the merge commit must be verified as an ancestor of `origin/main`.
+- For any future rationalization phase, PR acceptance must be tied to the current PR head SHA, not stale Forgejo status rows from earlier attempts, and the merge commit must be verified as an ancestor of `origin/main`.
 
 Second plan re-review addendum:
 
@@ -385,7 +385,7 @@ Phase 6 review:
 - Telegram and autopilot per-wallet preference writers now follow the safer intelligence settings pattern: preserve unknown nested config fields and store prototype-like wallet IDs as own JSON data instead of mutating object prototypes.
 - Gateway validation derivation remains deferred; no new gateway route-schema work was needed for this phase.
 
-Phase 6 verification so far:
+Phase 6 verification and delivery:
 
 - `npm run test:run -- tests/contexts/UserContext.test.tsx tests/contexts/UserContext.preferences.test.tsx tests/hooks/useUserPreference.test.tsx tests/components/WalletList.branches.test.tsx tests/components/DeviceList/DeviceList.branches.test.tsx tests/utils/preferencePaths.test.ts` passed after splitting the preference coverage out of the large `UserContext` test file, 104 tests.
 - `npm run test:coverage -- --pool threads --maxWorkers=1 --no-file-parallelism` passed with frontend coverage at 100% statements, branches, functions, and lines across 6112 tests.
@@ -400,6 +400,14 @@ Phase 6 verification so far:
 - `node scripts/quality/check-large-files.mjs` passed after splitting preference coverage out of the oversized `UserContext` test file.
 - `npm run arch:graphs` and `npm run arch:calls` regenerated architecture output; the intended `docs/architecture/generated/frontend.md` update is included with this phase.
 - `git diff --check` passed.
+- PR #460 passed required Architecture, Build Dev Images summary, Code Quality, and Test Suite checks on head `38d6231090736094593f75e476e3e0f0be7fff6a`.
+- PR #460 was squash-merged as `26bbd2d052afe1e22421107dea77b6597e873f4c`; that merge commit was verified reachable from `origin/main`, local `main` was fast-forwarded, and the local/remote Phase 6 branch was deleted.
+
+Rationalization closeout:
+
+- `docs/plans/rationalization-plan.md` is the durable closeout record for this scrub. It now records all six merged phases, the retained LLM egress proxy security boundary, and the Phase 6 preference concurrency boundaries.
+- No non-hardware code or docs phase remains in this rationalization queue. The physical hardware test remains a separate manual validation item.
+- Deferred items are intentional: gateway validation derivation only if future route-schema work needs it, deeper preference patch semantics only if a future backend contract adds JSON-path/compare-and-swap behavior, and no Sanctuary-managed model install/delete unless product policy changes.
 
 Plan-level quality gates:
 
