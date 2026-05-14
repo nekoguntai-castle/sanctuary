@@ -779,9 +779,6 @@ export function registerOpenApiGatewayTests() {
       ['/ai/detect-ollama', 'post'],
       ['/ai/detect-provider', 'post'],
       ['/ai/models', 'get'],
-      ['/ai/pull-model', 'post'],
-      ['/ai/delete-model', 'delete'],
-      ['/ai/system-resources', 'get'],
     ];
 
     for (const [path, method] of routes) {
@@ -794,18 +791,13 @@ export function registerOpenApiGatewayTests() {
     expect(querySchema.properties.aggregation.enum).toEqual([...AI_QUERY_AGGREGATION_VALUES]);
 
     expect(openApiSpec.components.schemas.AIQueryRequest.required).toEqual(['query', 'walletId']);
-    expect(openApiSpec.components.schemas.AIModelRequest.required).toEqual(['model']);
-    expect(openApiSpec.paths['/ai/delete-model'].delete.requestBody.content['application/json'].schema).toEqual({
-      $ref: '#/components/schemas/AIModelRequest',
-    });
-    expect(openApiSpec.paths['/ai/pull-model'].post.responses).toHaveProperty('403');
     expect(openApiSpec.paths['/ai/models'].get.responses).toHaveProperty('502');
-    expect(openApiSpec.components.schemas.AISystemResourcesResponse.required).toEqual([
-      'ram',
-      'disk',
-      'gpu',
-      'overall',
-    ]);
+    expect(openApiSpec.paths).not.toHaveProperty('/ai/pull-model');
+    expect(openApiSpec.paths).not.toHaveProperty('/ai/delete-model');
+    expect(openApiSpec.paths).not.toHaveProperty('/ai/system-resources');
+    expect(openApiSpec.components.schemas).not.toHaveProperty('AIModelRequest');
+    expect(openApiSpec.components.schemas).not.toHaveProperty('AIModelOperationResponse');
+    expect(openApiSpec.components.schemas).not.toHaveProperty('AISystemResourcesResponse');
   });
 
   registerOpenApiGatewayInternalTests();

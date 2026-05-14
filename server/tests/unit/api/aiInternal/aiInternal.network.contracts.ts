@@ -3,9 +3,18 @@ import request from 'supertest';
 
 import {
   aiInternalRequest,
+  authHeader,
   createAiInternalApp,
-  mockNotificationService,
 } from './aiInternalTestHarness';
+
+const retainedInternalPath = '/internal/ai/tx/tx-1';
+
+function internalRequestWithIp(ip: string) {
+  return aiInternalRequest()
+    .get(retainedInternalPath)
+    .set('Authorization', authHeader)
+    .set('X-Forwarded-For', ip);
+}
 
 export function registerAiInternalNetworkContracts(): void {
   describe('IP Restriction Middleware', () => {
@@ -18,12 +27,7 @@ export function registerAiInternalNetworkContracts(): void {
           '10.255.255.255',
           '10.100.50.25',
         ])('should allow IP %s', async (ip) => {
-          mockNotificationService.broadcastModelDownloadProgress.mockReturnValue(undefined);
-
-          const res = await aiInternalRequest()
-            .post('/internal/ai/pull-progress')
-            .set('X-Forwarded-For', ip)
-            .send({ model: 'llama2', status: 'downloading' });
+          const res = await internalRequestWithIp(ip);
 
           expect(res.status).not.toBe(403);
         });
@@ -36,12 +40,7 @@ export function registerAiInternalNetworkContracts(): void {
           '172.31.255.255',
           '172.24.128.64',
         ])('should allow IP %s', async (ip) => {
-          mockNotificationService.broadcastModelDownloadProgress.mockReturnValue(undefined);
-
-          const res = await aiInternalRequest()
-            .post('/internal/ai/pull-progress')
-            .set('X-Forwarded-For', ip)
-            .send({ model: 'llama2', status: 'downloading' });
+          const res = await internalRequestWithIp(ip);
 
           expect(res.status).not.toBe(403);
         });
@@ -54,12 +53,7 @@ export function registerAiInternalNetworkContracts(): void {
           '192.168.100.200',
           '192.168.255.255',
         ])('should allow IP %s', async (ip) => {
-          mockNotificationService.broadcastModelDownloadProgress.mockReturnValue(undefined);
-
-          const res = await aiInternalRequest()
-            .post('/internal/ai/pull-progress')
-            .set('X-Forwarded-For', ip)
-            .send({ model: 'llama2', status: 'downloading' });
+          const res = await internalRequestWithIp(ip);
 
           expect(res.status).not.toBe(403);
         });
@@ -71,12 +65,7 @@ export function registerAiInternalNetworkContracts(): void {
           '::1',
           'localhost',
         ])('should allow %s', async (ip) => {
-          mockNotificationService.broadcastModelDownloadProgress.mockReturnValue(undefined);
-
-          const res = await aiInternalRequest()
-            .post('/internal/ai/pull-progress')
-            .set('X-Forwarded-For', ip)
-            .send({ model: 'llama2', status: 'downloading' });
+          const res = await internalRequestWithIp(ip);
 
           expect(res.status).not.toBe(403);
         });
@@ -89,12 +78,7 @@ export function registerAiInternalNetworkContracts(): void {
           '::ffff:172.16.0.1',
           '::ffff:127.0.0.1',
         ])('should allow %s', async (ip) => {
-          mockNotificationService.broadcastModelDownloadProgress.mockReturnValue(undefined);
-
-          const res = await aiInternalRequest()
-            .post('/internal/ai/pull-progress')
-            .set('X-Forwarded-For', ip)
-            .send({ model: 'llama2', status: 'downloading' });
+          const res = await internalRequestWithIp(ip);
 
           expect(res.status).not.toBe(403);
         });
@@ -115,10 +99,7 @@ export function registerAiInternalNetworkContracts(): void {
         '11.0.0.1',
         '9.255.255.255',
       ])('should block public IP %s', async (ip) => {
-        const res = await aiInternalRequest()
-          .post('/internal/ai/pull-progress')
-          .set('X-Forwarded-For', ip)
-          .send({ model: 'llama2', status: 'downloading' });
+        const res = await internalRequestWithIp(ip);
 
         expect(res.status).toBe(403);
         expect(res.body.error).toBe('Access denied: internal endpoint');
@@ -135,10 +116,7 @@ export function registerAiInternalNetworkContracts(): void {
         '10.0.0.1.1',
         'not-an-ip',
       ])('should block invalid IP format: %s', async (ip) => {
-        const res = await aiInternalRequest()
-          .post('/internal/ai/pull-progress')
-          .set('X-Forwarded-For', ip)
-          .send({ model: 'llama2', status: 'downloading' });
+        const res = await internalRequestWithIp(ip);
 
         expect(res.status).toBe(403);
       });
@@ -146,49 +124,32 @@ export function registerAiInternalNetworkContracts(): void {
 
     describe('X-Forwarded-For Header Handling', () => {
       it('should use first IP from X-Forwarded-For header', async () => {
-        mockNotificationService.broadcastModelDownloadProgress.mockReturnValue(undefined);
-
-        const res = await aiInternalRequest()
-          .post('/internal/ai/pull-progress')
-          .set('X-Forwarded-For', '192.168.1.1, 8.8.8.8')
-          .send({ model: 'llama2', status: 'downloading' });
+        const res = await internalRequestWithIp('192.168.1.1, 8.8.8.8');
 
         expect(res.status).not.toBe(403);
       });
 
       it('should block when first IP in X-Forwarded-For is public', async () => {
-        const res = await aiInternalRequest()
-          .post('/internal/ai/pull-progress')
-          .set('X-Forwarded-For', '8.8.8.8, 192.168.1.1')
-          .send({ model: 'llama2', status: 'downloading' });
+        const res = await internalRequestWithIp('8.8.8.8, 192.168.1.1');
 
         expect(res.status).toBe(403);
       });
 
       it('should trim whitespace from X-Forwarded-For', async () => {
-        mockNotificationService.broadcastModelDownloadProgress.mockReturnValue(undefined);
-
-        const res = await aiInternalRequest()
-          .post('/internal/ai/pull-progress')
-          .set('X-Forwarded-For', '  192.168.1.1  , 8.8.8.8')
-          .send({ model: 'llama2', status: 'downloading' });
+        const res = await internalRequestWithIp('  192.168.1.1  , 8.8.8.8');
 
         expect(res.status).not.toBe(403);
       });
 
       it('should use socket remoteAddress when X-Forwarded-For is missing', async () => {
-        mockNotificationService.broadcastModelDownloadProgress.mockReturnValue(undefined);
-
         const res = await aiInternalRequest()
-          .post('/internal/ai/pull-progress')
-          .send({ model: 'llama2', status: 'downloading' });
+          .get(retainedInternalPath)
+          .set('Authorization', authHeader);
 
         expect(res.status).not.toBe(403);
       });
 
       it('should use first IP when X-Forwarded-For is an array', async () => {
-        mockNotificationService.broadcastModelDownloadProgress.mockReturnValue(undefined);
-
         const appWithArrayHeader = createAiInternalApp((testApp) => {
           testApp.use((req, _res, next) => {
             (req.headers as Record<string, unknown>)['x-forwarded-for'] = ['192.168.1.1', '8.8.8.8'];
@@ -197,8 +158,8 @@ export function registerAiInternalNetworkContracts(): void {
         });
 
         const res = await request(appWithArrayHeader)
-          .post('/internal/ai/pull-progress')
-          .send({ model: 'llama2', status: 'downloading' });
+          .get(retainedInternalPath)
+          .set('Authorization', authHeader);
 
         expect(res.status).not.toBe(403);
       });
@@ -216,8 +177,8 @@ export function registerAiInternalNetworkContracts(): void {
         });
 
         const res = await request(appWithEmptyRemoteAddress)
-          .post('/internal/ai/pull-progress')
-          .send({ model: 'llama2', status: 'downloading' });
+          .get(retainedInternalPath)
+          .set('Authorization', authHeader);
 
         expect(res.status).toBe(403);
       });

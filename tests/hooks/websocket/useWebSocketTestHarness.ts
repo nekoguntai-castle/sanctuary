@@ -91,7 +91,6 @@ vi.mock('../../../providers/QueryProvider', () => ({
 const flushPromises = () => new Promise<void>(resolve => queueMicrotask(resolve));
 
 // Import hooks after mocks.
-import { useModelDownloadProgress } from '../../../hooks/websocket/useModelDownloadProgress';
 import { useWalletEvents } from '../../../hooks/websocket/useWalletEvents';
 import { useWalletLogs } from '../../../hooks/websocket/useWalletLogs';
 import { useWebSocket } from '../../../hooks/websocket/useWebSocket';
@@ -125,7 +124,6 @@ export {
   mockUnsubscribe,
   mockUnsubscribeBatch,
   renderHook,
-  useModelDownloadProgress,
   useWalletEvents,
   useWalletLogs,
   useWebSocket,

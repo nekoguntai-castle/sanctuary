@@ -48,25 +48,6 @@ export const internalSchemas = {
     },
     required: ['allowed'],
   },
-  InternalAIPullProgressRequest: {
-    type: 'object',
-    properties: {
-      model: { type: 'string', minLength: 1 },
-      status: { type: 'string', minLength: 1 },
-      completed: { type: 'integer', minimum: 0 },
-      total: { type: 'integer', minimum: 0 },
-      digest: { type: 'string' },
-      error: { type: 'string' },
-    },
-    required: ['model', 'status'],
-  },
-  InternalAIPullProgressResponse: {
-    type: 'object',
-    properties: {
-      ok: { type: 'boolean' },
-    },
-    required: ['ok'],
-  },
   InternalAITransactionContext: {
     type: 'object',
     properties: {

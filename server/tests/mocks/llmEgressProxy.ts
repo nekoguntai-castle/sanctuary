@@ -62,13 +62,6 @@ export interface MockListModelsResponse {
   error?: string;
 }
 
-export interface MockPullModelResponse {
-  success: boolean;
-  model?: string;
-  status?: string;
-  error?: string;
-}
-
 // ========================================
 // MOCK RESPONSES
 // ========================================
@@ -209,28 +202,6 @@ export const mockListModelsEmpty: MockListModelsResponse = {
 export const mockListModelsError: MockListModelsResponse = {
   models: [],
   error: 'Failed to connect to Ollama endpoint',
-};
-
-export const mockPullModelSuccess: MockPullModelResponse = {
-  success: true,
-  model: 'llama2',
-  status: 'completed',
-};
-
-export const mockPullModelInProgress: MockPullModelResponse = {
-  success: true,
-  model: 'llama2:13b',
-  status: 'downloading',
-};
-
-export const mockPullModelNotFound: MockPullModelResponse = {
-  success: false,
-  error: 'Model not found in registry',
-};
-
-export const mockPullModelError: MockPullModelResponse = {
-  success: false,
-  error: 'Failed to pull model: connection timeout',
 };
 
 // ========================================
@@ -401,19 +372,6 @@ function respondListModels(ollamaFound: boolean) {
   return mockJsonResponse(mockListModelsResponse);
 }
 
-function respondPullModel(body: Record<string, unknown>) {
-  const model = body.model as string;
-
-  if (model === 'nonexistent-model') {
-    return mockJsonResponse(mockPullModelNotFound, { ok: false, status: 404 });
-  }
-
-  return mockJsonResponse({
-    ...mockPullModelSuccess,
-    model,
-  });
-}
-
 function respondNotFound() {
   return mockJsonResponse(
     { error: 'Endpoint not found' },
@@ -458,10 +416,6 @@ function dispatchLlmEgressProxyRequest(
 
   if (isEndpoint(url, '/list-models')) {
     return respondListModels(state.ollamaFound);
-  }
-
-  if (isPostEndpoint(url, method, '/pull-model')) {
-    return respondPullModel(body);
   }
 
   return respondNotFound();
@@ -575,10 +529,6 @@ export default {
   mockListModelsResponse,
   mockListModelsEmpty,
   mockListModelsError,
-  mockPullModelSuccess,
-  mockPullModelInProgress,
-  mockPullModelNotFound,
-  mockPullModelError,
 
   // Mock creators
   createLlmEgressProxyMock,

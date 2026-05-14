@@ -89,7 +89,7 @@ export async function executeNaturalQuery(
 }
 
 // ========================================
-// MODEL MANAGEMENT
+// PROVIDER DISCOVERY AND MODEL LISTING
 // ========================================
 
 export interface DetectOllamaResponse {
@@ -124,13 +124,6 @@ export interface ListModelsResponse {
   error?: string;
 }
 
-export interface PullModelResponse {
-  success: boolean;
-  model?: string;
-  status?: string;
-  error?: string;
-}
-
 /**
  * Auto-detect Ollama at common endpoints
  */
@@ -152,59 +145,4 @@ export async function detectProvider(
  */
 export async function listModels(): Promise<ListModelsResponse> {
   return apiClient.get<ListModelsResponse>("/ai/models");
-}
-
-/**
- * Pull (download) a model from an Ollama provider
- */
-export async function pullModel(model: string): Promise<PullModelResponse> {
-  return apiClient.post<PullModelResponse>("/ai/pull-model", { model });
-}
-
-export interface DeleteModelResponse {
-  success: boolean;
-  model?: string;
-  error?: string;
-}
-
-/**
- * Delete a model from an Ollama provider
- */
-export async function deleteModel(model: string): Promise<DeleteModelResponse> {
-  return apiClient.delete<DeleteModelResponse>("/ai/delete-model", { model });
-}
-
-// ========================================
-// SYSTEM RESOURCES CHECK
-// ========================================
-
-export interface SystemResources {
-  ram: {
-    total: number; // Total RAM in MB
-    available: number; // Available RAM in MB
-    required: number; // Minimum required RAM in MB
-    sufficient: boolean;
-  };
-  disk: {
-    total: number; // Total disk space in MB
-    available: number; // Available disk space in MB
-    required: number; // Minimum required disk in MB
-    sufficient: boolean;
-  };
-  gpu: {
-    available: boolean; // GPU detected
-    name: string | null;
-  };
-  overall: {
-    sufficient: boolean;
-    warnings: string[];
-  };
-}
-
-/**
- * Check system resources before enabling AI
- * Returns RAM, disk space, and GPU availability with sufficiency indicators.
- */
-export async function getSystemResources(): Promise<SystemResources> {
-  return apiClient.get<SystemResources>("/ai/system-resources");
 }

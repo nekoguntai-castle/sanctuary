@@ -17,8 +17,6 @@ export {
   detectOllama,
   detectProviderEndpoint,
   listModels,
-  pullModel,
-  deleteModel,
 } from './ai';
 
 export type { TransactionContext, QueryResult } from './ai';

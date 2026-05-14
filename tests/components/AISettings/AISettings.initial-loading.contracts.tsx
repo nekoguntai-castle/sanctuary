@@ -5,7 +5,6 @@ import {
   mockGetAIStatus,
   mockDetectOllama,
   mockListModels,
-  mockPullModel,
 } from './AISettingsTestHarness';
 import AISettings from '../../../components/AISettings';
 
@@ -17,7 +16,6 @@ export function registerAISettingsInitialLoadingContracts() {
       mockGetAIStatus.mockReturnValue(pending as any);
       mockDetectOllama.mockReturnValue(pending as any);
       mockListModels.mockReturnValue(pending as any);
-      mockPullModel.mockReturnValue(pending as any);
       global.fetch = vi.fn(() => pending as any);
       const { container } = render(<AISettings />);
 

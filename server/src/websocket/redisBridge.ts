@@ -40,7 +40,7 @@ const instanceId = `${process.pid}-${Date.now()}-${randomBytes(4).toString('hex'
  * Using string union to support future event types without breaking serialization
  */
 interface WebSocketEvent {
-  type: 'transaction' | 'balance' | 'confirmation' | 'block' | 'newBlock' | 'mempool' | 'sync' | 'log' | 'modelDownload';
+  type: 'transaction' | 'balance' | 'confirmation' | 'block' | 'newBlock' | 'mempool' | 'sync' | 'log';
   data: unknown;
   walletId?: string;
   addressId?: string;

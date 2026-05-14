@@ -6,7 +6,6 @@
  *
  * Logic is split across focused hooks:
  * - useAISettings: settings state, persistence, detection, model list
- * - useModelManagement: pull/delete models, download progress, popular models
  * - useAIFeatureToggle: enable/disable toggle and confirmation modal
  * - useAIConnectionStatus: connection test status
  */
@@ -14,7 +13,6 @@
 import React, { useState } from "react";
 import {
   Brain,
-  Download,
   KeyRound,
   Server,
   Loader2,
@@ -22,7 +20,6 @@ import {
 } from "lucide-react";
 import { useAIConnectionStatus } from "./hooks/useAIConnectionStatus";
 import { useAISettings } from "./hooks/useAISettings";
-import { useModelManagement } from "./hooks/useModelManagement";
 import { useAIFeatureToggle } from "./hooks/useAIFeatureToggle";
 import { formatBytes, formatModelSize } from "./utils";
 import { StatusTab } from "./tabs/StatusTab";
@@ -50,15 +47,6 @@ export default function AISettings() {
   const mcpAccess = useMcpAccess(
     activeTab === "mcp" && !settings.loading && !settings.featureUnavailable,
   );
-
-  // Model management: pull, delete, popular models, download progress
-  const models = useModelManagement({
-    aiEndpoint: settings.aiEndpoint,
-    aiEnabled: settings.aiEnabled,
-    aiModel: settings.aiModel,
-    setAiModel: settings.setAiModel,
-    loadModels: settings.loadModels,
-  });
 
   // AI feature toggle and enable modal
   const toggle = useAIFeatureToggle({
@@ -134,9 +122,9 @@ export default function AISettings() {
     {
       id: "models",
       label: "Models",
-      icon: <Download className="w-4 h-4" />,
+      icon: <Server className="w-4 h-4" />,
       enabled: settings.aiEnabled && !!settings.aiEndpoint,
-      description: "Manage models",
+      description: "Select model",
     },
     {
       id: "mcp",
@@ -290,24 +278,11 @@ export default function AISettings() {
             <ModelsTab
               providerType={settings.providerType}
               aiModel={settings.aiModel}
-              pullProgress={models.pullProgress}
-              downloadProgress={models.downloadProgress}
-              isPulling={models.isPulling}
-              pullModelName={models.pullModelName}
-              customModelName={models.customModelName}
-              isLoadingPopularModels={models.isLoadingPopularModels}
-              popularModelsError={models.popularModelsError}
-              popularModels={models.popularModels}
               availableModels={settings.availableModels}
               isLoadingModels={settings.isLoadingModels}
-              isDeleting={models.isDeleting}
-              deleteModelName={models.deleteModelName}
+              onModelChange={settings.setAiModel}
               onSelectModel={settings.handleSelectModel}
               onRefreshModels={settings.loadModels}
-              onPullModel={models.handlePullModel}
-              onDeleteModel={models.handleDeleteModel}
-              onCustomModelNameChange={models.setCustomModelName}
-              onLoadPopularModels={models.loadPopularModels}
               formatBytes={formatBytes}
             />
           )}

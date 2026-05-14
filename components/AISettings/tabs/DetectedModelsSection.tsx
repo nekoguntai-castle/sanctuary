@@ -2,7 +2,7 @@ import { Check, Loader2, RefreshCw } from "lucide-react";
 import type { OllamaModel } from "../../../src/api/ai";
 
 interface DetectedModelsSectionProps {
-  canManageOllamaModels: boolean;
+  isOllamaProvider: boolean;
   aiModel: string;
   availableModels: OllamaModel[];
   isLoadingModels: boolean;
@@ -12,7 +12,7 @@ interface DetectedModelsSectionProps {
 }
 
 export function DetectedModelsSection({
-  canManageOllamaModels,
+  isOllamaProvider,
   aiModel,
   availableModels,
   isLoadingModels,
@@ -28,7 +28,7 @@ export function DetectedModelsSection({
             Detected Provider Models
           </h3>
           <p className="text-xs text-sanctuary-500 mt-0.5">
-            {canManageOllamaModels
+            {isOllamaProvider
               ? "Models reported by the active Ollama endpoint."
               : "Models reported by the active OpenAI-compatible endpoint."}
           </p>
@@ -64,7 +64,7 @@ function DetectedModelsContent({
   formatBytes,
 }: Omit<
   DetectedModelsSectionProps,
-  "canManageOllamaModels" | "onRefreshModels"
+  "isOllamaProvider" | "onRefreshModels"
 >) {
   if (isLoadingModels) {
     return (

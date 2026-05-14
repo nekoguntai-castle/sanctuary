@@ -39,7 +39,7 @@ function OllamaNextStep({
       <button onClick={onNavigateToModels} className="underline font-medium">
         Models
       </button>{" "}
-      tab to download a model.
+      tab to select a detected model, or enter the model identifier manually.
     </HintContainer>
   );
 }

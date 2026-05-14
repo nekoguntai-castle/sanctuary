@@ -43,12 +43,6 @@ vi.mock('../../../../src/utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../../src/websocket/notifications', () => ({
-  notificationService: {
-    broadcastModelDownloadProgress: vi.fn(),
-  },
-}));
-
 vi.mock('../../../../src/middleware/auth', () => ({
   requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: (req: Request, res: Response, next: NextFunction) => {
@@ -63,7 +57,6 @@ vi.mock('../../../../src/middleware/auth', () => ({
 
 import aiInternalRouter from '../../../../src/api/llm-egress-internal';
 import prisma from '../../../../src/models/prisma';
-import { notificationService } from '../../../../src/websocket/notifications';
 
 export const internalIp = '10.0.0.1';
 export const authHeader = 'Bearer valid-token';
@@ -74,10 +67,6 @@ export const mockPrisma = prisma as unknown as {
   label: { findMany: ReturnType<typeof vi.fn> };
   address: { count: ReturnType<typeof vi.fn> };
   uTXO: { count: ReturnType<typeof vi.fn> };
-};
-
-export const mockNotificationService = notificationService as unknown as {
-  broadcastModelDownloadProgress: ReturnType<typeof vi.fn>;
 };
 
 export let app: Express;

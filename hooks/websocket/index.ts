@@ -14,7 +14,5 @@ export { useWalletEvents } from './useWalletEvents';
 export { useWalletLogs } from './useWalletLogs';
 export type { WalletLogEntry, LogLevel } from './useWalletLogs';
 
-export { useModelDownloadProgress } from './useModelDownloadProgress';
-export type { ModelDownloadProgress } from './useModelDownloadProgress';
 
 export { useWebSocketQueryInvalidation } from './useWebSocketQueryInvalidation';

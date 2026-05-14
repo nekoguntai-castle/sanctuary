@@ -273,11 +273,6 @@ export function getChannelsForEvent(event: WebSocketEvent): string[] {
     channels.push('mempool');
   }
 
-  // Model download is a system-wide event - broadcast to all authenticated clients
-  if (event.type === 'modelDownload') {
-    channels.push('system');
-  }
-
   // Sync events go to global channel for cross-page cache updates
   if (event.type === 'sync') {
     channels.push('sync:all');

@@ -102,10 +102,3 @@ export interface AIListModelsResponse {
   models: Array<{ name: string; size: number; modifiedAt: string }>;
   error?: string;
 }
-
-export interface AIPullModelResponse {
-  success: boolean;
-  model?: string;
-  status?: string;
-  error?: string;
-}

@@ -256,7 +256,6 @@ export const registerClientServerLimitMessageFlowContracts = () => {
 
     expect((server as any).getChannelsForEvent({ type: 'block', data: {} })).toContain('blocks');
     expect((server as any).getChannelsForEvent({ type: 'mempool', data: {} })).toContain('mempool');
-    expect((server as any).getChannelsForEvent({ type: 'modelDownload', data: {} })).toContain('system');
     expect((server as any).getChannelsForEvent({ type: 'sync', data: {} })).toContain('sync:all');
     expect((server as any).getChannelsForEvent({ type: 'log', data: {} })).toContain('logs:all');
     expect(

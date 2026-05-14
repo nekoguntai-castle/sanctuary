@@ -66,77 +66,33 @@ describe("ModelsTab", () => {
   const baseProps = {
     providerType: "ollama" as const,
     aiModel: "",
-    pullProgress: "",
-    downloadProgress: null,
-    isPulling: false,
-    pullModelName: "",
-    customModelName: "",
-    isLoadingPopularModels: false,
-    popularModelsError: null,
-    popularModels: [] as any[],
     availableModels: [] as any[],
     isLoadingModels: false,
-    isDeleting: false,
-    deleteModelName: "",
+    onModelChange: vi.fn(),
     onSelectModel: vi.fn(),
     onRefreshModels: vi.fn(),
-    onPullModel: vi.fn(),
-    onDeleteModel: vi.fn(),
-    onCustomModelNameChange: vi.fn(),
-    onLoadPopularModels: vi.fn(),
     formatBytes: (bytes: number) => `${bytes}B`,
   };
 
-  it("renders loading and error states for popular models", async () => {
+  it("lets operators enter a model identifier manually", async () => {
     const user = userEvent.setup();
-    const onLoadPopularModels = vi.fn();
-    const { rerender } = render(
-      <ModelsTab
-        {...baseProps}
-        isLoadingPopularModels={true}
-        onLoadPopularModels={onLoadPopularModels}
-      />,
-    );
-    expect(screen.getByText(/loading popular models/i)).toBeInTheDocument();
-
-    rerender(
-      <ModelsTab
-        {...baseProps}
-        isLoadingPopularModels={false}
-        popularModelsError="Failed to load"
-        onLoadPopularModels={onLoadPopularModels}
-      />,
-    );
-    await user.click(screen.getByRole("button", { name: /try again/i }));
-    expect(onLoadPopularModels).toHaveBeenCalled();
-  });
-
-  it("renders installed and installable popular models with action buttons", async () => {
-    const user = userEvent.setup();
-    const onPullModel = vi.fn();
-    const onDeleteModel = vi.fn();
+    const onModelChange = vi.fn();
     render(
       <ModelsTab
         {...baseProps}
-        popularModels={[
-          { name: "llama3", description: "Main model", recommended: true },
-          { name: "phi3", description: "Small model" },
-        ]}
-        availableModels={[{ name: "llama3", size: 1 } as any]}
-        onPullModel={onPullModel}
-        onDeleteModel={onDeleteModel}
+        aiModel="saved-model"
+        onModelChange={onModelChange}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /delete/i }));
-    await user.click(screen.getAllByRole("button", { name: /pull/i })[0]);
+    await user.type(screen.getByLabelText(/selected model/i), "-v2");
 
-    expect(screen.getAllByText(/recommended/i).length).toBeGreaterThan(0);
-    expect(onDeleteModel).toHaveBeenCalledWith("llama3");
-    expect(onPullModel).toHaveBeenCalledWith("phi3");
+    expect(onModelChange).toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /^pull$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /delete/i })).not.toBeInTheDocument();
   });
 
-  it("renders OpenAI-compatible detected models without pull or delete actions", async () => {
+  it("renders detected models without pull or delete actions", async () => {
     const user = userEvent.setup();
     const onSelectModel = vi.fn();
     render(
@@ -144,7 +100,6 @@ describe("ModelsTab", () => {
         {...baseProps}
         providerType="openai-compatible"
         aiModel="lmstudio/model-a"
-        popularModels={[{ name: "qwen3:4b", description: "Balanced" }]}
         availableModels={[
           { name: "lmstudio/model-a", size: 0 } as any,
           { name: "lmstudio/model-b", size: 10 } as any,
@@ -155,9 +110,6 @@ describe("ModelsTab", () => {
 
     expect(screen.getByText("Detected Provider Models")).toBeInTheDocument();
     expect(screen.getByText("lmstudio/model-a")).toBeInTheDocument();
-    expect(
-      screen.getByText(/LM Studio and other OpenAI-compatible/i),
-    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /^pull$/i }),
     ).not.toBeInTheDocument();
@@ -182,105 +134,6 @@ describe("ModelsTab", () => {
       screen.getAllByRole("button", { name: /refresh/i })[0],
     ).toBeDisabled();
     expect(container.querySelector(".animate-spin")).not.toBeNull();
-  });
-
-  it("handles custom model pull flow and download progress display", async () => {
-    const user = userEvent.setup();
-    const onPullModel = vi.fn();
-    const onCustomModelNameChange = vi.fn();
-
-    render(
-      <ModelsTab
-        {...baseProps}
-        pullProgress="Pulling..."
-        pullModelName="mistral"
-        customModelName="  mistral:7b  "
-        downloadProgress={
-          {
-            status: "downloading",
-            percent: 50,
-            completed: 500,
-            total: 1000,
-          } as any
-        }
-        onPullModel={onPullModel}
-        onCustomModelNameChange={onCustomModelNameChange}
-      />,
-    );
-
-    expect(screen.getByText(/downloading mistral/i)).toBeInTheDocument();
-    expect(screen.getByText("50%")).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole("button", { name: /^pull$/i })[0]);
-    expect(onPullModel).toHaveBeenCalledWith("mistral:7b");
-    expect(onCustomModelNameChange).toHaveBeenCalledWith("");
-  });
-
-  it("renders success progress style and pulling/verifying status labels", () => {
-    const { rerender } = render(
-      <ModelsTab {...baseProps} pullProgress="Successfully pulled model" />,
-    );
-
-    expect(screen.getByText("Successfully pulled model")).toBeInTheDocument();
-
-    rerender(
-      <ModelsTab
-        {...baseProps}
-        pullProgress="Working..."
-        downloadProgress={
-          { status: "pulling", percent: 0, completed: 0, total: 0 } as any
-        }
-      />,
-    );
-    expect(screen.getByText("Pulling manifest...")).toBeInTheDocument();
-
-    rerender(
-      <ModelsTab
-        {...baseProps}
-        pullProgress="Working..."
-        downloadProgress={
-          { status: "verifying", percent: 0, completed: 0, total: 0 } as any
-        }
-      />,
-    );
-    expect(screen.getByText("Verifying...")).toBeInTheDocument();
-  });
-
-  it("shows delete spinner for the model currently being deleted", () => {
-    render(
-      <ModelsTab
-        {...baseProps}
-        popularModels={[{ name: "llama3", description: "Main model" }]}
-        availableModels={[{ name: "llama3", size: 1 } as any]}
-        isDeleting={true}
-        deleteModelName="llama3"
-      />,
-    );
-
-    const deleteButton = screen.getByRole("button", { name: /delete/i });
-    expect(deleteButton.querySelector(".animate-spin")).not.toBeNull();
-  });
-
-  it("does not trigger custom pull handlers when custom model name is blank", async () => {
-    const user = userEvent.setup();
-    const onPullModel = vi.fn();
-    const onCustomModelNameChange = vi.fn();
-
-    render(
-      <ModelsTab
-        {...baseProps}
-        customModelName="   "
-        onPullModel={onPullModel}
-        onCustomModelNameChange={onCustomModelNameChange}
-      />,
-    );
-
-    const customPullButton = screen.getByRole("button", { name: /^pull$/i });
-    expect(customPullButton).toBeDisabled();
-    await user.click(customPullButton);
-
-    expect(onPullModel).not.toHaveBeenCalled();
-    expect(onCustomModelNameChange).not.toHaveBeenCalled();
   });
 });
 
@@ -432,7 +285,7 @@ describe("SettingsTab", () => {
     expect(container.querySelector(".animate-spin")).not.toBeNull();
   });
 
-  it("shows empty-models helper text when dropdown is open without installed models", () => {
+  it("shows empty-models helper text when dropdown is open without detected models", () => {
     render(
       <SettingsTab
         {...baseProps}

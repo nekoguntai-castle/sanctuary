@@ -2,7 +2,7 @@
  * AISettings Component Tests
  *
  * Tests for the AI Settings administration page.
- * Covers toggle, detection, model selection, model pull, and configuration.
+ * Covers toggle, detection, provider model selection, and configuration.
  */
 
 import { afterEach, beforeEach, vi } from 'vitest';
@@ -36,7 +36,6 @@ export const mockTestAIConnection = vi.fn();
 export const mockDetectOllama = vi.fn();
 export const mockDetectProvider = vi.fn();
 export const mockListModels = vi.fn();
-export const mockPullModel = vi.fn();
 
 vi.mock('../../../src/api/ai', () => ({
   getAIStatus: () => mockGetAIStatus(),
@@ -44,7 +43,6 @@ vi.mock('../../../src/api/ai', () => ({
   detectOllama: () => mockDetectOllama(),
   detectProvider: (request: Record<string, unknown>) => mockDetectProvider(request),
   listModels: () => mockListModels(),
-  pullModel: (model: string) => mockPullModel(model),
 }));
 
 // Mock logger
@@ -57,62 +55,10 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-// Mock useModelDownloadProgress hook
-vi.mock('../../../hooks/websocket', () => ({
-  useModelDownloadProgress: () => ({ progress: null }),
-}));
-
 // Mock useAIStatus hook
 vi.mock('../../../hooks/useAIStatus', () => ({
   invalidateAIStatusCache: vi.fn(),
 }));
-
-// Mock popular models response
-export const mockPopularModels = {
-  version: '1.1.0',
-  lastUpdated: '2026-04-27',
-  models: [
-    {
-      name: 'llama3.2:3b',
-      description: 'Meta, fast default for labels/chat (2.0GB)',
-      recommended: true,
-    },
-    {
-      name: 'qwen3:4b',
-      description: 'Qwen, compact reasoning/tools (2.5GB)',
-      recommended: true,
-    },
-    {
-      name: 'gemma3:4b',
-      description: 'Google, strong compact general model (3.3GB)',
-    },
-  ],
-};
-
-// Mock global fetch for popular models
-const originalFetch = global.fetch;
-beforeEach(() => {
-  global.fetch = vi.fn((input: RequestInfo | URL) => {
-    const url =
-      typeof input === 'string'
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
-
-    if (url.includes('popular-models.json')) {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(mockPopularModels),
-      } as Response);
-    }
-    return originalFetch(input as any);
-  }) as typeof fetch;
-});
-
-afterEach(() => {
-  global.fetch = originalFetch;
-});
 
 // Default mock responses
 export const defaultSettings = {
@@ -221,7 +167,6 @@ export function registerAISettingsTestHarness() {
       models: [{ name: 'lmstudio-community/model', size: 0, modifiedAt: '' }],
     });
     mockListModels.mockResolvedValue(mockModels);
-    mockPullModel.mockResolvedValue({ success: true, model: 'llama3.2:3b' });
   });
 
   afterEach(() => {

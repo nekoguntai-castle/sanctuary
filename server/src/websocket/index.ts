@@ -27,7 +27,6 @@ export {
   broadcastBlock,
   broadcastNewBlock,
   broadcastMempool,
-  broadcastModelDownload,
   hasWalletSubscribers,
   getBroadcastStats,
   type EventData,
@@ -58,7 +57,6 @@ export {
   type MempoolEvent,
   type SyncEvent,
   type LogEvent,
-  type ModelDownloadEvent,
   // Type guards
   isClientMessage,
   isWalletEvent,

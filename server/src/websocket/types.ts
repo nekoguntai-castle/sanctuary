@@ -110,7 +110,7 @@ export interface WebSocketMessage {
  * @deprecated Use typed events from './events' instead
  */
 export interface WebSocketEvent {
-  type: 'transaction' | 'balance' | 'confirmation' | 'block' | 'newBlock' | 'mempool' | 'sync' | 'log' | 'modelDownload';
+  type: 'transaction' | 'balance' | 'confirmation' | 'block' | 'newBlock' | 'mempool' | 'sync' | 'log';
   data: unknown;
   walletId?: string;
   addressId?: string;

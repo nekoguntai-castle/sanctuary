@@ -2,11 +2,9 @@ import { describe } from 'vitest';
 
 import { registerAISettingsTestHarness } from './AISettings/AISettingsTestHarness';
 import { registerAISettingsConfigurationContracts } from './AISettings/AISettings.configuration.contracts';
-import { registerAISettingsCustomModelPullContracts } from './AISettings/AISettings.custom-model-pull.contracts';
 import { registerAISettingsFeatureFlagContracts } from './AISettings/AISettings.feature-flag.contracts';
 import { registerAISettingsFeaturesSectionContracts } from './AISettings/AISettings.features-section.contracts';
 import { registerAISettingsInitialLoadingContracts } from './AISettings/AISettings.initial-loading.contracts';
-import { registerAISettingsModelPullContracts } from './AISettings/AISettings.model-pull.contracts';
 import { registerAISettingsModelSelectionContracts } from './AISettings/AISettings.model-selection.contracts';
 import { registerAISettingsOllamaDetectionContracts } from './AISettings/AISettings.ollama-detection.contracts';
 import { registerAISettingsProviderMcpContracts } from './AISettings/AISettings.provider-mcp.contracts';
@@ -25,8 +23,6 @@ describe('AISettings', () => {
   registerAISettingsModelSelectionContracts();
   registerAISettingsSaveConfigurationContracts();
   registerAISettingsTestConnectionContracts();
-  registerAISettingsModelPullContracts();
-  registerAISettingsCustomModelPullContracts();
   registerAISettingsSecurityNoticeContracts();
   registerAISettingsFeaturesSectionContracts();
   registerAISettingsProviderMcpContracts();

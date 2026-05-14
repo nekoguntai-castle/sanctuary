@@ -34,8 +34,6 @@ export {
   detectOllama,
   detectProviderEndpoint,
   listModels,
-  pullModel,
-  deleteModel,
 } from './features';
 
 // Re-import for the aggregated service object
@@ -47,8 +45,6 @@ import {
   detectOllama,
   detectProviderEndpoint,
   listModels,
-  pullModel,
-  deleteModel,
 } from './features';
 
 /**
@@ -64,7 +60,5 @@ export const aiService = {
   detectOllama,
   detectProviderEndpoint,
   listModels,
-  pullModel,
-  deleteModel,
   forceSyncConfig,
 };

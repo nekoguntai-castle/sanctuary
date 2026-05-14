@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   detectProviderModels: vi.fn(),
   listProviderModels: vi.fn(),
-  streamModelPull: vi.fn(),
 }));
 
 vi.mock("../../llm-egress-proxy/src/providerDetection", () => ({
@@ -12,10 +11,6 @@ vi.mock("../../llm-egress-proxy/src/providerDetection", () => ({
 
 vi.mock("../../llm-egress-proxy/src/providerModels", () => ({
   listProviderModels: mocks.listProviderModels,
-}));
-
-vi.mock("../../llm-egress-proxy/src/modelPull", () => ({
-  streamModelPull: mocks.streamModelPull,
 }));
 
 import { registerProviderRoutes } from "../../llm-egress-proxy/src/providerRoutes";
@@ -80,7 +75,6 @@ describe("LLM egress proxy provider routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fetchMock.mockReset();
-    mocks.streamModelPull.mockResolvedValue(undefined);
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
   });
 
@@ -88,7 +82,7 @@ describe("LLM egress proxy provider routes", () => {
     vi.unstubAllGlobals();
   });
 
-  it("registers provider discovery and model-management routes", () => {
+  it("registers provider discovery and model-listing routes only", () => {
     const { app, routes } = makeApp();
 
     registerProviderRoutes(app as any, makeDeps() as any);
@@ -96,12 +90,13 @@ describe("LLM egress proxy provider routes", () => {
     expect([...routes.post.keys()]).toEqual([
       "/detect-ollama",
       "/detect-provider",
-      "/pull-model",
       "/check-provider",
       "/check-ollama",
     ]);
     expect([...routes.get.keys()]).toEqual(["/list-models"]);
-    expect([...routes.delete.keys()]).toEqual(["/delete-model"]);
+    expect([...routes.delete.keys()]).toEqual([]);
+    expect(routes.post.has("/pull-model")).toBe(false);
+    expect(routes.delete.has("/delete-model")).toBe(false);
   });
 
   it("detects providers and rejects blocked provider endpoints", async () => {
@@ -169,86 +164,6 @@ describe("LLM egress proxy provider routes", () => {
     expect(failureRes.status).toHaveBeenCalledWith(502);
     expect(failureRes.json).toHaveBeenCalledWith({
       error: "Cannot connect to AI endpoint",
-    });
-  });
-
-  it("starts Ollama model pulls and rejects OpenAI-compatible pulls", async () => {
-    const ollama = makeApp();
-    registerProviderRoutes(ollama.app as any, makeDeps() as any);
-
-    const pullRes = makeResponse();
-    await ollama.routes.post.get("/pull-model")!(
-      { body: { model: "llama3.2" } },
-      pullRes,
-    );
-
-    expect(pullRes.json).toHaveBeenCalledWith({
-      success: true,
-      status: "started",
-      model: "llama3.2",
-    });
-    expect(mocks.streamModelPull).toHaveBeenCalledWith(
-      "llama3.2",
-      "http://host.docker.internal:11434",
-      "http://backend:3001",
-    );
-
-    const openAi = makeApp();
-    registerProviderRoutes(
-      openAi.app as any,
-      makeDeps({
-        endpoint: "http://lmstudio.local:1234/v1",
-        providerType: "openai-compatible",
-      }) as any,
-    );
-
-    const rejectedRes = makeResponse();
-    await openAi.routes.post.get("/pull-model")!(
-      { body: { model: "remote-model" } },
-      rejectedRes,
-    );
-
-    expect(rejectedRes.status).toHaveBeenCalledWith(400);
-    expect(rejectedRes.json).toHaveBeenCalledWith({
-      error:
-        "Model pull is only supported for Ollama providers. Manage models in your OpenAI-compatible provider.",
-    });
-  });
-
-  it("deletes Ollama models and returns provider delete errors", async () => {
-    const { app, routes } = makeApp();
-    registerProviderRoutes(app as any, makeDeps() as any);
-
-    fetchMock.mockResolvedValueOnce({ ok: true });
-    const successRes = makeResponse();
-    await routes.delete.get("/delete-model")!(
-      { body: { model: "llama3.2" } },
-      successRes,
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://host.docker.internal:11434/api/delete",
-      expect.objectContaining({
-        method: "DELETE",
-        body: JSON.stringify({ name: "llama3.2" }),
-      }),
-    );
-    expect(successRes.json).toHaveBeenCalledWith({
-      success: true,
-      model: "llama3.2",
-    });
-
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      text: vi.fn().mockResolvedValue("not installed"),
-    });
-    const failureRes = makeResponse();
-    await routes.delete.get("/delete-model")!(
-      { body: { model: "missing" } },
-      failureRes,
-    );
-    expect(failureRes.status).toHaveBeenCalledWith(502);
-    expect(failureRes.json).toHaveBeenCalledWith({
-      error: "Failed to delete model: not installed",
     });
   });
 

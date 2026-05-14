@@ -7,7 +7,6 @@ import {
   ConsoleSynthesisBodySchema,
   ConfigBodySchema,
   DetectOllamaBodySchema,
-  ModelBodySchema,
   QueryBodySchema,
   SuggestLabelBodySchema,
   parseRequestBody,
@@ -96,7 +95,7 @@ describe("LLM egress proxy request schemas", () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it("validates required transaction, query, and model inputs", () => {
+  it("validates required transaction and query inputs", () => {
     expect(SuggestLabelBodySchema.parse({ transactionId: " tx-1 " })).toEqual({
       transactionId: "tx-1",
     });
@@ -109,13 +108,8 @@ describe("LLM egress proxy request schemas", () => {
       query: "largest receives",
       walletId: "wallet-1",
     });
-    expect(ModelBodySchema.parse({ model: " llama3 " })).toEqual({
-      model: "llama3",
-    });
-
     expect(() => SuggestLabelBodySchema.parse({ transactionId: "" })).toThrow();
     expect(() => QueryBodySchema.parse({ query: "ok" })).toThrow();
-    expect(() => ModelBodySchema.parse({ model: "" })).toThrow();
   });
 
   it("validates Ollama detection endpoints", () => {

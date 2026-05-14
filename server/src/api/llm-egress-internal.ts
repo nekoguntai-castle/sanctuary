@@ -24,14 +24,11 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
-import { validate } from '../middleware/validate';
 import { walletRepository, transactionRepository, labelRepository, utxoRepository, addressRepository } from '../repositories';
 import { buildWalletAccessWhere } from '../repositories/accessControl';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
-import { notificationService } from '../websocket/notifications';
 import { asyncHandler } from '../errors/errorHandler';
 import { NotFoundError } from '../errors/ApiError';
 // Dynamic imports - kept as dynamic because test mocks use vi.mock factories
@@ -40,15 +37,6 @@ import { NotFoundError } from '../errors/ApiError';
 const log = createLogger('AI_INTERNAL:ROUTE');
 
 const router = Router();
-
-const PullProgressBodySchema = z.object({
-  model: z.unknown().optional(),
-  status: z.unknown().optional(),
-  completed: z.unknown().optional(),
-  total: z.unknown().optional(),
-  digest: z.unknown().optional(),
-  error: z.unknown().optional(),
-}).passthrough().catch({});
 
 /**
  * IP-based access control for internal AI endpoints.
@@ -100,44 +88,6 @@ const restrictToInternalNetwork = (req: Request, res: Response, next: NextFuncti
 
 // Apply internal network restriction to all routes
 router.use(restrictToInternalNetwork);
-
-/**
- * POST /internal/ai/pull-progress
- *
- * Receives progress updates from LLM egress proxy during model pulls.
- * Broadcasts progress to connected WebSocket clients.
- *
- * Note: This endpoint only requires internal network access (no JWT auth)
- * since it's called by the LLM egress proxy, not a user.
- */
-router.post('/pull-progress', validate({ body: PullProgressBodySchema }), (req: Request, res: Response) => {
-  try {
-    const { model, status, completed, total, digest, error } = req.body;
-
-    if (!model || !status) {
-      return res.status(400).json({ error: 'model and status required' });
-    }
-
-    // Calculate percent
-    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-    // Broadcast to connected clients
-    notificationService.broadcastModelDownloadProgress({
-      model,
-      status,
-      completed: completed || 0,
-      total: total || 0,
-      percent,
-      digest,
-      error,
-    });
-
-    res.json({ ok: true });
-  } catch (err) {
-    log.error('Error processing pull progress', { error: String(err) });
-    res.status(500).json({ error: 'Internal error' });
-  }
-});
 
 // Other internal AI endpoints also require JWT authentication
 router.use(authenticate);

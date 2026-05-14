@@ -5,17 +5,15 @@ import {
   registerRateLimitingContracts,
 } from './ai/ai.auth-rate.contracts';
 import {
-  registerDeleteModelContracts,
   registerDetectOllamaContracts,
   registerListModelsContracts,
-  registerPullModelContracts,
+  registerRemovedModelManagementRouteContracts,
 } from './ai/ai.models.contracts';
 import { registerAiStatusContracts } from './ai/ai.status.contracts';
 import {
   registerNaturalQueryContracts,
   registerSuggestLabelContracts,
 } from './ai/ai.suggest-query.contracts';
-import { registerSystemResourcesContracts } from './ai/ai.system-resources.contracts';
 import { registerAiApiTestHarness } from './ai/aiTestHarness';
 
 describe('AI API Routes', () => {
@@ -41,16 +39,8 @@ describe('AI API Routes', () => {
     registerListModelsContracts();
   });
 
-  describe('POST /api/v1/ai/pull-model', () => {
-    registerPullModelContracts();
-  });
-
-  describe('DELETE /api/v1/ai/delete-model', () => {
-    registerDeleteModelContracts();
-  });
-
-  describe('GET /api/v1/ai/system-resources', () => {
-    registerSystemResourcesContracts();
+  describe('Removed model-management routes', () => {
+    registerRemovedModelManagementRouteContracts();
   });
 
   describe('Authentication', () => {

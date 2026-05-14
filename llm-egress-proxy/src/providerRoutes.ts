@@ -1,17 +1,15 @@
 import type { Express, Request, Response } from "express";
 import { listProviderModels } from "./providerModels";
 import { detectProviderModels } from "./providerDetection";
-import { streamModelPull } from "./modelPull";
 import { rateLimit } from "./rateLimit";
 import type { Logger } from "./logger";
 import {
   DetectOllamaBodySchema,
   DetectProviderBodySchema,
-  ModelBodySchema,
   parseRequestBody,
 } from "./requestSchemas";
 import { evaluateProviderEndpoint } from "./endpointPolicy";
-import { extractErrorMessage, normalizeOllamaBaseUrl } from "./utils";
+import { extractErrorMessage } from "./utils";
 import {
   inferEndpointType,
   requireConfiguredEndpoint,
@@ -161,92 +159,6 @@ export function registerProviderRoutes(app: Express, deps: ProviderRouteDeps) {
       res.status(502).json({ error: "Cannot connect to AI endpoint" });
     }
   });
-
-  app.post("/pull-model", rateLimit, async (req: Request, res: Response) => {
-    const body = parseRequestBody(
-      ModelBodySchema,
-      req,
-      res,
-      "Model name required",
-    );
-    if (!body) return;
-
-    const { model } = body;
-    const aiConfig = deps.getAiConfig();
-    const configuredEndpoint = requireConfiguredEndpoint(aiConfig, res);
-    if (!configuredEndpoint) return;
-
-    if (aiConfig.providerType === "openai-compatible") {
-      return res.status(400).json({
-        error:
-          "Model pull is only supported for Ollama providers. Manage models in your OpenAI-compatible provider.",
-      });
-    }
-
-    const endpoint = normalizeOllamaBaseUrl(configuredEndpoint);
-
-    deps.log.info("Starting pull for model", { model });
-    res.json({ success: true, status: "started", model });
-
-    streamModelPull(model, endpoint, deps.backendUrl).catch((err) => {
-      deps.log.error("Pull stream error", { error: err.message });
-    });
-  });
-
-  app.delete(
-    "/delete-model",
-    rateLimit,
-    async (req: Request, res: Response) => {
-      const body = parseRequestBody(
-        ModelBodySchema,
-        req,
-        res,
-        "Model name required",
-      );
-      if (!body) return;
-
-      const { model } = body;
-      const aiConfig = deps.getAiConfig();
-      const configuredEndpoint = requireConfiguredEndpoint(aiConfig, res);
-      if (!configuredEndpoint) return;
-
-      if (aiConfig.providerType === "openai-compatible") {
-        return res.status(400).json({
-          error:
-            "Model delete is only supported for Ollama providers. Manage models in your OpenAI-compatible provider.",
-        });
-      }
-
-      try {
-        const endpoint = normalizeOllamaBaseUrl(configuredEndpoint);
-
-        deps.log.info("Deleting model", { model });
-
-        const response = await fetch(`${endpoint}/api/delete`, {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: model }),
-          signal: AbortSignal.timeout(30000),
-        });
-
-        if (!response.ok) {
-          const error = await response.text();
-          deps.log.error("Delete failed", { error });
-          return res
-            .status(502)
-            .json({ error: `Failed to delete model: ${error}` });
-        }
-
-        deps.log.info("Successfully deleted model", { model });
-        res.json({ success: true, model });
-      } catch (error) {
-        deps.log.error("Delete error", { error: extractErrorMessage(error) });
-        res
-          .status(502)
-          .json({ error: `Delete failed: ${extractErrorMessage(error)}` });
-      }
-    },
-  );
 
   app.post("/check-provider", rateLimit, checkConfiguredProvider);
   app.post("/check-ollama", rateLimit, checkConfiguredProvider);

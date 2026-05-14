@@ -186,16 +186,6 @@ describe('WebSocket Server', () => {
       // Mempool events should be sent to 'mempool' channel
     });
 
-    it('should map modelDownload events to system channel', () => {
-      const event: WebSocketEvent = {
-        type: 'modelDownload',
-        data: { model: 'llama2', progress: 50 },
-      };
-
-      expect(event.type).toBe('modelDownload');
-      // ModelDownload events should be sent to 'system' channel
-    });
-
     it('should map address-specific events to address channel', () => {
       const event: WebSocketEvent = {
         type: 'transaction',
@@ -577,14 +567,6 @@ describe('Gateway WebSocket Server', () => {
       expect(event.type).toBe('log');
     });
 
-    it('should support modelDownload events', () => {
-      const event: WebSocketEvent = {
-        type: 'modelDownload',
-        data: { model: 'llama2', progress: 75 },
-      };
-
-      expect(event.type).toBe('modelDownload');
-    });
   });
 });
 

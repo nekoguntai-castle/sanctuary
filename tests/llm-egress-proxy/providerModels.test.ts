@@ -17,7 +17,7 @@ describe("LLM egress proxy provider model listing", () => {
     vi.unstubAllGlobals();
   });
 
-  it("maps OpenAI-compatible /v1/models responses into installed model options", () => {
+  it("maps OpenAI-compatible /v1/models responses into provider model options", () => {
     expect(
       mapOpenAICompatibleModels({
         data: [

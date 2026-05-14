@@ -1,14 +1,10 @@
-import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
-import { beforeEach,describe,expect,it,vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockGetSystemSettings = vi.fn();
 const mockUpdateSystemSettings = vi.fn();
 const mockDetectOllama = vi.fn();
 const mockListModels = vi.fn();
-const mockPullModel = vi.fn();
-const mockDeleteModel = vi.fn();
-
-let downloadProgressListener: ((progress: any) => void) | null = null;
 
 vi.mock('../../src/api/admin', () => ({
   getSystemSettings: () => mockGetSystemSettings(),
@@ -18,8 +14,6 @@ vi.mock('../../src/api/admin', () => ({
 vi.mock('../../src/api/ai', () => ({
   detectOllama: () => mockDetectOllama(),
   listModels: () => mockListModels(),
-  pullModel: (model: string) => mockPullModel(model),
-  deleteModel: (model: string) => mockDeleteModel(model),
 }));
 
 vi.mock('../../utils/logger', () => ({
@@ -41,12 +35,6 @@ vi.mock('../../components/AISettings/hooks/useAIConnectionStatus', () => ({
     aiStatusMessage: '',
     handleTestConnection: vi.fn(),
   }),
-}));
-
-vi.mock('../../hooks/websocket', () => ({
-  useModelDownloadProgress: (listener: (progress: any) => void) => {
-    downloadProgressListener = listener;
-  },
 }));
 
 vi.mock('../../components/AISettings/tabs/StatusTab', () => ({
@@ -73,11 +61,10 @@ vi.mock('../../components/AISettings/tabs/SettingsTab', () => ({
 vi.mock('../../components/AISettings/tabs/ModelsTab', () => ({
   ModelsTab: (props: any) => (
     <div data-testid="mock-models-tab">
-      <button onClick={() => props.onPullModel('llama3.2:3b')}>pull-main</button>
-      <button onClick={() => props.onDeleteModel('llama3.2:3b')}>delete-main</button>
-      <button onClick={props.onLoadPopularModels}>reload-popular</button>
-      <div data-testid="models-pull-progress">{props.pullProgress}</div>
-      <div data-testid="models-popular-error">{props.popularModelsError || ''}</div>
+      <button onClick={() => props.onModelChange('typed-model')}>type-model</button>
+      <button onClick={() => props.onSelectModel('llama3.2:3b')}>select-model</button>
+      <button onClick={props.onRefreshModels}>refresh-models</button>
+      <div data-testid="models-current-model">{props.aiModel}</div>
       <div data-testid="models-format-bytes">{props.formatBytes(0)}|{props.formatBytes(2048)}</div>
     </div>
   ),
@@ -102,16 +89,12 @@ function setDefaultMocks() {
     aiModel: '',
   });
   mockUpdateSystemSettings.mockResolvedValue({});
-  mockDetectOllama.mockResolvedValue({ found: true, endpoint: 'http://host.docker.internal:11434', models: ['llama3.2:3b'] });
+  mockDetectOllama.mockResolvedValue({
+    found: true,
+    endpoint: 'http://host.docker.internal:11434',
+    models: ['llama3.2:3b'],
+  });
   mockListModels.mockResolvedValue({ models: [] });
-  mockPullModel.mockResolvedValue({ success: true });
-  mockDeleteModel.mockResolvedValue({ success: true });
-  global.fetch = vi.fn(() =>
-    Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ models: [] }),
-    } as Response),
-  ) as any;
 }
 
 async function renderAndWaitForReady() {
@@ -131,12 +114,15 @@ describe('AISettings logic branches', () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
-    downloadProgressListener = null;
     setDefaultMocks();
   });
 
   it('handles model list load errors when endpoint is configured', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: 'llama3.2:3b' });
+    mockGetSystemSettings.mockResolvedValue({
+      aiEnabled: true,
+      aiEndpoint: 'http://host.docker.internal:11434',
+      aiModel: 'llama3.2:3b',
+    });
     mockListModels.mockRejectedValue(new Error('list failed'));
 
     await renderAndWaitForReady();
@@ -146,70 +132,25 @@ describe('AISettings logic branches', () => {
     });
   });
 
-  it('shows popular models error for HTTP failure and invalid response format', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: '' });
-    (global.fetch as any) = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: false, status: 503 } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({}),
-      } as Response);
-
-    await renderAndWaitForReady();
-
-    clickTopTab('Models');
-    await waitFor(() => {
-      expect(screen.getByTestId('models-popular-error')).toHaveTextContent('Unable to fetch the latest popular models list');
+  it('handles model entry, selection, and refresh callbacks from models tab', async () => {
+    mockGetSystemSettings.mockResolvedValue({
+      aiEnabled: true,
+      aiEndpoint: 'http://host.docker.internal:11434',
+      aiModel: '',
     });
-
-    fireEvent.click(screen.getByText('reload-popular'));
-    await waitFor(() => {
-      expect(screen.getByTestId('models-popular-error')).toHaveTextContent('Unable to fetch the latest popular models list');
-    });
-  });
-
-  it('handles websocket completion updates for the active pull model', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: '' });
 
     await renderAndWaitForReady();
     clickTopTab('Models');
 
-    fireEvent.click(screen.getByText('pull-main'));
-    await waitFor(() => {
-      expect(mockPullModel).toHaveBeenCalledWith('llama3.2:3b');
-    });
-    expect(downloadProgressListener).toBeTypeOf('function');
+    fireEvent.click(screen.getByText('type-model'));
+    expect(screen.getByTestId('models-current-model')).toHaveTextContent('typed-model');
 
-    await act(async () => {
-      downloadProgressListener?.({ model: 'llama3.2:3b', status: 'complete' });
-    });
+    fireEvent.click(screen.getByText('select-model'));
+    expect(screen.getByTestId('models-current-model')).toHaveTextContent('llama3.2:3b');
 
+    fireEvent.click(screen.getByText('refresh-models'));
     await waitFor(() => {
       expect(mockListModels).toHaveBeenCalled();
-    });
-
-    clickTopTab('Status');
-    expect(screen.getByTestId('status-model')).toHaveTextContent('llama3.2:3b');
-  });
-
-  it('handles websocket error updates for the active pull model', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: '' });
-
-    await renderAndWaitForReady();
-    clickTopTab('Models');
-
-    fireEvent.click(screen.getByText('pull-main'));
-    await waitFor(() => {
-      expect(mockPullModel).toHaveBeenCalledWith('llama3.2:3b');
-    });
-
-    await act(async () => {
-      downloadProgressListener?.({ model: 'llama3.2:3b', status: 'error', error: 'disk full' });
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('models-pull-progress')).toHaveTextContent('Failed: disk full');
     });
   });
 
@@ -238,7 +179,11 @@ describe('AISettings logic branches', () => {
   });
 
   it('enables AI without auto-configuring endpoint', async () => {
-    mockDetectOllama.mockResolvedValue({ found: true, endpoint: 'http://host.docker.internal:11434', models: ['phi3:mini'] });
+    mockDetectOllama.mockResolvedValue({
+      found: true,
+      endpoint: 'http://host.docker.internal:11434',
+      models: ['phi3:mini'],
+    });
 
     await renderAndWaitForReady();
     fireEvent.click(screen.getByText('toggle-ai'));
@@ -255,35 +200,12 @@ describe('AISettings logic branches', () => {
     });
   });
 
-  it('handles delete model confirmation, failure response, and thrown error', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: 'llama3.2:3b' });
-    const confirmSpy = vi.spyOn(window, 'confirm');
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
-
-    await renderAndWaitForReady();
-    clickTopTab('Models');
-
-    confirmSpy.mockReturnValueOnce(false);
-    fireEvent.click(screen.getByText('delete-main'));
-    expect(mockDeleteModel).not.toHaveBeenCalled();
-
-    confirmSpy.mockReturnValueOnce(true);
-    mockDeleteModel.mockResolvedValueOnce({ success: false, error: 'busy' });
-    fireEvent.click(screen.getByText('delete-main'));
-    await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledWith('Failed to delete: busy');
-    });
-
-    confirmSpy.mockReturnValueOnce(true);
-    mockDeleteModel.mockRejectedValueOnce(new Error('boom'));
-    fireEvent.click(screen.getByText('delete-main'));
-    await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Error:'));
-    });
-  });
-
   it('handles manual model selection callback from settings tab', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: '' });
+    mockGetSystemSettings.mockResolvedValue({
+      aiEnabled: true,
+      aiEndpoint: 'http://host.docker.internal:11434',
+      aiModel: '',
+    });
 
     await renderAndWaitForReady();
     fireEvent.click(screen.getByText('go-settings-callback'));
@@ -293,7 +215,11 @@ describe('AISettings logic branches', () => {
   });
 
   it('covers formatBytes callback passed to models tab', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: 'llama3.2:3b' });
+    mockGetSystemSettings.mockResolvedValue({
+      aiEnabled: true,
+      aiEndpoint: 'http://host.docker.internal:11434',
+      aiModel: 'llama3.2:3b',
+    });
 
     await renderAndWaitForReady();
     clickTopTab('Models');
@@ -301,7 +227,11 @@ describe('AISettings logic branches', () => {
   });
 
   it('supports navigation callbacks passed into status/settings tabs', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://host.docker.internal:11434', aiModel: 'llama3.2:3b' });
+    mockGetSystemSettings.mockResolvedValue({
+      aiEnabled: true,
+      aiEndpoint: 'http://host.docker.internal:11434',
+      aiModel: 'llama3.2:3b',
+    });
 
     await renderAndWaitForReady();
 

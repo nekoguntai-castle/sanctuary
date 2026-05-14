@@ -13,7 +13,6 @@ export function registerOpenApiGatewayInternalTests() {
   it('documents root-mounted internal gateway and LLM egress proxy routes', () => {
     const routes: Array<[OpenApiPathKey, string]> = [
       ['/internal/mobile-permissions/check', 'post'],
-      ['/internal/ai/pull-progress', 'post'],
       ['/internal/ai/tx/{id}', 'get'],
       ['/internal/ai/wallet/{walletId}/labels', 'get'],
       ['/internal/ai/wallet/{walletId}/context', 'get'],
@@ -87,9 +86,9 @@ export function registerOpenApiGatewayInternalTests() {
     ]);
     expect(openApiSpec.components.schemas.InternalMobilePermissionCheckResponse.required).toEqual(['allowed']);
 
-    expect(openApiSpec.paths['/internal/ai/pull-progress'].post).not.toHaveProperty('security');
-    expect(openApiSpec.components.schemas.InternalAIPullProgressRequest.required).toEqual(['model', 'status']);
-    expect(openApiSpec.components.schemas.InternalAIPullProgressResponse.required).toEqual(['ok']);
+    expect(openApiSpec.paths).not.toHaveProperty('/internal/ai/pull-progress');
+    expect(openApiSpec.components.schemas).not.toHaveProperty('InternalAIPullProgressRequest');
+    expect(openApiSpec.components.schemas).not.toHaveProperty('InternalAIPullProgressResponse');
 
     const sanitizedTransactionSchema = openApiSpec.components.schemas.InternalAITransactionContext;
     expect(sanitizedTransactionSchema.required).toEqual([

@@ -14,7 +14,6 @@ import {
   broadcastBlock,
   broadcastNewBlock,
   broadcastMempool,
-  broadcastModelDownload,
   broadcast,
   hasWalletSubscribers,
   getBroadcastStats,
@@ -437,70 +436,6 @@ describe('Broadcast Helpers', () => {
             fee: 5000,
             size: 250,
             feeRate: 20,
-          }),
-        })
-      );
-    });
-  });
-
-  describe('broadcastModelDownload', () => {
-    it('should broadcast model download event', () => {
-      broadcastModelDownload({
-        model: 'llama2',
-        status: 'downloading',
-        completed: 450000000,
-        total: 1000000000,
-        percent: 45,
-      });
-
-      expect(mockBroadcast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'modelDownload',
-          data: expect.objectContaining({
-            model: 'llama2',
-            status: 'downloading',
-            completed: 450000000,
-            total: 1000000000,
-            percent: 45,
-          }),
-        })
-      );
-    });
-
-    it('should include digest when provided', () => {
-      broadcastModelDownload({
-        model: 'llama2',
-        status: 'verifying',
-        completed: 1000000000,
-        total: 1000000000,
-        percent: 100,
-        digest: 'sha256:abc123',
-      });
-
-      expect(mockBroadcast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            digest: 'sha256:abc123',
-          }),
-        })
-      );
-    });
-
-    it('should include error when status is error', () => {
-      broadcastModelDownload({
-        model: 'llama2',
-        status: 'error',
-        completed: 0,
-        total: 0,
-        percent: 0,
-        error: 'Network timeout',
-      });
-
-      expect(mockBroadcast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: 'error',
-            error: 'Network timeout',
           }),
         })
       );

@@ -25,7 +25,6 @@ export type {
   BalanceUpdate,
   BlockNotification,
   MempoolNotification,
-  ModelDownloadProgress,
   LogLevel,
   WalletLogEntry,
   SyncStatusUpdate,

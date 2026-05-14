@@ -36,16 +36,6 @@ export interface MempoolNotification {
   feeRate: number; // sat/vB
 }
 
-export interface ModelDownloadProgress {
-  model: string;
-  status: 'pulling' | 'downloading' | 'verifying' | 'complete' | 'error';
-  completed: number;
-  total: number;
-  percent: number;
-  digest?: string;
-  error?: string;
-}
-
 // Wallet Log Types for real-time sync logging
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 

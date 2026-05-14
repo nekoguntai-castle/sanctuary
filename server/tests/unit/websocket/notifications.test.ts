@@ -96,7 +96,6 @@ import {
   type BalanceUpdate,
   type BlockNotification,
   type MempoolNotification,
-  type ModelDownloadProgress,
 } from '../../../src/websocket/notifications';
 import {
   subscribeToBlocks,
@@ -394,13 +393,6 @@ describe('NotificationService', () => {
         size: 250,
         feeRate: 20,
       });
-      service.broadcastModelDownloadProgress({
-        model: 'llama2',
-        status: 'downloading',
-        completed: 10,
-        total: 100,
-        percent: 10,
-      });
       service.broadcastConfirmationUpdate('wallet-123', {
         txid: 'tx-abc',
         confirmations: 6,
@@ -550,53 +542,6 @@ describe('NotificationService', () => {
             fee: 5000,
             size: 250,
             feeRate: 20,
-          }),
-        })
-      );
-    });
-  });
-
-  describe('broadcastModelDownloadProgress', () => {
-    it('should broadcast model download progress', () => {
-      const progress: ModelDownloadProgress = {
-        model: 'llama2',
-        status: 'downloading',
-        completed: 450000000,
-        total: 1000000000,
-        percent: 45,
-      };
-
-      service.broadcastModelDownloadProgress(progress);
-
-      expect(mockBroadcast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'modelDownload',
-          data: expect.objectContaining({
-            model: 'llama2',
-            status: 'downloading',
-            percent: 45,
-          }),
-        })
-      );
-    });
-
-    it('should handle error status', () => {
-      const progress: ModelDownloadProgress = {
-        model: 'llama2',
-        status: 'error',
-        completed: 0,
-        total: 0,
-        percent: 0,
-        error: 'Download failed',
-      };
-
-      service.broadcastModelDownloadProgress(progress);
-
-      expect(mockBroadcast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: 'error',
-            error: 'Download failed',
           }),
         })
       );

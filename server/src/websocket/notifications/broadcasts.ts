@@ -13,7 +13,6 @@ import type {
   BalanceUpdate,
   BlockNotification,
   MempoolNotification,
-  ModelDownloadProgress,
   WalletLogEntry,
   SyncStatusUpdate,
   ConfirmationUpdate,
@@ -137,31 +136,6 @@ export function broadcastMempoolNotification(notification: MempoolNotification):
   };
 
   wsServer.broadcast(event);
-}
-
-/**
- * Broadcast model download progress
- * Used for real-time UI updates during Ollama model pulls
- */
-export function broadcastModelDownloadProgress(progress: ModelDownloadProgress): void {
-  const wsServer = getBroadcastServer('modelDownload');
-  if (!wsServer) return;
-
-  const event: WebSocketEvent = {
-    type: 'modelDownload',
-    data: progress,
-  };
-
-  // Log stats for debugging
-  const stats = wsServer.getStats();
-  log.info(`Broadcasting modelDownload: ${progress.model} ${progress.status} ${progress.percent}% to ${stats.clients} clients, channels: ${stats.channelList.join(', ')}`);
-
-  wsServer.broadcast(event);
-
-  // Only log on status changes, not every progress update
-  if (progress.status === 'complete' || progress.status === 'error') {
-    log.debug(`Model download ${progress.status}: ${progress.model}`);
-  }
 }
 
 /**

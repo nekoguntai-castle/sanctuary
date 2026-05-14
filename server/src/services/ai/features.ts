@@ -2,7 +2,7 @@
  * AI Features
  *
  * AI-powered features: label suggestions, natural language queries,
- * Ollama detection, model management.
+ * provider detection, and provider model listing.
  *
  * DATA FLOW:
  * 1. User requests AI feature (suggest label, NL query)
@@ -28,16 +28,12 @@ import type {
   AIDetectOllamaResponse,
   AIDetectProviderResponse,
   AIListModelsResponse,
-  AIPullModelResponse,
 } from "./types";
 
 const log = createLogger("AI:SVC");
 
 const LLM_EGRESS_PROXY_URL = getLlmEgressProxyUrl();
 const AI_NATURAL_QUERY_TIMEOUT_MS = 125_000;
-const OPENAI_COMPATIBLE_MODEL_MANAGEMENT_ERROR =
-  "Model management is only supported for Ollama providers. Manage models in your OpenAI-compatible provider.";
-
 /**
  * Suggest a transaction label
  *
@@ -272,103 +268,5 @@ export async function listModels(): Promise<{
   } catch (error) {
     log.error("List models error", { error: getErrorMessage(error) });
     return { models: [], error: "Cannot connect to LLM egress proxy" };
-  }
-}
-
-/**
- * Pull (download) a model
- */
-export async function pullModel(model: string): Promise<{
-  success: boolean;
-  model?: string;
-  status?: string;
-  error?: string;
-}> {
-  const config = await getAIConfig();
-
-  if (!config.endpoint) {
-    return { success: false, error: "No AI endpoint configured" };
-  }
-  if (config.providerType === "openai-compatible") {
-    return { success: false, error: OPENAI_COMPATIBLE_MODEL_MANAGEMENT_ERROR };
-  }
-
-  // Sync config first
-  await syncConfigToLlmEgressProxy(config);
-
-  try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/pull-model`, {
-      method: "POST",
-      headers: buildLlmEgressProxyJsonHeaders(),
-      body: JSON.stringify({ model }),
-      signal: AbortSignal.timeout(600000), // 10 minute timeout for large models
-    });
-
-    if (!response.ok) {
-      const errorJson = await response.json().catch(() => {
-        log.warn("Failed to parse error response JSON for pull model");
-        return {};
-      });
-      const error = validateResponse<{ error?: string }>(errorJson, []);
-      return { success: false, error: error?.error || "Pull failed" };
-    }
-
-    const json = await response.json();
-    const result = validateResponse<AIPullModelResponse>(json, ["success"]);
-
-    if (!result) {
-      log.error("Invalid response from LLM egress proxy for pull model");
-      return { success: false, error: "Invalid response format" };
-    }
-
-    return result;
-  } catch (error) {
-    log.error("Pull model error", { error: getErrorMessage(error) });
-    return { success: false, error: "Pull operation failed" };
-  }
-}
-
-/**
- * Delete a model from Ollama
- */
-export async function deleteModel(model: string): Promise<{
-  success: boolean;
-  model?: string;
-  error?: string;
-}> {
-  const config = await getAIConfig();
-
-  if (!config.endpoint) {
-    return { success: false, error: "No AI endpoint configured" };
-  }
-  if (config.providerType === "openai-compatible") {
-    return { success: false, error: OPENAI_COMPATIBLE_MODEL_MANAGEMENT_ERROR };
-  }
-
-  // Sync config first
-  await syncConfigToLlmEgressProxy(config);
-
-  try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/delete-model`, {
-      method: "DELETE",
-      headers: buildLlmEgressProxyJsonHeaders(),
-      body: JSON.stringify({ model }),
-      signal: AbortSignal.timeout(30000),
-    });
-
-    if (!response.ok) {
-      const errorJson = await response.json().catch(() => {
-        log.warn("Failed to parse error response JSON for delete model");
-        return {};
-      });
-      const error = validateResponse<{ error?: string }>(errorJson, []);
-      return { success: false, error: error?.error || "Delete failed" };
-    }
-
-    const json = (await response.json()) as { model?: string };
-    return { success: true, model: json.model };
-  } catch (error) {
-    log.error("Delete model error", { error: getErrorMessage(error) });
-    return { success: false, error: "Delete operation failed" };
   }
 }

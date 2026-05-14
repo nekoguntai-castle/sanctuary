@@ -38,7 +38,6 @@ The proxy never stores state between requests. Configuration (`aiConfig`) is hel
 | Rate limiting        | `src/rateLimit.ts`      | In-memory sliding-window limiter keyed by client IP                                                                |
 | AI client            | `src/aiClient.ts`       | `callExternalAI()`, `callExternalAIWithMessages()`, `parseStructuredResponse()`                                    |
 | Backend data fetch   | `src/utils.ts`          | `fetchFromBackend()` with typed error discrimination (`auth_failed`, `not_found`, `server_error`, `network_error`) |
-| Model management     | `src/modelPull.ts`      | Streams Ollama pull progress to backend via `POST /internal/ai/pull-progress`                                      |
 | Constants            | `src/constants.ts`      | Timeout and rate-limit values, all overridable via env vars                                                        |
 | Logger               | `src/logger.ts`         | Thin structured logger; no `console.log` in production code                                                        |
 
@@ -71,8 +70,6 @@ Three independent auth mechanisms apply in sequence:
 | `POST`   | `/detect-ollama` |     yes      | Scan common Ollama endpoints, return first reachable                   |
 | `POST`   | `/check-ollama`  |     yes      | Legacy route name; verifies the configured provider endpoint           |
 | `GET`    | `/list-models`   |     yes      | List models from Ollama `/api/tags` or OpenAI-compatible `/v1/models`  |
-| `POST`   | `/pull-model`    |     yes      | Start async Ollama model download; streams progress to backend         |
-| `DELETE` | `/delete-model`  |     yes      | Remove a model from Ollama                                             |
 
 ---
 
@@ -159,4 +156,4 @@ This makes the proxy compatible with Ollama, LM Studio, llama.cpp with an OpenAI
 
 **Null-return error propagation.** `callExternalAI` and `callExternalAIWithMessages` return `null` on any failure (timeout, non-2xx, malformed response). Routes treat `null` as 503. This keeps error handling uniform and avoids exception bubbling through route logic.
 
-**Async model pull.** `POST /pull-model` returns `{ success: true, status: "started" }` immediately, then fires `streamModelPull()` in the background. Progress is pushed to `BACKEND_URL/internal/ai/pull-progress` as newline-delimited JSON from the Ollama stream — the HTTP response channel is not kept open.
+**Provider model listing only.** The proxy lists models reported by the configured external provider, but it does not install, pull, or delete models. Operators manage provider runtimes and model files outside Sanctuary.

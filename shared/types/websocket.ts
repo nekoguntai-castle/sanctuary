@@ -22,7 +22,7 @@ export interface AuthMessage {
 export interface SubscribeMessage {
   type: 'subscribe';
   data: {
-    channel: string; // e.g., 'wallet:uuid', 'global', 'model:download'
+    channel: string; // e.g., 'wallet:uuid', 'global'
   };
 }
 
@@ -224,22 +224,6 @@ export interface LogEvent {
 }
 
 /**
- * AI model download progress
- */
-export interface ModelDownloadEvent {
-  type: 'modelDownload';
-  data: {
-    model: string;
-    status: 'pulling' | 'downloading' | 'verifying' | 'complete' | 'error';
-    completed: number;
-    total: number;
-    percent: number;
-    digest?: string;
-    error?: string;
-  };
-}
-
-/**
  * All possible server-to-client events
  */
 export type ServerEvent =
@@ -255,8 +239,7 @@ export type ServerEvent =
   | NewBlockEvent
   | MempoolEvent
   | SyncEvent
-  | LogEvent
-  | ModelDownloadEvent;
+  | LogEvent;
 
 /**
  * Events that are wallet-specific (have walletId)
@@ -271,7 +254,7 @@ export type WalletEvent =
 /**
  * Events that are global (no walletId)
  */
-export type GlobalEvent = BlockEvent | NewBlockEvent | MempoolEvent | ModelDownloadEvent;
+export type GlobalEvent = BlockEvent | NewBlockEvent | MempoolEvent;
 
 /**
  * Broadcast events (sent to subscribed clients)
@@ -284,8 +267,7 @@ export type BroadcastEvent =
   | NewBlockEvent
   | MempoolEvent
   | SyncEvent
-  | LogEvent
-  | ModelDownloadEvent;
+  | LogEvent;
 
 // =============================================================================
 // Shared Type Guards
@@ -335,11 +317,10 @@ export function isWalletEvent(
  */
 export function isGlobalEvent(
   event: ServerEvent
-): event is BlockEvent | NewBlockEvent | MempoolEvent | ModelDownloadEvent {
+): event is BlockEvent | NewBlockEvent | MempoolEvent {
   return (
     event.type === 'block' ||
     event.type === 'newBlock' ||
-    event.type === 'mempool' ||
-    event.type === 'modelDownload'
+    event.type === 'mempool'
   );
 }

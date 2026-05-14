@@ -54,10 +54,9 @@ describe('Core API Modules', () => {
       expect(mockPost).toHaveBeenCalledWith('/ai/query', { query: 'recent tx', walletId: 'w1' }, { timeoutMs: 120000 });
     });
 
-    it('calls model management endpoints', async () => {
+    it('calls provider discovery and model listing endpoints', async () => {
       mockGet.mockResolvedValue({});
       mockPost.mockResolvedValue({});
-      mockDelete.mockResolvedValue({});
 
       await aiApi.detectOllama();
       await aiApi.detectProvider({
@@ -65,9 +64,6 @@ describe('Core API Modules', () => {
         preferredProviderType: 'openai-compatible',
       });
       await aiApi.listModels();
-      await aiApi.pullModel('llama3');
-      await aiApi.deleteModel('llama3');
-      await aiApi.getSystemResources();
 
       expect(mockPost).toHaveBeenCalledWith('/ai/detect-ollama', {});
       expect(mockPost).toHaveBeenCalledWith('/ai/detect-provider', {
@@ -75,9 +71,6 @@ describe('Core API Modules', () => {
         preferredProviderType: 'openai-compatible',
       });
       expect(mockGet).toHaveBeenCalledWith('/ai/models');
-      expect(mockPost).toHaveBeenCalledWith('/ai/pull-model', { model: 'llama3' });
-      expect(mockDelete).toHaveBeenCalledWith('/ai/delete-model', { model: 'llama3' });
-      expect(mockGet).toHaveBeenCalledWith('/ai/system-resources');
     });
   });
 

@@ -43,8 +43,6 @@ vi.mock('../../../../src/services/aiService', () => ({
     detectOllama: vi.fn(),
     detectProviderEndpoint: vi.fn(),
     listModels: vi.fn(),
-    pullModel: vi.fn(),
-    deleteModel: vi.fn(),
   },
 }));
 
@@ -52,26 +50,6 @@ vi.mock('../../../../src/services/featureFlagService', () => ({
   featureFlagService: {
     isEnabled: vi.fn().mockResolvedValue(true),
   },
-}));
-
-const { mockExecFilePromisified } = vi.hoisted(() => ({
-  mockExecFilePromisified: vi.fn().mockResolvedValue({
-    stdout: 'Filesystem     1M-blocks      Used Available Use% Mounted on\n/dev/sda1         100000     50000     40000  56% /',
-    stderr: '',
-  }),
-}));
-
-vi.mock('child_process', () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { promisify } = require('util');
-  const fn = vi.fn();
-  fn[promisify.custom] = mockExecFilePromisified;
-  return { execFile: fn };
-});
-
-vi.mock('os', () => ({
-  totalmem: vi.fn().mockReturnValue(16 * 1024 * 1024 * 1024),
-  freemem: vi.fn().mockReturnValue(8 * 1024 * 1024 * 1024),
 }));
 
 vi.mock('../../../../src/middleware/auth', () => ({
@@ -193,7 +171,11 @@ class RequestBuilder {
           resolve({ status: statusCode, headers: res.headers, body });
           return;
         }
-        reject(new Error('Route not handled: ' + this.method + ' ' + normalizedUrl));
+        resolve({
+          status: 404,
+          headers: res.headers,
+          body: { error: 'Not Found' },
+        });
       });
     });
   }
@@ -204,10 +186,6 @@ export const request = (_app: unknown) => ({
   post: (url: string) => new RequestBuilder('POST', url),
   delete: (url: string) => new RequestBuilder('DELETE', url),
 });
-
-export function getMockExecFilePromisified() {
-  return mockExecFilePromisified;
-}
 
 export function registerAiApiTestHarness() {
   beforeAll(() => {

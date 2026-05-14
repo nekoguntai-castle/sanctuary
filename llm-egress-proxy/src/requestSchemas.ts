@@ -83,12 +83,6 @@ export const DetectProviderBodySchema = z
   })
   .strict();
 
-export const ModelBodySchema = z
-  .object({
-    model: NonEmptyStringSchema.max(200),
-  })
-  .strict();
-
 export const AnalysisTypeSchema = z.enum([
   "utxo_health",
   "fee_timing",

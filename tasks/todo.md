@@ -96,6 +96,21 @@ Third plan re-review addendum:
 - Phase 6 should account for optimistic preference races. A failing earlier request should not blindly roll back over a later successful local preference update; either serialize writes, track request generations, or limit rollback to the keys changed by that request.
 - Phase 6 should keep backend merge/canonicalization as the source of truth. Frontend helpers can build safer patches, but `server/src/api/auth/profile.ts` and shared preference schemas still decide final persisted `fiatCurrency`, `selectedNetwork`, and known-field validation.
 
+Fourth plan re-review addendum:
+
+- Created `docs/plans/rationalization-plan.md` as the durable rationalization artifact so the convergence decisions do not live only in this scratch task note.
+- Phase 5 should include misleading internal vocabulary in the purge, not just visible UI copy. A retained prop or helper named `canManageOllamaModels` should be renamed to provider-display language because model management is no longer supported.
+- Phase 5 test cleanup should remove fake capabilities too. Mocks such as the LLM egress proxy test double must stop returning successful `/pull-model` or `/delete-model` behavior, otherwise later UI or server work can accidentally depend on unsupported routes.
+- Phase 5 negative route tests should cover three layers: backend app routes, OpenAPI/gateway documentation, and the proxy route registry. A missing OpenAPI path is not enough if Express still mounts a hidden handler.
+- Phase 5 may keep `detect-ollama` and Ollama provider listing, but retained copy should frame Ollama as an external endpoint the operator runs outside Sanctuary. Avoid saying Sanctuary "starts", "installs", "downloads", "pulls", "deletes", or "manages" models.
+- Phase 5 should treat "local model" wording carefully. It is acceptable in old tests only if it describes an external provider response fixture, but touched product docs, route descriptions, and UI copy should use "provider model" or "external Ollama endpoint" language.
+- Phase 5 should preserve manual selected-model entry as the resilience path when listing fails, returns zero models, times out, or omits the saved model. Do not clear provider profiles or selected model strings as a side effect of removing management.
+- Phase 5 removal of model-download websocket events should include hook harnesses and websocket aggregate tests. General websocket `system` events and non-model notifications must stay subscribed and covered.
+- Phase 5 should leave sanitized internal AI read endpoints in place and separately verify `/internal/ai/pull-progress` is absent. The internal network guard and JWT-backed context routes are part of the retained proxy security boundary.
+- Phase 6 should include server-side nested preference writers in the review boundary, not only frontend hooks. Telegram, autopilot, and intelligence settings rebuild nested preference objects and can overwrite siblings if they use stale preference snapshots.
+- Phase 6 optimistic rollback should have an explicit rule: rollback only the keys written by the failed request and only if no later request generation has updated those keys.
+- Phase 6 helper tests should include null preferences, invalid localStorage JSON, empty paths, double dots, unsafe keys, arrays replacing arrays, scalar replacement, and `selectedNetwork: "testnet"` remaining backend-canonicalized to `testnet3`.
+
 Phase 1 details:
 
 - Introduce one server helper that issues access/refresh cookies and builds the authenticated `user` payload for register, password login, and 2FA verify.
@@ -299,6 +314,18 @@ Phase 5 verification:
 - `npm run check:openapi-route-coverage`
 - gateway route/openapi parity tests if AI routes are removed from the manifest
 - `git diff --check`
+
+Phase 5 review:
+
+- Removed Sanctuary-managed provider model pull/delete/install/download support from frontend API exports, AI Settings state/hooks/components, backend AI routes/services, LLM egress proxy provider routes, OpenAPI schemas/paths, internal pull-progress callbacks, websocket model-download events, mocks, and tests.
+- Kept the LLM egress proxy as the external-provider security boundary. Provider detection, provider health/check routes, model listing, config sync, endpoint policy, credential isolation, inference routes, and sanitized internal AI context endpoints remain intact.
+- Removed `/api/v1/ai/pull-model`, `/api/v1/ai/delete-model`, `/api/v1/ai/system-resources`, proxy `/pull-model`, proxy `/delete-model`, and `/internal/ai/pull-progress` as real routes rather than hidden UI or unsupported stubs.
+- Preserved external Ollama support as an operator-managed provider endpoint. AI Settings still supports provider detection, model listing, manual selected-model entry, and explicit selection of reported provider models.
+- Removed download-oriented recommended/popular model UI and model-download websocket plumbing because no retained producer remains.
+- Reworded remaining model UI around provider-reported models and selected model identifiers; renamed misleading internal UI vocabulary such as `canManageOllamaModels`.
+- Updated `llm-egress-proxy/ARCHITECTURE.md` to describe provider model listing only and to remove model-pull/delete route claims.
+- Negative search for model-management symbols now returns only intentional route-absence assertions and the proxy architecture note explaining that installation/pull/delete is not supported.
+- Local verification passed: focused frontend AI/API/websocket/proxy tests, focused backend AI/internal/OpenAPI/service/websocket tests, app/test/server typechecks, shared build, server build, LLM egress proxy build, OpenAPI route coverage, app/server lint, touched-file lizard, test hygiene for changed tests, and `git diff --check`.
 
 Phase 6 details:
 

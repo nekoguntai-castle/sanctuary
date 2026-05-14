@@ -6,7 +6,6 @@
  */
 
 import { vi } from 'vitest';
-import { registerUseModelDownloadProgressTests } from './websocket/use-model-download-progress.contracts';
 import { registerUseWalletEventsTests } from './websocket/use-wallet-events.contracts';
 import { registerUseWalletLogsTests } from './websocket/use-wallet-logs.contracts';
 import { registerUseWebSocketEventTests } from './websocket/use-websocket-event.contracts';
@@ -26,5 +25,4 @@ registerUseWebSocketTests();
 registerUseWebSocketEventTests();
 registerUseWalletEventsTests();
 registerUseWalletLogsTests();
-registerUseModelDownloadProgressTests();
 registerUseWebSocketQueryInvalidationTests();

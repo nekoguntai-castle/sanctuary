@@ -63,13 +63,6 @@ export interface ListModelsResponse {
   error?: string;
 }
 
-export interface PullModelResponse {
-  success: boolean;
-  model?: string;
-  status?: string;
-  error?: string;
-}
-
 // ========================================
 // MOCK RESPONSES
 // ========================================
@@ -180,12 +173,6 @@ export const mockListModels = vi.fn().mockResolvedValue({
   models: mockModels,
 } as ListModelsResponse);
 
-export const mockPullModel = vi.fn().mockResolvedValue({
-  success: true,
-  model: 'llama2',
-  status: 'completed',
-} as PullModelResponse);
-
 // ========================================
 // MOCK API MODULE
 // ========================================
@@ -196,7 +183,6 @@ export const mockAiApi = {
   executeNaturalQuery: mockExecuteNaturalQuery,
   detectOllama: mockDetectOllama,
   listModels: mockListModels,
-  pullModel: mockPullModel,
 };
 
 // ========================================
@@ -213,7 +199,6 @@ export function setupAIAvailable(): void {
   }));
   mockExecuteNaturalQuery.mockResolvedValue(mockQueryResults['largest-receives']);
   mockListModels.mockResolvedValue({ models: mockModels });
-  mockPullModel.mockResolvedValue({ success: true, model: 'llama2', status: 'completed' });
 }
 
 /**
@@ -224,7 +209,6 @@ export function setupAIUnavailable(): void {
   mockSuggestLabel.mockRejectedValue(new Error('503: AI is not enabled'));
   mockExecuteNaturalQuery.mockRejectedValue(new Error('503: AI is not enabled'));
   mockListModels.mockResolvedValue({ models: [], error: 'No AI endpoint configured' });
-  mockPullModel.mockResolvedValue({ success: false, error: 'No AI endpoint configured' });
 }
 
 /**
@@ -235,7 +219,6 @@ export function setupAIError(errorMessage: string = 'LLM egress proxy is not ava
   mockSuggestLabel.mockRejectedValue(new Error(errorMessage));
   mockExecuteNaturalQuery.mockRejectedValue(new Error(errorMessage));
   mockListModels.mockResolvedValue({ models: [], error: errorMessage });
-  mockPullModel.mockResolvedValue({ success: false, error: errorMessage });
 }
 
 /**
@@ -279,7 +262,6 @@ export function resetAIApiMocks(): void {
   mockExecuteNaturalQuery.mockReset();
   mockDetectOllama.mockReset();
   mockListModels.mockReset();
-  mockPullModel.mockReset();
 
   // Restore default implementations
   setupAIAvailable();
@@ -306,7 +288,6 @@ export function createAiApiMockModule() {
     executeNaturalQuery: mockExecuteNaturalQuery,
     detectOllama: mockDetectOllama,
     listModels: mockListModels,
-    pullModel: mockPullModel,
   };
 }
 
@@ -354,7 +335,6 @@ export default {
   mockExecuteNaturalQuery,
   mockDetectOllama,
   mockListModels,
-  mockPullModel,
   mockAiApi,
 
   // Setup helpers

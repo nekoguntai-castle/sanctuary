@@ -6,14 +6,7 @@ import type {
   AIProviderCapabilities,
   AIProviderType,
 } from "../../src/api/admin";
-import type { ModelDownloadProgress } from "../../hooks/websocket";
 import type { EditableProviderProfile } from "./providerProfileModel";
-
-export interface PopularModel {
-  name: string;
-  description: string;
-  recommended?: boolean;
-}
 
 export type AISettingsTab = "status" | "settings" | "models" | "mcp";
 
@@ -102,24 +95,11 @@ export interface McpAccessTabProps {
 export interface ModelsTabProps {
   providerType: AIProviderType;
   aiModel: string;
-  pullProgress: string;
-  downloadProgress: ModelDownloadProgress | null;
-  isPulling: boolean;
-  pullModelName: string;
-  customModelName: string;
-  isLoadingPopularModels: boolean;
-  popularModelsError: string | null;
-  popularModels: PopularModel[];
   availableModels: OllamaModel[];
   isLoadingModels: boolean;
-  isDeleting: boolean;
-  deleteModelName: string;
+  onModelChange: (value: string) => void;
   onSelectModel: (modelName: string) => void;
   onRefreshModels: () => void;
-  onPullModel: (model: string) => void;
-  onDeleteModel: (model: string) => void;
-  onCustomModelNameChange: (value: string) => void;
-  onLoadPopularModels: () => void;
   formatBytes: (bytes: number) => string;
 }
 

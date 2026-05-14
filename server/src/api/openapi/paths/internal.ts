@@ -87,21 +87,6 @@ export const internalPaths = {
       },
     },
   },
-  '/internal/ai/pull-progress': {
-    ...internalOnly,
-    post: {
-      tags: ['Internal'],
-      summary: 'Receive AI model pull progress',
-      description: 'Internal-network-only callback from the LLM egress proxy that broadcasts model download progress to connected clients.',
-      requestBody: jsonRequestBody('#/components/schemas/InternalAIPullProgressRequest'),
-      responses: {
-        200: jsonResponse('Pull progress accepted', '#/components/schemas/InternalAIPullProgressResponse'),
-        400: internalErrorResponse,
-        403: internalErrorResponse,
-        500: internalErrorResponse,
-      },
-    },
-  },
   '/internal/ai/tx/{id}': {
     ...internalOnly,
     get: {

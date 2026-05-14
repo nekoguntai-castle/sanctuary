@@ -17,7 +17,6 @@ import {
   broadcastBlockNotification,
   broadcastNewBlock,
   broadcastMempoolNotification,
-  broadcastModelDownloadProgress,
   broadcastConfirmationUpdate,
   broadcastSyncStatus,
   broadcastWalletLog,
@@ -33,7 +32,6 @@ import type {
   BalanceUpdate,
   BlockNotification,
   MempoolNotification,
-  ModelDownloadProgress,
   WalletLogEntry,
   SyncStatusUpdate,
   ConfirmationUpdate,
@@ -128,14 +126,6 @@ export class NotificationService {
    */
   public broadcastMempoolNotification(notification: MempoolNotification) {
     broadcastMempoolNotification(notification);
-  }
-
-  /**
-   * Broadcast model download progress
-   * Used for real-time UI updates during Ollama model pulls
-   */
-  public broadcastModelDownloadProgress(progress: ModelDownloadProgress) {
-    broadcastModelDownloadProgress(progress);
   }
 
   /**

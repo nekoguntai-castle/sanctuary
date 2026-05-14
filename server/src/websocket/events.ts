@@ -27,7 +27,6 @@ export {
   MempoolEvent,
   SyncEvent,
   LogEvent,
-  ModelDownloadEvent,
   ServerEvent,
   WalletEvent,
   GlobalEvent,
@@ -48,7 +47,6 @@ import type {
   MempoolEvent,
   SyncEvent,
   LogEvent,
-  ModelDownloadEvent,
   ErrorEvent,
 } from '@sanctuary/shared/types/websocket';
 
@@ -93,10 +91,6 @@ export const EventBuilders = {
 
   log(walletId: string, data: LogEvent['data']): LogEvent {
     return { type: 'log', walletId, data };
-  },
-
-  modelDownload(data: ModelDownloadEvent['data']): ModelDownloadEvent {
-    return { type: 'modelDownload', data };
   },
 
   error(message: string, code?: string): ErrorEvent {

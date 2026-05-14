@@ -1,46 +1,26 @@
 import type { ModelsTabProps } from "../types";
-import { CustomModelInput } from "./CustomModelInput";
 import { DetectedModelsSection } from "./DetectedModelsSection";
-import { PullProgressNotice, ResourceNotice } from "./modelsTabPullProgress";
-import { RecommendedModelsSection } from "./RecommendedModelsSection";
 
 export function ModelsTab({
   providerType,
   aiModel,
-  pullProgress,
-  downloadProgress,
-  isPulling,
-  pullModelName,
-  customModelName,
-  isLoadingPopularModels,
-  popularModelsError,
-  popularModels,
   availableModels,
   isLoadingModels,
-  isDeleting,
-  deleteModelName,
+  onModelChange,
   onSelectModel,
   onRefreshModels,
-  onPullModel,
-  onDeleteModel,
-  onCustomModelNameChange,
-  onLoadPopularModels,
   formatBytes,
 }: ModelsTabProps) {
-  const canManageOllamaModels = providerType === "ollama";
+  const isOllama = providerType === "ollama";
 
   return (
     <div className="space-y-6">
-      <ResourceNotice canManageOllamaModels={canManageOllamaModels} />
-      <PullProgressNotice
-        pullProgress={pullProgress}
-        downloadProgress={downloadProgress}
-        isPulling={isPulling}
-        pullModelName={pullModelName}
-        formatBytes={formatBytes}
+      <ModelEntry
+        aiModel={aiModel}
+        onModelChange={onModelChange}
       />
       <DetectedModelsSection
-        canManageOllamaModels={canManageOllamaModels}
+        isOllamaProvider={isOllama}
         aiModel={aiModel}
         availableModels={availableModels}
         isLoadingModels={isLoadingModels}
@@ -48,26 +28,29 @@ export function ModelsTab({
         onSelectModel={onSelectModel}
         formatBytes={formatBytes}
       />
-      <RecommendedModelsSection
-        canManageOllamaModels={canManageOllamaModels}
-        popularModels={popularModels}
-        availableModels={availableModels}
-        isLoadingPopularModels={isLoadingPopularModels}
-        popularModelsError={popularModelsError}
-        isPulling={isPulling}
-        pullModelName={pullModelName}
-        isDeleting={isDeleting}
-        deleteModelName={deleteModelName}
-        onLoadPopularModels={onLoadPopularModels}
-        onPullModel={onPullModel}
-        onDeleteModel={onDeleteModel}
-      />
-      <CustomModelInput
-        canManageOllamaModels={canManageOllamaModels}
-        customModelName={customModelName}
-        isPulling={isPulling}
-        onPullModel={onPullModel}
-        onCustomModelNameChange={onCustomModelNameChange}
+    </div>
+  );
+}
+
+function ModelEntry({
+  aiModel,
+  onModelChange,
+}: Pick<ModelsTabProps, "aiModel" | "onModelChange">) {
+  return (
+    <div>
+      <label
+        htmlFor="ai-model-name-models-tab"
+        className="block text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100 mb-2"
+      >
+        Selected Model
+      </label>
+      <input
+        id="ai-model-name-models-tab"
+        type="text"
+        value={aiModel}
+        onChange={(event) => onModelChange(event.target.value)}
+        placeholder="Enter a provider model identifier..."
+        className="w-full px-4 py-2 rounded-md border border-sanctuary-300 dark:border-sanctuary-600 bg-white dark:bg-sanctuary-800 text-sanctuary-900 dark:text-sanctuary-100 placeholder:text-sanctuary-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
       />
     </div>
   );

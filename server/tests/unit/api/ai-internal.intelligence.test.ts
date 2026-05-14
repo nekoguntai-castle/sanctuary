@@ -80,13 +80,6 @@ vi.mock('../../../src/errors/ApiError', () => ({
   },
 }));
 
-// Mock websocket notifications (used by pull-progress endpoint)
-vi.mock('../../../src/websocket/notifications', () => ({
-  notificationService: {
-    broadcastModelDownloadProgress: vi.fn(),
-  },
-}));
-
 // Mock Prisma - shared object via vi.hoisted
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,

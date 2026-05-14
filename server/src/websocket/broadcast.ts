@@ -22,7 +22,6 @@ import type {
   MempoolEvent,
   SyncEvent,
   LogEvent,
-  ModelDownloadEvent,
   BroadcastEvent,
 } from './events';
 import { EventBuilders } from './events';
@@ -204,19 +203,6 @@ export function broadcastMempool(data: MempoolEvent['data']): void {
   const event = EventBuilders.mempool(data);
   broadcastEvent(event);
   // Don't log mempool broadcasts as they're high-frequency
-}
-
-/**
- * Broadcast a model download progress update
- */
-export function broadcastModelDownload(data: ModelDownloadEvent['data']): void {
-  const event = EventBuilders.modelDownload(data);
-  broadcastEvent(event);
-  log.debug(`Model download broadcast`, {
-    model: data.model,
-    status: data.status,
-    percent: data.percent,
-  });
 }
 
 // =============================================================================
