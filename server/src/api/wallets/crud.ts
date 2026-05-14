@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -20,7 +21,7 @@ const CreateWalletBodySchema = z.object({
   name: z.string().min(1),
   type: z.enum(['single_sig', 'multi_sig']),
   scriptType: z.string().min(1),
-  network: z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']).optional(),
+  network: z.enum(BITCOIN_NETWORKS).optional(),
   quorum: z.unknown().optional(),
   totalSigners: z.unknown().optional(),
   descriptor: z.string().optional(),

@@ -5,12 +5,13 @@
  */
 
 import type { Wallet, Address, Transaction, User, UTXO } from '../generated/prisma/client';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 
 // Re-export Prisma types that repositories use
 export type { Wallet, Address, Transaction, User, UTXO };
 
-// Network type from schema
-export type NetworkType = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
+// Network type from shared Bitcoin contracts
+export type { NetworkType };
 
 // Wallet with includes
 export interface WalletWithAddresses extends Wallet {

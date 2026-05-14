@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { createLogger } from '../../../utils/logger';
 
 const log = createLogger('ELECTRUM:SVC');
@@ -203,7 +204,7 @@ export interface TransactionDetails {
 }
 
 /** Bitcoin network type */
-export type BitcoinNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
+export type BitcoinNetwork = NetworkType;
 
 /**
  * Pending request tracking structure

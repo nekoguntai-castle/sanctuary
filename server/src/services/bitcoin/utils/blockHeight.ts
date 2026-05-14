@@ -5,12 +5,13 @@
  */
 
 import { getNodeClient, resetNodeClient } from "../nodeClient";
+import type { NetworkType } from "@sanctuary/shared/constants/bitcoin";
 import { createLogger } from "../../../utils/logger";
 import { getErrorMessage } from "../../../utils/errors";
 
 const log = createLogger("BITCOIN:SVC_BLOCK_HEIGHT");
 
-export type Network = "mainnet" | "testnet3" | "testnet4" | "signet" | "regtest";
+export type Network = NetworkType;
 
 const TRANSIENT_BLOCK_HEIGHT_ERROR_PARTS = [
   "connection ended",

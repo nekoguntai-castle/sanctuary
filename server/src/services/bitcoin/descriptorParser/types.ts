@@ -4,6 +4,8 @@
  * Shared interfaces and type definitions for the descriptor parser module.
  */
 
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+
 export interface ParsedDevice {
   fingerprint: string;
   xpub: string;
@@ -11,7 +13,7 @@ export interface ParsedDevice {
 }
 
 export type ScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-export type Network = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
+export type Network = NetworkType;
 export type DetectedNetwork = Network | 'testnet';
 
 export interface ParsedDescriptor {

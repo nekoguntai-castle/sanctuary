@@ -1,5 +1,6 @@
 /** OpenAPI path definitions for Bitcoin network, sync, and price endpoints. */
 
+import { BITCOIN_NON_REGTEST_NETWORKS } from "@sanctuary/shared/constants/bitcoin";
 import {
   addressNetworkQueryParameter,
   apiErrorResponse,
@@ -246,7 +247,7 @@ export const bitcoinPaths = {
           required: false,
           schema: {
             type: "string",
-            enum: ["mainnet", "testnet3", "testnet4", "signet"],
+            enum: [...BITCOIN_NON_REGTEST_NETWORKS],
             default: "mainnet",
           },
         },

@@ -5,6 +5,7 @@
  */
 
 import { Router } from 'express';
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError } from '../../errors/ApiError';
@@ -20,7 +21,7 @@ import { parseAdminRequestBody } from './requestValidation';
 
 const router = Router();
 const log = createLogger('ADMIN_ELECTRUM:ROUTE');
-const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'] as const;
+const ELECTRUM_NETWORK_VALUES = BITCOIN_NETWORKS;
 const ELECTRUM_NETWORK_MESSAGE = `Invalid network. Must be one of: ${ELECTRUM_NETWORK_VALUES.join(', ')}`;
 
 function formatElectrumServerValidation(requiredMessage: string) {

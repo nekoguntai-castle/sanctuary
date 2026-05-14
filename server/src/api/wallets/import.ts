@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
@@ -19,7 +20,7 @@ const WalletImportValidateBodySchema = z
   .object({
     descriptor: z.unknown().optional(),
     json: z.unknown().optional(),
-    network: z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']).optional(),
+    network: z.enum(BITCOIN_NETWORKS).optional(),
   })
   .superRefine((data, ctx) => {
     if (!data.descriptor && !data.json) {
@@ -35,7 +36,7 @@ const WalletImportBodySchema = z
   .object({
     data: z.unknown().optional(),
     name: z.string().trim().min(1, 'name is required').optional(),
-    network: z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']).optional(),
+    network: z.enum(BITCOIN_NETWORKS).optional(),
     deviceLabels: z.unknown().optional(),
   })
   .superRefine((data, ctx) => {

@@ -10,6 +10,14 @@ export const BITCOIN_NETWORKS = ['mainnet', 'testnet3', 'testnet4', 'signet', 'r
 
 export type NetworkType = typeof BITCOIN_NETWORKS[number];
 
+export const BITCOIN_NON_REGTEST_NETWORKS = ['mainnet', 'testnet3', 'testnet4', 'signet'] as const satisfies readonly NetworkType[];
+
+export type NonRegtestNetworkType = typeof BITCOIN_NON_REGTEST_NETWORKS[number];
+
+export const BITCOIN_TESTNET_FAMILY_NETWORKS = ['testnet3', 'testnet4', 'signet', 'regtest'] as const satisfies readonly NetworkType[];
+
+export type TestnetFamilyNetworkType = typeof BITCOIN_TESTNET_FAMILY_NETWORKS[number];
+
 export type LegacyNetworkType = NetworkType | 'testnet';
 
 export function isNetworkType(value: unknown): value is NetworkType {
@@ -26,7 +34,7 @@ export function normalizeLegacyNetworkType(
 
 export function isTestnetFamilyNetwork(network: string | null | undefined): boolean {
   const normalized = normalizeLegacyNetworkType(network, 'mainnet');
-  return normalized === 'testnet3' || normalized === 'testnet4' || normalized === 'signet' || normalized === 'regtest';
+  return BITCOIN_TESTNET_FAMILY_NETWORKS.includes(normalized as TestnetFamilyNetworkType);
 }
 
 export type AddressType =

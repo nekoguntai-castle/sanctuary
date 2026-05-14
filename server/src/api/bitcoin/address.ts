@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { authenticate, requireAuthenticatedUser } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import * as blockchain from '../../services/bitcoin/blockchain';
@@ -16,7 +17,7 @@ import { ValidationError, NotFoundError } from '../../errors/ApiError';
 
 const router = Router();
 
-const AddressNetworkSchema = z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
+const AddressNetworkSchema = z.enum(BITCOIN_NETWORKS);
 
 const AddressValidateBodySchema = z.object({
   address: z.string().min(1),

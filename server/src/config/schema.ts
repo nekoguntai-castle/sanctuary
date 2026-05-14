@@ -6,12 +6,13 @@
  */
 
 import { z } from 'zod';
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 
 // =============================================================================
 // Basic Type Schemas
 // =============================================================================
 
-export const NetworkTypeSchema = z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
+export const NetworkTypeSchema = z.enum(BITCOIN_NETWORKS);
 export const ElectrumProtocolSchema = z.enum(['tcp', 'ssl']);
 export const LogLevelSchema = z.enum(['error', 'warn', 'info', 'debug', 'trace']);
 export const NodeEnvSchema = z.enum(['development', 'production', 'test']);

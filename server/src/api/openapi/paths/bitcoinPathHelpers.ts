@@ -1,4 +1,5 @@
 import { browserOrBearerAuth as bearerAuth } from "../security";
+import { BITCOIN_NETWORKS, BITCOIN_NON_REGTEST_NETWORKS } from "@sanctuary/shared/constants/bitcoin";
 
 export { bearerAuth };
 
@@ -63,7 +64,7 @@ export const syncNetworkParameter = {
   name: "network",
   in: "path",
   required: true,
-  schema: { type: "string", enum: ["mainnet", "testnet3", "testnet4", "signet"] },
+  schema: { type: "string", enum: [...BITCOIN_NON_REGTEST_NETWORKS] },
 } as const;
 
 export const txidParameter = {
@@ -79,7 +80,7 @@ export const addressNetworkQueryParameter = {
   required: false,
   schema: {
     type: "string",
-    enum: ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
+    enum: [...BITCOIN_NETWORKS],
     default: "mainnet",
   },
 } as const;

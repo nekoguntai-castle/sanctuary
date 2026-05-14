@@ -5,6 +5,7 @@
  */
 
 import apiClient from './client';
+import type { NetworkType as BitcoinNetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { WalletLogEntry } from '../../hooks/websocket';
 
 export interface SyncStatus {
@@ -78,7 +79,7 @@ export async function resyncWallet(walletId: string): Promise<ResyncResult> {
 }
 
 // Network-based sync types
-export type NetworkType = 'mainnet' | 'testnet3' | 'testnet4' | 'signet';
+export type NetworkType = Exclude<BitcoinNetworkType, 'regtest'>;
 
 export interface NetworkSyncResult {
   success: boolean;

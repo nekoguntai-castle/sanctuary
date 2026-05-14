@@ -6,13 +6,14 @@
 
 import type { Address, Wallet } from '../../../generated/prisma/client';
 import type { NodeClientInterface } from '../nodeClient';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 
 // ============================================
 // Core Types
 // ============================================
 
 /** Bitcoin network type */
-export type BitcoinNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
+export type BitcoinNetwork = NetworkType;
 
 /** Transaction history entry from Electrum */
 export interface TxHistoryEntry {

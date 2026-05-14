@@ -4,7 +4,9 @@
  * Centralized types for all application configuration.
  */
 
-export type NetworkType = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+
+export type { NetworkType };
 export type ElectrumProtocol = 'tcp' | 'ssl';
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace';
 

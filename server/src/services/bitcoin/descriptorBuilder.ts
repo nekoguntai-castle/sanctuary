@@ -12,9 +12,10 @@ interface DeviceInfo {
 }
 
 import { formatPathForDescriptor } from '@sanctuary/shared/utils/bitcoin';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 
 type ScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-type Network = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
+type Network = NetworkType;
 
 /**
  * Get the standard BIP derivation path for a script type

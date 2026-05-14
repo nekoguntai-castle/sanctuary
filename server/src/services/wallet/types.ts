@@ -4,6 +4,8 @@
  * Shared types and interfaces for the wallet service modules.
  */
 
+import type { NetworkType } from "@sanctuary/shared/constants/bitcoin";
+
 /**
  * User's role for a specific wallet
  */
@@ -21,7 +23,7 @@ export const WALLET_SHARE_ROLE_VALUES = [
 
 export type WalletRole = (typeof WALLET_ROLE_VALUES)[number] | null;
 export type WalletShareRole = (typeof WALLET_SHARE_ROLE_VALUES)[number];
-export type WalletNetwork = "mainnet" | "testnet3" | "testnet4" | "signet" | "regtest";
+export type WalletNetwork = NetworkType;
 
 /**
  * Result of checking wallet access with edit permission

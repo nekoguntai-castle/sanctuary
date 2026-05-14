@@ -5,6 +5,7 @@
  */
 
 import apiClient from './client';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 
 export interface PayjoinUriResponse {
   uri: string;
@@ -89,7 +90,7 @@ export async function parsePayjoinUri(uri: string): Promise<ParsedUri> {
 export async function attemptPayjoin(
   psbt: string,
   payjoinUrl: string,
-  network: 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest'
+  network: NetworkType
 ): Promise<PayjoinAttemptResult> {
   return apiClient.post<PayjoinAttemptResult>('/payjoin/attempt', {
     psbt,

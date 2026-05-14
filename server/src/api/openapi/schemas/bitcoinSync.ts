@@ -1,3 +1,5 @@
+import { BITCOIN_NON_REGTEST_NETWORKS } from "@sanctuary/shared/constants/bitcoin";
+
 export const syncSchemas = {
   SyncPriority: {
     type: "string",
@@ -105,7 +107,7 @@ export const syncSchemas = {
   NetworkSyncStatusResponse: {
     type: "object",
     properties: {
-      network: { type: "string", enum: ["mainnet", "testnet3", "testnet4", "signet"] },
+      network: { type: "string", enum: [...BITCOIN_NON_REGTEST_NETWORKS] },
       total: { type: "integer", minimum: 0 },
       syncing: { type: "integer", minimum: 0 },
       synced: { type: "integer", minimum: 0 },

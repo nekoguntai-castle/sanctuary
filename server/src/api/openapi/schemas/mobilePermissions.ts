@@ -4,6 +4,7 @@
  * Schema definitions for user-facing mobile permission routes.
  */
 
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { MOBILE_ACTIONS } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 const permissionProperties = MOBILE_ACTIONS.reduce<Record<string, { type: 'boolean' }>>((acc, action) => {
@@ -29,7 +30,7 @@ export const mobilePermissionSchemas = {
       id: { type: 'string' },
       walletId: { type: 'string' },
       walletName: { type: 'string' },
-      walletNetwork: { type: 'string', enum: ['mainnet', 'testnet3', 'testnet4', 'regtest', 'signet'] },
+      walletNetwork: { type: 'string', enum: [...BITCOIN_NETWORKS] },
       role: { type: 'string', enum: ['viewer', 'signer', 'approver', 'owner'] },
       effectivePermissions: { $ref: '#/components/schemas/MobilePermissionMap' },
       hasCustomRestrictions: { type: 'boolean' },

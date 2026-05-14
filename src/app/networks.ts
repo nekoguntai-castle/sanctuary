@@ -1,7 +1,15 @@
-export const TAB_NETWORKS = ['mainnet', 'testnet3', 'testnet4', 'signet'] as const;
+import {
+  BITCOIN_NETWORKS,
+  normalizeLegacyNetworkType,
+  type NetworkType,
+} from '@sanctuary/shared/constants/bitcoin';
 
-export type TabNetwork = typeof TAB_NETWORKS[number];
+export type TabNetwork = Exclude<NetworkType, 'regtest'>;
 export type LegacyTabNetwork = TabNetwork | 'testnet';
+
+export const TAB_NETWORKS = BITCOIN_NETWORKS.filter(
+  (network): network is TabNetwork => network !== 'regtest',
+);
 
 export interface NetworkConfig {
   label: string;
@@ -80,8 +88,8 @@ export function isTabNetwork(value: unknown): value is TabNetwork {
 }
 
 export function toTabNetwork(value: unknown, fallback: TabNetwork = 'mainnet'): TabNetwork {
-  if (value === 'testnet') return 'testnet3';
-  return isTabNetwork(value) ? value : fallback;
+  const normalized = normalizeLegacyNetworkType(value, fallback);
+  return isTabNetwork(normalized) ? normalized : fallback;
 }
 
 export function formatNetworkTitle(network: TabNetwork): string {
@@ -104,7 +112,8 @@ export function suppressFiatForNetwork(network: string | null | undefined): bool
 }
 
 export function coinTypeForNetwork(network: string | null | undefined): number {
-  return network === 'mainnet' || !network ? 0 : 1;
+  if (!network || network === 'mainnet') return 0;
+  return 1;
 }
 
 export function networksShareCoinType(

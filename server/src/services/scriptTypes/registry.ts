@@ -12,6 +12,7 @@ import type {
   DeviceKeyInfo,
   DescriptorBuildOptions,
   MultiSigBuildOptions,
+  Network,
 } from './types';
 
 const log = createLogger('SCRIPT_TYPE:SVC_REGISTRY');
@@ -130,7 +131,7 @@ class ScriptTypeRegistry {
    */
   getDerivationPath(
     scriptTypeId: string,
-    network: 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest' = 'mainnet',
+    network: Network = 'mainnet',
     account: number = 0
   ): string {
     const handler = this.get(scriptTypeId);
@@ -145,7 +146,7 @@ class ScriptTypeRegistry {
    */
   getMultisigDerivationPath(
     scriptTypeId: string,
-    network: 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest' = 'mainnet',
+    network: Network = 'mainnet',
     account: number = 0
   ): string {
     const handler = this.get(scriptTypeId);

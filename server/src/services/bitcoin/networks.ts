@@ -1,23 +1,20 @@
-export const BITCOIN_NETWORK_VALUES = ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'] as const;
-export type BitcoinNetwork = typeof BITCOIN_NETWORK_VALUES[number];
+import {
+  BITCOIN_NETWORKS,
+  isNetworkType,
+  isTestnetFamilyNetwork,
+  normalizeLegacyNetworkType,
+  type NetworkType,
+} from '@sanctuary/shared/constants/bitcoin';
+
+export const BITCOIN_NETWORK_VALUES = BITCOIN_NETWORKS;
+export type BitcoinNetwork = NetworkType;
 export type DetectedBitcoinNetwork = BitcoinNetwork | 'testnet';
 
-export function normalizeLegacyBitcoinNetwork(
-  value: unknown,
-  fallback: BitcoinNetwork = 'mainnet',
-): BitcoinNetwork {
-  if (value === 'testnet') return 'testnet3';
-  return isBitcoinNetwork(value) ? value : fallback;
-}
+export const normalizeLegacyBitcoinNetwork = normalizeLegacyNetworkType;
 
-export function isBitcoinNetwork(value: unknown): value is BitcoinNetwork {
-  return typeof value === 'string' && BITCOIN_NETWORK_VALUES.includes(value as BitcoinNetwork);
-}
+export const isBitcoinNetwork = isNetworkType;
 
-export function isBitcoinTestnetFamily(network: string | null | undefined): boolean {
-  const normalized = normalizeLegacyBitcoinNetwork(network, 'mainnet');
-  return normalized === 'testnet3' || normalized === 'testnet4' || normalized === 'signet' || normalized === 'regtest';
-}
+export const isBitcoinTestnetFamily = isTestnetFamilyNetwork;
 
 export function resolveDetectedBitcoinNetwork(
   detected: DetectedBitcoinNetwork | null | undefined,

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   BITCOIN_NETWORKS,
+  BITCOIN_NON_REGTEST_NETWORKS,
+  BITCOIN_TESTNET_FAMILY_NETWORKS,
   SATS_PER_BTC,
   isNetworkType,
   isTestnetFamilyNetwork,
@@ -11,6 +13,8 @@ describe('shared Bitcoin constants', () => {
   it('defines supported canonical network names', () => {
     expect(SATS_PER_BTC).toBe(100_000_000);
     expect(BITCOIN_NETWORKS).toEqual(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
+    expect(BITCOIN_NON_REGTEST_NETWORKS).toEqual(['mainnet', 'testnet3', 'testnet4', 'signet']);
+    expect(BITCOIN_TESTNET_FAMILY_NETWORKS).toEqual(['testnet3', 'testnet4', 'signet', 'regtest']);
   });
 
   it('guards canonical networks', () => {

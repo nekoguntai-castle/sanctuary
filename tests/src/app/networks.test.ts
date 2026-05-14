@@ -57,8 +57,11 @@ describe('network helpers', () => {
     expect(coinTypeForNetwork('mainnet')).toBe(0);
     expect(coinTypeForNetwork('testnet4')).toBe(1);
     expect(coinTypeForNetwork('signet')).toBe(1);
+    expect(coinTypeForNetwork('regtest')).toBe(1);
+    expect(coinTypeForNetwork('unrecognized-network')).toBe(1);
     expect(networksShareCoinType('testnet3', 'testnet4')).toBe(true);
     expect(networksShareCoinType('testnet', 'signet')).toBe(true);
+    expect(networksShareCoinType('unrecognized-network', 'signet')).toBe(true);
     expect(networksShareCoinType('mainnet', 'testnet3')).toBe(false);
   });
 

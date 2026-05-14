@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { BITCOIN_NETWORKS } from "@sanctuary/shared/constants/bitcoin";
 import {
+  BITCOIN_NETWORK_VALUES,
   bitcoinJsNetworkName,
   coinTypeForBitcoinNetwork,
   formatBitcoinNetworkLabel,
@@ -10,6 +12,10 @@ import {
 } from "../../../../src/services/bitcoin/networks";
 
 describe("bitcoin network helpers", () => {
+  it("re-exports the shared canonical network tuple", () => {
+    expect(BITCOIN_NETWORK_VALUES).toBe(BITCOIN_NETWORKS);
+  });
+
   it("normalizes legacy and invalid network values at compatibility boundaries", () => {
     expect(normalizeLegacyBitcoinNetwork("testnet")).toBe("testnet3");
     expect(normalizeLegacyBitcoinNetwork("testnet4")).toBe("testnet4");

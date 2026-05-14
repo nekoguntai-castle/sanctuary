@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BITCOIN_NON_REGTEST_NETWORKS } from '../constants/bitcoin';
 
 /**
  * Shared mobile API request contracts consumed by gateway validation, backend
@@ -52,10 +53,7 @@ const deviceAccountRequiredMessage = 'Each account must have purpose, scriptType
 
 export const USER_PREFERENCE_UNIT_VALUES = ['sats', 'btc'] as const;
 export const USER_PREFERENCE_SELECTED_NETWORK_VALUES = [
-  'mainnet',
-  'testnet3',
-  'testnet4',
-  'signet',
+  ...BITCOIN_NON_REGTEST_NETWORKS,
   'testnet',
 ] as const;
 

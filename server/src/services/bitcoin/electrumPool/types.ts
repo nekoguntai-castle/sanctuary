@@ -5,6 +5,7 @@
  */
 
 import { ElectrumClient } from '../electrum';
+import type { NetworkType as BitcoinNetworkType } from '@sanctuary/shared/constants/bitcoin';
 
 /**
  * Load balancing strategies
@@ -14,7 +15,7 @@ export type LoadBalancingStrategy = 'round_robin' | 'least_connections' | 'failo
 /**
  * Network type for pool operations
  */
-export type NetworkType = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
+export type NetworkType = BitcoinNetworkType;
 
 /**
  * SOCKS5 proxy configuration (for Tor support)

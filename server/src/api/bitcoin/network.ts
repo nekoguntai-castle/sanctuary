@@ -6,6 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { BITCOIN_NETWORKS, BITCOIN_NON_REGTEST_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { getElectrumClient } from '../../services/bitcoin/electrum';
 import * as mempool from '../../services/bitcoin/mempool';
 import { getBitcoinNetworkStatus } from '../../services/bitcoin/networkStatusService';
@@ -23,8 +24,8 @@ const RecentBlocksCountSchema = z.coerce.number().int().min(1).catch(10)
 
 /** Block height (must be a non-negative integer) */
 const BlockHeightSchema = z.coerce.number().int().min(0);
-const StatusNetworkSchema = z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
-const MempoolNetworkSchema = z.enum(['mainnet', 'testnet3', 'testnet4', 'signet']);
+const StatusNetworkSchema = z.enum(BITCOIN_NETWORKS);
+const MempoolNetworkSchema = z.enum(BITCOIN_NON_REGTEST_NETWORKS);
 const STATUS_NETWORK_VALUES = 'mainnet, testnet3, testnet4, signet, or regtest';
 const MEMPOOL_NETWORK_VALUES = 'mainnet, testnet3, testnet4, or signet';
 

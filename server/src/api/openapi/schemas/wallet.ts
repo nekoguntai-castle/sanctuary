@@ -8,6 +8,7 @@ import {
   WALLET_ROLE_VALUES,
   WALLET_SHARE_ROLE_VALUES,
 } from '../../../services/wallet/types';
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import {
   WALLET_IMPORT_FORMAT_VALUES,
   WALLET_IMPORT_NETWORK_VALUES,
@@ -23,7 +24,7 @@ import {
   VALID_VOTE_DECISIONS,
 } from '../../../services/vaultPolicy/types';
 
-const WALLET_NETWORK_VALUES = ['mainnet', 'testnet3', 'testnet4', 'regtest', 'signet'] as const;
+const WALLET_NETWORK_VALUES = BITCOIN_NETWORKS;
 
 export const walletSchemas = {
   Wallet: {

@@ -1,3 +1,5 @@
+import { BITCOIN_NETWORKS } from "@sanctuary/shared/constants/bitcoin";
+
 export { syncSchemas } from "./bitcoinSync";
 export { priceSchemas } from "./price";
 
@@ -179,7 +181,7 @@ export const bitcoinSchemas = {
       scriptType: { $ref: "#/components/schemas/BitcoinScriptType" },
       network: {
         type: "string",
-        enum: ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
+        enum: [...BITCOIN_NETWORKS],
         default: "mainnet",
       },
     },
@@ -203,7 +205,7 @@ export const bitcoinSchemas = {
       address: { type: "string", minLength: 1 },
       network: {
         type: "string",
-        enum: ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
+        enum: [...BITCOIN_NETWORKS],
         default: "mainnet",
       },
     },
@@ -275,7 +277,7 @@ export const bitcoinSchemas = {
       rawTx: { type: "string", description: "Signed raw transaction hex." },
       network: {
         type: "string",
-        enum: ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
+        enum: [...BITCOIN_NETWORKS],
         default: "mainnet",
       },
     },
@@ -307,7 +309,7 @@ export const bitcoinSchemas = {
     properties: {
       network: {
         type: "string",
-        enum: ["mainnet", "testnet3", "testnet4", "signet", "regtest"],
+        enum: [...BITCOIN_NETWORKS],
         default: "mainnet",
       },
     },

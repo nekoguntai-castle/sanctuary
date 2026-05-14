@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { FingerprintSchema, DerivationPathSchema } from '../../validation/commonSchemas';
 
 // =============================================================================
@@ -20,7 +21,7 @@ const ImportWalletTypeSchema = z.enum(['single_sig', 'multi_sig']);
 
 const ImportScriptTypeSchema = z.enum(['native_segwit', 'nested_segwit', 'taproot', 'legacy']);
 
-const ImportNetworkSchema = z.enum(['mainnet', 'testnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
+const ImportNetworkSchema = z.enum([...BITCOIN_NETWORKS, 'testnet']);
 
 /**
  * Extended public key for imports — more lenient than the API XpubSchema.

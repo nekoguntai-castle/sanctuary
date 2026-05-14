@@ -8,6 +8,8 @@
  * (no Prisma, no React, no Express). Only pure TypeScript types.
  */
 
+import type { NetworkType } from '../constants/bitcoin';
+
 // =============================================================================
 // Wallet Enums
 // =============================================================================
@@ -28,7 +30,7 @@ export type WalletScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | '
 /**
  * Bitcoin network
  */
-export type WalletNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'regtest' | 'signet';
+export type WalletNetwork = NetworkType;
 
 /**
  * User's role on a wallet

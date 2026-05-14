@@ -7,6 +7,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { nodeConfigRepository } from '../../repositories';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -99,7 +100,7 @@ const NodeConfigTestBodySchema = z.object({
   host: z.string().min(1),
   port: NodeStringOrNumberSchema,
   useSsl: z.boolean().optional(),
-  network: z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']).optional(),
+  network: z.enum(BITCOIN_NETWORKS).optional(),
 }).strict();
 
 function hasNodeConfigRequiredFields(body: unknown): boolean {

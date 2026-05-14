@@ -1,6 +1,6 @@
 # Active Task: Codebase Divergence Scrub 2026-05-14
 
-Status: Phase 2 locally implemented and verified; PR delivery pending.
+Status: Phase 3 locally implemented and verified on `codex/phase-3-bitcoin-network-contracts`; PR delivery pending.
 
 Goal: reanalyze the codebase for places where one product workflow or contract is implemented through multiple divergent paths, decide whether each divergence is justified, and identify the consolidations worth doing next.
 
@@ -50,11 +50,32 @@ Review:
 Recommended order:
 
 - [x] Phase 1: consolidate server auth session issuance and user response shaping. Merged via PR #455.
-- [x] Phase 2: align frontend auth API types with shared auth contracts after the server response shape is canonical. Locally verified on `codex/phase-2-auth-shared-types`; PR delivery pending.
-- [ ] Phase 3: consolidate canonical Bitcoin network values/types/legacy normalization across shared, frontend, server, OpenAPI, config, and Electrum-facing modules.
+- [x] Phase 2: align frontend auth API types with shared auth contracts after the server response shape is canonical. Merged via PR #456.
+- [x] Phase 3: consolidate canonical Bitcoin network values/types/legacy normalization across shared, frontend, server, OpenAPI, config, and Electrum-facing modules. Locally verified on `codex/phase-3-bitcoin-network-contracts`; PR delivery pending.
 - [ ] Phase 4: rename or namespace raw Bitcoin broadcast helpers so they cannot be confused with wallet-scoped transaction broadcast.
-- [ ] Phase 5: decide and execute the external Ollama model-management policy: remove pull/delete support if Sanctuary should never manage provider models, or keep it with clearer wording if host Ollama management remains supported.
-- [ ] Phase 6: lower-priority cleanup for nested preference patch helpers and gateway validation derivation, only after the higher-risk auth/network/broadcast slices are stable.
+- [ ] Phase 5: execute the decided external-LLM policy: keep the LLM egress proxy as a security boundary, but remove Sanctuary-managed provider model pull/delete support.
+- [ ] Phase 6: lower-priority cleanup for nested preference patch helpers and, only if needed by new route work, gateway validation derivation.
+
+Plan re-review addendum:
+
+- Current Phase 3 code anchors include `shared/constants/bitcoin.ts`, `server/src/services/bitcoin/networks.ts`, `src/app/networks.ts`, `shared/schemas/mobileApiRequests.ts`, `server/src/config/schema.ts`, `server/src/validation/commonSchemas.ts`, Electrum pool/client/worker type files, wallet import/descriptor parser types, OpenAPI enum constants, `src/api/bitcoin.ts`, `src/api/sync.ts`, and `src/api/walletXpub.ts`.
+- Phase 3 should first choose a single canonical value export and then make server-specific modules re-export or wrap it. Avoid replacing useful domain names with broad casts; `BitcoinNetwork`, `NetworkType`, `WalletNetwork`, `TabNetwork`, and `MempoolNetwork` can remain distinct aliases/subsets when they describe a narrower boundary.
+- Do not centralize archived docs, historical plans, or prose examples during Phase 3 unless they are generated from or tested against live contracts. The implementation risk is in tracked code paths, OpenAPI, and active tests.
+- Phase 5 policy is no longer open-ended. The egress proxy remains valuable because it isolates provider egress, credentials, endpoint allowlisting, CIDR policy, and sanitized context from the main app; the unsupported surface is model installation/deletion through Sanctuary.
+- The completed gateway manifest work means Phase 6 should not redo gateway routing. Only revisit gateway validation derivation if a future phase touches gateway route schemas and the existing parity tests stop being enough.
+- For every remaining phase, PR acceptance must be tied to the current PR head SHA, not stale Forgejo status rows from earlier attempts, and the merge commit must be verified as an ancestor of `origin/main`.
+
+Second plan re-review addendum:
+
+- Phase 3 is now in PR delivery scope, not design scope. Before opening the PR, re-check the branch is clean, confirm the local head, and remember that local server typecheck depends on a fresh shared build because `shared/dist` is ignored.
+- Phase 4 should be a frontend naming cleanup unless implementation finds a real contract conflict. Keep the backend raw `/bitcoin/broadcast` endpoint, wallet broadcast endpoint, service internals, Electrum client method, and WebSocket notification names unchanged.
+- Phase 4 should prefer removing the ambiguous raw frontend export over keeping a compatibility alias. If a temporary alias is necessary, mark it deprecated and add a test or lint guard proving app code uses the clearer name.
+- Phase 5 has two separate outcomes: keep the LLM egress proxy as the security boundary, and remove model installation/deletion as a product capability. Do not let model-management removal weaken endpoint allowlists, CIDR checks, provider credential isolation, or sanitized context boundaries.
+- Phase 5 removal fallout includes frontend API exports, AI Settings state/hooks/components, websocket model-download progress hooks, server internal pull-progress callbacks, LLM egress proxy pull/delete routes, proxy docs, OpenAPI, gateway manifests, mocks, and tests.
+- Phase 5 should decide `system-resources` explicitly. Remove it if it only exists to size local model downloads/runtimes; keep it only if renamed/reframed as neutral host diagnostics that does not gate model install flows.
+- Phase 5 should stop fetching popular/recommended model lists for download actions. If model recommendations remain at all, they must be selection/help text only and must not imply Sanctuary can install or delete provider models.
+- Phase 6 should be a small preference-patch helper pass, not a new backend preference contract. The backend still owns validation, canonicalization, and final storage values.
+- Phase 6 needs a prototype-pollution guard for dot-path helper code. Reject or ignore unsafe segments such as `__proto__`, `prototype`, and `constructor`, even though current callers are trusted UI code.
 
 Phase 1 details:
 
@@ -124,27 +145,40 @@ Phase 2 review:
 - Replaced broad `as User` casts in `UserContext` with a small `toContextUser` mapper, preserving context defaults and nullable preferences.
 - Account email rendering now accepts `null` as a valid API absence value and hides it like `undefined`.
 - Local verification passed: app typecheck, test typecheck, focused auth/API/UserContext/account tests, app lint, and `git diff --check`.
+- PR #456 current-head CI passed with 28 successful and 33 skipped action tasks, including PR Required Checks.
+- PR #456 was squash-merged into `main` as `241e059c1af53a4c0b81a3f5e3310a1212162390`; the merge commit was verified as reachable from `origin/main`, and the local/remote phase branch was cleaned up.
 
 Phase 3 details:
 
 - Use `@sanctuary/shared/constants/bitcoin` as the source for canonical network values, `NetworkType`, legacy `testnet` normalization, and testnet-family checks.
+- Prefer importing or re-exporting canonical values over introducing another local `['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']` tuple.
+- Keep `server/src/services/bitcoin/networks.ts` as the home for server-only adapters such as `bitcoinJsNetworkName`, `resolveDetectedBitcoinNetwork`, and label formatting if those helpers remain server-specific.
 - Keep frontend tab networks as a subset that intentionally excludes `regtest`; derive the subset from canonical values where practical.
 - Keep UI labels/colors local, but use shared network identities for validation and data contracts.
-- Replace repeated server unions and zod enums incrementally in API routes, config schemas, Electrum pool/client types, worker types, import services, OpenAPI constants, and frontend API modules.
+- Replace repeated server unions and zod enums incrementally in API routes, config schemas, Electrum pool/client types, worker types, import services, OpenAPI constants, assistant/console schemas, and frontend API modules.
 - Do not collapse service-specific concepts that are genuinely narrower, such as mempool-dashboard networks that exclude `regtest`.
+- Preserve legacy `testnet` acceptance where it is an input compatibility contract, especially user preference patches and descriptor/import auto-detection, but normalize before persistence or routing.
 
 Phase 3 corner cases:
 
 - Legacy `testnet` must continue to normalize to `testnet3`, not `testnet4`.
 - `testnet3`, `testnet4`, `signet`, and `regtest` share BIP44 coin type `1`; mainnet uses `0`.
+- `bitcoinjs-lib` network parameters do not distinguish testnet3, testnet4, and signet for address encoding. Use shared identity for storage/routing and `bitcoinJsNetworkName` only at library-adapter boundaries.
 - Regtest may be valid for backend/node operations while intentionally absent from normal UI tabs.
+- Network sync APIs intentionally exclude `regtest` today; do not add a regtest sync tab or queue path as an incidental result of type consolidation.
+- Mempool dashboard/fee-estimator integrations intentionally exclude `regtest`; raw node/Electrum operations may still accept it.
 - OpenAPI enum order should stay stable unless tests are updated deliberately.
 - Database/network persisted values and import/export formats must remain backward compatible.
 - Network identity checks must not regress the earlier testnet3/testnet4 chain-identity fix.
+- Legacy node-config fields named `testnet*` may need to remain as compatibility aliases even while canonical values use `testnet3`; do not remove them without a migration and OpenAPI/test updates.
+- `null`, empty strings, unknown strings, and omitted network inputs should keep their current fallback/error behavior per boundary: public API validation should reject invalid explicit values, while internal legacy-normalization helpers may fall back to `mainnet`.
+- Testnet-family addresses can be syntactically ambiguous across testnet3/testnet4/signet. Consolidation must not treat address prefix alone as proof of chain identity.
 
 Phase 3 verification:
 
 - `npm run check:bitcoin-network-boundaries`
+- focused shared constants tests if new canonical helpers are added
+- focused tests for mobile preference canonicalization, wallet import/descriptor network detection, and Electrum network identity if touched
 - `cd server && npx vitest run tests/unit/api/bitcoin tests/unit/services/bitcoin`
 - `npm run typecheck:app`
 - `npm run typecheck:server:tests`
@@ -153,22 +187,39 @@ Phase 3 verification:
 - touched-file `npm run quality:lizard -- ...`
 - `git diff --check`
 
+Phase 3 review:
+
+- Added shared canonical network subsets in `shared/constants/bitcoin.ts`: `BITCOIN_NON_REGTEST_NETWORKS` for UI/sync/mempool-style boundaries and `BITCOIN_TESTNET_FAMILY_NETWORKS` for testnet-family checks.
+- Updated server Bitcoin helpers to re-export the shared canonical tuple and shared legacy/testnet-family guards while keeping server-only adapters such as `bitcoinJsNetworkName`, `resolveDetectedBitcoinNetwork`, and label formatting local.
+- Replaced duplicate full-network unions and zod/OpenAPI enum tuples across config, validation, wallet/import routes, admin node/electrum routes, assistant dashboard tools, Electrum pool/client/worker/sync types, wallet/import/descriptor/script types, frontend API modules, and wallet/mobile/OpenAPI schemas.
+- Kept narrower concepts intentionally distinct: frontend tab networks, sync networks, and mempool networks derive from the shared non-regtest subset; legacy `testnet` remains accepted for preference/import compatibility.
+- Updated tests to prove shared subset values and server helper re-export identity.
+- Local verification passed: shared build, focused shared/mobile preference tests, server network helper test, Bitcoin network boundary check, app typecheck, server test typecheck, app lint, server lint, focused server Bitcoin test suite, focused OpenAPI/wallet/payjoin/config/assistant tests, OpenAPI route coverage, touched-file lizard, and `git diff --check`.
+
 Phase 4 details:
 
 - Do not merge backend endpoints. `/wallets/:walletId/transactions/broadcast` is wallet-scoped and policy/audit-aware; `/bitcoin/broadcast` is raw network broadcast.
 - Rename the frontend raw helper, for example from `bitcoinApi.broadcastTransaction` to `broadcastRawNetworkTransaction`, and update imports/call sites.
+- Update API barrel exports and tests that import the raw Bitcoin API helper so the new name is visible at call sites.
 - Keep wallet-scoped `transactionsApi.broadcastTransaction` unchanged for send flow ergonomics.
 - Update OpenAPI/client docs only if public naming or docs currently encourage confusion.
+- Keep the raw helper request contract as `{ rawTx, network? }`; do not rename it to `rawTxHex` because that name belongs to the wallet-scoped transaction broadcast contract.
+- After the rename, run a targeted search for `bitcoinApi.broadcastTransaction` and ambiguous named imports from `src/api/bitcoin.ts`; the only remaining `broadcastTransaction` names should be wallet/service/event concepts that are intentionally scoped by their module.
 
 Phase 4 corner cases:
 
 - Hardware-wallet flow posts to `/wallets/:walletId/psbt/broadcast`; do not accidentally redirect it to the raw network helper.
 - Gateway mobile route coverage and mobile permission checks apply to wallet-scoped broadcast; raw `/bitcoin/broadcast` is a different API surface.
 - Existing tests that mock `blockchain.broadcastTransaction` refer to server service internals and should not be renamed merely because the frontend helper changes.
+- WebSocket/event helpers also use `broadcastTransaction` language for notifications; leave them alone unless a call site actually imports both names and becomes ambiguous.
+- If a temporary compatibility alias is kept for the raw frontend helper, mark it as deprecated and add a test or lint guard that product code uses the clearer name.
+- Namespace tests such as `tests/api/coreApiModules.test.ts` should assert the new raw helper name so future module exports do not silently reintroduce `bitcoinApi.broadcastTransaction`.
+- If generated docs, API examples, or developer docs mention the raw frontend helper name, update the helper name there without changing the server route path.
 
 Phase 4 verification:
 
 - focused frontend send/hardware-wallet tests if touched
+- `npm run test:run -- tests/api/coreApiModules.test.ts tests/api/transactions.test.ts`
 - `cd server && npx vitest run tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.broadcast.contracts.ts tests/unit/api/bitcoin/bitcoin.transaction.contracts.ts`
 - `npm run typecheck:app`
 - `npm run typecheck:server:tests`
@@ -176,18 +227,37 @@ Phase 4 verification:
 
 Phase 5 details:
 
-- If removing model management, remove frontend `pullModel`/`deleteModel`, backend `/ai/pull-model` and `/ai/delete-model`, proxy `/pull-model` and `/delete-model`, model-pull progress callbacks if they become unused, OpenAPI entries, tests, and UI copy/buttons.
+- Remove frontend `pullModel`/`deleteModel`, backend `/ai/pull-model` and `/ai/delete-model`, proxy `/pull-model` and `/delete-model`, model-pull progress callbacks if they become unused, OpenAPI entries, gateway route entries, tests, mocks, and UI copy/buttons.
+- Remove or repurpose `llm-egress-proxy/src/modelPull.ts`, related model-pull tests, and backend internal pull-progress handling if no retained code publishes those events.
+- Remove "recommended Ollama model" download controls and custom model pull controls from AI Settings. Keep provider model listing and explicit model selection for external providers.
+- Reassess `getSystemResources` and any "local model readiness" UI. If it only exists to size local model downloads/runtimes, remove it with the model-management surface.
 - Keep provider detection, provider config sync, list-models, external provider calls, endpoint allowlisting, and sanitized-context isolation unless explicitly changing the LLM feature itself.
-- If keeping model management, rename "Sanctuary-managed Ollama pulls" to make clear the provider runs outside Sanctuary and Sanctuary is only sending admin requests to that external provider.
+- Keep Ollama as an external provider type when the operator already runs it outside Sanctuary; removing model management does not mean removing Ollama provider support.
 - The ignored local `ai-proxy/dist` artifact is not a tracked-code concern; clean it separately only as an explicit workspace cleanup.
+- Document the renamed proxy by its actual security job: LLM egress isolation, not AI runtime or model hosting.
+- Remove model-management response types and mocks (`PullModelResponse`, `DeleteModelResponse`, mock pull/delete helpers) instead of leaving unused exported capability shapes behind.
+- Remove `hooks/websocket/useModelDownloadProgress` and `broadcastModelDownloadProgress` if `/internal/ai/pull-progress` is removed; keep general websocket infrastructure and non-model events intact.
+- Update `llm-egress-proxy/ARCHITECTURE.md` so its route table and component table no longer claim the proxy streams model pulls or deletes provider models.
+- Ensure OpenAPI and gateway route tests assert removed routes are absent; hidden UI is not enough because API clients could still call retained routes.
+- Keep provider model listing as selection-only. If an external provider returns no models or does not list the saved model, the UI may warn or allow manual model entry, but it must not offer to install that model through Sanctuary.
 
 Phase 5 corner cases:
 
 - Removing pull/delete should not remove external Ollama as a provider type.
 - Removing pull/delete should not break provider model listing for configured OpenAI-compatible providers.
+- Removing pull/delete should not break listing models from external Ollama `/api/tags`.
+- Provider detection may still mention Ollama because it detects an external endpoint; remove wording that implies Sanctuary starts, installs, stores, or owns models.
 - WebSocket model-pull progress events may become dead code if pull is removed; delete or document intentionally unused paths.
 - Admin-only and rate-limited behavior must remain for any retained provider-management endpoint.
 - Do not weaken endpoint allowlist/CIDR policy while editing provider routes.
+- Existing saved settings that reference Ollama model names should continue to load; only the ability to install/delete provider models through Sanctuary should disappear.
+- OpenAPI and gateway route coverage should prove removed routes are gone, not merely hidden in the UI.
+- Mocks and tests should stop advertising pull/delete as supported capabilities; otherwise later UI work can accidentally re-enable the surface.
+- Existing selected model values should not be cleared solely because provider listing is unavailable, slow, or temporarily missing that model.
+- Provider type copy should say "external Ollama" or "Ollama endpoint" where needed; avoid "local model", "download", "install", "pull", and "delete" language in retained UI unless it describes the external provider app.
+- Removing model-download progress should not unsubscribe the app from unrelated `system` or websocket events.
+- Removed API routes should either be absent from the app router or return the platform's normal not-found behavior; do not keep stubbed success/unsupported handlers that still advertise the capability.
+- LLM egress proxy route tests should still cover blocked private-network endpoints, malformed provider URLs, missing configured endpoints, and OpenAI-compatible provider model listing after pull/delete removal.
 
 Phase 5 verification:
 
@@ -197,21 +267,34 @@ Phase 5 verification:
 - `npm --prefix llm-egress-proxy run build`
 - focused llm-egress-proxy tests for provider routes if present
 - `npm run check:openapi-route-coverage`
+- gateway route/openapi parity tests if AI routes are removed from the manifest
 - `git diff --check`
 
 Phase 6 details:
 
 - Preference helper: centralize nested preference patch construction, but preserve server canonicalization of `fiatCurrency` and `selectedNetwork`.
+- Preference helper: keep schema validation/canonicalization as the backend source of truth; frontend helpers should shape patches, not silently accept values the backend would reject.
 - Preference helper: arrays should replace arrays, not deep-merge by index.
 - Preference helper: preserve unauthenticated localStorage fallback in `useUserPreference`.
 - Gateway validation: defer manifest-derived schema lookup unless gateway routes change again; current parity tests are adequate guardrails.
+- Put the helper in a frontend preference utility/hook module and use it from `useUserPreference`, wallet list preferences, device list preferences, and high-risk nested settings such as notification sounds and Telegram only where it reduces duplicated merge logic.
+- Preserve the backend's current top-level merge behavior. For nested preference objects such as `viewSettings`, `notificationSounds`, and `telegram`, the frontend helper must include existing sibling keys deliberately when the caller is updating only one nested value.
+- Keep helper semantics explicit for invalid paths: empty paths, double dots, and unsafe object keys should fail fast or return a no-op rather than creating surprising preference keys.
+- Avoid deletion semantics in the first cleanup. `undefined` should not be used as an implicit delete because JSON serialization drops it and the backend has no delete contract.
 
 Phase 6 corner cases:
 
 - Optimistic preference updates can race; helper should avoid overwriting unrelated nested keys with stale snapshots where possible.
 - `null`, absent preferences, and non-object legacy preference values must still resolve to defaults.
+- Empty nested objects should not erase sibling preference keys unless the caller explicitly intends replacement.
+- `selectedNetwork: 'testnet'` must continue to canonicalize to `testnet3`; invalid selected networks should still be rejected by the shared schema.
+- `fiatCurrency` should remain trimmed and uppercased by backend canonicalization, not by inconsistent UI-only code paths.
 - Gateway route body validation should stay fail-closed for write routes with bodies.
 - Manifest/schema derivation must not introduce circular imports or make shared schemas mutable at runtime.
+- Dot-path helpers must not allow prototype pollution through keys like `__proto__`, `prototype`, or `constructor`.
+- Arrays such as visible column IDs and column order should replace the array at that path, not merge entries by index.
+- Invalid localStorage JSON should continue to fall back to the default value and should not block authenticated server preferences after login.
+- Concurrent preference writes from multiple controls can still be last-write-wins at the API level; tests should at least prove a single helper-built patch preserves siblings from the latest available user preference snapshot.
 
 Plan-level quality gates:
 

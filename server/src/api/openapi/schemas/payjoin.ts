@@ -4,6 +4,8 @@
  * Schema definitions for BIP78 Payjoin management and receiver endpoints.
  */
 
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+
 export const payjoinSchemas = {
   PayjoinStatusResponse: {
     type: 'object',
@@ -62,7 +64,7 @@ export const payjoinSchemas = {
       payjoinUrl: { type: 'string', format: 'uri' },
       network: {
         type: 'string',
-        enum: ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'],
+        enum: [...BITCOIN_NETWORKS],
         default: 'mainnet',
       },
     },

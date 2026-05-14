@@ -5,12 +5,13 @@
  */
 
 import { nodeConfigRepository } from '../../../repositories';
+import type { NonRegtestNetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 
 const log = createLogger('BITCOIN:SVC_MEMPOOL_CONFIG');
 
-export type MempoolNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet';
+export type MempoolNetwork = NonRegtestNetworkType;
 
 const DEFAULT_MEMPOOL_APIS: Record<MempoolNetwork, string> = {
   mainnet: 'https://mempool.space/api',

@@ -5,6 +5,7 @@
  */
 
 import apiClient from './client';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { BitcoinTransactionDetails, BlockHeader } from '../types';
 
 // Re-export types for convenience
@@ -86,13 +87,13 @@ export interface AddressInfo {
   type: string;
 }
 
-export type BitcoinDashboardNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet';
+export type BitcoinDashboardNetwork = Exclude<NetworkType, 'regtest'>;
 export type BitcoinStatusNetwork = BitcoinDashboardNetwork;
-export type BitcoinFeeNetwork = BitcoinStatusNetwork | 'regtest';
+export type BitcoinFeeNetwork = NetworkType;
 
 export interface ValidateAddressRequest {
   address: string;
-  network?: 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
+  network?: NetworkType;
 }
 
 export interface ValidateAddressResponse {

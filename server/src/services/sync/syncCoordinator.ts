@@ -1,4 +1,5 @@
 import { walletRepository, transactionRepository, addressRepository } from '../../repositories';
+import { BITCOIN_NON_REGTEST_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import type { NetworkType } from '../../repositories/types';
 import { NotFoundError, InvalidInputError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
@@ -6,7 +7,7 @@ import * as blockchain from '../bitcoin/blockchain';
 
 const log = createLogger('SYNC:COORDINATOR');
 
-const SYNC_NETWORKS = ['mainnet', 'testnet3', 'testnet4', 'signet'] as const;
+const SYNC_NETWORKS = BITCOIN_NON_REGTEST_NETWORKS;
 
 export type SyncPriority = 'high' | 'normal' | 'low';
 type SyncNetwork = Extract<NetworkType, (typeof SYNC_NETWORKS)[number]>;

@@ -26,6 +26,7 @@ import {
   AI_PROVIDER_CREDENTIAL_DISABLED_REASONS,
   AI_PROVIDER_CREDENTIAL_TYPES,
 } from '../../../../services/ai/providerCredentials';
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { FEATURE_FLAG_KEYS } from '../../../../services/featureFlags/definitions';
 import { ADMIN_GROUP_ROLE_VALUES } from '../../../admin/groupRoles';
 
@@ -133,7 +134,7 @@ export const NODE_CONFIG_TYPE_VALUES = ['electrum'] as const;
 export const NODE_CONNECTION_MODE_VALUES = ['singleton', 'pool'] as const;
 export const NODE_LOAD_BALANCING_VALUES = ['round_robin', 'least_connections', 'failover_only'] as const;
 export const NODE_MEMPOOL_ESTIMATOR_VALUES = ['simple', 'mempool_space'] as const;
-export const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest'] as const;
+export const ELECTRUM_NETWORK_VALUES = BITCOIN_NETWORKS;
 export const DEAD_LETTER_CATEGORY_VALUES = ['sync', 'push', 'telegram', 'notification', 'electrum', 'transaction', 'other'] as const;
 export const MONITORING_SERVICE_VALUES = ['grafana', 'prometheus', 'jaeger'] as const;
 

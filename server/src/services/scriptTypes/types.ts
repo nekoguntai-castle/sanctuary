@@ -5,7 +5,9 @@
  * New script types can be added by implementing ScriptTypeHandler.
  */
 
-export type Network = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+
+export type Network = NetworkType;
 
 /**
  * Device key information for descriptor building

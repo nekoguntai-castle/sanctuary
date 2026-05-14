@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { normalizeEmail } from '../utils/email';
 import { normalizeUsername, USERNAME_POLICY } from '../utils/username';
 
@@ -62,7 +63,7 @@ export const DateRangeSchema = z.object({
 // Bitcoin-specific
 // =============================================================================
 
-export const NetworkTypeSchema = z.enum(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
+export const NetworkTypeSchema = z.enum(BITCOIN_NETWORKS);
 
 export const ScriptTypeSchema = z.enum([
   'p2pkh', // Legacy

@@ -6,8 +6,9 @@
  */
 
 import type { ElectrumClient } from '../../services/bitcoin/electrum';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 
-export type BitcoinNetwork = 'mainnet' | 'testnet3' | 'testnet4' | 'signet' | 'regtest';
+export type BitcoinNetwork = NetworkType;
 
 export interface AddressWalletInfo {
   walletId: string;
