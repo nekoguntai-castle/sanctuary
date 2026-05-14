@@ -1,6 +1,6 @@
-# Active Task: Phase 6 Gateway Route Manifest And Parity 2026-05-14
+# Completed Task: Phase 6 Gateway Route Manifest And Parity 2026-05-14
 
-Status: local PR blocker remediation committed; force-push and current-head PR check monitoring pending.
+Status: merged and verified.
 
 Goal: make the gateway proxy surface auditable from one route manifest, remove duplicate route-permission metadata where practical, and add parity tests that prove whitelist, OpenAPI, validation, rate limiting, auth, and mobile permission decisions stay aligned.
 
@@ -30,8 +30,8 @@ Goal: make the gateway proxy surface auditable from one route manifest, remove d
 - [x] Review the regenerated architecture graph diff for `docs/architecture/generated/gateway.md`; the new middleware-to-routes edge is expected because `mobilePermission.ts` now imports the route manifest.
 - [x] Rerun the exact failed local gates against the committed head: quick test hygiene and `npm run arch:graphs && npm run arch:calls && git diff --exit-code -- docs/architecture/generated`.
 - [x] Rerun the focused gateway verification bundle after remediation to prove no behavior regressed.
-- [ ] Amend or follow up the PR branch, force-push with lease if amending, and verify PR #453 statuses on the new head rather than stale failed attempts.
-- [ ] Commit, open PR, monitor checks, merge, verify target branch ancestry, and clean up.
+- [x] Amend or follow up the PR branch, force-push with lease if amending, and verify PR #453 statuses on the new head rather than stale failed attempts.
+- [x] Commit, open PR #453, monitor checks, merge, verify target branch ancestry, and clean up.
 
 Corner cases to account for:
 
@@ -75,6 +75,10 @@ Acceptance checks:
 - Added parity tests for manifest completeness, explicit-route whitelist coverage, OpenAPI coverage, authenticated writes without mobile permissions, wallet-scoped write permission/access-control decisions, generated route action maps, validation decision alignment, and the composed middleware chain for public, permissioned wallet-write, and catch-all read routes.
 - Pre-commit review flagged missing direct coverage for `getProxyMiddlewares()` branches and missing comments on explicit-route selection; the follow-up patch adds middleware-chain tests and documents the explicit-route subset.
 - `gateway/src/routes/proxy/whitelist.ts` is now 429 lines. That is over the 400-line warning threshold, but it is deliberately table-like route metadata and remains under the 500-line refactor trigger.
+- PR #453 was force-pushed to remediation head `c4bd308ad61d83e6c8033d1e3fd4699a0fc7835f`; Forgejo current-head checks passed, including Architecture, Quick Test Hygiene, Full Gateway Tests, Full Test Summary, and PR Required Checks.
+- PR #453 was squash-merged into `main` as `9694ec25f90cc7b180418335d7ab7c5298faab12`; the merge commit was verified as reachable from `origin/main`.
+- Local `main` was fast-forwarded to `9694ec25f90cc7b180418335d7ab7c5298faab12`, and the local and remote `codex/phase-6-gateway-route-manifest` branches were deleted.
+- Post-merge `main` push checks passed for the merge commit, including Test Suite and Architecture.
 
 Verification so far:
 
