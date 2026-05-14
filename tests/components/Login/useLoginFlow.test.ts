@@ -114,18 +114,19 @@ describe('useLoginFlow', () => {
     expect(mockRegister).toHaveBeenCalledWith('bob', 'password123', 'bob@test.com');
   });
 
-  it('handleSubmit calls register with undefined email when empty', async () => {
+  it('handleSubmit passes the required registration email', async () => {
     const { result } = renderHook(() => useLoginFlow());
     await waitForInitialChecks(result);
 
     act(() => result.current.toggleMode());
     act(() => result.current.setUsername('bob'));
     act(() => result.current.setPassword('password123'));
+    act(() => result.current.setEmail('bob@example.com'));
 
     const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent;
     await act(() => result.current.handleSubmit(mockEvent));
 
-    expect(mockRegister).toHaveBeenCalledWith('bob', 'password123', undefined);
+    expect(mockRegister).toHaveBeenCalledWith('bob', 'password123', 'bob@example.com');
   });
 
   it('handle2FASubmit calls verify2FA', async () => {

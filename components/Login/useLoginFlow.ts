@@ -120,7 +120,7 @@ export function useLoginFlow() {
     setIsSubmitting(true);
     try {
       if (isRegisterMode) {
-        await register(username, password, email || undefined);
+        await register(username, password, email);
       } else {
         await login(username, password);
       }

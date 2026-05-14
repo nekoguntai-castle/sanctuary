@@ -1,6 +1,51 @@
-# Active Task: Phase 2 Email Canonicalization 2026-05-14
+# Active Task: Phase 3 Auth Contract Types And OpenAPI Parity 2026-05-14
 
 Status: in progress
+
+Goal: align browser auth frontend/shared types and OpenAPI docs with the runtime contract: registration requires email, browser auth responses are cookie-only, and username/password/email constraints are documented consistently.
+
+## Plan
+
+- [x] Make frontend `RegisterRequest.email` required and update the login/register flow tests so registration always supplies email.
+- [x] Make the login UI email field required in registration mode and remove optional-email behavior from the hook tests.
+- [x] Replace stale shared token-bearing auth response types with cookie-only browser response shapes.
+- [x] Add/strengthen OpenAPI parity tests for registration username constraints, required email, password policy, admin email clear semantics, and absence of JS-readable auth tokens.
+- [x] Run focused frontend/server/shared tests, typechecks, lint/complexity checks, and final diff review.
+- [ ] Commit, open PR, monitor checks, merge, and verify target branch ancestry before starting Phase 4.
+
+Corner cases to account for:
+
+- Login username remains min length 1 for lookup; registration/admin usernames remain min 3, max 50, alphanumeric/underscore.
+- OpenAPI can document username canonicalization but cannot express the lowercase transform exactly.
+- 2FA still uses `tempToken`; only browser auth success responses must avoid token/refreshToken body fields.
+- Pending email verification registration responses do not contain a `user` object or auth tokens.
+
+## Review
+
+- Frontend and shared `RegisterRequest` now require `email`.
+- `UserContext.register()` and `useLoginFlow()` now treat email as a required registration input, and the login form marks the email field required only in register mode.
+- Shared auth response types now model cookie-backed browser auth and no longer expose `token` or `refreshToken` body fields.
+- Username policy constants now feed both runtime `UsernameSchema` and OpenAPI username request docs.
+- OpenAPI auth/admin tests now cover registration/admin username min/max/pattern/canonicalization docs and assert login responses do not document body tokens.
+
+Verification so far:
+
+- `npm --prefix server run test:run -- tests/unit/api/openapi.test.ts tests/unit/api/schemas/common.test.ts` passed, 54 tests.
+- `npm run test:run -- tests/api/auth.test.ts tests/components/Login.test.tsx tests/components/Login/useLoginFlow.test.ts` passed, 49 tests.
+- `npm run typecheck:app`, `npm run typecheck:tests`, and `npm --prefix server run typecheck:tests` passed.
+- `npm run lint:app` passed.
+- `npm run lint:server` passed, including API body validation, Bitcoin network boundary, and safety catch guard checks.
+- `npm run check:browser-auth-contract` passed.
+- `npm run check:openapi-route-coverage` passed.
+- `bash scripts/quality/lizard-only.sh server/src/utils/username.ts server/src/validation/commonSchemas.ts server/src/api/openapi/schemas/common.ts server/src/api/openapi/schemas/auth.ts server/src/api/openapi/schemas/admin/identity-groups.ts src/api/auth.ts contexts/UserContext.tsx components/Login/useLoginFlow.ts components/Login/LoginForm/LoginFormFields.tsx shared/types/api.ts` passed.
+- `git diff --check` passed.
+- Pre-commit changed-test sweep passed: backend 5,847 tests passed and 244 skipped; frontend 6,112 tests passed.
+
+---
+
+# Completed Task: Phase 2 Email Canonicalization 2026-05-14
+
+Status: merged
 
 Goal: make email validation, duplicate checks, persistence, audit details, and verification-token creation use one canonical lowercase email contract.
 
@@ -12,7 +57,7 @@ Goal: make email validation, duplicate checks, persistence, audit details, and v
 - [x] Use the parsed canonical email in the auth email update route for duplicate checks, persistence, audit details, verification token creation, and logs.
 - [x] Cover mixed-case update, case-only update, duplicate mixed-case lookup, null existing email, and admin clear-email behavior in tests.
 - [x] Run focused tests, typecheck, lint/complexity checks, and final diff review.
-- [ ] Commit, open PR, monitor checks, merge, and verify target branch ancestry before starting Phase 3.
+- [x] Commit, open PR, monitor checks, merge, and verify target branch ancestry before starting Phase 3.
 
 Corner cases to account for:
 
@@ -39,6 +84,7 @@ Verification so far:
 - `bash scripts/quality/lizard-only.sh server/src/utils/email.ts server/src/validation/commonSchemas.ts server/src/api/schemas/email.ts server/src/repositories/userRepository.ts server/src/api/auth/email.ts server/src/api/auth/login.ts server/src/api/admin/users.ts` passed.
 - `git diff --check` passed.
 - Pre-commit changed-test sweep passed, 5,804 tests passed and 244 skipped.
+- PR #449 merged and verified on `origin/main` at `b0b6eedd4342b51eaf5bba6450dc405c506ea4d9`.
 
 ---
 

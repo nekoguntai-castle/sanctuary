@@ -117,20 +117,45 @@ export interface LoginRequest {
 export interface RegisterRequest {
   username: string;
   password: string;
-  email?: string;
+  email: string;
 }
 
 /**
- * Authentication response (successful login/register)
+ * User identity returned by cookie-backed browser authentication responses.
+ */
+export interface AuthUser {
+  id: string;
+  username: string;
+  email?: string;
+  emailVerified?: boolean;
+  isAdmin: boolean;
+  preferences?: Record<string, unknown> | null;
+  createdAt?: string;
+  twoFactorEnabled?: boolean;
+}
+
+/**
+ * Cookie-backed authentication response (successful login/register).
+ *
+ * Browser auth tokens are set through HttpOnly cookies and are not returned in
+ * the JSON body.
  */
 export interface AuthResponse {
-  token: string;
-  user: {
-    id: string;
-    username: string;
-    email?: string;
-    isAdmin: boolean;
-  };
+  user: AuthUser;
+  expiresIn?: number;
+  emailVerificationRequired?: false;
+  verificationEmailSent?: boolean;
+  message?: string;
+}
+
+/**
+ * Registration response when email verification is required before login.
+ */
+export interface PendingEmailVerificationResponse {
+  emailVerificationRequired: true;
+  verificationEmailSent: boolean;
+  message: string;
+  email?: string;
 }
 
 /**
@@ -140,6 +165,9 @@ export interface TwoFactorRequiredResponse {
   requires2FA: true;
   tempToken: string;
 }
+
+export type RegisterResponse = AuthResponse | PendingEmailVerificationResponse;
+export type LoginResponse = AuthResponse | TwoFactorRequiredResponse;
 
 // =============================================================================
 // Sync API Types

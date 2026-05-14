@@ -5,6 +5,7 @@
  */
 
 import { PASSWORD_POLICY, PASSWORD_POLICY_MESSAGES } from '../../../utils/password';
+import { USERNAME_POLICY } from '../../../utils/username';
 
 const passwordDescription = [
   'Must include uppercase, lowercase, and numeric characters.',
@@ -18,6 +19,14 @@ export const passwordRequestPropertySchema = {
   minLength: PASSWORD_POLICY.minLength,
   maxLength: PASSWORD_POLICY.maxUtf8Bytes,
   description: passwordDescription,
+} as const;
+
+export const accountUsernamePropertySchema = {
+  type: 'string',
+  minLength: USERNAME_POLICY.minLength,
+  maxLength: USERNAME_POLICY.maxLength,
+  pattern: USERNAME_POLICY.pattern,
+  description: USERNAME_POLICY.description,
 } as const;
 
 export const commonSchemas = {

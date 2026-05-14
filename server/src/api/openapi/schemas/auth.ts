@@ -5,7 +5,7 @@
  */
 
 import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
-import { passwordRequestPropertySchema } from './common';
+import { accountUsernamePropertySchema, passwordRequestPropertySchema } from './common';
 
 export const authSchemas = {
   LoginRequest: {
@@ -26,7 +26,7 @@ export const authSchemas = {
   RegisterRequest: {
     type: 'object',
     properties: {
-      username: { type: 'string', minLength: 1 },
+      username: accountUsernamePropertySchema,
       password: passwordRequestPropertySchema,
       email: { type: 'string', format: 'email' },
     },

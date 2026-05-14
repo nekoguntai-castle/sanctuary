@@ -9,6 +9,7 @@ import {
   AUDIT_STATS_DAYS,
 } from './openapi.helpers';
 import { PASSWORD_POLICY, PASSWORD_POLICY_MESSAGES } from '../../../src/utils/password';
+import { USERNAME_POLICY } from '../../../src/utils/username';
 
 import type {
   OpenApiPathKey,
@@ -305,7 +306,10 @@ export function registerOpenApiAdminOpsTests() {
       'email',
     ]);
     expect(openApiSpec.components.schemas.AdminCreateUserRequest.properties.username).toMatchObject({
-      minLength: 3,
+      minLength: USERNAME_POLICY.minLength,
+      maxLength: USERNAME_POLICY.maxLength,
+      pattern: USERNAME_POLICY.pattern,
+      description: expect.stringContaining('stored lowercase'),
     });
     expect(openApiSpec.components.schemas.AdminCreateUserRequest.properties.password).toMatchObject({
       minLength: PASSWORD_POLICY.minLength,
@@ -316,6 +320,12 @@ export function registerOpenApiAdminOpsTests() {
       format: 'email',
     });
     expect(openApiSpec.components.schemas.AdminUpdateUserRequest.required).toBeUndefined();
+    expect(openApiSpec.components.schemas.AdminUpdateUserRequest.properties.username).toMatchObject({
+      minLength: USERNAME_POLICY.minLength,
+      maxLength: USERNAME_POLICY.maxLength,
+      pattern: USERNAME_POLICY.pattern,
+      description: expect.stringContaining('stored lowercase'),
+    });
     expect(openApiSpec.components.schemas.AdminUpdateUserRequest.properties.email.oneOf).toContainEqual({
       type: 'string',
       format: 'email',

@@ -55,7 +55,7 @@ interface UserContextType {
   login: (username: string, password: string) => Promise<LoginResult>;
   verify2FA: (code: string) => Promise<boolean>;
   cancel2FA: () => void;
-  register: (username: string, password: string, email?: string) => Promise<RegistrationResult>;
+  register: (username: string, password: string, email: string) => Promise<RegistrationResult>;
   logout: () => void;
   updatePreferences: (prefs: Partial<UserPreferences>) => Promise<void>;
   clearError: () => void;
@@ -224,7 +224,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setError(null);
   }, []);
 
-  const register = useCallback(async (username: string, password: string, email?: string): Promise<RegistrationResult> => {
+  const register = useCallback(async (username: string, password: string, email: string): Promise<RegistrationResult> => {
     setIsLoading(true);
     setError(null);
     setNotice(null);

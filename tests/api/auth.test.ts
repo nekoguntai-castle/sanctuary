@@ -87,18 +87,23 @@ describe('Auth API', () => {
       };
       mockPost.mockResolvedValue(mockResponse);
 
-      const result = await register({ username: 'newuser', password: 'securepass' });
+      const result = await register({
+        username: 'newuser',
+        password: 'securepass',
+        email: 'newuser@example.com',
+      });
 
       expect(mockPost).toHaveBeenCalledWith('/auth/register', {
         username: 'newuser',
         password: 'securepass',
+        email: 'newuser@example.com',
       });
       expect(isPendingEmailVerification(result)).toBe(false);
       if (isPendingEmailVerification(result)) throw new Error('expected authenticated response');
       expect(result.user.username).toBe('newuser');
     });
 
-    it('should include email when provided', async () => {
+    it('should post the required registration email', async () => {
       mockPost.mockResolvedValue({ user: { id: '1' } });
 
       await register({ username: 'user', password: 'pass', email: 'user@example.com' });

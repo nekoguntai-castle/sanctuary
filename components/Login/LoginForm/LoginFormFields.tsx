@@ -75,8 +75,9 @@ const EmailField: React.FC<EmailFieldProps> = ({ isRegisterMode, email, onEmailC
     <div className="overflow-hidden">
       <TextInputField
         id="email"
-        label="Email (Optional)"
+        label="Email"
         type="email"
+        required={isRegisterMode}
         value={email}
         icon={Mail}
         placeholder="your@email.com"

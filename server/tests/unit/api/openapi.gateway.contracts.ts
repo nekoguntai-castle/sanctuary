@@ -26,6 +26,7 @@ import {
 } from './openapi.helpers';
 import { registerOpenApiGatewayInternalTests } from './openapi.gateway-internal.contracts';
 import { PASSWORD_POLICY, PASSWORD_POLICY_MESSAGES } from '../../../src/utils/password';
+import { USERNAME_POLICY } from '../../../src/utils/username';
 
 import type { OpenApiPathKey } from './openapi.helpers';
 
@@ -261,6 +262,12 @@ export function registerOpenApiGatewayTests() {
 
     expect(openApiSpec.components.schemas.RegistrationStatusResponse.required).toEqual(['enabled']);
     expect(openApiSpec.components.schemas.RegisterRequest.required).toEqual(['username', 'password', 'email']);
+    expect(openApiSpec.components.schemas.RegisterRequest.properties.username).toMatchObject({
+      minLength: USERNAME_POLICY.minLength,
+      maxLength: USERNAME_POLICY.maxLength,
+      pattern: USERNAME_POLICY.pattern,
+      description: expect.stringContaining('stored lowercase'),
+    });
     expect(openApiSpec.components.schemas.RegisterRequest.properties.password).toMatchObject({
       minLength: PASSWORD_POLICY.minLength,
       maxLength: PASSWORD_POLICY.maxUtf8Bytes,
@@ -272,6 +279,8 @@ export function registerOpenApiGatewayTests() {
     });
     expect(openApiSpec.components.schemas.LoginResponse.properties).toHaveProperty('tempToken');
     expect(openApiSpec.components.schemas.LoginResponse.properties).toHaveProperty('emailVerificationRequired');
+    expect(openApiSpec.components.schemas.LoginResponse.properties).not.toHaveProperty('token');
+    expect(openApiSpec.components.schemas.LoginResponse.properties).not.toHaveProperty('refreshToken');
 
     expect(openApiSpec.paths['/auth/2fa/enable'].post.requestBody.content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/TwoFactorTokenRequest',

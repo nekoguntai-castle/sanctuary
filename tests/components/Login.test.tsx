@@ -259,7 +259,7 @@ describe('Login Component', () => {
     expect(passwordInput.value).toBe('');
   });
 
-  it('should register without email as undefined', async () => {
+  it('should require email before submitting registration', async () => {
     const { Login } = await import('../../components/Login');
     const user = userEvent.setup();
 
@@ -270,13 +270,15 @@ describe('Login Component', () => {
 
     const usernameInput = screen.getByLabelText(/username/i);
     const passwordInput = screen.getByLabelText(/password/i);
+    const emailInput = screen.getByLabelText(/email/i) as HTMLInputElement;
     const submitButton = screen.getByRole('button', { name: /create account/i });
 
     await user.type(usernameInput, 'newuser');
     await user.type(passwordInput, 'newpassword123');
     await user.click(submitButton);
 
-    expect(mockRegister).toHaveBeenCalledWith('newuser', 'newpassword123', undefined);
+    expect(emailInput.required).toBe(true);
+    expect(mockRegister).not.toHaveBeenCalled();
   });
 
   it('applies dark class when system prefers dark mode', async () => {
@@ -612,6 +614,7 @@ describe('Login Component - Loading branches', () => {
 
     await user.type(screen.getByLabelText(/username/i), 'alice');
     await user.type(screen.getByLabelText(/password/i), 'secret1234');
+    await user.type(screen.getByLabelText(/email/i), 'alice@example.com');
     await user.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {
