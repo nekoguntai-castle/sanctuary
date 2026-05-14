@@ -1,6 +1,6 @@
 # Active Task: Codebase Divergence Scrub 2026-05-14
 
-Status: Phase 3 locally implemented and verified on `codex/phase-3-bitcoin-network-contracts`; PR delivery pending.
+Status: Phase 3 merged via PR #457 as `5d2f488ef211e097c7ee7e4eb62d7070cef87e0f`; Phase 4 raw-broadcast naming cleanup is in progress on `codex/phase-4-raw-broadcast-name`.
 
 Goal: reanalyze the codebase for places where one product workflow or contract is implemented through multiple divergent paths, decide whether each divergence is justified, and identify the consolidations worth doing next.
 
@@ -51,7 +51,7 @@ Recommended order:
 
 - [x] Phase 1: consolidate server auth session issuance and user response shaping. Merged via PR #455.
 - [x] Phase 2: align frontend auth API types with shared auth contracts after the server response shape is canonical. Merged via PR #456.
-- [x] Phase 3: consolidate canonical Bitcoin network values/types/legacy normalization across shared, frontend, server, OpenAPI, config, and Electrum-facing modules. Locally verified on `codex/phase-3-bitcoin-network-contracts`; PR delivery pending.
+- [x] Phase 3: consolidate canonical Bitcoin network values/types/legacy normalization across shared, frontend, server, OpenAPI, config, and Electrum-facing modules. Merged via PR #457.
 - [ ] Phase 4: rename or namespace raw Bitcoin broadcast helpers so they cannot be confused with wallet-scoped transaction broadcast.
 - [ ] Phase 5: execute the decided external-LLM policy: keep the LLM egress proxy as a security boundary, but remove Sanctuary-managed provider model pull/delete support.
 - [ ] Phase 6: lower-priority cleanup for nested preference patch helpers and, only if needed by new route work, gateway validation derivation.
@@ -67,7 +67,7 @@ Plan re-review addendum:
 
 Second plan re-review addendum:
 
-- Phase 3 is now in PR delivery scope, not design scope. Before opening the PR, re-check the branch is clean, confirm the local head, and remember that local server typecheck depends on a fresh shared build because `shared/dist` is ignored.
+- Phase 3 is complete. Its merge commit must remain the reference point for future regressions in canonical Bitcoin network behavior: `5d2f488ef211e097c7ee7e4eb62d7070cef87e0f`.
 - Phase 4 should be a frontend naming cleanup unless implementation finds a real contract conflict. Keep the backend raw `/bitcoin/broadcast` endpoint, wallet broadcast endpoint, service internals, Electrum client method, and WebSocket notification names unchanged.
 - Phase 4 should prefer removing the ambiguous raw frontend export over keeping a compatibility alias. If a temporary alias is necessary, mark it deprecated and add a test or lint guard proving app code uses the clearer name.
 - Phase 5 has two separate outcomes: keep the LLM egress proxy as the security boundary, and remove model installation/deletion as a product capability. Do not let model-management removal weaken endpoint allowlists, CIDR checks, provider credential isolation, or sanitized context boundaries.
@@ -76,6 +76,25 @@ Second plan re-review addendum:
 - Phase 5 should stop fetching popular/recommended model lists for download actions. If model recommendations remain at all, they must be selection/help text only and must not imply Sanctuary can install or delete provider models.
 - Phase 6 should be a small preference-patch helper pass, not a new backend preference contract. The backend still owns validation, canonicalization, and final storage values.
 - Phase 6 needs a prototype-pollution guard for dot-path helper code. Reject or ignore unsafe segments such as `__proto__`, `prototype`, and `constructor`, even though current callers are trusted UI code.
+
+Third plan re-review addendum:
+
+- Phase 4 acceptance should include a negative search for the exact raw helper name `bitcoinApi.broadcastTransaction` and raw `BroadcastTransactionRequest`/`BroadcastTransactionResponse` exports from `src/api/bitcoin.ts`. Remaining `broadcastTransaction` identifiers are acceptable only when clearly wallet-, service-, Electrum-, or notification-scoped.
+- Phase 4 should update module/export tests but should not create a compatibility alias. Keeping an alias would preserve the ambiguous path the phase is trying to remove.
+- Phase 5 server route anchors are `server/src/api/ai/models.ts`, `server/src/api/ai/systemResources.ts`, `server/src/api/ai/index.ts`, `server/src/services/ai/features.ts`, `server/src/services/ai/index.ts`, `server/src/services/ai/types.ts`, and `server/src/services/aiService.ts`. Remove pull/delete exports and route mounting there, not just frontend buttons.
+- Phase 5 proxy anchors are `llm-egress-proxy/src/providerRoutes.ts`, `llm-egress-proxy/src/requestSchemas.ts`, `llm-egress-proxy/src/modelPull.ts`, `llm-egress-proxy/ARCHITECTURE.md`, and proxy route tests. The proxy should still expose provider detection, provider health/check routes, model listing, config sync, endpoint policy, and AI inference routes.
+- Phase 5 frontend anchors are `src/api/ai.ts`, `components/AISettings/hooks/useModelManagement.ts`, `components/AISettings/tabs/ModelsTab.tsx`, `DetectedModelsSection.tsx`, `RecommendedModelsSection.tsx`, `CustomModelInput.tsx`, `modelsTabPullProgress.tsx`, `components/AISettings/types.ts`, and their tests. The remaining UI should let an operator select or manually enter an external provider model, but not pull, delete, install, download, or size it through Sanctuary.
+- Phase 5 should remove model-download websocket plumbing if no non-pull producer remains: `shared/types/websocket.ts`, `hooks/websocket/useModelDownloadProgress.ts`, server websocket event builders/channel mapping/broadcast helpers, `server/src/websocket/notifications/*`, and model-download tests. If any part is kept, the plan must name the retained producer and user-facing consumer.
+- Phase 5 should remove `/internal/ai/pull-progress` only; the rest of `server/src/api/llm-egress-internal.ts` must keep its internal-network guard and JWT-backed sanitized read endpoints for label suggestions and natural-language queries.
+- Phase 5 should remove `/ai/system-resources` unless a separate non-model host diagnostics consumer is introduced in the same PR. The current implementation and OpenAPI wording are local-AI readiness checks, so leaving it unchanged would keep advertising unsupported local-runtime assumptions.
+- Phase 5 route removal should be real removal, not hidden UI or stubbed unsupported success/failure handlers. OpenAPI, gateway manifests, API clients, route tests, and proxy tests should prove `/ai/pull-model`, `/ai/delete-model`, proxy `/pull-model`, proxy `/delete-model`, and internal `/internal/ai/pull-progress` are absent.
+- Phase 5 should remove the remote popular-model fetch if it only powers download recommendations. This avoids third-party egress from the settings UI and prevents the recommendations list from becoming an indirect install surface.
+- Phase 5 must preserve saved provider settings and selected model strings. If model listing fails or returns an empty list, the UI should keep the saved model/manual entry path instead of clearing configuration.
+- Phase 5 must preserve egress security checks while deleting model management: `LLM_EGRESS_PROXY_SECRET` auth headers, config secret handling, CIDR/private-endpoint policy, provider credential isolation, provider URL normalization, and sanitized context fetches.
+- Phase 6 should centralize both nested-path reads and nested-patch construction so `useUserPreference`, wallet list preferences, device list preferences, and notification sound settings do not each recreate merge semantics.
+- Phase 6 helper semantics should be explicit: object nodes merge, arrays replace, scalar values replace, `undefined` is not a delete signal, empty path segments reject, and unsafe keys reject.
+- Phase 6 should account for optimistic preference races. A failing earlier request should not blindly roll back over a later successful local preference update; either serialize writes, track request generations, or limit rollback to the keys changed by that request.
+- Phase 6 should keep backend merge/canonicalization as the source of truth. Frontend helpers can build safer patches, but `server/src/api/auth/profile.ts` and shared preference schemas still decide final persisted `fiatCurrency`, `selectedNetwork`, and known-field validation.
 
 Phase 1 details:
 
@@ -220,10 +239,21 @@ Phase 4 verification:
 
 - focused frontend send/hardware-wallet tests if touched
 - `npm run test:run -- tests/api/coreApiModules.test.ts tests/api/transactions.test.ts`
-- `cd server && npx vitest run tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.broadcast.contracts.ts tests/unit/api/bitcoin/bitcoin.transaction.contracts.ts`
+- `npm --prefix server run test:run -- tests/unit/api/transactions-http-routes.test.ts tests/unit/api/bitcoin.test.ts`
 - `npm run typecheck:app`
 - `npm run typecheck:server:tests`
 - `git diff --check`
+
+Phase 4 review:
+
+- Renamed the raw network-level frontend Bitcoin helper from `broadcastTransaction` to `broadcastRawNetworkTransaction`.
+- Renamed the raw helper request/response types to `BroadcastRawNetworkTransactionRequest` and `BroadcastRawNetworkTransactionResponse`.
+- Preserved the raw endpoint path `/bitcoin/broadcast` and request shape `{ rawTx, network? }`; this is a naming cleanup only.
+- Left wallet-scoped `transactionsApi.broadcastTransaction`, hardware-wallet PSBT broadcast, backend service internals, and WebSocket/event broadcast names unchanged because those names are scoped to different concepts.
+- Removed the ambiguous raw frontend helper without a compatibility alias.
+- Updated `tests/api/coreApiModules.test.ts` so module coverage asserts the new raw helper name.
+- Targeted search for `bitcoinApi.broadcastTransaction`, raw `BroadcastTransactionRequest`, and raw `BroadcastTransactionResponse` found no raw Bitcoin API references; remaining `BroadcastTransaction*` names are wallet-scoped under `src/api/transactions` and send hooks.
+- Local verification passed: frontend API tests, focused wallet/hardware frontend tests, backend Bitcoin and transaction route tests, app typecheck, server test typecheck, app lint, touched-file lizard, and `git diff --check`.
 
 Phase 5 details:
 

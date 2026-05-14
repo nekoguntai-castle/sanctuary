@@ -96,7 +96,7 @@ describe('Core API Modules', () => {
       await bitcoinApi.syncAddress('addr-1');
       await bitcoinApi.getTransactionDetails('txid-1');
       await bitcoinApi.getTransactionDetails('txid-3', 'testnet4');
-      await bitcoinApi.broadcastTransaction({ rawTx: 'deadbeef', network: 'signet' });
+      await bitcoinApi.broadcastRawNetworkTransaction({ rawTx: 'deadbeef', network: 'signet' });
       await bitcoinApi.updateConfirmations('w1');
       await bitcoinApi.getBlockHeader(840000);
       await bitcoinApi.estimateFee({ inputCount: 1, outputCount: 2, feeRate: 10 });

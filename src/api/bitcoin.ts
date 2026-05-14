@@ -110,12 +110,12 @@ export interface SyncResult {
   utxos: number;
 }
 
-export interface BroadcastTransactionRequest {
+export interface BroadcastRawNetworkTransactionRequest {
   rawTx: string;
   network?: BitcoinFeeNetwork;
 }
 
-export interface BroadcastTransactionResponse {
+export interface BroadcastRawNetworkTransactionResponse {
   txid: string;
   broadcasted: boolean;
 }
@@ -190,12 +190,12 @@ export async function getTransactionDetails(
 }
 
 /**
- * Broadcast a transaction to the network
+ * Broadcast a raw transaction through the network-level endpoint
  */
-export async function broadcastTransaction(
-  data: BroadcastTransactionRequest
-): Promise<BroadcastTransactionResponse> {
-  return apiClient.post<BroadcastTransactionResponse>('/bitcoin/broadcast', data);
+export async function broadcastRawNetworkTransaction(
+  data: BroadcastRawNetworkTransactionRequest
+): Promise<BroadcastRawNetworkTransactionResponse> {
+  return apiClient.post<BroadcastRawNetworkTransactionResponse>('/bitcoin/broadcast', data);
 }
 
 /**
