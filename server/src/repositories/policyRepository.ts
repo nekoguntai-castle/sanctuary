@@ -16,6 +16,10 @@ import type {
   WindowType,
 } from '../services/vaultPolicy/types';
 
+// Reserved non-user UUID for wallet-scoped usage windows. Keeping userId non-null
+// lets the composite unique index prevent duplicate concurrent wallet windows.
+export const WALLET_SCOPED_USAGE_WINDOW_USER_ID = '00000000-0000-0000-0000-000000000000';
+
 // ========================================
 // VAULT POLICY CRUD
 // ========================================
@@ -405,10 +409,10 @@ export async function findOrCreateUsageWindow(data: {
   windowStart: Date;
   windowEnd: Date;
 }): Promise<{ id: string; totalSpent: bigint; txCount: number }> {
-  // Use find-then-upsert to handle concurrent access safely.
+  // Use find-then-create to handle concurrent access safely.
   // The unique constraint on (policyId, walletId, userId, windowType, windowStart)
   // ensures no duplicates even under concurrent requests.
-  const resolvedUserId = data.userId ?? null;
+  const resolvedUserId = data.userId ?? WALLET_SCOPED_USAGE_WINDOW_USER_ID;
 
   // Try fast path first
   const existing = await prisma.policyUsageWindow.findFirst({

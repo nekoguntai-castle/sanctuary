@@ -173,8 +173,16 @@ const resolveSignedPsbtRecipientAndAmount = (
   }
 
   const paidAddressOutputs = outputs.filter(hasPaidAddress);
-  const externalOutput = paidAddressOutputs.find(output => !walletAddressSet.has(output.address));
-  if (externalOutput) {
+  const externalOutputs = paidAddressOutputs.filter(output => !walletAddressSet.has(output.address));
+  if (externalOutputs.length > 1) {
+    throw new InvalidInputError('Signed PSBT has multiple external outputs', field, {
+      reason: 'multiple_external_outputs',
+      count: externalOutputs.length,
+    });
+  }
+
+  if (externalOutputs.length === 1) {
+    const [externalOutput] = externalOutputs;
     return { recipient: externalOutput.address, amount: externalOutput.value };
   }
 

@@ -4,23 +4,16 @@
  * Audit: tasks/audit-2026-05-12/04-utils.md
  * Finding: CRITICAL — server/src/utils/jwt.ts:242
  *
- * Bare `catch` around `isTokenRevoked()` masks Redis/DB outages as auth
- * failures. When the revocation store is unreachable (e.g. Redis connection
- * refused, DB timeout), the bare catch swallows the infrastructure error and
- * re-throws `Error('Invalid or expired token')` — indistinguishable from a
- * legitimately revoked / forged token. Operators see 401s instead of 5xx,
- * real revocations get drowned in flake noise, and clients silently fail
- * over to "please log in again" UX during an outage.
+ * Bare `catch` around `isTokenRevoked()` used to mask Redis/DB outages as auth
+ * failures. When the revocation store was unreachable (e.g. Redis connection
+ * refused, DB timeout), the catch swallowed the infrastructure error and
+ * re-threw `Error('Invalid or expired token')` — indistinguishable from a
+ * legitimately forged token.
  *
- * Expected behavior (post-fix):
- *   verifyToken() should DISTINGUISH "isTokenRevoked threw an infra error"
- *   from "isTokenRevoked returned true". The infra failure should either
- *   propagate (allowing the caller / global error handler to map it to 5xx)
- *   or surface a distinct outage signal — NOT the generic 401 message.
- *
- * This test uses `test.fails()` so it passes today (documenting the bug)
- * and starts failing once the bare catch is replaced, forcing conversion
- * to a real `test()` assertion.
+ * Expected behavior:
+ *   verifyToken() distinguishes "isTokenRevoked threw an infra error" from
+ *   "isTokenRevoked returned true". The infra failure surfaces as a distinct
+ *   outage signal — NOT the generic 401 message.
  */
 
 import { describe, test, expect, vi, beforeEach } from 'vitest';
@@ -48,7 +41,7 @@ describe('JWT audit: revocation-check error handling (jwt.ts:242)', () => {
     vi.clearAllMocks();
   });
 
-  test.fails(
+  test(
     'verifyToken should NOT mask Redis connection failures as "Invalid or expired token"',
     async () => {
       // Arrange: a perfectly valid, signed, unexpired token...
@@ -76,11 +69,6 @@ describe('JWT audit: revocation-check error handling (jwt.ts:242)', () => {
         /redis|revocation (store|check) unavailable|outage|infrastructure/i,
       );
 
-      // Today: the bare catch at jwt.ts:247 swallows `infraError` and throws
-      // `Error('Invalid or expired token')` — the assertion above fails to
-      // match, so the test errors, so `test.fails(...)` passes. Once the
-      // catch is fixed, the assertion will match and `.fails()` will start
-      // failing, forcing this to be promoted to a normal `test(...)`.
     },
   );
 });

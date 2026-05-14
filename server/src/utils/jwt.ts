@@ -128,6 +128,23 @@ const parseRefreshTokenPayload = (value: unknown): RefreshTokenPayload => {
   return payload as RefreshTokenPayload;
 };
 
+async function ensureTokenNotRevoked(jti: string | undefined, revokedMessage: string): Promise<void> {
+  if (!jti) {
+    return;
+  }
+
+  let revoked: boolean;
+  try {
+    revoked = await isTokenRevoked(jti);
+  } catch {
+    throw new Error('Token revocation check unavailable');
+  }
+
+  if (revoked) {
+    throw new Error(revokedMessage);
+  }
+}
+
 /**
  * Generate a unique JWT ID (jti)
  */
@@ -239,14 +256,8 @@ export async function verifyToken(token: string, expectedAudience?: TokenAudienc
     throw new Error('Invalid or expired token');
   }
 
-  try {
-    // SEC-003: Check if token is revoked
-    if (decoded.jti && await isTokenRevoked(decoded.jti)) {
-      throw new Error('Token has been revoked');
-    }
-  } catch {
-    throw new Error('Invalid or expired token');
-  }
+  // SEC-003: Check if token is revoked without hiding revocation-store outages.
+  await ensureTokenNotRevoked(decoded.jti, 'Token has been revoked');
 
   if (expectedAudience === TokenAudience.ACCESS && decoded.pending2FA === true) {
     throw new Error(TWO_FACTOR_REQUIRED_MESSAGE);
@@ -272,28 +283,31 @@ export async function verify2FAToken(token: string): Promise<JWTPayload> {
  * Verify a refresh token (SEC-005)
  */
 export async function verifyRefreshToken(token: string): Promise<RefreshTokenPayload> {
+  let decoded: RefreshTokenPayload;
+
   try {
-    const decoded = parseRefreshTokenPayload(jwt.verify(token, config.jwtSecret, {
+    decoded = parseRefreshTokenPayload(jwt.verify(token, config.jwtSecret, {
       audience: TokenAudience.REFRESH,
     }));
-
-    // Check if token is revoked
-    if (decoded.jti && await isTokenRevoked(decoded.jti)) {
-      throw new Error('Refresh token has been revoked');
-    }
-
-    /* v8 ignore next -- parseRefreshTokenPayload already rejects non-refresh types; keep this as defense-in-depth. */
-    if (decoded.type !== 'refresh') {
-      throw new Error('Invalid refresh token type');
-    }
-
-    return decoded;
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
       throw new Error('Refresh token expired');
     }
+    if (error instanceof jwt.JsonWebTokenError) {
+      throw new Error('Invalid refresh token');
+    }
     throw new Error('Invalid refresh token');
   }
+
+  // Check if token is revoked without hiding revocation-store outages.
+  await ensureTokenNotRevoked(decoded.jti, 'Refresh token has been revoked');
+
+  /* v8 ignore next -- parseRefreshTokenPayload already rejects non-refresh types; keep this as defense-in-depth. */
+  if (decoded.type !== 'refresh') {
+    throw new Error('Invalid refresh token type');
+  }
+
+  return decoded;
 }
 
 /**

@@ -7,6 +7,7 @@
 
 import { vi, Mock } from 'vitest';
 import crypto from 'crypto';
+import { Prisma } from '../../../src/generated/prisma/client';
 
 // Mock Prisma before importing repository
 vi.mock('../../../src/models/prisma', () => ({
@@ -213,9 +214,21 @@ describe('Session Repository', () => {
     });
 
     it('should not throw if token already deleted', async () => {
-      (prisma.refreshToken.delete as Mock).mockRejectedValue(new Error('Not found'));
+      (prisma.refreshToken.delete as Mock).mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Record not found', {
+          code: 'P2025',
+          clientVersion: 'test',
+        })
+      );
 
       await expect(sessionRepository.revokeRefreshToken('unknown')).resolves.not.toThrow();
+    });
+
+    it('should surface database errors when token revocation fails', async () => {
+      (prisma.refreshToken.delete as Mock).mockRejectedValue(new Error('database unavailable'));
+
+      await expect(sessionRepository.revokeRefreshToken('raw-token-value'))
+        .rejects.toThrow('database unavailable');
     });
   });
 

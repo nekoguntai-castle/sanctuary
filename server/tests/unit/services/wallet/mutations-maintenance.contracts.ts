@@ -122,6 +122,13 @@ export function registerWalletMutationMaintenanceTests(): void {
       await expect(updateWallet('wallet-1', 'viewer-1', { name: 'Nope' })).rejects.toThrow('Only wallet owners can update wallet');
     });
 
+    it('rejects update for signer-only users', async () => {
+      mockPrismaClient.walletUser.findFirst.mockResolvedValueOnce({ role: 'signer' });
+
+      await expect(updateWallet('wallet-1', 'signer-1', { name: 'Nope' })).rejects.toThrow('Only wallet owners can update wallet');
+      expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
+    });
+
     it('deletes wallet after unsubscribing realtime listeners', async () => {
       mockPrismaClient.walletUser.findFirst.mockResolvedValueOnce({ role: 'owner' });
 
@@ -148,6 +155,15 @@ export function registerWalletMutationMaintenanceTests(): void {
     it('rejects delete for non-owner users', async () => {
       mockPrismaClient.walletUser.findFirst.mockResolvedValueOnce(null);
       await expect(deleteWallet('wallet-1', 'viewer-1')).rejects.toThrow('Only wallet owners can delete wallet');
+    });
+
+    it('rejects delete for signer-only users', async () => {
+      mockPrismaClient.walletUser.findFirst.mockResolvedValueOnce({ role: 'signer' });
+
+      await expect(deleteWallet('wallet-1', 'signer-1')).rejects.toThrow('Only wallet owners can delete wallet');
+      expect(mockPrismaClient.wallet.delete).not.toHaveBeenCalled();
+      expect(mockSyncUnsubscribeWalletAddresses).not.toHaveBeenCalled();
+      expect(mockNotificationUnsubscribeWalletAddresses).not.toHaveBeenCalled();
     });
 
     it('links a device and regenerates descriptor when requirements are met', async () => {

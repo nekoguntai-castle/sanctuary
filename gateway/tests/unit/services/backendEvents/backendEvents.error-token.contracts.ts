@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  logger,
+  mockDeviceFetchResponse,
   mockFetch,
   push,
   setupBackendEventsTestHarness,
@@ -104,6 +106,32 @@ describe('Backend Events Service error and token handling', () => {
     await vi.runAllTimersAsync();
 
     expect(push.sendToDevices).not.toHaveBeenCalled();
+  });
+
+  it('should log handler rejections from backend events', async () => {
+    mockDeviceFetchResponse();
+    vi.mocked(push.sendToDevices).mockRejectedValueOnce(new Error('push outage'));
+
+    startBackendEvents();
+    const ws = wsInstances[0];
+    ws.simulateOpen();
+
+    ws.simulateMessage({
+      type: 'event',
+      event: {
+        type: 'transaction',
+        walletId: 'wallet-1',
+        walletName: 'Main Wallet',
+        userId: 'user-123',
+        data: { txid: 'abc', type: 'received', amount: 1000 },
+      },
+    });
+
+    await vi.runAllTimersAsync();
+
+    expect(logger.error).toHaveBeenCalledWith('Error handling backend event', {
+      error: 'push outage',
+    });
   });
 
   it('should handle non-ok response when fetching devices', async () => {

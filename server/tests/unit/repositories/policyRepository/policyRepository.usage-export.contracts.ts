@@ -30,6 +30,7 @@ import {
   findOrCreateUsageWindow,
   incrementUsageWindow,
   decrementUsageWindow,
+  WALLET_SCOPED_USAGE_WINDOW_USER_ID,
   policyRepository,
 } from '../../../../src/repositories/policyRepository';
 
@@ -62,7 +63,7 @@ export const registerPolicyRepositoryUsageExportContracts = () => {
         where: {
           policyId: 'policy-1',
           walletId: 'wallet-1',
-          userId: null,
+          userId: WALLET_SCOPED_USAGE_WINDOW_USER_ID,
           windowType: 'daily',
           windowStart: windowData.windowStart,
         },
@@ -90,7 +91,7 @@ export const registerPolicyRepositoryUsageExportContracts = () => {
         data: {
           policyId: 'policy-1',
           walletId: 'wallet-1',
-          userId: null,
+          userId: WALLET_SCOPED_USAGE_WINDOW_USER_ID,
           windowType: 'daily',
           windowStart: windowData.windowStart,
           windowEnd: windowData.windowEnd,

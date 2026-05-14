@@ -1,5 +1,5 @@
 /**
- * PHASE D — failing non-regression tests for audit 2026-05-12
+ * PHASE D — non-regression tests for audit 2026-05-12
  *
  * CI WIRING: This file is included in the `quick-backend-integration-smoke`
  * job's vitest file list in `.github/workflows/test.yml`. It runs whenever
@@ -9,9 +9,9 @@
  * the file skips silently when `DATABASE_URL` is unset; in CI the Postgres
  * service container is provisioned by the smoke job and the test runs for real.
  *
- * The `.fails()` tests below pass today (assertions fail because the bug is
- * live) and will start failing the moment either approval-route IDOR is
- * fixed — forcing conversion to a regular `test(...)` before the fix ships.
+ * These tests pin the fixed behavior: every nested approval identifier must
+ * belong to the wallet and draft named in the route before the route calls
+ * approval services.
  *
  * Two accepted CRITICAL findings on the wallet-approval routes:
  *
@@ -28,12 +28,6 @@
  * Both findings share the same shape: the route authorizes only :walletId,
  * then forwards the sibling identifier to the service unchecked.
  *
- * The tests below assert the REJECT behavior we want post-fix. While the bugs
- * remain on main, the requests succeed, so the assertions inside each test
- * fail — and `test.fails(...)` therefore passes. When the bug is fixed, the
- * assertions will succeed, `test.fails` will start failing, and the next
- * engineer will be forced to remove the `.fails()` wrapper and convert the
- * test into a real one.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -194,15 +188,12 @@ describeWithDb('Wallet Approvals — audit 2026-05-12 cross-wallet IDOR', () => 
   // Finding 1: approval vote requestId not scoped to walletId
   // ---------------------------------------------------------------------------
 
-  // PHASE D — failing non-regression test for audit 2026-05-12
+  // PHASE D — non-regression test for audit 2026-05-12
   // Finding: server/src/api/wallets/approvals.ts:59
   //   The vote route authorizes `approve` access on :walletId but forwards
   //   :requestId straight into approvalService.castVote() without checking
   //   that the request lives under the route's wallet/draft.
-  // .fails() will pass until the bug is fixed: on main the cross-wallet vote
-  // currently succeeds (status 200), so the `expect(...).not.toBe(200)`
-  // assertion fails, which is exactly what .fails() requires.
-  test.fails(
+  test(
     'POST /:walletId/.../approvals/:requestId/vote rejects when requestId belongs to a different wallet',
     async () => {
       const scenario = await buildTwoWalletApprovalScenario();
@@ -232,15 +223,12 @@ describeWithDb('Wallet Approvals — audit 2026-05-12 cross-wallet IDOR', () => 
   // Finding 2: owner override draftId not scoped to walletId
   // ---------------------------------------------------------------------------
 
-  // PHASE D — failing non-regression test for audit 2026-05-12
+  // PHASE D — non-regression test for audit 2026-05-12
   // Finding: server/src/api/wallets/approvals.ts:102
   //   The override route authorizes `owner` on :walletId but forwards :draftId
   //   to approvalService.ownerOverride() without verifying the draft belongs
   //   to that wallet. Owner of wallet A can force-approve wallet B's draft.
-  // .fails() will pass until the bug is fixed: on main the override succeeds
-  // (200) and flips wallet B's draft.approvalStatus to "approved", so the
-  // assertions fail and .fails() registers a passing test.
-  test.fails(
+  test(
     'POST /:walletId/drafts/:draftId/override rejects when draftId belongs to a different wallet',
     async () => {
       const scenario = await buildTwoWalletApprovalScenario();
@@ -267,6 +255,20 @@ describeWithDb('Wallet Approvals — audit 2026-05-12 cross-wallet IDOR', () => 
         select: { approvalStatus: true },
       });
       expect(draftB?.approvalStatus).toBe('pending');
+    },
+  );
+
+  test(
+    'GET /:walletId/drafts/:draftId/approvals rejects when draftId belongs to a different wallet',
+    async () => {
+      const scenario = await buildTwoWalletApprovalScenario();
+
+      const response = await request(app)
+        .get(`/api/v1/wallets/${scenario.walletA.id}/drafts/${scenario.walletB.draftId}/approvals`)
+        .set(authHeader(scenario.voterToken));
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.status).toBeLessThan(500);
     },
   );
 });

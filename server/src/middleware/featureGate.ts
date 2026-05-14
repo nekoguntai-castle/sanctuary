@@ -15,26 +15,22 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { getConfig } from '../config';
-import type { FeatureFlagKey, FeatureFlags, ExperimentalFeatures } from '../config/types';
+import type { FeatureFlagKey } from '../config/types';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { featureFlagService } from '../services/featureFlagService';
 
 const log = createLogger('MW:FEATURE_GATE');
 
-/**
- * Get the value of a feature flag by key (sync fallback for config)
- * Supports nested experimental flags via dot notation
- */
-function getFeatureValueFromConfig(flags: FeatureFlags, key: FeatureFlagKey): boolean {
-  if (key.startsWith('experimental.')) {
-    const experimentalKey = key.replace('experimental.', '') as keyof ExperimentalFeatures;
-    /* v8 ignore next -- missing experimental flags default closed defensively */
-    return flags.experimental[experimentalKey] ?? false;
-  }
-  /* v8 ignore next -- missing top-level flags default closed defensively */
-  return flags[key as keyof Omit<FeatureFlags, 'experimental'>] ?? false;
+function sendFeatureFlagServiceUnavailable(
+  res: Response,
+  details: { feature?: FeatureFlagKey; requiredFeatures?: FeatureFlagKey[]; requiredAnyOf?: FeatureFlagKey[] }
+) {
+  return res.status(503).json({
+    error: 'Feature flag service unavailable',
+    ...details,
+    message: 'Feature availability cannot be verified right now',
+  });
 }
 
 /**
@@ -71,20 +67,8 @@ export function requireFeature(flag: FeatureFlagKey) {
 
       next();
     } catch (error) {
-      // Fallback to config on service error
-      log.warn('Feature flag service error, using config fallback', { flag, error: getErrorMessage(error) });
-      const config = getConfig();
-      const isEnabled = getFeatureValueFromConfig(config.features, flag);
-
-      if (!isEnabled) {
-        return res.status(403).json({
-          error: 'Feature not available',
-          feature: flag,
-          message: `The ${flag} feature is not enabled on this server`,
-        });
-      }
-
-      next();
+      log.error('Feature flag service error', { flag, error: getErrorMessage(error) });
+      return sendFeatureFlagServiceUnavailable(res, { feature: flag });
     }
   };
 }
@@ -123,20 +107,8 @@ export function requireAllFeatures(flags: FeatureFlagKey[]) {
 
       next();
     } catch (error) {
-      log.warn('Feature flag service error, using config fallback', { flags, error: getErrorMessage(error) });
-      const config = getConfig();
-      const disabledFlags = flags.filter((flag) => !getFeatureValueFromConfig(config.features, flag));
-
-      if (disabledFlags.length > 0) {
-        return res.status(403).json({
-          error: 'Features not available',
-          requiredFeatures: flags,
-          disabledFeatures: disabledFlags,
-          message: `This endpoint requires all of these features: ${flags.join(', ')}`,
-        });
-      }
-
-      next();
+      log.error('Feature flag service error', { flags, error: getErrorMessage(error) });
+      return sendFeatureFlagServiceUnavailable(res, { requiredFeatures: flags });
     }
   };
 }
@@ -170,19 +142,8 @@ export function requireAnyFeature(flags: FeatureFlagKey[]) {
 
       next();
     } catch (error) {
-      log.warn('Feature flag service error, using config fallback', { flags, error: getErrorMessage(error) });
-      const config = getConfig();
-      const hasAnyEnabled = flags.some((flag) => getFeatureValueFromConfig(config.features, flag));
-
-      if (!hasAnyEnabled) {
-        return res.status(403).json({
-          error: 'Features not available',
-          requiredAnyOf: flags,
-          message: `This endpoint requires at least one of these features: ${flags.join(', ')}`,
-        });
-      }
-
-      next();
+      log.error('Feature flag service error', { flags, error: getErrorMessage(error) });
+      return sendFeatureFlagServiceUnavailable(res, { requiredAnyOf: flags });
     }
   };
 }
@@ -202,8 +163,6 @@ export async function isFeatureEnabledAsync(flag: FeatureFlagKey): Promise<boole
   try {
     return await featureFlagService.isEnabled(flag);
   } catch {
-    // Fallback to config
-    const config = getConfig();
-    return getFeatureValueFromConfig(config.features, flag);
+    return false;
   }
 }

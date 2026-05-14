@@ -46,6 +46,22 @@ interface PermissionCheckResponse {
   reason?: string;
 }
 
+function parsePermissionCheckResponse(value: unknown): PermissionCheckResponse {
+  if (!value || typeof value !== 'object') {
+    return { allowed: false, reason: 'Invalid permission check response' };
+  }
+
+  const result = value as Partial<PermissionCheckResponse>;
+  if (typeof result.allowed !== 'boolean') {
+    return { allowed: false, reason: 'Invalid permission check response' };
+  }
+
+  return {
+    allowed: result.allowed,
+    reason: typeof result.reason === 'string' ? result.reason : undefined,
+  };
+}
+
 /**
  * Check mobile permission with backend
  */
@@ -84,8 +100,7 @@ async function checkPermissionWithBackend(
       return { allowed: false, reason: 'Permission check failed' };
     }
 
-    const result = await response.json() as PermissionCheckResponse;
-    return result;
+    return parsePermissionCheckResponse(await response.json());
   } catch (error) {
     log.error('Error calling backend permission check', {
       error: error instanceof Error ? error.message : String(error),

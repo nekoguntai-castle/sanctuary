@@ -1,5 +1,5 @@
 /**
- * PHASE D — failing non-regression test for audit 2026-05-12
+ * PHASE D — non-regression test for audit 2026-05-12
  *
  * Finding: server/src/repositories/maintenanceRepository.ts:43 (CRITICAL)
  *   `deleteExpiredDrafts` calls `prisma.draftTransaction.deleteMany` with
@@ -7,10 +7,9 @@
  *   broadcasted (terminal) draft with a past `expiresAt` is destroyed by
  *   the maintenance cron, losing transaction history and audit context.
  *
- * We test by inspecting the `where` filter handed to Prisma. On main the
- * filter has only `expiresAt`, so a `status: { in: <actionable> }`
- * assertion fails. After the fix (mirroring `draftRepository.deleteExpired`),
- * the filter must scope to non-terminal statuses and this test passes.
+ * We test by inspecting the `where` filter handed to Prisma. The filter must
+ * scope to non-terminal statuses so a broadcasted draft never matches the
+ * maintenance delete query.
  */
 import { beforeEach, describe, expect, test, vi, type Mock } from 'vitest';
 
@@ -47,12 +46,7 @@ describe('maintenanceRepository — audit 2026-05-12', () => {
     vi.clearAllMocks();
   });
 
-  // Removed .fails() when the bug is fixed. Until then, this passes only because
-  // the underlying assertion fails on main for the documented reason: the
-  // current `deleteMany` call has NO status guard, so the `where` object does
-  // not contain a `status` key and `expect.objectContaining({ status: ... })`
-  // fails.
-  test.fails(
+  test(
     'deleteExpiredDrafts skips broadcasted (terminal) drafts via a status guard',
     async () => {
       (prisma.draftTransaction.deleteMany as Mock).mockResolvedValue({ count: 0 });

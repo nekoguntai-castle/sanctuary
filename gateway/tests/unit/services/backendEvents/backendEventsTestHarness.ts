@@ -22,8 +22,14 @@ const backendEventsMocks = vi.hoisted(() => {
   const wsInstances: any[] = [];
   const wsConstructorSpy = vi.fn();
   const mockFetch = vi.fn();
+  const mockLogger = {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+  };
 
-  return { wsInstances, wsConstructorSpy, mockFetch };
+  return { wsInstances, wsConstructorSpy, mockFetch, mockLogger };
 });
 
 vi.mock('ws', () => {
@@ -69,12 +75,7 @@ vi.mock('../../../../src/config', () => ({
 }));
 
 vi.mock('../../../../src/utils/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-  }),
+  createLogger: () => backendEventsMocks.mockLogger,
 }));
 
 vi.mock('../../../../src/services/push', () => ({
@@ -116,6 +117,7 @@ export let push: typeof import('../../../../src/services/push');
 export const wsConstructorSpy = backendEventsMocks.wsConstructorSpy;
 export const wsInstances = backendEventsMocks.wsInstances as BackendEventsWebSocket[];
 export const mockFetch = backendEventsMocks.mockFetch;
+export const logger = backendEventsMocks.mockLogger;
 
 export function setupBackendEventsTestHarness(): void {
   beforeAll(async () => {

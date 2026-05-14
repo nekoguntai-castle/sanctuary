@@ -10,6 +10,7 @@ import { getErrorMessage } from '../../utils/errors';
 import { hookRegistry, Operations } from '../hooks';
 import { ForbiddenError } from '../../errors';
 import type { WalletWithBalance } from './types';
+import { checkWalletOwnerAccess } from '../accessControl';
 
 const log = createLogger('WALLET:SVC');
 
@@ -22,9 +23,9 @@ export async function updateWallet(
   updates: Partial<{ name: string; descriptor: string }>
 ): Promise<WalletWithBalance> {
   // Check user has owner role
-  const hasEditAccess = await walletRepository.findByIdWithEditAccess(walletId, userId);
+  const hasOwnerAccess = await checkWalletOwnerAccess(walletId, userId);
 
-  if (!hasEditAccess) {
+  if (!hasOwnerAccess) {
     throw new ForbiddenError('Only wallet owners can update wallet');
   }
 
@@ -70,9 +71,9 @@ export async function updateWallet(
  */
 export async function deleteWallet(walletId: string, userId: string): Promise<void> {
   // Check user has owner role
-  const hasEditAccess = await walletRepository.findByIdWithEditAccess(walletId, userId);
+  const hasOwnerAccess = await checkWalletOwnerAccess(walletId, userId);
 
-  if (!hasEditAccess) {
+  if (!hasOwnerAccess) {
     throw new ForbiddenError('Only wallet owners can delete wallet');
   }
 

@@ -160,27 +160,31 @@ describe('Feature Gate Middleware', () => {
       expect(statusMock).toHaveBeenCalledWith(403);
     });
 
-    it('should use config fallback when feature service fails and allow enabled flag', async () => {
+    it('should fail closed when feature service fails for an enabled config flag', async () => {
       isEnabledMock.mockRejectedValueOnce(new Error('service unavailable'));
       const middleware = requireFeature('hardwareWalletSigning');
 
       await middleware(mockRequest as Request, mockResponse as Response, nextFunction);
 
-      expect(nextFunction).toHaveBeenCalled();
-      expect(statusMock).not.toHaveBeenCalled();
+      expect(nextFunction).not.toHaveBeenCalled();
+      expect(statusMock).toHaveBeenCalledWith(503);
+      expect(jsonMock).toHaveBeenCalledWith(expect.objectContaining({
+        error: 'Feature flag service unavailable',
+        feature: 'hardwareWalletSigning',
+      }));
     });
 
-    it('should use config fallback when feature service fails and block disabled flag', async () => {
+    it('should fail closed when feature service fails for a disabled config flag', async () => {
       isEnabledMock.mockRejectedValueOnce(new Error('service unavailable'));
       const middleware = requireFeature('payjoinSupport');
 
       await middleware(mockRequest as Request, mockResponse as Response, nextFunction);
 
       expect(nextFunction).not.toHaveBeenCalled();
-      expect(statusMock).toHaveBeenCalledWith(403);
+      expect(statusMock).toHaveBeenCalledWith(503);
     });
 
-    it('should use config fallback for experimental features when service fails', async () => {
+    it('should fail closed for experimental features when service fails', async () => {
       mockFeatures.experimental.taprootAddresses = true;
       isEnabledMock.mockRejectedValueOnce(new Error('service unavailable'));
 
@@ -190,7 +194,8 @@ describe('Feature Gate Middleware', () => {
         nextFunction,
       );
 
-      expect(nextFunction).toHaveBeenCalled();
+      expect(nextFunction).not.toHaveBeenCalled();
+      expect(statusMock).toHaveBeenCalledWith(503);
 
       vi.clearAllMocks();
       isEnabledMock.mockRejectedValueOnce(new Error('service unavailable'));
@@ -201,7 +206,8 @@ describe('Feature Gate Middleware', () => {
         nextFunction,
       );
 
-      expect(statusMock).toHaveBeenCalledWith(403);
+      expect(nextFunction).not.toHaveBeenCalled();
+      expect(statusMock).toHaveBeenCalledWith(503);
     });
   });
 
@@ -248,24 +254,28 @@ describe('Feature Gate Middleware', () => {
       }));
     });
 
-    it('should use config fallback when feature service fails', async () => {
+    it('should fail closed when feature service fails', async () => {
       isEnabledMock.mockRejectedValue(new Error('service unavailable'));
       const middleware = requireAllFeatures(['hardwareWalletSigning', 'payjoinSupport']);
 
       await middleware(mockRequest as Request, mockResponse as Response, nextFunction);
 
       expect(nextFunction).not.toHaveBeenCalled();
-      expect(statusMock).toHaveBeenCalledWith(403);
+      expect(statusMock).toHaveBeenCalledWith(503);
+      expect(jsonMock).toHaveBeenCalledWith(expect.objectContaining({
+        error: 'Feature flag service unavailable',
+        requiredFeatures: ['hardwareWalletSigning', 'payjoinSupport'],
+      }));
     });
 
-    it('should allow request when fallback config has all required features enabled', async () => {
+    it('should still fail closed when fallback config has all required features enabled', async () => {
       isEnabledMock.mockRejectedValue(new Error('service unavailable'));
       const middleware = requireAllFeatures(['hardwareWalletSigning', 'batchTransactions']);
 
       await middleware(mockRequest as Request, mockResponse as Response, nextFunction);
 
-      expect(nextFunction).toHaveBeenCalled();
-      expect(statusMock).not.toHaveBeenCalled();
+      expect(nextFunction).not.toHaveBeenCalled();
+      expect(statusMock).toHaveBeenCalledWith(503);
     });
   });
 
@@ -299,24 +309,28 @@ describe('Feature Gate Middleware', () => {
       }));
     });
 
-    it('should use fallback and block when service fails with no enabled fallback features', async () => {
+    it('should fail closed when service fails with no enabled fallback features', async () => {
       isEnabledMock.mockRejectedValue(new Error('service unavailable'));
       const middleware = requireAnyFeature(['payjoinSupport', 'priceAlerts']);
 
       await middleware(mockRequest as Request, mockResponse as Response, nextFunction);
 
       expect(nextFunction).not.toHaveBeenCalled();
-      expect(statusMock).toHaveBeenCalledWith(403);
+      expect(statusMock).toHaveBeenCalledWith(503);
+      expect(jsonMock).toHaveBeenCalledWith(expect.objectContaining({
+        error: 'Feature flag service unavailable',
+        requiredAnyOf: ['payjoinSupport', 'priceAlerts'],
+      }));
     });
 
-    it('should use fallback and allow when service fails but one fallback feature is enabled', async () => {
+    it('should still fail closed when service fails but one fallback feature is enabled', async () => {
       isEnabledMock.mockRejectedValue(new Error('service unavailable'));
       const middleware = requireAnyFeature(['payjoinSupport', 'hardwareWalletSigning']);
 
       await middleware(mockRequest as Request, mockResponse as Response, nextFunction);
 
-      expect(nextFunction).toHaveBeenCalled();
-      expect(statusMock).not.toHaveBeenCalled();
+      expect(nextFunction).not.toHaveBeenCalled();
+      expect(statusMock).toHaveBeenCalledWith(503);
     });
   });
 
@@ -325,10 +339,10 @@ describe('Feature Gate Middleware', () => {
       await expect(isFeatureEnabledAsync('hardwareWalletSigning')).resolves.toBe(true);
     });
 
-    it('falls back to config when feature service throws', async () => {
+    it('returns false when feature service throws', async () => {
       isEnabledMock.mockRejectedValueOnce(new Error('service unavailable'));
 
-      await expect(isFeatureEnabledAsync('payjoinSupport')).resolves.toBe(false);
+      await expect(isFeatureEnabledAsync('hardwareWalletSigning')).resolves.toBe(false);
     });
   });
 

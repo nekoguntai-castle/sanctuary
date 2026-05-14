@@ -361,14 +361,20 @@ jobs:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/related-backend-tests.log"
-          ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend related tests"
-          ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend related tests"
-          npx vitest related --run --passWithNoTests
-          --pool threads --maxWorkers=2 --no-file-parallelism
-          --exclude "tests/integration/**"
-          ${{ needs.detect-changes.outputs.backend_files }}
+          BACKEND_FILES: ${{ needs.detect-changes.outputs.backend_files }}
+        run: |
+          related_files=()
+          if [ -n "${BACKEND_FILES:-}" ]; then
+            read -r -a related_files <<< "${BACKEND_FILES:-}"
+          fi
+
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/related-backend-tests.log" \
+            ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend related tests" \
+            ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend related tests" \
+            npx vitest related --run --passWithNoTests \
+            --pool threads --maxWorkers=2 --no-file-parallelism \
+            --exclude "tests/integration/**" \
+            "${related_files[@]}"
 
       - name: Write quick backend test diagnostic summary
         if: always()
@@ -659,9 +665,15 @@ jobs:
         env:
           NODE_ENV: test
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/related-gateway-tests.log"
-          npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.gateway_files }}
+          GATEWAY_FILES: ${{ needs.detect-changes.outputs.gateway_files }}
+        run: |
+          related_files=()
+          if [ -n "${GATEWAY_FILES:-}" ]; then
+            read -r -a related_files <<< "${GATEWAY_FILES:-}"
+          fi
+
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/related-gateway-tests.log" \
+            npx vitest related --run --passWithNoTests "${related_files[@]}"
 
       - name: Write quick gateway diagnostic summary
         if: always()
@@ -935,11 +947,9 @@ jobs:
 
   pr-required-checks:
     name: PR Required Checks
-    # Runs on pull_request and merge_group. On pull_request it aggregates
-    # the quick lane; on merge_group it's a no-op (Full Test Summary is
-    # the authoritative gate there), but it must still report a
-    # conclusion so branch protection doesn't rely on GitHub's
-    # "skipped == success" semantics for merge-queue eligibility.
+    # Runs on pull_request and merge_group. It aggregates the quick lane
+    # and requires the full-lane summary, so merge-queue eligibility cannot
+    # be satisfied by a no-op required check.
     if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -955,17 +965,88 @@ jobs:
       - quick-ai-proxy-tests
       - quick-browser-smoke
       - quick-render-regression
+      - full-test-summary
     steps:
-      - name: Merge group no-op
-        if: github.event_name == 'merge_group'
-        run: |
-          echo "PR Required Checks aggregates the pull_request quick lane."
-          echo "On merge_group events, Full Test Summary is the authoritative gate."
-          echo "Reporting success so branch-protection required-checks are explicitly satisfied."
-
-      - name: Check PR quick lane results
-        if: github.event_name == 'pull_request'
+      - name: Check required lane results
         env:
+          DETECT_CHANGES: ${{ needs.detect-changes.result }}
+          QUICK_TEST_HYGIENE: ${{ needs.quick-test-hygiene.result }}
+          QUICK_FRONTEND_TESTS: ${{ needs.quick-frontend-tests.result }}
+          QUICK_BACKEND_TYPECHECK: ${{ needs.quick-backend-typecheck.result }}
+          QUICK_BACKEND_TESTS: ${{ needs.quick-backend-tests.result }}
+          QUICK_BACKEND_INTEGRATION_SMOKE: ${{ needs.quick-backend-integration-smoke.result }}
+          QUICK_CRITICAL_MUTATION: ${{ needs.quick-critical-mutation.result }}
+          QUICK_GATEWAY_TESTS: ${{ needs.quick-gateway-tests.result }}
+          QUICK_AI_PROXY_TESTS: ${{ needs.quick-ai-proxy-tests.result }}
+          QUICK_BROWSER_SMOKE: ${{ needs.quick-browser-smoke.result }}
+          QUICK_RENDER_REGRESSION: ${{ needs.quick-render-regression.result }}
+          FULL_TEST_SUMMARY: ${{ needs.full-test-summary.result }}
+        run: |
+          failed=false
+
+          require_success() {
+            name="$1"
+            result="$2"
+            if [ "$result" != "success" ]; then
+              echo "::error::$name result was $result; expected success"
+              failed=true
+            else
+              echo "$name: $result"
+            fi
+          }
+
+          allow_success_or_skipped() {
+            name="$1"
+            result="$2"
+            case "$result" in
+              success|skipped)
+                echo "$name: $result"
+                ;;
+              *)
+                echo "::error::$name result was $result; expected success or skipped"
+                failed=true
+                ;;
+            esac
+          }
+
+          require_success "Detect Changed Files" "$DETECT_CHANGES"
+          allow_success_or_skipped "Quick Test Hygiene" "$QUICK_TEST_HYGIENE"
+          allow_success_or_skipped "Quick Frontend Tests" "$QUICK_FRONTEND_TESTS"
+          allow_success_or_skipped "Quick Backend Typecheck" "$QUICK_BACKEND_TYPECHECK"
+          allow_success_or_skipped "Quick Backend Tests" "$QUICK_BACKEND_TESTS"
+          allow_success_or_skipped "Quick Backend Integration Smoke" "$QUICK_BACKEND_INTEGRATION_SMOKE"
+          allow_success_or_skipped "Quick Critical Mutation Gate" "$QUICK_CRITICAL_MUTATION"
+          allow_success_or_skipped "Quick Gateway Tests" "$QUICK_GATEWAY_TESTS"
+          allow_success_or_skipped "Quick AI Proxy Tests" "$QUICK_AI_PROXY_TESTS"
+          allow_success_or_skipped "Quick Browser Smoke" "$QUICK_BROWSER_SMOKE"
+          allow_success_or_skipped "Quick Render Regression" "$QUICK_RENDER_REGRESSION"
+          require_success "Full Test Summary" "$FULL_TEST_SUMMARY"
+
+          if [ "$failed" = "true" ]; then
+            exit 1
+          fi
+
+  full-lane-ready:
+    name: Full Lane Ready
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - detect-changes
+      - quick-test-hygiene
+      - quick-frontend-tests
+      - quick-backend-typecheck
+      - quick-backend-tests
+      - quick-backend-integration-smoke
+      - quick-critical-mutation
+      - quick-gateway-tests
+      - quick-ai-proxy-tests
+      - quick-browser-smoke
+      - quick-render-regression
+    steps:
+      - name: Check full lane prerequisites
+        env:
+          EVENT_NAME: ${{ github.event_name }}
           DETECT_CHANGES: ${{ needs.detect-changes.result }}
           QUICK_TEST_HYGIENE: ${{ needs.quick-test-hygiene.result }}
           QUICK_FRONTEND_TESTS: ${{ needs.quick-frontend-tests.result }}
@@ -1006,55 +1087,25 @@ jobs:
           }
 
           require_success "Detect Changed Files" "$DETECT_CHANGES"
-          allow_success_or_skipped "Quick Test Hygiene" "$QUICK_TEST_HYGIENE"
-          allow_success_or_skipped "Quick Frontend Tests" "$QUICK_FRONTEND_TESTS"
-          allow_success_or_skipped "Quick Backend Typecheck" "$QUICK_BACKEND_TYPECHECK"
-          allow_success_or_skipped "Quick Backend Tests" "$QUICK_BACKEND_TESTS"
-          allow_success_or_skipped "Quick Backend Integration Smoke" "$QUICK_BACKEND_INTEGRATION_SMOKE"
-          allow_success_or_skipped "Quick Critical Mutation Gate" "$QUICK_CRITICAL_MUTATION"
-          allow_success_or_skipped "Quick Gateway Tests" "$QUICK_GATEWAY_TESTS"
-          allow_success_or_skipped "Quick AI Proxy Tests" "$QUICK_AI_PROXY_TESTS"
-          allow_success_or_skipped "Quick Browser Smoke" "$QUICK_BROWSER_SMOKE"
-          allow_success_or_skipped "Quick Render Regression" "$QUICK_RENDER_REGRESSION"
-
-          if [ "$failed" = "true" ]; then
-            exit 1
-          fi
-
-  full-lane-ready:
-    name: Full Lane Ready
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [detect-changes, pr-required-checks]
-    steps:
-      - name: Check full lane prerequisites
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          DETECT_CHANGES: ${{ needs.detect-changes.result }}
-          PR_REQUIRED_CHECKS: ${{ needs.pr-required-checks.result }}
-        run: |
-          failed=false
-
-          require_success() {
-            name="$1"
-            result="$2"
-            if [ "$result" != "success" ]; then
-              echo "::error::$name result was $result; expected success"
-              failed=true
-            else
-              echo "$name: $result"
-            fi
-          }
-
-          require_success "Detect Changed Files" "$DETECT_CHANGES"
 
           case "$EVENT_NAME" in
-            pull_request|merge_group)
-              require_success "PR Required Checks" "$PR_REQUIRED_CHECKS"
+            pull_request)
+              allow_success_or_skipped "Quick Test Hygiene" "$QUICK_TEST_HYGIENE"
+              allow_success_or_skipped "Quick Frontend Tests" "$QUICK_FRONTEND_TESTS"
+              allow_success_or_skipped "Quick Backend Typecheck" "$QUICK_BACKEND_TYPECHECK"
+              allow_success_or_skipped "Quick Backend Tests" "$QUICK_BACKEND_TESTS"
+              allow_success_or_skipped "Quick Backend Integration Smoke" "$QUICK_BACKEND_INTEGRATION_SMOKE"
+              allow_success_or_skipped "Quick Critical Mutation Gate" "$QUICK_CRITICAL_MUTATION"
+              allow_success_or_skipped "Quick Gateway Tests" "$QUICK_GATEWAY_TESTS"
+              allow_success_or_skipped "Quick AI Proxy Tests" "$QUICK_AI_PROXY_TESTS"
+              allow_success_or_skipped "Quick Browser Smoke" "$QUICK_BROWSER_SMOKE"
+              allow_success_or_skipped "Quick Render Regression" "$QUICK_RENDER_REGRESSION"
+              ;;
+            merge_group)
+              echo "Merge group full lane is gated by Full Test Summary."
               ;;
             *)
-              echo "PR Required Checks: $PR_REQUIRED_CHECKS"
+              echo "Quick PR lane is not required for $EVENT_NAME."
               ;;
           esac
 
@@ -1597,7 +1648,9 @@ jobs:
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      needs.detect-changes.outputs.frontend_changed == 'true'
+      (needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true' ||
+       needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: [detect-changes, full-lane-ready]
@@ -1658,7 +1711,9 @@ jobs:
       always() &&
       needs.full-lane-ready.result == 'success' &&
       needs.full-frontend-coverage-shard-1.result == 'success' &&
-      needs.detect-changes.outputs.frontend_changed == 'true'
+      (needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true' ||
+       needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1]
@@ -1720,7 +1775,9 @@ jobs:
       needs.full-lane-ready.result == 'success' &&
       needs.full-frontend-coverage-shard-1.result == 'success' &&
       needs.full-frontend-coverage-shard-2.result == 'success' &&
-      needs.detect-changes.outputs.frontend_changed == 'true'
+      (needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true' ||
+       needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1, full-frontend-coverage-shard-2]
@@ -1802,6 +1859,8 @@ jobs:
     steps:
       - name: Check frontend lane result
         env:
+          FULL_SCAN: ${{ needs.detect-changes.outputs.full_scan }}
+          TEST_SUITE_CHANGED: ${{ needs.detect-changes.outputs.test_suite_changed }}
           FRONTEND_CHANGED: ${{ needs.detect-changes.outputs.frontend_changed }}
           FRONTEND_TYPECHECKS: ${{ needs.full-frontend-typechecks.result }}
           FRONTEND_COVERAGE: ${{ needs.full-frontend-coverage-merge.result }}
@@ -1836,7 +1895,7 @@ jobs:
           }
 
           require_success "Full Frontend Typechecks" "$FRONTEND_TYPECHECKS"
-          if [ "$FRONTEND_CHANGED" = "true" ]; then
+          if [ "$FULL_SCAN" = "true" ] || [ "$TEST_SUITE_CHANGED" = "true" ] || [ "$FRONTEND_CHANGED" = "true" ]; then
             require_success "Full Frontend Coverage Merge" "$FRONTEND_COVERAGE"
           else
             allow_success_or_skipped "Full Frontend Coverage Merge" "$FRONTEND_COVERAGE"
@@ -2133,7 +2192,9 @@ jobs:
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
-      needs.detect-changes.outputs.browser_smoke_changed == 'true'
+      (needs.detect-changes.outputs.browser_smoke_changed == 'true' ||
+       needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     needs: [detect-changes, full-lane-ready]
@@ -2393,8 +2454,12 @@ jobs:
       needs.full-lane-ready.result == 'success' &&
       (needs.full-browser-e2e-tests.result == 'success' ||
        (needs.full-browser-e2e-tests.result == 'skipped' &&
-        needs.detect-changes.outputs.browser_smoke_changed != 'true')) &&
-      needs.detect-changes.outputs.render_changed == 'true'
+        needs.detect-changes.outputs.browser_smoke_changed != 'true' &&
+        needs.detect-changes.outputs.full_scan != 'true' &&
+        needs.detect-changes.outputs.test_suite_changed != 'true')) &&
+      (needs.detect-changes.outputs.render_changed == 'true' ||
+       needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: [detect-changes, full-lane-ready, full-browser-e2e-tests]
@@ -2787,6 +2852,8 @@ jobs:
             gateway_required=true
             ai_proxy_required=true
             critical_mutation_required=true
+            browser_e2e_required=true
+            render_e2e_required=true
             build_required=true
           fi
 
@@ -2795,6 +2862,8 @@ jobs:
             frontend_required=true
             gateway_required=true
             ai_proxy_required=true
+            browser_e2e_required=true
+            render_e2e_required=true
             build_required=true
           fi
 

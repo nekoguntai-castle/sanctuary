@@ -187,7 +187,7 @@ export function setupTransactionHttpRouteHooks(): void {
     mockRecordUsage.mockResolvedValue(undefined);
     mockWalletFindNetwork.mockResolvedValue('testnet4');
     mockDraftFindByIdInWallet.mockResolvedValue(null);
-    mockFindAddressStrings.mockResolvedValue([]);
+    mockFindAddressStrings.mockResolvedValue(['tb1qchange']);
     mockFindUtxosByOutpointsForWallet.mockResolvedValue([]);
     mockValidateAddress.mockReturnValue({ valid: true });
     mockAuditLogFromRequest.mockResolvedValue(undefined);

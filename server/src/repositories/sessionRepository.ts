@@ -6,7 +6,7 @@
 
 import prisma from '../models/prisma';
 import crypto from 'crypto';
-import type { RefreshToken, RevokedToken } from '../generated/prisma/client';
+import { Prisma, type RefreshToken, type RevokedToken } from '../generated/prisma/client';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('SESSION:REPO');
@@ -29,6 +29,10 @@ export interface CreateRefreshTokenInput {
  */
 function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function isRecordNotFoundError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
 }
 
 /**
@@ -138,11 +142,17 @@ export async function createRefreshToken(
  */
 export async function revokeRefreshToken(token: string): Promise<void> {
   const tokenHash = hashToken(token);
-  await prisma.refreshToken.delete({
-    where: { tokenHash },
-  }).catch((err) => {
-    log.debug('Token may already be deleted', { error: String(err) });
-  });
+  try {
+    await prisma.refreshToken.delete({
+      where: { tokenHash },
+    });
+  } catch (error) {
+    if (isRecordNotFoundError(error)) {
+      log.debug('Token may already be deleted', { error: String(error) });
+      return;
+    }
+    throw error;
+  }
 }
 
 /**

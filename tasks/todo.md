@@ -1,3 +1,122 @@
+# Active Task: PR Delivery 2026-05-13
+
+Status: PR #445 is open; CI classifier and full gateway coverage fixes verified locally; pushing follow-up commit
+
+Goal: deliver the completed non-hardware bug scrub through a PR, monitor checks, merge when green, and verify the merge commit is on `origin/main`.
+
+## Plan
+
+- [x] Confirm forge, target branch, current branch, and dirty worktree.
+- [x] Commit only the scrub changes on a feature branch.
+- [x] Push the branch and open or update a PR to `main`.
+- [ ] Monitor required checks and address failures if any.
+- [ ] Merge safely after checks are green.
+- [ ] Fetch `origin/main` and verify the platform merge commit is reachable from the target branch.
+
+## Review
+
+- Opened Forgejo PR #445 against `main`.
+- Reproduced failed `Code Quality / CI classifier tests` locally as missing `tests/integration/repositories/policyRepository.audit.test.ts` from the backend integration group manifest.
+- Reproduced failed `Test Suite / Full Gateway Tests` locally as strict gateway coverage missing the null-body branch in `mobilePermission.ts`.
+- Added the missing backend integration group assignment and a null-body mobile-permission regression test.
+- Verified with gateway coverage, the exact `CI classifier tests` command block, `git diff --check`, and touched-file lizard.
+- Reproduced failed `Test Suite / Full Backend Unit Coverage` locally as strict backend coverage missing the new approvals route 404 guard branches.
+- Added unit coverage for missing route-wallet drafts plus missing and mismatched approval requests; backend unit coverage now passes at 100% across 9,772 tests.
+
+---
+
+# Active Task: Bug Scrub 2026-05-13
+
+Status: accepted non-hardware scrub queue completed locally; physical hardware test remains deferred
+
+Goal: perform a fresh codebase bug scrub, fix high-value actionable defects from current evidence, verify them locally, and leave the remaining queue explicit.
+
+## Plan
+
+- [x] Review relevant lessons, current worktree state, recent audit notes, and high-risk changed surfaces.
+- [x] Classify candidate issues by behavioral risk, not by file count or stale historical task markers.
+- [x] Select concrete bug slices that can be fixed and verified locally without physical hardware.
+- [x] Add failing or behavior-pinning tests before production changes where practical.
+- [x] Implement the smallest fixes that preserve existing architecture and public behavior outside the bugs.
+- [x] Run focused tests, typechecks or lizard checks appropriate to the touched files, plus `git diff --check`.
+- [x] Re-read the diff for simplification, edge cases, and unintended scope creep.
+- [x] Record the bugs, fixes, verification, and remaining scrub queue in this task entry.
+- [x] Continue accepted non-hardware queue: `broadcastIntent` multi-output policy bypass, workflow injection/gate bypasses, session revocation swallow, feature-gate fail-open, XFF rate-limit spoofing, gateway mobile-permission truthy parsing, and backend-event unhandled promises.
+- [x] Add focused regression tests or static checks for each continued fix.
+- [x] Re-run focused verification, lint/typecheck/build as appropriate, touched-file lizard, and `git diff --check`.
+
+## Review
+
+- Fixed the wallet-approval route IDOR pair from `tasks/audit-2026-05-12/index.md`: vote requests now prove `requestId` belongs to the route `draftId`, and owner override now proves `draftId` belongs to the route `walletId` before calling approval services.
+- Extended the same nested-resource guard to `GET /wallets/:walletId/drafts/:draftId/approvals`, which had the same route shape and would otherwise list another wallet's approval requests after only authorizing the route wallet.
+- Converted `server/tests/integration/api/walletApprovalsAudit.test.ts` from expected-failure scaffolding to required-pass regression coverage and added the read-scope case.
+- Fixed `maintenanceRepository.deleteExpiredDrafts()` so maintenance cleanup deletes only actionable draft statuses (`unsigned`, `partial`, `signed`) and cannot destroy terminal `broadcasted` draft history solely because `expiresAt` is old.
+- Converted `server/tests/unit/repositories/maintenanceRepository.audit.test.ts` from expected-failure scaffolding to required-pass coverage for the status guard.
+- Fixed JWT revocation checks so Redis/DB revocation-store outages surface as `Token revocation check unavailable` instead of being flattened into generic invalid-token errors. Real revoked access and refresh tokens now surface explicit revoked-token errors.
+- Converted `server/tests/unit/utils/jwt.audit.test.ts` to required-pass coverage and expanded `server/tests/unit/utils/jwt.test.ts` for revoked-token and revocation-store-outage behavior on both access and refresh tokens.
+- Fixed the signer-as-owner wallet mutation bug: `updateWallet()` and `deleteWallet()` now require owner access through `checkWalletOwnerAccess()` instead of edit access, so signer-only users cannot rename or delete wallets through service call sites.
+- Added signer-only wallet mutation regressions to `server/tests/unit/services/wallet/mutations-maintenance.contracts.ts` and removed the stale repository audit scaffold that asserted the wrong layer.
+- Fixed the wallet-scoped policy usage-window race by replacing nullable wallet-scope `userId` storage with a reserved non-user UUID sentinel. `PolicyUsageWindow.userId` is now non-null with a migration that merges existing duplicate wallet-scoped rows before setting the default/not-null constraint.
+- Converted `server/tests/unit/repositories/policyRepository.audit.test.ts` from a placeholder into a required-pass sentinel guard and added `server/tests/integration/repositories/policyRepository.audit.test.ts` to prove the migration applies on Postgres, repository calls reuse the same wallet-scoped row, and raw NULL `userId` inserts are rejected.
+- Continued the accepted non-hardware queue:
+  - `broadcastIntent` now rejects signed PSBTs with more than one paid external output instead of enforcing recipient policy against only the first external output.
+  - Quick backend/gateway workflow related-test commands now pass changed-path outputs through environment variables and arrays, not direct shell interpolation.
+  - `PR Required Checks` no longer succeeds as a merge-group no-op; it requires `Full Test Summary`, while `Full Lane Ready` gates directly on quick-lane results without a dependency cycle.
+  - Full-scan and test-suite changes now require frontend coverage, browser E2E, render E2E, and summary enforcement instead of allowing those lanes to skip.
+  - Install-test pull requests now defer Docker-backed install E2E at classifier level instead of scheduling jobs that report PR-only informational success.
+  - Release-candidate manual/called checkouts now resolve a restricted candidate ref (`main`, `release/*`, or `v*` tag) before any job checks out code with secrets available.
+  - Refresh-token revocation now swallows only Prisma `P2025` already-deleted errors and propagates other database failures.
+  - Feature gates now fail closed with 503 when the feature flag service is unavailable, and the stale safety-catch allowlist entries were removed.
+  - Rate limiting now keys from Express `req.ip`, so raw `X-Forwarded-For` headers cannot spoof client buckets outside the app trust-proxy configuration.
+  - Gateway mobile permission checks now validate backend JSON and fail closed on truthy string values such as `"false"`.
+  - Gateway backend-event dispatch now logs asynchronous handler rejections instead of leaving unhandled promises.
+
+Verification:
+
+- `npm --prefix server run prisma:generate` passed.
+- `npx prisma validate` passed from `server/`.
+- `npm --prefix server run test:run -- tests/unit/services/wallet.test.ts tests/unit/repositories/maintenanceRepository.audit.test.ts tests/unit/utils/jwt.audit.test.ts tests/unit/utils/jwt.test.ts tests/unit/repositories/policyRepository.audit.test.ts tests/unit/repositories/policyRepository.test.ts` passed, 208 tests.
+- `bash scripts/run-integration-tests.sh tests/integration/api/walletApprovalsAudit.test.ts tests/integration/repositories/policyRepository.audit.test.ts` passed, 4 tests, after applying all migrations to a fresh Postgres test database.
+- `npm --prefix server run test:run -- tests/unit/repositories/maintenanceRepository.test.ts tests/unit/services/draftService.delete.contracts.ts` passed the repository suite, 22 tests. The second path is a registrar/helper file and did not register separately in Vitest output.
+- `npm --prefix server run typecheck:tests` passed.
+- `npm --prefix server run build` passed.
+- `npm run lint:server` passed, including API body validation, Bitcoin network-boundary guard, and safety-catch guard.
+- `bash scripts/quality/lizard-only.sh server/src/api/wallets/approvals.ts server/src/repositories/maintenanceRepository.ts server/src/repositories/policyRepository.ts server/src/services/wallet/walletMutations.ts server/src/utils/jwt.ts server/tests/integration/api/walletApprovalsAudit.test.ts server/tests/integration/repositories/policyRepository.audit.test.ts server/tests/unit/repositories/maintenanceRepository.audit.test.ts server/tests/unit/repositories/policyRepository.audit.test.ts server/tests/unit/repositories/policyRepository/policyRepository.usage-export.contracts.ts server/tests/unit/services/wallet/mutations-maintenance.contracts.ts server/tests/unit/utils/jwt.audit.test.ts server/tests/unit/utils/jwt.test.ts` passed.
+- `npm --prefix server run test:run -- tests/unit/api/transactionsBroadcastIntent.test.ts tests/unit/middleware/rateLimit.test.ts tests/unit/middleware/featureGate.test.ts tests/unit/repositories/sessionRepository.test.ts` passed, 80 tests.
+- `npm --prefix gateway run test:run -- tests/unit/middleware/mobilePermission.test.ts tests/unit/services/backendEvents.test.ts` passed, 65 tests.
+- `bash -n tests/install/utils/classify-install-scope.sh && bash -n tests/install/unit/install-scope.test.sh && bash -n tests/ci/check-workflow-composition.test.sh` passed.
+- `bash tests/ci/check-workflow-composition.test.sh` passed, 98 assertions.
+- `bash tests/install/unit/install-scope.test.sh` passed.
+- `npm --prefix gateway run build` passed.
+- `npm run lint:gateway` passed.
+- `npm --prefix server run typecheck:tests` passed.
+- `npm run lint:server` passed again after removing stale feature-gate safety-catch allowlist entries.
+- `npm run check:github-action-runtimes` passed.
+- `lizard -w -i 0 -l typescript -C 15 -T nloc=200 gateway/src/middleware/mobilePermission.ts gateway/src/services/backendEvents/index.ts server/src/api/transactions/broadcastIntent.ts server/src/middleware/rateLimit.ts server/src/middleware/featureGate.ts server/src/repositories/sessionRepository.ts` passed.
+- `git diff --check` passed.
+
+Edge-case review:
+
+- Null/missing nested IDs still fail through existing route params and repository lookups with 404-style `NotFoundError`; no side effects occur before the new scope checks.
+- Cross-wallet draft IDs, cross-draft approval request IDs, and same-user access on the route wallet no longer grant authority over sibling wallets or drafts.
+- Maintenance cleanup now shares the same actionable-draft status set used by draft repository behavior, so future additions to actionable statuses stay centralized.
+- JWT forged, malformed, expired, and invalid-audience tokens still use the existing auth-failure messages; only revocation-store outages and real revoked-token cases changed behavior.
+- Signer-only users still retain signer/read surfaces, but service-level wallet rename/delete paths now require the explicit owner role and perform no update/delete/unsubscribe side effects on rejection.
+- Wallet-scoped policy usage windows no longer depend on nullable composite uniqueness. Existing duplicate null rows are merged by summed spend/count before the migration sets the reserved sentinel and not-null constraint.
+- Async/race surface is reduced but not eliminated: approval request/draft ownership is checked immediately before service calls, and the relevant foreign keys are expected to be immutable in normal operation.
+- Signed PSBT policy inference now rejects ambiguity instead of choosing among multiple external outputs. Single-recipient plus wallet-change PSBTs still resolve as before.
+- Feature flag service outages now deny feature-gated routes with an explicit 503 instead of falling back to static config. This is intentionally stricter and may expose control-plane outages sooner.
+- Rate-limit spoofing is now delegated to Express trust-proxy configuration. If deployment proxy topology changes, `req.ip` behavior must be verified with the app-level trust-proxy setting.
+- Release-candidate manual validation no longer accepts arbitrary SHA or arbitrary branch refs. Operators should use `main`, a `release/*` branch, or a `v*` tag for secret-bearing release-candidate runs.
+
+Remaining scrub queue:
+
+- Physical hardware test remains the outstanding verification item for hardware-only surfaces.
+- Accepted non-hardware queue from this scrub pass is fixed and locally verified.
+- Deferred broader audit chunks remain outside this pass: `server/src/services/bitcoin/**`, worker/assistant/agent/events/infrastructure/MCP/validation/websocket, frontend `src/`, scripts, and install tests.
+
+---
+
 # Active Task: Upgrade Test CI Speed Implementation Plan 2026-05-12
 
 Status: Actionable CI speed work merged through PR #442. Phase 1 timing/diagnostics and cross-run E2E serialization merged in PR #438; Phase 2/3 upgrade selection and release/manual-only upgrade policy merged in PR #439 and PR #442; fail-closed upgrade-source handling merged in PR #440; cleanup hardening merged in PR #441; workflow-only static relaxation was pulled forward before PR2. Remaining build/cache/source-ref optimization is intentionally deferred until release/manual timing data supports a safe tradeoff.

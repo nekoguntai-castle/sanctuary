@@ -10,9 +10,11 @@ import { z } from 'zod';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { validate } from '../../middleware/validate';
 import { approvalService } from '../../services/vaultPolicy/approvalService';
+import { draftRepository } from '../../repositories/draftRepository';
+import { policyRepository } from '../../repositories/policyRepository';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
 import { asyncHandler } from '../../errors/errorHandler';
-import { ErrorCodes } from '../../errors/ApiError';
+import { ErrorCodes, NotFoundError } from '../../errors/ApiError';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
@@ -29,12 +31,30 @@ const OverrideBodySchema = z.object({
 const decisionValidationMessage = 'decision is required and must be one of: approve, reject, veto';
 const overrideValidationMessage = 'A reason is required for owner override';
 
+async function requireDraftInRouteWallet(draftId: string, walletId: string): Promise<void> {
+  const draft = await draftRepository.findByIdInWallet(draftId, walletId);
+  if (!draft) {
+    throw new NotFoundError('Draft not found', ErrorCodes.NOT_FOUND, { draftId });
+  }
+}
+
+async function requireApprovalRequestInRouteDraft(
+  requestId: string,
+  draftId: string,
+): Promise<void> {
+  const request = await policyRepository.findApprovalRequestById(requestId);
+  if (!request || request.draftTransactionId !== draftId) {
+    throw new NotFoundError('Approval request not found', ErrorCodes.NOT_FOUND, { requestId });
+  }
+}
+
 /**
  * GET /:walletId/drafts/:draftId/approvals - List approval requests for a draft
  */
 router.get('/:walletId/drafts/:draftId/approvals', requireWalletAccess('view'), asyncHandler(async (req, res) => {
-  const { draftId } = req.params;
+  const { walletId, draftId } = req.params;
 
+  await requireDraftInRouteWallet(draftId, walletId);
   const approvals = await approvalService.getApprovalsForDraft(draftId);
 
   res.json({ approvals });
@@ -56,6 +76,8 @@ router.post(
     const userId = requireAuthenticatedUser(req).userId;
     const { decision, reason } = req.body;
 
+    await requireDraftInRouteWallet(draftId, walletId);
+    await requireApprovalRequestInRouteDraft(requestId, draftId);
     const { vote, request } = await approvalService.castVote(requestId, userId, decision, reason);
 
     await auditService.logFromRequest(req, AuditAction.POLICY_APPROVAL_VOTE, AuditCategory.WALLET, {
@@ -99,6 +121,7 @@ router.post('/:walletId/drafts/:draftId/override', requireWalletAccess('owner'),
   const userId = requireAuthenticatedUser(req).userId;
   const { reason } = req.body;
 
+  await requireDraftInRouteWallet(draftId, walletId);
   await approvalService.ownerOverride(draftId, walletId, userId, reason);
 
   await auditService.logFromRequest(req, AuditAction.POLICY_OVERRIDE, AuditCategory.WALLET, {

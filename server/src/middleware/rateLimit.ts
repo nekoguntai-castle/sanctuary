@@ -83,14 +83,9 @@ function sendRateLimitResponse(
 /**
  * Get client IP address
  */
-function getClientIp(req: Request): string {
-  // Trust proxy is enabled, so x-forwarded-for is reliable
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    const ips = Array.isArray(forwarded) ? forwarded[0] : forwarded.split(',')[0];
-    return ips.trim();
-  }
-
+export function getClientIp(req: Request): string {
+  // Express derives req.ip according to the app's trust proxy setting. Reading
+  // X-Forwarded-For directly lets clients spoof the rate-limit bucket.
   return req.ip || req.socket.remoteAddress || 'unknown';
 }
 

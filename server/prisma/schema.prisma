@@ -1372,7 +1372,7 @@ model PolicyUsageWindow {
   id        String   @id @default(uuid())
   policyId  String
   walletId  String
-  userId    String?  // null for wallet-scoped limits
+  userId    String   @default("00000000-0000-0000-0000-000000000000") // reserved UUID for wallet-scoped limits
 
   windowType  String   // hourly | daily | weekly | monthly
   windowStart DateTime

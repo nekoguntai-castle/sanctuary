@@ -262,6 +262,9 @@ main() {
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_scope "$output_file" "true" "true" "false" "true" "false" "false" "false" "false" "false" "false"
   assert_upgrade_selection "$output_file" "" ""
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
+  assert_exact_output "$output_file" "scope" "installer,upgrade-deferred,docker-e2e-deferred"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "scripts/offline/apply-bundle.sh" "#!/usr/bin/env bash" "offline bundle"
@@ -294,6 +297,9 @@ main() {
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_scope "$output_file" "true" "true" "true" "false" "true" "false" "false" "false" "false" "true"
+  run_classifier_for_event "$repo_dir" "$base_sha" "$head_sha" "$output_file" pull_request
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
+  assert_exact_output "$output_file" "scope" "compose-docker,docker-e2e-deferred"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "tests/install/e2e/auth-flow.test.sh" "echo auth" "auth"

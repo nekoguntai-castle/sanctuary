@@ -351,8 +351,14 @@ describe('JWT Utilities', () => {
       mockIsTokenRevoked.mockResolvedValue(true);
       const token = generateToken(mockPayload);
 
-      // The error message is generic to avoid leaking revocation info
-      await expect(verifyToken(token)).rejects.toThrow('Invalid or expired token');
+      await expect(verifyToken(token)).rejects.toThrow('Token has been revoked');
+    });
+
+    it('should distinguish revocation store outages from invalid access tokens', async () => {
+      mockIsTokenRevoked.mockRejectedValue(new Error('redis: connection refused'));
+      const token = generateToken(mockPayload);
+
+      await expect(verifyToken(token)).rejects.toThrow('Token revocation check unavailable');
     });
 
     it('should check token revocation', async () => {
@@ -419,8 +425,14 @@ describe('JWT Utilities', () => {
       mockIsTokenRevoked.mockResolvedValue(true);
       const token = generateRefreshToken('user-123');
 
-      // The error message is generic to avoid leaking revocation info
-      await expect(verifyRefreshToken(token)).rejects.toThrow('Invalid refresh token');
+      await expect(verifyRefreshToken(token)).rejects.toThrow('Refresh token has been revoked');
+    });
+
+    it('should distinguish revocation store outages from invalid refresh tokens', async () => {
+      mockIsTokenRevoked.mockRejectedValue(new Error('redis: connection refused'));
+      const token = generateRefreshToken('user-123');
+
+      await expect(verifyRefreshToken(token)).rejects.toThrow('Token revocation check unavailable');
     });
 
     it('should throw for invalid token', async () => {

@@ -178,6 +178,25 @@ describe('broadcast intent helpers', () => {
       });
   });
 
+  it('rejects signed PSBTs with multiple paid external outputs', async () => {
+    mockFindAddressStrings.mockResolvedValue(['tb1qchange']);
+    mockGetPSBTInfoWithNetwork.mockReturnValue({
+      fee: 75,
+      outputs: [
+        { address: 'tb1qallowedrecipient', value: 5_000 },
+        { address: 'tb1qattackerrecipient', value: 12_000 },
+        { address: 'tb1qchange', value: 3_000 },
+      ],
+      inputs: [outpoint(txidA, 0)],
+    });
+
+    await expect(buildSignedPsbtBroadcastIntent('wallet-1', 'multi-output', 'testnet3', 'signedPsbtBase64'))
+      .rejects.toMatchObject({
+        message: 'Signed PSBT has multiple external outputs',
+        details: expect.objectContaining({ reason: 'multiple_external_outputs', count: 2 }),
+      });
+  });
+
   it('does not treat malformed addressed outputs as recipients', async () => {
     mockGetPSBTInfoWithNetwork.mockReturnValue({
       fee: 50,

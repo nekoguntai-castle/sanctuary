@@ -254,6 +254,60 @@ describe('Mobile Permission Middleware', () => {
         });
       });
 
+      it('should fail closed when backend returns allowed as a string', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ allowed: 'false', reason: 'string false' }),
+        });
+
+        const middleware = requireMobilePermission('broadcast');
+
+        await middleware(mockReq as Request, mockRes as Response, mockNext as NextFunction);
+
+        expect(statusMock).toHaveBeenCalledWith(403);
+        expect(jsonMock).toHaveBeenCalledWith({
+          error: 'Forbidden',
+          message: 'Invalid permission check response',
+        });
+        expect(mockNext).not.toHaveBeenCalled();
+      });
+
+      it('should fail closed when backend omits allowed', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ reason: 'missing allowed' }),
+        });
+
+        const middleware = requireMobilePermission('broadcast');
+
+        await middleware(mockReq as Request, mockRes as Response, mockNext as NextFunction);
+
+        expect(statusMock).toHaveBeenCalledWith(403);
+        expect(jsonMock).toHaveBeenCalledWith({
+          error: 'Forbidden',
+          message: 'Invalid permission check response',
+        });
+        expect(mockNext).not.toHaveBeenCalled();
+      });
+
+      it('should fail closed when backend returns a null response body', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(null),
+        });
+
+        const middleware = requireMobilePermission('broadcast');
+
+        await middleware(mockReq as Request, mockRes as Response, mockNext as NextFunction);
+
+        expect(statusMock).toHaveBeenCalledWith(403);
+        expect(jsonMock).toHaveBeenCalledWith({
+          error: 'Forbidden',
+          message: 'Invalid permission check response',
+        });
+        expect(mockNext).not.toHaveBeenCalled();
+      });
+
       it('should log security event when permission denied', async () => {
         mockFetch.mockResolvedValueOnce({
           ok: true,

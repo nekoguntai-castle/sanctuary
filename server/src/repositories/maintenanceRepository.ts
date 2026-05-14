@@ -8,6 +8,7 @@
  */
 
 import prisma from '../models/prisma';
+import { ACTIONABLE_DRAFT_STATUSES } from './draftRepository';
 
 // Transaction client type extracted from Prisma's $transaction callback signature
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
@@ -41,7 +42,10 @@ export async function deleteFeeEstimatesBefore(cutoff: Date): Promise<number> {
  */
 export async function deleteExpiredDrafts(): Promise<number> {
   const result = await prisma.draftTransaction.deleteMany({
-    where: { expiresAt: { lt: new Date() } },
+    where: {
+      expiresAt: { lt: new Date() },
+      status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
+    },
   });
   return result.count;
 }

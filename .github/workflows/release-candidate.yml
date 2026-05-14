@@ -27,7 +27,7 @@ on:
   workflow_call:
     inputs:
       ref:
-        description: 'Git ref to test'
+        description: 'Trusted git ref to test (main, release/*, or v* tag)'
         required: false
         default: 'main'
         type: string
@@ -47,7 +47,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Git ref to test (branch, tag, or SHA)'
+        description: 'Trusted git ref to test (main, release/*, or v* tag)'
         required: false
         default: 'main'
         type: string
@@ -88,10 +88,44 @@ jobs:
   validation-info:
     name: Validation Info
     runs-on: ubuntu-latest
+    outputs:
+      candidate_ref: ${{ steps.candidate.outputs.candidate_ref }}
     steps:
+      - name: Resolve trusted candidate ref
+        id: candidate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          INPUT_REF: ${{ github.event.inputs.ref }}
+          CALL_REF: ${{ inputs.ref }}
+        run: |
+          case "$EVENT_NAME" in
+            push)
+              candidate_ref="${GITHUB_REF:?}"
+              ;;
+            workflow_dispatch|workflow_call)
+              raw_ref="${INPUT_REF:-${CALL_REF:-main}}"
+              case "$raw_ref" in
+                main|refs/heads/main|release/*|refs/heads/release/*|v[0-9]*|refs/tags/v[0-9]*)
+                  candidate_ref="$raw_ref"
+                  ;;
+                *)
+                  echo "::error::Release candidate ref must be main, release/*, or a v* tag. Received: $raw_ref"
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo "::error::Unsupported release-candidate event: $EVENT_NAME"
+              exit 1
+              ;;
+          esac
+
+          echo "candidate_ref=$candidate_ref" >> "$GITHUB_OUTPUT"
+
       - name: Display validation context
         env:
-          VALIDATION_REF: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
+          VALIDATION_REF: ${{ steps.candidate.outputs.candidate_ref }}
           VALIDATION_VERSION: ${{ github.event.inputs.version || inputs.version || 'N/A' }}
           FULL_UPGRADE_RECOVERY: ${{ github.event.inputs.include_full_upgrade_recovery || inputs.include_full_upgrade_recovery || false }}
           TRIGGERED_BY: ${{ github.actor }}
@@ -118,12 +152,13 @@ jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
+    needs: validation-info
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
+          ref: ${{ needs.validation-info.outputs.candidate_ref }}
           fetch-depth: 0
 
       - name: Make test scripts executable
@@ -143,6 +178,7 @@ jobs:
   fresh-install-test:
     name: Fresh Install E2E
     runs-on: ubuntu-latest
+    needs: validation-info
     timeout-minutes: 30
     env:
       COMPOSE_PROJECT_NAME: sanctuary-rc-fresh-${{ github.run_id }}
@@ -157,7 +193,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
+          ref: ${{ needs.validation-info.outputs.candidate_ref }}
           clean: false
 
       # docker/setup-buildx-action intentionally removed: install E2E disables
@@ -267,7 +303,7 @@ jobs:
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
-    needs: fresh-install-test
+    needs: [validation-info, fresh-install-test]
     continue-on-error: true  # Non-blocking - failures are warnings
     timeout-minutes: 15
     env:
@@ -283,7 +319,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
+          ref: ${{ needs.validation-info.outputs.candidate_ref }}
           clean: false
 
       # docker/setup-buildx-action removed (see fresh-install-test rationale).
@@ -430,7 +466,7 @@ jobs:
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
-    needs: [fresh-install-test, container-health-test]
+    needs: [validation-info, fresh-install-test, container-health-test]
     if: always() && needs.fresh-install-test.result == 'success'
     continue-on-error: true  # Non-blocking - failures are warnings
     timeout-minutes: 15
@@ -447,7 +483,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
+          ref: ${{ needs.validation-info.outputs.candidate_ref }}
           clean: false
 
       # docker/setup-buildx-action removed (see fresh-install-test rationale).
@@ -613,7 +649,7 @@ jobs:
   validation-summary:
     name: Validation Summary
     runs-on: ubuntu-latest
-    needs: [unit-tests, fresh-install-test, container-health-test, auth-flow-test]
+    needs: [validation-info, unit-tests, fresh-install-test, container-health-test, auth-flow-test]
     if: always()
 
     steps:

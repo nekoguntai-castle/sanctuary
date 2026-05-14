@@ -152,6 +152,25 @@ assert_not_contains "$RC" \
   "release-candidate E2E concurrency must not be ref-scoped" \
   'group: sanctuary-runner-e2e-${{ github.ref }}'
 
+assert_not_contains "$RC" \
+  "release-candidate checkout must not use raw input ref" \
+  '${{ github.event.inputs.ref || inputs.ref || '\''main'\'' }}'
+
+assert_contains_in_order "$RC" \
+  "release-candidate trusted ref resolution" \
+  "validation-info:" \
+  "Resolve trusted candidate ref" \
+  "Release candidate ref must be main, release/*, or a v* tag" \
+  "candidate_ref=\$candidate_ref" \
+  "unit-tests:" \
+  'ref: ${{ needs.validation-info.outputs.candidate_ref }}' \
+  "fresh-install-test:" \
+  'ref: ${{ needs.validation-info.outputs.candidate_ref }}' \
+  "container-health-test:" \
+  'ref: ${{ needs.validation-info.outputs.candidate_ref }}' \
+  "auth-flow-test:" \
+  'ref: ${{ needs.validation-info.outputs.candidate_ref }}'
+
 assert_contains_in_order "$RC" \
   "release-candidate diagnostic summaries publishable" \
   "Write fresh install diagnostic summary" \
@@ -659,6 +678,44 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "ci-diagnostics-quick-gateway"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick backend changed files passed as data" \
+  "Run related backend tests" \
+  'BACKEND_FILES: ${{ needs.detect-changes.outputs.backend_files }}' \
+  'read -r -a related_files <<< "${BACKEND_FILES:-}"' \
+  'npx vitest related --run --passWithNoTests' \
+  '"${related_files[@]}"'
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "quick gateway changed files passed as data" \
+  "Run related gateway tests" \
+  'GATEWAY_FILES: ${{ needs.detect-changes.outputs.gateway_files }}' \
+  'read -r -a related_files <<< "${GATEWAY_FILES:-}"' \
+  'npx vitest related --run --passWithNoTests "${related_files[@]}"'
+
+assert_not_contains "$TEST_WORKFLOW" \
+  "quick gateway changed files must not interpolate into command" \
+  'npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.gateway_files }}'
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "PR required checks require full summary" \
+  "pr-required-checks:" \
+  "full-test-summary" \
+  'FULL_TEST_SUMMARY: ${{ needs.full-test-summary.result }}' \
+  'require_success "Full Test Summary" "$FULL_TEST_SUMMARY"'
+
+assert_not_contains "$TEST_WORKFLOW" \
+  "PR required checks must not no-op on merge group" \
+  "Merge group no-op"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full lane ready gates directly on quick lane" \
+  "full-lane-ready:" \
+  "quick-test-hygiene" \
+  "quick-render-regression" \
+  "Check full lane prerequisites" \
+  "Quick PR lane is not required for \$EVENT_NAME."
+
+assert_contains_in_order "$TEST_WORKFLOW" \
   "quick AI proxy diagnostics" \
   "quick-ai-proxy-tests:" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ai-proxy-tests.log"' \
@@ -771,6 +828,44 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Coverage Merge"' \
   "Upload frontend coverage merge diagnostics" \
   "ci-diagnostics-frontend-coverage-merge"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full frontend coverage runs on full scan" \
+  "full-frontend-coverage-shard-1:" \
+  "needs.detect-changes.outputs.full_scan == 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed == 'true'" \
+  "needs.detect-changes.outputs.frontend_changed == 'true'" \
+  "full-frontend-coverage-shard-2:" \
+  "needs.detect-changes.outputs.full_scan == 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed == 'true'" \
+  "needs.detect-changes.outputs.frontend_changed == 'true'" \
+  "full-frontend-coverage-merge:" \
+  "needs.detect-changes.outputs.full_scan == 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed == 'true'" \
+  "needs.detect-changes.outputs.frontend_changed == 'true'"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full E2E runs on full scan" \
+  "full-browser-e2e-tests:" \
+  "needs.detect-changes.outputs.browser_smoke_changed == 'true'" \
+  "needs.detect-changes.outputs.full_scan == 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed == 'true'" \
+  "full-render-e2e-tests:" \
+  "needs.detect-changes.outputs.browser_smoke_changed != 'true'" \
+  "needs.detect-changes.outputs.full_scan != 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed != 'true'" \
+  "needs.detect-changes.outputs.render_changed == 'true'" \
+  "needs.detect-changes.outputs.full_scan == 'true'" \
+  "needs.detect-changes.outputs.test_suite_changed == 'true'"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
+  "full summary requires full-scan E2E lanes" \
+  'if is_true "$FULL_SCAN"; then' \
+  "browser_e2e_required=true" \
+  "render_e2e_required=true" \
+  'if is_true "$TEST_SUITE_CHANGED"; then' \
+  "browser_e2e_required=true" \
+  "render_e2e_required=true"
 
 # --- verify-vectors diagnostic coverage --------------------------------------
 VV="$REPO_ROOT/.github/workflows/verify-vectors.yml"

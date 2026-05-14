@@ -16,11 +16,15 @@ const {
   mockCastVote,
   mockOwnerOverride,
   mockAuditLogFromRequest,
+  mockDraftFindByIdInWallet,
+  mockFindApprovalRequestById,
 } = vi.hoisted(() => ({
   mockGetApprovalsForDraft: vi.fn(),
   mockCastVote: vi.fn(),
   mockOwnerOverride: vi.fn(),
   mockAuditLogFromRequest: vi.fn(),
+  mockDraftFindByIdInWallet: vi.fn(),
+  mockFindApprovalRequestById: vi.fn(),
 }));
 
 vi.mock('../../../src/middleware/walletAccess', () => ({
@@ -35,6 +39,18 @@ vi.mock('../../../src/services/vaultPolicy/approvalService', () => ({
     getApprovalsForDraft: mockGetApprovalsForDraft,
     castVote: mockCastVote,
     ownerOverride: mockOwnerOverride,
+  },
+}));
+
+vi.mock('../../../src/repositories/draftRepository', () => ({
+  draftRepository: {
+    findByIdInWallet: mockDraftFindByIdInWallet,
+  },
+}));
+
+vi.mock('../../../src/repositories/policyRepository', () => ({
+  policyRepository: {
+    findApprovalRequestById: mockFindApprovalRequestById,
   },
 }));
 
@@ -85,6 +101,11 @@ describe('Wallet Approvals Routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAuditLogFromRequest.mockResolvedValue(undefined);
+    mockDraftFindByIdInWallet.mockResolvedValue({ id: 'draft-1', walletId: 'wallet-1' });
+    mockFindApprovalRequestById.mockResolvedValue({
+      id: 'req-1',
+      draftTransactionId: 'draft-1',
+    });
   });
 
   // =========================================================================
@@ -115,6 +136,15 @@ describe('Wallet Approvals Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ approvals: [] });
+    });
+
+    it('should return 404 when the draft is not in the route wallet', async () => {
+      mockDraftFindByIdInWallet.mockResolvedValue(null);
+
+      const response = await request(app).get(url);
+
+      expect(response.status).toBe(404);
+      expect(mockGetApprovalsForDraft).not.toHaveBeenCalled();
     });
 
     it('should return 500 when service throws', async () => {
@@ -311,6 +341,31 @@ describe('Wallet Approvals Routes', () => {
         .send({ decision: '' });
 
       expect(response.status).toBe(400);
+      expect(mockCastVote).not.toHaveBeenCalled();
+    });
+
+    it('should return 404 when the approval request is missing', async () => {
+      mockFindApprovalRequestById.mockResolvedValue(null);
+
+      const response = await request(app)
+        .post(url)
+        .send({ decision: 'approve' });
+
+      expect(response.status).toBe(404);
+      expect(mockCastVote).not.toHaveBeenCalled();
+    });
+
+    it('should return 404 when the approval request belongs to a different draft', async () => {
+      mockFindApprovalRequestById.mockResolvedValue({
+        id: 'req-1',
+        draftTransactionId: 'other-draft',
+      });
+
+      const response = await request(app)
+        .post(url)
+        .send({ decision: 'approve' });
+
+      expect(response.status).toBe(404);
       expect(mockCastVote).not.toHaveBeenCalled();
     });
 

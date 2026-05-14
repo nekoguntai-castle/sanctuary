@@ -98,7 +98,11 @@ function connect(): void {
       }
 
       if (message.type === 'event') {
-        handleEvent(message.event as BackendEvent);
+        void handleEvent(message.event as BackendEvent).catch((error: unknown) => {
+          log.error('Error handling backend event', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
       }
     } catch (err) {
       log.error('Error parsing WebSocket message', { error: (err as Error).message });

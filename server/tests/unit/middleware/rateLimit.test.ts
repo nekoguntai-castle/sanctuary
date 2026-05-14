@@ -126,7 +126,7 @@ describe('Rate Limit Middleware', () => {
       });
     });
 
-    it('should use x-forwarded-for first IP when present', async () => {
+    it('should ignore raw x-forwarded-for and use Express trusted req.ip', async () => {
       (rateLimitService.consume as Mock).mockResolvedValue({
         allowed: true,
         limit: 100,
@@ -134,14 +134,15 @@ describe('Rate Limit Middleware', () => {
         resetAt: Date.now() + 60000,
       });
       mockReq.headers = { 'x-forwarded-for': '203.0.113.1, 198.51.100.2' };
+      mockReq.ip = '198.51.100.2';
 
       const middleware = rateLimit('test-policy');
       await middleware(mockReq as Request, mockRes as Response, mockNext);
 
-      expect(rateLimitService.consume).toHaveBeenCalledWith('test-policy', 'ip:203.0.113.1');
+      expect(rateLimitService.consume).toHaveBeenCalledWith('test-policy', 'ip:198.51.100.2');
     });
 
-    it('should use first forwarded IP when x-forwarded-for is an array', async () => {
+    it('should ignore array x-forwarded-for spoofing', async () => {
       (rateLimitService.consume as Mock).mockResolvedValue({
         allowed: true,
         limit: 100,
@@ -149,11 +150,12 @@ describe('Rate Limit Middleware', () => {
         resetAt: Date.now() + 60000,
       });
       mockReq.headers = { 'x-forwarded-for': [' 198.51.100.10 ', '203.0.113.9'] as any };
+      mockReq.ip = '203.0.113.9';
 
       const middleware = rateLimit('test-policy');
       await middleware(mockReq as Request, mockRes as Response, mockNext);
 
-      expect(rateLimitService.consume).toHaveBeenCalledWith('test-policy', 'ip:198.51.100.10');
+      expect(rateLimitService.consume).toHaveBeenCalledWith('test-policy', 'ip:203.0.113.9');
     });
 
     it('falls back to socket remoteAddress when req.ip is unavailable', async () => {

@@ -357,6 +357,28 @@ defer_automatic_upgrade_e2e() {
   reason="${reason}; upgrade E2E reserved for release tags or manual dispatch"
 }
 
+defer_pull_request_docker_e2e() {
+  if [ "$event_name" != "pull_request" ]; then
+    return 0
+  fi
+
+  if [ "$run_fresh_install" != "true" ] &&
+     [ "$run_install_script" != "true" ] &&
+     [ "$run_container_health" != "true" ] &&
+     [ "$run_auth_flow" != "true" ] &&
+     [ "$run_reuse_stack" != "true" ]; then
+    return 0
+  fi
+
+  run_fresh_install=false
+  run_install_script=false
+  run_container_health=false
+  run_auth_flow=false
+  run_reuse_stack=false
+  add_scope docker-e2e-deferred
+  reason="${reason}; Docker-backed install E2E reserved for release tags, non-PR pushes, or manual dispatch"
+}
+
 while IFS= read -r file; do
   [ -n "$file" ] || continue
 
@@ -446,4 +468,5 @@ while IFS= read -r file; do
 done < <(git diff --name-only "$base_sha" "$head_sha")
 
 defer_automatic_upgrade_e2e
+defer_pull_request_docker_e2e
 emit_outputs
