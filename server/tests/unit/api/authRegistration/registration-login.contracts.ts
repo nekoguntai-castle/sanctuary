@@ -133,6 +133,21 @@ export function registerAuthRegistrationLoginTests(): void {
       expect(response.body.message).toContain('Username, password, and email are required');
     });
 
+    it('should reject malformed usernames during registration', async () => {
+      mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
+        key: 'registrationEnabled',
+        value: 'true',
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/register')
+        .send({ username: 'bad-name!', password: 'StrongPassword123!', email: 'test@example.com' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('Username can only contain letters, numbers, and underscores');
+      expect(mockPrismaClient.user.findUnique).not.toHaveBeenCalled();
+    });
+
     it('should reject weak password', async () => {
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
         key: 'registrationEnabled',
@@ -165,6 +180,27 @@ export function registerAuthRegistrationLoginTests(): void {
       expect(response.body.message).toContain('Username already exists');
     });
 
+    it('should reject case-only duplicate usernames', async () => {
+      mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
+        key: 'registrationEnabled',
+        value: 'true',
+      });
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: 'existing-user-id',
+        username: 'admin',
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/register')
+        .send({ username: 'Admin', password: 'StrongPassword123!', email: 'admin@example.com' });
+
+      expect(response.status).toBe(409);
+      expect(response.body.message).toContain('Username already exists');
+      expect(mockPrismaClient.user.findUnique).toHaveBeenCalledWith({
+        where: { username: 'admin' },
+      });
+    });
+
     it('should successfully register and authenticate a new user when verification is not required', async () => {
       mockEnabledPublicRegistration();
       mockUniqueRegistrationIdentity();
@@ -181,6 +217,35 @@ export function registerAuthRegistrationLoginTests(): void {
       expect(response.body.refreshToken).toBeUndefined();
       expect(response.body.user.username).toBe('newuser');
       expect(response.body.emailVerificationRequired).toBe(false);
+    });
+
+    it('should store mixed-case registration usernames as lowercase', async () => {
+      mockEnabledPublicRegistration();
+      mockUniqueRegistrationIdentity();
+      mockPrismaClient.user.create.mockResolvedValue({
+        id: 'new-user-id',
+        username: 'newuser',
+        email: 'new@example.com',
+        emailVerified: false,
+        isAdmin: false,
+        sessionVersion: 0,
+        preferences: { darkMode: true },
+      });
+      mockIsVerificationRequired.mockResolvedValue(false);
+
+      const response = await request(app)
+        .post('/api/v1/auth/register')
+        .send({ username: '  NewUser  ', password: 'StrongPassword123!', email: 'new@example.com' });
+
+      expect(response.status).toBe(201);
+      expect(response.body.user.username).toBe('newuser');
+      expect(mockPrismaClient.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            username: 'newuser',
+          }),
+        })
+      );
     });
 
     it('should authenticate immediately when a created user is already email verified', async () => {
@@ -372,6 +437,16 @@ export function registerAuthRegistrationLoginTests(): void {
       expect(response.body.message).toContain('Username and password are required');
     });
 
+    it('should reject non-string usernames', async () => {
+      const response = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ username: 42, password: 'password123' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('Username and password are required');
+      expect(mockPrismaClient.user.findUnique).not.toHaveBeenCalled();
+    });
+
     it('should reject when password is missing', async () => {
       const response = await request(app)
         .post('/api/v1/auth/login')
@@ -464,6 +539,33 @@ export function registerAuthRegistrationLoginTests(): void {
       expect(response.body.refreshToken).toBeUndefined();
       expect(response.body.user.username).toBe('testuser');
       expect(response.body.usingDefaultPassword).toBeUndefined();
+    });
+
+    it('should login with a mixed-case username and surrounding whitespace', async () => {
+      const correctPassword = 'CorrectPassword123!';
+      const hashedPassword = await hashPassword(correctPassword);
+
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: 'user-id',
+        username: 'admin',
+        email: 'admin@example.com',
+        emailVerified: true,
+        password: hashedPassword,
+        isAdmin: true,
+        twoFactorEnabled: false,
+        preferences: { darkMode: true },
+      });
+      mockPrismaClient.systemSetting.findUnique.mockResolvedValue(null);
+
+      const response = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ username: '  Admin  ', password: correctPassword });
+
+      expect(response.status).toBe(200);
+      expect(response.body.user.username).toBe('admin');
+      expect(mockPrismaClient.user.findUnique).toHaveBeenCalledWith({
+        where: { username: 'admin' },
+      });
     });
 
     it('should block unverified user when verification required', async () => {

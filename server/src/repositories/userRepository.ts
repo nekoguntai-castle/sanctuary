@@ -7,6 +7,7 @@
 import prisma from '../models/prisma';
 import { Prisma } from '../generated/prisma/client';
 import type { User } from '../generated/prisma/client';
+import { normalizeUsername } from '../utils/username';
 
 /**
  * Find user by ID
@@ -35,7 +36,7 @@ export async function findByIdWithSelect<T extends Prisma.UserSelect>(
  */
 export async function findByUsername(username: string): Promise<User | null> {
   return prisma.user.findUnique({
-    where: { username },
+    where: { username: normalizeUsername(username) },
   });
 }
 

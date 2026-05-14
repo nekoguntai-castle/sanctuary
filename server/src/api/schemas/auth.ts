@@ -13,6 +13,7 @@ import {
   MobileTwoFactorVerifyRequestSchema,
   MobileUserPreferencesRequestSchema,
 } from '@sanctuary/shared/schemas/mobileApiRequests';
+import { normalizeUsername } from '../../utils/username';
 
 // =============================================================================
 // Password Validation
@@ -55,6 +56,12 @@ export const RegisterSchema = z.object({
 
 export const LoginSchema = z.object({
   ...MobileLoginRequestSchema.shape,
+  username: z
+    .string()
+    .trim()
+    .min(1, 'Username is required')
+    .max(50, 'Username too long')
+    .transform(normalizeUsername),
 });
 
 // =============================================================================

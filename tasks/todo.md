@@ -1,3 +1,53 @@
+# Active Task: Lowercase Username Canonicalization 2026-05-13
+
+Status: completed and verified locally
+
+Goal: keep usernames lowercase-only as the canonical account identifier while making login tolerant of mixed-case typing and preventing case-only duplicate/confusing accounts.
+
+## Plan
+
+- [x] Inspect auth schemas, login/register/admin-user routes, user repository lookups, seed data, and existing tests that create or authenticate users.
+- [x] Define a single username normalizer, most likely `trim().toLowerCase()`, in a shared backend auth/user helper rather than duplicating ad hoc transforms.
+- [x] Apply normalization at login, public registration, admin user creation, and admin username update boundaries before validation/lookup/persistence.
+- [x] Keep storage canonical: new and updated usernames are saved lowercase; existing lowercase users remain unchanged.
+- [x] Decide response behavior for mixed-case creation/update inputs: prefer accepting input but storing lowercase unless current UI copy/schema clearly promises rejection.
+- [x] Add focused tests:
+  - Login with `Admin` authenticates the stored `admin` account.
+  - Login trims accidental surrounding whitespace.
+  - Registration/admin creation stores lowercase for mixed-case input.
+  - Duplicate detection rejects `Admin` when `admin` already exists.
+  - Admin username update cannot create a case-only duplicate.
+- [x] Update any user-facing validation copy/docs only if they explicitly describe case-sensitive usernames.
+- [x] Run focused backend auth/admin tests, affected frontend login tests if UI behavior changes, typecheck for touched tests, and touched-file lizard if non-trivial logic changes.
+- [x] Re-read the diff for edge cases: empty username after trim, Unicode/case-folding assumptions, duplicate race behavior, and audit-log clarity.
+
+## Review
+
+- Added `normalizeUsername()` as the single backend rule: `trim().toLowerCase()`.
+- `UsernameSchema` now trims and stores parsed usernames lowercase while still accepting letters, numbers, and underscores.
+- Backend login now trims/lowercases before lookup and audit logging, so `Admin`, `admin`, and accidental surrounding spaces hit the same stored `admin` account.
+- Public registration now validates usernames through the canonical username schema before duplicate lookup or persistence.
+- Admin user create/update already used `UsernameSchema`; with the schema transform and defensive repository lookup, mixed-case create/update input stores lowercase and case-only duplicates are rejected.
+- Login rate-limiter username keys now use the same normalizer, preserving per-user throttling for mixed-case attempts.
+- Added a migration that lowercases existing usernames and creates a lower-case unique index; it fails loudly if legacy rows already contain case-only or whitespace-only duplicates that require manual account remediation.
+- No user-facing copy or docs explicitly promised case-sensitive usernames, so no copy change was needed.
+- Rebuilt `sanctuary-backend:local` and recreated the local backend container so the LAN instance is running the fix.
+
+Verification:
+
+- `npm --prefix server run test:run -- tests/unit/api/schemas/common.test.ts tests/unit/api/auth.routes.registration.test.ts tests/unit/api/admin-routes.test.ts tests/unit/repositories/userRepository.test.ts` passed, 212 tests.
+- `cd server && npx prisma validate` passed.
+- `npm --prefix server run typecheck:tests` passed.
+- `npm run lint:server` passed, including API body validation, Bitcoin network-boundary, and safety-catch checks.
+- `bash scripts/quality/lizard-only.sh server/src/utils/username.ts server/src/validation/commonSchemas.ts server/src/api/schemas/auth.ts server/src/api/auth.ts server/src/api/auth/login.ts server/src/repositories/userRepository.ts server/tests/unit/api/schemas/common.test.ts server/tests/unit/api/authRegistration/registration-login.contracts.ts server/tests/unit/api/adminRoutes/adminRoutes.users-read-create.contracts.ts server/tests/unit/api/adminRoutes/adminRoutes.users-update-delete.contracts.ts` passed.
+- `git diff --check` passed.
+- `docker compose --env-file /home/nekoguntai/.config/sanctuary/sanctuary.env build backend` passed and rebuilt `sanctuary-backend:local`.
+- `docker compose --env-file /home/nekoguntai/.config/sanctuary/sanctuary.env up -d --no-deps backend` recreated `sanctuary-backend-1`; backend, gateway, and frontend report healthy.
+- `curl -k https://127.0.0.1:8443/api/v1/health/live` returned `200`.
+- `curl -k https://10.14.23.93:8443/` returned `200`.
+
+---
+
 # Active Task: Rename LLM Egress Proxy 2026-05-14
 
 Status: completed and verified locally

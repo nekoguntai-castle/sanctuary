@@ -32,6 +32,38 @@ export function registerAdminRoutesUserUpdateDeleteContracts(): void {
       expect(response.body.username).toBe('newname');
     });
 
+    it('should store mixed-case username updates as lowercase', async () => {
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          username: 'oldname',
+          email: null,
+          isAdmin: false,
+        })
+        .mockResolvedValueOnce(null);
+      mockPrisma.user.update.mockResolvedValue({
+        id: 'user-1',
+        username: 'newname',
+        email: null,
+        isAdmin: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const response = await adminRoutesRequest()
+        .put('/api/v1/admin/users/user-1')
+        .send({ username: '  NewName  ' });
+
+      expect(response.status).toBe(200);
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            username: 'newname',
+          }),
+        })
+      );
+    });
+
     it('should handle non-existent user', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
 
@@ -52,6 +84,21 @@ export function registerAdminRoutesUserUpdateDeleteContracts(): void {
         .send({ username: 'takenname' });
 
       expect(response.status).toBe(409);
+    });
+
+    it('should reject case-only duplicate usernames on update', async () => {
+      mockPrisma.user.findUnique
+        .mockResolvedValueOnce({ id: 'user-1', username: 'oldname', email: null })
+        .mockResolvedValueOnce({ id: 'user-2', username: 'admin' });
+
+      const response = await adminRoutesRequest()
+        .put('/api/v1/admin/users/user-1')
+        .send({ username: 'Admin' });
+
+      expect(response.status).toBe(409);
+      expect(mockPrisma.user.findUnique).toHaveBeenNthCalledWith(2, {
+        where: { username: 'admin' },
+      });
     });
 
     it('should reject duplicate email on update', async () => {

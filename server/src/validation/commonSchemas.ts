@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { normalizeUsername } from '../utils/username';
 
 // =============================================================================
 // Basic Types
@@ -25,9 +26,11 @@ export const EmailSchema = z.string().email().toLowerCase();
 /** Username (alphanumeric, underscores, 3-50 chars) */
 export const UsernameSchema = z
   .string()
+  .trim()
   .min(3, 'Username must be at least 3 characters')
   .max(50, 'Username must be at most 50 characters')
-  .regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores');
+  .regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores')
+  .transform(normalizeUsername);
 
 // =============================================================================
 // Pagination

@@ -85,6 +85,35 @@ export function registerAdminRoutesUserReadCreateContracts(): void {
       expect(response.body.username).toBe('newuser');
     });
 
+    it('should store mixed-case usernames as lowercase', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue({
+        id: 'new-user',
+        username: 'newuser',
+        email: 'new@test.com',
+        isAdmin: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const response = await adminRoutesRequest()
+        .post('/api/v1/admin/users')
+        .send({
+          username: '  NewUser  ',
+          password: 'StrongPass123!',
+          email: 'new@test.com',
+        });
+
+      expect(response.status).toBe(201);
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            username: 'newuser',
+          }),
+        })
+      );
+    });
+
     it('should reject missing username', async () => {
       const response = await adminRoutesRequest()
         .post('/api/v1/admin/users')
@@ -112,6 +141,20 @@ export function registerAdminRoutesUserReadCreateContracts(): void {
 
       expect(response.status).toBe(409);
       expect(response.body.message).toContain('already exists');
+    });
+
+    it('should reject case-only duplicate usernames', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ id: 'existing-user', username: 'admin' });
+
+      const response = await adminRoutesRequest()
+        .post('/api/v1/admin/users')
+        .send({ username: 'Admin', password: 'StrongPass123!', email: 'admin@test.com' });
+
+      expect(response.status).toBe(409);
+      expect(response.body.message).toContain('already exists');
+      expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+        where: { username: 'admin' },
+      });
     });
 
     it('should reject short username', async () => {

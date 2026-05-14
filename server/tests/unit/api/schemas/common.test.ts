@@ -23,6 +23,11 @@ describe('Common Schemas', () => {
     expect(UsernameSchema.safeParse('ab').success).toBe(false);
   });
 
+  it('normalizes usernames to trimmed lowercase', () => {
+    expect(UsernameSchema.parse('  Mixed_Case123  ')).toBe('mixed_case123');
+    expect(UsernameSchema.safeParse('   ').success).toBe(false);
+  });
+
   it('normalizes optional strings', () => {
     expect(OptionalStringSchema.parse('hello')).toBe('hello');
     expect(OptionalStringSchema.parse('')).toBeUndefined();

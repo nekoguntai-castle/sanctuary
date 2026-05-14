@@ -16,6 +16,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import { rateLimit, rateLimitByIpAndKey, rateLimitByUser } from '../middleware/rateLimit';
+import { normalizeUsername } from '../utils/username';
 
 // Domain routers
 import { createLoginRouter } from './auth/login';
@@ -33,9 +34,14 @@ const router = Router();
 // RATE LIMITERS (centralized policies)
 // ========================================
 
+function getLoginRateLimitUsername(req: { body?: { username?: unknown } }): string | undefined {
+  const username = req.body?.username;
+  return typeof username === 'string' ? normalizeUsername(username) : undefined;
+}
+
 const loginLimiter = rateLimitByIpAndKey(
   'auth:login',
-  (req) => req.body?.username?.toLowerCase()
+  getLoginRateLimitUsername
 );
 const registerLimiter = rateLimit('auth:register');
 const twoFactorLimiter = rateLimit('auth:2fa');

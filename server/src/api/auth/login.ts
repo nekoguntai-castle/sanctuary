@@ -21,6 +21,8 @@ import { setAuthCookies } from '../../middleware/csrf';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, ValidationError, ConflictError, ForbiddenError, ErrorCodes } from '../../errors/ApiError';
 import { LoginSchema } from '../schemas/auth';
+import { UsernameSchema } from '../schemas/common';
+import { normalizeUsername } from '../../utils/username';
 import {
   isVerificationRequired,
   createVerificationToken,
@@ -35,6 +37,17 @@ const RegisterPresenceSchema = z.object({
   password: z.string().min(1),
   email: z.string().min(1),
 });
+
+/**
+ * Validate public-registration usernames and return the canonical stored value.
+ */
+function parseCanonicalUsername(username: string): string {
+  const parsed = UsernameSchema.safeParse(username);
+  if (!parsed.success) {
+    throw new InvalidInputError(parsed.error.issues.map((issue) => issue.message).join(', '));
+  }
+  return parsed.data;
+}
 
 /**
  * Create the login router with rate limiters
@@ -69,7 +82,8 @@ export function createLoginRouter(
       throw new ForbiddenError('Public registration is disabled. Please contact an administrator.');
     }
 
-    const { username, password, email } = req.body;
+    const { password, email } = req.body;
+    const username = parseCanonicalUsername(req.body.username);
 
     // Validation - email is required for open registration
     /* v8 ignore next -- registration route tests cover field-specific missing input validation */
@@ -214,7 +228,8 @@ export function createLoginRouter(
    * Login existing user
    */
   router.post('/login', loginLimiter, validate({ body: LoginSchema }, { message: 'Username and password are required' }), asyncHandler(async (req, res) => {
-    const { username, password } = req.body;
+    const { password } = req.body;
+    const username = normalizeUsername(req.body.username);
 
     // Find user
     const user = await userRepository.findByUsername(username);
