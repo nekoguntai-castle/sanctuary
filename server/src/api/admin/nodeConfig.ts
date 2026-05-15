@@ -8,6 +8,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+import {
+  getDefaultNodeExternalServiceUrl,
+  getNodeNetworkDefaults,
+} from '@sanctuary/shared/constants/nodeConfig';
 import { nodeConfigRepository } from '../../repositories';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -21,6 +25,10 @@ import proxyTestRouter from './proxyTest';
 
 const router = Router();
 const log = createLogger('ADMIN_NODE_CONFIG:ROUTE');
+const mainnetDefaults = getNodeNetworkDefaults('mainnet');
+const testnet3Defaults = getNodeNetworkDefaults('testnet3');
+const testnet4Defaults = getNodeNetworkDefaults('testnet4');
+const signetDefaults = getNodeNetworkDefaults('signet');
 
 const NodeStringOrNumberSchema = z.union([z.string().min(1), z.number()]);
 const NodeNullableStringSchema = z.union([z.string(), z.null()]);
@@ -141,56 +149,56 @@ router.get('/node-config', authenticate, requireAdmin, asyncHandler(async (_req,
     // Return default configuration if none exists - use public Blockstream server
     return res.json({
       type: 'electrum',
-      host: 'electrum.blockstream.info',
-      port: '50002',
-      useSsl: true,
+      host: mainnetDefaults.singletonHost,
+      port: String(mainnetDefaults.singletonPort),
+      useSsl: mainnetDefaults.singletonSsl,
       allowSelfSignedCert: false, // Verify certificates by default
       user: null,
       hasPassword: false,
-      explorerUrl: 'https://mempool.space',
-      feeEstimatorUrl: 'https://mempool.space',
-      testnet3ExplorerUrl: 'https://mempool.space/testnet',
-      testnet3FeeEstimatorUrl: 'https://mempool.space/testnet',
-      testnet4ExplorerUrl: 'https://mempool.space/testnet4',
-      testnet4FeeEstimatorUrl: 'https://mempool.space/testnet4',
-      signetExplorerUrl: 'https://mempool.space/signet',
-      signetFeeEstimatorUrl: 'https://mempool.space/signet',
+      explorerUrl: getDefaultNodeExternalServiceUrl('mainnet'),
+      feeEstimatorUrl: getDefaultNodeExternalServiceUrl('mainnet'),
+      testnet3ExplorerUrl: getDefaultNodeExternalServiceUrl('testnet3'),
+      testnet3FeeEstimatorUrl: getDefaultNodeExternalServiceUrl('testnet3'),
+      testnet4ExplorerUrl: getDefaultNodeExternalServiceUrl('testnet4'),
+      testnet4FeeEstimatorUrl: getDefaultNodeExternalServiceUrl('testnet4'),
+      signetExplorerUrl: getDefaultNodeExternalServiceUrl('signet'),
+      signetFeeEstimatorUrl: getDefaultNodeExternalServiceUrl('signet'),
       mempoolEstimator: 'simple',
       poolEnabled: true,
-      poolMinConnections: 1,
-      poolMaxConnections: 5,
-      poolLoadBalancing: 'round_robin',
-      mainnetMode: 'pool',
-      mainnetSingletonHost: 'electrum.blockstream.info',
-      mainnetSingletonPort: 50002,
-      mainnetSingletonSsl: true,
-      mainnetPoolMin: 1,
-      mainnetPoolMax: 5,
-      mainnetPoolLoadBalancing: 'round_robin',
-      testnet3Enabled: false,
-      testnet3Mode: 'singleton',
-      testnet3SingletonHost: 'electrum.blockstream.info',
-      testnet3SingletonPort: 60002,
-      testnet3SingletonSsl: true,
-      testnet3PoolMin: 1,
-      testnet3PoolMax: 3,
-      testnet3PoolLoadBalancing: 'round_robin',
-      testnet4Enabled: false,
-      testnet4Mode: 'singleton',
+      poolMinConnections: mainnetDefaults.poolMin,
+      poolMaxConnections: mainnetDefaults.poolMax,
+      poolLoadBalancing: mainnetDefaults.poolLoadBalancing,
+      mainnetMode: mainnetDefaults.mode,
+      mainnetSingletonHost: mainnetDefaults.singletonHost,
+      mainnetSingletonPort: mainnetDefaults.singletonPort,
+      mainnetSingletonSsl: mainnetDefaults.singletonSsl,
+      mainnetPoolMin: mainnetDefaults.poolMin,
+      mainnetPoolMax: mainnetDefaults.poolMax,
+      mainnetPoolLoadBalancing: mainnetDefaults.poolLoadBalancing,
+      testnet3Enabled: testnet3Defaults.enabled,
+      testnet3Mode: testnet3Defaults.mode,
+      testnet3SingletonHost: testnet3Defaults.singletonHost,
+      testnet3SingletonPort: testnet3Defaults.singletonPort,
+      testnet3SingletonSsl: testnet3Defaults.singletonSsl,
+      testnet3PoolMin: testnet3Defaults.poolMin,
+      testnet3PoolMax: testnet3Defaults.poolMax,
+      testnet3PoolLoadBalancing: testnet3Defaults.poolLoadBalancing,
+      testnet4Enabled: testnet4Defaults.enabled,
+      testnet4Mode: testnet4Defaults.mode,
       testnet4SingletonHost: null,
-      testnet4SingletonPort: 60002,
-      testnet4SingletonSsl: true,
-      testnet4PoolMin: 1,
-      testnet4PoolMax: 3,
-      testnet4PoolLoadBalancing: 'round_robin',
-      signetEnabled: false,
-      signetMode: 'singleton',
-      signetSingletonHost: 'electrum.mutinynet.com',
-      signetSingletonPort: 50002,
-      signetSingletonSsl: true,
-      signetPoolMin: 1,
-      signetPoolMax: 3,
-      signetPoolLoadBalancing: 'round_robin',
+      testnet4SingletonPort: testnet4Defaults.singletonPort,
+      testnet4SingletonSsl: testnet4Defaults.singletonSsl,
+      testnet4PoolMin: testnet4Defaults.poolMin,
+      testnet4PoolMax: testnet4Defaults.poolMax,
+      testnet4PoolLoadBalancing: testnet4Defaults.poolLoadBalancing,
+      signetEnabled: signetDefaults.enabled,
+      signetMode: signetDefaults.mode,
+      signetSingletonHost: signetDefaults.singletonHost,
+      signetSingletonPort: signetDefaults.singletonPort,
+      signetSingletonSsl: signetDefaults.singletonSsl,
+      signetPoolMin: signetDefaults.poolMin,
+      signetPoolMax: signetDefaults.poolMax,
+      signetPoolLoadBalancing: signetDefaults.poolLoadBalancing,
       servers: [],
     });
   }

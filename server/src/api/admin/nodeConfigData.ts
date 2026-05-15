@@ -6,6 +6,12 @@
  */
 
 import { encrypt } from "../../utils/encryption";
+import {
+  NODE_POOL_LOAD_BALANCING_VALUES,
+  getDefaultNodeExternalServiceUrl,
+  getNodeExternalServiceResponseUrl,
+  getNodeNetworkDefaults,
+} from "@sanctuary/shared/constants/nodeConfig";
 
 type NullableString = string | null;
 type NullableStringOrNumber = string | number | null;
@@ -87,18 +93,7 @@ export interface NodeConfigInput {
 }
 
 const VALID_ESTIMATORS = ["simple", "mempool_space"];
-const VALID_LOAD_BALANCING = [
-  "round_robin",
-  "least_connections",
-  "failover_only",
-];
-
-const DEFAULT_EXTERNAL_SERVICE_URLS = {
-  mainnet: "https://mempool.space",
-  testnet3: "https://mempool.space/testnet",
-  testnet4: "https://mempool.space/testnet4",
-  signet: "https://mempool.space/signet",
-} as const;
+const VALID_LOAD_BALANCING = [...NODE_POOL_LOAD_BALANCING_VALUES];
 
 interface NetworkDefaults {
   mode: string;
@@ -120,45 +115,23 @@ interface NetworkInputFields {
   poolLoadBalancing?: string;
 }
 
-const MAINNET_DEFAULTS: NetworkDefaults = {
-  mode: "pool",
-  host: "electrum.blockstream.info",
-  port: 50002,
-  useSsl: true,
-  poolMin: 1,
-  poolMax: 5,
-  poolLoadBalancing: "round_robin",
-};
+function networkDefaults(network: "mainnet" | "testnet3" | "testnet4" | "signet"): NetworkDefaults {
+  const defaults = getNodeNetworkDefaults(network);
+  return {
+    mode: defaults.mode,
+    host: defaults.singletonHost,
+    port: defaults.singletonPort,
+    useSsl: defaults.singletonSsl,
+    poolMin: defaults.poolMin,
+    poolMax: defaults.poolMax,
+    poolLoadBalancing: defaults.poolLoadBalancing,
+  };
+}
 
-const TESTNET_DEFAULTS: NetworkDefaults = {
-  mode: "singleton",
-  host: "electrum.blockstream.info",
-  port: 60002,
-  useSsl: true,
-  poolMin: 1,
-  poolMax: 3,
-  poolLoadBalancing: "round_robin",
-};
-
-const TESTNET4_DEFAULTS: NetworkDefaults = {
-  mode: "singleton",
-  host: "",
-  port: 60002,
-  useSsl: true,
-  poolMin: 1,
-  poolMax: 3,
-  poolLoadBalancing: "round_robin",
-};
-
-const SIGNET_DEFAULTS: NetworkDefaults = {
-  mode: "singleton",
-  host: "electrum.mutinynet.com",
-  port: 50002,
-  useSsl: true,
-  poolMin: 1,
-  poolMax: 3,
-  poolLoadBalancing: "round_robin",
-};
+const MAINNET_DEFAULTS = networkDefaults("mainnet");
+const TESTNET_DEFAULTS = networkDefaults("testnet3");
+const TESTNET4_DEFAULTS = networkDefaults("testnet4");
+const SIGNET_DEFAULTS = networkDefaults("signet");
 
 function parseIntegerValue(
   value: NullableStringOrNumber | undefined,
@@ -193,13 +166,6 @@ function optionalExternalServiceUrl(
   value: NullableString | undefined,
 ): string | null {
   return value === undefined ? null : value;
-}
-
-function responseExternalServiceUrl(
-  value: unknown,
-  fallback: string,
-): string {
-  return typeof value === "string" ? value : fallback;
 }
 
 function buildProxyData(input: NodeConfigInput): Record<string, unknown> {
@@ -388,13 +354,13 @@ export function buildNodeConfigData(
     port: parseRequiredInteger(input.port),
     useSsl: input.useSsl === true,
     allowSelfSignedCert: input.allowSelfSignedCert === true,
-    explorerUrl: input.explorerUrl || DEFAULT_EXTERNAL_SERVICE_URLS.mainnet,
+    explorerUrl: input.explorerUrl || getDefaultNodeExternalServiceUrl("mainnet"),
     feeEstimatorUrl: optionalExternalServiceUrl(input.feeEstimatorUrl),
-    testnet3ExplorerUrl: input.testnet3ExplorerUrl || DEFAULT_EXTERNAL_SERVICE_URLS.testnet3,
+    testnet3ExplorerUrl: input.testnet3ExplorerUrl || getDefaultNodeExternalServiceUrl("testnet3"),
     testnet3FeeEstimatorUrl: optionalExternalServiceUrl(input.testnet3FeeEstimatorUrl),
-    testnet4ExplorerUrl: input.testnet4ExplorerUrl || DEFAULT_EXTERNAL_SERVICE_URLS.testnet4,
+    testnet4ExplorerUrl: input.testnet4ExplorerUrl || getDefaultNodeExternalServiceUrl("testnet4"),
     testnet4FeeEstimatorUrl: optionalExternalServiceUrl(input.testnet4FeeEstimatorUrl),
-    signetExplorerUrl: input.signetExplorerUrl || DEFAULT_EXTERNAL_SERVICE_URLS.signet,
+    signetExplorerUrl: input.signetExplorerUrl || getDefaultNodeExternalServiceUrl("signet"),
     signetFeeEstimatorUrl: optionalExternalServiceUrl(input.signetFeeEstimatorUrl),
     mempoolEstimator: estimator,
     poolEnabled:
@@ -420,38 +386,14 @@ function buildNodeConfigBaseResponse(
     port: String(nodeConfig.port),
     useSsl: nodeConfig.useSsl,
     allowSelfSignedCert: nodeConfig.allowSelfSignedCert ?? false,
-    explorerUrl: responseExternalServiceUrl(
-      nodeConfig.explorerUrl,
-      DEFAULT_EXTERNAL_SERVICE_URLS.mainnet,
-    ),
-    feeEstimatorUrl: responseExternalServiceUrl(
-      nodeConfig.feeEstimatorUrl,
-      DEFAULT_EXTERNAL_SERVICE_URLS.mainnet,
-    ),
-    testnet3ExplorerUrl: responseExternalServiceUrl(
-      nodeConfig.testnet3ExplorerUrl,
-      DEFAULT_EXTERNAL_SERVICE_URLS.testnet3,
-    ),
-    testnet3FeeEstimatorUrl: responseExternalServiceUrl(
-      nodeConfig.testnet3FeeEstimatorUrl,
-      DEFAULT_EXTERNAL_SERVICE_URLS.testnet3,
-    ),
-    testnet4ExplorerUrl: responseExternalServiceUrl(
-      nodeConfig.testnet4ExplorerUrl,
-      DEFAULT_EXTERNAL_SERVICE_URLS.testnet4,
-    ),
-    testnet4FeeEstimatorUrl: responseExternalServiceUrl(
-      nodeConfig.testnet4FeeEstimatorUrl,
-      DEFAULT_EXTERNAL_SERVICE_URLS.testnet4,
-    ),
-    signetExplorerUrl: responseExternalServiceUrl(
-      nodeConfig.signetExplorerUrl,
-      DEFAULT_EXTERNAL_SERVICE_URLS.signet,
-    ),
-    signetFeeEstimatorUrl: responseExternalServiceUrl(
-      nodeConfig.signetFeeEstimatorUrl,
-      DEFAULT_EXTERNAL_SERVICE_URLS.signet,
-    ),
+    explorerUrl: getNodeExternalServiceResponseUrl(nodeConfig, "mainnet", "explorer"),
+    feeEstimatorUrl: getNodeExternalServiceResponseUrl(nodeConfig, "mainnet", "feeEstimator"),
+    testnet3ExplorerUrl: getNodeExternalServiceResponseUrl(nodeConfig, "testnet3", "explorer"),
+    testnet3FeeEstimatorUrl: getNodeExternalServiceResponseUrl(nodeConfig, "testnet3", "feeEstimator"),
+    testnet4ExplorerUrl: getNodeExternalServiceResponseUrl(nodeConfig, "testnet4", "explorer"),
+    testnet4FeeEstimatorUrl: getNodeExternalServiceResponseUrl(nodeConfig, "testnet4", "feeEstimator"),
+    signetExplorerUrl: getNodeExternalServiceResponseUrl(nodeConfig, "signet", "explorer"),
+    signetFeeEstimatorUrl: getNodeExternalServiceResponseUrl(nodeConfig, "signet", "feeEstimator"),
     mempoolEstimator: nodeConfig.mempoolEstimator || "simple",
     poolEnabled: nodeConfig.poolEnabled,
     poolMinConnections: nodeConfig.poolMinConnections,

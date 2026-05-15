@@ -17,6 +17,7 @@ import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { getNetworkModeConfig } from './nodeClientConfig';
 import { verifyNodeClientNetwork } from './networkIdentity';
+import { getNodeNetworkDefaults } from '@sanctuary/shared/constants/nodeConfig';
 
 const log = createLogger('BITCOIN:SVC_NODE_CLIENT');
 
@@ -122,9 +123,10 @@ export async function saveNodeConfig(config: NodeConfig): Promise<void> {
  * Get the default Electrum config
  */
 function getDefaultElectrumConfig(): NodeConfig {
+  const defaults = getNodeNetworkDefaults('mainnet');
   return {
-    host: process.env.ELECTRUM_HOST || 'electrum.blockstream.info',
-    port: parseInt(process.env.ELECTRUM_PORT || '50002', 10),
+    host: process.env.ELECTRUM_HOST || defaults.singletonHost,
+    port: parseInt(process.env.ELECTRUM_PORT || String(defaults.singletonPort), 10),
     protocol: (process.env.ELECTRUM_PROTOCOL as 'tcp' | 'ssl') || 'ssl',
   };
 }

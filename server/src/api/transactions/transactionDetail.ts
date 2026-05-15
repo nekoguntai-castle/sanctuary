@@ -12,6 +12,7 @@ import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 import { getMempoolApiBase } from '../../services/bitcoin/mempool/config';
 import { normalizeLegacyBitcoinNetwork } from '../../services/bitcoin/networks';
+import { getDefaultNodeMempoolApiBase } from '@sanctuary/shared/constants/nodeConfig';
 
 const router = Router();
 const log = createLogger('TX_DETAIL:ROUTE');
@@ -47,7 +48,7 @@ router.get('/transactions/:txid/raw', asyncHandler(async (req, res) => {
   // use the network from the found transaction or default to mainnet
   const network = normalizeLegacyBitcoinNetwork(transaction?.wallet?.network, 'mainnet');
   const mempoolBaseUrl = network === 'regtest'
-    ? 'https://mempool.space/api'
+    ? getDefaultNodeMempoolApiBase('mainnet')
     : await getMempoolApiBase(network);
 
   const response = await fetch(`${mempoolBaseUrl}/tx/${txid}/hex`, {

@@ -14,6 +14,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import type { CombinedConfig, LogLevel, NetworkType, ElectrumProtocol } from './types';
+import { getNodeNetworkDefaults } from '@sanctuary/shared/constants/nodeConfig';
 import { loadFeatureFlags } from './features';
 import { assertValidConfig } from './schema';
 import {
@@ -134,6 +135,7 @@ function buildSecurityConfig(
 }
 
 function buildBitcoinConfig() {
+  const electrumDefaults = getNodeNetworkDefaults('mainnet');
   return {
     network: parseBitcoinNetwork(),
     rpc: {
@@ -143,8 +145,8 @@ function buildBitcoinConfig() {
       password: parseStringEnv('BITCOIN_RPC_PASSWORD'),
     },
     electrum: {
-      host: parseStringEnv('ELECTRUM_HOST', 'electrum.blockstream.info'),
-      port: parseIntegerEnv('ELECTRUM_PORT', 50002),
+      host: parseStringEnv('ELECTRUM_HOST', electrumDefaults.singletonHost),
+      port: parseIntegerEnv('ELECTRUM_PORT', electrumDefaults.singletonPort),
       protocol: parseElectrumProtocol(),
     },
   };

@@ -2,7 +2,7 @@
 
 Date: 2026-05-14
 Owner: Codex
-Status: Complete original queue; follow-up queue in progress; 2026-05-15 fourth independent review addendum recorded
+Status: Complete original queue; follow-up queue in progress; 2026-05-15 sixth independent review addendum recorded
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, and preference patch semantics
 
 ## Executive Summary
@@ -409,6 +409,38 @@ Scope: fresh double-check after Phase A was merged and after the Phase B wallet 
 - The scoped production literal search now leaves only accepted domains: address-type detection constants, the canonical wallet identity module, user-visible labels/examples/i18n keys, and script-registry comments.
 - Backend coverage fallback tests were added for unsupported wallet identity values in wallet export and descriptor repair after the full backend coverage merge exposed those previously uncovered fallback branches.
 
+## Sixth Independent Review Addendum - 2026-05-15
+
+Scope: independent double-check after Phase A, Phase B, and Phase B2 were merged, while Phase C node/Electrum projection changes are in progress in the working tree.
+
+### Sixth Review Verdict
+
+- Phase A remains closed. A fresh production search found no broad `userRole !== 'viewer'` edit/send gates and no `wallet.canEdit !== false` fail-open wallet gates. Remaining wallet-role references are canonical helpers, approval/owner semantics, share UI choices, comments, or tests.
+- Phase B remains closed. Remaining script/wallet/account vocabulary matches are accepted domains: address classification, derivation/export behavior maps, user-facing examples or labels, parser and descriptor comments, feature-flag names, and the already-known stale contract helper. No active production request/schema tuple reopened the Phase B finding.
+- Phase B2 remains closed. Active docs/UI/OpenAPI copy no longer claims Sanctuary can pull, delete, download, or manage provider models. The remaining active match is true Ollama provider-model listing inside the egress proxy, plus tests proving removed routes stay absent.
+- Phase C is still the right active implementation slice, and the current branch has removed the active duplicated Electrum/mempool defaults from runtime and UI paths. The remaining node/Electrum search matches are justified: admin `testnet*` legacy compatibility mapping in `server/src/api/admin/nodeConfigData.ts`, and separate price-provider mempool API defaults in `server/src/config/index.ts` and `server/src/services/price/providers/mempool.ts`.
+- One Phase C implementation-gate gap was found and patched during this review: the shared node projection helper now rejects invalid pool load-balancing strings and non-positive singleton/pool integer projections instead of propagating impossible stored values.
+- Phase D and Phase E remain the only follow-up phases after Phase C: repair or retire stale contract-test validators, then move login health probing behind a no-auth helper while keeping refresh as the raw-fetch recursion boundary.
+
+### Sixth Review Adjustments
+
+| Area | Review Result | Adjustment |
+| --- | --- | --- |
+| Phase C projection helper | Confirmed mostly converged, but invalid pool load-balancing strings and non-positive pool/singleton values were not fully fail-closed in the in-progress helper/runtime adapters. | Hardened the shared helper and runtime pool/node config readers to accept only canonical load-balancing values and positive integer connection values. Added shared helper coverage. |
+| Admin node config save/load | Confirmed justified separate boundary. It still owns legacy `testnet*` fallback, encryption, redaction, and response compatibility. | Do not collapse this into the runtime projection helper. Keep explicit compatibility tests around it. |
+| Price-provider mempool defaults | Confirmed false positive for Phase C. `MEMPOOL_API` and the price provider's `/api/v1/prices` default are price-service configuration, not Electrum/node projection. | Leave separate. Do not force price provider defaults through node external-service helpers. |
+| Contract helper constants | Confirmed still open. `server/tests/helpers/contractValidation.ts` still hardcodes stale networks, transaction `self`, old draft statuses, and `psbt` instead of current `psbtBase64`. | Keep as Phase D and derive from live OpenAPI/shared constants or delete the helper. |
+| Login health probe | Confirmed still open and low priority. Login still owns `fetch('/api/v1/health')`; refresh still owns raw `/auth/refresh` for a valid recursion-boundary reason. | Keep as Phase E after contract-helper repair. |
+
+### Sixth Review Corner Cases
+
+- Node projection should treat `false` SSL values as meaningful while rejecting non-positive or non-integer connection counts and ports at runtime projection boundaries.
+- Invalid or unknown load-balancing strings should fall back to the network default rather than being cast into pool configuration.
+- Admin node config compatibility code should remain explicit because it is also the secret encryption/redaction boundary; repeated legacy-field names there are not evidence of runtime projection drift.
+- Price-provider defaults must stay decoupled from node external-service defaults so fee/explorer configuration changes do not unexpectedly change fiat price lookup behavior.
+- Contract-helper repair should validate current draft response fields such as `psbtBase64` and current network values such as `testnet3`/`testnet4`; it should not refresh another local stale tuple.
+- The login health helper should use shared API base URL rules without `apiClient`, add timeout/abort behavior, and preserve current `401`-as-connected behavior.
+
 ## Edge Cases
 
 - Phase 5 must not remove external Ollama as a provider type; it removes Sanctuary's ability to pull/delete provider models.
@@ -462,6 +494,7 @@ Scope: fresh double-check after Phase A was merged and after the Phase B wallet 
 - The 2026-05-15 third independent review rechecked the in-progress Phase A working tree against the ranked findings. It found and fixed the remaining direct send-page capability gap and mobile-permission OpenAPI role tuple drift, then passed focused tests, typechecks, lint, lizard, server build, OpenAPI route coverage, negative wallet-role searches, and `git diff --check`.
 - The 2026-05-15 fourth independent review rechecked the current Phase B branch state against wallet roles, script/wallet/account identity, node/Electrum projection, contract-helper constants, login health fetch behavior, gateway route validation, feature flags, transaction type aliases, and external-LLM/model-management fallout with targeted `rg`/`sed` searches. It confirmed the Phase B/C/D/E order and added a small B2 copy/docs/type-name cleanup for stale external-LLM-only language.
 - Phase B2 implementation removed active stale model-management wording from AI MCP docs, OpenAPI tag text, frontend architecture references, and AI Settings model-list copy. Generic frontend provider-model types now use `ProviderModel`; true Ollama-specific detection/listing internals remain separate. Verification passed with focused AI Settings/API tests, app/test typechecks, server build, scoped negative searches, and `git diff --check`.
+- The 2026-05-15 sixth independent review rechecked the current tree after Phase A/B/B2 merge and during Phase C implementation. Targeted searches confirmed Phase A/B/B2 closure, confirmed Phase C's remaining node-config matches as justified admin legacy or price-provider boundaries, confirmed Phase D/E remain open, and led to a small Phase C hardening patch for invalid pool projection values. Focused shared node-config tests, shared build, focused server node/Electrum tests, and `git diff --check` passed.
 - Phase 5 PR #459 merged as `42abe4d893420661482e73ddbd9a1f4aff271bd2` and the merge commit was verified on `origin/main`.
 - Phase 6 PR #460 passed required Architecture, Build Dev Images summary, Code Quality, and Test Suite checks on head `38d6231090736094593f75e476e3e0f0be7fff6a`, then squash-merged as `26bbd2d052afe1e22421107dea77b6597e873f4c`.
 - The Phase 6 merge commit was verified as an ancestor of `origin/main`; local `main` was fast-forwarded to `26bbd2d052afe1e22421107dea77b6597e873f4c`; the local and remote Phase 6 branches were deleted.

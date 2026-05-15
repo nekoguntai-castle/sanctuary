@@ -14,6 +14,7 @@ import {
   resetElectrumPoolForNetwork,
   shutdownElectrumPool,
 } from '../../../../../src/services/bitcoin/electrumPool';
+import { getLoadBalancingStrategy } from '../../../../../src/services/bitcoin/electrumPool/nodeConfigMapper';
 import prisma from '../../../../../src/models/prisma';
 
 export function registerElectrumPoolModuleHelperTests(): void {
@@ -250,6 +251,13 @@ export function registerElectrumPoolModuleHelperTests(): void {
       expect((signetPool as any).config.minConnections).toBe(3);
       expect((signetPool as any).config.maxConnections).toBe(6);
       expect((signetPool as any).config.loadBalancing).toBe('least_connections');
+    });
+
+    it('rejects unsupported global pool load-balancing values', () => {
+      expect(getLoadBalancingStrategy({ poolLoadBalancing: 'failover_only' }))
+        .toBe('failover_only');
+      expect(getLoadBalancingStrategy({ poolLoadBalancing: 'unsupported' })).toBeNull();
+      expect(getLoadBalancingStrategy({ poolLoadBalancing: null })).toBeNull();
     });
 
     it('keeps base pool settings for regtest (no per-network override branch)', async () => {

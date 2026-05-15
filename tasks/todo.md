@@ -1,6 +1,32 @@
-# Active Task: Phase B2 External LLM Copy And Provider Model Naming 2026-05-15
+# Active Task: Phase C Node/Electrum Config Projection 2026-05-15
 
 Status: in progress.
+
+Goal: centralize node/Electrum configuration projection semantics across UI and server runtime adapters while preserving adapter output shapes, admin encryption/redaction boundaries, and current network compatibility behavior.
+
+## Plan
+
+- [x] Inventory current per-network defaults, legacy testnet3 fallback fields, enabled semantics, singleton/pool projections, proxy projections, and mempool external-service URL projections.
+- [x] Add a pure shared projection helper for network defaults and field selection that can be imported by frontend and server code without React, Prisma, Express, Node-only config, decrypted secrets, or browser globals.
+- [x] Migrate UI network config helpers and server runtime adapters to derive defaults/fallbacks/proxy/external-service selection from the shared helper while keeping concrete adapter return types local.
+- [x] Add focused shared/frontend/server tests for mainnet, testnet3 legacy fallback, testnet4 empty singleton host, signet defaults, regtest/base behavior, disabled networks, explicit `singletonSsl: false`, missing/null values, proxy projection, and mempool fee/explorer URL precedence.
+- [ ] Run focused tests, typechecks/builds, touched-file complexity checks, negative searches, `git diff --check`, commit, open PR, monitor/fix checks, merge, and verify ancestry.
+
+## Review
+
+- Final delivery review pending.
+- Independent review checkpoint: Phase A, Phase B, and Phase B2 remain closed; no broad production wallet edit gates, unowned wallet/script/account tuples, or stale active model-management copy were found.
+- Current Phase C branch has removed active duplicated node/Electrum defaults from runtime/UI projection paths. Remaining node-config search matches are justified admin legacy testnet compatibility and separate price-provider defaults.
+- Hardened the Phase C helper after review so invalid pool load-balancing strings and non-positive singleton/pool integer projections fall back instead of reaching runtime config.
+- Remaining non-hardware queue after Phase C is unchanged: Phase D contract helper repair, then Phase E no-auth login health helper.
+- Checkpoint verification passed: `npm --prefix shared run build`, `npm run test:run -- tests/shared/nodeConfig.test.ts`, focused server node/Electrum tests, targeted negative searches, and `git diff --check`.
+- Final local verification passed before commit: extended shared/frontend node-config tests, extended server node/Electrum/admin/OpenAPI/transaction/telegram tests, app and test typechecks, server build, server test typecheck, `npm run quality:lizard`, scoped negative searches, and `git diff --check`.
+
+---
+
+# Completed Task: Phase B2 External LLM Copy And Provider Model Naming 2026-05-15
+
+Status: merged and verified via PR #464 as squash commit `9df5ac0f9b78beb2c04d0c0b123967af393a88b6`.
 
 Goal: repair stale external-LLM-only copy, docs, OpenAPI wording, and misleading provider-model names left after removing Sanctuary-managed model pull/delete support.
 
@@ -10,7 +36,7 @@ Goal: repair stale external-LLM-only copy, docs, OpenAPI wording, and misleading
 - [x] Replace active docs/OpenAPI/UI copy that says Sanctuary can pull, delete, download, install, or manage provider models.
 - [x] Rename misleading generic provider-model UI/API names that still say Ollama-only where the behavior is provider-reported model listing.
 - [x] Add or update focused tests for changed copy/type names and run relevant frontend/server typechecks.
-- [ ] Run scoped negative searches, focused tests, `git diff --check`, commit, open PR, monitor/fix checks, merge, and verify ancestry.
+- [x] Run scoped negative searches, focused tests, `git diff --check`, commit, open PR, monitor/fix checks, merge, and verify ancestry.
 
 ## Review
 
@@ -19,6 +45,7 @@ Goal: repair stale external-LLM-only copy, docs, OpenAPI wording, and misleading
 - Replaced the AI Settings dropdown heading and tests from `Installed Models` to `Provider Models`.
 - Negative search for active non-historical source/docs now only finds justified Ollama-specific proxy internals (`listOllamaModels`), not stale model-management copy.
 - Verification passed: focused AI Settings/API tests, app typecheck, test typecheck, server build, and `git diff --check`.
+- PR #464 passed full Forgejo CI, was squash-merged, and the platform merge commit was verified reachable from `origin/main`.
 
 ---
 

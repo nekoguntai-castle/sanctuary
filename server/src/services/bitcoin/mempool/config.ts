@@ -6,29 +6,17 @@
 
 import { nodeConfigRepository } from '../../../repositories';
 import type { NonRegtestNetworkType } from '@sanctuary/shared/constants/bitcoin';
+import {
+  getDefaultNodeMempoolApiBase,
+  getNodeMempoolApiBase as resolveNodeMempoolApiBase,
+  type NodeNetworkConfigSource,
+} from '@sanctuary/shared/constants/nodeConfig';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 
 const log = createLogger('BITCOIN:SVC_MEMPOOL_CONFIG');
 
 export type MempoolNetwork = NonRegtestNetworkType;
-
-const DEFAULT_MEMPOOL_APIS: Record<MempoolNetwork, string> = {
-  mainnet: 'https://mempool.space/api',
-  testnet3: 'https://mempool.space/testnet/api',
-  testnet4: 'https://mempool.space/testnet4/api',
-  signet: 'https://mempool.space/signet/api',
-};
-
-type ExternalServiceUrlField =
-  | 'explorerUrl'
-  | 'feeEstimatorUrl'
-  | 'testnet3ExplorerUrl'
-  | 'testnet3FeeEstimatorUrl'
-  | 'testnet4ExplorerUrl'
-  | 'testnet4FeeEstimatorUrl'
-  | 'signetExplorerUrl'
-  | 'signetFeeEstimatorUrl';
 
 interface MempoolNodeConfig {
   explorerUrl?: string | null;
@@ -41,49 +29,14 @@ interface MempoolNodeConfig {
   signetFeeEstimatorUrl?: string | null;
 }
 
-const MEMPOOL_SERVICE_FIELDS: Record<MempoolNetwork, {
-  explorerField: ExternalServiceUrlField;
-  feeField: ExternalServiceUrlField;
-}> = {
-  mainnet: { explorerField: 'explorerUrl', feeField: 'feeEstimatorUrl' },
-  testnet3: {
-    explorerField: 'testnet3ExplorerUrl',
-    feeField: 'testnet3FeeEstimatorUrl',
-  },
-  testnet4: {
-    explorerField: 'testnet4ExplorerUrl',
-    feeField: 'testnet4FeeEstimatorUrl',
-  },
-  signet: {
-    explorerField: 'signetExplorerUrl',
-    feeField: 'signetFeeEstimatorUrl',
-  },
-};
-
-function configuredUrl(
-  nodeConfig: MempoolNodeConfig | null,
-  field: ExternalServiceUrlField,
-): string | null {
-  const value = nodeConfig?.[field];
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-function toMempoolApiBase(url: string): string {
-  const trimmed = url.replace(/\/$/, '');
-  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
-}
-
 function resolveMempoolApiBase(
   nodeConfig: MempoolNodeConfig | null,
   network: MempoolNetwork,
 ): string {
-  const fields = MEMPOOL_SERVICE_FIELDS[network];
-  const feeUrl = configuredUrl(nodeConfig, fields.feeField);
-  const explorerUrl = configuredUrl(nodeConfig, fields.explorerField);
-  const configuredBase = feeUrl ?? explorerUrl;
-  return configuredBase
-    ? toMempoolApiBase(configuredBase)
-    : DEFAULT_MEMPOOL_APIS[network];
+  return resolveNodeMempoolApiBase(
+    nodeConfig as NodeNetworkConfigSource | null,
+    network,
+  );
 }
 
 /**
@@ -98,7 +51,7 @@ export async function getMempoolApiBase(network: MempoolNetwork = 'mainnet'): Pr
     log.warn('Could not fetch node config, using default', { error: getErrorMessage(error) });
   }
 
-  return DEFAULT_MEMPOOL_APIS[network];
+  return getDefaultNodeMempoolApiBase(network);
 }
 
 /**

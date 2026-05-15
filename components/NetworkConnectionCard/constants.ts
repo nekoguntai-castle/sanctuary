@@ -1,19 +1,24 @@
 import type { NetworkType, NetworkColors, PresetServer } from './types';
+import { getNodeNetworkDefaults } from '@sanctuary/shared/constants/nodeConfig';
+
+const mainnetDefaults = getNodeNetworkDefaults('mainnet');
+const testnet3Defaults = getNodeNetworkDefaults('testnet3');
+const signetDefaults = getNodeNetworkDefaults('signet');
 
 // Preset servers for each network
 export const PRESET_SERVERS: Record<NetworkType, PresetServer[]> = {
   mainnet: [
-    { name: 'Blockstream (SSL)', host: 'electrum.blockstream.info', port: 50002, useSsl: true },
-    { name: 'Blockstream (TCP)', host: 'electrum.blockstream.info', port: 50001, useSsl: false },
+    { name: 'Blockstream (SSL)', host: mainnetDefaults.singletonHost, port: mainnetDefaults.singletonPort, useSsl: true },
+    { name: 'Blockstream (TCP)', host: mainnetDefaults.singletonHost, port: 50001, useSsl: false },
     { name: 'BlueWallet (TCP)', host: 'electrum1.bluewallet.io', port: 50001, useSsl: false },
   ],
   testnet3: [
-    { name: 'Blockstream Testnet', host: 'electrum.blockstream.info', port: 60002, useSsl: true },
+    { name: 'Blockstream Testnet', host: testnet3Defaults.singletonHost, port: testnet3Defaults.singletonPort, useSsl: true },
     { name: 'Aranguren Testnet', host: 'testnet.aranguren.org', port: 51002, useSsl: true },
   ],
   testnet4: [],
   signet: [
-    { name: 'Mutinynet Signet', host: 'electrum.mutinynet.com', port: 50002, useSsl: true },
+    { name: 'Mutinynet Signet', host: signetDefaults.singletonHost, port: signetDefaults.singletonPort, useSsl: true },
     { name: 'Mempool Signet', host: 'mempool.space', port: 60602, useSsl: true },
   ],
 };

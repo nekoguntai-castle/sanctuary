@@ -1,6 +1,13 @@
 import { nodeConfigRepository } from '../../../repositories';
 import { getErrorMessage } from '../../../utils/errors';
 import { createLogger } from '../../../utils/logger';
+import {
+  projectNodeProxyConfig,
+  isNodePoolLoadBalancing,
+  readNodeNetworkPositiveInteger,
+  readNodeNetworkString,
+  type NodeNetworkConfigSource,
+} from '@sanctuary/shared/constants/nodeConfig';
 import type {
   ElectrumPoolConfig,
   LoadBalancingStrategy,
@@ -82,21 +89,15 @@ function buildNetworkServers(
 }
 
 function proxyConfigFromNodeConfig(nodeConfig: PersistedPoolConfig): ProxyConfig | null {
-  if (!nodeConfig.proxyEnabled || !nodeConfig.proxyHost || !nodeConfig.proxyPort) {
-    return null;
-  }
-
-  return {
-    enabled: true,
-    host: nodeConfig.proxyHost,
-    port: nodeConfig.proxyPort,
-    username: nodeConfig.proxyUsername ?? undefined,
-    password: nodeConfig.proxyPassword ?? undefined,
-  };
+  return projectNodeProxyConfig(
+    nodeConfig as unknown as NodeNetworkConfigSource,
+  );
 }
 
 function optionalLoadBalancing(value: string | null | undefined): LoadBalancingStrategy | undefined {
-  return value ? value as LoadBalancingStrategy : undefined;
+  return isNodePoolLoadBalancing(value)
+    ? value as LoadBalancingStrategy
+    : undefined;
 }
 
 interface NullablePoolOverrides {
@@ -106,10 +107,10 @@ interface NullablePoolOverrides {
 }
 
 function compactPoolOverrides(
-  values: NullablePoolOverrides | undefined
+  values: NullablePoolOverrides
 ): Partial<Pick<ElectrumPoolConfig, 'minConnections' | 'maxConnections' | 'loadBalancing'>> {
   return Object.fromEntries(
-    Object.entries(values ?? {}).filter(([, value]) => value !== null && value !== undefined)
+    Object.entries(values).filter(([, value]) => value !== null && value !== undefined)
   ) as Partial<Pick<ElectrumPoolConfig, 'minConnections' | 'maxConnections' | 'loadBalancing'>>;
 }
 
@@ -117,32 +118,16 @@ function getNetworkPoolOverrides(
   nodeConfig: PersistedPoolConfig,
   network: NetworkType
 ): Partial<Pick<ElectrumPoolConfig, 'minConnections' | 'maxConnections' | 'loadBalancing'>> {
-  const overrides: Partial<Record<NetworkType, NullablePoolOverrides>> = {
-    mainnet: {
-      minConnections: nodeConfig.mainnetPoolMin,
-      maxConnections: nodeConfig.mainnetPoolMax,
-      loadBalancing: optionalLoadBalancing(nodeConfig.mainnetPoolLoadBalancing),
-    },
-    testnet3: {
-      minConnections: nodeConfig.testnet3PoolMin ?? nodeConfig.testnetPoolMin,
-      maxConnections: nodeConfig.testnet3PoolMax ?? nodeConfig.testnetPoolMax,
-      loadBalancing: optionalLoadBalancing(
-        nodeConfig.testnet3PoolLoadBalancing ?? nodeConfig.testnetPoolLoadBalancing,
-      ),
-    },
-    testnet4: {
-      minConnections: nodeConfig.testnet4PoolMin,
-      maxConnections: nodeConfig.testnet4PoolMax,
-      loadBalancing: optionalLoadBalancing(nodeConfig.testnet4PoolLoadBalancing),
-    },
-    signet: {
-      minConnections: nodeConfig.signetPoolMin,
-      maxConnections: nodeConfig.signetPoolMax,
-      loadBalancing: optionalLoadBalancing(nodeConfig.signetPoolLoadBalancing),
-    },
-  };
-
-  return compactPoolOverrides(overrides[network]);
+  const source = nodeConfig as unknown as NodeNetworkConfigSource;
+  return compactPoolOverrides({
+    minConnections:
+      readNodeNetworkPositiveInteger(source, network, 'poolMin') ?? null,
+    maxConnections:
+      readNodeNetworkPositiveInteger(source, network, 'poolMax') ?? null,
+    loadBalancing: optionalLoadBalancing(
+      readNodeNetworkString(source, network, 'poolLoadBalancing'),
+    ),
+  });
 }
 
 function poolConfigFromNodeConfig(

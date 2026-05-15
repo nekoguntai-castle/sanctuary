@@ -3,6 +3,11 @@ import type {
   ProxyConfig,
   ServerConfig,
 } from './types';
+import {
+  isNodePoolLoadBalancing,
+  projectNodeProxyConfig,
+  type NodeNetworkConfigSource,
+} from '@sanctuary/shared/constants/nodeConfig';
 
 type NodeConfigServer = {
   id: string;
@@ -42,21 +47,13 @@ export function mapEnabledServers(servers: NodeConfigServer[]): ServerConfig[] {
 export function getLoadBalancingStrategy(
   nodeConfig: ElectrumNodeConfig,
 ): LoadBalancingStrategy | null {
-  return nodeConfig.poolLoadBalancing
+  return isNodePoolLoadBalancing(nodeConfig.poolLoadBalancing)
     ? nodeConfig.poolLoadBalancing as LoadBalancingStrategy
     : null;
 }
 
 export function getProxyConfig(nodeConfig: ElectrumNodeConfig): ProxyConfig | null {
-  if (!nodeConfig.proxyEnabled || !nodeConfig.proxyHost || !nodeConfig.proxyPort) {
-    return null;
-  }
-
-  return {
-    enabled: true,
-    host: nodeConfig.proxyHost,
-    port: nodeConfig.proxyPort,
-    username: nodeConfig.proxyUsername ?? undefined,
-    password: nodeConfig.proxyPassword ?? undefined,
-  };
+  return projectNodeProxyConfig(
+    nodeConfig as unknown as NodeNetworkConfigSource,
+  );
 }

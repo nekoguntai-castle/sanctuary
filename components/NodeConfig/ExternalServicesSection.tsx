@@ -3,6 +3,7 @@ import { ExternalLink, ChevronRight } from "lucide-react";
 import { Input } from "../ui/Input";
 import { PriceProviderDiagnostics } from "../PriceProviderDiagnostics";
 import type { NodeConfig as NodeConfigType } from "../../types";
+import { getDefaultNodeExternalServiceUrl } from "@sanctuary/shared/constants/nodeConfig";
 import type { ExternalServicesSectionProps, NetworkTab } from "./types";
 
 type ExternalServiceUrlField =
@@ -43,9 +44,9 @@ const NETWORK_EXTERNAL_SERVICES: Record<
     label: "Mainnet",
     explorerField: "explorerUrl",
     feeField: "feeEstimatorUrl",
-    defaultUrl: "https://mempool.space",
+    defaultUrl: getDefaultNodeExternalServiceUrl("mainnet"),
     presets: [
-      { label: "mempool.space", url: "https://mempool.space" },
+      { label: "mempool.space", url: getDefaultNodeExternalServiceUrl("mainnet") },
       { label: "blockstream.info", url: "https://blockstream.info" },
     ],
   },
@@ -53,9 +54,9 @@ const NETWORK_EXTERNAL_SERVICES: Record<
     label: "Testnet3",
     explorerField: "testnet3ExplorerUrl",
     feeField: "testnet3FeeEstimatorUrl",
-    defaultUrl: "https://mempool.space/testnet",
+    defaultUrl: getDefaultNodeExternalServiceUrl("testnet3"),
     presets: [
-      { label: "mempool.space", url: "https://mempool.space/testnet" },
+      { label: "mempool.space", url: getDefaultNodeExternalServiceUrl("testnet3") },
       { label: "blockstream.info", url: "https://blockstream.info/testnet" },
     ],
   },
@@ -63,18 +64,18 @@ const NETWORK_EXTERNAL_SERVICES: Record<
     label: "Testnet4",
     explorerField: "testnet4ExplorerUrl",
     feeField: "testnet4FeeEstimatorUrl",
-    defaultUrl: "https://mempool.space/testnet4",
+    defaultUrl: getDefaultNodeExternalServiceUrl("testnet4"),
     presets: [
-      { label: "mempool.space", url: "https://mempool.space/testnet4" },
+      { label: "mempool.space", url: getDefaultNodeExternalServiceUrl("testnet4") },
     ],
   },
   signet: {
     label: "Signet",
     explorerField: "signetExplorerUrl",
     feeField: "signetFeeEstimatorUrl",
-    defaultUrl: "https://mempool.space/signet",
+    defaultUrl: getDefaultNodeExternalServiceUrl("signet"),
     presets: [
-      { label: "mempool.space", url: "https://mempool.space/signet" },
+      { label: "mempool.space", url: getDefaultNodeExternalServiceUrl("signet") },
     ],
   },
 };

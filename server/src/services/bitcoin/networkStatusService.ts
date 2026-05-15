@@ -8,6 +8,11 @@ import { nodeConfigRepository } from '../../repositories/nodeConfigRepository';
 import { createLogger } from '../../utils/logger';
 import { SystemSettingSchemas } from '../../utils/safeJson';
 import { getNetworkModeConfig } from './nodeClientConfig';
+import {
+  getNodeExternalServiceUrl,
+  getNodeNetworkDefaults,
+  type NodeNetworkConfigSource,
+} from '@sanctuary/shared/constants/nodeConfig';
 
 const log = createLogger('BITCOIN_NETWORK:SVC');
 
@@ -57,38 +62,15 @@ export interface BitcoinNetworkStatus {
   } | null;
 }
 
-const NETWORK_DEFAULTS: Record<NetworkType, { host: string; port: number; useSsl: boolean }> = {
-  mainnet: { host: 'electrum.blockstream.info', port: 50002, useSsl: true },
-  testnet3: { host: 'electrum.blockstream.info', port: 60002, useSsl: true },
-  testnet4: { host: '', port: 60002, useSsl: true },
-  signet: { host: 'electrum.mutinynet.com', port: 50002, useSsl: true },
-  regtest: { host: 'localhost', port: 50001, useSsl: false },
-};
-
-const DEFAULT_EXPLORER_URLS: Record<NetworkType, string> = {
-  mainnet: 'https://mempool.space',
-  testnet3: 'https://mempool.space/testnet',
-  testnet4: 'https://mempool.space/testnet4',
-  signet: 'https://mempool.space/signet',
-  regtest: 'https://mempool.space',
-};
-
-const EXPLORER_URL_FIELDS: Record<NetworkType, keyof StatusNodeConfig> = {
-  mainnet: 'explorerUrl',
-  testnet3: 'testnet3ExplorerUrl',
-  testnet4: 'testnet4ExplorerUrl',
-  signet: 'signetExplorerUrl',
-  regtest: 'explorerUrl',
-};
-
 function getExplorerUrl(
   nodeConfig: StatusNodeConfig | null,
   network: NetworkType,
 ): string {
-  const value = nodeConfig?.[EXPLORER_URL_FIELDS[network]];
-  return typeof value === 'string' && value.trim()
-    ? value.trim()
-    : DEFAULT_EXPLORER_URLS[network];
+  return getNodeExternalServiceUrl(
+    nodeConfig as NodeNetworkConfigSource | null,
+    network,
+    'explorer',
+  );
 }
 
 function getConfiguredServers(
@@ -144,12 +126,12 @@ function getMainnetDisplayConnection(
   nodeConfig: StatusNodeConfig | null,
   modeConfig: NetworkModeConfig,
 ) {
-  const defaults = NETWORK_DEFAULTS.mainnet;
+  const defaults = getNodeNetworkDefaults('mainnet');
 
   return {
-    host: modeConfig.singletonHost || nodeConfig?.host || defaults.host,
-    port: modeConfig.singletonPort || nodeConfig?.port || defaults.port,
-    useSsl: modeConfig.singletonSsl ?? nodeConfig?.useSsl ?? defaults.useSsl,
+    host: modeConfig.singletonHost || nodeConfig?.host || defaults.singletonHost,
+    port: modeConfig.singletonPort || nodeConfig?.port || defaults.singletonPort,
+    useSsl: modeConfig.singletonSsl ?? nodeConfig?.useSsl ?? defaults.singletonSsl,
   };
 }
 
@@ -157,12 +139,12 @@ function getDefaultDisplayConnection(
   network: NetworkType,
   modeConfig: NetworkModeConfig,
 ) {
-  const defaults = NETWORK_DEFAULTS[network];
+  const defaults = getNodeNetworkDefaults(network);
 
   return {
-    host: modeConfig.singletonHost || defaults.host,
-    port: modeConfig.singletonPort || defaults.port,
-    useSsl: modeConfig.singletonSsl ?? defaults.useSsl,
+    host: modeConfig.singletonHost || defaults.singletonHost,
+    port: modeConfig.singletonPort || defaults.singletonPort,
+    useSsl: modeConfig.singletonSsl ?? defaults.singletonSsl,
   };
 }
 

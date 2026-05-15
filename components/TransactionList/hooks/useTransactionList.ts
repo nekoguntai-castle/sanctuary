@@ -5,6 +5,7 @@ import * as labelsApi from '../../../src/api/labels';
 import * as transactionsApi from '../../../src/api/transactions';
 import { createLogger } from '../../../utils/logger';
 import { isConsolidation } from '../../../utils/transaction';
+import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/nodeConfig';
 import type { TransactionStats } from '../../../src/api/transactions';
 
 const log = createLogger('TransactionList');
@@ -37,7 +38,7 @@ export function useTransactionList({
   transactionStats,
 }: UseTransactionListParams) {
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
-  const [explorerUrl, setExplorerUrl] = useState('https://mempool.space');
+  const [explorerUrl, setExplorerUrl] = useState(getDefaultNodeExternalServiceUrl('mainnet'));
   const [copied, setCopied] = useState(false);
   const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

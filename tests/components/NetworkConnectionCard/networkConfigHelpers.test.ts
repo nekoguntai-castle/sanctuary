@@ -40,7 +40,7 @@ const cfg = {
   testnet4PoolMax: 13,
   signetPoolMax: 12,
   mainnetPoolLoadBalancing: 'least_connections',
-  testnetPoolLoadBalancing: 'failover',
+  testnetPoolLoadBalancing: 'failover_only',
   testnet4PoolLoadBalancing: 'least_connections',
   signetPoolLoadBalancing: 'round_robin',
 } as any;
@@ -58,6 +58,7 @@ describe('networkConfigHelpers', () => {
     expect(getNetworkEnabled('testnet4', cfg)).toBe(true);
     expect(getNetworkEnabled('signet', cfg)).toBe(false);
     expect(getNetworkEnabled('mainnet', cfg)).toBe(true);
+    expect(getNetworkEnabled('unknown' as any, cfg)).toBe(true);
 
     expect(getNetworkEnabled('testnet3', {} as any)).toBe(false);
     expect(getNetworkEnabled('testnet4', {} as any)).toBe(false);
@@ -131,7 +132,7 @@ describe('networkConfigHelpers', () => {
     expect(getNetworkPoolMax('signet', {} as any)).toBe(3);
 
     expect(getNetworkPoolLoadBalancing('mainnet', cfg)).toBe('least_connections');
-    expect(getNetworkPoolLoadBalancing('testnet3', cfg)).toBe('failover');
+    expect(getNetworkPoolLoadBalancing('testnet3', cfg)).toBe('failover_only');
     expect(getNetworkPoolLoadBalancing('testnet4', cfg)).toBe('least_connections');
     expect(getNetworkPoolLoadBalancing('signet', cfg)).toBe('round_robin');
     expect(getNetworkPoolLoadBalancing('unknown' as any, cfg)).toBe('round_robin');

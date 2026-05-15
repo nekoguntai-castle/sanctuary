@@ -24,6 +24,7 @@ import { useErrorHandler } from '../../../hooks/useErrorHandler';
 import { useAppNotifications } from '../../../contexts/AppNotificationContext';
 import { createLogger } from '../../../utils/logger';
 import { logError } from '../../../utils/errorHandler';
+import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/nodeConfig';
 
 // Extracted pure modules
 import {
@@ -106,7 +107,7 @@ export function useWalletData({
   // -----------------------------------------------------------------------
   // Explorer
   // -----------------------------------------------------------------------
-  const [explorerUrl, setExplorerUrl] = useState('https://mempool.space');
+  const [explorerUrl, setExplorerUrl] = useState(getDefaultNodeExternalServiceUrl('mainnet'));
 
   // -----------------------------------------------------------------------
   // Users & Groups & Share info

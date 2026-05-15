@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import * as bitcoinApi from '../../../src/api/bitcoin';
 import { createLogger } from '../../../utils/logger';
+import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/nodeConfig';
 
 const log = createLogger('UTXOList');
-const DEFAULT_EXPLORER_URL = 'https://mempool.space';
+const DEFAULT_EXPLORER_URL = getDefaultNodeExternalServiceUrl('mainnet');
 
 export function useExplorerUrl(): string {
   const [explorerUrl, setExplorerUrl] = useState(DEFAULT_EXPLORER_URL);

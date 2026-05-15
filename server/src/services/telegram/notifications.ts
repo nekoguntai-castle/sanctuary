@@ -9,6 +9,7 @@ import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { walletLog } from '../../websocket/notifications';
 import { WALLET_EDIT_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
+import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/nodeConfig';
 import { sendTelegramMessage } from './api';
 import { getWalletUsers, formatTransactionMessage, formatDraftMessage } from './formatting';
 import type {
@@ -75,10 +76,10 @@ function getDraftNotificationTelegram(
 async function getExplorerUrl(): Promise<string> {
   try {
     const nodeConfig = await nodeConfigRepository.findDefault();
-    return nodeConfig?.explorerUrl || 'https://mempool.space';
+    return nodeConfig?.explorerUrl || getDefaultNodeExternalServiceUrl('mainnet');
   } catch (error) {
     log.debug('Failed to load explorer URL from node config, using default', { error: getErrorMessage(error) });
-    return 'https://mempool.space';
+    return getDefaultNodeExternalServiceUrl('mainnet');
   }
 }
 

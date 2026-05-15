@@ -1,6 +1,7 @@
 import type { BlockVisualizerProps } from './types';
 import { BlockVisualizerView } from './BlockVisualizer/BlockVisualizerView';
 import { useBlockVisualizerController } from './BlockVisualizer/useBlockVisualizerController';
+import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/nodeConfig';
 
 export function BlockVisualizer({
   blocks,
@@ -8,7 +9,7 @@ export function BlockVisualizer({
   pendingTxs = [],
   onBlockClick,
   compact = false,
-  explorerUrl = 'https://mempool.space',
+  explorerUrl = getDefaultNodeExternalServiceUrl('mainnet'),
 }: BlockVisualizerProps) {
   const controller = useBlockVisualizerController({ blocks, onBlockClick, explorerUrl });
 

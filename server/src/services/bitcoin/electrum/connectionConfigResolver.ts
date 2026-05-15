@@ -1,5 +1,14 @@
 import config from "../../../config";
 import { nodeConfigRepository } from "../../../repositories";
+import {
+  getNodeNetworkDefaults,
+  getNodeNetworkSingletonSsl,
+  projectNodeProxyConfig,
+  readNodeNetworkBoolean,
+  readNodeNetworkNonEmptyString,
+  readNodeNetworkPositiveInteger,
+  type NodeNetworkConfigSource,
+} from "@sanctuary/shared/constants/nodeConfig";
 import type { ElectrumConfig, ProxyConfig, BitcoinNetwork } from "./types";
 
 interface PersistedNodeConfig {
@@ -38,39 +47,30 @@ export interface ResolvedConnectionConfig {
   proxy?: ProxyConfig;
 }
 
-const TESTNET_DEFAULT_HOST = "electrum.blockstream.info";
-const TESTNET_DEFAULT_PORT = 60002;
-const SIGNET_DEFAULT_HOST = "electrum.mutinynet.com";
-const SIGNET_DEFAULT_PORT = 50002;
-
 export function proxyConfigFromNodeConfig(
   nodeConfig: PersistedNodeConfig,
 ): ProxyConfig | undefined {
-  if (
-    !nodeConfig.proxyEnabled ||
-    !nodeConfig.proxyHost ||
-    !nodeConfig.proxyPort
-  ) {
-    return undefined;
-  }
-
-  return {
-    enabled: true,
-    host: nodeConfig.proxyHost,
-    port: nodeConfig.proxyPort,
-    username: nodeConfig.proxyUsername ?? undefined,
-    password: nodeConfig.proxyPassword ?? undefined,
-  };
+  return projectNodeProxyConfig(
+    nodeConfig as unknown as NodeNetworkConfigSource,
+  ) ?? undefined;
 }
 
 export function mainnetConnectionConfig(
   nodeConfig: PersistedNodeConfig,
 ): ResolvedConnectionConfig {
+  const source = nodeConfig as unknown as NodeNetworkConfigSource;
   return {
-    host: nodeConfig.mainnetSingletonHost || nodeConfig.host,
-    port: nodeConfig.mainnetSingletonPort || nodeConfig.port,
+    host:
+      readNodeNetworkNonEmptyString(source, "mainnet", "singletonHost") ||
+      nodeConfig.host,
+    port:
+      readNodeNetworkPositiveInteger(source, "mainnet", "singletonPort") ||
+      nodeConfig.port,
     protocol:
-      (nodeConfig.mainnetSingletonSsl ?? nodeConfig.useSsl) ? "ssl" : "tcp",
+      (readNodeNetworkBoolean(source, "mainnet", "singletonSsl") ??
+        nodeConfig.useSsl)
+        ? "ssl"
+        : "tcp",
     allowSelfSignedCert: nodeConfig.allowSelfSignedCert ?? false,
     proxy: proxyConfigFromNodeConfig(nodeConfig),
   };
@@ -79,19 +79,17 @@ export function mainnetConnectionConfig(
 export function testnet3ConnectionConfig(
   nodeConfig: PersistedNodeConfig,
 ): ResolvedConnectionConfig {
+  const source = nodeConfig as unknown as NodeNetworkConfigSource;
+  const defaults = getNodeNetworkDefaults("testnet3");
   return {
     host:
-      nodeConfig.testnet3SingletonHost ||
-      nodeConfig.testnetSingletonHost ||
-      TESTNET_DEFAULT_HOST,
+      readNodeNetworkNonEmptyString(source, "testnet3", "singletonHost") ||
+      defaults.singletonHost,
     port:
-      nodeConfig.testnet3SingletonPort ||
-      nodeConfig.testnetSingletonPort ||
-      TESTNET_DEFAULT_PORT,
+      readNodeNetworkPositiveInteger(source, "testnet3", "singletonPort") ||
+      defaults.singletonPort,
     protocol:
-      (nodeConfig.testnet3SingletonSsl ?? nodeConfig.testnetSingletonSsl ?? true)
-        ? "ssl"
-        : "tcp",
+      getNodeNetworkSingletonSsl(source, "testnet3") ? "ssl" : "tcp",
     allowSelfSignedCert: nodeConfig.allowSelfSignedCert ?? false,
     proxy: proxyConfigFromNodeConfig(nodeConfig),
   };
@@ -100,10 +98,17 @@ export function testnet3ConnectionConfig(
 export function testnet4ConnectionConfig(
   nodeConfig: PersistedNodeConfig,
 ): ResolvedConnectionConfig {
+  const source = nodeConfig as unknown as NodeNetworkConfigSource;
+  const defaults = getNodeNetworkDefaults("testnet4");
   return {
-    host: nodeConfig.testnet4SingletonHost || "",
-    port: nodeConfig.testnet4SingletonPort || TESTNET_DEFAULT_PORT,
-    protocol: (nodeConfig.testnet4SingletonSsl ?? true) ? "ssl" : "tcp",
+    host:
+      readNodeNetworkNonEmptyString(source, "testnet4", "singletonHost") ??
+      defaults.singletonHost,
+    port:
+      readNodeNetworkPositiveInteger(source, "testnet4", "singletonPort") ||
+      defaults.singletonPort,
+    protocol:
+      getNodeNetworkSingletonSsl(source, "testnet4") ? "ssl" : "tcp",
     allowSelfSignedCert: nodeConfig.allowSelfSignedCert ?? false,
     proxy: proxyConfigFromNodeConfig(nodeConfig),
   };
@@ -112,10 +117,16 @@ export function testnet4ConnectionConfig(
 export function signetConnectionConfig(
   nodeConfig: PersistedNodeConfig,
 ): ResolvedConnectionConfig {
+  const source = nodeConfig as unknown as NodeNetworkConfigSource;
+  const defaults = getNodeNetworkDefaults("signet");
   return {
-    host: nodeConfig.signetSingletonHost || SIGNET_DEFAULT_HOST,
-    port: nodeConfig.signetSingletonPort || SIGNET_DEFAULT_PORT,
-    protocol: (nodeConfig.signetSingletonSsl ?? true) ? "ssl" : "tcp",
+    host:
+      readNodeNetworkNonEmptyString(source, "signet", "singletonHost") ||
+      defaults.singletonHost,
+    port:
+      readNodeNetworkPositiveInteger(source, "signet", "singletonPort") ||
+      defaults.singletonPort,
+    protocol: getNodeNetworkSingletonSsl(source, "signet") ? "ssl" : "tcp",
     allowSelfSignedCert: nodeConfig.allowSelfSignedCert ?? false,
     proxy: proxyConfigFromNodeConfig(nodeConfig),
   };

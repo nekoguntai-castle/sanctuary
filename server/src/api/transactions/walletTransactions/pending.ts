@@ -13,6 +13,7 @@ import { asyncHandler } from '../../../errors/errorHandler';
 import { mapWithConcurrency } from '../../../utils/async';
 import { getMempoolApiBase } from '../../../services/bitcoin/mempool/config';
 import { normalizeLegacyBitcoinNetwork } from '../../../services/bitcoin/networks';
+import { getDefaultNodeMempoolApiBase } from '@sanctuary/shared/constants/nodeConfig';
 
 const log = createLogger('TX_PENDING:ROUTE');
 const MEMPOOL_FETCH_CONCURRENCY = 5;
@@ -31,7 +32,7 @@ const pendingTransactionWhere = {
 const getMempoolBaseUrl = async (wallet: PendingWallet): Promise<string> => {
   const network = normalizeLegacyBitcoinNetwork(wallet?.network, 'mainnet');
   return network === 'regtest'
-    ? 'https://mempool.space/api'
+    ? getDefaultNodeMempoolApiBase('mainnet')
     : getMempoolApiBase(network);
 };
 

@@ -6,6 +6,7 @@
 
 import { userRepository } from '../../repositories';
 import type { TransactionData } from './types';
+import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/nodeConfig';
 
 /**
  * Get all users who have access to a wallet (direct or via group)
@@ -23,7 +24,7 @@ export async function getWalletUsers(walletId: string, options?: { walletRoles?:
 export function formatTransactionMessage(
   tx: TransactionData,
   wallet: { name: string },
-  explorerUrl: string = 'https://mempool.space'
+  explorerUrl: string = getDefaultNodeExternalServiceUrl('mainnet')
 ): string {
   const amountBtc = Number(tx.amount) / 100_000_000;
   const emoji = tx.type === 'received' ? '📥' : tx.type === 'sent' ? '📤' : '🔄';

@@ -1,4 +1,8 @@
 import type { NodeConfig as NodeConfigType } from '../../types';
+import {
+  getNodeNetworkEnabled,
+  type NodeNetworkConfigSource,
+} from '@sanctuary/shared/constants/nodeConfig';
 import type { NetworkTab } from './types';
 import { formatNetworkTitle, getNetworkColorClass } from '../../src/app/networks';
 
@@ -71,10 +75,7 @@ function NetworkTabBadge({
 }
 
 function isNetworkEnabled(config: NodeConfigType, network: NetworkTab): boolean {
-  if (network === 'mainnet') return true;
-  if (network === 'testnet3') return Boolean(config.testnet3Enabled ?? config.testnetEnabled);
-  if (network === 'testnet4') return Boolean(config.testnet4Enabled);
-  return Boolean(config.signetEnabled);
+  return getNodeNetworkEnabled(config as unknown as NodeNetworkConfigSource, network);
 }
 
 function networkTabClass(network: NetworkTab, active: boolean): string {
