@@ -1,4 +1,8 @@
 import { WalletType, type Device, type DeviceAccount } from '../../types';
+import {
+  accountPurposeForWalletType,
+  type DeviceAccountPurpose,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { derivationPathMatchesNetwork } from '../../utils/derivationPathGroups';
 import type { TabNetwork } from '../../src/app/networks';
 import type {
@@ -6,9 +10,6 @@ import type {
   CreateWalletState,
   CreateWalletStep,
 } from './types';
-
-const SINGLE_SIG_PURPOSE = 'single_sig';
-const MULTISIG_PURPOSE = 'multisig';
 
 export interface NextStepResult {
   nextStep?: CreateWalletStep;
@@ -18,8 +19,8 @@ export interface NextStepResult {
   };
 }
 
-export function getRequiredAccountPurpose(walletType: WalletType): 'single_sig' | 'multisig' {
-  return walletType === WalletType.MULTI_SIG ? MULTISIG_PURPOSE : SINGLE_SIG_PURPOSE;
+export function getRequiredAccountPurpose(walletType: WalletType): DeviceAccountPurpose {
+  return accountPurposeForWalletType(walletType);
 }
 
 export function hasCompatibleAccount(device: Device, walletType: WalletType): boolean {
@@ -125,11 +126,16 @@ export function getNextCreateWalletStep(
 }
 
 export function buildCreateWalletPayload(state: CreateWalletState): CreateWalletPayload {
-  const isMultisig = state.walletType === WalletType.MULTI_SIG;
+  const walletType = state.walletType;
+  if (!walletType) {
+    throw new Error('Wallet type is required');
+  }
+
+  const isMultisig = walletType === WalletType.MULTI_SIG;
 
   return {
     name: state.walletName,
-    type: state.walletType === WalletType.SINGLE_SIG ? 'single_sig' : 'multi_sig',
+    type: walletType,
     scriptType: state.scriptType,
     network: state.network,
     quorum: isMultisig ? state.quorumM : undefined,

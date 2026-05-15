@@ -1,5 +1,6 @@
 import React from 'react';
 import { Plus, Loader2, Check } from 'lucide-react';
+import { DeviceAccountPurpose } from '@sanctuary/shared/constants/walletIdentity';
 import { DeviceAccount as ParsedDeviceAccount } from '../../../services/deviceParsers';
 
 export interface AccountConflict {
@@ -73,11 +74,11 @@ export const ImportReview: React.FC<ImportReviewProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1 mb-1">
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      account.purpose === 'multisig'
+                      account.purpose === DeviceAccountPurpose.MULTISIG
                         ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
                         : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                     }`}>
-                      {account.purpose === 'multisig' ? 'Multisig' : 'Single-sig'}
+                      {account.purpose === DeviceAccountPurpose.MULTISIG ? 'Multisig' : 'Single-sig'}
                     </span>
                   </div>
                   <code className="text-xs font-mono text-sanctuary-600 dark:text-sanctuary-300">

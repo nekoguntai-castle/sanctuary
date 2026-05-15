@@ -5,6 +5,10 @@
  */
 
 import type { NetworkType } from "@sanctuary/shared/constants/bitcoin";
+import type {
+  WalletScriptType,
+  WalletType,
+} from "@sanctuary/shared/constants/walletIdentity";
 import {
   WALLET_APPROVE_ROLE_VALUES,
   WALLET_EDIT_ROLE_VALUES,
@@ -51,8 +55,8 @@ export interface WalletAccessCheckResult {
 
 export interface CreateWalletInput {
   name: string;
-  type: "single_sig" | "multi_sig";
-  scriptType: "native_segwit" | "nested_segwit" | "taproot" | "legacy";
+  type: WalletType;
+  scriptType: WalletScriptType;
   network?: WalletNetwork;
   quorum?: number;
   totalSigners?: number;

@@ -22,6 +22,10 @@
  *   2. Import and register below
  */
 
+import {
+  parseWalletScriptType,
+  type WalletScriptType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { scriptTypeRegistry } from './registry';
 
 // Import handlers
@@ -55,11 +59,11 @@ export { taprootHandler } from './handlers/taproot';
 /**
  * Convenience type for script type IDs
  */
-export type ScriptTypeId = 'native_segwit' | 'nested_segwit' | 'legacy' | 'taproot';
+export type ScriptTypeId = WalletScriptType;
 
 /**
  * Check if a string is a valid script type ID
  */
 export function isValidScriptType(id: string): id is ScriptTypeId {
-  return scriptTypeRegistry.has(id);
+  return parseWalletScriptType(id) !== null && scriptTypeRegistry.has(id);
 }

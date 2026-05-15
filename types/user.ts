@@ -7,6 +7,10 @@
 import type { DeviceRole } from '@sanctuary/shared/types/domain';
 import type { HardwareDevice, HardwareDeviceModel } from './hardware';
 import type {
+  DeviceAccountPurpose,
+  WalletScriptType,
+} from '@sanctuary/shared/constants/walletIdentity';
+import type {
   ThemeOption,
   BackgroundOption,
   TelegramConfig,
@@ -78,8 +82,8 @@ export interface Group {
  */
 export interface DeviceAccount {
   id: string;
-  purpose: 'single_sig' | 'multisig';
-  scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+  purpose: DeviceAccountPurpose;
+  scriptType: WalletScriptType;
   derivationPath: string;
   xpub: string;
 }

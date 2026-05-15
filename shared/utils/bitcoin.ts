@@ -7,6 +7,12 @@
 
 import { SATS_PER_BTC, ADDRESS_PATTERNS } from "../constants/bitcoin";
 import type { AddressType } from "../constants/bitcoin";
+import {
+  DeviceAccountPurpose,
+  WalletScriptType,
+  type DeviceAccountPurpose as DeviceAccountPurposeValue,
+  type WalletScriptType as WalletScriptTypeValue,
+} from "../constants/walletIdentity";
 
 // Re-export types and constants for convenience
 export { SATS_PER_BTC };
@@ -116,17 +122,14 @@ export function isTestnetAddress(address: string): boolean {
  * Account family inferred from a derivation path purpose.
  * `unknown` means the purpose is parseable but not a supported wallet account family.
  */
-export type DerivationAccountPurpose = "single_sig" | "multisig" | "unknown";
+export type DerivationAccountPurpose = DeviceAccountPurposeValue | "unknown";
 
 /**
  * Script policy inferred from standard Bitcoin purpose fields.
  * `unknown` means callers must provide explicit script metadata instead of guessing.
  */
 export type DerivationScriptType =
-  | "legacy"
-  | "nested_segwit"
-  | "native_segwit"
-  | "taproot"
+  | WalletScriptTypeValue
   | "unknown";
 
 /**
@@ -240,9 +243,9 @@ const accountDepth = (purpose: number | null): number => {
 const inferAccountPurpose = (
   purpose: number | null,
 ): DerivationAccountPurpose => {
-  if (purpose === 48) return "multisig";
+  if (purpose === 48) return DeviceAccountPurpose.MULTISIG;
   if (purpose === 44 || purpose === 49 || purpose === 84 || purpose === 86) {
-    return "single_sig";
+    return DeviceAccountPurpose.SINGLE_SIG;
   }
   return "unknown";
 };
@@ -251,14 +254,14 @@ const inferDerivationScriptType = (
   purpose: number | null,
   scriptPath: number | null,
 ): DerivationScriptType => {
-  if (purpose === 44) return "legacy";
-  if (purpose === 49) return "nested_segwit";
-  if (purpose === 84) return "native_segwit";
-  if (purpose === 86) return "taproot";
+  if (purpose === 44) return WalletScriptType.LEGACY;
+  if (purpose === 49) return WalletScriptType.NESTED_SEGWIT;
+  if (purpose === 84) return WalletScriptType.NATIVE_SEGWIT;
+  if (purpose === 86) return WalletScriptType.TAPROOT;
   // BIP48 multisig uses the fourth hardened component as script policy:
   // 1 = nested segwit, 2 = native segwit.
-  if (purpose === 48 && scriptPath === 1) return "nested_segwit";
-  if (purpose === 48 && scriptPath === 2) return "native_segwit";
+  if (purpose === 48 && scriptPath === 1) return WalletScriptType.NESTED_SEGWIT;
+  if (purpose === 48 && scriptPath === 2) return WalletScriptType.NATIVE_SEGWIT;
   return "unknown";
 };
 

@@ -1,6 +1,85 @@
-# Active Task: Phase A Wallet Role Capability Convergence 2026-05-15
+# Active Task: Fifth Independent Divergence Review 2026-05-15
+
+Status: complete.
+
+Goal: independently double-check the current rationalization findings again against the current Phase B branch, with emphasis on whether the remaining non-hardware queue is still correctly ranked after Phase A and the Phase B implementation work.
+
+## Plan
+
+- [x] Re-read the current rationalization plan and prior review addenda for claims to verify, not conclusions to assume.
+- [x] Re-check code evidence for completed Phase A, active Phase B, and remaining B2/C/D/E findings.
+- [x] Look for missed higher-priority divergences or false positives introduced by the Phase B branch.
+- [x] Update the durable plan and task ledger with confirmations, corrections, and verification notes.
+- [x] Run documentation verification.
+
+## Review
+
+- Added a fifth independent review addendum to `docs/plans/rationalization-plan.md`.
+- Confirmed Phase A remains behaviorally closed: no production `userRole !== 'viewer'` edit/send gates or fail-open `wallet.canEdit !== false` checks were found.
+- Found a Phase B completion gap in active production code: `server/src/services/deviceAccountConflicts.ts` still defined local device-account purpose and script-type unions/validators, with smaller remaining literal defaults/comparisons in add-account, wallet formatting, wallet creation, operational address, and batch fee-estimate paths.
+- Patched those Phase B gaps to derive from `shared/constants/walletIdentity.ts`, and added coverage for unsupported wallet identity fallback paths exposed by the 100% backend coverage gate.
+- Reconfirmed B2/C/D/E order: stale external-LLM copy/type names next, then node/Electrum projection, contract-helper repair, and login health helper.
+- Verification: targeted `rg`/`sed` searches; focused server/frontend tests; frontend/backend coverage script tests; workflow composition/runtime guards; app and server-test typechecks; server build; regenerated backend coverage shards and merged them successfully with a stale `blob.json` still present; scoped negative production literal search; `git diff --check`.
+
+---
+
+# Active Task: Fourth Independent Divergence Review 2026-05-15
+
+Status: complete.
+
+Goal: independently double-check the current rationalization findings against the current Phase B branch state, including in-progress edits, and record confirmations or corrections before continuing implementation.
+
+## Plan
+
+- [x] Re-read the durable rationalization plan and task ledger without relying on the prior review summaries.
+- [x] Re-check code evidence for wallet-role closure, Phase B script/wallet/account identity drift, Phase C node projection drift, Phase D contract-helper drift, and Phase E login-health drift.
+- [x] Search for missed fallout from the external-LLM/model-management removal and classify whether it changes the non-hardware queue.
+- [x] Update the durable plan and task ledger with the fourth-review result.
+- [x] Run documentation verification.
+
+## Review
+
+- Added a fourth independent review addendum to `docs/plans/rationalization-plan.md`.
+- Confirmed Phase A remains closed: no active production `userRole !== 'viewer'` edit gates or `wallet.canEdit !== false` wallet gates were found.
+- Confirmed Phase B remains the active implementation priority. The new shared wallet identity module exists in the working tree, but server schemas, OpenAPI, script registry IDs/handlers, import/descriptor services, device parsers, hardware account discovery, and several UI callers still repeat script/wallet/account values.
+- Confirmed Phase C, D, and E remain in the prior order: node/Electrum projection drift, stale contract helper constants, then login health helper cleanup.
+- Added a new B2 cleanup item for stale external-LLM-only copy/docs/type names: live pull/delete routes still appear removed, but active docs/OpenAPI/UI copy still mention pull/delete/model management/download progress or label provider-reported models as installed.
+- Verification: targeted `rg`/`sed` searches and `git diff --check`.
+
+---
+
+# Active Task: Phase B Script, Wallet Type, And Account Purpose Identity 2026-05-15
 
 Status: in progress.
+
+Goal: implement Phase B from the rationalization plan, deliver it through a committed branch and merged PR, then continue to Phase C.
+
+## Plan
+
+- [x] Inventory script type, wallet type, device account purpose, mapping, schema, OpenAPI, and test definitions across shared, frontend, server, mobile, and E2E code.
+- [x] Add shared canonical constants/types/guards for script types, persisted wallet types, device account purposes, and wallet-type-to-purpose mapping without importing server/frontend code.
+- [x] Migrate production request/response/schema callers to derive from canonical constants while keeping server script-type registry behavior metadata local.
+- [x] Add focused parity and behavior tests for script type registry IDs, wallet type to account purpose mapping, mobile/device/import schemas, and taproot multisig rejection or boundaries already enforced by the code.
+- [x] Run focused tests, typechecks/lint where needed, touched-file lizard, negative searches for unowned production tuples, and `git diff --check`.
+- [ ] Commit Phase B, open a PR, monitor/fix checks, merge, verify ancestry, then continue with Phase C.
+
+## Review
+
+- Added `shared/constants/walletIdentity.ts` as the canonical pure shared source for persisted wallet types, wallet script types, device account purposes, parsers/guards, and wallet-type-to-device-purpose mapping.
+- Migrated API schemas, OpenAPI schemas, mobile request schemas, wallet/import/export/descriptor services, script-type registry IDs, device parsers, hardware discovery, event wallet-created payloads, and UI callers to derive from the canonical values.
+- Preserved justified separate domains: address-type constants in `shared/constants/bitcoin.ts`, P2PKH/P2WPKH script-template validation in `server/src/validation/commonSchemas.ts`, human-facing `single-sig`/`multisig` labels, historical migrations, and script registry alias behavior.
+- Added focused tests for wallet identity constants and parsers, create-wallet account-purpose mapping and null wallet-type boundary, script registry canonical IDs/alias rejection, common schema wallet type parity, event wallet-created payloads, and existing wallet/device/OpenAPI/import contract aggregators.
+- Fifth-review cleanup migrated the remaining production identity literals in device-account conflict validation, device add-account defaults, wallet detail formatting, wallet creation comparisons, agent operational wallet checks, and batch fee estimates to canonical constants.
+- Added backend coverage tests for unsupported wallet identity fallbacks in wallet export and descriptor repair so the full backend coverage aggregate remains at 100%.
+- Verification passed locally: shared build; focused frontend/shared tests; focused server script type, wallet import, OpenAPI, wallets, devices, wallet account selection, event, and common schema tests; app/test/server typechecks; app/server lint; server build; lizard-only quality gate; scoped negative literal search; `git diff --check`.
+- Additional PR-fix verification passed: frontend/backend coverage script regression tests, workflow composition guard, GitHub action runtime guard, backend coverage shards 1/2 and 2/2, and backend coverage merge with a stale `blob.json` present.
+- CI frontend coverage exposed remaining branch misses for unsupported wallet-type fallbacks in device/wallet detail formatting; added focused fallback tests and verified regenerated frontend coverage shards plus merge at 100%.
+
+---
+
+# Completed Task: Phase A Wallet Role Capability Convergence 2026-05-15
+
+Status: merged and verified via PR #462 as squash commit `ade4584455c0af81402735e6bb09d8f530158c64`.
 
 Goal: implement Phase A from the rationalization plan, deliver it through a committed branch and merged PR, then continue to the next phase.
 
@@ -11,7 +90,7 @@ Goal: implement Phase A from the rationalization plan, deliver it through a comm
 - [x] Migrate server access control, wallet queries, mobile permissions, OpenAPI, and wallet-facing frontend gates to the canonical helpers.
 - [x] Add focused tests for `viewer`, `signer`, `approver`, `owner`, unknown/null roles, share role validation, and fail-closed UI capability behavior.
 - [x] Run focused tests, typechecks/lint where needed, touched-file lizard, and `git diff --check`.
-- [ ] Commit Phase A, open a PR, monitor/fix checks, merge, verify ancestry, then continue with Phase B.
+- [x] Commit Phase A, open a PR, monitor/fix checks, merge, verify ancestry, then continue with Phase B.
 
 ## Review
 

@@ -4,6 +4,10 @@
  * Owns device registration, duplicate detection, and account merge behavior.
  */
 
+import {
+  DeviceAccountPurpose,
+  WalletScriptType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { InvalidInputError } from '../errors';
 import { deviceRepository } from '../repositories';
 import { createLogger } from '../utils/logger';
@@ -185,7 +189,9 @@ async function createNewDevice(
   }
 
   const primaryAccount = input.incomingAccounts.find(
-    a => a.purpose === 'single_sig' && a.scriptType === 'native_segwit'
+    a =>
+      a.purpose === DeviceAccountPurpose.SINGLE_SIG &&
+      a.scriptType === WalletScriptType.NATIVE_SEGWIT
   ) || input.incomingAccounts[0];
 
   const device = await deviceRepository.createWithOwnerAndAccounts(

@@ -7,6 +7,7 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { getNetwork, estimateTransactionSize } from '../utils';
 import { getNodeClient } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
@@ -105,7 +106,7 @@ export async function createCPFPTransaction(
   const parentFeeRate = parentFee / parentVsize;
 
   // Estimate child transaction size (1 input, 1 output)
-  const childTxSize = estimateTransactionSize(1, 1, 'native_segwit');
+  const childTxSize = estimateTransactionSize(1, 1, WalletScriptType.NATIVE_SEGWIT);
 
   // Calculate CPFP fees
   const cpfpCalc = calculateCPFPFee(

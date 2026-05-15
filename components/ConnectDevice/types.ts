@@ -6,6 +6,10 @@
 
 import { HardwareDeviceModel, DeviceConflictResponse } from '../../src/api/devices';
 import { DeviceAccount } from '../../services/deviceParsers';
+import {
+  DeviceAccountPurpose,
+  type DeviceAccountPurpose as DeviceAccountPurposeValue,
+} from '@sanctuary/shared/constants/walletIdentity';
 
 export type ConnectionMethod = 'usb' | 'sd_card' | 'qr_code' | 'manual';
 
@@ -123,8 +127,8 @@ export interface AccountDisplay {
 /**
  * Get display labels for account purpose
  */
-export function getPurposeLabel(purpose: 'single_sig' | 'multisig'): string {
-  return purpose === 'multisig' ? 'Multisig' : 'Single-sig';
+export function getPurposeLabel(purpose: DeviceAccountPurposeValue): string {
+  return purpose === DeviceAccountPurpose.MULTISIG ? 'Multisig' : 'Single-sig';
 }
 
 /**

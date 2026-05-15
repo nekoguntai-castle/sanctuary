@@ -1,3 +1,4 @@
+import { DeviceAccountPurpose } from '@sanctuary/shared/constants/walletIdentity';
 import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import type { DeviceType, PSBTSignRequest } from './types';
 
@@ -15,7 +16,7 @@ type PsbtLike = {
 const UNSUPPORTED_MULTISIG_USB_SIGNERS: DeviceType[] = ['ledger', 'bitbox'];
 
 export function isMultisigDerivationPath(path: string | null | undefined): boolean {
-  return parseDerivationPath(path).accountPurpose === 'multisig';
+  return parseDerivationPath(path).accountPurpose === DeviceAccountPurpose.MULTISIG;
 }
 
 export function isUnsupportedMultisigHardwareSigner(

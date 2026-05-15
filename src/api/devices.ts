@@ -6,6 +6,10 @@
 
 import apiClient from './client';
 import type { Device, HardwareDeviceModel, DeviceShareInfo } from '../types';
+import type {
+  DeviceAccountPurpose,
+  WalletScriptType,
+} from '@sanctuary/shared/constants/walletIdentity';
 
 // Re-export types for backward compatibility
 export type { Device, HardwareDeviceModel, DeviceShareInfo, DeviceRole } from '../types';
@@ -14,8 +18,8 @@ export type { Device, HardwareDeviceModel, DeviceShareInfo, DeviceRole } from '.
  * Account input for multi-account device registration
  */
 export interface DeviceAccountInput {
-  purpose: 'single_sig' | 'multisig';
-  scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+  purpose: DeviceAccountPurpose;
+  scriptType: WalletScriptType;
   derivationPath: string;
   xpub: string;
 }

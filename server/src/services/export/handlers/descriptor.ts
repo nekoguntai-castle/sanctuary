@@ -5,6 +5,7 @@
  * Most portable format - works with any descriptor-aware software.
  */
 
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import type {
   ExportFormatHandler,
   WalletExportData,
@@ -24,7 +25,7 @@ export const descriptorHandler: ExportFormatHandler = {
 
     // Add header comment
     lines.push(`# Wallet: ${wallet.name}`);
-    lines.push(`# Type: ${wallet.type === 'multi_sig' ? `${wallet.quorum}-of-${wallet.totalSigners} Multisig` : 'Single Signature'}`);
+    lines.push(`# Type: ${wallet.type === WalletType.MULTI_SIG ? `${wallet.quorum}-of-${wallet.totalSigners} Multisig` : 'Single Signature'}`);
     lines.push(`# Script Type: ${wallet.scriptType}`);
     lines.push(`# Network: ${wallet.network}`);
     lines.push('');

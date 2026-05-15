@@ -1,5 +1,11 @@
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
+
 export function formatWalletType(type: string): string {
-  return type === 'multi_sig' ? 'Multisig' : type === 'single_sig' ? 'Single sig' : type;
+  return type === WalletType.MULTI_SIG
+    ? 'Multisig'
+    : type === WalletType.SINGLE_SIG
+    ? 'Single sig'
+    : type;
 }
 
 export function formatLimit(value: string | null): string {

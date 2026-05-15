@@ -1,7 +1,8 @@
 import apiClient from './client';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 
-export type XpubScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+export type XpubScriptType = WalletScriptType;
 export type XpubValidationNetwork = NetworkType;
 
 export interface ValidateXpubRequest {

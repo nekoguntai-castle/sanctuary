@@ -9,6 +9,7 @@
  * - Smallest First: Use smallest UTXOs (consolidation mode)
  */
 
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { INPUT_VBYTES, DEFAULT_INPUT_VBYTES, OUTPUT_VBYTES, OVERHEAD_VBYTES } from '../bitcoin/constants';
 import type { SelectedUtxo, SelectionResult } from './types';
 
@@ -19,7 +20,7 @@ export function calculateFee(
   inputCount: number,
   outputCount: number,
   feeRate: number,
-  scriptType: string = 'native_segwit'
+  scriptType: string = WalletScriptType.NATIVE_SEGWIT
 ): bigint {
   const inputVBytes = INPUT_VBYTES[scriptType] || DEFAULT_INPUT_VBYTES;
   const vSize = OVERHEAD_VBYTES + inputCount * inputVBytes + outputCount * OUTPUT_VBYTES;

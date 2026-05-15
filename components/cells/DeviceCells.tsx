@@ -6,6 +6,10 @@
  */
 
 import React from 'react';
+import {
+  DeviceAccountPurpose,
+  WalletType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { HardwareDevice, HardwareDeviceModel, Device } from '../../types';
 import { Edit2, Save, X, Trash2, Users, HardDrive } from 'lucide-react';
 import { getDeviceIcon, getWalletIcon } from '../ui/CustomIcons';
@@ -188,7 +192,7 @@ export function createDeviceCellRenderers(
       if (device.derivationPath) {
         const isMultisig = device.derivationPath.includes("48'");
         return (
-          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono ${getAccountBadgeClass(isMultisig ? 'multisig' : 'single_sig')}`}>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono ${getAccountBadgeClass(isMultisig ? DeviceAccountPurpose.MULTISIG : DeviceAccountPurpose.SINGLE_SIG)}`}>
             {device.derivationPath}
           </span>
         );
@@ -202,7 +206,7 @@ export function createDeviceCellRenderers(
           <span
             key={account.id}
             className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono ${getAccountBadgeClass(account.purpose)}`}
-            title={`${account.purpose === 'multisig' ? 'Multisig' : 'Single-sig'} (${account.scriptType})`}
+            title={`${account.purpose === DeviceAccountPurpose.MULTISIG ? 'Multisig' : 'Single-sig'} (${account.scriptType})`}
           >
             {account.derivationPath}
           </span>
@@ -225,7 +229,7 @@ export function createDeviceCellRenderers(
     return (
       <div className="flex flex-wrap gap-1">
         {wallets.map((wd) => {
-          const walletType = wd.wallet.type || 'single_sig';
+          const walletType = wd.wallet.type || WalletType.SINGLE_SIG;
           return (
             <span
               key={wd.wallet.id}

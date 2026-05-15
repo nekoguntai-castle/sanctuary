@@ -4,7 +4,7 @@ import { getWalletIcon } from '../../ui/CustomIcons';
 import type { WalletCellProps, WalletWithPending } from './types';
 
 function getWalletIconDisplay(wallet: WalletWithPending) {
-  const isMultisig = wallet.type === 'multi_sig';
+  const isMultisig = wallet.type === WalletType.MULTI_SIG;
 
   return {
     iconClass: isMultisig
@@ -41,7 +41,7 @@ export function NameCell({ item: wallet }: WalletCellProps) {
 }
 
 export function TypeCell({ item: wallet }: WalletCellProps) {
-  const isMultisig = wallet.type === 'multi_sig';
+  const isMultisig = wallet.type === WalletType.MULTI_SIG;
 
   return (
     <div className="flex items-center gap-2">

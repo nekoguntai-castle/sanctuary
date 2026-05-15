@@ -8,6 +8,10 @@
 
 import type { Wallet, Device } from "../../../types";
 import { WalletType } from "../../../types";
+import {
+  accountPurposeForWalletType,
+  parseWalletType,
+} from "@sanctuary/shared/constants/walletIdentity";
 
 // ---------------------------------------------------------------------------
 // Wallet formatting
@@ -20,10 +24,7 @@ import { WalletType } from "../../../types";
  * @param userId    - The authenticated user's ID (used as ownerId)
  */
 export function formatWalletFromApi(apiWallet: Wallet, userId: string): Wallet {
-  const walletType =
-    apiWallet.type === "multi_sig"
-      ? WalletType.MULTI_SIG
-      : WalletType.SINGLE_SIG;
+  const walletType = parseWalletType(apiWallet.type) ?? WalletType.SINGLE_SIG;
 
   return {
     id: apiWallet.id,
@@ -83,12 +84,8 @@ export function formatDevicesForWallet(
   walletId: string,
   userId: string,
 ): Device[] {
-  const walletType =
-    apiWallet.type === "multi_sig"
-      ? WalletType.MULTI_SIG
-      : WalletType.SINGLE_SIG;
-  const expectedPurpose =
-    walletType === WalletType.MULTI_SIG ? "multisig" : "single_sig";
+  const walletType = parseWalletType(apiWallet.type) ?? WalletType.SINGLE_SIG;
+  const expectedPurpose = accountPurposeForWalletType(walletType);
 
   return allDevices
     .filter((d) => d.wallets?.some((w) => w.wallet.id === walletId))

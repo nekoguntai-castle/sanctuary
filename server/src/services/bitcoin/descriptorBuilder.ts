@@ -13,8 +13,13 @@ interface DeviceInfo {
 
 import { formatPathForDescriptor } from '@sanctuary/shared/utils/bitcoin';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import {
+  WalletScriptType,
+  WalletType,
+  type WalletScriptType as ScriptType,
+  type WalletType as WalletTypeValue,
+} from '@sanctuary/shared/constants/walletIdentity';
 
-type ScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
 type Network = NetworkType;
 
 /**
@@ -28,13 +33,13 @@ export function getDerivationPath(
   const coinType = network === 'mainnet' ? '0' : '1';
 
   switch (scriptType) {
-    case 'legacy':
+    case WalletScriptType.LEGACY:
       return `m/44'/${coinType}'/${account}'`;
-    case 'nested_segwit':
+    case WalletScriptType.NESTED_SEGWIT:
       return `m/49'/${coinType}'/${account}'`;
-    case 'native_segwit':
+    case WalletScriptType.NATIVE_SEGWIT:
       return `m/84'/${coinType}'/${account}'`;
-    case 'taproot':
+    case WalletScriptType.TAPROOT:
       return `m/86'/${coinType}'/${account}'`;
     default:
       throw new Error(`Unknown script type: ${scriptType}`);
@@ -52,13 +57,13 @@ export function getMultisigDerivationPath(
   const coinType = network === 'mainnet' ? '0' : '1';
 
   switch (scriptType) {
-    case 'legacy':
+    case WalletScriptType.LEGACY:
       return `m/45'/${account}'`; // BIP45 for legacy multisig
-    case 'nested_segwit':
+    case WalletScriptType.NESTED_SEGWIT:
       return `m/48'/${coinType}'/${account}'/1'`; // BIP48 script type 1
-    case 'native_segwit':
+    case WalletScriptType.NATIVE_SEGWIT:
       return `m/48'/${coinType}'/${account}'/2'`; // BIP48 script type 2
-    case 'taproot':
+    case WalletScriptType.TAPROOT:
       return `m/48'/${coinType}'/${account}'/3'`; // BIP48 script type 3 (proposed)
     default:
       throw new Error(`Unknown script type: ${scriptType}`);
@@ -82,19 +87,19 @@ export function buildSingleSigDescriptor(
 
   // Build descriptor based on script type
   switch (scriptType) {
-    case 'legacy':
+    case WalletScriptType.LEGACY:
       // P2PKH: pkh([fp/44h/0h/0h]xpub/0/*)
       return `pkh(${keyExpression}/0/*)`;
 
-    case 'nested_segwit':
+    case WalletScriptType.NESTED_SEGWIT:
       // P2SH-P2WPKH: sh(wpkh([fp/49h/0h/0h]xpub/0/*))
       return `sh(wpkh(${keyExpression}/0/*))`;
 
-    case 'native_segwit':
+    case WalletScriptType.NATIVE_SEGWIT:
       // P2WPKH: wpkh([fp/84h/0h/0h]xpub/0/*)
       return `wpkh(${keyExpression}/0/*)`;
 
-    case 'taproot':
+    case WalletScriptType.TAPROOT:
       // P2TR: tr([fp/86h/0h/0h]xpub/0/*)
       return `tr(${keyExpression}/0/*)`;
 
@@ -137,19 +142,19 @@ export function buildMultiSigDescriptor(
 
   // Wrap in appropriate script type
   switch (scriptType) {
-    case 'legacy':
+    case WalletScriptType.LEGACY:
       // P2SH multisig: sh(sortedmulti(m, key1, key2, ...))
       return `sh(${sortedMulti})`;
 
-    case 'nested_segwit':
+    case WalletScriptType.NESTED_SEGWIT:
       // P2SH-P2WSH multisig: sh(wsh(sortedmulti(m, key1, key2, ...)))
       return `sh(wsh(${sortedMulti}))`;
 
-    case 'native_segwit':
+    case WalletScriptType.NATIVE_SEGWIT:
       // P2WSH multisig: wsh(sortedmulti(m, key1, key2, ...))
       return `wsh(${sortedMulti})`;
 
-    case 'taproot':
+    case WalletScriptType.TAPROOT:
       // Taproot multisig uses different mechanism (MuSig2 or threshold tree)
       // For now, use basic multi-key taproot (not fully standard yet)
       throw new Error('Taproot multisig is not yet supported');
@@ -173,7 +178,7 @@ export function buildChangeDescriptor(receiveDescriptor: string): string {
 export function buildDescriptorFromDevices(
   devices: DeviceInfo[],
   options: {
-    type: 'single_sig' | 'multi_sig';
+    type: WalletTypeValue;
     scriptType: ScriptType;
     network?: Network;
     quorum?: number;
@@ -188,7 +193,7 @@ export function buildDescriptorFromDevices(
   let descriptor: string;
   let fingerprint: string;
 
-  if (type === 'single_sig') {
+  if (type === WalletType.SINGLE_SIG) {
     if (devices.length !== 1) {
       throw new Error('Single-sig wallet requires exactly 1 device');
     }
@@ -223,10 +228,10 @@ export function validateDeviceScriptType(
 ): boolean {
   // Map our internal script type names to common variations
   const scriptTypeMap: Record<ScriptType, string[]> = {
-    native_segwit: ['native_segwit', 'p2wpkh', 'bech32', 'segwit'],
-    nested_segwit: ['nested_segwit', 'p2sh-p2wpkh', 'wrapped_segwit', 'segwit'],
-    taproot: ['taproot', 'p2tr', 'bech32m'],
-    legacy: ['legacy', 'p2pkh'],
+    [WalletScriptType.NATIVE_SEGWIT]: [WalletScriptType.NATIVE_SEGWIT, 'p2wpkh', 'bech32', 'segwit'],
+    [WalletScriptType.NESTED_SEGWIT]: [WalletScriptType.NESTED_SEGWIT, 'p2sh-p2wpkh', 'wrapped_segwit', 'segwit'],
+    [WalletScriptType.TAPROOT]: [WalletScriptType.TAPROOT, 'p2tr', 'bech32m'],
+    [WalletScriptType.LEGACY]: [WalletScriptType.LEGACY, 'p2pkh'],
   };
 
   const validTypes = scriptTypeMap[requestedScriptType] || [];

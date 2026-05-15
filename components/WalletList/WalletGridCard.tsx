@@ -1,4 +1,5 @@
 import type { Wallet } from '../../src/api/wallets';
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import type { PendingData, WalletAmountFormatter, WalletFiatFormatter } from './types';
 import { WalletBalance } from './WalletGridCardBalance';
 import { WalletMetadata } from './WalletGridCardMetadata';
@@ -23,7 +24,7 @@ export function WalletGridCard({
   showFiat: boolean;
   onOpen: () => void;
 }) {
-  const styles = walletGridCardStyles(wallet.type === 'multi_sig');
+  const styles = walletGridCardStyles(wallet.type === WalletType.MULTI_SIG);
 
   return (
     <div

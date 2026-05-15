@@ -5,6 +5,10 @@
  */
 
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import type {
+  WalletScriptType,
+  WalletType,
+} from '@sanctuary/shared/constants/walletIdentity';
 
 export interface ParsedDevice {
   fingerprint: string;
@@ -12,12 +16,12 @@ export interface ParsedDevice {
   derivationPath: string;
 }
 
-export type ScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+export type ScriptType = WalletScriptType;
 export type Network = NetworkType;
 export type DetectedNetwork = Network | 'testnet';
 
 export interface ParsedDescriptor {
-  type: 'single_sig' | 'multi_sig';
+  type: WalletType;
   scriptType: ScriptType;
   devices: ParsedDevice[];
   quorum?: number;
@@ -43,7 +47,7 @@ export interface JsonImportDevice {
 }
 
 export interface JsonImportConfig {
-  type: 'single_sig' | 'multi_sig';
+  type: WalletType;
   scriptType: ScriptType;
   quorum?: number;
   network?: DetectedNetwork;

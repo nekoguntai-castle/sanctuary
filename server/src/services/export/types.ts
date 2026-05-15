@@ -6,6 +6,7 @@
  */
 
 import type { ScriptType, Network } from '../bitcoin/descriptorParser';
+import type { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 
 export const WALLET_EXPORT_FORMAT_VALUES = ['sparrow', 'descriptor', 'bluewallet', 'coldcard'] as const;
 
@@ -15,7 +16,7 @@ export const WALLET_EXPORT_FORMAT_VALUES = ['sparrow', 'descriptor', 'bluewallet
 export interface WalletExportData {
   id: string;
   name: string;
-  type: 'single_sig' | 'multi_sig';
+  type: WalletType;
   scriptType: ScriptType;
   network: Network;
   descriptor: string;

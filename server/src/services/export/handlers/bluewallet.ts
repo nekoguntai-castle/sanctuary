@@ -5,6 +5,10 @@
  * Compatible with Coldcard and BlueWallet multisig wallets.
  */
 
+import {
+  WalletScriptType,
+  WalletType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import type {
   ExportFormatHandler,
   WalletExportData,
@@ -18,17 +22,17 @@ import type {
 function mapScriptTypeToFormat(scriptType: string, isMultisig: boolean): string {
   if (isMultisig) {
     const formatMap: Record<string, string> = {
-      native_segwit: 'P2WSH',
-      nested_segwit: 'P2SH-P2WSH',
-      legacy: 'P2SH',
+      [WalletScriptType.NATIVE_SEGWIT]: 'P2WSH',
+      [WalletScriptType.NESTED_SEGWIT]: 'P2SH-P2WSH',
+      [WalletScriptType.LEGACY]: 'P2SH',
     };
     return formatMap[scriptType] || 'P2WSH';
   }
   const formatMap: Record<string, string> = {
-    native_segwit: 'P2WPKH',
-    nested_segwit: 'P2SH-P2WPKH',
-    taproot: 'P2TR',
-    legacy: 'P2PKH',
+    [WalletScriptType.NATIVE_SEGWIT]: 'P2WPKH',
+    [WalletScriptType.NESTED_SEGWIT]: 'P2SH-P2WPKH',
+    [WalletScriptType.TAPROOT]: 'P2TR',
+    [WalletScriptType.LEGACY]: 'P2PKH',
   };
   return formatMap[scriptType] || 'P2WPKH';
 }
@@ -52,13 +56,13 @@ export const bluewalletHandler: ExportFormatHandler = {
     // Header
     lines.push(`Name: ${wallet.name}`);
 
-    if (wallet.type === 'multi_sig') {
+    if (wallet.type === WalletType.MULTI_SIG) {
       lines.push(`Policy: ${wallet.quorum} of ${wallet.totalSigners}`);
     } else {
       lines.push('Policy: 1 of 1');
     }
 
-    lines.push(`Format: ${mapScriptTypeToFormat(wallet.scriptType, wallet.type === 'multi_sig')}`);
+    lines.push(`Format: ${mapScriptTypeToFormat(wallet.scriptType, wallet.type === WalletType.MULTI_SIG)}`);
     lines.push('');
 
     // Device/Key information

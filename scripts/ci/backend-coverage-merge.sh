@@ -12,6 +12,14 @@ fail() {
   exit 1
 }
 
+MERGE_REPORTS_DIR=''
+
+cleanup_merge_reports_dir() {
+  if [ -n "$MERGE_REPORTS_DIR" ]; then
+    rm -rf "$MERGE_REPORTS_DIR"
+  fi
+}
+
 main() {
   if [ "$#" -gt 1 ]; then
     fail 'expected zero or one blob report directory argument'
@@ -48,8 +56,17 @@ main() {
     fail "Vitest binary not found in ./node_modules/.bin or ../node_modules/.bin; run npm ci first"
   fi
 
+  MERGE_REPORTS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/backend-coverage-reports.XXXXXX")"
+  trap cleanup_merge_reports_dir EXIT
+
+  for blob in "$reports_dir"/blob-*.json; do
+    if [ -f "$blob" ]; then
+      cp "$blob" "$MERGE_REPORTS_DIR/"
+    fi
+  done
+
   rm -rf coverage
-  "$vitest_bin" run --coverage --mergeReports "$reports_dir"
+  "$vitest_bin" run --coverage --mergeReports "$MERGE_REPORTS_DIR"
 
   if [ ! -f coverage/coverage-summary.json ]; then
     fail 'expected merged backend coverage summary at coverage/coverage-summary.json'

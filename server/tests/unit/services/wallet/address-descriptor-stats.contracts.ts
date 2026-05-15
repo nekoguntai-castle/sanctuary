@@ -106,6 +106,24 @@ export function registerWalletAddressDescriptorStatsTests(): void {
       await expect(repairWalletDescriptor('wallet-missing', 'owner-1')).rejects.toThrow('Wallet not found');
     });
 
+    it('returns validation failure when wallet identity values are unsupported', async () => {
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-1',
+        type: 'unsupported_wallet_type',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        quorum: null,
+        totalSigners: null,
+        descriptor: null,
+        devices: [{ device: { fingerprint: 'a', xpub: 'xpub-a', derivationPath: "m/84'/0'/0'" } }],
+      });
+
+      await expect(repairWalletDescriptor('wallet-1', 'owner-1')).resolves.toEqual({
+        success: false,
+        message: 'Wallet type or script type is unsupported',
+      });
+    });
+
     it('returns validation failure for single-sig wallets with invalid device count', async () => {
       mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
         id: 'wallet-1',

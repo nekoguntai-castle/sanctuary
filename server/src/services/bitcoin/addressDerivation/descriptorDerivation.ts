@@ -7,6 +7,10 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
+import {
+  WalletScriptType,
+  type WalletScriptType as WalletScriptTypeValue,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { parseDescriptor } from './descriptorParser';
 import { deriveAddress } from './singleSigDerivation';
 import { deriveMultisigAddress } from './multisigDerivation';
@@ -56,11 +60,11 @@ export function deriveAddressFromParsedDescriptor(
   }
 
   // Map descriptor type to script type for single-sig
-  const scriptTypeMap: Record<'wpkh' | 'sh-wpkh' | 'tr' | 'pkh', 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy'> = {
-    wpkh: 'native_segwit',
-    'sh-wpkh': 'nested_segwit',
-    tr: 'taproot',
-    pkh: 'legacy',
+  const scriptTypeMap: Record<'wpkh' | 'sh-wpkh' | 'tr' | 'pkh', WalletScriptTypeValue> = {
+    wpkh: WalletScriptType.NATIVE_SEGWIT,
+    'sh-wpkh': WalletScriptType.NESTED_SEGWIT,
+    tr: WalletScriptType.TAPROOT,
+    pkh: WalletScriptType.LEGACY,
   };
 
   const scriptType = scriptTypeMap[parsed.type as 'wpkh' | 'sh-wpkh' | 'tr' | 'pkh'];

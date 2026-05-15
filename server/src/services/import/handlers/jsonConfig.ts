@@ -5,6 +5,7 @@
  * Format: { type, scriptType, network, quorum?, devices: [...] }
  */
 
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import type { ImportFormatHandler, FormatDetectionResult, ImportParseResult } from '../types';
 import { parseJsonImport, type JsonImportConfig } from '../../bitcoin/descriptorParser';
 import { JsonImportConfigSchema, JsonConfigDetectionSchema } from '../schemas';
@@ -74,7 +75,7 @@ export const jsonConfigHandler: ImportFormatHandler = {
       return { valid: false, errors: ['No devices found in configuration'] };
     }
 
-    if (parsed.type === 'multi_sig' && (!parsed.quorum || !parsed.totalSigners)) {
+    if (parsed.type === WalletType.MULTI_SIG && (!parsed.quorum || !parsed.totalSigners)) {
       return { valid: false, errors: ['Multi-sig wallet requires quorum and totalSigners'] };
     }
 

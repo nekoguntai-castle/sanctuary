@@ -2,6 +2,10 @@ import { ImportValidationResult } from '../../src/api/wallets';
 import * as walletsApi from '../../src/api/wallets';
 import { ApiError } from '../../src/api/client';
 import {
+  WalletScriptType,
+  type WalletScriptType as WalletScriptTypeValue,
+} from '@sanctuary/shared/constants/walletIdentity';
+import {
   formatNetworkTitle,
   networksShareCoinType,
   type TabNetwork,
@@ -12,7 +16,7 @@ export const MAX_INPUT_SIZE = 100 * 1024; // 100KB max input size
 export const MAX_FILE_SIZE = 1024 * 1024; // 1MB max file size
 
 export type ImportFormat = 'descriptor' | 'json' | 'hardware' | 'qr_code';
-export type ScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+export type ScriptType = WalletScriptTypeValue;
 export type HardwareDeviceType = 'ledger' | 'trezor';
 
 // Helper: Compute the BIP-44/49/84/86 account path; signet shares testnet coin type 1.
@@ -22,10 +26,10 @@ export const getDerivationPath = (
   network: TabNetwork = 'mainnet',
 ): string => {
   const purpose: Record<ScriptType, number> = {
-    native_segwit: 84,
-    nested_segwit: 49,
-    taproot: 86,
-    legacy: 44,
+    [WalletScriptType.NATIVE_SEGWIT]: 84,
+    [WalletScriptType.NESTED_SEGWIT]: 49,
+    [WalletScriptType.TAPROOT]: 86,
+    [WalletScriptType.LEGACY]: 44,
   };
   const coinType = network === 'mainnet' ? 0 : 1;
   return `m/${purpose[scriptType]}'/${coinType}'/${account}'`;
@@ -40,13 +44,13 @@ export const buildDescriptorFromXpub = (
 ): string => {
   const pathParts = path.replace("m/", "").replace(/'/g, "h");
   switch (scriptType) {
-    case 'native_segwit':
+    case WalletScriptType.NATIVE_SEGWIT:
       return `wpkh([${fingerprint}/${pathParts}]${xpub}/0/*)`;
-    case 'nested_segwit':
+    case WalletScriptType.NESTED_SEGWIT:
       return `sh(wpkh([${fingerprint}/${pathParts}]${xpub}/0/*))`;
-    case 'taproot':
+    case WalletScriptType.TAPROOT:
       return `tr([${fingerprint}/${pathParts}]${xpub}/0/*)`;
-    case 'legacy':
+    case WalletScriptType.LEGACY:
       return `pkh([${fingerprint}/${pathParts}]${xpub}/0/*)`;
     default:
       return `wpkh([${fingerprint}/${pathParts}]${xpub}/0/*)`;
@@ -55,10 +59,10 @@ export const buildDescriptorFromXpub = (
 
 // Script type options
 export const scriptTypeOptions: { value: ScriptType; label: string; description: string }[] = [
-  { value: 'native_segwit', label: 'Native SegWit', description: 'bc1q... addresses (Recommended)' },
-  { value: 'nested_segwit', label: 'Nested SegWit', description: '3... addresses' },
-  { value: 'taproot', label: 'Taproot', description: 'bc1p... addresses' },
-  { value: 'legacy', label: 'Legacy', description: '1... addresses' },
+  { value: WalletScriptType.NATIVE_SEGWIT, label: 'Native SegWit', description: 'bc1q... addresses (Recommended)' },
+  { value: WalletScriptType.NESTED_SEGWIT, label: 'Nested SegWit', description: '3... addresses' },
+  { value: WalletScriptType.TAPROOT, label: 'Taproot', description: 'bc1p... addresses' },
+  { value: WalletScriptType.LEGACY, label: 'Legacy', description: '1... addresses' },
 ];
 
 // Validate input data size and basic format

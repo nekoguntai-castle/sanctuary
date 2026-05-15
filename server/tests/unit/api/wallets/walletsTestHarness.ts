@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import express from 'express';
+import { WALLET_SCRIPT_TYPE_VALUES } from '@sanctuary/shared/constants/walletIdentity';
 import { resetPrismaMocks } from '../../../mocks/prisma';
 
 const walletsApiMocks = vi.hoisted(() => ({
@@ -294,7 +295,7 @@ export const setupWalletsApiMocks = () => {
   mockAddressDerivation.validateXpub.mockReturnValue({ valid: true, scriptType: 'native_segwit' });
   mockAddressDerivation.deriveAddress.mockReturnValue({ address: 'bc1qtest123' });
   mockScriptTypes.isValidScriptType.mockReturnValue(true);
-  mockScriptTypes.scriptTypeRegistry.getIds.mockReturnValue(['native_segwit', 'nested_segwit', 'taproot', 'legacy']);
+  mockScriptTypes.scriptTypeRegistry.getIds.mockReturnValue([...WALLET_SCRIPT_TYPE_VALUES]);
   mockGetDevicesToShareForWallet.mockResolvedValue([]);
 };
 

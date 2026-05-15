@@ -1,15 +1,20 @@
 import { parseDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import {
+  DeviceAccountPurpose,
+  type DeviceAccountPurpose as DeviceAccountPurposeValue,
+} from "@sanctuary/shared/constants/walletIdentity";
+import {
   coinTypeForNetwork,
   networksShareCoinType,
   type TabNetwork,
 } from "../src/app/networks";
 
+export type { DeviceAccountPurposeValue as DeviceAccountPurpose };
+
 type DerivationPathAccount = {
   derivationPath: string;
 };
 
-export type DeviceAccountPurpose = "single_sig" | "multisig";
 export type DerivationNetworkGroup = "mainnet" | "testnet-signet";
 
 export type SplitTestnetSignetAccounts<T extends DerivationPathAccount> = {
@@ -22,8 +27,8 @@ export type NetworkGroupedAccounts<T extends DerivationPathAccount> = Record<
   T[]
 >;
 
-export type PurposeGroupedAccounts<T extends { purpose: DeviceAccountPurpose }> = Record<
-  DeviceAccountPurpose,
+export type PurposeGroupedAccounts<T extends { purpose: DeviceAccountPurposeValue }> = Record<
+  DeviceAccountPurposeValue,
   T[]
 >;
 
@@ -83,7 +88,7 @@ export function groupAccountsByNetwork<T extends DerivationPathAccount>(
   );
 }
 
-export function groupAccountsByPurpose<T extends { purpose: DeviceAccountPurpose }>(
+export function groupAccountsByPurpose<T extends { purpose: DeviceAccountPurposeValue }>(
   accounts: T[],
 ): PurposeGroupedAccounts<T> {
   return accounts.reduce<PurposeGroupedAccounts<T>>(
@@ -91,6 +96,9 @@ export function groupAccountsByPurpose<T extends { purpose: DeviceAccountPurpose
       groups[account.purpose].push(account);
       return groups;
     },
-    { single_sig: [], multisig: [] },
+    {
+      [DeviceAccountPurpose.SINGLE_SIG]: [],
+      [DeviceAccountPurpose.MULTISIG]: [],
+    },
   );
 }

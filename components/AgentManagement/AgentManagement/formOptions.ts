@@ -4,6 +4,7 @@ import type {
   AgentOptionUser,
   AgentOptionWallet,
 } from '../../../src/api/admin';
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import type { AgentFormState } from './formState';
 
 export type SelectOption = {
@@ -20,7 +21,10 @@ function walletMatchesUser(wallet: AgentOptionWallet, userId: string): boolean {
 }
 
 function isFundingWallet(wallet: AgentOptionWallet, userId: string): boolean {
-  return (wallet.type === 'multi_sig' || wallet.type === 'single_sig') && walletMatchesUser(wallet, userId);
+  return (
+    (wallet.type === WalletType.MULTI_SIG || wallet.type === WalletType.SINGLE_SIG) &&
+    walletMatchesUser(wallet, userId)
+  );
 }
 
 function isOperationalWallet(
@@ -29,7 +33,7 @@ function isOperationalWallet(
   selectedFundingWallet?: AgentOptionWallet
 ): boolean {
   return (
-    wallet.type === 'single_sig' &&
+    wallet.type === WalletType.SINGLE_SIG &&
     wallet.id !== form.fundingWalletId &&
     walletMatchesUser(wallet, form.userId) &&
     walletsShareNetwork(wallet, selectedFundingWallet)

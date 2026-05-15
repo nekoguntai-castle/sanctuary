@@ -7,6 +7,7 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import type { Prisma } from '../generated/prisma/client';
 import {
   addressRepository,
@@ -141,7 +142,7 @@ export async function validateAgentFundingDraftSubmission(
   if (!signerDevice) {
     throw new NotFoundError('Signer device not found');
   }
-  if (fundingWallet.type !== 'multi_sig') {
+  if (fundingWallet.type !== WalletType.MULTI_SIG) {
     throw new InvalidInputError('Funding wallet must be a multisig wallet');
   }
   if (fundingWallet.network !== operationalWallet.network) {

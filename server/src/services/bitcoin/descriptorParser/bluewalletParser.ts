@@ -5,6 +5,7 @@
  */
 
 import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import { WalletScriptType, WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { validateParsedDescriptorDomain } from './domainValidation';
 import { detectNetwork } from './descriptorUtils';
 import type { ParsedDevice, ParsedDescriptor, ScriptType, BlueWalletTextFormat } from './types';
@@ -109,31 +110,31 @@ export function parseBlueWalletText(input: string): BlueWalletTextFormat {
  * Convert BlueWallet format string to script type
  */
 function blueWalletFormatToScriptType(format: string | undefined): ScriptType {
-  if (!format) return 'native_segwit';
+  if (!format) return WalletScriptType.NATIVE_SEGWIT;
 
   const upper = format.toUpperCase();
   switch (upper) {
     case 'P2WSH':
-      return 'native_segwit';
+      return WalletScriptType.NATIVE_SEGWIT;
     case 'P2SH-P2WSH':
     case 'P2WSH-P2SH': // Coldcard uses inner-outer notation (P2WSH wrapped in P2SH)
-      return 'nested_segwit';
+      return WalletScriptType.NESTED_SEGWIT;
     case 'P2SH':
-      return 'legacy';
+      return WalletScriptType.LEGACY;
     case 'P2TR':
-      return 'taproot';
+      return WalletScriptType.TAPROOT;
     case 'P2SH-P2TR':
     case 'P2TR-P2SH': // Nested taproot (rare but possible)
-      return 'taproot'; // Note: Actually nested, but we map to taproot as closest match
+      return WalletScriptType.TAPROOT; // Note: Actually nested, but we map to taproot as closest match
     case 'P2WPKH':
-      return 'native_segwit';
+      return WalletScriptType.NATIVE_SEGWIT;
     case 'P2SH-P2WPKH':
     case 'P2WPKH-P2SH': // Coldcard uses inner-outer notation
-      return 'nested_segwit';
+      return WalletScriptType.NESTED_SEGWIT;
     case 'P2PKH':
-      return 'legacy';
+      return WalletScriptType.LEGACY;
     default:
-      return 'native_segwit';
+      return WalletScriptType.NATIVE_SEGWIT;
   }
 }
 
@@ -161,7 +162,7 @@ export function parseBlueWalletTextImport(input: string): ParsedDescriptor {
   const isMultisig = parsed.policy && parsed.policy.total > 1;
 
   const result: ParsedDescriptor = {
-    type: isMultisig ? 'multi_sig' : 'single_sig',
+    type: isMultisig ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG,
     scriptType: blueWalletFormatToScriptType(parsed.format),
     devices,
     network,

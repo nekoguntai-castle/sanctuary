@@ -5,6 +5,8 @@ import { vi } from 'vitest';
  * Tests for the pluggable script type handler system.
  */
 
+import { WALLET_SCRIPT_TYPE_VALUES } from '@sanctuary/shared/constants/walletIdentity';
+import { isValidScriptType, scriptTypeRegistry } from '../../../../src/services/scriptTypes';
 import { ScriptTypeRegistry } from '../../../../src/services/scriptTypes/registry';
 import type { ScriptTypeHandler, DeviceKeyInfo, DescriptorBuildOptions } from '../../../../src/services/scriptTypes/types';
 
@@ -19,9 +21,11 @@ vi.mock('../../../../src/utils/logger', () => ({
 }));
 
 // Create mock handler for testing
-function createMockHandler(overrides: Partial<ScriptTypeHandler> = {}): ScriptTypeHandler {
+function createMockHandler(
+  overrides: Partial<Omit<ScriptTypeHandler, 'id'>> & { id?: string } = {},
+): ScriptTypeHandler {
   return {
-    id: 'mock_segwit',
+    id: 'native_segwit',
     name: 'Mock SegWit',
     description: 'A mock script type for testing',
     bip: 84,
@@ -32,8 +36,23 @@ function createMockHandler(overrides: Partial<ScriptTypeHandler> = {}): ScriptTy
     buildSingleSigDescriptor: vi.fn().mockReturnValue('wpkh([abcd1234/84h/0h/0h]xpub.../0/*)'),
     buildMultiSigDescriptor: vi.fn().mockReturnValue('wsh(sortedmulti(2,[abcd1234]xpub...,[efgh5678]xpub.../0/*))'),
     ...overrides,
-  };
+  } as ScriptTypeHandler;
 }
+
+describe('registered script type identity', () => {
+  it('keeps registry IDs aligned with canonical wallet script type values', () => {
+    expect([...scriptTypeRegistry.getIds()].sort()).toEqual([...WALLET_SCRIPT_TYPE_VALUES].sort());
+    for (const scriptType of WALLET_SCRIPT_TYPE_VALUES) {
+      expect(isValidScriptType(scriptType)).toBe(true);
+    }
+  });
+
+  it('does not treat behavior aliases as canonical script type IDs', () => {
+    expect(isValidScriptType('p2wpkh')).toBe(false);
+    expect(isValidScriptType('')).toBe(false);
+    expect(isValidScriptType('segwit')).toBe(false);
+  });
+});
 
 describe('ScriptTypeRegistry', () => {
   describe('register', () => {

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { WalletType, HardwareDeviceModel, Device, DeviceShareInfo } from '../../../types';
+import { parseWalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { getDevice, updateDevice, getDeviceModels, getDeviceShareInfo, shareDeviceWithUser, removeUserFromDevice, shareDeviceWithGroup } from '../../../src/api/devices';
 import * as authApi from '../../../src/api/auth';
 import * as adminApi from '../../../src/api/admin';
@@ -76,7 +77,7 @@ export function useDeviceData(id: string | undefined) {
           .map(w => ({
             id: w.wallet.id,
             name: w.wallet.name,
-            type: w.wallet.type === 'multi_sig' ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG,
+            type: parseWalletType(w.wallet.type) ?? WalletType.SINGLE_SIG,
             network: w.wallet.network,
           })) || [];
         setWallets(walletList);

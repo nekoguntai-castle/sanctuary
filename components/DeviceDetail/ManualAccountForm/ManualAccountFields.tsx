@@ -1,4 +1,8 @@
 import React from 'react';
+import {
+  DeviceAccountPurpose,
+  WalletScriptType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { Input } from '../../ui/Input';
 import type { AccountPurpose, AccountScriptType, ManualAccountData } from './types';
 
@@ -11,10 +15,10 @@ interface ManualAccountFieldsProps {
 }
 
 const SCRIPT_TYPE_OPTIONS: Array<{ value: AccountScriptType; label: string }> = [
-  { value: 'native_segwit', label: 'Native SegWit (bc1q...)' },
-  { value: 'taproot', label: 'Taproot (bc1p...)' },
-  { value: 'nested_segwit', label: 'Nested SegWit (3...)' },
-  { value: 'legacy', label: 'Legacy (1...)' },
+  { value: WalletScriptType.NATIVE_SEGWIT, label: 'Native SegWit (bc1q...)' },
+  { value: WalletScriptType.TAPROOT, label: 'Taproot (bc1p...)' },
+  { value: WalletScriptType.NESTED_SEGWIT, label: 'Nested SegWit (3...)' },
+  { value: WalletScriptType.LEGACY, label: 'Legacy (1...)' },
 ];
 
 export const ManualAccountFields: React.FC<ManualAccountFieldsProps> = ({
@@ -34,8 +38,8 @@ export const ManualAccountFields: React.FC<ManualAccountFieldsProps> = ({
         onChange={(event) => onPurposeChange(event.target.value as AccountPurpose)}
         className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-sanctuary-500"
       >
-        <option value="multisig">Multisig (BIP-48)</option>
-        <option value="single_sig">Single Signature</option>
+        <option value={DeviceAccountPurpose.MULTISIG}>Multisig (BIP-48)</option>
+        <option value={DeviceAccountPurpose.SINGLE_SIG}>Single Signature</option>
       </select>
     </div>
 

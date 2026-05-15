@@ -9,6 +9,11 @@
  */
 
 import type { NetworkType } from '../constants/bitcoin';
+import {
+  WalletType as CanonicalWalletType,
+  type WalletScriptType as CanonicalWalletScriptType,
+  type WalletTypeValue,
+} from '../constants/walletIdentity';
 
 /**
  * User's role on a wallet. Re-exported from ../constants/walletRoles so values,
@@ -25,17 +30,17 @@ export type {
 // =============================================================================
 
 /**
- * Wallet type - single signature or multisig
+ * Wallet type - single signature or multisig. Re-exported from shared
+ * constants as a runtime object so existing `WalletType.SINGLE_SIG` imports
+ * keep working without a separate enum source of truth.
  */
-export enum WalletType {
-  SINGLE_SIG = 'single_sig',
-  MULTI_SIG = 'multi_sig',
-}
+export const WalletType = CanonicalWalletType;
+export type WalletType = WalletTypeValue;
 
 /**
  * Script type for wallet address derivation
  */
-export type WalletScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+export type WalletScriptType = CanonicalWalletScriptType;
 
 /**
  * Bitcoin network

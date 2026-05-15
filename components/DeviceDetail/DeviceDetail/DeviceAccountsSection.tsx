@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
+import { DeviceAccountPurpose as DeviceAccountPurposeValue } from '@sanctuary/shared/constants/walletIdentity';
 import type { Device, DeviceAccount } from '../../../types';
 import { useActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 import { AddAccountFlow } from '../accounts/AddAccountFlow';
@@ -90,7 +91,9 @@ function DeviceAccountTabs({
   initialNetworkTab: DerivationNetworkGroup;
 }) {
   const [networkTab, setNetworkTab] = useState<DerivationNetworkGroup>(initialNetworkTab);
-  const [purposeTab, setPurposeTab] = useState<DeviceAccountPurpose>('single_sig');
+  const [purposeTab, setPurposeTab] = useState<DeviceAccountPurpose>(
+    DeviceAccountPurposeValue.SINGLE_SIG,
+  );
   const availableNetworkTabs = (['mainnet', 'testnet-signet'] as const).filter(
     tab => accountsByNetwork[tab].length > 0
   );
@@ -103,9 +106,9 @@ function DeviceAccountTabs({
   const accountsByPurpose = groupAccountsByPurpose(accountsByNetwork[activeNetworkTab]);
   const activePurposeTab: DeviceAccountPurpose = accountsByPurpose[purposeTab].length > 0
     ? purposeTab
-    : accountsByPurpose.multisig.length > 0
-    ? 'multisig'
-    : 'single_sig';
+    : accountsByPurpose[DeviceAccountPurposeValue.MULTISIG].length > 0
+    ? DeviceAccountPurposeValue.MULTISIG
+    : DeviceAccountPurposeValue.SINGLE_SIG;
   const activeAccounts = accountsByPurpose[activePurposeTab];
 
   useEffect(() => {
@@ -127,16 +130,16 @@ function DeviceAccountTabs({
       </div>
       <div className="flex items-center gap-2">
         <PurposeAccountTabButton
-          purpose="single_sig"
-          active={activePurposeTab === 'single_sig'}
-          count={accountsByPurpose.single_sig.length}
-          onClick={() => setPurposeTab('single_sig')}
+          purpose={DeviceAccountPurposeValue.SINGLE_SIG}
+          active={activePurposeTab === DeviceAccountPurposeValue.SINGLE_SIG}
+          count={accountsByPurpose[DeviceAccountPurposeValue.SINGLE_SIG].length}
+          onClick={() => setPurposeTab(DeviceAccountPurposeValue.SINGLE_SIG)}
         />
         <PurposeAccountTabButton
-          purpose="multisig"
-          active={activePurposeTab === 'multisig'}
-          count={accountsByPurpose.multisig.length}
-          onClick={() => setPurposeTab('multisig')}
+          purpose={DeviceAccountPurposeValue.MULTISIG}
+          active={activePurposeTab === DeviceAccountPurposeValue.MULTISIG}
+          count={accountsByPurpose[DeviceAccountPurposeValue.MULTISIG].length}
+          onClick={() => setPurposeTab(DeviceAccountPurposeValue.MULTISIG)}
         />
       </div>
       <div className="space-y-3">
@@ -201,7 +204,7 @@ function PurposeAccountTabButton({
       }`}
       onClick={onClick}
     >
-      {purpose === 'multisig' ? 'Multisig' : 'Single-sig'} <span className="text-[10px] opacity-70">({count})</span>
+      {purpose === DeviceAccountPurposeValue.MULTISIG ? 'Multisig' : 'Single-sig'} <span className="text-[10px] opacity-70">({count})</span>
     </button>
   );
 }
@@ -237,7 +240,7 @@ function RecommendedBadge() {
 }
 
 function AccountKindBadge({ purpose }: { purpose: DeviceAccount['purpose'] }) {
-  const isMultisig = purpose === 'multisig';
+  const isMultisig = purpose === DeviceAccountPurposeValue.MULTISIG;
   const className = isMultisig
     ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
     : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';

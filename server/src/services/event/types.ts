@@ -4,6 +4,8 @@
  * Shared interfaces used across event service submodules.
  */
 
+import type { WalletType } from '@sanctuary/shared/constants/walletIdentity';
+
 /**
  * Wallet sync result for emission
  */
@@ -67,7 +69,7 @@ export interface WalletCreatedData {
   walletId: string;
   userId: string;
   name: string;
-  type: 'single' | 'multisig';
+  type: WalletType;
   network: string;
 }
 

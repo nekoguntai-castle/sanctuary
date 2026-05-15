@@ -52,6 +52,23 @@ describe('walletDataFormatters', () => {
     expect(formatted.fingerprint).toBe('');
   });
 
+  it('falls back unsupported API wallet types to single-sig', () => {
+    const formatted = formatWalletFromApi(
+      {
+        id: 'wallet-unsupported',
+        name: 'Unsupported',
+        type: 'multisig',
+        network: 'mainnet',
+        balance: 0,
+        scriptType: 'native_segwit',
+      } as any,
+      'user-fallback'
+    );
+
+    expect(formatted.type).toBe(WalletType.SINGLE_SIG);
+    expect(formatted.quorum).toEqual({ m: 1, n: 1 });
+  });
+
   it('formats wallet devices using exact account matches and account-missing fallbacks', () => {
     const apiWallet = {
       id: 'wallet-1',
@@ -159,6 +176,52 @@ describe('walletDataFormatters', () => {
       xpub: 'xpub-multisig-match',
       accountMissing: false,
       userId: 'user-99',
+    });
+  });
+
+  it('uses the single-sig account purpose when a device wallet has an unsupported type', () => {
+    const apiWallet = {
+      id: 'wallet-unsupported',
+      type: 'multisig',
+      scriptType: 'native_segwit',
+    } as any;
+
+    const formatted = formatDevicesForWallet(
+      [
+        {
+          id: 'device-fallback',
+          type: 'ledger',
+          label: 'Fallback Device',
+          fingerprint: 'eeee5555',
+          accounts: [
+            {
+              purpose: 'single_sig',
+              scriptType: 'native_segwit',
+              derivationPath: "m/84'/0'/2'",
+              xpub: 'xpub-single-sig-match',
+            },
+            {
+              purpose: 'multisig',
+              scriptType: 'native_segwit',
+              derivationPath: "m/48'/0'/2'/2'",
+              xpub: 'xpub-wrong-purpose',
+            },
+          ],
+          wallets: [{ wallet: { id: 'wallet-unsupported' } }],
+        },
+      ] as any,
+      apiWallet,
+      'wallet-unsupported',
+      'user-fallback'
+    );
+
+    expect(formatted).toHaveLength(1);
+    expect(formatted[0]).toMatchObject({
+      id: 'device-fallback',
+      derivationPath: "m/84'/0'/2'",
+      xpub: 'xpub-single-sig-match',
+      accountMissing: false,
+      userId: 'user-fallback',
     });
   });
 });

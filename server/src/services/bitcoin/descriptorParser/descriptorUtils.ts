@@ -6,6 +6,7 @@
  */
 
 import { normalizeDerivationPath, parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { PUBLIC_EXTENDED_KEY_PATTERN } from './domainValidation';
 import type { ParsedDevice, ScriptType, DetectedNetwork } from './types';
 
@@ -85,25 +86,25 @@ export function detectScriptType(descriptor: string): ScriptType {
   const trimmed = descriptor.trim().toLowerCase();
 
   if (trimmed.startsWith('sh(wsh(sortedmulti')) {
-    return 'nested_segwit'; // P2SH-P2WSH multisig
+    return WalletScriptType.NESTED_SEGWIT; // P2SH-P2WSH multisig
   }
   if (trimmed.startsWith('wsh(sortedmulti') || trimmed.startsWith('wsh(multi')) {
-    return 'native_segwit'; // P2WSH multisig
+    return WalletScriptType.NATIVE_SEGWIT; // P2WSH multisig
   }
   if (trimmed.startsWith('sh(sortedmulti') || trimmed.startsWith('sh(multi')) {
-    return 'legacy'; // P2SH multisig
+    return WalletScriptType.LEGACY; // P2SH multisig
   }
   if (trimmed.startsWith('sh(wpkh(')) {
-    return 'nested_segwit'; // P2SH-P2WPKH
+    return WalletScriptType.NESTED_SEGWIT; // P2SH-P2WPKH
   }
   if (trimmed.startsWith('wpkh(')) {
-    return 'native_segwit'; // P2WPKH
+    return WalletScriptType.NATIVE_SEGWIT; // P2WPKH
   }
   if (trimmed.startsWith('tr(')) {
-    return 'taproot'; // P2TR
+    return WalletScriptType.TAPROOT; // P2TR
   }
   if (trimmed.startsWith('pkh(')) {
-    return 'legacy'; // P2PKH
+    return WalletScriptType.LEGACY; // P2PKH
   }
 
   throw new Error('Unable to detect script type from descriptor');

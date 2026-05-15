@@ -7,6 +7,10 @@
  * Returns ALL available accounts (single-sig and multisig) for multi-account import.
  */
 
+import {
+  DeviceAccountPurpose,
+  WalletScriptType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import type { DeviceParser, DeviceParseResult, DeviceAccount, FormatDetectionResult } from '../types';
 
 type SingleSigSection = { xpub?: string; _pub?: string; deriv?: string };
@@ -50,7 +54,7 @@ const createSingleSigAccount = (
   return {
     xpub,
     derivationPath: section?.deriv || fallbackPath,
-    purpose: 'single_sig',
+    purpose: DeviceAccountPurpose.SINGLE_SIG,
     scriptType,
   };
 };
@@ -66,23 +70,27 @@ const createMultisigAccount = (
   return {
     xpub,
     derivationPath: section?.deriv || fallbackPath,
-    purpose: 'multisig',
+    purpose: DeviceAccountPurpose.MULTISIG,
     scriptType,
   };
 };
 
 const getColdcardAccounts = (cc: ColdcardNestedFormat): DeviceAccount[] => [
-  createSingleSigAccount(cc.bip84, "m/84'/0'/0'", 'native_segwit'),
-  createSingleSigAccount(cc.bip86, "m/86'/0'/0'", 'taproot'),
-  createSingleSigAccount(cc.bip49, "m/49'/0'/0'", 'nested_segwit'),
-  createSingleSigAccount(cc.bip44, "m/44'/0'/0'", 'legacy'),
-  createMultisigAccount(cc.bip48_2, "m/48'/0'/0'/2'", 'native_segwit'),
-  createMultisigAccount(cc.bip48_1, "m/48'/0'/0'/1'", 'nested_segwit'),
+  createSingleSigAccount(cc.bip84, "m/84'/0'/0'", WalletScriptType.NATIVE_SEGWIT),
+  createSingleSigAccount(cc.bip86, "m/86'/0'/0'", WalletScriptType.TAPROOT),
+  createSingleSigAccount(cc.bip49, "m/49'/0'/0'", WalletScriptType.NESTED_SEGWIT),
+  createSingleSigAccount(cc.bip44, "m/44'/0'/0'", WalletScriptType.LEGACY),
+  createMultisigAccount(cc.bip48_2, "m/48'/0'/0'/2'", WalletScriptType.NATIVE_SEGWIT),
+  createMultisigAccount(cc.bip48_1, "m/48'/0'/0'/1'", WalletScriptType.NESTED_SEGWIT),
 ].filter(isDefined);
 
 const getPrimaryAccount = (accounts: DeviceAccount[]): DeviceAccount | undefined =>
-  accounts.find((account) => account.purpose === 'single_sig' && account.scriptType === 'native_segwit')
-  || accounts.find((account) => account.purpose === 'single_sig')
+  accounts.find(
+    (account) =>
+      account.purpose === DeviceAccountPurpose.SINGLE_SIG &&
+      account.scriptType === WalletScriptType.NATIVE_SEGWIT,
+  )
+  || accounts.find((account) => account.purpose === DeviceAccountPurpose.SINGLE_SIG)
   || accounts[0];
 
 export const coldcardNestedParser: DeviceParser = {

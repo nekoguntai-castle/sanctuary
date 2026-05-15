@@ -1,10 +1,11 @@
-export type AccountPurpose = 'single_sig' | 'multisig';
+import type {
+  DeviceAccountPurpose,
+  WalletScriptType,
+} from '@sanctuary/shared/constants/walletIdentity';
 
-export type AccountScriptType =
-  | 'native_segwit'
-  | 'nested_segwit'
-  | 'taproot'
-  | 'legacy';
+export type AccountPurpose = DeviceAccountPurpose;
+
+export type AccountScriptType = WalletScriptType;
 
 export interface ManualAccountData {
   purpose: AccountPurpose;

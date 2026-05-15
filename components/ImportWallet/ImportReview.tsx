@@ -1,4 +1,5 @@
 import React from 'react';
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { ImportValidationResult } from '../../src/api/wallets';
 import type { TabNetwork } from '../../src/app/networks';
 import {
@@ -48,7 +49,7 @@ export const ImportReview: React.FC<ImportReviewProps> = ({
           <div className="px-6 py-4 grid grid-cols-2 gap-4">
             <dt className="text-sm text-sanctuary-500">Type</dt>
             <dd className="text-sm font-medium capitalize">
-              {validationResult.walletType === 'multi_sig'
+              {validationResult.walletType === WalletType.MULTI_SIG
                 ? `${validationResult.quorum}-of-${validationResult.totalSigners} Multisig`
                 : 'Single Signature'}
             </dd>

@@ -461,6 +461,9 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   'scripts/ci/time-command.sh "backend unit coverage shard ${{ matrix.shard }}"' \
   'scripts/ci/backend-coverage-shard.sh ${{ matrix.shard }} 2' \
   "Upload backend coverage shard blob" \
+  'path: server/.vitest-reports/blob-${{ matrix.shard }}-2.json' \
+  'if-no-files-found: error' \
+  'include-hidden-files: true' \
   "Write backend unit coverage shard failure breadcrumb" \
   'scripts/ci/write-empty-diagnostic-breadcrumb.sh' \
   '"backend-unit-coverage-shard-${{ matrix.shard }}-failure.log"' \

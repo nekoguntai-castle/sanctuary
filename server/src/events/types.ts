@@ -4,6 +4,8 @@
  * All event interfaces and type unions for the typed event bus.
  */
 
+import type { WalletType } from '@sanctuary/shared/constants/walletIdentity';
+
 /**
  * Wallet-related events
  */
@@ -12,7 +14,7 @@ export interface WalletEvents {
     walletId: string;
     userId: string;
     name: string;
-    type: 'single' | 'multisig';
+    type: WalletType;
     network: string;
   };
   'wallet:deleted': {

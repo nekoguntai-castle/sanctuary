@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AlertCircle, CheckCircle, Upload } from 'lucide-react';
+import { WalletScriptType, WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import * as walletsApi from '../../../src/api/wallets';
 import type { AgentOptionWallet } from '../../../src/api/admin';
 import type { ImportValidationResult } from '../../../src/api/wallets';
@@ -29,7 +30,9 @@ export function InlineOperationalWalletImport({
   const [isOpen, setIsOpen] = useState(false);
   const [walletName, setWalletName] = useState('');
   const [importData, setImportData] = useState('');
-  const [rawKeyScriptType, setRawKeyScriptType] = useState<XpubScriptType>('native_segwit');
+  const [rawKeyScriptType, setRawKeyScriptType] = useState<XpubScriptType>(
+    WalletScriptType.NATIVE_SEGWIT,
+  );
   const [importError, setImportError] = useState<string | null>(null);
   const [lastImportedName, setLastImportedName] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -151,7 +154,7 @@ export function InlineOperationalWalletImport({
           className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
         />
       </div>
-      {rawKeyInput.kind === 'single_sig' && rawKeyInput.requiresScriptTypeSelection && (
+      {rawKeyInput.kind === WalletType.SINGLE_SIG && rawKeyInput.requiresScriptTypeSelection && (
         <SelectField
           id="agent-operational-raw-key-script-type"
           label="Extended public key type"
@@ -165,7 +168,7 @@ export function InlineOperationalWalletImport({
           {rawKeyDescription}
         </p>
       )}
-      {rawKeyInput.kind === 'multi_sig' && (
+      {rawKeyInput.kind === WalletType.MULTI_SIG && (
         <div className="flex items-start gap-2 rounded-lg bg-warning-50 dark:bg-warning-900/20 p-3 text-sm text-warning-700 dark:text-warning-300">
           <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
           <span>Use this multisig key as funding wallet material, not as the single-sig operational wallet.</span>
@@ -197,7 +200,7 @@ function getOperationalImportValidationError(
     return validation.error || 'Invalid wallet import data';
   }
 
-  if (validation.walletType !== 'single_sig') {
+  if (validation.walletType !== WalletType.SINGLE_SIG) {
     return 'Operational agent wallets must be single-sig watch-only wallets.';
   }
 

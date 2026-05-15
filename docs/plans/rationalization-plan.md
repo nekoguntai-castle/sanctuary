@@ -2,7 +2,7 @@
 
 Date: 2026-05-14
 Owner: Codex
-Status: Complete; 2026-05-15 second independent review addendum recorded
+Status: Complete original queue; follow-up queue in progress; 2026-05-15 fourth independent review addendum recorded
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, and preference patch semantics
 
 ## Executive Summary
@@ -11,7 +11,7 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 - Sanctuary-managed model pull/delete/install/download surfaces are removed while the LLM egress proxy security boundary remains as an intentional isolation layer for provider egress, credentials, endpoint policy, and sanitized context access.
 - Nested preference path reads, nested patch construction, and optimistic rollback now use shared helpers without replacing backend validation, backend canonical storage, or the current top-level preference patch contract.
 - No non-hardware rationalization phase remains in the original six-phase queue. The physical hardware test remains a separate manual/external validation item.
-- A fresh 2026-05-14 reanalysis did not reopen those merged phases, but it found a new follow-up queue: wallet role/capability contracts, Bitcoin script and wallet/account type identity, node/Electrum config projection, and stale contract-test helper constants are the consolidation candidates worth addressing next. Two 2026-05-15 independent reviews confirmed that order, with the refinements recorded below.
+- A fresh 2026-05-14 reanalysis did not reopen those merged phases, but it found a new follow-up queue: wallet role/capability contracts, Bitcoin script and wallet/account type identity, node/Electrum config projection, and stale contract-test helper constants are the consolidation candidates worth addressing next. Subsequent 2026-05-15 independent reviews confirmed that order, with the refinements recorded below.
 
 ## Divergence Inventory
 
@@ -82,6 +82,7 @@ Scope: fresh pass on current `main` after Phases 1-6, looking for unresolved div
 | --- | --- | --- | --- |
 | A | Centralize wallet role values and capability helpers. Move canonical role/share-role values and `canEdit`/`canApprove`/`canOwn` helpers to a shared-safe module or derive frontend helpers from server/OpenAPI constants. Decide explicitly whether `approver` is shareable in the UI; if yes, expose it intentionally, and if no, keep a distinct `WalletShareRole` subset. | Server access-control tests, mobile permission capability tests, OpenAPI wallet contracts, frontend wallet detail/send tests for `viewer`, `signer`, `approver`, and `owner`, plus negative searches for ad hoc `userRole !== 'viewer'` edit checks and permissive `wallet.canEdit !== false` fallbacks. | Shared/frontend/server role contracts agree; missing capability fields fail closed or derive from a valid role; `approver` cannot create/send/sign/broadcast/edit labels unless a capability explicitly allows it; owner-only actions remain owner-only. |
 | B | Add canonical Bitcoin script type, wallet type, and device-account purpose tuples/types/schemas in shared code. Derive mobile schemas, frontend API request types, import helpers, device-account schemas, wallet-import constants, OpenAPI enums, script registry IDs, and wallet-type-to-account-purpose mapping from those constants. Keep the server script-type registry as the behavior/metadata owner. | Script registry parity tests, wallet import/schema tests, device account validation tests, Create/Import/Manual Account form tests, OpenAPI wallet/device contracts, touched-file lizard, `git diff --check`. | A search shows no unowned `native_segwit`/`nested_segwit`/`taproot`/`legacy`, `single_sig`/`multi_sig`, or `single_sig`/`multisig` tuples outside fixtures/tests that intentionally enumerate behavior. |
+| B2 | Repair stale external-LLM-only copy and reference docs missed by the model-management removal. Remove active claims that Sanctuary can pull/delete/download/manage provider models and rename generic provider-model UI/API names that still say Ollama-only where feasible. | Negative searches for `pull/delete`, `download progress`, `model management`, stale `useModelDownloadProgress`, and misleading `Installed Models` copy outside historical plans/tests; focused AI settings/API typecheck if names change. | Active user docs, OpenAPI tags, reference architecture, and AI settings copy describe provider model listing/selection only; no route or UI copy implies Sanctuary installs or deletes provider models. |
 | C | Extract or reuse node-config projection helpers for per-network defaults, legacy `testnet*` fallback, enabled semantics, singleton/pool config, proxy fields, and mempool estimator settings. Let UI/server adapters keep separate output shapes, and avoid duplicating the already-centralized admin save/load helpers in `server/src/api/admin/nodeConfigData.ts`. | Node config helper tests, `nodeClient.active-config` tests, Electrum singleton/pool tests, mempool config tests, NetworkConnectionCard helper tests, OpenAPI/admin node config contracts. | Testnet3/testnet4/signet/regtest/mainnet defaults and proxy projection have one source of truth per runtime boundary; adapters no longer duplicate fallback logic. |
 | D | Replace or retire stale runtime contract validators in `server/tests/helpers/contractValidation.ts`. Prefer generated OpenAPI contract checks or imports from shared/server constants over hand-written enum arrays, including current draft status and transaction type vocabularies. | Contract test run and OpenAPI contract tests. | The contract helper cannot drift independently from current shared/OpenAPI constants, or it is deleted in favor of stronger contract coverage. Wallet response `syncStatus` and sync-pipeline `SyncStatus` remain separate unless a contract migration intentionally joins them. |
 | E | Wrap login health lookup in a no-auth health API helper that honors the same API base URL rules as the rest of the client. Keep `src/api/refresh.ts` raw because it is the refresh-recursion boundary. | Login flow tests for health success, 401-as-connected, network failure, and registration-status failure. | No route-local `/api/v1/health` fetch remains in login code; refresh raw fetch remains documented and tested. |
@@ -336,6 +337,78 @@ Scope: independent implementation-gate review during Phase A, checking whether t
 - Direct-first wallet role selection means a direct `viewer` share can still override a group `signer` membership today. That behavior should not be changed accidentally inside a constants migration.
 - The remaining Phase B tuple cleanup must preserve intentional script behavior differences such as taproot single-sig support and taproot multisig rejection.
 
+## Fourth Independent Review Addendum - 2026-05-15
+
+Scope: independent double-check after Phase A was merged and while Phase B has in-progress uncommitted wallet identity edits. This pass treated the current working tree as evidence, but it distinguished completed Phase A behavior from partially migrated Phase B code.
+
+### Fourth Review Verdict
+
+- Phase A remains closed. Targeted searches did not find remaining production `userRole !== 'viewer'` edit gates or `wallet.canEdit !== false` fail-open wallet gates in the active app/server code. Remaining hard-coded wallet-role references are tests, wallet-share UI choices, Prisma comments, or the already-known contract-helper repair area.
+- Phase B remains the right active implementation slice. The branch now has a shared wallet identity module, but production drift still exists across device parsers, hardware-wallet account discovery, server device/wallet schemas, OpenAPI wallet schemas, script registry IDs, import/descriptor services, and several UI display/default paths.
+- Phase C remains valid and still lower priority than Phase B. Node/Electrum projection logic repeats the same default host/port, testnet3 legacy fallback, pool override, proxy, and mempool URL semantics across UI helpers and runtime adapters, while admin save/load mapping remains a separate boundary with encryption/redaction concerns.
+- Phase D remains valid. `server/tests/helpers/contractValidation.ts` now imports wallet-role constants, but it still owns stale local network, wallet/script type, transaction type, and draft status tuples; it should derive from live constants/schemas or be retired.
+- Phase E remains low priority. Login still has a route-local raw `/api/v1/health` fetch, while refresh remains an intentional raw-fetch recursion boundary.
+- New missed fallout from the completed external-LLM/model-management removal: live pull/delete routes still appear removed, but several docs/copy/type names still imply model management or old download plumbing. This does not reopen the security boundary decision and does not outrank Phase B, but it should be repaired soon because it contradicts the external-LLM-only product line.
+
+### Fourth Review Adjustments
+
+| Area | Review Result | Adjustment |
+| --- | --- | --- |
+| Wallet role/capability closure | Confirmed closed for active production gates. Phase A shared role helpers and fail-closed UI paths now appear to own wallet capability checks. | Do not reopen Phase A. Keep wallet-role literals in fixtures/tests only when they intentionally enumerate behavior. |
+| Script/wallet/account identity | Confirmed still partially migrated. Current branch has `shared/constants/walletIdentity.ts`, but production callers still repeat `native_segwit`/`nested_segwit`/`taproot`/`legacy`, `single_sig`/`multi_sig`, and `single_sig`/`multisig` tuples. | Continue Phase B. Finish server schemas/OpenAPI/import/descriptor/script-registry migrations and then run negative searches scoped to production code. |
+| Node/Electrum projection | Confirmed unchanged. UI helpers, node-client config, connection resolver, pool config, mempool config, and admin mapping repeat overlapping projection semantics. | Keep Phase C scoped to projection semantics. Preserve adapter output shapes, admin encryption/redaction, and explicit `false` SSL semantics. |
+| Contract helper constants | Confirmed unchanged. The helper still hardcodes stale `testnet`, transaction `self`, old draft statuses, wallet/script tuples, and response field names. | Keep Phase D. Prefer deriving from OpenAPI/shared/server constants instead of refreshing another hand-written tuple. |
+| Login health helper | Confirmed unchanged. `components/Login/useLoginFlow.ts` still owns raw `/api/v1/health`; `src/api/refresh.ts` still owns raw `/auth/refresh` for a justified reason. | Keep Phase E. Add a no-auth health helper with timeout/abort and no refresh recursion. |
+| External-LLM copy/docs fallout | New repair item. `docs/how-to/ai-mcp-console.md` still says Sanctuary can pull/delete Ollama models, `server/src/api/openapi/spec.ts` describes AI as model management, `docs/reference/frontend-architecture.md` still lists `useModelDownloadProgress`, and the AI settings model dropdown labels provider-reported models as `Installed Models`. Generic provider-model data is also still named `OllamaModel` in frontend API/types. | Add a small copy/docs/type-name cleanup after Phase B or fold it into the next low-risk PR. Verify with negative searches for pull/delete/download/model-management language outside historical plans and tests. |
+
+### Fourth Review Corner Cases
+
+- Phase B should not treat all remaining tuple literals as bugs. Behavior matrices, fixture assertions, import aliases, address regex keys, derivation path decisions, and user-visible labels can remain local when they intentionally describe behavior rather than define an API/storage vocabulary.
+- Phase B should finish replacing value definitions before replacing comparisons. Replacing comparisons without migrating schemas/OpenAPI/test helpers can leave the same drift risk with more indirection.
+- `components/CreateWallet/createWalletData.ts` should not rebuild a wallet type through a ternary once `state.walletType` is already canonical; using the canonical state value avoids reintroducing `single_sig`/`multi_sig` literals.
+- The script registry should keep aliases such as `p2wpkh`, `bech32`, and `p2tr` as behavior metadata; only handler IDs need parity with canonical script type values.
+- External-LLM copy cleanup should preserve provider model listing and manual model entry. It should remove claims that Sanctuary installs, pulls, deletes, downloads, or manages provider models.
+- Historical plans and archived analysis may mention old model-management terms as history, but active user docs, OpenAPI descriptions, UI copy, route docs, and generated/reference architecture should describe provider model selection/listing only.
+
+## Fifth Independent Review Addendum - 2026-05-15
+
+Scope: fresh double-check after Phase A was merged and after the Phase B wallet identity branch had a committed implementation plus in-progress CI fixes. This pass challenged whether Phase B can be considered complete, and whether B2/C/D/E should change order.
+
+### Fifth Review Verdict
+
+- Phase A remains behaviorally closed. No active production `userRole !== 'viewer'` edit/send gates or fail-open `wallet.canEdit !== false` checks were found. Remaining wallet-role literals are mostly owner-only checks, typed share-role UI choices, device owner/viewer domains, tests, or docs. Those do not justify reopening Phase A before Phase B merges.
+- Phase B is still the correct active priority, but the implementation is not fully clean yet. The canonical module exists and many schemas/OpenAPI/import paths now derive from it, but a negative production search found remaining wallet/script/account identity literals in active runtime code that should be migrated before merge.
+- The strongest remaining Phase B drift is `server/src/services/deviceAccountConflicts.ts`, which still defines its own device account purpose and script type unions plus `Set` validators. That is a duplicate contract at a server boundary and should derive from `DEVICE_ACCOUNT_PURPOSE_VALUES`, `WALLET_SCRIPT_TYPE_VALUES`, and the shared types.
+- Smaller Phase B cleanup remains in default/comparison paths: `components/DeviceDetail/accounts/hooks/useAddAccountFlow.ts`, `components/WalletDetail/hooks/walletDataFormatters.ts`, `server/src/services/wallet/walletCreate.ts`, `server/src/services/agentOperationalAddressService.ts`, and fee-estimate defaults in `server/src/services/bitcoin/advancedTx/batch.ts`. These are lower-risk than schema drift, but replacing them with canonical constants keeps the exit search honest.
+- B2 remains a separate copy/docs/type-name cleanup. Live pull/delete/system-resource routes still appear removed; the remaining issue is active docs/UI/OpenAPI wording such as `docs/how-to/ai-mcp-console.md`, `server/src/api/openapi/spec.ts`, `docs/reference/frontend-architecture.md`, `Installed Models`, and generic provider-model data still named `OllamaModel`.
+- Phase C, D, and E remain correctly ordered after B2. Node/Electrum projection drift is still real, `server/tests/helpers/contractValidation.ts` still has stale local network/transaction/draft tuples despite importing wallet identity constants, and login still has the route-local raw health fetch while refresh remains intentionally raw.
+
+### Fifth Review Adjustments
+
+| Area | Review Result | Adjustment |
+| --- | --- | --- |
+| Phase B completion gate | Prior local completion notes were too optimistic. Production literal search still finds active runtime callers outside the canonical module. | Fix remaining production identity literals before merging Phase B, then rerun the scoped negative search. |
+| Device account conflict validation | Confirmed missed duplicate contract. `DeviceAccountInput`, `validPurposes`, and `validScriptTypes` are locally defined in `server/src/services/deviceAccountConflicts.ts`. | Derive types and validators from shared wallet identity constants; keep parser-only `unknown` out of persisted input types. |
+| Device add-account defaults | Confirmed smaller runtime cleanup. QR/import and manual-account defaults still construct `single_sig`/`multisig`/`native_segwit` directly. | Replace with `DeviceAccountPurpose` and `WalletScriptType` constants. |
+| Wallet formatting and wallet creation comparisons | Confirmed smaller runtime cleanup. A few comparisons against `single_sig`/`multi_sig` and purpose mapping are still literal. | Use `WalletType` constants and `accountPurposeForWalletType` where appropriate; preserve user-facing `single-sig`/`multisig` labels. |
+| External-LLM B2 | Confirmed as repair item, not a route/security blocker. Route searches find pull/delete removed from active code; wording and type names remain misleading. | Keep after Phase B unless the Phase B PR already touches AI files. |
+| Phase C/D/E | Confirmed unchanged. No newly found issue outranks the current Phase B cleanup. | Continue queue after Phase B and B2. |
+
+### Fifth Review Corner Cases
+
+- Migrating `deviceAccountConflicts` must preserve legacy single-account derivation parsing, including the explicit rejection of parser-only `unknown` account purpose or script type.
+- Replacing runtime defaults with constants must not change default account choice: manual add-account still defaults to multisig native SegWit with `m/48'/0'/0'/2'`, and UR extraction still uses native SegWit unless parsing logic becomes smarter in a separate hardware/import phase.
+- Wallet creation must still enforce exactly one device for single-sig and at least two devices for multisig; using constants should not broaden accepted wallet type strings.
+- `server/src/services/bitcoin/advancedTx/batch.ts` uses native SegWit as a fee-estimate assumption, not as an API enum. Importing the constant is enough; do not change fee behavior in Phase B.
+- Wallet share UI may keep explicit role labels/buttons because callback types enforce the share-role union, but option values that cast raw select strings should remain covered by server validation and route tests.
+- Owner-only UI and route checks can compare against `owner` directly when they are authorization-level checks; the Phase A risk was broad `not viewer` edit/send logic, not every owner equality.
+
+### Fifth Review Follow-Through
+
+- The Phase B gaps found in this review were patched on the Phase B branch before merge: device-account conflict validation, device add-account defaults, wallet formatting, wallet creation comparisons, agent operational wallet checks, and batch fee-estimate defaults now derive from the canonical wallet identity constants.
+- The scoped production literal search now leaves only accepted domains: address-type detection constants, the canonical wallet identity module, user-visible labels/examples/i18n keys, and script-registry comments.
+- Backend coverage fallback tests were added for unsupported wallet identity values in wallet export and descriptor repair after the full backend coverage merge exposed those previously uncovered fallback branches.
+
 ## Edge Cases
 
 - Phase 5 must not remove external Ollama as a provider type; it removes Sanctuary's ability to pull/delete provider models.
@@ -387,6 +460,7 @@ Scope: independent implementation-gate review during Phase A, checking whether t
 - The 2026-05-15 plan detail review added phase-specific implementation notes and corner cases for wallet roles, script/account types, node config projection, contract helper repair, and login health. Documentation verification passed with `git diff --check`.
 - The 2026-05-15 second independent review rechecked wallet capability derivation and UI defaults, device role separation, parser-only script/account values, sync-status domain names, node config projection, contract helper constants, LLM provider boundaries, gateway routing, and feature flags with targeted `rg` searches. Documentation verification passed with `git diff --check`.
 - The 2026-05-15 third independent review rechecked the in-progress Phase A working tree against the ranked findings. It found and fixed the remaining direct send-page capability gap and mobile-permission OpenAPI role tuple drift, then passed focused tests, typechecks, lint, lizard, server build, OpenAPI route coverage, negative wallet-role searches, and `git diff --check`.
+- The 2026-05-15 fourth independent review rechecked the current Phase B branch state against wallet roles, script/wallet/account identity, node/Electrum projection, contract-helper constants, login health fetch behavior, gateway route validation, feature flags, transaction type aliases, and external-LLM/model-management fallout with targeted `rg`/`sed` searches. It confirmed the Phase B/C/D/E order and added a small B2 copy/docs/type-name cleanup for stale external-LLM-only language.
 - Phase 5 PR #459 merged as `42abe4d893420661482e73ddbd9a1f4aff271bd2` and the merge commit was verified on `origin/main`.
 - Phase 6 PR #460 passed required Architecture, Build Dev Images summary, Code Quality, and Test Suite checks on head `38d6231090736094593f75e476e3e0f0be7fff6a`, then squash-merged as `26bbd2d052afe1e22421107dea77b6597e873f4c`.
 - The Phase 6 merge commit was verified as an ancestor of `origin/main`; local `main` was fast-forwarded to `26bbd2d052afe1e22421107dea77b6597e873f4c`; the local and remote Phase 6 branches were deleted.

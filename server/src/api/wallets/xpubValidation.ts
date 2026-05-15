@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes, InvalidInputError } from '../../errors/ApiError';
@@ -37,13 +38,13 @@ function getDefaultAccountPath(scriptType: string, network: string): string {
   const coinType = network === 'mainnet' ? "0'" : "1'";
 
   switch (scriptType) {
-    case 'legacy':
+    case WalletScriptType.LEGACY:
       return `44'/${coinType}/0'`;
-    case 'nested_segwit':
+    case WalletScriptType.NESTED_SEGWIT:
       return `49'/${coinType}/0'`;
-    case 'native_segwit':
+    case WalletScriptType.NATIVE_SEGWIT:
       return `84'/${coinType}/0'`;
-    case 'taproot':
+    case WalletScriptType.TAPROOT:
       return `86'/${coinType}/0'`;
     default:
       return `84'/${coinType}/0'`;
@@ -68,7 +69,7 @@ router.post('/validate-xpub', validate(
   }
 
   // Determine script type
-  const detectedScriptType = scriptType || validation.scriptType || 'native_segwit';
+  const detectedScriptType = scriptType || validation.scriptType || WalletScriptType.NATIVE_SEGWIT;
 
   // Generate descriptor
   let descriptor: string;
@@ -76,16 +77,16 @@ router.post('/validate-xpub', validate(
   const accountPathStr = accountPath || getDefaultAccountPath(detectedScriptType, network);
 
   switch (detectedScriptType) {
-    case 'native_segwit':
+    case WalletScriptType.NATIVE_SEGWIT:
       descriptor = `wpkh([${fingerprintStr}/${accountPathStr}]${xpub}/0/*)`;
       break;
-    case 'nested_segwit':
+    case WalletScriptType.NESTED_SEGWIT:
       descriptor = `sh(wpkh([${fingerprintStr}/${accountPathStr}]${xpub}/0/*))`;
       break;
-    case 'taproot':
+    case WalletScriptType.TAPROOT:
       descriptor = `tr([${fingerprintStr}/${accountPathStr}]${xpub}/0/*)`;
       break;
-    case 'legacy':
+    case WalletScriptType.LEGACY:
       descriptor = `pkh([${fingerprintStr}/${accountPathStr}]${xpub}/0/*)`;
       break;
     default:

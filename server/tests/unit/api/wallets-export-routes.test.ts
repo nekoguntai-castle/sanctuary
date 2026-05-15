@@ -450,6 +450,22 @@ describe('Wallets Export Routes', () => {
     expect(walletDataArg.totalSigners).toBeUndefined();
   });
 
+  it('falls back closed when exported wallet type is unsupported', async () => {
+    mockWalletFindByIdWithDevices.mockResolvedValue(buildWallet({
+      type: 'unsupported_wallet_type',
+    }));
+
+    const response = await request(app).get('/api/v1/wallets/wallet-1/export/formats');
+    expect(response.status).toBe(200);
+
+    const walletDataArg = mockGetAvailableFormats.mock.calls[0][0];
+    expect(walletDataArg.type).toBe('single_sig');
+    expect(walletDataArg.devices[0]).toEqual(expect.objectContaining({
+      xpub: 'legacy-xpub-a',
+      derivationPath: "m/48'/0'/0'/2'",
+    }));
+  });
+
   it('returns 404 when wallet is missing for export format listing', async () => {
     mockWalletFindByIdWithDevices.mockResolvedValue(null);
 

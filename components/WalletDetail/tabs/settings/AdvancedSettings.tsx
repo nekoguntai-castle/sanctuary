@@ -8,6 +8,7 @@ import {
   Download,
   AlertTriangle,
 } from 'lucide-react';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { Button } from '../../../ui/Button';
 import { isMultisigType, getQuorumM, getQuorumN } from '../../../../types';
 import type { Wallet } from '../../../../types';
@@ -53,10 +54,10 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
         <div className="flex items-center justify-between py-1.5 border-b border-sanctuary-100 dark:border-sanctuary-700">
           <span className="text-sanctuary-500">Script</span>
           <span className="text-sanctuary-900 dark:text-sanctuary-100">
-            {wallet.scriptType === 'native_segwit' && 'Native SegWit'}
-            {wallet.scriptType === 'nested_segwit' && 'Nested SegWit'}
-            {wallet.scriptType === 'taproot' && 'Taproot'}
-            {wallet.scriptType === 'legacy' && 'Legacy'}
+            {wallet.scriptType === WalletScriptType.NATIVE_SEGWIT && 'Native SegWit'}
+            {wallet.scriptType === WalletScriptType.NESTED_SEGWIT && 'Nested SegWit'}
+            {wallet.scriptType === WalletScriptType.TAPROOT && 'Taproot'}
+            {wallet.scriptType === WalletScriptType.LEGACY && 'Legacy'}
             {!wallet.scriptType && 'Unknown'}
           </span>
         </div>

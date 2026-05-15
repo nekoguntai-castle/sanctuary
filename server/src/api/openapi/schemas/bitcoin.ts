@@ -1,4 +1,5 @@
 import { BITCOIN_NETWORKS } from "@sanctuary/shared/constants/bitcoin";
+import { WALLET_SCRIPT_TYPE_VALUES } from "@sanctuary/shared/constants/walletIdentity";
 
 export { syncSchemas } from "./bitcoinSync";
 export { priceSchemas } from "./price";
@@ -146,7 +147,7 @@ export const bitcoinSchemas = {
   },
   BitcoinScriptType: {
     type: "string",
-    enum: ["legacy", "nested_segwit", "native_segwit", "taproot"],
+    enum: [...WALLET_SCRIPT_TYPE_VALUES],
   },
   BitcoinFeePriority: {
     type: "string",

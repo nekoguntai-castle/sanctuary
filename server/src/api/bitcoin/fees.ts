@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { validate } from '../../middleware/validate';
 import * as utils from '../../services/bitcoin/utils';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -18,7 +19,7 @@ const router = Router();
 const EstimateFeeBodySchema = z.object({
   inputCount: z.number().int().positive(),
   outputCount: z.number().int().positive(),
-  scriptType: z.string().optional().default('native_segwit'),
+  scriptType: z.string().optional().default(WalletScriptType.NATIVE_SEGWIT),
   feeRate: z.number().positive(),
 });
 
@@ -26,7 +27,7 @@ const EstimateOptimalFeeBodySchema = z.object({
   inputCount: z.number().int().positive(),
   outputCount: z.number().int().positive(),
   priority: z.string().optional().default('medium'),
-  scriptType: z.string().optional().default('native_segwit'),
+  scriptType: z.string().optional().default(WalletScriptType.NATIVE_SEGWIT),
   network: z.string().optional(),
 });
 
@@ -61,7 +62,7 @@ router.post('/utils/estimate-fee', validate(
   const {
     inputCount,
     outputCount,
-    scriptType = 'native_segwit',
+    scriptType = WalletScriptType.NATIVE_SEGWIT,
     feeRate,
   } = req.body;
 
@@ -87,7 +88,7 @@ router.post('/utils/estimate-optimal-fee', validate(
     inputCount,
     outputCount,
     priority = 'medium',
-    scriptType = 'native_segwit',
+    scriptType = WalletScriptType.NATIVE_SEGWIT,
     network: networkInput,
   } = req.body;
   const network = resolveBitcoinNetworkParam(networkInput);

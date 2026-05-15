@@ -6,8 +6,9 @@
 
 import type { Device, WalletType, DeviceAccount } from '../../types';
 import type { TabNetwork } from '../../src/app/networks';
+import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 
-export type ScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+export type ScriptType = WalletScriptType;
 export type Network = TabNetwork;
 export type CreateWalletStep = 1 | 2 | 3 | 4;
 
@@ -22,7 +23,7 @@ export interface CreateWalletState {
 
 export interface CreateWalletPayload {
   name: string;
-  type: 'single_sig' | 'multi_sig';
+  type: WalletType;
   scriptType: ScriptType;
   network: Network;
   quorum?: number;

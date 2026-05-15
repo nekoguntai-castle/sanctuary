@@ -5,6 +5,7 @@
  * Original Bitcoin script types - less efficient but universally supported.
  */
 
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import type {
   ScriptTypeHandler,
   DeviceKeyInfo,
@@ -21,7 +22,7 @@ import {
 } from './descriptorHelpers';
 
 export const legacyHandler: ScriptTypeHandler = {
-  id: 'legacy',
+  id: WalletScriptType.LEGACY,
   name: 'Legacy (P2PKH)',
   description: 'BIP-44 legacy addresses starting with 1',
   bip: 44,
@@ -50,7 +51,7 @@ export const legacyHandler: ScriptTypeHandler = {
   },
 
   validateDevice(deviceScriptTypes: string[]): boolean {
-    const validTypes = ['legacy', 'p2pkh', 'pkh'];
+    const validTypes = [WalletScriptType.LEGACY, 'p2pkh', 'pkh'];
     return supportsAnyScriptType(deviceScriptTypes, validTypes);
   },
 };

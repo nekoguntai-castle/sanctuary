@@ -10,6 +10,10 @@ import {
 } from '@sanctuary/shared/constants/walletRoles';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import {
+  WALLET_SCRIPT_TYPE_VALUES,
+  WALLET_TYPE_VALUES,
+} from '@sanctuary/shared/constants/walletIdentity';
+import {
   WALLET_IMPORT_FORMAT_VALUES,
   WALLET_IMPORT_NETWORK_VALUES,
   WALLET_IMPORT_SCRIPT_TYPE_VALUES,
@@ -32,8 +36,8 @@ export const walletSchemas = {
     properties: {
       id: { type: 'string' },
       name: { type: 'string' },
-      type: { type: 'string', enum: ['single_sig', 'multi_sig'] },
-      scriptType: { type: 'string', enum: ['native_segwit', 'nested_segwit', 'taproot', 'legacy'] },
+      type: { type: 'string', enum: [...WALLET_TYPE_VALUES] },
+      scriptType: { type: 'string', enum: [...WALLET_SCRIPT_TYPE_VALUES] },
       network: { type: 'string', enum: [...WALLET_NETWORK_VALUES] },
       quorum: { type: 'integer', nullable: true },
       totalSigners: { type: 'integer', nullable: true },
@@ -66,8 +70,8 @@ export const walletSchemas = {
     type: 'object',
     properties: {
       name: { type: 'string' },
-      type: { type: 'string', enum: ['single_sig', 'multi_sig'] },
-      scriptType: { type: 'string', enum: ['native_segwit', 'nested_segwit', 'taproot', 'legacy'] },
+      type: { type: 'string', enum: [...WALLET_TYPE_VALUES] },
+      scriptType: { type: 'string', enum: [...WALLET_SCRIPT_TYPE_VALUES] },
       network: { type: 'string', enum: [...WALLET_NETWORK_VALUES] },
       quorum: { type: 'integer' },
       totalSigners: { type: 'integer' },

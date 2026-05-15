@@ -6,6 +6,10 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import {
+  DEVICE_ACCOUNT_PURPOSE_VALUES,
+  WALLET_SCRIPT_TYPE_VALUES,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { requireDeviceAccess } from '../../middleware/deviceAccess';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -17,14 +21,14 @@ const router = Router();
 const log = createLogger('DEVICE:ROUTE:ACCOUNTS');
 
 const DeviceAccountBodySchema = z.object({
-  purpose: z.enum(['single_sig', 'multisig']),
-  scriptType: z.enum(['native_segwit', 'nested_segwit', 'taproot', 'legacy']),
+  purpose: z.enum(DEVICE_ACCOUNT_PURPOSE_VALUES),
+  scriptType: z.enum(WALLET_SCRIPT_TYPE_VALUES),
   derivationPath: z.string().trim().min(1),
   xpub: z.string().trim().min(1),
 });
 
 const deviceAccountValidationMessage =
-  'purpose, scriptType, derivationPath, and xpub are required; purpose must be "single_sig" or "multisig"; scriptType must be one of: native_segwit, nested_segwit, taproot, legacy';
+  `purpose, scriptType, derivationPath, and xpub are required; purpose must be one of: ${DEVICE_ACCOUNT_PURPOSE_VALUES.join(', ')}; scriptType must be one of: ${WALLET_SCRIPT_TYPE_VALUES.join(', ')}`;
 
 /**
  * GET /api/v1/devices/:id/accounts

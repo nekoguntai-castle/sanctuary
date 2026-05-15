@@ -17,6 +17,10 @@
  */
 
 import { WALLET_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
+import {
+  WALLET_SCRIPT_TYPE_VALUES,
+  WALLET_TYPE_VALUES,
+} from '@sanctuary/shared/constants/walletIdentity';
 
 // =============================================================================
 // Types
@@ -90,8 +94,8 @@ function validateFields(
 // Enum Validators
 // =============================================================================
 
-const WALLET_TYPES = ['single_sig', 'multi_sig'] as const;
-const SCRIPT_TYPES = ['native_segwit', 'nested_segwit', 'taproot', 'legacy'] as const;
+const WALLET_TYPES = WALLET_TYPE_VALUES;
+const SCRIPT_TYPES = WALLET_SCRIPT_TYPE_VALUES;
 const NETWORKS = ['mainnet', 'testnet', 'regtest', 'signet'] as const;
 const WALLET_ROLES = WALLET_ROLE_VALUES;
 const DEVICE_ROLES = ['owner', 'viewer'] as const;

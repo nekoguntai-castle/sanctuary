@@ -1,4 +1,5 @@
 import type { Prisma } from '../generated/prisma/client';
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { buildAgentKeyScope, generateAgentApiKey, getAgentApiKeyPrefix, hashAgentApiKey } from '../agent/auth';
 import { InvalidInputError, NotFoundError } from '../errors/ApiError';
 import {
@@ -92,10 +93,10 @@ function assertAgentWalletTypes(
   fundingWallet: { type: string; network: string },
   operationalWallet: { type: string; network: string }
 ): void {
-  if (fundingWallet.type !== 'multi_sig' && fundingWallet.type !== 'single_sig') {
+  if (fundingWallet.type !== WalletType.MULTI_SIG && fundingWallet.type !== WalletType.SINGLE_SIG) {
     throw new InvalidInputError('Funding wallet must be a single-sig or multisig wallet');
   }
-  if (operationalWallet.type !== 'single_sig') {
+  if (operationalWallet.type !== WalletType.SINGLE_SIG) {
     throw new InvalidInputError('Operational wallet must be a single-sig wallet');
   }
   if (fundingWallet.network !== operationalWallet.network) {

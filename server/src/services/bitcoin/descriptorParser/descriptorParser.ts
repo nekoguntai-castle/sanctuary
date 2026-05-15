@@ -5,6 +5,7 @@
  * Handles single-sig and multisig descriptors.
  */
 
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import { removeChecksum } from './checksum';
@@ -62,7 +63,7 @@ export function parseDescriptorForImport(descriptor: string): ParsedDescriptor {
 
   // Build result
   const result: ParsedDescriptor = {
-    type: isMultisig ? 'multi_sig' : 'single_sig',
+    type: isMultisig ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG,
     scriptType,
     devices,
     network,

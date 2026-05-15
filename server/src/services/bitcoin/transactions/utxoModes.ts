@@ -7,6 +7,7 @@
  * - Subtract-fees: fee deducted from amount
  */
 
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { estimateTransactionSize, calculateFee } from '../utils';
 import { utxoRepository } from '../../../repositories';
 import { selectUTXOs, UTXOSelectionStrategy } from '../utxoSelection';
@@ -79,7 +80,7 @@ async function selectUtxosForSendMax(
   }
 
   const totalAmount = utxos.reduce((sum, u) => sum + Number(u.amount), 0);
-  const estimatedSize = estimateTransactionSize(utxos.length, 1, 'native_segwit');
+  const estimatedSize = estimateTransactionSize(utxos.length, 1, WalletScriptType.NATIVE_SEGWIT);
   const estimatedFee = calculateFee(estimatedSize, feeRate);
 
   if (totalAmount <= estimatedFee) {
@@ -143,7 +144,11 @@ async function selectUtxosForSubtractFees(
   }
 
   // Calculate fee based on actual selection
-  const estimatedSize = estimateTransactionSize(selectedUtxos.length, 2, 'native_segwit');
+  const estimatedSize = estimateTransactionSize(
+    selectedUtxos.length,
+    2,
+    WalletScriptType.NATIVE_SEGWIT,
+  );
   const estimatedFee = calculateFee(estimatedSize, feeRate);
 
   // Fee is subtracted from the amount being sent

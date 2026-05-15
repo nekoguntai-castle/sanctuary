@@ -5,6 +5,11 @@
  * New import formats can be added by implementing DeviceParser interface.
  */
 
+import type {
+  DeviceAccountPurpose,
+  WalletScriptType,
+} from '@sanctuary/shared/constants/walletIdentity';
+
 /**
  * A single account from a hardware wallet device
  * Represents one xpub at a specific derivation path
@@ -15,9 +20,9 @@ export interface DeviceAccount {
   /** BIP32 derivation path (e.g., "m/84'/0'/0'") */
   derivationPath: string;
   /** Purpose: single-sig or multisig */
-  purpose: 'single_sig' | 'multisig';
+  purpose: DeviceAccountPurpose;
   /** Script type for this account */
-  scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+  scriptType: WalletScriptType;
 }
 
 /**

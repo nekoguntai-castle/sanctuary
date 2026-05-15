@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { ImportValidationResult } from '../../../src/api/wallets';
 import type { TabNetwork } from '../../../src/app/networks';
 import { ImportFormat, ScriptType, HardwareDeviceType } from '../importHelpers';
@@ -41,7 +42,7 @@ export function useImportState(network: TabNetwork = 'mainnet') {
   const [hardwareDeviceType, setHardwareDeviceType] = useState<HardwareDeviceType>('ledger');
   const [deviceConnected, setDeviceConnected] = useState(false);
   const [deviceLabel, setDeviceLabel] = useState<string | null>(null);
-  const [scriptType, setScriptType] = useState<ScriptType>('native_segwit');
+  const [scriptType, setScriptType] = useState<ScriptType>(WalletScriptType.NATIVE_SEGWIT);
   const [accountIndex, setAccountIndex] = useState(0);
   const [xpubData, setXpubData] = useState<XpubData | null>(null);
   const [isFetchingXpub, setIsFetchingXpub] = useState(false);

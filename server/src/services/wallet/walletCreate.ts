@@ -19,6 +19,7 @@ import { generateInitialAddresses } from "./addressGeneration";
 import type { CreateWalletInput, WalletNetwork, WalletWithBalance } from "./types";
 import { buildDeviceInfo } from "./walletAccountSelection";
 import { isBitcoinNetwork } from "../bitcoin/networks";
+import { WalletType } from "@sanctuary/shared/constants/walletIdentity";
 
 const log = createLogger("WALLET:SVC_CREATE");
 
@@ -33,7 +34,7 @@ function validateWalletInput(input: CreateWalletInput): void {
     );
   }
 
-  if (input.type !== "multi_sig") {
+  if (input.type !== WalletType.MULTI_SIG) {
     return;
   }
 
@@ -52,11 +53,11 @@ function validateDeviceCount(
   input: CreateWalletInput,
   devices: WalletDevice[],
 ): void {
-  if (input.type === "single_sig" && devices.length !== 1) {
+  if (input.type === WalletType.SINGLE_SIG && devices.length !== 1) {
     throw new InvalidInputError("Single-sig wallet requires exactly 1 device");
   }
 
-  if (input.type === "multi_sig" && devices.length < 2) {
+  if (input.type === WalletType.MULTI_SIG && devices.length < 2) {
     throw new InvalidInputError("Multi-sig wallet requires at least 2 devices");
   }
 }

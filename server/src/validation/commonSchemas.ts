@@ -6,6 +6,7 @@
 
 import { z } from 'zod';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+import { WALLET_TYPE_VALUES } from '@sanctuary/shared/constants/walletIdentity';
 import { normalizeEmail } from '../utils/email';
 import { normalizeUsername, USERNAME_POLICY } from '../utils/username';
 
@@ -72,7 +73,7 @@ export const ScriptTypeSchema = z.enum([
   'p2tr', // Taproot
 ]);
 
-export const WalletTypeSchema = z.enum(['standard', 'multisig', 'watch-only']);
+export const WalletTypeSchema = z.enum(WALLET_TYPE_VALUES);
 
 /** Bitcoin address - basic pattern check */
 export const BitcoinAddressSchema = z.string().refine(

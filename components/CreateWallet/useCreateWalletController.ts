@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as devicesApi from '../../src/api/devices';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { Device, WalletType } from '../../types';
 import { useActiveNetwork } from '../../contexts/ActiveNetworkContext';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
@@ -30,7 +31,7 @@ export function useCreateWalletController() {
   const [walletType, setWalletType] = useState<WalletType | null>(null);
   const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set());
   const [walletName, setWalletName] = useState('');
-  const [scriptType, setScriptType] = useState<ScriptType>('native_segwit');
+  const [scriptType, setScriptType] = useState<ScriptType>(WalletScriptType.NATIVE_SEGWIT);
   const [quorumM, setQuorumM] = useState(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
 

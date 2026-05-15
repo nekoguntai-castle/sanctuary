@@ -4,8 +4,14 @@
  * Shared types and interfaces for the wallet import service modules.
  */
 
-import type { ScriptType, Network } from '../bitcoin/descriptorParser';
+import type { Network } from '../bitcoin/descriptorParser';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+import {
+  WALLET_SCRIPT_TYPE_VALUES,
+  WALLET_TYPE_VALUES,
+  type WalletScriptType,
+  type WalletType,
+} from '@sanctuary/shared/constants/walletIdentity';
 
 export const WALLET_IMPORT_FORMAT_VALUES = [
   'descriptor',
@@ -14,8 +20,8 @@ export const WALLET_IMPORT_FORMAT_VALUES = [
   'bluewallet_text',
   'coldcard',
 ] as const;
-export const WALLET_IMPORT_WALLET_TYPE_VALUES = ['single_sig', 'multi_sig'] as const;
-export const WALLET_IMPORT_SCRIPT_TYPE_VALUES = ['native_segwit', 'nested_segwit', 'taproot', 'legacy'] as const;
+export const WALLET_IMPORT_WALLET_TYPE_VALUES = WALLET_TYPE_VALUES;
+export const WALLET_IMPORT_SCRIPT_TYPE_VALUES = WALLET_SCRIPT_TYPE_VALUES;
 export const WALLET_IMPORT_NETWORK_VALUES = BITCOIN_NETWORKS;
 
 export interface DeviceResolution {
@@ -33,8 +39,8 @@ export interface ImportValidationResult {
   valid: boolean;
   error?: string;
   format: (typeof WALLET_IMPORT_FORMAT_VALUES)[number];
-  walletType: (typeof WALLET_IMPORT_WALLET_TYPE_VALUES)[number];
-  scriptType: ScriptType;
+  walletType: WalletType;
+  scriptType: WalletScriptType;
   network: Network;
   quorum?: number;
   totalSigners?: number;

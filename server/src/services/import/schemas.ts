@@ -7,6 +7,11 @@
 
 import { z } from 'zod';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+import {
+  WalletType,
+  WALLET_SCRIPT_TYPE_VALUES,
+  WALLET_TYPE_VALUES,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { FingerprintSchema, DerivationPathSchema } from '../../validation/commonSchemas';
 
 // =============================================================================
@@ -17,9 +22,9 @@ import { FingerprintSchema, DerivationPathSchema } from '../../validation/common
  * Wallet type enum used in JSON import configs
  * Note: these use underscored format (single_sig, multi_sig) unlike the API schemas
  */
-const ImportWalletTypeSchema = z.enum(['single_sig', 'multi_sig']);
+const ImportWalletTypeSchema = z.enum(WALLET_TYPE_VALUES);
 
-const ImportScriptTypeSchema = z.enum(['native_segwit', 'nested_segwit', 'taproot', 'legacy']);
+const ImportScriptTypeSchema = z.enum(WALLET_SCRIPT_TYPE_VALUES);
 
 const ImportNetworkSchema = z.enum([...BITCOIN_NETWORKS, 'testnet']);
 
@@ -49,7 +54,7 @@ export const JsonImportConfigSchema = z
     name: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.type === 'multi_sig') {
+    if (data.type === WalletType.MULTI_SIG) {
       if (data.quorum === undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -64,7 +69,7 @@ export const JsonImportConfigSchema = z
         });
       }
     }
-    if (data.type === 'single_sig' && data.devices.length !== 1) {
+    if (data.type === WalletType.SINGLE_SIG && data.devices.length !== 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Single-sig requires exactly one device',

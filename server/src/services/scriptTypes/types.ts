@@ -6,6 +6,7 @@
  */
 
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 
 export type Network = NetworkType;
 
@@ -41,7 +42,7 @@ export interface MultiSigBuildOptions extends DescriptorBuildOptions {
  */
 export interface ScriptTypeHandler {
   /** Unique identifier for this script type (e.g., 'native_segwit') */
-  readonly id: string;
+  readonly id: WalletScriptType;
 
   /** Human-readable name (e.g., 'Native SegWit (P2WPKH)') */
   readonly name: string;

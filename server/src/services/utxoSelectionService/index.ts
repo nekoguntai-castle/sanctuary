@@ -9,6 +9,7 @@
  * - Smallest First: Use smallest UTXOs (consolidation mode)
  */
 
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { createLogger } from '../../utils/logger';
 import { getAvailableUtxos } from './queries';
 import {
@@ -38,7 +39,7 @@ export async function selectUtxos(options: SelectionOptions): Promise<SelectionR
     excludeFrozen = true,
     excludeUnconfirmed = false,
     excludeUtxoIds = [],
-    scriptType = 'native_segwit',
+    scriptType = WalletScriptType.NATIVE_SEGWIT,
   } = options;
 
   // Validate that targetAmount is positive
@@ -95,7 +96,7 @@ export async function compareStrategies(
   walletId: string,
   targetAmount: bigint,
   feeRate: number,
-  scriptType: string = 'native_segwit'
+  scriptType: string = WalletScriptType.NATIVE_SEGWIT
 ): Promise<Record<SelectionStrategy, SelectionResult>> {
   const strategies: SelectionStrategy[] = [
     'privacy',

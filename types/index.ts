@@ -134,15 +134,15 @@ export function getWalletTypeLabel(
   type: WalletType | string | undefined,
 ): string {
   if (!type) return "Unknown";
-  if (type === WalletType.MULTI_SIG || type === "multi_sig")
+  if (type === WalletType.MULTI_SIG)
     return WALLET_TYPE_LABELS[WalletType.MULTI_SIG];
-  if (type === WalletType.SINGLE_SIG || type === "single_sig")
+  if (type === WalletType.SINGLE_SIG)
     return WALLET_TYPE_LABELS[WalletType.SINGLE_SIG];
   return type as string;
 }
 
 export function isMultisigType(type: WalletType | string | undefined): boolean {
-  return type === WalletType.MULTI_SIG || type === "multi_sig";
+  return type === WalletType.MULTI_SIG;
 }
 
 // ============================================================================

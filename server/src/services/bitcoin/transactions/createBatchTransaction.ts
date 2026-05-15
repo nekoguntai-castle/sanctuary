@@ -10,6 +10,7 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { getNetwork, estimateTransactionSize, calculateFee } from '../utils';
 import { normalizeLegacyBitcoinNetwork } from '../networks';
 import { RBF_SEQUENCE } from '../advancedTx';
@@ -273,7 +274,7 @@ function calculateBatchAmounts(
   const numOutputs = hasSendMax ? outputs.length : outputs.length + 1;
 
   // Estimate fee
-  const estimatedSize = estimateTransactionSize(utxos.length, numOutputs, 'native_segwit');
+  const estimatedSize = estimateTransactionSize(utxos.length, numOutputs, WalletScriptType.NATIVE_SEGWIT);
   const estimatedFee = calculateFee(estimatedSize, feeRate);
 
   if (hasSendMax) {
@@ -307,7 +308,11 @@ function calculateBatchAmounts(
     selectedTotal += Number(utxo.amount);
 
     // Re-estimate fee with current selection
-    const currentSize = estimateTransactionSize(selectedUtxos.length, outputs.length + 1, 'native_segwit');
+    const currentSize = estimateTransactionSize(
+      selectedUtxos.length,
+      outputs.length + 1,
+      WalletScriptType.NATIVE_SEGWIT,
+    );
     const currentFee = calculateFee(currentSize, feeRate);
 
     if (selectedTotal >= targetAmount + currentFee) {
@@ -317,7 +322,11 @@ function calculateBatchAmounts(
   }
 
   // Check if we have enough
-  const finalSize = estimateTransactionSize(selectedUtxos.length, outputs.length + 1, 'native_segwit');
+  const finalSize = estimateTransactionSize(
+    selectedUtxos.length,
+    outputs.length + 1,
+    WalletScriptType.NATIVE_SEGWIT,
+  );
   const finalFee = calculateFee(finalSize, feeRate);
   if (selectedTotal < targetAmount + finalFee) {
     throw new Error(

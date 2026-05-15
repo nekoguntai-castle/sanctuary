@@ -10,6 +10,12 @@ import { InvalidInputError } from "../../errors";
 import { createLogger } from "../../utils/logger";
 import * as descriptorBuilder from "../bitcoin/descriptorBuilder";
 import { parseDerivationPath } from "@sanctuary/shared/utils/bitcoin";
+import {
+  DeviceAccountPurpose,
+  WalletType,
+  accountPurposeForWalletType,
+  type DeviceAccountPurpose as DeviceAccountPurposeValue,
+} from "@sanctuary/shared/constants/walletIdentity";
 import type { CreateWalletInput, WalletNetwork } from "./types";
 
 const log = createLogger("WALLET:SVC_ACCOUNT_SELECTION");
@@ -18,12 +24,6 @@ type WalletDevice = Awaited<
   ReturnType<typeof deviceRepository.findByIdsAndUserWithAccounts>
 >[number];
 type WalletDeviceAccount = WalletDevice["accounts"][number];
-type AccountPurpose = "multisig" | "single_sig";
-
-const PURPOSE_BY_WALLET_TYPE: Record<CreateWalletInput["type"], AccountPurpose> = {
-  multi_sig: "multisig",
-  single_sig: "single_sig",
-};
 
 const COIN_TYPE_BY_NETWORK: Record<WalletNetwork, number> = {
   mainnet: 0,
@@ -34,8 +34,8 @@ const COIN_TYPE_BY_NETWORK: Record<WalletNetwork, number> = {
   testnet4: 1,
 };
 
-export function walletPurpose(input: CreateWalletInput): AccountPurpose {
-  return PURPOSE_BY_WALLET_TYPE[input.type];
+export function walletPurpose(input: CreateWalletInput): DeviceAccountPurposeValue {
+  return accountPurposeForWalletType(input.type);
 }
 
 function requestedNetwork(input: CreateWalletInput): WalletNetwork {
@@ -69,7 +69,7 @@ function accountHasUnknownNetwork(account: WalletDeviceAccount): boolean {
 
 function expectedAccountPath(input: CreateWalletInput): string {
   const network = requestedNetwork(input);
-  if (input.type === "multi_sig") {
+  if (input.type === WalletType.MULTI_SIG) {
     return descriptorBuilder.getMultisigDerivationPath(
       input.scriptType,
       network,
@@ -158,7 +158,10 @@ function warnIfUsingSingleSigForMultisig(
   account: WalletDeviceAccount | undefined,
   input: CreateWalletInput,
 ): void {
-  if (input.type !== "multi_sig" || account?.purpose !== "single_sig") {
+  if (
+    input.type !== WalletType.MULTI_SIG ||
+    account?.purpose !== DeviceAccountPurpose.SINGLE_SIG
+  ) {
     return;
   }
 

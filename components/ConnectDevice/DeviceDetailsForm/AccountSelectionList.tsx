@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { DeviceAccountPurpose } from '@sanctuary/shared/constants/walletIdentity';
 import type { DeviceAccount } from '../../../services/deviceParsers';
 import { splitTestnetSignetAccounts } from '../../../utils/derivationPathGroups';
 import { getPurposeLabel, getScriptLabel } from '../types';
@@ -167,7 +168,7 @@ function PurposeBadge({ purpose, label }: { purpose: DeviceAccount['purpose']; l
   return (
     <span
       className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
-        purpose === 'multisig'
+        purpose === DeviceAccountPurpose.MULTISIG
           ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
           : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
       }`}

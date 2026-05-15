@@ -6,6 +6,7 @@
  */
 
 import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import { WalletScriptType, WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { ColdcardDetectionSchema } from '../../import/schemas';
 import { validateParsedDescriptorDomain } from './domainValidation';
 import { detectNetwork } from './descriptorUtils';
@@ -48,7 +49,7 @@ export function parseColdcardExport(cc: ColdcardJsonExport): { parsed: ParsedDes
 
   const network = detectNetwork(device.xpub, device.derivationPath);
   const parsed: ParsedDescriptor = {
-    type: 'single_sig',
+    type: WalletType.SINGLE_SIG,
     scriptType: selectedPath.scriptType,
     devices: [device],
     network,
@@ -83,9 +84,9 @@ function getFlatColdcardPaths(cc: ColdcardJsonExport): {
 } {
   // Candidate order is path-selection priority.
   const candidates: ColdcardPathCandidate[] = [
-    { xpub: cc.p2wsh, deriv: cc.p2wsh_deriv, scriptType: 'native_segwit' },
-    { xpub: cc.p2sh_p2wsh, deriv: cc.p2sh_p2wsh_deriv, scriptType: 'nested_segwit' },
-    { xpub: cc.p2sh, deriv: cc.p2sh_deriv, scriptType: 'legacy' },
+    { xpub: cc.p2wsh, deriv: cc.p2wsh_deriv, scriptType: WalletScriptType.NATIVE_SEGWIT },
+    { xpub: cc.p2sh_p2wsh, deriv: cc.p2sh_p2wsh_deriv, scriptType: WalletScriptType.NESTED_SEGWIT },
+    { xpub: cc.p2sh, deriv: cc.p2sh_deriv, scriptType: WalletScriptType.LEGACY },
   ];
 
   return {
@@ -104,8 +105,8 @@ function getNestedColdcardPaths(cc: ColdcardJsonExport): {
   const standardCandidates = getNestedStandardPathCandidates(cc);
   const selectionCandidates = [...standardCandidates];
   // BIP48 multisig paths are kept as single-sig xpub fallbacks for Coldcard imports.
-  addNestedPathCandidate(selectionCandidates, cc.bip48_2, 'native_segwit');
-  addNestedPathCandidate(selectionCandidates, cc.bip48_1, 'nested_segwit');
+  addNestedPathCandidate(selectionCandidates, cc.bip48_2, WalletScriptType.NATIVE_SEGWIT);
+  addNestedPathCandidate(selectionCandidates, cc.bip48_1, WalletScriptType.NESTED_SEGWIT);
 
   return {
     selectedPath: selectUsablePath(
@@ -118,9 +119,9 @@ function getNestedColdcardPaths(cc: ColdcardJsonExport): {
 
 function getNestedStandardPathCandidates(cc: ColdcardJsonExport): ColdcardPathCandidate[] {
   const candidates: ColdcardPathCandidate[] = [];
-  addNestedPathCandidate(candidates, cc.bip84, 'native_segwit');
-  addNestedPathCandidate(candidates, cc.bip49, 'nested_segwit');
-  addNestedPathCandidate(candidates, cc.bip44, 'legacy');
+  addNestedPathCandidate(candidates, cc.bip84, WalletScriptType.NATIVE_SEGWIT);
+  addNestedPathCandidate(candidates, cc.bip49, WalletScriptType.NESTED_SEGWIT);
+  addNestedPathCandidate(candidates, cc.bip44, WalletScriptType.LEGACY);
   return candidates;
 }
 

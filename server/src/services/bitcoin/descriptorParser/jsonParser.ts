@@ -5,6 +5,7 @@
  */
 
 import { normalizeDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { JsonImportConfigSchema, WalletExportDetectionSchema } from '../../import/schemas';
 import { validateParsedDescriptorDomain } from './domainValidation';
 import { detectNetwork } from './descriptorUtils';
@@ -56,7 +57,7 @@ export function parseJsonImport(config: JsonImportConfig): ParsedDescriptor {
     isChange: false,
   };
 
-  if (config.type === 'multi_sig') {
+  if (config.type === WalletType.MULTI_SIG) {
     result.quorum = config.quorum;
     result.totalSigners = devices.length;
   }

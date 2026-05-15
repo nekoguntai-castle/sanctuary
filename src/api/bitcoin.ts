@@ -6,6 +6,7 @@
 
 import apiClient from './client';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import type { BitcoinTransactionDetails, BlockHeader } from '../types';
 
 // Re-export types for convenience
@@ -123,7 +124,7 @@ export interface BroadcastRawNetworkTransactionResponse {
 export interface EstimateFeeRequest {
   inputCount: number;
   outputCount: number;
-  scriptType?: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+  scriptType?: WalletScriptType;
   feeRate: number;
 }
 
@@ -303,7 +304,7 @@ export interface OptimalFeeRequest {
   inputCount: number;
   outputCount: number;
   priority?: 'fastest' | 'fast' | 'medium' | 'slow' | 'minimum';
-  scriptType?: 'legacy' | 'nested_segwit' | 'native_segwit' | 'taproot';
+  scriptType?: WalletScriptType;
   network?: BitcoinFeeNetwork;
 }
 

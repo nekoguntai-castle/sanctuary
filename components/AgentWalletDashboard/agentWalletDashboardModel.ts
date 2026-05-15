@@ -4,6 +4,7 @@ import type {
   AgentWalletDashboardTransaction,
   WalletAgentMetadata,
 } from '../../src/api/admin';
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { createLogger } from '../../utils/logger';
 
@@ -49,8 +50,8 @@ export function formatDateTime(value: string | null | undefined): string {
 }
 
 export function formatWalletType(type: string | undefined): string {
-  if (type === 'multi_sig') return 'Multisig';
-  if (type === 'single_sig') return 'Single sig';
+  if (type === WalletType.MULTI_SIG) return 'Multisig';
+  if (type === WalletType.SINGLE_SIG) return 'Single sig';
   return type ?? 'Wallet';
 }
 

@@ -15,6 +15,7 @@
  *   ...
  */
 
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import type {
   ExportFormatHandler,
   WalletExportData,
@@ -64,7 +65,7 @@ export const coldcardHandler: ExportFormatHandler = {
    * Only export multisig wallets
    */
   canExport(wallet: WalletExportData): boolean {
-    return wallet.type === 'multi_sig';
+    return wallet.type === WalletType.MULTI_SIG;
   },
 
   export(wallet: WalletExportData, options?: ExportOptions): ExportResult {

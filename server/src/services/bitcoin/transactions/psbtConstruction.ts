@@ -9,6 +9,7 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import bip32 from '../bip32';
 import { addressRepository } from '../../../repositories';
 import { parseDescriptor, convertToStandardXpub } from '../addressDerivation';
@@ -53,7 +54,7 @@ export function resolveWalletSigningInfo(
   wallet: WalletWithDevices,
   logPrefix = ''
 ): WalletSigningInfo {
-  const isMultisig = wallet.type === 'multi_sig';
+  const isMultisig = wallet.type === WalletType.MULTI_SIG;
   const multisigInfo = isMultisig ? resolveMultisigSigningInfo(wallet, logPrefix) : {};
   const singleSigInfo = isMultisig ? {} : resolveSingleSigSigningInfo(wallet, logPrefix);
   const signingInfo = { ...singleSigInfo, ...multisigInfo, isMultisig };

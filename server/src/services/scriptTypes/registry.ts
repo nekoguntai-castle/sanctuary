@@ -5,6 +5,7 @@
  * Allows registration of new script types for descriptor building.
  */
 
+import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { createLogger } from '../../utils/logger';
 import type {
   ScriptTypeHandler,
@@ -108,8 +109,8 @@ class ScriptTypeRegistry {
   /**
    * Get all script type IDs
    */
-  getIds(): string[] {
-    return Array.from(this.handlers.keys());
+  getIds(): WalletScriptType[] {
+    return Array.from(this.handlers.keys()) as WalletScriptType[];
   }
 
   /**

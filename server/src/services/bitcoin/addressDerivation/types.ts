@@ -4,6 +4,8 @@
  * Shared interfaces and types for the address derivation module.
  */
 
+import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
+
 export type AddressDerivationNetwork =
   | 'mainnet'
   // Internal compatibility alias for verified vectors and ambiguous testnet-family descriptors.
@@ -76,5 +78,5 @@ export interface DerivedAddressWithIndex {
 export interface XpubValidationResult {
   valid: boolean;
   error?: string;
-  scriptType?: 'native_segwit' | 'nested_segwit' | 'legacy';
+  scriptType?: WalletScriptType;
 }

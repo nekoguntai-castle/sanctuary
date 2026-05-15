@@ -1,11 +1,12 @@
+import { WalletScriptType as WalletScriptTypeValue } from '@sanctuary/shared/constants/walletIdentity';
 import type { UTXO, WalletScriptType } from '../../types';
 
 /** Input virtual bytes by script type (for dust calculation) */
 export const INPUT_VBYTES: Record<WalletScriptType, number> = {
-  legacy: 148,
-  nested_segwit: 91,
-  native_segwit: 68,
-  taproot: 57.5,
+  [WalletScriptTypeValue.LEGACY]: 148,
+  [WalletScriptTypeValue.NESTED_SEGWIT]: 91,
+  [WalletScriptTypeValue.NATIVE_SEGWIT]: 68,
+  [WalletScriptTypeValue.TAPROOT]: 57.5,
 };
 
 /**
@@ -15,8 +16,11 @@ export const INPUT_VBYTES: Record<WalletScriptType, number> = {
  * @param scriptType - Script type of the UTXO
  * @returns Dust threshold in satoshis
  */
-export function calculateDustThreshold(feeRate: number, scriptType: WalletScriptType = 'native_segwit'): number {
-  const inputVBytes = INPUT_VBYTES[scriptType] || INPUT_VBYTES.native_segwit;
+export function calculateDustThreshold(
+  feeRate: number,
+  scriptType: WalletScriptType = WalletScriptTypeValue.NATIVE_SEGWIT,
+): number {
+  const inputVBytes = INPUT_VBYTES[scriptType] || INPUT_VBYTES[WalletScriptTypeValue.NATIVE_SEGWIT];
   return Math.ceil(inputVBytes * feeRate);
 }
 
@@ -24,7 +28,7 @@ export function calculateDustThreshold(feeRate: number, scriptType: WalletScript
  * Check if a UTXO is dust at the current fee rate.
  */
 export function isDustUtxo(utxo: UTXO, feeRate: number): boolean {
-  const scriptType = utxo.scriptType || 'native_segwit';
+  const scriptType = utxo.scriptType || WalletScriptTypeValue.NATIVE_SEGWIT;
   const threshold = calculateDustThreshold(feeRate, scriptType);
   return utxo.amount < threshold;
 }
@@ -33,5 +37,5 @@ export function isDustUtxo(utxo: UTXO, feeRate: number): boolean {
  * Calculate the cost to spend a UTXO.
  */
 export function getSpendCost(utxo: UTXO, feeRate: number): number {
-  return calculateDustThreshold(feeRate, utxo.scriptType || 'native_segwit');
+  return calculateDustThreshold(feeRate, utxo.scriptType || WalletScriptTypeValue.NATIVE_SEGWIT);
 }

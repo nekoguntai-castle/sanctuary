@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { Check } from 'lucide-react';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { WalletType } from '../../types';
 import { getNetworkColorClass, networkConfigs } from '../../src/app/networks';
 import type { ScriptType, Network } from './types';
@@ -71,10 +72,10 @@ export const ConfigurationStep: React.FC<ConfigurationStepProps> = ({
                   <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-2">Script Type</label>
                   <div className="grid grid-cols-1 gap-2">
                       {[
-                          { id: 'native_segwit', label: 'Native Segwit (Bech32)', desc: 'bc1q... (Lowest fees, Recommended)' },
-                          { id: 'taproot', label: 'Taproot (Bech32m)', desc: 'bc1p... (Advanced privacy)' },
-                          { id: 'nested_segwit', label: 'Nested Segwit (P2SH)', desc: '3... (High compatibility)' },
-                          { id: 'legacy', label: 'Legacy (P2PKH)', desc: '1... (Oldest)' },
+                          { id: WalletScriptType.NATIVE_SEGWIT, label: 'Native Segwit (Bech32)', desc: 'bc1q... (Lowest fees, Recommended)' },
+                          { id: WalletScriptType.TAPROOT, label: 'Taproot (Bech32m)', desc: 'bc1p... (Advanced privacy)' },
+                          { id: WalletScriptType.NESTED_SEGWIT, label: 'Nested Segwit (P2SH)', desc: '3... (High compatibility)' },
+                          { id: WalletScriptType.LEGACY, label: 'Legacy (P2PKH)', desc: '1... (Oldest)' },
                       ].map(opt => (
                           <button
                               key={opt.id}

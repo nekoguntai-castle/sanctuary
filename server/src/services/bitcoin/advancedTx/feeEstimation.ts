@@ -6,6 +6,10 @@
  */
 
 import { getNodeClient } from '../nodeClient';
+import {
+  WalletScriptType,
+  type WalletScriptType as WalletScriptTypeValue,
+} from '@sanctuary/shared/constants/walletIdentity';
 import type { BitcoinNetwork } from '../networks';
 import { estimateTransactionSize, calculateFee } from '../utils';
 import { getErrorMessage } from '../../../utils/errors';
@@ -60,7 +64,7 @@ export async function estimateOptimalFee(
   inputCount: number,
   outputCount: number,
   priority: 'fastest' | 'fast' | 'medium' | 'slow' | 'minimum' = 'medium',
-  scriptType: 'legacy' | 'nested_segwit' | 'native_segwit' | 'taproot' = 'native_segwit',
+  scriptType: WalletScriptTypeValue = WalletScriptType.NATIVE_SEGWIT,
   network: BitcoinNetwork = 'mainnet'
 ): Promise<{
   fee: number;

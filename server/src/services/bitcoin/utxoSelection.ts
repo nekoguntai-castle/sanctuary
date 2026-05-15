@@ -4,6 +4,7 @@
  * Strategies and algorithms for selecting UTXOs for transactions.
  */
 
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { utxoRepository, systemSettingRepository } from '../../repositories';
 import { estimateTransactionSize, calculateFee } from './utils';
 import { DEFAULT_CONFIRMATION_THRESHOLD } from '../../constants';
@@ -87,7 +88,7 @@ export async function selectUTXOs(
   // This allows users to consolidate UTXOs or control exactly which are spent
   if (selectedUtxoIds && selectedUtxoIds.length > 0) {
     const totalAmount = utxos.reduce((sum, u) => sum + Number(u.amount), 0);
-    const estimatedSize = estimateTransactionSize(utxos.length, 2, 'native_segwit');
+    const estimatedSize = estimateTransactionSize(utxos.length, 2, WalletScriptType.NATIVE_SEGWIT);
     const estimatedFee = calculateFee(estimatedSize, feeRate);
 
     if (totalAmount < targetAmount + estimatedFee) {
@@ -125,7 +126,7 @@ export async function selectUTXOs(
     const estimatedSize = estimateTransactionSize(
       selectedUtxos.length,
       2,
-      'native_segwit'
+      WalletScriptType.NATIVE_SEGWIT
     );
     const estimatedFee = calculateFee(estimatedSize, feeRate);
 
@@ -150,7 +151,7 @@ export async function selectUTXOs(
   }
 
   // Not enough funds
-  const finalSize = estimateTransactionSize(selectedUtxos.length, 2, 'native_segwit');
+  const finalSize = estimateTransactionSize(selectedUtxos.length, 2, WalletScriptType.NATIVE_SEGWIT);
   const finalFee = calculateFee(finalSize, feeRate);
 
   throw new Error(

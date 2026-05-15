@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 
 const {
   mockEventBus,
@@ -80,7 +81,7 @@ describe('eventService', () => {
       walletId: 'wallet-1',
       userId: 'user-1',
       name: 'My Wallet',
-      type: 'single',
+      type: WalletType.SINGLE_SIG,
       network: 'mainnet',
     });
     eventService.emitWalletDeleted('wallet-1', 'user-1');

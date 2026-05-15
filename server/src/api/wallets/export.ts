@@ -12,6 +12,11 @@ import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { exportFormatRegistry, type WalletExportData } from '../../services/export';
 import type { ScriptType, Network } from '../../services/bitcoin/descriptorParser';
 import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import {
+  WalletType,
+  accountPurposeForWalletType,
+  parseWalletType,
+} from '@sanctuary/shared/constants/walletIdentity';
 
 const router = Router();
 
@@ -42,12 +47,13 @@ function scopeAccountsToWalletNetwork<T extends { derivationPath: string | null 
  */
 function buildWalletExportData(wallet: NonNullable<Awaited<ReturnType<typeof walletRepository.findByIdWithDevices>>>): WalletExportData {
   // Determine expected purpose based on wallet type
-  const expectedPurpose = wallet.type === 'multi_sig' ? 'multisig' : 'single_sig';
+  const walletType = parseWalletType(wallet.type) ?? WalletType.SINGLE_SIG;
+  const expectedPurpose = accountPurposeForWalletType(walletType);
 
   return {
     id: wallet.id,
     name: wallet.name,
-    type: wallet.type === 'multi_sig' ? 'multi_sig' : 'single_sig',
+    type: walletType,
     scriptType: wallet.scriptType as ScriptType,
     network: wallet.network as Network,
     descriptor: wallet.descriptor || '',

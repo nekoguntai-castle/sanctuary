@@ -4,6 +4,11 @@
  * Device-to-wallet linking and descriptor generation/repair.
  */
 
+import {
+  WalletType,
+  parseWalletScriptType,
+  parseWalletType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { walletRepository, deviceRepository, addressRepository } from '../../repositories';
 import * as descriptorBuilder from '../bitcoin/descriptorBuilder';
 import { createLogger } from '../../utils/logger';
@@ -48,11 +53,13 @@ export async function addDeviceToWallet(
 
   // Regenerate descriptor if wallet now has enough devices
   const allDevices = [...wallet.devices.map(wd => wd.device), device];
+  const walletType = parseWalletType(wallet.type);
+  const walletScriptType = parseWalletScriptType(wallet.scriptType);
   const shouldGenerateDescriptor =
-    (wallet.type === 'single_sig' && allDevices.length === 1) ||
-    (wallet.type === 'multi_sig' && allDevices.length >= (wallet.totalSigners || 2));
+    (walletType === WalletType.SINGLE_SIG && allDevices.length === 1) ||
+    (walletType === WalletType.MULTI_SIG && allDevices.length >= (wallet.totalSigners || 2));
 
-  if (shouldGenerateDescriptor && !wallet.descriptor) {
+  if (shouldGenerateDescriptor && !wallet.descriptor && walletType && walletScriptType) {
     // Build descriptor from all linked devices
     const deviceInfos = allDevices.map(d => ({
       fingerprint: d.fingerprint,
@@ -64,8 +71,8 @@ export async function addDeviceToWallet(
       const descriptorResult = descriptorBuilder.buildDescriptorFromDevices(
         deviceInfos,
         {
-          type: wallet.type as 'single_sig' | 'multi_sig',
-          scriptType: wallet.scriptType as 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy',
+          type: walletType,
+          scriptType: walletScriptType,
           network: wallet.network as WalletNetwork,
           quorum: wallet.quorum || undefined,
         }
@@ -126,14 +133,23 @@ export async function repairWalletDescriptor(
   const devices = ownerWallet.devices.map(wd => wd.device);
 
   // Check device count requirements
-  if (ownerWallet.type === 'single_sig' && devices.length !== 1) {
+  const walletType = parseWalletType(ownerWallet.type);
+  const walletScriptType = parseWalletScriptType(ownerWallet.scriptType);
+  if (!walletType || !walletScriptType) {
+    return {
+      success: false,
+      message: 'Wallet type or script type is unsupported',
+    };
+  }
+
+  if (walletType === WalletType.SINGLE_SIG && devices.length !== 1) {
     return {
       success: false,
       message: `Single-sig wallet needs exactly 1 device, but has ${devices.length}`
     };
   }
 
-  if (ownerWallet.type === 'multi_sig') {
+  if (walletType === WalletType.MULTI_SIG) {
     const requiredDevices = ownerWallet.totalSigners || 2;
     if (devices.length < requiredDevices) {
       return {
@@ -154,8 +170,8 @@ export async function repairWalletDescriptor(
     const descriptorResult = descriptorBuilder.buildDescriptorFromDevices(
       deviceInfos,
       {
-        type: ownerWallet.type as 'single_sig' | 'multi_sig',
-        scriptType: ownerWallet.scriptType as 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy',
+        type: walletType,
+        scriptType: walletScriptType,
         network: ownerWallet.network as WalletNetwork,
         quorum: ownerWallet.quorum || undefined,
       }

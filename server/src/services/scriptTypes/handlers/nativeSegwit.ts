@@ -5,6 +5,7 @@
  * Most modern and efficient on-chain script type.
  */
 
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import type {
   ScriptTypeHandler,
   DeviceKeyInfo,
@@ -22,7 +23,7 @@ import {
 } from './descriptorHelpers';
 
 export const nativeSegwitHandler: ScriptTypeHandler = {
-  id: 'native_segwit',
+  id: WalletScriptType.NATIVE_SEGWIT,
   name: 'Native SegWit (P2WPKH)',
   description: 'BIP-84 native SegWit addresses starting with bc1q',
   bip: 84,
@@ -51,7 +52,7 @@ export const nativeSegwitHandler: ScriptTypeHandler = {
   },
 
   validateDevice(deviceScriptTypes: string[]): boolean {
-    const validTypes = ['native_segwit', 'p2wpkh', 'bech32', 'segwit', 'wpkh'];
+    const validTypes = [WalletScriptType.NATIVE_SEGWIT, 'p2wpkh', 'bech32', 'segwit', 'wpkh'];
     return supportsAnyScriptType(deviceScriptTypes, validTypes);
   },
 };

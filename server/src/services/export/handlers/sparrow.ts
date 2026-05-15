@@ -5,6 +5,7 @@
  * This format is widely supported by desktop wallet software.
  */
 
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import type {
   ExportFormatHandler,
   WalletExportData,
@@ -116,7 +117,7 @@ export const sparrowHandler: ExportFormatHandler = {
 
     const exportData: Record<string, unknown> = {
       label: wallet.name,
-      policy: wallet.type === 'multi_sig'
+      policy: wallet.type === WalletType.MULTI_SIG
         ? {
             type: 'MULTI',
             numSigners: wallet.totalSigners,
@@ -125,7 +126,7 @@ export const sparrowHandler: ExportFormatHandler = {
         : {
             type: 'SINGLE',
           },
-      scriptType: wallet.type === 'multi_sig'
+      scriptType: wallet.type === WalletType.MULTI_SIG
         ? mapMultisigScriptType(wallet.scriptType)
         : mapScriptType(wallet.scriptType),
       keystores,

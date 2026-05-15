@@ -1,4 +1,9 @@
 import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import {
+  WalletScriptType,
+  WalletType,
+  type WalletType as DescriptorType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { isPrivateExtendedKey } from '../addressDerivation/xpubConversion';
 import type { DetectedNetwork, ParsedDescriptor, ParsedDevice, ScriptType } from './types';
 
@@ -12,7 +17,6 @@ const DESCRIPTOR_KEY_CANDIDATE_RE = /\[[a-fA-F0-9]{8}\/[^\]]+\][^,\)\s]+/g;
 const MAX_BIP32_INDEX = 2_147_483_647;
 
 type NetworkFamily = 'mainnet' | 'testnet';
-type DescriptorType = 'single_sig' | 'multi_sig';
 
 interface ParsedPathComponent {
   index: number;
@@ -68,7 +72,7 @@ export function validateParsedDescriptorDomain(
     validateDeviceDomain(device, parsed.scriptType, parsed.type, options),
   );
   validateConsistentNetworks(domains, parsed.network);
-  if (parsed.type === 'multi_sig') {
+  if (parsed.type === WalletType.MULTI_SIG) {
     validateUniqueMultisigKeys(parsed.devices);
   }
 }
@@ -89,10 +93,10 @@ function validateDescriptorSuffix(suffix: string | undefined): string {
 }
 
 const validateDescriptorShape = (parsed: ParsedDescriptor): void => {
-  if (parsed.type === 'single_sig' && parsed.devices.length !== 1) {
+  if (parsed.type === WalletType.SINGLE_SIG && parsed.devices.length !== 1) {
     throw new Error('Single-sig descriptors must contain exactly one signer');
   }
-  if (parsed.type === 'multi_sig') {
+  if (parsed.type === WalletType.MULTI_SIG) {
     validateMultisigQuorum(parsed);
   }
 };
@@ -187,7 +191,7 @@ const validateScriptPath = (
   components: ParsedPathComponent[],
 ): void => {
   const purpose = components[0]?.index;
-  if (descriptorType === 'single_sig') {
+  if (descriptorType === WalletType.SINGLE_SIG) {
     validateSingleSigPurpose(scriptType, purpose);
     return;
   }
@@ -196,10 +200,10 @@ const validateScriptPath = (
 
 const validateSingleSigPurpose = (scriptType: ScriptType, purpose: number | undefined): void => {
   const expectedPurposeByScript: Record<ScriptType, number> = {
-    legacy: 44,
-    nested_segwit: 49,
-    native_segwit: 84,
-    taproot: 86,
+    [WalletScriptType.LEGACY]: 44,
+    [WalletScriptType.NESTED_SEGWIT]: 49,
+    [WalletScriptType.NATIVE_SEGWIT]: 84,
+    [WalletScriptType.TAPROOT]: 86,
   };
   if (purpose !== undefined && purpose !== expectedPurposeByScript[scriptType]) {
     throw new Error('descriptor script type does not match derivation path purpose');
@@ -211,7 +215,7 @@ const validateMultisigPurpose = (
   purpose: number | undefined,
   scriptPath: number | undefined,
 ): void => {
-  if (scriptType === 'legacy') {
+  if (scriptType === WalletScriptType.LEGACY) {
     if (purpose !== undefined && purpose !== 45 && purpose !== 48) {
       throw new Error('descriptor script type does not match derivation path purpose');
     }
@@ -221,10 +225,10 @@ const validateMultisigPurpose = (
   if (purpose !== 48) {
     throw new Error('descriptor script type does not match derivation path purpose');
   }
-  if (scriptType === 'nested_segwit' && scriptPath !== 1) {
+  if (scriptType === WalletScriptType.NESTED_SEGWIT && scriptPath !== 1) {
     throw new Error('descriptor script type does not match derivation path purpose');
   }
-  if (scriptType === 'native_segwit' && scriptPath !== 2) {
+  if (scriptType === WalletScriptType.NATIVE_SEGWIT && scriptPath !== 2) {
     throw new Error('descriptor script type does not match derivation path purpose');
   }
 };

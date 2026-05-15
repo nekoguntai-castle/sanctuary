@@ -101,6 +101,7 @@ describe('useDeviceData branch coverage', () => {
       wallets: [
         { wallet: { id: 'w1', name: 'Wallet One', type: 'multi_sig' } },
         { wallet: { id: 'w2', name: 'Wallet Two', type: 'single_sig' } },
+        { wallet: { id: 'w3', name: 'Wallet Unknown', type: 'multisig' } },
       ],
       // Missing ownership fields intentionally to hit warning branch
     } as any);
@@ -117,6 +118,7 @@ describe('useDeviceData branch coverage', () => {
     expect(result.current.wallets).toEqual([
       { id: 'w1', name: 'Wallet One', type: WalletType.MULTI_SIG },
       { id: 'w2', name: 'Wallet Two', type: WalletType.SINGLE_SIG },
+      { id: 'w3', name: 'Wallet Unknown', type: WalletType.SINGLE_SIG },
     ]);
 
     await act(async () => {

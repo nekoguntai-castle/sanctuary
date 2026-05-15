@@ -6,6 +6,11 @@
  */
 
 import { withTransaction } from '../../models/prisma';
+import {
+  WalletScriptType,
+  WalletType,
+  accountPurposeForWalletType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import type {
   ParsedDescriptor,
   JsonImportConfig,
@@ -59,7 +64,7 @@ export async function createWalletTransaction(
   const { parsed, resolutions, name, network, deviceLabels, jsonConfig } = input;
 
   // Determine account purpose from wallet type
-  const accountPurpose = parsed.type === 'multi_sig' ? 'multisig' : 'single_sig';
+  const accountPurpose = accountPurposeForWalletType(parsed.type);
 
   return await withTransaction(async (tx) => {
     const createdDeviceIds: string[] = [];
@@ -282,8 +287,8 @@ export async function validateImport(
       valid: false,
       error: 'Either descriptor or json must be provided',
       format: 'descriptor',
-      walletType: 'single_sig',
-      scriptType: 'native_segwit',
+      walletType: WalletType.SINGLE_SIG,
+      scriptType: WalletScriptType.NATIVE_SEGWIT,
       network: 'mainnet',
       devices: [],
     };
@@ -317,8 +322,8 @@ export async function validateImport(
       valid: false,
       error: getErrorMessage(e),
       format: input.json ? 'json' : 'descriptor',
-      walletType: 'single_sig',
-      scriptType: 'native_segwit',
+      walletType: WalletType.SINGLE_SIG,
+      scriptType: WalletScriptType.NATIVE_SEGWIT,
       network: 'mainnet',
       devices: [],
     };

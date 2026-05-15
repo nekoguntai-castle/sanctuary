@@ -5,6 +5,7 @@
  * Backwards-compatible SegWit wrapped in P2SH.
  */
 
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import type {
   ScriptTypeHandler,
   DeviceKeyInfo,
@@ -22,7 +23,7 @@ import {
 } from './descriptorHelpers';
 
 export const nestedSegwitHandler: ScriptTypeHandler = {
-  id: 'nested_segwit',
+  id: WalletScriptType.NESTED_SEGWIT,
   name: 'Nested SegWit (P2SH-P2WPKH)',
   description: 'BIP-49 wrapped SegWit addresses starting with 3',
   bip: 49,
@@ -51,7 +52,7 @@ export const nestedSegwitHandler: ScriptTypeHandler = {
   },
 
   validateDevice(deviceScriptTypes: string[]): boolean {
-    const validTypes = ['nested_segwit', 'p2sh-p2wpkh', 'wrapped_segwit', 'segwit'];
+    const validTypes = [WalletScriptType.NESTED_SEGWIT, 'p2sh-p2wpkh', 'wrapped_segwit', 'segwit'];
     return supportsAnyScriptType(deviceScriptTypes, validTypes);
   },
 };

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
+import {
+  DEVICE_ACCOUNT_PURPOSE_VALUES,
+  WALLET_SCRIPT_TYPE_VALUES,
+} from "@sanctuary/shared/constants/walletIdentity";
 import type { DeviceAccountInput } from "../../../../src/api/devices/accountConflicts";
+
+const accountPurposeMessage = `Account purpose must be "${DEVICE_ACCOUNT_PURPOSE_VALUES.join('" or "')}"`;
+const scriptTypeMessage = `Account scriptType must be one of: ${WALLET_SCRIPT_TYPE_VALUES.join(", ")}`;
 
 export function registerNormalizeIncomingAccountsTests(): void {
   describe("normalizeIncomingAccounts", () => {
@@ -51,7 +58,7 @@ export function registerNormalizeIncomingAccountsTests(): void {
           derivationPath: "m/84'/0'/0'",
           xpub: "xpub-native",
         },
-        'Account purpose must be "single_sig" or "multisig"',
+        accountPurposeMessage,
       ],
       [
         {
@@ -60,7 +67,7 @@ export function registerNormalizeIncomingAccountsTests(): void {
           derivationPath: "m/84'/0'/0'",
           xpub: "xpub-native",
         },
-        "Account scriptType must be one of: native_segwit, nested_segwit, taproot, legacy",
+        scriptTypeMessage,
       ],
     ])(
       "returns validation error for invalid account %#",

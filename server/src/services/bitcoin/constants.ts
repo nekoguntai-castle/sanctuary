@@ -5,6 +5,8 @@
  * These values are used across the application for fee calculation and UTXO selection.
  */
 
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
+
 /**
  * Transaction overhead in virtual bytes
  * Includes version (4 bytes) + locktime (4 bytes) + input count (1 byte) + output count (1 byte)
@@ -17,10 +19,10 @@ export const OVERHEAD_VBYTES = 10.5;
  * These values account for the witness discount in SegWit transactions
  */
 export const INPUT_VBYTES: Record<string, number> = {
-  legacy: 148,           // P2PKH: Full signature in scriptSig
-  nested_segwit: 91,     // P2SH-P2WPKH: Witness data gets 75% discount
-  native_segwit: 68,     // P2WPKH: Native witness with full discount
-  taproot: 57.5,         // P2TR: Schnorr signature in witness
+  [WalletScriptType.LEGACY]: 148,           // P2PKH: Full signature in scriptSig
+  [WalletScriptType.NESTED_SEGWIT]: 91,     // P2SH-P2WPKH: Witness data gets 75% discount
+  [WalletScriptType.NATIVE_SEGWIT]: 68,     // P2WPKH: Native witness with full discount
+  [WalletScriptType.TAPROOT]: 57.5,         // P2TR: Schnorr signature in witness
 };
 
 /**

@@ -6,6 +6,10 @@
 
 import apiClient from './client';
 import type { Wallet, WalletNetwork } from '../types';
+import type {
+  WalletScriptType,
+  WalletType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import type { WalletShareRole } from '@sanctuary/shared/constants/walletRoles';
 export type { ValidateXpubRequest, ValidateXpubResponse, XpubScriptType, XpubValidationNetwork } from './walletXpub';
 export { validateXpub } from './walletXpub';
@@ -15,8 +19,8 @@ export type { Wallet, WalletRole } from '../types';
 
 export interface CreateWalletRequest {
   name: string;
-  type: 'single_sig' | 'multi_sig';
-  scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+  type: WalletType;
+  scriptType: WalletScriptType;
   network?: WalletNetwork;
   quorum?: number;
   totalSigners?: number;
@@ -65,8 +69,8 @@ export interface ImportValidationResult {
   valid: boolean;
   error?: string;
   format: 'descriptor' | 'json' | 'wallet_export' | 'bluewallet_text';
-  walletType: 'single_sig' | 'multi_sig';
-  scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+  walletType: WalletType;
+  scriptType: WalletScriptType;
   network: WalletNetwork;
   quorum?: number;
   totalSigners?: number;

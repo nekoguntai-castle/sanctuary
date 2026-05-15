@@ -7,6 +7,10 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
+import {
+  WalletScriptType,
+  type WalletScriptType as WalletScriptTypeValue,
+} from '@sanctuary/shared/constants/walletIdentity';
 import bip32 from '../bip32';
 import { convertToStandardXpub } from './xpubConversion';
 import { getNetwork, getAccountPath } from './utils';
@@ -24,14 +28,14 @@ export function deriveAddress(
   xpub: string,
   index: number,
   options: {
-    scriptType?: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+    scriptType?: WalletScriptTypeValue;
     network?: AddressDerivationNetwork;
     change?: boolean; // false = external (receive), true = internal (change)
   } = {},
   deps: DescriptorDerivationDeps = {}
 ): DerivedAddress {
   const {
-    scriptType = 'native_segwit',
+    scriptType = WalletScriptType.NATIVE_SEGWIT,
     network = 'mainnet',
     change = false,
   } = options;
@@ -62,7 +66,7 @@ export function deriveAddress(
 
   // Generate address based on script type
   switch (scriptType) {
-    case 'native_segwit': {
+    case WalletScriptType.NATIVE_SEGWIT: {
       // P2WPKH (bech32)
       const payment = bitcoin.payments.p2wpkh({
         pubkey: derived.publicKey,
@@ -73,7 +77,7 @@ export function deriveAddress(
       break;
     }
 
-    case 'nested_segwit': {
+    case WalletScriptType.NESTED_SEGWIT: {
       // P2SH-P2WPKH (starts with 3)
       const payment = bitcoin.payments.p2sh({
         redeem: bitcoin.payments.p2wpkh({
@@ -87,7 +91,7 @@ export function deriveAddress(
       break;
     }
 
-    case 'taproot': {
+    case WalletScriptType.TAPROOT: {
       // P2TR (bech32m)
       const payment = bitcoin.payments.p2tr({
         internalPubkey: derived.publicKey.slice(1, 33), // Remove 0x02/0x03 prefix
@@ -98,7 +102,7 @@ export function deriveAddress(
       break;
     }
 
-    case 'legacy': {
+    case WalletScriptType.LEGACY: {
       // P2PKH (starts with 1)
       const payment = bitcoin.payments.p2pkh({
         pubkey: derived.publicKey,
@@ -128,7 +132,7 @@ export function deriveAddresses(
   startIndex: number,
   count: number,
   options: {
-    scriptType?: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+    scriptType?: WalletScriptTypeValue;
     network?: AddressDerivationNetwork;
     change?: boolean;
   } = {}

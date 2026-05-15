@@ -1260,7 +1260,9 @@ jobs:
         uses: ./.github/actions/upload-artifact
         with:
           name: backend-coverage-shard-${{ matrix.shard }}-blob
-          path: server/.vitest-reports/
+          path: server/.vitest-reports/blob-${{ matrix.shard }}-2.json
+          if-no-files-found: error
+          include-hidden-files: true
           retention-days: 14
 
       - name: Write backend unit coverage shard failure breadcrumb

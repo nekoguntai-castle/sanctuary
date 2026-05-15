@@ -5,13 +5,19 @@
  * against existing accounts to detect new, matching, and conflicting entries.
  */
 import { parseDerivationPath } from "@sanctuary/shared/utils/bitcoin";
+import {
+  DEVICE_ACCOUNT_PURPOSE_VALUES,
+  WALLET_SCRIPT_TYPE_VALUES,
+  type DeviceAccountPurpose,
+  type WalletScriptType,
+} from "@sanctuary/shared/constants/walletIdentity";
 
 /**
  * Account type for multi-account device registration
  */
 export interface DeviceAccountInput {
-  purpose: "single_sig" | "multisig";
-  scriptType: "native_segwit" | "nested_segwit" | "taproot" | "legacy";
+  purpose: DeviceAccountPurpose;
+  scriptType: WalletScriptType;
   derivationPath: string;
   xpub: string;
 }
@@ -28,16 +34,8 @@ export interface AccountComparisonResult {
   }>;
 }
 
-const validPurposes = new Set<DeviceAccountInput["purpose"]>([
-  "single_sig",
-  "multisig",
-]);
-const validScriptTypes = new Set<DeviceAccountInput["scriptType"]>([
-  "native_segwit",
-  "nested_segwit",
-  "taproot",
-  "legacy",
-]);
+const validPurposes = new Set<DeviceAccountPurpose>(DEVICE_ACCOUNT_PURPOSE_VALUES);
+const validScriptTypes = new Set<WalletScriptType>(WALLET_SCRIPT_TYPE_VALUES);
 
 /**
  * Compare incoming accounts with existing accounts.
@@ -138,11 +136,11 @@ function validateAccount(account: DeviceAccountInput): string | null {
   }
 
   if (!validPurposes.has(account.purpose)) {
-    return 'Account purpose must be "single_sig" or "multisig"';
+    return `Account purpose must be "${DEVICE_ACCOUNT_PURPOSE_VALUES.join('" or "')}"`;
   }
 
   if (!validScriptTypes.has(account.scriptType)) {
-    return "Account scriptType must be one of: native_segwit, nested_segwit, taproot, legacy";
+    return `Account scriptType must be one of: ${WALLET_SCRIPT_TYPE_VALUES.join(", ")}`;
   }
 
   return null;

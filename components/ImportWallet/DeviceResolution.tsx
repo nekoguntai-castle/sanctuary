@@ -1,4 +1,5 @@
 import React from 'react';
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { ImportValidationResult, DeviceResolution as DeviceResolutionType } from '../../src/api/wallets';
 import { getNetworkColorClass, networkConfigs, type TabNetwork } from '../../src/app/networks';
 import { SingleSigIcon, MultiSigIcon, getDeviceIcon } from '../ui/CustomIcons';
@@ -89,18 +90,18 @@ export const DeviceResolutionStep: React.FC<DeviceResolutionProps> = ({
         <div className="surface-secondary rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-3">
             <div className={`p-2 rounded-full ${
-              validationResult.walletType === 'multi_sig'
+              validationResult.walletType === WalletType.MULTI_SIG
                 ? 'bg-warning-100 dark:bg-warning-900/30'
                 : 'bg-success-100 dark:bg-success-900/30'
             }`}>
-              {validationResult.walletType === 'multi_sig'
+              {validationResult.walletType === WalletType.MULTI_SIG
                 ? <MultiSigIcon className="w-5 h-5 text-warning-600 dark:text-warning-400" />
                 : <SingleSigIcon className="w-5 h-5 text-success-600 dark:text-success-400" />
               }
             </div>
             <div>
               <p className="font-medium text-sanctuary-900 dark:text-sanctuary-100">
-                {validationResult.walletType === 'multi_sig'
+                {validationResult.walletType === WalletType.MULTI_SIG
                   ? `${validationResult.quorum}-of-${validationResult.totalSigners} Multisig`
                   : 'Single Signature'}
               </p>

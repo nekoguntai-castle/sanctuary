@@ -8,6 +8,10 @@
  * Returns ALL available accounts for multi-account import.
  */
 
+import {
+  DeviceAccountPurpose,
+  WalletScriptType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import type { DeviceParser, DeviceParseResult, DeviceAccount, FormatDetectionResult } from '../types';
 
 type KeystoneAccount = {
@@ -63,17 +67,19 @@ const normalizeKeystonePath = (path?: string): string => (path || '').replace(/^
 const getKeystoneAccountXpub = (account: KeystoneAccount): string => account.xPub || account.xpub || '';
 
 const getKeystoneAccountPurpose = (path: string): DeviceAccount['purpose'] =>
-  path.includes("48'") || path.includes('48h') ? 'multisig' : 'single_sig';
+  path.includes("48'") || path.includes('48h')
+    ? DeviceAccountPurpose.MULTISIG
+    : DeviceAccountPurpose.SINGLE_SIG;
 
 const getKeystoneScriptType = (path: string): DeviceAccount['scriptType'] => {
   if (path.includes("48'") || path.includes('48h')) {
-    if (path.includes("/1'") || path.includes('/1h')) return 'nested_segwit';
-    return 'native_segwit';
+    if (path.includes("/1'") || path.includes('/1h')) return WalletScriptType.NESTED_SEGWIT;
+    return WalletScriptType.NATIVE_SEGWIT;
   }
-  if (path.includes("86'") || path.includes('86h')) return 'taproot';
-  if (path.includes("49'") || path.includes('49h')) return 'nested_segwit';
-  if (path.includes("44'") || path.includes('44h')) return 'legacy';
-  return 'native_segwit';
+  if (path.includes("86'") || path.includes('86h')) return WalletScriptType.TAPROOT;
+  if (path.includes("49'") || path.includes('49h')) return WalletScriptType.NESTED_SEGWIT;
+  if (path.includes("44'") || path.includes('44h')) return WalletScriptType.LEGACY;
+  return WalletScriptType.NATIVE_SEGWIT;
 };
 
 const createKeystoneAccount = (account: KeystoneAccount): DeviceAccount | undefined => {
@@ -100,8 +106,12 @@ const getKeystoneAccounts = (coin: KeystoneCoin): DeviceAccount[] => {
 };
 
 const getPrimaryAccount = (accounts: DeviceAccount[]): DeviceAccount | undefined =>
-  accounts.find((account) => account.purpose === 'single_sig' && account.scriptType === 'native_segwit')
-  || accounts.find((account) => account.purpose === 'single_sig')
+  accounts.find(
+    (account) =>
+      account.purpose === DeviceAccountPurpose.SINGLE_SIG &&
+      account.scriptType === WalletScriptType.NATIVE_SEGWIT,
+  )
+  || accounts.find((account) => account.purpose === DeviceAccountPurpose.SINGLE_SIG)
   || accounts[0];
 
 /**
@@ -181,15 +191,15 @@ export const keystoneMultisigParser: DeviceParser = {
     const derivationPath = (ks.Path || '').replace(/^M/, 'm');
 
     // Determine script type from path (BIP-48)
-    let scriptType: DeviceAccount['scriptType'] = 'native_segwit';
+    let scriptType: DeviceAccount['scriptType'] = WalletScriptType.NATIVE_SEGWIT;
     if (derivationPath.includes("/1'") || derivationPath.includes("/1h")) {
-      scriptType = 'nested_segwit';
+      scriptType = WalletScriptType.NESTED_SEGWIT;
     }
 
     const accounts: DeviceAccount[] = xpub ? [{
       xpub,
       derivationPath,
-      purpose: 'multisig',
+      purpose: DeviceAccountPurpose.MULTISIG,
       scriptType,
     }] : [];
 

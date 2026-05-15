@@ -10,6 +10,10 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
+import {
+  WalletScriptType,
+  type WalletScriptType as WalletScriptTypeValue,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { INPUT_VBYTES, OUTPUT_VBYTES, OVERHEAD_VBYTES } from './constants';
 import { getErrorMessage } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
@@ -91,9 +95,9 @@ export function getAddressType(address: string): string {
 export function estimateTransactionSize(
   inputCount: number,
   outputCount: number,
-  scriptType: 'legacy' | 'nested_segwit' | 'native_segwit' | 'taproot' = 'native_segwit'
+  scriptType: WalletScriptTypeValue = WalletScriptType.NATIVE_SEGWIT
 ): number {
-  const inputSize = INPUT_VBYTES[scriptType] || INPUT_VBYTES.native_segwit;
+  const inputSize = INPUT_VBYTES[scriptType] || INPUT_VBYTES[WalletScriptType.NATIVE_SEGWIT];
   const size = OVERHEAD_VBYTES + inputCount * inputSize + outputCount * OUTPUT_VBYTES;
   return size;
 }
@@ -239,7 +243,7 @@ export function createTransaction(
   }
 
   // Calculate fee
-  const estimatedSize = estimateTransactionSize(inputs.length, outputs.length, 'native_segwit');
+  const estimatedSize = estimateTransactionSize(inputs.length, outputs.length, WalletScriptType.NATIVE_SEGWIT);
   const fee = calculateFee(estimatedSize, feeRate);
 
   return {

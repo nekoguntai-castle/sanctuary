@@ -1,17 +1,18 @@
 import type { AgentOptionWallet } from '../../../src/api/admin';
 import type { ValidateXpubRequest, ValidateXpubResponse, XpubScriptType } from '../../../src/api/wallets';
+import { WalletScriptType, WalletType } from '@sanctuary/shared/constants/walletIdentity';
 
 type SupportedXpubNetwork = NonNullable<ValidateXpubRequest['network']>;
 
 type RawOperationalKeyInput =
   | { kind: 'none' }
   | {
-      kind: 'single_sig';
+      kind: typeof WalletType.SINGLE_SIG;
       key: string;
       scriptType: XpubScriptType;
       requiresScriptTypeSelection: boolean;
     }
-  | { kind: 'multi_sig'; key: string };
+  | { kind: typeof WalletType.MULTI_SIG; key: string };
 
 type NormalizeOperationalImportDataInput = {
   importData: string;
@@ -28,10 +29,10 @@ const AMBIGUOUS_SINGLE_SIG_PREFIXES = ['xpub', 'tpub'];
 // SLIP-132 prefixes encode the intended script family; uppercase variants are multisig exports.
 const MULTISIG_PREFIXES = ['Ypub', 'Zpub', 'Upub', 'Vpub'];
 const SCRIPTED_SINGLE_SIG_PREFIXES: Record<string, XpubScriptType> = {
-  ypub: 'nested_segwit',
-  zpub: 'native_segwit',
-  upub: 'nested_segwit',
-  vpub: 'native_segwit',
+  ypub: WalletScriptType.NESTED_SEGWIT,
+  zpub: WalletScriptType.NATIVE_SEGWIT,
+  upub: WalletScriptType.NESTED_SEGWIT,
+  vpub: WalletScriptType.NATIVE_SEGWIT,
 };
 const SUPPORTED_XPUB_NETWORKS: SupportedXpubNetwork[] = [
   'mainnet',
@@ -42,10 +43,10 @@ const SUPPORTED_XPUB_NETWORKS: SupportedXpubNetwork[] = [
 ];
 
 export const RAW_KEY_SCRIPT_TYPE_OPTIONS: Array<{ value: XpubScriptType; label: string }> = [
-  { value: 'native_segwit', label: 'Native SegWit' },
-  { value: 'nested_segwit', label: 'Nested SegWit' },
-  { value: 'taproot', label: 'Taproot' },
-  { value: 'legacy', label: 'Legacy' },
+  { value: WalletScriptType.NATIVE_SEGWIT, label: 'Native SegWit' },
+  { value: WalletScriptType.NESTED_SEGWIT, label: 'Nested SegWit' },
+  { value: WalletScriptType.TAPROOT, label: 'Taproot' },
+  { value: WalletScriptType.LEGACY, label: 'Legacy' },
 ];
 
 export const RAW_MULTISIG_OPERATIONAL_KEY_ERROR =
@@ -58,14 +59,14 @@ export function detectRawOperationalKeyInput(importData: string): RawOperational
   }
 
   if (startsWithAny(key, MULTISIG_PREFIXES)) {
-    return { kind: 'multi_sig', key };
+    return { kind: WalletType.MULTI_SIG, key };
   }
 
   if (startsWithAny(key, AMBIGUOUS_SINGLE_SIG_PREFIXES)) {
     return {
-      kind: 'single_sig',
+      kind: WalletType.SINGLE_SIG,
       key,
-      scriptType: 'native_segwit',
+      scriptType: WalletScriptType.NATIVE_SEGWIT,
       requiresScriptTypeSelection: true,
     };
   }
@@ -77,7 +78,7 @@ export function detectRawOperationalKeyInput(importData: string): RawOperational
   }
 
   return {
-    kind: 'single_sig',
+    kind: WalletType.SINGLE_SIG,
     key,
     scriptType: SCRIPTED_SINGLE_SIG_PREFIXES[scriptedPrefix],
     requiresScriptTypeSelection: false,
@@ -97,7 +98,7 @@ export async function normalizeOperationalImportData({
     return { ok: true, data: trimmedData };
   }
 
-  if (rawKey.kind === 'multi_sig') {
+  if (rawKey.kind === WalletType.MULTI_SIG) {
     return { ok: false, error: RAW_MULTISIG_OPERATIONAL_KEY_ERROR };
   }
 
@@ -129,7 +130,7 @@ export function getRawKeyFallbackFingerprint(key: string): string {
 }
 
 export function getRawKeyDescription(rawKey: RawOperationalKeyInput): string | null {
-  if (rawKey.kind !== 'single_sig' || rawKey.requiresScriptTypeSelection) {
+  if (rawKey.kind !== WalletType.SINGLE_SIG || rawKey.requiresScriptTypeSelection) {
     return null;
   }
 
@@ -138,7 +139,7 @@ export function getRawKeyDescription(rawKey: RawOperationalKeyInput): string | n
 }
 
 function getRawKeyScriptType(
-  rawKey: Extract<RawOperationalKeyInput, { kind: 'single_sig' }>,
+  rawKey: Extract<RawOperationalKeyInput, { kind: typeof WalletType.SINGLE_SIG }>,
   selectedScriptType: XpubScriptType
 ): XpubScriptType {
   return rawKey.requiresScriptTypeSelection ? selectedScriptType : rawKey.scriptType;

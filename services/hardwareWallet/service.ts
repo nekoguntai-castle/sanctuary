@@ -9,6 +9,12 @@
  * 2. Register it with service.registerAdapter(new MyDeviceAdapter())
  */
 
+import {
+  DeviceAccountPurpose,
+  WalletScriptType,
+  type DeviceAccountPurpose as DeviceAccountPurposeValue,
+  type WalletScriptType as WalletScriptTypeValue,
+} from '@sanctuary/shared/constants/walletIdentity';
 import { createLogger } from '../../utils/logger';
 import apiClient from '../../src/api/client';
 import type {
@@ -24,8 +30,8 @@ import type {
 const log = createLogger('HardwareWalletService');
 type AdapterLoader = () => Promise<DeviceAdapter>;
 export type StandardXpubResult = XpubResult & {
-  purpose: 'single_sig' | 'multisig';
-  scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+  purpose: DeviceAccountPurposeValue;
+  scriptType: WalletScriptTypeValue;
 };
 export type XpubFetchFailure = {
   name: string;
@@ -266,18 +272,18 @@ export class HardwareWalletService {
    * Coin type 1 is the BIP-44 testnet-family slot used by testnet and signet.
    */
   static readonly STANDARD_PATHS = [
-    { path: "m/84'/0'/0'", purpose: 'single_sig' as const, scriptType: 'native_segwit' as const, name: 'Native SegWit (BIP-84)' },
-    { path: "m/86'/0'/0'", purpose: 'single_sig' as const, scriptType: 'taproot' as const, name: 'Taproot (BIP-86)' },
-    { path: "m/49'/0'/0'", purpose: 'single_sig' as const, scriptType: 'nested_segwit' as const, name: 'Nested SegWit (BIP-49)' },
-    { path: "m/44'/0'/0'", purpose: 'single_sig' as const, scriptType: 'legacy' as const, name: 'Legacy (BIP-44)' },
-    { path: "m/48'/0'/0'/2'", purpose: 'multisig' as const, scriptType: 'native_segwit' as const, name: 'Multisig Native SegWit (BIP-48)' },
-    { path: "m/48'/0'/0'/1'", purpose: 'multisig' as const, scriptType: 'nested_segwit' as const, name: 'Multisig Nested SegWit (BIP-48)' },
-    { path: "m/84'/1'/0'", purpose: 'single_sig' as const, scriptType: 'native_segwit' as const, name: 'Testnet Native SegWit (BIP-84)' },
-    { path: "m/86'/1'/0'", purpose: 'single_sig' as const, scriptType: 'taproot' as const, name: 'Testnet Taproot (BIP-86)' },
-    { path: "m/49'/1'/0'", purpose: 'single_sig' as const, scriptType: 'nested_segwit' as const, name: 'Testnet Nested SegWit (BIP-49)' },
-    { path: "m/44'/1'/0'", purpose: 'single_sig' as const, scriptType: 'legacy' as const, name: 'Testnet Legacy (BIP-44)' },
-    { path: "m/48'/1'/0'/2'", purpose: 'multisig' as const, scriptType: 'native_segwit' as const, name: 'Testnet Multisig Native SegWit (BIP-48)' },
-    { path: "m/48'/1'/0'/1'", purpose: 'multisig' as const, scriptType: 'nested_segwit' as const, name: 'Testnet Multisig Nested SegWit (BIP-48)' },
+    { path: "m/84'/0'/0'", purpose: DeviceAccountPurpose.SINGLE_SIG, scriptType: WalletScriptType.NATIVE_SEGWIT, name: 'Native SegWit (BIP-84)' },
+    { path: "m/86'/0'/0'", purpose: DeviceAccountPurpose.SINGLE_SIG, scriptType: WalletScriptType.TAPROOT, name: 'Taproot (BIP-86)' },
+    { path: "m/49'/0'/0'", purpose: DeviceAccountPurpose.SINGLE_SIG, scriptType: WalletScriptType.NESTED_SEGWIT, name: 'Nested SegWit (BIP-49)' },
+    { path: "m/44'/0'/0'", purpose: DeviceAccountPurpose.SINGLE_SIG, scriptType: WalletScriptType.LEGACY, name: 'Legacy (BIP-44)' },
+    { path: "m/48'/0'/0'/2'", purpose: DeviceAccountPurpose.MULTISIG, scriptType: WalletScriptType.NATIVE_SEGWIT, name: 'Multisig Native SegWit (BIP-48)' },
+    { path: "m/48'/0'/0'/1'", purpose: DeviceAccountPurpose.MULTISIG, scriptType: WalletScriptType.NESTED_SEGWIT, name: 'Multisig Nested SegWit (BIP-48)' },
+    { path: "m/84'/1'/0'", purpose: DeviceAccountPurpose.SINGLE_SIG, scriptType: WalletScriptType.NATIVE_SEGWIT, name: 'Testnet Native SegWit (BIP-84)' },
+    { path: "m/86'/1'/0'", purpose: DeviceAccountPurpose.SINGLE_SIG, scriptType: WalletScriptType.TAPROOT, name: 'Testnet Taproot (BIP-86)' },
+    { path: "m/49'/1'/0'", purpose: DeviceAccountPurpose.SINGLE_SIG, scriptType: WalletScriptType.NESTED_SEGWIT, name: 'Testnet Nested SegWit (BIP-49)' },
+    { path: "m/44'/1'/0'", purpose: DeviceAccountPurpose.SINGLE_SIG, scriptType: WalletScriptType.LEGACY, name: 'Testnet Legacy (BIP-44)' },
+    { path: "m/48'/1'/0'/2'", purpose: DeviceAccountPurpose.MULTISIG, scriptType: WalletScriptType.NATIVE_SEGWIT, name: 'Testnet Multisig Native SegWit (BIP-48)' },
+    { path: "m/48'/1'/0'/1'", purpose: DeviceAccountPurpose.MULTISIG, scriptType: WalletScriptType.NESTED_SEGWIT, name: 'Testnet Multisig Nested SegWit (BIP-48)' },
   ];
 
   /**

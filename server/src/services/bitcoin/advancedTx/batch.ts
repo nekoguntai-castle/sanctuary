@@ -11,6 +11,7 @@ import { getNetwork, estimateTransactionSize, calculateFee } from "../utils";
 import type { BitcoinNetwork } from "../networks";
 import { utxoRepository, addressRepository } from "../../../repositories";
 import { RBF_SEQUENCE, getDustThreshold } from "./shared";
+import { WalletScriptType } from "@sanctuary/shared/constants/walletIdentity";
 
 /**
  * Create a batch transaction sending to multiple recipients
@@ -65,7 +66,7 @@ export async function createBatchTransaction(
     const estimatedSize = estimateTransactionSize(
       selectedUtxos.length,
       recipients.length + 1, // +1 for change output
-      "native_segwit",
+      WalletScriptType.NATIVE_SEGWIT,
     );
     const estimatedFee = calculateFee(estimatedSize, feeRate);
 
@@ -78,7 +79,7 @@ export async function createBatchTransaction(
   const txSize = estimateTransactionSize(
     selectedUtxos.length,
     recipients.length + 1,
-    "native_segwit",
+    WalletScriptType.NATIVE_SEGWIT,
   );
   const fee = calculateFee(txSize, feeRate);
 
@@ -92,7 +93,7 @@ export async function createBatchTransaction(
 
   // Calculate savings vs individual transactions
   const individualTxFee = calculateFee(
-    estimateTransactionSize(1, 2, "native_segwit"), // 1 in, 2 out (recipient + change)
+    estimateTransactionSize(1, 2, WalletScriptType.NATIVE_SEGWIT), // 1 in, 2 out (recipient + change)
     feeRate,
   );
   const totalIndividualFees = individualTxFee * recipients.length;

@@ -9,6 +9,7 @@
 
 import { getNodeClient } from '../nodeClient';
 import type { BitcoinNetwork } from '../networks';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 export { isUniqueConstraintError } from '../../../utils/errors';
 
 /**
@@ -16,7 +17,7 @@ export { isUniqueConstraintError } from '../../../utils/errors';
  * Legacy P2PKH wallets use full previous transactions instead of witnessUtxo
  */
 export function isLegacyScriptType(scriptType: string | null): boolean {
-  return scriptType === 'legacy' || scriptType === 'p2pkh' || scriptType === 'P2PKH';
+  return scriptType === WalletScriptType.LEGACY || scriptType === 'p2pkh' || scriptType === 'P2PKH';
 }
 
 /**

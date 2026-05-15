@@ -4,6 +4,10 @@
  * These functions have no React dependencies and can be tested independently.
  */
 
+import {
+  DeviceAccountPurpose,
+  WalletScriptType,
+} from '@sanctuary/shared/constants/walletIdentity';
 import type { DeviceAccount as ParsedDeviceAccount } from '../../../services/deviceParsers';
 import type { Device } from '../../../types';
 
@@ -106,9 +110,14 @@ export function createSingleAccount(
   parseResult: { xpub?: string; derivationPath?: string }
 ): ParsedDeviceAccount {
   return {
-    purpose: parseResult.derivationPath?.includes("48'") ? 'multisig' : 'single_sig',
-    scriptType: parseResult.derivationPath?.includes("/2'") ? 'native_segwit' :
-               parseResult.derivationPath?.includes("/1'") ? 'nested_segwit' : 'native_segwit',
+    purpose: parseResult.derivationPath?.includes("48'")
+      ? DeviceAccountPurpose.MULTISIG
+      : DeviceAccountPurpose.SINGLE_SIG,
+    scriptType: parseResult.derivationPath?.includes("/2'")
+      ? WalletScriptType.NATIVE_SEGWIT
+      : parseResult.derivationPath?.includes("/1'")
+      ? WalletScriptType.NESTED_SEGWIT
+      : WalletScriptType.NATIVE_SEGWIT,
     derivationPath: parseResult.derivationPath || "m/84'/0'/0'",
     xpub: parseResult.xpub || '',
   };

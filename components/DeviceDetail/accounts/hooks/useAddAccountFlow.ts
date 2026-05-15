@@ -9,6 +9,10 @@ import { useState, useRef, useCallback, type MutableRefObject } from "react";
 import { URRegistryDecoder } from "@keystonehq/bc-ur-registry";
 import { URDecoder as BytesURDecoder } from "@ngraveio/bc-ur";
 import {
+  DeviceAccountPurpose,
+  WalletScriptType,
+} from "@sanctuary/shared/constants/walletIdentity";
+import {
   DeviceAccount as ParsedDeviceAccount,
   parseDeviceJson,
 } from "../../../../services/deviceParsers";
@@ -122,8 +126,10 @@ const qrImportFromUrExtraction = (
   return {
     accounts: [
       {
-        purpose: extracted.path.includes("48'") ? "multisig" : "single_sig",
-        scriptType: "native_segwit",
+        purpose: extracted.path.includes("48'")
+          ? DeviceAccountPurpose.MULTISIG
+          : DeviceAccountPurpose.SINGLE_SIG,
+        scriptType: WalletScriptType.NATIVE_SEGWIT,
         derivationPath:
           normalizeDerivationPath(extracted.path) || "m/84'/0'/0'",
         xpub: extracted.xpub,
@@ -312,8 +318,8 @@ export function useAddAccountFlow({
   const [addAccountError, setAddAccountError] = useState<string | null>(null);
   const [usbProgress, setUsbProgress] = useState<UsbProgress | null>(null);
   const [manualAccount, setManualAccount] = useState<ManualAccountData>({
-    purpose: "multisig",
-    scriptType: "native_segwit",
+    purpose: DeviceAccountPurpose.MULTISIG,
+    scriptType: WalletScriptType.NATIVE_SEGWIT,
     derivationPath: "m/48'/0'/0'/2'",
     xpub: "",
   });

@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 /**
  * Event Bus Tests
  *
@@ -64,7 +65,7 @@ describe('EventBus', () => {
         walletId: 'new-wallet',
         userId: 'user-1',
         name: 'Test Wallet',
-        type: 'single',
+        type: WalletType.SINGLE_SIG,
         network: 'mainnet',
       });
 
@@ -333,14 +334,14 @@ describe('EventBus', () => {
         walletId: 'w1',
         userId: 'u1',
         name: 'Wallet 1',
-        type: 'single',
+        type: WalletType.SINGLE_SIG,
         network: 'mainnet',
       });
       testBus.emit('wallet:created', {
         walletId: 'w2',
         userId: 'u1',
         name: 'Wallet 2',
-        type: 'single',
+        type: WalletType.SINGLE_SIG,
         network: 'mainnet',
       });
       testBus.emit('wallet:deleted', {

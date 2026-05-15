@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { BITCOIN_NON_REGTEST_NETWORKS } from '../constants/bitcoin';
+import {
+  DEVICE_ACCOUNT_PURPOSE_VALUES,
+  WALLET_SCRIPT_TYPE_VALUES,
+} from '../constants/walletIdentity';
 
 /**
  * Shared mobile API request contracts consumed by gateway validation, backend
@@ -24,8 +28,8 @@ export const MOBILE_ACTIONS = [
 export type MobileAction = typeof MOBILE_ACTIONS[number];
 
 export const MOBILE_DRAFT_STATUS_VALUES = ['unsigned', 'partial', 'signed'] as const;
-export const MOBILE_DEVICE_ACCOUNT_PURPOSES = ['single_sig', 'multisig'] as const;
-export const MOBILE_DEVICE_SCRIPT_TYPES = ['native_segwit', 'nested_segwit', 'taproot', 'legacy'] as const;
+export const MOBILE_DEVICE_ACCOUNT_PURPOSES = DEVICE_ACCOUNT_PURPOSE_VALUES;
+export const MOBILE_DEVICE_SCRIPT_TYPES = WALLET_SCRIPT_TYPE_VALUES;
 
 export const MOBILE_API_REQUEST_LIMITS = {
   usernameMinLength: 1,

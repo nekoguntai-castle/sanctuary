@@ -23,6 +23,7 @@ import {
   Check,
 } from 'lucide-react';
 import { Button } from '../../ui/Button';
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { useCopyToClipboard } from '../../../hooks/useCopyToClipboard';
 import * as walletsApi from '../../../src/api/wallets';
 import { isMultisigType, getQuorumM, getQuorumN, type Quorum } from '../../../types';
@@ -167,7 +168,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         walletName,
         getQuorumM(quorum),
         getQuorumN(quorum, totalSigners ?? undefined),
-        scriptType || 'native_segwit',
+        scriptType || WalletScriptType.NATIVE_SEGWIT,
         devices
       );
     }

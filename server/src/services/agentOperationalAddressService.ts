@@ -9,6 +9,7 @@ import {
 import { deriveAddressFromDescriptor } from "./bitcoin/addressDerivation";
 import { parseAddressDerivationPath } from "@sanctuary/shared/utils/bitcoin";
 import { isBitcoinNetwork, type BitcoinNetwork } from "./bitcoin/networks";
+import { WalletType } from "@sanctuary/shared/constants/walletIdentity";
 
 type SupportedNetwork = BitcoinNetwork;
 
@@ -100,7 +101,7 @@ export async function getOrCreateOperationalReceiveAddress(input: {
     if (!wallet) {
       throw new NotFoundError("Operational wallet not found");
     }
-    if (wallet.type !== "single_sig") {
+    if (wallet.type !== WalletType.SINGLE_SIG) {
       throw new InvalidInputError(
         "Linked operational wallet must be single-sig",
       );

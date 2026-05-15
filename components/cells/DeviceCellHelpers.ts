@@ -1,4 +1,7 @@
-import { WalletType } from '../../types';
+import {
+  DeviceAccountPurpose,
+  WalletType,
+} from '@sanctuary/shared/constants/walletIdentity';
 
 interface WalletFilterContext {
   walletFilter: string;
@@ -13,14 +16,14 @@ interface WalletCountDevice {
 }
 
 export function getAccountBadgeClass(purpose: string): string {
-  const isMultisig = purpose === 'multisig';
+  const isMultisig = purpose === DeviceAccountPurpose.MULTISIG;
   return isMultisig
     ? 'bg-warning-600 text-white dark:bg-warning-100 dark:text-warning-700'
     : 'bg-success-600 text-white dark:bg-success-100 dark:text-success-700';
 }
 
 export function getWalletBadgeClass(walletType: string): string {
-  const isMultisig = walletType === 'multi_sig' || walletType === WalletType.MULTI_SIG;
+  const isMultisig = walletType === WalletType.MULTI_SIG;
   return isMultisig
     ? 'bg-warning-100 text-warning-800 border border-warning-200 dark:bg-warning-500/10 dark:text-warning-300 dark:border-warning-500/20'
     : 'bg-success-100 text-success-800 border border-success-200 dark:bg-success-500/10 dark:text-success-300 dark:border-success-500/20';

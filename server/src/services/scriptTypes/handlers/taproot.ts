@@ -5,6 +5,7 @@
  * Latest Bitcoin script type with enhanced privacy and efficiency.
  */
 
+import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import type {
   ScriptTypeHandler,
   DeviceKeyInfo,
@@ -19,7 +20,7 @@ import {
 } from './descriptorHelpers';
 
 export const taprootHandler: ScriptTypeHandler = {
-  id: 'taproot',
+  id: WalletScriptType.TAPROOT,
   name: 'Taproot (P2TR)',
   description: 'BIP-86 Taproot addresses starting with bc1p',
   bip: 86,
@@ -45,7 +46,7 @@ export const taprootHandler: ScriptTypeHandler = {
   // buildMultiSigDescriptor is omitted since supportsMultisig is false
 
   validateDevice(deviceScriptTypes: string[]): boolean {
-    const validTypes = ['taproot', 'p2tr', 'bech32m', 'tr'];
+    const validTypes = [WalletScriptType.TAPROOT, 'p2tr', 'bech32m', 'tr'];
     return supportsAnyScriptType(deviceScriptTypes, validTypes);
   },
 };
