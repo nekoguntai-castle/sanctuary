@@ -7,7 +7,7 @@
 import {
   WALLET_ROLE_VALUES,
   WALLET_SHARE_ROLE_VALUES,
-} from '../../../services/wallet/types';
+} from '@sanctuary/shared/constants/walletRoles';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import {
   WALLET_IMPORT_FORMAT_VALUES,

@@ -7,6 +7,7 @@ import { Check, X, Edit2 } from 'lucide-react';
 import { Button } from '../../../ui/Button';
 import { LabelManager } from '../../../LabelManager';
 import type { Wallet } from '../../../../types';
+import { canEditWallet } from '../../../../utils/walletCapabilities';
 
 interface GeneralSettingsProps {
   wallet: Wallet;
@@ -76,7 +77,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
       ) : (
         <div className="flex items-center justify-between">
           <span className="text-sm text-sanctuary-900 dark:text-sanctuary-100">{wallet.name}</span>
-          {wallet.canEdit !== false && (
+          {canEditWallet(wallet) && (
             <button
               onClick={() => {
                 onSetEditedName(wallet.name);
@@ -93,7 +94,7 @@ export const GeneralSettings: React.FC<GeneralSettingsProps> = ({
     </div>
 
     {/* Labels Management - only show if user can edit */}
-    {wallet.canEdit !== false && (
+    {canEditWallet(wallet) && (
       <div className="surface-elevated rounded-xl p-5 border border-sanctuary-200 dark:border-sanctuary-800">
         <LabelManager walletId={wallet.id} onLabelsChange={onLabelsChange} />
       </div>

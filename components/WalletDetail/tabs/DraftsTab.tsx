@@ -9,6 +9,7 @@ import React from 'react';
 import { DraftList } from '../../DraftList';
 import type { WalletType, Address, Quorum } from '../../../types';
 import { getQuorumM, getQuorumN } from '../../../types';
+import { canEditWalletRole } from '../../../utils/walletCapabilities';
 
 interface DraftsTabProps {
   walletId: string;
@@ -37,7 +38,7 @@ export const DraftsTab: React.FC<DraftsTabProps> = ({
         walletId={walletId}
         walletType={walletType}
         quorum={quorum ? { m: getQuorumM(quorum), n: getQuorumN(quorum, totalSigners) } : undefined}
-        canEdit={userRole !== 'viewer'}
+        canEdit={canEditWalletRole(userRole)}
         walletAddresses={addresses}
         walletName={walletName}
         onDraftsChange={onDraftsChange}

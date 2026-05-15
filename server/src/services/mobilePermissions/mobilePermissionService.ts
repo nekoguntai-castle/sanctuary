@@ -37,6 +37,7 @@ import { getErrorMessage } from '../../utils/errors';
 import { ForbiddenError, NotFoundError } from '../../errors';
 import { mobilePermissionRepository, walletSharingRepository } from '../../repositories';
 import type { MobilePermission } from '../../generated/prisma/client';
+import { parseWalletRole } from '@sanctuary/shared/constants/walletRoles';
 import {
   type MobileAction,
   type WalletRole,
@@ -87,10 +88,12 @@ function getOwnerMax(
  * @returns Whether the action is allowed
  */
 function calculateEffectivePermission(
-  role: WalletRole,
+  role: WalletRole | null,
   permission: MobilePermission | null,
   action: MobileAction
 ): boolean {
+  if (role === null) return false;
+
   // 1. Check role capability (hard limit)
   const roleMax = ROLE_CAPABILITIES[role][action];
   if (!roleMax) return false;
@@ -111,7 +114,7 @@ function calculateEffectivePermission(
  * Calculate all effective permissions for a user on a wallet
  */
 function calculateAllEffectivePermissions(
-  role: WalletRole,
+  role: WalletRole | null,
   permission: MobilePermission | null
 ): Record<MobileAction, boolean> {
   const result: Record<MobileAction, boolean> = {} as Record<MobileAction, boolean>;
@@ -207,9 +210,9 @@ class MobilePermissionService {
     // Calculate effective permissions - role is now included in the query
     const results = permissions.map((perm) => {
       // Extract role from the included users relation
-      const role = perm.wallet.users[0]?.role as WalletRole | undefined;
+      const role = parseWalletRole(perm.wallet.users[0]?.role);
       const effectivePermissions = calculateAllEffectivePermissions(
-        role || 'viewer',
+        role,
         perm
       );
 
@@ -384,15 +387,16 @@ class MobilePermissionService {
     // Map results using the pre-fetched permissions
     const results = walletUsers.map((wu) => {
       const permission = permissionsMap.get(wu.userId) || null;
+      const role = parseWalletRole(wu.role);
       const effectivePermissions = calculateAllEffectivePermissions(
-        wu.role as WalletRole,
+        role,
         permission
       );
 
       return {
         userId: wu.userId,
         username: wu.user.username,
-        role: wu.role,
+        role,
         effectivePermissions,
         hasCustomRestrictions: permission !== null,
         hasOwnerRestrictions: permission?.ownerMaxPermissions != null,
@@ -439,7 +443,7 @@ class MobilePermissionService {
 
     if (!walletUser) return null;
 
-    return walletUser.role as WalletRole;
+    return parseWalletRole(walletUser.role);
   }
 }
 

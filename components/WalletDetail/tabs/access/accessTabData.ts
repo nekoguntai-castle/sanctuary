@@ -1,10 +1,11 @@
 import type { User } from '../../../../types';
 import type { WalletShareInfo } from '../../../../src/api/wallets';
 import type { AccessSubTab } from '../../types';
+import type { WalletShareRole } from '@sanctuary/shared/constants/walletRoles';
 
 export const ACCESS_SUB_TABS: AccessSubTab[] = ['ownership', 'sharing', 'transfers'];
 
-export type WalletAccessRole = 'viewer' | 'signer';
+export type WalletAccessRole = WalletShareRole;
 export type WalletShareUser = WalletShareInfo['users'][number];
 export type WalletShareGroup = NonNullable<WalletShareInfo['group']>;
 

@@ -4,7 +4,7 @@
  * API endpoints for managing draft transactions (saved, unsigned/partially signed PSBTs)
  *
  * Permissions:
- * - READ (GET): Any user with wallet access (owner, signer, viewer)
+ * - READ (GET): Any user with wallet access (owner, approver, signer, viewer)
  * - WRITE (POST, PATCH, DELETE): Only owner or signer roles
  */
 

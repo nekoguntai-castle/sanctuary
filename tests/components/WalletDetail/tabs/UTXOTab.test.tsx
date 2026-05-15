@@ -15,7 +15,7 @@ const baseProps = {
   utxos: [{ txid: 'tx-1', vout: 0 }] as any[],
   utxoTotalCount: 20,
   onToggleFreeze: vi.fn(),
-  userRole: 'editor',
+  userRole: 'signer',
   selectedUtxos: new Set<string>(),
   onToggleSelect: vi.fn(),
   onSendSelected: vi.fn(),

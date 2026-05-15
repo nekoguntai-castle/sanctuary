@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../../src/api/auth";
 import * as priceApi from "../../../src/api/price";
+import { useUser } from "../../../contexts/UserContext";
 import {
   TestConsumer,
   authenticatedUser,
@@ -38,6 +39,11 @@ vi.mock("../../../src/api/refresh", () => ({
   onTerminalLogout: () => () => {},
   triggerLogout: vi.fn(),
 }));
+
+function AuthStateMarker() {
+  const { user } = useUser();
+  return <span data-testid="auth-user-id">{user?.id ?? "none"}</span>;
+}
 
 describe("CurrencyContext - Currency settings", () => {
   beforeEach(setupDefaultMocks);
@@ -124,10 +130,15 @@ describe("CurrencyContext - Currency settings", () => {
       }),
     );
 
-    renderWithProviders(<TestConsumer />);
+    renderWithProviders(
+      <>
+        <TestConsumer />
+        <AuthStateMarker />
+      </>,
+    );
 
     await waitFor(() => {
-      expect(authApi.getCurrentUser).toHaveBeenCalled();
+      expect(screen.getByTestId("auth-user-id")).toHaveTextContent("user-1");
     });
 
     await user.click(screen.getByTestId("set-eur"));

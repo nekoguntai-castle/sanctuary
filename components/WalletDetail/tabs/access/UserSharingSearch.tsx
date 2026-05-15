@@ -60,6 +60,13 @@ export const UserSharingSearch: React.FC<UserSharingSearchProps> = ({
               >
                 Sign
               </button>
+              <button
+                onClick={() => onShareWithUser(searchUser.id, 'approver')}
+                disabled={sharingLoading}
+                className="text-xs px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 disabled:opacity-50"
+              >
+                Approve
+              </button>
             </div>
           </div>
         ))}

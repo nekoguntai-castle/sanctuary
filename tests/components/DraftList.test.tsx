@@ -106,6 +106,7 @@ describe('DraftList', () => {
   const defaultProps = {
     walletId: 'wallet-1',
     walletType: WalletType.SINGLE_SIG,
+    canEdit: true,
   };
 
   beforeEach(() => {
@@ -403,6 +404,14 @@ describe('DraftList', () => {
 
     it('hides edit controls when canEdit is false', async () => {
       renderDraftList({ canEdit: false });
+      await screen.findByText('Unsigned');
+
+      expect(screen.queryByTitle('Delete draft')).not.toBeInTheDocument();
+      expect(document.querySelectorAll('input[type="file"]').length).toBe(0);
+    });
+
+    it('hides edit controls when canEdit is omitted', async () => {
+      renderDraftList({ canEdit: undefined });
       await screen.findByText('Unsigned');
 
       expect(screen.queryByTitle('Delete draft')).not.toBeInTheDocument();

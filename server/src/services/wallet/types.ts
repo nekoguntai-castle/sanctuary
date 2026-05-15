@@ -5,24 +5,39 @@
  */
 
 import type { NetworkType } from "@sanctuary/shared/constants/bitcoin";
+import {
+  WALLET_APPROVE_ROLE_VALUES,
+  WALLET_EDIT_ROLE_VALUES,
+  WALLET_ROLE_VALUES,
+  WALLET_SHARE_ROLE_VALUES,
+  canWalletRoleApprove,
+  canWalletRoleEdit,
+  canWalletRoleOwn,
+  canWalletRoleView,
+  isWalletRole,
+  isWalletShareRole,
+  parseWalletRole,
+  parseWalletShareRole,
+  type WalletRole,
+  type WalletShareRole,
+} from "@sanctuary/shared/constants/walletRoles";
 
-/**
- * User's role for a specific wallet
- */
-export const WALLET_ROLE_VALUES = [
-  "owner",
-  "approver",
-  "signer",
-  "viewer",
-] as const;
-export const WALLET_SHARE_ROLE_VALUES = [
-  "viewer",
-  "signer",
-  "approver",
-] as const;
+export {
+  WALLET_APPROVE_ROLE_VALUES,
+  WALLET_EDIT_ROLE_VALUES,
+  WALLET_ROLE_VALUES,
+  WALLET_SHARE_ROLE_VALUES,
+  canWalletRoleApprove,
+  canWalletRoleEdit,
+  canWalletRoleOwn,
+  canWalletRoleView,
+  isWalletRole,
+  isWalletShareRole,
+  parseWalletRole,
+  parseWalletShareRole,
+};
 
-export type WalletRole = (typeof WALLET_ROLE_VALUES)[number] | null;
-export type WalletShareRole = (typeof WALLET_SHARE_ROLE_VALUES)[number];
+export type { WalletRole, WalletShareRole };
 export type WalletNetwork = NetworkType;
 
 /**
@@ -48,10 +63,10 @@ export interface CreateWalletInput {
 }
 
 /** Roles that can edit wallet data (labels, etc.) */
-export const EDIT_ROLES: string[] = ["owner", "signer"];
+export const EDIT_ROLES = WALLET_EDIT_ROLE_VALUES;
 
 /** Roles that can approve transactions */
-export const APPROVE_ROLES: string[] = ["owner", "approver"];
+export const APPROVE_ROLES = WALLET_APPROVE_ROLE_VALUES;
 
 export interface WalletWithBalance {
   id: string;
@@ -78,7 +93,7 @@ export interface WalletWithBalance {
     groupName?: string | null;
     userCount: number;
   };
-  // User's role for this wallet (owner, signer, viewer)
+  // User's role for this wallet (owner, approver, signer, viewer)
   userRole?: WalletRole;
   // Whether user can edit (owner or signer)
   canEdit?: boolean;

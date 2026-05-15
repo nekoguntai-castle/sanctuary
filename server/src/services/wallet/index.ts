@@ -7,8 +7,7 @@
  */
 
 // Types
-export type { WalletAccessCheckResult, CreateWalletInput, WalletWithBalance } from './types';
-export type { WalletRole } from '../accessControl';
+export type { WalletAccessCheckResult, CreateWalletInput, WalletRole, WalletWithBalance } from './types';
 
 // Access control — consolidated into services/accessControl (with Redis caching)
 export {

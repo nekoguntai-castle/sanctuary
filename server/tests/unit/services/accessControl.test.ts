@@ -145,6 +145,20 @@ describe('Access Control Service', () => {
       expect(role).toBe('viewer');
     });
 
+    it('should fail closed for malformed direct wallet roles', async () => {
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
+        id: faker.string.uuid(),
+        walletId,
+        userId,
+        role: 'admin',
+        addedAt: new Date(),
+      });
+
+      const role = await getUserWalletRole(walletId, userId);
+
+      expect(role).toBeNull();
+    });
+
     it('should check group access when no direct access', async () => {
       vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(null);
       vi.mocked(prisma.wallet.findFirst).mockResolvedValue({
@@ -173,6 +187,16 @@ describe('Access Control Service', () => {
       const role = await getUserWalletRole(walletId, userId);
 
       expect(role).toBe('owner');
+      expect(prisma.walletUser.findFirst).not.toHaveBeenCalled();
+      expect(prisma.wallet.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('should fail closed for malformed cached wallet roles', async () => {
+      mockCache.get.mockResolvedValueOnce({ role: 'admin' });
+
+      const role = await getUserWalletRole(walletId, userId);
+
+      expect(role).toBeNull();
       expect(prisma.walletUser.findFirst).not.toHaveBeenCalled();
       expect(prisma.wallet.findFirst).not.toHaveBeenCalled();
     });

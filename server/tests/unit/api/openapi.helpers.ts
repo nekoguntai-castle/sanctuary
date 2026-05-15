@@ -33,7 +33,7 @@ export {
 export {
   WALLET_ROLE_VALUES,
   WALLET_SHARE_ROLE_VALUES,
-} from '../../../src/services/wallet/types';
+} from '@sanctuary/shared/constants/walletRoles';
 export {
   WALLET_IMPORT_FORMAT_VALUES,
   WALLET_IMPORT_NETWORK_VALUES,

@@ -8,8 +8,9 @@
 import prisma from '../models/prisma';
 import type { WalletUser, GroupMember } from '../generated/prisma/client';
 import { invalidateWalletAccessCache } from '../infrastructure/accessCache';
+import type { WalletRoleValue } from '@sanctuary/shared/constants/walletRoles';
 
-type WalletUserRole = 'owner' | 'viewer' | 'signer' | 'approver';
+type WalletUserRole = WalletRoleValue;
 
 /**
  * Find wallet user access record

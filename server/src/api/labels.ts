@@ -5,7 +5,7 @@
  * Labels can be attached to multiple transactions/addresses and vice versa.
  *
  * Permissions:
- * - READ (GET): Any user with wallet access (owner, signer, viewer)
+ * - READ (GET): Any user with wallet access (owner, approver, signer, viewer)
  * - WRITE (POST, PUT, DELETE): Only owner or signer roles
  */
 

@@ -9,6 +9,7 @@ import {
   toTabNetwork,
   type TabNetwork,
 } from '../../src/app/networks';
+import { parseWalletRole } from '@sanctuary/shared/constants/walletRoles';
 
 interface WalletBadgesProps {
   wallet: Wallet;
@@ -17,7 +18,7 @@ interface WalletBadgesProps {
   syncRetryInfo: SyncRetryInfo | null;
 }
 
-type WalletUserRole = 'owner' | 'signer' | 'viewer' | string | null | undefined;
+type WalletUserRole = unknown;
 type NonMainnetTabNetwork = Exclude<TabNetwork, 'mainnet'>;
 
 function getNetworkBadgeClass(network: NonMainnetTabNetwork): string {
@@ -25,20 +26,27 @@ function getNetworkBadgeClass(network: NonMainnetTabNetwork): string {
 }
 
 function getRoleBadgeClass(role: WalletUserRole): string {
-  if (role === 'owner') {
+  const parsedRole = parseWalletRole(role);
+  if (parsedRole === 'owner') {
     return 'bg-primary-600 text-white dark:bg-primary-100 dark:text-primary-700';
   }
 
-  if (role === 'signer') {
+  if (parsedRole === 'signer') {
     return 'bg-warning-600 text-white dark:bg-warning-100 dark:text-warning-700';
+  }
+
+  if (parsedRole === 'approver') {
+    return 'bg-indigo-600 text-white dark:bg-indigo-500/10 dark:text-indigo-300';
   }
 
   return 'bg-sanctuary-500 text-white dark:bg-sanctuary-900 dark:text-sanctuary-200';
 }
 
 function getRoleLabel(role: WalletUserRole): string {
-  if (role === 'owner') return 'Owner';
-  if (role === 'signer') return 'Signer';
+  const parsedRole = parseWalletRole(role);
+  if (parsedRole === 'owner') return 'Owner';
+  if (parsedRole === 'signer') return 'Signer';
+  if (parsedRole === 'approver') return 'Approver';
   return 'Viewer';
 }
 

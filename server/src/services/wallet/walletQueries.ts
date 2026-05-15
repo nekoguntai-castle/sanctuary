@@ -12,8 +12,11 @@ import {
   addressRepository,
 } from "../../repositories";
 import { WalletNotFoundError } from "../../errors";
-import { EDIT_ROLES } from "./types";
 import type { WalletRole, WalletWithBalance } from "./types";
+import {
+  canWalletRoleEdit,
+  parseWalletRole,
+} from "@sanctuary/shared/constants/walletRoles";
 
 /**
  * Get all wallets for a user
@@ -62,15 +65,15 @@ export async function getUserWallets(
     const directAccess = wallet.users.find((u) => u.userId === userId);
     let userRole: WalletRole = null;
     if (directAccess) {
-      userRole = directAccess.role as WalletRole;
+      userRole = parseWalletRole(directAccess.role);
     } else if (hasGroup) {
       // User has access via group, use the wallet's groupRole
-      userRole =
-        ((wallet as unknown as { groupRole: string })
-          .groupRole as WalletRole) || "viewer";
+      userRole = parseWalletRole(
+        (wallet as unknown as { groupRole?: string | null }).groupRole,
+      );
     }
 
-    const canEdit = userRole === "owner" || userRole === "signer";
+    const canEdit = canWalletRoleEdit(userRole);
 
     return {
       id: wallet.id,
@@ -158,13 +161,13 @@ export async function getWalletById(
 
   if (directAccess) {
     // Direct wallet access takes precedence
-    userRole = directAccess.role as WalletRole;
+    userRole = parseWalletRole(directAccess.role);
   } else if (wallet.group) {
     // Group-based access uses the wallet's groupRole
-    userRole = wallet.groupRole as WalletRole;
+    userRole = parseWalletRole(wallet.groupRole);
   }
 
-  const canEdit = userRole !== null && EDIT_ROLES.includes(userRole);
+  const canEdit = canWalletRoleEdit(userRole);
 
   return {
     id: wallet.id,

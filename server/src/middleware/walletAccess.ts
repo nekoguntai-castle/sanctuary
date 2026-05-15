@@ -11,7 +11,12 @@
 
 import { Request } from 'express';
 import { getUserWalletRole, WalletRole } from '../services/wallet';
-import { EDIT_ROLES, APPROVE_ROLES } from '../services/wallet/types';
+import {
+  canWalletRoleApprove,
+  canWalletRoleEdit,
+  canWalletRoleOwn,
+  canWalletRoleView,
+} from '@sanctuary/shared/constants/walletRoles';
 import { createResourceAccessMiddleware } from './resourceAccess';
 
 // Extend Express Request type to include wallet info
@@ -32,10 +37,10 @@ export const requireWalletAccess = createResourceAccessMiddleware<AccessLevel, W
   paramNames: ['walletId', 'id'],
   getRole: getUserWalletRole,
   predicates: {
-    view: (role) => role !== null,
-    edit: (role) => role !== null && EDIT_ROLES.includes(role),
-    approve: (role) => role !== null && APPROVE_ROLES.includes(role),
-    owner: (role) => role === 'owner',
+    view: canWalletRoleView,
+    edit: canWalletRoleEdit,
+    approve: canWalletRoleApprove,
+    owner: canWalletRoleOwn,
   },
   attachToRequest: (req: Request, id: string, role: WalletRole) => {
     req.walletId = id;

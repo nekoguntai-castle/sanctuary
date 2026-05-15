@@ -6,6 +6,7 @@ import * as transactionsApi from '../../../src/api/transactions';
 import * as walletsApi from '../../../src/api/wallets';
 import type { Device, Wallet } from '../../../types';
 import { createLogger } from '../../../utils/logger';
+import { canEditWallet } from '../../../utils/walletCapabilities';
 import {
   buildDraftTxData,
   buildInitialState,
@@ -43,8 +44,8 @@ export async function loadSendTransactionPageData({
 }: LoadSendTransactionPageDataParams): Promise<SendTransactionLoadResult> {
   const apiWallet = await walletsApi.getWallet(walletId);
 
-  if (apiWallet.userRole === 'viewer') {
-    return { kind: 'viewer' };
+  if (!canEditWallet(apiWallet)) {
+    return { kind: 'readOnly' };
   }
 
   const wallet = formatWallet(apiWallet, userId);

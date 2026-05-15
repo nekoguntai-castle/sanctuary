@@ -1,3 +1,136 @@
+# Active Task: Phase A Wallet Role Capability Convergence 2026-05-15
+
+Status: in progress.
+
+Goal: implement Phase A from the rationalization plan, deliver it through a committed branch and merged PR, then continue to the next phase.
+
+## Plan
+
+- [x] Inventory current wallet role/capability definitions across shared, server, frontend, OpenAPI, and tests.
+- [x] Add shared wallet-role constants, share-role subsets, parse guards, and capability helpers without importing server/frontend code.
+- [x] Migrate server access control, wallet queries, mobile permissions, OpenAPI, and wallet-facing frontend gates to the canonical helpers.
+- [x] Add focused tests for `viewer`, `signer`, `approver`, `owner`, unknown/null roles, share role validation, and fail-closed UI capability behavior.
+- [x] Run focused tests, typechecks/lint where needed, touched-file lizard, and `git diff --check`.
+- [ ] Commit Phase A, open a PR, monitor/fix checks, merge, verify ancestry, then continue with Phase B.
+
+## Review
+
+- Independent implementation-gate review found two remaining Phase A gaps before verification: direct send-page loading still blocked only `viewer`, and mobile-permission OpenAPI schemas still repeated wallet role literals.
+- Patched the send-page loader to use the shared edit-capability helper and added tests for `approver`, malformed role, and explicit `canEdit` fallback behavior.
+- Patched mobile-permission OpenAPI role enums to derive from shared wallet role constants.
+- Hardened `CurrencyContext` authenticated preference test after the full frontend suite exposed a race between `getCurrentUser` invocation and committed auth state.
+- PR #462 exposed two CI-only gaps after opening: stale generated architecture graphs and a render-regression viewer fixture that changed `userRole` to `viewer` while leaving `canEdit: true`.
+- Regenerated the architecture graphs and corrected the render fixture to model a real read-only viewer response with `canEdit: false`.
+- Verification passed: shared build; focused wallet role/frontend send/detail/list tests; focused server access, wallet access, middleware, mobile permission, and sharing tests; app/test/server typechecks; app/server lint; server build; OpenAPI route coverage; lizard-only quality gate; negative wallet-role searches; `git diff --check`.
+- Follow-up PR verification passed locally: `npm run arch:check`; `CI=true NODE_ENV=test VITE_API_URL=http://localhost:3001 npm run build`; focused viewer render-regression test; full `CI=true NODE_ENV=test VITE_API_URL=http://localhost:3001 npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts` with 43 passed.
+
+---
+
+# Active Task: Second Independent Divergence Review 2026-05-15
+
+Status: complete.
+
+Goal: run another independent double-check of the current rationalization findings, challenge the priority order and scope, and record any confirmations, corrections, or missed risks before implementation begins.
+
+## Plan
+
+- [x] Re-read the current durable rationalization plan without assuming the prior review is complete.
+- [x] Re-check code evidence for the top findings and likely adjacent false positives.
+- [x] Look specifically for overreach, missing product decisions, and lower-risk duplicates that should not block Phase A.
+- [x] Update the durable plan and task ledger with the second-review result.
+- [x] Verify documentation changes.
+
+## Review
+
+- Added a second independent review addendum to `docs/plans/rationalization-plan.md`.
+- Confirmed the priority order again: Phase A wallet role/capability convergence remains first; Phase B script/wallet/account identity remains second; Phase C node/Electrum projection remains third; Phase D contract-helper repair remains fourth; Phase E login health helper remains low priority.
+- Added Phase A refinements for fail-closed capability handling, duplicated `canEdit` derivation in wallet query code, and permissive frontend defaults such as `wallet.canEdit !== false`.
+- Explicitly excluded device roles from wallet role convergence. Device access is currently an owner/viewer domain, not a signer/approver wallet-capability domain.
+- Added Phase B and Phase D false-positive boundaries: parser-only `unknown`, fixtures/examples/behavior matrices, and wallet response `syncStatus` should not be collapsed into persisted/API enum constants without an explicit contract change.
+- Kept LLM provider contracts, gateway route validation maps, feature flag metadata, and transaction aliases as watch items rather than top-priority consolidation work.
+- Verification: rechecked the relevant code with targeted `rg` searches and ran `git diff --check`, which passed.
+
+---
+
+# Active Task: Plan Detail And Corner Case Review 2026-05-15
+
+Status: complete.
+
+Goal: review the current follow-up rationalization plan, add implementation details and corner cases needed before execution, and preserve the prior independent-review conclusions.
+
+## Plan
+
+- [x] Re-read the current rationalization plan and the code anchors behind each follow-up phase.
+- [x] Identify missing implementation details, sequencing constraints, and migration or compatibility risks.
+- [x] Add phase-specific details, edge cases, and verification expectations to `docs/plans/rationalization-plan.md`.
+- [x] Record the review result and run documentation verification.
+
+## Review
+
+- Added a 2026-05-15 plan-detail review addendum to `docs/plans/rationalization-plan.md`.
+- Added cross-phase execution rules so the next work stays split into focused PRs, uses pure shared helpers only where they remove real drift, and keeps negative searches scoped to production paths.
+- Phase A now calls out role parsing/guards for Prisma string columns, direct-versus-group role precedence, stale Prisma role comments, access-cache invalidation, explicit `approver` shareability decision, and frontend `canEdit`/`canApprove` gating.
+- Phase B now distinguishes wallet type `multi_sig` from device purpose `multisig`, keeps parser-only `unknown` account purpose out of persisted schemas, preserves script registry behavior ownership, and avoids mixing address-type constants with wallet script types.
+- Phase C now scopes node config convergence to projection semantics, preserves admin encryption/redaction boundaries, covers `singletonSsl: false`, invalid port/pool values, disabled networks, and regtest/base-config behavior.
+- Phase D now requires contract helpers to derive from live OpenAPI/shared constants or be deleted, with fixtures updated for current network, draft, and transaction contracts.
+- Phase E now specifies a no-auth health helper that uses the shared API base URL rules without `apiClient`, includes timeout/unmount handling, and preserves refresh as a separate raw fetch boundary.
+- Verification: re-read the changed plan section and ran `git diff --check`, which passed.
+
+---
+
+# Active Task: Independent Divergence Review 2026-05-15
+
+Status: complete.
+
+Goal: independently double-check the 2026-05-14 divergence reanalysis, validate whether the ranked findings are supported by current code, and record confirmations, corrections, or missing candidates without reopening already-merged phases.
+
+## Plan
+
+- [x] Re-check the evidence for each top finding from code, not from the prior summary.
+- [x] Search adjacent contract surfaces for false positives, missing higher-risk divergences, and justified boundary splits.
+- [x] Classify any changes to priority or disposition and update the durable rationalization plan.
+- [x] Record the independent review result and verification in this task ledger.
+
+## Review
+
+- Confirmed the 2026-05-14 ranking: wallet role/capability convergence remains the first follow-up, Bitcoin script/account type identity remains second, node/Electrum projection remains third, and stale contract-test helpers remain a repair item.
+- Refined wallet role severity: server edit/send paths appear protected through `requireWalletAccess('edit')`, but frontend types and UI gates still omit or misclassify `approver`, including several `userRole !== 'viewer'` checks. This is a contract/UI false-affordance risk, not a confirmed server authorization bypass.
+- Expanded the Bitcoin script-type finding to include adjacent wallet type and device account purpose values. `single_sig`/`multi_sig` and `single_sig`/`multisig` mapping should be derived from canonical shared constants alongside script type values.
+- Narrowed the node/Electrum recommendation: admin save/load projection is already partly centralized in `server/src/api/admin/nodeConfigData.ts`; the next pass should target repeated runtime/UI projection semantics without replacing every adapter shape.
+- Confirmed `server/tests/helpers/contractValidation.ts` as a false-confidence risk because it still hardcodes stale networks, draft statuses, transaction types, and fixtures that no longer match current OpenAPI/shared contracts.
+- Added a lower-priority watch item for transaction type vocabulary: persisted/public paths mostly use `sent`/`received`/`consolidation`, while some helper boundaries accept `send`/`receive` aliases and OpenAPI/shared types still expose `receive`.
+- Kept the previous keep-separate/watch classifications for LLM provider/proxy validation, gateway route manifest versus validation map, feature flags, registration validation ordering, refresh raw fetch, and raw network broadcast versus wallet broadcast.
+- Updated `docs/plans/rationalization-plan.md` with a 2026-05-15 independent review addendum, adjusted recommended follow-up scope, and added the transaction type watch item.
+- Verification: rechecked the relevant code with targeted `rg`/`sed` searches across wallet roles, script/account types, node config projection, contract helpers, transaction types, LLM provider contracts, gateway routes, feature flags, auth registration ordering, and login/refresh fetch boundaries.
+
+---
+
+# Active Task: Divergence Reanalysis 2026-05-14
+
+Status: complete.
+
+Goal: reanalyze the current codebase for additional divergent implementations after the completed six-phase rationalization pass, distinguish justified separations from drift risks, and update the durable rationalization plan with any consolidation-worthy follow-ups.
+
+## Plan
+
+- [x] Review the completed rationalization plan and current `main` state so the reanalysis does not repeat already-merged fixes.
+- [x] Search active frontend, backend, shared, gateway, proxy, OpenAPI, and tests for duplicate workflows, contracts, compatibility paths, and parallel helpers.
+- [x] Classify findings as converge, watch, keep separate, or remove based on behavior, caller risk, security/runtime boundaries, and existing test guardrails.
+- [x] Update `docs/plans/rationalization-plan.md` with a reanalysis addendum, edge cases, and recommended sequencing.
+- [x] Verify the documentation changes and record the review.
+
+## Review
+
+- Reanalysis addendum added to `docs/plans/rationalization-plan.md`. The completed six-phase queue remains closed; this pass records a new follow-up queue rather than reopening merged work.
+- Worth consolidating next: wallet roles/capability checks, Bitcoin script type identity/metadata, and node/Electrum config projection. Wallet roles are the most behaviorally risky because the server/OpenAPI recognize `approver`, but shared/frontend types and some frontend permission checks still treat "not viewer" as edit/send capable.
+- Worth repairing with the next contract-test pass: `server/tests/helpers/contractValidation.ts` still contains stale hand-written enum arrays for networks, draft statuses, and related API labels. It should derive from shared/OpenAPI constants or be replaced by stronger generated contract checks.
+- Lower-priority convergence: login's raw `/api/v1/health` fetch should move behind a no-auth health API helper. The refresh-token raw fetch remains justified because it avoids `apiClient` recursion.
+- Watch, not immediate consolidation: LLM provider enum/model contracts need parity tests before another provider is added; gateway manifest/schema split is currently guarded; feature flag defaults/metadata are guarded but would benefit from a metadata-table pass if flags grow.
+- Keep separate: LLM egress proxy validation and routing as a security boundary, auth registration validation ordering while public registration is disabled, and raw network broadcast versus wallet-scoped broadcast.
+- Verification: inspected current auth, wallet role, script type, node config, gateway, LLM proxy/provider, feature flag, and contract-helper files with targeted `rg`/`sed`; ran documentation diff review and `git diff --check`.
+
+---
+
 # Completed Task: Codebase Divergence Scrub 2026-05-14
 
 Status: complete. Phases 1-6 are merged; Phase 6 merged via PR #460 as `26bbd2d052afe1e22421107dea77b6597e873f4c`.

@@ -53,9 +53,18 @@ describe('wallet detail tab definitions', () => {
       'settings',
       'log',
     ]);
+    expect(getWalletDetailTabs('approver').map((tab) => tab.id)).toEqual([
+      'tx',
+      'utxo',
+      'addresses',
+      'stats',
+      'settings',
+      'log',
+    ]);
     expect(getWalletDetailTabs('owner').map((tab) => tab.id)).toEqual(WALLET_DETAIL_TAB_IDS);
     expect(canShowWalletDetailTab('drafts', 'viewer')).toBe(false);
     expect(canShowWalletDetailTab('drafts', 'signer')).toBe(true);
+    expect(canShowWalletDetailTab('drafts', 'approver')).toBe(false);
     expect(canShowWalletDetailTab('access', 'signer')).toBe(false);
     expect(canShowWalletDetailTab('access', 'owner')).toBe(true);
   });

@@ -16,6 +16,7 @@ import { createLogger } from '../../../utils/logger';
 import { logError } from '../../../utils/errorHandler';
 import type { Wallet, Device } from '../../../types';
 import type { DeviceSharePromptState } from '../types';
+import type { WalletShareRole } from '@sanctuary/shared/constants/walletRoles';
 
 const log = createLogger('useWalletSharing');
 
@@ -52,13 +53,13 @@ export interface UseWalletSharingReturn {
   // Group sharing
   selectedGroupToAdd: string;
   setSelectedGroupToAdd: (groupId: string) => void;
-  addGroup: (role?: 'viewer' | 'signer') => Promise<void>;
-  updateGroupRole: (role: 'viewer' | 'signer') => Promise<void>;
+  addGroup: (role?: WalletShareRole) => Promise<void>;
+  updateGroupRole: (role: WalletShareRole) => Promise<void>;
   removeGroup: () => Promise<void>;
 
   // User sharing
   sharingLoading: boolean;
-  handleShareWithUser: (userId: string, role?: 'viewer' | 'signer') => Promise<void>;
+  handleShareWithUser: (userId: string, role?: WalletShareRole) => Promise<void>;
   handleRemoveUserAccess: (userId: string) => Promise<void>;
 
   // Device share prompt
@@ -118,7 +119,7 @@ export function useWalletSharing({
   // Group operations
   // -----------------------------------------------------------------------
 
-  const addGroup = async (role: 'viewer' | 'signer' = 'viewer') => {
+  const addGroup = async (role: WalletShareRole = 'viewer') => {
     if (!wallet || !selectedGroupToAdd || !walletId) return;
     try {
       setSharingLoading(true);
@@ -133,7 +134,7 @@ export function useWalletSharing({
     }
   };
 
-  const updateGroupRole = async (role: 'viewer' | 'signer') => {
+  const updateGroupRole = async (role: WalletShareRole) => {
     if (!wallet || !walletShareInfo?.group || !walletId) return;
     try {
       setSharingLoading(true);
@@ -166,7 +167,7 @@ export function useWalletSharing({
   // User operations
   // -----------------------------------------------------------------------
 
-  const handleShareWithUser = async (targetUserId: string, role: 'viewer' | 'signer' = 'viewer') => {
+  const handleShareWithUser = async (targetUserId: string, role: WalletShareRole = 'viewer') => {
     if (!walletId) return;
     try {
       setSharingLoading(true);

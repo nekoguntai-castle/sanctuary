@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { SyncRetryInfo } from "./types";
 import { WalletBadges } from "./WalletHeaderBadges";
+import { canEditWallet } from "../../utils/walletCapabilities";
 
 export interface WalletAgentLinkBadge {
   agentId: string;
@@ -84,7 +85,7 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
             <Button onClick={onReceive} variant="primary" size="sm">
               <ArrowDownLeft className="w-4 h-4 mr-1.5" /> Receive
             </Button>
-            {wallet.userRole !== "viewer" && (
+            {canEditWallet(wallet) && (
               <Button variant="secondary" size="sm" onClick={onSend}>
                 <ArrowUpRight className="w-4 h-4 mr-1.5" /> Send
               </Button>

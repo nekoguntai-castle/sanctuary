@@ -1,3 +1,5 @@
+import { canEditWalletRole } from '../../utils/walletCapabilities';
+
 type WalletDetailTabVisibility = (userRole: string) => boolean;
 
 interface DefinedWalletDetailTab<TId extends string> {
@@ -10,7 +12,7 @@ interface DefinedWalletDetailTab<TId extends string> {
 const defineWalletDetailTabs = <const T extends readonly DefinedWalletDetailTab<string>[]>(tabs: T) => tabs;
 
 const visibleForAll: WalletDetailTabVisibility = () => true;
-const visibleForEditors: WalletDetailTabVisibility = (userRole) => userRole !== 'viewer';
+const visibleForEditors: WalletDetailTabVisibility = canEditWalletRole;
 const visibleForOwners: WalletDetailTabVisibility = (userRole) => userRole === 'owner';
 
 export const walletDetailTabDefinitions = defineWalletDetailTabs([

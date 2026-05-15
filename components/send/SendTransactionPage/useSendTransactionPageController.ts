@@ -48,8 +48,8 @@ export function useSendTransactionPageController(): SendTransactionPageControlle
       });
       if (!mountedRef.current) return;
 
-      if (result.kind === 'viewer') {
-        log.warn('Viewer attempted to access send page', { walletId: id });
+      if (result.kind === 'readOnly') {
+        log.warn('Read-only wallet role attempted to access send page', { walletId: id });
         navigate(`/wallets/${id}`, { replace: true });
         return;
       }

@@ -9,6 +9,7 @@ import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { approvalService } from '../services/vaultPolicy/approvalService';
 import { walletSharingRepository } from '../repositories';
 import { asyncHandler } from '../errors/errorHandler';
+import { WALLET_APPROVE_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 
 const router = Router();
 
@@ -22,7 +23,7 @@ router.get('/approvals/pending', asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
 
   // Single query: get wallet IDs where user has approve-capable role (owner or approver)
-  const approveWalletIds = await walletSharingRepository.findWalletIdsByUserRole(userId, ['owner', 'approver']);
+  const approveWalletIds = await walletSharingRepository.findWalletIdsByUserRole(userId, [...WALLET_APPROVE_ROLE_VALUES]);
 
   const pending = await approvalService.getPendingApprovalsForUser(approveWalletIds);
 

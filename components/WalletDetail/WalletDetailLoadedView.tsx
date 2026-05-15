@@ -5,6 +5,7 @@ import type { WalletDetailController } from './useWalletDetailController';
 import { WalletDetailModals } from './WalletDetailModals';
 import { WalletDetailTabContent } from './WalletDetailTabContent';
 import { WalletHeader } from './WalletHeader';
+import { canEditWallet } from '../../utils/walletCapabilities';
 
 type LoadedWallet = NonNullable<WalletDetailController['wallet']>;
 type TabContentProps = React.ComponentProps<typeof WalletDetailTabContent>;
@@ -82,7 +83,7 @@ function buildTransactionsTabProps({
     onLoadMore: controller.loadMoreTransactions,
     onLabelsChange: controller.handleLabelsChange,
     onShowTransactionExport: controller.modalState.openTransactionExport,
-    canEdit: wallet.canEdit !== false,
+    canEdit: canEditWallet(wallet),
     confirmationThreshold: controller.bitcoinStatus?.confirmationThreshold,
     deepConfirmationThreshold: controller.bitcoinStatus?.deepConfirmationThreshold,
     walletBalance: wallet.balance,

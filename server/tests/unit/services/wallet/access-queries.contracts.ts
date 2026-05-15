@@ -136,7 +136,7 @@ export function registerWalletAccessQueryTests(): void {
       }));
     });
 
-    it('falls back to zero balances and group-role defaults in wallet summaries', async () => {
+    it('falls back to zero balances and fails closed when group role is missing in wallet summaries', async () => {
       const now = new Date('2025-02-01T00:00:00.000Z');
       mockPrismaClient.wallet.findMany.mockResolvedValueOnce([
         {
@@ -194,7 +194,8 @@ export function registerWalletAccessQueryTests(): void {
       expect(results[1]).toEqual(expect.objectContaining({
         id: 'wallet-group-fallback',
         balance: 0,
-        userRole: 'viewer',
+        userRole: null,
+        canEdit: false,
         sharedWith: {
           groupName: null,
           userCount: 2,
@@ -305,6 +306,39 @@ export function registerWalletAccessQueryTests(): void {
       expect(wallet).toEqual(expect.objectContaining({
         id: 'wallet-group-only',
         userRole: 'viewer',
+        canEdit: false,
+      }));
+    });
+
+    it('fails closed for malformed wallet roles in wallet query results', async () => {
+      const now = new Date('2025-01-01T00:00:00.000Z');
+      mockPrismaClient.wallet.findFirst.mockResolvedValueOnce({
+        id: 'wallet-bad-role',
+        name: 'Bad Role Wallet',
+        type: 'multi_sig',
+        scriptType: 'native_segwit',
+        network: 'mainnet',
+        quorum: 2,
+        totalSigners: 3,
+        descriptor: 'desc',
+        fingerprint: 'abcd',
+        createdAt: now,
+        devices: [{ id: 'wd1', device: { id: 'd1' } }],
+        addresses: [{ id: 'a1', index: 0 }],
+        users: [{ userId: 'user-1', role: 'admin', user: { id: 'user-1', username: 'alice' } }],
+        group: null,
+        groupRole: null,
+        lastSyncedAt: null,
+        lastSyncStatus: null,
+        syncInProgress: false,
+      });
+      mockPrismaClient.uTXO.aggregate.mockResolvedValueOnce({ _sum: { amount: BigInt(101) } });
+
+      const wallet = await getWalletById('wallet-bad-role', 'user-1');
+
+      expect(wallet).toEqual(expect.objectContaining({
+        id: 'wallet-bad-role',
+        userRole: null,
         canEdit: false,
       }));
     });

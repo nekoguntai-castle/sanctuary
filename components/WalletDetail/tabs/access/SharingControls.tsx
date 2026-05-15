@@ -53,6 +53,13 @@ const GroupSharingPicker: React.FC<GroupSharingPickerProps> = ({
           >
             Signer
           </button>
+          <button
+            onClick={() => onAddGroup('approver')}
+            disabled={sharingLoading}
+            className="text-xs px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-50"
+          >
+            Approver
+          </button>
         </>
       )}
     </div>

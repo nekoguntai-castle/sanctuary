@@ -7,7 +7,7 @@ import { useDraftListController } from './useDraftListController';
 export const DraftList: React.FC<DraftListProps> = ({
   walletType,
   quorum,
-  canEdit = true,
+  canEdit = false,
   ...controllerProps
 }) => {
   const {

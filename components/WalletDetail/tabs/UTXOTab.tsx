@@ -9,6 +9,7 @@ import React from 'react';
 import { UTXOList } from '../../UTXOList';
 import type { UTXO } from '../../../types';
 import type { UtxoPrivacyInfo, WalletPrivacySummary } from '../../../src/api/transactions';
+import { canEditWalletRole } from '../../../utils/walletCapabilities';
 
 interface UTXOTabProps {
   utxos: UTXO[];
@@ -43,16 +44,18 @@ export const UTXOTab: React.FC<UTXOTabProps> = ({
   onLoadMore,
   loadingMoreUtxos,
 }) => {
+  const canEdit = canEditWalletRole(userRole);
+
   return (
     <div>
       <UTXOList
         utxos={utxos}
         totalCount={utxoTotalCount}
         onToggleFreeze={onToggleFreeze}
-        selectable={userRole !== 'viewer'}
+        selectable={canEdit}
         selectedUtxos={selectedUtxos}
         onToggleSelect={onToggleSelect}
-        onSendSelected={userRole !== 'viewer' ? onSendSelected : undefined}
+        onSendSelected={canEdit ? onSendSelected : undefined}
         privacyData={privacyData}
         privacySummary={privacySummary ?? undefined}
         showPrivacy={showPrivacy}

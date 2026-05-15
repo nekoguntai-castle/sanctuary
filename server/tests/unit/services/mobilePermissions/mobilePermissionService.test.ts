@@ -407,7 +407,7 @@ describe('MobilePermissionService', () => {
       expect(result[0].effectivePermissions.viewBalance).toBe(true);
     });
 
-    it('should default to viewer role when users is empty', async () => {
+    it('should fail closed when users is empty', async () => {
       const mockPermsWithWallet = [
         {
           ...mockPermission,
@@ -426,9 +426,8 @@ describe('MobilePermissionService', () => {
       const result = await mobilePermissionService.getUserMobilePermissions(userId);
 
       expect(result).toHaveLength(1);
-      expect(result[0].role).toBeUndefined();
-      // Defaults to viewer permissions
-      expect(result[0].effectivePermissions.viewBalance).toBe(true);
+      expect(result[0].role).toBeNull();
+      expect(result[0].effectivePermissions.viewBalance).toBe(false);
       expect(result[0].effectivePermissions.broadcast).toBe(false);
     });
   });

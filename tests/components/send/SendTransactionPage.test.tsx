@@ -332,6 +332,47 @@ describe('SendTransactionPage', () => {
       });
     });
 
+    it('redirects approver to wallet page before loading send data', async () => {
+      vi.mocked(walletsApi.getWallet).mockResolvedValue({
+        ...mockWallet,
+        userRole: 'approver',
+      } as any);
+
+      renderPage();
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-1', { replace: true });
+      });
+      expect(transactionsApi.getUTXOs).not.toHaveBeenCalled();
+    });
+
+    it('redirects malformed roles to wallet page', async () => {
+      vi.mocked(walletsApi.getWallet).mockResolvedValue({
+        ...mockWallet,
+        userRole: 'editor',
+      } as any);
+
+      renderPage();
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-1', { replace: true });
+      });
+    });
+
+    it('uses explicit canEdit when the role is missing', async () => {
+      vi.mocked(walletsApi.getWallet).mockResolvedValue({
+        ...mockWallet,
+        canEdit: true,
+        userRole: undefined,
+      } as any);
+
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('send-wizard')).toBeInTheDocument();
+      });
+    });
+
     it('allows owner to access send page', async () => {
       vi.mocked(walletsApi.getWallet).mockResolvedValue({
         ...mockWallet,

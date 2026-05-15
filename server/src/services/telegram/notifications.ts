@@ -8,6 +8,7 @@ import { walletRepository, userRepository, nodeConfigRepository } from '../../re
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { walletLog } from '../../websocket/notifications';
+import { WALLET_EDIT_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 import { sendTelegramMessage } from './api';
 import { getWalletUsers, formatTransactionMessage, formatDraftMessage } from './formatting';
 import type {
@@ -49,7 +50,7 @@ async function withOperationalWalletName(draft: DraftData): Promise<DraftData> {
 
 function getDraftRecipientFilter(draft: DraftData): Parameters<typeof getWalletUsers>[1] {
   /* v8 ignore next -- agent draft recipient role filter is covered by registry notification tests */
-  return draft.agentId ? { walletRoles: ['owner', 'signer'] } : undefined;
+  return draft.agentId ? { walletRoles: [...WALLET_EDIT_ROLE_VALUES] } : undefined;
 }
 
 function getUserTelegramConfig(user: TelegramRecipient): TelegramConfig | undefined {

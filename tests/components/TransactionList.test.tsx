@@ -544,6 +544,7 @@ describe('TransactionList - Additional behaviors', () => {
     render(
       <TransactionList
         transactions={[{ ...baseTx, labels: [] }]}
+        canEdit={true}
         onLabelsChange={onLabelsChange}
         walletLabels={[
           { id: 'label-1', name: 'Bills', color: '#ff0000', walletId: 'wallet-1', createdAt: '', updatedAt: '' },

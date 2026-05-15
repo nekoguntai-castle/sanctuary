@@ -117,17 +117,21 @@ describe('AccessTab', () => {
     fireEvent.change(screen.getByDisplayValue('Team A'), { target: { value: 'g1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Viewer' }));
     fireEvent.click(screen.getByRole('button', { name: 'Signer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approver' }));
 
     fireEvent.change(screen.getByPlaceholderText('Add user...'), { target: { value: 'char' } });
     fireEvent.click(screen.getByText('View'));
     fireEvent.click(screen.getByText('Sign'));
+    fireEvent.click(screen.getByText('Approve'));
 
     expect(baseProps.onSelectedGroupToAddChange).toHaveBeenCalledWith('g1');
     expect(baseProps.onAddGroup).toHaveBeenCalledWith('viewer');
     expect(baseProps.onAddGroup).toHaveBeenCalledWith('signer');
+    expect(baseProps.onAddGroup).toHaveBeenCalledWith('approver');
     expect(baseProps.onSearchUsers).toHaveBeenCalledWith('char');
     expect(baseProps.onShareWithUser).toHaveBeenCalledWith('u9', 'viewer');
     expect(baseProps.onShareWithUser).toHaveBeenCalledWith('u9', 'signer');
+    expect(baseProps.onShareWithUser).toHaveBeenCalledWith('u9', 'approver');
   });
 
   it('handles existing shared group and users for owner role', () => {

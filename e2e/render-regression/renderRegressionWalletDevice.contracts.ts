@@ -107,6 +107,7 @@ export async function renderSendTransactionRouteRedirectsViewersBackToWalletDeta
         body: {
           ...MAINNET_WALLET,
           userRole: 'viewer',
+          canEdit: false,
         },
       },
     },

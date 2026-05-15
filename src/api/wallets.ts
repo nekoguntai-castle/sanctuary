@@ -6,6 +6,7 @@
 
 import apiClient from './client';
 import type { Wallet, WalletNetwork } from '../types';
+import type { WalletShareRole } from '@sanctuary/shared/constants/walletRoles';
 export type { ValidateXpubRequest, ValidateXpubResponse, XpubScriptType, XpubValidationNetwork } from './walletXpub';
 export { validateXpub } from './walletXpub';
 
@@ -190,12 +191,12 @@ export async function importWallet(data: ImportWalletRequest): Promise<ImportWal
 // Wallet sharing types
 export interface ShareWithGroupRequest {
   groupId: string | null;
-  role?: 'viewer' | 'signer';
+  role?: WalletShareRole;
 }
 
 export interface ShareWithUserRequest {
   targetUserId: string;
-  role?: 'viewer' | 'signer';
+  role?: WalletShareRole;
 }
 
 export interface WalletShareInfo {

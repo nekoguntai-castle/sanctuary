@@ -16,7 +16,7 @@
  * ```
  */
 
-import { WALLET_ROLE_VALUES } from '../../src/services/wallet/types';
+import { WALLET_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 
 // =============================================================================
 // Types

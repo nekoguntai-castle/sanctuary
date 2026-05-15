@@ -10,6 +10,16 @@
 
 import type { NetworkType } from '../constants/bitcoin';
 
+/**
+ * User's role on a wallet. Re-exported from ../constants/walletRoles so values,
+ * guards, and capability helpers stay in sync across frontend, server, and OpenAPI.
+ */
+export type {
+  WalletRole,
+  WalletRoleValue,
+  WalletShareRole,
+} from '../constants/walletRoles';
+
 // =============================================================================
 // Wallet Enums
 // =============================================================================
@@ -31,11 +41,6 @@ export type WalletScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | '
  * Bitcoin network
  */
 export type WalletNetwork = NetworkType;
-
-/**
- * User's role on a wallet
- */
-export type WalletRole = 'owner' | 'signer' | 'viewer' | null;
 
 /**
  * User's role on a device

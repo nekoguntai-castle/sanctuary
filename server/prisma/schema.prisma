@@ -126,7 +126,7 @@ model Wallet {
 
   // Optional group ownership
   groupId   String?
-  groupRole String  @default("viewer") // Role for group members: owner, signer, viewer
+  groupRole String  @default("viewer") // Role for group members: owner, approver, signer, viewer
 
   // Sync metadata - for caching layer
   lastSyncedAt          DateTime? // Last successful full sync
@@ -164,7 +164,7 @@ model WalletUser {
   id        String   @id @default(uuid())
   walletId  String
   userId    String
-  role      String   @default("viewer") // owner, signer, viewer
+  role      String   @default("viewer") // owner, approver, signer, viewer
   createdAt DateTime @default(now())
 
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)

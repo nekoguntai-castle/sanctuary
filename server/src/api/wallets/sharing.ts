@@ -12,7 +12,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes, InvalidInputError, NotFoundError, ForbiddenError } from '../../errors/ApiError';
 import { userRepository, walletSharingRepository } from '../../repositories';
 import { getDevicesToShareForWallet } from '../../services/deviceAccess';
-import { WALLET_SHARE_ROLE_VALUES } from '../../services/wallet/types';
+import { WALLET_SHARE_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();

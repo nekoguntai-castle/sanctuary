@@ -4,7 +4,7 @@
  * API endpoints for transaction and UTXO management
  *
  * Permissions:
- * - READ (GET): Any user with wallet access (owner, signer, viewer)
+ * - READ (GET): Any user with wallet access (owner, approver, signer, viewer)
  * - WRITE (POST): Only owner or signer roles can create/broadcast transactions
  *
  * Route domains extracted to ./transactions/ subdirectory:

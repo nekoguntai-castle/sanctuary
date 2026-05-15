@@ -21,7 +21,7 @@ interface TransactionListProps {
   onTransactionClick?: (transaction: Transaction) => void;
   highlightedTxId?: string;
   onLabelsChange?: () => void;
-  canEdit?: boolean; // Whether user can edit labels (default: true for backwards compat)
+  canEdit?: boolean; // Whether user can edit labels. Defaults closed when omitted.
   confirmationThreshold?: number; // Number of confirmations required (from system settings)
   deepConfirmationThreshold?: number; // Number of confirmations for "deeply confirmed" status
   walletBalance?: number; // Current wallet balance in sats for showing running balance column
@@ -41,7 +41,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   onTransactionClick,
   highlightedTxId,
   onLabelsChange,
-  canEdit = true,
+  canEdit = false,
   confirmationThreshold = 1,
   deepConfirmationThreshold = 3,
   walletBalance,

@@ -40,5 +40,5 @@ export interface SendTransactionRouteState {
 }
 
 export type SendTransactionLoadResult =
-  | { kind: 'viewer' }
+  | { kind: 'readOnly' }
   | { data: LoadedSendTransactionPageData; kind: 'loaded' };

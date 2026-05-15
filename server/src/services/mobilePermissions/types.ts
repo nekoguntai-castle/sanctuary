@@ -6,6 +6,7 @@
  */
 
 import { MOBILE_ACTIONS, type MobileAction } from '@sanctuary/shared/schemas/mobileApiRequests';
+import type { WalletRoleValue } from '@sanctuary/shared/constants/walletRoles';
 
 /**
  * Actions that can be controlled via mobile permissions
@@ -15,7 +16,7 @@ export type { MobileAction };
 /**
  * Wallet role types
  */
-export type WalletRole = 'viewer' | 'signer' | 'approver' | 'owner';
+export type WalletRole = WalletRoleValue;
 
 /**
  * Mapping of mobile actions to database field names

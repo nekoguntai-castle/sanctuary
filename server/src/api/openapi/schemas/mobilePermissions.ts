@@ -5,6 +5,7 @@
  */
 
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+import { WALLET_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 import { MOBILE_ACTIONS } from '@sanctuary/shared/schemas/mobileApiRequests';
 
 const permissionProperties = MOBILE_ACTIONS.reduce<Record<string, { type: 'boolean' }>>((acc, action) => {
@@ -31,7 +32,7 @@ export const mobilePermissionSchemas = {
       walletId: { type: 'string' },
       walletName: { type: 'string' },
       walletNetwork: { type: 'string', enum: [...BITCOIN_NETWORKS] },
-      role: { type: 'string', enum: ['viewer', 'signer', 'approver', 'owner'] },
+      role: { type: 'string', enum: [...WALLET_ROLE_VALUES] },
       effectivePermissions: { $ref: '#/components/schemas/MobilePermissionMap' },
       hasCustomRestrictions: { type: 'boolean' },
       hasOwnerRestrictions: { type: 'boolean' },
@@ -64,7 +65,7 @@ export const mobilePermissionSchemas = {
     properties: {
       walletId: { type: 'string' },
       userId: { type: 'string' },
-      role: { type: 'string', enum: ['viewer', 'signer', 'approver', 'owner'] },
+      role: { type: 'string', enum: [...WALLET_ROLE_VALUES] },
       permissions: { $ref: '#/components/schemas/MobilePermissionMap' },
       hasCustomRestrictions: { type: 'boolean' },
       hasOwnerRestrictions: { type: 'boolean' },
@@ -82,7 +83,7 @@ export const mobilePermissionSchemas = {
       success: { type: 'boolean' },
       walletId: { type: 'string' },
       userId: { type: 'string' },
-      role: { type: 'string', enum: ['viewer', 'signer', 'approver', 'owner'] },
+      role: { type: 'string', enum: [...WALLET_ROLE_VALUES] },
       permissions: { $ref: '#/components/schemas/MobilePermissionMap' },
       hasCustomRestrictions: { type: 'boolean' },
       hasOwnerRestrictions: { type: 'boolean' },

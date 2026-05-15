@@ -31,6 +31,7 @@ const SharedGroupRow: React.FC<SharedGroupRowProps> = ({
         >
           <option value="viewer">Viewer</option>
           <option value="signer">Signer</option>
+          <option value="approver">Approver</option>
         </select>
       ) : (
         <span className="ml-2 text-xs px-1.5 py-0.5 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full capitalize">
@@ -79,6 +80,7 @@ const SharedUserRow: React.FC<SharedUserRowProps> = ({
         >
           <option value="viewer">Viewer</option>
           <option value="signer">Signer</option>
+          <option value="approver">Approver</option>
         </select>
       ) : (
         <span className="ml-2 text-xs text-sanctuary-500 capitalize">{shareUser.role}</span>

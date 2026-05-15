@@ -7,6 +7,7 @@
 
 import prisma from '../models/prisma';
 import type { Wallet, Prisma } from '../generated/prisma/client';
+import { WALLET_EDIT_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 import type {
   NetworkType,
   WalletWithAddresses,
@@ -313,7 +314,7 @@ export async function findByIdWithEditAccess(
       users: {
         some: {
           userId,
-          role: { in: ['owner', 'signer'] },
+          role: { in: [...WALLET_EDIT_ROLE_VALUES] },
         },
       },
     },

@@ -226,6 +226,15 @@ describe("WalletHeader", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("hides send action for approver role", () => {
+    renderHeader({ userRole: "approver" });
+
+    expect(screen.getByText("Approver")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Send/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows initial sync banner for first sync attempts", () => {
     renderHeader({ lastSyncedAt: null, syncInProgress: true });
 

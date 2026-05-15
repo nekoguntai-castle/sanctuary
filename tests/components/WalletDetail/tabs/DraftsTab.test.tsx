@@ -55,4 +55,19 @@ describe('DraftsTab', () => {
     expect(mockRefs.draftListProps.canEdit).toBe(false);
     expect(mockRefs.draftListProps.quorum).toBeUndefined();
   });
+
+  it('disables editing for approvers', () => {
+    render(
+      <DraftsTab
+        walletId="wallet-3"
+        walletType={WalletType.MULTI_SIG}
+        userRole="approver"
+        addresses={[]}
+        walletName="Approval Wallet"
+        onDraftsChange={vi.fn()}
+      />
+    );
+
+    expect(mockRefs.draftListProps.canEdit).toBe(false);
+  });
 });

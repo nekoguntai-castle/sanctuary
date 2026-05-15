@@ -15,7 +15,13 @@ import {
   invalidateUserAccessCache,
   invalidateWalletAccessCache,
 } from '../infrastructure/accessCache';
-import { EDIT_ROLES, APPROVE_ROLES } from './wallet/types';
+import {
+  canWalletRoleApprove,
+  canWalletRoleEdit,
+  canWalletRoleOwn,
+  parseWalletRole,
+  type WalletRole,
+} from '@sanctuary/shared/constants/walletRoles';
 
 export {
   clearAccessCache,
@@ -29,8 +35,6 @@ const log = createLogger('ACCESS_CONTROL:SVC');
  * Cache TTL for wallet access checks (30 seconds - short for security)
  */
 const ACCESS_CACHE_TTL_SECONDS = 30;
-
-export type WalletRole = 'owner' | 'approver' | 'signer' | 'viewer' | null;
 
 /**
  * Access check result for a wallet
@@ -82,7 +86,7 @@ export async function getUserWalletRole(walletId: string, userId: string): Promi
   try {
     const cached = await cache.get<CachedRole>(cacheKey);
     if (cached !== null && typeof cached === 'object' && 'role' in cached) {
-      return cached.role;
+      return parseWalletRole(cached.role);
     }
   } catch (error) {
     log.debug('Access cache lookup failed, continuing to DB', { error: getErrorMessage(error) });
@@ -94,13 +98,13 @@ export async function getUserWalletRole(walletId: string, userId: string): Promi
   let role: WalletRole = null;
 
   if (walletUser) {
-    role = walletUser.role as WalletRole;
+    role = parseWalletRole(walletUser.role);
   } else {
     // Check group access
     const groupRole = await walletRepository.findGroupRoleByMembership(walletId, userId);
 
     if (groupRole) {
-      role = groupRole as WalletRole;
+      role = parseWalletRole(groupRole);
     }
   }
 
@@ -122,7 +126,7 @@ export async function checkWalletAccess(walletId: string, userId: string): Promi
   const role = await getUserWalletRole(walletId, userId);
   return {
     hasAccess: role !== null,
-    canEdit: role !== null && EDIT_ROLES.includes(role),
+    canEdit: canWalletRoleEdit(role),
     role,
   };
 }
@@ -168,7 +172,7 @@ export async function requireWalletOwnerAccess(walletId: string, userId: string)
   if (!access.hasAccess) {
     throw new WalletNotFoundError(walletId);
   }
-  if (access.role !== 'owner') {
+  if (!canWalletRoleOwn(access.role)) {
     throw new ForbiddenError('Only the wallet owner can perform this action');
   }
   return {
@@ -191,7 +195,7 @@ export async function hasWalletAccess(walletId: string, userId: string): Promise
  */
 export async function checkWalletEditAccess(walletId: string, userId: string): Promise<boolean> {
   const role = await getUserWalletRole(walletId, userId);
-  return role !== null && EDIT_ROLES.includes(role);
+  return canWalletRoleEdit(role);
 }
 
 /**
@@ -199,7 +203,7 @@ export async function checkWalletEditAccess(walletId: string, userId: string): P
  */
 export async function checkWalletOwnerAccess(walletId: string, userId: string): Promise<boolean> {
   const role = await getUserWalletRole(walletId, userId);
-  return role === 'owner';
+  return canWalletRoleOwn(role);
 }
 
 /**
@@ -207,7 +211,7 @@ export async function checkWalletOwnerAccess(walletId: string, userId: string): 
  */
 export async function checkWalletApproveAccess(walletId: string, userId: string): Promise<boolean> {
   const role = await getUserWalletRole(walletId, userId);
-  return role !== null && APPROVE_ROLES.includes(role);
+  return canWalletRoleApprove(role);
 }
 
 /**

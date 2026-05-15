@@ -31,6 +31,12 @@ const defaultProps = {
 const renderComponent = (overrides: Partial<typeof defaultProps> = {}) =>
   render(<GeneralSettings {...defaultProps} {...overrides} />);
 
+const walletWithoutCanEdit = () => {
+  const wallet = { ...baseWallet };
+  delete wallet.canEdit;
+  return wallet;
+};
+
 describe('GeneralSettings', () => {
   it('renders wallet name in display mode', () => {
     renderComponent();
@@ -40,6 +46,16 @@ describe('GeneralSettings', () => {
 
   it('hides rename button when canEdit is false', () => {
     renderComponent({ wallet: { ...baseWallet, canEdit: false } });
+    expect(screen.queryByTitle('Rename wallet')).not.toBeInTheDocument();
+  });
+
+  it('derives edit controls from role when canEdit is missing', () => {
+    renderComponent({ wallet: { ...walletWithoutCanEdit(), userRole: 'signer' } as any });
+    expect(screen.getByTitle('Rename wallet')).toBeInTheDocument();
+  });
+
+  it('fails closed for approver role when canEdit is missing', () => {
+    renderComponent({ wallet: { ...walletWithoutCanEdit(), userRole: 'approver' } as any });
     expect(screen.queryByTitle('Rename wallet')).not.toBeInTheDocument();
   });
 
