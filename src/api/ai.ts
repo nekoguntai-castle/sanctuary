@@ -109,18 +109,18 @@ export interface DetectProviderResponse {
   found: boolean;
   providerType?: "ollama" | "openai-compatible";
   endpoint?: string;
-  models?: OllamaModel[];
+  models?: ProviderModel[];
   message?: string;
 }
 
-export interface OllamaModel {
+export interface ProviderModel {
   name: string;
   size: number;
   modifiedAt: string;
 }
 
 export interface ListModelsResponse {
-  models: OllamaModel[];
+  models: ProviderModel[];
   error?: string;
 }
 

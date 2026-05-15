@@ -64,7 +64,7 @@ interface UseAISettingsReturn {
   ) => void;
 
   // Model list (loaded alongside settings)
-  availableModels: aiApi.OllamaModel[];
+  availableModels: aiApi.ProviderModel[];
   isLoadingModels: boolean;
   showModelDropdown: boolean;
   setShowModelDropdown: (value: boolean) => void;
@@ -107,7 +107,7 @@ export function useAISettings(): UseAISettingsReturn {
   const [detectMessage, setDetectMessage] = useState("");
 
   // Models state
-  const [availableModels, setAvailableModels] = useState<aiApi.OllamaModel[]>(
+  const [availableModels, setAvailableModels] = useState<aiApi.ProviderModel[]>(
     [],
   );
   const [isLoadingModels, setIsLoadingModels] = useState(false);

@@ -44,7 +44,7 @@ Open **Administration -> AI Settings**.
 3. Set the model name, provider type, and capability flags.
 4. Enter an API key only when the provider requires it. API keys are write-only: Sanctuary stores encrypted credential material and later shows only credential status.
 5. Save the provider profile and run the connection test.
-6. Use **Models** to view detected provider models. Sanctuary can pull/delete models for Ollama; LM Studio and other OpenAI-compatible providers manage downloads in their own app.
+6. Use **Models** to view and select models reported by the configured provider. The provider application remains responsible for its own model inventory.
 
 Provider credentials are not returned in settings responses, support packages, logs, or backups. After a backup restore, restored AI provider credentials are disabled and must be re-entered in **AI Settings**.
 

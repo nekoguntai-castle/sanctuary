@@ -123,7 +123,7 @@ export function ModelSelectionControls({
         </div>
         {showModelDropdown && (
           <div className="absolute z-10 w-full mt-1 surface-elevated rounded-lg border border-sanctuary-200 dark:border-sanctuary-700 shadow-lg max-h-60 overflow-y-auto">
-            <InstalledModelOptions
+            <ProviderModelOptions
               availableModels={availableModels}
               aiModel={aiModel}
               onSelectModel={onSelectModel}
@@ -160,17 +160,17 @@ function renderModelLoadingSpinner(isLoading: boolean) {
   return <Loader2 className="w-4 h-4 animate-spin text-sanctuary-400" />;
 }
 
-type InstalledModelOptionsProps = Pick<
+type ProviderModelOptionsProps = Pick<
   SettingsTabProps,
   'availableModels' | 'aiModel' | 'onSelectModel' | 'formatModelSize'
 >;
 
-function InstalledModelOptions({
+function ProviderModelOptions({
   availableModels,
   aiModel,
   onSelectModel,
   formatModelSize,
-}: InstalledModelOptionsProps) {
+}: ProviderModelOptionsProps) {
   if (availableModels.length === 0) {
     return (
       <div className="px-3 py-4 text-center text-sm text-sanctuary-500">
@@ -182,7 +182,7 @@ function InstalledModelOptions({
   return (
     <>
       <div className="px-3 py-2 text-xs font-medium text-sanctuary-500 uppercase border-b border-sanctuary-100 dark:border-sanctuary-800">
-        Installed Models
+        Provider Models
       </div>
       {availableModels.map((model) => (
         <button

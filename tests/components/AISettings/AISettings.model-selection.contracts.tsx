@@ -63,7 +63,7 @@ export function registerAISettingsModelSelectionContracts() {
         await user.click(dropdownButton);
 
         await waitFor(() => {
-          expect(screen.getByText('Installed Models')).toBeInTheDocument();
+          expect(screen.getByText('Provider Models')).toBeInTheDocument();
         });
       }
     });
@@ -82,7 +82,7 @@ export function registerAISettingsModelSelectionContracts() {
         await user.click(dropdownButton);
 
         await waitFor(() => {
-          expect(screen.getByText('Installed Models')).toBeInTheDocument();
+          expect(screen.getByText('Provider Models')).toBeInTheDocument();
         });
       }
     });
@@ -101,7 +101,7 @@ export function registerAISettingsModelSelectionContracts() {
         await user.click(dropdownButton);
 
         await waitFor(() => {
-          expect(screen.getByText('Installed Models')).toBeInTheDocument();
+          expect(screen.getByText('Provider Models')).toBeInTheDocument();
         });
       }
     });

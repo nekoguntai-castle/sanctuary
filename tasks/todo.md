@@ -1,4 +1,28 @@
-# Active Task: Fifth Independent Divergence Review 2026-05-15
+# Active Task: Phase B2 External LLM Copy And Provider Model Naming 2026-05-15
+
+Status: in progress.
+
+Goal: repair stale external-LLM-only copy, docs, OpenAPI wording, and misleading provider-model names left after removing Sanctuary-managed model pull/delete support.
+
+## Plan
+
+- [x] Reconfirm active code has no Sanctuary-managed model pull/delete/download routes or UI actions.
+- [x] Replace active docs/OpenAPI/UI copy that says Sanctuary can pull, delete, download, install, or manage provider models.
+- [x] Rename misleading generic provider-model UI/API names that still say Ollama-only where the behavior is provider-reported model listing.
+- [x] Add or update focused tests for changed copy/type names and run relevant frontend/server typechecks.
+- [ ] Run scoped negative searches, focused tests, `git diff --check`, commit, open PR, monitor/fix checks, merge, and verify ancestry.
+
+## Review
+
+- Active docs/OpenAPI/UI no longer claim Sanctuary can pull/delete/manage provider models: AI MCP docs now describe provider-reported model selection, OpenAPI AI tag describes external provider configuration, and frontend architecture no longer lists removed model-download websocket plumbing.
+- Renamed generic frontend provider-model type surfaces from `OllamaModel` to `ProviderModel`, while leaving true Ollama-specific detection/listing internals named as Ollama.
+- Replaced the AI Settings dropdown heading and tests from `Installed Models` to `Provider Models`.
+- Negative search for active non-historical source/docs now only finds justified Ollama-specific proxy internals (`listOllamaModels`), not stale model-management copy.
+- Verification passed: focused AI Settings/API tests, app typecheck, test typecheck, server build, and `git diff --check`.
+
+---
+
+# Completed Task: Fifth Independent Divergence Review 2026-05-15
 
 Status: complete.
 
@@ -23,7 +47,7 @@ Goal: independently double-check the current rationalization findings again agai
 
 ---
 
-# Active Task: Fourth Independent Divergence Review 2026-05-15
+# Completed Task: Fourth Independent Divergence Review 2026-05-15
 
 Status: complete.
 
@@ -48,9 +72,9 @@ Goal: independently double-check the current rationalization findings against th
 
 ---
 
-# Active Task: Phase B Script, Wallet Type, And Account Purpose Identity 2026-05-15
+# Completed Task: Phase B Script, Wallet Type, And Account Purpose Identity 2026-05-15
 
-Status: in progress.
+Status: merged and verified via PR #463 as squash commit `e772c0d814b7e61d39c3f13c10f13d5708c3a762`.
 
 Goal: implement Phase B from the rationalization plan, deliver it through a committed branch and merged PR, then continue to Phase C.
 
@@ -61,7 +85,7 @@ Goal: implement Phase B from the rationalization plan, deliver it through a comm
 - [x] Migrate production request/response/schema callers to derive from canonical constants while keeping server script-type registry behavior metadata local.
 - [x] Add focused parity and behavior tests for script type registry IDs, wallet type to account purpose mapping, mobile/device/import schemas, and taproot multisig rejection or boundaries already enforced by the code.
 - [x] Run focused tests, typechecks/lint where needed, touched-file lizard, negative searches for unowned production tuples, and `git diff --check`.
-- [ ] Commit Phase B, open a PR, monitor/fix checks, merge, verify ancestry, then continue with Phase C.
+- [x] Commit Phase B, open a PR, monitor/fix checks, merge, verify ancestry, then continue with Phase C.
 
 ## Review
 
@@ -74,6 +98,7 @@ Goal: implement Phase B from the rationalization plan, deliver it through a comm
 - Verification passed locally: shared build; focused frontend/shared tests; focused server script type, wallet import, OpenAPI, wallets, devices, wallet account selection, event, and common schema tests; app/test/server typechecks; app/server lint; server build; lizard-only quality gate; scoped negative literal search; `git diff --check`.
 - Additional PR-fix verification passed: frontend/backend coverage script regression tests, workflow composition guard, GitHub action runtime guard, backend coverage shards 1/2 and 2/2, and backend coverage merge with a stale `blob.json` present.
 - CI frontend coverage exposed remaining branch misses for unsupported wallet-type fallbacks in device/wallet detail formatting; added focused fallback tests and verified regenerated frontend coverage shards plus merge at 100%.
+- PR #463 passed full Forgejo CI on head `609aa2080820b9a557a1899b16e2f3a9ff2f6c63`, was squash-merged, and the platform merge commit was verified reachable from `origin/main`.
 
 ---
 

@@ -52,14 +52,14 @@ export interface DetectOllamaResponse {
   message?: string;
 }
 
-export interface OllamaModel {
+export interface ProviderModel {
   name: string;
   size: number;
   modifiedAt: string;
 }
 
 export interface ListModelsResponse {
-  models: OllamaModel[];
+  models: ProviderModel[];
   error?: string;
 }
 
@@ -122,7 +122,7 @@ export const mockQueryResults: Record<string, NaturalQueryResult> = {
   },
 };
 
-export const mockModels: OllamaModel[] = [
+export const mockModels: ProviderModel[] = [
   { name: 'llama2', size: 3826793472, modifiedAt: '2024-01-15T10:00:00.000Z' },
   { name: 'llama2:13b', size: 7365960832, modifiedAt: '2024-01-14T15:30:00.000Z' },
   { name: 'codellama', size: 3826793472, modifiedAt: '2024-01-13T08:00:00.000Z' },

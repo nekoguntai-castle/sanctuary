@@ -1,4 +1,4 @@
-import type { OllamaModel } from "../../src/api/ai";
+import type { ProviderModel } from "../../src/api/ai";
 import type {
   AdminMcpApiKey,
   AdminMcpServerStatus,
@@ -35,7 +35,7 @@ export interface SettingsTabProps {
   isDetecting: boolean;
   detectMessage: string;
   showModelDropdown: boolean;
-  availableModels: OllamaModel[];
+  availableModels: ProviderModel[];
   isLoadingModels: boolean;
   aiStatus: "idle" | "checking" | "connected" | "error";
   aiStatusMessage: string;
@@ -95,7 +95,7 @@ export interface McpAccessTabProps {
 export interface ModelsTabProps {
   providerType: AIProviderType;
   aiModel: string;
-  availableModels: OllamaModel[];
+  availableModels: ProviderModel[];
   isLoadingModels: boolean;
   onModelChange: (value: string) => void;
   onSelectModel: (modelName: string) => void;

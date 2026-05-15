@@ -91,7 +91,7 @@ export const openApiSpec = {
     { name: 'Transfers', description: 'Wallet and device ownership transfers' },
     { name: 'Intelligence', description: 'Treasury Intelligence insights and conversations' },
     { name: 'Console', description: 'Sanctuary Console sessions, tool traces, prompt history, and replay' },
-    { name: 'AI', description: 'AI assistant features and model management' },
+    { name: 'AI', description: 'AI assistant features and external provider configuration' },
     { name: 'Agent', description: 'Scoped agent wallet operations' },
     { name: 'Admin', description: 'Administrative operations' },
     { name: 'Health', description: 'Health, readiness, and circuit breaker status' },

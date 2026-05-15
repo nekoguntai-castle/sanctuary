@@ -1,10 +1,10 @@
 import { Check, Loader2, RefreshCw } from "lucide-react";
-import type { OllamaModel } from "../../../src/api/ai";
+import type { ProviderModel } from "../../../src/api/ai";
 
 interface DetectedModelsSectionProps {
   isOllamaProvider: boolean;
   aiModel: string;
-  availableModels: OllamaModel[];
+  availableModels: ProviderModel[];
   isLoadingModels: boolean;
   onRefreshModels: () => void;
   onSelectModel: (modelName: string) => void;
@@ -109,7 +109,7 @@ function DetectedModelCard({
   onSelectModel,
   formatBytes,
 }: {
-  model: OllamaModel;
+  model: ProviderModel;
   isSelected: boolean;
   onSelectModel: (modelName: string) => void;
   formatBytes: (bytes: number) => string;

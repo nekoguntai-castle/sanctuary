@@ -203,7 +203,6 @@ Key points:
 | `useWebSocketEvent` | Subscribe to a typed event type |
 | `useWalletEvents` | Subscribe to transaction/balance/sync events for a wallet |
 | `useWalletLogs` | Stream wallet sync log entries |
-| `useModelDownloadProgress` | AI model download progress events |
 | `useWebSocketQueryInvalidation` | Invalidate React Query cache on blockchain events |
 
 The client gates all outbound messages on a `isServerReady` flag set only after the server's `connected` welcome message arrives. This prevents race conditions where messages sent between `OPEN` and server-auth-completion are dropped.
