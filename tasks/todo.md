@@ -1,6 +1,6 @@
-# Active Task: Phase E Login Health Helper 2026-05-15
+# Completed Task: Phase E Login Health Helper 2026-05-15
 
-Status: in progress.
+Status: merged and verified via PR #467 as squash commit `0ff1cdaf80950946c120b7b141189d7c5ad75359`.
 
 Goal: move login API health probing behind a no-auth API helper that shares the same base URL rules as the rest of the frontend API layer, without routing refresh through `apiClient`.
 
@@ -11,7 +11,7 @@ Goal: move login API health probing behind a no-auth API helper that shares the 
 - [x] Add a no-auth health helper that uses the shared base URL helper, GET, `credentials: include`, timeout/abort support, no CSRF, and `200`/`401` connected semantics.
 - [x] Update `useLoginFlow` to call the health helper, preserve registration-status behavior, and avoid state updates after unmount or superseded checks.
 - [x] Add/update tests for base URL joining, health success, `401` as connected, non-OK/error/timeout/abort behavior, registration fallback, and unmount safety.
-- [ ] Run focused frontend tests/typechecks, negative raw-fetch searches, lizard/diff checks as appropriate, commit, open PR, monitor/fix checks, merge, and verify ancestry.
+- [x] Run focused frontend tests/typechecks, negative raw-fetch searches, lizard/diff checks as appropriate, commit, open PR, monitor/fix checks, merge, and verify ancestry.
 
 ## Review
 
@@ -24,6 +24,8 @@ Goal: move login API health probing behind a no-auth API helper that shares the 
 - PR #467 initially failed the frontend coverage merge gate. Local reproduction with fresh `.vitest-reports` blobs showed real coverage gaps in pre-aborted health probes and login unmount/rejection branches, so the fix adds those edge-case tests and simplifies the abort helper's idempotent abort call.
 - Local verification passed so far: focused API/Login Vitest run, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, `npm run quality:lizard`, negative raw-health/base-URL search, and `git diff --check`.
 - Coverage verification after the PR fix passed with fresh full frontend shards and merged coverage at 100% statements, branches, functions, and lines.
+- PR #467 passed Forgejo Architecture, Build Dev Images scope, Code Quality, Test Suite, full frontend coverage merge, browser E2E, render E2E, Full Test Summary, and PR Required Checks, then squash-merged as `0ff1cdaf80950946c120b7b141189d7c5ad75359`.
+- Post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`. The non-hardware rationalization queue is complete; the physical hardware test remains the only deferred validation item.
 
 ---
 

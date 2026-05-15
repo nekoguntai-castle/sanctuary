@@ -2,7 +2,7 @@
 
 Date: 2026-05-14
 Owner: Codex
-Status: Complete original queue; follow-up queue has Phase E remaining; 2026-05-15 eighth independent review addendum recorded
+Status: Complete original queue and follow-up queue; 2026-05-15 Phase E closeout recorded
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, and preference patch semantics
 
 ## Executive Summary
@@ -11,8 +11,8 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 - Sanctuary-managed model pull/delete/install/download surfaces are removed while the LLM egress proxy security boundary remains as an intentional isolation layer for provider egress, credentials, endpoint policy, and sanitized context access.
 - Nested preference path reads, nested patch construction, and optimistic rollback now use shared helpers without replacing backend validation, backend canonical storage, or the current top-level preference patch contract.
 - No non-hardware rationalization phase remains in the original six-phase queue. The physical hardware test remains a separate manual/external validation item.
-- A fresh 2026-05-14 reanalysis did not reopen those merged phases, but it found a new follow-up queue: wallet role/capability contracts, Bitcoin script and wallet/account type identity, node/Electrum config projection, and stale contract-test helper constants were the consolidation candidates worth addressing next. Subsequent 2026-05-15 independent reviews confirmed that order, and Phases A, B, B2, C, and D have since merged.
-- Current review status: Phase E, the no-auth login health helper, is the only remaining non-hardware convergence item verified in production code.
+- A fresh 2026-05-14 reanalysis did not reopen those merged phases, but it found a new follow-up queue: wallet role/capability contracts, Bitcoin script and wallet/account type identity, node/Electrum config projection, stale contract-test helper constants, and login health probing were the consolidation candidates worth addressing next. Subsequent 2026-05-15 independent reviews confirmed that order, and Phases A, B, B2, C, D, and E have since merged.
+- Current review status: no non-hardware rationalization phase remains open. The physical hardware test remains the only deferred validation item outside this code rationalization queue.
 
 ## Divergence Inventory
 
@@ -54,7 +54,7 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 | B2 | Repair stale external-LLM-only copy and provider-model naming | AI Settings, AI API types, active AI docs/OpenAPI copy | Focused AI Settings/API tests, typechecks, negative model-management copy searches | Merged via PR #464 |
 | C | Centralize node/Electrum config projection semantics | `shared/constants/nodeConfig.ts`, network UI helpers, server node/Electrum/mempool adapters | Shared/frontend/server node config tests, negative projection searches | Merged via PR #465 |
 | D | Repair stale contract-test validators and draft status drift | `server/tests/helpers/contractValidation.ts`, contract tests, mobile-agent draft route/OpenAPI schemas | Contract/OpenAPI/mobile-agent tests, stale-literal searches, server checks | Merged via PR #466 |
-| E | Wrap login health lookup in a no-auth health API helper | `components/Login/useLoginFlow.ts`, `src/api/*`, login tests | Login health helper tests, base-URL tests, negative raw-health-fetch search | Pending |
+| E | Wrap login health lookup in a no-auth health API helper | `components/Login/useLoginFlow.ts`, `src/api/*`, login tests | Login health helper tests, base-URL tests, negative raw-health-fetch search | Merged via PR #467 |
 
 ## Reanalysis Addendum - 2026-05-14
 
@@ -514,6 +514,25 @@ Scope: independent double-check after Phase D merged as PR #466, re-validating w
 - The hook should avoid state updates after unmount and after any later health check supersedes an earlier in-flight check.
 - `src/api/refresh.ts` should remain a raw `fetch` caller for `/auth/refresh`; only the base URL helper should be shared.
 
+## Phase E Closeout Addendum - 2026-05-15
+
+Scope: closeout audit after Phase E PR #467 merged, verifying whether any non-hardware rationalization work remains besides the already-deferred physical hardware test.
+
+### Phase E Closeout Verdict
+
+- Phase E is closed. PR #467 merged as squash commit `0ff1cdaf80950946c120b7b141189d7c5ad75359`, and that merge commit was verified as an ancestor of `origin/main`.
+- Login no longer owns a route-local `fetch('/api/v1/health')`. `components/Login/useLoginFlow.ts` now calls the no-auth `checkApiHealth` helper, which shares base URL rules with other direct API fetches.
+- `src/api/client.ts`, `src/api/refresh.ts`, and `src/api/health.ts` now share `src/api/baseUrl.ts`; refresh remains a raw `fetch` recursion boundary and does not import `apiClient`.
+- The PR initially failed the full frontend coverage merge gate. Local reproduction showed real branch coverage gaps for pre-aborted health probes and late login-hook rejection paths; added tests and an abort-helper simplification restored 100% merged frontend coverage.
+- Final audit found no remaining active production raw login health fetch. Historical plan text still records earlier reviews where Phase E was open; those entries are preserved as history, not active queue state.
+
+### Phase E Verification
+
+- Local focused tests: API base URL, API health, API client, refresh, Login component, and login hook tests.
+- Local gates: app typecheck, test typecheck, app lint, lizard quality gate, raw-health/base-URL negative search, and `git diff --check`.
+- Coverage reproduction: fresh full frontend coverage shards plus merge at 100% statements, branches, functions, and lines.
+- PR #467 CI: Architecture, Build Dev Images scope, Code Quality, Quick/Full frontend tests, full frontend typechecks, full frontend coverage shards/merge, browser E2E, render E2E, Full Test Summary, and PR Required Checks passed.
+
 ## Edge Cases
 
 - Phase 5 must not remove external Ollama as a provider type; it removes Sanctuary's ability to pull/delete provider models.
@@ -570,6 +589,7 @@ Scope: independent double-check after Phase D merged as PR #466, re-validating w
 - The 2026-05-15 sixth independent review rechecked the current tree after Phase A/B/B2 merge and during Phase C implementation. Targeted searches confirmed Phase A/B/B2 closure, confirmed Phase C's remaining node-config matches as justified admin legacy or price-provider boundaries, confirmed Phase D/E remain open, and led to a small Phase C hardening patch for invalid pool projection values. Focused shared node-config tests, shared build, focused server node/Electrum tests, and `git diff --check` passed.
 - The 2026-05-15 seventh independent review rechecked the current Phase D branch after Phase C merge. Targeted searches confirmed Phase A/B/B2/C closure, confirmed stale contract helper literals and fixtures, found mobile-agent draft status tuple duplication as a Phase D-adjacent cleanup, confirmed login health remains the only direct route-local raw fetch outside the API client/refresh boundary, and found one minor active AI model-management comment. Documentation verification passed with `git diff --check`.
 - The 2026-05-15 eighth independent review rechecked `origin/main` after Phase D merge. Targeted searches confirmed Phase A/B/B2/C/D closure, found no active model-management surface outside historical plan text and negative route tests, and confirmed Phase E as the only remaining non-hardware item. It also found that `client.ts` and `refresh.ts` still duplicate API base URL resolution, so Phase E should extract a tiny shared base URL helper while keeping refresh as a raw-fetch caller. Documentation verification passed with `git diff --check`.
+- Phase E PR #467 merged as `0ff1cdaf80950946c120b7b141189d7c5ad75359`. It added `src/api/baseUrl.ts` and `src/api/health.ts`, migrated login health probing to the no-auth helper, kept refresh as a raw-fetch recursion boundary, and passed full local/CI verification including regenerated frontend coverage at 100%.
 - Phase 5 PR #459 merged as `42abe4d893420661482e73ddbd9a1f4aff271bd2` and the merge commit was verified on `origin/main`.
 - Phase 6 PR #460 passed required Architecture, Build Dev Images summary, Code Quality, and Test Suite checks on head `38d6231090736094593f75e476e3e0f0be7fff6a`, then squash-merged as `26bbd2d052afe1e22421107dea77b6597e873f4c`.
 - The Phase 6 merge commit was verified as an ancestor of `origin/main`; local `main` was fast-forwarded to `26bbd2d052afe1e22421107dea77b6597e873f4c`; the local and remote Phase 6 branches were deleted.
