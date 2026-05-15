@@ -5,6 +5,7 @@
  */
 
 import type { MobileTransactionBroadcastRequest } from '@sanctuary/shared/schemas/mobileApiRequests';
+import type { TransactionFilterType } from '@sanctuary/shared/constants/transactions';
 import type { Transaction, UTXO, SelectionStrategy } from "../../types";
 
 // Re-export types for backward compatibility
@@ -26,7 +27,7 @@ export interface GetTransactionsParams {
   offset?: number;
   dateFrom?: string;
   dateTo?: string;
-  type?: "sent" | "received" | "consolidation";
+  type?: TransactionFilterType;
   [key: string]: string | number | boolean | string[] | undefined | null;
 }
 

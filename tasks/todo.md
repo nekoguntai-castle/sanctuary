@@ -1,3 +1,30 @@
+# Task: Phase I Transaction Vocabulary Boundary Review 2026-05-15
+
+Status: implemented locally; PR pending.
+
+Goal: decide and implement the narrow transaction-vocabulary cleanup after Phase H by separating persisted/public/filter transaction values from legacy/natural-language aliases without changing stored data or public compatibility.
+
+## Plan
+
+- [x] Close out Phase H merge status in the durable plan and task ledger.
+- [x] Inventory current transaction type values across shared domain types, OpenAPI contracts, frontend filters, Console navigation, assistant tools, and the LLM egress proxy natural-query parser.
+- [x] Add shared transaction type constants for persisted values, public response compatibility values, pending values, and legacy alias normalization.
+- [x] Derive server/frontend/OpenAPI transaction schemas and filters from the shared constants where the trust boundary allows it.
+- [x] Keep the LLM egress proxy independent with proxy-local transaction filter constants and alias normalization.
+- [x] Add focused parity/alias tests for shared constants, OpenAPI contract validators, Console navigation, natural query aliases, and helper boundaries.
+- [ ] Run focused tests, typechecks, lizard/diff checks, commit, open PR, monitor checks, merge, and verify ancestry.
+
+## Review
+
+- Phase H merged through PR #471 as squash commit `2220e92e386c1f20db09f2315fb79acc1348c951`; all 61 latest Forgejo status contexts were green before merge and the merge commit is verified on `origin/main`.
+- Phase I should not remove the public `receive` transaction response value in this slice because OpenAPI and contract tests intentionally accept it today.
+- Phase I should keep `send`/`receive` aliases at compatibility and natural-language boundaries only, normalizing them to `sent`/`received` before repository filters or assistant tool calls.
+- The proxy still must not import shared runtime constants; local proxy constants plus tests should guard its `sent`/`received`/`consolidation` filter vocabulary and `send`/`receive` aliases.
+- Implemented shared transaction constants, derived server/frontend/OpenAPI transaction type surfaces from them, and added proxy-local transaction constants for isolated natural-query handling.
+- Focused verification passed: shared transaction constants, Console navigation, proxy natural query, proxy console protocol, AI transaction filter/query UI tests, server contract tests, shared build, app/test/server typechecks, server build, proxy build/test, app/server lint, touched-file lizard, proxy shared-import guard, scoped stale tuple search, and `git diff --check`.
+
+---
+
 # Task: Phase H AI Provider Type Plan Review 2026-05-15
 
 Status: complete.
@@ -23,7 +50,7 @@ Goal: review the AI provider type parity plan before implementation, correct sta
 
 # Task: Phase H AI Provider Type Parity 2026-05-15
 
-Status: implemented locally; PR pending.
+Status: merged and verified via PR #471 as squash commit `2220e92e386c1f20db09f2315fb79acc1348c951`.
 
 Goal: make AI provider type values derive from one owner per runtime boundary, add parity tests, and preserve the independent LLM egress proxy security boundary.
 
@@ -34,7 +61,7 @@ Goal: make AI provider type values derive from one owner per runtime boundary, a
 - [x] Add proxy-local provider type constants and use them in proxy detection schemas/order without importing shared/server/frontend code.
 - [x] Add focused parity/regression tests for server OpenAPI/request handling and proxy request/detection behavior without importing server runtime modules into root frontend coverage.
 - [x] Update `docs/plans/rationalization-plan.md` with Phase H implementation status and edge cases covered.
-- [ ] Run focused server/frontend/proxy tests, typechecks/builds, proxy isolation guard, lizard/diff checks, commit, open PR, monitor checks, merge, verify ancestry, then continue to Phase I review.
+- [x] Run focused server/frontend/proxy tests, typechecks/builds, proxy isolation guard, lizard/diff checks, commit, open PR, monitor checks, merge, verify ancestry, then continue to Phase I review.
 
 ## Review
 
@@ -43,6 +70,8 @@ Goal: make AI provider type values derive from one owner per runtime boundary, a
 - The LLM egress proxy now owns `llm-egress-proxy/src/providerTypes.ts` for its provider tuple, type guard, and detection order; it still imports no shared/server/frontend runtime code.
 - Added package-local server and proxy tests for provider enum parity, mixed-case rejection, unsupported-provider fallback, and detection-order completeness. Frontend provider type reuse is covered by app/test typechecks rather than a root Vitest test that imports server runtime modules.
 - Local verification passed: focused server/proxy tests, app/test/server typechecks, server/proxy builds, full proxy test command, app/server lint, touched-file lizard, proxy shared-import guard, scoped negative provider tuple search, fresh frontend coverage shards plus merge at 100%, and `git diff --check`.
+- PR #471 passed Architecture, Build Dev Images scope, Code Quality, Test Suite full lanes including frontend coverage merge, Full Test Summary, and PR Required Checks, then squash-merged as `2220e92e386c1f20db09f2315fb79acc1348c951`.
+- Post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

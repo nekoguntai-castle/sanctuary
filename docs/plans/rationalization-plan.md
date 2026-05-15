@@ -2,7 +2,7 @@
 
 Date: 2026-05-15
 Owner: Codex
-Status: Original queue complete; optional follow-up queue complete through Phase G; Phase H implemented locally
+Status: Original queue complete; optional follow-up queue complete through Phase H; Phase I in progress
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, and preference patch semantics
 
 ## Executive Summary
@@ -12,7 +12,7 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 - Nested preference path reads, nested patch construction, and optimistic rollback now use shared helpers without replacing backend validation, backend canonical storage, or the current top-level preference patch contract.
 - No non-hardware rationalization phase remains in the original six-phase queue. The physical hardware test remains a separate manual/external validation item.
 - A fresh 2026-05-14 reanalysis did not reopen those merged phases, but it found a new follow-up queue: wallet role/capability contracts, Bitcoin script and wallet/account type identity, node/Electrum config projection, stale contract-test helper constants, and login health probing were the consolidation candidates worth addressing next. Subsequent 2026-05-15 independent reviews confirmed that order, and Phases A, B, B2, C, D, and E have since merged.
-- Current review status: no hard non-hardware rationalization blocker remains open. The physical hardware test remains the only deferred validation item outside the completed queue. The post-Phase-E optional queue is complete through Phase G; Phase H is implemented locally as a lower-risk provider-type parity cleanup, and Phase I remains a transaction-vocabulary watch item.
+- Current review status: no hard non-hardware rationalization blocker remains open. The physical hardware test remains the only deferred validation item outside the completed queue. The post-Phase-E optional queue is complete through Phase H; Phase I is in progress as a narrow transaction-vocabulary boundary cleanup.
 
 ## Divergence Inventory
 
@@ -57,8 +57,8 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 | E | Wrap login health lookup in a no-auth health API helper | `components/Login/useLoginFlow.ts`, `src/api/*`, login tests | Login health helper tests, base-URL tests, negative raw-health-fetch search | Merged via PR #467 |
 | F (optional) | Centralize feature flag env bindings and coverage checks | `server/src/config/features.ts`, `server/tests/unit/config/features.test.ts`, feature flag definitions/service tests | Config feature tests, unknown-key/admin OpenAPI tests, negative search for missing env binding | Merged via PR #469 |
 | G (optional) | Reuse actionable draft status constants in agent/dashboard paths | `server/src/repositories/draftRepository.ts`, `server/src/repositories/agentRepository.ts`, `server/src/repositories/agentDashboardRepository.ts`, related tests | Repository tests and negative literal searches for actionable draft status filters | Merged via PR #470 |
-| H (optional) | Add AI provider type parity checks while preserving proxy isolation | `server/src/services/ai/providerProfile.ts`, `server/src/api/ai/models.ts`, `server/src/api/openapi/schemas/ai.ts`, `server/src/services/ai/types.ts`, `src/api/ai.ts`, `src/api/admin/types.ts`, `llm-egress-proxy/src/*` | AI/provider/proxy tests plus an explicit parity/isolation guard | Implemented locally; PR pending |
-| I (optional) | Split public transaction values from persisted values and aliases | `shared/types/domain.ts`, `server/src/api/openapi/schemas/transactions.ts`, transaction list/console/proxy filter helpers | Transaction route/API/console/proxy tests and alias boundary tests | Watch/candidate |
+| H (optional) | Add AI provider type parity checks while preserving proxy isolation | `server/src/services/ai/providerProfile.ts`, `server/src/api/ai/models.ts`, `server/src/api/openapi/schemas/ai.ts`, `server/src/services/ai/types.ts`, `src/api/ai.ts`, `src/api/admin/types.ts`, `llm-egress-proxy/src/*` | AI/provider/proxy tests plus an explicit parity/isolation guard | Merged via PR #471 |
+| I (optional) | Split public transaction values from persisted values and aliases | `shared/constants/transactions.ts`, `shared/types/domain.ts`, `server/src/api/openapi/schemas/transactions.ts`, transaction list/console/proxy filter helpers | Transaction route/API/console/proxy tests and alias boundary tests | Implemented locally; PR pending |
 
 ## Reanalysis Addendum - 2026-05-14
 
@@ -787,6 +787,44 @@ Scope: implement AI provider type parity while keeping one provider tuple per ru
   - `SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR=.tmp/phase-h-coverage/rerun-shard-2-2 npm run test:coverage:shard -- 2 2`
   - `npm run test:coverage:merge` passed at 100% statements, branches, functions, and lines.
 - Scoped provider tuple search confirmed only the intended server, frontend, and proxy tuple owners remain in production paths.
+- `git diff --check`
+
+## Phase I Implementation Addendum - 2026-05-15
+
+Scope: split transaction type domains without changing stored values, public response compatibility, or the LLM egress proxy isolation boundary.
+
+### Phase I Status
+
+- Added `shared/constants/transactions.ts` as the canonical shared owner for persisted transaction values (`sent`, `received`, `consolidation`), public response compatibility values including legacy `receive`, pending transaction values, and `send`/`receive` alias normalization.
+- `shared/types/domain.ts`, root frontend transaction types, server repository filter types, assistant read-tool input schemas, and transaction OpenAPI schemas now derive from the appropriate shared transaction value domain.
+- The LLM egress proxy now owns proxy-local transaction filter constants and alias normalization in `llm-egress-proxy/src/transactionTypes.ts`; it still imports no shared/server/frontend runtime modules.
+- Console/natural-query paths normalize legacy or natural-language `send`/`receive` aliases to `sent`/`received` before returning transaction filters. Frontend route-state parsing continues to accept only canonical filter values.
+
+### Phase I Edge Cases Covered
+
+- Public API response compatibility still accepts `receive`; this phase does not migrate or remove that public value.
+- Storage/repository filters and assistant tool calls use only `sent`, `received`, and `consolidation`.
+- Pending transaction schemas remain limited to `sent` and `received`; `consolidation` and legacy aliases are not pending transaction values.
+- `self` remains rejected by contract validators.
+- Proxy alias handling remains independent from shared code so the egress security boundary stays intact.
+
+### Phase I Local Verification
+
+- `npm run test:run -- tests/shared/transactionTypes.test.ts tests/src/app/consoleTransactionNavigation.test.ts tests/llm-egress-proxy/naturalQuery.test.ts tests/llm-egress-proxy/consoleProtocol.test.ts`
+- `npm run test:run -- tests/components/WalletDetail/hooks/useAITransactionFilter.test.ts tests/components/AIQueryInput.test.tsx`
+- `npm --prefix shared run build`
+- `npm --prefix server run test:run -- tests/contract/api.contract.test.ts`
+- `npm --prefix llm-egress-proxy run build`
+- `npm run typecheck:app`
+- `npm run typecheck:tests`
+- `npm --prefix server run typecheck:tests`
+- `npm --prefix server run build`
+- `npm --prefix llm-egress-proxy run test`
+- `npm run lint:app`
+- `npm run lint:server`
+- `npm run quality:lizard -- --files shared/constants/transactions.ts shared/types/domain.ts types/index.ts src/api/transactions/types.ts src/app/consoleTransactionNavigation.ts server/src/api/openapi/schemas/transactions.ts server/src/assistant/tools/walletReadTools.ts server/src/repositories/types.ts llm-egress-proxy/src/transactionTypes.ts llm-egress-proxy/src/naturalQuery.ts llm-egress-proxy/src/consoleProtocolIntents.ts`
+- `bash scripts/ci/check-llm-egress-proxy-shared-isolation.sh`
+- Scoped transaction literal search confirmed no unowned production `sent`/`received`/`consolidation`, `sent`/`received`, or stale `send`/`receive` filter tuples remain outside canonical owners and tests.
 - `git diff --check`
 
 ## Edge Cases

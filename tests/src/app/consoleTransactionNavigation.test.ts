@@ -158,6 +158,19 @@ describe("console transaction navigation", () => {
       limit: null,
     });
 
+    expect(
+      parseConsoleTransactionFilterState({
+        walletId: "wallet-1",
+        type: "receive",
+      }),
+    ).toEqual({
+      walletId: "wallet-1",
+      dateFrom: null,
+      dateTo: null,
+      type: null,
+      limit: null,
+    });
+
     expect(parseConsoleTransactionFilterState({ walletId: "" })).toBeNull();
   });
 

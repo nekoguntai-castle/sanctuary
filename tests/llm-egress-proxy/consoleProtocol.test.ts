@@ -257,6 +257,34 @@ describe("console planner protocol", () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it("normalizes legacy transaction type aliases in transaction intents", () => {
+    const result = parseConsolePlanResponse(
+      JSON.stringify({
+        intents: [
+          {
+            name: "query_transactions",
+            target: { kind: "current_wallet" },
+            filters: { type: "receive" },
+          },
+        ],
+      }),
+      4,
+      walletPlanInput,
+    );
+
+    expect(result.toolCalls).toEqual([
+      {
+        name: "query_transactions",
+        input: {
+          walletId: "da17d9d4-c760-4929-a207-2a45c3cadef9",
+          type: "received",
+        },
+        reason: "Resolved transaction query intent.",
+      },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
   it("rejects malformed transaction intents without falling back to prompt regexes", () => {
     const result = parseConsolePlanResponse(
       JSON.stringify({

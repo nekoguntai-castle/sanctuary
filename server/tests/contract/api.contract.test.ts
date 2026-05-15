@@ -14,6 +14,10 @@
  */
 
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+import {
+  PENDING_TRANSACTION_TYPES,
+  PUBLIC_TRANSACTION_TYPES,
+} from '@sanctuary/shared/constants/transactions';
 import { MOBILE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/schemas/mobileApiRequests';
 import { draftSchemas } from '../../src/api/openapi/schemas/drafts';
 import { mobileAgentDraftSchemas } from '../../src/api/openapi/schemas/mobileAgentDrafts';
@@ -49,12 +53,8 @@ describe('Contract validator live source parity', () => {
   });
 
   it('derives transaction types from the public OpenAPI transaction schema', () => {
-    expect(transactionSchemas.Transaction.properties.type.enum).toEqual([
-      'sent',
-      'received',
-      'consolidation',
-      'receive',
-    ]);
+    expect(transactionSchemas.Transaction.properties.type.enum).toEqual([...PUBLIC_TRANSACTION_TYPES]);
+    expect(transactionSchemas.WalletPendingTransaction.properties.type.enum).toEqual([...PENDING_TRANSACTION_TYPES]);
   });
 
   it('derives draft statuses and PSBT fields from shared/OpenAPI contracts', () => {

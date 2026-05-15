@@ -8,6 +8,10 @@ import {
   type ConsolePlannedToolCall,
   type ConsoleToolDescription,
 } from "./consoleProtocol";
+import {
+  PROXY_TRANSACTION_FILTER_TYPES,
+  normalizeProxyTransactionFilterType,
+} from "./transactionTypes";
 
 type NaturalQueryAggregation = "sum" | "count" | "max" | "min";
 type NaturalQuerySortOrder = "asc" | "desc";
@@ -36,7 +40,7 @@ const TRANSACTION_FILTER_TOOL: ConsoleToolDescription = {
   name: "query_transactions",
   title: "Query Transactions",
   description:
-    "Filter, sort, count, or total the selected wallet's transaction table. Use type sent/received/consolidation, ISO dateFrom/dateTo, label, minAmount/maxAmount, confirmations, sort fields, limit, or aggregation.",
+    `Filter, sort, count, or total the selected wallet's transaction table. Use type ${PROXY_TRANSACTION_FILTER_TYPES.join("/")}, ISO dateFrom/dateTo, label, minAmount/maxAmount, confirmations, sort fields, limit, or aggregation.`,
   sensitivity: "wallet",
   requiredScope: "wallet",
   inputFields: [
@@ -56,7 +60,6 @@ const TRANSACTION_FILTER_TOOL: ConsoleToolDescription = {
   ],
 };
 
-const TX_TYPES = new Set(["sent", "received", "consolidation"]);
 const AGGREGATIONS = new Set<NaturalQueryAggregation>([
   "sum",
   "count",
@@ -99,11 +102,7 @@ const hasEntries = (value: Record<string, unknown>): boolean => {
 };
 
 const normalizeTransactionType = (value: unknown): string | null => {
-  const type = nonEmptyString(value)?.toLowerCase();
-  if (!type) return null;
-  if (type === "receive") return "received";
-  if (type === "send") return "sent";
-  return TX_TYPES.has(type) ? type : null;
+  return normalizeProxyTransactionFilterType(nonEmptyString(value));
 };
 
 const amountObject = (value: unknown): Record<string, number> | null => {

@@ -83,6 +83,7 @@ import type {
   PriceSource,
   AggregatedPrice,
 } from "@sanctuary/shared/types/api";
+import type { PendingTransactionType } from "@sanctuary/shared/constants/transactions";
 
 export { WalletType };
 export type {
@@ -414,7 +415,7 @@ export interface Transaction {
   counterpartyAddress?: string;
   inputs?: TransactionInput[];
   outputs?: TransactionOutput[];
-  type?: "sent" | "received" | "consolidation" | "receive";
+  type?: TransactionType;
   replacedByTxid?: string;
   replacementForTxid?: string;
   rbfStatus?: "active" | "replaced" | "confirmed";
@@ -427,7 +428,7 @@ export interface PendingTransaction {
   txid: string;
   walletId: string;
   walletName?: string;
-  type: "sent" | "received";
+  type: PendingTransactionType;
   amount: number;
   fee: number;
   feeRate: number;

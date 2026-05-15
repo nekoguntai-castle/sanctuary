@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  PROXY_TRANSACTION_FILTER_TYPES,
+  normalizeProxyTransactionFilterType,
+} from "./transactionTypes";
 import { toPlainObject } from "./consoleProtocolObjects";
 
 const RelativeDateRangeIntentValueSchema = z.enum([
@@ -50,6 +54,11 @@ const TransactionLimitIntentSchema = z.preprocess(
   ]),
 );
 
+const TransactionFilterTypeSchema = z.preprocess(
+  normalizeProxyTransactionFilterType,
+  z.enum(PROXY_TRANSACTION_FILTER_TYPES),
+);
+
 function normalizedIntentRecord(value: unknown): Record<string, unknown> {
   const intent = toPlainObject(value);
   const name = typeof intent.name === "string" ? intent.name : intent.intent;
@@ -93,7 +102,7 @@ const TransactionIntentSchema = z.preprocess(
       filters: z
         .object({
           dateRange: DateRangeIntentSchema.optional(),
-          type: z.enum(["sent", "received", "consolidation"]).optional(),
+          type: TransactionFilterTypeSchema.optional(),
         })
         .strict()
         .optional(),

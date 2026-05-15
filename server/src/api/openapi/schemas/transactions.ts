@@ -5,6 +5,10 @@
  */
 
 import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
+import {
+  PENDING_TRANSACTION_TYPES,
+  PUBLIC_TRANSACTION_TYPES,
+} from '@sanctuary/shared/constants/transactions';
 
 export const transactionSchemas = {
   UtxoReference: {
@@ -63,7 +67,7 @@ export const transactionSchemas = {
       id: { type: 'string' },
       txid: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' },
       walletId: { type: 'string' },
-      type: { type: 'string', enum: ['sent', 'received', 'consolidation', 'receive'] },
+      type: { type: 'string', enum: [...PUBLIC_TRANSACTION_TYPES] },
       amount: { type: 'number', description: 'Signed amount in satoshis' },
       fee: { type: 'number', nullable: true, description: 'Fee in satoshis' },
       balanceAfter: { type: 'number', nullable: true },
@@ -445,7 +449,7 @@ export const transactionSchemas = {
       txid: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' },
       walletId: { type: 'string' },
       walletName: { type: 'string' },
-      type: { type: 'string', enum: ['sent', 'received'] },
+      type: { type: 'string', enum: [...PENDING_TRANSACTION_TYPES] },
       amount: { type: 'number' },
       fee: { type: 'number' },
       feeRate: { type: 'number' },

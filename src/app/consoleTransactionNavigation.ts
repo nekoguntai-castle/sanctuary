@@ -1,6 +1,10 @@
 import type { ConsoleTurnResult } from "../api/console";
+import {
+  PERSISTED_TRANSACTION_TYPES,
+  type TransactionFilterType,
+} from "@sanctuary/shared/constants/transactions";
 
-export type ConsoleTransactionType = "sent" | "received" | "consolidation";
+export type ConsoleTransactionType = TransactionFilterType;
 
 export interface ConsoleTransactionFilterState {
   walletId: string;
@@ -29,11 +33,7 @@ export interface AppliedConsoleTransactionQuery {
 }
 
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const TX_TYPES = new Set<ConsoleTransactionType>([
-  "sent",
-  "received",
-  "consolidation",
-]);
+const TX_TYPES = new Set<ConsoleTransactionType>(PERSISTED_TRANSACTION_TYPES);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

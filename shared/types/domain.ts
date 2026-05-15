@@ -9,6 +9,7 @@
  */
 
 import type { NetworkType } from '../constants/bitcoin';
+import type { PublicTransactionType } from '../constants/transactions';
 import {
   WalletType as CanonicalWalletType,
   type WalletScriptType as CanonicalWalletScriptType,
@@ -59,7 +60,7 @@ export type DeviceRole = 'owner' | 'viewer' | null;
 /**
  * Transaction type classification
  */
-export type TransactionType = 'sent' | 'received' | 'consolidation' | 'receive';
+export type TransactionType = PublicTransactionType;
 
 /**
  * Transaction output classification

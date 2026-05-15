@@ -92,6 +92,32 @@ describe("natural query conversion", () => {
     ).toContain("Exchange, Payroll");
   });
 
+  it("normalizes legacy transaction type aliases from direct planner tool calls", async () => {
+    mocks.callExternalAIWithMessagesResult.mockResolvedValue({
+      ok: true,
+      content: JSON.stringify({
+        toolCalls: [
+          {
+            name: "query_transactions",
+            input: { walletId, type: "send" },
+          },
+        ],
+      }),
+    });
+
+    await expect(
+      convertNaturalQuery({
+        aiConfig,
+        query: "show sends",
+        walletId,
+        recentLabels: "None",
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      query: { type: "transactions", filter: { type: "sent" } },
+    });
+  });
+
   it("returns an unavailable conversion result when the model call fails", async () => {
     mocks.callExternalAIWithMessagesResult.mockResolvedValue({
       ok: false,

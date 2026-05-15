@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { PERSISTED_TRANSACTION_TYPES } from '@sanctuary/shared/constants/transactions';
 import type { Prisma } from '../../generated/prisma/client';
 import {
   assistantReadRepository,
@@ -20,7 +21,7 @@ const walletBudget = { maxRows: 500, maxBytes: 192_000 };
 
 const queryTransactionsInputSchema = {
   walletId: z.string().uuid(),
-  type: z.enum(['sent', 'received', 'consolidation']).optional(),
+  type: z.enum(PERSISTED_TRANSACTION_TYPES).optional(),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
   minAmount: z.union([z.string(), z.number()]).optional(),

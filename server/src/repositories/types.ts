@@ -6,6 +6,7 @@
 
 import type { Wallet, Address, Transaction, User, UTXO } from '../generated/prisma/client';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import type { TransactionFilterType } from '@sanctuary/shared/constants/transactions';
 
 // Re-export Prisma types that repositories use
 export type { Wallet, Address, Transaction, User, UTXO };
@@ -129,7 +130,7 @@ export interface TransactionFilter {
   walletId?: string;
   walletIds?: string[];
   confirmed?: boolean;
-  type?: 'send' | 'receive';
+  type?: TransactionFilterType;
 }
 
 // Address repository specific types
