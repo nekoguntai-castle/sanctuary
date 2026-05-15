@@ -177,7 +177,11 @@ describe('Login Component', () => {
     await renderLogin(Login);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith('/api/v1/health');
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/health', {
+        method: 'GET',
+        credentials: 'include',
+        signal: expect.any(AbortSignal),
+      });
     });
   });
 

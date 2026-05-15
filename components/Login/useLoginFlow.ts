@@ -5,6 +5,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { getRegistrationStatus } from '../../src/api/auth';
+import { checkApiHealth } from '../../src/api/health';
 
 export function useLoginFlow() {
   const {
@@ -27,6 +28,7 @@ export function useLoginFlow() {
   const [registrationEnabled, setRegistrationEnabled] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const twoFactorInputRef = useRef<HTMLInputElement>(null);
+  const apiCheckGenerationRef = useRef(0);
   const [darkMode, setDarkMode] = useState(false);
   // Track the submit state locally in addition to reading the boot
   // loading flag from UserContext.
@@ -79,26 +81,48 @@ export function useLoginFlow() {
 
   // Check API status and registration status on mount
   useEffect(() => {
+    const abortController = new AbortController();
+    const checkGeneration = apiCheckGenerationRef.current + 1;
+    apiCheckGenerationRef.current = checkGeneration;
+    const isCurrentCheck = () => (
+      apiCheckGenerationRef.current === checkGeneration &&
+      !abortController.signal.aborted
+    );
+
     const checkApi = async () => {
       try {
-        const response = await fetch('/api/v1/health');
-        if (response.ok || response.status === 401) {
+        const connected = await checkApiHealth({ signal: abortController.signal });
+        if (!isCurrentCheck()) return;
+
+        if (connected) {
           setApiStatus('connected');
 
           try {
             const regStatus = await getRegistrationStatus();
-            setRegistrationEnabled(regStatus.enabled);
+            if (isCurrentCheck()) {
+              setRegistrationEnabled(regStatus.enabled);
+            }
           } catch {
-            setRegistrationEnabled(false);
+            if (isCurrentCheck()) {
+              setRegistrationEnabled(false);
+            }
           }
         } else {
           setApiStatus('error');
         }
       } catch {
-        setApiStatus('error');
+        if (isCurrentCheck()) {
+          setApiStatus('error');
+        }
       }
     };
-    checkApi();
+
+    void checkApi();
+
+    return () => {
+      apiCheckGenerationRef.current += 1;
+      abortController.abort();
+    };
   }, []);
 
   // Focus 2FA input when it appears

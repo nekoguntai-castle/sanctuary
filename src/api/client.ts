@@ -34,6 +34,7 @@
 
 import { createLogger } from "../../utils/logger";
 import { downloadBlob } from "../../utils/download";
+import { getApiBaseUrl } from "./baseUrl";
 import {
   refreshAccessToken,
   scheduleRefreshFromHeader,
@@ -185,18 +186,6 @@ async function withRetry<T>(
   // Should not reach here, but just in case
   throw lastError || new ApiError("Request failed after all retries", 0);
 }
-
-// Auto-detect API URL based on current host
-const getApiBaseUrl = (): string => {
-  // If VITE_API_URL is set, use it
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
-
-  // Otherwise, use relative URL (assumes nginx proxy at /api/v1)
-  // This works for both development (with proxy) and production (Docker nginx)
-  return "/api/v1";
-};
 
 const API_BASE_URL = getApiBaseUrl();
 

@@ -1,6 +1,60 @@
-# Active Task: Phase D Contract Helper Repair 2026-05-15
+# Active Task: Phase E Login Health Helper 2026-05-15
 
-Status: in progress; seventh independent review checkpoint complete.
+Status: in progress.
+
+Goal: move login API health probing behind a no-auth API helper that shares the same base URL rules as the rest of the frontend API layer, without routing refresh through `apiClient`.
+
+## Plan
+
+- [x] Reconfirm the remaining divergence: login raw health fetch, duplicated API base URL rules in `client.ts` and `refresh.ts`, and existing login health test coverage.
+- [x] Add a shared base URL helper for frontend API direct-fetch callers and migrate `client.ts` plus `refresh.ts` to it.
+- [x] Add a no-auth health helper that uses the shared base URL helper, GET, `credentials: include`, timeout/abort support, no CSRF, and `200`/`401` connected semantics.
+- [x] Update `useLoginFlow` to call the health helper, preserve registration-status behavior, and avoid state updates after unmount or superseded checks.
+- [x] Add/update tests for base URL joining, health success, `401` as connected, non-OK/error/timeout/abort behavior, registration fallback, and unmount safety.
+- [ ] Run focused frontend tests/typechecks, negative raw-fetch searches, lizard/diff checks as appropriate, commit, open PR, monitor/fix checks, merge, and verify ancestry.
+
+## Review
+
+- Eighth independent review confirmed Phase E is the only remaining non-hardware convergence item after Phase D merged.
+- Keep `src/api/refresh.ts` as a raw-fetch owner for `/auth/refresh`; sharing `getApiBaseUrl` is acceptable because it does not import `apiClient` or trigger 401 refresh recursion.
+- Login health should not attach CSRF and should not require an authenticated session. It should treat only `2xx` and `401` as connected; HTTP `503`, network rejection, DNS/TLS/mixed-content failures, timeout, and abort should fail predictably.
+- Registration-status lookup should run only after connected health and should fall back to disabled registration when that second call fails.
+- Added `src/api/baseUrl.ts` and `src/api/health.ts`, migrated `client.ts` and `refresh.ts` to the shared base URL helper, and moved `useLoginFlow` to `checkApiHealth`.
+- Added focused base URL, health helper, login component, and login hook coverage. Health tests cover trailing slash joins, no-auth GET options, no CSRF header, `200`/`204`/`401` connected, `503` disconnected, network rejection, timeout abort, and external abort.
+- PR #467 initially failed the frontend coverage merge gate. Local reproduction with fresh `.vitest-reports` blobs showed real coverage gaps in pre-aborted health probes and login unmount/rejection branches, so the fix adds those edge-case tests and simplifies the abort helper's idempotent abort call.
+- Local verification passed so far: focused API/Login Vitest run, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, `npm run quality:lizard`, negative raw-health/base-URL search, and `git diff --check`.
+- Coverage verification after the PR fix passed with fresh full frontend shards and merged coverage at 100% statements, branches, functions, and lines.
+
+---
+
+# Completed Task: Eighth Independent Divergence Review 2026-05-15
+
+Status: complete.
+
+Goal: independently double-check the current rationalization findings after Phase D merge, challenge whether any non-hardware work remains besides Phase E, and record corrections before implementation continues.
+
+## Plan
+
+- [x] Re-read the durable rationalization plan and current task ledger without treating stale status text as truth.
+- [x] Verify current branch and merge state against `origin/main`.
+- [x] Run targeted production searches for reopened wallet-role, wallet-identity, external-LLM, node-config, contract-helper, and login-health divergences.
+- [x] Update `docs/plans/rationalization-plan.md` and this task ledger with confirmations, corrections, and Phase E implementation details.
+- [x] Run documentation verification.
+
+## Review
+
+- Added an eighth independent review addendum to `docs/plans/rationalization-plan.md`.
+- Corrected the stale tracker state: Phase D is merged and verified via PR #466 as squash commit `846e76631456771afb29807d92caeb296169d8d1`; it is no longer active.
+- Confirmed Phase A/B/B2/C/D remain closed on current `origin/main`: targeted production searches found no broad wallet edit gates, fail-open `wallet.canEdit !== false` gates, unowned wallet/script/account tuple definitions, active Sanctuary-managed model-management surfaces, or stale Phase D contract-helper literals.
+- Confirmed Phase E remains the only unresolved non-hardware convergence item: `components/Login/useLoginFlow.ts` still calls `fetch('/api/v1/health')` directly.
+- Added one Phase E design refinement: extract shared API base URL resolution for `src/api/client.ts`, `src/api/refresh.ts`, and the new no-auth health helper, while keeping refresh as a raw `fetch` recursion boundary.
+- Review verification: `git log`/branch checks; targeted `rg`/`sed`/`nl` checks for completed phases and login health/base URL divergence; `git diff --check`.
+
+---
+
+# Completed Task: Phase D Contract Helper Repair 2026-05-15
+
+Status: merged and verified via PR #466 as squash commit `846e76631456771afb29807d92caeb296169d8d1`.
 
 Goal: repair or retire stale contract-test helper validation so contract tests derive from current OpenAPI/shared/server contracts instead of hard-coded, drifted enum arrays and response shapes.
 
@@ -10,7 +64,7 @@ Goal: repair or retire stale contract-test helper validation so contract tests d
 - [x] Decide whether each helper earns its keep; delete redundant checks or derive retained validators from live constants/schemas.
 - [x] Update fixtures and negative tests to current contracts: `testnet3`/`testnet4`, current draft statuses, `psbtBase64`, current transaction type vocabulary, and distinct wallet-response versus sync-pipeline status domains.
 - [x] Add focused contract/OpenAPI tests so stale helper literals cannot pass independently from the live API schema.
-- [ ] Run contract tests, focused server tests, negative stale-literal searches, `git diff --check`, commit, open PR, monitor/fix checks, merge, and verify ancestry.
+- [x] Run contract tests, focused server tests, negative stale-literal searches, `git diff --check`, commit, open PR, monitor/fix checks, merge, and verify ancestry.
 
 ## Review
 
@@ -25,6 +79,7 @@ Goal: repair or retire stale contract-test helper validation so contract tests d
 - Wallet response `syncStatus` and sync-pipeline `SyncStatus` remain separate domains unless an explicit contract migration joins them.
 - Review verification: targeted `rg`/`sed`/`nl` checks for wallet capability gates, wallet identity tuples, AI model-management fallout, direct fetch boundaries, contract helper stale literals, current OpenAPI/shared/server draft/network/transaction sources, mobile-agent draft schemas, and Phase C node-config residuals; `git diff --check` passed.
 - Implementation verification: `npm --prefix server run test:contract`; `npm --prefix server run test:run -- tests/unit/api/openapi.test.ts tests/unit/api/mobile-agent-drafts-routes.test.ts`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm --prefix server run lint`; `npm run quality:lizard`; scoped stale-literal searches; `git diff --check`.
+- PR #466 passed Forgejo Architecture, Build Dev Images, Code Quality, and Test Suite checks, was squash-merged, and merge commit `846e76631456771afb29807d92caeb296169d8d1` was verified as an ancestor of `origin/main`.
 
 ---
 

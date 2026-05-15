@@ -22,6 +22,7 @@
 
 import { createLogger } from '../../utils/logger';
 import { ACCESS_EXPIRES_AT_HEADER, attachCsrfHeader } from './authPolicy';
+import { getApiBaseUrl, joinApiBaseUrl } from './baseUrl';
 
 const log = createLogger('AuthRefresh');
 
@@ -31,18 +32,6 @@ const REFRESH_LEAD_TIME_MS = 60_000;
 
 const REFRESH_LOCK_NAME = 'sanctuary-auth-refresh';
 const BROADCAST_CHANNEL_NAME = 'sanctuary-auth';
-
-/**
- * Derive the API base URL the same way `./client.ts` does. Duplicated
- * here so refresh.ts stays free of circular imports from client.ts.
- * import.meta.env is always defined under Vite (browser bundle).
- */
-function getApiBaseUrl(): string {
-  if (import.meta.env?.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL as string;
-  }
-  return '/api/v1';
-}
 
 // -----------------------------------------------------------------------------
 // In-memory state. Module-scoped so all callers in one tab share it.
@@ -198,7 +187,7 @@ async function performRefreshRequest(): Promise<void> {
   };
   attachCsrfHeader(headers, 'POST');
 
-  const response = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
+  const response = await fetch(joinApiBaseUrl(getApiBaseUrl(), '/auth/refresh'), {
     method: 'POST',
     credentials: 'include',
     headers,

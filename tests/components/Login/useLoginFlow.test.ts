@@ -34,12 +34,14 @@ vi.mock('../../../src/api/auth', () => ({
 
 // Must import after mocks are defined
 import { useLoginFlow } from '../../../components/Login/useLoginFlow';
+import { getRegistrationStatus } from '../../../src/api/auth';
 
 describe('useLoginFlow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset the mutable UserContext state before every test.
     mockUserContextState.isLoading = false;
+    vi.mocked(getRegistrationStatus).mockResolvedValue({ enabled: true });
     // Mock fetch for health check
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
   });
@@ -63,6 +65,125 @@ describe('useLoginFlow', () => {
     expect(result.current.twoFactorCode).toBe('');
     expect(result.current.notice).toBeNull();
     await waitForInitialChecks(result);
+  });
+
+  it('marks API status as error and skips registration lookup when health is not connected', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+
+    const { result } = renderHook(() => useLoginFlow());
+
+    await waitFor(() => expect(result.current.apiStatus).toBe('error'));
+    expect(getRegistrationStatus).not.toHaveBeenCalled();
+    expect(result.current.registrationEnabled).toBe(false);
+  });
+
+  it('marks API status as error and skips registration lookup when health rejects', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error('network down'));
+
+    const { result } = renderHook(() => useLoginFlow());
+
+    await waitFor(() => expect(result.current.apiStatus).toBe('error'));
+    expect(getRegistrationStatus).not.toHaveBeenCalled();
+    expect(result.current.registrationEnabled).toBe(false);
+  });
+
+  it('falls back to registration disabled when registration status lookup fails', async () => {
+    vi.mocked(getRegistrationStatus).mockRejectedValueOnce(new Error('registration unavailable'));
+
+    const { result } = renderHook(() => useLoginFlow());
+
+    await waitFor(() => expect(result.current.apiStatus).toBe('connected'));
+    await waitFor(() => expect(getRegistrationStatus).toHaveBeenCalled());
+    expect(result.current.registrationEnabled).toBe(false);
+  });
+
+  it('does not update registration state after unmounting during an in-flight health check', async () => {
+    let resolveHealth: ((value: Pick<Response, 'ok' | 'status'>) => void) | undefined;
+    const healthPromise = new Promise<Pick<Response, 'ok' | 'status'>>((resolve) => {
+      resolveHealth = resolve;
+    });
+    global.fetch = vi.fn().mockReturnValue(healthPromise);
+
+    const { unmount } = renderHook(() => useLoginFlow());
+    const fetchOptions = vi.mocked(global.fetch).mock.calls[0][1] as RequestInit;
+
+    unmount();
+    resolveHealth!({ ok: true, status: 200 });
+
+    await act(async () => {
+      await healthPromise;
+      await Promise.resolve();
+    });
+
+    expect((fetchOptions.signal as AbortSignal).aborted).toBe(true);
+    expect(getRegistrationStatus).not.toHaveBeenCalled();
+  });
+
+  it('does not update API status after unmounting during a failed health check', async () => {
+    let rejectHealth: ((reason: Error) => void) | undefined;
+    const healthPromise = new Promise<Pick<Response, 'ok' | 'status'>>((_resolve, reject) => {
+      rejectHealth = reject;
+    });
+    global.fetch = vi.fn().mockReturnValue(healthPromise);
+
+    const { result, unmount } = renderHook(() => useLoginFlow());
+
+    unmount();
+    rejectHealth!(new Error('network down'));
+
+    await act(async () => {
+      await healthPromise.catch(() => undefined);
+      await Promise.resolve();
+    });
+
+    expect(result.current.apiStatus).toBe('checking');
+    expect(getRegistrationStatus).not.toHaveBeenCalled();
+  });
+
+  it('does not update registration state after unmounting during registration lookup', async () => {
+    let resolveRegistration: ((value: { enabled: boolean }) => void) | undefined;
+    const registrationPromise = new Promise<{ enabled: boolean }>((resolve) => {
+      resolveRegistration = resolve;
+    });
+    vi.mocked(getRegistrationStatus).mockReturnValueOnce(registrationPromise);
+
+    const { result, unmount } = renderHook(() => useLoginFlow());
+
+    await waitFor(() => expect(result.current.apiStatus).toBe('connected'));
+    expect(getRegistrationStatus).toHaveBeenCalled();
+
+    unmount();
+    resolveRegistration!({ enabled: true });
+
+    await act(async () => {
+      await registrationPromise;
+      await Promise.resolve();
+    });
+
+    expect(result.current.registrationEnabled).toBe(false);
+  });
+
+  it('does not update registration state after unmounting during failed registration lookup', async () => {
+    let rejectRegistration: ((reason: Error) => void) | undefined;
+    const registrationPromise = new Promise<{ enabled: boolean }>((_resolve, reject) => {
+      rejectRegistration = reject;
+    });
+    vi.mocked(getRegistrationStatus).mockReturnValueOnce(registrationPromise);
+
+    const { result, unmount } = renderHook(() => useLoginFlow());
+
+    await waitFor(() => expect(result.current.apiStatus).toBe('connected'));
+    expect(getRegistrationStatus).toHaveBeenCalled();
+
+    unmount();
+    rejectRegistration!(new Error('registration unavailable'));
+
+    await act(async () => {
+      await registrationPromise.catch(() => undefined);
+      await Promise.resolve();
+    });
+
+    expect(result.current.registrationEnabled).toBe(false);
   });
 
   it('toggleMode switches mode and clears fields', async () => {
