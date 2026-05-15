@@ -25,6 +25,10 @@ vi.mock('../../../src/models/prisma', () => ({
 }));
 
 import { findDashboardRows } from '../../../src/repositories/agentDashboardRepository';
+import {
+  ACTIONABLE_DRAFT_STATUSES,
+  BROADCASTED_DRAFT_STATUS,
+} from '../../../src/repositories/draftRepository';
 
 describe('agentDashboardRepository', () => {
   beforeEach(() => {
@@ -113,9 +117,12 @@ describe('agentDashboardRepository', () => {
       by: ['agentId'],
       where: expect.objectContaining({
         agentId: { in: ['agent-1'] },
-        status: { in: ['unsigned', 'partial', 'signed'] },
+        status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
       }),
     }));
+    expect(
+      prisma.draftTransaction.groupBy.mock.calls[0][0].where.status.in,
+    ).not.toContain(BROADCASTED_DRAFT_STATUS);
     expect(prisma.agentApiKey.groupBy).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         agentId: { in: ['agent-1'] },

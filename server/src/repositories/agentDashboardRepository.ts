@@ -4,6 +4,7 @@ import {
   type AgentAlert,
 } from '../generated/prisma/client';
 import type { WalletAgentWithDetails } from './agentRepository';
+import { ACTIONABLE_DRAFT_STATUSES } from './draftRepository';
 
 const DASHBOARD_DRAFT_SELECT = {
   id: true,
@@ -32,8 +33,6 @@ const DASHBOARD_TRANSACTION_SELECT = {
 } satisfies Prisma.TransactionSelect;
 
 const DASHBOARD_RECENT_LIMIT = 3;
-// These draft states still require human review, signing, broadcast, or cleanup.
-const PENDING_DRAFT_STATUSES = ['unsigned', 'partial', 'signed'] as const;
 
 export type AgentDashboardDraftSummary = Prisma.DraftTransactionGetPayload<{
   select: typeof DASHBOARD_DRAFT_SELECT;
@@ -193,7 +192,7 @@ export async function findDashboardRows(options?: { limit?: number }): Promise<A
       by: ['agentId'],
       where: {
         agentId: { in: agentIds },
-        status: { in: [...PENDING_DRAFT_STATUSES] },
+        status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
         OR: [
           { expiresAt: null },
           { expiresAt: { gt: now } },

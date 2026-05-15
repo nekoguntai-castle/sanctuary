@@ -5,6 +5,10 @@ import {
   prisma,
   resetAgentRepositoryMocks,
 } from './agentRepository.testHarness';
+import {
+  ACTIONABLE_DRAFT_STATUSES,
+  BROADCASTED_DRAFT_STATUS,
+} from '../../../src/repositories/draftRepository';
 
 describe('agentRepository', () => {
   beforeEach(resetAgentRepositoryMocks);
@@ -240,12 +244,24 @@ describe('agentRepository', () => {
     prisma.draftTransaction.aggregate.mockResolvedValue({
       _sum: { amount: 50000n },
     });
+    const since = new Date('2026-04-16T00:00:00.000Z');
     await expect(
       agentRepository.sumAgentDraftAmountsSince(
         'agent-1',
-        new Date('2026-04-16T00:00:00.000Z'),
+        since,
       ),
     ).resolves.toBe(50000n);
+    expect(prisma.draftTransaction.aggregate).toHaveBeenCalledWith({
+      where: {
+        agentId: 'agent-1',
+        createdAt: { gte: since },
+        status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
+      },
+      _sum: { amount: true },
+    });
+    expect(
+      prisma.draftTransaction.aggregate.mock.calls[0][0].where.status.in,
+    ).not.toContain(BROADCASTED_DRAFT_STATUS);
 
     prisma.draftTransaction.aggregate.mockResolvedValueOnce({
       _sum: { amount: null },

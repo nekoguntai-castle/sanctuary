@@ -1,6 +1,23 @@
-# Task: Phase F Feature Flag Env Binding Convergence 2026-05-15
+# Task: Phase G Draft Actionable Status Reuse 2026-05-15
 
 Status: in progress.
+
+Goal: reuse the canonical draft actionable status tuple in agent funding and dashboard repository paths so terminal `broadcasted` drafts cannot drift into pending/actionable counts.
+
+## Plan
+
+- [x] Confirm duplicate actionable status filters in `agentRepository` and `agentDashboardRepository`.
+- [x] Import/reuse `ACTIONABLE_DRAFT_STATUSES` in agent funding sums and dashboard pending draft counts.
+- [x] Update focused repository tests to assert the canonical tuple is used and `broadcasted` remains excluded.
+- [x] Update the rationalization plan with Phase F merge closeout and Phase G implementation status.
+- [x] Run focused repository tests, server checks, lizard/diff checks, and `git diff --check`.
+- [ ] Commit Phase G, open a PR, monitor checks, merge, verify ancestry, then continue to Phase H.
+
+---
+
+# Completed Task: Phase F Feature Flag Env Binding Convergence 2026-05-15
+
+Status: merged and verified via PR #469 as squash commit `7997a3d851c5a5f5e122a5464c4c9afbad6aad4c`.
 
 Goal: centralize feature flag env bindings so runtime loading, environment reset tests, and feature flag service flattening cannot drift when a new flag is added.
 
@@ -11,7 +28,16 @@ Goal: centralize feature flag env bindings so runtime loading, environment reset
 - [x] Update feature flag service and tests to use the shared binding/flattening helpers.
 - [x] Update the rationalization plan with Phase F implementation status.
 - [x] Run focused config/feature-flag tests, typechecks or lizard if needed, and `git diff --check`.
-- [ ] Commit Phase F, open a PR, monitor checks, merge, verify ancestry, then continue to Phase G.
+- [x] Commit Phase F, open a PR, monitor checks, merge, verify ancestry, then continue to Phase G.
+
+## Review
+
+- Added `FEATURE_FLAG_ENV_BINDINGS` and `FEATURE_FLAG_ENV_KEYS` in `server/src/config/features.ts`, including `FEATURE_TREASURY_AUTOPILOT`.
+- Derived `loadFeatureFlags()`, `flattenFeatureFlags()`, and `getFeatureFlagValue()` from the shared binding table.
+- Updated `server/src/services/featureFlagService.ts` to reuse the config helpers for environment flag flattening, fallback reads, and reset-to-default behavior.
+- Updated config tests to derive env cleanup from `FEATURE_FLAG_ENV_KEYS`, assert binding parity with `FEATURE_FLAG_KEYS`, cover current-env reload behavior, and fail closed on unknown keys.
+- Local verification: focused feature flag tests, server test typecheck, server build, touched-file lizard, server lint, `git diff --check`, and pre-commit backend changed test sweep.
+- PR #469 passed Architecture, Build Dev Images, Code Quality, backend coverage, Full Test Summary, and PR Required Checks, then squash-merged as `7997a3d851c5a5f5e122a5464c4c9afbad6aad4c`.
 
 ---
 

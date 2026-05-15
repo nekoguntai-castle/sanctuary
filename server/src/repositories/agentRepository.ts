@@ -17,6 +17,7 @@ import {
   type WalletAgent,
 } from '../generated/prisma/client';
 import { findDashboardRows } from './agentDashboardRepository';
+import { ACTIONABLE_DRAFT_STATUSES } from './draftRepository';
 import { getSupportStats } from './agentSupportStatsRepository';
 export { findDashboardRows } from './agentDashboardRepository';
 export { getSupportStats } from './agentSupportStatsRepository';
@@ -425,7 +426,7 @@ export async function sumAgentDraftAmountsSince(agentId: string, since: Date): P
     where: {
       agentId,
       createdAt: { gte: since },
-      status: { in: ['unsigned', 'partial', 'signed'] },
+      status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
     },
     _sum: { amount: true },
   });

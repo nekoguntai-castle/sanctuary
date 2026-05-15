@@ -55,8 +55,8 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 | C | Centralize node/Electrum config projection semantics | `shared/constants/nodeConfig.ts`, network UI helpers, server node/Electrum/mempool adapters | Shared/frontend/server node config tests, negative projection searches | Merged via PR #465 |
 | D | Repair stale contract-test validators and draft status drift | `server/tests/helpers/contractValidation.ts`, contract tests, mobile-agent draft route/OpenAPI schemas | Contract/OpenAPI/mobile-agent tests, stale-literal searches, server checks | Merged via PR #466 |
 | E | Wrap login health lookup in a no-auth health API helper | `components/Login/useLoginFlow.ts`, `src/api/*`, login tests | Login health helper tests, base-URL tests, negative raw-health-fetch search | Merged via PR #467 |
-| F (optional) | Centralize feature flag env bindings and coverage checks | `server/src/config/features.ts`, `server/tests/unit/config/features.test.ts`, feature flag definitions/service tests | Config feature tests, unknown-key/admin OpenAPI tests, negative search for missing env binding | Implemented locally; PR pending |
-| G (optional) | Reuse actionable draft status constants in agent/dashboard paths | `server/src/repositories/draftRepository.ts`, `server/src/repositories/agentRepository.ts`, `server/src/repositories/agentDashboardRepository.ts`, related tests | Repository tests and negative literal searches for actionable draft status filters | Candidate |
+| F (optional) | Centralize feature flag env bindings and coverage checks | `server/src/config/features.ts`, `server/tests/unit/config/features.test.ts`, feature flag definitions/service tests | Config feature tests, unknown-key/admin OpenAPI tests, negative search for missing env binding | Merged via PR #469 |
+| G (optional) | Reuse actionable draft status constants in agent/dashboard paths | `server/src/repositories/draftRepository.ts`, `server/src/repositories/agentRepository.ts`, `server/src/repositories/agentDashboardRepository.ts`, related tests | Repository tests and negative literal searches for actionable draft status filters | Implemented locally; PR pending |
 | H (optional) | Add AI provider type parity checks while preserving proxy isolation | `server/src/services/ai/providerProfile.ts`, `server/src/api/ai/models.ts`, `server/src/api/openapi/schemas/ai.ts`, `src/api/ai.ts`, `src/api/admin/types.ts`, `llm-egress-proxy/src/*` | AI/provider/proxy tests plus an explicit parity/isolation guard | Candidate |
 | I (optional) | Split public transaction values from persisted values and aliases | `shared/types/domain.ts`, `server/src/api/openapi/schemas/transactions.ts`, transaction list/console/proxy filter helpers | Transaction route/API/console/proxy tests and alias boundary tests | Watch/candidate |
 
@@ -674,6 +674,34 @@ Scope: implement the first optional post-Phase-E convergence slice by centralizi
 - `npm --prefix server run build`
 - `npm run quality:lizard -- --files server/src/config/features.ts server/src/services/featureFlagService.ts`
 - `npm run lint:server`
+- PR #469 passed Architecture, Build Dev Images, Code Quality, backend coverage, Full Test Summary, and PR Required Checks, then squash-merged as `7997a3d851c5a5f5e122a5464c4c9afbad6aad4c`.
+
+## Phase G Implementation Addendum - 2026-05-15
+
+Scope: implement the second optional post-Phase-E convergence slice by reusing canonical draft actionable statuses in agent funding and dashboard repository paths.
+
+### Phase G Status
+
+- `server/src/repositories/agentRepository.ts` now uses `ACTIONABLE_DRAFT_STATUSES` for `sumAgentDraftAmountsSince()` instead of spelling out `unsigned` / `partial` / `signed`.
+- `server/src/repositories/agentDashboardRepository.ts` now uses `ACTIONABLE_DRAFT_STATUSES` for pending funding draft dashboard counts instead of a dashboard-local tuple.
+- Repository tests now assert the canonical tuple is used and `BROADCASTED_DRAFT_STATUS` remains excluded from agent funding sums and dashboard pending counts.
+
+### Phase G Edge Cases Covered
+
+- `broadcasted` remains a terminal/archive lifecycle status, not an actionable funding or dashboard-pending state.
+- Dashboard pending draft counts preserve their existing expiration filter: drafts count only when `expiresAt` is `null` or later than `now`.
+- Agent funding sums preserve their existing time-window filter: `createdAt >= since` is unchanged.
+- Prisma `in` filters still receive mutable arrays by spreading the readonly tuple at query sites.
+
+### Phase G Local Verification
+
+- `npm --prefix server run test:run -- tests/unit/repositories/agentRepository.test.ts tests/unit/repositories/agentDashboardRepository.test.ts tests/unit/repositories/draftRepository.test.ts tests/unit/repositories/maintenanceRepository.audit.test.ts`
+- `npm --prefix server run typecheck:tests`
+- `npm --prefix server run build`
+- `npm run quality:lizard -- --files server/src/repositories/agentRepository.ts server/src/repositories/agentDashboardRepository.ts`
+- `npm run lint:server`
+- Scoped negative search confirmed the only remaining `['unsigned', 'partial', 'signed']` tuple in the touched repository paths is the canonical `ACTIONABLE_DRAFT_STATUSES` definition.
+- `git diff --check`
 
 ## Edge Cases
 
@@ -735,6 +763,7 @@ Scope: implement the first optional post-Phase-E convergence slice by centralizi
 - The 2026-05-15 post-Phase-E reanalysis checked current `main` after Phase E closure. Targeted searches covered auth/login health fetches, gateway manifest/schema parity, AI provider type tuples, draft status filters, feature flag defaults/env/schema/definition drift, transaction aliases, and frontend API contract duplication. Documentation verification passed with `git diff --check`.
 - The 2026-05-15 independent review of the post-Phase-E findings rechecked feature flag env/test coverage, draft actionable status filters, AI provider type duplication, transaction aliases, gateway validation parity, login health closure, compose AI-image absence, and the LLM proxy shared-import isolation guard. It confirmed the queue and corrected the AI provider implementation strategy toward parity tests rather than shared proxy imports.
 - The 2026-05-15 plan detail review tightened the optional post-Phase-E queue with implementation guardrails and corner cases for feature flag env bindings, draft actionable status reuse, AI provider parity across the proxy boundary, transaction vocabulary aliases, and the stale LLM proxy installer comment. Documentation verification passed with `git diff --check`.
+- Phase F PR #469 merged as `7997a3d851c5a5f5e122a5464c4c9afbad6aad4c`. It centralized feature flag env bindings, derived config/service helpers from the same binding table, added `FEATURE_TREASURY_AUTOPILOT` coverage, and passed local/CI verification.
 - Phase 5 PR #459 merged as `42abe4d893420661482e73ddbd9a1f4aff271bd2` and the merge commit was verified on `origin/main`.
 - Phase 6 PR #460 passed required Architecture, Build Dev Images summary, Code Quality, and Test Suite checks on head `38d6231090736094593f75e476e3e0f0be7fff6a`, then squash-merged as `26bbd2d052afe1e22421107dea77b6597e873f4c`.
 - The Phase 6 merge commit was verified as an ancestor of `origin/main`; local `main` was fast-forwarded to `26bbd2d052afe1e22421107dea77b6597e873f4c`; the local and remote Phase 6 branches were deleted.
