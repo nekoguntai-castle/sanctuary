@@ -4,6 +4,8 @@
  * Shared type definitions for the AI service modules.
  */
 
+import type { AIProviderType } from "./providerProfile";
+
 /**
  * Transaction context for label suggestions
  */
@@ -51,7 +53,7 @@ export interface AIConfig {
   endpoint: string;
   model: string;
   providerProfileId?: string;
-  providerType?: string;
+  providerType?: AIProviderType;
   apiKey?: string;
   credentialConfiguredAt?: string;
 }
@@ -91,7 +93,7 @@ export interface AIDetectOllamaResponse {
 
 export interface AIDetectProviderResponse {
   found: boolean;
-  providerType?: "ollama" | "openai-compatible";
+  providerType?: AIProviderType;
   endpoint?: string;
   models?: Array<{ name: string; size: number; modifiedAt: string }>;
   message?: string;

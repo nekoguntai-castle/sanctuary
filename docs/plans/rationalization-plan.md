@@ -1,8 +1,8 @@
 # Rationalization Plan
 
-Date: 2026-05-14
+Date: 2026-05-15
 Owner: Codex
-Status: Complete original queue and follow-up queue; 2026-05-15 Phase E closeout plus post-Phase-E reanalysis recorded
+Status: Original queue complete; optional follow-up queue complete through Phase G; Phase H implemented locally
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, and preference patch semantics
 
 ## Executive Summary
@@ -12,7 +12,7 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 - Nested preference path reads, nested patch construction, and optimistic rollback now use shared helpers without replacing backend validation, backend canonical storage, or the current top-level preference patch contract.
 - No non-hardware rationalization phase remains in the original six-phase queue. The physical hardware test remains a separate manual/external validation item.
 - A fresh 2026-05-14 reanalysis did not reopen those merged phases, but it found a new follow-up queue: wallet role/capability contracts, Bitcoin script and wallet/account type identity, node/Electrum config projection, stale contract-test helper constants, and login health probing were the consolidation candidates worth addressing next. Subsequent 2026-05-15 independent reviews confirmed that order, and Phases A, B, B2, C, D, and E have since merged.
-- Current review status: no hard non-hardware rationalization blocker remains open. The physical hardware test remains the only deferred validation item outside the completed queue, and the post-Phase-E scrub below records a small optional cleanup queue for lower-risk value/contract drift.
+- Current review status: no hard non-hardware rationalization blocker remains open. The physical hardware test remains the only deferred validation item outside the completed queue. The post-Phase-E optional queue is complete through Phase G; Phase H is implemented locally as a lower-risk provider-type parity cleanup, and Phase I remains a transaction-vocabulary watch item.
 
 ## Divergence Inventory
 
@@ -56,8 +56,8 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 | D | Repair stale contract-test validators and draft status drift | `server/tests/helpers/contractValidation.ts`, contract tests, mobile-agent draft route/OpenAPI schemas | Contract/OpenAPI/mobile-agent tests, stale-literal searches, server checks | Merged via PR #466 |
 | E | Wrap login health lookup in a no-auth health API helper | `components/Login/useLoginFlow.ts`, `src/api/*`, login tests | Login health helper tests, base-URL tests, negative raw-health-fetch search | Merged via PR #467 |
 | F (optional) | Centralize feature flag env bindings and coverage checks | `server/src/config/features.ts`, `server/tests/unit/config/features.test.ts`, feature flag definitions/service tests | Config feature tests, unknown-key/admin OpenAPI tests, negative search for missing env binding | Merged via PR #469 |
-| G (optional) | Reuse actionable draft status constants in agent/dashboard paths | `server/src/repositories/draftRepository.ts`, `server/src/repositories/agentRepository.ts`, `server/src/repositories/agentDashboardRepository.ts`, related tests | Repository tests and negative literal searches for actionable draft status filters | Implemented locally; PR pending |
-| H (optional) | Add AI provider type parity checks while preserving proxy isolation | `server/src/services/ai/providerProfile.ts`, `server/src/api/ai/models.ts`, `server/src/api/openapi/schemas/ai.ts`, `src/api/ai.ts`, `src/api/admin/types.ts`, `llm-egress-proxy/src/*` | AI/provider/proxy tests plus an explicit parity/isolation guard | Candidate |
+| G (optional) | Reuse actionable draft status constants in agent/dashboard paths | `server/src/repositories/draftRepository.ts`, `server/src/repositories/agentRepository.ts`, `server/src/repositories/agentDashboardRepository.ts`, related tests | Repository tests and negative literal searches for actionable draft status filters | Merged via PR #470 |
+| H (optional) | Add AI provider type parity checks while preserving proxy isolation | `server/src/services/ai/providerProfile.ts`, `server/src/api/ai/models.ts`, `server/src/api/openapi/schemas/ai.ts`, `server/src/services/ai/types.ts`, `src/api/ai.ts`, `src/api/admin/types.ts`, `llm-egress-proxy/src/*` | AI/provider/proxy tests plus an explicit parity/isolation guard | Implemented locally; PR pending |
 | I (optional) | Split public transaction values from persisted values and aliases | `shared/types/domain.ts`, `server/src/api/openapi/schemas/transactions.ts`, transaction list/console/proxy filter helpers | Transaction route/API/console/proxy tests and alias boundary tests | Watch/candidate |
 
 ## Reanalysis Addendum - 2026-05-14
@@ -685,6 +685,7 @@ Scope: implement the second optional post-Phase-E convergence slice by reusing c
 - `server/src/repositories/agentRepository.ts` now uses `ACTIONABLE_DRAFT_STATUSES` for `sumAgentDraftAmountsSince()` instead of spelling out `unsigned` / `partial` / `signed`.
 - `server/src/repositories/agentDashboardRepository.ts` now uses `ACTIONABLE_DRAFT_STATUSES` for pending funding draft dashboard counts instead of a dashboard-local tuple.
 - Repository tests now assert the canonical tuple is used and `BROADCASTED_DRAFT_STATUS` remains excluded from agent funding sums and dashboard pending counts.
+- PR #470 passed Forgejo CI and was squash-merged as `818f55bae21e0dbf979946c84e6c4dc6ae852856`.
 
 ### Phase G Edge Cases Covered
 
@@ -701,6 +702,91 @@ Scope: implement the second optional post-Phase-E convergence slice by reusing c
 - `npm run quality:lizard -- --files server/src/repositories/agentRepository.ts server/src/repositories/agentDashboardRepository.ts`
 - `npm run lint:server`
 - Scoped negative search confirmed the only remaining `['unsigned', 'partial', 'signed']` tuple in the touched repository paths is the canonical `ACTIONABLE_DRAFT_STATUSES` definition.
+- `git diff --check`
+- PR #470 passed Architecture, Build Dev Images, Code Quality, backend coverage, Full Test Summary, and PR Required Checks.
+
+## Phase H Plan Review Addendum - 2026-05-15
+
+Scope: implementation-readiness review for AI provider type parity after Phase G merged. The goal is to remove provider-value drift without weakening the `llm-egress-proxy` security boundary or changing the supported provider set.
+
+### Phase H Verdict
+
+- Phase H should proceed as a narrow parity cleanup. The supported provider values remain exactly `ollama` and `openai-compatible`.
+- Server runtime/API/OpenAPI paths should derive from the server provider profile tuple in `server/src/services/ai/providerProfile.ts`; route-local and OpenAPI-local provider enum arrays should not remain independent.
+- Frontend API types should use one frontend-local provider tuple/type, likely in `src/api/admin/types.ts`, and `src/api/ai.ts` should import that type instead of restating the union.
+- The proxy should not import `@sanctuary/shared`, server code, or frontend code. It should own a proxy-local provider tuple and use tests plus `scripts/ci/check-llm-egress-proxy-shared-isolation.sh` to prove parity and boundary preservation.
+- Detection order is behavior, not just data. The current default order, `openai-compatible` before `ollama`, should remain stable unless a product decision changes default detection precedence.
+
+### Phase H Implementation Detail
+
+| Area | Plan Detail | Corner Cases |
+| --- | --- | --- |
+| Server provider tuple | Keep `AI_PROVIDER_TYPES` as the server canonical tuple. Import it into `server/src/api/ai/models.ts` for `ProviderTypeSchema`, into `server/src/api/openapi/schemas/ai.ts` for `AIDetectProviderRequest.preferredProviderType` and `AIDetectProviderResponse.providerType`, and into server AI response/input types where doing so removes literal unions without broad refactors. | Do not change the public wire values, defaults, admin provider-profile schema, or saved profile parsing. Mixed-case provider type strings should remain invalid API enum values; UI labels can be friendly, but wire values are exact lowercase identifiers. |
+| Frontend provider type | Add an exported frontend-local `AI_PROVIDER_TYPES` tuple and derive `AIProviderType` from it in `src/api/admin/types.ts`. Use `AIProviderType` in `src/api/ai.ts` detection request/response interfaces. | Avoid importing server code into the frontend just for a type. Type-only imports between frontend API modules are acceptable; runtime bundle behavior should not change. |
+| Proxy provider type | Add a proxy-local provider type module or exported tuple in `llm-egress-proxy/src` and reuse it in `requestSchemas.ts` and `providerDetection.ts`. Keep `PROVIDER_DETECTION_ORDER` separate but type-checked against the provider tuple. | Preserve the isolation guard. Do not import shared/server/frontend modules into the proxy. `ConfigBodySchema.providerType` currently accepts a generic string for synced runtime config; only tighten it if all config-route tests and compatibility expectations show that invalid provider config should be rejected there too. |
+| Request/response schema parity | Cover both request and response provider enums: server route validation, server OpenAPI request enum, server OpenAPI response enum, frontend request/response type assumptions, proxy detection request schema, and proxy detection response/detection-order types. | A test that checks only `preferredProviderType` is insufficient; response `providerType` can drift independently. Unknown, empty, null, and mixed-case provider values should be rejected by typed detection schemas. |
+| Test placement and coverage isolation | Keep parity assertions package-local where possible: server tests may import server/OpenAPI provider tuples, proxy tests may import proxy provider tuples, and frontend tests/typechecks may import frontend API types. Do not import server runtime modules from root/frontend Vitest coverage just to compare constants. | Frontend coverage uses root Vitest and can instrument imported runtime files. A cross-runtime parity test that imports `server/src/services/ai/providerProfile.ts` can drag server credential/encryption code into the frontend coverage threshold and fail CI even when frontend behavior is unchanged. |
+| Legacy route names | Keep `/ai/detect-ollama` and proxy `/detect-ollama` as compatibility route names for explicit Ollama discovery. Keep `/ai/detect-provider` and proxy `/detect-provider` as provider-generic discovery. | Route names must not imply Sanctuary-managed model pull/delete support. Phase H should not reintroduce model-management routes, download progress, system-resource readiness, or "installed models" copy. |
+| Provider detection behavior | Keep endpoint policy checks before probing and keep blocked endpoints returning blocked errors instead of model-list attempts. Keep API keys optional and scoped to the detection/config request that needs them. | A preferred provider should be tried first only when it is a supported exact provider value; unsupported preferences should fall back to the default order instead of causing a failed or single-provider probe. |
+
+### Phase H Verification Plan
+
+- Server focused tests: provider profile domain tests, AI detection route contract tests, OpenAPI AI schema/contract tests, and server typecheck/build.
+- Frontend focused checks: AI API/admin type tests where existing coverage exists, plus `npm run typecheck:app` and `npm run typecheck:tests`. Root frontend coverage must not import server AI runtime modules for parity checks.
+- Proxy focused tests: `tests/llm-egress-proxy/requestSchemas.test.ts`, `tests/llm-egress-proxy/providerDetection.test.ts`, `tests/llm-egress-proxy/providerModels.test.ts` if provider typing changes list behavior, and `npm --prefix llm-egress-proxy run build`.
+- Boundary guard: `bash scripts/ci/check-llm-egress-proxy-shared-isolation.sh`.
+- Coverage guard: regenerate both frontend coverage shards and merge them when a root test imports or stops importing boundary-adjacent modules, using an isolated `SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR` if local `coverage-shards/` has stale ownership.
+- Quality gates: touched-file lizard for changed logic, scoped negative search for unowned provider tuples in production paths, and `git diff --check`.
+
+### Phase H Deferred Or Rejected
+
+- Do not add or remove provider types in this phase. That requires a product/API decision and expanded tests.
+- Do not collapse the proxy/backend trust boundary into a shared runtime schema just to eliminate a duplicated tuple.
+- Do not rename compatibility route paths such as `/detect-ollama` unless a separate route migration and client compatibility plan is approved.
+- Do not broaden persisted provider type storage to unknown strings. Unknown stored provider profile values should remain invalid and fall back through existing profile parsing behavior.
+
+## Phase H Implementation Addendum - 2026-05-15
+
+Scope: implement AI provider type parity while keeping one provider tuple per runtime boundary and preserving `llm-egress-proxy` as an independently validating security boundary.
+
+### Phase H Status
+
+- `server/src/api/ai/models.ts` now derives `ProviderTypeSchema` from `AI_PROVIDER_TYPES` instead of a route-local enum array.
+- `server/src/api/openapi/schemas/ai.ts` now derives both `AIDetectProviderRequest.preferredProviderType` and `AIDetectProviderResponse.providerType` enums from `AI_PROVIDER_TYPES`.
+- `server/src/services/ai/types.ts` and `server/src/services/ai/features.ts` now type provider detection/config values with the server `AIProviderType`.
+- `src/api/admin/types.ts` now exports a frontend-local `AI_PROVIDER_TYPES` tuple and derives `AIProviderType` from it; `src/api/ai.ts` reuses that type for detection request/response contracts.
+- `llm-egress-proxy/src/providerTypes.ts` now owns the proxy-local provider tuple, type guard, and detection order; proxy request schemas and detection logic reuse those values without importing shared/server/frontend code.
+- Added package-local parity/regression tests proving server/OpenAPI provider values and proxy provider schema/order values stay aligned while preserving OpenAI-compatible-first detection order. Frontend provider reuse is guarded by app/test typechecks so root frontend coverage does not import server runtime modules.
+
+### Phase H Edge Cases Covered
+
+- Mixed-case and unsupported provider detection preferences are rejected before server-to-proxy detection.
+- Proxy detection falls back to the default detection order for unsupported optional preferences and preserves exact preferred-provider-first behavior for supported values.
+- Proxy provider detection order remains complete and explicit: `openai-compatible` is tried before `ollama` by default.
+- Public AI detection request and response OpenAPI enums are both checked against the server provider tuple.
+- The proxy shared-import isolation guard remains green; provider parity is proven by tests instead of cross-boundary runtime imports.
+- Root frontend coverage no longer imports server AI provider profile/OpenAPI modules for parity checks; those checks stay in server-side tests to avoid pulling server credential/encryption files into the frontend coverage denominator.
+- Legacy `/detect-ollama` compatibility route names remain unchanged, and no model-management route or copy was reintroduced.
+
+### Phase H Local Verification
+
+- `npm --prefix server run test:run -- tests/unit/services/aiProviderProfile.test.ts tests/unit/api/ai.test.ts`
+- `npm run test:run -- tests/llm-egress-proxy/requestSchemas.test.ts tests/llm-egress-proxy/providerDetection.test.ts`
+- `npm --prefix llm-egress-proxy run build`
+- `npm run typecheck:app`
+- `npm run typecheck:tests`
+- `npm --prefix server run typecheck:tests`
+- `npm --prefix server run build`
+- `npm --prefix llm-egress-proxy run test`
+- `npm run lint:app`
+- `npm run lint:server`
+- `npm run quality:lizard -- --files server/src/api/ai/models.ts server/src/api/openapi/schemas/ai.ts server/src/services/ai/types.ts server/src/services/ai/features.ts src/api/admin/types.ts src/api/ai.ts llm-egress-proxy/src/providerTypes.ts llm-egress-proxy/src/providerDetection.ts llm-egress-proxy/src/requestSchemas.ts`
+- `bash scripts/ci/check-llm-egress-proxy-shared-isolation.sh`
+- Fresh frontend coverage reproduction after removing the cross-runtime root parity test:
+  - `SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR=.tmp/phase-h-coverage/rerun-shard-1-2 npm run test:coverage:shard -- 1 2`
+  - `SANCTUARY_FRONTEND_COVERAGE_REPORTS_DIR=.tmp/phase-h-coverage/rerun-shard-2-2 npm run test:coverage:shard -- 2 2`
+  - `npm run test:coverage:merge` passed at 100% statements, branches, functions, and lines.
+- Scoped provider tuple search confirmed only the intended server, frontend, and proxy tuple owners remain in production paths.
 - `git diff --check`
 
 ## Edge Cases
@@ -764,6 +850,8 @@ Scope: implement the second optional post-Phase-E convergence slice by reusing c
 - The 2026-05-15 independent review of the post-Phase-E findings rechecked feature flag env/test coverage, draft actionable status filters, AI provider type duplication, transaction aliases, gateway validation parity, login health closure, compose AI-image absence, and the LLM proxy shared-import isolation guard. It confirmed the queue and corrected the AI provider implementation strategy toward parity tests rather than shared proxy imports.
 - The 2026-05-15 plan detail review tightened the optional post-Phase-E queue with implementation guardrails and corner cases for feature flag env bindings, draft actionable status reuse, AI provider parity across the proxy boundary, transaction vocabulary aliases, and the stale LLM proxy installer comment. Documentation verification passed with `git diff --check`.
 - Phase F PR #469 merged as `7997a3d851c5a5f5e122a5464c4c9afbad6aad4c`. It centralized feature flag env bindings, derived config/service helpers from the same binding table, added `FEATURE_TREASURY_AUTOPILOT` coverage, and passed local/CI verification.
+- Phase G PR #470 merged as `818f55bae21e0dbf979946c84e6c4dc6ae852856`. It reused `ACTIONABLE_DRAFT_STATUSES` in agent funding and dashboard pending-count repository paths, preserved `broadcasted` exclusion, and passed local/CI verification.
+- The 2026-05-15 Phase H plan review inspected server provider profile schemas, server AI route validation, server OpenAPI AI schemas, frontend AI/admin API types, proxy request schemas, proxy provider detection, proxy runtime config behavior, package scripts, and the proxy shared-import guard. It added implementation details and corner cases for provider type parity without collapsing the LLM egress proxy boundary.
 - Phase 5 PR #459 merged as `42abe4d893420661482e73ddbd9a1f4aff271bd2` and the merge commit was verified on `origin/main`.
 - Phase 6 PR #460 passed required Architecture, Build Dev Images summary, Code Quality, and Test Suite checks on head `38d6231090736094593f75e476e3e0f0be7fff6a`, then squash-merged as `26bbd2d052afe1e22421107dea77b6597e873f4c`.
 - The Phase 6 merge commit was verified as an ancestor of `origin/main`; local `main` was fast-forwarded to `26bbd2d052afe1e22421107dea77b6597e873f4c`; the local and remote Phase 6 branches were deleted.

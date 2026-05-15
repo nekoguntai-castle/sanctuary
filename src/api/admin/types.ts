@@ -63,7 +63,8 @@ export interface CreateGroupRequest {
 // SYSTEM SETTINGS TYPES
 // ========================================
 
-export type AIProviderType = 'ollama' | 'openai-compatible';
+export const AI_PROVIDER_TYPES = ['ollama', 'openai-compatible'] as const;
+export type AIProviderType = (typeof AI_PROVIDER_TYPES)[number];
 export type AIProviderCredentialType = 'api-key';
 export type AIProviderCredentialDisabledReason = 'restored';
 

@@ -29,6 +29,7 @@ import type {
   AIDetectProviderResponse,
   AIListModelsResponse,
 } from "./types";
+import type { AIProviderType } from "./providerProfile";
 
 const log = createLogger("AI:SVC");
 
@@ -193,7 +194,7 @@ export async function detectOllama(): Promise<{
  */
 export async function detectProviderEndpoint(input: {
   endpoint: string;
-  preferredProviderType?: "ollama" | "openai-compatible";
+  preferredProviderType?: AIProviderType;
   apiKey?: string;
 }): Promise<AIDetectProviderResponse> {
   try {

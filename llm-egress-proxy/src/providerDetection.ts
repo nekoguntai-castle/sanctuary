@@ -2,8 +2,13 @@ import { evaluateProviderEndpoint } from "./endpointPolicy";
 import type { AiConfig } from "./aiClient";
 import { listProviderModels, type ListedModel } from "./providerModels";
 import { extractErrorMessage } from "./utils";
+import {
+  isProxyAIProviderType,
+  PROXY_PROVIDER_DETECTION_ORDER,
+  type ProxyAIProviderType,
+} from "./providerTypes";
 
-export type DetectableProviderType = "openai-compatible" | "ollama";
+export type DetectableProviderType = ProxyAIProviderType;
 
 export interface ProviderDetectionResult {
   found: boolean;
@@ -15,24 +20,16 @@ export interface ProviderDetectionResult {
   attempts?: Array<{ providerType: DetectableProviderType; error: string }>;
 }
 
-const PROVIDER_DETECTION_ORDER: DetectableProviderType[] = [
-  "openai-compatible",
-  "ollama",
-];
-
 export function getProviderDetectionOrder(
   preferredProviderType?: string,
 ): DetectableProviderType[] {
-  if (
-    preferredProviderType !== "openai-compatible" &&
-    preferredProviderType !== "ollama"
-  ) {
-    return PROVIDER_DETECTION_ORDER;
+  if (!preferredProviderType || !isProxyAIProviderType(preferredProviderType)) {
+    return [...PROXY_PROVIDER_DETECTION_ORDER];
   }
 
   return [
     preferredProviderType,
-    ...PROVIDER_DETECTION_ORDER.filter(
+    ...PROXY_PROVIDER_DETECTION_ORDER.filter(
       (providerType) => providerType !== preferredProviderType,
     ),
   ];

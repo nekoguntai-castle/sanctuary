@@ -15,6 +15,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
 import config from '../../config';
 import { aiService } from '../../services/aiService';
+import { AI_PROVIDER_TYPES } from '../../services/ai/providerProfile';
 
 const aiAuthLimiter = expressRateLimit({
   windowMs: 60 * 1000,
@@ -28,7 +29,7 @@ const aiAuthLimiter = expressRateLimit({
   },
 });
 
-const ProviderTypeSchema = z.enum(['ollama', 'openai-compatible']);
+const ProviderTypeSchema = z.enum(AI_PROVIDER_TYPES);
 
 const ProviderDetectionBodySchema = z.object({
   endpoint: z

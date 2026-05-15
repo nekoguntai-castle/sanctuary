@@ -152,6 +152,21 @@ export function registerDetectOllamaContracts() {
     expect(aiService.detectProviderEndpoint).not.toHaveBeenCalled();
   });
 
+  it('should reject unsupported or mixed-case provider detection preferences before proxy detection', async () => {
+    const response = await request(app)
+      .post('/api/v1/ai/detect-provider')
+      .set('Authorization', 'Bearer test-token')
+      .set('x-test-admin', 'true')
+      .send({
+        endpoint: 'http://studio.local:1234',
+        preferredProviderType: 'OpenAI-Compatible',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('Valid provider endpoint is required');
+    expect(aiService.detectProviderEndpoint).not.toHaveBeenCalled();
+  });
+
   it('should reject non-HTTP provider detection endpoints before proxy detection', async () => {
     const response = await request(app)
       .post('/api/v1/ai/detect-provider')

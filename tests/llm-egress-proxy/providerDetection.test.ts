@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { detectProviderModels } from "../../llm-egress-proxy/src/providerDetection";
+import {
+  detectProviderModels,
+  getProviderDetectionOrder,
+} from "../../llm-egress-proxy/src/providerDetection";
+import {
+  PROXY_AI_PROVIDER_TYPES,
+  PROXY_PROVIDER_DETECTION_ORDER,
+} from "../../llm-egress-proxy/src/providerTypes";
 
 const baseConfig = {
   enabled: true,
@@ -12,6 +19,32 @@ describe("LLM egress proxy provider detection", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("keeps detection order aligned with the proxy provider tuple without changing default precedence", () => {
+    expect(PROXY_PROVIDER_DETECTION_ORDER).toEqual([
+      "openai-compatible",
+      "ollama",
+    ]);
+    expect([...PROXY_PROVIDER_DETECTION_ORDER].sort()).toEqual(
+      [...PROXY_AI_PROVIDER_TYPES].sort(),
+    );
+    expect(getProviderDetectionOrder()).toEqual([
+      "openai-compatible",
+      "ollama",
+    ]);
+    expect(getProviderDetectionOrder("ollama")).toEqual([
+      "ollama",
+      "openai-compatible",
+    ]);
+    expect(getProviderDetectionOrder("OpenAI-Compatible")).toEqual([
+      "openai-compatible",
+      "ollama",
+    ]);
+    expect(getProviderDetectionOrder("anthropic")).toEqual([
+      "openai-compatible",
+      "ollama",
+    ]);
   });
 
   it("detects LM Studio models on private LAN endpoints without an API key", async () => {

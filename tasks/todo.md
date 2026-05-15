@@ -1,6 +1,54 @@
-# Task: Phase G Draft Actionable Status Reuse 2026-05-15
+# Task: Phase H AI Provider Type Plan Review 2026-05-15
 
-Status: in progress.
+Status: complete.
+
+Goal: review the AI provider type parity plan before implementation, correct stale Phase G status, and add enough detail/corner-case coverage that the Phase H patch can stay small and preserve the LLM egress proxy isolation boundary.
+
+## Plan
+
+- [x] Re-read the optional post-Phase-E queue and current Phase H evidence.
+- [x] Inspect server, frontend, OpenAPI, and `llm-egress-proxy` provider-type definitions, schemas, and tests.
+- [x] Update `docs/plans/rationalization-plan.md` with corrected Phase G merge status and a detailed Phase H implementation plan.
+- [x] Update this task ledger with the review result.
+- [x] Run documentation verification and self-review the diff.
+
+## Review
+
+- Corrected stale Phase G plan state in `docs/plans/rationalization-plan.md` and this ledger: Phase G is merged as PR #470 / `818f55bae21e0dbf979946c84e6c4dc6ae852856`.
+- Added a Phase H plan review addendum covering server tuple reuse, frontend-local provider type reuse, proxy-local provider constants, request/response schema parity, legacy `/detect-ollama` route compatibility, and detection-order preservation.
+- Called out Phase H corner cases: exact lowercase wire values, mixed-case rejection for provider enum inputs, no reintroduction of model-management routes/copy, unsupported preferred provider fallback behavior, and the decision point around whether to tighten proxy `ConfigBodySchema.providerType`.
+- Verification: `git diff --check` and `bash scripts/ci/check-llm-egress-proxy-shared-isolation.sh`.
+
+---
+
+# Task: Phase H AI Provider Type Parity 2026-05-15
+
+Status: implemented locally; PR pending.
+
+Goal: make AI provider type values derive from one owner per runtime boundary, add parity tests, and preserve the independent LLM egress proxy security boundary.
+
+## Plan
+
+- [x] Derive server AI detection route and OpenAPI provider enums from `AI_PROVIDER_TYPES`.
+- [x] Derive frontend AI detection request/response types from one frontend-local `AIProviderType`.
+- [x] Add proxy-local provider type constants and use them in proxy detection schemas/order without importing shared/server/frontend code.
+- [x] Add focused parity/regression tests for server OpenAPI/request handling and proxy request/detection behavior without importing server runtime modules into root frontend coverage.
+- [x] Update `docs/plans/rationalization-plan.md` with Phase H implementation status and edge cases covered.
+- [ ] Run focused server/frontend/proxy tests, typechecks/builds, proxy isolation guard, lizard/diff checks, commit, open PR, monitor checks, merge, verify ancestry, then continue to Phase I review.
+
+## Review
+
+- Server route validation and public AI OpenAPI detection schemas now derive provider enums from `server/src/services/ai/providerProfile.ts`.
+- Frontend AI detection request/response contracts now reuse a frontend-local provider tuple/type instead of repeating literal unions.
+- The LLM egress proxy now owns `llm-egress-proxy/src/providerTypes.ts` for its provider tuple, type guard, and detection order; it still imports no shared/server/frontend runtime code.
+- Added package-local server and proxy tests for provider enum parity, mixed-case rejection, unsupported-provider fallback, and detection-order completeness. Frontend provider type reuse is covered by app/test typechecks rather than a root Vitest test that imports server runtime modules.
+- Local verification passed: focused server/proxy tests, app/test/server typechecks, server/proxy builds, full proxy test command, app/server lint, touched-file lizard, proxy shared-import guard, scoped negative provider tuple search, fresh frontend coverage shards plus merge at 100%, and `git diff --check`.
+
+---
+
+# Completed Task: Phase G Draft Actionable Status Reuse 2026-05-15
+
+Status: merged and verified via PR #470 as squash commit `818f55bae21e0dbf979946c84e6c4dc6ae852856`.
 
 Goal: reuse the canonical draft actionable status tuple in agent funding and dashboard repository paths so terminal `broadcasted` drafts cannot drift into pending/actionable counts.
 
@@ -11,7 +59,15 @@ Goal: reuse the canonical draft actionable status tuple in agent funding and das
 - [x] Update focused repository tests to assert the canonical tuple is used and `broadcasted` remains excluded.
 - [x] Update the rationalization plan with Phase F merge closeout and Phase G implementation status.
 - [x] Run focused repository tests, server checks, lizard/diff checks, and `git diff --check`.
-- [ ] Commit Phase G, open a PR, monitor checks, merge, verify ancestry, then continue to Phase H.
+- [x] Commit Phase G, open a PR, monitor checks, merge, verify ancestry, then continue to Phase H.
+
+## Review
+
+- Updated `server/src/repositories/agentRepository.ts` and `server/src/repositories/agentDashboardRepository.ts` to reuse `ACTIONABLE_DRAFT_STATUSES`.
+- Updated focused repository tests to assert the canonical tuple is used and that `BROADCASTED_DRAFT_STATUS` remains excluded from pending/actionable counts.
+- Preserved dashboard expiration filtering and agent funding time-window semantics.
+- Local verification: focused repository tests, server test typecheck, server build, touched-file lizard, server lint, scoped negative search, and `git diff --check`.
+- PR #470 passed Forgejo Architecture, Build Dev Images, Code Quality, backend coverage, Full Test Summary, and PR Required Checks, then squash-merged as `818f55bae21e0dbf979946c84e6c4dc6ae852856`.
 
 ---
 

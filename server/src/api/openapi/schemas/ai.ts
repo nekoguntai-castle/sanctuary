@@ -9,6 +9,7 @@ import {
   AI_QUERY_RESULT_TYPES,
   AI_QUERY_SORT_ORDERS,
 } from '../../../services/ai/types';
+import { AI_PROVIDER_TYPES } from '../../../services/ai/providerProfile';
 
 const jsonObject = {
   type: 'object',
@@ -89,7 +90,7 @@ export const aiSchemas = {
       endpoint: { type: 'string', format: 'uri' },
       preferredProviderType: {
         type: 'string',
-        enum: ['ollama', 'openai-compatible'],
+        enum: [...AI_PROVIDER_TYPES],
       },
       apiKey: { type: 'string', writeOnly: true },
     },
@@ -101,7 +102,7 @@ export const aiSchemas = {
       found: { type: 'boolean' },
       providerType: {
         type: 'string',
-        enum: ['ollama', 'openai-compatible'],
+        enum: [...AI_PROVIDER_TYPES],
       },
       endpoint: { type: 'string' },
       models: {

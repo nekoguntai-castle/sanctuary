@@ -6,11 +6,13 @@ import {
   ConsolePlanBodySchema,
   ConsoleSynthesisBodySchema,
   ConfigBodySchema,
+  DetectProviderBodySchema,
   DetectOllamaBodySchema,
   QueryBodySchema,
   SuggestLabelBodySchema,
   parseRequestBody,
 } from "../../llm-egress-proxy/src/requestSchemas";
+import { PROXY_AI_PROVIDER_TYPES } from "../../llm-egress-proxy/src/providerTypes";
 
 function makeRequest(body: unknown) {
   return { body } as any;
@@ -128,6 +130,39 @@ describe("LLM egress proxy request schemas", () => {
     ).toThrow();
     expect(() =>
       DetectOllamaBodySchema.parse({ customEndpoints: ["::::"] }),
+    ).toThrow();
+  });
+
+  it("validates provider detection preferences against the proxy provider tuple", () => {
+    for (const providerType of PROXY_AI_PROVIDER_TYPES) {
+      expect(
+        DetectProviderBodySchema.parse({
+          endpoint: " http://studio.local:1234 ",
+          preferredProviderType: providerType,
+        }),
+      ).toEqual({
+        endpoint: "http://studio.local:1234",
+        preferredProviderType: providerType,
+      });
+    }
+
+    expect(() =>
+      DetectProviderBodySchema.parse({
+        endpoint: "http://studio.local:1234",
+        preferredProviderType: "OpenAI-Compatible",
+      }),
+    ).toThrow();
+    expect(() =>
+      DetectProviderBodySchema.parse({
+        endpoint: "http://studio.local:1234",
+        preferredProviderType: "anthropic",
+      }),
+    ).toThrow();
+    expect(() =>
+      DetectProviderBodySchema.parse({
+        endpoint: "ftp://studio.local:1234",
+        preferredProviderType: "ollama",
+      }),
     ).toThrow();
   });
 

@@ -1,4 +1,5 @@
 import { z, type ZodIssue } from "zod";
+import { PROXY_AI_PROVIDER_TYPES } from "./providerTypes";
 
 interface RequestWithBody {
   body?: unknown;
@@ -78,7 +79,7 @@ export const DetectOllamaBodySchema = z
 export const DetectProviderBodySchema = z
   .object({
     endpoint: HttpUrlSchema,
-    preferredProviderType: z.enum(["ollama", "openai-compatible"]).optional(),
+    preferredProviderType: z.enum(PROXY_AI_PROVIDER_TYPES).optional(),
     apiKey: z.string().max(8192).optional(),
   })
   .strict();

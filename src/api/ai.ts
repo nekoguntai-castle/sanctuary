@@ -5,6 +5,7 @@
  */
 
 import apiClient from "./client";
+import type { AIProviderType } from "./admin/types";
 
 const AI_NATURAL_QUERY_TIMEOUT_MS = 120_000;
 
@@ -101,13 +102,13 @@ export interface DetectOllamaResponse {
 
 export interface DetectProviderRequest {
   endpoint: string;
-  preferredProviderType?: "ollama" | "openai-compatible";
+  preferredProviderType?: AIProviderType;
   apiKey?: string;
 }
 
 export interface DetectProviderResponse {
   found: boolean;
-  providerType?: "ollama" | "openai-compatible";
+  providerType?: AIProviderType;
   endpoint?: string;
   models?: ProviderModel[];
   message?: string;
