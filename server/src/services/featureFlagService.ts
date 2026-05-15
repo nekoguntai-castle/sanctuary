@@ -42,7 +42,8 @@
  * ```
  */
 
-import { getConfig, type FeatureFlags, type FeatureFlagKey, type ExperimentalFeatures } from '../config';
+import { getConfig, type FeatureFlags, type FeatureFlagKey } from '../config';
+import { flattenFeatureFlags, getFeatureFlagValue } from '../config/features';
 import { featureFlagRepository } from '../repositories';
 import { getDistributedCache, getDistributedEventBus } from '../infrastructure';
 import { createLogger } from '../utils/logger';
@@ -164,25 +165,7 @@ class FeatureFlagService {
    * Get environment-defined flags as flat key-value pairs
    */
   private getEnvironmentFlags(features: FeatureFlags): Record<string, boolean> {
-    const flags: Record<string, boolean> = {};
-
-    // Top-level flags
-    const topLevel = ['hardwareWalletSigning', 'qrCodeSigning', 'multisigWallets',
-      'batchSync', 'payjoinSupport', 'batchTransactions', 'rbfTransactions',
-      'priceAlerts', 'aiAssistant', 'sanctuaryConsole', 'telegramNotifications',
-      'websocketV2Events', 'treasuryAutopilot', 'treasuryIntelligence'] as const;
-
-    for (const key of topLevel) {
-      flags[key] = features[key];
-    }
-
-    // Experimental flags
-    const experimental = ['taprootAddresses', 'silentPayments'] as const;
-    for (const key of experimental) {
-      flags[`experimental.${key}`] = features.experimental[key];
-    }
-
-    return flags;
+    return flattenFeatureFlags(features);
   }
 
   /**
@@ -239,11 +222,7 @@ class FeatureFlagService {
 
     // Final fallback: environment config
     const config = getConfig();
-    if (key.startsWith('experimental.')) {
-      const expKey = key.replace('experimental.', '') as keyof ExperimentalFeatures;
-      return config.features.experimental[expKey] ?? false;
-    }
-    return config.features[key as keyof Omit<FeatureFlags, 'experimental'>] ?? false;
+    return getFeatureFlagValue(config.features, key);
   }
 
   /**
@@ -354,14 +333,7 @@ class FeatureFlagService {
    */
   async resetToDefault(key: FeatureFlagKey, options: SetFlagOptions): Promise<void> {
     const config = getConfig();
-    let defaultValue: boolean;
-
-    if (key.startsWith('experimental.')) {
-      const expKey = key.replace('experimental.', '') as keyof ExperimentalFeatures;
-      defaultValue = config.features.experimental[expKey] ?? false;
-    } else {
-      defaultValue = config.features[key as keyof Omit<FeatureFlags, 'experimental'>] ?? false;
-    }
+    const defaultValue = getFeatureFlagValue(config.features, key);
 
     await this.setFlag(key, defaultValue, {
       ...options,

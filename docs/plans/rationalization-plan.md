@@ -2,7 +2,7 @@
 
 Date: 2026-05-14
 Owner: Codex
-Status: Complete original queue and follow-up queue; 2026-05-15 Phase E closeout recorded
+Status: Complete original queue and follow-up queue; 2026-05-15 Phase E closeout plus post-Phase-E reanalysis recorded
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, and preference patch semantics
 
 ## Executive Summary
@@ -12,7 +12,7 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 - Nested preference path reads, nested patch construction, and optimistic rollback now use shared helpers without replacing backend validation, backend canonical storage, or the current top-level preference patch contract.
 - No non-hardware rationalization phase remains in the original six-phase queue. The physical hardware test remains a separate manual/external validation item.
 - A fresh 2026-05-14 reanalysis did not reopen those merged phases, but it found a new follow-up queue: wallet role/capability contracts, Bitcoin script and wallet/account type identity, node/Electrum config projection, stale contract-test helper constants, and login health probing were the consolidation candidates worth addressing next. Subsequent 2026-05-15 independent reviews confirmed that order, and Phases A, B, B2, C, D, and E have since merged.
-- Current review status: no non-hardware rationalization phase remains open. The physical hardware test remains the only deferred validation item outside this code rationalization queue.
+- Current review status: no hard non-hardware rationalization blocker remains open. The physical hardware test remains the only deferred validation item outside the completed queue, and the post-Phase-E scrub below records a small optional cleanup queue for lower-risk value/contract drift.
 
 ## Divergence Inventory
 
@@ -55,6 +55,10 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 | C | Centralize node/Electrum config projection semantics | `shared/constants/nodeConfig.ts`, network UI helpers, server node/Electrum/mempool adapters | Shared/frontend/server node config tests, negative projection searches | Merged via PR #465 |
 | D | Repair stale contract-test validators and draft status drift | `server/tests/helpers/contractValidation.ts`, contract tests, mobile-agent draft route/OpenAPI schemas | Contract/OpenAPI/mobile-agent tests, stale-literal searches, server checks | Merged via PR #466 |
 | E | Wrap login health lookup in a no-auth health API helper | `components/Login/useLoginFlow.ts`, `src/api/*`, login tests | Login health helper tests, base-URL tests, negative raw-health-fetch search | Merged via PR #467 |
+| F (optional) | Centralize feature flag env bindings and coverage checks | `server/src/config/features.ts`, `server/tests/unit/config/features.test.ts`, feature flag definitions/service tests | Config feature tests, unknown-key/admin OpenAPI tests, negative search for missing env binding | Implemented locally; PR pending |
+| G (optional) | Reuse actionable draft status constants in agent/dashboard paths | `server/src/repositories/draftRepository.ts`, `server/src/repositories/agentRepository.ts`, `server/src/repositories/agentDashboardRepository.ts`, related tests | Repository tests and negative literal searches for actionable draft status filters | Candidate |
+| H (optional) | Add AI provider type parity checks while preserving proxy isolation | `server/src/services/ai/providerProfile.ts`, `server/src/api/ai/models.ts`, `server/src/api/openapi/schemas/ai.ts`, `src/api/ai.ts`, `src/api/admin/types.ts`, `llm-egress-proxy/src/*` | AI/provider/proxy tests plus an explicit parity/isolation guard | Candidate |
+| I (optional) | Split public transaction values from persisted values and aliases | `shared/types/domain.ts`, `server/src/api/openapi/schemas/transactions.ts`, transaction list/console/proxy filter helpers | Transaction route/API/console/proxy tests and alias boundary tests | Watch/candidate |
 
 ## Reanalysis Addendum - 2026-05-14
 
@@ -533,6 +537,144 @@ Scope: closeout audit after Phase E PR #467 merged, verifying whether any non-ha
 - Coverage reproduction: fresh full frontend coverage shards plus merge at 100% statements, branches, functions, and lines.
 - PR #467 CI: Architecture, Build Dev Images scope, Code Quality, Quick/Full frontend tests, full frontend typechecks, full frontend coverage shards/merge, browser E2E, render E2E, Full Test Summary, and PR Required Checks passed.
 
+## Post-Phase-E Divergence Reanalysis Addendum - 2026-05-15
+
+Scope: fresh scrub of current `main` after Phase E merged, focused on other login-style two-path patterns: duplicated runtime contracts, route/client splits, schema/value tuples, compatibility aliases, feature defaults, and security-boundary splits.
+
+### Post-Phase-E Verdict
+
+- The login health divergence stays closed. `src/api/client.ts`, `src/api/refresh.ts`, and `src/api/health.ts` share `src/api/baseUrl.ts`; refresh remains the only expected raw auth fetch boundary.
+- No new hard behavior bug comparable to the mixed-case login path was found.
+- The highest-value new consolidation candidates are lower-risk contract/value drift: feature flag env bindings, actionable draft status filters, AI provider type values, and transaction type alias boundaries.
+- Gateway manifest versus validation schema remains justified for now because `gateway/tests/unit/middleware/validateRequest/validateRequest.devices-labels-routes.contracts.ts` checks manifest/schema parity. It can be converged later by deriving validation schemas from `GATEWAY_ROUTE_CONTRACTS`, but that is not urgent.
+- Broad frontend API request/response interfaces still duplicate server/OpenAPI contracts. This is a known generated-client opportunity, not a narrow immediate fix, except where specific enums below make drift likely.
+
+### Post-Phase-E Inventory
+
+| Area | Evidence | Risk | Disposition |
+| --- | --- | --- | --- |
+| Login/health fetch path | `src/api/health.ts` owns no-auth health, `src/api/baseUrl.ts` owns base URL joins, `src/api/refresh.ts` keeps raw `/auth/refresh`. Targeted search found no active route-local login health fetch. | Closed prior bug class. | Keep closed |
+| Feature flag env bindings | `server/src/config/features.ts` maps defaults to `FEATURE_*` env vars; `server/src/config/types.ts`, `server/src/config/schema.ts`, `server/src/services/featureFlags/definitions.ts`, and `server/src/services/featureFlagService.ts` repeat the key set. `server/tests/unit/config/features.test.ts` omits `FEATURE_TREASURY_AUTOPILOT` from its env key list and parse assertions even though production loads it. | A future flag can be defined but not reset/tested or not wired to env consistently. | Converge next |
+| Draft actionable statuses | `server/src/repositories/draftRepository.ts` has canonical `ACTIONABLE_DRAFT_STATUSES`, but `server/src/repositories/agentRepository.ts` and `server/src/repositories/agentDashboardRepository.ts` still spell out `['unsigned', 'partial', 'signed']`; related tests assert the literal. | Low current behavior risk, but terminal `broadcasted` already made "actionable" versus "lifecycle" semantics important. | Converge small |
+| AI provider type values | `server/src/services/ai/providerProfile.ts`, `server/src/api/ai/models.ts`, `server/src/api/openapi/schemas/ai.ts`, `src/api/ai.ts`, `src/api/admin/types.ts`, and `llm-egress-proxy/src/requestSchemas.ts` / `providerDetection.ts` all repeat `ollama` and `openai-compatible`. | Adding a provider can drift across frontend, backend, OpenAPI, and proxy validation/detection. | Converge or parity-test |
+| Transaction type values and aliases | `shared/types/domain.ts` and OpenAPI include `receive`; persisted/sync paths mostly use `sent`/`received`/`consolidation`; list and console filters accept only canonical public filters; proxy natural-query normalizes `send`/`receive` aliases. | Compatibility aliases are legitimate, but the canonical persisted/public/alias sets are not named separately. | Watch; converge when touched |
+| Gateway manifest versus request validation | `gateway/src/routes/proxy/whitelist.ts` owns route metadata; `gateway/src/middleware/validateRequest.ts` owns request schemas; parity tests enforce alignment. | Security boundary readability is acceptable; deriving everything now could make the trust boundary harder to audit. | Keep separate, guarded |
+| Frontend API types versus server/OpenAPI | Many `src/api/*` interfaces duplicate backend response/request shapes. Some are already shared imports, but most remain handwritten. | Broad maintenance cost, but not a focused defect without specific enum drift. | Watch; consider generated client later |
+| LLM egress proxy | Proxy is not a local AI/model container. It owns endpoint policy, provider egress isolation, proxy secret auth, credentials isolation, and sanitized-context routing. | Removing or over-sharing this would reduce security isolation. | Keep separate |
+
+### Recommended Follow-Up Order
+
+1. Feature flags: define a single feature flag env-binding table and derive `loadFeatureFlags` plus config tests from it. Cover `FEATURE_TREASURY_AUTOPILOT`, empty env fallback, numeric true, case-insensitive true/false, nested experimental flags, and unknown-key/admin OpenAPI parity.
+2. Draft statuses: reuse `ACTIONABLE_DRAFT_STATUSES` in agent repository/dashboard filters and tests. Keep `broadcasted` out of actionable lists and keep public/mobile draft status enums aligned with `MOBILE_DRAFT_STATUS_VALUES`.
+3. AI provider types: add explicit parity tests across server profile schema, server OpenAPI, frontend API types, and proxy schemas. Do not import shared workspace code into `llm-egress-proxy`; `scripts/ci/check-llm-egress-proxy-shared-isolation.sh` intentionally forbids that boundary crossing.
+4. Transaction type vocabulary: introduce named constants for persisted transaction types, public transaction response types, filter types, and accepted aliases. Normalize aliases only at API/LLM/legacy boundaries; do not broaden DB writes to `send` or `receive`.
+5. Generated API client: evaluate OpenAPI-generated frontend types only after the smaller enum/value cleanups, because this would touch a wide surface.
+
+### Post-Phase-E Corner Cases
+
+- Feature flag binding should support top-level and `experimental.*` keys without losing the `FeatureFlagKey` type safety currently provided by `FEATURE_DEFINITIONS: Record<FeatureFlagKey, ...>`.
+- Feature flag tests should not depend on ambient shell env; every env var read by `loadFeatureFlags` must be reset or stubbed.
+- Draft status reuse must preserve existing terminal-draft retention behavior: `broadcasted` is a lifecycle/archive state, not an actionable review/sign/broadcast state.
+- AI provider type consolidation must preserve external Ollama support. "Ollama" remains a supported external provider type; unsupported Sanctuary-managed model install/delete stays removed.
+- The LLM egress proxy should remain independently validating operator-provided endpoints. Parity checks are preferred over sharing constants across the proxy isolation boundary.
+- Transaction alias handling should be directional: accept legacy or natural-language aliases at input boundaries, but emit canonical API values where routes already do so.
+
+## Independent Review Of Post-Phase-E Findings Addendum - 2026-05-15
+
+Scope: independent evidence check of the post-Phase-E addendum above, treating each recommendation as untrusted until rechecked against current `main`.
+
+### Independent Review Verdict
+
+- The ranked queue is directionally correct: feature flag env binding first, actionable draft status reuse second, AI provider type parity third, transaction vocabulary later.
+- The only material correction is the AI provider recommendation. Because `llm-egress-proxy` is outside the root workspaces and `scripts/ci/check-llm-egress-proxy-shared-isolation.sh` forbids shared imports, the first fix should be parity tests and isolation-preserving local constants, not a shared tuple imported by the proxy.
+- The login/health finding is confirmed closed. `components/Login/useLoginFlow.ts` calls `checkApiHealth`; `/auth/refresh` remains the intentional raw `fetch` path.
+- The gateway split is confirmed justified. `GATEWAY_ROUTE_CONTRACTS` and `ROUTE_SCHEMAS` remain separate, and the validateRequest contract test checks every manifest route's validation mode against `findSchemaForRoute`.
+- No active Sanctuary-managed AI image/container was found in compose. The only relevant stale wording found in this pass is a comment in `tests/install/utils/helpers.sh` mapping `sanctuary-llm-egress-proxy -> ai`; that is a low-priority comment cleanup, not a runtime container path.
+
+### Independent Review Reclassification
+
+| Finding | Review Result | Adjustment |
+| --- | --- | --- |
+| Feature flag env bindings | Confirmed. `server/src/config/features.ts` reads `FEATURE_TREASURY_AUTOPILOT`, but `server/tests/unit/config/features.test.ts` neither resets nor parses that env var. | Keep as next convergence candidate. Prefer an env-binding table or a parity test so this does not repeat for the next flag. |
+| Draft actionable statuses | Confirmed. `ACTIONABLE_DRAFT_STATUSES` is canonical in `draftRepository`, while agent repository/dashboard paths still spell out the same tuple. | Keep as small second candidate. Import/reuse the constant where there is no repository cycle, and keep `broadcasted` terminal state excluded. |
+| AI provider type values | Confirmed duplication, corrected implementation strategy. Provider values repeat across frontend, backend, OpenAPI, and proxy schemas. | Do parity tests first. Do not make the proxy depend on `@sanctuary/shared` unless the isolation guard is deliberately redesigned. |
+| Transaction type values and aliases | Confirmed as watch. Public `Transaction` allows `receive`; list/console/proxy filters use `sent`/`received`/`consolidation`; natural query normalizes `send`/`receive`. | Leave after higher-value items. Add named value sets when transaction contracts are next touched. |
+| Gateway manifest versus validation map | Confirmed keep-separate. The current parity test checks manifest validation decisions against route schemas. | Do not converge unless a gateway route change makes the separate maps painful again. |
+| LLM egress proxy as security boundary | Confirmed. Compose contains `sanctuary-llm-egress-proxy:local`, not an AI model image, and the proxy has an explicit shared-import isolation guard. | Keep. Fix stale "ai" comment opportunistically with installer/test docs cleanup. |
+
+### Independent Review Corner Cases
+
+- Feature flag tests should delete/stub every env variable read by `loadFeatureFlags`; otherwise a developer or CI host env can make the "defaults when unset" test lie.
+- Feature flag convergence should also preserve existing side-effect metadata and admin OpenAPI enum derivation from `FEATURE_FLAG_KEYS`.
+- AI provider parity should compare the server provider profile tuple, public AI detection OpenAPI enum, frontend API type assumptions where practical, and proxy request/detection accepted values.
+- Proxy isolation is a security property, not just packaging. Any future shared-provider-constants design must explicitly replace or amend `check-llm-egress-proxy-shared-isolation.sh`.
+- The stale `sanctuary-llm-egress-proxy -> ai` install-helper comment should not be treated as evidence of a live AI container because compose and image searches show only `llm-egress-proxy`.
+
+## Plan Detail Review Addendum - 2026-05-15
+
+Scope: tighten the optional post-Phase-E convergence queue before implementation, with emphasis on sequence, guardrails, and corner cases that could turn a small cleanup into behavior drift.
+
+### Plan Detail Verdict
+
+- The plan remains correctly ranked. The next useful non-hardware work, if we choose to keep cleaning up, is feature flag env-binding convergence, then draft actionable status reuse, then AI provider type parity tests, then transaction vocabulary naming.
+- No new login-class hard bug was found. These items are maintenance and drift-prevention work, not emergency production fixes.
+- The main correction to carry forward is still the proxy boundary: keep `llm-egress-proxy` independent and prove parity from tests or scripts instead of importing shared workspace constants into proxy runtime code.
+- The first two follow-ups can be implemented without product decisions. AI provider changes require a product decision only if we add or remove a supported provider type. Transaction vocabulary should wait until transaction API/storage code is otherwise being touched.
+
+### Implementation Detail By Follow-Up
+
+| Follow-Up | Added Plan Detail | Verification To Require |
+| --- | --- | --- |
+| Feature flag env bindings | Introduce one typed binding source for feature key to env var mapping, including nested `experimental.*` keys. Derive `loadFeatureFlags` from it or add a parity test that fails when `loadFeatureFlags` reads an env var not covered by tests. Include `FEATURE_TREASURY_AUTOPILOT`, which production reads today but the unit test env list omits. Preserve `FEATURE_DEFINITIONS`, `FEATURE_FLAG_KEYS`, side-effect metadata, and admin/OpenAPI enum derivation. | Focused `server/tests/unit/config/features.test.ts`; parity assertion that every binding key is in `FEATURE_DEFINITIONS`; defaults test with all bound env vars deleted; parse test for `true`, `TRUE`, `1`, `false`, `FALSE`, `0`, empty string, and unset. |
+| Draft actionable statuses | Reuse `ACTIONABLE_DRAFT_STATUSES` for agent funding sums and dashboard pending draft queries. If importing from `draftRepository.ts` creates an undesirable repository cycle, extract draft status constants to a small repository/domain constants module and have all three repositories import that. Keep `BROADCASTED_DRAFT_STATUS` available only for lifecycle/archive paths. | Focused agent repository/dashboard tests; a negative assertion that `broadcasted` is not included in pending/actionable counts; `git diff --check`; typecheck if constants move. |
+| AI provider type values | Add an isolation-preserving parity check across `server/src/services/ai/providerProfile.ts`, server OpenAPI AI schemas, frontend API provider type assumptions, and proxy validation/detection values. Do not import `@sanctuary/shared` or server code into `llm-egress-proxy/src`. Keep legacy route names such as `/detect-ollama` only as compatibility route names while response/provider values remain provider-generic. | Existing proxy isolation guard; focused server OpenAPI/provider-profile tests; focused frontend AI API/type tests where practical; proxy request schema and provider detection tests. |
+| Transaction type vocabulary | When touched, introduce named value sets for persisted transaction types (`sent`, `received`, `consolidation`), public response compatibility types where `receive` is still accepted/emitted, filter types, and input alias values (`send`, `receive`). Keep alias normalization at API, LLM, or legacy boundaries only. | Contract tests around transaction list/filter schemas; sync/persistence tests proving DB writes stay canonical; proxy natural-query tests proving aliases normalize to canonical filters. |
+| Stale LLM proxy comment | Clean the installer helper comment that still maps `sanctuary-llm-egress-proxy -> ai` so the install/testing docs match the renamed security boundary. This should not be mixed with runtime proxy changes. | `git diff --check`; installer-helper shell tests only if the surrounding script behavior changes. |
+
+### Additional Corner Cases
+
+- Feature flag binding should not read `process.env` at module import time in a way that makes tests or runtime reloads stale; `loadFeatureFlags()` should continue to reflect the current environment when called.
+- Feature flag parsing should document and preserve today's semantics: only case-insensitive `true` and exact numeric `1` enable a flag; all other non-empty values, including `0`, `false`, and invalid strings, resolve to `false`.
+- Feature flag convergence should not accidentally turn unknown env vars into accepted feature keys. Unknown flags should remain invisible unless a matching `FeatureFlagKey`, default, definition, and binding are added together.
+- Draft status reuse must account for readonly tuples versus Prisma `in` arrays; callers may need to spread constants into a mutable array at the query site.
+- Draft dashboard counts combine actionable status with expiration filtering. The status cleanup must not change the `expiresAt: null OR expiresAt > now` behavior.
+- Agent funding sums should keep their time-window semantics. Reusing the status constant must not widen `createdAt >= since` or include rejected/expired drafts by accident.
+- AI provider parity should treat `ollama` as an external provider value, not as evidence of a Sanctuary-managed model runtime. External Ollama support stays supported.
+- AI provider parity should include both request and response schemas. It is not enough to check only detection request `preferredProviderType`; response `providerType` must stay in sync too.
+- Proxy provider detection order is behavior. A parity test should not reorder `openai-compatible` and `ollama` unless a product decision explicitly changes default detection precedence.
+- Transaction alias cleanup should not change persisted historical rows in place. If historical `receive` rows exist, compatibility should be handled by read/normalization code or an explicit migration plan, not by silently broadening new writes.
+- Transaction filter semantics are amount-sensitive in the UI: `received` filters positive non-consolidation rows and `sent` filters negative non-consolidation rows. Shared value constants must not collapse these UI semantics into simple string equality everywhere.
+- The gateway manifest/schema split should remain out of this queue unless its parity test fails or a route change shows the separate maps are causing drift.
+
+## Phase F Implementation Addendum - 2026-05-15
+
+Scope: implement the first optional post-Phase-E convergence slice by centralizing feature flag env bindings and making tests/service flattening derive from the same table.
+
+### Phase F Status
+
+- `server/src/config/features.ts` now owns `FEATURE_FLAG_ENV_BINDINGS` and `FEATURE_FLAG_ENV_KEYS`.
+- `loadFeatureFlags()` derives all env parsing from `FEATURE_FLAG_ENV_BINDINGS`, including `FEATURE_TREASURY_AUTOPILOT`.
+- `flattenFeatureFlags()` and `getFeatureFlagValue()` are exported from config so feature flag service fallback/reset logic does not maintain separate top-level and experimental key lists.
+- `server/src/services/featureFlagService.ts` now uses `flattenFeatureFlags()` for database initialization and `getFeatureFlagValue()` for environment fallback and reset-to-default behavior.
+- `server/tests/unit/config/features.test.ts` now derives env cleanup from `FEATURE_FLAG_ENV_KEYS` and asserts binding keys equal `FEATURE_FLAG_KEYS`, so future feature definitions cannot miss env-reset/default parsing coverage silently.
+
+### Phase F Edge Cases Covered
+
+- Default loading with every bound feature env var deleted.
+- Boolean parsing for `true`, `TRUE`, `1`, `false`, `FALSE`, `0`, empty string, and unset defaults.
+- `FEATURE_TREASURY_AUTOPILOT` parse and reset coverage.
+- Runtime env reread behavior: `loadFeatureFlags()` reflects current `process.env` values on each call instead of snapshotting env at module import.
+- Experimental keys stay flattened as `experimental.*` while preserving nested config storage.
+- Unknown top-level and experimental keys still fail closed to `false` in defensive service fallbacks.
+
+### Phase F Local Verification
+
+- `npm --prefix server run test:run -- tests/unit/config/features.test.ts tests/unit/services/featureFlagService.test.ts tests/unit/services/featureFlags/definitions.test.ts`
+- `npm --prefix server run typecheck:tests`
+- `npm --prefix server run build`
+- `npm run quality:lizard -- --files server/src/config/features.ts server/src/services/featureFlagService.ts`
+- `npm run lint:server`
+
 ## Edge Cases
 
 - Phase 5 must not remove external Ollama as a provider type; it removes Sanctuary's ability to pull/delete provider models.
@@ -590,6 +732,9 @@ Scope: closeout audit after Phase E PR #467 merged, verifying whether any non-ha
 - The 2026-05-15 seventh independent review rechecked the current Phase D branch after Phase C merge. Targeted searches confirmed Phase A/B/B2/C closure, confirmed stale contract helper literals and fixtures, found mobile-agent draft status tuple duplication as a Phase D-adjacent cleanup, confirmed login health remains the only direct route-local raw fetch outside the API client/refresh boundary, and found one minor active AI model-management comment. Documentation verification passed with `git diff --check`.
 - The 2026-05-15 eighth independent review rechecked `origin/main` after Phase D merge. Targeted searches confirmed Phase A/B/B2/C/D closure, found no active model-management surface outside historical plan text and negative route tests, and confirmed Phase E as the only remaining non-hardware item. It also found that `client.ts` and `refresh.ts` still duplicate API base URL resolution, so Phase E should extract a tiny shared base URL helper while keeping refresh as a raw-fetch caller. Documentation verification passed with `git diff --check`.
 - Phase E PR #467 merged as `0ff1cdaf80950946c120b7b141189d7c5ad75359`. It added `src/api/baseUrl.ts` and `src/api/health.ts`, migrated login health probing to the no-auth helper, kept refresh as a raw-fetch recursion boundary, and passed full local/CI verification including regenerated frontend coverage at 100%.
+- The 2026-05-15 post-Phase-E reanalysis checked current `main` after Phase E closure. Targeted searches covered auth/login health fetches, gateway manifest/schema parity, AI provider type tuples, draft status filters, feature flag defaults/env/schema/definition drift, transaction aliases, and frontend API contract duplication. Documentation verification passed with `git diff --check`.
+- The 2026-05-15 independent review of the post-Phase-E findings rechecked feature flag env/test coverage, draft actionable status filters, AI provider type duplication, transaction aliases, gateway validation parity, login health closure, compose AI-image absence, and the LLM proxy shared-import isolation guard. It confirmed the queue and corrected the AI provider implementation strategy toward parity tests rather than shared proxy imports.
+- The 2026-05-15 plan detail review tightened the optional post-Phase-E queue with implementation guardrails and corner cases for feature flag env bindings, draft actionable status reuse, AI provider parity across the proxy boundary, transaction vocabulary aliases, and the stale LLM proxy installer comment. Documentation verification passed with `git diff --check`.
 - Phase 5 PR #459 merged as `42abe4d893420661482e73ddbd9a1f4aff271bd2` and the merge commit was verified on `origin/main`.
 - Phase 6 PR #460 passed required Architecture, Build Dev Images summary, Code Quality, and Test Suite checks on head `38d6231090736094593f75e476e3e0f0be7fff6a`, then squash-merged as `26bbd2d052afe1e22421107dea77b6597e873f4c`.
 - The Phase 6 merge commit was verified as an ancestor of `origin/main`; local `main` was fast-forwarded to `26bbd2d052afe1e22421107dea77b6597e873f4c`; the local and remote Phase 6 branches were deleted.

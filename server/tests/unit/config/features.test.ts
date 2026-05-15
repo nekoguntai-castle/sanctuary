@@ -1,34 +1,21 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  FEATURE_FLAG_ENV_BINDINGS,
+  FEATURE_FLAG_ENV_KEYS,
   defaultExperimentalFlags,
   defaultFeatureFlags,
+  flattenFeatureFlags,
+  getFeatureFlagValue,
   loadFeatureFlags,
 } from '../../../src/config/features';
-
-const FEATURE_ENV_KEYS = [
-  'FEATURE_HARDWARE_WALLET',
-  'FEATURE_QR_SIGNING',
-  'FEATURE_MULTISIG',
-  'FEATURE_BATCH_SYNC',
-  'FEATURE_PAYJOIN',
-  'FEATURE_BATCH_TX',
-  'FEATURE_RBF',
-  'FEATURE_PRICE_ALERTS',
-  'FEATURE_AI_ASSISTANT',
-  'FEATURE_SANCTUARY_CONSOLE',
-  'FEATURE_TELEGRAM',
-  'FEATURE_WS_V2',
-  'FEATURE_TREASURY_INTELLIGENCE',
-  'FEATURE_EXP_TAPROOT',
-  'FEATURE_EXP_SILENT_PAYMENTS',
-] as const;
+import { FEATURE_FLAG_KEYS } from '../../../src/services/featureFlags/definitions';
 
 const ORIGINAL_FEATURE_ENV = Object.fromEntries(
-  FEATURE_ENV_KEYS.map((key) => [key, process.env[key]])
+  FEATURE_FLAG_ENV_KEYS.map((key) => [key, process.env[key]])
 );
 
 afterEach(() => {
-  for (const key of FEATURE_ENV_KEYS) {
+  for (const key of FEATURE_FLAG_ENV_KEYS) {
     const originalValue = ORIGINAL_FEATURE_ENV[key];
     if (originalValue === undefined) {
       delete process.env[key];
@@ -39,8 +26,18 @@ afterEach(() => {
 });
 
 describe('Feature Flags Config', () => {
+  it('keeps env bindings aligned with known feature flag keys', () => {
+    const bindingKeys = FEATURE_FLAG_ENV_BINDINGS.map(({ key }) => key);
+    const bindingEnvs = FEATURE_FLAG_ENV_BINDINGS.map(({ env }) => env);
+
+    expect(bindingKeys).toEqual([...FEATURE_FLAG_KEYS]);
+    expect(new Set(bindingKeys).size).toBe(bindingKeys.length);
+    expect(new Set(bindingEnvs).size).toBe(bindingEnvs.length);
+    expect(bindingEnvs.every((env) => env.startsWith('FEATURE_'))).toBe(true);
+  });
+
   it('returns default flags when feature env vars are unset', () => {
-    for (const key of FEATURE_ENV_KEYS) {
+    for (const key of FEATURE_FLAG_ENV_KEYS) {
       delete process.env[key];
     }
 
@@ -62,8 +59,9 @@ describe('Feature Flags Config', () => {
     process.env.FEATURE_AI_ASSISTANT = '1';
     process.env.FEATURE_SANCTUARY_CONSOLE = 'true';
     process.env.FEATURE_TELEGRAM = 'false';
-    process.env.FEATURE_WS_V2 = '1';
+    process.env.FEATURE_TREASURY_AUTOPILOT = 'true';
     process.env.FEATURE_TREASURY_INTELLIGENCE = 'true';
+    process.env.FEATURE_WS_V2 = '1';
     process.env.FEATURE_EXP_TAPROOT = '1';
     process.env.FEATURE_EXP_SILENT_PAYMENTS = 'TRUE';
 
@@ -80,11 +78,59 @@ describe('Feature Flags Config', () => {
     expect(flags.aiAssistant).toBe(true);
     expect(flags.sanctuaryConsole).toBe(true);
     expect(flags.telegramNotifications).toBe(false);
-    expect(flags.websocketV2Events).toBe(true);
+    expect(flags.treasuryAutopilot).toBe(true);
     expect(flags.treasuryIntelligence).toBe(true);
+    expect(flags.websocketV2Events).toBe(true);
     expect(flags.experimental).toEqual({
       taprootAddresses: true,
       silentPayments: true,
     });
+  });
+
+  it('reads current env values at load time instead of snapshotting them', () => {
+    for (const key of FEATURE_FLAG_ENV_KEYS) {
+      delete process.env[key];
+    }
+
+    process.env.FEATURE_TREASURY_AUTOPILOT = 'true';
+    expect(loadFeatureFlags().treasuryAutopilot).toBe(true);
+
+    process.env.FEATURE_TREASURY_AUTOPILOT = 'false';
+    expect(loadFeatureFlags().treasuryAutopilot).toBe(false);
+  });
+
+  it('flattens feature flags using the env binding key set', () => {
+    const flags = {
+      ...defaultFeatureFlags,
+      treasuryAutopilot: true,
+      experimental: {
+        ...defaultExperimentalFlags,
+        silentPayments: true,
+      },
+    };
+
+    expect(flattenFeatureFlags(flags)).toEqual({
+      hardwareWalletSigning: defaultFeatureFlags.hardwareWalletSigning,
+      qrCodeSigning: defaultFeatureFlags.qrCodeSigning,
+      multisigWallets: defaultFeatureFlags.multisigWallets,
+      batchSync: defaultFeatureFlags.batchSync,
+      payjoinSupport: defaultFeatureFlags.payjoinSupport,
+      batchTransactions: defaultFeatureFlags.batchTransactions,
+      rbfTransactions: defaultFeatureFlags.rbfTransactions,
+      priceAlerts: defaultFeatureFlags.priceAlerts,
+      aiAssistant: defaultFeatureFlags.aiAssistant,
+      sanctuaryConsole: defaultFeatureFlags.sanctuaryConsole,
+      telegramNotifications: defaultFeatureFlags.telegramNotifications,
+      treasuryAutopilot: true,
+      treasuryIntelligence: defaultFeatureFlags.treasuryIntelligence,
+      websocketV2Events: defaultFeatureFlags.websocketV2Events,
+      'experimental.taprootAddresses': defaultExperimentalFlags.taprootAddresses,
+      'experimental.silentPayments': true,
+    });
+  });
+
+  it('returns false for unknown feature keys in defensive fallbacks', () => {
+    expect(getFeatureFlagValue(defaultFeatureFlags, 'notAFlag' as any)).toBe(false);
+    expect(getFeatureFlagValue(defaultFeatureFlags, 'experimental.notAFlag' as any)).toBe(false);
   });
 });

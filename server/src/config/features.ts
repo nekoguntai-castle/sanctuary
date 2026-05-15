@@ -15,7 +15,15 @@
  *   - Experimental: Unstable features (disabled by default)
  */
 
-import type { FeatureFlags, ExperimentalFeatures } from './types';
+import type { FeatureFlags, ExperimentalFeatures, FeatureFlagKey } from './types';
+
+type TopLevelFeatureFlagKey = keyof Omit<FeatureFlags, 'experimental'>;
+type ExperimentalFeatureFlagKey = keyof ExperimentalFeatures;
+
+interface FeatureFlagEnvBinding {
+  key: FeatureFlagKey;
+  env: string;
+}
 
 /**
  * Default experimental feature values
@@ -57,40 +65,83 @@ export const defaultFeatureFlags: FeatureFlags = {
   experimental: defaultExperimentalFlags,
 };
 
+export const FEATURE_FLAG_ENV_BINDINGS = [
+  { key: 'hardwareWalletSigning', env: 'FEATURE_HARDWARE_WALLET' },
+  { key: 'qrCodeSigning', env: 'FEATURE_QR_SIGNING' },
+  { key: 'multisigWallets', env: 'FEATURE_MULTISIG' },
+  { key: 'batchSync', env: 'FEATURE_BATCH_SYNC' },
+  { key: 'payjoinSupport', env: 'FEATURE_PAYJOIN' },
+  { key: 'batchTransactions', env: 'FEATURE_BATCH_TX' },
+  { key: 'rbfTransactions', env: 'FEATURE_RBF' },
+  { key: 'priceAlerts', env: 'FEATURE_PRICE_ALERTS' },
+  { key: 'aiAssistant', env: 'FEATURE_AI_ASSISTANT' },
+  { key: 'sanctuaryConsole', env: 'FEATURE_SANCTUARY_CONSOLE' },
+  { key: 'telegramNotifications', env: 'FEATURE_TELEGRAM' },
+  { key: 'treasuryAutopilot', env: 'FEATURE_TREASURY_AUTOPILOT' },
+  { key: 'treasuryIntelligence', env: 'FEATURE_TREASURY_INTELLIGENCE' },
+  { key: 'websocketV2Events', env: 'FEATURE_WS_V2' },
+  { key: 'experimental.taprootAddresses', env: 'FEATURE_EXP_TAPROOT' },
+  { key: 'experimental.silentPayments', env: 'FEATURE_EXP_SILENT_PAYMENTS' },
+] as const satisfies readonly FeatureFlagEnvBinding[];
+
+export const FEATURE_FLAG_ENV_KEYS = Object.freeze(
+  FEATURE_FLAG_ENV_BINDINGS.map(({ env }) => env),
+);
+
 /**
  * Load feature flags from environment variables
  * Environment variables override defaults
  */
 export function loadFeatureFlags(): FeatureFlags {
-  return {
-    // Core wallet features
-    hardwareWalletSigning: parseBoolEnv('FEATURE_HARDWARE_WALLET', defaultFeatureFlags.hardwareWalletSigning),
-    qrCodeSigning: parseBoolEnv('FEATURE_QR_SIGNING', defaultFeatureFlags.qrCodeSigning),
-    multisigWallets: parseBoolEnv('FEATURE_MULTISIG', defaultFeatureFlags.multisigWallets),
-    batchSync: parseBoolEnv('FEATURE_BATCH_SYNC', defaultFeatureFlags.batchSync),
-
-    // Transaction features
-    payjoinSupport: parseBoolEnv('FEATURE_PAYJOIN', defaultFeatureFlags.payjoinSupport),
-    batchTransactions: parseBoolEnv('FEATURE_BATCH_TX', defaultFeatureFlags.batchTransactions),
-    rbfTransactions: parseBoolEnv('FEATURE_RBF', defaultFeatureFlags.rbfTransactions),
-
-    // Integration features
-    priceAlerts: parseBoolEnv('FEATURE_PRICE_ALERTS', defaultFeatureFlags.priceAlerts),
-    aiAssistant: parseBoolEnv('FEATURE_AI_ASSISTANT', defaultFeatureFlags.aiAssistant),
-    sanctuaryConsole: parseBoolEnv('FEATURE_SANCTUARY_CONSOLE', defaultFeatureFlags.sanctuaryConsole),
-    telegramNotifications: parseBoolEnv('FEATURE_TELEGRAM', defaultFeatureFlags.telegramNotifications),
-    treasuryAutopilot: parseBoolEnv('FEATURE_TREASURY_AUTOPILOT', defaultFeatureFlags.treasuryAutopilot),
-    treasuryIntelligence: parseBoolEnv('FEATURE_TREASURY_INTELLIGENCE', defaultFeatureFlags.treasuryIntelligence),
-
-    // Protocol features
-    websocketV2Events: parseBoolEnv('FEATURE_WS_V2', defaultFeatureFlags.websocketV2Events),
-
-    // Experimental features
-    experimental: {
-      taprootAddresses: parseBoolEnv('FEATURE_EXP_TAPROOT', defaultExperimentalFlags.taprootAddresses),
-      silentPayments: parseBoolEnv('FEATURE_EXP_SILENT_PAYMENTS', defaultExperimentalFlags.silentPayments),
-    },
+  const flags: FeatureFlags = {
+    ...defaultFeatureFlags,
+    experimental: { ...defaultExperimentalFlags },
   };
+
+  for (const binding of FEATURE_FLAG_ENV_BINDINGS) {
+    setFeatureFlagValue(
+      flags,
+      binding.key,
+      parseBoolEnv(binding.env, getFeatureFlagValue(defaultFeatureFlags, binding.key)),
+    );
+  }
+
+  return flags;
+}
+
+/**
+ * Flatten nested feature config into the persistent feature flag key format.
+ */
+export function flattenFeatureFlags(features: FeatureFlags): Record<FeatureFlagKey, boolean> {
+  return Object.fromEntries(
+    FEATURE_FLAG_ENV_BINDINGS.map(({ key }) => [key, getFeatureFlagValue(features, key)]),
+  ) as Record<FeatureFlagKey, boolean>;
+}
+
+/**
+ * Read top-level and experimental.* feature keys, failing closed for unknown values.
+ */
+export function getFeatureFlagValue(features: FeatureFlags, key: FeatureFlagKey): boolean {
+  if (isExperimentalFeatureFlagKey(key)) {
+    const experimentalKey = key.slice('experimental.'.length) as ExperimentalFeatureFlagKey;
+    return features.experimental[experimentalKey] ?? false;
+  }
+
+  return features[key as TopLevelFeatureFlagKey] ?? false;
+}
+
+function setFeatureFlagValue(features: FeatureFlags, key: FeatureFlagKey, enabled: boolean): void {
+  if (isExperimentalFeatureFlagKey(key)) {
+    const experimentalKey = key.slice('experimental.'.length) as ExperimentalFeatureFlagKey;
+    features.experimental[experimentalKey] = enabled;
+    return;
+  }
+
+  features[key as TopLevelFeatureFlagKey] = enabled;
+}
+
+function isExperimentalFeatureFlagKey(key: FeatureFlagKey): boolean {
+  return key.startsWith('experimental.');
 }
 
 /**

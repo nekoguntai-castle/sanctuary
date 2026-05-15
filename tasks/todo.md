@@ -1,3 +1,100 @@
+# Task: Phase F Feature Flag Env Binding Convergence 2026-05-15
+
+Status: in progress.
+
+Goal: centralize feature flag env bindings so runtime loading, environment reset tests, and feature flag service flattening cannot drift when a new flag is added.
+
+## Plan
+
+- [x] Confirm the drift: `FEATURE_TREASURY_AUTOPILOT` is loaded by production config but missing from the config test env key list.
+- [x] Add a typed feature flag env-binding table in config and derive `loadFeatureFlags` plus feature flattening from it.
+- [x] Update feature flag service and tests to use the shared binding/flattening helpers.
+- [x] Update the rationalization plan with Phase F implementation status.
+- [x] Run focused config/feature-flag tests, typechecks or lizard if needed, and `git diff --check`.
+- [ ] Commit Phase F, open a PR, monitor checks, merge, verify ancestry, then continue to Phase G.
+
+---
+
+# Completed Task: Plan Detail And Corner-Case Review 2026-05-15
+
+Status: complete.
+
+Goal: review the current rationalization follow-up plan, add implementation detail where the plan is underspecified, and record corner cases before any optional convergence phase starts.
+
+## Plan
+
+- [x] Re-read the current post-Phase-E rationalization findings and independent-review correction.
+- [x] Inspect source evidence for feature flag env bindings, draft actionable statuses, AI provider type values, and transaction type aliases.
+- [x] Update `docs/plans/rationalization-plan.md` with implementation details, guardrails, and corner cases for the remaining optional queue.
+- [x] Update this task ledger with the review result.
+- [x] Run documentation verification and self-review the diff.
+
+## Review
+
+- Added a plan-detail addendum to `docs/plans/rationalization-plan.md` for the optional post-Phase-E queue.
+- Confirmed the ranking remains feature flag env bindings, draft actionable statuses, AI provider type parity, then transaction vocabulary naming.
+- Added implementation guardrails for deriving or parity-testing feature flag env bindings, including `FEATURE_TREASURY_AUTOPILOT`, ambient env cleanup, nested experimental keys, and current boolean parsing semantics.
+- Added draft-status guardrails for repository-cycle avoidance, `broadcasted` exclusion, Prisma readonly tuple handling, dashboard expiration filtering, and agent funding time-window preservation.
+- Added AI provider guardrails that preserve `llm-egress-proxy` isolation, keep external Ollama as a supported provider, check request and response schemas, and avoid silently changing provider detection order.
+- Added transaction alias guardrails for persisted/public/filter/alias value sets, historical `receive` compatibility, UI amount-sensitive filters, and canonical DB writes.
+- Verification: `git diff --check` and diff self-review.
+
+---
+
+# Completed Task: Independent Review Of Post-Phase-E Findings 2026-05-15
+
+Status: complete.
+
+Goal: independently double-check the post-Phase-E divergence findings, challenge the ranked follow-up queue, correct any overstated or missing recommendations, and record the review in the durable plan.
+
+## Plan
+
+- [x] Re-read the new post-Phase-E addendum as evidence to challenge, not as truth.
+- [x] Re-run targeted checks for feature flag env drift, actionable draft status duplication, AI provider type duplication, transaction alias boundaries, gateway schema parity, and login/health closure.
+- [x] Reclassify each finding as confirmed, corrected, downgraded, or rejected.
+- [x] Update `docs/plans/rationalization-plan.md` and this task ledger with the independent-review result.
+- [x] Run documentation verification and summarize any changed recommendations.
+
+## Review
+
+- Confirmed the top two recommendations: `FEATURE_TREASURY_AUTOPILOT` is loaded by `server/src/config/features.ts` but omitted from `server/tests/unit/config/features.test.ts`, and actionable draft statuses are still duplicated in agent repository/dashboard code despite `ACTIONABLE_DRAFT_STATUSES`.
+- Corrected the AI provider recommendation: provider type drift is real, but the first step should be parity tests, not importing shared constants into `llm-egress-proxy`. The proxy is outside the root workspaces and `scripts/ci/check-llm-egress-proxy-shared-isolation.sh` intentionally forbids shared imports.
+- Confirmed transaction type vocabulary remains a watch item, not an urgent fix: `receive` remains public/legacy response compatibility while filters and persisted paths mostly use `sent`/`received`/`consolidation`.
+- Confirmed gateway manifest/schema split remains justified because the validateRequest contract test checks every manifest route's validation decision against `findSchemaForRoute`.
+- Confirmed login health remains closed and found no active Sanctuary AI/model image in compose. One stale installer helper comment still maps `sanctuary-llm-egress-proxy -> ai`; treat that as low-priority comment cleanup, not runtime behavior.
+- Updated `docs/plans/rationalization-plan.md` with an independent-review addendum and the AI provider strategy correction.
+- Verification: `git diff --check` and `bash scripts/ci/check-llm-egress-proxy-shared-isolation.sh`.
+
+---
+
+# Completed Task: Post-Phase-E Divergence Reanalysis 2026-05-15
+
+Status: complete.
+
+Goal: re-scrub current `main` for other two-path or duplicated workflow/contract patterns after the login health helper consolidation, classify whether each split is justified, and identify any new consolidation candidates worth doing.
+
+## Plan
+
+- [x] Re-read the current rationalization plan and codebase-health report for prior decisions and watch items.
+- [x] Search current production code for route/client splits, duplicated validation schemas, duplicated domain constants, compatibility paths, feature-flag/default drift, and test-helper drift.
+- [x] Classify candidates as keep separate, watch, converge, or remove using code evidence and existing tests.
+- [x] Update `docs/plans/rationalization-plan.md` with a new post-Phase-E reanalysis addendum and update this task with findings.
+- [x] Run documentation verification and summarize the ranked recommendations.
+
+## Review
+
+- Login health remains closed after Phase E. The active frontend health path now goes through `src/api/health.ts` and shared `src/api/baseUrl.ts`; `src/api/refresh.ts` remains the intentional raw-fetch recursion boundary.
+- No new login-class hard defect was found. The remaining findings are lower-risk value/contract drift where future changes could split behavior.
+- Highest-value optional follow-up: centralize feature flag env bindings. Production loads `FEATURE_TREASURY_AUTOPILOT`, but `server/tests/unit/config/features.test.ts` does not include that env var in its reset/parse list.
+- Small concrete follow-up: reuse `ACTIONABLE_DRAFT_STATUSES` from `server/src/repositories/draftRepository.ts` in agent repository/dashboard filters and related tests, keeping `broadcasted` terminal drafts out of actionable lists.
+- Provider-type follow-up: `ollama` / `openai-compatible` is repeated across frontend, server, OpenAPI, and `llm-egress-proxy`. Either share a provider tuple safely or add explicit parity tests; keep the proxy as an independent egress/security boundary.
+- Transaction-type follow-up: name the persisted, public response, filter, and legacy alias vocabularies separately. Accept `send`/`receive` only at compatibility/natural-language boundaries and avoid broadening persisted writes.
+- Justified splits to keep: gateway route manifest versus validation schema map while parity tests cover it, raw refresh fetch versus `apiClient`, LLM egress proxy isolation, raw network broadcast versus wallet broadcast, and broad handwritten frontend API types until a generated-client phase is approved.
+- Updated `docs/plans/rationalization-plan.md` with the post-Phase-E addendum and optional F-I follow-up queue.
+- Verification: `git diff --check`.
+
+---
+
 # Completed Task: Phase E Login Health Helper 2026-05-15
 
 Status: merged and verified via PR #467 as squash commit `0ff1cdaf80950946c120b7b141189d7c5ad75359`.
