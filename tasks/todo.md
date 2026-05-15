@@ -1,6 +1,6 @@
 # Task: Phase I Transaction Vocabulary Boundary Review 2026-05-15
 
-Status: implemented locally; PR pending.
+Status: merged and verified via PR #472 as squash commit `a36b044dc59f0e0af0f5f1ab63e19e9510d57be8`.
 
 Goal: decide and implement the narrow transaction-vocabulary cleanup after Phase H by separating persisted/public/filter transaction values from legacy/natural-language aliases without changing stored data or public compatibility.
 
@@ -12,7 +12,7 @@ Goal: decide and implement the narrow transaction-vocabulary cleanup after Phase
 - [x] Derive server/frontend/OpenAPI transaction schemas and filters from the shared constants where the trust boundary allows it.
 - [x] Keep the LLM egress proxy independent with proxy-local transaction filter constants and alias normalization.
 - [x] Add focused parity/alias tests for shared constants, OpenAPI contract validators, Console navigation, natural query aliases, and helper boundaries.
-- [ ] Run focused tests, typechecks, lizard/diff checks, commit, open PR, monitor checks, merge, and verify ancestry.
+- [x] Run focused tests, typechecks, lizard/diff checks, commit, open PR, monitor checks, merge, and verify ancestry.
 
 ## Review
 
@@ -22,6 +22,8 @@ Goal: decide and implement the narrow transaction-vocabulary cleanup after Phase
 - The proxy still must not import shared runtime constants; local proxy constants plus tests should guard its `sent`/`received`/`consolidation` filter vocabulary and `send`/`receive` aliases.
 - Implemented shared transaction constants, derived server/frontend/OpenAPI transaction type surfaces from them, and added proxy-local transaction constants for isolated natural-query handling.
 - Focused verification passed: shared transaction constants, Console navigation, proxy natural query, proxy console protocol, AI transaction filter/query UI tests, server contract tests, shared build, app/test/server typechecks, server build, proxy build/test, app/server lint, touched-file lizard, proxy shared-import guard, scoped stale tuple search, and `git diff --check`.
+- PR #472 passed Forgejo Architecture, Build Dev Images scope, Code Quality, Test Suite full lanes including frontend coverage merge, Full Test Summary, and PR Required Checks, then squash-merged as `a36b044dc59f0e0af0f5f1ab63e19e9510d57be8`.
+- Post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

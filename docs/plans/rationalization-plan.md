@@ -2,7 +2,7 @@
 
 Date: 2026-05-15
 Owner: Codex
-Status: Original queue complete; optional follow-up queue complete through Phase H; Phase I in progress
+Status: Original queue complete; optional follow-up queue complete through Phase I
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, and preference patch semantics
 
 ## Executive Summary
@@ -12,7 +12,7 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 - Nested preference path reads, nested patch construction, and optimistic rollback now use shared helpers without replacing backend validation, backend canonical storage, or the current top-level preference patch contract.
 - No non-hardware rationalization phase remains in the original six-phase queue. The physical hardware test remains a separate manual/external validation item.
 - A fresh 2026-05-14 reanalysis did not reopen those merged phases, but it found a new follow-up queue: wallet role/capability contracts, Bitcoin script and wallet/account type identity, node/Electrum config projection, stale contract-test helper constants, and login health probing were the consolidation candidates worth addressing next. Subsequent 2026-05-15 independent reviews confirmed that order, and Phases A, B, B2, C, D, and E have since merged.
-- Current review status: no hard non-hardware rationalization blocker remains open. The physical hardware test remains the only deferred validation item outside the completed queue. The post-Phase-E optional queue is complete through Phase H; Phase I is in progress as a narrow transaction-vocabulary boundary cleanup.
+- Current review status: no hard non-hardware rationalization blocker remains open. The physical hardware test remains the only deferred validation item outside the completed queue. The post-Phase-E optional queue is complete through Phase I; no additional non-hardware rationalization phase is queued.
 
 ## Divergence Inventory
 
@@ -58,7 +58,7 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 | F (optional) | Centralize feature flag env bindings and coverage checks | `server/src/config/features.ts`, `server/tests/unit/config/features.test.ts`, feature flag definitions/service tests | Config feature tests, unknown-key/admin OpenAPI tests, negative search for missing env binding | Merged via PR #469 |
 | G (optional) | Reuse actionable draft status constants in agent/dashboard paths | `server/src/repositories/draftRepository.ts`, `server/src/repositories/agentRepository.ts`, `server/src/repositories/agentDashboardRepository.ts`, related tests | Repository tests and negative literal searches for actionable draft status filters | Merged via PR #470 |
 | H (optional) | Add AI provider type parity checks while preserving proxy isolation | `server/src/services/ai/providerProfile.ts`, `server/src/api/ai/models.ts`, `server/src/api/openapi/schemas/ai.ts`, `server/src/services/ai/types.ts`, `src/api/ai.ts`, `src/api/admin/types.ts`, `llm-egress-proxy/src/*` | AI/provider/proxy tests plus an explicit parity/isolation guard | Merged via PR #471 |
-| I (optional) | Split public transaction values from persisted values and aliases | `shared/constants/transactions.ts`, `shared/types/domain.ts`, `server/src/api/openapi/schemas/transactions.ts`, transaction list/console/proxy filter helpers | Transaction route/API/console/proxy tests and alias boundary tests | Implemented locally; PR pending |
+| I (optional) | Split public transaction values from persisted values and aliases | `shared/constants/transactions.ts`, `shared/types/domain.ts`, `server/src/api/openapi/schemas/transactions.ts`, transaction list/console/proxy filter helpers | Transaction route/API/console/proxy tests and alias boundary tests | Merged via PR #472 |
 
 ## Reanalysis Addendum - 2026-05-14
 
@@ -826,6 +826,12 @@ Scope: split transaction type domains without changing stored values, public res
 - `bash scripts/ci/check-llm-egress-proxy-shared-isolation.sh`
 - Scoped transaction literal search confirmed no unowned production `sent`/`received`/`consolidation`, `sent`/`received`, or stale `send`/`receive` filter tuples remain outside canonical owners and tests.
 - `git diff --check`
+
+### Phase I Merge Closeout
+
+- PR #472 passed Forgejo Architecture, Build Dev Images scope, Code Quality, Test Suite full lanes including frontend coverage merge, Full Test Summary, and PR Required Checks.
+- PR #472 squash-merged as `a36b044dc59f0e0af0f5f1ab63e19e9510d57be8`.
+- Post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ## Edge Cases
 
