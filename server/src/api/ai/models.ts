@@ -1,5 +1,5 @@
 /**
- * AI Model Management Routes
+ * AI provider discovery and model listing routes.
  *
  * POST /ai/detect-ollama - Auto-detect Ollama at common endpoints
  * GET /ai/models - List available models

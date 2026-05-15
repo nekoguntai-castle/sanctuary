@@ -8,6 +8,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { MOBILE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/schemas/mobileApiRequests';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { asyncHandler } from '../errors/errorHandler';
@@ -42,7 +43,7 @@ const RejectBodySchema = z.object({
 const SignatureBodySchema = z.object({
   signedPsbtBase64: z.string().min(1),
   signedDeviceId: z.string().trim().min(1).max(200),
-  status: z.enum(['unsigned', 'partial', 'signed']).optional(),
+  status: z.enum(MOBILE_DRAFT_STATUS_VALUES).optional(),
 });
 
 const validationOptions = {

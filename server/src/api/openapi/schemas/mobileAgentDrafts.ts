@@ -2,6 +2,8 @@
  * Mobile Agent Draft OpenAPI Schemas
  */
 
+import { MOBILE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/schemas/mobileApiRequests';
+
 const JsonSummaryValue = {
   nullable: true,
   oneOf: [
@@ -119,7 +121,7 @@ export const mobileAgentDraftSchemas = {
       amountSats: SatoshiString,
       feeSats: SatoshiString,
       feeRate: { type: 'number' },
-      status: { type: 'string', enum: ['unsigned', 'partial', 'signed'] },
+      status: { type: 'string', enum: [...MOBILE_DRAFT_STATUS_VALUES] },
       approvalStatus: { type: 'string' },
       label: { type: 'string', nullable: true },
       memo: { type: 'string', nullable: true },
@@ -199,7 +201,7 @@ export const mobileAgentDraftSchemas = {
     properties: {
       signedPsbtBase64: { type: 'string', minLength: 1 },
       signedDeviceId: { type: 'string', minLength: 1, maxLength: 200 },
-      status: { type: 'string', enum: ['unsigned', 'partial', 'signed'] },
+      status: { type: 'string', enum: [...MOBILE_DRAFT_STATUS_VALUES] },
     },
     required: ['signedPsbtBase64', 'signedDeviceId'],
     additionalProperties: false,

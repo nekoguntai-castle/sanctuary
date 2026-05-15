@@ -1,6 +1,36 @@
-# Active Task: Phase C Node/Electrum Config Projection 2026-05-15
+# Active Task: Phase D Contract Helper Repair 2026-05-15
 
-Status: in progress.
+Status: in progress; seventh independent review checkpoint complete.
+
+Goal: repair or retire stale contract-test helper validation so contract tests derive from current OpenAPI/shared/server contracts instead of hard-coded, drifted enum arrays and response shapes.
+
+## Plan
+
+- [x] Inventory `server/tests/helpers/contractValidation.ts` callers, helper-local constants, fixtures, and overlap with current OpenAPI/shared/server schemas.
+- [x] Decide whether each helper earns its keep; delete redundant checks or derive retained validators from live constants/schemas.
+- [x] Update fixtures and negative tests to current contracts: `testnet3`/`testnet4`, current draft statuses, `psbtBase64`, current transaction type vocabulary, and distinct wallet-response versus sync-pipeline status domains.
+- [x] Add focused contract/OpenAPI tests so stale helper literals cannot pass independently from the live API schema.
+- [ ] Run contract tests, focused server tests, negative stale-literal searches, `git diff --check`, commit, open PR, monitor/fix checks, merge, and verify ancestry.
+
+## Review
+
+- Seventh independent review confirmed Phase D remains the next correct implementation slice after Phase C merge; Phase E remains the only follow-up after that.
+- Phase A/B/B2/C remain closed: searches found no reopened broad wallet edit gates, no unowned production wallet/script/account tuples, no active user-facing model-management surface, and no unmerged node/Electrum projection drift outside justified adapter/admin/price-provider boundaries.
+- Phase D scope should include stale `server/tests/helpers/contractValidation.ts` values and fixtures, plus current-but-duplicated mobile-agent draft status tuples in `server/src/api/mobileAgentDrafts.ts` and `server/src/api/openapi/schemas/mobileAgentDrafts.ts`.
+- Found one minor B2 residual: `server/src/api/ai/models.ts` still has an `AI Model Management Routes` file header. Clean it opportunistically, but route removal and user-facing copy remain closed.
+- Kept `server/tests/helpers/contractValidation.ts` because the assertion helpers still provide useful synthetic response shape checks, but removed its independent stale enum sources by deriving network, device role, wallet sync status, transaction type, and draft status values from shared/OpenAPI sources.
+- Updated contract fixtures to current transaction and draft response shapes: numeric transaction/draft amounts, `walletId`, `updatedAt`, `rbfStatus`, `psbtBase64`, `unsigned`/`partial`/`signed`, current network values, and explicit negative tests for stale `testnet`, `self`, `pending`, and `psbt`.
+- Derived mobile-agent draft route/OpenAPI status schemas from `MOBILE_DRAFT_STATUS_VALUES` and cleaned the stale AI route file header.
+- Phase D must not globally bless legacy aliases such as `testnet`, `receive`, or `send`; those stay only where the current API explicitly accepts them.
+- Wallet response `syncStatus` and sync-pipeline `SyncStatus` remain separate domains unless an explicit contract migration joins them.
+- Review verification: targeted `rg`/`sed`/`nl` checks for wallet capability gates, wallet identity tuples, AI model-management fallout, direct fetch boundaries, contract helper stale literals, current OpenAPI/shared/server draft/network/transaction sources, mobile-agent draft schemas, and Phase C node-config residuals; `git diff --check` passed.
+- Implementation verification: `npm --prefix server run test:contract`; `npm --prefix server run test:run -- tests/unit/api/openapi.test.ts tests/unit/api/mobile-agent-drafts-routes.test.ts`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm --prefix server run lint`; `npm run quality:lizard`; scoped stale-literal searches; `git diff --check`.
+
+---
+
+# Completed Task: Phase C Node/Electrum Config Projection 2026-05-15
+
+Status: merged and verified via PR #465 as squash commit `7895a04e275ae8276dbf134f4c137ac21d2bd997`.
 
 Goal: centralize node/Electrum configuration projection semantics across UI and server runtime adapters while preserving adapter output shapes, admin encryption/redaction boundaries, and current network compatibility behavior.
 
@@ -10,17 +40,18 @@ Goal: centralize node/Electrum configuration projection semantics across UI and 
 - [x] Add a pure shared projection helper for network defaults and field selection that can be imported by frontend and server code without React, Prisma, Express, Node-only config, decrypted secrets, or browser globals.
 - [x] Migrate UI network config helpers and server runtime adapters to derive defaults/fallbacks/proxy/external-service selection from the shared helper while keeping concrete adapter return types local.
 - [x] Add focused shared/frontend/server tests for mainnet, testnet3 legacy fallback, testnet4 empty singleton host, signet defaults, regtest/base behavior, disabled networks, explicit `singletonSsl: false`, missing/null values, proxy projection, and mempool fee/explorer URL precedence.
-- [ ] Run focused tests, typechecks/builds, touched-file complexity checks, negative searches, `git diff --check`, commit, open PR, monitor/fix checks, merge, and verify ancestry.
+- [x] Run focused tests, typechecks/builds, touched-file complexity checks, negative searches, `git diff --check`, commit, open PR, monitor/fix checks, merge, and verify ancestry.
 
 ## Review
 
-- Final delivery review pending.
+- Final delivery review passed and PR #465 was squash-merged.
 - Independent review checkpoint: Phase A, Phase B, and Phase B2 remain closed; no broad production wallet edit gates, unowned wallet/script/account tuples, or stale active model-management copy were found.
 - Current Phase C branch has removed active duplicated node/Electrum defaults from runtime/UI projection paths. Remaining node-config search matches are justified admin legacy testnet compatibility and separate price-provider defaults.
 - Hardened the Phase C helper after review so invalid pool load-balancing strings and non-positive singleton/pool integer projections fall back instead of reaching runtime config.
 - Remaining non-hardware queue after Phase C is unchanged: Phase D contract helper repair, then Phase E no-auth login health helper.
 - Checkpoint verification passed: `npm --prefix shared run build`, `npm run test:run -- tests/shared/nodeConfig.test.ts`, focused server node/Electrum tests, targeted negative searches, and `git diff --check`.
 - Final local verification passed before commit: extended shared/frontend node-config tests, extended server node/Electrum/admin/OpenAPI/transaction/telegram tests, app and test typechecks, server build, server test typecheck, `npm run quality:lizard`, scoped negative searches, and `git diff --check`.
+- PR-fix verification passed: backend coverage shards 1/2 and 2/2 plus backend coverage merge at 100%, frontend coverage shards 1/2 and 2/2 plus frontend coverage merge at 100%, full frontend tests through pre-commit, Forgejo full CI with 61 successful contexts, squash merge, and target-branch ancestry verification.
 
 ---
 

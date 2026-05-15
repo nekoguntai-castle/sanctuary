@@ -2,7 +2,7 @@
 
 Date: 2026-05-14
 Owner: Codex
-Status: Complete original queue; follow-up queue in progress; 2026-05-15 sixth independent review addendum recorded
+Status: Complete original queue; follow-up queue in progress; 2026-05-15 seventh independent review addendum recorded
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, and preference patch semantics
 
 ## Executive Summary
@@ -441,6 +441,40 @@ Scope: independent double-check after Phase A, Phase B, and Phase B2 were merged
 - Contract-helper repair should validate current draft response fields such as `psbtBase64` and current network values such as `testnet3`/`testnet4`; it should not refresh another local stale tuple.
 - The login health helper should use shared API base URL rules without `apiClient`, add timeout/abort behavior, and preserve current `401`-as-connected behavior.
 
+## Seventh Independent Review Addendum - 2026-05-15
+
+Scope: independent double-check after Phase C merged and before Phase D implementation, re-validating the remaining findings against the current Phase D branch.
+
+### Seventh Review Verdict
+
+- The remaining queue still stands: Phase D contract-helper repair first, then Phase E no-auth login health helper.
+- Phase A remains closed. A fresh production search found no broad `userRole !== 'viewer'` edit/send gates and no `wallet.canEdit !== false` fail-open wallet gates.
+- Phase B remains closed. Current production script/wallet/account matches are canonical constants, intentional behavior domains, UI labels/examples, comments, Prisma/storage documentation, fixtures/tests, or the known stale contract helper. No active request/schema tuple reopened Phase B.
+- Phase B2 is functionally closed: active pull/delete/system-resource AI routes remain absent and active user docs/UI/OpenAPI copy describes provider-reported model listing. One residual developer-facing comment still says `AI Model Management Routes` in `server/src/api/ai/models.ts`; clean it opportunistically, but it does not reopen the removed model-management surface.
+- Phase C remains closed after merge. Remaining node/Electrum matches are justified adapter/UI field names, admin encryption/redaction and legacy `testnet*` compatibility, current shared node-config helpers, or separate price-provider mempool defaults.
+- Phase D remains open and is stronger than a simple literal refresh. `server/tests/helpers/contractValidation.ts` still validates legacy `testnet`, transaction `self`, old draft statuses, and `psbt`, while live OpenAPI/server/shared contracts use `testnet3`/`testnet4`, `receive` where the public transaction schema allows it, `unsigned`/`partial`/`signed`, and `psbtBase64`.
+- Additional Phase D scope: mobile-agent draft route/OpenAPI status schemas repeat the current `unsigned`/`partial`/`signed` tuple directly. That is current but still drift-prone; Phase D should derive those from `MOBILE_DRAFT_STATUS_VALUES` or the server draft status source while keeping wallet response `syncStatus` separate from sync pipeline statuses.
+- Phase E remains valid and low priority. Login still owns a route-local raw `fetch('/api/v1/health')`; refresh still owns raw `/auth/refresh` for a justified recursion-boundary reason.
+
+### Seventh Review Adjustments
+
+| Area | Review Result | Adjustment |
+| --- | --- | --- |
+| Contract helper constants | Confirmed still stale. The helper's network, transaction, draft-status, and PSBT-field checks disagree with current OpenAPI/shared/server contracts. | Keep Phase D first. Derive retained validators from live sources or delete the helper in favor of OpenAPI-backed validation. |
+| Mobile agent draft status tuple | Newly noted Phase D-adjacent drift. Route validation and OpenAPI schemas repeat the same current draft status values instead of deriving from the shared mobile draft status tuple. | Fold into Phase D if touching draft contract validators; add parity tests so mobile draft status updates cannot drift from shared/server draft status values. |
+| Login health probe | Confirmed unchanged. Login still uses raw `/api/v1/health`; `refresh.ts` raw fetch remains justified by refresh recursion. | Keep Phase E after Phase D; implement a no-auth helper with base URL, timeout/abort, unmount-safety, and `401`-as-connected behavior. |
+| AI model-management cleanup | Mostly closed with one minor residual comment. The only active non-test/non-plan "model management" match is a route file header, while removed route tests remain as negative coverage. | Opportunistically rename the comment to provider discovery/model listing; do not reopen a larger B2 phase. |
+| Provider type duplication | Still a watch item. Backend, proxy, and frontend intentionally validate provider endpoints on different trust boundaries, but provider type strings remain repeated. | Add parity tests before introducing another provider; do not merge proxy/backend validation schemas across the security boundary. |
+
+### Seventh Review Corner Cases
+
+- Phase D should not globally accept `testnet`, `send`, or `receive`; each alias belongs only at the boundary whose live schema accepts it.
+- Public transaction schema currently includes `receive`; persisted/sync transaction creation paths mostly use `sent`/`received`/`consolidation`, and confirmation helpers accept legacy/internal `send`/`receive`. Contract tests should assert the public schema they target rather than inventing one combined vocabulary.
+- Draft contract repair should validate `psbtBase64`, nullable signed PSBT fields, current actionable statuses, empty recipients/signers arrays where the live schema permits them, BigInt balance strings, and nullable date fields.
+- Mobile-agent draft status derivation should preserve the current accepted values and should not accidentally expose archived `broadcasted` drafts as actionable mobile review items.
+- Login health helper tests should cover `200`, `401`, non-OK status, network rejection, timeout/abort, registration-status success/failure, and no state update after unmount or after a superseding check.
+- The AI egress proxy remains a security boundary and true Ollama-specific provider detection/listing names can stay Ollama-specific; only generic or misleading "model management" wording should be removed.
+
 ## Edge Cases
 
 - Phase 5 must not remove external Ollama as a provider type; it removes Sanctuary's ability to pull/delete provider models.
@@ -495,6 +529,7 @@ Scope: independent double-check after Phase A, Phase B, and Phase B2 were merged
 - The 2026-05-15 fourth independent review rechecked the current Phase B branch state against wallet roles, script/wallet/account identity, node/Electrum projection, contract-helper constants, login health fetch behavior, gateway route validation, feature flags, transaction type aliases, and external-LLM/model-management fallout with targeted `rg`/`sed` searches. It confirmed the Phase B/C/D/E order and added a small B2 copy/docs/type-name cleanup for stale external-LLM-only language.
 - Phase B2 implementation removed active stale model-management wording from AI MCP docs, OpenAPI tag text, frontend architecture references, and AI Settings model-list copy. Generic frontend provider-model types now use `ProviderModel`; true Ollama-specific detection/listing internals remain separate. Verification passed with focused AI Settings/API tests, app/test typechecks, server build, scoped negative searches, and `git diff --check`.
 - The 2026-05-15 sixth independent review rechecked the current tree after Phase A/B/B2 merge and during Phase C implementation. Targeted searches confirmed Phase A/B/B2 closure, confirmed Phase C's remaining node-config matches as justified admin legacy or price-provider boundaries, confirmed Phase D/E remain open, and led to a small Phase C hardening patch for invalid pool projection values. Focused shared node-config tests, shared build, focused server node/Electrum tests, and `git diff --check` passed.
+- The 2026-05-15 seventh independent review rechecked the current Phase D branch after Phase C merge. Targeted searches confirmed Phase A/B/B2/C closure, confirmed stale contract helper literals and fixtures, found mobile-agent draft status tuple duplication as a Phase D-adjacent cleanup, confirmed login health remains the only direct route-local raw fetch outside the API client/refresh boundary, and found one minor active AI model-management comment. Documentation verification passed with `git diff --check`.
 - Phase 5 PR #459 merged as `42abe4d893420661482e73ddbd9a1f4aff271bd2` and the merge commit was verified on `origin/main`.
 - Phase 6 PR #460 passed required Architecture, Build Dev Images summary, Code Quality, and Test Suite checks on head `38d6231090736094593f75e476e3e0f0be7fff6a`, then squash-merged as `26bbd2d052afe1e22421107dea77b6597e873f4c`.
 - The Phase 6 merge commit was verified as an ancestor of `origin/main`; local `main` was fast-forwarded to `26bbd2d052afe1e22421107dea77b6597e873f4c`; the local and remote Phase 6 branches were deleted.

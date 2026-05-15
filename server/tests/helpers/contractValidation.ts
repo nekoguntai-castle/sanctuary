@@ -16,11 +16,16 @@
  * ```
  */
 
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { WALLET_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 import {
   WALLET_SCRIPT_TYPE_VALUES,
   WALLET_TYPE_VALUES,
 } from '@sanctuary/shared/constants/walletIdentity';
+import { MOBILE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/schemas/mobileApiRequests';
+import { deviceSchemas } from '../../src/api/openapi/schemas/device';
+import { transactionSchemas } from '../../src/api/openapi/schemas/transactions';
+import { walletSchemas } from '../../src/api/openapi/schemas/wallet';
 
 // =============================================================================
 // Types
@@ -72,6 +77,7 @@ type FieldValidationRule = {
   field: string;
   isValid: (value: unknown) => boolean;
   message: string;
+  optional?: boolean;
 };
 
 function nullable(isValid: (value: unknown) => boolean): (value: unknown) => boolean {
@@ -84,6 +90,9 @@ function validateFields(
   rules: FieldValidationRule[]
 ) {
   for (const rule of rules) {
+    if (rule.optional && data[rule.field] === undefined) {
+      continue;
+    }
     if (!rule.isValid(data[rule.field])) {
       errors.push(rule.message);
     }
@@ -96,13 +105,13 @@ function validateFields(
 
 const WALLET_TYPES = WALLET_TYPE_VALUES;
 const SCRIPT_TYPES = WALLET_SCRIPT_TYPE_VALUES;
-const NETWORKS = ['mainnet', 'testnet', 'regtest', 'signet'] as const;
+const NETWORKS = BITCOIN_NETWORKS;
 const WALLET_ROLES = WALLET_ROLE_VALUES;
-const DEVICE_ROLES = ['owner', 'viewer'] as const;
-const SYNC_STATUSES = ['synced', 'syncing', 'error', 'pending', 'never'] as const;
-const TX_TYPES = ['sent', 'received', 'self', 'consolidation'] as const;
-const TX_STATUSES = ['confirmed', 'pending', 'replaced'] as const;
-const DRAFT_STATUSES = ['pending', 'signed', 'broadcast', 'expired', 'cancelled'] as const;
+const DEVICE_ROLES = deviceSchemas.Device.properties.role.enum;
+const SYNC_STATUSES = walletSchemas.Wallet.properties.syncStatus.enum;
+const TX_TYPES = transactionSchemas.Transaction.properties.type.enum;
+const RBF_STATUSES = ['active', 'replaced', 'confirmed'] as const;
+const DRAFT_STATUSES = MOBILE_DRAFT_STATUS_VALUES;
 
 function isEnumValue<T extends readonly string[]>(value: unknown, enumValues: T): boolean {
   return isString(value) && enumValues.includes(value as any);
@@ -111,6 +120,10 @@ function isEnumValue<T extends readonly string[]>(value: unknown, enumValues: T)
 const isNullableNumber = nullable(isNumber);
 const isNullableString = nullable(isString);
 const isNullableIsoDateString = nullable(isIsoDateString);
+
+function isArrayOf(isValid: (value: unknown) => boolean): (value: unknown) => boolean {
+  return (value: unknown) => isArray(value) && value.every(isValid);
+}
 
 function isWalletType(value: unknown): boolean {
   return isEnumValue(value, WALLET_TYPES);
@@ -140,8 +153,8 @@ function isTransactionType(value: unknown): boolean {
   return isEnumValue(value, TX_TYPES);
 }
 
-function isTransactionStatus(value: unknown): boolean {
-  return isEnumValue(value, TX_STATUSES);
+function isRbfStatus(value: unknown): boolean {
+  return isEnumValue(value, RBF_STATUSES);
 }
 
 function isDraftStatus(value: unknown): boolean {
@@ -178,7 +191,7 @@ const WALLET_GROUP_RULES: FieldValidationRule[] = [
 ];
 
 function validateWalletGroup(group: unknown, errors: string[]) {
-  if (group === null) {
+  if (group === null || group === undefined) {
     return;
   }
 
@@ -207,72 +220,127 @@ const DEVICE_RESPONSE_RULES: FieldValidationRule[] = [
 const TRANSACTION_RESPONSE_RULES: FieldValidationRule[] = [
   { field: 'id', isValid: isString, message: 'id must be a string' },
   { field: 'txid', isValid: isString, message: 'txid must be a string' },
+  { field: 'walletId', isValid: isString, message: 'walletId must be a string' },
   { field: 'type', isValid: isTransactionType, message: `type must be one of: ${TX_TYPES.join(', ')}` },
-  { field: 'status', isValid: isTransactionStatus, message: `status must be one of: ${TX_STATUSES.join(', ')}` },
-  { field: 'amount', isValid: isBigIntString, message: 'amount must be a numeric string' },
-  { field: 'fee', isValid: isBigIntString, message: 'fee must be a numeric string' },
+  { field: 'amount', isValid: isNumber, message: 'amount must be a number' },
+  { field: 'fee', isValid: isNullableNumber, message: 'fee must be a number or null', optional: true },
+  { field: 'balanceAfter', isValid: isNullableNumber, message: 'balanceAfter must be a number or null', optional: true },
   { field: 'confirmations', isValid: isNumber, message: 'confirmations must be a number' },
   { field: 'blockHeight', isValid: isNullableNumber, message: 'blockHeight must be a number or null' },
   { field: 'blockTime', isValid: isNullableIsoDateString, message: 'blockTime must be an ISO date string or null' },
   { field: 'label', isValid: isNullableString, message: 'label must be a string or null' },
   { field: 'memo', isValid: isNullableString, message: 'memo must be a string or null' },
+  { field: 'counterpartyAddress', isValid: isNullableString, message: 'counterpartyAddress must be a string or null', optional: true },
   { field: 'replacedByTxid', isValid: isNullableString, message: 'replacedByTxid must be a string or null' },
+  { field: 'replacementForTxid', isValid: isNullableString, message: 'replacementForTxid must be a string or null', optional: true },
+  { field: 'rbfStatus', isValid: isRbfStatus, message: `rbfStatus must be one of: ${RBF_STATUSES.join(', ')}`, optional: true },
   { field: 'createdAt', isValid: isIsoDateString, message: 'createdAt must be an ISO date string' },
-  { field: 'isRbf', isValid: isBoolean, message: 'isRbf must be a boolean' },
+  { field: 'updatedAt', isValid: isIsoDateString, message: 'updatedAt must be an ISO date string' },
 ];
 
 const DRAFT_RESPONSE_RULES: FieldValidationRule[] = [
   { field: 'id', isValid: isString, message: 'id must be a string' },
   { field: 'walletId', isValid: isString, message: 'walletId must be a string' },
+  { field: 'userId', isValid: isString, message: 'userId must be a string' },
+  { field: 'recipient', isValid: isNullableString, message: 'recipient must be a string or null' },
+  { field: 'amount', isValid: isNullableNumber, message: 'amount must be a number or null' },
+  { field: 'feeRate', isValid: isNullableNumber, message: 'feeRate must be a number or null' },
+  { field: 'selectedUtxoIds', isValid: isArrayOf(isString), message: 'selectedUtxoIds must be an array of strings' },
+  { field: 'enableRBF', isValid: isBoolean, message: 'enableRBF must be a boolean' },
+  { field: 'subtractFees', isValid: isBoolean, message: 'subtractFees must be a boolean' },
+  { field: 'sendMax', isValid: isBoolean, message: 'sendMax must be a boolean' },
+  { field: 'isRBF', isValid: isBoolean, message: 'isRBF must be a boolean' },
+  { field: 'payjoinUrl', isValid: isNullableString, message: 'payjoinUrl must be a string or null' },
+  { field: 'label', isValid: isNullableString, message: 'label must be a string or null' },
+  { field: 'memo', isValid: isNullableString, message: 'memo must be a string or null' },
+  { field: 'psbtBase64', isValid: isString, message: 'psbtBase64 must be a string' },
+  { field: 'signedPsbtBase64', isValid: isNullableString, message: 'signedPsbtBase64 must be a string or null' },
+  { field: 'fee', isValid: isNullableNumber, message: 'fee must be a number or null' },
+  { field: 'totalInput', isValid: isNullableNumber, message: 'totalInput must be a number or null' },
+  { field: 'totalOutput', isValid: isNullableNumber, message: 'totalOutput must be a number or null' },
+  { field: 'changeAmount', isValid: isNullableNumber, message: 'changeAmount must be a number or null' },
+  { field: 'changeAddress', isValid: isNullableString, message: 'changeAddress must be a string or null' },
+  { field: 'effectiveAmount', isValid: isNullableNumber, message: 'effectiveAmount must be a number or null' },
+  { field: 'inputPaths', isValid: isArrayOf(isString), message: 'inputPaths must be an array of strings' },
   { field: 'status', isValid: isDraftStatus, message: `status must be one of: ${DRAFT_STATUSES.join(', ')}` },
-  { field: 'psbt', isValid: isString, message: 'psbt must be a string' },
-  { field: 'amount', isValid: isBigIntString, message: 'amount must be a numeric string' },
-  { field: 'fee', isValid: isBigIntString, message: 'fee must be a numeric string' },
+  { field: 'signedDeviceIds', isValid: isArrayOf(isString), message: 'signedDeviceIds must be an array of strings' },
+  { field: 'agentId', isValid: isNullableString, message: 'agentId must be a string or null' },
+  { field: 'agentOperationalWalletId', isValid: isNullableString, message: 'agentOperationalWalletId must be a string or null' },
   { field: 'createdAt', isValid: isIsoDateString, message: 'createdAt must be an ISO date string' },
   { field: 'updatedAt', isValid: isIsoDateString, message: 'updatedAt must be an ISO date string' },
   { field: 'expiresAt', isValid: isNullableIsoDateString, message: 'expiresAt must be an ISO date string or null' },
-  { field: 'memo', isValid: isNullableString, message: 'memo must be a string or null' },
 ];
 
-function validateDraftRecipient(recipient: unknown, index: number, errors: string[]) {
-  if (!isObject(recipient)) {
-    errors.push(`recipients[${index}] must be an object`);
+function validateDraftOutput(output: unknown, index: number, errors: string[]) {
+  if (!isObject(output)) {
+    errors.push(`outputs[${index}] must be an object`);
     return;
   }
 
-  if (!isString(recipient.address)) errors.push(`recipients[${index}].address must be a string`);
-  if (!isBigIntString(recipient.amount)) errors.push(`recipients[${index}].amount must be a numeric string`);
-}
-
-function validateDraftRecipients(recipients: unknown, errors: string[]) {
-  if (!isArray(recipients)) {
-    errors.push('recipients must be an array');
-    return;
-  }
-
-  recipients.forEach((recipient, index) => validateDraftRecipient(recipient, index, errors));
-}
-
-function validateDraftSigner(signer: unknown, index: number, errors: string[]) {
-  if (!isObject(signer)) {
-    errors.push(`signers[${index}] must be an object`);
-    return;
-  }
-
-  if (!isString(signer.fingerprint)) errors.push(`signers[${index}].fingerprint must be a string`);
-  if (!isBoolean(signer.signed)) errors.push(`signers[${index}].signed must be a boolean`);
-  if (!isNullableIsoDateString(signer.signedAt)) {
-    errors.push(`signers[${index}].signedAt must be an ISO date string or null`);
+  if (!isString(output.address)) errors.push(`outputs[${index}].address must be a string`);
+  if (!isNumber(output.amount)) errors.push(`outputs[${index}].amount must be a number`);
+  if (output.sendMax !== undefined && !isBoolean(output.sendMax)) {
+    errors.push(`outputs[${index}].sendMax must be a boolean if present`);
   }
 }
 
-function validateDraftSigners(signers: unknown, errors: string[]) {
-  if (!isArray(signers)) {
-    errors.push('signers must be an array');
+function validateDraftOutputs(outputs: unknown, errors: string[]) {
+  if (outputs === null || outputs === undefined) {
     return;
   }
 
-  signers.forEach((signer, index) => validateDraftSigner(signer, index, errors));
+  if (!isArray(outputs)) {
+    errors.push('outputs must be an array if present');
+    return;
+  }
+
+  outputs.forEach((output, index) => validateDraftOutput(output, index, errors));
+}
+
+function validateDraftInput(input: unknown, index: number, errors: string[]) {
+  if (!isObject(input)) {
+    errors.push(`inputs[${index}] must be an object`);
+    return;
+  }
+
+  if (!isString(input.txid)) errors.push(`inputs[${index}].txid must be a string`);
+  if (!isNumber(input.vout)) errors.push(`inputs[${index}].vout must be a number`);
+  if (!isString(input.address)) errors.push(`inputs[${index}].address must be a string`);
+  if (!isNumber(input.amount)) errors.push(`inputs[${index}].amount must be a number`);
+}
+
+function validateDraftInputs(inputs: unknown, errors: string[]) {
+  if (inputs === null || inputs === undefined) {
+    return;
+  }
+
+  if (!isArray(inputs)) {
+    errors.push('inputs must be an array if present');
+    return;
+  }
+
+  inputs.forEach((input, index) => validateDraftInput(input, index, errors));
+}
+
+function validateDraftDecoyOutputs(decoyOutputs: unknown, errors: string[]) {
+  if (decoyOutputs === null || decoyOutputs === undefined) {
+    return;
+  }
+
+  if (!isArray(decoyOutputs)) {
+    errors.push('decoyOutputs must be an array if present');
+    return;
+  }
+
+  decoyOutputs.forEach((output, index) => {
+    if (!isObject(output)) {
+      errors.push(`decoyOutputs[${index}] must be an object`);
+      return;
+    }
+
+    if (!isString(output.address)) errors.push(`decoyOutputs[${index}].address must be a string`);
+    if (!isNumber(output.amount)) errors.push(`decoyOutputs[${index}].amount must be a number`);
+  });
 }
 
 // =============================================================================
@@ -418,8 +486,9 @@ export function validateDraftResponse(data: unknown): ValidationResult {
   }
 
   validateFields(data, errors, DRAFT_RESPONSE_RULES);
-  validateDraftRecipients(data.recipients, errors);
-  validateDraftSigners(data.signers, errors);
+  validateDraftOutputs(data.outputs, errors);
+  validateDraftInputs(data.inputs, errors);
+  validateDraftDecoyOutputs(data.decoyOutputs, errors);
 
   return { valid: errors.length === 0, errors };
 }

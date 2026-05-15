@@ -71,7 +71,7 @@ export const draftSchemas = {
       changeAddress: { type: 'string', nullable: true },
       effectiveAmount: { type: 'number', nullable: true },
       inputPaths: { type: 'array', items: { type: 'string' } },
-      status: { type: 'string', enum: ['unsigned', 'partial', 'signed'] },
+      status: { type: 'string', enum: [...MOBILE_DRAFT_STATUS_VALUES] },
       signedDeviceIds: { type: 'array', items: { type: 'string' } },
       agentId: { type: 'string', nullable: true },
       agentOperationalWalletId: { type: 'string', nullable: true },

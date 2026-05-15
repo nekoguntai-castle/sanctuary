@@ -13,6 +13,12 @@
  * ```
  */
 
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+import { MOBILE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/schemas/mobileApiRequests';
+import { draftSchemas } from '../../src/api/openapi/schemas/drafts';
+import { mobileAgentDraftSchemas } from '../../src/api/openapi/schemas/mobileAgentDrafts';
+import { transactionSchemas } from '../../src/api/openapi/schemas/transactions';
+import { walletSchemas } from '../../src/api/openapi/schemas/wallet';
 import {
   createContractTestSuite,
   validateWalletResponse,
@@ -30,6 +36,40 @@ import {
 // =============================================================================
 
 const contracts = createContractTestSuite('API');
+
+const sampleTxid = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+// =============================================================================
+// Live Contract Source Parity
+// =============================================================================
+
+describe('Contract validator live source parity', () => {
+  it('derives wallet networks from the shared Bitcoin network list', () => {
+    expect(walletSchemas.Wallet.properties.network.enum).toEqual([...BITCOIN_NETWORKS]);
+  });
+
+  it('derives transaction types from the public OpenAPI transaction schema', () => {
+    expect(transactionSchemas.Transaction.properties.type.enum).toEqual([
+      'sent',
+      'received',
+      'consolidation',
+      'receive',
+    ]);
+  });
+
+  it('derives draft statuses and PSBT fields from shared/OpenAPI contracts', () => {
+    expect(draftSchemas.DraftTransaction.properties.status.enum).toEqual([...MOBILE_DRAFT_STATUS_VALUES]);
+    expect(draftSchemas.DraftTransaction.required).toContain('psbtBase64');
+    expect(draftSchemas.DraftTransaction.properties).not.toHaveProperty('psbt');
+  });
+
+  it('keeps mobile agent draft statuses aligned with the shared mobile contract', () => {
+    expect(mobileAgentDraftSchemas.MobileAgentFundingDraft.properties.status.enum)
+      .toEqual([...MOBILE_DRAFT_STATUS_VALUES]);
+    expect(mobileAgentDraftSchemas.MobileAgentFundingDraftSignatureRequest.properties.status.enum)
+      .toEqual([...MOBILE_DRAFT_STATUS_VALUES]);
+  });
+});
 
 // =============================================================================
 // Wallet Contract Tests
@@ -63,6 +103,19 @@ describe('Wallet API Contract', () => {
 
   it('should validate a correct wallet response', () => {
     expect(() => contracts.expectValidWallet(validWallet)).not.toThrow();
+  });
+
+  it('should validate current shared Bitcoin network values', () => {
+    for (const network of BITCOIN_NETWORKS) {
+      expect(() => contracts.expectValidWallet({ ...validWallet, network })).not.toThrow();
+    }
+  });
+
+  it('should reject the legacy testnet network alias in wallet responses', () => {
+    const invalid = { ...validWallet, network: 'testnet' };
+    const result = validateWalletResponse(invalid);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('network must be one of: mainnet, testnet3, testnet4, signet, regtest');
   });
 
   it('should validate a multisig wallet response', () => {
@@ -161,33 +214,36 @@ describe('Device API Contract', () => {
 describe('Transaction API Contract', () => {
   const validTransaction = {
     id: 'tx-123',
-    txid: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    txid: sampleTxid,
+    walletId: 'wallet-456',
     type: 'received',
-    status: 'confirmed',
-    amount: '50000',
-    fee: '1000',
+    amount: 50000,
+    fee: 1000,
+    balanceAfter: null,
     confirmations: 6,
     blockHeight: 800000,
     blockTime: '2024-01-15T12:00:00.000Z',
     createdAt: '2024-01-15T11:55:00.000Z',
+    updatedAt: '2024-01-15T12:00:00.000Z',
     label: 'Payment from Alice',
     memo: null,
-    isRbf: false,
+    counterpartyAddress: null,
     replacedByTxid: null,
+    replacementForTxid: null,
+    rbfStatus: 'confirmed',
   };
 
   it('should validate a correct transaction response', () => {
     expect(() => contracts.expectValidTransaction(validTransaction)).not.toThrow();
   });
 
-  it('should validate a pending transaction', () => {
+  it('should validate an unconfirmed transaction', () => {
     const pendingTx = {
       ...validTransaction,
-      status: 'pending',
       confirmations: 0,
       blockHeight: null,
       blockTime: null,
-      isRbf: true,
+      rbfStatus: 'active',
     };
     expect(() => contracts.expectValidTransaction(pendingTx)).not.toThrow();
   });
@@ -195,17 +251,28 @@ describe('Transaction API Contract', () => {
   it('should validate a replaced transaction', () => {
     const replacedTx = {
       ...validTransaction,
-      status: 'replaced',
       replacedByTxid: 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
+      rbfStatus: 'replaced',
     };
     expect(() => contracts.expectValidTransaction(replacedTx)).not.toThrow();
+  });
+
+  it('should validate the public receive transaction type where OpenAPI accepts it', () => {
+    expect(() => contracts.expectValidTransaction({ ...validTransaction, type: 'receive' })).not.toThrow();
   });
 
   it('should reject invalid transaction type', () => {
     const invalid = { ...validTransaction, type: 'unknown' };
     const result = validateTransactionResponse(invalid);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('type must be one of: sent, received, self, consolidation');
+    expect(result.errors).toContain('type must be one of: sent, received, consolidation, receive');
+  });
+
+  it('should reject the removed self transaction type', () => {
+    const invalid = { ...validTransaction, type: 'self' };
+    const result = validateTransactionResponse(invalid);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('type must be one of: sent, received, consolidation, receive');
   });
 });
 
@@ -282,21 +349,41 @@ describe('Draft API Contract', () => {
   const validDraft = {
     id: 'draft-123',
     walletId: 'wallet-456',
-    status: 'pending',
-    psbt: 'cHNidP8B...',
-    amount: '100000',
-    fee: '500',
-    recipients: [
-      { address: 'bc1q...', amount: '100000' },
+    userId: 'user-789',
+    recipient: 'bc1qrecipient',
+    amount: 100000,
+    feeRate: 12.5,
+    selectedUtxoIds: [`${sampleTxid}:0`],
+    enableRBF: true,
+    subtractFees: false,
+    sendMax: false,
+    isRBF: false,
+    outputs: [
+      { address: 'bc1qrecipient', amount: 100000, sendMax: false },
     ],
-    signers: [
-      { fingerprint: 'ABC12345', signed: false, signedAt: null },
-      { fingerprint: 'DEF67890', signed: true, signedAt: '2024-01-15T12:00:00.000Z' },
+    inputs: [
+      { txid: sampleTxid, vout: 0, address: 'bc1qinput', amount: 100500 },
     ],
+    decoyOutputs: [],
+    payjoinUrl: null,
+    label: null,
+    memo: 'Payment to Bob',
+    psbtBase64: 'cHNidP8B...',
+    signedPsbtBase64: null,
+    fee: 500,
+    totalInput: 100500,
+    totalOutput: 100000,
+    changeAmount: 0,
+    changeAddress: null,
+    effectiveAmount: 100000,
+    inputPaths: ["m/84'/0'/0'/0/0"],
+    status: 'unsigned',
+    signedDeviceIds: [],
+    agentId: null,
+    agentOperationalWalletId: null,
     createdAt: '2024-01-15T11:00:00.000Z',
     updatedAt: '2024-01-15T12:00:00.000Z',
     expiresAt: '2024-01-22T11:00:00.000Z',
-    memo: 'Payment to Bob',
   };
 
   it('should validate a correct draft response', () => {
@@ -306,17 +393,43 @@ describe('Draft API Contract', () => {
   it('should validate draft with null optional fields', () => {
     const draftWithNulls = {
       ...validDraft,
+      payjoinUrl: null,
+      signedPsbtBase64: null,
+      changeAddress: null,
+      agentId: null,
+      agentOperationalWalletId: null,
       expiresAt: null,
+      label: null,
       memo: null,
     };
     expect(() => contracts.expectValidDraft(draftWithNulls)).not.toThrow();
+  });
+
+  it('should validate current draft statuses', () => {
+    for (const status of MOBILE_DRAFT_STATUS_VALUES) {
+      expect(() => contracts.expectValidDraft({ ...validDraft, status })).not.toThrow();
+    }
   });
 
   it('should reject invalid draft status', () => {
     const invalid = { ...validDraft, status: 'unknown' };
     const result = validateDraftResponse(invalid);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('status must be one of: pending, signed, broadcast, expired, cancelled');
+    expect(result.errors).toContain('status must be one of: unsigned, partial, signed');
+  });
+
+  it('should reject stale pending draft status', () => {
+    const invalid = { ...validDraft, status: 'pending' };
+    const result = validateDraftResponse(invalid);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('status must be one of: unsigned, partial, signed');
+  });
+
+  it('should reject stale psbt field without psbtBase64', () => {
+    const { psbtBase64, ...withoutPsbtBase64 } = validDraft;
+    const result = validateDraftResponse({ ...withoutPsbtBase64, psbt: psbtBase64 });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('psbtBase64 must be a string');
   });
 });
 
