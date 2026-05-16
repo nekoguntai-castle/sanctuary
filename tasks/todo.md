@@ -1,6 +1,6 @@
 # Task: Codebase Health Remediation Phase 0 Delivery 2026-05-16
 
-Status: in progress.
+Status: merged and verified via PR #492 as squash commit `6e531f7a5310df0e374f1466875cf4bcd8f02d56`.
 
 Goal: implement Phase 0 of `docs/plans/codebase-health-remediation-plan.md` by preserving the current dirty documentation state on a delivery branch, verifying it, and using `$pr-delivery` to merge the phase before Phase 1.
 
@@ -12,14 +12,15 @@ Goal: implement Phase 0 of `docs/plans/codebase-health-remediation-plan.md` by p
 - [x] Create a Phase 0 delivery branch and commit only documentation/task preservation changes.
 - [x] Rebase the delivery branch onto `origin/main` and resolve only documentation conflicts.
 - [x] Run Phase 0 documentation verification.
-- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+- [x] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
 
 ## Review
 
 - Rebased the Phase 0 documentation-preservation branch onto `origin/main` at `718a3d16`, replaying only the documentation commit and dropping unrelated local `main` history from the delivery branch.
 - Resolved documentation conflicts by keeping the Phase T rationalization closeout content and combining the new codebase-health task entries with the current `origin/main` task history.
 - Phase 0 verification passed: branch has one commit over `origin/main`; changed files are limited to `docs/plans/codebase-health-assessment.md`, `docs/plans/codebase-health-remediation-plan.md`, `docs/plans/grade-history/sanctuary_.jsonl`, `docs/plans/rationalization-plan.md`, `tasks/lessons.md`, and `tasks/todo.md`; `git diff --check origin/main...HEAD -- ...` passed; conflict-marker search found none; grade-history tail parses with `jq`.
-- PR delivery remains pending.
+- Pushed `codex/codebase-health-phase-0-preserve-docs`, opened PR #492, monitored the latest Forgejo runs until all completed successfully, and squash-merged with branch deletion disabled.
+- Post-merge verification passed: Forgejo reported PR #492 merged at `2026-05-16T09:52:57-10:00`; merge commit `6e531f7a5310df0e374f1466875cf4bcd8f02d56` exists locally and is an ancestor of `origin/main`.
 
 ---
 
