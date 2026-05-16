@@ -1,3 +1,30 @@
+# Task: Codebase Health Remediation Phase 1 Delivery 2026-05-16
+
+Status: in progress.
+
+Goal: implement Phase 1 of `docs/plans/codebase-health-remediation-plan.md` by verifying the local source is reconciled with `origin/main` Q4/R/S/T convergence fixes, updating the post-reconciliation grade evidence, and delivering the phase through `$pr-delivery`.
+
+## Plan
+
+- [x] Start from `origin/main` after Phase 0 closeout merge.
+- [x] Record local/remote commits and verify stale divergence signatures are gone.
+- [x] Run focused Payjoin, admin monitoring, wallet export, and API-client verification.
+- [x] Run the post-reconciliation full grade checkpoint and update grade docs/history.
+- [x] Run documentation verification and self-review.
+- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+
+## Review
+
+- `HEAD` and `origin/main` both resolved to `222d7ab8e7671e9a222720ad42fb8631dc299792`; only Phase 1 documentation/task files are intentionally dirty.
+- The stale Q4/R/S/T divergence-signature scan passed with no matches in Payjoin, admin monitoring, wallet export, Sparrow export services, or API client source.
+- Focused verification passed after building `shared`: `npx vitest run tests/api/client.test.ts` passed 94 tests, and `npm --prefix server run test:run -- tests/unit/api/payjoin.test.ts tests/unit/api/admin-monitoring-routes.test.ts tests/unit/api/wallets-export-routes.test.ts tests/unit/services/export/formatHandlers.test.ts` passed 124 tests.
+- Broader gates passed: `npm run typecheck`, `npm run lint`, and `bash /home/nekoguntai/.codex/skills/grade/grade.sh`.
+- Post-reconciliation grade updated to 93/100, A, High confidence at source commit `222d7ab8`.
+- Duplication follow-up remains Phase 2: the cleaned source-wide `npx jscpd` run measured 4.99%, but the repo-owned `scripts/quality/jscpd-only.sh` path still reports a polluted 49.74% including `.claude/worktrees`.
+- Documentation verification passed: `git diff --check`, conflict-marker scan, grade-history JSON parse, stale-current-wording scan, and final diff-stat review.
+
+---
+
 # Task: Codebase Health Remediation Phase 0 Delivery 2026-05-16
 
 Status: merged and verified via PR #492 as squash commit `6e531f7a5310df0e374f1466875cf4bcd8f02d56`.
