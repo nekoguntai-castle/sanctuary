@@ -90,6 +90,20 @@ export function registerTransferCollectionTests(): void {
       expect(res.body.message).toContain('toUserId');
     });
 
+    it('should return 400 when resourceId is empty', async () => {
+      const res = await request(getTransfersApp())
+        .post('/api/v1/transfers')
+        .set('Authorization', authHeader)
+        .send({
+          resourceType: 'wallet',
+          resourceId: '',
+          toUserId: recipientId,
+        });
+
+      expect(res.status).toBe(400);
+      expect(mockInitiateTransfer).not.toHaveBeenCalled();
+    });
+
     it('should return 400 for invalid resource type', async () => {
       const res = await request(getTransfersApp())
         .post('/api/v1/transfers')
@@ -102,6 +116,37 @@ export function registerTransferCollectionTests(): void {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toContain('wallet');
+    });
+
+    it('should return 400 when create body has unexpected fields', async () => {
+      const res = await request(getTransfersApp())
+        .post('/api/v1/transfers')
+        .set('Authorization', authHeader)
+        .send({
+          resourceType: 'wallet',
+          resourceId: walletId,
+          toUserId: recipientId,
+          unexpected: true,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Invalid transfer request');
+      expect(mockInitiateTransfer).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 when expiresInDays is not a positive integer', async () => {
+      const res = await request(getTransfersApp())
+        .post('/api/v1/transfers')
+        .set('Authorization', authHeader)
+        .send({
+          resourceType: 'wallet',
+          resourceId: walletId,
+          toUserId: recipientId,
+          expiresInDays: 0,
+        });
+
+      expect(res.status).toBe(400);
+      expect(mockInitiateTransfer).not.toHaveBeenCalled();
     });
 
     it('should return 404 when resource not found', async () => {
@@ -184,7 +229,7 @@ export function registerTransferCollectionTests(): void {
           toUserId: recipientId,
           message: 'Here is my device',
           keepExistingUsers: true,
-          expiresInDays: 7,
+          expiresInDays: 31,
         });
 
       expect(res.status).toBe(201);
@@ -194,7 +239,7 @@ export function registerTransferCollectionTests(): void {
           resourceType: 'device',
           message: 'Here is my device',
           keepExistingUsers: true,
-          expiresInDays: 7,
+          expiresInDays: 31,
         }),
       );
     });
@@ -239,14 +284,16 @@ export function registerTransferCollectionTests(): void {
       );
     });
 
-    it('should ignore invalid role filter', async () => {
+    it('should return 400 for invalid role filter', async () => {
       mockGetUserTransfers.mockResolvedValue({ transfers: [], total: 0 });
 
-      await request(getTransfersApp())
+      const res = await request(getTransfersApp())
         .get('/api/v1/transfers?role=invalid')
         .set('Authorization', authHeader);
 
-      expect(mockGetUserTransfers).toHaveBeenCalledWith('test-user-123', {});
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('Invalid transfer filter');
+      expect(mockGetUserTransfers).not.toHaveBeenCalled();
     });
 
     it('should filter transfers by status', async () => {
@@ -262,6 +309,18 @@ export function registerTransferCollectionTests(): void {
       );
     });
 
+    it('should return 400 for invalid status filter', async () => {
+      mockGetUserTransfers.mockResolvedValue({ transfers: [], total: 0 });
+
+      const res = await request(getTransfersApp())
+        .get('/api/v1/transfers?status=invalid')
+        .set('Authorization', authHeader);
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('Invalid transfer filter');
+      expect(mockGetUserTransfers).not.toHaveBeenCalled();
+    });
+
     it('should filter transfers by resourceType', async () => {
       mockGetUserTransfers.mockResolvedValue({ transfers: [], total: 0 });
 
@@ -275,14 +334,16 @@ export function registerTransferCollectionTests(): void {
       );
     });
 
-    it('should ignore invalid resourceType filter', async () => {
+    it('should return 400 for invalid resourceType filter', async () => {
       mockGetUserTransfers.mockResolvedValue({ transfers: [], total: 0 });
 
-      await request(getTransfersApp())
+      const res = await request(getTransfersApp())
         .get('/api/v1/transfers?resourceType=invalid')
         .set('Authorization', authHeader);
 
-      expect(mockGetUserTransfers).toHaveBeenCalledWith('test-user-123', {});
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('Invalid transfer filter');
+      expect(mockGetUserTransfers).not.toHaveBeenCalled();
     });
 
     it('should return 500 on service error', async () => {

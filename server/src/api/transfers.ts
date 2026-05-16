@@ -26,51 +26,57 @@ import {
   getTransfer,
   getPendingIncomingCount,
   getAwaitingConfirmationCount,
+  TRANSFER_RESOURCE_TYPES,
+  TRANSFER_ROLE_FILTER_VALUES,
+  TRANSFER_STATUS_FILTER_VALUES,
   type InitiateTransferInput,
   type TransferFilters,
-  type ResourceType,
-  type TransferStatus,
 } from '../services/transferService';
 
 const log = createLogger('TRANSFER:ROUTE');
 
 const router = Router();
 
-const InitiateTransferBodySchema = z.object({
-  resourceType: z.unknown(),
-  resourceId: z.unknown(),
-  toUserId: z.unknown(),
-  message: z.unknown().optional(),
-  keepExistingUsers: z.unknown().optional(),
-  expiresInDays: z.unknown().optional(),
-}).superRefine((data, ctx) => {
-  if (!data.resourceType || !data.resourceId || !data.toUserId) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'resourceType, resourceId, and toUserId are required',
-      path: ['resourceType'],
-    });
-    return;
-  }
+const TransferResourceTypeSchema = z.enum(TRANSFER_RESOURCE_TYPES);
+const TransferRoleFilterSchema = z.enum(TRANSFER_ROLE_FILTER_VALUES);
+const TransferStatusFilterSchema = z.enum(TRANSFER_STATUS_FILTER_VALUES);
 
-  if (data.resourceType !== 'wallet' && data.resourceType !== 'device') {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'resourceType must be "wallet" or "device"',
-      path: ['resourceType'],
-    });
-  }
-});
+const InitiateTransferBodySchema = z.object({
+  resourceType: TransferResourceTypeSchema,
+  resourceId: z.string().min(1),
+  toUserId: z.string().min(1),
+  message: z.string().optional(),
+  keepExistingUsers: z.boolean().optional(),
+  expiresInDays: z.number().int().positive().optional(),
+}).strict();
+
+type InitiateTransferBody = z.infer<typeof InitiateTransferBodySchema>;
 
 const DeclineTransferBodySchema = z.object({
-  reason: z.unknown().optional(),
-}).passthrough();
+  reason: z.string().optional(),
+}).strict().default({});
 
-const initiateTransferValidationMessage = (issues: Array<{ message: string }>) => (
-  issues.some(issue => issue.message === 'resourceType must be "wallet" or "device"')
-    ? 'resourceType must be "wallet" or "device"'
-    : 'resourceType, resourceId, and toUserId are required'
-);
+type DeclineTransferBody = z.infer<typeof DeclineTransferBodySchema>;
+
+const TransferListQuerySchema = z.object({
+  role: TransferRoleFilterSchema.optional(),
+  status: TransferStatusFilterSchema.optional(),
+  resourceType: TransferResourceTypeSchema.optional(),
+});
+
+type TransferListQuery = z.infer<typeof TransferListQuerySchema>;
+
+const initiateTransferValidationMessage = (issues: Array<{ path: string; message: string }>) => {
+  if (issues.some(issue => issue.path === 'resourceType')) {
+    return 'resourceType must be "wallet" or "device"';
+  }
+
+  if (issues.some(issue => ['resourceId', 'toUserId'].includes(issue.path))) {
+    return 'resourceType, resourceId, and toUserId are required';
+  }
+
+  return 'Invalid transfer request';
+};
 
 // All routes require authentication
 router.use(authenticate);
@@ -88,16 +94,29 @@ router.post('/', validate(
   { message: initiateTransferValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
-  const { resourceType, resourceId, toUserId, message, keepExistingUsers, expiresInDays } = req.body;
-
-  const input: InitiateTransferInput = {
-    resourceType: resourceType as ResourceType,
+  const {
+    resourceType,
     resourceId,
     toUserId,
     message,
     keepExistingUsers,
     expiresInDays,
+  } = req.body as InitiateTransferBody;
+
+  const input: InitiateTransferInput = {
+    resourceType,
+    resourceId,
+    toUserId,
   };
+  if (message !== undefined) {
+    input.message = message;
+  }
+  if (keepExistingUsers !== undefined) {
+    input.keepExistingUsers = keepExistingUsers;
+  }
+  if (expiresInDays !== undefined) {
+    input.expiresInDays = expiresInDays;
+  }
 
   const transfer = await initiateTransfer(userId, input);
 
@@ -121,22 +140,25 @@ router.post('/', validate(
  * - status: TransferStatus | 'active' | 'all' (default: 'all')
  * - resourceType: 'wallet' | 'device' (optional)
  */
-router.get('/', asyncHandler(async (req, res) => {
+router.get('/', validate(
+  { query: TransferListQuerySchema },
+  { message: 'Invalid transfer filter', code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
-  const { role, status, resourceType } = req.query;
+  const { role, status, resourceType } = req.query as unknown as TransferListQuery;
 
   const filters: TransferFilters = {};
 
-  if (role && ['initiator', 'recipient', 'all'].includes(role as string)) {
-    filters.role = role as 'initiator' | 'recipient' | 'all';
+  if (role) {
+    filters.role = role;
   }
 
   if (status) {
-    filters.status = status as TransferStatus | 'active' | 'all';
+    filters.status = status;
   }
 
-  if (resourceType && ['wallet', 'device'].includes(resourceType as string)) {
-    filters.resourceType = resourceType as ResourceType;
+  if (resourceType) {
+    filters.resourceType = resourceType;
   }
 
   const result = await getUserTransfers(userId, filters);
@@ -207,7 +229,7 @@ router.post('/:id/accept', asyncHandler(async (req, res) => {
 router.post('/:id/decline', validate({ body: DeclineTransferBodySchema }), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
-  const { reason } = req.body;
+  const { reason } = req.body as DeclineTransferBody;
 
   const transfer = await declineTransfer(userId, id, reason);
 

@@ -60,14 +60,16 @@ export const transferSchemas = {
   },
   TransferCreateRequest: {
     type: 'object',
+    additionalProperties: false,
     properties: {
       resourceType: { type: 'string', enum: [...TRANSFER_RESOURCE_TYPES] },
-      resourceId: { type: 'string' },
-      toUserId: { type: 'string' },
+      resourceId: { type: 'string', minLength: 1 },
+      toUserId: { type: 'string', minLength: 1 },
       message: { type: 'string' },
       keepExistingUsers: { type: 'boolean', default: true },
       expiresInDays: {
         type: 'integer',
+        minimum: 1,
         default: 7,
         description: 'Days until the transfer expires; values above 30 are capped by the service.',
       },
@@ -96,6 +98,7 @@ export const transferSchemas = {
   },
   TransferDeclineRequest: {
     type: 'object',
+    additionalProperties: false,
     properties: {
       reason: { type: 'string' },
     },

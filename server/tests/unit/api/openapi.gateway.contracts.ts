@@ -674,7 +674,14 @@ export function registerOpenApiGatewayTests() {
 
     const createSchema = openApiSpec.components.schemas.TransferCreateRequest;
     expect(createSchema.required).toEqual(['resourceType', 'resourceId', 'toUserId']);
+    expect(createSchema.additionalProperties).toBe(false);
     expect(createSchema.properties.resourceType.enum).toEqual([...TRANSFER_RESOURCE_TYPES]);
+    expect(createSchema.properties.resourceId.minLength).toBe(1);
+    expect(createSchema.properties.toUserId.minLength).toBe(1);
+    expect(createSchema.properties.expiresInDays.minimum).toBe(1);
+
+    const declineSchema = openApiSpec.components.schemas.TransferDeclineRequest;
+    expect(declineSchema.additionalProperties).toBe(false);
 
     const listParameters = openApiSpec.paths['/transfers'].get.parameters;
     expect(listParameters).toContainEqual(
@@ -682,6 +689,14 @@ export function registerOpenApiGatewayTests() {
         name: 'role',
         schema: expect.objectContaining({
           enum: [...TRANSFER_ROLE_FILTER_VALUES],
+        }),
+      })
+    );
+    expect(listParameters).toContainEqual(
+      expect.objectContaining({
+        name: 'resourceType',
+        schema: expect.objectContaining({
+          enum: [...TRANSFER_RESOURCE_TYPES],
         }),
       })
     );
@@ -697,6 +712,9 @@ export function registerOpenApiGatewayTests() {
     expect(openApiSpec.paths['/transfers'].post.responses[201].content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/OwnershipTransfer',
     });
+    expect(openApiSpec.paths['/transfers'].get.responses[400]).toEqual(
+      expect.objectContaining({ description: 'Error response' })
+    );
     expect(openApiSpec.paths['/transfers/counts'].get.responses[200].content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/TransferCountsResponse',
     });

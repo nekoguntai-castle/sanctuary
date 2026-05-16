@@ -22,17 +22,21 @@ vi.mock('../../../../src/utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../../src/services/transferService', () => ({
-  initiateTransfer: transferMocks.mockInitiateTransfer,
-  acceptTransfer: transferMocks.mockAcceptTransfer,
-  declineTransfer: transferMocks.mockDeclineTransfer,
-  cancelTransfer: transferMocks.mockCancelTransfer,
-  confirmTransfer: transferMocks.mockConfirmTransfer,
-  getUserTransfers: transferMocks.mockGetUserTransfers,
-  getTransfer: transferMocks.mockGetTransfer,
-  getPendingIncomingCount: transferMocks.mockGetPendingIncomingCount,
-  getAwaitingConfirmationCount: transferMocks.mockGetAwaitingConfirmationCount,
-}));
+vi.mock('../../../../src/services/transferService', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    initiateTransfer: transferMocks.mockInitiateTransfer,
+    acceptTransfer: transferMocks.mockAcceptTransfer,
+    declineTransfer: transferMocks.mockDeclineTransfer,
+    cancelTransfer: transferMocks.mockCancelTransfer,
+    confirmTransfer: transferMocks.mockConfirmTransfer,
+    getUserTransfers: transferMocks.mockGetUserTransfers,
+    getTransfer: transferMocks.mockGetTransfer,
+    getPendingIncomingCount: transferMocks.mockGetPendingIncomingCount,
+    getAwaitingConfirmationCount: transferMocks.mockGetAwaitingConfirmationCount,
+  };
+});
 
 vi.mock('../../../../src/middleware/auth', () => ({
   requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },

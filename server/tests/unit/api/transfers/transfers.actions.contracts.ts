@@ -120,6 +120,26 @@ export function registerTransferActionTests(): void {
       expect(mockDeclineTransfer).toHaveBeenCalledWith('test-user-123', transferId, undefined);
     });
 
+    it('should return 400 when decline reason is not a string', async () => {
+      const res = await request(getTransfersApp())
+        .post(`/api/v1/transfers/${transferId}/decline`)
+        .set('Authorization', authHeader)
+        .send({ reason: 123 });
+
+      expect(res.status).toBe(400);
+      expect(mockDeclineTransfer).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 when decline body has unexpected fields', async () => {
+      const res = await request(getTransfersApp())
+        .post(`/api/v1/transfers/${transferId}/decline`)
+        .set('Authorization', authHeader)
+        .send({ reason: 'No thanks', unexpected: true });
+
+      expect(res.status).toBe(400);
+      expect(mockDeclineTransfer).not.toHaveBeenCalled();
+    });
+
     it('should return 404 when transfer not found', async () => {
       mockDeclineTransfer.mockRejectedValue(new NotFoundError('Transfer', 'non-existent'));
 

@@ -21,33 +21,37 @@ flowchart LR
 
 subgraph 0["src"]
 1["config.ts"]
-2["index.ts"]
-subgraph 3["middleware"]
-4[" "]
+subgraph 2["config"]
+3[" "]
 end
-subgraph 5["routes"]
+4["index.ts"]
+subgraph 5["middleware"]
 6[" "]
 end
-subgraph 7["services"]
+subgraph 7["routes"]
 8[" "]
 end
-subgraph 9["utils"]
+subgraph 9["services"]
 A[" "]
 end
+subgraph B["utils"]
+C[" "]
 end
-1-->A
-2-->1
-2-->4
-2-->6
-2-->8
-2-->A
+end
+1-->3
+1-->C
 4-->1
 4-->6
+4-->8
 4-->A
+4-->C
 6-->1
-6-->4
-6-->A
+6-->8
+6-->C
 8-->1
-8-->A
+8-->6
+8-->C
 A-->1
+A-->C
+C-->1
 ```

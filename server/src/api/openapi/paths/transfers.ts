@@ -90,6 +90,7 @@ export const transferPaths = {
             },
           },
         },
+        400: apiErrorResponse,
         401: apiErrorResponse,
         500: apiErrorResponse,
       },

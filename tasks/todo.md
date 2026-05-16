@@ -1,6 +1,33 @@
-# Task: Phase L Gateway Deploy/Runtime Contract Convergence 2026-05-16
+# Task: Phase M Transfer Route Validation Convergence 2026-05-16
 
 Status: implemented locally; PR delivery pending.
+
+Goal: implement the reviewed Phase M slice by aligning transfer route request/query validation with the existing transfer-service constants and OpenAPI contracts, rejecting invalid filters at the route boundary, typing create/decline bodies, and delivering the change through a PR.
+
+## Plan
+
+- [x] Reuse `TRANSFER_RESOURCE_TYPES`, `TRANSFER_ROLE_FILTER_VALUES`, and `TRANSFER_STATUS_FILTER_VALUES` in transfer route validation instead of route-local tuples/casts.
+- [x] Replace `z.unknown()` create/decline body schemas with typed closed schemas that match OpenAPI and preserve documented defaults/service behavior.
+- [x] Make invalid `role`, `status`, and `resourceType` query filters return a validation error instead of being ignored or cast through to the service.
+- [x] Update OpenAPI schema details and focused transfer/OpenAPI tests for closed bodies, invalid filters, invalid create fields, and typed decline reasons.
+- [x] Run focused route/OpenAPI verification, server type/build/lint checks, touched-file lizard, stale-drift searches, and `git diff --check`.
+- [ ] Open, monitor, and merge the PR.
+
+## Review
+
+- Transfer route validation now derives resource type, role filter, and status filter values from `transferService` constants. Invalid documented query filter values now return `400 INVALID_INPUT` instead of being silently ignored or cast through to the service.
+- Create-transfer bodies now use typed closed validation for `resourceType`, non-empty `resourceId`/`toUserId`, optional string `message`, optional boolean `keepExistingUsers`, and positive integer `expiresInDays`; values above 30 remain accepted so the documented service cap still owns that behavior.
+- Decline-transfer bodies now accept an omitted body or optional string `reason`, reject non-string reasons, and reject unexpected fields.
+- OpenAPI now documents closed transfer create/decline request bodies, non-empty create IDs, positive `expiresInDays`, and `400` list-filter errors.
+- Focused tests cover invalid filters, closed create/decline bodies, empty IDs, invalid expiry values, typed decline reasons, OpenAPI parity, and the preserved >30-day service-cap path.
+- CI architecture reproduced a stale generated gateway graph from the prior gateway config submodule split; committed the regenerated `docs/architecture/generated/gateway.md` output with this branch.
+- Verification passed: `npm --prefix shared run build`; `npm --prefix server run prisma:generate`; `npm --prefix server run test:run -- tests/unit/api/transfers.test.ts tests/unit/api/openapi.gateway.contracts.ts tests/unit/api/openapi.test.ts`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm --prefix server run test:coverage`; `npm run lint:server`; `npm run quality:lizard -- --files server/src/api/transfers.ts server/src/api/openapi/schemas/transfers.ts server/src/api/openapi/paths/transfers.ts`; stale route-local tuple/cast/`z.unknown()` search; `npm run arch:check`; `git diff --check`.
+
+---
+
+# Task: Phase L Gateway Deploy/Runtime Contract Convergence 2026-05-16
+
+Status: merged and verified via PR #476 as squash commit `2f92b7d87f1bea812d776b5b1f3ac2e2a334af85`.
 
 Goal: implement Phase L from the rationalization plan by aligning gateway runtime env handling with compose/docs, making documented push credential file mounts work, cleaning stale push enable-flag docs, replacing offline/install `ai` service references with `llm-egress-proxy`, documenting the prebuilt compose image-set decision, and delivering the change through a PR.
 
@@ -11,7 +38,7 @@ Goal: implement Phase L from the rationalization plan by aligning gateway runtim
 - [x] Align `docker-compose.yml`, gateway README, and gateway architecture docs with the runtime contract; remove stale `FCM_ENABLED`/`APNS_ENABLED` guidance and document prebuilt compose as reduced/core unless image publishing is intentionally expanded.
 - [x] Replace active offline/install/upgrade `ai` service references with `llm-egress-proxy` and update offline bundle tests for gateway/proxy core images.
 - [x] Run focused gateway/offline/install verification, compose config service checks, negative stale-drift searches, type/build/lint/lizard as needed.
-- [ ] Open, monitor, and merge the PR.
+- [x] Open, monitor, and merge the PR.
 
 ## Review
 
@@ -19,6 +46,8 @@ Goal: implement Phase L from the rationalization plan by aligning gateway runtim
 - Updated compose/docs to match the runtime contract and to document `docker-compose.ghcr.yml`/release image publishing as intentionally reduced to prebuilt frontend/backend web-core images.
 - Replaced active offline/install/upgrade `ai` service references with `llm-egress-proxy` and expanded the offline bundle archive-shape test to assert gateway and LLM egress proxy core images.
 - Verification passed: `npm --prefix shared run build`; `npm --prefix gateway run test:run -- tests/unit/config.test.ts tests/unit/routes/proxyConfig.test.ts tests/unit/services/backendEvents.deviceTokens.test.ts`; `npm --prefix gateway run build`; `npm run lint:gateway`; `npm run lint`; `npm --prefix gateway run test:coverage`; `npm run quality:lizard -- --files gateway/src/config.ts gateway/src/config/env.ts scripts/check-blocking-io.mjs`; full Semgrep baseline gate; `bash -n` for touched offline/install scripts; `bash tests/install/unit/offline-bundle-script.test.sh`; source and GHCR `docker compose config --services`; stale-string searches for push enable flags, backend port 3000, and active `ai` service references; `git diff --check`.
+- PR #476 passed Forgejo Architecture, Build Dev Images scope, Code Quality, Test Suite full lanes including gateway coverage, Full Test Summary, and PR Required Checks, then squash-merged as `2f92b7d87f1bea812d776b5b1f3ac2e2a334af85`.
+- Post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 
