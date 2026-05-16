@@ -9,6 +9,7 @@
  */
 
 import type { NetworkType } from '../constants/bitcoin';
+import type { SyncPriority as CanonicalSyncPriority } from '../constants/sync';
 import type { PublicTransactionType } from '../constants/transactions';
 import {
   WalletType as CanonicalWalletType,
@@ -124,7 +125,7 @@ export type SyncStatus = 'success' | 'failed' | 'partial' | 'retrying';
 /**
  * Sync priority
  */
-export type SyncPriority = 'high' | 'normal' | 'low';
+export type SyncPriority = CanonicalSyncPriority;
 
 // =============================================================================
 // Node Configuration Enums

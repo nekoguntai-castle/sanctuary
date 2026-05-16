@@ -5,10 +5,11 @@
  */
 
 import type { DistributedLock } from '../../infrastructure';
+import type { SyncPriority } from '@sanctuary/shared/constants/sync';
 
 export interface SyncJob {
   walletId: string;
-  priority: 'high' | 'normal' | 'low';
+  priority: SyncPriority;
   requestedAt: Date;
   retryCount?: number;
   lastError?: string;

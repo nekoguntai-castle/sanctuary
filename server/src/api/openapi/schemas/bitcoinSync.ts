@@ -1,9 +1,10 @@
 import { BITCOIN_NON_REGTEST_NETWORKS } from "@sanctuary/shared/constants/bitcoin";
+import { SYNC_PRIORITY_VALUES } from "@sanctuary/shared/constants/sync";
 
 export const syncSchemas = {
   SyncPriority: {
     type: "string",
-    enum: ["high", "normal", "low"],
+    enum: [...SYNC_PRIORITY_VALUES],
   },
   SyncPriorityRequest: {
     type: "object",

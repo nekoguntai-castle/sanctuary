@@ -3,6 +3,11 @@ import { getRedisClient, isRedisConnected } from "../infrastructure";
 import { createLogger } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 import { toBullMqJobId } from "../jobs/bullMqJobIds";
+import {
+  DEFAULT_SYNC_PRIORITY,
+  SYNC_PRIORITY_BULLMQ_PRIORITY,
+  type SyncPriority,
+} from "@sanctuary/shared/constants/sync";
 import type { SyncWalletJobData } from "../worker/jobs/types";
 
 const log = createLogger("WORKER_SYNC_QUEUE");
@@ -13,16 +18,8 @@ const SYNC_QUEUE_NAME = "sync";
 let syncQueue: Queue<SyncWalletJobData> | null = null;
 let syncQueueConnectionKey: string | null = null;
 
-function toBullPriority(priority: "high" | "normal" | "low"): number {
-  switch (priority) {
-    case "high":
-      return 1;
-    case "normal":
-      return 2;
-    case "low":
-    default:
-      return 3;
-  }
+function toBullPriority(priority: SyncPriority): number {
+  return SYNC_PRIORITY_BULLMQ_PRIORITY[priority];
 }
 
 function buildConnectionKey(connection: ConnectionOptions): string {
@@ -70,7 +67,7 @@ function getOrCreateSyncQueue(): Queue<SyncWalletJobData> | null {
 export async function enqueueWalletSync(
   walletId: string,
   options: {
-    priority?: "high" | "normal" | "low";
+    priority?: SyncPriority;
     reason?: string;
     delayMs?: number;
     jobId?: string;
@@ -82,7 +79,7 @@ export async function enqueueWalletSync(
     return false;
   }
 
-  const priority = options.priority ?? "normal";
+  const priority = options.priority ?? DEFAULT_SYNC_PRIORITY;
 
   try {
     await queue.add(
@@ -111,7 +108,7 @@ export async function enqueueWalletSync(
 export async function enqueueWalletSyncBatch(
   walletIds: string[],
   options: {
-    priority?: "high" | "normal" | "low";
+    priority?: SyncPriority;
     reason?: string;
     staggerDelayMs?: number;
     jobIdPrefix?: string;
@@ -129,7 +126,7 @@ export async function enqueueWalletSyncBatch(
     return 0;
   }
 
-  const priority = options.priority ?? "normal";
+  const priority = options.priority ?? DEFAULT_SYNC_PRIORITY;
   const staggerDelayMs = options.staggerDelayMs ?? 0;
   const batchId = `${options.jobIdPrefix ?? "manual-sync"}:${Date.now()}`;
 

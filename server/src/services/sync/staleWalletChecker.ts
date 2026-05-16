@@ -10,6 +10,7 @@ import { walletRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { getConfig } from '../../config';
+import type { SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { SyncState } from './types';
 
 const log = createLogger('SYNC:STALE');
@@ -39,7 +40,7 @@ export async function resetStuckSyncs(): Promise<void> {
  */
 export async function checkAndQueueStaleSyncs(
   state: SyncState,
-  queueSync: (walletId: string, priority: 'high' | 'normal' | 'low') => void,
+  queueSync: (walletId: string, priority: SyncPriority) => void,
 ): Promise<void> {
   if (!state.isRunning) return;
 

@@ -21,6 +21,10 @@ import { initializeOpenTelemetry } from './utils/tracing/otel';
 const otelPromise = initializeOpenTelemetry();
 
 import os from 'node:os';
+import {
+  SYNC_PRIORITY_BULLMQ_PRIORITY,
+  type SyncPriority,
+} from '@sanctuary/shared/constants/sync';
 import { getConfig } from './config';
 import { createLogger } from './utils/logger';
 import { getErrorMessage } from './utils/errors';
@@ -54,16 +58,8 @@ let shutdownExitCode: 0 | 1 = 0;
 // Reconciliation interval - clean up stale subscriptions every 15 minutes
 const RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
 
-function toBullPriority(priority: 'high' | 'normal' | 'low'): number {
-  switch (priority) {
-    case 'high':
-      return 1;
-    case 'normal':
-      return 2;
-    case 'low':
-    default:
-      return 3;
-  }
+function toBullPriority(priority: SyncPriority): number {
+  return SYNC_PRIORITY_BULLMQ_PRIORITY[priority];
 }
 
 // =============================================================================
@@ -527,7 +523,7 @@ function setupStaleWalletHandler(): void {
     const result = returnvalue as {
       staleWalletIds?: string[];
       queued?: number;
-      priority?: 'high' | 'normal' | 'low';
+      priority?: SyncPriority;
       staggerDelayMs?: number;
       reason?: string;
     } | undefined;

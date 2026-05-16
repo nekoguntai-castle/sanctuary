@@ -9,22 +9,23 @@ import { z } from 'zod';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { rateLimitByUser } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
-import { getSyncCoordinator, type SyncPriority } from '../services/sync/syncCoordinator';
+import { getSyncCoordinator } from '../services/sync/syncCoordinator';
 import { asyncHandler } from '../errors/errorHandler';
+import { DEFAULT_SYNC_PRIORITY, SYNC_PRIORITY_VALUES, type SyncPriority } from '@sanctuary/shared/constants/sync';
 
 const router = Router();
 
-const SyncPriorityBodySchema = z.object({
-  priority: z.unknown().optional(),
-}).passthrough().catch({});
+const SyncPriorityBodySchema = z.preprocess(
+  value => value === undefined ? {} : value,
+  z.object({
+    priority: z.enum(SYNC_PRIORITY_VALUES).optional(),
+  }).strict(),
+);
 
-function readPriority(body: unknown): SyncPriority {
-  /* v8 ignore next -- JSON body middleware provides an object for this route */
-  if (!body || typeof body !== 'object') {
-    return 'normal';
-  }
+type SyncPriorityBody = z.infer<typeof SyncPriorityBodySchema>;
 
-  return ((body as { priority?: SyncPriority }).priority ?? 'normal');
+function readPriority(body: SyncPriorityBody): SyncPriority {
+  return body.priority ?? DEFAULT_SYNC_PRIORITY;
 }
 
 // All routes require authentication

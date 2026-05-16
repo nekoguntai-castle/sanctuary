@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 
 import express from 'express';
 import request from 'supertest';
+import { DEFAULT_SYNC_PRIORITY } from '@sanctuary/shared/constants/sync';
 
 // Hoist mock variables for use in vi.mock() factories
 const {
@@ -52,6 +53,11 @@ vi.mock('../../../src/services/syncService', () => ({
 
 vi.mock('../../../src/services/sync/syncService', () => ({
   getSyncService: () => mockSyncService,
+}));
+
+vi.mock('../../../src/services/bitcoin/blockchain', () => ({
+  syncWallet: vi.fn(),
+  updateTransactionConfirmations: vi.fn(),
 }));
 
 vi.mock('../../../src/services/workerSyncQueue', () => ({
@@ -197,6 +203,38 @@ describe('Sync API - Network Endpoints', () => {
         syncInProgress: true,
       });
       expect(mockSyncService.queueSync).toHaveBeenCalledWith('wallet-1', 'high');
+    });
+
+    it('POST /sync/queue/:walletId defaults omitted bodies to normal priority', async () => {
+      mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
+
+      const response = await request(app)
+        .post('/sync/queue/wallet-1');
+
+      expect(response.status).toBe(200);
+      expect(mockSyncService.queueSync).toHaveBeenCalledWith('wallet-1', DEFAULT_SYNC_PRIORITY);
+    });
+
+    it.each([
+      ['invalid priority', { priority: 'urgent' }],
+      ['null priority', { priority: null }],
+      ['extra fields', { priority: 'normal', unexpected: true }],
+    ])('POST /sync/queue/:walletId rejects %s', async (_case, body) => {
+      const response = await request(app)
+        .post('/sync/queue/wallet-1')
+        .send(body);
+
+      expect(response.status).toBe(400);
+      expect(mockSyncService.queueSync).not.toHaveBeenCalled();
+    });
+
+    it('POST /sync/queue/:walletId rejects non-object JSON bodies', async () => {
+      const response = await request(app)
+        .post('/sync/queue/wallet-1')
+        .send([]);
+
+      expect(response.status).toBe(400);
+      expect(mockSyncService.queueSync).not.toHaveBeenCalled();
     });
 
     it('POST /sync/queue/:walletId returns 404 when wallet missing', async () => {

@@ -40,6 +40,7 @@ import {
   enqueueWalletSyncBatch,
 } from "../../../src/services/workerSyncQueue";
 import { toBullMqJobId } from "../../../src/jobs/bullMqJobIds";
+import { SYNC_PRIORITY_BULLMQ_PRIORITY } from "@sanctuary/shared/constants/sync";
 
 describe("workerSyncQueue", () => {
   beforeEach(async () => {
@@ -64,7 +65,7 @@ describe("workerSyncQueue", () => {
       "sync-wallet",
       { walletId: "wallet-1", priority: "high", reason: "manual" },
       {
-        priority: 1,
+        priority: SYNC_PRIORITY_BULLMQ_PRIORITY.high,
         delay: 250,
         jobId: toBullMqJobId("manual-sync:wallet-1"),
       },
@@ -91,7 +92,7 @@ describe("workerSyncQueue", () => {
           reason: "manual-network-sync",
         },
         opts: {
-          priority: 3,
+          priority: SYNC_PRIORITY_BULLMQ_PRIORITY.low,
           delay: 0,
           jobId: toBullMqJobId(
             "manual-network-sync:mainnet:user-1:12345:wallet-1",
@@ -106,7 +107,7 @@ describe("workerSyncQueue", () => {
           reason: "manual-network-sync",
         },
         opts: {
-          priority: 3,
+          priority: SYNC_PRIORITY_BULLMQ_PRIORITY.low,
           delay: 100,
           jobId: toBullMqJobId(
             "manual-network-sync:mainnet:user-1:12345:wallet-2",
@@ -123,5 +124,20 @@ describe("workerSyncQueue", () => {
     await expect(enqueueWalletSyncBatch(["wallet-1"])).resolves.toBe(0);
     expect(mocks.mockQueueAdd).not.toHaveBeenCalled();
     expect(mocks.mockQueueAddBulk).not.toHaveBeenCalled();
+  });
+
+  it("uses the canonical normal priority when no priority is provided", async () => {
+    const queued = await enqueueWalletSync("wallet-1");
+
+    expect(queued).toBe(true);
+    expect(mocks.mockQueueAdd).toHaveBeenCalledWith(
+      "sync-wallet",
+      { walletId: "wallet-1", priority: "normal", reason: undefined },
+      {
+        priority: SYNC_PRIORITY_BULLMQ_PRIORITY.normal,
+        delay: undefined,
+        jobId: undefined,
+      },
+    );
   });
 });

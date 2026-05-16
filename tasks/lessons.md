@@ -2,6 +2,21 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Prove Claude Code Router Wiring With The Real Client
+
+**Rule:** Before declaring Claude Code model-router wiring complete, run a real `claude -p` probe through the configured `ANTHROPIC_BASE_URL`, including default cloud routing and one explicit local model.
+
+**Why:** Curl against `/v1/models` over a Unix socket proved the router was healthy, but Claude Code 2.1.142 did not use `unix:` base URLs successfully here, posted to `/v1/messages?beta=true`, and surfaced a response `ZlibError` only during real client traffic. The user also clarified local LLMs should only be used from an explicit hard model selection; default aliases must remain Anthropic.
+
+**How to apply:**
+
+- Treat curl socket checks as router health only, not client compatibility proof.
+- Verify Claude Code against the exact persistent base URL shape, usually `http://127.0.0.1:<port>` if Unix socket support is unproven.
+- Route API paths by parsed pathname so query strings such as `?beta=true` do not break dispatch.
+- Avoid forwarding stale `content-encoding` after a fetch-based proxy decodes upstream bodies; prefer identity encoding or strip encoding headers.
+- Set `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL`, and `ANTHROPIC_SMALL_FAST_MODEL` to cloud model IDs when local models are exposed.
+- Verify that no-model/default Claude requests route cloud, and explicit local IDs such as `qwen3.6-35b-a3b` route local.
+
 ## Preserve Security Boundaries When Renaming Misleading Components
 
 **Rule:** When the user rejects misleading runtime framing, separate naming/product support concerns from security-boundary value before deleting a component.

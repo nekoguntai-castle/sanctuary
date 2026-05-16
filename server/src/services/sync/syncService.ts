@@ -23,6 +23,7 @@ import { eventService } from '../eventService';
 import { releaseLock, withLock } from '../../infrastructure';
 import { getWorkerHealthStatus } from '../workerHealth';
 import { syncPollingModeTransitions } from '../../observability/metrics';
+import { DEFAULT_SYNC_PRIORITY, type SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { SyncState, SyncResult, SyncHealthMetrics, PollingMode } from './types';
 import { queueSync as doQueueSync, processQueue as doProcessQueue } from './syncQueue';
 import { executeSyncJob as doExecuteSyncJob, acquireSyncLock as doAcquireSyncLock } from './walletSync';
@@ -266,7 +267,7 @@ class SyncService {
   /**
    * Queue a wallet for sync
    */
-  queueSync(walletId: string, priority: 'high' | 'normal' | 'low' = 'normal'): void {
+  queueSync(walletId: string, priority: SyncPriority = DEFAULT_SYNC_PRIORITY): void {
     doQueueSync(
       this.state,
       walletId,
@@ -278,7 +279,7 @@ class SyncService {
   /**
    * Queue all user's wallets for sync (called on login/page load)
    */
-  async queueUserWallets(userId: string, priority: 'high' | 'normal' | 'low' = 'normal'): Promise<void> {
+  async queueUserWallets(userId: string, priority: SyncPriority = DEFAULT_SYNC_PRIORITY): Promise<void> {
     const wallets = await walletRepository.findByUserId(userId);
 
     for (const wallet of wallets) {

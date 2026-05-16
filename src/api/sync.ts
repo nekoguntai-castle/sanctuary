@@ -6,6 +6,7 @@
 
 import apiClient from './client';
 import type { NetworkType as BitcoinNetworkType } from '@sanctuary/shared/constants/bitcoin';
+import { DEFAULT_SYNC_PRIORITY, type SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { WalletLogEntry } from '../../hooks/websocket';
 
 export interface SyncStatus {
@@ -42,7 +43,7 @@ export async function syncWallet(walletId: string): Promise<SyncResult> {
  */
 export async function queueSync(
   walletId: string,
-  priority: 'high' | 'normal' | 'low' = 'normal'
+  priority: SyncPriority = DEFAULT_SYNC_PRIORITY
 ): Promise<QueueResult> {
   return apiClient.post<QueueResult>(`/sync/queue/${walletId}`, { priority });
 }
@@ -59,7 +60,7 @@ export async function getSyncStatus(walletId: string): Promise<SyncStatus> {
  * Call this on login or page load
  */
 export async function queueUserWallets(
-  priority: 'high' | 'normal' | 'low' = 'normal'
+  priority: SyncPriority = DEFAULT_SYNC_PRIORITY
 ): Promise<{ success: boolean; message: string }> {
   return apiClient.post<{ success: boolean; message: string }>('/sync/user', { priority });
 }
@@ -112,7 +113,7 @@ export interface NetworkSyncStatus {
  */
 export async function syncNetworkWallets(
   network: NetworkType,
-  priority: 'high' | 'normal' | 'low' = 'normal'
+  priority: SyncPriority = DEFAULT_SYNC_PRIORITY
 ): Promise<NetworkSyncResult> {
   return apiClient.post<NetworkSyncResult>(`/sync/network/${network}`, { priority });
 }

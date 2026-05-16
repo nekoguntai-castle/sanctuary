@@ -21,6 +21,7 @@ import { getConfig } from "../../config";
 import { eventService } from "../eventService";
 import { acquireLock, extendLock, releaseLock } from "../../infrastructure";
 import { normalizeLegacyBitcoinNetwork } from "../bitcoin/networks";
+import type { SyncPriority } from "@sanctuary/shared/constants/sync";
 import type { SyncState } from "./types";
 import {
   ELECTRUM_SUBSCRIPTION_LOCK_KEY,
@@ -49,7 +50,7 @@ function getConfiguredSubscriptionNetwork() {
  */
 export async function setupRealTimeSubscriptions(
   state: SyncState,
-  queueSync: (walletId: string, priority: "high" | "normal" | "low") => void,
+  queueSync: (walletId: string, priority: SyncPriority) => void,
   updateAllConfirmations: () => Promise<void>,
 ): Promise<void> {
   try {
@@ -612,7 +613,7 @@ export async function handleNewBlock(
 export async function handleAddressActivity(
   state: SyncState,
   activity: { scriptHash: string; address?: string; status: string },
-  queueSync: (walletId: string, priority: "high" | "normal" | "low") => void,
+  queueSync: (walletId: string, priority: SyncPriority) => void,
 ): Promise<void> {
   const address = activity.address;
   if (!address) {

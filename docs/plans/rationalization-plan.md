@@ -2,7 +2,7 @@
 
 Date: 2026-05-15
 Owner: Codex
-Status: Original queue complete; optional follow-up queue complete through Phase I
+Status: Original queue complete; optional follow-up queue complete through Phase I; post-Phase-I reanalysis queued
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, and preference patch semantics
 
 ## Executive Summary
@@ -12,7 +12,7 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 - Nested preference path reads, nested patch construction, and optimistic rollback now use shared helpers without replacing backend validation, backend canonical storage, or the current top-level preference patch contract.
 - No non-hardware rationalization phase remains in the original six-phase queue. The physical hardware test remains a separate manual/external validation item.
 - A fresh 2026-05-14 reanalysis did not reopen those merged phases, but it found a new follow-up queue: wallet role/capability contracts, Bitcoin script and wallet/account type identity, node/Electrum config projection, stale contract-test helper constants, and login health probing were the consolidation candidates worth addressing next. Subsequent 2026-05-15 independent reviews confirmed that order, and Phases A, B, B2, C, D, and E have since merged.
-- Current review status: no hard non-hardware rationalization blocker remains open. The physical hardware test remains the only deferred validation item outside the completed queue. The post-Phase-E optional queue is complete through Phase I; no additional non-hardware rationalization phase is queued.
+- Current review status: no completed phase is reopened, and the physical hardware test remains the only deferred external validation item. A fresh post-Phase-I scrub found new non-blocking consolidation candidates, with sync priority validation, mempool estimator defaults, gateway deploy/runtime contracts, UTXO strategy values, transfer filter validation, websocket event/channel ownership, and frontend API hygiene as the next worthwhile queue.
 
 ## Divergence Inventory
 
@@ -833,6 +833,73 @@ Scope: split transaction type domains without changing stored values, public res
 - PR #472 squash-merged as `a36b044dc59f0e0af0f5f1ab63e19e9510d57be8`.
 - Post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
+## Post-Phase-I Divergence Reanalysis Addendum - 2026-05-15
+
+Scope: re-scrub current `main` after Phase I, looking for other login-style divergences: duplicated value contracts, route validation paths that disagree with OpenAPI, client helpers that bypass central API behavior, stale compatibility events, deployment/runtime contract drift, and justified security or compatibility splits. This addendum does not reopen Phases A-I.
+
+### Post-Phase-I Verdict
+
+- Completed rationalization phases stay closed. Login health lookup, feature flags, actionable draft statuses, AI provider parity, transaction type boundaries, wallet roles, wallet identity, Bitcoin networks, and node projection constants remain materially better than the earlier baseline.
+- The remaining highest-risk divergences are not auth-session forks, but they are the same pattern: a public contract or runtime default exists in two places and one side can silently do something different.
+- Worth consolidating first: sync priority validation and worker priority mapping, mempool estimator values/defaults, gateway deploy/runtime environment contracts, UTXO selection strategies, transfer filter validation, websocket event/channel ownership, and a small frontend API hygiene pass.
+- Mostly justified or watch-only: raw refresh fetch, root `/health` versus `/api/v1/health`, LLM egress proxy/backend validation split, gateway route manifest versus request-schema map, device roles versus wallet roles, wallet owner-only UI checks versus edit-capable UI checks, and compatibility barrels.
+- Broad generated frontend API types remain a future project. The current recommendation is to fix specific drift-prone contracts first instead of starting a wide generated-client migration.
+
+### Post-Phase-I Inventory
+
+| Area | Evidence | Risk | Disposition |
+| --- | --- | --- | --- |
+| Sync priority values and validation | `shared/types/domain.ts` types `high`/`normal`/`low`; `src/api/sync.ts`, `server/src/services/sync/syncCoordinator.ts`, `server/src/services/sync/syncQueue.ts`, `server/src/worker/jobs/types.ts`, `server/src/services/workerSyncQueue.ts`, `server/src/worker.ts`, and OpenAPI repeat the values. `server/src/api/sync.ts` accepts `z.unknown()` and casts the value through. | OpenAPI promises an enum, but invalid HTTP input can enter service/worker code. In-memory sorting can produce undefined priority order; BullMQ conversion falls through to low priority. | Converge first |
+| Mempool estimator values and defaults | Runtime mempool config, Prisma default, migration default, frontend NodeConfig default, and UI fallback use `mempool_space`; `server/src/api/admin/nodeConfigData.ts` has local `VALID_ESTIMATORS` and falls back to `simple`; admin node config tests assert the `simple` fallback. | Admin save/load can silently switch the estimator from projected-blocks mode to simple mode when the field is missing/null, disagreeing with DB/runtime/frontend defaults. | Converge second |
+| Gateway runtime and deploy contracts | `docker-compose.yml` sets gateway `PORT`, mounts FCM/APNs credential files, and points backend URLs at `backend:3001`; `gateway/src/config.ts` reads `GATEWAY_PORT`, defaults backend URLs to `backend:3000`, and only reads inline FCM/APNs private-key env vars. `gateway/README.md` documents file-based enablement and `PORT`. | Documented production setup can appear configured while push is disabled; local/default behavior differs from compose; port env naming is misleading. | Converge third |
+| Prebuilt compose/image inventory | Base compose builds `gateway` and `llm-egress-proxy`; `docker-compose.ghcr.yml`, setup flow, and image push scripts cover frontend/backend but not those services. | Prebuilt deploy users can get a reduced service set without the same gateway/proxy boundary as source-build deploys. | Decide: converge image set or mark prebuilt as reduced/core |
+| UTXO selection strategies | Strategy values repeat in `shared/types/domain.ts`, `server/src/api/transactions/coinSelection.ts`, `server/src/services/utxoSelectionService/types.ts`, `server/src/services/utxoSelectionService/index.ts`, transaction OpenAPI schemas, and tests. | Adding/removing a strategy can leave route validation, OpenAPI, service compare results, and frontend types out of sync. No current value drift found. | Converge |
+| Transfer route filters and validation | `server/src/services/transferService/types.ts` owns transfer status/resource/role filter constants, and OpenAPI derives from them. `server/src/api/transfers.ts` still hardcodes resource/role checks, ignores invalid role/resource filters, and casts arbitrary status values into service filters. | Route behavior and OpenAPI can silently disagree. Invalid `status` can reach service code even though the documented contract is enumerated. | Converge after choosing reject-versus-ignore compatibility |
+| Websocket event and channel ownership | `shared/types/websocket.ts` says it is the single source of truth for server events; `services/websocket.ts` has a separate `WebSocketEventType` union including stale `modelDownload`. Frontend hooks and server channel fanout duplicate `blocks`, `sync:all`, `transactions:all`, `logs:all`, and wallet channel strings. | Dead model-download typing survived model-management removal; channel strings can drift between server fanout and frontend invalidation/subscription hooks. | Converge |
+| Payjoin status naming | API status is `{ enabled, configured }` in `src/api/payjoin.ts`; send-attempt state is also called `PayjoinStatus` in `hooks/send/usePayjoin.ts` and repeats inline in `contexts/send/types.ts`; receive-modal data locally redeclares API-shaped status. | Same name means different domains, which invites wrong imports and muddles receive-versus-send behavior. | Converge small |
+| API query parameter construction | Several `src/api/*` modules build manual `URLSearchParams` and interpolate query strings instead of using `apiClient.get(..., params)`: devices, admin backup, admin features, intelligence, monitoring, and settings. | Null/undefined handling and encoding rules can diverge from the central client path that Phase E just standardized for base URLs. | Converge small |
+| Frontend/shared API response type duplicates | `src/api/price.ts`, `src/api/sync.ts`, and `src/api/bitcoin.ts` repeat shapes that already exist in `shared/types/api.ts`. | Type-only drift risk. No current behavior difference confirmed. | Converge opportunistically |
+| PSBT parsing/magic helpers | PSBT checks are implemented in `utils/urPsbt.ts`, `hooks/send/useQrSigning.ts`, QR signing file/scan helpers, and draft list helpers. | Some accepted encodings are intentionally different, but 4-byte versus 5-byte magic and base64/hex guards are easy to misapply. | Converge carefully at low-level helper layer |
+| Admin agent statuses and severities | Agent status, alert severity/status, and funding override status repeat across frontend admin types, server route schemas, OpenAPI schemas/paths, and admin service types. | No confirmed drift, but active admin contracts can split when statuses expand. | Watch or converge with next agent-admin work |
+| Server LLM egress env bindings | Central server config exposes `llmEgressProxyUrl`/`llmEgressProxySecret`, while AI config sync and egress proxy auth helpers read `process.env` directly. | Deployment env parsing can drift; security boundary remains justified. | Converge accessor or remove unused central fields |
+| Stale installer helper comment | `tests/install/utils/helpers.sh` still maps `sanctuary-llm-egress-proxy` to `ai` and mentions the removed Ollama service. | Comment-only drift can confuse install/debug docs, but no runtime path is affected. | Remove opportunistically |
+| Device roles | `owner`/`viewer` repeats in shared domain, server device access, events, OpenAPI, and tests. | No drift found; device roles are intentionally a smaller domain than wallet roles. | Keep separate from wallet roles; low-priority shared tuple only if device roles expand |
+| RBF statuses and privacy grades | RBF and privacy grade values repeat in shared types, OpenAPI, services, UI, and tests. | Stable value sets with existing behavior coverage. | Watch; fold into transaction constants if transaction state work resumes |
+| Price providers | Server owns provider registry/defaults; frontend currency settings keep a fallback provider list for offline UI. | Offline fallback can stale if server providers change, but the runtime registry is correctly server-owned. | Watch |
+
+### Recommended Follow-Up Order
+
+| Phase | Work | Verification | Exit Criteria |
+| --- | --- | --- | --- |
+| J | Centralize sync priority values and defaults. Add one `SYNC_PRIORITY_VALUES` and `DEFAULT_SYNC_PRIORITY` owner, derive frontend API types, server API validation, OpenAPI, service queue types, worker job types, and BullMQ priority conversion. Reject invalid HTTP priorities or deliberately normalize them to `normal`; do not keep the current unvalidated cast. | Sync route tests for absent/null/invalid priorities, sync queue ordering tests, worker/BullMQ mapping tests, OpenAPI enum test, app/server typechecks, `git diff --check`. | Invalid priority cannot enter queue/runtime code; OpenAPI, frontend, service, and worker agree on the values and default. |
+| K | Centralize mempool estimator values and default. Add estimator constants/default to shared node config constants or the existing node-config owner, then derive admin validation, OpenAPI, frontend defaults, runtime mempool fallback, and tests. | Admin node config read/update tests, mempool config tests, NodeConfig UI tests, OpenAPI admin contracts, negative search for local estimator tuples/defaults. | Missing/null/invalid estimator behavior is explicit and consistent; default remains `mempool_space` unless product chooses `simple` intentionally. |
+| L | Repair gateway runtime/deploy contract drift. Align port env naming, backend default URLs, push credential file/env behavior, README, and compose. Decide whether prebuilt deploy must include gateway/proxy images or be labeled as reduced/core. | Gateway config tests, FCM/APNs startup tests using env and mounted-file cases, `docker compose config --services` for source and ghcr overlays, setup/image classification tests if image inventory changes. | Documented gateway/push setup actually works; source-build and prebuilt service inventories are intentionally aligned or explicitly different. |
+| M | Centralize UTXO selection strategies. Put the strategy tuple/type in shared or a server/shared-safe transaction constants module; derive route validation, service compare strategy list, OpenAPI, and frontend types. | UTXO selection route tests, service compare tests proving every canonical strategy is included exactly once, OpenAPI contract tests, app/server typechecks, negative production tuple search. | One strategy owner drives API, service, OpenAPI, and frontend contracts. |
+| N | Align transfer filters with transfer constants. Reuse `TRANSFER_*_VALUES` in route validation and decide whether invalid filters should return 400 or preserve ignored-filter compatibility with an explicit parser. | Transfer collection tests for valid/invalid role/status/resource filters, OpenAPI path enum tests, service filter tests. | Route behavior matches documented enums or intentionally documented compatibility rules. |
+| O | Centralize websocket events and channel builders. Remove stale `modelDownload` from active frontend types, derive event values from shared websocket types where possible, and add shared pure channel helpers for `blocks`, `mempool`, `sync:all`, `transactions:all`, `logs:all`, wallet, and address channels. Keep the legacy envelope until a separate protocol migration. | Frontend websocket hook tests, server channel fanout tests, shared channel helper tests, negative search for stale `modelDownload`, websocket typechecks. | Server fanout and frontend subscription/invalidation use one channel vocabulary; no model-management websocket event remains active. |
+| P | Run a frontend API hygiene pass. Rename Payjoin API status to an availability/config status, centralize send-attempt status, replace manual query strings with `apiClient.get(..., params)`, import shared response types where already available, and extract low-level PSBT detection helpers without collapsing intentionally different receive/signing flows. | Payjoin hook/API tests, affected API module tests, query encoding/null tests, QR signing/import tests, typechecks, negative search for manual query construction outside the client and parser utilities. | Frontend API helpers use the central client path and names distinguish API availability from send attempt state. |
+| Q | Low-priority constants and cleanup as touched. Admin agent statuses/severities, device roles, RBF status, privacy grades, device connection method/vendor normalization, price-provider offline fallback, stale installer comments, and `API_BASE_URL` export cleanup should be handled when nearby code is already changing. | Focused tests for the touched domain plus negative tuple searches. | Drift-prone literals and stale comments are reduced without broad churn. |
+
+### Post-Phase-I Edge Cases
+
+- Sync priority cleanup must not confuse wallet sync priority (`high`/`normal`/`low`) with Bitcoin fee priority (`fastest`/`fast`/`medium`/`slow`/`minimum`) or unrelated provider priority scores.
+- If invalid sync priorities were accepted by old clients, the compatibility decision must be explicit. Rejecting with 400 is cleaner and matches OpenAPI; normalizing to `normal` is a compatibility choice and must be tested.
+- Mempool estimator convergence must preserve DB migration defaults, existing stored `simple` values, explicit admin `simple` selection, runtime fallback on config read failure, and frontend behavior when API data is missing.
+- Gateway push credential support must not log private keys or require decrypted secrets in config snapshots. File-based and env-based credentials should have deterministic precedence.
+- Gateway port cleanup must account for container port versus host port. `GATEWAY_PORT` can mean host mapping in compose, while runtime app port controls the in-container listener.
+- Prebuilt image convergence needs a product/deploy decision. Adding gateway/proxy images changes CI publishing and setup flows; marking prebuilt as reduced/core changes user expectations instead.
+- UTXO strategy convergence must preserve compare-strategy response keys and ordering, default `efficiency`, and exhaustive service handling for every strategy.
+- Transfer filter cleanup must not break existing clients accidentally if invalid filters were previously ignored. If preserving ignore semantics, it should be named as compatibility parsing rather than an unvalidated cast.
+- Websocket channel helpers must keep the current legacy event envelope and subscription protocol until a versioned websocket protocol migration exists.
+- Payjoin status renaming must avoid changing wire payloads; the problem is frontend domain naming, not the `/payjoin/status` JSON shape.
+- PSBT helper consolidation must not broaden accepted QR/file/import formats by accident. Encoding-specific flows should call shared low-level predicates, not one oversized parser with hidden behavior.
+
+### Post-Phase-I Verification Notes
+
+- Static evidence collected with targeted `rg`, `sed`, and subagent read-only inspections across frontend/API, backend/shared/OpenAPI, gateway, proxy, compose, and tests.
+- No runtime tests were run for this addendum because the change is documentation/planning only.
+- Follow-up implementation phases should use focused behavioral tests plus negative searches for the specific tuple/helper they remove.
+
 ## Edge Cases
 
 - Phase 5 must not remove external Ollama as a provider type; it removes Sanctuary's ability to pull/delete provider models.
@@ -878,6 +945,7 @@ Scope: split transaction type domains without changing stored values, public res
 
 ## Verification Notes
 
+- The 2026-05-15 post-Phase-I divergence reanalysis used parallel read-only subagent scrubs plus targeted local searches across frontend/API, backend/shared/OpenAPI, gateway/proxy/compose, and tests. It queued Phases J-Q for sync priority validation, mempool estimator defaults, gateway deploy/runtime contracts, UTXO strategies, transfer filters, websocket channels/events, and frontend API hygiene. Documentation verification passed with `git diff --check`.
 - This plan was reviewed against `tasks/todo.md`, current branch status, active AI/OpenAPI/proxy files, gateway route manifest, and targeted `rg` searches on 2026-05-14.
 - The 2026-05-14 reanalysis addendum was reviewed against current auth registration/login code, wallet role/capability paths, script type definitions, node/Electrum config projection paths, LLM proxy/provider contracts, feature flag definitions, gateway parity tests, and stale contract-test helpers. Documentation verification passed with `git diff --check`.
 - The 2026-05-15 independent review rechecked wallet role/capability paths, script/account type constants, node config projection, contract helper constants, transaction type vocabulary, LLM provider boundaries, gateway route validation, feature flags, registration ordering, and login/refresh fetch boundaries with targeted `rg`/`sed` searches. Documentation verification passed with `git diff --check`.

@@ -5,6 +5,7 @@
  */
 
 import type { Job, JobsOptions } from 'bullmq';
+import type { SyncPriority } from '@sanctuary/shared/constants/sync';
 
 /**
  * Worker job handler definition
@@ -32,7 +33,7 @@ export interface WorkerJobHandler<T = unknown, R = void> {
  */
 export interface SyncWalletJobData {
   walletId: string;
-  priority?: 'high' | 'normal' | 'low';
+  priority?: SyncPriority;
   reason?: string;
 }
 
@@ -42,7 +43,7 @@ export interface CheckStaleWalletsJobData {
   /** Override the number of stale wallets to return */
   maxWallets?: number;
   /** Priority to use when queueing resulting sync jobs */
-  priority?: 'high' | 'normal' | 'low';
+  priority?: SyncPriority;
   /** Delay between queued sync jobs */
   staggerDelayMs?: number;
   /** Free-form reason for observability */
@@ -129,7 +130,7 @@ export interface SyncWalletJobResult {
 export interface CheckStaleWalletsResult {
   staleWalletIds: string[];
   queued: number;
-  priority: 'high' | 'normal' | 'low';
+  priority: SyncPriority;
   staggerDelayMs: number;
   reason: string;
   maxWallets: number;

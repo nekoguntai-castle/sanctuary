@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import { SYNC_PRIORITY_VALUES } from "@sanctuary/shared/constants/sync";
 
 import {
   openApiSpec,
@@ -494,10 +495,11 @@ export function registerOpenApiCoreTests() {
     }
 
     expect(openApiSpec.components.schemas.SyncPriority.enum).toEqual([
-      "high",
-      "normal",
-      "low",
+      ...SYNC_PRIORITY_VALUES,
     ]);
+    expect(
+      openApiSpec.components.schemas.SyncPriorityRequest.additionalProperties,
+    ).toBe(false);
     expect(openApiSpec.components.schemas.SyncResult.required).toEqual([
       "success",
       "syncedAddresses",

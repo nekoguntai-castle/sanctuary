@@ -1,3 +1,80 @@
+# Task: Phase J Sync Priority Convergence 2026-05-15
+
+Status: in progress.
+
+Goal: implement Phase J from the rationalization plan by centralizing sync priority values/defaults, aligning route validation with OpenAPI, deriving service/worker priority behavior from one owner, and delivering the change through a PR.
+
+## Plan
+
+- [x] Add a canonical shared sync priority constants module with values, default, queue sort order, BullMQ mapping, and a guard.
+- [x] Derive frontend API types, server API validation, OpenAPI enum, sync service types, worker job data, in-memory queue ordering, and BullMQ mapping from the canonical owner.
+- [x] Align sync route body validation with the documented optional closed object: omitted body defaults to `normal`; invalid, null, non-object, or extra-field bodies return validation errors.
+- [x] Add focused tests for constants, route validation/defaults, OpenAPI parity, queue ordering, and worker priority mapping.
+- [ ] Run focused verification, typechecks/quality gates needed for touched code, then open and merge the PR.
+
+## Review
+
+- Added `shared/constants/sync.ts` as the sync priority owner for values, default, in-memory sort order, BullMQ priority mapping, and runtime guard.
+- Updated shared domain type export, frontend sync API helpers, server sync route validation, OpenAPI sync schema, sync coordinator/service/queue types, worker job data, stale/subscription callback types, worker daemon mapping, and worker sync queue mapping to derive from the canonical owner.
+- Changed queued sync route body handling so an omitted body defaults to `normal`, while invalid priority values, `null`, arrays, and extra fields fail validation instead of entering service/worker code.
+- Added shared sync constant tests, route validation/default tests, OpenAPI parity coverage for `additionalProperties: false`, and worker default priority mapping coverage.
+- Regenerated `docs/architecture/generated/frontend.md` after CI's architecture workflow caught the new frontend dependency edge from `src/api/sync.ts` to shared sync constants.
+- Verification passed so far: `npm --prefix shared run build`; `npm run test:run -- tests/shared/sync.test.ts tests/api/remainingApiModules.test.ts`; `npm --prefix server run test:run -- tests/unit/api/sync.test.ts tests/unit/api/openapi.test.ts tests/unit/services/workerSyncQueue.test.ts tests/unit/services/syncService.test.ts`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:app`; `npm run lint:server`; touched-file lizard; `npm run arch:lint`.
+- Residual: PR CI re-run after architecture graph update, merge, and post-merge ancestry verification remain.
+
+---
+
+# Task: Claude Router Emergency Repair 2026-05-15
+
+Status: complete.
+
+Goal: restore Claude Code after the router wiring exposed that Claude Code cannot use the current `unix:` base URL path and that the router rejects Claude Code's query-string request paths.
+
+## Plan
+
+- [x] Inspect `~/.claude/settings.json`, router health, router source, and current Claude Code behavior.
+- [x] Prove the router's loopback TCP fallback returns the same 7-model catalog as the Unix socket.
+- [x] Patch router request matching to route by pathname while preserving query strings upstream.
+- [x] Switch persistent Claude wiring to `http://127.0.0.1:8765` and make the user service bind that loopback address.
+- [x] Keep Anthropic model IDs as the default/alias targets so local routing requires an explicit local model selection.
+- [x] Patch router response compression handling after Claude Code surfaced a `ZlibError`.
+- [x] Restart the user service and verify `/v1/models`, a local Qwen Claude Code request, default cloud routing, and service status.
+
+## Review
+
+- Root causes found: Claude Code 2.1.142 did not work with `ANTHROPIC_BASE_URL=unix:/run/user/1001/claude-router.sock`; Claude Code posts to `/v1/messages?beta=true`, which the router previously rejected as a non-exact path; and Node fetch decoded compressed upstream responses while the router forwarded the stale `content-encoding` header, causing Claude Code `ZlibError`.
+- Updated `~/projects/claude-router/proxy.mjs` to match API routes by URL pathname, strip stale response `content-encoding`/`content-length`, force upstream `accept-encoding: identity`, and keep both loopback TCP and Unix socket listeners active.
+- Updated `~/projects/claude-router/claude-router.service` and installed it to bind `127.0.0.1:8765`, retain the Unix socket, and keep the systemd hardening fixes required for runtime socket and outbound TCP access.
+- Updated `~/.claude/settings.json` so `ANTHROPIC_BASE_URL` is `http://127.0.0.1:8765`, gateway model discovery is enabled, top-level `model` is `claude-opus-4-7`, and Opus/Sonnet/Haiku/small-fast aliases all resolve to Anthropic cloud IDs.
+- Verification passed: router unit tests, `systemctl --user status claude-router.service`, loopback and Unix `/v1/models` returning 7 models, default `claude -p` routing to `claude-opus-4-7` on `route:"cloud"`, and explicit `claude -p --model qwen3.6-35b-a3b` returning `ROUTER_OK` on `route:"local"`.
+- Uploaded to the router Forgejo repo as commit `da6c00c180e71feec5ccf95c77de7edbfc1148bd` on `origin/main` with the code, service unit, README, and docs updates.
+
+---
+
+# Task: Current Repo Divergence Rescrub 2026-05-15
+
+Status: complete.
+
+Goal: re-scrub the current codebase after the completed login and optional rationalization phases, identify remaining two-path or duplicated workflow/contract patterns, classify whether each split is justified, and rank any consolidation work that is still worth doing.
+
+## Plan
+
+- [x] Re-read the current rationalization plan, prior task reviews, and current git state.
+- [x] Inventory current production and test code for route/client splits, duplicate domain constants, duplicate validation/schema contracts, feature flags, compatibility paths, and stale helper paths.
+- [x] Compare likely divergences against existing tests and ownership/security boundaries to classify them as keep separate, watch, converge, or remove.
+- [x] Update `docs/plans/rationalization-plan.md` with a fresh reanalysis addendum and actionable recommendations.
+- [x] Run documentation verification and focused search checks, then self-review the diff.
+
+## Review
+
+- Added a post-Phase-I divergence reanalysis addendum to `docs/plans/rationalization-plan.md`.
+- Highest-value consolidation candidates are sync priority validation, mempool estimator defaults, gateway runtime/deploy contracts, UTXO selection strategy values, transfer filter validation, websocket event/channel ownership, and frontend API hygiene.
+- Classified justified separations as keep/watch: raw refresh fetch, root health versus API health, LLM proxy/backend validation split, gateway route manifest versus validation schema, device roles versus wallet roles, owner-only UI checks versus edit-capable checks, compatibility barrels, and low-churn stable constants.
+- Verification passed: `git diff --check` and focused searches for login health closure, sync priority drift, mempool estimator defaults, websocket stale events/channels, UTXO strategy tuples, transfer filter validation, gateway deploy/runtime env drift, Payjoin status naming, and manual query construction.
+- No runtime tests were run because this was a documentation/planning-only reanalysis.
+
+---
+
 # Task: Phase I Transaction Vocabulary Boundary Review 2026-05-15
 
 Status: merged and verified via PR #472 as squash commit `a36b044dc59f0e0af0f5f1ab63e19e9510d57be8`.

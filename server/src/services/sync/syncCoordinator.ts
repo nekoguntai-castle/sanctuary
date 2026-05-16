@@ -1,5 +1,6 @@
 import { walletRepository, transactionRepository, addressRepository } from '../../repositories';
 import { BITCOIN_NON_REGTEST_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+import { DEFAULT_SYNC_PRIORITY, type SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { NetworkType } from '../../repositories/types';
 import { NotFoundError, InvalidInputError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
@@ -9,7 +10,6 @@ const log = createLogger('SYNC:COORDINATOR');
 
 const SYNC_NETWORKS = BITCOIN_NON_REGTEST_NETWORKS;
 
-export type SyncPriority = 'high' | 'normal' | 'low';
 type SyncNetwork = Extract<NetworkType, (typeof SYNC_NETWORKS)[number]>;
 
 export interface WalletSyncResponse {
@@ -141,7 +141,7 @@ export class SyncCoordinator {
   async queueWalletSync(
     userId: string,
     walletId: string,
-    priority: SyncPriority = 'normal'
+    priority: SyncPriority = DEFAULT_SYNC_PRIORITY
   ): Promise<QueuedWalletSyncResponse> {
     await requireWalletAccess(walletId, userId);
 
@@ -174,7 +174,7 @@ export class SyncCoordinator {
     };
   }
 
-  async queueUserWallets(userId: string, priority: SyncPriority = 'normal'): Promise<QueueUserWalletsResponse> {
+  async queueUserWallets(userId: string, priority: SyncPriority = DEFAULT_SYNC_PRIORITY): Promise<QueueUserWalletsResponse> {
     const syncService = await getSyncServiceInstance();
     await syncService.queueUserWallets(userId, priority);
 
@@ -222,7 +222,7 @@ export class SyncCoordinator {
   async queueNetworkSync(
     userId: string,
     network: string,
-    priority: SyncPriority = 'normal'
+    priority: SyncPriority = DEFAULT_SYNC_PRIORITY
   ): Promise<QueueNetworkSyncResponse> {
     const syncNetwork = parseSyncNetwork(network);
     const walletIds = await walletRepository.getIdsByNetwork(userId, syncNetwork);

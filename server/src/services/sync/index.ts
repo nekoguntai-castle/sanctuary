@@ -11,8 +11,8 @@
 export { default, getSyncService } from './syncService';
 export { SyncCoordinator, getSyncCoordinator, resetSyncCoordinatorForTests } from './syncCoordinator';
 export type { SyncJob, SyncResult, SyncHealthMetrics, SubscriptionOwnership, PollingMode } from './types';
+export type { SyncPriority } from '@sanctuary/shared/constants/sync';
 export type {
-  SyncPriority,
   WalletSyncResponse,
   QueuedWalletSyncResponse,
   QueueUserWalletsResponse,

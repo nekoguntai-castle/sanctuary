@@ -8,6 +8,7 @@
 import { getConfig } from '../../config';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { DEFAULT_SYNC_PRIORITY, SYNC_PRIORITY_SORT_ORDER, type SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { SyncState, SyncResult } from './types';
 import { MAX_QUEUE_SIZE } from './types';
 
@@ -17,9 +18,8 @@ const log = createLogger('SYNC:SVC_QUEUE');
  * Sort the queue by priority (high > normal > low), then by request time (FIFO within same priority).
  */
 export function sortQueue(state: SyncState): void {
-  const priorityOrder = { high: 0, normal: 1, low: 2 };
   state.syncQueue.sort((a, b) => {
-    const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+    const priorityDiff = SYNC_PRIORITY_SORT_ORDER[a.priority] - SYNC_PRIORITY_SORT_ORDER[b.priority];
     if (priorityDiff !== 0) return priorityDiff;
     return a.requestedAt.getTime() - b.requestedAt.getTime();
   });
@@ -34,7 +34,7 @@ export function sortQueue(state: SyncState): void {
 export function queueSync(
   state: SyncState,
   walletId: string,
-  priority: 'high' | 'normal' | 'low' = 'normal',
+  priority: SyncPriority = DEFAULT_SYNC_PRIORITY,
   executeSyncJob: (walletId: string) => Promise<SyncResult>,
 ): void {
   // Don't queue if already actively syncing
