@@ -134,7 +134,17 @@ vi.mock('../../../../src/config', () => ({
     dataDir: '/tmp/test',
     encryptionKey: 'test-encryption-key',
     corsAllowedOrigins: [],
+    ai: {
+      llmEgressProxyUrl: 'http://llm-egress-proxy:3100',
+      llmEgressProxySecret: '',
+    },
   },
+  getConfig: () => ({
+    ai: {
+      llmEgressProxyUrl: 'http://llm-egress-proxy:3100',
+      llmEgressProxySecret: '',
+    },
+  }),
 }));
 
 // Mock access control

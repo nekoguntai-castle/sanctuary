@@ -1,6 +1,37 @@
-# Task: Phase Q Shared Value Contract Cleanup 2026-05-16
+# Task: Phase Q2 LLM Egress Config Accessor Cleanup 2026-05-16
 
 Status: in progress.
+
+Goal: close the next bounded Phase Q cleanup slice by making backend LLM egress URL/secret access go through central server config instead of direct `process.env` reads, without changing the LLM egress proxy security boundary or proxy-local env validation.
+
+Source alignment: this is the server LLM egress env accessor item from the Phase Q later cleanup bucket in `docs/plans/rationalization-plan.md`.
+
+## Plan
+
+- [x] Verify Q1 PR #482 merged and `origin/main` contains squash commit `ea9bdaf0d1107b4b3326e4f67b1aea7952a73790`.
+- [x] Re-run recursive plan review on `docs/plans/rationalization-plan.md` after the Q1 merge and verify remaining Phase Q evidence.
+- [x] Select a bounded Q2 slice from the remaining Phase Q candidates.
+- [x] Refactor backend AI config and LLM egress proxy client helpers to read `llmEgressProxyUrl` and `llmEgressProxySecret` from central server config.
+- [x] Preserve current URL default, missing-secret warning/header behavior, provider config sync behavior, and proxy/backend validation separation.
+- [x] Add or update focused tests for configured proxy URL/secret access and direct-env negative coverage.
+- [x] Run focused AI/proxy config tests, server type/build/lint checks, touched-file lizard, negative direct-env searches, docs checks, and `git diff --check`.
+- [ ] Open, monitor, and merge the PR.
+
+## Review
+
+- Recursive plan review after Q1 accepted one status/queue correction: Q1 is now closed via PR #482 as `ea9bdaf0d1107b4b3326e4f67b1aea7952a73790`, so the remaining Phase Q queue should not keep describing Q1 as active.
+- Source evidence supports server LLM egress env accessor cleanup as the next smallest justified slice: `server/src/config/index.ts` already parses `LLM_EGRESS_PROXY_URL` and `LLM_EGRESS_PROXY_SECRET`, while `server/src/services/ai/config.ts` and `server/src/services/ai/llmEgressProxyClient.ts` still read those env vars directly.
+- Rejected/deferred comments: device connection method/vendor normalization, price-provider offline fallback, `API_BASE_URL` export cleanup, generated-client work, and proxy-local `llm-egress-proxy` env handling stay outside Q2 because they are separate behavior surfaces or intentional trust boundaries.
+- `server/src/services/ai/config.ts` now resolves the config-sync URL through `getConfig().ai.llmEgressProxyUrl`, and `server/src/services/ai/llmEgressProxyClient.ts` resolves proxy auth/config headers through `getConfig().ai.llmEgressProxySecret`.
+- Focused regression coverage now proves `forceSyncConfig` honors a configured `LLM_EGRESS_PROXY_URL`; the existing configured-secret test continues to prove both proxy-auth headers use the configured server secret.
+- Verification passed: `npm --prefix server run test:run -- tests/unit/services/aiService.test.ts tests/unit/services/aiService.modelOperations.test.ts tests/unit/assistant/consoleModelGateway.test.ts tests/unit/services/intelligence/conversationService.test.ts`; `npm --prefix server run test:run -- tests/unit/config/schema.test.ts tests/unit/services/intelligence/analysisService.test.ts`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:server`; touched-file `npm run quality:lizard`; backend direct-env negative search; `git diff --check`.
+- The first commit-hook attempt exposed two admin test harness config mocks that provided only the legacy default config export. Those harness mocks now also provide `getConfig()` with the same LLM egress test defaults, and `npm --prefix server run test:run -- tests/unit/api/admin-routes.test.ts tests/unit/api/admin.test.ts` plus `npm --prefix server run typecheck:tests`, `npm run lint:server`, touched-file `npm run quality:lizard`, direct-env negative search, and `git diff --check` passed afterward.
+
+---
+
+# Task: Phase Q Shared Value Contract Cleanup 2026-05-16
+
+Status: merged and verified via PR #482 as squash commit `ea9bdaf0d1107b4b3326e4f67b1aea7952a73790`.
 
 Goal: implement the first concrete Phase Q cleanup slice by giving low-risk repeated value contracts shared owners where code is already using the same values: admin agent statuses/severities, device roles, RBF statuses, and privacy grades.
 
@@ -14,7 +45,7 @@ Source alignment: this is the value-contract portion of the Phase Q as-touched c
 - [x] Add focused shared constant tests and OpenAPI parity assertions for the moved value sets.
 - [x] Run focused shared/server/frontend tests, typechecks as needed, negative tuple searches scoped to production, lizard if touched logic grows, and `git diff --check`.
 - [x] Before merge, migrate remaining production Q1 union/tuple definitions to derive from shared owners, including `components/privacyScoreUtils.ts`, `components/WalletDetail/mappers.ts`, `components/AgentWalletDashboard/*`, and `server/src/services/agentMonitoringService.ts`; then rerun focused privacy/admin/RBF UI tests and tuple/union negative production searches.
-- [ ] Open, monitor, and merge the PR.
+- [x] Open, monitor, and merge the PR.
 
 ## Review
 
@@ -28,6 +59,7 @@ Source alignment: this is the value-contract portion of the Phase Q as-touched c
 - Verification passed: `npm --prefix shared run build`; `npm run test:run -- tests/shared/adminAgentConstants.test.ts tests/shared/deviceRoles.test.ts tests/shared/transactionTypes.test.ts`; `npm --prefix server run test:run -- tests/unit/api/openapi.test.ts`; `npm --prefix server run test:run -- tests/unit/services/deviceAccess.test.ts`; `npm --prefix server run test:run -- tests/unit/api/admin-agents-routes.test.ts tests/unit/api/admin-agents-routes.controls.test.ts`; `npm --prefix server run test:run -- tests/unit/services/privacyService.test.ts tests/unit/api/transactions-privacy-routes.test.ts`; `npm --prefix server run test:run -- tests/contract/api.contract.test.ts`; `npm run test:run -- tests/api/transactions.test.ts tests/components/PrivacyBadge.test.tsx tests/components/SpendPrivacyCard.test.tsx`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:app`; `npm run lint:server`; touched-file `npm run quality:lizard`; scoped negative production tuple searches; `npm run arch:check`.
 - Recursive plan review on 2026-05-16 found missed Q1 exit gaps that tuple-only searches did not catch: `components/privacyScoreUtils.ts` still owned a production-local privacy-grade tuple/union; `components/WalletDetail/mappers.ts` still cast RBF status to a local union; `components/AgentWalletDashboard/*` still repeated agent status unions/subsets; `types/index.ts` still typed `rbfStatus` as a local union; and `server/src/services/agentMonitoringService.ts` still owned a local admin-agent alert severity union. These now derive from shared owners, and repository agent status/alert/funding override inputs are typed from the shared admin-agent contracts.
 - Additional verification passed after the recursive review fix: focused root tests for admin constants, transaction constants, privacy score utilities, PrivacyBadge, SpendPrivacyCard, AgentWalletDashboard, AgentWalletDashboard model, WalletDetail mappers, transactions API, and TransactionList; focused server tests for agent monitoring and admin-agent routes; `npm --prefix shared run build`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:app`; `npm run lint:server`; touched-file `npm run quality:lizard`; tuple plus union/cast negative production searches; `git diff --check`.
+- PR #482 passed all latest Forgejo status contexts, squash-merged as `ea9bdaf0d1107b4b3326e4f67b1aea7952a73790`, and post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

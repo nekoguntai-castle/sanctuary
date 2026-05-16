@@ -31,7 +31,17 @@ vi.mock('../../../../src/config', () => ({
     gatewaySecret: '',
     corsAllowedOrigins: [],
     nodeEnv: 'test',
+    ai: {
+      llmEgressProxyUrl: 'http://llm-egress-proxy:3100',
+      llmEgressProxySecret: '',
+    },
   },
+  getConfig: () => ({
+    ai: {
+      llmEgressProxyUrl: 'http://llm-egress-proxy:3100',
+      llmEgressProxySecret: '',
+    },
+  }),
 }));
 
 // Mock audit service

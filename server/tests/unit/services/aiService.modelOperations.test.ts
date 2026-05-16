@@ -312,6 +312,32 @@ describe("aiService model operations", () => {
     }
   });
 
+  it("forceSyncConfig uses the central LLM egress proxy URL config", async () => {
+    const previousUrl = process.env.LLM_EGRESS_PROXY_URL;
+    process.env.LLM_EGRESS_PROXY_URL = "http://configured-llm-egress:3199";
+    try {
+      mocks.systemSettingFindMany.mockResolvedValue([
+        setting("aiEnabled", true),
+        setting("aiEndpoint", "http://host.docker.internal:11434"),
+        setting("aiModel", "llama3.2"),
+      ] as any);
+      mocks.fetch.mockResolvedValueOnce(okJson({ synced: true }));
+
+      const mod = await import("../../../src/services/aiService");
+      await expect(mod.forceSyncConfig()).resolves.toBe(true);
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        "http://configured-llm-egress:3199/config",
+        expect.any(Object),
+      );
+    } finally {
+      if (previousUrl === undefined) {
+        delete process.env.LLM_EGRESS_PROXY_URL;
+      } else {
+        process.env.LLM_EGRESS_PROXY_URL = previousUrl;
+      }
+    }
+  });
+
   it("forceSyncConfig returns false when config sync returns non-ok response", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),

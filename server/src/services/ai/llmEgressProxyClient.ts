@@ -1,3 +1,5 @@
+import { getConfig } from "../../config";
+
 export const LLM_EGRESS_PROXY_SERVICE_SECRET_HEADER = "X-LLM-Egress-Proxy-Secret";
 export const LLM_EGRESS_PROXY_CONFIG_SECRET_HEADER = "X-LLM-Egress-Config-Secret";
 
@@ -6,7 +8,7 @@ export const LLM_EGRESS_PROXY_CONFIG_SECRET_HEADER = "X-LLM-Egress-Config-Secret
  * LLM egress proxy can fail closed when the shared runtime secret is absent.
  */
 export function getLlmEgressProxyServiceSecret(): string {
-  return process.env.LLM_EGRESS_PROXY_SECRET || "";
+  return getConfig().ai.llmEgressProxySecret;
 }
 
 /**

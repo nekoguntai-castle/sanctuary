@@ -18,6 +18,7 @@ import {
 } from "../../utils/safeJson";
 import { createHash } from "crypto";
 import { decrypt } from "../../utils/encryption";
+import { getConfig } from "../../config";
 import type { AIConfig, ConfigSyncState } from "./types";
 import {
   AI_ACTIVE_PROVIDER_PROFILE_ID_KEY,
@@ -28,13 +29,12 @@ import {
   AI_PROVIDER_CREDENTIALS_KEY,
   parseAIProviderCredentials,
 } from "./providerCredentials";
-import { buildLlmEgressProxyJsonHeaders } from "./llmEgressProxyClient";
+import {
+  buildLlmEgressProxyJsonHeaders,
+  getLlmEgressProxyServiceSecret,
+} from "./llmEgressProxyClient";
 
 const log = createLogger("AI:CONFIG");
-
-// LLM egress proxy URL
-const LLM_EGRESS_PROXY_URL =
-  process.env.LLM_EGRESS_PROXY_URL || "http://llm-egress-proxy:3100";
 
 // Re-sync config periodically to handle proxy restarts
 const CONFIG_RESYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -214,14 +214,14 @@ export async function syncConfigToLlmEgressProxy(
   }
 
   // Warn if no secret is configured
-  if (!process.env.LLM_EGRESS_PROXY_SECRET) {
+  if (!getLlmEgressProxyServiceSecret()) {
     log.warn(
       "LLM_EGRESS_PROXY_SECRET not set - config sync will be rejected by LLM egress proxy",
     );
   }
 
   try {
-    const response = await fetch(`${LLM_EGRESS_PROXY_URL}/config`, {
+    const response = await fetch(`${getLlmEgressProxyUrl()}/config`, {
       method: "POST",
       headers: buildLlmEgressProxyJsonHeaders({ includeConfigSecret: true }),
       body: JSON.stringify({
@@ -275,5 +275,5 @@ export async function forceSyncConfig(): Promise<boolean> {
  * Get the LLM egress proxy URL
  */
 export function getLlmEgressProxyUrl(): string {
-  return LLM_EGRESS_PROXY_URL;
+  return getConfig().ai.llmEgressProxyUrl;
 }
