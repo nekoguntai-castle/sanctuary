@@ -1,6 +1,6 @@
 # Task: Codebase Health Remediation Phase 6 Final Grade 2026-05-16
 
-Status: in progress; implementation and final grade artifacts are verified locally, PR delivery is next.
+Status: merged and verified via PR #504 as squash commit `73acc0841f4b3032f839848a41ca05e2ab7f33af`.
 
 Goal: execute Phase 6 of `docs/plans/codebase-health-remediation-plan.md` by running the final `$grade`, updating the quality assessment/history, classifying remaining risks, and delivering the final grade checkpoint through `$pr-delivery`.
 
@@ -11,7 +11,7 @@ Goal: execute Phase 6 of `docs/plans/codebase-health-remediation-plan.md` by run
 - [x] Fix the auth-bootstrap preference race exposed by the final grade run.
 - [x] Update `docs/plans/codebase-health-assessment.md` and grade history with the final checkpoint.
 - [x] Verify final documentation and history artifacts.
-- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+- [x] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
 
 ## Review
 
@@ -22,6 +22,7 @@ Goal: execute Phase 6 of `docs/plans/codebase-health-remediation-plan.md` by run
 - Final post-fix grade collector passed: `tests=pass` with 497 files / 6,197 tests, `lint=pass`, `typecheck=pass`, aggregate coverage 100.00%, `security_high=0`, `secrets=0`, and `lizard_warning_count=3`.
 - Updated `docs/plans/codebase-health-assessment.md`, `docs/plans/codebase-health-remediation-plan.md`, and `docs/plans/grade-history/sanctuary_.jsonl` for the Phase 6 final checkpoint: 95/100, A, High confidence.
 - Remaining risks are explicitly classified as accepted/deferred: 11 required physical hardware signing rows are still missing, 4 multisig rows are product-blocked, the Prisma dev-tool Hono moderate advisory remains accepted until a safe upstream fix exists, and the remaining lizard warnings are opportunistic cleanup.
+- PR #504 passed all 61 latest commit-status contexts, was squash-merged as `73acc0841f4b3032f839848a41ca05e2ab7f33af`, and that commit was verified as reachable from `origin/main`.
 
 ---
 
