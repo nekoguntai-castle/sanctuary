@@ -1,6 +1,32 @@
-# Task: Phase J Sync Priority Convergence 2026-05-15
+# Task: Phase K Mempool Estimator Defaults Convergence 2026-05-15
 
 Status: in progress.
+
+Goal: implement Phase K from the rationalization plan by centralizing mempool estimator values/defaults, aligning admin/runtime/frontend/OpenAPI behavior with the canonical default, preserving explicit `simple` selections and storage defaults, and delivering the change through a PR.
+
+## Plan
+
+- [x] Add canonical mempool estimator constants/default/guard in the existing node-config ownership area.
+- [x] Derive admin node-config validation, no-config response defaults, runtime mempool estimator fallback, OpenAPI enum, and frontend NodeConfig defaults/select options from the canonical owner.
+- [x] Preserve explicit stored/admin `simple` values while making missing/null estimator reads default to `mempool_space` and invalid admin request values fail validation before persistence.
+- [x] Add or update focused tests for admin read/update/no-config behavior, mempool config fallback, frontend NodeConfig defaults/select options, OpenAPI parity, and shared constants.
+- [x] Run negative searches for local estimator tuples/defaults with Prisma schema/migration storage-default literals treated as allowed parity-covered exceptions.
+- [ ] Run focused verification, typechecks/quality gates needed for touched code, then open and merge the PR.
+
+## Review
+
+- Added canonical mempool estimator ownership to `shared/constants/nodeConfig.ts`: `NODE_MEMPOOL_ESTIMATOR_VALUES`, `DEFAULT_NODE_MEMPOOL_ESTIMATOR`, `NodeMempoolEstimator`, `isNodeMempoolEstimator`, and `getNodeMempoolEstimator`.
+- Derived admin update validation, admin no-config/default response values, persisted null fallback behavior, OpenAPI enum/default, frontend NodeConfig defaults/select values, and runtime mempool estimator fallback from the canonical owner.
+- Preserved existing stored/admin `simple` selections, changed invalid admin request estimator strings to fail validation before persistence, and kept missing/persisted-null values on the default `mempool_space` path.
+- Updated backend Vitest shared-package aliasing so server tests resolve local shared subpath imports from `shared/dist` instead of a linked external workspace copy.
+- Verification passed so far: `npm --prefix shared run build`; `npm run test:run -- tests/shared/nodeConfig.test.ts tests/components/NodeConfig/ExternalServicesSection.test.tsx tests/components/NodeConfig.test.tsx tests/components/NodeConfig.branches.test.tsx tests/components/NodeConfig.interactions.test.tsx tests/components/NodeConfig.secondpass.test.tsx`; `npm --prefix server run prisma:generate`; `npm --prefix server run test:run -- tests/unit/api/admin-nodeConfig-routes.test.ts tests/unit/api/openapi.test.ts tests/unit/services/bitcoin/mempool.test.ts`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:app`; `npm run lint:server`; touched-file lizard; estimator negative searches with Prisma schema/migration storage-default literals identified as the allowed exceptions; `npm run arch:check`; `git diff --check`.
+- Residual: PR open, CI, merge, and post-merge ancestry verification remain.
+
+---
+
+# Task: Phase J Sync Priority Convergence 2026-05-15
+
+Status: merged and verified via PR #474 as squash commit `13ef9b5c62b83d2e6f23625b656e40c1b2f9f93c`.
 
 Goal: implement Phase J from the rationalization plan by centralizing sync priority values/defaults, aligning route validation with OpenAPI, deriving service/worker priority behavior from one owner, and delivering the change through a PR.
 
@@ -10,7 +36,7 @@ Goal: implement Phase J from the rationalization plan by centralizing sync prior
 - [x] Derive frontend API types, server API validation, OpenAPI enum, sync service types, worker job data, in-memory queue ordering, and BullMQ mapping from the canonical owner.
 - [x] Align sync route body validation with the documented optional closed object: omitted body defaults to `normal`; invalid, null, non-object, or extra-field bodies return validation errors.
 - [x] Add focused tests for constants, route validation/defaults, OpenAPI parity, queue ordering, and worker priority mapping.
-- [ ] Run focused verification, typechecks/quality gates needed for touched code, then open and merge the PR.
+- [x] Run focused verification, typechecks/quality gates needed for touched code, then open and merge the PR.
 
 ## Review
 
@@ -20,7 +46,8 @@ Goal: implement Phase J from the rationalization plan by centralizing sync prior
 - Added shared sync constant tests, route validation/default tests, OpenAPI parity coverage for `additionalProperties: false`, and worker default priority mapping coverage.
 - Regenerated `docs/architecture/generated/frontend.md` after CI's architecture workflow caught the new frontend dependency edge from `src/api/sync.ts` to shared sync constants.
 - Verification passed so far: `npm --prefix shared run build`; `npm run test:run -- tests/shared/sync.test.ts tests/api/remainingApiModules.test.ts`; `npm --prefix server run test:run -- tests/unit/api/sync.test.ts tests/unit/api/openapi.test.ts tests/unit/services/workerSyncQueue.test.ts tests/unit/services/syncService.test.ts`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:app`; `npm run lint:server`; touched-file lizard; `npm run arch:lint`.
-- Residual: PR CI re-run after architecture graph update, merge, and post-merge ancestry verification remain.
+- PR #474 passed Forgejo Architecture, Build Dev Images scope, Code Quality, Test Suite full lanes including frontend coverage merge, Full Test Summary, and PR Required Checks, then squash-merged as `13ef9b5c62b83d2e6f23625b656e40c1b2f9f93c`.
+- Post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

@@ -28,7 +28,9 @@ import {
 } from '../../../../services/ai/providerCredentials';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import {
+  DEFAULT_NODE_MEMPOOL_ESTIMATOR,
   NODE_CONNECTION_MODE_VALUES,
+  NODE_MEMPOOL_ESTIMATOR_VALUES,
   NODE_POOL_LOAD_BALANCING_VALUES,
 } from '@sanctuary/shared/constants/nodeConfig';
 import { FEATURE_FLAG_KEYS } from '../../../../services/featureFlags/definitions';
@@ -137,7 +139,6 @@ export const adminSettingsUpdateProperties = {
 export const NODE_CONFIG_TYPE_VALUES = ['electrum'] as const;
 export { NODE_CONNECTION_MODE_VALUES };
 export const NODE_LOAD_BALANCING_VALUES = NODE_POOL_LOAD_BALANCING_VALUES;
-export const NODE_MEMPOOL_ESTIMATOR_VALUES = ['simple', 'mempool_space'] as const;
 export const ELECTRUM_NETWORK_VALUES = BITCOIN_NETWORKS;
 export const DEAD_LETTER_CATEGORY_VALUES = ['sync', 'push', 'telegram', 'notification', 'electrum', 'transaction', 'other'] as const;
 export const MONITORING_SERVICE_VALUES = ['grafana', 'prometheus', 'jaeger'] as const;
@@ -160,7 +161,11 @@ export const nodeConfigNullablePortInputSchema = { ...nodeConfigPortInputSchema,
 export const nodeConfigNullableCountInputSchema = { ...nodeConfigCountInputSchema, nullable: true } as const;
 export const nodeConnectionModeSchema = { type: 'string', enum: [...NODE_CONNECTION_MODE_VALUES] } as const;
 export const nodeLoadBalancingSchema = { type: 'string', enum: [...NODE_LOAD_BALANCING_VALUES] } as const;
-export const nodeMempoolEstimatorSchema = { type: 'string', enum: [...NODE_MEMPOOL_ESTIMATOR_VALUES] } as const;
+export const nodeMempoolEstimatorSchema = {
+  type: 'string',
+  enum: [...NODE_MEMPOOL_ESTIMATOR_VALUES],
+  default: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
+} as const;
 
 export const electrumServerMutableProperties = {
   label: { type: 'string', minLength: 1 },

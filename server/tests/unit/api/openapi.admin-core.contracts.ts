@@ -1,4 +1,8 @@
 import { expect, it } from 'vitest';
+import {
+  DEFAULT_NODE_MEMPOOL_ESTIMATOR,
+  NODE_MEMPOOL_ESTIMATOR_VALUES,
+} from '@sanctuary/shared/constants/nodeConfig';
 
 import {
   openApiSpec,
@@ -225,6 +229,18 @@ export function registerOpenApiAdminCoreTests() {
       'servers',
     ]);
     expect(openApiSpec.components.schemas.AdminNodeConfig.properties.type.enum).toEqual(['electrum']);
+    expect(openApiSpec.components.schemas.AdminNodeConfig.properties.mempoolEstimator.enum).toEqual([
+      ...NODE_MEMPOOL_ESTIMATOR_VALUES,
+    ]);
+    expect(openApiSpec.components.schemas.AdminNodeConfig.properties.mempoolEstimator.default).toBe(
+      DEFAULT_NODE_MEMPOOL_ESTIMATOR,
+    );
+    expect(
+      openApiSpec.components.schemas.AdminNodeConfigUpdateRequest.properties.mempoolEstimator.enum,
+    ).toEqual([...NODE_MEMPOOL_ESTIMATOR_VALUES]);
+    expect(
+      openApiSpec.components.schemas.AdminNodeConfigUpdateRequest.properties.mempoolEstimator.default,
+    ).toBe(DEFAULT_NODE_MEMPOOL_ESTIMATOR);
     expect(openApiSpec.components.schemas.AdminNodeConfig.properties.port).toEqual({ type: 'string' });
     expect(openApiSpec.components.schemas.AdminNodeConfig.properties.proxyPassword).toMatchObject({
       nullable: true,

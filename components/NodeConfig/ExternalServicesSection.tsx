@@ -3,7 +3,12 @@ import { ExternalLink, ChevronRight } from "lucide-react";
 import { Input } from "../ui/Input";
 import { PriceProviderDiagnostics } from "../PriceProviderDiagnostics";
 import type { NodeConfig as NodeConfigType } from "../../types";
-import { getDefaultNodeExternalServiceUrl } from "@sanctuary/shared/constants/nodeConfig";
+import {
+  DEFAULT_NODE_MEMPOOL_ESTIMATOR,
+  NODE_MEMPOOL_ESTIMATOR_VALUES,
+  type NodeMempoolEstimator,
+  getDefaultNodeExternalServiceUrl,
+} from "@sanctuary/shared/constants/nodeConfig";
 import type { ExternalServicesSectionProps, NetworkTab } from "./types";
 
 type ExternalServiceUrlField =
@@ -284,21 +289,21 @@ export const ExternalServicesSection: React.FC<
                 </span>
               </label>
               <select
-                value={nodeConfig.mempoolEstimator || "mempool_space"}
+                value={nodeConfig.mempoolEstimator || DEFAULT_NODE_MEMPOOL_ESTIMATOR}
                 onChange={(e) =>
                   onConfigChange({
                     ...nodeConfig,
-                    mempoolEstimator: e.target.value as
-                      | "simple"
-                      | "mempool_space",
+                    mempoolEstimator: e.target.value as NodeMempoolEstimator,
                   })
                 }
                 className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
               >
-                <option value="mempool_space">
+                <option value={NODE_MEMPOOL_ESTIMATOR_VALUES[0]}>
                   Projected Blocks (Accurate)
                 </option>
-                <option value="simple">Simple Fee Buckets (Fast)</option>
+                <option value={NODE_MEMPOOL_ESTIMATOR_VALUES[1]}>
+                  Simple Fee Buckets (Fast)
+                </option>
               </select>
             </div>
           </div>

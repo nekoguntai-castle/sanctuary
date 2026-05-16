@@ -1,5 +1,6 @@
 import type { ElectrumServer, NodeConfig as NodeConfigType } from '../../types';
 import {
+  DEFAULT_NODE_MEMPOOL_ESTIMATOR,
   getDefaultNodeExternalServiceUrl,
   getNodeNetworkEnabled,
   getNodeNetworkDefaults,
@@ -21,7 +22,7 @@ export const DEFAULT_NODE_CONFIG: NodeConfigType = {
   testnet4FeeEstimatorUrl: getDefaultNodeExternalServiceUrl('testnet4'),
   signetExplorerUrl: getDefaultNodeExternalServiceUrl('signet'),
   signetFeeEstimatorUrl: getDefaultNodeExternalServiceUrl('signet'),
-  mempoolEstimator: 'mempool_space',
+  mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
   mainnetMode: mainnetDefaults.mode,
   mainnetSingletonHost: mainnetDefaults.singletonHost,
   mainnetSingletonPort: mainnetDefaults.singletonPort,

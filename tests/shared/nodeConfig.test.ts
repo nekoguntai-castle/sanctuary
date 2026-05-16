@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_NODE_MEMPOOL_ESTIMATOR,
   NODE_CONNECTION_MODE_VALUES,
+  NODE_MEMPOOL_ESTIMATOR_VALUES,
   NODE_NETWORK_DEFAULTS,
   NODE_POOL_LOAD_BALANCING_VALUES,
+  getNodeMempoolEstimator,
   getConfiguredNodeExternalServiceUrl,
   getDefaultNodeMempoolApiBase,
   getNodeExternalServiceFieldName,
@@ -19,6 +22,7 @@ import {
   getNodeNetworkSingletonPort,
   getNodeNetworkSingletonSsl,
   hasConfiguredNodeMempoolFeeEstimator,
+  isNodeMempoolEstimator,
   isNodePoolLoadBalancing,
   projectNodeProxyConfig,
   readNodeNetworkNonEmptyString,
@@ -33,8 +37,16 @@ describe('shared node config projection helpers', () => {
       'least_connections',
       'failover_only',
     ]);
+    expect(NODE_MEMPOOL_ESTIMATOR_VALUES).toEqual(['mempool_space', 'simple']);
+    expect(DEFAULT_NODE_MEMPOOL_ESTIMATOR).toBe('mempool_space');
     expect(isNodePoolLoadBalancing('least_connections')).toBe(true);
     expect(isNodePoolLoadBalancing('random')).toBe(false);
+    expect(isNodeMempoolEstimator('simple')).toBe(true);
+    expect(isNodeMempoolEstimator('mempool_space')).toBe(true);
+    expect(isNodeMempoolEstimator('unknown')).toBe(false);
+    expect(getNodeMempoolEstimator('simple')).toBe('simple');
+    expect(getNodeMempoolEstimator('unknown')).toBe('mempool_space');
+    expect(getNodeMempoolEstimator(null)).toBe('mempool_space');
     expect(NODE_NETWORK_DEFAULTS.mainnet).toMatchObject({
       enabled: true,
       mode: 'pool',

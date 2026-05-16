@@ -20,6 +20,16 @@ export const NODE_POOL_LOAD_BALANCING_VALUES = [
 export type NodePoolLoadBalancing =
   (typeof NODE_POOL_LOAD_BALANCING_VALUES)[number];
 
+export const NODE_MEMPOOL_ESTIMATOR_VALUES = [
+  'mempool_space',
+  'simple',
+] as const;
+export type NodeMempoolEstimator =
+  (typeof NODE_MEMPOOL_ESTIMATOR_VALUES)[number];
+
+export const DEFAULT_NODE_MEMPOOL_ESTIMATOR: NodeMempoolEstimator =
+  'mempool_space';
+
 export type NodeExternalServiceKind = 'explorer' | 'feeEstimator';
 
 export interface NodeNetworkDefaults {
@@ -213,6 +223,24 @@ export function isNodePoolLoadBalancing(
     typeof value === 'string' &&
     NODE_POOL_LOAD_BALANCING_VALUES.includes(value as NodePoolLoadBalancing)
   );
+}
+
+export function isNodeMempoolEstimator(
+  value: unknown,
+): value is NodeMempoolEstimator {
+  return (
+    typeof value === 'string' &&
+    NODE_MEMPOOL_ESTIMATOR_VALUES.includes(value as NodeMempoolEstimator)
+  );
+}
+
+/** Resolve a persisted or request mempool estimator, falling back to the canonical default. */
+export function getNodeMempoolEstimator(
+  value: unknown,
+): NodeMempoolEstimator {
+  return isNodeMempoolEstimator(value)
+    ? value
+    : DEFAULT_NODE_MEMPOOL_ESTIMATOR;
 }
 
 /**

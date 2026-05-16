@@ -3,6 +3,7 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { NodeConfig } from '../../components/NodeConfig';
 import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
+import { DEFAULT_NODE_MEMPOOL_ESTIMATOR } from '@sanctuary/shared/constants/nodeConfig';
 
 vi.mock('../../utils/logger', () => ({
   createLogger: () => ({
@@ -39,7 +40,7 @@ describe('NodeConfig branch coverage', () => {
     type: 'electrum',
     explorerUrl: 'https://mempool.space',
     feeEstimatorUrl: 'https://mempool.space',
-    mempoolEstimator: 'mempool_space' as const,
+    mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
     mainnetMode: 'pool',
     mainnetSingletonHost: 'electrum.blockstream.info',
     mainnetSingletonPort: 50002,

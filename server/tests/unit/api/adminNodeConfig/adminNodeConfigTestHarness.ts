@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, vi } from 'vitest';
 import express, { type Express } from 'express';
+import { DEFAULT_NODE_MEMPOOL_ESTIMATOR } from '@sanctuary/shared/constants/nodeConfig';
 
 import { errorHandler } from '../../../../src/errors/errorHandler';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
@@ -180,7 +181,7 @@ export function buildNodeConfig(overrides: Partial<NodeConfigRecord> = {}): Node
     testnet4FeeEstimatorUrl: 'https://mempool.space/testnet4',
     signetExplorerUrl: 'https://mempool.space/signet',
     signetFeeEstimatorUrl: 'https://mempool.space/signet',
-    mempoolEstimator: 'simple',
+    mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
     poolEnabled: true,
     poolMinConnections: 1,
     poolMaxConnections: 5,

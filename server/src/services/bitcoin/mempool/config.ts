@@ -7,8 +7,11 @@
 import { nodeConfigRepository } from '../../../repositories';
 import type { NonRegtestNetworkType } from '@sanctuary/shared/constants/bitcoin';
 import {
+  DEFAULT_NODE_MEMPOOL_ESTIMATOR,
   getDefaultNodeMempoolApiBase,
+  getNodeMempoolEstimator,
   getNodeMempoolApiBase as resolveNodeMempoolApiBase,
+  type NodeMempoolEstimator,
   type NodeNetworkConfigSource,
 } from '@sanctuary/shared/constants/nodeConfig';
 import { createLogger } from '../../../utils/logger';
@@ -57,12 +60,12 @@ export async function getMempoolApiBase(network: MempoolNetwork = 'mainnet'): Pr
 /**
  * Get the mempool estimator type from node config
  */
-export async function getMempoolEstimatorType(): Promise<'simple' | 'mempool_space'> {
+export async function getMempoolEstimatorType(): Promise<NodeMempoolEstimator> {
   try {
     const nodeConfig = await nodeConfigRepository.findDefault();
-    return (nodeConfig?.mempoolEstimator as 'simple' | 'mempool_space') || 'mempool_space';
+    return getNodeMempoolEstimator(nodeConfig?.mempoolEstimator);
   } catch (error) {
-    log.warn('Could not fetch mempool estimator config, using mempool_space', { error: getErrorMessage(error) });
-    return 'mempool_space';
+    log.warn('Could not fetch mempool estimator config, using default', { error: getErrorMessage(error) });
+    return DEFAULT_NODE_MEMPOOL_ESTIMATOR;
   }
 }

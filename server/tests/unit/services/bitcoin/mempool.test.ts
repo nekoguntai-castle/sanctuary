@@ -44,6 +44,7 @@ import {
   getBlocksAndMempool,
 } from '../../../../src/services/bitcoin/mempool';
 import { formatConfirmedBlocks } from '../../../../src/services/bitcoin/mempool/formatting';
+import { DEFAULT_NODE_MEMPOOL_ESTIMATOR } from '@sanctuary/shared/constants/nodeConfig';
 import { registerMempoolDashboardFormattingTests } from './mempool.dashboard-formatting.contracts';
 
 const mockBlocks = (timestamp: number) => ([
@@ -391,7 +392,7 @@ describe('mempool service', () => {
 
     hoisted.nodeConfig.findFirst.mockResolvedValue({
       isDefault: true,
-      mempoolEstimator: 'mempool_space',
+      mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
     });
 
     hoisted.axiosGet.mockImplementation((url: string) => {
@@ -434,7 +435,7 @@ describe('mempool service', () => {
 
     hoisted.nodeConfig.findFirst.mockResolvedValue({
       isDefault: true,
-      mempoolEstimator: 'mempool_space',
+      mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
     });
 
     hoisted.axiosGet.mockImplementation((url: string) => {
@@ -547,7 +548,7 @@ describe('mempool service', () => {
 
     hoisted.nodeConfig.findFirst.mockResolvedValue({
       isDefault: true,
-      mempoolEstimator: 'mempool_space',
+      mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
     });
 
     const blocks = mockBlocks(1735689600).map((block) => ({

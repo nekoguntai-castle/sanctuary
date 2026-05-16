@@ -9,6 +9,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import {
+  DEFAULT_NODE_MEMPOOL_ESTIMATOR,
+  NODE_MEMPOOL_ESTIMATOR_VALUES,
   getDefaultNodeExternalServiceUrl,
   getNodeNetworkDefaults,
 } from '@sanctuary/shared/constants/nodeConfig';
@@ -51,7 +53,7 @@ const NodeConfigBodySchema = z.object({
   testnet4FeeEstimatorUrl: NodeNullableStringSchema.optional(),
   signetExplorerUrl: NodeNullableStringSchema.optional(),
   signetFeeEstimatorUrl: NodeNullableStringSchema.optional(),
-  mempoolEstimator: z.string().optional(),
+  mempoolEstimator: z.enum(NODE_MEMPOOL_ESTIMATOR_VALUES).optional(),
   poolEnabled: z.boolean().optional(),
   poolMinConnections: z.number().optional(),
   poolMaxConnections: z.number().optional(),
@@ -163,7 +165,7 @@ router.get('/node-config', authenticate, requireAdmin, asyncHandler(async (_req,
       testnet4FeeEstimatorUrl: getDefaultNodeExternalServiceUrl('testnet4'),
       signetExplorerUrl: getDefaultNodeExternalServiceUrl('signet'),
       signetFeeEstimatorUrl: getDefaultNodeExternalServiceUrl('signet'),
-      mempoolEstimator: 'simple',
+      mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
       poolEnabled: true,
       poolMinConnections: mainnetDefaults.poolMin,
       poolMaxConnections: mainnetDefaults.poolMax,

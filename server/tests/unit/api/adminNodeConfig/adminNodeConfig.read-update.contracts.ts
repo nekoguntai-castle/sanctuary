@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
+import { DEFAULT_NODE_MEMPOOL_ESTIMATOR } from '@sanctuary/shared/constants/nodeConfig';
 
 import { mockPrismaClient } from '../../../mocks/prisma';
 import {
@@ -30,6 +31,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
         testnet4FeeEstimatorUrl: 'https://mempool.space/testnet4',
         signetExplorerUrl: 'https://mempool.space/signet',
         signetFeeEstimatorUrl: 'https://mempool.space/signet',
+        mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
       });
       expect(response.body.servers).toEqual([]);
     });
@@ -39,6 +41,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
         buildNodeConfig({
           host: 'saved.example.com',
           port: 60002,
+          mempoolEstimator: 'simple',
           proxyEnabled: true,
           proxyPassword: 'encrypted-secret',
         })
@@ -49,6 +52,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
       expect(response.status).toBe(200);
       expect(response.body.host).toBe('saved.example.com');
       expect(response.body.port).toBe('60002');
+      expect(response.body.mempoolEstimator).toBe('simple');
       expect(response.body.proxyPassword).toBe('********');
     });
 
@@ -79,7 +83,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
       expect(response.body.testnet3FeeEstimatorUrl).toBe('');
       expect(response.body.testnet4FeeEstimatorUrl).toBe('https://mempool.space/testnet4');
       expect(response.body.signetExplorerUrl).toBe('https://mempool.space/signet');
-      expect(response.body.mempoolEstimator).toBe('simple');
+      expect(response.body.mempoolEstimator).toBe(DEFAULT_NODE_MEMPOOL_ESTIMATOR);
       expect(response.body.poolLoadBalancing).toBe('round_robin');
       expect(response.body.proxyEnabled).toBe(false);
       expect(response.body).not.toHaveProperty('proxyPassword');
@@ -128,6 +132,22 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
       expect(mockPrismaClient.nodeConfig.update).not.toHaveBeenCalled();
     });
 
+    it('rejects unsupported mempool estimator values before updating', async () => {
+      const response = await request(getAdminNodeConfigApp())
+        .put('/api/v1/admin/node-config')
+        .send({
+          type: 'electrum',
+          host: 'example.com',
+          port: 50002,
+          mempoolEstimator: 'not-valid',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('Invalid node configuration');
+      expect(mockPrismaClient.nodeConfig.findFirst).not.toHaveBeenCalled();
+      expect(mockPrismaClient.nodeConfig.update).not.toHaveBeenCalled();
+    });
+
     it('updates existing default config and resets node client', async () => {
       mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({ id: 'default-existing' });
       mockPrismaClient.nodeConfig.update.mockResolvedValue(
@@ -146,7 +166,6 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
           host: 'updated.example.com',
           port: '51001',
           useSsl: true,
-          mempoolEstimator: 'not-valid',
           poolLoadBalancing: 'also-invalid',
           proxyEnabled: true,
           proxyHost: '127.0.0.1',
@@ -164,7 +183,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
       expect(mockPrismaClient.nodeConfig.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            mempoolEstimator: 'simple',
+            mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
             poolLoadBalancing: 'round_robin',
             proxyPassword: 'enc:proxy-secret',
           }),
@@ -172,6 +191,35 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
       );
       expect(mockAuditLogFromRequest).toHaveBeenCalled();
       expect(mockResetNodeClient).toHaveBeenCalled();
+    });
+
+    it('preserves explicit simple estimator selections on update', async () => {
+      mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({ id: 'default-existing' });
+      mockPrismaClient.nodeConfig.update.mockResolvedValue(
+        buildNodeConfig({
+          id: 'default-existing',
+          mempoolEstimator: 'simple',
+        })
+      );
+
+      const response = await request(getAdminNodeConfigApp())
+        .put('/api/v1/admin/node-config')
+        .send({
+          type: 'electrum',
+          host: 'updated.example.com',
+          port: 50002,
+          mempoolEstimator: 'simple',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.mempoolEstimator).toBe('simple');
+      expect(mockPrismaClient.nodeConfig.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            mempoolEstimator: 'simple',
+          }),
+        })
+      );
     });
 
     it('accepts explicit optional update values and parses numeric fields', async () => {
@@ -191,7 +239,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
           testnet4FeeEstimatorUrl: 'https://fees.testnet4.example.com',
           signetExplorerUrl: 'https://explorer.signet.example.com',
           signetFeeEstimatorUrl: 'https://fees.signet.example.com',
-          mempoolEstimator: 'mempool_space',
+          mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
           poolEnabled: false,
           poolMinConnections: 2,
           poolMaxConnections: 8,
@@ -243,7 +291,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
           testnet4FeeEstimatorUrl: 'https://fees.testnet4.example.com',
           signetExplorerUrl: 'https://explorer.signet.example.com',
           signetFeeEstimatorUrl: 'https://fees.signet.example.com',
-          mempoolEstimator: 'mempool_space',
+          mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
           poolEnabled: false,
           poolMinConnections: 2,
           poolMaxConnections: 8,
@@ -284,7 +332,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
       expect(mockPrismaClient.nodeConfig.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            mempoolEstimator: 'mempool_space',
+            mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
             poolLoadBalancing: 'least_connections',
             testnet3ExplorerUrl: 'https://explorer.testnet3.example.com',
             testnet3FeeEstimatorUrl: '',
@@ -405,7 +453,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
       expect(response.status).toBe(200);
       expect(response.body.allowSelfSignedCert).toBe(false);
       expect(response.body.feeEstimatorUrl).toBe('https://mempool.space');
-      expect(response.body.mempoolEstimator).toBe('simple');
+      expect(response.body.mempoolEstimator).toBe(DEFAULT_NODE_MEMPOOL_ESTIMATOR);
       expect(response.body.poolLoadBalancing).toBe('round_robin');
     });
 
@@ -435,6 +483,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
             isDefault: true,
             host: 'new.example.com',
             port: 50001,
+            mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
           }),
         })
       );
@@ -457,7 +506,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
           testnet4FeeEstimatorUrl: 'https://fees.create-testnet4.example.com',
           signetExplorerUrl: 'https://explorer.create-signet.example.com',
           signetFeeEstimatorUrl: 'https://fees.create-signet.example.com',
-          mempoolEstimator: 'mempool_space',
+          mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
           poolEnabled: false,
           poolMinConnections: 3,
           poolMaxConnections: 10,
@@ -509,7 +558,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
           testnet4FeeEstimatorUrl: 'https://fees.create-testnet4.example.com',
           signetExplorerUrl: 'https://explorer.create-signet.example.com',
           signetFeeEstimatorUrl: 'https://fees.create-signet.example.com',
-          mempoolEstimator: 'mempool_space',
+          mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
           poolEnabled: false,
           poolMinConnections: 3,
           poolMaxConnections: 10,
@@ -548,7 +597,7 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
       expect(mockPrismaClient.nodeConfig.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            mempoolEstimator: 'mempool_space',
+            mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
             poolLoadBalancing: 'failover_only',
             testnet3ExplorerUrl: 'https://explorer.create-testnet3.example.com',
             testnet3FeeEstimatorUrl: '',

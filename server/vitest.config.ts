@@ -64,10 +64,17 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@fixtures': path.resolve(__dirname, './tests/fixtures'),
-      '@sanctuary/shared': sharedDistPath,
-    },
+    alias: [
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+      {
+        find: '@fixtures',
+        replacement: path.resolve(__dirname, './tests/fixtures'),
+      },
+      {
+        find: /^@sanctuary\/shared\/(.*)$/,
+        replacement: path.resolve(sharedDistPath, '$1'),
+      },
+      { find: '@sanctuary/shared', replacement: sharedDistPath },
+    ],
   },
 });

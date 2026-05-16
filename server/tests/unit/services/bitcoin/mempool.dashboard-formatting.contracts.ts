@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
 import type { getBlocksAndMempool } from "../../../../src/services/bitcoin/mempool";
+import { DEFAULT_NODE_MEMPOOL_ESTIMATOR } from "@sanctuary/shared/constants/nodeConfig";
 
 type MempoolDashboardFormattingContext = {
   getBlocksAndMempool: typeof getBlocksAndMempool;
@@ -24,7 +25,7 @@ export function registerMempoolDashboardFormattingTests({
 
       hoisted.nodeConfig.findFirst.mockResolvedValue({
         isDefault: true,
-        mempoolEstimator: "mempool_space",
+        mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
       });
 
       const blocks = [
@@ -183,7 +184,7 @@ export function registerMempoolDashboardFormattingTests({
   it("handles mempool-space confirmed block median fee fallbacks", async () => {
     hoisted.nodeConfig.findFirst.mockResolvedValue({
       isDefault: true,
-      mempoolEstimator: "mempool_space",
+      mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
     });
 
     const blocks = mockBlocks(1735689600).map((block) => ({

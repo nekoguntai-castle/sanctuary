@@ -84,6 +84,7 @@ import type {
   AggregatedPrice,
 } from "@sanctuary/shared/types/api";
 import type { PendingTransactionType } from "@sanctuary/shared/constants/transactions";
+import type { NodeMempoolEstimator } from "@sanctuary/shared/constants/nodeConfig";
 
 export { WalletType };
 export type {
@@ -100,6 +101,7 @@ export type {
   TransferResourceType,
   SyncStatus,
   SyncPriority,
+  NodeMempoolEstimator,
   ConnectionMode,
   LoadBalancingStrategy,
   PrivacyGrade,
@@ -160,7 +162,7 @@ export interface NodeConfig {
   testnet4FeeEstimatorUrl?: string | null;
   signetExplorerUrl?: string | null;
   signetFeeEstimatorUrl?: string | null;
-  mempoolEstimator?: "simple" | "mempool_space";
+  mempoolEstimator?: NodeMempoolEstimator;
   allowSelfSignedCert?: boolean;
 
   // MAINNET SETTINGS

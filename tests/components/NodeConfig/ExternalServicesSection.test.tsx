@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ExternalServicesSection } from "../../../components/NodeConfig/ExternalServicesSection";
 import type { NodeConfig } from "../../../types";
+import { DEFAULT_NODE_MEMPOOL_ESTIMATOR } from "@sanctuary/shared/constants/nodeConfig";
 
 vi.mock("../../../components/PriceProviderDiagnostics", () => ({
   PriceProviderDiagnostics: () => (
@@ -23,7 +24,7 @@ function createNodeConfig(overrides: Partial<NodeConfig> = {}): NodeConfig {
     testnet4FeeEstimatorUrl: "https://mempool.space/testnet4",
     signetExplorerUrl: "https://mempool.space/signet",
     signetFeeEstimatorUrl: "https://mempool.space/signet",
-    mempoolEstimator: "mempool_space",
+    mempoolEstimator: DEFAULT_NODE_MEMPOOL_ESTIMATOR,
     mainnetMode: "singleton",
     ...overrides,
   };
@@ -240,7 +241,9 @@ describe("ExternalServicesSection", () => {
       />,
     );
 
-    expect(screen.getByRole("combobox")).toHaveValue("mempool_space");
+    expect(screen.getByRole("combobox")).toHaveValue(
+      DEFAULT_NODE_MEMPOOL_ESTIMATOR,
+    );
   });
 
   it("shows price provider diagnostics when expanded", () => {

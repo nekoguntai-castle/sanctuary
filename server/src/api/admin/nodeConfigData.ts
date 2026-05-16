@@ -7,10 +7,14 @@
 
 import { encrypt } from "../../utils/encryption";
 import {
+  DEFAULT_NODE_MEMPOOL_ESTIMATOR,
+  NODE_MEMPOOL_ESTIMATOR_VALUES,
   NODE_POOL_LOAD_BALANCING_VALUES,
   getDefaultNodeExternalServiceUrl,
+  getNodeMempoolEstimator,
   getNodeExternalServiceResponseUrl,
   getNodeNetworkDefaults,
+  type NodeMempoolEstimator,
 } from "@sanctuary/shared/constants/nodeConfig";
 
 type NullableString = string | null;
@@ -36,7 +40,7 @@ export interface NodeConfigInput {
   testnet4FeeEstimatorUrl?: NullableString;
   signetExplorerUrl?: NullableString;
   signetFeeEstimatorUrl?: NullableString;
-  mempoolEstimator?: string;
+  mempoolEstimator?: NodeMempoolEstimator;
   poolEnabled?: boolean;
   poolMinConnections?: number;
   poolMaxConnections?: number;
@@ -92,7 +96,6 @@ export interface NodeConfigInput {
   signetPoolLoadBalancing?: string;
 }
 
-const VALID_ESTIMATORS = ["simple", "mempool_space"];
 const VALID_LOAD_BALANCING = [...NODE_POOL_LOAD_BALANCING_VALUES];
 
 interface NetworkDefaults {
@@ -146,12 +149,12 @@ function parseRequiredInteger(value: string | number): number {
   return parseInt(value.toString(), 10);
 }
 
-function pickAllowed(
+function pickAllowed<T extends string>(
   value: string | undefined,
-  allowed: string[],
-  fallback: string,
-): string {
-  return value && allowed.includes(value) ? value : fallback;
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return value && allowed.includes(value as T) ? (value as T) : fallback;
 }
 
 function encryptedOrNull(value: NullableString | undefined): string | null {
@@ -339,8 +342,8 @@ export function buildNodeConfigData(
 ): Record<string, unknown> {
   const estimator = pickAllowed(
     input.mempoolEstimator,
-    VALID_ESTIMATORS,
-    "simple",
+    NODE_MEMPOOL_ESTIMATOR_VALUES,
+    DEFAULT_NODE_MEMPOOL_ESTIMATOR,
   );
   const loadBalancing = pickAllowed(
     input.poolLoadBalancing,
@@ -394,7 +397,7 @@ function buildNodeConfigBaseResponse(
     testnet4FeeEstimatorUrl: getNodeExternalServiceResponseUrl(nodeConfig, "testnet4", "feeEstimator"),
     signetExplorerUrl: getNodeExternalServiceResponseUrl(nodeConfig, "signet", "explorer"),
     signetFeeEstimatorUrl: getNodeExternalServiceResponseUrl(nodeConfig, "signet", "feeEstimator"),
-    mempoolEstimator: nodeConfig.mempoolEstimator || "simple",
+    mempoolEstimator: getNodeMempoolEstimator(nodeConfig.mempoolEstimator),
     poolEnabled: nodeConfig.poolEnabled,
     poolMinConnections: nodeConfig.poolMinConnections,
     poolMaxConnections: nodeConfig.poolMaxConnections,
