@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
+import { WebSocketChannels } from '@sanctuary/shared/types/websocket';
 import { websocketClient } from '../../services/websocket';
 
 export interface UseWebSocketReturn {
@@ -20,6 +21,14 @@ export interface UseWebSocketReturn {
   subscribeWallets: (walletIds: string[]) => void;
   unsubscribeWallets: (walletIds: string[]) => void;
 }
+
+const getWalletChannels = (walletId: string): string[] => [
+  WebSocketChannels.wallet(walletId),
+  WebSocketChannels.walletEvent(walletId, 'transaction'),
+  WebSocketChannels.walletEvent(walletId, 'balance'),
+  WebSocketChannels.walletEvent(walletId, 'confirmation'),
+  WebSocketChannels.walletEvent(walletId, 'sync'),
+];
 
 export const useWebSocket = (): UseWebSocketReturn => {
   const [connected, setConnected] = useState(websocketClient.isConnected());
@@ -75,15 +84,6 @@ export const useWebSocket = (): UseWebSocketReturn => {
   const unsubscribeBatch = useCallback((channels: string[]) => {
     websocketClient.unsubscribeBatch(channels);
   }, []);
-
-  // Helper to get all channels for a wallet
-  const getWalletChannels = (walletId: string): string[] => [
-    `wallet:${walletId}`,
-    `wallet:${walletId}:transaction`,
-    `wallet:${walletId}:balance`,
-    `wallet:${walletId}:confirmation`,
-    `wallet:${walletId}:sync`,
-  ];
 
   const subscribeWallet = useCallback((walletId: string) => {
     websocketClient.subscribeBatch(getWalletChannels(walletId));

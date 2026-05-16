@@ -17,6 +17,8 @@ const mockLogger = vi.hoisted(() => ({
 
 const mockBroadcast = vi.hoisted(() => vi.fn());
 const mockGetStats = vi.hoisted(() => vi.fn().mockReturnValue({ clients: 5, channelList: [] }));
+const mockIsGatewayConnected = vi.hoisted(() => vi.fn().mockReturnValue(false));
+const mockSendEvent = vi.hoisted(() => vi.fn());
 const mockGetWebSocketServerIfInitialized = vi.hoisted(() => vi.fn(() => ({
   broadcast: mockBroadcast,
   getStats: mockGetStats,
@@ -32,6 +34,10 @@ vi.mock('../../../src/websocket/server', () => ({
     getStats: mockGetStats,
   })),
   getWebSocketServerIfInitialized: mockGetWebSocketServerIfInitialized,
+  getGatewayWebSocketServer: vi.fn(() => ({
+    isGatewayConnected: mockIsGatewayConnected,
+    sendEvent: mockSendEvent,
+  })),
 }));
 
 const mockSubscribeAddress = vi.fn().mockResolvedValue('subscription-id');
@@ -121,6 +127,7 @@ describe('NotificationService', () => {
     mockLogger.info.mockImplementation(() => undefined);
     mockLogger.warn.mockImplementation(() => undefined);
     mockLogger.error.mockImplementation(() => undefined);
+    mockIsGatewayConnected.mockReturnValue(false);
     service = new NotificationService();
   });
 
@@ -409,6 +416,30 @@ describe('NotificationService', () => {
       );
     });
 
+    it('routes notification broadcasts through the gateway-forwarding broadcast path', () => {
+      mockIsGatewayConnected.mockReturnValue(true);
+
+      service.broadcastTransactionNotification({
+        txid: 'tx-gateway',
+        walletId: 'wallet-123',
+        type: 'received',
+        amount: 100000,
+        confirmations: 0,
+        timestamp: new Date(),
+      });
+
+      expect(mockSendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'transaction',
+          walletId: 'wallet-123',
+          data: expect.objectContaining({
+            txid: 'tx-gateway',
+            walletId: 'wallet-123',
+          }),
+        })
+      );
+    });
+
     it('should broadcast transaction notification', () => {
       const notification: TransactionNotification = {
         txid: 'tx-abc',
@@ -429,6 +460,7 @@ describe('NotificationService', () => {
             txid: 'tx-abc',
             type: 'received',
             amount: 100000,
+            walletId: 'wallet-123',
           }),
         })
       );
@@ -477,6 +509,7 @@ describe('NotificationService', () => {
             balance: 500000,
             unconfirmed: 25000,
             change: 25000,
+            walletId: 'wallet-123',
           }),
         })
       );
@@ -516,7 +549,7 @@ describe('NotificationService', () => {
           type: 'newBlock',
           data: expect.objectContaining({
             height: 800001,
-            timestamp: expect.any(Date),
+            timestamp: expect.any(String),
           }),
         })
       );

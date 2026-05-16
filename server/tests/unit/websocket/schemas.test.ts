@@ -19,6 +19,27 @@ import {
   parseClientMessage,
   parseGatewayMessage,
 } from '../../../src/websocket/schemas';
+import { WEBSOCKET_CLIENT_MESSAGE_TYPES } from '@sanctuary/shared/types/websocket';
+
+const clientSchemaMessageTypes = (): string[] => {
+  const schemaOptions = (ClientMessageSchema as unknown as { options: unknown[] }).options;
+  return schemaOptions.map((schema) => {
+    const literal = (schema as {
+      shape: {
+        type: {
+          value?: string;
+          values?: string[] | Set<string>;
+          _def?: { values?: string[] | Set<string> };
+        };
+      };
+    }).shape.type;
+    if (literal.value) return literal.value;
+    const values = literal.values ?? literal._def?.values;
+    if (Array.isArray(values)) return values[0];
+    if (values instanceof Set) return Array.from(values)[0];
+    throw new Error('Unable to read websocket client message literal');
+  });
+};
 
 describe('WebSocket Schemas', () => {
   describe('AuthMessageSchema', () => {
@@ -244,6 +265,10 @@ describe('WebSocket Schemas', () => {
   });
 
   describe('ClientMessageSchema (discriminated union)', () => {
+    it('should stay in parity with shared client message types', () => {
+      expect(clientSchemaMessageTypes()).toEqual([...WEBSOCKET_CLIENT_MESSAGE_TYPES]);
+    });
+
     it('should validate auth message', () => {
       const message = {
         type: 'auth',

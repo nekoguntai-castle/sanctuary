@@ -9,6 +9,12 @@
  */
 
 import { checkWalletAccess } from '../services/accessControl';
+import {
+  getWalletIdFromWebSocketChannel,
+  isWebSocketWalletEventType,
+  isWebSocketWalletChannel,
+  WebSocketChannels,
+} from '@sanctuary/shared/types/websocket';
 import { createLogger } from '../utils/logger';
 import {
   websocketRateLimitHits,
@@ -73,7 +79,7 @@ export async function handleSubscribe(
   }
 
   // Validate subscription based on authentication
-  if (channel.startsWith('wallet:') && !client.userId) {
+  if (isWebSocketWalletChannel(channel) && !client.userId) {
     callbacks.sendToClient(client, {
       type: 'error',
       data: { message: 'Authentication required for wallet subscriptions' },
@@ -82,10 +88,9 @@ export async function handleSubscribe(
   }
 
   // Validate wallet access for wallet-specific channels
-  if (channel.startsWith('wallet:') && client.userId) {
-    const walletIdMatch = channel.match(/^wallet:([a-f0-9-]+)/);
-    if (walletIdMatch) {
-      const walletId = walletIdMatch[1];
+  if (isWebSocketWalletChannel(channel) && client.userId) {
+    const walletId = getWalletIdFromWebSocketChannel(channel);
+    if (walletId) {
       const access = await checkWalletAccess(walletId, client.userId);
       if (!access.hasAccess) {
         log.warn(`User ${client.userId} denied access to wallet ${walletId}`);
@@ -180,16 +185,15 @@ export async function handleSubscribeBatch(
     }
 
     // Validate subscription based on authentication
-    if (channel.startsWith('wallet:') && !client.userId) {
+    if (isWebSocketWalletChannel(channel) && !client.userId) {
       errors.push({ channel, reason: 'Authentication required' });
       continue;
     }
 
     // Validate wallet access for wallet-specific channels
-    if (channel.startsWith('wallet:') && client.userId) {
-      const walletIdMatch = channel.match(/^wallet:([a-f0-9-]+)/);
-      if (walletIdMatch) {
-        const walletId = walletIdMatch[1];
+    if (isWebSocketWalletChannel(channel) && client.userId) {
+      const walletId = getWalletIdFromWebSocketChannel(channel);
+      if (walletId) {
         const access = await checkWalletAccess(walletId, client.userId);
         if (!access.hasAccess) {
           errors.push({ channel, reason: 'Access denied' });
@@ -266,39 +270,41 @@ export function getChannelsForEvent(event: WebSocketEvent): string[] {
 
   // Global channels
   if (event.type === 'block' || event.type === 'newBlock') {
-    channels.push('blocks');
+    channels.push(WebSocketChannels.blocks());
   }
 
   if (event.type === 'mempool') {
-    channels.push('mempool');
+    channels.push(WebSocketChannels.mempool());
   }
 
   // Sync events go to global channel for cross-page cache updates
   if (event.type === 'sync') {
-    channels.push('sync:all');
+    channels.push(WebSocketChannels.syncAll());
   }
 
   // Transaction events go to global channel for cross-page cache updates
   // This ensures all browser windows receive updates even if wallet-specific
   // subscriptions failed due to auth race conditions
   if (event.type === 'transaction' || event.type === 'balance' || event.type === 'confirmation') {
-    channels.push('transactions:all');
+    channels.push(WebSocketChannels.transactionsAll());
   }
 
   // Log events go to global channel for multi-window sync log visibility
   if (event.type === 'log') {
-    channels.push('logs:all');
+    channels.push(WebSocketChannels.logsAll());
   }
 
   // Wallet-specific channels
   if (event.walletId) {
-    channels.push(`wallet:${event.walletId}`);
-    channels.push(`wallet:${event.walletId}:${event.type}`);
+    channels.push(WebSocketChannels.wallet(event.walletId));
+    if (isWebSocketWalletEventType(event.type)) {
+      channels.push(WebSocketChannels.walletEvent(event.walletId, event.type));
+    }
   }
 
   // Address-specific channels
   if (event.addressId) {
-    channels.push(`address:${event.addressId}`);
+    channels.push(WebSocketChannels.address(event.addressId));
   }
 
   return channels;

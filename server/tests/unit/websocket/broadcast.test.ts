@@ -85,6 +85,7 @@ describe('Broadcast Helpers', () => {
             type: 'received',
             amount: 100000,
             confirmations: 0,
+            walletId: 'wallet-123',
           }),
         })
       );
@@ -556,7 +557,15 @@ describe('Broadcast Helpers', () => {
         change: 0,
       });
 
-      expect(mockSendEvent).toHaveBeenCalled();
+      expect(mockSendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'balance',
+          walletId: 'wallet-123',
+          data: expect.objectContaining({
+            walletId: 'wallet-123',
+          }),
+        })
+      );
     });
 
     it('should not send to gateway when disconnected', () => {

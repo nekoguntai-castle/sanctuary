@@ -1,6 +1,54 @@
-# Task: Phase M2 UTXO Selection Route Validation Convergence 2026-05-16
+# Task: Phase N Websocket Protocol Ownership Convergence 2026-05-16
 
 Status: implemented locally; PR delivery pending.
+
+Goal: implement the reviewed Phase N slice by centralizing websocket protocol ownership across shared types, frontend senders/subscriptions, server runtime schemas/fanout, and notification broadcast behavior while preserving the legacy event envelope.
+
+Source alignment: this is the websocket follow-up listed as Phase O in `docs/plans/rationalization-plan.md`. This worktree/task calls it Phase N because the transfer and UTXO phases split during delivery; PR text should name websocket protocol ownership rather than rely on the phase letter alone.
+
+Non-goals:
+
+- Do not introduce a versioned websocket protocol migration or change the legacy event envelope in this slice.
+- Do not change channel authorization rules, default subscription behavior, or the optional "server not initialized" skip behavior for notification broadcasts unless explicitly covered by tests.
+- Do not collapse Redis bridge, gateway websocket, or push-notification transport internals into the shared client/server protocol owner.
+
+Acceptance criteria:
+
+- Shared websocket types own active client message names, broadcast/control event names, batch subscribe/unsubscribe message types, event classifiers, and channel builders for global, wallet, wallet-event, address, and listener channels.
+- The explicit `mempool` channel helper exists, but the default frontend global subscription bundle preserves current behavior unless a separate product change adds mempool to that bundle.
+- Wallet channel parsing preserves the current legacy matching semantics; tightening accepted wallet-id characters belongs in a separate protocol/auth migration.
+- Frontend websocket service/hooks derive active event and channel usage from shared websocket ownership and no active frontend type includes stale `modelDownload`.
+- Server runtime schemas, websocket types, and channel fanout stay in parity with shared client messages and channel helpers, including `subscribe_batch` and `unsubscribe_batch`.
+- Notification broadcast helpers route through the typed broadcast/gateway-forwarding path while preserving the current local optional skip behavior when no websocket server is initialized.
+- Tests and searches prove the legacy payload expectations that matter to existing clients remain intact, including wallet-scoped notification data and intentional test-only `modelDownload` rejection assertions.
+
+## Plan
+
+- [x] Inspect shared websocket types, frontend websocket service/hooks, server schemas/fanout, and notification broadcast paths.
+- [x] Add or update shared protocol/channel helpers for batch subscribe/unsubscribe, active event names, and common channel strings without changing the legacy envelope.
+- [x] Remove stale model-download websocket typing from active frontend paths and align server validation/fanout with shared ownership.
+- [x] Route notification broadcasts through the shared builder/gateway-forwarding path or document and test local-only delivery if that remains intentional.
+- [x] Add focused shared/frontend/server websocket tests and run focused websocket test/type/build/lint/lizard verification.
+- [x] Finish and record production stale-string searches, channel-string drift searches, regenerated architecture docs, `npm run arch:check`, `git diff --check`, and final self-review.
+- [ ] Open, monitor, and merge the PR.
+
+## Review
+
+- Shared websocket protocol ownership now includes active client message names, broadcast/control/server event names, batch subscribe/unsubscribe messages and acknowledgements, channel builders, wallet-channel helpers, and event-domain classifiers.
+- Frontend websocket service and hooks now derive active broadcast event and channel usage from the shared websocket owner. The stale active frontend `modelDownload` event type is removed.
+- Server websocket message types, channel fanout, and runtime schema parity tests now align with shared client messages, including `subscribe_batch` and `unsubscribe_batch`.
+- Notification broadcasts now keep the optional "server not initialized" skip behavior, but when a websocket server exists they route through the typed broadcast helpers and gateway-forwarding path. Existing wallet-scoped legacy payload expectations are preserved by including `walletId` in wallet event data except log entries.
+- Redis bridge event typing now reuses the server websocket event type instead of carrying a separate event-name union; Redis pub/sub behavior remains unchanged.
+- The explicit shared `mempool` channel helper exists, while the default frontend global subscription bundle intentionally preserves the current non-mempool set.
+- CI backend coverage initially caught one uncovered fanout branch for a walletId attached to a global event. Added focused coverage proving such events do not receive a wallet-event channel.
+- Verification passed: `npm ci`; `npm --prefix shared run build`; focused root websocket tests; hook websocket wrapper tests; focused server websocket schema/broadcast/notification/client-limit/events tests; Redis bridge websocket tests; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:app`; `npm run lint:server`; touched-file lizard including `server/src/websocket/redisBridge.ts`; production `modelDownload` search with no active-source matches; channel-string search with remaining hits classified as shared ownership, websocket event builders/prechecks, or unrelated mempool/hook operation domains; `npm run arch:check`; `npm --prefix server run test:coverage`; `git diff HEAD --check`.
+- `docs/architecture/generated/frontend.md` was regenerated for the new frontend shared websocket dependency edges.
+
+---
+
+# Task: Phase M2 UTXO Selection Route Validation Convergence 2026-05-16
+
+Status: merged and verified via PR #478 as squash commit `431ef4f1c22fa2765bded9c267cc4bf7c24bb721`.
 
 Goal: implement the reviewed Phase M2 slice by validating UTXO selection route inputs at the HTTP boundary, rejecting malformed select/compare amounts before `BigInt` conversion, aligning `scriptType` body handling with OpenAPI, and delivering the change through a PR.
 
@@ -11,7 +59,7 @@ Goal: implement the reviewed Phase M2 slice by validating UTXO selection route i
 - [x] Replace route `scriptType` passthrough validation with typed string handling that matches the documented request schema and closed-object behavior.
 - [x] Add focused select/compare route tests and OpenAPI parity checks for amount and `scriptType` boundaries.
 - [x] Run focused UTXO/OpenAPI verification, server type/build/lint checks, touched-file lizard, stale-drift searches, and `git diff --check`.
-- [ ] Open, monitor, and merge the PR.
+- [x] Open, monitor, and merge the PR.
 
 ## Review
 
@@ -20,6 +68,8 @@ Goal: implement the reviewed Phase M2 slice by validating UTXO selection route i
 - OpenAPI now documents safe integer UTXO amount inputs, non-empty `scriptType`, closed request bodies, and a separate `UtxoCompareStrategiesRequest` schema without `strategy`.
 - Focused route tests cover valid string/number/leading-zero amount payloads, invalid amount values before service calls, malformed `scriptType`, strict body rejection, invalid strategies, and existing fee-rate behavior.
 - Verification passed: `npm --prefix shared run build`; `npm --prefix server run prisma:generate`; `npm --prefix server run test:run -- tests/unit/api/transactions-coinSelection-routes.test.ts tests/unit/api/openapi.test.ts`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run quality:lizard -- --files server/src/api/transactions/coinSelection.ts server/src/api/openapi/schemas/transactions.ts server/src/api/openapi/paths/transactions.ts`; `npm run lint:server`; `npm run arch:check`; stale route-local `BigInt(amount)`/`z.unknown()` search; `npm --prefix server run test:coverage`; `git diff --check`.
+- PR #478 passed Forgejo Architecture, Build Dev Images scope, Code Quality, Test Suite full lanes including backend coverage, browser/render E2E, frontend coverage, Full Test Summary, and PR Required Checks, then squash-merged as `431ef4f1c22fa2765bded9c267cc4bf7c24bb721`.
+- Post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

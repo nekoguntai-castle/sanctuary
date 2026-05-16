@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
+import { WebSocketChannels } from '@sanctuary/shared/types/websocket';
 
 import {
   activeServers,
@@ -254,10 +255,18 @@ export const registerClientServerLimitMessageFlowContracts = () => {
     const server = new Server();
     activeServers.push(server);
 
-    expect((server as any).getChannelsForEvent({ type: 'block', data: {} })).toContain('blocks');
-    expect((server as any).getChannelsForEvent({ type: 'mempool', data: {} })).toContain('mempool');
-    expect((server as any).getChannelsForEvent({ type: 'sync', data: {} })).toContain('sync:all');
-    expect((server as any).getChannelsForEvent({ type: 'log', data: {} })).toContain('logs:all');
+    expect((server as any).getChannelsForEvent({ type: 'block', data: {} })).toContain(
+      WebSocketChannels.blocks()
+    );
+    expect((server as any).getChannelsForEvent({ type: 'mempool', data: {} })).toContain(
+      WebSocketChannels.mempool()
+    );
+    expect((server as any).getChannelsForEvent({ type: 'sync', data: {} })).toContain(
+      WebSocketChannels.syncAll()
+    );
+    expect((server as any).getChannelsForEvent({ type: 'log', data: {} })).toContain(
+      WebSocketChannels.logsAll()
+    );
     expect(
       (server as any).getChannelsForEvent({
         type: 'transaction',
@@ -265,7 +274,20 @@ export const registerClientServerLimitMessageFlowContracts = () => {
         walletId: 'w1',
         addressId: 'a1',
       })
-    ).toEqual(expect.arrayContaining(['transactions:all', 'wallet:w1', 'wallet:w1:transaction', 'address:a1']));
+    ).toEqual(expect.arrayContaining([
+      WebSocketChannels.transactionsAll(),
+      WebSocketChannels.wallet('w1'),
+      WebSocketChannels.walletEvent('w1', 'transaction'),
+      WebSocketChannels.address('a1'),
+    ]));
+
+    expect(
+      (server as any).getChannelsForEvent({
+        type: 'block',
+        data: {},
+        walletId: 'w1',
+      })
+    ).not.toContain('wallet:w1:block');
   });
 
   it('terminates dead clients during heartbeat and tolerates heartbeat exceptions', async () => {

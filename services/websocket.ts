@@ -5,23 +5,22 @@
  * Handles reconnection, subscriptions, and event dispatching
  */
 
+import {
+  WebSocketChannels,
+  type ClientMessage,
+  type WebSocketBroadcastEventType,
+} from '@sanctuary/shared/types/websocket';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('WebSocket');
 
 export type WebSocketEventType =
-  | 'transaction'
-  | 'balance'
-  | 'confirmation'
-  | 'block'
-  | 'newBlock'
-  | 'mempool'
-  | 'sync'
-  | 'log'
-  | 'modelDownload'
+  | WebSocketBroadcastEventType
   | 'connected'
   | 'disconnected'
   | 'error';
+
+export type WebSocketListenerType = WebSocketEventType | '*' | `channel:${string}`;
 
 export interface WebSocketEvent {
   type: string;
@@ -55,7 +54,7 @@ export class WebSocketClient {
   private isServerReady: boolean = false;
 
   private subscriptions: Set<string> = new Set();
-  private eventListeners: Map<string, Set<EventCallback>> = new Map();
+  private eventListeners: Map<WebSocketListenerType, Set<EventCallback>> = new Map();
   private connectionListeners: Set<(connected: boolean) => void> = new Set();
 
   constructor(url: string) {
@@ -315,7 +314,7 @@ export class WebSocketClient {
 
     // Notify channel-specific listeners
     if (channel) {
-      const listeners = this.eventListeners.get(`channel:${channel}`);
+      const listeners = this.eventListeners.get(WebSocketChannels.listener(channel));
       if (listeners) {
         for (const callback of listeners) {
           try {
@@ -439,7 +438,7 @@ export class WebSocketClient {
   /**
    * Add event listener
    */
-  on(eventType: WebSocketEventType | '*', callback: EventCallback) {
+  on(eventType: WebSocketListenerType, callback: EventCallback) {
     if (!this.eventListeners.has(eventType)) {
       this.eventListeners.set(eventType, new Set());
     }
@@ -449,7 +448,7 @@ export class WebSocketClient {
   /**
    * Remove event listener
    */
-  off(eventType: WebSocketEventType | '*', callback: EventCallback) {
+  off(eventType: WebSocketListenerType, callback: EventCallback) {
     const listeners = this.eventListeners.get(eventType);
     if (listeners) {
       listeners.delete(callback);
@@ -493,7 +492,7 @@ export class WebSocketClient {
    * is open. The previous defensive readyState check inside this helper
    * was dead code that the 100% coverage gate could not exercise.
    */
-  private send(message: unknown) {
+  private send(message: ClientMessage) {
     this.ws!.send(JSON.stringify(message));
   }
 

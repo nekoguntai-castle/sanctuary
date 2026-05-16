@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { WebSocketChannels } from '@sanctuary/shared/types/websocket';
 import { websocketClient, WebSocketEvent } from '../../services/websocket';
 import { getWalletLogs } from '../../src/api/sync';
 import { createLogger } from '../../utils/logger';
@@ -87,7 +88,7 @@ export const useWalletLogs = (
   useEffect(() => {
     if (!walletId || !enabled) return;
 
-    const channel = `wallet:${walletId}:log`;
+    const channel = WebSocketChannels.walletEvent(walletId, 'log');
 
     // Subscribe to the log channel
     websocketClient.subscribe(channel);

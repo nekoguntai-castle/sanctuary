@@ -5,6 +5,7 @@
  */
 
 import { WebSocket } from 'ws';
+import type { BroadcastEvent, ClientMessage } from '@sanctuary/shared/types/websocket';
 
 // ============================================================================
 // Connection Limits
@@ -100,17 +101,14 @@ export interface AuthenticatedWebSocket extends WebSocket {
 }
 
 /** WebSocket message types from client */
-export interface WebSocketMessage {
-  type: 'auth' | 'subscribe' | 'unsubscribe' | 'subscribe_batch' | 'unsubscribe_batch' | 'ping' | 'pong';
-  data?: Record<string, unknown>;
-}
+export type WebSocketMessage = ClientMessage;
 
 /**
  * WebSocket event for broadcasting
  * @deprecated Use typed events from './events' instead
  */
 export interface WebSocketEvent {
-  type: 'transaction' | 'balance' | 'confirmation' | 'block' | 'newBlock' | 'mempool' | 'sync' | 'log';
+  type: BroadcastEvent['type'];
   data: unknown;
   walletId?: string;
   addressId?: string;

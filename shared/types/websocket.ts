@@ -12,6 +12,18 @@
 // Client-to-Server Messages
 // =============================================================================
 
+export const WEBSOCKET_CLIENT_MESSAGE_TYPES = [
+  'auth',
+  'subscribe',
+  'unsubscribe',
+  'subscribe_batch',
+  'unsubscribe_batch',
+  'ping',
+  'pong',
+] as const;
+
+export type WebSocketClientMessageType = typeof WEBSOCKET_CLIENT_MESSAGE_TYPES[number];
+
 export interface AuthMessage {
   type: 'auth';
   data: {
@@ -33,6 +45,20 @@ export interface UnsubscribeMessage {
   };
 }
 
+export interface SubscribeBatchMessage {
+  type: 'subscribe_batch';
+  data: {
+    channels: string[];
+  };
+}
+
+export interface UnsubscribeBatchMessage {
+  type: 'unsubscribe_batch';
+  data: {
+    channels: string[];
+  };
+}
+
 export interface PingMessage {
   type: 'ping';
 }
@@ -48,12 +74,58 @@ export type ClientMessage =
   | AuthMessage
   | SubscribeMessage
   | UnsubscribeMessage
+  | SubscribeBatchMessage
+  | UnsubscribeBatchMessage
   | PingMessage
   | PongMessage;
 
 // =============================================================================
 // Server-to-Client Events
 // =============================================================================
+
+export const WEBSOCKET_WALLET_EVENT_TYPES = [
+  'transaction',
+  'balance',
+  'confirmation',
+  'sync',
+  'log',
+] as const;
+
+export type WebSocketWalletEventType = typeof WEBSOCKET_WALLET_EVENT_TYPES[number];
+
+export const WEBSOCKET_GLOBAL_EVENT_TYPES = [
+  'block',
+  'newBlock',
+  'mempool',
+] as const;
+
+export type WebSocketGlobalEventType = typeof WEBSOCKET_GLOBAL_EVENT_TYPES[number];
+
+export const WEBSOCKET_BROADCAST_EVENT_TYPES = [
+  ...WEBSOCKET_WALLET_EVENT_TYPES,
+  ...WEBSOCKET_GLOBAL_EVENT_TYPES,
+] as const;
+
+export type WebSocketBroadcastEventType = typeof WEBSOCKET_BROADCAST_EVENT_TYPES[number];
+
+export const WEBSOCKET_CONTROL_EVENT_TYPES = [
+  'connected',
+  'authenticated',
+  'subscribed',
+  'unsubscribed',
+  'subscribed_batch',
+  'unsubscribed_batch',
+  'error',
+] as const;
+
+export type WebSocketControlEventType = typeof WEBSOCKET_CONTROL_EVENT_TYPES[number];
+
+export const WEBSOCKET_SERVER_EVENT_TYPES = [
+  ...WEBSOCKET_CONTROL_EVENT_TYPES,
+  ...WEBSOCKET_BROADCAST_EVENT_TYPES,
+] as const;
+
+export type WebSocketServerEventType = typeof WEBSOCKET_SERVER_EVENT_TYPES[number];
 
 /**
  * Connection established
@@ -93,6 +165,27 @@ export interface UnsubscribedEvent {
   type: 'unsubscribed';
   data: {
     channel: string;
+  };
+}
+
+/**
+ * Batch subscription confirmed
+ */
+export interface SubscribedBatchEvent {
+  type: 'subscribed_batch';
+  data: {
+    subscribed: string[];
+    errors?: Array<{ channel: string; reason: string }>;
+  };
+}
+
+/**
+ * Batch unsubscription confirmed
+ */
+export interface UnsubscribedBatchEvent {
+  type: 'unsubscribed_batch';
+  data: {
+    unsubscribed: string[];
   };
 }
 
@@ -231,6 +324,8 @@ export type ServerEvent =
   | AuthenticatedEvent
   | SubscribedEvent
   | UnsubscribedEvent
+  | SubscribedBatchEvent
+  | UnsubscribedBatchEvent
   | ErrorEvent
   | TransactionEvent
   | BalanceEvent
@@ -270,6 +365,61 @@ export type BroadcastEvent =
   | LogEvent;
 
 // =============================================================================
+// Shared Channel Helpers
+// =============================================================================
+
+export const WEBSOCKET_GLOBAL_CHANNELS = {
+  blocks: 'blocks',
+  mempool: 'mempool',
+  syncAll: 'sync:all',
+  transactionsAll: 'transactions:all',
+  logsAll: 'logs:all',
+} as const;
+
+export type WebSocketGlobalChannel =
+  typeof WEBSOCKET_GLOBAL_CHANNELS[keyof typeof WEBSOCKET_GLOBAL_CHANNELS];
+
+export const WEBSOCKET_WALLET_CHANNEL_PATTERN = /^wallet:([a-f0-9-]+)/;
+
+export function isWebSocketWalletChannel(channel: string): channel is `wallet:${string}` {
+  return channel.startsWith('wallet:');
+}
+
+export function getWalletIdFromWebSocketChannel(channel: string): string | null {
+  const match = channel.match(WEBSOCKET_WALLET_CHANNEL_PATTERN);
+  return match?.[1] ?? null;
+}
+
+export const WebSocketChannels = {
+  blocks: (): WebSocketGlobalChannel => WEBSOCKET_GLOBAL_CHANNELS.blocks,
+  mempool: (): WebSocketGlobalChannel => WEBSOCKET_GLOBAL_CHANNELS.mempool,
+  syncAll: (): WebSocketGlobalChannel => WEBSOCKET_GLOBAL_CHANNELS.syncAll,
+  transactionsAll: (): WebSocketGlobalChannel => WEBSOCKET_GLOBAL_CHANNELS.transactionsAll,
+  logsAll: (): WebSocketGlobalChannel => WEBSOCKET_GLOBAL_CHANNELS.logsAll,
+  allGlobal: (): WebSocketGlobalChannel[] => [
+    WEBSOCKET_GLOBAL_CHANNELS.blocks,
+    WEBSOCKET_GLOBAL_CHANNELS.syncAll,
+    WEBSOCKET_GLOBAL_CHANNELS.transactionsAll,
+    WEBSOCKET_GLOBAL_CHANNELS.logsAll,
+  ],
+  wallet: (walletId: string): `wallet:${string}` => `wallet:${walletId}`,
+  walletEvent: (
+    walletId: string,
+    eventType: WebSocketWalletEventType
+  ): `wallet:${string}:${WebSocketWalletEventType}` => `wallet:${walletId}:${eventType}`,
+  address: (addressId: string): `address:${string}` => `address:${addressId}`,
+  listener: (channel: string): `channel:${string}` => `channel:${channel}`,
+} as const;
+
+export function isWebSocketWalletEventType(type: string): type is WebSocketWalletEventType {
+  return (WEBSOCKET_WALLET_EVENT_TYPES as readonly string[]).includes(type);
+}
+
+export function isWebSocketGlobalEventType(type: string): type is WebSocketGlobalEventType {
+  return (WEBSOCKET_GLOBAL_EVENT_TYPES as readonly string[]).includes(type);
+}
+
+// =============================================================================
 // Shared Type Guards
 // =============================================================================
 
@@ -279,7 +429,10 @@ export type BroadcastEvent =
 export function isServerEvent(event: unknown): event is ServerEvent {
   if (typeof event !== 'object' || event === null) return false;
   const e = event as Record<string, unknown>;
-  return typeof e.type === 'string';
+  return (
+    typeof e.type === 'string' &&
+    (WEBSOCKET_SERVER_EVENT_TYPES as readonly string[]).includes(e.type)
+  );
 }
 
 /**
@@ -289,11 +442,8 @@ export function isClientMessage(msg: unknown): msg is ClientMessage {
   if (typeof msg !== 'object' || msg === null) return false;
   const m = msg as Record<string, unknown>;
   return (
-    m.type === 'auth' ||
-    m.type === 'subscribe' ||
-    m.type === 'unsubscribe' ||
-    m.type === 'ping' ||
-    m.type === 'pong'
+    typeof m.type === 'string' &&
+    (WEBSOCKET_CLIENT_MESSAGE_TYPES as readonly string[]).includes(m.type)
   );
 }
 
@@ -303,13 +453,7 @@ export function isClientMessage(msg: unknown): msg is ClientMessage {
 export function isWalletEvent(
   event: ServerEvent
 ): event is TransactionEvent | BalanceEvent | ConfirmationEvent | SyncEvent | LogEvent {
-  return (
-    event.type === 'transaction' ||
-    event.type === 'balance' ||
-    event.type === 'confirmation' ||
-    event.type === 'sync' ||
-    event.type === 'log'
-  );
+  return isWebSocketWalletEventType(event.type);
 }
 
 /**
@@ -318,9 +462,5 @@ export function isWalletEvent(
 export function isGlobalEvent(
   event: ServerEvent
 ): event is BlockEvent | NewBlockEvent | MempoolEvent {
-  return (
-    event.type === 'block' ||
-    event.type === 'newBlock' ||
-    event.type === 'mempool'
-  );
+  return isWebSocketGlobalEventType(event.type);
 }

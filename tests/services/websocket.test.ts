@@ -24,6 +24,7 @@ import {
   mockWsInstances,
   resetMockWebSocketInstances,
 } from './websocket/websocketTestHarness';
+import { WebSocketChannels } from '@sanctuary/shared/types/websocket';
 import type { EventCallback } from '../../services/websocket';
 import { WebSocketClient } from '../../services/websocket';
 
@@ -431,7 +432,7 @@ describe('WebSocketClient', () => {
       const handler = vi.fn();
       // Channel listeners are registered with 'channel:' prefix internally via dispatchEvent
       // The code checks for `channel:${channel}` key
-      client.on('channel:wallet:123' as any, handler);
+      client.on(WebSocketChannels.listener('wallet:123'), handler);
 
       client.connect();
       getLastWs().simulateOpen();
@@ -507,7 +508,7 @@ describe('WebSocketClient', () => {
       const wildcardHandler = vi.fn().mockImplementation(() => {
         throw new Error('wildcard listener fail');
       });
-      client.on('channel:wallet:error' as any, channelHandler);
+      client.on(WebSocketChannels.listener('wallet:error'), channelHandler);
       client.on('*', wildcardHandler);
 
       client.connect();

@@ -2,10 +2,20 @@
  * Notification Broadcasts
  *
  * All WebSocket broadcast methods for different event types.
- * Each method constructs the appropriate WebSocketEvent and broadcasts it.
+ * Each method routes through the typed WebSocket broadcast helpers.
  */
 
 import { getWebSocketServerIfInitialized, WebSocketEvent } from '../server';
+import {
+  broadcastTransaction,
+  broadcastBalance,
+  broadcastBlock,
+  broadcastNewBlock as broadcastTypedNewBlock,
+  broadcastMempool,
+  broadcastConfirmation,
+  broadcastSync,
+  broadcastLog,
+} from '../broadcast';
 import { walletLogBuffer } from '../../services/walletLogBuffer';
 import { createLogger } from '../../utils/logger';
 import type {
@@ -36,21 +46,14 @@ export function broadcastTransactionNotification(notification: TransactionNotifi
   const wsServer = getBroadcastServer('transaction');
   if (!wsServer) return;
 
-  const event: WebSocketEvent = {
-    type: 'transaction',
-    walletId: notification.walletId,
-    data: {
-      walletId: notification.walletId,  // Include walletId in data for client identification
-      txid: notification.txid,
-      type: notification.type,
-      amount: notification.amount,
-      confirmations: notification.confirmations,
-      blockHeight: notification.blockHeight,
-      timestamp: notification.timestamp,
-    },
-  };
-
-  wsServer.broadcast(event);
+  broadcastTransaction(notification.walletId, {
+    txid: notification.txid,
+    type: notification.type,
+    amount: notification.amount,
+    confirmations: notification.confirmations,
+    blockHeight: notification.blockHeight,
+    timestamp: notification.timestamp,
+  });
   log.debug(`Broadcast transaction notification: ${notification.txid}`);
 }
 
@@ -61,19 +64,12 @@ export function broadcastBalanceUpdate(update: BalanceUpdate): void {
   const wsServer = getBroadcastServer('balance');
   if (!wsServer) return;
 
-  const event: WebSocketEvent = {
-    type: 'balance',
-    walletId: update.walletId,
-    data: {
-      walletId: update.walletId,  // Include walletId in data for client identification
-      balance: update.balance,
-      unconfirmed: update.unconfirmed,
-      change: update.change,
-      timestamp: new Date(),
-    },
-  };
-
-  wsServer.broadcast(event);
+  broadcastBalance(update.walletId, {
+    balance: update.balance,
+    unconfirmed: update.unconfirmed,
+    change: update.change,
+    timestamp: new Date(),
+  });
   log.debug(`Broadcast balance update for wallet: ${update.walletId}`);
 }
 
@@ -84,17 +80,12 @@ export function broadcastBlockNotification(notification: BlockNotification): voi
   const wsServer = getBroadcastServer('block');
   if (!wsServer) return;
 
-  const event: WebSocketEvent = {
-    type: 'block',
-    data: {
-      height: notification.height,
-      hash: notification.hash,
-      timestamp: notification.timestamp,
-      transactionCount: notification.transactionCount,
-    },
-  };
-
-  wsServer.broadcast(event);
+  broadcastBlock({
+    height: notification.height,
+    hash: notification.hash,
+    timestamp: notification.timestamp,
+    transactionCount: notification.transactionCount,
+  });
   log.debug(`Broadcast new block: ${notification.height}`);
 }
 
@@ -106,15 +97,10 @@ export function broadcastNewBlock(block: { height: number }): void {
   const wsServer = getBroadcastServer('newBlock');
   if (!wsServer) return;
 
-  const event: WebSocketEvent = {
-    type: 'newBlock',
-    data: {
-      height: block.height,
-      timestamp: new Date(),
-    },
-  };
-
-  wsServer.broadcast(event);
+  broadcastTypedNewBlock({
+    height: block.height,
+    timestamp: new Date(),
+  });
   log.info(`New block at height ${block.height}`);
 }
 
@@ -125,17 +111,12 @@ export function broadcastMempoolNotification(notification: MempoolNotification):
   const wsServer = getBroadcastServer('mempool');
   if (!wsServer) return;
 
-  const event: WebSocketEvent = {
-    type: 'mempool',
-    data: {
-      txid: notification.txid,
-      fee: notification.fee,
-      size: notification.size,
-      feeRate: notification.feeRate,
-    },
-  };
-
-  wsServer.broadcast(event);
+  broadcastMempool({
+    txid: notification.txid,
+    fee: notification.fee,
+    size: notification.size,
+    feeRate: notification.feeRate,
+  });
 }
 
 /**
@@ -146,19 +127,12 @@ export function broadcastConfirmationUpdate(walletId: string, update: Confirmati
   const wsServer = getBroadcastServer('confirmation');
   if (!wsServer) return;
 
-  const event: WebSocketEvent = {
-    type: 'confirmation',
-    walletId,
-    data: {
-      walletId,  // Include walletId in data for client identification
-      txid: update.txid,
-      confirmations: update.confirmations,
-      previousConfirmations: update.previousConfirmations,
-      timestamp: new Date(),
-    },
-  };
-
-  wsServer.broadcast(event);
+  broadcastConfirmation(walletId, {
+    txid: update.txid,
+    confirmations: update.confirmations,
+    previousConfirmations: update.previousConfirmations,
+    timestamp: new Date(),
+  });
 
   // Log at info level for first confirmation milestone (0->1)
   if (update.previousConfirmations === 0 && update.confirmations >= 1) {
@@ -175,17 +149,10 @@ export function broadcastSyncStatus(walletId: string, status: SyncStatusUpdate):
   const wsServer = getBroadcastServer('sync');
   if (!wsServer) return;
 
-  const event: WebSocketEvent = {
-    type: 'sync',
-    walletId,
-    data: {
-      ...status,
-      walletId,  // Include walletId in data so clients can identify which wallet
-      timestamp: new Date(),
-    },
-  };
-
-  wsServer.broadcast(event);
+  broadcastSync(walletId, {
+    ...status,
+    timestamp: new Date(),
+  });
 }
 
 /**
@@ -205,11 +172,5 @@ export function broadcastWalletLog(walletId: string, entry: Omit<WalletLogEntry,
   const wsServer = getBroadcastServer('log');
   if (!wsServer) return;
 
-  const event: WebSocketEvent = {
-    type: 'log',
-    walletId,
-    data: logEntry,
-  };
-
-  wsServer.broadcast(event);
+  broadcastLog(walletId, logEntry);
 }

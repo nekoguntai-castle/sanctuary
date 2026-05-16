@@ -17,6 +17,7 @@
  */
 
 import { useEffect } from 'react';
+import { WebSocketChannels } from '@sanctuary/shared/types/websocket';
 import { websocketClient, WebSocketEvent } from '../../services/websocket';
 import { getQueryClient } from '../../providers/QueryProvider';
 import { useWebSocket } from './useWebSocket';
@@ -28,7 +29,7 @@ export const useWebSocketQueryInvalidation = () => {
     if (!connected) return;
 
     // Subscribe to global channels (batch for efficiency)
-    const globalChannels = ['blocks', 'sync:all', 'transactions:all', 'logs:all'];
+    const globalChannels = WebSocketChannels.allGlobal();
     subscribeBatch(globalChannels);
 
     const handleTransactionEvent = (event: WebSocketEvent) => {

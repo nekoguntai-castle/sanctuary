@@ -23,6 +23,7 @@ import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { safeJsonParseUntyped } from '../utils/safeJson';
 import { getRedisClient, isRedisConnected } from '../infrastructure/redis';
+import type { WebSocketEvent } from './types';
 
 const log = createLogger('WS:REDIS_BRIDGE');
 
@@ -34,17 +35,6 @@ const WS_BROADCAST_CHANNEL = 'sanctuary:ws:broadcast';
  * Prevents processing our own published events
  */
 const instanceId = `${process.pid}-${Date.now()}-${randomBytes(4).toString('hex')}`;
-
-/**
- * WebSocket event structure (matches server.ts)
- * Using string union to support future event types without breaking serialization
- */
-interface WebSocketEvent {
-  type: 'transaction' | 'balance' | 'confirmation' | 'block' | 'newBlock' | 'mempool' | 'sync' | 'log';
-  data: unknown;
-  walletId?: string;
-  addressId?: string;
-}
 
 /**
  * Envelope for WebSocket events sent via Redis

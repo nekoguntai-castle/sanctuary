@@ -42,7 +42,7 @@ function toLegacyEvent(event: BroadcastEvent): WebSocketEvent {
   if ('walletId' in event) {
     return {
       type: event.type,
-      data: event.data,
+      data: event.type === 'log' ? event.data : { ...event.data, walletId: event.walletId },
       walletId: event.walletId,
     };
   }
