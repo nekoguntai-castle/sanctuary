@@ -1,6 +1,6 @@
 # Task: Codebase Health Remediation Phase 1 Delivery 2026-05-16
 
-Status: in progress.
+Status: merged and verified via PR #494 as squash commit `639dd84187139d2fdec387f6d09eb8502f7bf681`.
 
 Goal: implement Phase 1 of `docs/plans/codebase-health-remediation-plan.md` by verifying the local source is reconciled with `origin/main` Q4/R/S/T convergence fixes, updating the post-reconciliation grade evidence, and delivering the phase through `$pr-delivery`.
 
@@ -11,7 +11,7 @@ Goal: implement Phase 1 of `docs/plans/codebase-health-remediation-plan.md` by v
 - [x] Run focused Payjoin, admin monitoring, wallet export, and API-client verification.
 - [x] Run the post-reconciliation full grade checkpoint and update grade docs/history.
 - [x] Run documentation verification and self-review.
-- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+- [x] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
 
 ## Review
 
@@ -22,6 +22,8 @@ Goal: implement Phase 1 of `docs/plans/codebase-health-remediation-plan.md` by v
 - Post-reconciliation grade updated to 93/100, A, High confidence at source commit `222d7ab8`.
 - Duplication follow-up remains Phase 2: the cleaned source-wide `npx jscpd` run measured 4.99%, but the repo-owned `scripts/quality/jscpd-only.sh` path still reports a polluted 49.74% including `.claude/worktrees`.
 - Documentation verification passed: `git diff --check`, conflict-marker scan, grade-history JSON parse, stale-current-wording scan, and final diff-stat review.
+- Pushed `codex/codebase-health-phase-1-reconcile-source`, opened PR #494, monitored 57 status contexts until they were success/skipped with required summaries green, and squash-merged with branch deletion disabled.
+- Post-merge verification passed: Forgejo reported PR #494 merged at `2026-05-16T10:10:26-10:00`; merge commit `639dd84187139d2fdec387f6d09eb8502f7bf681` exists locally and is an ancestor of `origin/main`.
 
 ---
 
