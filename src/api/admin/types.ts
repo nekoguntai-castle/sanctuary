@@ -4,6 +4,8 @@
  * Type definitions for admin-only API calls
  */
 
+import type { MonitoringServiceId } from '@sanctuary/shared/constants/adminMonitoring';
+
 // ========================================
 // USER MANAGEMENT TYPES
 // ========================================
@@ -284,7 +286,7 @@ export interface WebSocketStats {
 // ========================================
 
 export interface MonitoringService {
-  id: string;
+  id: MonitoringServiceId;
   name: string;
   description: string;
   url: string;

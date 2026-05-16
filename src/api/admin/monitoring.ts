@@ -5,6 +5,7 @@
  */
 
 import apiClient from '../client';
+import type { MonitoringServiceId } from '@sanctuary/shared/constants/adminMonitoring';
 import type {
   MonitoringServicesResponse,
   GrafanaConfig,
@@ -31,7 +32,7 @@ export async function getMonitoringServices(checkHealth = false): Promise<Monito
  * Update custom URL for a monitoring service (admin only)
  */
 export async function updateMonitoringServiceUrl(
-  serviceId: string,
+  serviceId: MonitoringServiceId,
   customUrl: string | null
 ): Promise<{ success: boolean }> {
   return apiClient.put<{ success: boolean }>(`/admin/monitoring/services/${serviceId}`, {

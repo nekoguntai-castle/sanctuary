@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { MONITORING_SERVICE_IDS } from '@sanctuary/shared/constants/adminMonitoring';
 
 import {
   openApiSpec,
@@ -184,9 +185,7 @@ export function registerOpenApiAdminOpsTests() {
     }
 
     expect(openApiSpec.components.schemas.AdminMonitoringServiceId.enum).toEqual([
-      'grafana',
-      'prometheus',
-      'jaeger',
+      ...MONITORING_SERVICE_IDS,
     ]);
     expect(openApiSpec.paths['/admin/monitoring/services'].get.parameters).toContainEqual(
       expect.objectContaining({
@@ -220,7 +219,7 @@ export function registerOpenApiAdminOpsTests() {
         name: 'serviceId',
         in: 'path',
         required: true,
-        schema: { type: 'string', enum: ['grafana', 'prometheus', 'jaeger'] },
+        schema: { type: 'string', enum: [...MONITORING_SERVICE_IDS] },
       }),
     );
     expect(openApiSpec.paths['/admin/monitoring/services/{serviceId}'].put.requestBody.content['application/json'].schema)
@@ -232,6 +231,7 @@ export function registerOpenApiAdminOpsTests() {
       false,
     );
     expect(openApiSpec.components.schemas.AdminUpdateMonitoringServiceRequest.properties.customUrl).toMatchObject({
+      type: 'string',
       nullable: true,
     });
     expect(openApiSpec.paths['/admin/monitoring/services/{serviceId}'].put.responses[200].content['application/json'].schema)
@@ -266,6 +266,9 @@ export function registerOpenApiAdminOpsTests() {
       'additionalProperties',
       false,
     );
+    expect(openApiSpec.components.schemas.AdminUpdateGrafanaRequest.properties.anonymousAccess).toEqual({
+      type: 'boolean',
+    });
     expect(openApiSpec.paths['/admin/monitoring/grafana'].put.responses[200].content['application/json'].schema)
       .toEqual({
         $ref: '#/components/schemas/AdminGrafanaUpdateResponse',

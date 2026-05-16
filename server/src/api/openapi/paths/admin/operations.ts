@@ -13,7 +13,6 @@ import {
   jsonOneOfResponse,
   jsonRequestBody,
   jsonResponse,
-  MONITORING_SERVICE_VALUES,
 } from './shared';
 
 export const adminOperationsPaths = {

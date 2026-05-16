@@ -1,9 +1,13 @@
 import { getConfig } from '../config';
+import {
+  isMonitoringServiceId,
+  type MonitoringServiceId,
+} from '@sanctuary/shared/constants/adminMonitoring';
 import { InvalidInputError } from '../errors/ApiError';
 import { systemSettingRepository, SystemSettingKeys } from '../repositories/systemSettingRepository';
 
 export interface MonitoringService {
-  id: string;
+  id: MonitoringServiceId;
   name: string;
   description: string;
   url: string;
@@ -17,6 +21,8 @@ export type MonitoringServicesResponse = {
   enabled: boolean;
   services: MonitoringService[];
 };
+
+export type MonitoringServiceCustomUrl = string | null | undefined;
 
 export type MonitoringServiceUrlUpdate = {
   success: true;
@@ -38,7 +44,7 @@ export type GrafanaUpdateResponse = {
   changed: boolean;
 };
 
-const monitoringSettingKeyByServiceId: Record<string, string> = {
+const monitoringSettingKeyByServiceId: Record<MonitoringServiceId, string> = {
   grafana: SystemSettingKeys.MONITORING_GRAFANA_URL,
   prometheus: SystemSettingKeys.MONITORING_PROMETHEUS_URL,
   jaeger: SystemSettingKeys.MONITORING_JAEGER_URL,
@@ -92,14 +98,16 @@ export async function getMonitoringServices(checkHealth: boolean): Promise<Monit
 
 export async function updateMonitoringServiceUrl(
   serviceId: string,
-  customUrl: unknown,
+  customUrl: MonitoringServiceCustomUrl,
 ): Promise<MonitoringServiceUrlUpdate> {
-  const settingKey = monitoringSettingKeyByServiceId[serviceId];
+  const settingKey = isMonitoringServiceId(serviceId)
+    ? monitoringSettingKeyByServiceId[serviceId]
+    : undefined;
   if (!settingKey) {
     throw new InvalidInputError('Invalid service ID. Valid IDs: grafana, prometheus, jaeger');
   }
 
-  if (customUrl && typeof customUrl === 'string' && customUrl.trim()) {
+  if (typeof customUrl === 'string' && customUrl.trim()) {
     const trimmedUrl = customUrl.trim();
     await systemSettingRepository.set(settingKey, trimmedUrl);
     return { success: true, action: 'updated', customUrl: trimmedUrl };
@@ -129,7 +137,7 @@ export async function getGrafanaConfig(): Promise<GrafanaConfigResponse> {
   };
 }
 
-export async function updateGrafanaConfig(anonymousAccess: unknown): Promise<GrafanaUpdateResponse> {
+export async function updateGrafanaConfig(anonymousAccess: boolean | undefined): Promise<GrafanaUpdateResponse> {
   if (typeof anonymousAccess === 'boolean') {
     await systemSettingRepository.setBoolean(
       SystemSettingKeys.GRAFANA_ANONYMOUS_ACCESS,

@@ -1,6 +1,7 @@
 import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { ServiceCard } from '../../../components/Monitoring/ServiceCard';
+import type { MonitoringService } from '../../../src/api/admin';
 
 const serviceBase = {
   id: 'grafana',
@@ -11,7 +12,7 @@ const serviceBase = {
   icon: 'UnknownIcon',
   isCustomUrl: false,
   status: 'healthy' as const,
-};
+} satisfies MonitoringService;
 
 describe('Monitoring ServiceCard branch coverage', () => {
   beforeEach(() => {

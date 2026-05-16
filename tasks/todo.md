@@ -1,6 +1,31 @@
-# Task: Phase R Payjoin Attempt Route Validation 2026-05-16
+# Task: Phase S Admin Monitoring Validation 2026-05-16
 
 Status: in progress.
+
+Goal: align admin monitoring route validation with the documented OpenAPI contract so service IDs, update bodies, and Grafana settings use one typed path instead of permissive route parsing.
+
+## Plan
+
+- [x] Verify Phase R merged and `origin/main` contains squash commit `31379041078cd32f121393fafd6fc8c5c80b9e00`.
+- [x] Read admin monitoring routes, service helpers, frontend API helper, OpenAPI docs, and existing route/OpenAPI/frontend tests.
+- [x] Add a shared monitoring service ID owner and derive route/service/OpenAPI/frontend types from it.
+- [x] Replace permissive `unknown`/`passthrough().catch({})` route bodies with strict typed schemas for monitoring service URL and Grafana settings updates.
+- [x] Add route/OpenAPI/frontend/shared tests for invalid service IDs, malformed bodies, extra fields, query parsing, and preserved clear/no-op behavior.
+- [x] Run focused tests, type/build checks, lizard, stale validation searches, and diff verification.
+- [ ] Open, monitor, and merge the Phase S PR.
+
+## Review
+
+- Added `MONITORING_SERVICE_IDS` in shared code and derived admin monitoring service IDs across the backend service, OpenAPI path/schema helpers, frontend API types, and tests.
+- Replaced permissive admin monitoring body validation with strict route schemas: service URL updates now accept only `string | null | undefined`, Grafana anonymous access updates accept only boolean or omitted, and unknown body fields fail before any settings write/delete.
+- Preserved product behavior where blank, null, or omitted `customUrl` clears the override; omitted Grafana `anonymousAccess` still returns success without changing the stored setting.
+- Verification passed: `npm --prefix shared run build`; `npm --prefix server run prisma:generate`; server Vitest for `admin-monitoring-routes`, `openapi`, and `adminMonitoringService`; root Vitest for `adminMonitoring` shared constants and remaining admin API modules; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run lint:app`; `npm run lint:server`; `npm run quality:lizard`; stale admin monitoring validation/service-ID searches; `git diff --check`.
+
+---
+
+# Task: Phase R Payjoin Attempt Route Validation 2026-05-16
+
+Status: merged and verified via PR #488 as squash commit `31379041078cd32f121393fafd6fc8c5c80b9e00`.
 
 Goal: tighten the authenticated `/payjoin/attempt` JSON route so route validation, OpenAPI, and the Payjoin sender service agree on a typed, closed request contract without changing the unauthenticated BIP78 receiver route.
 
@@ -11,7 +36,7 @@ Goal: tighten the authenticated `/payjoin/attempt` JSON route so route validatio
 - [x] Update OpenAPI to document the closed Payjoin attempt request body.
 - [x] Add route/OpenAPI tests for missing, empty, invalid type, invalid URL, invalid/legacy network, extra field, valid network, and BIP78 receiver-route isolation.
 - [x] Run focused server tests, type/build checks, lizard, stale schema searches, and diff verification.
-- [ ] Open, monitor, and merge the Phase R PR.
+- [x] Open, monitor, and merge the Phase R PR.
 
 ## Review
 
@@ -19,6 +44,7 @@ Goal: tighten the authenticated `/payjoin/attempt` JSON route so route validatio
 - Kept the unauthenticated BIP78 `POST /payjoin/:addressId` text/plain receiver path separate from the JSON attempt route and covered that boundary with a route regression.
 - Updated `PayjoinAttemptRequest` OpenAPI to stay in parity with the closed route schema.
 - Verification passed: `npm --prefix shared run build`; `npm --prefix server run prisma:generate`; `vitest run tests/unit/api/payjoin.test.ts tests/unit/api/openapi.test.ts --config vitest.config.ts`; `npm --prefix server run typecheck:tests`; `npm run lint:server`; `npm run quality:lizard`; stale Payjoin attempt schema searches; `git diff --check`.
+- PR #488 passed all 61 latest Forgejo status contexts, squash-merged as `31379041078cd32f121393fafd6fc8c5c80b9e00`, and post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

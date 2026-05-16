@@ -1,4 +1,5 @@
 import { AUDIT_DEFAULT_PAGE_SIZE, AUDIT_STATS_DAYS } from '../../../../constants';
+import { MONITORING_SERVICE_IDS } from '@sanctuary/shared/constants/adminMonitoring';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { FEATURE_FLAG_KEYS } from '../../../../services/featureFlags/definitions';
 import { browserOrBearerAuth as bearerAuth } from '../../security';
@@ -8,7 +9,7 @@ export { AUDIT_DEFAULT_PAGE_SIZE, AUDIT_STATS_DAYS, bearerAuth, FEATURE_FLAG_KEY
 export const AUDIT_LOG_LIMIT_MAX = 500;
 export const ELECTRUM_NETWORK_VALUES = BITCOIN_NETWORKS;
 export const DEAD_LETTER_CATEGORY_VALUES = ['sync', 'push', 'telegram', 'notification', 'electrum', 'transaction', 'other'] as const;
-export const MONITORING_SERVICE_VALUES = ['grafana', 'prometheus', 'jaeger'] as const;
+export const MONITORING_SERVICE_VALUES = MONITORING_SERVICE_IDS;
 
 export const apiErrorResponse = {
   description: 'Error response',

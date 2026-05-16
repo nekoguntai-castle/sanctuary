@@ -26,6 +26,7 @@ import {
   AI_PROVIDER_CREDENTIAL_DISABLED_REASONS,
   AI_PROVIDER_CREDENTIAL_TYPES,
 } from '../../../../services/ai/providerCredentials';
+import { MONITORING_SERVICE_IDS } from '@sanctuary/shared/constants/adminMonitoring';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import {
   DEFAULT_NODE_MEMPOOL_ESTIMATOR,
@@ -141,7 +142,7 @@ export { NODE_CONNECTION_MODE_VALUES };
 export const NODE_LOAD_BALANCING_VALUES = NODE_POOL_LOAD_BALANCING_VALUES;
 export const ELECTRUM_NETWORK_VALUES = BITCOIN_NETWORKS;
 export const DEAD_LETTER_CATEGORY_VALUES = ['sync', 'push', 'telegram', 'notification', 'electrum', 'transaction', 'other'] as const;
-export const MONITORING_SERVICE_VALUES = ['grafana', 'prometheus', 'jaeger'] as const;
+export const MONITORING_SERVICE_VALUES = MONITORING_SERVICE_IDS;
 
 export const nodeConfigPortInputSchema = {
   oneOf: [

@@ -213,6 +213,27 @@ describe('Admin Monitoring Routes', () => {
     });
   });
 
+  it('does not perform health checks when checkHealth is explicitly false', async () => {
+    const response = await request(app)
+      .get('/api/v1/admin/monitoring/services')
+      .query({ checkHealth: 'false' });
+
+    expect(response.status).toBe(200);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect((response.body.services as Array<{ status?: string }>).every(s => s.status === undefined)).toBe(true);
+  });
+
+  it('rejects invalid monitoring services query values', async () => {
+    const response = await request(app)
+      .get('/api/v1/admin/monitoring/services')
+      .query({ checkHealth: 'yes' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('INVALID_INPUT');
+    expect(response.body.message).toContain('Invalid monitoring services query');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it('handles health-check timeout callback path', async () => {
     const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
     const immediateTimer = ((cb: () => void) => {
@@ -277,6 +298,47 @@ describe('Admin Monitoring Routes', () => {
     expect(response.status).toBe(200);
     expect(mockDelete).toHaveBeenCalledWith('monitoring.prometheusUrl');
     expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it('clears custom URL when null is provided', async () => {
+    const response = await request(app)
+      .put('/api/v1/admin/monitoring/services/jaeger')
+      .send({ customUrl: null });
+
+    expect(response.status).toBe(200);
+    expect(mockDelete).toHaveBeenCalledWith('monitoring.jaegerUrl');
+    expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['number', { customUrl: 42 }],
+    ['boolean', { customUrl: true }],
+    ['object', { customUrl: { url: 'https://grafana.local' } }],
+    ['array', { customUrl: ['https://grafana.local'] }],
+  ])('rejects malformed monitoring service URL update body: %s', async (_label, body) => {
+    const response = await request(app)
+      .put('/api/v1/admin/monitoring/services/grafana')
+      .send(body);
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('INVALID_INPUT');
+    expect(response.body.message).toContain('customUrl');
+    expect(mockSet).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it('rejects extra monitoring service update fields', async () => {
+    const response = await request(app)
+      .put('/api/v1/admin/monitoring/services/grafana')
+      .send({
+        customUrl: 'https://grafana.local',
+        serviceId: 'jaeger',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Invalid monitoring service update request');
+    expect(mockSet).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
   });
 
   it('returns 500 when monitoring service update fails', async () => {
@@ -362,6 +424,34 @@ describe('Admin Monitoring Routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
     expect(response.body.message).toContain('disabled');
+    expect(mockSetBoolean).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['string', { anonymousAccess: 'true' }],
+    ['number', { anonymousAccess: 1 }],
+    ['null', { anonymousAccess: null }],
+  ])('rejects malformed grafana update body: %s', async (_label, body) => {
+    const response = await request(app)
+      .put('/api/v1/admin/monitoring/grafana')
+      .send(body);
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('INVALID_INPUT');
+    expect(response.body.message).toContain('Invalid Grafana settings update request');
+    expect(mockSetBoolean).not.toHaveBeenCalled();
+  });
+
+  it('rejects extra grafana update fields', async () => {
+    const response = await request(app)
+      .put('/api/v1/admin/monitoring/grafana')
+      .send({
+        anonymousAccess: true,
+        restartContainer: true,
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Invalid Grafana settings update request');
     expect(mockSetBoolean).not.toHaveBeenCalled();
   });
 

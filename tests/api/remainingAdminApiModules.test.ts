@@ -248,7 +248,7 @@ describe("Remaining Admin API Modules", () => {
       await adminMonitoringApi.getMonitoringServices();
       await adminMonitoringApi.getMonitoringServices(true);
       await adminMonitoringApi.updateMonitoringServiceUrl(
-        "svc1",
+        "grafana",
         "https://grafana.example",
       );
       await adminMonitoringApi.getGrafanaConfig();
@@ -275,7 +275,7 @@ describe("Remaining Admin API Modules", () => {
 
       expect(mockGet).toHaveBeenCalledWith("/admin/monitoring/services", undefined);
       expect(mockGet).toHaveBeenCalledWith("/admin/monitoring/services", { checkHealth: true });
-      expect(mockPut).toHaveBeenCalledWith("/admin/monitoring/services/svc1", {
+      expect(mockPut).toHaveBeenCalledWith("/admin/monitoring/services/grafana", {
         customUrl: "https://grafana.example",
       });
       expect(mockGet).toHaveBeenCalledWith("/admin/monitoring/grafana");
