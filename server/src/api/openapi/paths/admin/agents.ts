@@ -1,4 +1,8 @@
 import {
+  AGENT_ALERT_STATUSES,
+  AGENT_FUNDING_OVERRIDE_STATUSES,
+} from '@sanctuary/shared/constants/adminAgents';
+import {
   apiErrorResponse,
   bearerAuth,
   jsonArrayResponse,
@@ -133,7 +137,7 @@ export const adminAgentPaths = {
           name: 'status',
           in: 'query',
           required: false,
-          schema: { type: 'string', enum: ['open', 'acknowledged', 'resolved'] },
+          schema: { type: 'string', enum: AGENT_ALERT_STATUSES },
         },
         {
           name: 'type',
@@ -169,7 +173,7 @@ export const adminAgentPaths = {
           name: 'status',
           in: 'query',
           required: false,
-          schema: { type: 'string', enum: ['active', 'used', 'revoked'] },
+          schema: { type: 'string', enum: AGENT_FUNDING_OVERRIDE_STATUSES },
         },
         {
           name: 'limit',

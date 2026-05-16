@@ -8,6 +8,7 @@ import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRe
 import {
   UTXO_SELECTION_STRATEGIES,
   PENDING_TRANSACTION_TYPES,
+  PRIVACY_GRADES,
   PUBLIC_TRANSACTION_TYPES,
 } from '@sanctuary/shared/constants/transactions';
 
@@ -630,7 +631,7 @@ export const transactionSchemas = {
   },
   PrivacyGrade: {
     type: 'string',
-    enum: ['excellent', 'good', 'fair', 'poor'],
+    enum: PRIVACY_GRADES,
   },
   PrivacyFactor: {
     type: 'object',

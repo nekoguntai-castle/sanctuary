@@ -4,12 +4,16 @@ import {
   LEGACY_TRANSACTION_TYPE_ALIASES,
   PENDING_TRANSACTION_TYPES,
   PERSISTED_TRANSACTION_TYPES,
+  PRIVACY_GRADES,
   PUBLIC_TRANSACTION_TYPES,
+  RBF_STATUSES,
   TRANSACTION_FILTER_TYPES,
   UTXO_SELECTION_STRATEGIES,
   isPendingTransactionType,
   isPersistedTransactionType,
+  isPrivacyGrade,
   isPublicTransactionType,
+  isRbfStatus,
   isUtxoSelectionStrategy,
   normalizeTransactionTypeAlias,
 } from '@sanctuary/shared/constants/transactions';
@@ -54,5 +58,14 @@ describe('transaction type constants', () => {
     expect(DEFAULT_UTXO_SELECTION_STRATEGY).toBe('efficiency');
     expect(isUtxoSelectionStrategy('privacy')).toBe(true);
     expect(isUtxoSelectionStrategy('branch_and_bound')).toBe(false);
+  });
+
+  it('defines RBF and privacy grade values', () => {
+    expect(RBF_STATUSES).toEqual(['active', 'replaced', 'confirmed']);
+    expect(PRIVACY_GRADES).toEqual(['excellent', 'good', 'fair', 'poor']);
+    expect(isRbfStatus('active')).toBe(true);
+    expect(isRbfStatus('pending')).toBe(false);
+    expect(isPrivacyGrade('excellent')).toBe(true);
+    expect(isPrivacyGrade('unknown')).toBe(false);
   });
 });

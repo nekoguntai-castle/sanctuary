@@ -1,4 +1,5 @@
 import type { Prisma } from '../generated/prisma/client';
+import type { WalletAgentStatus } from '@sanctuary/shared/constants/adminAgents';
 import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { buildAgentKeyScope, generateAgentApiKey, getAgentApiKeyPrefix, hashAgentApiKey } from '../agent/auth';
 import { InvalidInputError, NotFoundError } from '../errors/ApiError';
@@ -16,8 +17,6 @@ interface WalletAccessSource {
   users: Array<{ userId: string }>;
   group: { members: Array<{ userId: string }> } | null;
 }
-
-type WalletAgentStatus = 'active' | 'paused' | 'revoked';
 
 export interface CreateWalletAgentServiceInput {
   userId: string;

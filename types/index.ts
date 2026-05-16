@@ -420,7 +420,7 @@ export interface Transaction {
   type?: TransactionType;
   replacedByTxid?: string;
   replacementForTxid?: string;
-  rbfStatus?: "active" | "replaced" | "confirmed";
+  rbfStatus?: RbfStatus;
   isFrozen?: boolean;
   isLocked?: boolean;
   lockedByDraftLabel?: string;

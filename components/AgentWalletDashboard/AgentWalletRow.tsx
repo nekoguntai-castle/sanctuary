@@ -1,4 +1,5 @@
 import type { AgentWalletDashboardRow } from '../../src/api/admin';
+import type { WalletAgentToggleStatus } from '@sanctuary/shared/constants/adminAgents';
 import { AgentWalletRowActions } from './AgentWalletRowActions';
 import { AgentWalletRowDetails } from './AgentWalletRowDetails';
 import { AgentWalletRowHeader } from './AgentWalletRowHeader';
@@ -12,7 +13,7 @@ import {
 export interface AgentWalletRowProps {
   row: AgentWalletDashboardRow;
   busyAction: string | null;
-  onStatusChange: (row: AgentWalletDashboardRow, status: 'active' | 'paused') => Promise<void>;
+  onStatusChange: (row: AgentWalletDashboardRow, status: WalletAgentToggleStatus) => Promise<void>;
   onRevokeKey: (row: AgentWalletDashboardRow, keyId: string) => Promise<void>;
 }
 

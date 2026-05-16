@@ -6,6 +6,10 @@
 
 import { deviceRepository, userRepository } from '../repositories';
 import { createLogger } from '../utils/logger';
+import {
+  parseDeviceRole,
+  type DeviceRole,
+} from '@sanctuary/shared/constants/deviceRoles';
 
 const log = createLogger('DEVICE_ACCESS:SVC');
 
@@ -13,7 +17,7 @@ const log = createLogger('DEVICE_ACCESS:SVC');
 // TYPES
 // ========================================
 
-export type DeviceRole = 'owner' | 'viewer' | null;
+export type { DeviceRole } from '@sanctuary/shared/constants/deviceRoles';
 
 export interface DeviceAccessCheckResult {
   hasAccess: boolean;
@@ -75,14 +79,14 @@ export async function getUserDeviceRole(deviceId: string, userId: string): Promi
   const deviceUser = await deviceRepository.findDeviceUser(deviceId, userId);
 
   if (deviceUser) {
-    return deviceUser.role as DeviceRole;
+    return parseDeviceRole(deviceUser.role);
   }
 
   // Check group access
   const groupRole = await deviceRepository.findGroupRoleByMembership(deviceId, userId);
 
   if (groupRole) {
-    return groupRole as DeviceRole;
+    return parseDeviceRole(groupRole);
   }
 
   return null;
@@ -129,16 +133,16 @@ export async function getUserAccessibleDevices(userId: string): Promise<DeviceWi
   const devices = await deviceRepository.findAccessibleByUser(userId);
 
   // Format devices with access info
-  return devices.map((device) => {
+  return devices.flatMap((device): DeviceWithAccess[] => {
     const userAccess = device.users[0];
     // If user has direct access, use that role; otherwise it's group access
     const hasDirectAccess = userAccess !== undefined;
-    const userRole = hasDirectAccess
-      ? (userAccess.role as DeviceRole)
-      : (device.groupRole as DeviceRole);
+    const userRole = parseDeviceRole(hasDirectAccess ? userAccess.role : device.groupRole);
+    if (userRole === null) return [];
+
     const isOwner = userRole === 'owner';
 
-    return {
+    return [{
       id: device.id,
       userId: device.userId,
       modelId: device.modelId,
@@ -158,7 +162,7 @@ export async function getUserAccessibleDevices(userId: string): Promise<DeviceWi
       walletCount: device.wallets.length,
       wallets: device.wallets,
       accounts: device.accounts,
-    };
+    }];
   });
 }
 

@@ -28,6 +28,23 @@ export type TransactionFilterType = PersistedTransactionType;
 export const PENDING_TRANSACTION_TYPES = ['sent', 'received'] as const;
 export type PendingTransactionType = (typeof PENDING_TRANSACTION_TYPES)[number];
 
+export const RBF_STATUSES = [
+  'active',
+  'replaced',
+  'confirmed',
+] as const;
+
+export type RbfStatus = (typeof RBF_STATUSES)[number];
+
+export const PRIVACY_GRADES = [
+  'excellent',
+  'good',
+  'fair',
+  'poor',
+] as const;
+
+export type PrivacyGrade = (typeof PRIVACY_GRADES)[number];
+
 export const UTXO_SELECTION_STRATEGIES = [
   'privacy',
   'efficiency',
@@ -64,6 +81,14 @@ export function isPublicTransactionType(value: unknown): value is PublicTransact
 
 export function isPendingTransactionType(value: unknown): value is PendingTransactionType {
   return includesString(PENDING_TRANSACTION_TYPES, value);
+}
+
+export function isRbfStatus(value: unknown): value is RbfStatus {
+  return includesString(RBF_STATUSES, value);
+}
+
+export function isPrivacyGrade(value: unknown): value is PrivacyGrade {
+  return includesString(PRIVACY_GRADES, value);
 }
 
 export function isUtxoSelectionStrategy(value: unknown): value is UtxoSelectionStrategy {

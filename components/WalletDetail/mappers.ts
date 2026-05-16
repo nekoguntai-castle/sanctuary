@@ -28,7 +28,7 @@ export function formatApiTransaction(tx: Transaction, walletId: string): Transac
     address: tx.address && typeof tx.address === 'object' ? tx.address.address : tx.address as string | undefined,
     blockHeight: tx.blockHeight ? Number(tx.blockHeight) : undefined,
     counterpartyAddress: tx.counterpartyAddress || undefined,
-    rbfStatus: tx.rbfStatus as 'active' | 'replaced' | 'confirmed' | undefined,
+    rbfStatus: tx.rbfStatus,
     replacedByTxid: tx.replacedByTxid || undefined,
   };
 }

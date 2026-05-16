@@ -17,6 +17,7 @@
  */
 
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
+import { RBF_STATUSES } from '@sanctuary/shared/constants/transactions';
 import { WALLET_ROLE_VALUES } from '@sanctuary/shared/constants/walletRoles';
 import {
   WALLET_SCRIPT_TYPE_VALUES,
@@ -110,7 +111,6 @@ const WALLET_ROLES = WALLET_ROLE_VALUES;
 const DEVICE_ROLES = deviceSchemas.Device.properties.role.enum;
 const SYNC_STATUSES = walletSchemas.Wallet.properties.syncStatus.enum;
 const TX_TYPES = transactionSchemas.Transaction.properties.type.enum;
-const RBF_STATUSES = ['active', 'replaced', 'confirmed'] as const;
 const DRAFT_STATUSES = MOBILE_DRAFT_STATUS_VALUES;
 
 function isEnumValue<T extends readonly string[]>(value: unknown, enumValues: T): boolean {

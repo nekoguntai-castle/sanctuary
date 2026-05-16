@@ -6,6 +6,7 @@
  */
 
 import type { Prisma, WalletAgent } from '../generated/prisma/client';
+import type { AgentAlertSeverity } from '@sanctuary/shared/constants/adminAgents';
 import { addressRepository, agentRepository, transactionRepository, utxoRepository } from '../repositories';
 import type { TransactionNotification } from './notifications/channels/types';
 import { createLogger } from '../utils/logger';
@@ -39,8 +40,6 @@ const DEFAULT_DEDUPE_MINUTES = 60;
 // Transaction alerts should dedupe by txid across all future sync retries.
 const TX_DEDUPE_EPOCH = new Date(0);
 const ZERO_SATS = BigInt(0);
-
-type AlertSeverity = 'info' | 'warning' | 'critical';
 
 const positiveBigInt = (value: bigint | null | undefined): bigint | null => {
   if (value === null || value === undefined) return null;
@@ -357,7 +356,7 @@ export const agentMonitoringService = {
 
 interface AlertCandidate {
   type: string;
-  severity: AlertSeverity;
+  severity: AgentAlertSeverity;
   walletId?: string | null;
   txid?: string | null;
   amountSats?: bigint | null;

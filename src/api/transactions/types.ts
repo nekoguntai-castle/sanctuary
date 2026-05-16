@@ -5,7 +5,10 @@
  */
 
 import type { MobileTransactionBroadcastRequest } from '@sanctuary/shared/schemas/mobileApiRequests';
-import type { TransactionFilterType } from '@sanctuary/shared/constants/transactions';
+import type {
+  PrivacyGrade,
+  TransactionFilterType,
+} from '@sanctuary/shared/constants/transactions';
 import type { Transaction, UTXO, SelectionStrategy } from "../../types";
 
 // Re-export types for backward compatibility
@@ -244,7 +247,7 @@ export interface PrivacyFactor {
 
 export interface PrivacyScore {
   score: number;
-  grade: "excellent" | "good" | "fair" | "poor";
+  grade: PrivacyGrade;
   factors: PrivacyFactor[];
   warnings: string[];
 }
@@ -260,7 +263,7 @@ export interface UtxoPrivacyInfo {
 
 export interface WalletPrivacySummary {
   averageScore: number;
-  grade: "excellent" | "good" | "fair" | "poor";
+  grade: PrivacyGrade;
   utxoCount: number;
   addressReuseCount: number;
   roundAmountCount: number;
@@ -275,7 +278,7 @@ export interface WalletPrivacyResponse {
 
 export interface SpendPrivacyAnalysis {
   score: number;
-  grade: "excellent" | "good" | "fair" | "poor";
+  grade: PrivacyGrade;
   linkedAddresses: number;
   warnings: string[];
 }

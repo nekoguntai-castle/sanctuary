@@ -1,4 +1,5 @@
 import type { AgentWalletDashboardRow } from '../../src/api/admin';
+import type { WalletAgentToggleStatus } from '@sanctuary/shared/constants/adminAgents';
 import { Button } from '../ui/Button';
 import { LinkButton } from '../ui/LinkButton';
 
@@ -11,7 +12,7 @@ export function AgentWalletRowActions({
   row: AgentWalletDashboardRow;
   busyAction: string | null;
   revoked: boolean;
-  onStatusChange: (row: AgentWalletDashboardRow, status: 'active' | 'paused') => Promise<void>;
+  onStatusChange: (row: AgentWalletDashboardRow, status: WalletAgentToggleStatus) => Promise<void>;
 }) {
   const { agent } = row;
 
@@ -50,7 +51,7 @@ function AgentStatusActionButton({
   row: AgentWalletDashboardRow;
   busyAction: string | null;
   revoked: boolean;
-  onStatusChange: (row: AgentWalletDashboardRow, status: 'active' | 'paused') => Promise<void>;
+  onStatusChange: (row: AgentWalletDashboardRow, status: WalletAgentToggleStatus) => Promise<void>;
 }) {
   const { agent } = row;
 

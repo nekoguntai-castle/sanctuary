@@ -8,6 +8,7 @@ import {
   MOBILE_DEVICE_ACCOUNT_PURPOSES,
   MOBILE_DEVICE_SCRIPT_TYPES,
 } from '@sanctuary/shared/schemas/mobileApiRequests';
+import { DEVICE_ROLE_VALUES } from '@sanctuary/shared/constants/deviceRoles';
 
 export const deviceSchemas = {
   DeviceModel: {
@@ -116,9 +117,9 @@ export const deviceSchemas = {
       groupRole: { type: 'string', nullable: true },
       createdAt: { type: 'string', format: 'date-time' },
       updatedAt: { type: 'string', format: 'date-time' },
-      role: { type: 'string', enum: ['owner', 'viewer'] },
+      role: { type: 'string', enum: DEVICE_ROLE_VALUES },
       isOwner: { type: 'boolean' },
-      userRole: { type: 'string', enum: ['owner', 'viewer'], nullable: true },
+      userRole: { type: 'string', enum: DEVICE_ROLE_VALUES, nullable: true },
       sharedBy: { type: 'string', nullable: true },
       walletCount: { type: 'integer' },
       model: {
@@ -160,7 +161,7 @@ export const deviceSchemas = {
           properties: {
             id: { type: 'string' },
             username: { type: 'string' },
-            role: { type: 'string', enum: ['owner', 'viewer'] },
+            role: { type: 'string', enum: DEVICE_ROLE_VALUES },
           },
           required: ['id', 'username', 'role'],
         },

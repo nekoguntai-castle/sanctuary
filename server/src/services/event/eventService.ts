@@ -24,6 +24,7 @@
  */
 
 import { eventBus, EventTypes } from '../../events/eventBus';
+import type { DeviceRoleValue } from '@sanctuary/shared/constants/deviceRoles';
 
 // Import domain event emitters
 import * as walletEvents from './walletEvents';
@@ -136,7 +137,7 @@ class EventService {
     deviceEvents.emitDeviceDeleted(deviceId, userId);
   }
 
-  emitDeviceShared(deviceId: string, ownerId: string, sharedWithUserId: string, role: 'owner' | 'viewer'): void {
+  emitDeviceShared(deviceId: string, ownerId: string, sharedWithUserId: string, role: DeviceRoleValue): void {
     deviceEvents.emitDeviceShared(deviceId, ownerId, sharedWithUserId, role);
   }
 

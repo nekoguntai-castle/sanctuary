@@ -11,6 +11,7 @@
 
 import { utxoRepository } from '../repositories';
 import { getPrivacyGrade } from '../utils/privacy';
+import type { PrivacyGrade } from '@sanctuary/shared/constants/transactions';
 
 /**
  * Privacy scoring weights (negative values reduce privacy score)
@@ -77,7 +78,7 @@ export interface PrivacyFactor {
 
 export interface PrivacyScore {
   score: number;           // 0-100 (higher = better privacy)
-  grade: 'excellent' | 'good' | 'fair' | 'poor';
+  grade: PrivacyGrade;
   factors: PrivacyFactor[];
   warnings: string[];
 }
@@ -93,7 +94,7 @@ export interface UtxoPrivacyInfo {
 
 export interface WalletPrivacySummary {
   averageScore: number;
-  grade: 'excellent' | 'good' | 'fair' | 'poor';
+  grade: PrivacyGrade;
   utxoCount: number;
   addressReuseCount: number;
   roundAmountCount: number;
@@ -333,7 +334,7 @@ export async function calculateSpendPrivacy(
   utxoIds: string[]
 ): Promise<{
   score: number;
-  grade: 'excellent' | 'good' | 'fair' | 'poor';
+  grade: PrivacyGrade;
   linkedAddresses: number;
   warnings: string[];
 }> {

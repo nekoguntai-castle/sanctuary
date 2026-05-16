@@ -1,8 +1,17 @@
 import type { AdminUser } from './types';
+import type {
+  AgentAlertSeverity,
+  AgentAlertStatus,
+  AgentFundingOverrideStatus,
+  WalletAgentStatus,
+} from '@sanctuary/shared/constants/adminAgents';
 
-export type WalletAgentStatus = 'active' | 'paused' | 'revoked';
-export type AgentAlertSeverity = 'info' | 'warning' | 'critical';
-export type AgentAlertStatus = 'open' | 'acknowledged' | 'resolved';
+export type {
+  AgentAlertSeverity,
+  AgentAlertStatus,
+  AgentFundingOverrideStatus,
+  WalletAgentStatus,
+};
 
 export interface AgentApiKeyScope {
   allowedActions?: string[];
@@ -141,8 +150,6 @@ export interface AgentAlertMetadata {
   acknowledgedAt: string | null;
   resolvedAt: string | null;
 }
-
-export type AgentFundingOverrideStatus = 'active' | 'used' | 'revoked';
 
 export interface AgentFundingOverrideMetadata {
   id: string;

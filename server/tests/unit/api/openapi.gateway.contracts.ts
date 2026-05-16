@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { DEVICE_ROLE_VALUES } from '@sanctuary/shared/constants/deviceRoles';
 
 import {
   openApiSpec,
@@ -154,6 +155,11 @@ export function registerOpenApiGatewayTests() {
       $ref: '#/components/schemas/DeviceShareGroupRequest',
     });
     expect(openApiSpec.components.schemas.DeviceShareInfo.required).toEqual(['group', 'users']);
+    expect(openApiSpec.components.schemas.Device.properties.role.enum).toBe(DEVICE_ROLE_VALUES);
+    expect(openApiSpec.components.schemas.Device.properties.userRole.enum).toBe(DEVICE_ROLE_VALUES);
+    expect(openApiSpec.components.schemas.DeviceShareInfo.properties.users.items.properties.role.enum).toBe(
+      DEVICE_ROLE_VALUES,
+    );
     expect(openApiSpec.components.schemas.DeviceShareUserRequest.required).toEqual(['targetUserId']);
     expect(openApiSpec.components.schemas.DeviceShareGroupRequest.properties.groupId).toMatchObject({
       type: 'string',

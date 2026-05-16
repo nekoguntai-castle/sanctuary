@@ -9,9 +9,12 @@
  */
 
 import type { NetworkType } from '../constants/bitcoin';
+import type { DeviceRole as CanonicalDeviceRole } from '../constants/deviceRoles';
 import type { SyncPriority as CanonicalSyncPriority } from '../constants/sync';
 import type {
+  PrivacyGrade as CanonicalPrivacyGrade,
   PublicTransactionType,
+  RbfStatus as CanonicalRbfStatus,
   UtxoSelectionStrategy as CanonicalUtxoSelectionStrategy,
 } from '../constants/transactions';
 import {
@@ -55,7 +58,7 @@ export type WalletNetwork = NetworkType;
 /**
  * User's role on a device
  */
-export type DeviceRole = 'owner' | 'viewer' | null;
+export type DeviceRole = CanonicalDeviceRole;
 
 // =============================================================================
 // Transaction Enums
@@ -80,7 +83,7 @@ export type TransactionOutputType =
 /**
  * RBF status of a transaction
  */
-export type RbfStatus = 'active' | 'replaced' | 'confirmed';
+export type RbfStatus = CanonicalRbfStatus;
 
 /**
  * UTXO selection strategy for transaction building
@@ -146,7 +149,7 @@ export type LoadBalancingStrategy = 'round_robin' | 'least_connections' | 'failo
 /**
  * Privacy score grade
  */
-export type PrivacyGrade = 'excellent' | 'good' | 'fair' | 'poor';
+export type PrivacyGrade = CanonicalPrivacyGrade;
 
 // =============================================================================
 // Health Check Enums

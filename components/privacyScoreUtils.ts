@@ -1,11 +1,9 @@
-export type PrivacyGrade = 'excellent' | 'good' | 'fair' | 'poor';
+import { isPrivacyGrade, type PrivacyGrade } from '@sanctuary/shared/constants/transactions';
 
-const privacyGrades: readonly PrivacyGrade[] = ['excellent', 'good', 'fair', 'poor'];
+export type { PrivacyGrade };
 
 export function normalizePrivacyGrade(value: unknown): PrivacyGrade {
-  return typeof value === 'string' && privacyGrades.includes(value as PrivacyGrade)
-    ? value as PrivacyGrade
-    : 'poor';
+  return isPrivacyGrade(value) ? value : 'poor';
 }
 
 export function normalizePrivacyScore(value: unknown): number {

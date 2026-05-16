@@ -7,6 +7,7 @@
 import type { Address, Wallet } from '../../../generated/prisma/client';
 import type { NodeClientInterface } from '../nodeClient';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
+import type { RbfStatus } from '@sanctuary/shared/constants/transactions';
 
 // ============================================
 // Core Types
@@ -143,7 +144,7 @@ export interface TransactionCreateData {
   confirmations: number;
   blockHeight: number | null;
   blockTime: Date | null;
-  rbfStatus: 'active' | 'confirmed' | 'replaced';
+  rbfStatus: RbfStatus;
 }
 
 /** Data for creating a transaction input record */

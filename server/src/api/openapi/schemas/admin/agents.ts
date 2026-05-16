@@ -1,3 +1,10 @@
+import {
+  AGENT_ALERT_SEVERITIES,
+  AGENT_ALERT_STATUSES,
+  AGENT_FUNDING_OVERRIDE_STATUSES,
+  WALLET_AGENT_STATUSES,
+} from '@sanctuary/shared/constants/adminAgents';
+
 const agentPolicyProperties = {
   maxFundingAmountSats: { type: 'string', nullable: true },
   maxOperationalBalanceSats: { type: 'string', nullable: true },
@@ -122,8 +129,8 @@ export const adminAgentSchemas = {
       agentId: { type: 'string' },
       walletId: { type: 'string', nullable: true },
       type: { type: 'string' },
-      severity: { type: 'string', enum: ['info', 'warning', 'critical'] },
-      status: { type: 'string', enum: ['open', 'acknowledged', 'resolved'] },
+      severity: { type: 'string', enum: AGENT_ALERT_SEVERITIES },
+      status: { type: 'string', enum: AGENT_ALERT_STATUSES },
       txid: { type: 'string', nullable: true },
       amountSats: { type: 'string', nullable: true },
       feeSats: { type: 'string', nullable: true },
@@ -150,7 +157,7 @@ export const adminAgentSchemas = {
       reason: { type: 'string' },
       maxAmountSats: { type: 'string' },
       expiresAt: { type: 'string', format: 'date-time' },
-      status: { type: 'string', enum: ['active', 'used', 'revoked'] },
+      status: { type: 'string', enum: AGENT_FUNDING_OVERRIDE_STATUSES },
       usedAt: { type: 'string', format: 'date-time', nullable: true },
       usedDraftId: { type: 'string', nullable: true },
       revokedAt: { type: 'string', format: 'date-time', nullable: true },
@@ -261,7 +268,7 @@ export const adminAgentSchemas = {
       id: { type: 'string' },
       userId: { type: 'string' },
       name: { type: 'string' },
-      status: { type: 'string', enum: ['active', 'paused', 'revoked'] },
+      status: { type: 'string', enum: WALLET_AGENT_STATUSES },
       fundingWalletId: { type: 'string' },
       operationalWalletId: { type: 'string' },
       signerDeviceId: { type: 'string', nullable: true },
@@ -312,7 +319,7 @@ export const adminAgentSchemas = {
       signerDeviceId: { type: 'string', nullable: true },
       status: {
         type: 'string',
-        enum: ['active', 'paused', 'revoked'],
+        enum: WALLET_AGENT_STATUSES,
         default: 'active',
       },
       ...agentPolicyProperties,
@@ -324,7 +331,7 @@ export const adminAgentSchemas = {
     type: 'object',
     properties: {
       name: { type: 'string', minLength: 1, maxLength: 100 },
-      status: { type: 'string', enum: ['active', 'paused', 'revoked'] },
+      status: { type: 'string', enum: WALLET_AGENT_STATUSES },
       ...agentPolicyProperties,
     },
     additionalProperties: false,

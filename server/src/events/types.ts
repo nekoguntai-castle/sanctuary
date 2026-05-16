@@ -4,6 +4,7 @@
  * All event interfaces and type unions for the typed event bus.
  */
 
+import type { DeviceRoleValue } from '@sanctuary/shared/constants/deviceRoles';
 import type { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 
 /**
@@ -99,7 +100,7 @@ export interface DeviceEvents {
     deviceId: string;
     ownerId: string;
     sharedWithUserId: string;
-    role: 'owner' | 'viewer';
+    role: DeviceRoleValue;
   };
 }
 

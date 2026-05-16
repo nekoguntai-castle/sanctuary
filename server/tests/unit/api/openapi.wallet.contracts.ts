@@ -1,5 +1,8 @@
 import { expect, it } from 'vitest';
-import { UTXO_SELECTION_STRATEGIES } from '@sanctuary/shared/constants/transactions';
+import {
+  PRIVACY_GRADES,
+  UTXO_SELECTION_STRATEGIES,
+} from '@sanctuary/shared/constants/transactions';
 
 import {
   openApiSpec,
@@ -162,7 +165,7 @@ export function registerOpenApiWalletTests() {
       'finalBalanceBtc',
     ]);
 
-    expect(openApiSpec.components.schemas.PrivacyGrade.enum).toEqual(['excellent', 'good', 'fair', 'poor']);
+    expect(openApiSpec.components.schemas.PrivacyGrade.enum).toBe(PRIVACY_GRADES);
     expect(openApiSpec.components.schemas.WalletPrivacyResponse.required).toEqual(['utxos', 'summary']);
     expect(openApiSpec.components.schemas.PrivacyScore.required).toEqual(['score', 'grade', 'factors', 'warnings']);
     expect(openApiSpec.components.schemas.SpendPrivacyRequest.properties.utxoIds).toMatchObject({

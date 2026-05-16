@@ -1,5 +1,11 @@
 import { expect, it } from 'vitest';
 import {
+  AGENT_ALERT_SEVERITIES,
+  AGENT_ALERT_STATUSES,
+  AGENT_FUNDING_OVERRIDE_STATUSES,
+  WALLET_AGENT_STATUSES,
+} from '@sanctuary/shared/constants/adminAgents';
+import {
   DEFAULT_NODE_MEMPOOL_ESTIMATOR,
   NODE_MEMPOOL_ESTIMATOR_VALUES,
 } from '@sanctuary/shared/constants/nodeConfig';
@@ -373,6 +379,33 @@ export function registerOpenApiAdminCoreTests() {
     ]);
     expect(openApiSpec.components.schemas.AdminProxyTestFailedResponse.properties.error.enum)
       .toEqual(['Tor Verification Failed']);
+  });
+
+  it('documents admin wallet-agent values from shared constants', () => {
+    expect(openApiSpec.components.schemas.AdminWalletAgent.properties.status.enum).toBe(WALLET_AGENT_STATUSES);
+    expect(openApiSpec.components.schemas.AdminCreateWalletAgentRequest.properties.status.enum).toBe(
+      WALLET_AGENT_STATUSES,
+    );
+    expect(openApiSpec.components.schemas.AdminUpdateWalletAgentRequest.properties.status.enum).toBe(
+      WALLET_AGENT_STATUSES,
+    );
+    expect(openApiSpec.components.schemas.AdminAgentAlert.properties.severity.enum).toBe(AGENT_ALERT_SEVERITIES);
+    expect(openApiSpec.components.schemas.AdminAgentAlert.properties.status.enum).toBe(AGENT_ALERT_STATUSES);
+    expect(openApiSpec.paths['/admin/agents/{agentId}/alerts'].get.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'status',
+        schema: expect.objectContaining({ enum: AGENT_ALERT_STATUSES }),
+      }),
+    );
+    expect(openApiSpec.components.schemas.AdminAgentFundingOverride.properties.status.enum).toBe(
+      AGENT_FUNDING_OVERRIDE_STATUSES,
+    );
+    expect(openApiSpec.paths['/admin/agents/{agentId}/overrides'].get.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'status',
+        schema: expect.objectContaining({ enum: AGENT_FUNDING_OVERRIDE_STATUSES }),
+      }),
+    );
   });
 
   it('documents admin Electrum server routes', () => {

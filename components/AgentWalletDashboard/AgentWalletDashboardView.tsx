@@ -8,6 +8,7 @@ import { AgentWalletRow } from './AgentWalletRow';
 import { StatTile } from './DashboardPrimitives';
 import { formatSats } from './agentWalletDashboardModel';
 import type { AgentWalletDashboardTotals } from './agentWalletDashboardModel';
+import type { WalletAgentToggleStatus } from '@sanctuary/shared/constants/adminAgents';
 
 export interface AgentWalletDashboardViewProps {
   loading: boolean;
@@ -17,7 +18,7 @@ export interface AgentWalletDashboardViewProps {
   orderedRows: AgentWalletDashboardRow[];
   totals: AgentWalletDashboardTotals;
   loadData: () => Promise<void>;
-  onStatusChange: (row: AgentWalletDashboardRow, status: 'active' | 'paused') => Promise<void>;
+  onStatusChange: (row: AgentWalletDashboardRow, status: WalletAgentToggleStatus) => Promise<void>;
   onRevokeKey: (row: AgentWalletDashboardRow, keyId: string) => Promise<void>;
 }
 
@@ -119,7 +120,7 @@ function AgentWalletDashboardRows({
 }: {
   rows: AgentWalletDashboardRow[];
   busyAction: string | null;
-  onStatusChange: (row: AgentWalletDashboardRow, status: 'active' | 'paused') => Promise<void>;
+  onStatusChange: (row: AgentWalletDashboardRow, status: WalletAgentToggleStatus) => Promise<void>;
   onRevokeKey: (row: AgentWalletDashboardRow, keyId: string) => Promise<void>;
 }) {
   if (rows.length === 0) {

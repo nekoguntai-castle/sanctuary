@@ -4,6 +4,7 @@ import type {
   AgentWalletDashboardTransaction,
   WalletAgentMetadata,
 } from '../../src/api/admin';
+import type { WalletAgentStatus } from '@sanctuary/shared/constants/adminAgents';
 import { WalletType } from '@sanctuary/shared/constants/walletIdentity';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { createLogger } from '../../utils/logger';
@@ -31,7 +32,7 @@ export interface AgentWalletDashboardTotals {
   operationalBalance: bigint;
 }
 
-export type AgentStatusBadgeKind = 'active' | 'paused' | 'revoked';
+export type AgentStatusBadgeKind = WalletAgentStatus;
 
 export function formatSats(value: string | null | undefined): string {
   if (!value) return '0 sats';

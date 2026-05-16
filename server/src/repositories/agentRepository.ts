@@ -7,6 +7,12 @@
  */
 
 import prisma from '../models/prisma';
+import type {
+  AgentAlertSeverity,
+  AgentAlertStatus,
+  AgentFundingOverrideStatus,
+  WalletAgentStatus,
+} from '@sanctuary/shared/constants/adminAgents';
 import { InvalidInputError, NotFoundError } from '../errors';
 import {
   Prisma,
@@ -36,7 +42,7 @@ export interface CreateWalletAgentInput {
   fundingWalletId: string;
   operationalWalletId: string;
   signerDeviceId?: string | null;
-  status?: string;
+  status?: WalletAgentStatus;
   maxFundingAmountSats?: bigint | null;
   maxOperationalBalanceSats?: bigint | null;
   dailyFundingLimitSats?: bigint | null;
@@ -101,8 +107,8 @@ export interface CreateAgentAlertInput {
   agentId: string;
   walletId?: string | null;
   type: string;
-  severity: string;
-  status?: string;
+  severity: AgentAlertSeverity;
+  status?: AgentAlertStatus;
   txid?: string | null;
   amountSats?: bigint | null;
   feeSats?: bigint | null;
@@ -172,20 +178,20 @@ export interface FindWalletAgentsFilter {
 
 export interface FindAgentAlertsFilter {
   agentId: string;
-  status?: string;
+  status?: AgentAlertStatus;
   type?: string;
   limit: number;
 }
 
 export interface FindAgentFundingOverridesFilter {
   agentId: string;
-  status?: string;
+  status?: AgentFundingOverrideStatus;
   limit: number;
 }
 
 export interface UpdateWalletAgentInput {
   name?: string;
-  status?: string;
+  status?: WalletAgentStatus;
   maxFundingAmountSats?: bigint | null;
   maxOperationalBalanceSats?: bigint | null;
   dailyFundingLimitSats?: bigint | null;

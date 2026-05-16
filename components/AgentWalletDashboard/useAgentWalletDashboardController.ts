@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as adminApi from '../../src/api/admin';
 import type { AgentWalletDashboardRow } from '../../src/api/admin';
+import type { WalletAgentToggleStatus } from '@sanctuary/shared/constants/adminAgents';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import {
   buildDashboardTotals,
@@ -46,7 +47,7 @@ export function useAgentWalletDashboardController() {
     }
   }, []);
 
-  const handleStatusChange = useCallback(async (row: AgentWalletDashboardRow, status: 'active' | 'paused') => {
+  const handleStatusChange = useCallback(async (row: AgentWalletDashboardRow, status: WalletAgentToggleStatus) => {
     await runAction(`status-${row.agent.id}`, async () => {
       await adminApi.updateWalletAgent(row.agent.id, { status });
       await loadData();

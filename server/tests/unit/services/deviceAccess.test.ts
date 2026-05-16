@@ -204,6 +204,22 @@ describe('Device Access Service', () => {
         role: null,
       });
     });
+
+    it('fails closed when a stored direct role is malformed', async () => {
+      mockPrismaClient.deviceUser.findFirst.mockResolvedValue({
+        id: 'du-1',
+        deviceId,
+        userId,
+        role: 'approver',
+      });
+
+      const result = await checkDeviceAccessWithRole(deviceId, userId);
+      expect(result).toEqual({
+        hasAccess: false,
+        isOwner: false,
+        role: null,
+      });
+    });
   });
 
   describe('getUserDeviceRole', () => {
@@ -247,6 +263,35 @@ describe('Device Access Service', () => {
       const result = await getUserDeviceRole(deviceId, userId);
 
       expect(result).toBe('viewer');
+    });
+
+    it('should return null when direct role is malformed', async () => {
+      mockPrismaClient.deviceUser.findFirst.mockResolvedValue({
+        id: 'du-1',
+        deviceId,
+        userId,
+        role: 'signer',
+      });
+
+      const result = await getUserDeviceRole(deviceId, userId);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when group role is malformed', async () => {
+      mockPrismaClient.deviceUser.findFirst.mockResolvedValue(null);
+      mockPrismaClient.device.findFirst.mockResolvedValue({
+        id: deviceId,
+        groupId,
+        groupRole: 'ownerish',
+        group: {
+          members: [{ userId }],
+        },
+      });
+
+      const result = await getUserDeviceRole(deviceId, userId);
+
+      expect(result).toBeNull();
     });
 
     it('should return null when user has no access', async () => {
@@ -382,6 +427,77 @@ describe('Device Access Service', () => {
           orderBy: { createdAt: 'desc' },
         })
       );
+    });
+
+    it('filters malformed stored roles from accessible device results', async () => {
+      const now = new Date();
+      mockPrismaClient.device.findMany.mockResolvedValue([
+        {
+          id: 'valid-device',
+          userId,
+          modelId: null,
+          type: 'hardware',
+          label: 'Valid Device',
+          fingerprint: 'fp-valid',
+          derivationPath: null,
+          xpub: 'xpub-valid',
+          groupId: null,
+          groupRole: 'viewer',
+          createdAt: now,
+          updatedAt: now,
+          model: null,
+          wallets: [],
+          accounts: [],
+          users: [{ role: 'viewer' }],
+          user: { username: 'owner-user' },
+        },
+        {
+          id: 'malformed-direct',
+          userId,
+          modelId: null,
+          type: 'hardware',
+          label: 'Malformed Direct',
+          fingerprint: 'fp-bad-direct',
+          derivationPath: null,
+          xpub: 'xpub-bad-direct',
+          groupId: null,
+          groupRole: 'viewer',
+          createdAt: now,
+          updatedAt: now,
+          model: null,
+          wallets: [],
+          accounts: [],
+          users: [{ role: 'signer' }],
+          user: { username: 'owner-user' },
+        },
+        {
+          id: 'malformed-group',
+          userId: 'other-owner',
+          modelId: null,
+          type: 'hardware',
+          label: 'Malformed Group',
+          fingerprint: 'fp-bad-group',
+          derivationPath: null,
+          xpub: 'xpub-bad-group',
+          groupId: 'group-1',
+          groupRole: 'approver',
+          createdAt: now,
+          updatedAt: now,
+          model: null,
+          wallets: [],
+          accounts: [],
+          users: [],
+          user: { username: 'shared-by-owner' },
+        },
+      ]);
+
+      const result = await getUserAccessibleDevices(userId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual(expect.objectContaining({
+        id: 'valid-device',
+        userRole: 'viewer',
+      }));
     });
   });
 

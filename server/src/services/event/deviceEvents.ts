@@ -6,6 +6,7 @@
 
 import { eventBus } from '../../events/eventBus';
 import { createLogger } from '../../utils/logger';
+import type { DeviceRoleValue } from '@sanctuary/shared/constants/deviceRoles';
 import type { DeviceRegisteredData } from './types';
 
 const log = createLogger('EVENT:SVC_DEVICE');
@@ -29,7 +30,7 @@ export function emitDeviceDeleted(deviceId: string, userId: string): void {
 /**
  * Emit device shared event
  */
-export function emitDeviceShared(deviceId: string, ownerId: string, sharedWithUserId: string, role: 'owner' | 'viewer'): void {
+export function emitDeviceShared(deviceId: string, ownerId: string, sharedWithUserId: string, role: DeviceRoleValue): void {
   eventBus.emit('device:shared', { deviceId, ownerId, sharedWithUserId, role });
   log.info('Emitted device:shared', { deviceId, sharedWithUserId, role });
 }

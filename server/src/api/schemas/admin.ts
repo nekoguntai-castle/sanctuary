@@ -5,6 +5,11 @@
  */
 
 import { z } from 'zod';
+import {
+  AGENT_ALERT_STATUSES,
+  AGENT_FUNDING_OVERRIDE_STATUSES,
+  WALLET_AGENT_STATUSES,
+} from '@sanctuary/shared/constants/adminAgents';
 import { UuidSchema, UsernameSchema, EmailSchema, NetworkTypeSchema, PaginationSchema } from './common';
 import { PasswordSchema } from './auth';
 import { isKnownFeatureFlagKey, UNKNOWN_FEATURE_FLAG_KEY_MESSAGE } from '../../services/featureFlags/definitions';
@@ -188,7 +193,7 @@ export const McpApiKeyIdParamSchema = z.object({
 // Wallet Agents
 // =============================================================================
 
-const AgentStatusSchema = z.enum(['active', 'paused', 'revoked']);
+const AgentStatusSchema = z.enum(WALLET_AGENT_STATUSES);
 const AgentSatsLimitSchema = z
   .union([z.string(), z.number(), z.bigint()])
   .refine(value => {
@@ -201,8 +206,8 @@ const AgentSatsLimitSchema = z
   .transform(value => BigInt(value));
 const NullableAgentSatsLimitSchema = z.union([AgentSatsLimitSchema, z.null()]);
 const NullableAgentIntegerSchema = z.union([z.coerce.number().int().min(1).max(10080), z.null()]);
-const AgentAlertStatusSchema = z.enum(['open', 'acknowledged', 'resolved']);
-const AgentFundingOverrideStatusSchema = z.enum(['active', 'used', 'revoked']);
+const AgentAlertStatusSchema = z.enum(AGENT_ALERT_STATUSES);
+const AgentFundingOverrideStatusSchema = z.enum(AGENT_FUNDING_OVERRIDE_STATUSES);
 
 export const CreateWalletAgentSchema = z.object({
   userId: UuidSchema,

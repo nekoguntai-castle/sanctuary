@@ -1,3 +1,62 @@
+# Task: Phase Q Shared Value Contract Cleanup 2026-05-16
+
+Status: in progress.
+
+Goal: implement the first concrete Phase Q cleanup slice by giving low-risk repeated value contracts shared owners where code is already using the same values: admin agent statuses/severities, device roles, RBF statuses, and privacy grades.
+
+Source alignment: this is the value-contract portion of the Phase Q as-touched cleanup bucket in `docs/plans/rationalization-plan.md`.
+
+## Plan
+
+- [x] Verify Phase Q candidates with current source evidence and choose a bounded first slice.
+- [x] Add shared-safe owners for admin agent values, device roles, RBF statuses, and privacy grades.
+- [x] Derive frontend API types, server route validation, OpenAPI schemas/paths, device access/event types, transaction/privacy types, and contract helpers from those owners without changing wire values.
+- [x] Add focused shared constant tests and OpenAPI parity assertions for the moved value sets.
+- [x] Run focused shared/server/frontend tests, typechecks as needed, negative tuple searches scoped to production, lizard if touched logic grows, and `git diff --check`.
+- [x] Before merge, migrate remaining production Q1 union/tuple definitions to derive from shared owners, including `components/privacyScoreUtils.ts`, `components/WalletDetail/mappers.ts`, `components/AgentWalletDashboard/*`, and `server/src/services/agentMonitoringService.ts`; then rerun focused privacy/admin/RBF UI tests and tuple/union negative production searches.
+- [ ] Open, monitor, and merge the PR.
+
+## Review
+
+- Phase Q is intentionally not one broad cleanup PR. This slice covers only repeated value contracts with the same current values on both sides of active API/server/frontend boundaries.
+- Recursive plan review tightened `docs/plans/rationalization-plan.md` so Phase Q is explicitly split into Q1 value-contract cleanup versus later deferred cleanup, with Q1 verification and non-goals documented before implementation is delivered.
+- Rejected/deferred comments: hardware vendor/connection method normalization, price-provider offline fallback, LLM egress env accessor cleanup, `API_BASE_URL` export cleanup, and generated-client work remain outside Q1 because they touch separate behavior surfaces.
+- Verification passed for the plan review: targeted source searches for Q1 and deferred Q candidates, stale wording search, and `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`.
+- Added shared owners in `shared/constants/adminAgents.ts` and `shared/constants/deviceRoles.ts`; extended `shared/constants/transactions.ts` with RBF status and privacy grade owners. Shared/domain/frontend/server/OpenAPI consumers now derive from those owners.
+- Device role reads now parse stored direct and group roles through the shared guard so malformed stored values fail closed instead of being cast to a valid role. Focused device-access tests cover malformed direct roles, malformed group roles, and accessible-device filtering.
+- Focused OpenAPI contract tests now assert admin agent status/severity/override enums, device role enums, and privacy grade enums are the shared tuple objects.
+- Verification passed: `npm --prefix shared run build`; `npm run test:run -- tests/shared/adminAgentConstants.test.ts tests/shared/deviceRoles.test.ts tests/shared/transactionTypes.test.ts`; `npm --prefix server run test:run -- tests/unit/api/openapi.test.ts`; `npm --prefix server run test:run -- tests/unit/services/deviceAccess.test.ts`; `npm --prefix server run test:run -- tests/unit/api/admin-agents-routes.test.ts tests/unit/api/admin-agents-routes.controls.test.ts`; `npm --prefix server run test:run -- tests/unit/services/privacyService.test.ts tests/unit/api/transactions-privacy-routes.test.ts`; `npm --prefix server run test:run -- tests/contract/api.contract.test.ts`; `npm run test:run -- tests/api/transactions.test.ts tests/components/PrivacyBadge.test.tsx tests/components/SpendPrivacyCard.test.tsx`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:app`; `npm run lint:server`; touched-file `npm run quality:lizard`; scoped negative production tuple searches; `npm run arch:check`.
+- Recursive plan review on 2026-05-16 found missed Q1 exit gaps that tuple-only searches did not catch: `components/privacyScoreUtils.ts` still owned a production-local privacy-grade tuple/union; `components/WalletDetail/mappers.ts` still cast RBF status to a local union; `components/AgentWalletDashboard/*` still repeated agent status unions/subsets; `types/index.ts` still typed `rbfStatus` as a local union; and `server/src/services/agentMonitoringService.ts` still owned a local admin-agent alert severity union. These now derive from shared owners, and repository agent status/alert/funding override inputs are typed from the shared admin-agent contracts.
+- Additional verification passed after the recursive review fix: focused root tests for admin constants, transaction constants, privacy score utilities, PrivacyBadge, SpendPrivacyCard, AgentWalletDashboard, AgentWalletDashboard model, WalletDetail mappers, transactions API, and TransactionList; focused server tests for agent monitoring and admin-agent routes; `npm --prefix shared run build`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:app`; `npm run lint:server`; touched-file `npm run quality:lizard`; tuple plus union/cast negative production searches; `git diff --check`.
+
+---
+
+# Task: Recursive Review of Rationalization Plan After Phase P 2026-05-16
+
+Status: complete.
+
+Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md` after the Phase P merge, applying only verified plan improvements until no actionable comments remain.
+
+## Plan
+
+- [x] Verify Phase P PR #481 merge status and ancestry against `origin/main`.
+- [x] Read the current rationalization plan and active task ledger for stale status, phase order, assumptions, and verification gaps.
+- [x] Verify Phase P closure and remaining Phase Q evidence against current source files.
+- [x] Apply minimal plan/task-ledger edits for accepted comments.
+- [x] Re-read the updated plan and search for stale active-queue wording.
+- [x] Run documentation verification and record accepted/rejected comments.
+
+## Review
+
+- Completed 2 review passes over `docs/plans/rationalization-plan.md`: an initial source-backed pass after Phase P merged, then a clean re-read after edits.
+- Accepted improvement: top-level status, executive summary, convergence plan, post-Phase-I inventory, follow-up order, guardrails, and closeout notes now show the queue merged through Phase P, including PR #481 as `dbaaa01658be47598014e0e5ae7c80258179aba1`.
+- Accepted improvement: UTXO selection strategy work is now recorded as closed, with shared `UTXO_SELECTION_STRATEGIES` ownership, derived route/service/OpenAPI/frontend behavior, and retired public `branch_and_bound` exposure.
+- Accepted improvement: Phase Q is kept as a low-priority as-touched cleanup bucket, with source-backed examples, rather than being promoted into a broad cleanup PR.
+- Rejected/deferred comments: historical dated addenda still contain earlier pre-merge wording where preserved as review history; no generated-client migration or broad Phase Q implementation was evidence-backed by this plan review.
+- Verification passed: merge commit and ancestor checks for Phase P; focused source reads for UTXO strategy closure and Q candidates; stale active-wording search; `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`.
+
+---
+
 # Task: Recursive Review of Rationalization Plan After Phase N 2026-05-16
 
 Status: complete.
@@ -26,7 +85,7 @@ Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md` af
 
 # Task: Phase P UTXO Selection Strategy Convergence 2026-05-16
 
-Status: in progress.
+Status: merged and verified via PR #481 as squash commit `dbaaa01658be47598014e0e5ae7c80258179aba1`.
 
 Goal: implement the next rationalization slice by giving UTXO selection strategy values a single owner and deriving route validation, service comparison, OpenAPI, and frontend types from that owner without changing amount/scriptType route compatibility from Phase M2.
 
@@ -40,7 +99,7 @@ Source alignment: this is the UTXO strategy follow-up listed as Phase P in `docs
 - [x] Preserve compare-strategy response keys and ordering, default `efficiency`, exhaustive service handling, and Phase M2 amount/`scriptType` route validation behavior.
 - [x] Add focused route tests for every canonical valid strategy and invalid strategies, service tests proving every canonical strategy is included exactly once, recommended-strategy tests, OpenAPI contract tests, and any frontend type/API tests needed by call-site changes.
 - [x] Run shared/server/app typechecks as needed, focused UTXO/OpenAPI/service tests, focused legacy transaction-builder tests if touched, touched-file lizard, negative production tuple search plus scoped `branch_and_bound` search, `npm run arch:check` if dependency graphs change, and `git diff HEAD --check`.
-- [ ] Open, monitor, and merge the PR.
+- [x] Open, monitor, and merge the PR.
 
 ## Review
 
@@ -52,6 +111,7 @@ Source alignment: this is the UTXO strategy follow-up listed as Phase P in `docs
 - The legacy transaction-builder selector now exposes only its implemented `largest_first`/`smallest_first` mode subset, typed as a subset of the shared public strategy values; the unsupported `branch_and_bound` member and frontend test mock were removed.
 - Tests now prove every canonical strategy is accepted by the select route, compare-strategies response keys follow canonical order exactly, recommendations stay within canonical public values, OpenAPI points at the shared enum object, and `branch_and_bound` is rejected by the shared guard.
 - Verification passed: `npm ci`; `npm --prefix shared run build`; `npm run test:run -- tests/shared/transactionTypes.test.ts tests/api/transactions.test.ts`; `npm --prefix server run test:run -- tests/unit/api/transactions-coinSelection-routes.test.ts tests/unit/services/utxoSelectionService.recommendation.test.ts tests/unit/services/bitcoin/estimation.test.ts tests/unit/services/bitcoin/utxoSelection.test.ts`; `npm --prefix server run test:run -- tests/unit/api/openapi.test.ts`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:app`; `npm run lint:server`; touched-file `npm run quality:lizard`; negative production tuple/`branch_and_bound` search; `npm run arch:check`; `git diff --check`.
+- PR #481 passed all latest Forgejo status contexts, squash-merged as `dbaaa01658be47598014e0e5ae7c80258179aba1`, and post-merge verification confirmed that commit exists locally and is an ancestor of `origin/main`.
 
 ---
 
