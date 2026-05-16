@@ -6,6 +6,7 @@
 
 import { MOBILE_API_REQUEST_LIMITS } from '@sanctuary/shared/schemas/mobileApiRequests';
 import {
+  UTXO_SELECTION_STRATEGIES,
   PENDING_TRANSACTION_TYPES,
   PUBLIC_TRANSACTION_TYPES,
 } from '@sanctuary/shared/constants/transactions';
@@ -556,7 +557,7 @@ export const transactionSchemas = {
   },
   UtxoSelectionStrategy: {
     type: 'string',
-    enum: ['privacy', 'efficiency', 'oldest_first', 'largest_first', 'smallest_first'],
+    enum: UTXO_SELECTION_STRATEGIES,
   },
   UtxoSelectionRequest: {
     type: 'object',

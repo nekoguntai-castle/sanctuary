@@ -489,7 +489,7 @@ describe('Transactions API', () => {
     });
 
     it('should pass privacy preference for recommended strategy', async () => {
-      mockGet.mockResolvedValue({ strategy: 'branch_and_bound' });
+      mockGet.mockResolvedValue({ strategy: 'privacy' });
       await getRecommendedStrategy('wallet-1', 10, true);
       expect(mockGet).toHaveBeenCalledWith('/wallets/wallet-1/utxos/recommended-strategy', {
         feeRate: '10',

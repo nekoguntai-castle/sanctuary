@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { UTXO_SELECTION_STRATEGIES } from '@sanctuary/shared/constants/transactions';
 
 import {
   openApiSpec,
@@ -68,13 +69,7 @@ export function registerOpenApiWalletTests() {
       'frozen',
       'message',
     ]);
-    expect(openApiSpec.components.schemas.UtxoSelectionStrategy.enum).toEqual([
-      'privacy',
-      'efficiency',
-      'oldest_first',
-      'largest_first',
-      'smallest_first',
-    ]);
+    expect(openApiSpec.components.schemas.UtxoSelectionStrategy.enum).toBe(UTXO_SELECTION_STRATEGIES);
     expect(openApiSpec.paths['/wallets/{walletId}/utxos/select'].post.requestBody.content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/UtxoSelectionRequest',
     });

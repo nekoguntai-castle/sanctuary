@@ -24,9 +24,40 @@ Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md` af
 
 ---
 
-# Task: Phase O Frontend API Hygiene Convergence 2026-05-16
+# Task: Phase P UTXO Selection Strategy Convergence 2026-05-16
 
 Status: in progress.
+
+Goal: implement the next rationalization slice by giving UTXO selection strategy values a single owner and deriving route validation, service comparison, OpenAPI, and frontend types from that owner without changing amount/scriptType route compatibility from Phase M2.
+
+Source alignment: this is the UTXO strategy follow-up listed as Phase P in `docs/plans/rationalization-plan.md`.
+
+## Plan
+
+- [x] Record Phase O PR #480 merge status and update the rationalization plan/task ledger so Phase P is the active slice.
+- [x] Inspect current UTXO strategy values across shared domain types, route validation, service types/listing, the legacy `server/src/services/bitcoin/utxoSelection.ts` selector, OpenAPI schemas/paths, frontend API/types, and tests.
+- [x] Add a shared or server/shared-safe public strategy owner and derive UTXO route validation, service compare strategy list, recommended-strategy result typing, OpenAPI enum, and frontend/public types from it; classify the legacy transaction-builder selector as a consumer or a separately named internal mode.
+- [x] Preserve compare-strategy response keys and ordering, default `efficiency`, exhaustive service handling, and Phase M2 amount/`scriptType` route validation behavior.
+- [x] Add focused route tests for every canonical valid strategy and invalid strategies, service tests proving every canonical strategy is included exactly once, recommended-strategy tests, OpenAPI contract tests, and any frontend type/API tests needed by call-site changes.
+- [x] Run shared/server/app typechecks as needed, focused UTXO/OpenAPI/service tests, focused legacy transaction-builder tests if touched, touched-file lizard, negative production tuple search plus scoped `branch_and_bound` search, `npm run arch:check` if dependency graphs change, and `git diff HEAD --check`.
+- [ ] Open, monitor, and merge the PR.
+
+## Review
+
+- Phase O PR #480 passed all 65 latest Forgejo status contexts after a frontend coverage branch fix, then squash-merged as `7aa5726018102e277b822e03d6836822612e9bed`.
+- Post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
+- Recursive plan review expanded Phase P scope to include `server/src/services/bitcoin/utxoSelection.ts` and the stale/non-public `branch_and_bound` value, so implementation must either retire it or document it as a tested internal-only mode rather than leaving a second public strategy owner.
+- Inspection found the public select/compare strategy tuple repeated in shared/domain, route validation, service type/listing, OpenAPI, frontend transaction API types/tests, and server tests. `branch_and_bound` appears only in the legacy transaction-builder selector and test/mock references, with no public route/OpenAPI support.
+- Added `UTXO_SELECTION_STRATEGIES`, `DEFAULT_UTXO_SELECTION_STRATEGY`, `UtxoSelectionStrategy`, and `isUtxoSelectionStrategy` to `shared/constants/transactions.ts`; shared domain/frontend types, route validation, service result types, service compare ordering, service recommendation defaults, and OpenAPI now derive from that owner.
+- The legacy transaction-builder selector now exposes only its implemented `largest_first`/`smallest_first` mode subset, typed as a subset of the shared public strategy values; the unsupported `branch_and_bound` member and frontend test mock were removed.
+- Tests now prove every canonical strategy is accepted by the select route, compare-strategies response keys follow canonical order exactly, recommendations stay within canonical public values, OpenAPI points at the shared enum object, and `branch_and_bound` is rejected by the shared guard.
+- Verification passed: `npm ci`; `npm --prefix shared run build`; `npm run test:run -- tests/shared/transactionTypes.test.ts tests/api/transactions.test.ts`; `npm --prefix server run test:run -- tests/unit/api/transactions-coinSelection-routes.test.ts tests/unit/services/utxoSelectionService.recommendation.test.ts tests/unit/services/bitcoin/estimation.test.ts tests/unit/services/bitcoin/utxoSelection.test.ts`; `npm --prefix server run test:run -- tests/unit/api/openapi.test.ts`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:app`; `npm run lint:server`; touched-file `npm run quality:lizard`; negative production tuple/`branch_and_bound` search; `npm run arch:check`; `git diff --check`.
+
+---
+
+# Task: Phase O Frontend API Hygiene Convergence 2026-05-16
+
+Status: merged and verified via PR #480 as squash commit `7aa5726018102e277b822e03d6836822612e9bed`.
 
 Goal: implement the next rationalization slice by tightening frontend API helper ownership without changing wire payloads: rename Payjoin availability/config status away from send-attempt status, replace manual query construction with `apiClient.get(..., params)` where the central client already owns query encoding, import shared response types where already available, and extract low-level PSBT detection helpers without broadening accepted signing/import formats.
 
@@ -40,7 +71,7 @@ Source alignment: this is the frontend API hygiene follow-up listed as Phase O i
 - [x] Reuse shared response types only where the shared owner already exists and does not cross a runtime boundary awkwardly.
 - [x] Extract low-level PSBT magic/base64/hex detection helpers and use them from QR signing/import flows without collapsing flow-specific validation.
 - [x] Run focused API/Payjoin/QR-signing/import tests, app/test typechecks, app lint, touched-file lizard, negative manual-query/Payjoin-name/PSBT-helper searches, `npm run arch:check` if dependency graphs change, and `git diff HEAD --check`.
-- [ ] Open, monitor, and merge the PR.
+- [x] Open, monitor, and merge the PR.
 
 ## Review
 
@@ -50,6 +81,8 @@ Source alignment: this is the frontend API hygiene follow-up listed as Phase O i
 - Added `utils/psbtFormat.ts` as the low-level owner for PSBT magic bytes, BIP-174 binary magic, base64/hex text patterns, base64/byte conversion, and hex byte conversion. QR signing upload/download, QR modal scan/file import, DraftList import, and UR PSBT decode paths now call those predicates/helpers while keeping their flow-specific format acceptance.
 - Regenerated `docs/architecture/generated/frontend.md` for the new frontend utility dependency.
 - Verification passed: `npm ci`; focused API/Payjoin/PSBT test sweep covering 14 files and 344 tests; `npm run typecheck:app`; `npm run typecheck:tests`; `npm run lint:app`; touched-file `npm run quality:lizard`; `npm run arch:check`; negative production searches for manual query construction outside `src/api/client.ts`, old `PayjoinStatus` type/interface names, local PSBT helper duplicates, and local `PriceSource`/`AggregatedPrice`/`FeeEstimates` API interfaces; `git diff HEAD --check`.
+- CI initially caught a frontend branch coverage miss in `src/api/devices.ts` and `utils/psbtFormat.ts`; focused branch tests were added, local `npm run test:coverage` returned 100% statements/branches/functions/lines, and the amended PR passed all 65 latest Forgejo contexts.
+- PR #480 squash-merged as `7aa5726018102e277b822e03d6836822612e9bed`; post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

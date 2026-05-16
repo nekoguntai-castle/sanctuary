@@ -9,6 +9,10 @@
  * - Smallest First: Use smallest UTXOs (consolidation mode)
  */
 
+import {
+  DEFAULT_UTXO_SELECTION_STRATEGY,
+  UTXO_SELECTION_STRATEGIES,
+} from '@sanctuary/shared/constants/transactions';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { createLogger } from '../../utils/logger';
 import { getAvailableUtxos } from './queries';
@@ -98,17 +102,9 @@ export async function compareStrategies(
   feeRate: number,
   scriptType: string = WalletScriptType.NATIVE_SEGWIT
 ): Promise<Record<SelectionStrategy, SelectionResult>> {
-  const strategies: SelectionStrategy[] = [
-    'privacy',
-    'efficiency',
-    'oldest_first',
-    'largest_first',
-    'smallest_first',
-  ];
-
   const results: Record<string, SelectionResult> = {};
 
-  for (const strategy of strategies) {
+  for (const strategy of UTXO_SELECTION_STRATEGIES) {
     results[strategy] = await selectUtxos({
       walletId,
       targetAmount,
@@ -138,7 +134,7 @@ export function getRecommendedStrategy(
 
   if (feeRate > 50) {
     return {
-      strategy: 'efficiency',
+      strategy: DEFAULT_UTXO_SELECTION_STRATEGY,
       reason: 'High fee environment - minimizing input count saves fees',
     };
   }
@@ -151,7 +147,7 @@ export function getRecommendedStrategy(
   }
 
   return {
-    strategy: 'efficiency',
+    strategy: DEFAULT_UTXO_SELECTION_STRATEGY,
     reason: 'Default: minimizes transaction fees',
   };
 }

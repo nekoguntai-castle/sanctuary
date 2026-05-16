@@ -17,7 +17,6 @@ vi.mock('../../../../src/services/bitcoin/utxoSelection', () => ({
   UTXOSelectionStrategy: {
     LARGEST_FIRST: 'largest_first',
     SMALLEST_FIRST: 'smallest_first',
-    BRANCH_AND_BOUND: 'branch_and_bound',
   },
 }));
 

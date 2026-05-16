@@ -28,6 +28,18 @@ export type TransactionFilterType = PersistedTransactionType;
 export const PENDING_TRANSACTION_TYPES = ['sent', 'received'] as const;
 export type PendingTransactionType = (typeof PENDING_TRANSACTION_TYPES)[number];
 
+export const UTXO_SELECTION_STRATEGIES = [
+  'privacy',
+  'efficiency',
+  'oldest_first',
+  'largest_first',
+  'smallest_first',
+] as const;
+
+export type UtxoSelectionStrategy = (typeof UTXO_SELECTION_STRATEGIES)[number];
+
+export const DEFAULT_UTXO_SELECTION_STRATEGY: UtxoSelectionStrategy = 'efficiency';
+
 export const LEGACY_TRANSACTION_TYPE_ALIASES = {
   send: 'sent',
   receive: 'received',
@@ -52,6 +64,10 @@ export function isPublicTransactionType(value: unknown): value is PublicTransact
 
 export function isPendingTransactionType(value: unknown): value is PendingTransactionType {
   return includesString(PENDING_TRANSACTION_TYPES, value);
+}
+
+export function isUtxoSelectionStrategy(value: unknown): value is UtxoSelectionStrategy {
+  return includesString(UTXO_SELECTION_STRATEGIES, value);
 }
 
 export function normalizeTransactionTypeAlias(value: unknown): PersistedTransactionType | null {

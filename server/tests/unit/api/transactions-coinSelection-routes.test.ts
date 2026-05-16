@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import express, { type Express } from 'express';
 import request from 'supertest';
+import { UTXO_SELECTION_STRATEGIES } from '@sanctuary/shared/constants/transactions';
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
 
 const {
@@ -94,6 +95,33 @@ describe('Transactions Coin Selection Routes', () => {
         warnings: [],
         privacyImpact: { score: 50, level: 'low' },
       },
+      oldest_first: {
+        selected: [{ id: 'utxo-o', txid: 'tx-o', vout: 2, amount: BigInt(2400) }],
+        totalAmount: BigInt(2400),
+        estimatedFee: BigInt(110),
+        changeAmount: BigInt(390),
+        inputCount: 1,
+        strategy: 'oldest_first',
+        warnings: [],
+      },
+      largest_first: {
+        selected: [{ id: 'utxo-l', txid: 'tx-l', vout: 3, amount: BigInt(2600) }],
+        totalAmount: BigInt(2600),
+        estimatedFee: BigInt(115),
+        changeAmount: BigInt(385),
+        inputCount: 1,
+        strategy: 'largest_first',
+        warnings: [],
+      },
+      smallest_first: {
+        selected: [{ id: 'utxo-s', txid: 'tx-s', vout: 4, amount: BigInt(2300) }],
+        totalAmount: BigInt(2300),
+        estimatedFee: BigInt(105),
+        changeAmount: BigInt(395),
+        inputCount: 1,
+        strategy: 'smallest_first',
+        warnings: [],
+      },
     });
 
     mockGetRecommendedStrategy.mockReturnValue({
@@ -127,6 +155,17 @@ describe('Transactions Coin Selection Routes', () => {
       privacyImpact: { score: 70, level: 'medium' },
     });
     expect(response.body.selected[0].amount).toBe(2000);
+  });
+
+  it.each(UTXO_SELECTION_STRATEGIES)('accepts canonical select strategy %s', async (strategy) => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/utxos/select')
+      .send({ amount: '1500', feeRate: '2.5', strategy });
+
+    expect(response.status).toBe(200);
+    expect(mockSelectUtxos).toHaveBeenCalledWith(expect.objectContaining({
+      strategy,
+    }));
   });
 
   it('accepts numeric select amount and validates before service calls', async () => {
@@ -255,6 +294,7 @@ describe('Transactions Coin Selection Routes', () => {
 
     expect(response.status).toBe(200);
     expect(mockCompareStrategies).toHaveBeenCalledWith('wallet-1', BigInt('1750'), 4.2, 'p2tr');
+    expect(Object.keys(response.body)).toEqual([...UTXO_SELECTION_STRATEGIES]);
     expect(response.body.privacy.totalAmount).toBe(3000);
     expect(response.body.efficiency.estimatedFee).toBe(100);
     expect(response.body.privacy.selected[0].amount).toBe(3000);

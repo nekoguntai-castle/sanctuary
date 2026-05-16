@@ -2,13 +2,9 @@
  * UTXO Selection Types
  */
 
-// UTXO selection strategy type (duplicated from frontend types for Docker build isolation)
-export type SelectionStrategy =
-  | 'privacy'
-  | 'efficiency'
-  | 'oldest_first'
-  | 'largest_first'
-  | 'smallest_first';
+import type { UtxoSelectionStrategy } from '@sanctuary/shared/constants/transactions';
+
+export type SelectionStrategy = UtxoSelectionStrategy;
 
 export interface SelectedUtxo {
   id: string;

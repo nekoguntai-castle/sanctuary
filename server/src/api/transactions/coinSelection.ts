@@ -6,6 +6,10 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import {
+  DEFAULT_UTXO_SELECTION_STRATEGY,
+  UTXO_SELECTION_STRATEGIES,
+} from '@sanctuary/shared/constants/transactions';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { validate } from '../../middleware/validate';
 import { utxoRepository } from '../../repositories';
@@ -14,11 +18,10 @@ import { FeeRateSchema } from '../schemas/common';
 import * as selectionService from '../../services/utxoSelectionService';
 
 const router = Router();
-const validStrategies = ['privacy', 'efficiency', 'oldest_first', 'largest_first', 'smallest_first'] as const;
 const MAX_SAFE_SATS = BigInt(Number.MAX_SAFE_INTEGER);
 const UtxoAmountInputSchema = z.union([z.string(), z.number()]);
 const UtxoFeeRateInputSchema = z.union([z.string(), z.number()]);
-const UtxoSelectionStrategySchema = z.enum(validStrategies);
+const UtxoSelectionStrategySchema = z.enum(UTXO_SELECTION_STRATEGIES);
 
 type UtxoAmountInput = z.infer<typeof UtxoAmountInputSchema>;
 
@@ -86,7 +89,7 @@ function validateSelectionFields(
 const UtxoSelectionBodySchema = z.object({
   amount: UtxoAmountSchema.optional(),
   feeRate: UtxoFeeRateInputSchema.optional(),
-  strategy: UtxoSelectionStrategySchema.optional().default('efficiency'),
+  strategy: UtxoSelectionStrategySchema.optional().default(DEFAULT_UTXO_SELECTION_STRATEGY),
   scriptType: z.string().min(1).optional(),
 }).strict().superRefine(validateSelectionFields);
 
@@ -110,7 +113,7 @@ const utxoSelectionValidationMessage = (issues: Array<{ path: string; message: s
     return 'feeRate must be a positive number';
   }
   if (issues.some(issue => issue.path === 'strategy')) {
-    return `Invalid strategy. Valid options: ${validStrategies.join(', ')}`;
+    return `Invalid strategy. Valid options: ${UTXO_SELECTION_STRATEGIES.join(', ')}`;
   }
   if (issues.some(issue => issue.path === 'scriptType')) {
     return 'scriptType must be a non-empty string';

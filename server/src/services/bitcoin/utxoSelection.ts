@@ -4,6 +4,7 @@
  * Strategies and algorithms for selecting UTXOs for transactions.
  */
 
+import type { UtxoSelectionStrategy as PublicUtxoSelectionStrategy } from '@sanctuary/shared/constants/transactions';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { utxoRepository, systemSettingRepository } from '../../repositories';
 import { estimateTransactionSize, calculateFee } from './utils';
@@ -11,13 +12,20 @@ import { DEFAULT_CONFIRMATION_THRESHOLD } from '../../constants';
 import { SystemSettingSchemas } from '../../utils/safeJson';
 
 /**
- * UTXO Selection Strategy
+ * UTXO selection modes supported by the legacy transaction builder.
+ * The public select/compare API exposes the larger shared strategy set.
  */
-export enum UTXOSelectionStrategy {
-  LARGEST_FIRST = 'largest_first',
-  SMALLEST_FIRST = 'smallest_first',
-  BRANCH_AND_BOUND = 'branch_and_bound', // Most efficient
-}
+export type TransactionBuilderUtxoSelectionStrategy = Extract<
+  PublicUtxoSelectionStrategy,
+  'largest_first' | 'smallest_first'
+>;
+
+export const UTXOSelectionStrategy = {
+  LARGEST_FIRST: 'largest_first',
+  SMALLEST_FIRST: 'smallest_first',
+} as const satisfies Record<string, TransactionBuilderUtxoSelectionStrategy>;
+
+export type UTXOSelectionStrategy = TransactionBuilderUtxoSelectionStrategy;
 
 /**
  * Selected UTXO with required fields for transaction building

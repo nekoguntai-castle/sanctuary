@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_UTXO_SELECTION_STRATEGY,
   LEGACY_TRANSACTION_TYPE_ALIASES,
   PENDING_TRANSACTION_TYPES,
   PERSISTED_TRANSACTION_TYPES,
   PUBLIC_TRANSACTION_TYPES,
   TRANSACTION_FILTER_TYPES,
+  UTXO_SELECTION_STRATEGIES,
   isPendingTransactionType,
   isPersistedTransactionType,
   isPublicTransactionType,
+  isUtxoSelectionStrategy,
   normalizeTransactionTypeAlias,
 } from '@sanctuary/shared/constants/transactions';
 
@@ -38,5 +41,18 @@ describe('transaction type constants', () => {
     expect(normalizeTransactionTypeAlias('SEND')).toBe('sent');
     expect(normalizeTransactionTypeAlias('self')).toBeNull();
     expect(normalizeTransactionTypeAlias(null)).toBeNull();
+  });
+
+  it('defines public UTXO selection strategies and default', () => {
+    expect(UTXO_SELECTION_STRATEGIES).toEqual([
+      'privacy',
+      'efficiency',
+      'oldest_first',
+      'largest_first',
+      'smallest_first',
+    ]);
+    expect(DEFAULT_UTXO_SELECTION_STRATEGY).toBe('efficiency');
+    expect(isUtxoSelectionStrategy('privacy')).toBe(true);
+    expect(isUtxoSelectionStrategy('branch_and_bound')).toBe(false);
   });
 });

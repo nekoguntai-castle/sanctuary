@@ -10,7 +10,10 @@
 
 import type { NetworkType } from '../constants/bitcoin';
 import type { SyncPriority as CanonicalSyncPriority } from '../constants/sync';
-import type { PublicTransactionType } from '../constants/transactions';
+import type {
+  PublicTransactionType,
+  UtxoSelectionStrategy as CanonicalUtxoSelectionStrategy,
+} from '../constants/transactions';
 import {
   WalletType as CanonicalWalletType,
   type WalletScriptType as CanonicalWalletScriptType,
@@ -87,12 +90,7 @@ export type RbfStatus = 'active' | 'replaced' | 'confirmed';
  * - largest_first: Select largest UTXOs first (consolidation)
  * - smallest_first: Select smallest UTXOs first (dust cleanup)
  */
-export type SelectionStrategy =
-  | 'privacy'
-  | 'efficiency'
-  | 'oldest_first'
-  | 'largest_first'
-  | 'smallest_first';
+export type SelectionStrategy = CanonicalUtxoSelectionStrategy;
 
 /**
  * Draft transaction signing status

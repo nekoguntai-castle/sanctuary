@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+import { UTXO_SELECTION_STRATEGIES } from '@sanctuary/shared/constants/transactions';
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
 
 vi.mock('../../../src/models/prisma', () => ({
@@ -33,7 +34,7 @@ describe('UTXO Selection Service - strategy comparison and recommendation', () =
   beforeEach(resetUtxoSelectionMocks);
 
   describe('compareStrategies', () => {
-    it('should return results for all 5 strategies', async () => {
+    it('should return results for every canonical strategy in order', async () => {
       const utxos = [
         createTestUtxo({ id: 'utxo-1', amount: BigInt(100000), confirmations: 10 }),
         createTestUtxo({ id: 'utxo-2', amount: BigInt(50000), confirmations: 5, txid: 'bbbb'.repeat(16) }),
@@ -46,11 +47,11 @@ describe('UTXO Selection Service - strategy comparison and recommendation', () =
         10
       );
 
-      expect(results.privacy).toBeDefined();
-      expect(results.efficiency).toBeDefined();
-      expect(results.oldest_first).toBeDefined();
-      expect(results.largest_first).toBeDefined();
-      expect(results.smallest_first).toBeDefined();
+      expect(Object.keys(results)).toEqual([...UTXO_SELECTION_STRATEGIES]);
+      for (const strategy of UTXO_SELECTION_STRATEGIES) {
+        expect(results[strategy]).toBeDefined();
+        expect(results[strategy].strategy).toBe(strategy);
+      }
     });
 
     it('should show different results for different strategies', async () => {
@@ -113,6 +114,19 @@ describe('UTXO Selection Service - strategy comparison and recommendation', () =
       const recommendation = getRecommendedStrategy(5, 20);
 
       expect(recommendation.strategy).toBe('efficiency');
+    });
+
+    it('should only return canonical public strategies', () => {
+      const recommendations = [
+        getRecommendedStrategy(10, 20, true),
+        getRecommendedStrategy(10, 100),
+        getRecommendedStrategy(25, 2),
+        getRecommendedStrategy(5, 20),
+      ];
+
+      for (const recommendation of recommendations) {
+        expect(UTXO_SELECTION_STRATEGIES).toContain(recommendation.strategy);
+      }
     });
   });
 });
