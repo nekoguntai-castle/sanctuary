@@ -14,19 +14,57 @@ import { FeeRateSchema } from '../schemas/common';
 import * as selectionService from '../../services/utxoSelectionService';
 
 const router = Router();
-const validStrategies = ['privacy', 'efficiency', 'oldest_first', 'largest_first', 'smallest_first'];
+const validStrategies = ['privacy', 'efficiency', 'oldest_first', 'largest_first', 'smallest_first'] as const;
+const MAX_SAFE_SATS = BigInt(Number.MAX_SAFE_INTEGER);
+const UtxoAmountInputSchema = z.union([z.string(), z.number()]);
+const UtxoFeeRateInputSchema = z.union([z.string(), z.number()]);
+const UtxoSelectionStrategySchema = z.enum(validStrategies);
 
-const UtxoSelectionBodyBaseSchema = z.object({
-  amount: z.unknown().optional(),
-  feeRate: z.unknown().optional(),
-  strategy: z.unknown().optional(),
-  scriptType: z.unknown().optional(),
+type UtxoAmountInput = z.infer<typeof UtxoAmountInputSchema>;
+
+function parseUtxoAmount(value: UtxoAmountInput): bigint | null {
+  if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value)) {
+      return null;
+    }
+    if (value <= 0) {
+      return null;
+    }
+    return BigInt(value);
+  }
+
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+
+  const amount = BigInt(value);
+  if (amount <= BigInt(0)) {
+    return null;
+  }
+  if (amount > MAX_SAFE_SATS) {
+    return null;
+  }
+
+  return amount;
+}
+
+const UtxoAmountSchema = UtxoAmountInputSchema.transform((value, ctx) => {
+  const amount = parseUtxoAmount(value);
+  if (amount === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'amount must be a positive safe integer',
+    });
+    return z.NEVER;
+  }
+  return amount;
 });
 
-const UtxoCompareStrategiesBodyBaseSchema = UtxoSelectionBodyBaseSchema.omit({ strategy: true });
-
-function validateSelectionFields(data: { amount?: unknown; feeRate?: unknown; strategy?: unknown }, ctx: z.RefinementCtx) {
-  if (!data.amount || !data.feeRate) {
+function validateSelectionFields(
+  data: { amount?: bigint; feeRate?: z.infer<typeof UtxoFeeRateInputSchema> },
+  ctx: z.RefinementCtx
+) {
+  if (data.amount === undefined || data.feeRate === undefined) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: 'amount and feeRate are required',
@@ -43,30 +81,41 @@ function validateSelectionFields(data: { amount?: unknown; feeRate?: unknown; st
       path: ['feeRate'],
     });
   }
-
-  const strategy = data.strategy ?? 'efficiency';
-  if (!validStrategies.includes(strategy as string)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: `Invalid strategy. Valid options: ${validStrategies.join(', ')}`,
-      path: ['strategy'],
-    });
-  }
 }
 
-const UtxoSelectionBodySchema = UtxoSelectionBodyBaseSchema.superRefine(validateSelectionFields);
+const UtxoSelectionBodySchema = z.object({
+  amount: UtxoAmountSchema.optional(),
+  feeRate: UtxoFeeRateInputSchema.optional(),
+  strategy: UtxoSelectionStrategySchema.optional().default('efficiency'),
+  scriptType: z.string().min(1).optional(),
+}).strict().superRefine(validateSelectionFields);
 
-const UtxoCompareStrategiesBodySchema = UtxoCompareStrategiesBodyBaseSchema.superRefine(validateSelectionFields);
+const UtxoCompareStrategiesBodySchema = z.object({
+  amount: UtxoAmountSchema.optional(),
+  feeRate: UtxoFeeRateInputSchema.optional(),
+  scriptType: z.string().min(1).optional(),
+}).strict().superRefine(validateSelectionFields);
 
-const utxoSelectionValidationMessage = (issues: Array<{ message: string }>) => {
-  if (issues.some(issue => issue.message === 'feeRate must be a positive number')) {
+type UtxoSelectionBody = z.infer<typeof UtxoSelectionBodySchema>;
+type UtxoCompareStrategiesBody = z.infer<typeof UtxoCompareStrategiesBodySchema>;
+
+const utxoSelectionValidationMessage = (issues: Array<{ path: string; message: string }>) => {
+  if (issues.some(issue => issue.message === 'amount and feeRate are required')) {
+    return 'amount and feeRate are required';
+  }
+  if (issues.some(issue => issue.path === 'amount')) {
+    return 'amount must be a positive safe integer';
+  }
+  if (issues.some(issue => issue.path === 'feeRate')) {
     return 'feeRate must be a positive number';
   }
-  const invalidStrategyIssue = issues.find(issue => issue.message.startsWith('Invalid strategy.'));
-  if (invalidStrategyIssue) {
-    return invalidStrategyIssue.message;
+  if (issues.some(issue => issue.path === 'strategy')) {
+    return `Invalid strategy. Valid options: ${validStrategies.join(', ')}`;
   }
-  return 'amount and feeRate are required';
+  if (issues.some(issue => issue.path === 'scriptType')) {
+    return 'scriptType must be a non-empty string';
+  }
+  return 'Invalid UTXO selection request';
 };
 
 /**
@@ -78,12 +127,13 @@ router.post('/wallets/:walletId/utxos/select', requireWalletAccess('view'), vali
   { message: utxoSelectionValidationMessage }
 ), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
-  const { amount, feeRate, strategy = 'efficiency', scriptType } = req.body;
+  const { amount, feeRate, strategy, scriptType } = req.body as UtxoSelectionBody;
   const parsedFeeRate = FeeRateSchema.parse(feeRate);
+  const targetAmount = amount as bigint;
 
   const result = await selectionService.selectUtxos({
     walletId,
-    targetAmount: BigInt(amount),
+    targetAmount,
     feeRate: parsedFeeRate,
     strategy,
     scriptType,
@@ -114,12 +164,13 @@ router.post('/wallets/:walletId/utxos/compare-strategies', requireWalletAccess('
   { message: utxoSelectionValidationMessage }
 ), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
-  const { amount, feeRate, scriptType } = req.body;
+  const { amount, feeRate, scriptType } = req.body as UtxoCompareStrategiesBody;
   const parsedFeeRate = FeeRateSchema.parse(feeRate);
+  const targetAmount = amount as bigint;
 
   const results = await selectionService.compareStrategies(
     walletId,
-    BigInt(amount),
+    targetAmount,
     parsedFeeRate,
     scriptType
   );

@@ -75,15 +75,42 @@ export function registerOpenApiWalletTests() {
       'largest_first',
       'smallest_first',
     ]);
+    expect(openApiSpec.paths['/wallets/{walletId}/utxos/select'].post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/UtxoSelectionRequest',
+    });
+    expect(openApiSpec.paths['/wallets/{walletId}/utxos/compare-strategies'].post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/UtxoCompareStrategiesRequest',
+    });
     expect(openApiSpec.components.schemas.UtxoSelectionRequest.required).toEqual(['amount', 'feeRate']);
     expect(openApiSpec.components.schemas.UtxoSelectionRequest.properties.amount.oneOf).toContainEqual({
+      type: 'integer',
+      minimum: 1,
+      maximum: Number.MAX_SAFE_INTEGER,
+    });
+    expect(openApiSpec.components.schemas.UtxoSelectionRequest.properties.amount.oneOf).toContainEqual({
       type: 'string',
-      minLength: 1,
+      pattern: '^(?:0*[1-9]\\d{0,14}|0*[1-8]\\d{15}|0*900719925474099[0-1])$',
+      description: 'Positive safe integer amount in satoshis.',
     });
     expect(openApiSpec.components.schemas.UtxoSelectionRequest.properties.feeRate.oneOf).toContainEqual({
       type: 'number',
       minimum: 1,
     });
+    expect(openApiSpec.components.schemas.UtxoSelectionRequest.properties.scriptType).toEqual({
+      type: 'string',
+      minLength: 1,
+    });
+    expect(openApiSpec.components.schemas.UtxoSelectionRequest.additionalProperties).toBe(false);
+    expect(openApiSpec.components.schemas.UtxoCompareStrategiesRequest.required).toEqual(['amount', 'feeRate']);
+    expect(openApiSpec.components.schemas.UtxoCompareStrategiesRequest.properties.amount).toEqual(
+      openApiSpec.components.schemas.UtxoSelectionRequest.properties.amount,
+    );
+    expect(openApiSpec.components.schemas.UtxoCompareStrategiesRequest.properties).not.toHaveProperty('strategy');
+    expect(openApiSpec.components.schemas.UtxoCompareStrategiesRequest.properties.scriptType).toEqual({
+      type: 'string',
+      minLength: 1,
+    });
+    expect(openApiSpec.components.schemas.UtxoCompareStrategiesRequest.additionalProperties).toBe(false);
     expect(openApiSpec.components.schemas.UtxoSelectionResult.required).toEqual([
       'selected',
       'totalAmount',

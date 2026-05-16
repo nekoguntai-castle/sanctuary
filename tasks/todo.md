@@ -1,6 +1,31 @@
-# Task: Phase M Transfer Route Validation Convergence 2026-05-16
+# Task: Phase M2 UTXO Selection Route Validation Convergence 2026-05-16
 
 Status: implemented locally; PR delivery pending.
+
+Goal: implement the reviewed Phase M2 slice by validating UTXO selection route inputs at the HTTP boundary, rejecting malformed select/compare amounts before `BigInt` conversion, aligning `scriptType` body handling with OpenAPI, and delivering the change through a PR.
+
+## Plan
+
+- [x] Inspect UTXO selection routes, service contracts, OpenAPI request schemas, and focused route tests.
+- [x] Add amount validation that accepts current integer string/number payloads and rejects empty, non-integer, decimal, negative, unsafe, or malformed values before service calls.
+- [x] Replace route `scriptType` passthrough validation with typed string handling that matches the documented request schema and closed-object behavior.
+- [x] Add focused select/compare route tests and OpenAPI parity checks for amount and `scriptType` boundaries.
+- [x] Run focused UTXO/OpenAPI verification, server type/build/lint checks, touched-file lizard, stale-drift searches, and `git diff --check`.
+- [ ] Open, monitor, and merge the PR.
+
+## Review
+
+- UTXO select and compare routes now parse `amount` at the route boundary into a positive safe-integer `bigint`. Current integer string and number payloads remain accepted, including leading-zero integer strings, while empty, zero, negative, decimal, non-numeric, boolean/null, and unsafe values return `400` before service calls.
+- `scriptType` is now a typed optional non-empty string on both select and compare routes. Both route bodies are closed objects; compare-strategies now rejects select-only `strategy` input instead of silently accepting an undocumented field.
+- OpenAPI now documents safe integer UTXO amount inputs, non-empty `scriptType`, closed request bodies, and a separate `UtxoCompareStrategiesRequest` schema without `strategy`.
+- Focused route tests cover valid string/number/leading-zero amount payloads, invalid amount values before service calls, malformed `scriptType`, strict body rejection, invalid strategies, and existing fee-rate behavior.
+- Verification passed: `npm --prefix shared run build`; `npm --prefix server run prisma:generate`; `npm --prefix server run test:run -- tests/unit/api/transactions-coinSelection-routes.test.ts tests/unit/api/openapi.test.ts`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run quality:lizard -- --files server/src/api/transactions/coinSelection.ts server/src/api/openapi/schemas/transactions.ts server/src/api/openapi/paths/transactions.ts`; `npm run lint:server`; `npm run arch:check`; stale route-local `BigInt(amount)`/`z.unknown()` search; `npm --prefix server run test:coverage`; `git diff --check`.
+
+---
+
+# Task: Phase M Transfer Route Validation Convergence 2026-05-16
+
+Status: merged and verified via PR #477 as squash commit `d7e675b0c381582f3d62ee4c798aec5d279718aa`.
 
 Goal: implement the reviewed Phase M slice by aligning transfer route request/query validation with the existing transfer-service constants and OpenAPI contracts, rejecting invalid filters at the route boundary, typing create/decline bodies, and delivering the change through a PR.
 
@@ -11,7 +36,7 @@ Goal: implement the reviewed Phase M slice by aligning transfer route request/qu
 - [x] Make invalid `role`, `status`, and `resourceType` query filters return a validation error instead of being ignored or cast through to the service.
 - [x] Update OpenAPI schema details and focused transfer/OpenAPI tests for closed bodies, invalid filters, invalid create fields, and typed decline reasons.
 - [x] Run focused route/OpenAPI verification, server type/build/lint checks, touched-file lizard, stale-drift searches, and `git diff --check`.
-- [ ] Open, monitor, and merge the PR.
+- [x] Open, monitor, and merge the PR.
 
 ## Review
 
@@ -22,6 +47,8 @@ Goal: implement the reviewed Phase M slice by aligning transfer route request/qu
 - Focused tests cover invalid filters, closed create/decline bodies, empty IDs, invalid expiry values, typed decline reasons, OpenAPI parity, and the preserved >30-day service-cap path.
 - CI architecture reproduced a stale generated gateway graph from the prior gateway config submodule split; committed the regenerated `docs/architecture/generated/gateway.md` output with this branch.
 - Verification passed: `npm --prefix shared run build`; `npm --prefix server run prisma:generate`; `npm --prefix server run test:run -- tests/unit/api/transfers.test.ts tests/unit/api/openapi.gateway.contracts.ts tests/unit/api/openapi.test.ts`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm --prefix server run test:coverage`; `npm run lint:server`; `npm run quality:lizard -- --files server/src/api/transfers.ts server/src/api/openapi/schemas/transfers.ts server/src/api/openapi/paths/transfers.ts`; stale route-local tuple/cast/`z.unknown()` search; `npm run arch:check`; `git diff --check`.
+- PR #477 passed Forgejo Architecture, Build Dev Images scope, Code Quality, Test Suite full lanes including backend coverage, Full Test Summary, and PR Required Checks, then squash-merged as `d7e675b0c381582f3d62ee4c798aec5d279718aa`.
+- Post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

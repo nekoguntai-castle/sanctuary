@@ -395,7 +395,7 @@ export const transactionPaths = {
       description: 'Compare all supported UTXO selection strategies for a target amount.',
       security: bearerAuth,
       parameters: [walletIdParameter],
-      requestBody: jsonRequestBody('#/components/schemas/UtxoSelectionRequest'),
+      requestBody: jsonRequestBody('#/components/schemas/UtxoCompareStrategiesRequest'),
       responses: {
         200: jsonResponse('UTXO selection strategy comparison', '#/components/schemas/UtxoStrategyComparisonResponse'),
         400: apiErrorResponse,

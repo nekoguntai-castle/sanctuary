@@ -129,6 +129,36 @@ describe('Transactions Coin Selection Routes', () => {
     expect(response.body.selected[0].amount).toBe(2000);
   });
 
+  it('accepts numeric select amount and validates before service calls', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/utxos/select')
+      .send({ amount: 1500, feeRate: 2.5, strategy: 'efficiency' });
+
+    expect(response.status).toBe(200);
+    expect(mockSelectUtxos).toHaveBeenCalledWith({
+      walletId: 'wallet-1',
+      targetAmount: BigInt(1500),
+      feeRate: 2.5,
+      strategy: 'efficiency',
+      scriptType: undefined,
+    });
+  });
+
+  it('preserves leading-zero integer amount strings as valid inputs', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/utxos/select')
+      .send({ amount: '0001500', feeRate: '2.5', strategy: 'efficiency' });
+
+    expect(response.status).toBe(200);
+    expect(mockSelectUtxos).toHaveBeenCalledWith({
+      walletId: 'wallet-1',
+      targetAmount: BigInt(1500),
+      feeRate: 2.5,
+      strategy: 'efficiency',
+      scriptType: undefined,
+    });
+  });
+
   it('returns 400 when amount or feeRate is missing on select', async () => {
     const response = await request(app)
       .post('/api/v1/wallets/wallet-1/utxos/select')
@@ -147,6 +177,29 @@ describe('Transactions Coin Selection Routes', () => {
     expect(response.body.message).toBe('feeRate must be a positive number');
   });
 
+  it.each([
+    ['empty string', ''],
+    ['zero string', '0'],
+    ['decimal string', '1.5'],
+    ['negative string', '-1'],
+    ['non-numeric string', 'abc'],
+    ['unsafe string', '9007199254740992'],
+    ['zero number', 0],
+    ['negative number', -1],
+    ['decimal number', 1.5],
+    ['unsafe number', Number.MAX_SAFE_INTEGER + 1],
+    ['null', null],
+    ['boolean', true],
+  ])('returns 400 before select service calls when amount is %s', async (_name, amount) => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/utxos/select')
+      .send({ amount, feeRate: '1.1' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('amount must be a positive safe integer');
+    expect(mockSelectUtxos).not.toHaveBeenCalled();
+  });
+
   it('returns 400 for invalid select strategy', async () => {
     const response = await request(app)
       .post('/api/v1/wallets/wallet-1/utxos/select')
@@ -154,6 +207,31 @@ describe('Transactions Coin Selection Routes', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.message).toContain('Invalid strategy');
+  });
+
+  it('returns 400 when select scriptType is malformed', async () => {
+    const numberResponse = await request(app)
+      .post('/api/v1/wallets/wallet-1/utxos/select')
+      .send({ amount: '1500', feeRate: '1.1', scriptType: 123 });
+    const emptyResponse = await request(app)
+      .post('/api/v1/wallets/wallet-1/utxos/select')
+      .send({ amount: '1500', feeRate: '1.1', scriptType: '' });
+
+    expect(numberResponse.status).toBe(400);
+    expect(emptyResponse.status).toBe(400);
+    expect(numberResponse.body.message).toBe('scriptType must be a non-empty string');
+    expect(emptyResponse.body.message).toBe('scriptType must be a non-empty string');
+    expect(mockSelectUtxos).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when select body contains undocumented fields', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/utxos/select')
+      .send({ amount: '1500', feeRate: '1.1', unexpected: true });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('Invalid UTXO selection request');
+    expect(mockSelectUtxos).not.toHaveBeenCalled();
   });
 
   it('handles select service failures with api error handler', async () => {
@@ -182,6 +260,15 @@ describe('Transactions Coin Selection Routes', () => {
     expect(response.body.privacy.selected[0].amount).toBe(3000);
   });
 
+  it('accepts numeric compare-strategies amount', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/utxos/compare-strategies')
+      .send({ amount: 1750, feeRate: 4.2, scriptType: 'p2tr' });
+
+    expect(response.status).toBe(200);
+    expect(mockCompareStrategies).toHaveBeenCalledWith('wallet-1', BigInt(1750), 4.2, 'p2tr');
+  });
+
   it('validates compare-strategies inputs', async () => {
     const missingResponse = await request(app)
       .post('/api/v1/wallets/wallet-1/utxos/compare-strategies')
@@ -193,6 +280,36 @@ describe('Transactions Coin Selection Routes', () => {
     expect(missingResponse.status).toBe(400);
     expect(feeRateResponse.status).toBe(400);
     expect(feeRateResponse.body.message).toBe('feeRate must be a positive number');
+  });
+
+  it('returns 400 before compare-strategies service calls when amount is malformed', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/utxos/compare-strategies')
+      .send({ amount: '1.5', feeRate: '2.2' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('amount must be a positive safe integer');
+    expect(mockCompareStrategies).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when compare-strategies scriptType is malformed', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/utxos/compare-strategies')
+      .send({ amount: '1750', feeRate: '2.2', scriptType: '' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('scriptType must be a non-empty string');
+    expect(mockCompareStrategies).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when compare-strategies body contains select-only strategy', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/utxos/compare-strategies')
+      .send({ amount: '1750', feeRate: '2.2', strategy: 'privacy' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('Invalid UTXO selection request');
+    expect(mockCompareStrategies).not.toHaveBeenCalled();
   });
 
   it('handles compare-strategies failures with api error handler', async () => {

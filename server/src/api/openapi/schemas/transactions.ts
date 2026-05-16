@@ -10,6 +10,25 @@ import {
   PUBLIC_TRANSACTION_TYPES,
 } from '@sanctuary/shared/constants/transactions';
 
+const SAFE_SATOSHI_INTEGER_PATTERN = '^(?:0*[1-9]\\d{0,14}|0*[1-8]\\d{15}|0*900719925474099[0-1])$';
+const safeSatoshiAmountInput = {
+  oneOf: [
+    { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+    {
+      type: 'string',
+      pattern: SAFE_SATOSHI_INTEGER_PATTERN,
+      description: 'Positive safe integer amount in satoshis.',
+    },
+  ],
+} as const;
+
+const utxoFeeRateInput = {
+  oneOf: [
+    { type: 'number', minimum: 1 },
+    { type: 'string', minLength: 1 },
+  ],
+} as const;
+
 export const transactionSchemas = {
   UtxoReference: {
     type: 'object',
@@ -542,20 +561,20 @@ export const transactionSchemas = {
   UtxoSelectionRequest: {
     type: 'object',
     properties: {
-      amount: {
-        oneOf: [
-          { type: 'number', minimum: 1 },
-          { type: 'string', minLength: 1 },
-        ],
-      },
-      feeRate: {
-        oneOf: [
-          { type: 'number', minimum: 1 },
-          { type: 'string', minLength: 1 },
-        ],
-      },
+      amount: safeSatoshiAmountInput,
+      feeRate: utxoFeeRateInput,
       strategy: { $ref: '#/components/schemas/UtxoSelectionStrategy' },
-      scriptType: { type: 'string' },
+      scriptType: { type: 'string', minLength: 1 },
+    },
+    required: ['amount', 'feeRate'],
+    additionalProperties: false,
+  },
+  UtxoCompareStrategiesRequest: {
+    type: 'object',
+    properties: {
+      amount: safeSatoshiAmountInput,
+      feeRate: utxoFeeRateInput,
+      scriptType: { type: 'string', minLength: 1 },
     },
     required: ['amount', 'feeRate'],
     additionalProperties: false,
