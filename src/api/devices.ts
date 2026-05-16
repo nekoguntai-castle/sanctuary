@@ -202,14 +202,14 @@ export interface DeviceModelFilters {
  * Get all available hardware device models
  */
 export async function getDeviceModels(filters?: DeviceModelFilters): Promise<HardwareDeviceModel[]> {
-  const params = new URLSearchParams();
-  if (filters?.manufacturer) params.append('manufacturer', filters.manufacturer);
-  if (filters?.airGapped !== undefined) params.append('airGapped', String(filters.airGapped));
-  if (filters?.connectivity) params.append('connectivity', filters.connectivity);
-  if (filters?.showDiscontinued) params.append('showDiscontinued', 'true');
+  if (!filters) return apiClient.get<HardwareDeviceModel[]>('/devices/models');
 
-  const queryString = params.toString();
-  return apiClient.get<HardwareDeviceModel[]>(`/devices/models${queryString ? `?${queryString}` : ''}`);
+  return apiClient.get<HardwareDeviceModel[]>('/devices/models', {
+    manufacturer: filters.manufacturer || undefined,
+    airGapped: filters.airGapped,
+    connectivity: filters.connectivity || undefined,
+    showDiscontinued: filters.showDiscontinued ? true : undefined,
+  });
 }
 
 /**

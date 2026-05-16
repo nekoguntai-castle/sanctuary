@@ -45,7 +45,7 @@ export interface PayjoinEligibility {
   reason: string | null;
 }
 
-export interface PayjoinStatus {
+export interface PayjoinAvailabilityStatus {
   enabled: boolean;
   configured: boolean;
 }
@@ -53,8 +53,8 @@ export interface PayjoinStatus {
 /**
  * Check if Payjoin feature is enabled and properly configured
  */
-export async function getPayjoinStatus(): Promise<PayjoinStatus> {
-  return apiClient.get<PayjoinStatus>('/payjoin/status');
+export async function getPayjoinStatus(): Promise<PayjoinAvailabilityStatus> {
+  return apiClient.get<PayjoinAvailabilityStatus>('/payjoin/status');
 }
 
 /**

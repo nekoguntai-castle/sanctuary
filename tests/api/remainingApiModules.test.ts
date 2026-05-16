@@ -114,6 +114,7 @@ describe("Remaining API Modules", () => {
       mockGet.mockResolvedValue({});
       mockPost.mockResolvedValue({});
 
+      await payjoinApi.getPayjoinStatus();
       await payjoinApi.getPayjoinUri("addr-id");
       await payjoinApi.getPayjoinUri("addr-id", {
         amount: 1000,
@@ -124,6 +125,7 @@ describe("Remaining API Modules", () => {
       await payjoinApi.attemptPayjoin("psbt1", "https://pj.example", "mainnet");
       await payjoinApi.checkPayjoinEligibility("w1");
 
+      expect(mockGet).toHaveBeenCalledWith("/payjoin/status");
       expect(mockGet).toHaveBeenCalledWith("/payjoin/address/addr-id/uri", {});
       expect(mockGet).toHaveBeenCalledWith("/payjoin/address/addr-id/uri", {
         amount: "1000",

@@ -20,16 +20,15 @@ import { useDraftManagement } from './useDraftManagement';
 import { usePayjoin } from './usePayjoin';
 import { useBroadcast } from './useBroadcast';
 import type { TransactionData, UseSendTransactionActionsProps, UseSendTransactionActionsResult } from './types';
-import type { OutputEntry, TransactionState } from '../../contexts/send/types';
+import type { OutputEntry, PayjoinAttemptStatus, TransactionState } from '../../contexts/send/types';
 import type { Wallet } from '../../types';
 
 export type { TransactionData, UseSendTransactionActionsProps, UseSendTransactionActionsResult };
 
 const log = createLogger('SendTxActions');
 
-type PayjoinStatus = TransactionState['payjoinStatus'];
 type PayjoinAttemptRef = { current: boolean };
-type SetPayjoinStatus = (status: PayjoinStatus) => void;
+type SetPayjoinStatus = (status: PayjoinAttemptStatus) => void;
 type WalletValidationNetwork = Parameters<typeof addressMatchesNetwork>[1];
 
 function getOutputValidationError(outputs: OutputEntry[], walletNetwork: Wallet['network']): string | null {

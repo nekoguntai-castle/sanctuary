@@ -8,7 +8,12 @@ import React from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '../../../../ui/Button';
 import { OutputRow } from '../../../OutputRow';
-import type { OutputEntry, TransactionType, WalletAddress } from '../../../../../contexts/send/types';
+import type {
+  OutputEntry,
+  PayjoinAttemptStatus,
+  TransactionType,
+  WalletAddress,
+} from '../../../../../contexts/send/types';
 
 interface RecipientsSectionProps {
   outputs: OutputEntry[];
@@ -17,7 +22,7 @@ interface RecipientsSectionProps {
   transactionType: TransactionType | null;
   scanningOutputIndex: number | null;
   payjoinUrl: string | null;
-  payjoinStatus: 'idle' | 'attempting' | 'success' | 'failed';
+  payjoinStatus: PayjoinAttemptStatus;
   walletAddresses: WalletAddress[];
   unit: string;
   onAddressChange: (index: number, value: string) => void;

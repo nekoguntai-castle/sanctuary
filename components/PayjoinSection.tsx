@@ -64,13 +64,13 @@ const statusConfig: Record<PayjoinEligibilityStatus, {
   },
 };
 
-type PayjoinStatusConfig = typeof statusConfig[PayjoinEligibilityStatus];
+type PayjoinEligibilityStatusConfig = typeof statusConfig[PayjoinEligibilityStatus];
 
 interface PayjoinMainRowProps {
   enabled: boolean;
   isEligible: boolean;
   showStatusPill: boolean;
-  statusCfg: PayjoinStatusConfig;
+  statusCfg: PayjoinEligibilityStatusConfig;
   onToggle: (enabled: boolean) => void;
   onHelpClick: () => void;
 }
@@ -78,7 +78,7 @@ interface PayjoinMainRowProps {
 interface PayjoinTooltipProps {
   tooltipRef: React.RefObject<HTMLDivElement | null>;
   eligibility: PayjoinEligibility | null;
-  statusCfg: PayjoinStatusConfig;
+  statusCfg: PayjoinEligibilityStatusConfig;
   onClose: () => void;
   onLearnMore: () => void;
 }

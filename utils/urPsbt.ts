@@ -36,16 +36,12 @@
 import { CryptoPSBT } from '@keystonehq/bc-ur-registry';
 import { UREncoder, URDecoder, UR } from '@ngraveio/bc-ur';
 import { createLogger } from './logger';
+import { hasPsbtMagicBytes } from './psbtFormat';
 
 const log = createLogger('urPsbt');
 
 // Maximum bytes per QR code fragment (lower = smaller QRs, more frames)
 const DEFAULT_MAX_FRAGMENT_LENGTH = 100;
-const PSBT_MAGIC_BYTES = [0x70, 0x73, 0x62, 0x74] as const;
-
-function hasPsbtMagic(bytes: Buffer): boolean {
-  return PSBT_MAGIC_BYTES.every((byte, index) => bytes[index] === byte);
-}
 
 function getPsbtBytesBase64(data: unknown): string | null {
   if (!(data instanceof Uint8Array || Buffer.isBuffer(data))) {
@@ -53,7 +49,7 @@ function getPsbtBytesBase64(data: unknown): string | null {
   }
 
   const bytes = Buffer.from(data);
-  return hasPsbtMagic(bytes) ? bytes.toString('base64') : null;
+  return hasPsbtMagicBytes(bytes) ? bytes.toString('base64') : null;
 }
 
 function getDataPropertyBytes(data: unknown): Uint8Array | Buffer | null {

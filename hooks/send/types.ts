@@ -6,7 +6,7 @@
  */
 
 import type { Wallet, Device } from '../../types';
-import type { TransactionState } from '../../contexts/send/types';
+import type { PayjoinAttemptStatus, TransactionState } from '../../contexts/send/types';
 import type { DeviceType } from '../../services/hardwareWallet/types';
 import { createLogger } from '../../utils/logger';
 
@@ -51,7 +51,7 @@ export interface UseSendTransactionActionsResult {
   unsignedPsbt: string | null;
   signedRawTx: string | null;  // Raw tx hex from Trezor signing
   signedDevices: Set<string>;
-  payjoinStatus: 'idle' | 'attempting' | 'success' | 'failed';
+  payjoinStatus: PayjoinAttemptStatus;
 
   // Actions
   createTransaction: () => Promise<TransactionData | null>;

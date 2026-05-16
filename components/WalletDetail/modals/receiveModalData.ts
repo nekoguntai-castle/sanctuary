@@ -1,9 +1,5 @@
 import type { Address } from '../../../types';
-
-interface PayjoinStatus {
-  enabled: boolean;
-  configured: boolean;
-}
+import type { PayjoinAvailabilityStatus } from '../../../src/api/payjoin';
 
 export function getUnusedReceiveAddresses(addresses: Address[]): Address[] {
   return addresses.filter(address => !address.isChange && !address.used);
@@ -41,7 +37,7 @@ export function getSelectedReceiveAddress(
   return unusedReceiveAddresses[0];
 }
 
-export function getPayjoinAvailable(status: PayjoinStatus): boolean {
+export function getPayjoinAvailable(status: PayjoinAvailabilityStatus): boolean {
   return status.enabled && status.configured;
 }
 

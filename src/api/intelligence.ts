@@ -87,18 +87,18 @@ export async function getInsights(
   walletId: string,
   filters?: { status?: string; type?: string; severity?: string; limit?: number; offset?: number }
 ): Promise<{ insights: AIInsight[] }> {
-  const params = new URLSearchParams({ walletId });
-  if (filters?.status) params.set('status', filters.status);
-  if (filters?.type) params.set('type', filters.type);
-  if (filters?.severity) params.set('severity', filters.severity);
-  if (filters?.limit) params.set('limit', String(filters.limit));
-  if (filters?.offset) params.set('offset', String(filters.offset));
-
-  return apiClient.get<{ insights: AIInsight[] }>(`/intelligence/insights?${params.toString()}`);
+  return apiClient.get<{ insights: AIInsight[] }>('/intelligence/insights', {
+    walletId,
+    status: filters?.status || undefined,
+    type: filters?.type || undefined,
+    severity: filters?.severity || undefined,
+    limit: filters?.limit || undefined,
+    offset: filters?.offset || undefined,
+  });
 }
 
 export async function getInsightCount(walletId: string): Promise<{ count: number }> {
-  return apiClient.get<{ count: number }>(`/intelligence/insights/count?walletId=${walletId}`);
+  return apiClient.get<{ count: number }>('/intelligence/insights/count', { walletId });
 }
 
 export async function updateInsightStatus(
@@ -116,9 +116,10 @@ export async function getConversations(
   limit = 20,
   offset = 0
 ): Promise<{ conversations: AIConversation[] }> {
-  return apiClient.get<{ conversations: AIConversation[] }>(
-    `/intelligence/conversations?limit=${limit}&offset=${offset}`
-  );
+  return apiClient.get<{ conversations: AIConversation[] }>('/intelligence/conversations', {
+    limit,
+    offset,
+  });
 }
 
 export async function createConversation(

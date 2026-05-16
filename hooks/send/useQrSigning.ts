@@ -13,6 +13,7 @@ import { isMultisigType } from '../../types';
 import { createLogger } from '../../utils/logger';
 import { downloadBinary } from '../../utils/download';
 import { uint8ArrayEquals, toHex } from '../../utils/bufferUtils';
+import { base64ToBytes, bytesToBase64, hasPsbtMagicBytes } from '../../utils/psbtFormat';
 import { extractErrorMessage } from '@sanctuary/shared/utils/errors';
 import type { Wallet } from '../../types';
 import type { TransactionData } from './types';
@@ -53,24 +54,14 @@ interface UploadedSignedPsbtParams {
   setSignedDevices: SetSignedDevices;
 }
 
-const PSBT_MAGIC_BYTES = [0x70, 0x73, 0x62, 0x74] as const;
-
 const isBinaryPsbt = (bytes: Uint8Array): boolean => {
-  return PSBT_MAGIC_BYTES.every((magicByte, index) => bytes[index] === magicByte);
-};
-
-const base64FromBytes = (bytes: Uint8Array): string => {
-  let binaryString = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binaryString += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binaryString);
+  return hasPsbtMagicBytes(bytes);
 };
 
 const getUploadedPsbtBase64 = (bytes: Uint8Array): string => {
   if (isBinaryPsbt(bytes)) {
     log.debug('Uploaded binary PSBT, converted to base64');
-    return base64FromBytes(bytes);
+    return bytesToBase64(bytes);
   }
 
   log.debug('Uploaded base64 PSBT');
@@ -313,15 +304,6 @@ const getDownloadPsbt = (unsignedPsbt: string | null, txData: TransactionData | 
   return unsignedPsbt || txData?.psbtBase64 || null;
 };
 
-const psbtBase64ToBytes = (psbt: string): Uint8Array<ArrayBuffer> => {
-  const binaryString = atob(psbt);
-  const bytes = new Uint8Array(new ArrayBuffer(binaryString.length));
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-};
-
 const logPsbtDownload = (psbt: string): void => {
   log.debug('Downloading PSBT', {
     length: psbt.length,
@@ -342,7 +324,7 @@ const warnIfPsbtMagicMissing = (bytes: Uint8Array): void => {
 
 const downloadUnsignedPsbt = (psbt: string, walletName: string | undefined): void => {
   logPsbtDownload(psbt);
-  const bytes = psbtBase64ToBytes(psbt);
+  const bytes = base64ToBytes(psbt);
   warnIfPsbtMagicMissing(bytes);
   downloadBinary(bytes, `${walletName || 'transaction'}_unsigned.psbt`);
 };

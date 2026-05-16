@@ -1,10 +1,65 @@
+# Task: Recursive Review of Rationalization Plan After Phase N 2026-05-16
+
+Status: complete.
+
+Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md` after the Phase N merge, applying only verified plan improvements until no actionable comments remain.
+
+## Plan
+
+- [x] Read the current rationalization plan and active task ledger for scope, assumptions, phase order, verification, and completion criteria.
+- [x] Verify stale Phase N status and merged PR evidence against `origin/main`.
+- [x] Verify the next Phase O findings still have source evidence after Phase N.
+- [x] Apply minimal plan edits for accepted comments.
+- [x] Re-read the updated plan and search for stale active-queue wording.
+- [x] Run documentation verification and record accepted/rejected comments.
+
+## Review
+
+- Completed 3 review passes over `docs/plans/rationalization-plan.md`: an initial source-backed pass against `origin/main` after Phase N, a re-read that found one stale task-ledger phase-letter reference, then a clean pass after that correction.
+- Accepted improvement: top-level status, executive summary, convergence plan, post-Phase-I inventory, and follow-up order now show the queue merged through Phase N, including PR #479 as `5566ededd900c6cd92b42223c3a29c3899f73952`.
+- Accepted improvement: the durable plan now makes Phase O frontend API hygiene the next active slice and moves UTXO strategy convergence to a lower-priority Phase P coin-control follow-up.
+- Accepted improvement: Phase O guardrails now keep query serialization on the central client path where possible and limit PSBT work to low-level predicates without broadening QR/file/import formats; the task ledger now aligns the Phase N/O source-alignment notes with the updated plan.
+- Rejected/deferred comments: older addenda still contain historical "converge first/second" wording where they are preserved as dated review history; generated-client migration remains outside this narrow plan review; no new phase-order change beyond O/P/Q was evidence-backed.
+- Verification passed: merge-ancestor checks for PR #474 through PR #479, focused source searches for websocket protocol closure and Phase O Payjoin/query/PSBT evidence, stale active-wording search, and `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`.
+
+---
+
+# Task: Phase O Frontend API Hygiene Convergence 2026-05-16
+
+Status: in progress.
+
+Goal: implement the next rationalization slice by tightening frontend API helper ownership without changing wire payloads: rename Payjoin availability/config status away from send-attempt status, replace manual query construction with `apiClient.get(..., params)` where the central client already owns query encoding, import shared response types where already available, and extract low-level PSBT detection helpers without broadening accepted signing/import formats.
+
+Source alignment: this is the frontend API hygiene follow-up listed as Phase O in `docs/plans/rationalization-plan.md`.
+
+## Plan
+
+- [x] Inspect Payjoin API/send/receive naming, manual frontend query construction, shared API response type overlaps, and PSBT detection helpers.
+- [x] Rename frontend Payjoin API availability/config types while preserving the `/payjoin/status` wire shape and send-attempt status values.
+- [x] Replace selected manual query strings in frontend API modules with `apiClient.get(..., params)` and add focused null/undefined/encoding tests.
+- [x] Reuse shared response types only where the shared owner already exists and does not cross a runtime boundary awkwardly.
+- [x] Extract low-level PSBT magic/base64/hex detection helpers and use them from QR signing/import flows without collapsing flow-specific validation.
+- [x] Run focused API/Payjoin/QR-signing/import tests, app/test typechecks, app lint, touched-file lizard, negative manual-query/Payjoin-name/PSBT-helper searches, `npm run arch:check` if dependency graphs change, and `git diff HEAD --check`.
+- [ ] Open, monitor, and merge the PR.
+
+## Review
+
+- Payjoin API status type is now named `PayjoinAvailabilityStatus`, while send attempt state uses the centralized `PayjoinAttemptStatus` type from the send context. Receive-modal availability checks reuse the API-shaped type without changing the `/payjoin/status` wire payload or the `getPayjoinStatus` helper name.
+- Frontend API modules now route selected query params through `apiClient.get(..., params)` for admin backup audit logs/stats, feature flag audit logs, device models, intelligence insights/count/conversations, monitoring services, and Electrum servers. Existing truthy omission behavior for audit/stat limits remains preserved where tests already documented it.
+- Price API response types and Bitcoin fee estimates now reuse existing shared API response types instead of repeating local shapes. Sync response types were left local because the similarly named shared sync status is a different domain.
+- Added `utils/psbtFormat.ts` as the low-level owner for PSBT magic bytes, BIP-174 binary magic, base64/hex text patterns, base64/byte conversion, and hex byte conversion. QR signing upload/download, QR modal scan/file import, DraftList import, and UR PSBT decode paths now call those predicates/helpers while keeping their flow-specific format acceptance.
+- Regenerated `docs/architecture/generated/frontend.md` for the new frontend utility dependency.
+- Verification passed: `npm ci`; focused API/Payjoin/PSBT test sweep covering 14 files and 344 tests; `npm run typecheck:app`; `npm run typecheck:tests`; `npm run lint:app`; touched-file `npm run quality:lizard`; `npm run arch:check`; negative production searches for manual query construction outside `src/api/client.ts`, old `PayjoinStatus` type/interface names, local PSBT helper duplicates, and local `PriceSource`/`AggregatedPrice`/`FeeEstimates` API interfaces; `git diff HEAD --check`.
+
+---
+
 # Task: Phase N Websocket Protocol Ownership Convergence 2026-05-16
 
-Status: implemented locally; PR delivery pending.
+Status: merged and verified via PR #479 as squash commit `5566ededd900c6cd92b42223c3a29c3899f73952`.
 
 Goal: implement the reviewed Phase N slice by centralizing websocket protocol ownership across shared types, frontend senders/subscriptions, server runtime schemas/fanout, and notification broadcast behavior while preserving the legacy event envelope.
 
-Source alignment: this is the websocket follow-up listed as Phase O in `docs/plans/rationalization-plan.md`. This worktree/task calls it Phase N because the transfer and UTXO phases split during delivery; PR text should name websocket protocol ownership rather than rely on the phase letter alone.
+Source alignment: this is the websocket follow-up listed as Phase N in `docs/plans/rationalization-plan.md`; PR text should name websocket protocol ownership rather than rely on the phase letter alone.
 
 Non-goals:
 
@@ -30,7 +85,7 @@ Acceptance criteria:
 - [x] Route notification broadcasts through the shared builder/gateway-forwarding path or document and test local-only delivery if that remains intentional.
 - [x] Add focused shared/frontend/server websocket tests and run focused websocket test/type/build/lint/lizard verification.
 - [x] Finish and record production stale-string searches, channel-string drift searches, regenerated architecture docs, `npm run arch:check`, `git diff --check`, and final self-review.
-- [ ] Open, monitor, and merge the PR.
+- [x] Open, monitor, and merge the PR.
 
 ## Review
 
@@ -43,6 +98,8 @@ Acceptance criteria:
 - CI backend coverage initially caught one uncovered fanout branch for a walletId attached to a global event. Added focused coverage proving such events do not receive a wallet-event channel.
 - Verification passed: `npm ci`; `npm --prefix shared run build`; focused root websocket tests; hook websocket wrapper tests; focused server websocket schema/broadcast/notification/client-limit/events tests; Redis bridge websocket tests; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:app`; `npm run lint:server`; touched-file lizard including `server/src/websocket/redisBridge.ts`; production `modelDownload` search with no active-source matches; channel-string search with remaining hits classified as shared ownership, websocket event builders/prechecks, or unrelated mempool/hook operation domains; `npm run arch:check`; `npm --prefix server run test:coverage`; `git diff HEAD --check`.
 - `docs/architecture/generated/frontend.md` was regenerated for the new frontend shared websocket dependency edges.
+- PR #479 passed all 61 latest Forgejo status contexts after the backend coverage fix, then squash-merged as `5566ededd900c6cd92b42223c3a29c3899f73952`.
+- Post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

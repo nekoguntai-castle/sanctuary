@@ -46,6 +46,7 @@ export const STEP_LABELS: Record<WizardStep, string> = {
 // ============================================================================
 
 export type TransactionType = 'standard' | 'consolidation' | 'sweep';
+export type PayjoinAttemptStatus = 'idle' | 'attempting' | 'success' | 'failed';
 
 // ============================================================================
 // TRANSACTION STATE
@@ -79,7 +80,7 @@ export interface TransactionState {
 
   // Payjoin
   payjoinUrl: string | null;
-  payjoinStatus: 'idle' | 'attempting' | 'success' | 'failed';
+  payjoinStatus: PayjoinAttemptStatus;
 
   // Signing state
   signingDeviceId: string | null;
@@ -126,7 +127,7 @@ export type TransactionAction =
 
   // Payjoin
   | { type: 'SET_PAYJOIN_URL'; url: string | null }
-  | { type: 'SET_PAYJOIN_STATUS'; status: 'idle' | 'attempting' | 'success' | 'failed' }
+  | { type: 'SET_PAYJOIN_STATUS'; status: PayjoinAttemptStatus }
 
   // Coin control
   | { type: 'TOGGLE_COIN_CONTROL' }
@@ -194,7 +195,7 @@ export interface SerializableTransactionState {
   useDecoys: boolean;
   decoyCount: number;
   payjoinUrl: string | null;
-  payjoinStatus: 'idle' | 'attempting' | 'success' | 'failed';
+  payjoinStatus: PayjoinAttemptStatus;
   signingDeviceId: string | null;
   expandedDeviceId: string | null;
   signedDevices: string[];

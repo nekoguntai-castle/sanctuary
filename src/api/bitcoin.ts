@@ -7,10 +7,12 @@
 import apiClient from './client';
 import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 import type { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
+import type { FeeEstimates } from '@sanctuary/shared/types/api';
 import type { BitcoinTransactionDetails, BlockHeader } from '../types';
 
 // Re-export types for convenience
 export type { BitcoinTransactionDetails, BlockHeader } from '../types';
+export type { FeeEstimates } from '@sanctuary/shared/types/api';
 
 export interface HealthCheckResult {
   timestamp: string;
@@ -71,14 +73,6 @@ export interface BitcoinStatus {
     configuredMax?: number;
     stats: PoolStats | null;
   } | null;
-}
-
-export interface FeeEstimates {
-  fastest: number;
-  halfHour: number;
-  hour: number;
-  economy: number;
-  minimum?: number;
 }
 
 export interface AddressInfo {

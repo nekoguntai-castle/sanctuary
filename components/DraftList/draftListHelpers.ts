@@ -1,12 +1,16 @@
 import { DraftTransaction } from '../../src/api/drafts';
 import { WalletType } from '../../types';
+import {
+  BASE64_TEXT_PATTERN,
+  HEX_TEXT_PATTERN,
+  base64ToBytes,
+  bytesToBase64,
+  hasBip174BinaryPsbtMagic,
+  hasPsbtMagicText,
+  hexTextToBytes,
+} from '../../utils/psbtFormat';
 import { ExpirationUrgency } from './types';
 import { getExpirationInfo } from './utils';
-
-const BASE64_PSBT_PATTERN = /^[A-Za-z0-9+/=\s]+$/;
-const HEX_PSBT_PATTERN = /^[0-9a-fA-F\s]+$/;
-const PSBT_MAGIC = 'psbt';
-const PSBT_SEPARATOR = 0xff;
 
 const urgencyOrder: Record<ExpirationUrgency, number> = {
   expired: 0,
@@ -47,7 +51,7 @@ export function getSignedDraftStatus(walletType: WalletType): 'partial' | 'signe
 
 export async function readSignedPsbtFile(file: File): Promise<ParsedPsbtFile> {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  if (hasBinaryPsbtMagic(bytes)) {
+  if (hasBip174BinaryPsbtMagic(bytes)) {
     return {
       base64: bytesToBase64(bytes),
       format: 'binary',
@@ -74,23 +78,16 @@ function compareCreatedAtDesc(a: DraftTransaction, b: DraftTransaction): number 
   return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 }
 
-function hasBinaryPsbtMagic(bytes: Uint8Array): boolean {
-  if (bytes.length < 5) return false;
-
-  const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
-  return magic === PSBT_MAGIC && bytes[4] === PSBT_SEPARATOR;
-}
-
 function parseTextPsbt(text: string): ParsedPsbtFile {
   const content = text.trim();
 
-  if (content.match(BASE64_PSBT_PATTERN)) {
+  if (content.match(BASE64_TEXT_PATTERN)) {
     return parseBase64Psbt(content);
   }
 
-  if (content.match(HEX_PSBT_PATTERN)) {
+  if (content.match(HEX_TEXT_PATTERN)) {
     return {
-      base64: bytesToBase64(parseHexBytes(content)),
+      base64: bytesToBase64(hexTextToBytes(content)),
       format: 'hex',
     };
   }
@@ -103,7 +100,7 @@ function parseBase64Psbt(content: string): ParsedPsbtFile {
 
   try {
     const decoded = atob(cleanBase64);
-    if (!decoded.startsWith(PSBT_MAGIC)) {
+    if (!hasPsbtMagicText(decoded)) {
       throw new Error('Not a valid PSBT (missing magic bytes)');
     }
 
@@ -114,31 +111,4 @@ function parseBase64Psbt(content: string): ParsedPsbtFile {
   } catch {
     throw new Error('Invalid base64 PSBT file');
   }
-}
-
-function parseHexBytes(content: string): Uint8Array {
-  const cleanHex = content.replace(/\s/g, '');
-  const hexPairs = cleanHex.match(/.{1,2}/g)!;
-  return new Uint8Array(hexPairs.map(byte => parseInt(byte, 16)));
-}
-
-function base64ToBytes(psbtBase64: string): Uint8Array {
-  const binaryString = atob(psbtBase64);
-  const bytes = new Uint8Array(binaryString.length);
-
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
-  return bytes;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-
-  return btoa(binary);
 }

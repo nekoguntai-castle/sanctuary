@@ -7,18 +7,17 @@
  */
 
 import { useState, useRef, useCallback } from 'react';
-
-export type PayjoinStatus = 'idle' | 'attempting' | 'success' | 'failed';
+import type { PayjoinAttemptStatus } from '../../contexts/send/types';
 
 export interface UsePayjoinResult {
-  payjoinStatus: PayjoinStatus;
+  payjoinStatus: PayjoinAttemptStatus;
   payjoinAttempted: React.RefObject<boolean>;
-  setPayjoinStatus: (status: PayjoinStatus) => void;
+  setPayjoinStatus: (status: PayjoinAttemptStatus) => void;
   resetPayjoin: () => void;
 }
 
 export function usePayjoin(): UsePayjoinResult {
-  const [payjoinStatus, setPayjoinStatus] = useState<PayjoinStatus>('idle');
+  const [payjoinStatus, setPayjoinStatus] = useState<PayjoinAttemptStatus>('idle');
   const payjoinAttempted = useRef(false);
 
   const resetPayjoin = useCallback(() => {

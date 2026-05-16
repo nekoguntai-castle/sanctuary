@@ -19,6 +19,7 @@ import { QrSigning } from './review/QrSigning';
 import { DraftActions } from './review/DraftActions';
 import { useReviewAddressLookup } from './review/useReviewAddressLookup';
 import { useReviewStepUploads } from './review/useReviewStepUploads';
+import type { PayjoinAttemptStatus } from '../../../contexts/send/types';
 import {
   buildReviewFlowData,
   canBroadcastReviewTransaction,
@@ -45,7 +46,7 @@ export interface ReviewStepProps {
   txData?: TransactionData | null;
   unsignedPsbt?: string | null;
   signedDevices?: Set<string>;
-  payjoinStatus?: 'idle' | 'attempting' | 'success' | 'failed';
+  payjoinStatus?: PayjoinAttemptStatus;
   onDownloadPsbt?: () => void;
   onUploadSignedPsbt?: (file: File, deviceId?: string, deviceFingerprint?: string) => Promise<void>;
   onSignWithDevice?: (device: Device) => Promise<boolean>;

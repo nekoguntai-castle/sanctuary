@@ -21,8 +21,10 @@ import type {
  * Get monitoring services configuration (admin only)
  */
 export async function getMonitoringServices(checkHealth = false): Promise<MonitoringServicesResponse> {
-  const params = checkHealth ? '?checkHealth=true' : '';
-  return apiClient.get<MonitoringServicesResponse>(`/admin/monitoring/services${params}`);
+  return apiClient.get<MonitoringServicesResponse>(
+    '/admin/monitoring/services',
+    checkHealth ? { checkHealth: true } : undefined
+  );
 }
 
 /**

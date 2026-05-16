@@ -270,10 +270,27 @@ describe('Core API Modules', () => {
         connectivity: 'usb',
         showDiscontinued: true,
       });
+      await devicesApi.getDeviceModels({
+        manufacturer: '',
+        airGapped: false,
+        connectivity: '',
+        showDiscontinued: false,
+      });
       await devicesApi.mergeDeviceAccounts({ type: 'ledger', label: 'L', fingerprint: 'fp2' });
 
       expect(mockGet).toHaveBeenCalledWith('/devices/models');
-      expect(mockGet).toHaveBeenCalledWith('/devices/models?manufacturer=Ledger&airGapped=true&connectivity=usb&showDiscontinued=true');
+      expect(mockGet).toHaveBeenCalledWith('/devices/models', {
+        manufacturer: 'Ledger',
+        airGapped: true,
+        connectivity: 'usb',
+        showDiscontinued: true,
+      });
+      expect(mockGet).toHaveBeenCalledWith('/devices/models', {
+        manufacturer: undefined,
+        airGapped: false,
+        connectivity: undefined,
+        showDiscontinued: undefined,
+      });
       expect(mockPost).toHaveBeenCalledWith('/devices', {
         type: 'ledger',
         label: 'L',

@@ -8,6 +8,7 @@
 export type {
   WizardStep,
   TransactionType,
+  PayjoinAttemptStatus,
   TransactionState,
   TransactionAction,
   SerializableTransactionState,

@@ -5,28 +5,15 @@
  */
 
 import apiClient from "./client";
+import type {
+  AggregatedPrice,
+  PriceSource,
+} from "@sanctuary/shared/types/api";
+
+export type { AggregatedPrice, PriceSource };
 
 export const PRICE_PROVIDERS_CHANGED_EVENT =
   "sanctuary:price-providers-changed";
-
-export interface PriceSource {
-  provider: string;
-  price: number;
-  currency: string;
-  timestamp: string;
-  change24h?: number;
-}
-
-export interface AggregatedPrice {
-  price: number;
-  currency: string;
-  sources: PriceSource[];
-  median: number;
-  average: number;
-  timestamp: string;
-  cached: boolean;
-  change24h?: number;
-}
 
 export interface ConvertToFiatRequest {
   sats: number;

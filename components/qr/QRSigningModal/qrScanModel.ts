@@ -1,4 +1,5 @@
 import type { QrScanResult } from './types';
+import { hasPsbtMagicText } from '../../../utils/psbtFormat';
 
 type RawPsbtScanResult =
   | { kind: 'psbt'; base64: string }
@@ -20,7 +21,7 @@ export function getFirstScanContent(results: QrScanResult[] | undefined, process
 export function parseRawBase64PsbtScan(content: string): RawPsbtScanResult {
   try {
     const decoded = atob(content);
-    if (decoded.startsWith('psbt')) {
+    if (hasPsbtMagicText(decoded)) {
       return { kind: 'psbt', base64: content };
     }
 

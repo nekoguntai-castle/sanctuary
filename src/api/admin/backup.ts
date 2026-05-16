@@ -83,29 +83,29 @@ export async function restoreBackup(backup: SanctuaryBackup): Promise<RestoreRes
  * Get audit logs with optional filters (admin only)
  */
 export async function getAuditLogs(query?: AuditLogQuery): Promise<AuditLogResult> {
-  const params = new URLSearchParams();
-  if (query) {
-    if (query.userId) params.set('userId', query.userId);
-    if (query.username) params.set('username', query.username);
-    if (query.action) params.set('action', query.action);
-    if (query.category) params.set('category', query.category);
-    if (query.success !== undefined) params.set('success', String(query.success));
-    if (query.startDate) params.set('startDate', query.startDate);
-    if (query.endDate) params.set('endDate', query.endDate);
-    if (query.limit) params.set('limit', String(query.limit));
-    if (query.offset) params.set('offset', String(query.offset));
-  }
-  const queryString = params.toString();
-  const url = queryString ? `/admin/audit-logs?${queryString}` : '/admin/audit-logs';
-  return apiClient.get<AuditLogResult>(url);
+  if (!query) return apiClient.get<AuditLogResult>('/admin/audit-logs');
+
+  return apiClient.get<AuditLogResult>('/admin/audit-logs', {
+    userId: query.userId || undefined,
+    username: query.username || undefined,
+    action: query.action || undefined,
+    category: query.category || undefined,
+    success: query.success,
+    startDate: query.startDate || undefined,
+    endDate: query.endDate || undefined,
+    limit: query.limit || undefined,
+    offset: query.offset || undefined,
+  });
 }
 
 /**
  * Get audit log statistics (admin only)
  */
 export async function getAuditLogStats(days?: number): Promise<AuditLogStats> {
-  const url = days ? `/admin/audit-logs/stats?days=${days}` : '/admin/audit-logs/stats';
-  return apiClient.get<AuditLogStats>(url);
+  return apiClient.get<AuditLogStats>(
+    '/admin/audit-logs/stats',
+    days ? { days } : undefined
+  );
 }
 
 // ========================================

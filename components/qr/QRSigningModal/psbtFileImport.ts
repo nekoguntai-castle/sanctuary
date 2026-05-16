@@ -1,4 +1,12 @@
 import type { SignedPsbtImport } from './types';
+import {
+  BASE64_TEXT_PATTERN,
+  HEX_TEXT_PATTERN,
+  bytesToBase64,
+  hasBip174BinaryPsbtMagic,
+  hasPsbtMagicText,
+  hexTextToBytes,
+} from '../../../utils/psbtFormat';
 
 const INVALID_PSBT_FILE_FORMAT = 'Invalid PSBT file format. Expected binary PSBT, base64, or hex.';
 
@@ -57,23 +65,11 @@ function readFileAsText(file: File): Promise<string> {
 }
 
 function parseBinaryPsbt(bytes: Uint8Array) {
-  if (!hasBinaryPsbtMagic(bytes)) {
+  if (!hasBip174BinaryPsbtMagic(bytes)) {
     return null;
   }
 
   return bytesToBase64(bytes);
-}
-
-function hasBinaryPsbtMagic(bytes: Uint8Array) {
-  // BIP-174 binary PSBTs start with ASCII "psbt" followed by 0xff.
-  return (
-    bytes.length >= 5 &&
-    bytes[0] === 0x70 &&
-    bytes[1] === 0x73 &&
-    bytes[2] === 0x62 &&
-    bytes[3] === 0x74 &&
-    bytes[4] === 0xff
-  );
 }
 
 function parseTextPsbt(content: string): SignedPsbtImport {
@@ -95,34 +91,22 @@ function parseTextPsbt(content: string): SignedPsbtImport {
 }
 
 function parseBase64TextPsbt(content: string): SignedPsbtImport | null {
-  if (!/^[A-Za-z0-9+/=\s]+$/.test(content)) {
+  if (!BASE64_TEXT_PATTERN.test(content)) {
     return null;
   }
 
   const cleanBase64 = content.replace(/\s/g, '');
   const decoded = atob(cleanBase64);
 
-  return decoded.startsWith('psbt')
+  return hasPsbtMagicText(decoded)
     ? { base64: cleanBase64, source: 'base64' }
     : null;
 }
 
 function parseHexTextPsbt(content: string): SignedPsbtImport | null {
-  if (!/^[0-9a-fA-F\s]+$/.test(content)) {
+  if (!HEX_TEXT_PATTERN.test(content)) {
     return null;
   }
 
-  const cleanHex = content.replace(/\s/g, '');
-  const pairs = cleanHex.match(/.{1,2}/g)!;
-  const hexBytes = new Uint8Array(pairs.map(byte => parseInt(byte, 16)));
-  return { base64: bytesToBase64(hexBytes), source: 'hex' };
-}
-
-function bytesToBase64(bytes: Uint8Array) {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-
-  return btoa(binary);
+  return { base64: bytesToBase64(hexTextToBytes(content)), source: 'hex' };
 }

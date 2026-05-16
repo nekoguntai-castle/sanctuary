@@ -39,9 +39,8 @@ export async function getFeatureFlagAuditLog(
   key?: string,
   limit?: number
 ): Promise<FeatureFlagAuditResult> {
-  const params = new URLSearchParams();
-  if (key) params.set('key', key);
-  if (limit) params.set('limit', String(limit));
-  const query = params.toString();
-  return apiClient.get<FeatureFlagAuditResult>(`/admin/features/audit-log${query ? `?${query}` : ''}`);
+  return apiClient.get<FeatureFlagAuditResult>('/admin/features/audit-log', {
+    key: key || undefined,
+    limit: limit || undefined,
+  });
 }

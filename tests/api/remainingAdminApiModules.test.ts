@@ -64,11 +64,19 @@ describe("Remaining Admin API Modules", () => {
         backup: { meta: {} },
         confirmationCode: "CONFIRM_RESTORE",
       });
-      expect(mockGet).toHaveBeenCalledWith(
-        "/admin/audit-logs?userId=u1&username=alice&action=login&category=auth&success=true&startDate=2026-01-01&endDate=2026-01-31&limit=10&offset=20",
-      );
-      expect(mockGet).toHaveBeenCalledWith("/admin/audit-logs/stats");
-      expect(mockGet).toHaveBeenCalledWith("/admin/audit-logs/stats?days=7");
+      expect(mockGet).toHaveBeenCalledWith("/admin/audit-logs", {
+        userId: "u1",
+        username: "alice",
+        action: "login",
+        category: "auth",
+        success: true,
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+        limit: 10,
+        offset: 20,
+      });
+      expect(mockGet).toHaveBeenCalledWith("/admin/audit-logs/stats", undefined);
+      expect(mockGet).toHaveBeenCalledWith("/admin/audit-logs/stats", { days: 7 });
       expect(mockGet).toHaveBeenCalledWith("/admin/version");
     });
 
@@ -108,9 +116,17 @@ describe("Remaining Admin API Modules", () => {
 
       // success omitted should not append success query param
       await adminBackupApi.getAuditLogs({ userId: "u-omitted-success" });
-      expect(mockGet).toHaveBeenCalledWith(
-        "/admin/audit-logs?userId=u-omitted-success",
-      );
+      expect(mockGet).toHaveBeenCalledWith("/admin/audit-logs", {
+        userId: "u-omitted-success",
+        username: undefined,
+        action: undefined,
+        category: undefined,
+        success: undefined,
+        startDate: undefined,
+        endDate: undefined,
+        limit: undefined,
+        offset: undefined,
+      });
 
       // success=false should still be included; limit/offset=0 should be omitted by truthy checks
       await adminBackupApi.getAuditLogs({
@@ -118,11 +134,21 @@ describe("Remaining Admin API Modules", () => {
         limit: 0,
         offset: 0,
       });
-      expect(mockGet).toHaveBeenCalledWith("/admin/audit-logs?success=false");
+      expect(mockGet).toHaveBeenCalledWith("/admin/audit-logs", {
+        userId: undefined,
+        username: undefined,
+        action: undefined,
+        category: undefined,
+        success: false,
+        startDate: undefined,
+        endDate: undefined,
+        limit: undefined,
+        offset: undefined,
+      });
 
       // days=0 uses fallback stats endpoint without query param
       await adminBackupApi.getAuditLogStats(0);
-      expect(mockGet).toHaveBeenCalledWith("/admin/audit-logs/stats");
+      expect(mockGet).toHaveBeenCalledWith("/admin/audit-logs/stats", undefined);
 
       // createBackup with no options sends an empty JSON object through
       // apiClient.fetchBlob, which owns credentials, CSRF, and refresh retry.
@@ -180,10 +206,8 @@ describe("Remaining Admin API Modules", () => {
       expect(mockGet).toHaveBeenCalledWith("/admin/node-config");
       expect(mockPut).toHaveBeenCalledWith("/admin/node-config", {});
       expect(mockPost).toHaveBeenCalledWith("/admin/node-config/test", {});
-      expect(mockGet).toHaveBeenCalledWith("/admin/electrum-servers");
-      expect(mockGet).toHaveBeenCalledWith(
-        "/admin/electrum-servers?network=mainnet",
-      );
+      expect(mockGet).toHaveBeenCalledWith("/admin/electrum-servers", undefined);
+      expect(mockGet).toHaveBeenCalledWith("/admin/electrum-servers", { network: "mainnet" });
       expect(mockPost).toHaveBeenCalledWith("/admin/electrum-servers", {
         label: "Server",
         host: "electrum.example.com",
@@ -249,10 +273,8 @@ describe("Remaining Admin API Modules", () => {
       await adminUsersApi.updateUser("u1", { isAdmin: true } as any);
       await adminUsersApi.deleteUser("u1");
 
-      expect(mockGet).toHaveBeenCalledWith("/admin/monitoring/services");
-      expect(mockGet).toHaveBeenCalledWith(
-        "/admin/monitoring/services?checkHealth=true",
-      );
+      expect(mockGet).toHaveBeenCalledWith("/admin/monitoring/services", undefined);
+      expect(mockGet).toHaveBeenCalledWith("/admin/monitoring/services", { checkHealth: true });
       expect(mockPut).toHaveBeenCalledWith("/admin/monitoring/services/svc1", {
         customUrl: "https://grafana.example",
       });
@@ -308,7 +330,10 @@ describe("Remaining Admin API Modules", () => {
       expect(mockPost).toHaveBeenCalledWith(
         "/admin/features/aiAssistant/reset",
       );
-      expect(mockGet).toHaveBeenCalledWith("/admin/features/audit-log");
+      expect(mockGet).toHaveBeenCalledWith("/admin/features/audit-log", {
+        key: undefined,
+        limit: undefined,
+      });
     });
 
     it("passes optional key and limit to audit log", async () => {
@@ -321,9 +346,10 @@ describe("Remaining Admin API Modules", () => {
 
       await adminFeaturesApi.getFeatureFlagAuditLog("treasuryAutopilot", 10);
 
-      expect(mockGet).toHaveBeenCalledWith(
-        "/admin/features/audit-log?key=treasuryAutopilot&limit=10",
-      );
+      expect(mockGet).toHaveBeenCalledWith("/admin/features/audit-log", {
+        key: "treasuryAutopilot",
+        limit: 10,
+      });
     });
 
     it("omits query params when not provided", async () => {
@@ -336,7 +362,10 @@ describe("Remaining Admin API Modules", () => {
 
       await adminFeaturesApi.getFeatureFlagAuditLog();
 
-      expect(mockGet).toHaveBeenCalledWith("/admin/features/audit-log");
+      expect(mockGet).toHaveBeenCalledWith("/admin/features/audit-log", {
+        key: undefined,
+        limit: undefined,
+      });
     });
 
     it("calls updateFeatureFlag without reason", async () => {

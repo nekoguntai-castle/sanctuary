@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { FiatDisplaySubtle } from "../FiatDisplay";
-import type { OutputEntry, WalletAddress } from "../../contexts/send/types";
+import type { OutputEntry, PayjoinAttemptStatus, WalletAddress } from "../../contexts/send/types";
 import {
   getAddressBorderClass,
   getAmountInputClass,
@@ -68,7 +68,7 @@ export interface OutputRowProps {
 
   // Payjoin
   payjoinUrl?: string | null;
-  payjoinStatus?: "idle" | "attempting" | "success" | "failed";
+  payjoinStatus?: PayjoinAttemptStatus;
 
   // Currency display
   unit: string;

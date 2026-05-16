@@ -77,12 +77,14 @@ describe('Intelligence API', () => {
 
       const result = await getInsights('wallet-1');
 
-      expect(mockGet).toHaveBeenCalledWith(
-        expect.stringContaining('/intelligence/insights?')
-      );
-      expect(mockGet).toHaveBeenCalledWith(
-        expect.stringContaining('walletId=wallet-1')
-      );
+      expect(mockGet).toHaveBeenCalledWith('/intelligence/insights', {
+        walletId: 'wallet-1',
+        status: undefined,
+        type: undefined,
+        severity: undefined,
+        limit: undefined,
+        offset: undefined,
+      });
       expect(result.insights).toEqual([]);
     });
 
@@ -92,7 +94,8 @@ describe('Intelligence API', () => {
       await getInsights('wallet-1', { status: 'active' });
 
       expect(mockGet).toHaveBeenCalledWith(
-        expect.stringContaining('status=active')
+        '/intelligence/insights',
+        expect.objectContaining({ status: 'active' })
       );
     });
 
@@ -102,7 +105,8 @@ describe('Intelligence API', () => {
       await getInsights('wallet-1', { type: 'utxo_health' });
 
       expect(mockGet).toHaveBeenCalledWith(
-        expect.stringContaining('type=utxo_health')
+        '/intelligence/insights',
+        expect.objectContaining({ type: 'utxo_health' })
       );
     });
 
@@ -112,7 +116,8 @@ describe('Intelligence API', () => {
       await getInsights('wallet-1', { severity: 'critical' });
 
       expect(mockGet).toHaveBeenCalledWith(
-        expect.stringContaining('severity=critical')
+        '/intelligence/insights',
+        expect.objectContaining({ severity: 'critical' })
       );
     });
 
@@ -122,7 +127,8 @@ describe('Intelligence API', () => {
       await getInsights('wallet-1', { limit: 10 });
 
       expect(mockGet).toHaveBeenCalledWith(
-        expect.stringContaining('limit=10')
+        '/intelligence/insights',
+        expect.objectContaining({ limit: 10 })
       );
     });
 
@@ -132,7 +138,8 @@ describe('Intelligence API', () => {
       await getInsights('wallet-1', { offset: 20 });
 
       expect(mockGet).toHaveBeenCalledWith(
-        expect.stringContaining('offset=20')
+        '/intelligence/insights',
+        expect.objectContaining({ offset: 20 })
       );
     });
 
@@ -147,13 +154,14 @@ describe('Intelligence API', () => {
         offset: 10,
       });
 
-      const calledUrl = mockGet.mock.calls[0][0] as string;
-      expect(calledUrl).toContain('walletId=wallet-1');
-      expect(calledUrl).toContain('status=active');
-      expect(calledUrl).toContain('type=anomaly');
-      expect(calledUrl).toContain('severity=warning');
-      expect(calledUrl).toContain('limit=5');
-      expect(calledUrl).toContain('offset=10');
+      expect(mockGet).toHaveBeenCalledWith('/intelligence/insights', {
+        walletId: 'wallet-1',
+        status: 'active',
+        type: 'anomaly',
+        severity: 'warning',
+        limit: 5,
+        offset: 10,
+      });
     });
 
     it('should not include undefined filters', async () => {
@@ -161,13 +169,14 @@ describe('Intelligence API', () => {
 
       await getInsights('wallet-1', {});
 
-      const calledUrl = mockGet.mock.calls[0][0] as string;
-      expect(calledUrl).toContain('walletId=wallet-1');
-      expect(calledUrl).not.toContain('status=');
-      expect(calledUrl).not.toContain('type=');
-      expect(calledUrl).not.toContain('severity=');
-      expect(calledUrl).not.toContain('limit=');
-      expect(calledUrl).not.toContain('offset=');
+      expect(mockGet).toHaveBeenCalledWith('/intelligence/insights', {
+        walletId: 'wallet-1',
+        status: undefined,
+        type: undefined,
+        severity: undefined,
+        limit: undefined,
+        offset: undefined,
+      });
     });
 
     it('should work without filters argument', async () => {
@@ -175,8 +184,14 @@ describe('Intelligence API', () => {
 
       await getInsights('wallet-1');
 
-      const calledUrl = mockGet.mock.calls[0][0] as string;
-      expect(calledUrl).toContain('walletId=wallet-1');
+      expect(mockGet).toHaveBeenCalledWith('/intelligence/insights', {
+        walletId: 'wallet-1',
+        status: undefined,
+        type: undefined,
+        severity: undefined,
+        limit: undefined,
+        offset: undefined,
+      });
     });
   });
 
@@ -186,9 +201,9 @@ describe('Intelligence API', () => {
 
       const result = await getInsightCount('wallet-1');
 
-      expect(mockGet).toHaveBeenCalledWith(
-        '/intelligence/insights/count?walletId=wallet-1'
-      );
+      expect(mockGet).toHaveBeenCalledWith('/intelligence/insights/count', {
+        walletId: 'wallet-1',
+      });
       expect(result.count).toBe(5);
     });
   });
@@ -231,9 +246,10 @@ describe('Intelligence API', () => {
 
       const result = await getConversations();
 
-      expect(mockGet).toHaveBeenCalledWith(
-        '/intelligence/conversations?limit=20&offset=0'
-      );
+      expect(mockGet).toHaveBeenCalledWith('/intelligence/conversations', {
+        limit: 20,
+        offset: 0,
+      });
       expect(result.conversations).toEqual([]);
     });
 
@@ -242,9 +258,10 @@ describe('Intelligence API', () => {
 
       await getConversations(10, 5);
 
-      expect(mockGet).toHaveBeenCalledWith(
-        '/intelligence/conversations?limit=10&offset=5'
-      );
+      expect(mockGet).toHaveBeenCalledWith('/intelligence/conversations', {
+        limit: 10,
+        offset: 5,
+      });
     });
   });
 

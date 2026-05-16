@@ -54,6 +54,24 @@ export const registerApiClientBasicContracts = () => {
       expect(calledUrl).toContain("active=true");
     });
 
+    it("should encode query params through the central client path", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve([]),
+      });
+
+      await apiClient.get("/audit", {
+        username: "alice@example.com",
+        action: "wallet share",
+      });
+
+      const calledUrl = mockFetch.mock.calls[0][0];
+      expect(calledUrl).toBe(
+        "/api/v1/audit?username=alice%40example.com&action=wallet+share",
+      );
+    });
+
     it("should skip undefined and null params", async () => {
       mockFetch.mockResolvedValue({
         ok: true,

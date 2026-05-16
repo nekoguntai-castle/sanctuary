@@ -66,8 +66,10 @@ export async function testNodeConfig(config: NodeConfig): Promise<{
  * Get all Electrum servers, optionally filtered by network
  */
 export async function getElectrumServers(network?: string): Promise<ElectrumServer[]> {
-  const params = network ? `?network=${network}` : '';
-  return apiClient.get<ElectrumServer[]>(`/admin/electrum-servers${params}`);
+  return apiClient.get<ElectrumServer[]>(
+    '/admin/electrum-servers',
+    network ? { network } : undefined
+  );
 }
 
 /**
