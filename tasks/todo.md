@@ -1,3 +1,29 @@
+# Task: Codebase Health Remediation Phase 4 Delivery 2026-05-16
+
+Status: in progress.
+
+Goal: implement Phase 4 of `docs/plans/codebase-health-remediation-plan.md` by triaging current moderate dependency advisories, applying narrow package changes or dated reachability rationale, and delivering the phase through `$pr-delivery`.
+
+## Plan
+
+- [x] Start from `origin/main` after Phase 3 closeout merge.
+- [x] Run `npm audit --json` across the root and planned package scopes.
+- [x] Classify each moderate advisory as upgrade now, override/pin with tests, or accepted risk with reachability rationale.
+- [x] Apply the narrowest package/docs changes and review lockfile impact.
+- [x] Run focused verification, typecheck/lint as needed, and documentation checks.
+- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+
+## Review
+
+- Current audits show 0 high and 0 critical advisories across the measured scopes.
+- Updated `website/package-lock.json` so Docusaurus resolves `mermaid@11.15.0`, clearing the docs-site Mermaid moderate advisories; `npm --prefix website audit --json` now reports 0 vulnerabilities.
+- Classified the remaining root moderate records as one accepted dev-tool chain: `prisma@7.8.0 -> @prisma/dev@0.24.3 -> @hono/node-server@1.19.11`.
+- Rejected npm's proposed Prisma remediation because it is a major downgrade to `prisma@6.19.3`; checked current `@prisma/dev@0.24.7`, which still pins the vulnerable nested Hono package, so there is no safe same-major upstream fix yet.
+- Recorded Phase 4 rationale in `docs/plans/dependency-audit-triage.md`, updated the quality assessment/history, and noted that `server/` and `gateway/` package-local audits return `ENOLOCK` because they rely on the root workspace lockfile.
+- Verification passed: `npm --prefix website run typecheck`, `npm run docs:build`, `npm --prefix website audit --json`, root audit refreshes, and root application audit without workspaces.
+
+---
+
 # Task: Recursive Review of Current Codebase Health Plan 2026-05-16
 
 Status: complete.

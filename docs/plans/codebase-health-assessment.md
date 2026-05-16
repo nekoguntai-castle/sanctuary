@@ -2,13 +2,13 @@
 
 Date: 2026-05-16
 Owner: Codex
-Status: Current Phase 3 UserContext checkpoint after PR #498 merged the auth lifecycle, auth actions, theme sync, and preference mutation helper split
+Status: Current Phase 4 advisory-triage checkpoint after fixing the website Mermaid advisory and documenting the remaining Prisma dev-tool Hono chain
 
 **Overall Score**: 95/100
 **Grade**: A
 **Confidence**: High
-**Mode**: phase3-user-context-checkpoint
-**Commit**: `e449117d`
+**Mode**: phase4-advisory-triage-checkpoint
+**Commit**: `875fd6a9+phase4-working-tree`
 
 ---
 
@@ -18,7 +18,7 @@ None.
 
 The hard-fail gates are clear after rerun verification: tests pass, typecheck passes, high/critical dependency vulnerabilities are 0, and gitleaks found 0 tracked-tree secrets.
 
-Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2 duplication-tooling fix, and Phase 3 merge commit `e449117d`. Phase 3 changes the `UserContext` implementation shape without changing the public context exports.
+Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2 duplication-tooling fix, Phase 3 merge commit `e449117d`, and Phase 3 closeout merge `875fd6a9`. Phase 4 changes only the docs-site lockfile and advisory documentation.
 
 ---
 
@@ -40,10 +40,10 @@ Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2
 ## Trend
 
 - Previous checkpoint: 95/100, A, commit `fed96e56+phase2-working-tree`, confidence High, dated 2026-05-16.
-- Current checkpoint: 95/100, A, commit `e449117d`, confidence High, dated 2026-05-16.
+- Current checkpoint: 95/100, A, commit `875fd6a9+phase4-working-tree`, confidence High, dated 2026-05-16.
 - Delta: +/-0 points, A held.
 
-Phase 3 removes the highest-risk complexity hotspot by moving `UserProvider` concerns into focused helpers. The score stays flat because the maintainability rubric still gives the same 1-5 lizard-warning bucket until the remaining warning sites are also cleared. Remaining point loss is concentrated in a smaller send-flow render hotspot, moderate dependency advisories, broad test-fixture duplication outside the production-biased gate, and missing physical hardware-in-loop evidence.
+Phase 4 clears the website Mermaid moderate advisory by moving the docs-site lockfile to `mermaid@11.15.0` and documents the remaining Prisma dev-tool Hono chain as accepted for this dated snapshot. The score stays flat because high/critical advisories were already 0 and the remaining moderate records require an upstream Prisma fix or an unacceptable Prisma downgrade.
 
 ---
 
@@ -64,6 +64,9 @@ Phase 3 removes the highest-risk complexity hotspot by moving `UserProvider` con
 | coverage | 100.00% lines/statements/functions/branches across frontend, server, gateway | `npm run coverage` via `grade.sh` | Test Quality 6.1: >=80 = +5 |
 | security_high | 0 | `npm audit --audit-level=high` / `npm audit --json` via `grade.sh` | Security 4.1: 0 = +5 |
 | dependency advisories | 23 total: 20 low, 3 moderate, 0 high, 0 critical | `npm audit --json` via `grade.sh` | Non-blocking risk; no hard-fail |
+| website advisories | 0 total after Mermaid lockfile refresh | `npm --prefix website audit --json` | Phase 4 exit evidence |
+| root application advisories without workspaces | 10 low, 0 moderate, 0 high, 0 critical | `npm audit --omit=dev --workspaces=false --json` | Phase 4 reachability evidence |
+| remaining moderate advisory chain | accepted; `prisma -> @prisma/dev -> @hono/node-server@1.19.11`; npm proposes a major downgrade to `prisma@6.19.3`, and current `@prisma/dev@0.24.7` still pins the vulnerable nested package | audit JSON and `npm view @prisma/dev` | Phase 4 rationale |
 | secrets | 0 | `gitleaks detect --no-git --redact` via `grade.sh` | Security 4.2: 0 = +4 |
 | lizard_warning_count | 3 known remaining warnings after removing `UserProvider`; repo lizard gate passed | targeted lizard on previous warning sites plus `npm run quality:lizard` | Maintainability 3.1: 1-5 = +3 |
 | lizard_avg_ccn | 1.4 | `lizard` via `grade.sh` | Informational |
@@ -111,7 +114,7 @@ Phase 3 removes the highest-risk complexity hotspot by moving `UserProvider` con
 
 ## Top Risks
 
-1. **Moderate dependency advisories remain** - `npm audit` reports 3 moderate advisories and 20 low advisories, with no high or critical advisories.
+1. **Accepted Prisma dev-tool Hono advisory remains** - root workspace `npm audit` reports 3 moderate records for one dev-tool chain, with no high or critical advisories; revisit when Prisma updates `@prisma/dev`.
 2. **Hardware proof remains static-only** - software vectors and adapter tests are strong, but they do not prove live hardware behavior on real devices.
 3. **A smaller send-flow render hotspot remains** - `components/send/steps/OutputsStep/sections/RecipientsSection.tsx` still reaches CCN 17 and should be simplified when touching the send UI.
 4. **Two test helper components still exceed the lizard threshold** - `MappingConsumer` in `tests/contexts/UserContext.test.tsx` and `SendTransactionWizard` in `tests/components/send/SendTransactionPage.test.tsx` remain warning sites.
@@ -137,10 +140,9 @@ Phase 3 removes the highest-risk complexity hotspot by moving `UserProvider` con
 
 ## Fastest Improvements
 
-1. **Triage the 3 moderate npm advisories** - risk reduction, with no direct hard-gate point gain while high/critical remains 0 - small/medium effort.
-2. **Capture hardware-in-loop signing evidence** - expected +1 to +2 correctness confidence/completeness points - requires physical devices.
-3. **Simplify `RecipientsSection` while touching send UI** - small maintainability improvement; now the primary production lizard hotspot.
-4. **Simplify the two remaining test helper warnings when touching those tests** - low risk, low priority.
+1. **Capture hardware-in-loop signing evidence** - expected +1 to +2 correctness confidence/completeness points - requires physical devices.
+2. **Simplify `RecipientsSection` while touching send UI** - small maintainability improvement; now the primary production lizard hotspot.
+3. **Simplify the two remaining test helper warnings when touching those tests** - low risk, low priority.
 
 ---
 
@@ -151,7 +153,7 @@ Phase 3 removes the highest-risk complexity hotspot by moving `UserProvider` con
 | 1 | Restore current-code convergence | Bring local checkout onto the `origin/main` fixes for Q4/R/S/T while preserving dirty docs. | Local stale-signature scan is clean; focused tests/lint/typecheck/full grade are green. | complete; +6 |
 | 2 | Stabilize duplication measurement | Fix `.jscpd.json` / `scripts/quality/jscpd-only.sh` so the repo command excludes generated, report, and nested-worktree paths. | Repo-owned command reports 1.65% duplication over the intended production-biased source set. | complete; +2 |
 | 3 | Reduce complexity hotspots | Split `UserProvider`; simplify `RecipientsSection` render branching if still warned. | `UserProvider` is no longer a lizard warning, targeted context tests pass, and public context exports are stable. | complete; risk reduced, score flat |
-| 4 | Triage advisories | Upgrade, override, or document moderate advisory reachability. | 0 high/critical remains true and moderate advisories have dated rationale. | risk reduction |
+| 4 | Triage advisories | Upgrade, override, or document moderate advisory reachability. | Website Mermaid advisory is fixed; 0 high/critical remains true; remaining Prisma dev-tool chain has dated rationale. | complete; risk reduced |
 | 5 | Record hardware evidence | Run and document hardware-in-loop signing matrix. | Hardware proof artifact exists and is referenced by tests/docs. | +1 to +2 confidence/completeness |
 
 ---
