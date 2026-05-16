@@ -153,7 +153,7 @@ build_sanctuary_images() {
   fi
 
   offline_log "Building Sanctuary images for $PLATFORM..."
-  DOCKER_DEFAULT_PLATFORM="$PLATFORM" docker compose -f "$OFFLINE_REPO_ROOT/docker-compose.yml" build backend frontend gateway ai
+  DOCKER_DEFAULT_PLATFORM="$PLATFORM" docker compose -f "$OFFLINE_REPO_ROOT/docker-compose.yml" build backend frontend gateway llm-egress-proxy
 }
 
 external_images() {

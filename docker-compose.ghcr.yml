@@ -1,8 +1,14 @@
 # =============================================
-# Sanctuary Bitcoin Wallet - Docker Compose (pre-built images)
+# Sanctuary Bitcoin Wallet - Docker Compose (pre-built core images)
 # =============================================
-# Usage: Pull pre-built images from Codeberg Packages
+# Usage: Pull pre-built frontend/backend images from Codeberg Packages
 #   IMAGE_TAG=v0.8.53 docker compose -f docker-compose.ghcr.yml up -d
+#
+# This is intentionally a reduced prebuilt-image overlay for the web
+# core: frontend and backend. It does not include the source-built
+# mobile gateway or llm-egress-proxy services; use docker-compose.yml
+# or the offline bundle when those runtime isolation contracts are
+# required.
 #
 # Filename keeps the historical `.ghcr.yml` suffix so prior operator
 # scripts and bookmarks still resolve. The default registry was

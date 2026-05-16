@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockConfig, mockGenerateRequestSignature, mockLogger } = vi.hoisted(() => ({
   mockConfig: {
-    backendUrl: 'http://backend:3000',
+    backendUrl: 'http://backend:3001',
     gatewaySecret: 'gateway-secret-with-32-characters!!',
     backendRequestTimeoutMs: 5000,
   },
@@ -66,7 +66,7 @@ describe('backendEvents deviceTokens', () => {
         null
       );
       expect(fetchMock).toHaveBeenCalledWith(
-        'http://backend:3000/api/v1/push/by-user/u1',
+        'http://backend:3001/api/v1/push/by-user/u1',
         expect.objectContaining({
           headers: {
             'X-Gateway-Signature': 'sig-123',
@@ -93,7 +93,7 @@ describe('backendEvents deviceTokens', () => {
         null
       );
       expect(fetchMock).toHaveBeenCalledWith(
-        'http://backend:3000/api/v1/push/by-user/u1',
+        'http://backend:3001/api/v1/push/by-user/u1',
         expect.objectContaining({
           headers: {
             'X-Gateway-Signature': 'sig-123',
@@ -140,7 +140,7 @@ describe('backendEvents deviceTokens', () => {
         null
       );
       expect(fetchMock).toHaveBeenCalledWith(
-        'http://backend:3000/api/v1/push/device/device-1',
+        'http://backend:3001/api/v1/push/device/device-1',
         expect.objectContaining({
           method: 'DELETE',
           headers: {
@@ -163,7 +163,7 @@ describe('backendEvents deviceTokens', () => {
       await removeInvalidDevice('device-2', 'tok-2');
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'http://backend:3000/api/v1/push/device/device-2',
+        'http://backend:3001/api/v1/push/device/device-2',
         expect.objectContaining({
           method: 'DELETE',
           headers: {

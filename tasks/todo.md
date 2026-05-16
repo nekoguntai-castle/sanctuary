@@ -1,6 +1,30 @@
+# Task: Phase L Gateway Deploy/Runtime Contract Convergence 2026-05-16
+
+Status: implemented locally; PR delivery pending.
+
+Goal: implement Phase L from the rationalization plan by aligning gateway runtime env handling with compose/docs, making documented push credential file mounts work, cleaning stale push enable-flag docs, replacing offline/install `ai` service references with `llm-egress-proxy`, documenting the prebuilt compose image-set decision, and delivering the change through a PR.
+
+## Plan
+
+- [x] Update gateway config to use `PORT` with `GATEWAY_PORT` as a compatibility alias, default backend URLs to `backend:3001`, load FCM/APNs credentials from mounted files with deterministic env precedence, and use `APNS_PRODUCTION`.
+- [x] Update gateway config tests for port precedence, backend defaults, FCM service-account files, APNs key files, env overrides, and APNs production flags.
+- [x] Align `docker-compose.yml`, gateway README, and gateway architecture docs with the runtime contract; remove stale `FCM_ENABLED`/`APNS_ENABLED` guidance and document prebuilt compose as reduced/core unless image publishing is intentionally expanded.
+- [x] Replace active offline/install/upgrade `ai` service references with `llm-egress-proxy` and update offline bundle tests for gateway/proxy core images.
+- [x] Run focused gateway/offline/install verification, compose config service checks, negative stale-drift searches, type/build/lint/lizard as needed.
+- [ ] Open, monitor, and merge the PR.
+
+## Review
+
+- Added gateway env parsing helpers so `PORT` is the canonical listener, `GATEWAY_PORT` remains a compatibility alias, backend defaults are `http://backend:3001` and `ws://backend:3001`, FCM can read a mounted service-account JSON, APNs can read a mounted `.p8`, env credentials override mounted files, and `APNS_PRODUCTION` owns the APNs environment choice.
+- Updated compose/docs to match the runtime contract and to document `docker-compose.ghcr.yml`/release image publishing as intentionally reduced to prebuilt frontend/backend web-core images.
+- Replaced active offline/install/upgrade `ai` service references with `llm-egress-proxy` and expanded the offline bundle archive-shape test to assert gateway and LLM egress proxy core images.
+- Verification passed: `npm --prefix shared run build`; `npm --prefix gateway run test:run -- tests/unit/config.test.ts tests/unit/routes/proxyConfig.test.ts tests/unit/services/backendEvents.deviceTokens.test.ts`; `npm --prefix gateway run build`; `npm run lint:gateway`; `npm run lint`; `npm --prefix gateway run test:coverage`; `npm run quality:lizard -- --files gateway/src/config.ts gateway/src/config/env.ts scripts/check-blocking-io.mjs`; full Semgrep baseline gate; `bash -n` for touched offline/install scripts; `bash tests/install/unit/offline-bundle-script.test.sh`; source and GHCR `docker compose config --services`; stale-string searches for push enable flags, backend port 3000, and active `ai` service references; `git diff --check`.
+
+---
+
 # Task: Phase K Mempool Estimator Defaults Convergence 2026-05-15
 
-Status: in progress.
+Status: merged and verified via PR #475 as squash commit `a781c8ee768a55a5688021af4b801545a90f5bcc`.
 
 Goal: implement Phase K from the rationalization plan by centralizing mempool estimator values/defaults, aligning admin/runtime/frontend/OpenAPI behavior with the canonical default, preserving explicit `simple` selections and storage defaults, and delivering the change through a PR.
 
@@ -11,7 +35,7 @@ Goal: implement Phase K from the rationalization plan by centralizing mempool es
 - [x] Preserve explicit stored/admin `simple` values while making missing/null estimator reads default to `mempool_space` and invalid admin request values fail validation before persistence.
 - [x] Add or update focused tests for admin read/update/no-config behavior, mempool config fallback, frontend NodeConfig defaults/select options, OpenAPI parity, and shared constants.
 - [x] Run negative searches for local estimator tuples/defaults with Prisma schema/migration storage-default literals treated as allowed parity-covered exceptions.
-- [ ] Run focused verification, typechecks/quality gates needed for touched code, then open and merge the PR.
+- [x] Run focused verification, typechecks/quality gates needed for touched code, then open and merge the PR.
 
 ## Review
 
@@ -20,7 +44,8 @@ Goal: implement Phase K from the rationalization plan by centralizing mempool es
 - Preserved existing stored/admin `simple` selections, changed invalid admin request estimator strings to fail validation before persistence, and kept missing/persisted-null values on the default `mempool_space` path.
 - Updated backend Vitest shared-package aliasing so server tests resolve local shared subpath imports from `shared/dist` instead of a linked external workspace copy.
 - Verification passed so far: `npm --prefix shared run build`; `npm run test:run -- tests/shared/nodeConfig.test.ts tests/components/NodeConfig/ExternalServicesSection.test.tsx tests/components/NodeConfig.test.tsx tests/components/NodeConfig.branches.test.tsx tests/components/NodeConfig.interactions.test.tsx tests/components/NodeConfig.secondpass.test.tsx`; `npm --prefix server run prisma:generate`; `npm --prefix server run test:run -- tests/unit/api/admin-nodeConfig-routes.test.ts tests/unit/api/openapi.test.ts tests/unit/services/bitcoin/mempool.test.ts`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:app`; `npm run lint:server`; touched-file lizard; estimator negative searches with Prisma schema/migration storage-default literals identified as the allowed exceptions; `npm run arch:check`; `git diff --check`.
-- Residual: PR open, CI, merge, and post-merge ancestry verification remain.
+- PR #475 passed Forgejo Architecture, Build Dev Images scope, Code Quality, Test Suite full lanes including frontend coverage merge, Full Test Summary, and PR Required Checks, then squash-merged as `a781c8ee768a55a5688021af4b801545a90f5bcc`.
+- Post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

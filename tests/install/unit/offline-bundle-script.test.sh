@@ -255,7 +255,9 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
     assert_contains "$list" "./manifest.env" "bundle should include manifest.env" || failures=1
     assert_contains "$list" "./install-offline.sh" "bundle should include bootstrap installer" || failures=1
     assert_contains "$list" "./tools/create-upgrade-backup.sh" "bundle should include backup helper" || failures=1
-    assert_contains "$list" "./images/core/sanctuary-backend-local.tar" "bundle should include core images" || failures=1
+    assert_contains "$list" "./images/core/sanctuary-backend-local.tar" "bundle should include backend image" || failures=1
+    assert_contains "$list" "./images/core/sanctuary-gateway-local.tar" "bundle should include gateway image" || failures=1
+    assert_contains "$list" "./images/core/sanctuary-llm-egress-proxy-local.tar" "bundle should include LLM egress proxy image" || failures=1
     manifest="$(tar -xOf "$output" ./manifest.env)" || failures=1
     assert_contains "$manifest" "SANCTUARY_BUNDLE_FLAVOR=core-dev" "dev core-only bundle should be marked" || failures=1
   fi

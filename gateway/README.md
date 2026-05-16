@@ -140,17 +140,22 @@ WebSocket client that connects to the backend to receive transaction events.
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `NODE_ENV` | No | `production` | Environment mode |
-| `PORT` | No | `4000` | Gateway port |
-| `BACKEND_URL` | Yes | - | Backend HTTP URL (e.g., `http://backend:3001`) |
-| `BACKEND_WS_URL` | Yes | - | Backend WebSocket URL (e.g., `ws://backend:3001`) |
+| `PORT` | No | `4000` | Gateway listener port inside the container |
+| `GATEWAY_PORT` | No | `4000` | Docker Compose host-published port; also a compatibility listener alias when `PORT` is unset |
+| `BACKEND_URL` | No | `http://backend:3001` | Backend HTTP URL |
+| `BACKEND_WS_URL` | No | `ws://backend:3001` | Backend WebSocket URL |
 | `JWT_SECRET` | Yes | - | Must match backend JWT_SECRET |
 | `RATE_LIMIT_WINDOW_MS` | No | `60000` | Rate limit window (ms) |
 | `RATE_LIMIT_MAX` | No | `60` | Max requests per window |
 | `RATE_LIMIT_MAX_REQUESTS` | No | `60` | Compatibility alias used only when `RATE_LIMIT_MAX` is unset |
-| `FCM_ENABLED` | No | `false` | Enable Firebase Cloud Messaging |
-| `APNS_ENABLED` | No | `false` | Enable Apple Push Notifications |
+| `FCM_SERVICE_ACCOUNT_PATH` | No | `/app/config/fcm-service-account.json` | Mounted Firebase service account JSON path |
+| `FCM_PROJECT_ID` | If FCM env override | - | Firebase project ID; overrides mounted JSON |
+| `FCM_PRIVATE_KEY` | If FCM env override | - | Firebase private key; overrides mounted JSON |
+| `FCM_CLIENT_EMAIL` | If FCM env override | - | Firebase client email; overrides mounted JSON |
 | `APNS_KEY_ID` | If APNs | - | APNs key ID |
 | `APNS_TEAM_ID` | If APNs | - | Apple Developer Team ID |
+| `APNS_PRIVATE_KEY_PATH` | If APNs file mount | `/app/config/apns-key.p8` | Mounted APNs `.p8` key path |
+| `APNS_PRIVATE_KEY` | If APNs env override | - | APNs `.p8` key content; overrides mounted file |
 | `APNS_BUNDLE_ID` | If APNs | - | iOS app bundle identifier |
 | `APNS_PRODUCTION` | No | `false` | Use APNs production server |
 
@@ -165,7 +170,10 @@ before treating per-instance counters as a global limit.
 1. Go to Firebase Console > Project Settings > Service Accounts
 2. Generate new private key (JSON file)
 3. Mount at `/app/config/fcm-service-account.json`
-4. Set `FCM_ENABLED=true`
+
+FCM auto-enables when `project_id`, `private_key`, and `client_email` are
+available from the mounted JSON or the `FCM_PROJECT_ID`, `FCM_PRIVATE_KEY`, and
+`FCM_CLIENT_EMAIL` env vars.
 
 ### APNs Setup (iOS Push)
 
@@ -174,7 +182,7 @@ before treating per-instance counters as a global limit.
 3. Download the `.p8` key file
 4. Note the Key ID and your Team ID
 5. Mount key at `/app/config/apns-key.p8`
-6. Set env vars: `APNS_ENABLED=true`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`
+6. Set env vars: `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, and `APNS_PRODUCTION` when using Apple's production APNs environment
 
 ## Running
 
@@ -187,7 +195,9 @@ The gateway is included in the main `docker-compose.yml` and starts automaticall
 docker compose up -d
 ```
 
-The gateway will be available at `http://localhost:4000` (or your configured `GATEWAY_PORT`).
+The gateway will be available at `http://localhost:4000` (or your configured
+Compose host port from `GATEWAY_PORT`). The container listener stays on `PORT`
+and defaults to `4000`.
 
 ### For Development
 

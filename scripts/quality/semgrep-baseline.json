@@ -13,33 +13,33 @@
     {
       "id": "javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket",
       "path": "gateway/ARCHITECTURE.md",
-      "startLine": 139,
-      "endLine": 139,
-      "sha256": "1dc7264c8fb43bbcb5a1601515eb7f1cf2ac2635328d1ec0ff6466fa63884ee2",
+      "startLine": 140,
+      "endLine": 140,
+      "sha256": "842a79e55429bd454f204331a84d3c8810dfbda01b8c2ba0e269d51ed7465b89",
       "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
     },
     {
       "id": "javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket",
       "path": "gateway/README.md",
-      "startLine": 145,
-      "endLine": 145,
-      "sha256": "a700373cbcf42fc8cb9bd31a8e2d09196f6304055a5047ab5f6e777fa1c247dd",
+      "startLine": 146,
+      "endLine": 146,
+      "sha256": "209bb44ebf328ea98b86f72d99fa68e3e1467a31e1870e97588ce1a8a55fa12a",
       "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
     },
     {
       "id": "javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket",
       "path": "gateway/src/config.ts",
-      "startLine": 27,
-      "endLine": 27,
-      "sha256": "a217517fdb1b6c7a21ca519548ae8bb76d099eab1302e3f61959841469537712",
+      "startLine": 29,
+      "endLine": 29,
+      "sha256": "9f83d46c6a0e76be2c998aa28a4d8fc4317c8d1581da44b16c19d8993f329897",
       "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
     },
     {
       "id": "javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket",
       "path": "gateway/src/config.ts",
-      "startLine": 76,
-      "endLine": 76,
-      "sha256": "c7b6cefc38c197cc0e4fb3e46f02fe16fa32098b9e30d1e2387fd3983cd9902c",
+      "startLine": 77,
+      "endLine": 77,
+      "sha256": "4544f5cb2ab3b44379194dd702daab60c182ee2ee75ed22a22ac87a6e06c37b7",
       "reason": "Existing finding on the initial Forgejo Semgrep baseline; triage and remove this entry when fixed."
     },
     {

@@ -6,9 +6,21 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('Gateway Config', () => {
   const originalEnv = process.env;
+  const tempDirs: string[] = [];
+
+  function writeTempConfigFile(fileName: string, contents: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'sanctuary-gateway-config-'));
+    tempDirs.push(dir);
+    const filePath = join(dir, fileName);
+    writeFileSync(filePath, contents);
+    return filePath;
+  }
 
   beforeEach(() => {
     // Reset module cache
@@ -20,21 +32,42 @@ describe('Gateway Config', () => {
   afterEach(() => {
     // Restore original environment
     process.env = originalEnv;
+    while (tempDirs.length > 0) {
+      const dir = tempDirs.pop();
+      if (dir) {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
     vi.restoreAllMocks();
   });
 
   describe('config object', () => {
     describe('server config', () => {
       it('should use default port 4000', async () => {
+        delete process.env.PORT;
         delete process.env.GATEWAY_PORT;
         const { config } = await import('../../src/config');
         expect(config.port).toBe(4000);
       });
 
+      it('should parse PORT from environment', async () => {
+        process.env.PORT = '4500';
+        const { config } = await import('../../src/config');
+        expect(config.port).toBe(4500);
+      });
+
       it('should parse GATEWAY_PORT from environment', async () => {
+        delete process.env.PORT;
         process.env.GATEWAY_PORT = '5000';
         const { config } = await import('../../src/config');
         expect(config.port).toBe(5000);
+      });
+
+      it('should prefer PORT over GATEWAY_PORT', async () => {
+        process.env.PORT = '4500';
+        process.env.GATEWAY_PORT = '5000';
+        const { config } = await import('../../src/config');
+        expect(config.port).toBe(4500);
       });
 
       it('should use default NODE_ENV as development', async () => {
@@ -122,7 +155,7 @@ describe('Gateway Config', () => {
       it('should use default backend URL', async () => {
         delete process.env.BACKEND_URL;
         const { config } = await import('../../src/config');
-        expect(config.backendUrl).toBe('http://backend:3000');
+        expect(config.backendUrl).toBe('http://backend:3001');
       });
 
       it('should read BACKEND_URL from environment', async () => {
@@ -134,7 +167,7 @@ describe('Gateway Config', () => {
       it('should use default backend WebSocket URL', async () => {
         delete process.env.BACKEND_WS_URL;
         const { config } = await import('../../src/config');
-        expect(config.backendWsUrl).toBe('ws://backend:3000');
+        expect(config.backendWsUrl).toBe('ws://backend:3001');
       });
 
       it('should read BACKEND_WS_URL from environment', async () => {
@@ -250,6 +283,7 @@ describe('Gateway Config', () => {
     describe('FCM config', () => {
       it('should have empty FCM project ID by default', async () => {
         delete process.env.FCM_PROJECT_ID;
+        delete process.env.FCM_SERVICE_ACCOUNT_PATH;
         const { config } = await import('../../src/config');
         expect(config.fcm.projectId).toBe('');
       });
@@ -264,6 +298,83 @@ describe('Gateway Config', () => {
         process.env.FCM_PRIVATE_KEY = 'line1\\nline2\\nline3';
         const { config } = await import('../../src/config');
         expect(config.fcm.privateKey).toBe('line1\nline2\nline3');
+      });
+
+      it('should read Firebase service account fields from a mounted JSON file', async () => {
+        process.env.FCM_SERVICE_ACCOUNT_PATH = writeTempConfigFile(
+          'fcm-service-account.json',
+          JSON.stringify({
+            project_id: 'file-project',
+            private_key: 'file-line-1\nfile-line-2',
+            client_email: 'fcm-file@example.test',
+          })
+        );
+        const { config } = await import('../../src/config');
+        expect(config.fcm).toEqual({
+          projectId: 'file-project',
+          privateKey: 'file-line-1\nfile-line-2',
+          clientEmail: 'fcm-file@example.test',
+        });
+      });
+
+      it('should prefer Firebase env fields over mounted service account fields', async () => {
+        process.env.FCM_SERVICE_ACCOUNT_PATH = writeTempConfigFile(
+          'fcm-service-account.json',
+          JSON.stringify({
+            project_id: 'file-project',
+            private_key: 'file-private-key',
+            client_email: 'fcm-file@example.test',
+          })
+        );
+        process.env.FCM_PROJECT_ID = 'env-project';
+        process.env.FCM_PRIVATE_KEY = 'env-line-1\\nenv-line-2';
+        process.env.FCM_CLIENT_EMAIL = 'fcm-env@example.test';
+
+        const { config } = await import('../../src/config');
+        expect(config.fcm).toEqual({
+          projectId: 'env-project',
+          privateKey: 'env-line-1\nenv-line-2',
+          clientEmail: 'fcm-env@example.test',
+        });
+      });
+
+      it('should ignore malformed Firebase service account JSON', async () => {
+        process.env.FCM_SERVICE_ACCOUNT_PATH = writeTempConfigFile('fcm-service-account.json', '{not-json');
+        const { config } = await import('../../src/config');
+        expect(config.fcm).toEqual({
+          projectId: '',
+          privateKey: '',
+          clientEmail: '',
+        });
+      });
+
+      it('should ignore non-string Firebase service account fields', async () => {
+        process.env.FCM_SERVICE_ACCOUNT_PATH = writeTempConfigFile(
+          'fcm-service-account.json',
+          JSON.stringify({
+            project_id: 123,
+            private_key: null,
+            client_email: false,
+          })
+        );
+        const { config } = await import('../../src/config');
+        expect(config.fcm).toEqual({
+          projectId: '',
+          privateKey: '',
+          clientEmail: '',
+        });
+      });
+
+      it('should ignore unreadable Firebase service account paths', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'sanctuary-gateway-config-dir-'));
+        tempDirs.push(dir);
+        process.env.FCM_SERVICE_ACCOUNT_PATH = dir;
+        const { config } = await import('../../src/config');
+        expect(config.fcm).toEqual({
+          projectId: '',
+          privateKey: '',
+          clientEmail: '',
+        });
       });
 
       it('should have empty FCM client email by default', async () => {
@@ -292,6 +403,19 @@ describe('Gateway Config', () => {
         expect(config.apns.privateKey).toBe('line1\nline2');
       });
 
+      it('should read APNs private key from a mounted file', async () => {
+        process.env.APNS_PRIVATE_KEY_PATH = writeTempConfigFile('apns-key.p8', 'file-line-1\nfile-line-2');
+        const { config } = await import('../../src/config');
+        expect(config.apns.privateKey).toBe('file-line-1\nfile-line-2');
+      });
+
+      it('should prefer APNs private key env over mounted file', async () => {
+        process.env.APNS_PRIVATE_KEY_PATH = writeTempConfigFile('apns-key.p8', 'file-private-key');
+        process.env.APNS_PRIVATE_KEY = 'env-line-1\\nenv-line-2';
+        const { config } = await import('../../src/config');
+        expect(config.apns.privateKey).toBe('env-line-1\nenv-line-2');
+      });
+
       it('should use default bundle ID', async () => {
         delete process.env.APNS_BUNDLE_ID;
         const { config } = await import('../../src/config');
@@ -304,14 +428,39 @@ describe('Gateway Config', () => {
         expect(config.apns.bundleId).toBe('com.example.myapp');
       });
 
-      it('should set production to true when NODE_ENV is production', async () => {
+      it('should default APNs production to false even when NODE_ENV is production', async () => {
         process.env.NODE_ENV = 'production';
+        delete process.env.APNS_PRODUCTION;
+        const { config } = await import('../../src/config');
+        expect(config.apns.production).toBe(false);
+      });
+
+      it('should set APNs production from APNS_PRODUCTION=true', async () => {
+        process.env.APNS_PRODUCTION = 'true';
         const { config } = await import('../../src/config');
         expect(config.apns.production).toBe(true);
       });
 
-      it('should set production to false when NODE_ENV is not production', async () => {
-        process.env.NODE_ENV = 'development';
+      it('should set APNs production from APNS_PRODUCTION=1', async () => {
+        process.env.APNS_PRODUCTION = '1';
+        const { config } = await import('../../src/config');
+        expect(config.apns.production).toBe(true);
+      });
+
+      it('should trim and normalize APNS_PRODUCTION', async () => {
+        process.env.APNS_PRODUCTION = ' TRUE ';
+        const { config } = await import('../../src/config');
+        expect(config.apns.production).toBe(true);
+      });
+
+      it('should set APNs production to false from APNS_PRODUCTION=false', async () => {
+        process.env.APNS_PRODUCTION = 'false';
+        const { config } = await import('../../src/config');
+        expect(config.apns.production).toBe(false);
+      });
+
+      it('should fall back for invalid APNS_PRODUCTION values', async () => {
+        process.env.APNS_PRODUCTION = 'maybe';
         const { config } = await import('../../src/config');
         expect(config.apns.production).toBe(false);
       });

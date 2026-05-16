@@ -100,7 +100,7 @@ collect_upgrade_artifacts() {
             > "$output_dir/docker-compose-ps.txt" 2>&1 || true
     fi
 
-    for service in postgres redis backend worker migrate frontend gateway ai; do
+    for service in postgres redis backend worker migrate frontend gateway llm-egress-proxy; do
         local container
         container=$(docker ps -a --filter "name=^/${project}-${service}-[0-9]+$" --format '{{.Names}}' | head -n 1)
         if [ -n "$container" ]; then

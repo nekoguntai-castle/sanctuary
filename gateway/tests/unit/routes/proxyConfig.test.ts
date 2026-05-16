@@ -28,7 +28,7 @@ vi.mock('http-proxy-middleware', () => ({
 
 vi.mock('../../../src/config', () => ({
   config: {
-    backendUrl: 'http://backend:3000',
+    backendUrl: 'http://backend:3001',
   },
 }));
 
@@ -55,7 +55,7 @@ beforeAll(async () => {
 
 describe('proxyConfig', () => {
   it('creates proxy middleware with backend target configuration', () => {
-    expect(config.target).toBe('http://backend:3000');
+    expect(config.target).toBe('http://backend:3001');
     expect(config.changeOrigin).toBe(true);
   });
 

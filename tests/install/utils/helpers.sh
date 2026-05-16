@@ -138,7 +138,7 @@ capture_compose_failure_diagnostics() {
     local project_dir="${1:-.}"
     local lines="${2:-${SANCTUARY_INSTALL_DIAGNOSTIC_LOG_LINES:-200}}"
     local project="${COMPOSE_PROJECT_NAME:-sanctuary}"
-    local services=(postgres redis worker backend migrate frontend gateway ai docker-proxy mcp)
+    local services=(postgres redis worker backend migrate frontend gateway llm-egress-proxy docker-proxy mcp)
     local state_template
     local health_template
 
@@ -210,8 +210,7 @@ capture_compose_failure_diagnostics() {
 # sanctuary-frontend -> frontend
 # sanctuary-gateway -> gateway
 # sanctuary-migrate -> migrate
-# sanctuary-llm-egress-proxy -> ai
-# sanctuary-ollama -> ollama
+# sanctuary-llm-egress-proxy -> llm-egress-proxy
 
 # Check if Docker is available and running
 check_docker_available() {

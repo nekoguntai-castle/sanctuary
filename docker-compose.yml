@@ -590,13 +590,21 @@ services:
 
       # Rate limiting
       RATE_LIMIT_WINDOW_MS: ${GATEWAY_RATE_LIMIT_WINDOW_MS:-60000}
-      RATE_LIMIT_MAX_REQUESTS: ${GATEWAY_RATE_LIMIT_MAX:-60}
+      RATE_LIMIT_MAX: ${GATEWAY_RATE_LIMIT_MAX:-60}
+
+      # Firebase Cloud Messaging (Android)
+      # Auto-enabled when the mounted service account has project_id,
+      # private_key, and client_email fields. Inline FCM_* env vars override
+      # this file path.
+      FCM_SERVICE_ACCOUNT_PATH: /app/config/fcm-service-account.json
 
       # Apple Push Notification Service (iOS)
-      # Auto-enabled when APNS_KEY_ID, APNS_TEAM_ID, and key file are provided
+      # Auto-enabled when APNS_KEY_ID, APNS_TEAM_ID, and key file are provided.
+      # Inline APNS_PRIVATE_KEY overrides this file path.
       APNS_KEY_ID: ${APNS_KEY_ID:-}
       APNS_TEAM_ID: ${APNS_TEAM_ID:-}
       APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-}
+      APNS_PRIVATE_KEY_PATH: /app/config/apns-key.p8
       APNS_PRODUCTION: ${APNS_PRODUCTION:-false}
     ports:
       - "${GATEWAY_PORT:-4000}:4000"

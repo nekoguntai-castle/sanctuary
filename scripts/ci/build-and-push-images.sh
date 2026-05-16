@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Build and push Sanctuary container images to Codeberg Packages.
+# Build and push Sanctuary prebuilt core container images to Codeberg Packages.
 #
 # Inputs (env):
 #   IMAGE_REGISTRY     default codeberg.org/nekoguntai-castle
 #   IMAGE_TAG          required (e.g. v0.8.53). MUST start with 'v'.
 #   IMAGE_PLATFORMS    default linux/amd64,linux/arm64
-#   IMAGES             default "frontend backend" - space-separated subset
+#   IMAGES             default "frontend backend" - space-separated core subset
 #   PUSH               default "true"; set "false" for build-only dry-run
 #
 # Outputs (under dist/):
@@ -21,6 +21,10 @@
 #     source SHA are immutable for a tag), so partial recovery is idempotent.
 #   - The downstream notify-umbrel job MUST gate on this job's success;
 #     a partial digests file would write nonsense to sanctuary-umbrel.
+#
+# Prebuilt image inventory is intentionally limited to the web core.
+# Gateway and llm-egress-proxy are distributed through source compose
+# builds and offline bundles.
 #
 # Image-to-Dockerfile mapping (locked):
 #   frontend -> Dockerfile          (context: repo root)

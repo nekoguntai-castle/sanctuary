@@ -10,7 +10,7 @@ The gateway is the public-facing API proxy for Sanctuary's mobile clients. It si
 graph TD
     Mobile["Mobile App (iOS / Android)"]
     Gateway["Gateway :4000<br/>(this service)"]
-    Backend["Backend :3000<br/>(private network)"]
+    Backend["Backend :3001<br/>(private network)"]
     FCM["FCM (Android)"]
     APNs["APNs (iOS)"]
 
@@ -134,9 +134,10 @@ The gateway terminates TLS directly — no nginx or reverse proxy is required in
 |---|---|---|---|
 | `JWT_SECRET` | Yes | — | Must match backend; used for local JWT verification |
 | `GATEWAY_SECRET` | Yes* | — | Shared HMAC secret for gateway↔backend auth; warn if absent |
-| `GATEWAY_PORT` | No | `4000` | Listening port |
-| `BACKEND_URL` | No | `http://backend:3000` | Backend HTTP base URL |
-| `BACKEND_WS_URL` | No | `ws://backend:3000` | Backend WebSocket base URL |
+| `PORT` | No | `4000` | Gateway listener port inside the container |
+| `GATEWAY_PORT` | No | `4000` | Docker Compose host-published port; also a compatibility listener alias when `PORT` is unset |
+| `BACKEND_URL` | No | `http://backend:3001` | Backend HTTP base URL |
+| `BACKEND_WS_URL` | No | `ws://backend:3001` | Backend WebSocket base URL |
 | `TLS_ENABLED` | No | `false` | Enable HTTPS (`true` to activate); required in production unless the explicit internal-only HTTP override is set |
 | `TLS_CERT_PATH` | If TLS | `/app/config/ssl/fullchain.pem` | Certificate chain path |
 | `TLS_KEY_PATH` | If TLS | `/app/config/ssl/privkey.pem` | Private key path |
@@ -147,13 +148,16 @@ The gateway terminates TLS directly — no nginx or reverse proxy is required in
 | `RATE_LIMIT_MAX` | No | `60` | Max requests per default window |
 | `RATE_LIMIT_MAX_REQUESTS` | No | `60` | Compatibility alias used only when `RATE_LIMIT_MAX` is unset |
 | `CORS_ALLOWED_ORIGINS` | No | — | Comma-separated browser origin allowlist; empty still allows native/no-origin requests plus loopback development origins |
-| `FCM_PROJECT_ID` | No | — | Firebase project ID (Android push) |
-| `FCM_PRIVATE_KEY` | No | — | Firebase service account private key |
-| `FCM_CLIENT_EMAIL` | No | — | Firebase service account email |
+| `FCM_SERVICE_ACCOUNT_PATH` | No | `/app/config/fcm-service-account.json` | Mounted Firebase service account JSON path |
+| `FCM_PROJECT_ID` | No | — | Firebase project ID (Android push); overrides mounted JSON |
+| `FCM_PRIVATE_KEY` | No | — | Firebase service account private key; overrides mounted JSON |
+| `FCM_CLIENT_EMAIL` | No | — | Firebase service account email; overrides mounted JSON |
 | `APNS_KEY_ID` | No | — | APNs auth key ID |
 | `APNS_TEAM_ID` | No | — | Apple Developer team ID |
-| `APNS_PRIVATE_KEY` | No | — | APNs `.p8` key content |
+| `APNS_PRIVATE_KEY_PATH` | No | `/app/config/apns-key.p8` | Mounted APNs `.p8` key path |
+| `APNS_PRIVATE_KEY` | No | — | APNs `.p8` key content; overrides mounted file |
 | `APNS_BUNDLE_ID` | No | `com.sanctuary.app` | iOS app bundle identifier |
+| `APNS_PRODUCTION` | No | `false` | Use Apple's production APNs endpoint |
 | `LOG_LEVEL` | No | `info` | Logging verbosity |
 
 *`GATEWAY_SECRET` is required for mobile permission checks and WebSocket auth. Without it, permission checks fail closed (deny all) and the backend events WebSocket cannot connect.

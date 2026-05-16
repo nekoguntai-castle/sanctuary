@@ -80,7 +80,7 @@ DB_NAME="${POSTGRES_DB:-sanctuary}"
 PW_ESCAPED="$(printf "%s" "$POSTGRES_PASSWORD" | sed "s/'/''/g")"
 
 docker exec "$P" sh -lc "psql -w -h 127.0.0.1 -U \"$DB_USER\" -d \"$DB_NAME\" -v ON_ERROR_STOP=1 -c \"ALTER USER \\\"$DB_USER\\\" WITH PASSWORD '$PW_ESCAPED';\""
-docker compose up -d migrate worker backend frontend gateway ai
+docker compose up -d migrate worker backend frontend gateway llm-egress-proxy
 ```
 
 ## Hotfix Included In This Patch

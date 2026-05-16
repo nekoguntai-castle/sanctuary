@@ -18,6 +18,7 @@ const ALLOWLIST = new Set([
   'server/src/services/push/providers/fcm.ts',
   'server/src/services/push/providers/apns.ts',
   'gateway/src/index.ts',
+  'gateway/src/config/env.ts',
 ]);
 
 async function listTsSources(dir) {

@@ -1542,7 +1542,7 @@ test_recover_postgres_password_drift() {
 
     # Keep postgres running so setup.sh can recover the real password from the
     # existing container and volume, then restart the application stack.
-    docker compose stop backend worker frontend gateway ai migrate 2>&1 || true
+    docker compose stop backend worker frontend gateway llm-egress-proxy migrate 2>&1 || true
 
     setup_output=$(
         export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"

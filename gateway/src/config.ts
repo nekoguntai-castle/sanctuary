@@ -12,7 +12,8 @@
  * ## Optional Environment Variables
  *
  * ### Server
- * - `GATEWAY_PORT` - Port to listen on (default: 4000)
+ * - `PORT` - Port to listen on inside the container (default: 4000)
+ * - `GATEWAY_PORT` - Backward-compatible listener port alias when `PORT` is unset
  * - `NODE_ENV` - Environment mode (default: development)
  *
  * ### TLS/HTTPS
@@ -24,8 +25,8 @@
  * - `GATEWAY_ALLOW_INSECURE_PRODUCTION_HTTP` - Explicit internal-only override for production HTTP
  *
  * ### Backend Connection
- * - `BACKEND_URL` - Backend HTTP URL (default: http://backend:3000)
- * - `BACKEND_WS_URL` - Backend WebSocket URL (default: ws://backend:3000)
+ * - `BACKEND_URL` - Backend HTTP URL (default: http://backend:3001)
+ * - `BACKEND_WS_URL` - Backend WebSocket URL (default: ws://backend:3001)
  *
  * ### Rate Limiting
  * - `RATE_LIMIT_WINDOW_MS` - Time window in ms (default: 60000 = 1 minute)
@@ -38,29 +39,27 @@
  *   (default: native/no-origin requests plus loopback development origins)
  *
  * ### Push Notifications
- * See FCM and APNs sections below for service-specific config.
+ * - `FCM_SERVICE_ACCOUNT_PATH` - Firebase service account JSON path
+ *   (default: /app/config/fcm-service-account.json)
+ * - `FCM_PROJECT_ID`, `FCM_PRIVATE_KEY`, `FCM_CLIENT_EMAIL` - Optional FCM env overrides
+ * - `APNS_PRIVATE_KEY_PATH` - APNs `.p8` key path (default: /app/config/apns-key.p8)
+ * - `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`, `APNS_BUNDLE_ID` - Optional APNs env config
+ * - `APNS_PRODUCTION` - Use Apple's production APNs endpoint (default: false)
  */
 
+import {
+  getApnsPrivateKey,
+  getCorsAllowedOrigins,
+  getFcmConfig,
+  getGatewayPort,
+  getGatewayRateLimitMax,
+  parseBooleanEnv,
+} from './config/env';
 import { exitNow } from './utils/processExit';
-
-/**
- * Parse CORS allowed origins from environment
- */
-function getCorsAllowedOrigins(): string[] {
-  const origins = process.env.CORS_ALLOWED_ORIGINS;
-  if (!origins) {
-    return [];
-  }
-  return origins.split(',').map(o => o.trim()).filter(o => o.length > 0);
-}
-
-function getGatewayRateLimitMax(): string {
-  return process.env.RATE_LIMIT_MAX ?? process.env.RATE_LIMIT_MAX_REQUESTS ?? '60';
-}
 
 export const config = {
   // Server
-  port: parseInt(process.env.GATEWAY_PORT || '4000', 10),
+  port: parseInt(getGatewayPort(), 10),
   nodeEnv: process.env.NODE_ENV || 'development',
 
   // TLS/HTTPS configuration
@@ -74,8 +73,8 @@ export const config = {
   },
 
   // Backend connection (internal network)
-  backendUrl: process.env.BACKEND_URL || 'http://backend:3000',
-  backendWsUrl: process.env.BACKEND_WS_URL || 'ws://backend:3000',
+  backendUrl: process.env.BACKEND_URL || 'http://backend:3001',
+  backendWsUrl: process.env.BACKEND_WS_URL || 'ws://backend:3001',
   backendRequestTimeoutMs: 5000,
 
   // JWT (must match backend)
@@ -101,22 +100,18 @@ export const config = {
 
   // Firebase Cloud Messaging (Android)
   // To enable: Create a Firebase project, download the service account JSON,
-  // and either mount it at /app/config/fcm-service-account.json or set these env vars.
-  fcm: {
-    projectId: process.env.FCM_PROJECT_ID || '',
-    privateKey: process.env.FCM_PRIVATE_KEY?.replace(/\\n/g, '\n') || '',
-    clientEmail: process.env.FCM_CLIENT_EMAIL || '',
-  },
+  // and either mount it at /app/config/fcm-service-account.json or set FCM_* env overrides.
+  fcm: getFcmConfig(),
 
   // Apple Push Notification Service (iOS)
   // To enable: Create an APNs key in Apple Developer portal, download the .p8 file,
-  // and mount it at /app/config/apns-key.p8. Set the key ID, team ID, and bundle ID.
+  // and mount it at /app/config/apns-key.p8. APNS_PRIVATE_KEY can override the file.
   apns: {
     keyId: process.env.APNS_KEY_ID || '',
     teamId: process.env.APNS_TEAM_ID || '',
-    privateKey: process.env.APNS_PRIVATE_KEY?.replace(/\\n/g, '\n') || '',
+    privateKey: getApnsPrivateKey(),
     bundleId: process.env.APNS_BUNDLE_ID || 'com.sanctuary.app',
-    production: process.env.NODE_ENV === 'production',
+    production: parseBooleanEnv(process.env.APNS_PRODUCTION, false),
   },
 
   // Logging
