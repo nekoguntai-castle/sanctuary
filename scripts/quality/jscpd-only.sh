@@ -8,6 +8,7 @@ cd "$ROOT"
 
 output_dir="${QUALITY_JSCPD_OUTPUT_DIR:-reports/jscpd}"
 report_file="$output_dir/jscpd-report.json"
+config_file="$ROOT/.jscpd.json"
 
 # Keep the npm cache off the shared workspace whenever a runner-temp dir exists.
 ci_temp="$(ci_temp_dir)"
@@ -22,7 +23,7 @@ export npm_config_fund="${npm_config_fund:-false}"
 rm -rf "$output_dir"
 mkdir -p "$output_dir"
 
-npx --yes jscpd@4 --silent --reporters json,markdown --output "$output_dir" .
+npx --yes jscpd@4 --silent --config "$config_file" --gitignore --reporters json,markdown --output "$output_dir" .
 
 node - "$report_file" <<'NODE'
 const fs = require('node:fs');

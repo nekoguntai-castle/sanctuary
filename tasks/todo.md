@@ -1,3 +1,31 @@
+# Task: Codebase Health Remediation Phase 2 Delivery 2026-05-16
+
+Status: in progress.
+
+Goal: implement Phase 2 of `docs/plans/codebase-health-remediation-plan.md` by making the repo-owned `jscpd` command honor the intended source scope, excluding nested/generated workspaces, and delivering the phase through `$pr-delivery`.
+
+## Plan
+
+- [x] Start from `origin/main` after Phase 1 closeout merge.
+- [x] Inspect `.jscpd.json`, `scripts/quality/jscpd-only.sh`, CI wiring, and the polluted Phase 1 report.
+- [x] Patch the existing repo-owned `jscpd` path without creating a second invocation.
+- [x] Verify the command writes JSON/markdown reports to a dedicated output directory and reports the intended source duplication signal.
+- [x] Run focused quality/script checks and documentation verification.
+- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+
+## Review
+
+- Updated `.jscpd.json` to exclude nested hidden workspace/temp/git directories, including `.claude`, `.tmp`, `.tmp-gh`, and nested `.git` paths.
+- Updated `scripts/quality/jscpd-only.sh` to pass the committed `.jscpd.json` explicitly and honor `.gitignore`, preserving the single repo-owned duplication command path.
+- `QUALITY_JSCPD_OUTPUT_DIR=.tmp/grade-jscpd-phase2 scripts/quality/jscpd-only.sh` passed and wrote JSON/markdown reports; result: 1.65% duplicated lines, 5,223 duplicated lines, 259 clones, 2,601 files.
+- Report source scan found no `.claude`, `.tmp`, `node_modules`, test, `.test`, or `.spec` paths in `.tmp/grade-jscpd-phase2/jscpd-report.json`.
+- `bash -n scripts/quality/jscpd-only.sh` passed.
+- Full grade collection completed; lint, typecheck, coverage, audit, secrets, lizard, file-size, and readiness signals were collected, but the initial root `npm test` lane had one transient `tests/contexts/CurrencyContext/settings.test.tsx` failure.
+- Follow-up verification passed: `npx vitest run tests/contexts/CurrencyContext/settings.test.tsx` passed 6 tests and `npm test` passed 497 files / 6196 tests.
+- Updated the quality report to 95/100, A, High confidence for the Phase 2 duplication-tooling checkpoint and appended grade history.
+
+---
+
 # Task: Codebase Health Remediation Phase 1 Delivery 2026-05-16
 
 Status: merged and verified via PR #494 as squash commit `639dd84187139d2fdec387f6d09eb8502f7bf681`.
