@@ -1,6 +1,6 @@
 # Task: Phase T Ledger Gen 5 Export Mapping 2026-05-16
 
-Status: in progress.
+Status: merged and verified via PR #490 as squash commit `34e81175b5da0bad669421b9e1dc4c4a2039fb7f`.
 
 Goal: converge the wallet export device-model mapping path so the selected Ledger Gen 5 product decision is represented by the local `ledger_gen_5` alias and exported to Sparrow as its current `LEDGER_NANO_GEN5` wallet model, without broadening this slice into general hardware vendor/type normalization.
 
@@ -15,7 +15,7 @@ Source alignment: this is the import/export wallet-model part of the deferred Ph
 - [x] Map Ledger Gen 5 inputs and catalog slugs (`ledger_gen_5`, `ledger-gen-5`, and nearby normalized aliases) to the selected Sparrow `LEDGER_NANO_GEN5` export name, while preserving existing Nano X, Stax, Flex, Trezor, Coldcard, and fallback behavior unless tests prove a scoped change is needed.
 - [x] Update focused route/service contract tests so they exercise the production helper instead of a copied local test map.
 - [x] Run focused wallet export tests, server type/lint/lizard checks as needed, stale mapping searches, and `git diff --check`.
-- [ ] Open, monitor, and merge the Phase T PR.
+- [x] Open, monitor, and merge the Phase T PR.
 
 ## Review
 
@@ -28,6 +28,7 @@ Source alignment: this is the import/export wallet-model part of the deferred Ph
 - Ledger Nano S Plus now maps to Sparrow's dedicated `LEDGER_NANO_S_PLUS` model while existing Nano S, Nano X, Stax, Flex, Trezor Safe 7 compatibility mapping, and unknown/generic `COLDCARD` fallback behavior remain covered by focused tests.
 - Verification passed: `npm --prefix shared run build`; `npm --prefix server run prisma:generate`; `npm --prefix server run test:run -- tests/unit/api/wallets-export-routes.test.ts tests/unit/services/export/formatHandlers.test.ts tests/unit/api/wallets.test.ts`; `npm --prefix server run test:run -- tests/unit/repositories/walletRepository.test.ts tests/unit/api/wallets-export-routes.test.ts tests/unit/services/export/formatHandlers.test.ts tests/unit/api/wallets.test.ts`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:server`; `npm run quality:lizard`; `scripts/ci/backend-coverage-shard.sh 1 2` from `server/`; stale Sparrow wallet-model mapping searches; `git diff --check`.
 - PR #490's first CI run exposed the repository contract expectation for `findByIdWithDevices`; the test now includes the new `device.model` select and the previously failing backend coverage shard passes locally.
+- PR #490 passed all 61 latest Forgejo status contexts on the corrected head, squash-merged as `34e81175b5da0bad669421b9e1dc4c4a2039fb7f`, and post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 
