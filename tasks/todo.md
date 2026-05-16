@@ -25,7 +25,7 @@ Goal: recursively review `docs/plans/codebase-health-remediation-plan.md` agains
 
 # Task: Codebase Health Remediation Phase 3 Delivery 2026-05-16
 
-Status: in progress.
+Status: merged and verified via PR #498 as squash commit `e449117d29ad8dce89ccde9b4fbda3970e099417`.
 
 Goal: implement Phase 3 of `docs/plans/codebase-health-remediation-plan.md` by splitting the `UserContext` complexity hotspot without changing the public context contract, then delivering the phase through `$pr-delivery`.
 
@@ -37,7 +37,7 @@ Goal: implement Phase 3 of `docs/plans/codebase-health-remediation-plan.md` by s
 - [x] Keep exported hooks and context behavior stable.
 - [x] Run focused UserContext/login/preference/theme tests plus lizard, typecheck, lint, and documentation verification.
 - [x] Run architecture graph/site verification and commit generated architecture docs if needed.
-- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+- [x] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
 
 ## Review
 
@@ -50,6 +50,8 @@ Goal: implement Phase 3 of `docs/plans/codebase-health-remediation-plan.md` by s
 - Updated the quality report/history for the Phase 3 checkpoint; the score remains 95/100 A because the remaining lizard warnings are still in the same rubric bucket.
 - Architecture verification passed locally: `npm run arch:lint`, `node scripts/architecture/detect-drift.mjs origin/main`, `npm run arch:graphs`, `npm run arch:calls`, `npm --prefix website run typecheck`, and `npm run docs:build`.
 - Regenerated `docs/architecture/generated/frontend.md` so the new UserContext helper modules are represented in the generated frontend dependency graph.
+- Pushed `codex/codebase-health-phase-3-user-context`, updated PR #498, monitored 61 status contexts until all were success/skipped, including Architecture successful in 1m21s, and squash-merged with branch deletion disabled.
+- Post-merge verification passed: Forgejo reported PR #498 merged at `2026-05-16T10:57:03-10:00`; merge commit `e449117d29ad8dce89ccde9b4fbda3970e099417` exists locally and is an ancestor of `origin/main`.
 
 ---
 

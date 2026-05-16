@@ -2,12 +2,12 @@
 
 Date: 2026-05-16
 Owner: Codex
-Status: Active remediation plan; Phases 0-2 are merged, Phase 3 is in PR delivery
+Status: Active remediation plan; Phases 0-3 are merged, Phase 4 is next
 Original source: `docs/plans/codebase-health-assessment.md` at local commit `4baa75e6`
 Current evidence: `docs/plans/codebase-health-assessment.md` at the active Phase 3 checkpoint
 Review note: during recursive review, `origin/main` resolved to `718a3d16`; re-check that ref before executing because the remote branch may advance.
 
-Execution update: after Phase 2, the health report is back to 95/100 A at the `fed96e56+phase2-working-tree` checkpoint. Phase 3 has also removed the `UserProvider` lizard warning in the working tree, but the branch still must pass PR checks and merge before the phase is closed.
+Execution update: after Phase 3, the health report remains at 95/100 A and PR #498 is merged as `e449117d29ad8dce89ccde9b4fbda3970e099417`. The `UserProvider` lizard warning is removed, the generated frontend architecture graph includes the extracted helper modules, and Phase 4 dependency advisory triage is the next software slice.
 
 ## Goal
 
