@@ -1,6 +1,31 @@
-# Task: Phase Q4 Frontend API Base URL Export Cleanup 2026-05-16
+# Task: Recursive Review of Rationalization Plan After Phase Q4 2026-05-16
 
 Status: in progress.
+
+Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md` after the Phase Q4 merge, apply only verified closeout corrections, and stop if no remaining actionable consolidation phase is justified.
+
+## Plan
+
+- [x] Verify Q4 PR #485 merged and `origin/main` contains squash commit `16f1022df8f830b674237a30cafbbd9760e0c5d4`.
+- [x] Re-read `docs/plans/rationalization-plan.md` and the active task ledger for stale Q4 status, remaining active-phase wording, and completion criteria.
+- [x] Verify remaining Phase Q candidates against current source evidence.
+- [x] Update the plan/task ledger so Q4 is closed and remaining candidates are explicitly deferred or watch-only.
+- [x] Run documentation verification and stale active-wording searches.
+- [ ] Open, monitor, and merge the closeout PR if the review changes docs.
+
+## Review
+
+- Completed 2 review passes over `docs/plans/rationalization-plan.md`: an initial source-backed closeout pass after Q4 merged, then a clean re-read/stale-wording pass after edits.
+- Accepted improvements: top-level status, executive summary, convergence plan, Post-Phase-I verdict/inventory/follow-up order, guardrails, edge cases, closeout addendum, and verification notes now show the queue merged through Phase Q4, including PR #485 as `16f1022df8f830b674237a30cafbbd9760e0c5d4`.
+- Accepted improvements: frontend API base URL export cleanup is recorded as closed, with `src/api/client.ts` keeping base URL resolution private and `src/api/baseUrl.ts` remaining the public raw-fetch helper owner.
+- Rejected/deferred comments: hardware vendor/type normalization remains deferred because it spans onboarding model matching, send-review signing capabilities, adapter registration, icons, add-account USB support, and import/export wallet-model mappings; price-provider fallback remains watch-only because the server price registry/settings path owns runtime provider behavior and the frontend fallback list is offline UI-only.
+- Verification passed: stale active-Q4 wording search, negative `API_BASE_URL` searches in the API client/test paths, production `API_BASE_URL` export search showing only `src/api/baseUrl.ts`'s internal default, and `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`.
+
+---
+
+# Task: Phase Q4 Frontend API Base URL Export Cleanup 2026-05-16
+
+Status: merged and verified via PR #485 as squash commit `16f1022df8f830b674237a30cafbbd9760e0c5d4`.
 
 Goal: close the next bounded Phase Q cleanup slice by keeping frontend API base URL ownership in `src/api/baseUrl.ts` and making `src/api/client.ts` use that helper internally without exporting a second base-url constant.
 
@@ -15,16 +40,17 @@ Source alignment: this is the `API_BASE_URL` export item from the Phase Q as-tou
 - [x] Update API client tests and mocks so tests assert behavior through `getApiBaseUrl` or actual request URLs rather than importing/mocking `API_BASE_URL`.
 - [x] Preserve current configured `VITE_API_URL` behavior, default `/api/v1` behavior, query serialization, blob/download/upload URLs, and raw refresh/health boundary helpers.
 - [x] Run focused API base/client tests, app/test typechecks, app lint, touched-file lizard, negative `API_BASE_URL` production export searches, and `git diff --check`.
-- [ ] Open, monitor, and merge the PR.
+- [x] Open, monitor, and merge the PR.
 
 ## Review
 
 - Recursive plan review after Q3 accepted one status/queue correction: Q3 is now closed via PR #484 as `9b78adb7f93fe990250f6c07b78a8b4a942221f3`, so the remaining Phase Q queue should not keep describing Q3 as active.
-- Source evidence supports frontend API base URL export cleanup as the next smallest justified slice: `src/api/baseUrl.ts` owns `getApiBaseUrl()` and `joinApiBaseUrl()`, while `src/api/client.ts` also exports a cached `API_BASE_URL` constant that has no production consumers outside the client and only test imports/mocks.
+- Source evidence supported frontend API base URL export cleanup as the next smallest justified slice before Q4: `src/api/baseUrl.ts` owned `getApiBaseUrl()` and `joinApiBaseUrl()`, while `src/api/client.ts` exported a cached `API_BASE_URL` constant that had no production consumers outside the client and only test imports/mocks.
 - Rejected/deferred comments: hardware vendor/type normalization is real but spans onboarding, send-review signing capabilities, icons, adapter registration, and import/export model naming; price-provider offline fallback remains watch-only because the server runtime registry is already canonical.
 - `src/api/client.ts` now keeps the resolved base URL private and builds request, blob, download, and upload URLs through `joinApiBaseUrl`; `src/api/baseUrl.ts` remains the public frontend base URL owner for raw refresh/health boundaries.
 - API client initialization coverage now proves a configured `VITE_API_URL` affects an actual request URL instead of importing `API_BASE_URL`, and API module mocks no longer preserve the removed export.
 - Verification passed: `npm run test:run -- tests/api/baseUrl.test.ts tests/api/client.test.ts tests/api/remainingApiModules.test.ts tests/api/transactions.test.ts tests/api/refresh.test.ts tests/api/health.test.ts`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm run lint:app`; touched-file `npm run quality:lizard`; negative search for `API_BASE_URL` in `src/api/client.ts` and API client/module tests; `git diff --check`.
+- PR #485 passed all 30 latest combined Forgejo status contexts across runs 3090, 3091, 3092, and 3093, squash-merged as `16f1022df8f830b674237a30cafbbd9760e0c5d4`, and post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 
