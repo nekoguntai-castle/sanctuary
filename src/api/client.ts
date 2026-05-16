@@ -34,7 +34,7 @@
 
 import { createLogger } from "../../utils/logger";
 import { downloadBlob } from "../../utils/download";
-import { getApiBaseUrl } from "./baseUrl";
+import { getApiBaseUrl, joinApiBaseUrl } from "./baseUrl";
 import {
   refreshAccessToken,
   scheduleRefreshFromHeader,
@@ -187,10 +187,11 @@ async function withRetry<T>(
   throw lastError || new ApiError("Request failed after all retries", 0);
 }
 
-const API_BASE_URL = getApiBaseUrl();
+const apiBaseUrl = getApiBaseUrl();
 
-// Export for use by functions that need direct fetch (e.g., file downloads)
-export { API_BASE_URL };
+function buildApiUrl(endpoint: string): string {
+  return joinApiBaseUrl(apiBaseUrl, endpoint);
+}
 
 const NO_RETRY: RetryOptions = { enabled: false };
 
@@ -506,7 +507,7 @@ export class ApiClient {
     retryOptions: RetryOptions = {},
     isRefreshRetry = false,
   ): Promise<T> {
-    const url = `${API_BASE_URL}${endpoint}`;
+    const url = buildApiUrl(endpoint);
     // All public methods (get/post/put/patch/delete) set options.method
     // explicitly before calling request, so we trust it is defined here.
     const method = (options.method as string).toUpperCase();
@@ -672,7 +673,7 @@ export class ApiClient {
   ): Promise<Blob> {
     this.assertReplayableBody(options.body, "Blob request");
     const requestEndpoint = this.appendQueryParams(endpoint, options.params ?? {});
-    const url = `${API_BASE_URL}${requestEndpoint}`;
+    const url = buildApiUrl(requestEndpoint);
     const method = (options.method ?? "GET").toUpperCase();
 
     const performFetchBlob = async (): Promise<Blob> => {
@@ -712,7 +713,7 @@ export class ApiClient {
     options: { method?: string; params?: Record<string, string> } = {},
   ): Promise<void> {
     const requestEndpoint = this.appendQueryParams(endpoint, options.params ?? {});
-    const url = `${API_BASE_URL}${requestEndpoint}`;
+    const url = buildApiUrl(requestEndpoint);
     const method = (options.method ?? "GET").toUpperCase();
 
     const performDownload = async (): Promise<void> => {
@@ -750,7 +751,7 @@ export class ApiClient {
     retryOptions: RetryOptions = {},
   ): Promise<T> {
     this.assertFormDataUploadBody(formData);
-    const url = `${API_BASE_URL}${endpoint}`;
+    const url = buildApiUrl(endpoint);
 
     const performUpload = async (): Promise<T> => {
       const headers = buildTransferHeaders(undefined, "POST");

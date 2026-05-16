@@ -1,6 +1,36 @@
-# Task: Phase Q3 Device Connection Method Cleanup 2026-05-16
+# Task: Phase Q4 Frontend API Base URL Export Cleanup 2026-05-16
 
 Status: in progress.
+
+Goal: close the next bounded Phase Q cleanup slice by keeping frontend API base URL ownership in `src/api/baseUrl.ts` and making `src/api/client.ts` use that helper internally without exporting a second base-url constant.
+
+Source alignment: this is the `API_BASE_URL` export item from the Phase Q as-touched cleanup bucket in `docs/plans/rationalization-plan.md`.
+
+## Plan
+
+- [x] Verify Q3 PR #484 merged and `origin/main` contains squash commit `9b78adb7f93fe990250f6c07b78a8b4a942221f3`.
+- [x] Re-run recursive plan review on `docs/plans/rationalization-plan.md` after the Q3 merge and verify remaining Phase Q evidence.
+- [x] Select a bounded Q4 slice from the remaining Phase Q candidates.
+- [x] Refactor `src/api/client.ts` to use an internal `joinApiBaseUrl(getApiBaseUrl(), endpoint)` helper instead of exporting `API_BASE_URL`.
+- [x] Update API client tests and mocks so tests assert behavior through `getApiBaseUrl` or actual request URLs rather than importing/mocking `API_BASE_URL`.
+- [x] Preserve current configured `VITE_API_URL` behavior, default `/api/v1` behavior, query serialization, blob/download/upload URLs, and raw refresh/health boundary helpers.
+- [x] Run focused API base/client tests, app/test typechecks, app lint, touched-file lizard, negative `API_BASE_URL` production export searches, and `git diff --check`.
+- [ ] Open, monitor, and merge the PR.
+
+## Review
+
+- Recursive plan review after Q3 accepted one status/queue correction: Q3 is now closed via PR #484 as `9b78adb7f93fe990250f6c07b78a8b4a942221f3`, so the remaining Phase Q queue should not keep describing Q3 as active.
+- Source evidence supports frontend API base URL export cleanup as the next smallest justified slice: `src/api/baseUrl.ts` owns `getApiBaseUrl()` and `joinApiBaseUrl()`, while `src/api/client.ts` also exports a cached `API_BASE_URL` constant that has no production consumers outside the client and only test imports/mocks.
+- Rejected/deferred comments: hardware vendor/type normalization is real but spans onboarding, send-review signing capabilities, icons, adapter registration, and import/export model naming; price-provider offline fallback remains watch-only because the server runtime registry is already canonical.
+- `src/api/client.ts` now keeps the resolved base URL private and builds request, blob, download, and upload URLs through `joinApiBaseUrl`; `src/api/baseUrl.ts` remains the public frontend base URL owner for raw refresh/health boundaries.
+- API client initialization coverage now proves a configured `VITE_API_URL` affects an actual request URL instead of importing `API_BASE_URL`, and API module mocks no longer preserve the removed export.
+- Verification passed: `npm run test:run -- tests/api/baseUrl.test.ts tests/api/client.test.ts tests/api/remainingApiModules.test.ts tests/api/transactions.test.ts tests/api/refresh.test.ts tests/api/health.test.ts`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm run lint:app`; touched-file `npm run quality:lizard`; negative search for `API_BASE_URL` in `src/api/client.ts` and API client/module tests; `git diff --check`.
+
+---
+
+# Task: Phase Q3 Device Connection Method Cleanup 2026-05-16
+
+Status: merged and verified via PR #484 as squash commit `9b78adb7f93fe990250f6c07b78a8b4a942221f3`.
 
 Goal: close the next bounded Phase Q cleanup slice by making the ConnectDevice connection-method value contract derive from one frontend utility owner, without merging it with the separate send-review signing-method vocabulary or hardware vendor normalization logic.
 
@@ -16,7 +46,7 @@ Source alignment: this is the device connection-method item from the Phase Q as-
 - [x] Preserve the separate send-review signing method domain (`usb`/`airgap`/`qr`) and avoid hardware vendor normalization changes.
 - [x] Add or update focused tests for known/unknown connection methods, manual fallback behavior, and the exported method owner.
 - [x] Run focused ConnectDevice/device-connection tests, app/test typechecks as needed, app lint, touched-file lizard, negative duplicate-union searches, and `git diff --check`.
-- [ ] Open, monitor, and merge the PR.
+- [x] Open, monitor, and merge the PR.
 
 ## Review
 
@@ -27,6 +57,7 @@ Source alignment: this is the device connection-method item from the Phase Q as-
 - `components/ConnectDevice/types.ts` now imports/re-exports the utility-owned `ConnectionMethod` type, and `ConnectionMethodSelector` guards model connectivity before indexing UI config.
 - Focused coverage now asserts the exported connection-method owners and guards, including that `manual` is a connection method but not a hardware connectivity method, and that `airgap`/unknown values are not accepted in this domain.
 - Verification passed: `npm run test:run -- tests/utils/deviceConnection.test.ts tests/components/ConnectDevice/ConnectionMethodSelector.branches.test.tsx tests/components/ConnectDevice/ConnectDevice.branches.test.tsx`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm run lint:app`; touched-file `npm run quality:lizard`; duplicate production `ConnectionMethod` union/cast negative search; `git diff --check`.
+- PR #484 passed all 30 latest combined Forgejo status contexts across runs 3083, 3084, 3085, and 3086, squash-merged as `9b78adb7f93fe990250f6c07b78a8b4a942221f3`, and post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

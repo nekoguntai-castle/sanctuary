@@ -20,7 +20,6 @@ vi.mock("../../src/api/client", () => ({
     post: (...args: unknown[]) => apiClientMocks.post(...args),
     put: (...args: unknown[]) => apiClientMocks.put(...args),
   },
-  API_BASE_URL: "/api/v1",
 }));
 
 export const mockDelete = apiClientMocks.delete;

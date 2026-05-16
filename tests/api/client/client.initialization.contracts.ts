@@ -6,11 +6,20 @@ export const registerApiClientInitializationContracts = () => {
       vi.resetModules();
       vi.stubEnv('VITE_API_URL', 'https://api.example.test/v1');
 
-      const mod = await import('../../../src/api/client');
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ ok: true }),
+      });
+      vi.stubGlobal('fetch', fetchMock);
 
-      expect(mod.API_BASE_URL).toBe('https://api.example.test/v1');
+      const mod = await import('../../../src/api/client');
+      await mod.default.get('/status', undefined, { enabled: false });
+
+      expect(fetchMock.mock.calls[0][0]).toBe('https://api.example.test/v1/status');
 
       vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
       vi.resetModules();
     });
   });

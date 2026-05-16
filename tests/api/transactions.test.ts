@@ -20,7 +20,6 @@ vi.mock('../../src/api/client', () => ({
     patch: (...args: unknown[]) => mockPatch(...args),
     download: (...args: unknown[]) => mockDownload(...args),
   },
-  API_BASE_URL: '/api/v1',
 }));
 
 // Mock downloadBlob
