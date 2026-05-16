@@ -1,3 +1,30 @@
+# Task: Codebase Health Remediation Phase 6 Final Grade 2026-05-16
+
+Status: in progress; implementation and final grade artifacts are verified locally, PR delivery is next.
+
+Goal: execute Phase 6 of `docs/plans/codebase-health-remediation-plan.md` by running the final `$grade`, updating the quality assessment/history, classifying remaining risks, and delivering the final grade checkpoint through `$pr-delivery`.
+
+## Plan
+
+- [x] Start from `origin/main` after Phase 5 closeout merge.
+- [x] Run the full grade signal collector.
+- [x] Fix the auth-bootstrap preference race exposed by the final grade run.
+- [x] Update `docs/plans/codebase-health-assessment.md` and grade history with the final checkpoint.
+- [x] Verify final documentation and history artifacts.
+- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+
+## Review
+
+- The first final-grade runs exposed a reproducible root-test failure in `tests/contexts/CurrencyContext/settings.test.tsx`: a currency preference change could land while auth bootstrap was still resolving and then be overwritten by loaded user preferences without being persisted.
+- Fixed the production race by queueing local currency preference changes made while `useUser().isLoading` is true and flushing them once `user` becomes available in `contexts/CurrencyContext.tsx`.
+- Updated `contexts/useUserPreferenceMutation.ts` so its internal `userRef` is synchronized with the rendered user before descendant effects can call `updatePreferences`; this keeps post-auth preference flushes from reading the previous null user.
+- Added deterministic coverage for the auth-bootstrap currency preference path and replaced a brittle provider-reload exact call-count assertion with a behavior assertion in the CurrencyContext tests.
+- Final post-fix grade collector passed: `tests=pass` with 497 files / 6,197 tests, `lint=pass`, `typecheck=pass`, aggregate coverage 100.00%, `security_high=0`, `secrets=0`, and `lizard_warning_count=3`.
+- Updated `docs/plans/codebase-health-assessment.md`, `docs/plans/codebase-health-remediation-plan.md`, and `docs/plans/grade-history/sanctuary_.jsonl` for the Phase 6 final checkpoint: 95/100, A, High confidence.
+- Remaining risks are explicitly classified as accepted/deferred: 11 required physical hardware signing rows are still missing, 4 multisig rows are product-blocked, the Prisma dev-tool Hono moderate advisory remains accepted until a safe upstream fix exists, and the remaining lizard warnings are opportunistic cleanup.
+
+---
+
 # Task: Codebase Health Remediation Phase 5 Hardware Readiness 2026-05-16
 
 Status: merged and verified via PR #502 as squash commit `1ee56bec948343294c881f1fde8d7cad53b30e85`.

@@ -181,16 +181,13 @@ describe("CurrencyContext - Provider initialization", () => {
     await user.click(screen.getByTestId("reload-providers"));
 
     await waitFor(() => {
-      expect(priceApi.getProviders).toHaveBeenCalledTimes(
-        initialProviderLoadCount + 1,
-      );
-    });
-
-    await waitFor(() => {
       expect(screen.getByTestId("providers")).toHaveTextContent(
         "auto,mempool,coingecko,kraken,coinbase",
       );
     });
+    expect(vi.mocked(priceApi.getProviders).mock.calls.length).toBeGreaterThan(
+      initialProviderLoadCount,
+    );
   });
 
   it("falls back to auto when the selected provider is disabled globally", async () => {

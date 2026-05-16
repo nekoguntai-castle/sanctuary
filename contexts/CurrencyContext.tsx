@@ -13,6 +13,7 @@ import * as priceApi from "../src/api/price";
 import { suppressFiatForNetwork } from "../src/app/networks";
 import { createLogger } from "../utils/logger";
 import { satsToBTC, formatBTC } from "@sanctuary/shared/utils/bitcoin";
+import type { UserPreferences } from "../types";
 
 const log = createLogger("Currency");
 
@@ -66,7 +67,7 @@ const FALLBACK_PRICE_PROVIDERS = [
 export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const { user, updatePreferences } = useUser();
+  const { user, isLoading, updatePreferences } = useUser();
   const activeNetwork = useOptionalActiveNetwork()?.selectedNetwork;
 
   // Local state fallbacks for when user is not logged in yet (or if preferences are missing)
@@ -94,39 +95,85 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
   const priceProvider =
     (user?.preferences?.priceProvider as string) ?? localPriceProvider;
   const priceProviderRef = useRef(priceProvider);
+  const pendingBootstrapPreferencesRef = useRef<Partial<UserPreferences>>({});
 
   useEffect(() => {
     priceProviderRef.current = priceProvider;
   }, [priceProvider]);
 
+  const queueBootstrapPreference = useCallback(
+    (patch: Partial<UserPreferences>) => {
+      if (!isLoading) return;
+      pendingBootstrapPreferencesRef.current = {
+        ...pendingBootstrapPreferencesRef.current,
+        ...patch,
+      };
+    },
+    [isLoading],
+  );
+
+  useEffect(() => {
+    const pending = pendingBootstrapPreferencesRef.current;
+    if (Object.keys(pending).length === 0) return;
+
+    if (user) {
+      pendingBootstrapPreferencesRef.current = {};
+      updatePreferences(pending);
+      return;
+    }
+
+    if (!isLoading) {
+      pendingBootstrapPreferencesRef.current = {};
+    }
+  }, [isLoading, user, updatePreferences]);
+
   const setFiatCurrency = useCallback(
     (code: FiatCurrency) => {
       if (user) updatePreferences({ fiatCurrency: code });
-      else setLocalFiatCurrency(code);
+      else {
+        setLocalFiatCurrency(code);
+        queueBootstrapPreference({ fiatCurrency: code });
+      }
     },
-    [user, updatePreferences],
+    [user, updatePreferences, queueBootstrapPreference],
   );
 
   const setUnit = useCallback(
     (u: BitcoinUnit) => {
       if (user) updatePreferences({ unit: u });
-      else setLocalUnit(u);
+      else {
+        setLocalUnit(u);
+        queueBootstrapPreference({ unit: u });
+      }
     },
-    [user, updatePreferences],
+    [user, updatePreferences, queueBootstrapPreference],
   );
 
   const setPriceProvider = useCallback(
     (provider: string) => {
       if (user) updatePreferences({ priceProvider: provider });
-      else setLocalPriceProvider(provider);
+      else {
+        setLocalPriceProvider(provider);
+        queueBootstrapPreference({ priceProvider: provider });
+      }
     },
-    [user, updatePreferences],
+    [user, updatePreferences, queueBootstrapPreference],
   );
 
   const toggleShowFiat = useCallback(() => {
     if (user) updatePreferences({ showFiat: !showFiat });
-    else setLocalShowFiat(!localShowFiat);
-  }, [user, updatePreferences, showFiat, localShowFiat]);
+    else {
+      const nextShowFiat = !localShowFiat;
+      setLocalShowFiat(nextShowFiat);
+      queueBootstrapPreference({ showFiat: nextShowFiat });
+    }
+  }, [
+    user,
+    updatePreferences,
+    showFiat,
+    localShowFiat,
+    queueBootstrapPreference,
+  ]);
 
   const currencySymbol = SYMBOLS[fiatCurrency];
 

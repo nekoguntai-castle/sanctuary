@@ -2,12 +2,12 @@
 
 Date: 2026-05-16
 Owner: Codex
-Status: Active remediation plan; Phases 0-5 are merged, Phase 6 final grade is next
+Status: Active remediation plan; Phases 0-5 are merged, Phase 6 final grade is in PR delivery
 Original source: `docs/plans/codebase-health-assessment.md` at local commit `4baa75e6`
-Current evidence: `docs/plans/codebase-health-assessment.md` at the active Phase 5 readiness checkpoint
+Current evidence: `docs/plans/codebase-health-assessment.md` at the active Phase 6 final-grade checkpoint
 Review note: during recursive review, `origin/main` resolved to `718a3d16`; re-check that ref before executing because the remote branch may advance.
 
-Execution update: Phase 5 readiness is merged as PR #502 at `1ee56bec948343294c881f1fde8d7cad53b30e85`. It records software-gate readiness in `docs/plans/hardware-wallet-validation-2026-05-16.md`, corrects the stale PSBT verifier command to the repo-owned package script, and proves the strict fixture gate is blocked on 11 missing physical Ledger/Trezor/BitBox signing artifacts. Full hardware-in-loop evidence remains blocked on physical device capture.
+Execution update: Phase 6 final re-grade is prepared on `codex/codebase-health-phase-6-final-grade` from Phase 5 closeout commit `2cd1c14351c8834ae38f5fbf737788c733d1c739`. The final grade collector is green at 95/100 A with tests, lint, typecheck, coverage, high/critical audit, secrets, and lizard signals passing. The re-grade also found and fixed an auth-bootstrap currency preference race in `contexts/CurrencyContext.tsx` / `contexts/useUserPreferenceMutation.ts`; physical hardware-in-loop evidence remains blocked on device capture rather than claimed.
 
 ## Goal
 
@@ -232,12 +232,20 @@ Exit criteria:
 
 - Full grade is A range, hard-fail blockers are still clear, and the trend entry is appended.
 - Remaining risks are explicitly classified as accepted, deferred, or planned with owners.
+- Any blocker uncovered by the final grade is fixed before the report is finalized, or the plan is re-opened with a new owner and rationale.
 
 Verification:
 
 - `$grade`
 - `tail -n 1 docs/plans/grade-history/sanctuary_.jsonl | jq .`
 - `git diff --check -- docs/plans/codebase-health-assessment.md docs/plans/grade-history/sanctuary_.jsonl tasks/todo.md`
+
+Current Phase 6 evidence:
+
+- Final grade collector passed after the corrective patch: `tests=pass`, `lint=pass`, `typecheck=pass`, aggregate coverage 100.00%, `security_high=0`, `secrets=0`, and `lizard_warning_count=3`.
+- Root `npm test` passed after the corrective patch: 497 files / 6,197 tests.
+- The final grade remains 95/100 A with High confidence.
+- Remaining risks are accepted/deferred: physical hardware capture is blocked on 11 missing required rows and 4 product-blocked multisig rows, the Prisma dev-tool Hono moderate advisory is accepted until upstream ships a same-major fix, and the remaining lizard warnings are planned opportunistically.
 
 ## Priority Order
 

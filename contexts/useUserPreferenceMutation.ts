@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import type React from 'react';
 import type { User, UserPreferences } from '../types';
 import * as authApi from '../src/api/auth';
@@ -90,10 +90,7 @@ export function useUserPreferenceMutation({
   const preferenceRequestIdRef = useRef(0);
   const preferenceGenerationsRef = useRef<PreferenceGenerations>({});
   const pendingPreferenceRequestsRef = useRef<PendingPreferenceRequests>({});
-
-  useEffect(() => {
-    userRef.current = user;
-  }, [user]);
+  userRef.current = user;
 
   const resetPreferenceTracking = useCallback(() => {
     preferenceSessionIdRef.current += 1;

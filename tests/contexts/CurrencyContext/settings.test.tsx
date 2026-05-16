@@ -45,6 +45,16 @@ function AuthStateMarker() {
   return <span data-testid="auth-user-id">{user?.id ?? "none"}</span>;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("CurrencyContext - Currency settings", () => {
   beforeEach(setupDefaultMocks);
   afterEach(() => {
@@ -159,6 +169,38 @@ describe("CurrencyContext - Currency settings", () => {
       expect(authApi.updatePreferences).toHaveBeenCalledWith(
         expect.objectContaining({ showFiat: true }),
       );
+    });
+  });
+
+  it("persists currency changes made while auth bootstrap is loading", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const bootstrap = deferred<typeof authenticatedUser | null>();
+
+    vi.mocked(authApi.getCurrentUser).mockReturnValue(bootstrap.promise as any);
+    vi.mocked(authApi.updatePreferences).mockImplementation(
+      async (prefs: any) => ({
+        ...authenticatedUser,
+        preferences: {
+          ...authenticatedUser.preferences,
+          ...prefs,
+        },
+      }),
+    );
+
+    renderWithProviders(<TestConsumer />);
+
+    await user.click(screen.getByTestId("set-eur"));
+    expect(screen.getByTestId("fiat-currency")).toHaveTextContent("EUR");
+
+    bootstrap.resolve(authenticatedUser);
+
+    await waitFor(() => {
+      expect(authApi.updatePreferences).toHaveBeenCalledWith(
+        expect.objectContaining({ fiatCurrency: "EUR" }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("fiat-currency")).toHaveTextContent("EUR");
     });
   });
 });
