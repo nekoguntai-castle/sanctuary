@@ -2,13 +2,13 @@
 
 Date: 2026-05-16
 Owner: Codex
-Status: Current Phase 4 advisory-triage checkpoint after fixing the website Mermaid advisory and documenting the remaining Prisma dev-tool Hono chain
+Status: Current Phase 5 hardware-readiness checkpoint after software gates passed and physical signing artifacts were confirmed missing
 
 **Overall Score**: 95/100
 **Grade**: A
 **Confidence**: High
-**Mode**: phase4-advisory-triage-checkpoint
-**Commit**: `8535231e`
+**Mode**: phase5-hardware-readiness-checkpoint
+**Commit**: `9edf7a62+phase5-working-tree`
 
 ---
 
@@ -18,7 +18,7 @@ None.
 
 The hard-fail gates are clear after rerun verification: tests pass, typecheck passes, high/critical dependency vulnerabilities are 0, and gitleaks found 0 tracked-tree secrets.
 
-Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2 duplication-tooling fix, Phase 3 merge commit `e449117d`, Phase 3 closeout merge `875fd6a9`, and Phase 4 merge commit `8535231e`. Phase 4 changes only the docs-site lockfile and advisory documentation.
+Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2 duplication-tooling fix, Phase 3 merge commit `e449117d`, Phase 3 closeout merge `875fd6a9`, Phase 4 merge commit `8535231e`, and Phase 4 closeout merge `9edf7a62`. Phase 5 changes the hardware validation runbook command, executable fixture gate command list, and a dated hardware-readiness artifact; it does not add physical signed artifacts.
 
 ---
 
@@ -40,10 +40,10 @@ Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2
 ## Trend
 
 - Previous checkpoint: 95/100, A, commit `fed96e56+phase2-working-tree`, confidence High, dated 2026-05-16.
-- Current checkpoint: 95/100, A, commit `8535231e`, confidence High, dated 2026-05-16.
+- Current checkpoint: 95/100, A, commit `9edf7a62+phase5-working-tree`, confidence High, dated 2026-05-16.
 - Delta: +/-0 points, A held.
 
-Phase 4 clears the website Mermaid moderate advisory by moving the docs-site lockfile to `mermaid@11.15.0` and documents the remaining Prisma dev-tool Hono chain as accepted for this dated snapshot. The score stays flat because high/critical advisories were already 0 and the remaining moderate records require an upstream Prisma fix or an unacceptable Prisma downgrade.
+Phase 5 proves the hardware-validation software harness is ready and records the physical-device blocker in `docs/plans/hardware-wallet-validation-2026-05-16.md`. The score stays flat because full hardware-in-loop confidence still requires 11 sanitized physical Ledger, Trezor, and BitBox signing artifacts.
 
 ---
 
@@ -67,6 +67,8 @@ Phase 4 clears the website Mermaid moderate advisory by moving the docs-site loc
 | website advisories | 0 total after Mermaid lockfile refresh | `npm --prefix website audit --json` | Phase 4 exit evidence |
 | root application advisories without workspaces | 10 low, 0 moderate, 0 high, 0 critical | `npm audit --omit=dev --workspaces=false --json` | Phase 4 reachability evidence |
 | remaining moderate advisory chain | accepted; `prisma -> @prisma/dev -> @hono/node-server@1.19.11`; npm proposes a major downgrade to `prisma@6.19.3`, and current `@prisma/dev@0.24.7` still pins the vulnerable nested package | audit JSON and `npm view @prisma/dev` | Phase 4 rationale |
+| hardware validation software gates | pass; address verifier 122 vectors / 0 disagreements, PSBT verifier 5 unsigned + 4 signed vectors, hardware adapter tests 100 tests, non-strict hardware fixture replay 16 tests, typecheck and lizard gates pass | `docs/plans/hardware-wallet-validation-2026-05-16.md` | Phase 5 readiness evidence |
+| strict hardware signed fixture gate | expected fail; 11 required physical rows are missing and 4 multisig rows are product-blocked | `REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` | Phase 5 blocker evidence |
 | secrets | 0 | `gitleaks detect --no-git --redact` via `grade.sh` | Security 4.2: 0 = +4 |
 | lizard_warning_count | 3 known remaining warnings after removing `UserProvider`; repo lizard gate passed | targeted lizard on previous warning sites plus `npm run quality:lizard` | Maintainability 3.1: 1-5 = +3 |
 | lizard_avg_ccn | 1.4 | `lizard` via `grade.sh` | Informational |
@@ -115,7 +117,7 @@ Phase 4 clears the website Mermaid moderate advisory by moving the docs-site loc
 ## Top Risks
 
 1. **Accepted Prisma dev-tool Hono advisory remains** - root workspace `npm audit` reports 3 moderate records for one dev-tool chain, with no high or critical advisories; revisit when Prisma updates `@prisma/dev`.
-2. **Hardware proof remains static-only** - software vectors and adapter tests are strong, but they do not prove live hardware behavior on real devices.
+2. **Hardware proof remains static-only** - software gates are ready and the strict fixture gate identifies 11 missing physical signed artifacts, but live hardware behavior is still not proven.
 3. **A smaller send-flow render hotspot remains** - `components/send/steps/OutputsStep/sections/RecipientsSection.tsx` still reaches CCN 17 and should be simplified when touching the send UI.
 4. **Two test helper components still exceed the lizard threshold** - `MappingConsumer` in `tests/contexts/UserContext.test.tsx` and `SendTransactionWizard` in `tests/components/send/SendTransactionPage.test.tsx` remain warning sites.
 5. **Source-wide test fixture duplication remains intentional but large** - the production-biased repo gate is 1.65%, while broad all-source measurements include contract-test matrices; keep test fixture cleanup behavior-preserving and evidence-driven.
@@ -154,7 +156,7 @@ Phase 4 clears the website Mermaid moderate advisory by moving the docs-site loc
 | 2 | Stabilize duplication measurement | Fix `.jscpd.json` / `scripts/quality/jscpd-only.sh` so the repo command excludes generated, report, and nested-worktree paths. | Repo-owned command reports 1.65% duplication over the intended production-biased source set. | complete; +2 |
 | 3 | Reduce complexity hotspots | Split `UserProvider`; simplify `RecipientsSection` render branching if still warned. | `UserProvider` is no longer a lizard warning, targeted context tests pass, and public context exports are stable. | complete; risk reduced, score flat |
 | 4 | Triage advisories | Upgrade, override, or document moderate advisory reachability. | Website Mermaid advisory is fixed; 0 high/critical remains true; remaining Prisma dev-tool chain has dated rationale. | complete; risk reduced |
-| 5 | Record hardware evidence | Run and document hardware-in-loop signing matrix. | Hardware proof artifact exists and is referenced by tests/docs. | +1 to +2 confidence/completeness |
+| 5 | Record hardware evidence | Run and document hardware-in-loop signing matrix. | Software readiness artifact exists and strict gate proves 11 missing physical rows; full hardware proof remains blocked on devices. | readiness complete; score flat |
 
 ---
 
@@ -181,4 +183,5 @@ Phase 4 clears the website Mermaid moderate advisory by moving the docs-site loc
 - Direct lizard on `contexts/UserContext.tsx` and extracted UserContext helper modules - 0 warnings.
 - Direct lizard on the remaining known warning files - 3 warnings remain: `RecipientsSection`, `MappingConsumer`, and `SendTransactionWizard`.
 - Architecture verification passed: `npm run arch:lint`, `node scripts/architecture/detect-drift.mjs origin/main`, `npm run arch:graphs`, `npm run arch:calls`, `npm --prefix website run typecheck`, and `npm run docs:build`. The generated frontend architecture graph was updated for the new UserContext helper modules.
+- Hardware readiness verification passed for software gates: `npm --prefix scripts/verify-addresses run verify`, `npm --prefix scripts/verify-psbt run verify`, focused hardware adapter tests, non-strict hardware fixture replay, app/test/server typechecks, and `npm run quality:lizard`. The strict hardware fixture gate failed as expected because 11 required physical rows are missing.
 - Trend history was appended under `docs/plans/grade-history/sanctuary_.jsonl`.

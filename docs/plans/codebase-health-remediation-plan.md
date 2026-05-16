@@ -2,12 +2,12 @@
 
 Date: 2026-05-16
 Owner: Codex
-Status: Active remediation plan; Phases 0-4 are merged, Phase 5 is next
+Status: Active remediation plan; Phases 0-4 are merged, Phase 5 readiness/blocker is in PR delivery
 Original source: `docs/plans/codebase-health-assessment.md` at local commit `4baa75e6`
-Current evidence: `docs/plans/codebase-health-assessment.md` at the active Phase 4 checkpoint
+Current evidence: `docs/plans/codebase-health-assessment.md` at the active Phase 5 readiness checkpoint
 Review note: during recursive review, `origin/main` resolved to `718a3d16`; re-check that ref before executing because the remote branch may advance.
 
-Execution update: Phase 4 is merged as PR #500 at `8535231e2602b1744a1c303edeca2bb68610e5a9`. It fixed the website Mermaid advisory with `mermaid@11.15.0` in the docs-site lockfile and documented the remaining Prisma dev-tool Hono chain as accepted for this dated snapshot because npm's proposed remediation is an unsafe Prisma major downgrade. Phase 5 hardware-in-loop evidence is next, subject to physical device availability.
+Execution update: Phase 5 software readiness is recorded in `docs/plans/hardware-wallet-validation-2026-05-16.md`. The runbook software gates pass, the stale PSBT verifier command is corrected to the repo-owned package script, and the strict fixture gate fails as expected on 11 missing physical Ledger/Trezor/BitBox signing artifacts. Full hardware-in-loop evidence remains blocked on physical device capture.
 
 ## Goal
 

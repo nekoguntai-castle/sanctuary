@@ -1,3 +1,29 @@
+# Task: Codebase Health Remediation Phase 5 Hardware Readiness 2026-05-16
+
+Status: in progress.
+
+Goal: execute the repo-owned Phase 5 hardware validation readiness work from `docs/plans/codebase-health-remediation-plan.md`, prove the software fixture gates, record the missing physical-device evidence explicitly, and deliver the blocker/readiness state through `$pr-delivery`.
+
+## Plan
+
+- [x] Start from `origin/main` after Phase 4 closeout merge.
+- [x] Run the required software gates from `docs/reference/hardware-wallet-validation.md`.
+- [x] Run the strict hardware-signed fixture gate with `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` to prove the remaining blocker is missing physical artifacts.
+- [x] Add a dated hardware validation readiness/blocker artifact linked from the quality report and remediation plan.
+- [x] Run documentation verification and any focused hardware fixture tests needed for changed docs.
+- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+
+## Review
+
+- Started the verifier's Bitcoin Core regtest container and used a local `.tmp/phase5-bip-utils-venv` with `bip_utils@2.12.1` so the address verifier had Bitcoin Core, bitcoinjs-lib, Caravan, and one independent non-JS implementation available.
+- Required software gates passed: address verification covered 122 vectors with 0 disagreements; PSBT verification covered 5 generated Bitcoin Core-backed vectors and 4 generated Bitcoin Core-accepted signed vectors; focused Ledger/Trezor/Jade/BitBox adapter tests covered 4 files / 100 tests; non-strict hardware fixture replay covered 16 tests; app/test/server typechecks and `npm run quality:lizard` passed.
+- Corrected the stale PSBT verifier command in `docs/reference/hardware-wallet-validation.md` and `server/tests/fixtures/hardware-signed-psbt-vectors.ts` from the removed `server/node_modules/.bin/tsx` path to `npm --prefix scripts/verify-psbt run verify`.
+- Added `docs/plans/hardware-wallet-validation-2026-05-16.md` as the dated Phase 5 readiness/blocker artifact.
+- Strict hardware fixture gate was intentionally red: `REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` failed on the missing-row assertion with 11 required physical rows still absent and 4 unsupported multisig rows product-blocked.
+- Post-edit verification passed: focused hardware fixture replay test, grade-history JSONL tail parse, `git diff --check`, and direct trailing-whitespace scan on changed docs/task/source files.
+
+---
+
 # Task: Codebase Health Remediation Phase 4 Delivery 2026-05-16
 
 Status: merged and verified via PR #500 as squash commit `8535231e2602b1744a1c303edeca2bb68610e5a9`.
