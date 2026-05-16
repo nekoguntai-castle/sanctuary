@@ -1,3 +1,504 @@
+# Task: Codebase Health Remediation Phase 0 Delivery 2026-05-16
+
+Status: in progress.
+
+Goal: implement Phase 0 of `docs/plans/codebase-health-remediation-plan.md` by preserving the current dirty documentation state on a delivery branch, verifying it, and using `$pr-delivery` to merge the phase before Phase 1.
+
+## Plan
+
+- [x] Read the `pr-delivery` skill and current remediation plan.
+- [x] Preflight current branch, remote, commit state, dirty files, and relevant diffs.
+- [x] Record `HEAD` and `origin/main` commits plus documentation diff checks before branch reconciliation.
+- [x] Create a Phase 0 delivery branch and commit only documentation/task preservation changes.
+- [x] Rebase the delivery branch onto `origin/main` and resolve only documentation conflicts.
+- [x] Run Phase 0 documentation verification.
+- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+
+## Review
+
+- Rebased the Phase 0 documentation-preservation branch onto `origin/main` at `718a3d16`, replaying only the documentation commit and dropping unrelated local `main` history from the delivery branch.
+- Resolved documentation conflicts by keeping the Phase T rationalization closeout content and combining the new codebase-health task entries with the current `origin/main` task history.
+- Phase 0 verification passed: branch has one commit over `origin/main`; changed files are limited to `docs/plans/codebase-health-assessment.md`, `docs/plans/codebase-health-remediation-plan.md`, `docs/plans/grade-history/sanctuary_.jsonl`, `docs/plans/rationalization-plan.md`, `tasks/lessons.md`, and `tasks/todo.md`; `git diff --check origin/main...HEAD -- ...` passed; conflict-marker search found none; grade-history tail parses with `jq`.
+- PR delivery remains pending.
+
+---
+
+# Task: Recursive Review of Codebase Health Remediation Plan 2026-05-16
+
+Status: complete.
+
+Goal: recursively review `docs/plans/codebase-health-remediation-plan.md` until no verified actionable plan comments remain, applying only source-backed planning improvements.
+
+## Plan
+
+- [x] Read the recursive-plan-review skill and current remediation plan.
+- [x] Verify likely weak spots against repo scripts, tests, hardware docs, and `origin/main` evidence.
+- [x] Apply accepted plan improvements.
+- [x] Re-read the updated plan and run another review pass.
+- [x] Verify documentation changes and record accepted/rejected comments.
+
+## Review
+
+- Completed 2 review passes over `docs/plans/codebase-health-remediation-plan.md`.
+- Accepted improvement: Phase 0 now records local/remote commits before branch movement, requires a named non-destructive documentation preservation strategy, and tells the implementer to abort/re-plan if reconciliation conflicts exceed the known scope.
+- Accepted improvement: Phase 1 now refreshes/verifies the remote ref, records the reviewed `origin/main` target (`718a3d16` at review time), uses an explicit no-match `rg` command, and names focused Payjoin/admin monitoring/export/API-client tests.
+- Accepted improvement: Phase 2 now uses the existing `.jscpd.json` and `scripts/quality/jscpd-only.sh` path instead of inventing a second duplication command, with a dedicated generated output directory because the helper clears its report path.
+- Accepted improvement: Phase 3 now names the focused `UserContext`, login, preference, and theme tests plus the repo-owned lizard gate.
+- Accepted improvement: Phase 4 now audits the same package areas covered by the quality tooling, not only the root package.
+- Accepted improvement: Phase 5 now links hardware evidence to `docs/reference/hardware-wallet-validation.md`, `server/tests/fixtures/hardware-signed-psbt-vectors.ts`, and a dated evidence artifact path.
+- Accepted improvement: Phase 6 and the priority table now include an immediate post-reconciliation `$grade` checkpoint before committing to later hardening slices.
+- Rejected/deferred comments: no implementation work was done; generated-client/framework rewrites remain outside scope; broad test-fixture refactors remain gated on the cleaned duplication report; hardware capture remains manual/lab work.
+- Verification passed: plan readback, safe stale-marker search, `git diff --check -- tasks/todo.md`, direct trailing-whitespace scan for the plan and task ledger, and process check after stopping an accidentally expanded stale-marker scan.
+
+---
+
+# Task: Codebase Health Remediation Plan 2026-05-16
+
+Status: complete.
+
+Goal: turn the 87/100 `$grade` findings into a prioritized remediation plan that can recover an A grade without broad, unrelated refactors.
+
+## Plan
+
+- [x] Review the current grade report, rationalization plan, task history, and dirty worktree.
+- [x] Identify which findings should be addressed by reconciliation versus new implementation.
+- [x] Write a durable remediation plan with phases, exit criteria, risks, and verification commands.
+- [x] Verify the documentation changes and record the result.
+
+## Review
+
+- Added `docs/plans/codebase-health-remediation-plan.md` with a phased path from the 87/100 grade back to A range.
+- Plan order is workspace preservation, local/remote convergence reconciliation, reproducible duplication measurement, `UserContext` complexity reduction, dependency advisory triage, hardware evidence capture, and re-grade.
+- Explicitly preserved the product decisions from the rationalization work: keep justified raw fetch/security-boundary splits, keep `ledger_gen_5` as Sanctuary's local alias, and let target export adapters own target-format names.
+- Verification passed: `git diff --check -- tasks/todo.md`, direct trailing-whitespace scan on the new plan and task ledger, plan readback, and stale-marker scan with only historical task matches outside this completed entry.
+
+---
+
+# Task: Full Codebase Grade 2026-05-16
+
+Status: complete.
+
+Goal: run `$grade` as a full repository audit, update `docs/plans/codebase-health-assessment.md`, append grade history, and preserve existing dirty documentation changes.
+
+## Plan
+
+- [x] Read the grade skill standards and current repository status.
+- [x] Run the bundled full-grade signal collector and trend helpers.
+- [x] Inspect judged ISO 25010 criteria and divergent-path candidates.
+- [x] Update `docs/plans/codebase-health-assessment.md` with scored evidence and recommendations.
+- [x] Append grade history and verify the report/task diffs.
+
+## Review
+
+- Completed full `$grade` for the checked-out worktree at `4baa75e6`, not remote `origin/main`.
+- Wrote `docs/plans/codebase-health-assessment.md` with an 87/100, B, High-confidence score.
+- Hard-fail blockers: none. Tests, typecheck, lint, high/critical audit, and gitleaks are clean.
+- Main score drag: local `main` is `ahead 1, behind 18`, so current checkout still has Payjoin/admin monitoring/hardware export/API base URL divergence that has already been fixed on `origin/main`; source-wide `jscpd` duplication is 5.11%; `contexts/UserContext.tsx` reaches CCN 71.
+- Appended the full-mode trend entry to `docs/plans/grade-history/sanctuary_.jsonl`.
+- Verification passed: `git diff --check -- docs/plans/codebase-health-assessment.md docs/plans/grade-history/sanctuary_.jsonl tasks/todo.md`, `tail -n 1 docs/plans/grade-history/sanctuary_.jsonl | jq .`, and final report review.
+
+---
+
+# Task: Post-Phase-T Rationalization Reanalysis 2026-05-16
+
+Status: complete.
+
+Goal: re-run `$rationalize` after Phase T and closeout merged, update `docs/plans/rationalization-plan.md` with current divergence classifications, and preserve existing local documentation changes.
+
+## Plan
+
+- [x] Check the worktree and existing dirty documentation changes.
+- [x] Use `origin/main` as source evidence because local `main` is ahead/behind.
+- [x] Verify Payjoin, admin monitoring, and hardware export Phase R/S/T closure against merged source.
+- [x] Re-scrub remaining policy, draft, websocket, price fallback, and hardware normalization candidates.
+- [x] Update `docs/plans/rationalization-plan.md` with the post-Phase-T decision set.
+- [x] Run documentation verification and record the result.
+
+## Review
+
+- Updated `docs/plans/rationalization-plan.md` to make the active status current through Phase T and PR #491 closeout.
+- Marked Payjoin attempt validation, admin monitoring validation, and hardware/export wallet-model mapping as closed: PR #488, PR #489, and PR #490 respectively.
+- Recorded the product/behavior decisions that actually merged: Payjoin sender JSON and BIP78 receiver stay separate; blank/null/omitted admin monitoring `customUrl` clears the override while malformed values reject; `ledger_gen_5` remains the local Sanctuary alias while Sparrow export emits `LEDGER_NANO_GEN5`.
+- Reclassified the remaining divergences as watch/as-touched rather than a new broad phase: wallet/admin policy route schemas, draft status route schema, residual websocket confirmation broadcast, price offline fallback, node config `servers` typing, and broader hardware vendor normalization.
+- Verification passed: targeted `git show`, `git grep`, `rg`, and `sed` source reads against `origin/main`; `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`.
+- Stale-wording scan found only historical task/addendum entries and older closed-phase notes, not the active post-Phase-T decision set. No runtime tests were needed because this was documentation/planning only.
+
+---
+
+# Task: Recursive Review of Rationalization Plan After Product Decisions 2026-05-16
+
+Status: complete.
+
+Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md` after the Payjoin/admin monitoring/hardware export product decisions, applying only evidence-backed plan improvements until no actionable comments remain.
+
+## Plan
+
+- [x] Read the current rationalization plan and active task history.
+- [x] Verify likely weak spots against `origin/main` source evidence.
+- [x] Apply minimal plan edits for accepted comments.
+- [x] Re-read the updated plan and reject or defer non-actionable comments.
+- [x] Run documentation verification and record the result.
+
+## Review
+
+- Completed 2 review passes over `docs/plans/rationalization-plan.md` after the admin monitoring and hardware export product decisions.
+- Accepted improvement: added the active R/S/T/U follow-up rows to the main convergence table so the top-level plan no longer stops at Q4 while the lower reanalysis section names new work.
+- Accepted improvement: added canonical path decision rows for Payjoin attempt route validation, admin monitoring update validation, and hardware/export device model identity.
+- Accepted improvement: clarified admin monitoring semantics: `customUrl: null` and blank string clear, omitted `customUrl` is a no-op, malformed non-string/non-null payloads reject with 400, Grafana `anonymousAccess` must be boolean when present, and strict/closed schemas should reject extras.
+- Accepted improvement: tightened Phase T verification so hardware/export cleanup must exercise real export handlers, remove test-local mapping copies, keep `ledger_gen_5` as the canonical alias, and remove the current `LEDGER_FLEX` versus `LEDGER_NANO_S` disagreement.
+- Rejected/deferred comments: no implementation was done in this plan-review pass; broader policy/draft/websocket/price/hardware cleanup remains Phase U watch-only; format-specific `ledger_gen_5` export translation remains allowed only if a target adapter explicitly requires it and tests prove that adapter behavior.
+- Verification passed: source reads from `origin/main` for Payjoin attempt validation, admin monitoring route/service/OpenAPI contracts, admin monitoring tests, Sparrow/export device mapping, and export tests; stale wording searches; `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`.
+
+---
+
+# Task: Repo-Wide Divergence Reanalysis 2026-05-16
+
+Status: complete.
+
+Goal: re-scrub the codebase for login-style divergent implementation paths, decide which splits are justified, and update the rationalization plan with the consolidation candidates that are still worth doing.
+
+## Plan
+
+- [x] Re-read the current rationalization plan and active task history.
+- [x] Run targeted repo-wide searches for duplicated contracts, route/client splits, compatibility paths, and repeated domain values.
+- [x] Verify the strongest candidates against source files instead of relying on search hits alone.
+- [x] Classify findings as converge, watch, keep separate, or remove, and update `docs/plans/rationalization-plan.md`.
+- [x] Run documentation verification and record the review result.
+
+## Review
+
+- Reanalysis used `origin/main` at `38d586cc6d741db94af6d49d717e74a4c0966121` as source of truth because local `main` is currently `ahead 1, behind 14`; stale local route files were not treated as live divergences.
+- Updated `docs/plans/rationalization-plan.md` so the active status reflects the Phase Q4 closeout and added a new 2026-05-16 reanalysis section.
+- Completed phases N/O/P/Q1/Q2/Q3/Q4 remain closed. The next consolidation candidates worth doing are Payjoin attempt route validation, admin monitoring update validation, and hardware/export device model mapping cleanup.
+- Product decisions recorded after user review: admin monitoring `customUrl: null` and blank string clear the custom URL while malformed non-string/non-null payloads reject with 400; `ledger_gen_5` is the canonical hardware/export alias and should map to the `ledger_gen_5` name rather than another Ledger model.
+- Watch/as-touched items are wallet policy/admin policy schema derivation, draft status route validation, the residual websocket confirmation broadcast path, price-provider offline fallback, and broader hardware vendor normalization.
+- Justified splits remain raw refresh/health fetch helpers outside the authenticated API client, root `/health` versus `/api/v1/health`, LLM egress proxy/backend validation, gateway manifest versus request-schema map, device roles versus wallet roles, and ConnectDevice onboarding methods versus send-review signing methods.
+- Verification passed: targeted `git grep`/`git show` source reads against `origin/main`, `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`, stale live-status searches, and final diff review. No runtime tests were needed because this was documentation/planning only.
+
+---
+
+# Task: AGENTS Subagent Parallelism Policy 2026-05-16
+
+Status: complete.
+
+Goal: update `AGENTS.md` so Codex prefers subagents whenever practical, parallelizes work aggressively without compromising project integrity, selects task-fit models for subagents, and escalates subagent model strength when task difficulty exceeds the initial assignment.
+
+## Plan
+
+- [x] Read the current `AGENTS.md` subagent policy and task ledger context.
+- [x] Ask a focused subagent for wording suggestions.
+- [x] Expand the `AGENTS.md` subagent strategy with parallelization, ownership, model-fit, and escalation rules.
+- [x] Verify the diff and record the result.
+
+## Review
+
+- Expanded `AGENTS.md` Subagent Strategy so Codex should try to use subagents whenever practical, parallelize work as much as possible when integrity is not compromised, keep subagent tasks focused with clear ownership boundaries, choose task-fit models, and escalate to stronger models or split work when a subagent task becomes too difficult.
+- Verification passed: reviewed the changed section, confirmed `AGENTS.md` is intentionally ignored by Git in this repo, ran `git diff --check -- tasks/todo.md`, and found no trailing whitespace in `AGENTS.md` or `tasks/todo.md`.
+
+---
+
+# Task: Recursive Review of Rationalization Plan After Phase M2 2026-05-16
+
+Status: complete.
+
+Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md` after the Phase M2 merge, applying only verified plan improvements until no actionable comments remain.
+
+## Plan
+
+- [x] Read the current rationalization plan and task ledger for active scope, assumptions, phase order, verification, and completion criteria.
+- [x] Verify likely stale Phase M2 status against `origin/main` merge evidence and current source files.
+- [x] Verify the next active Phase N/O/P findings still have source evidence after Phase M2.
+- [x] Apply minimal plan edits for accepted comments.
+- [x] Re-read the updated plan and search for stale active-queue wording.
+- [x] Run documentation verification and record accepted/rejected comments.
+
+## Review
+
+- Completed 2 review passes over `docs/plans/rationalization-plan.md`: an initial source-backed pass against `origin/main` at Phase M2, then a clean re-read after edits.
+- Accepted improvement: top-level status, executive summary, and convergence tables now show the post-Phase-I queue merged through Phase M2, including PR #478 as `431ef4f1c22fa2765bded9c267cc4bf7c24bb721`, with Phase N as the next active slice.
+- Accepted improvement: the post-Phase-I inventory now marks UTXO selection route validation as closed Phase M2 work and keeps websocket protocol ownership, frontend API hygiene, and lower-priority UTXO strategy cleanup as the remaining active queue.
+- Accepted improvement: execution guardrails and closeout notes now reference active N/O work instead of implying M2 still needs implementation.
+- Rejected/deferred comments: older addenda still contain historical pre-merge wording where they are preserved as dated review history; no phase-order change beyond N next was evidence-backed; implementation remains outside this plan-review request.
+- Verification passed: source reads from `origin/main` for UTXO selection validation closure, websocket protocol drift, frontend API hygiene drift, and UTXO strategy duplication; stale active-wording searches; `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`.
+
+---
+
+# Task: Recursive Review of Rationalization Plan Phase L/M Closeout 2026-05-16
+
+Status: complete.
+
+Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md` after the Phase L and Phase M merges, applying only verified plan improvements until no actionable comments remain.
+
+## Plan
+
+- [x] Read the current rationalization plan and identify active scope, assumptions, phase order, verification, and completion criteria.
+- [x] Verify likely stale Phase L/M status against `origin/main` merge evidence and current source files.
+- [x] Apply minimal plan edits for accepted comments.
+- [x] Re-read the updated plan and search for stale active-queue wording.
+- [x] Run documentation verification and record accepted/rejected comments.
+
+## Review
+
+- Completed 2 review passes over `docs/plans/rationalization-plan.md`: an initial source-backed pass against `origin/main` at Phase M, then a clean re-read after edits.
+- Accepted improvement: top-level status, executive summary, and convergence table now show the post-Phase-I queue merged through Phase M, including PR #476 and PR #477, with Phase M2 as the next active slice.
+- Accepted improvement: the post-Phase-I inventory now marks gateway deploy/runtime and transfer route validation as closed Phase L/M work, while keeping UTXO selection route validation as the next active route-boundary issue.
+- Accepted improvement: execution guardrails and closeout notes now reference active M2/N/O work instead of implying Phase L or M still need implementation.
+- Rejected/deferred comments: older addenda still contain Phase L/M pre-merge wording where they are preserved as dated review history; no phase-order change beyond M2 next was evidence-backed; implementation remains outside this plan-review request.
+- Verification passed: source reads from `origin/main` for gateway config, transfer validation, and UTXO selection route drift; stale active-wording searches; `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`.
+
+---
+
+# Task: Recursive Review of Rationalization Plan 2026-05-16
+
+Status: complete.
+
+Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md`, applying only verified plan improvements until no actionable comments remain.
+
+## Plan
+
+- [x] Read the current rationalization plan and identify active scope, assumptions, phase order, verification, and completion criteria.
+- [x] Run focused source checks for likely stale or under-specified plan claims.
+- [x] Apply minimal plan edits for accepted comments.
+- [x] Re-read the updated plan and repeat until a clean pass has no actionable comments.
+- [x] Run documentation verification and record accepted/rejected comments.
+
+## Review
+
+- Completed 2 review passes over `docs/plans/rationalization-plan.md`: an initial source-backed pass against the current `origin/main` Phase L worktree, then a clean re-read after edits.
+- Accepted improvement: the plan now records that Phase J and Phase K are closed via PR #474 and PR #475, updates the top-level status and convergence table through Phase K, and makes Phase L the first open implementation phase.
+- Accepted improvement: Phase L verification now explicitly covers stale push enable-flag cleanup/negative searches and release digest, artifact-verifier, and downstream `sanctuary-umbrel` notification updates if prebuilt image inventory expands.
+- Accepted improvement: the active post-Phase-I inventory now treats sync priority and mempool estimator findings as closed Phase J/K history while keeping the remaining L/M/M2/N/O/P/Q queue intact.
+- Rejected/deferred comments: historical addenda still contain old "converge first/second" wording because those sections are preserved as dated review history; no phase-order change was evidence-backed; implementation of Phase L remains outside this plan-review request.
+- Verification passed: focused `rg`/`sed` source reads for J/K closure, gateway config/docs/compose drift, release image/digest consumers, transfer validation, UTXO route validation, websocket protocol drift, Payjoin naming, and frontend query construction; stale-text searches for active J/K wording; `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`.
+
+---
+
+# Task: Recursive Review of Rationalization Plan 2026-05-15 Follow-Up
+
+Status: complete.
+
+Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md` after the latest plan and delivery work, applying only verified plan improvements until no actionable comments remain.
+
+## Plan
+
+- [x] Read the current rationalization plan and identify active scope, assumptions, phase order, verification, and completion criteria.
+- [x] Run focused source checks for likely stale or under-specified plan claims.
+- [x] Apply minimal plan edits for accepted comments.
+- [x] Re-read the updated plan and repeat until a clean pass has no actionable comments.
+- [x] Run documentation verification and record accepted/rejected comments.
+
+## Review
+
+- Completed 2 review passes over `docs/plans/rationalization-plan.md`: an initial source-backed pass over active J/K/L/M/M2/N/O/P/Q scope, then a clean re-read after edits.
+- Accepted improvement: Phase L now explicitly includes `gateway/ARCHITECTURE.md` because it still documents backend defaults as `backend:3000` while compose points the gateway at `backend:3001`.
+- Accepted improvement: Phase K verification and edge cases now explain that Prisma schema/migration estimator defaults are deliberate storage-default literals that cannot import TypeScript constants, so negative searches should allow them while requiring parity/search coverage.
+- Rejected/deferred comments: no phase-order change was evidence-backed; Phase J implementation status is being tracked in the delivery worktree/PR rather than folded into the durable plan before merge; generated-client migration remains outside this narrow plan review.
+- Verification passed: focused `rg`/`sed` source reads for sync priority validation, mempool estimator defaults, gateway config/docs/compose drift, transfer validation, UTXO route validation, websocket protocol drift, Payjoin naming, and frontend query construction; `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`.
+
+---
+
+# Task: Recursive Review of Rationalization Plan 2026-05-15
+
+Status: complete.
+
+Goal: recursively review `docs/plans/rationalization-plan.md` until no verified actionable plan comments remain, applying only evidence-backed plan improvements and not implementing the phases.
+
+## Plan
+
+- [x] Read the full plan and identify the active scope, assumptions, phase order, verification, and completion criteria.
+- [x] Run focused source checks for likely stale or under-specified plan claims.
+- [x] Apply minimal plan edits for accepted comments.
+- [x] Re-read the updated plan and repeat until a clean pass has no actionable comments.
+- [x] Run documentation verification and record accepted/rejected comments.
+
+## Review
+
+- Completed 3 review passes over `docs/plans/rationalization-plan.md`: initial full read/source verification, re-read after guardrails, and final clean pass.
+- Accepted improvement: added `Post-Phase-I Execution Guardrails` covering small-PR slicing, explicit compatibility decisions for J/M/M2, the Phase L prebuilt deploy decision, Phase N gateway-forwarding versus local-only notification behavior, Phase O query serialization boundaries, and backout expectations.
+- Accepted improvement: renamed the old `Edge Cases` section to `Historical Edge Cases For Closed Phases` so closed Phase 5/6 notes are not confused with the active post-Phase-I queue.
+- Rejected/deferred comments: no phase-order change was evidence-backed; broad generated-client migration remains outside scope; rewriting historical addenda would be churn; implementation of J-Q/M2 was outside this plan-review request.
+- Verification passed: focused `rg`/`sed` source reads for J/K/L/M/M2/N/O evidence and `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`.
+
+---
+
+# Task: Recursive Plan Review Skill 2026-05-15
+
+Status: complete.
+
+Goal: create a `/recursive-plan-review` Codex skill that takes a plan file, repeatedly reviews and improves it, and stops only when no verified comments or improvements remain.
+
+## Plan
+
+- [x] Inspect skill-creator requirements and current local skill layout.
+- [x] Initialize `recursive-plan-review` under the auto-discovered user skills directory.
+- [x] Write concise skill instructions for plan-file input, recursive critique, verified edits, convergence criteria, and final reporting.
+- [x] Add only reusable helper resources if they materially reduce ambiguity or repeated work.
+- [x] Validate the skill with the bundled skill validator and self-review the result.
+- [x] Record verification and any residual limits in this task review.
+
+## Review
+
+- Created `/home/nekoguntai/.codex/skills/recursive-plan-review/SKILL.md` with an evidence-backed recursive plan-review loop, explicit stopping rule, quality bar, and final-report requirements.
+- Created `/home/nekoguntai/.codex/skills/recursive-plan-review/agents/openai.yaml` with UI metadata and a default prompt.
+- No helper scripts were added because the repeatable value is the review protocol; deterministic file transformation would be premature.
+- Verification passed: skill-creator `quick_validate.py` reported `Skill is valid!` when run inside a temporary venv with PyYAML, and `git diff --check -- tasks/todo.md tasks/lessons.md` passed.
+- Residual note: the current running Codex session's skill list may not refresh until a new session or reload, but the skill files are in the auto-discovered user skills directory.
+
+---
+
+# Task: Fifth Independent Review of Post-Phase-I Findings 2026-05-15
+
+Status: complete.
+
+Goal: run a fifth independent challenge against the adjusted post-Phase-I divergence findings and correct the durable plan only where source evidence shows a remaining stale, overstated, or under-scoped finding.
+
+## Plan
+
+- [x] Re-read the current post-Phase-I addendum and latest independent review history.
+- [x] Run a fifth independent read-only review against current source evidence.
+- [x] Locally verify any accepted corrections around route validation, deploy/runtime contracts, websocket protocol ownership, and frontend API hygiene.
+- [x] Update `docs/plans/rationalization-plan.md` with targeted corrections if needed.
+- [x] Run documentation verification and self-review the diff.
+
+## Review
+
+- Fifth review kept the J/K/L/M/M2/N/O/P/Q order and rejected moving UTXO strategy constants above transfer validation, demoting gateway deploy/runtime drift, or widening frontend API hygiene into generated-client work.
+- Accepted correction: Phase L now distinguishes setup/offline manifests, which already include gateway/proxy images, from the remaining prebuilt publish/compose and `ai` service-name script drift.
+- Accepted correction: Phase J now explicitly covers malformed sync request-body normalization from `.catch({})`, in addition to invalid priority values and extra-field drift.
+- Accepted correction: Phase M2 now covers adjacent `scriptType` route/OpenAPI drift, not only UTXO `amount` parsing before `BigInt`.
+- Accepted correction: Phase N now includes the server-side split between typed gateway-forwarded broadcasts and notification broadcasts that build events directly and only use local websocket broadcast.
+- Accepted correction: Phase O now cites current query-construction evidence and tracks duplicate client-internal query builders.
+- Verification passed: `git diff --check` plus focused source reads for sync route/OpenAPI body behavior, UTXO route/OpenAPI `amount` and `scriptType`, gateway/prebuilt/offline service inventory, websocket broadcast paths, and frontend API query construction.
+
+---
+
+# Task: Fourth Independent Review of Post-Phase-I Findings 2026-05-15
+
+Status: complete.
+
+Goal: run a fourth independent challenge against the adjusted post-Phase-I divergence findings and correct the durable plan only where source evidence shows a remaining stale, overstated, or under-scoped finding.
+
+## Plan
+
+- [x] Re-read the current post-Phase-I addendum and recent independent review history.
+- [x] Run a fourth independent read-only review against current source evidence.
+- [x] Locally verify any accepted corrections around deploy/runtime contracts, route validation, frontend API hygiene, and low-priority buckets.
+- [x] Update `docs/plans/rationalization-plan.md` with targeted corrections if needed.
+- [x] Run documentation verification and self-review the diff.
+
+## Review
+
+- Fourth review kept J/K/L/M as the top order and rejected moving UTXO strategy constants above transfer validation, demoting gateway deploy/runtime drift, or widening frontend API hygiene into generated-client work.
+- Accepted correction: Phase J now covers sync route extra-field handling because the route accepts passthrough fields while OpenAPI documents `additionalProperties: false`.
+- Accepted correction: Phase K now includes the admin no-config node config response returning `simple` instead of the DB/runtime/frontend `mempool_space` default.
+- Accepted correction: UTXO `amount` validation is now split into near-term Phase M2, while UTXO strategy constant convergence remains the lower-priority Phase P coin-control follow-up.
+- Accepted correction: Phase N now covers websocket client-message/schema parity for batch subscribe/unsubscribe as well as events and channel builders.
+- Verification passed: `git diff --check` plus focused source reads for sync/OpenAPI extra-field drift, mempool defaults, UTXO amount parsing, websocket shared/frontend/server message drift, and gateway/offline deploy inventory.
+
+---
+
+# Task: Remote Forgejo 15.0.2 Upgrade 2026-05-15
+
+Status: complete.
+
+Goal: update the remote Forgejo instance to Forgejo 15.0.2 and change the instance title from `sanctuary mirror` to `nekoguntai local` without saving connection credentials.
+
+## Plan
+
+- [x] Confirm the official current Forgejo release and applicable upgrade path.
+- [x] Connect without persisting credentials or host details in repository files.
+- [x] Inspect the remote install method, service manager, binary/container path, config path, data path, current version, and current title.
+- [x] Create or run a pre-upgrade backup and verify the backup is readable before changing the service.
+- [x] Upgrade Forgejo to 15.0.2 using the host's existing install style.
+- [x] Change the configured instance title to `nekoguntai local`.
+- [x] Restart and verify version, title, HTTP health, and recent service logs.
+
+## Review
+
+- Confirmed official Forgejo 15.0.2 availability from Forgejo's download/release information and confirmed Homebrew's `forgejo` formula had stable 15.0.2 available.
+- Remote install was Homebrew-managed on macOS arm64, running as a launchd service from `/opt/homebrew/opt/forgejo/bin/forgejo` with work path `/opt/homebrew/var/forgejo`.
+- Pre-upgrade external-drive backup completed successfully at `/Volumes/Untitled/forgejo-backups/snapshots/20260515T224417Z`; backup SQLite `PRAGMA quick_check` returned `ok`.
+- Upgraded Forgejo from 15.0.1 to 15.0.2 with `brew upgrade forgejo`.
+- Changed active config `/opt/homebrew/var/forgejo/custom/conf/app.ini` to `APP_NAME = nekoguntai local`.
+- Regenerated Forgejo repository hooks after doctor reported post-upgrade hook drift; targeted hook doctor check now passes.
+- Verification passed: `forgejo --version` reports 15.0.2, Homebrew service is started, local and LAN HTTP root return `200`, rendered page title is `nekoguntai local`, live SQLite `PRAGMA quick_check` returns `ok`, and recent logs show the web server listening on port 3000.
+- Residual note: full doctor still reports one non-Forgejo-managed line in the operator account's `authorized_keys`; it was left unchanged to avoid breaking host access and is unrelated to the requested version/title change.
+
+---
+
+# Task: Third Independent Review of Post-Phase-I Findings 2026-05-15
+
+Status: complete.
+
+Goal: run a third independent challenge against the adjusted post-Phase-I divergence findings and correct the durable plan only where source evidence shows a remaining stale or under-scoped finding.
+
+## Plan
+
+- [x] Re-read the current post-Phase-I addendum and top task history.
+- [x] Run a third independent read-only review against current source evidence.
+- [x] Locally verify any accepted corrections around gateway deploy/runtime contracts, transfer route validation, and stale ranking language.
+- [x] Update `docs/plans/rationalization-plan.md` with targeted corrections if needed.
+- [x] Run documentation verification and self-review the diff.
+
+## Review
+
+- Third review confirmed J sync priority, K mempool estimator, N websocket events/channels, and O frontend API hygiene remain justified as written.
+- Accepted correction: Phase L now includes documented `APNS_PRODUCTION` drift and active offline/install `ai` versus `llm-egress-proxy` service-name drift, not just gateway push flags.
+- Accepted correction: Phase M now includes all transfer request-body type drift, including create `message` and decline `reason`, plus list-filter validation.
+- Accepted correction: UTXO strategy work stays below transfer validation, but Phase P now tracks adjacent `amount` validation before `BigInt(amount)` when coin-control code is next touched.
+- Verification passed: `git diff --check` plus focused source reads for gateway compose/config/README drift, offline/install service-name drift, transfer route/OpenAPI drift, and UTXO amount parsing.
+
+---
+
+# Task: Second Independent Review of Post-Phase-I Findings 2026-05-15
+
+Status: complete.
+
+Goal: run another independent challenge against the already-adjusted post-Phase-I findings and correct any remaining overstated, understated, or stale plan text.
+
+## Plan
+
+- [x] Re-read the adjusted post-Phase-I addendum and previous independent review result.
+- [x] Run a second independent read-only review against current source evidence.
+- [x] Locally verify accepted corrections around transfer route validation, gateway documented flags, and stale summary wording.
+- [x] Update `docs/plans/rationalization-plan.md` with targeted corrections.
+- [x] Run documentation verification and self-review the diff.
+
+## Review
+
+- Second review confirmed the final ranking: J sync priority, K mempool estimator, L gateway deploy/runtime, M transfer route validation, N websocket events/channels, O frontend API hygiene, P UTXO coin-control follow-up, Q low-priority cleanup.
+- Accepted correction: Phase M now covers transfer create-body validation as well as list filters because the route accepts several OpenAPI-typed fields as `z.unknown()`.
+- Accepted correction: Phase L now explicitly includes documented `FCM_ENABLED` and `APNS_ENABLED` flags.
+- Accepted correction: stale summary/verification text was updated so transfer route validation appears before UTXO strategy follow-up.
+- Verification passed: `git diff --check` plus focused source reads for transfer route schema/OpenAPI/helper behavior and gateway compose/config/README flag drift.
+
+---
+
+# Task: Independent Review of Post-Phase-I Findings 2026-05-15
+
+Status: complete.
+
+Goal: get a fresh independent challenge of the post-Phase-I divergence findings, verify whether the ranking is defensible, and update the durable plan where the review finds a better classification.
+
+## Plan
+
+- [x] Re-read the current post-Phase-I addendum and task summary.
+- [x] Run an independent read-only review of the findings against current source evidence.
+- [x] Locally verify the review's main ranking changes against source files.
+- [x] Update `docs/plans/rationalization-plan.md` with accepted re-rankings and softened findings.
+- [x] Run documentation verification and self-review the diff.
+
+## Review
+
+- Independent review confirmed sync priority, mempool estimator defaults, and gateway runtime/deploy contracts as the top three convergence phases.
+- Accepted correction: transfer filter validation is stronger than UTXO strategy cleanup because invalid `status` is cast into service filters, so transfer filters now rank ahead of UTXO.
+- Accepted correction: UTXO strategy constants are duplicated but currently route-validated, so this is now a lower-priority coin-control follow-up rather than a top standalone phase.
+- Accepted correction: frontend API hygiene should stay narrow; PSBT helper consolidation remains watch-only because accepted formats intentionally differ by flow.
+- Added explicit tracking for server LLM egress env accessor cleanup and folded prebuilt gateway/proxy inventory into the gateway deploy decision.
+- Verification passed: `git diff --check` plus focused source reads for sync priority, mempool estimator defaults, gateway env/config drift, UTXO strategy validation, transfer filters, websocket channels, and frontend API hygiene.
+
+---
+
 # Task: Phase T Ledger Gen 5 Export Mapping 2026-05-16
 
 Status: merged and verified via PR #490 as squash commit `34e81175b5da0bad669421b9e1dc4c4a2039fb7f`.

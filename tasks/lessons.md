@@ -2,6 +2,18 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Match Skill Behavior To The Intended Workflow, Not Just The Current File
+
+**Rule:** When the user questions whether a Codex skill matches a previously analyzed workflow, inspect the skill and compare it against the intended behavior before treating the current implementation as correct.
+
+**Why:** The `/codex-review` skill currently describes code-diff closeout review and reruns after code fixes, while the user intended a plan-file review loop that recursively improves the plan until there are no comments or improvements left.
+
+**How to apply:**
+
+- Check whether the named skill accepts the artifact the user expects, such as a plan file path.
+- Separate code-review loops from plan-review/refinement loops; they have different targets, prompts, and stopping conditions.
+- If the skill does not match the intended workflow, say so directly and update or split the skill instead of defending the existing behavior.
+
 ## Prove Claude Code Router Wiring With The Real Client
 
 **Rule:** Before declaring Claude Code model-router wiring complete, run a real `claude -p` probe through the configured `ANTHROPIC_BASE_URL`, including default cloud routing and one explicit local model.
