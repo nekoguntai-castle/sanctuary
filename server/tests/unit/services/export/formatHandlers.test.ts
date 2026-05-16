@@ -149,6 +149,27 @@ describe('export format handlers', () => {
       });
     });
 
+    it('uses the catalog model slug before broad device type for Ledger Gen 5 exports', () => {
+      const wallet: WalletExportData = {
+        ...baseSingleSig,
+        devices: [
+          {
+            ...baseSingleSig.devices[0],
+            type: 'Ledger',
+            modelSlug: 'ledger-gen-5',
+            modelName: 'Ledger Gen 5',
+          },
+        ],
+      };
+
+      const result = sparrowHandler.export(wallet);
+      const parsed = JSON.parse(result.content);
+
+      expect(parsed.keystores[0]).toMatchObject({
+        walletModel: 'LEDGER_NANO_GEN5',
+      });
+    });
+
     it('uses multisig fallback script type for unknown multisig script types', () => {
       const wallet = { ...baseMultiSig, scriptType: 'unknown_script' as any };
       const result = sparrowHandler.export(wallet);

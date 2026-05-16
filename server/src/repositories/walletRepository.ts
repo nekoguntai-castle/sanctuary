@@ -262,6 +262,7 @@ export async function findByIdWithDevices(walletId: string) {
           device: {
             include: {
               accounts: true,
+              model: { select: { slug: true, name: true } },
             },
           },
         },

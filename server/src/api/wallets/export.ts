@@ -10,6 +10,7 @@ import { walletRepository, transactionRepository, addressRepository } from '../.
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { exportFormatRegistry, type WalletExportData } from '../../services/export';
+import { mapDeviceTypeToSparrowWalletModel } from '../../services/export/sparrowWalletModel';
 import type { ScriptType, Network } from '../../services/bitcoin/descriptorParser';
 import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import {
@@ -19,6 +20,8 @@ import {
 } from '@sanctuary/shared/constants/walletIdentity';
 
 const router = Router();
+
+export const mapDeviceTypeToWalletModel = mapDeviceTypeToSparrowWalletModel;
 
 function walletCoinType(network: string | null | undefined): number {
   return network && network !== 'mainnet' ? 1 : 0;
@@ -76,47 +79,12 @@ function buildWalletExportData(wallet: NonNullable<Awaited<ReturnType<typeof wal
         // Use account-specific xpub and derivation path if available
         xpub: account?.xpub || wd.device.xpub,
         derivationPath: account?.derivationPath || wd.device.derivationPath || undefined,
+        modelSlug: wd.device.model?.slug || undefined,
+        modelName: wd.device.model?.name || undefined,
       };
     }),
     createdAt: wallet.createdAt,
   };
-}
-
-/**
- * Map device type to Sparrow wallet model
- */
-export function mapDeviceTypeToWalletModel(deviceType: string): string {
-  const typeMap: Record<string, string> = {
-    'coldcard': 'COLDCARD',
-    'coldcardmk4': 'COLDCARD',
-    'coldcard_mk4': 'COLDCARD',
-    'coldcard_q': 'COLDCARD',
-    'ledger': 'LEDGER_NANO_S',
-    'ledger_nano': 'LEDGER_NANO_S',
-    'ledger_nano_s': 'LEDGER_NANO_S',
-    'ledger_nano_x': 'LEDGER_NANO_X',
-    'ledger_stax': 'LEDGER_STAX',
-    'ledger_flex': 'LEDGER_FLEX',
-    'ledger_gen_5': 'LEDGER_FLEX', // Gen 5 uses same protocol as Flex
-    'trezor': 'TREZOR_1',
-    'trezor_one': 'TREZOR_1',
-    'trezor_model_t': 'TREZOR_T',
-    'trezor_safe_3': 'TREZOR_SAFE_3',
-    'trezor_safe_7': 'TREZOR_SAFE_5', // Safe 7 uses Safe 5 protocol
-    'bitbox02': 'BITBOX_02',
-    'bitbox': 'BITBOX_02',
-    'foundation_passport': 'PASSPORT',
-    'passport': 'PASSPORT',
-    'blockstream_jade': 'JADE',
-    'jade': 'JADE',
-    'keystone': 'KEYSTONE',
-    'generic': 'AIRGAPPED',
-    'generic_sd': 'AIRGAPPED',
-  };
-
-  const normalized = deviceType.toLowerCase().replace(/\s+/g, '_');
-  // Return mapped value or uppercase device type (never SPARROW for hardware wallets)
-  return typeMap[normalized] || deviceType.toUpperCase().replace(/\s+/g, '_');
 }
 
 /**

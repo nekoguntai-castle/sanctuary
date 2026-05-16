@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
+import {
+  mapDeviceToSparrowWalletModel,
+  mapDeviceTypeToSparrowWalletModel,
+} from '../../../../src/services/export/sparrowWalletModel';
 
 export const registerWalletExportMappingContracts = () => {
   // ==================== Unit Tests for buildWalletExportData ====================
@@ -204,50 +208,40 @@ export const registerWalletExportMappingContracts = () => {
     });
   });
 
-  // ==================== mapDeviceTypeToWalletModel Tests ====================
+  // ==================== Sparrow wallet model mapping tests ====================
 
-  describe('mapDeviceTypeToWalletModel', () => {
-    // Test the exported helper function
-    function mapDeviceTypeToWalletModel(deviceType: string): string {
-      const typeMap: Record<string, string> = {
-        'coldcard': 'COLDCARD',
-        'coldcardmk4': 'COLDCARD',
-        'coldcard_mk4': 'COLDCARD',
-        'coldcard_q': 'COLDCARD',
-        'ledger': 'LEDGER_NANO_S',
-        'ledger_nano_x': 'LEDGER_NANO_X',
-        'trezor': 'TREZOR_1',
-        'trezor_safe_3': 'TREZOR_SAFE_3',
-        'bitbox02': 'BITBOX_02',
-        'passport': 'PASSPORT',
-        'jade': 'JADE',
-        'keystone': 'KEYSTONE',
-        'generic': 'AIRGAPPED',
-      };
-
-      const normalized = deviceType.toLowerCase().replace(/\s+/g, '_');
-      return typeMap[normalized] || deviceType.toUpperCase().replace(/\s+/g, '_');
-    }
-
+  describe('Sparrow wallet model mapping', () => {
     it('should map coldcard types correctly', () => {
-      expect(mapDeviceTypeToWalletModel('coldcard')).toBe('COLDCARD');
-      expect(mapDeviceTypeToWalletModel('coldcard_q')).toBe('COLDCARD');
-      expect(mapDeviceTypeToWalletModel('coldcard_mk4')).toBe('COLDCARD');
+      expect(mapDeviceTypeToSparrowWalletModel('coldcard')).toBe('COLDCARD');
+      expect(mapDeviceTypeToSparrowWalletModel('coldcard_q')).toBe('COLDCARD');
+      expect(mapDeviceTypeToSparrowWalletModel('coldcard_mk4')).toBe('COLDCARD');
     });
 
     it('should map ledger types correctly', () => {
-      expect(mapDeviceTypeToWalletModel('ledger')).toBe('LEDGER_NANO_S');
-      expect(mapDeviceTypeToWalletModel('ledger_nano_x')).toBe('LEDGER_NANO_X');
+      expect(mapDeviceTypeToSparrowWalletModel('ledger')).toBe('LEDGER_NANO_S');
+      expect(mapDeviceTypeToSparrowWalletModel('ledger_nano_x')).toBe('LEDGER_NANO_X');
+      expect(mapDeviceTypeToSparrowWalletModel('ledger_nano_s_plus')).toBe('LEDGER_NANO_S_PLUS');
+      expect(mapDeviceTypeToSparrowWalletModel('ledger_gen_5')).toBe('LEDGER_NANO_GEN5');
+      expect(mapDeviceTypeToSparrowWalletModel('ledger-gen-5')).toBe('LEDGER_NANO_GEN5');
+      expect(mapDeviceTypeToSparrowWalletModel('Ledger Gen 5')).toBe('LEDGER_NANO_GEN5');
+    });
+
+    it('should prefer exact catalog metadata over broad device type', () => {
+      expect(mapDeviceToSparrowWalletModel({
+        type: 'Ledger',
+        modelSlug: 'ledger-gen-5',
+        modelName: 'Ledger Gen 5',
+      })).toBe('LEDGER_NANO_GEN5');
     });
 
     it('should map trezor types correctly', () => {
-      expect(mapDeviceTypeToWalletModel('trezor')).toBe('TREZOR_1');
-      expect(mapDeviceTypeToWalletModel('trezor_safe_3')).toBe('TREZOR_SAFE_3');
+      expect(mapDeviceTypeToSparrowWalletModel('trezor')).toBe('TREZOR_1');
+      expect(mapDeviceTypeToSparrowWalletModel('trezor_safe_3')).toBe('TREZOR_SAFE_3');
     });
 
-    it('should return uppercase for unknown types', () => {
-      expect(mapDeviceTypeToWalletModel('unknown_device')).toBe('UNKNOWN_DEVICE');
-      expect(mapDeviceTypeToWalletModel('Custom Hardware')).toBe('CUSTOM_HARDWARE');
+    it('should use the existing Sparrow export fallback for unknown types', () => {
+      expect(mapDeviceTypeToSparrowWalletModel('unknown_device')).toBe('COLDCARD');
+      expect(mapDeviceTypeToSparrowWalletModel('Custom Hardware')).toBe('COLDCARD');
     });
   });
 };

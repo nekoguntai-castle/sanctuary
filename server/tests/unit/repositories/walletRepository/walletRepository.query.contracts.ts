@@ -256,6 +256,7 @@ export const registerWalletRepositoryQueryContracts = () => {
               device: {
                 include: {
                   accounts: true,
+                  model: { select: { slug: true, name: true } },
                 },
               },
             },

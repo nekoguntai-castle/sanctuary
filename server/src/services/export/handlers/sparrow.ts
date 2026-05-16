@@ -12,6 +12,7 @@ import type {
   ExportOptions,
   ExportResult,
 } from '../types';
+import { mapExportDeviceToSparrowWalletModel } from '../sparrowWalletModel';
 
 /**
  * Map internal script type to Sparrow format
@@ -38,65 +39,6 @@ function mapMultisigScriptType(scriptType: string): string {
   return scriptTypeMap[scriptType] || 'P2WSH';
 }
 
-/**
- * Map device type to Sparrow wallet model
- */
-function mapDeviceType(deviceType: string): string {
-  const typeMap: Record<string, string> = {
-    // Coldcard variants
-    coldcard: 'COLDCARD',
-    coldcardmk4: 'COLDCARD',
-    coldcard_mk3: 'COLDCARD',
-    coldcard_mk4: 'COLDCARD',
-    coldcard_q: 'COLDCARD',
-    // Ledger variants
-    ledger: 'LEDGER_NANO_S',
-    ledger_nano: 'LEDGER_NANO_S',
-    ledger_nano_s: 'LEDGER_NANO_S',
-    ledger_nano_s_plus: 'LEDGER_NANO_S',
-    ledger_nano_x: 'LEDGER_NANO_X',
-    ledger_stax: 'LEDGER_STAX',
-    ledger_flex: 'LEDGER_FLEX',
-    ledger_gen_5: 'LEDGER_NANO_S',
-    // Trezor variants
-    trezor: 'TREZOR_1',
-    trezor_one: 'TREZOR_1',
-    trezor_model_one: 'TREZOR_1',
-    trezor_t: 'TREZOR_T',
-    trezor_model_t: 'TREZOR_T',
-    trezor_safe_3: 'TREZOR_SAFE_3',
-    trezor_safe_5: 'TREZOR_SAFE_5',
-    trezor_safe_7: 'TREZOR_SAFE_5',
-    // BitBox variants
-    bitbox: 'BITBOX_02',
-    bitbox02: 'BITBOX_02',
-    bitbox02_btc_only: 'BITBOX_02',
-    // Jade variants
-    jade: 'JADE',
-    blockstream_jade: 'JADE',
-    blockstream_jade_plus: 'JADE',
-    // SeedSigner
-    seedsigner: 'SEEDSIGNER',
-    // Foundation Passport variants
-    passport: 'PASSPORT',
-    foundation_passport: 'PASSPORT',
-    foundation_passport_batch2: 'PASSPORT',
-    // Keystone variants
-    keystone: 'KEYSTONE',
-    keystone_pro: 'KEYSTONE',
-    keystone_essential: 'KEYSTONE',
-    keystone_3_pro: 'KEYSTONE',
-    // Other devices
-    specter: 'SPECTER_DIY',
-    // Generic fallbacks
-    generic_sd: 'COLDCARD',
-    generic_usb: 'COLDCARD',
-  };
-
-  const normalizedType = deviceType.toLowerCase().replace(/[\s-]/g, '_');
-  return typeMap[normalizedType] || 'COLDCARD';
-}
-
 export const sparrowHandler: ExportFormatHandler = {
   id: 'sparrow',
   name: 'Sparrow Wallet',
@@ -108,7 +50,7 @@ export const sparrowHandler: ExportFormatHandler = {
     const keystores = wallet.devices.map((device, index) => ({
       label: device.label,
       source: 'HW_AIRGAPPED',
-      walletModel: mapDeviceType(device.type),
+      walletModel: mapExportDeviceToSparrowWalletModel(device),
       masterFingerprint: device.fingerprint,
       derivation: device.derivationPath || '',
       xpub: device.xpub,

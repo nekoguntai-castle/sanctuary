@@ -1,6 +1,39 @@
-# Task: Phase S Admin Monitoring Validation 2026-05-16
+# Task: Phase T Ledger Gen 5 Export Mapping 2026-05-16
 
 Status: in progress.
+
+Goal: converge the wallet export device-model mapping path so the selected Ledger Gen 5 product decision is represented by the local `ledger_gen_5` alias and exported to Sparrow as its current `LEDGER_NANO_GEN5` wallet model, without broadening this slice into general hardware vendor/type normalization.
+
+Source alignment: this is the import/export wallet-model part of the deferred Phase Q hardware watch bucket. The user-selected product decision is to take the recommendation and map it to the Ledger Gen 5 name. In the local alias domain that is `ledger_gen_5`; in Sparrow JSON `walletModel` it must be `LEDGER_NANO_GEN5`.
+
+## Plan
+
+- [x] Run `$recursive-plan-review` on the active task plan and verify the hardware export finding against current source.
+- [x] Preserve Phase S merge evidence in this ledger: PR #489 squash commit `a4043277337dcf27d53416090b431e8a0590e966`.
+- [x] Read wallet export routes, export-format handlers, device catalog/model slugs, and existing export mapping tests.
+- [x] Replace the divergent route-local/service-local/test-local Sparrow wallet-model maps with one export-owned helper.
+- [x] Map Ledger Gen 5 inputs and catalog slugs (`ledger_gen_5`, `ledger-gen-5`, and nearby normalized aliases) to the selected Sparrow `LEDGER_NANO_GEN5` export name, while preserving existing Nano X, Stax, Flex, Trezor, Coldcard, and fallback behavior unless tests prove a scoped change is needed.
+- [x] Update focused route/service contract tests so they exercise the production helper instead of a copied local test map.
+- [x] Run focused wallet export tests, server type/lint/lizard checks as needed, stale mapping searches, and `git diff --check`.
+- [ ] Open, monitor, and merge the Phase T PR.
+
+## Review
+
+- Recursive plan-review pass 1 accepted three corrections before implementation: Phase S had stale in-progress ledger state even though PR #489 merged, Phase T was missing from the active plan, and the Phase T scope needed an explicit product decision/non-goal boundary.
+- Source evidence for Phase T: `server/src/api/wallets/export.ts` exposes `mapDeviceTypeToWalletModel` with `ledger_gen_5 -> LEDGER_FLEX`; `server/src/services/export/handlers/sparrow.ts` has a second private map with `ledger_gen_5 -> LEDGER_NANO_S`; and `server/tests/unit/api/wallets/wallets.export-mapping.contracts.ts` defines a copied local helper instead of testing production behavior.
+- Recursive plan-review pass 2 accepted one target-format correction: primary Sparrow/Drongo source shows `LEDGER_NANO_GEN5` is the Sparrow wallet-model enum, so emitting literal `ledger_gen_5` in Sparrow JSON would be a compatibility risk. Phase T keeps `ledger_gen_5` as the local normalized alias and maps it to `LEDGER_NANO_GEN5` at the Sparrow export boundary.
+- Rejected/deferred comment: broad hardware vendor/type normalization remains out of scope because the durable rationalization plan shows it spans onboarding model matching, send-review signing capabilities, adapter registration, icons, add-account USB support, and import/export naming. Phase T touches only the export mapping surface requested by the user.
+- Added `server/src/services/export/sparrowWalletModel.ts` as the export-owned Sparrow wallet-model mapper. The route helper now aliases that owner, the Sparrow handler uses it for actual exports, and the stale local copied contract-test map was removed.
+- `findByIdWithDevices` now includes each device's model slug/name for export data. The mapper prefers exact catalog metadata over broad legacy `type`, so a broad `Ledger` type with `modelSlug: ledger-gen-5` exports as `LEDGER_NANO_GEN5`.
+- Ledger Nano S Plus now maps to Sparrow's dedicated `LEDGER_NANO_S_PLUS` model while existing Nano S, Nano X, Stax, Flex, Trezor Safe 7 compatibility mapping, and unknown/generic `COLDCARD` fallback behavior remain covered by focused tests.
+- Verification passed: `npm --prefix shared run build`; `npm --prefix server run prisma:generate`; `npm --prefix server run test:run -- tests/unit/api/wallets-export-routes.test.ts tests/unit/services/export/formatHandlers.test.ts tests/unit/api/wallets.test.ts`; `npm --prefix server run test:run -- tests/unit/repositories/walletRepository.test.ts tests/unit/api/wallets-export-routes.test.ts tests/unit/services/export/formatHandlers.test.ts tests/unit/api/wallets.test.ts`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:server`; `npm run quality:lizard`; `scripts/ci/backend-coverage-shard.sh 1 2` from `server/`; stale Sparrow wallet-model mapping searches; `git diff --check`.
+- PR #490's first CI run exposed the repository contract expectation for `findByIdWithDevices`; the test now includes the new `device.model` select and the previously failing backend coverage shard passes locally.
+
+---
+
+# Task: Phase S Admin Monitoring Validation 2026-05-16
+
+Status: merged and verified via PR #489 as squash commit `a4043277337dcf27d53416090b431e8a0590e966`.
 
 Goal: align admin monitoring route validation with the documented OpenAPI contract so service IDs, update bodies, and Grafana settings use one typed path instead of permissive route parsing.
 
@@ -12,7 +45,7 @@ Goal: align admin monitoring route validation with the documented OpenAPI contra
 - [x] Replace permissive `unknown`/`passthrough().catch({})` route bodies with strict typed schemas for monitoring service URL and Grafana settings updates.
 - [x] Add route/OpenAPI/frontend/shared tests for invalid service IDs, malformed bodies, extra fields, query parsing, and preserved clear/no-op behavior.
 - [x] Run focused tests, type/build checks, lizard, stale validation searches, and diff verification.
-- [ ] Open, monitor, and merge the Phase S PR.
+- [x] Open, monitor, and merge the Phase S PR.
 
 ## Review
 
@@ -20,6 +53,7 @@ Goal: align admin monitoring route validation with the documented OpenAPI contra
 - Replaced permissive admin monitoring body validation with strict route schemas: service URL updates now accept only `string | null | undefined`, Grafana anonymous access updates accept only boolean or omitted, and unknown body fields fail before any settings write/delete.
 - Preserved product behavior where blank, null, or omitted `customUrl` clears the override; omitted Grafana `anonymousAccess` still returns success without changing the stored setting.
 - Verification passed: `npm --prefix shared run build`; `npm --prefix server run prisma:generate`; server Vitest for `admin-monitoring-routes`, `openapi`, and `adminMonitoringService`; root Vitest for `adminMonitoring` shared constants and remaining admin API modules; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run lint:app`; `npm run lint:server`; `npm run quality:lizard`; stale admin monitoring validation/service-ID searches; `git diff --check`.
+- PR #489 passed all 61 latest Forgejo status contexts, squash-merged as `a4043277337dcf27d53416090b431e8a0590e966`, and post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

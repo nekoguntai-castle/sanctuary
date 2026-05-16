@@ -96,6 +96,7 @@ function buildWallet(overrides: Record<string, any> = {}) {
           fingerprint: 'FPB',
           xpub: 'legacy-xpub-b',
           derivationPath: "m/48'/0'/1'/2'",
+          model: { slug: 'ledger-nano-x', name: 'Ledger Nano X' },
           accounts: [
             {
               purpose: 'multisig',
@@ -290,7 +291,12 @@ describe('Wallets Export Routes', () => {
     const walletDataArg = mockGetAvailableFormats.mock.calls[0][0];
     expect(walletDataArg.devices).toEqual([
       expect.objectContaining({ xpub: 'account-xpub-a', derivationPath: "m/48'/0'/0'/2'" }),
-      expect.objectContaining({ xpub: 'account-xpub-b', derivationPath: "m/48'/0'/1'/2'" }),
+      expect.objectContaining({
+        xpub: 'account-xpub-b',
+        derivationPath: "m/48'/0'/1'/2'",
+        modelSlug: 'ledger-nano-x',
+        modelName: 'Ledger Nano X',
+      }),
       expect.objectContaining({ xpub: 'legacy-xpub-c', derivationPath: "m/48'/0'/2'/2'" }),
     ]);
   });
@@ -568,8 +574,11 @@ describe('Wallets Export Routes', () => {
   it('maps known and unknown hardware device types for Sparrow model names', () => {
     expect(mapDeviceTypeToWalletModel('coldcard')).toBe('COLDCARD');
     expect(mapDeviceTypeToWalletModel('ledger nano x')).toBe('LEDGER_NANO_X');
+    expect(mapDeviceTypeToWalletModel('ledger nano s plus')).toBe('LEDGER_NANO_S_PLUS');
+    expect(mapDeviceTypeToWalletModel('ledger_gen_5')).toBe('LEDGER_NANO_GEN5');
+    expect(mapDeviceTypeToWalletModel('Ledger Gen 5')).toBe('LEDGER_NANO_GEN5');
     expect(mapDeviceTypeToWalletModel('trezor_safe_7')).toBe('TREZOR_SAFE_5');
-    expect(mapDeviceTypeToWalletModel('generic_sd')).toBe('AIRGAPPED');
-    expect(mapDeviceTypeToWalletModel('Unknown Device')).toBe('UNKNOWN_DEVICE');
+    expect(mapDeviceTypeToWalletModel('generic_sd')).toBe('COLDCARD');
+    expect(mapDeviceTypeToWalletModel('Unknown Device')).toBe('COLDCARD');
   });
 });
