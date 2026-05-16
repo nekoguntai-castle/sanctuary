@@ -2,12 +2,12 @@
 
 Date: 2026-05-16
 Owner: Codex
-Status: Active remediation plan; Phases 0-4 are merged, Phase 5 readiness/blocker is in PR delivery
+Status: Active remediation plan; Phases 0-5 are merged, Phase 6 final grade is next
 Original source: `docs/plans/codebase-health-assessment.md` at local commit `4baa75e6`
 Current evidence: `docs/plans/codebase-health-assessment.md` at the active Phase 5 readiness checkpoint
 Review note: during recursive review, `origin/main` resolved to `718a3d16`; re-check that ref before executing because the remote branch may advance.
 
-Execution update: Phase 5 software readiness is recorded in `docs/plans/hardware-wallet-validation-2026-05-16.md`. The runbook software gates pass, the stale PSBT verifier command is corrected to the repo-owned package script, and the strict fixture gate fails as expected on 11 missing physical Ledger/Trezor/BitBox signing artifacts. Full hardware-in-loop evidence remains blocked on physical device capture.
+Execution update: Phase 5 readiness is merged as PR #502 at `1ee56bec948343294c881f1fde8d7cad53b30e85`. It records software-gate readiness in `docs/plans/hardware-wallet-validation-2026-05-16.md`, corrects the stale PSBT verifier command to the repo-owned package script, and proves the strict fixture gate is blocked on 11 missing physical Ledger/Trezor/BitBox signing artifacts. Full hardware-in-loop evidence remains blocked on physical device capture.
 
 ## Goal
 

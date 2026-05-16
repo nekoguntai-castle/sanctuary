@@ -8,7 +8,7 @@ Status: Current Phase 5 hardware-readiness checkpoint after software gates passe
 **Grade**: A
 **Confidence**: High
 **Mode**: phase5-hardware-readiness-checkpoint
-**Commit**: `9edf7a62+phase5-working-tree`
+**Commit**: `1ee56bec`
 
 ---
 
@@ -18,7 +18,7 @@ None.
 
 The hard-fail gates are clear after rerun verification: tests pass, typecheck passes, high/critical dependency vulnerabilities are 0, and gitleaks found 0 tracked-tree secrets.
 
-Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2 duplication-tooling fix, Phase 3 merge commit `e449117d`, Phase 3 closeout merge `875fd6a9`, Phase 4 merge commit `8535231e`, and Phase 4 closeout merge `9edf7a62`. Phase 5 changes the hardware validation runbook command, executable fixture gate command list, and a dated hardware-readiness artifact; it does not add physical signed artifacts.
+Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2 duplication-tooling fix, Phase 3 merge commit `e449117d`, Phase 3 closeout merge `875fd6a9`, Phase 4 merge commit `8535231e`, Phase 4 closeout merge `9edf7a62`, and Phase 5 merge commit `1ee56bec`. Phase 5 changes the hardware validation runbook command, executable fixture gate command list, and a dated hardware-readiness artifact; it does not add physical signed artifacts.
 
 ---
 
@@ -40,7 +40,7 @@ Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2
 ## Trend
 
 - Previous checkpoint: 95/100, A, commit `fed96e56+phase2-working-tree`, confidence High, dated 2026-05-16.
-- Current checkpoint: 95/100, A, commit `9edf7a62+phase5-working-tree`, confidence High, dated 2026-05-16.
+- Current checkpoint: 95/100, A, commit `1ee56bec`, confidence High, dated 2026-05-16.
 - Delta: +/-0 points, A held.
 
 Phase 5 proves the hardware-validation software harness is ready and records the physical-device blocker in `docs/plans/hardware-wallet-validation-2026-05-16.md`. The score stays flat because full hardware-in-loop confidence still requires 11 sanitized physical Ledger, Trezor, and BitBox signing artifacts.

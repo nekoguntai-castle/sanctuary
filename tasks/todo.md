@@ -1,6 +1,6 @@
 # Task: Codebase Health Remediation Phase 5 Hardware Readiness 2026-05-16
 
-Status: in progress.
+Status: merged and verified via PR #502 as squash commit `1ee56bec948343294c881f1fde8d7cad53b30e85`.
 
 Goal: execute the repo-owned Phase 5 hardware validation readiness work from `docs/plans/codebase-health-remediation-plan.md`, prove the software fixture gates, record the missing physical-device evidence explicitly, and deliver the blocker/readiness state through `$pr-delivery`.
 
@@ -11,7 +11,7 @@ Goal: execute the repo-owned Phase 5 hardware validation readiness work from `do
 - [x] Run the strict hardware-signed fixture gate with `REQUIRE_HARDWARE_SIGNED_FIXTURES=1` to prove the remaining blocker is missing physical artifacts.
 - [x] Add a dated hardware validation readiness/blocker artifact linked from the quality report and remediation plan.
 - [x] Run documentation verification and any focused hardware fixture tests needed for changed docs.
-- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+- [x] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
 
 ## Review
 
@@ -21,6 +21,8 @@ Goal: execute the repo-owned Phase 5 hardware validation readiness work from `do
 - Added `docs/plans/hardware-wallet-validation-2026-05-16.md` as the dated Phase 5 readiness/blocker artifact.
 - Strict hardware fixture gate was intentionally red: `REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` failed on the missing-row assertion with 11 required physical rows still absent and 4 unsupported multisig rows product-blocked.
 - Post-edit verification passed: focused hardware fixture replay test, grade-history JSONL tail parse, `git diff --check`, and direct trailing-whitespace scan on changed docs/task/source files.
+- Pushed `codex/codebase-health-phase-5-hardware-readiness`, opened PR #502, monitored 61 status contexts until all were success/skipped, including full backend coverage, Architecture, Code Quality Required Checks, and PR Required Checks, and squash-merged with branch deletion disabled.
+- Post-merge verification passed: Forgejo reported PR #502 merged at `2026-05-16T11:25:59-10:00`; merge commit `1ee56bec948343294c881f1fde8d7cad53b30e85` exists locally and is an ancestor of `origin/main`.
 
 ---
 
