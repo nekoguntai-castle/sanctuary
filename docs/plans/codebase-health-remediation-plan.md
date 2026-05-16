@@ -2,9 +2,12 @@
 
 Date: 2026-05-16
 Owner: Codex
-Status: Proposed remediation plan for the 87/100 `$grade` result
-Source: `docs/plans/codebase-health-assessment.md` at local commit `4baa75e6`
+Status: Active remediation plan; Phases 0-2 are merged, Phase 3 is in PR delivery
+Original source: `docs/plans/codebase-health-assessment.md` at local commit `4baa75e6`
+Current evidence: `docs/plans/codebase-health-assessment.md` at the active Phase 3 checkpoint
 Review note: during recursive review, `origin/main` resolved to `718a3d16`; re-check that ref before executing because the remote branch may advance.
+
+Execution update: after Phase 2, the health report is back to 95/100 A at the `fed96e56+phase2-working-tree` checkpoint. Phase 3 has also removed the `UserProvider` lizard warning in the working tree, but the branch still must pass PR checks and merge before the phase is closed.
 
 ## Goal
 
@@ -18,6 +21,8 @@ Success means:
 - moderate dependency advisories are either fixed or explicitly accepted with reachability rationale;
 - hardware signing evidence is recorded separately from software-only tests;
 - a final full `$grade` returns to A range with no hard-fail blockers.
+
+Delivery rule: each phase that changes repository state is delivered through its own branch/PR, current-head CI is monitored to completion, the PR is merged before the next phase starts, and the resulting merge commit is verified as an ancestor of `origin/main`.
 
 ## Product And Architecture Decisions To Preserve
 
@@ -136,6 +141,13 @@ Exit criteria:
 Verification:
 
 - `npx vitest run tests/contexts/UserContext.test.tsx tests/contexts/UserContext.preferences.test.tsx tests/hooks/useUserPreference.test.tsx tests/components/Login/useLoginFlow.test.ts tests/components/Login/LoginForm.test.tsx tests/components/Login/TwoFactorScreen.test.tsx tests/components/ThemeSection.test.tsx`
+- `npm run arch:lint`
+- `node scripts/architecture/detect-drift.mjs origin/main`
+- `npm run arch:graphs`
+- `npm run arch:calls`
+- `git diff --exit-code -- docs/architecture/generated`
+- `npm --prefix website run typecheck`
+- `npm run docs:build`
 - `npm run quality:lizard`
 - `npm run typecheck`
 - `npm run lint`

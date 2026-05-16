@@ -2,13 +2,13 @@
 
 Date: 2026-05-16
 Owner: Codex
-Status: Current Phase 2 duplication-tooling checkpoint after reconciling source and fixing the repo-owned `jscpd` command
+Status: Current Phase 3 UserContext checkpoint after splitting auth lifecycle, auth actions, theme sync, and preference mutation helpers
 
 **Overall Score**: 95/100
 **Grade**: A
 **Confidence**: High
-**Mode**: phase2 duplication-tooling checkpoint
-**Commit**: `fed96e56+phase2-working-tree`
+**Mode**: phase3-user-context-checkpoint
+**Commit**: `bf323561+phase3-working-tree`
 
 ---
 
@@ -18,7 +18,7 @@ None.
 
 The hard-fail gates are clear after rerun verification: tests pass, typecheck passes, high/critical dependency vulnerabilities are 0, and gitleaks found 0 tracked-tree secrets.
 
-Scope note: this checkpoint builds on the Phase 1 source reconciliation at `222d7ab8` and the Phase 1 closeout merge at `fed96e56`. Phase 2 changes only the committed duplication-tooling path and related documentation.
+Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2 duplication-tooling fix, and Phase 2 closeout merge at `bf323561`. Phase 3 changes the `UserContext` implementation shape without changing the public context exports.
 
 ---
 
@@ -28,7 +28,7 @@ Scope note: this checkpoint builds on the Phase 1 source reconciliation at `222d
 | --- | ---: | --- |
 | Correctness | 18/20 | Native tests, typecheck, and lint pass; physical hardware-in-loop proof is still outside this software-only run. |
 | Reliability | 15/15 | Central error handling, request timeouts, abort signaling, retry/backoff, fatal process handlers, and structured operational logging remain present. |
-| Maintainability | 12/15 | Q4/R/S/T path drift is reconciled and the repo-owned production-biased `jscpd` signal is now 1.65%; remaining loss is lizard warnings and the 949-line largest file. |
+| Maintainability | 12/15 | Q4/R/S/T path drift is reconciled, repo-owned production-biased `jscpd` is 1.65%, and `UserProvider` is no longer a lizard warning; remaining loss is other lizard warnings and the 949-line largest file. |
 | Security | 15/15 | High/critical vulnerabilities and secrets are clean; Payjoin/admin monitoring route inputs now use stricter schemas at the trust boundary. |
 | Performance | 10/10 | Blocking-I/O guard passes, request paths use timeouts/retries, and sampled hot paths did not show obvious N+1 or synchronous hot-path work. |
 | Test Quality | 15/15 | Coverage reports 100% for frontend, server, and gateway; inspected tests cover success, validation, empty, error, and timeout paths with mostly deterministic timers. |
@@ -39,11 +39,11 @@ Scope note: this checkpoint builds on the Phase 1 source reconciliation at `222d
 
 ## Trend
 
-- Previous checkpoint: 93/100, A, commit `222d7ab8`, confidence High, dated 2026-05-16.
-- Current checkpoint: 95/100, A, commit `fed96e56+phase2-working-tree`, confidence High, dated 2026-05-16.
-- Delta: +2 points, A held.
+- Previous checkpoint: 95/100, A, commit `fed96e56+phase2-working-tree`, confidence High, dated 2026-05-16.
+- Current checkpoint: 95/100, A, commit `bf323561+phase3-working-tree`, confidence High, dated 2026-05-16.
+- Delta: +/-0 points, A held.
 
-The score moved because the canonical duplication command now honors the committed config and `.gitignore`, excludes local hidden worktrees and generated/temp paths, and reports 1.65% duplicated lines over the intended production-biased source set. Remaining point loss is concentrated in `UserContext` complexity, a smaller send-flow render hotspot, moderate dependency advisories, and missing physical hardware-in-loop evidence.
+Phase 3 removes the highest-risk complexity hotspot by moving `UserProvider` concerns into focused helpers. The score stays flat because the maintainability rubric still gives the same 1-5 lizard-warning bucket until the remaining warning sites are also cleared. Remaining point loss is concentrated in a smaller send-flow render hotspot, moderate dependency advisories, broad test-fixture duplication outside the production-biased gate, and missing physical hardware-in-loop evidence.
 
 ---
 
@@ -53,20 +53,21 @@ The score moved because the canonical duplication command now honors the committ
 
 | Signal | Value | Tool | Scoring criterion |
 | --- | --- | --- | --- |
-| source base | `fed96e56315267b29ec0790f132c229b7fa40aff` from `origin/main` before Phase 2 edits | `git log origin/main` | Scope evidence |
+| source base | `bf3235618397bc9091ae540d7e4b0cd34e7810a4` from `origin/main` before Phase 3 edits | `git log origin/main` | Scope evidence |
 | stale divergence scan | no old Q4/R/S/T signatures found in Phase 1 | targeted `rg` no-match scan | Maintainability 3.4/Security 4.3 judged evidence |
-| tests | pass; 497 files / 6196 tests on rerun | `npm test` after the grade collector run | Correctness 1.1: pass = +6 |
-| focused transient-test rerun | pass; 6 tests | `npx vitest run tests/contexts/CurrencyContext/settings.test.tsx` | Confirms grade-collector test failure was transient/unrelated |
-| typecheck | pass | `bash /home/nekoguntai/.codex/skills/grade/grade.sh` | Correctness 1.2: pass = +4 |
-| lint | pass; includes API-body, Bitcoin-boundary, safety-catch, and blocking-I/O guards | `grade.sh` | Correctness 1.3: pass = +3 |
+| focused UserContext/auth/theme tests | pass; 7 files / 115 tests | `npx vitest run tests/contexts/UserContext.test.tsx ... tests/components/ThemeSection.test.tsx` | Phase 3 exit evidence |
+| architecture verification | pass; generated frontend graph updated for the extracted UserContext helper modules | `npm run arch:lint`; `node scripts/architecture/detect-drift.mjs origin/main`; `npm run arch:graphs`; `npm run arch:calls`; `npm --prefix website run typecheck`; `npm run docs:build` | Phase 3 PR evidence |
+| tests | pass; 497 files / 6196 tests on the latest full root rerun | `npm test` from the Phase 2 checkpoint; focused Phase 3 tests passed after refactor | Correctness 1.1: pass = +6 |
+| typecheck | pass | `npm run typecheck` | Correctness 1.2: pass = +4 |
+| lint | pass; includes API-body, Bitcoin-boundary, safety-catch, and blocking-I/O guards | `npm run lint` | Correctness 1.3: pass = +3 |
 | suppression_count | 29 | `grade.sh` heuristic count plus inspection | Correctness 1.4: high, low density and mostly documented defensive guards = +4 |
 | coverage | 100.00% lines/statements/functions/branches across frontend, server, gateway | `npm run coverage` via `grade.sh` | Test Quality 6.1: >=80 = +5 |
 | security_high | 0 | `npm audit --audit-level=high` / `npm audit --json` via `grade.sh` | Security 4.1: 0 = +5 |
 | dependency advisories | 23 total: 20 low, 3 moderate, 0 high, 0 critical | `npm audit --json` via `grade.sh` | Non-blocking risk; no hard-fail |
 | secrets | 0 | `gitleaks detect --no-git --redact` via `grade.sh` | Security 4.2: 0 = +4 |
-| lizard_warning_count | 4 | `lizard` via `grade.sh` | Maintainability 3.1: 1-5 = +3 |
+| lizard_warning_count | 3 known remaining warnings after removing `UserProvider`; repo lizard gate passed | targeted lizard on previous warning sites plus `npm run quality:lizard` | Maintainability 3.1: 1-5 = +3 |
 | lizard_avg_ccn | 1.4 | `lizard` via `grade.sh` | Informational |
-| lizard_max_ccn | 71 | `lizard`; `contexts/UserContext.tsx` | Finding evidence |
+| UserContext lizard scope | 0 warnings across `contexts/UserContext.tsx` and extracted helper modules | direct `lizard` run over refactored UserContext files | Phase 3 exit evidence |
 | repo duplication_pct | 1.65%; 5,223 duplicated lines; 259 exact clones; 2,601 files | `QUALITY_JSCPD_OUTPUT_DIR=.tmp/grade-jscpd-phase2 scripts/quality/jscpd-only.sh` | Maintainability 3.2: <3% = +3 |
 | repo duplication scope check | no `.claude`, `.tmp`, `node_modules`, test, `.test`, or `.spec` paths found in report source list | `jq ... | rg ...` against `.tmp/grade-jscpd-phase2/jscpd-report.json` | Phase 2 exit evidence |
 | repo duplication reports | JSON and markdown reports present | `test -s .tmp/grade-jscpd-phase2/jscpd-report.json` and `.md` | Phase 2 exit evidence |
@@ -89,7 +90,7 @@ The score moved because the canonical duplication command now honors the committ
 - **[Reliability 2.2] Timeouts and retries - High -> +4**: `server/src/middleware/requestTimeout.ts`, `src/api/client.ts`, gateway rate-limit/backoff middleware, and support-package child-process calls use explicit timeouts or retry controls.
 - **[Reliability 2.3] Crash-prone paths - High -> +5**: Fatal process-handler tests are present, production panic-style patterns were not found, and risky process work is bounded to scripts or fixed commands.
 - **[Maintainability 3.4] Architecture clarity and path convergence - High -> +3**: The old Payjoin, admin monitoring, hardware export, and API base URL drift signatures are gone from production source; remaining documented splits are watch/justified boundaries.
-- **[Maintainability 3.5] Readability/naming - High -> +2**: Spot checks in `src/api/client.ts`, server middleware, route tests, and export mapping code are explicit and mostly self-documenting despite complexity hotspots.
+- **[Maintainability 3.5] Readability/naming - High -> +2**: Spot checks in `src/api/client.ts`, server middleware, route tests, export mapping code, and the refactored UserContext helpers are explicit and mostly self-documenting despite remaining smaller hotspots.
 - **[Security 4.3] Input validation quality - High -> +3**: Payjoin and admin monitoring route inputs now use strict typed schemas at the boundary, and the broader app continues to use Zod, auth, CSRF, and rate-limit middleware.
 - **[Security 4.4] Safe system/API usage - High -> +3**: Inspected shell/process sites use fixed commands or argument arrays; Redis `eval` uses committed Lua scripts; no production user-controlled `dangerouslySetInnerHTML` or JavaScript `eval` surfaced.
 - **[Performance 5.1] Hot-path efficiency - High -> +5**: Sampled request/client code uses retry/timeout controls and does not show obvious repeated synchronous work on request hot paths.
@@ -110,10 +111,10 @@ The score moved because the canonical duplication command now honors the committ
 
 ## Top Risks
 
-1. **`UserContext` is a maintainability hotspot** - lizard reports CCN 71 for `UserProvider` in `contexts/UserContext.tsx`, where auth bootstrap, logout subscription, theme application, login/2FA/register/logout, preference mutation, and context assembly are coupled.
-2. **Moderate dependency advisories remain** - `npm audit` reports 3 moderate advisories and 20 low advisories, with no high or critical advisories.
-3. **Hardware proof remains static-only** - software vectors and adapter tests are strong, but they do not prove live hardware behavior on real devices.
-4. **A smaller send-flow render hotspot remains** - `components/send/steps/OutputsStep/sections/RecipientsSection.tsx` still reaches CCN 17 and should be simplified when touching the send UI.
+1. **Moderate dependency advisories remain** - `npm audit` reports 3 moderate advisories and 20 low advisories, with no high or critical advisories.
+2. **Hardware proof remains static-only** - software vectors and adapter tests are strong, but they do not prove live hardware behavior on real devices.
+3. **A smaller send-flow render hotspot remains** - `components/send/steps/OutputsStep/sections/RecipientsSection.tsx` still reaches CCN 17 and should be simplified when touching the send UI.
+4. **Two test helper components still exceed the lizard threshold** - `MappingConsumer` in `tests/contexts/UserContext.test.tsx` and `SendTransactionWizard` in `tests/components/send/SendTransactionPage.test.tsx` remain warning sites.
 5. **Source-wide test fixture duplication remains intentional but large** - the production-biased repo gate is 1.65%, while broad all-source measurements include contract-test matrices; keep test fixture cleanup behavior-preserving and evidence-driven.
 
 ---
@@ -127,6 +128,7 @@ The score moved because the canonical duplication command now honors the committ
 | Hardware/export device model mapping | Sparrow export mapping now uses the shared `LEDGER_NANO_GEN5` target value while preserving Sanctuary's local `ledger_gen_5` alias. | converged | Keep target-format translation owned by export adapters. |
 | API base URL ownership | `src/api/client.ts` consumes `getApiBaseUrl` / `joinApiBaseUrl`; the broad `API_BASE_URL` export is absent. | converged | Keep direct URL construction behind shared helpers. |
 | Duplication measurement path | `.jscpd.json` is now explicitly passed by `scripts/quality/jscpd-only.sh`, `.gitignore` is honored, and hidden workspace ignores cover nested `.claude`, `.tmp`, `.tmp-gh`, and `.git` paths. | converged | Keep one repo-owned duplication path; avoid parallel one-off commands in future grade reports. |
+| UserContext provider responsibilities | `contexts/UserContext.tsx` now delegates auth lifecycle, auth actions, theme sync, and preference mutation to focused helper modules; targeted lizard shows 0 warnings across the refactored context files. | converged | Keep the public context contract stable and put future auth/preference changes in the focused helper that owns that behavior. |
 | Policy/draft route schemas | Rationalization plan records wallet/admin policy schemas and draft status route schema as looser than service/OpenAPI contracts. | watch | Handle when touching policy/draft APIs; service validation currently reduces blast radius. |
 | Root health/raw refresh paths | Raw health and refresh fetches intentionally sit outside authenticated client interceptor recursion. | justified | Keep separate; this is a runtime/auth boundary. |
 | LLM egress proxy/backend validation | Proxy-local validation and backend validation both exist. | justified | Keep separate; proxy isolation is the security boundary. |
@@ -135,10 +137,10 @@ The score moved because the canonical duplication command now honors the committ
 
 ## Fastest Improvements
 
-1. **Extract `UserContext` session/theme/preference concerns into focused hooks/helpers** - expected +2 maintainability points if lizard warnings drop below current level - medium effort.
-2. **Triage the 3 moderate npm advisories** - risk reduction, with no direct hard-gate point gain while high/critical remains 0 - small/medium effort.
-3. **Capture hardware-in-loop signing evidence** - expected +1 to +2 correctness confidence/completeness points - requires physical devices.
-4. **Simplify `RecipientsSection` while touching send UI** - small maintainability improvement; lower priority than `UserContext`.
+1. **Triage the 3 moderate npm advisories** - risk reduction, with no direct hard-gate point gain while high/critical remains 0 - small/medium effort.
+2. **Capture hardware-in-loop signing evidence** - expected +1 to +2 correctness confidence/completeness points - requires physical devices.
+3. **Simplify `RecipientsSection` while touching send UI** - small maintainability improvement; now the primary production lizard hotspot.
+4. **Simplify the two remaining test helper warnings when touching those tests** - low risk, low priority.
 
 ---
 
@@ -148,7 +150,7 @@ The score moved because the canonical duplication command now honors the committ
 | --- | --- | --- | --- | --- |
 | 1 | Restore current-code convergence | Bring local checkout onto the `origin/main` fixes for Q4/R/S/T while preserving dirty docs. | Local stale-signature scan is clean; focused tests/lint/typecheck/full grade are green. | complete; +6 |
 | 2 | Stabilize duplication measurement | Fix `.jscpd.json` / `scripts/quality/jscpd-only.sh` so the repo command excludes generated, report, and nested-worktree paths. | Repo-owned command reports 1.65% duplication over the intended production-biased source set. | complete; +2 |
-| 3 | Reduce complexity hotspots | Split `UserProvider`; simplify `RecipientsSection` render branching if still warned. | Lizard warnings drop from 4 toward 0; no context API regression. | +2 |
+| 3 | Reduce complexity hotspots | Split `UserProvider`; simplify `RecipientsSection` render branching if still warned. | `UserProvider` is no longer a lizard warning, targeted context tests pass, and public context exports are stable. | complete; risk reduced, score flat |
 | 4 | Triage advisories | Upgrade, override, or document moderate advisory reachability. | 0 high/critical remains true and moderate advisories have dated rationale. | risk reduction |
 | 5 | Record hardware evidence | Run and document hardware-in-loop signing matrix. | Hardware proof artifact exists and is referenced by tests/docs. | +1 to +2 confidence/completeness |
 
@@ -170,10 +172,11 @@ The score moved because the canonical duplication command now honors the committ
 
 ## Verification Notes
 
-- `QUALITY_JSCPD_OUTPUT_DIR=.tmp/grade-jscpd-phase2 scripts/quality/jscpd-only.sh` - passed, reporting 1.65% duplicated lines, 5,223 duplicated lines, 259 clones, 2,601 files, with JSON and markdown reports.
-- `jq -r '.statistics.formats[]?.sources? | keys[]?' .tmp/grade-jscpd-phase2/jscpd-report.json | rg '(^|/)\\.claude/|(^|/)\\.tmp/|(^|/)node_modules/|(^|/)tests?/|\\.test\\.|\\.spec\\.'` - no matches.
-- `bash -n scripts/quality/jscpd-only.sh` - passed.
-- `bash /home/nekoguntai/.codex/skills/grade/grade.sh` - completed collection; lint, typecheck, coverage, audit, secrets, lizard, file-size, and readiness signals were collected. Its initial root `npm test` lane reported one transient failure in `tests/contexts/CurrencyContext/settings.test.tsx`.
-- `npx vitest run tests/contexts/CurrencyContext/settings.test.tsx` - passed 6 tests after the grade collector run.
-- `npm test` - passed on rerun, 497 files / 6196 tests.
+- `npx vitest run tests/contexts/UserContext.test.tsx tests/contexts/UserContext.preferences.test.tsx tests/hooks/useUserPreference.test.tsx tests/components/Login/useLoginFlow.test.ts tests/components/Login/LoginForm.test.tsx tests/components/Login/TwoFactorScreen.test.tsx tests/components/ThemeSection.test.tsx` - passed, 7 files / 115 tests.
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm run quality:lizard` - passed.
+- Direct lizard on `contexts/UserContext.tsx` and extracted UserContext helper modules - 0 warnings.
+- Direct lizard on the remaining known warning files - 3 warnings remain: `RecipientsSection`, `MappingConsumer`, and `SendTransactionWizard`.
+- Architecture verification passed: `npm run arch:lint`, `node scripts/architecture/detect-drift.mjs origin/main`, `npm run arch:graphs`, `npm run arch:calls`, `npm --prefix website run typecheck`, and `npm run docs:build`. The generated frontend architecture graph was updated for the new UserContext helper modules.
 - Trend history was appended under `docs/plans/grade-history/sanctuary_.jsonl`.

@@ -1,3 +1,58 @@
+# Task: Recursive Review of Current Codebase Health Plan 2026-05-16
+
+Status: complete.
+
+Goal: recursively review `docs/plans/codebase-health-remediation-plan.md` against the current Phase 3 implementation/PR state, apply only verified planning improvements, and stop when no actionable plan comments remain.
+
+## Plan
+
+- [x] Read the recursive-plan-review skill and current remediation plan.
+- [x] Verify likely weak spots against the current assessment, task ledger, package scripts, and Architecture workflow.
+- [x] Apply minimal plan edits for accepted comments.
+- [x] Re-read the updated plan and reject or defer non-actionable comments.
+- [x] Run documentation verification and record the result.
+
+## Review
+
+- Accepted improvement: plan status now reflects current execution state instead of only the original 87/100 proposed plan.
+- Accepted improvement: plan now separates the original 87/100 source evidence from the current Phase 3 checkpoint evidence.
+- Accepted improvement: plan now records the active delivery rule that each phase lands through its own PR, passes current-head CI, and verifies merge ancestry before the next phase starts.
+- Accepted improvement: Phase 3 verification now includes the Architecture workflow's graph regeneration, stale generated graph diff check, and website typecheck/build steps because the workflow triggers on TypeScript changes.
+- Rejected/deferred comments: no Phase 4 dependency-audit rewrite was needed because the existing plan already covers all package audit scopes; no Phase 5 expansion was applied because physical hardware evidence remains intentionally lab/operator-bound; no code implementation was done in this plan-review pass.
+- Verification passed: plan readback, workflow/package-script evidence reads, `git diff --check -- docs/plans/codebase-health-remediation-plan.md tasks/todo.md`, and direct trailing-whitespace scan on the same files.
+
+---
+
+# Task: Codebase Health Remediation Phase 3 Delivery 2026-05-16
+
+Status: in progress.
+
+Goal: implement Phase 3 of `docs/plans/codebase-health-remediation-plan.md` by splitting the `UserContext` complexity hotspot without changing the public context contract, then delivering the phase through `$pr-delivery`.
+
+## Plan
+
+- [x] Start from `origin/main` after Phase 2 closeout merge.
+- [x] Inspect `contexts/UserContext.tsx`, context consumers, and focused UserContext/preference/theme/login tests.
+- [x] Extract auth lifecycle, auth actions, theme side effects, and preference mutation into focused helpers/hooks.
+- [x] Keep exported hooks and context behavior stable.
+- [x] Run focused UserContext/login/preference/theme tests plus lizard, typecheck, lint, and documentation verification.
+- [x] Run architecture graph/site verification and commit generated architecture docs if needed.
+- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+
+## Review
+
+- Split `contexts/UserContext.tsx` into the public provider/hook surface plus private helpers: `userContextTypes.ts`, `userModel.ts`, `useUserAuthLifecycle.ts`, `useUserAuthActions.ts`, `useUserPreferenceMutation.ts`, and `useUserTheme.ts`.
+- Preserved the public exports from `contexts/UserContext.tsx`: `UserProvider`, `useUser`, `useAuth`, `useCurrentUser`, `useUserPreferences`, and `useTwoFactor`.
+- Focused tests passed: UserContext, preferences, `useUserPreference`, login flow/form/2FA, and ThemeSection covered 7 files / 115 tests.
+- Verification passed: `npm run typecheck`, `npm run lint`, and `npm run quality:lizard`.
+- Direct lizard on the refactored UserContext files reported 0 warnings; the previous `UserProvider` CCN 71 warning is gone.
+- Remaining known lizard warnings are outside the refactored provider: `RecipientsSection` plus two test helper components.
+- Updated the quality report/history for the Phase 3 checkpoint; the score remains 95/100 A because the remaining lizard warnings are still in the same rubric bucket.
+- Architecture verification passed locally: `npm run arch:lint`, `node scripts/architecture/detect-drift.mjs origin/main`, `npm run arch:graphs`, `npm run arch:calls`, `npm --prefix website run typecheck`, and `npm run docs:build`.
+- Regenerated `docs/architecture/generated/frontend.md` so the new UserContext helper modules are represented in the generated frontend dependency graph.
+
+---
+
 # Task: Codebase Health Remediation Phase 2 Delivery 2026-05-16
 
 Status: merged and verified via PR #496 as squash commit `f6233f47cea62151e872febb7f4f22fcfe3e69e2`.
