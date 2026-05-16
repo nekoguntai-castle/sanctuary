@@ -8,8 +8,8 @@
 import React from 'react';
 import { PenTool, AlertCircle } from 'lucide-react';
 import { getDeviceIcon } from '../ui/CustomIcons';
-import { connectivityConfig } from '../../utils/deviceConnection';
-import { ConnectionMethodSelectorProps } from './types';
+import { connectivityConfig, isDeviceConnectivityMethod } from '../../utils/deviceConnection';
+import type { ConnectionMethodSelectorProps } from './types';
 import { renderCapabilities } from './DeviceModelSelector';
 
 export const ConnectionMethodSelector: React.FC<ConnectionMethodSelectorProps> = ({
@@ -48,8 +48,8 @@ export const ConnectionMethodSelector: React.FC<ConnectionMethodSelectorProps> =
           </div>
           <div className="flex space-x-1">
             {selectedModel.connectivity.map(conn => {
+              if (!isDeviceConnectivityMethod(conn)) return null;
               const config = connectivityConfig[conn];
-              if (!config) return null;
               const Icon = config.icon;
               return (
                 <span key={conn} className="p-1.5 bg-sanctuary-200 dark:bg-sanctuary-800 rounded" title={config.label}>
@@ -69,7 +69,9 @@ export const ConnectionMethodSelector: React.FC<ConnectionMethodSelectorProps> =
         {availableMethods.map((m) => {
           const config = m === 'manual'
             ? { icon: PenTool, label: 'Manual Entry', description: 'Enter xpub manually' }
-            : connectivityConfig[m];
+            : isDeviceConnectivityMethod(m)
+              ? connectivityConfig[m]
+              : null;
           if (!config) return null;
           const Icon = config.icon;
 

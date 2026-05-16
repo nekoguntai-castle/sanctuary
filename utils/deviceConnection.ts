@@ -38,7 +38,19 @@ export function getDeviceTypeFromModel(model: HardwareDeviceModel): DeviceType {
   return 'unknown';
 }
 
-export type ConnectionMethod = 'usb' | 'sd_card' | 'qr_code' | 'manual';
+export const CONNECTION_METHODS = ['usb', 'sd_card', 'qr_code', 'manual'] as const;
+export type ConnectionMethod = (typeof CONNECTION_METHODS)[number];
+
+export const DEVICE_CONNECTIVITY_METHODS = ['usb', 'sd_card', 'qr_code'] as const;
+export type DeviceConnectivityMethod = (typeof DEVICE_CONNECTIVITY_METHODS)[number];
+
+export function isConnectionMethod(value: string): value is ConnectionMethod {
+  return (CONNECTION_METHODS as readonly string[]).includes(value);
+}
+
+export function isDeviceConnectivityMethod(value: string): value is DeviceConnectivityMethod {
+  return (DEVICE_CONNECTIVITY_METHODS as readonly string[]).includes(value);
+}
 
 /**
  * Normalize a derivation path to standard format with auto-hardening for BIP paths
@@ -118,7 +130,7 @@ export interface ConnectivityMethodConfig {
  * Map connectivity types to icons and labels
  * Note: Bluetooth and NFC are not currently supported for direct device communication
  */
-export const connectivityConfig: Record<string, ConnectivityMethodConfig> = {
+export const connectivityConfig: Record<DeviceConnectivityMethod, ConnectivityMethodConfig> = {
   usb: { icon: Usb, label: 'USB', description: 'Connect via USB cable' },
   sd_card: { icon: HardDrive, label: 'SD Card', description: 'Import from SD card file' },
   qr_code: { icon: QrCode, label: 'QR Code', description: 'Scan QR codes' },
@@ -173,10 +185,12 @@ export function getAvailableMethods(
 
   // Add methods based on device connectivity
   for (const conn of deviceConnectivity) {
-    if (conn in connectivityConfig) {
-      if (isMethodAvailable(conn as ConnectionMethod, deviceConnectivity, isSecure)) {
-        methods.push(conn as ConnectionMethod);
-      }
+    if (!isDeviceConnectivityMethod(conn)) {
+      continue;
+    }
+
+    if (isMethodAvailable(conn, deviceConnectivity, isSecure)) {
+      methods.push(conn);
     }
   }
 

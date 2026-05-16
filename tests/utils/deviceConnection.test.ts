@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  CONNECTION_METHODS,
+  DEVICE_CONNECTIVITY_METHODS,
   generateMissingFieldsWarning,
   getAvailableMethods,
   getDeviceTypeFromModel,
+  isConnectionMethod,
+  isDeviceConnectivityMethod,
   isMethodAvailable,
   normalizeDerivationPath,
 } from "../../utils/deviceConnection";
@@ -93,6 +97,17 @@ describe("deviceConnection utilities", () => {
     expect(isMethodAvailable("qr_code", ["qr_code"], false)).toBe(false);
     expect(isMethodAvailable("sd_card", ["sd_card"], false)).toBe(true);
     expect(isMethodAvailable("qr_code", ["usb"], true)).toBe(false);
+  });
+
+  it("owns connection method values and guards model connectivity values", () => {
+    expect(CONNECTION_METHODS).toEqual(["usb", "sd_card", "qr_code", "manual"]);
+    expect(DEVICE_CONNECTIVITY_METHODS).toEqual(["usb", "sd_card", "qr_code"]);
+
+    expect(isConnectionMethod("manual")).toBe(true);
+    expect(isConnectionMethod("airgap")).toBe(false);
+    expect(isDeviceConnectivityMethod("usb")).toBe(true);
+    expect(isDeviceConnectivityMethod("manual")).toBe(false);
+    expect(isDeviceConnectivityMethod("bluetooth")).toBe(false);
   });
 
   it("returns available methods and always includes manual fallback", () => {

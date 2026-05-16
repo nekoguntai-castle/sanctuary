@@ -15,7 +15,7 @@ import { HardwareDeviceModel, CreateDeviceRequest, DeviceAccountInput } from '..
 import { DeviceAccount, parseDeviceJson } from '../../../services/deviceParsers';
 import { QrScanResult } from '../../../hooks/qr/useQrScanner';
 import { normalizeDerivationPath } from '../../../utils/deviceConnection';
-import { ConnectionMethod, DeviceFormData } from '../types';
+import type { ConnectionMethod, DeviceFormData } from '../types';
 
 /** QR extraction tracking for which fields came from QR scan */
 export interface QrExtractedFields {

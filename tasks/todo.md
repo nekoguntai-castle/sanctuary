@@ -1,6 +1,38 @@
-# Task: Phase Q2 LLM Egress Config Accessor Cleanup 2026-05-16
+# Task: Phase Q3 Device Connection Method Cleanup 2026-05-16
 
 Status: in progress.
+
+Goal: close the next bounded Phase Q cleanup slice by making the ConnectDevice connection-method value contract derive from one frontend utility owner, without merging it with the separate send-review signing-method vocabulary or hardware vendor normalization logic.
+
+Source alignment: this is the device connection-method item from the Phase Q as-touched cleanup bucket in `docs/plans/rationalization-plan.md`.
+
+## Plan
+
+- [x] Verify Q2 PR #483 merged and `origin/main` contains squash commit `4ec0d4a4b69b508cee06a74b6468aef0ba2258b0`.
+- [x] Re-run recursive plan review on `docs/plans/rationalization-plan.md` after the Q2 merge and verify remaining Phase Q evidence.
+- [x] Select a bounded Q3 slice from the remaining Phase Q candidates.
+- [x] Refactor `utils/deviceConnection.ts` to expose the canonical ConnectDevice connection-method tuple/type and use guards instead of string casts when reading model connectivity.
+- [x] Update `components/ConnectDevice/types.ts` and selector/caller typing to derive from the utility-owned connection-method contract without changing rendered labels or behavior.
+- [x] Preserve the separate send-review signing method domain (`usb`/`airgap`/`qr`) and avoid hardware vendor normalization changes.
+- [x] Add or update focused tests for known/unknown connection methods, manual fallback behavior, and the exported method owner.
+- [x] Run focused ConnectDevice/device-connection tests, app/test typechecks as needed, app lint, touched-file lizard, negative duplicate-union searches, and `git diff --check`.
+- [ ] Open, monitor, and merge the PR.
+
+## Review
+
+- Recursive plan review after Q2 accepted one status/queue correction: Q2 is now closed via PR #483 as `4ec0d4a4b69b508cee06a74b6468aef0ba2258b0`, so the remaining Phase Q queue should not keep describing Q2 as active.
+- Source evidence supports device connection-method ownership as the next smallest justified slice: `utils/deviceConnection.ts` and `components/ConnectDevice/types.ts` independently define the same `usb`/`sd_card`/`qr_code`/`manual` union, while `getAvailableMethods` currently casts model connectivity strings through that type after checking only the UI config map.
+- Rejected/deferred comments: send-review signing methods use a different `usb`/`airgap`/`qr` vocabulary for PSBT signing flows; hardware vendor normalization, price-provider offline fallback, and frontend `API_BASE_URL` export cleanup remain separate lower-priority domains.
+- `utils/deviceConnection.ts` now owns `CONNECTION_METHODS`, `DEVICE_CONNECTIVITY_METHODS`, derived method types, and guards. `getAvailableMethods` uses the guard before checking availability, so unknown hardware model connectivity values are ignored without casts and manual entry remains the fallback.
+- `components/ConnectDevice/types.ts` now imports/re-exports the utility-owned `ConnectionMethod` type, and `ConnectionMethodSelector` guards model connectivity before indexing UI config.
+- Focused coverage now asserts the exported connection-method owners and guards, including that `manual` is a connection method but not a hardware connectivity method, and that `airgap`/unknown values are not accepted in this domain.
+- Verification passed: `npm run test:run -- tests/utils/deviceConnection.test.ts tests/components/ConnectDevice/ConnectionMethodSelector.branches.test.tsx tests/components/ConnectDevice/ConnectDevice.branches.test.tsx`; `npm run typecheck:app`; `npm run typecheck:tests`; `npm run lint:app`; touched-file `npm run quality:lizard`; duplicate production `ConnectionMethod` union/cast negative search; `git diff --check`.
+
+---
+
+# Task: Phase Q2 LLM Egress Config Accessor Cleanup 2026-05-16
+
+Status: merged and verified via PR #483 as squash commit `4ec0d4a4b69b508cee06a74b6468aef0ba2258b0`.
 
 Goal: close the next bounded Phase Q cleanup slice by making backend LLM egress URL/secret access go through central server config instead of direct `process.env` reads, without changing the LLM egress proxy security boundary or proxy-local env validation.
 
@@ -15,7 +47,7 @@ Source alignment: this is the server LLM egress env accessor item from the Phase
 - [x] Preserve current URL default, missing-secret warning/header behavior, provider config sync behavior, and proxy/backend validation separation.
 - [x] Add or update focused tests for configured proxy URL/secret access and direct-env negative coverage.
 - [x] Run focused AI/proxy config tests, server type/build/lint checks, touched-file lizard, negative direct-env searches, docs checks, and `git diff --check`.
-- [ ] Open, monitor, and merge the PR.
+- [x] Open, monitor, and merge the PR.
 
 ## Review
 
@@ -26,6 +58,7 @@ Source alignment: this is the server LLM egress env accessor item from the Phase
 - Focused regression coverage now proves `forceSyncConfig` honors a configured `LLM_EGRESS_PROXY_URL`; the existing configured-secret test continues to prove both proxy-auth headers use the configured server secret.
 - Verification passed: `npm --prefix server run test:run -- tests/unit/services/aiService.test.ts tests/unit/services/aiService.modelOperations.test.ts tests/unit/assistant/consoleModelGateway.test.ts tests/unit/services/intelligence/conversationService.test.ts`; `npm --prefix server run test:run -- tests/unit/config/schema.test.ts tests/unit/services/intelligence/analysisService.test.ts`; `npm --prefix server run typecheck:tests`; `npm --prefix server run build`; `npm run lint:server`; touched-file `npm run quality:lizard`; backend direct-env negative search; `git diff --check`.
 - The first commit-hook attempt exposed two admin test harness config mocks that provided only the legacy default config export. Those harness mocks now also provide `getConfig()` with the same LLM egress test defaults, and `npm --prefix server run test:run -- tests/unit/api/admin-routes.test.ts tests/unit/api/admin.test.ts` plus `npm --prefix server run typecheck:tests`, `npm run lint:server`, touched-file `npm run quality:lizard`, direct-env negative search, and `git diff --check` passed afterward.
+- PR #483 passed all 61 latest Forgejo status contexts, squash-merged as `4ec0d4a4b69b508cee06a74b6468aef0ba2258b0`, and post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 

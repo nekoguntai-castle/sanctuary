@@ -10,8 +10,9 @@ import {
   DeviceAccountPurpose,
   type DeviceAccountPurpose as DeviceAccountPurposeValue,
 } from '@sanctuary/shared/constants/walletIdentity';
+import type { ConnectionMethod } from '../../utils/deviceConnection';
 
-export type ConnectionMethod = 'usb' | 'sd_card' | 'qr_code' | 'manual';
+export type { ConnectionMethod };
 
 /** State for device details form */
 export interface DeviceFormData {
