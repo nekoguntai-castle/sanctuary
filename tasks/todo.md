@@ -1,6 +1,6 @@
 # Task: Codebase Health Remediation Phase 2 Delivery 2026-05-16
 
-Status: in progress.
+Status: merged and verified via PR #496 as squash commit `f6233f47cea62151e872febb7f4f22fcfe3e69e2`.
 
 Goal: implement Phase 2 of `docs/plans/codebase-health-remediation-plan.md` by making the repo-owned `jscpd` command honor the intended source scope, excluding nested/generated workspaces, and delivering the phase through `$pr-delivery`.
 
@@ -11,7 +11,7 @@ Goal: implement Phase 2 of `docs/plans/codebase-health-remediation-plan.md` by m
 - [x] Patch the existing repo-owned `jscpd` path without creating a second invocation.
 - [x] Verify the command writes JSON/markdown reports to a dedicated output directory and reports the intended source duplication signal.
 - [x] Run focused quality/script checks and documentation verification.
-- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+- [x] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
 
 ## Review
 
@@ -23,6 +23,8 @@ Goal: implement Phase 2 of `docs/plans/codebase-health-remediation-plan.md` by m
 - Full grade collection completed; lint, typecheck, coverage, audit, secrets, lizard, file-size, and readiness signals were collected, but the initial root `npm test` lane had one transient `tests/contexts/CurrencyContext/settings.test.tsx` failure.
 - Follow-up verification passed: `npx vitest run tests/contexts/CurrencyContext/settings.test.tsx` passed 6 tests and `npm test` passed 497 files / 6196 tests.
 - Updated the quality report to 95/100, A, High confidence for the Phase 2 duplication-tooling checkpoint and appended grade history.
+- Pushed `codex/codebase-health-phase-2-jscpd`, opened PR #496, monitored 57 status contexts until all were success/skipped, including `Code Quality / Duplication (jscpd)` successful in 22s, and squash-merged with branch deletion disabled.
+- Post-merge verification passed: Forgejo reported PR #496 merged at `2026-05-16T10:23:59-10:00`; merge commit `f6233f47cea62151e872febb7f4f22fcfe3e69e2` exists locally and is an ancestor of `origin/main`.
 
 ---
 
