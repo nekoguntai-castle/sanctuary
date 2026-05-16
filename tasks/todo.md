@@ -1,6 +1,6 @@
 # Task: Recursive Review of Rationalization Plan After Phase Q4 2026-05-16
 
-Status: in progress.
+Status: complete; closeout PR #486 merged as squash commit `78d0fbf83cb3b524b3f4692f99bdb4b01b2b4ee7`.
 
 Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md` after the Phase Q4 merge, apply only verified closeout corrections, and stop if no remaining actionable consolidation phase is justified.
 
@@ -11,7 +11,7 @@ Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md` af
 - [x] Verify remaining Phase Q candidates against current source evidence.
 - [x] Update the plan/task ledger so Q4 is closed and remaining candidates are explicitly deferred or watch-only.
 - [x] Run documentation verification and stale active-wording searches.
-- [ ] Open, monitor, and merge the closeout PR if the review changes docs.
+- [x] Open, monitor, and merge the closeout PR if the review changes docs.
 
 ## Review
 
@@ -20,6 +20,7 @@ Goal: re-run `$recursive-plan-review` on `docs/plans/rationalization-plan.md` af
 - Accepted improvements: frontend API base URL export cleanup is recorded as closed, with `src/api/client.ts` keeping base URL resolution private and `src/api/baseUrl.ts` remaining the public raw-fetch helper owner.
 - Rejected/deferred comments: hardware vendor/type normalization remains deferred because it spans onboarding model matching, send-review signing capabilities, adapter registration, icons, add-account USB support, and import/export wallet-model mappings; price-provider fallback remains watch-only because the server price registry/settings path owns runtime provider behavior and the frontend fallback list is offline UI-only.
 - Verification passed: stale active-Q4 wording search, negative `API_BASE_URL` searches in the API client/test paths, production `API_BASE_URL` export search showing only `src/api/baseUrl.ts`'s internal default, and `git diff --check -- docs/plans/rationalization-plan.md tasks/todo.md`.
+- PR #486 passed all 30 combined Forgejo status contexts, squash-merged as `78d0fbf83cb3b524b3f4692f99bdb4b01b2b4ee7`, and post-merge verification confirmed the platform merge commit exists locally and is an ancestor of `origin/main`.
 
 ---
 
