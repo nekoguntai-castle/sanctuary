@@ -2,12 +2,12 @@
 
 Date: 2026-05-16
 Owner: Codex
-Status: Active remediation plan; Phases 0-3 are merged, Phase 4 is in PR delivery
+Status: Active remediation plan; Phases 0-4 are merged, Phase 5 is next
 Original source: `docs/plans/codebase-health-assessment.md` at local commit `4baa75e6`
 Current evidence: `docs/plans/codebase-health-assessment.md` at the active Phase 4 checkpoint
 Review note: during recursive review, `origin/main` resolved to `718a3d16`; re-check that ref before executing because the remote branch may advance.
 
-Execution update: Phase 4 fixes the website Mermaid advisory with `mermaid@11.15.0` in the docs-site lockfile and documents the remaining Prisma dev-tool Hono chain as accepted for this dated snapshot because npm's proposed remediation is an unsafe Prisma major downgrade. Phase 4 still must pass PR checks and merge before the phase is closed.
+Execution update: Phase 4 is merged as PR #500 at `8535231e2602b1744a1c303edeca2bb68610e5a9`. It fixed the website Mermaid advisory with `mermaid@11.15.0` in the docs-site lockfile and documented the remaining Prisma dev-tool Hono chain as accepted for this dated snapshot because npm's proposed remediation is an unsafe Prisma major downgrade. Phase 5 hardware-in-loop evidence is next, subject to physical device availability.
 
 ## Goal
 

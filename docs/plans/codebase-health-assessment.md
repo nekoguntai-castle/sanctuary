@@ -8,7 +8,7 @@ Status: Current Phase 4 advisory-triage checkpoint after fixing the website Merm
 **Grade**: A
 **Confidence**: High
 **Mode**: phase4-advisory-triage-checkpoint
-**Commit**: `875fd6a9+phase4-working-tree`
+**Commit**: `8535231e`
 
 ---
 
@@ -18,7 +18,7 @@ None.
 
 The hard-fail gates are clear after rerun verification: tests pass, typecheck passes, high/critical dependency vulnerabilities are 0, and gitleaks found 0 tracked-tree secrets.
 
-Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2 duplication-tooling fix, Phase 3 merge commit `e449117d`, and Phase 3 closeout merge `875fd6a9`. Phase 4 changes only the docs-site lockfile and advisory documentation.
+Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2 duplication-tooling fix, Phase 3 merge commit `e449117d`, Phase 3 closeout merge `875fd6a9`, and Phase 4 merge commit `8535231e`. Phase 4 changes only the docs-site lockfile and advisory documentation.
 
 ---
 
@@ -40,7 +40,7 @@ Scope note: this checkpoint builds on the Phase 1 source reconciliation, Phase 2
 ## Trend
 
 - Previous checkpoint: 95/100, A, commit `fed96e56+phase2-working-tree`, confidence High, dated 2026-05-16.
-- Current checkpoint: 95/100, A, commit `875fd6a9+phase4-working-tree`, confidence High, dated 2026-05-16.
+- Current checkpoint: 95/100, A, commit `8535231e`, confidence High, dated 2026-05-16.
 - Delta: +/-0 points, A held.
 
 Phase 4 clears the website Mermaid moderate advisory by moving the docs-site lockfile to `mermaid@11.15.0` and documents the remaining Prisma dev-tool Hono chain as accepted for this dated snapshot. The score stays flat because high/critical advisories were already 0 and the remaining moderate records require an upstream Prisma fix or an unacceptable Prisma downgrade.

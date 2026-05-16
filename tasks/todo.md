@@ -1,6 +1,6 @@
 # Task: Codebase Health Remediation Phase 4 Delivery 2026-05-16
 
-Status: in progress.
+Status: merged and verified via PR #500 as squash commit `8535231e2602b1744a1c303edeca2bb68610e5a9`.
 
 Goal: implement Phase 4 of `docs/plans/codebase-health-remediation-plan.md` by triaging current moderate dependency advisories, applying narrow package changes or dated reachability rationale, and delivering the phase through `$pr-delivery`.
 
@@ -11,7 +11,7 @@ Goal: implement Phase 4 of `docs/plans/codebase-health-remediation-plan.md` by t
 - [x] Classify each moderate advisory as upgrade now, override/pin with tests, or accepted risk with reachability rationale.
 - [x] Apply the narrowest package/docs changes and review lockfile impact.
 - [x] Run focused verification, typecheck/lint as needed, and documentation checks.
-- [ ] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
+- [x] Push, open/update the PR, monitor checks, merge, and verify target-branch ancestry.
 
 ## Review
 
@@ -21,6 +21,8 @@ Goal: implement Phase 4 of `docs/plans/codebase-health-remediation-plan.md` by t
 - Rejected npm's proposed Prisma remediation because it is a major downgrade to `prisma@6.19.3`; checked current `@prisma/dev@0.24.7`, which still pins the vulnerable nested Hono package, so there is no safe same-major upstream fix yet.
 - Recorded Phase 4 rationale in `docs/plans/dependency-audit-triage.md`, updated the quality assessment/history, and noted that `server/` and `gateway/` package-local audits return `ENOLOCK` because they rely on the root workspace lockfile.
 - Verification passed: `npm --prefix website run typecheck`, `npm run docs:build`, `npm --prefix website audit --json`, root audit refreshes, and root application audit without workspaces.
+- Pushed `codex/codebase-health-phase-4-advisories`, opened PR #500, monitored 57 status contexts until all were success/skipped, including Dependency audit, Lockfile peer resolution, Architecture, and PR Required Checks, and squash-merged with branch deletion disabled.
+- Post-merge verification passed: Forgejo reported PR #500 merged at `2026-05-16T11:10:32-10:00`; merge commit `8535231e2602b1744a1c303edeca2bb68610e5a9` exists locally and is an ancestor of `origin/main`.
 
 ---
 
