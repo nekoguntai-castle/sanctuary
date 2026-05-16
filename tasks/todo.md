@@ -1,3 +1,27 @@
+# Task: Phase R Payjoin Attempt Route Validation 2026-05-16
+
+Status: in progress.
+
+Goal: tighten the authenticated `/payjoin/attempt` JSON route so route validation, OpenAPI, and the Payjoin sender service agree on a typed, closed request contract without changing the unauthenticated BIP78 receiver route.
+
+## Plan
+
+- [x] Read the Phase R plan, Payjoin route, OpenAPI schema/path, validation middleware, and existing Payjoin route tests.
+- [x] Replace loose `z.unknown()` Payjoin attempt validation with a typed strict schema for `psbt`, `payjoinUrl`, and optional canonical Bitcoin network.
+- [x] Update OpenAPI to document the closed Payjoin attempt request body.
+- [x] Add route/OpenAPI tests for missing, empty, invalid type, invalid URL, invalid/legacy network, extra field, valid network, and BIP78 receiver-route isolation.
+- [x] Run focused server tests, type/build checks, lizard, stale schema searches, and diff verification.
+- [ ] Open, monitor, and merge the Phase R PR.
+
+## Review
+
+- Tightened the authenticated JSON `/payjoin/attempt` contract to accept only non-empty string `psbt`, valid URL `payjoinUrl`, and optional canonical `BITCOIN_NETWORKS` values; malformed types, legacy `testnet`, and extra fields now fail route validation before `attemptPayjoinSend`.
+- Kept the unauthenticated BIP78 `POST /payjoin/:addressId` text/plain receiver path separate from the JSON attempt route and covered that boundary with a route regression.
+- Updated `PayjoinAttemptRequest` OpenAPI to stay in parity with the closed route schema.
+- Verification passed: `npm --prefix shared run build`; `npm --prefix server run prisma:generate`; `vitest run tests/unit/api/payjoin.test.ts tests/unit/api/openapi.test.ts --config vitest.config.ts`; `npm --prefix server run typecheck:tests`; `npm run lint:server`; `npm run quality:lizard`; stale Payjoin attempt schema searches; `git diff --check`.
+
+---
+
 # Task: Recursive Review of Rationalization Plan After Phase Q4 2026-05-16
 
 Status: complete; closeout PR #486 merged as squash commit `78d0fbf83cb3b524b3f4692f99bdb4b01b2b4ee7`.

@@ -618,6 +618,14 @@ export function registerOpenApiGatewayTests() {
       'signet',
       'regtest',
     ]);
+    expect(openApiSpec.components.schemas.PayjoinAttemptRequest.required).toEqual([
+      'psbt',
+      'payjoinUrl',
+    ]);
+    expect(openApiSpec.components.schemas.PayjoinAttemptRequest).toHaveProperty(
+      'additionalProperties',
+      false,
+    );
     expect(openApiSpec.components.schemas.PayjoinReceiverError.enum).toEqual([
       'version-unsupported',
       'unavailable',

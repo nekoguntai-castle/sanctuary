@@ -739,6 +739,7 @@ describe('Payjoin API Routes', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toContain('required');
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
     });
 
     it('should return 400 when payjoinUrl is missing', async () => {
@@ -751,6 +752,55 @@ describe('Payjoin API Routes', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toContain('required');
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['empty psbt', { psbt: '', payjoinUrl: 'https://example.com/pj' }],
+      ['object psbt', { psbt: { base64: VALID_PSBT_BASE64 }, payjoinUrl: 'https://example.com/pj' }],
+      ['array psbt', { psbt: [VALID_PSBT_BASE64], payjoinUrl: 'https://example.com/pj' }],
+      ['null psbt', { psbt: null, payjoinUrl: 'https://example.com/pj' }],
+      ['empty payjoinUrl', { psbt: VALID_PSBT_BASE64, payjoinUrl: '' }],
+      ['object payjoinUrl', { psbt: VALID_PSBT_BASE64, payjoinUrl: { url: 'https://example.com/pj' } }],
+      ['array payjoinUrl', { psbt: VALID_PSBT_BASE64, payjoinUrl: ['https://example.com/pj'] }],
+      ['null payjoinUrl', { psbt: VALID_PSBT_BASE64, payjoinUrl: null }],
+    ])('should return 400 before service call for malformed %s input', async (_label, body) => {
+      const res = await request(app)
+        .post('/api/v1/payjoin/attempt')
+        .set('Authorization', 'Bearer test-token')
+        .send(body);
+
+      expect(res.status).toBe(400);
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 for invalid payjoinUrl', async () => {
+      const res = await request(app)
+        .post('/api/v1/payjoin/attempt')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          psbt: VALID_PSBT_BASE64,
+          payjoinUrl: 'not-a-valid-url',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('payjoinUrl');
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 when extra fields are provided', async () => {
+      const res = await request(app)
+        .post('/api/v1/payjoin/attempt')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          psbt: VALID_PSBT_BASE64,
+          payjoinUrl: 'https://example.com/pj',
+          senderInputIndexes: [0],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Invalid Payjoin attempt request');
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
     });
 
     it('should return 400 for invalid network', async () => {
@@ -765,6 +815,22 @@ describe('Payjoin API Routes', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toContain('network');
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 for legacy testnet network alias', async () => {
+      const res = await request(app)
+        .post('/api/v1/payjoin/attempt')
+        .set('Authorization', 'Bearer test-token')
+        .send({
+          psbt: VALID_PSBT_BASE64,
+          payjoinUrl: 'https://example.com/pj',
+          network: 'testnet',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('network');
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
     });
 
     it('should accept valid network parameter', async () => {
@@ -784,6 +850,29 @@ describe('Payjoin API Routes', () => {
         });
 
       expect(res.status).toBe(200);
+      expect(mockAttemptPayjoinSend).toHaveBeenCalledWith(
+        VALID_PSBT_BASE64,
+        'https://example.com/pj',
+        [0],
+        expect.anything()
+      );
+    });
+
+    it('should keep the BIP78 receiver route separate from JSON attempt validation', async () => {
+      mockProcessPayjoinRequest.mockResolvedValue({
+        success: true,
+        proposalPsbt: PROPOSAL_PSBT_BASE64,
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1`)
+        .set('Content-Type', 'text/plain')
+        .send(VALID_PSBT_BASE64);
+
+      expect(res.status).toBe(200);
+      expect(res.text).toBe(PROPOSAL_PSBT_BASE64);
+      expect(mockProcessPayjoinRequest).toHaveBeenCalledWith(TEST_ADDRESS_ID, VALID_PSBT_BASE64, 1);
+      expect(mockAttemptPayjoinSend).not.toHaveBeenCalled();
     });
 
     it('should return 500 on internal error', async () => {

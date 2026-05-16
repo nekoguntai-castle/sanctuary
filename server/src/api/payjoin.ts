@@ -8,6 +8,7 @@
 
 import express, { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
+import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireFeature, isFeatureEnabledAsync } from '../middleware/featureGate';
 import { validate } from '../middleware/validate';
@@ -27,7 +28,7 @@ import {
   attemptPayjoinSend,
 } from '../services/payjoinService';
 import { getNetwork } from '../services/bitcoin/utils';
-import { isBitcoinNetwork, normalizeLegacyBitcoinNetwork } from '../services/bitcoin/networks';
+import { normalizeLegacyBitcoinNetwork } from '../services/bitcoin/networks';
 
 const log = createLogger('PAYJOIN:ROUTE');
 
@@ -39,33 +40,36 @@ const ParseUriBodySchema = z.object({
 });
 
 const AttemptPayjoinBodySchema = z.object({
-  psbt: z.unknown(),
-  payjoinUrl: z.unknown(),
-  network: z.unknown().optional(),
-}).superRefine((data, ctx) => {
-  if (!data.psbt || !data.payjoinUrl) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'psbt and payjoinUrl are required',
-      path: ['psbt'],
-    });
-    return;
-  }
+  psbt: z.string().min(1, 'psbt is required'),
+  payjoinUrl: z.string().min(1, 'payjoinUrl is required').url('payjoinUrl must be a valid URL'),
+  network: z.enum(BITCOIN_NETWORKS).optional(),
+}).strict();
 
-  if (data.network && !isBitcoinNetwork(data.network)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Invalid network. Must be mainnet, testnet3, testnet4, signet, or regtest',
-      path: ['network'],
-    });
-  }
-});
+type AttemptPayjoinBody = z.infer<typeof AttemptPayjoinBodySchema>;
 
-const attemptPayjoinValidationMessage = (issues: Array<{ message: string }>) => (
-  issues.some(issue => issue.message.startsWith('Invalid network.'))
-    ? 'Invalid network. Must be mainnet, testnet3, testnet4, signet, or regtest'
-    : 'psbt and payjoinUrl are required'
+const attemptPayjoinRequiredFields = ['psbt', 'payjoinUrl'];
+
+const isMissingAttemptPayjoinField = (issue: { path: string; message: string }) => (
+  attemptPayjoinRequiredFields.includes(issue.path)
+  && (
+    issue.message.includes('required')
+    || issue.message.includes('received undefined')
+    || issue.message.includes('Too small')
+  )
 );
+
+const attemptPayjoinValidationMessage = (issues: Array<{ path: string; message: string }>) => {
+  if (issues.some(issue => issue.path === 'network')) {
+    return 'Invalid network. Must be mainnet, testnet3, testnet4, signet, or regtest';
+  }
+  if (issues.some(isMissingAttemptPayjoinField)) {
+    return 'psbt and payjoinUrl are required';
+  }
+  if (issues.some(issue => issue.path === 'payjoinUrl')) {
+    return 'payjoinUrl must be a valid URL';
+  }
+  return 'Invalid Payjoin attempt request';
+};
 
 // Rate limiter for unauthenticated BIP78 endpoint
 // Prevents DoS attacks by limiting requests per addressId
@@ -241,7 +245,7 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
   { body: AttemptPayjoinBodySchema },
   { message: attemptPayjoinValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
-  const { psbt, payjoinUrl, network } = req.body;
+  const { psbt, payjoinUrl, network } = req.body as AttemptPayjoinBody;
 
   // Use provided network or default to mainnet
   const networkStr = normalizeLegacyBitcoinNetwork(network, 'mainnet');

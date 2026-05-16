@@ -69,6 +69,7 @@ export const payjoinSchemas = {
       },
     },
     required: ['psbt', 'payjoinUrl'],
+    additionalProperties: false,
   },
   PayjoinAttemptResponse: {
     type: 'object',
