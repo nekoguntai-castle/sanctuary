@@ -291,10 +291,11 @@ run_lizard() {
 }
 
 run_npm_audit() {
+  npm audit --audit-level=high
+  npm audit --workspace server --audit-level=high
+  npm audit --workspace gateway --audit-level=high
+
   local package_dirs=(
-    .
-    server
-    gateway
     llm-egress-proxy
     website
     scripts/verify-addresses
@@ -302,11 +303,7 @@ run_npm_audit() {
   )
 
   for package_dir in "${package_dirs[@]}"; do
-    if [[ "$package_dir" = "." ]]; then
-      npm audit --audit-level=high
-    else
-      npm --prefix "$package_dir" audit --audit-level=high
-    fi
+    npm --prefix "$package_dir" audit --audit-level=high
   done
 }
 

@@ -1,3 +1,157 @@
+# Task: Stable Minor Release 0.9.0 2026-05-16
+
+Status: in progress.
+
+Goal: prepare, validate, tag, publish, and verify the next Sanctuary stable minor release as `v0.9.0`.
+
+## Plan
+
+- [x] Record the minor-release correction and update release policy notes.
+- [x] Bump package metadata from `0.8.53` to `0.9.0`.
+- [x] Run focused/full release gates after the version bump.
+- [ ] Commit and push the release-prep commit to `origin/main`.
+- [ ] Create and push stable tag `v0.9.0`.
+- [ ] Monitor release workflows, image publishing, Umbrel dispatch, and release object creation.
+
+## Review
+
+- Pending.
+
+---
+
+# Task: Release Readiness Audit 2026-05-16
+
+Status: complete.
+
+Goal: run the Sanctuary `$release` readiness audit for the current checkout without creating tags, release objects, published images, or downstream dispatches.
+
+## Plan
+
+- [x] Confirm the Sanctuary release-skill guard and classify the request.
+- [x] Run release preflight: branch, dirty state, tags, version, commit, and latest tag state.
+- [x] Inspect release gates/workflows and current CI evidence.
+- [x] Run local readiness gates: typecheck, lint, coverage, and quality.
+- [x] Review blockers/accepted risks and record the final audit result.
+
+## Review
+
+- Classified bare `$release` as readiness/audit only. No tags, releases, images, release objects, or Umbrel dispatches were created.
+- Guard checks passed: repository root is `/home/nekoguntai/sanctuary`, `package.json` name is `sanctuary`.
+- Preflight: branch `codex/verified-origin-main-2026-05-16` and `origin/main` are both at `49ba5556` (`Record phase 6 final grade closeout`); package version is `0.8.53`; latest stable tag `v0.8.53` points to `c4f5134b`, so current HEAD is not tagged and `0.8.53` is already released.
+- Dirty state is task-note and audit-fix work only: `tasks/todo.md`, pre-existing `tasks/lessons.md`, plus the release-audit fixes in `scripts/quality.sh`, `tests/ci/quality-audit.test.sh`, and `docs/reference/release-gates.md`.
+- Forgejo evidence on current HEAD: `architecture.yml` push run and scheduled `verify-vectors.yml` run are successful. No release-candidate/install-test release tag run exists for this HEAD because no tag was pushed.
+- Fixed the local quality gate audit lane to audit `server` and `gateway` through the root workspace lockfile with `npm audit --workspace ...`, avoiding package-local `ENOLOCK` while preserving high-severity gating; added `tests/ci/quality-audit.test.sh`.
+- Updated `docs/reference/release-gates.md` so dependency security commands match root-lockfile workspace audits and upgrade preservation points at `install-test.yml`; `release-candidate.yml` intentionally does not duplicate the upgrade matrix.
+- Verification passed: `npm run typecheck`, `npm run lint`, `npm run coverage`, `bash -n scripts/quality.sh`, `bash -n tests/ci/quality-audit.test.sh`, `bash tests/ci/quality-audit.test.sh`, `npm run quality`, `npm run docs:build`, `cd server && npm run build`, `cd gateway && npm run build`, `npm run test:release-artifacts`, `npm audit --omit=dev --workspaces=false --audit-level=moderate`, `npm audit --workspace gateway --omit=dev --omit=optional --audit-level=moderate`, and `git diff --check`.
+- Accepted dependency findings remain as documented: root full audit reports `20 low` and `3 moderate`, with no high or critical vulnerabilities; root production audit reports only `10 low`; gateway production audit reports `0` vulnerabilities.
+- Release blockers before any RC/stable action: choose/bump the next version because `v0.8.53` already exists, commit the audit fixes/task notes or tag an existing clean commit intentionally, then push an RC/stable tag and monitor the tag-scoped `release-candidate.yml`/`install-test.yml` gates. Stable release still requires image publishing, Umbrel dispatch verification, artifact manifest verification, and release object creation after tag validation.
+
+---
+
+# Task: Fix Sanctuary Release Skill Discovery 2026-05-16
+
+Status: complete.
+
+Goal: make `$release` appear in a fresh Codex session and stop relying on raw filesystem presence as proof of skill installation.
+
+## Plan
+
+- [x] Record the fresh-session failure and correct the prior diagnosis.
+- [x] Compare `release` against known-loaded custom skills and inspect Codex skill/plugin discovery signals.
+- [x] Apply the narrowest install/metadata fix that makes the skill eligible for loading.
+- [x] Verify the release skill metadata and document the remaining fresh-session proof step.
+- [x] Update lessons with the corrected rule.
+
+## Review
+
+- Root cause: `/home/nekoguntai/.codex/skills/release/SKILL.md` existed, but its YAML frontmatter was invalid because the description contained an unquoted `: ` sequence after `/home/nekoguntai/sanctuary`.
+- Fixed the canonical skill metadata by converting the description to folded YAML; no project-local `.codex` mirror was created.
+- Removed the temporary duplicate `/home/nekoguntai/.codex/skills/00-release` after it was only used to isolate loader ordering versus metadata parsing.
+- Verification passed: `codex debug prompt-input '$release'` now injects exactly one `release` skill entry from `/home/nekoguntai/.codex/skills/release/SKILL.md`.
+
+---
+
+# Task: Create Sanctuary Release Skill 2026-05-16
+
+Status: complete.
+
+Goal: create a Codex `/release` skill that maps to Sanctuary's project-specific release workflow without modifying or committing anything to the shared skills repository.
+
+## Plan
+
+- [x] Confirm where Codex and Claude skills live and verify that no installed Claude `/release` skill exists to import directly.
+- [x] Inspect Sanctuary's actual release scripts, release-candidate workflow, stable tag install/publish workflow, and release gate documentation.
+- [x] Create the release skill outside `/home/nekoguntai/code/skills` with a hard Sanctuary repository guard.
+- [x] Verify the skill metadata/body, confirm it is outside git tracking for the skills repo and Sanctuary repo, and document the result.
+
+## Review
+
+- Created the project-specific Codex release skill at `/home/nekoguntai/.codex/skills/release/SKILL.md` with UI metadata at `/home/nekoguntai/.codex/skills/release/agents/openai.yaml`.
+- The skill hard-stops outside `/home/nekoguntai/sanctuary`, confirms `package.json` is `sanctuary`, and explicitly forbids editing or installing through `/home/nekoguntai/code/skills`.
+- The skill maps to the current Sanctuary release surface: `docs/reference/release-gates.md`, `.github/workflows/release-candidate.yml`, `.github/workflows/install-test.yml`, `npm run release:verify-artifacts`, `npm run test:release-artifacts`, and `scripts/create-forge-release.sh`.
+- Verification passed: `skill-frontmatter-ok`, `/home/nekoguntai/code/skills` stayed clean on `main...origin/main`, no `/home/nekoguntai/code/skills/plugins/release` exists, and Sanctuary's `.gitignore` already ignores `.codex`.
+- Follow-up diagnosis after `$release` did not appear in a fresh session: the skill file was present and readable under `/home/nekoguntai/.codex/skills/release`, but the YAML frontmatter was invalid because the description contained an unquoted `: ` sequence. The metadata has since been fixed and `codex debug prompt-input '$release'` confirms fresh prompt injection.
+- A project-local mirror under Sanctuary `.codex/skills/release` was not created because `/home/nekoguntai/sanctuary/.codex` is currently an ignored zero-byte file, not a directory; replacing it should be an explicit separate choice.
+
+---
+
+# Task: Verify Phases 1 And 2 Coverage Rebuild 2026-05-16
+
+Status: complete.
+
+Goal: prove the requested Phase 1 and Phase 2 work is complete in the current checkout, confirm test coverage remains at 100%, and rebuild the running Sanctuary instance so it reflects the current source.
+
+## Plan
+
+- [x] Identify which Phase 1 and Phase 2 plan applies to the objective and avoid redoing already-merged work.
+- [x] Verify current-source Phase 1 reconciliation signals and focused tests.
+- [x] Verify current-source Phase 2 duplication tooling signals.
+- [x] Run the coverage gate and confirm frontend, server, and gateway remain at 100%.
+- [x] Rebuild the running Sanctuary Compose instance from this checkout.
+- [x] Run post-rebuild health/smoke checks and complete the prompt-to-artifact audit.
+
+## Review
+
+- Phase mapping resolved to `docs/plans/codebase-health-remediation-plan.md`; no production source edits were needed in this pass because the Phase 1 and Phase 2 work is already present in the current `origin/main` checkout.
+- Phase 1 verification passed: the stale divergence signature scan found none of the old Payjoin, admin monitoring, wallet export, export-service, or API base URL drift; `npm --prefix shared run build`, `npx vitest run tests/api/client.test.ts`, focused backend route/export tests, `npm run typecheck`, and `npm run lint` all passed.
+- Phase 2 verification passed: `QUALITY_JSCPD_OUTPUT_DIR=.tmp/grade-jscpd-review scripts/quality/jscpd-only.sh` reported 1.65% duplicated lines, 5,223 duplicated lines, 259 clones, and 2,607 files; JSON inspection found 0 polluted `.claude`, `.tmp`, `.tmp-gh`, `node_modules`, test/spec, or build/report source paths across the duplicate entries.
+- Coverage remained at 100%: `npm run coverage` passed for frontend, server, and gateway with 100.00% lines, statements, functions, and branches.
+- Rebuild completed against the running `sanctuary` Compose project from `/home/nekoguntai/sanctuary/docker-compose.yml`: `./start.sh --rebuild` rebuilt local frontend, backend, gateway, and LLM egress proxy images and brought the app up at `https://localhost:8443`.
+- Data preservation held across rebuild: the pre/post Postgres fingerprint matched with `users=1`, `wallets=0`, `devices=0`, empty `wallet_networks`, and `oldest_user=2026-05-07 00:09:25.569`.
+- Post-rebuild smoke checks passed: Docker reports all application containers healthy; `https://localhost:8443` returned HTTP 200; frontend `/health`, proxied backend `/api/v1/health`, direct backend `/health`, worker `/ready`, and gateway `/health` returned healthy/ready responses.
+- Rollback gate: no rollback is warranted. The evidence shows material architecture/posture improvement from the current app state versus the pre-plan risks: Phase 1 removed route/export/base-URL drift from production source, and Phase 2 leaves duplication measurement on one reproducible repo-owned path with polluted source roots excluded. Remaining build warnings are existing low/moderate npm advisories and a non-fatal Docker kernel swappiness warning, not regressions from this pass.
+
+---
+
+# Task: Worktree And Branch Cleanup 2026-05-16
+
+Status: complete.
+
+Goal: clean up stale local worktrees and branches, while incorporating any branch work that makes the app meaningfully better before removing local references.
+
+## Plan
+
+- [x] Record the cleanup plan before changing worktrees or branches.
+- [x] Inventory every linked worktree for dirty files, local commits, and relationship to `origin/main`.
+- [x] Classify local branches as already merged/redundant, candidate value to incorporate, or intentionally kept.
+- [x] Incorporate only net-improving candidate changes into the current working branch.
+- [x] Run focused verification for any incorporated changes.
+- [x] Remove safe stale worktrees and local branches, then document the final cleanup result.
+
+## Review
+
+- Fetched and pruned `origin` before classifying local state.
+- Removed 25 stale linked worktrees with exact `git worktree remove --force <path>` calls. Only `/home/nekoguntai/sanctuary` remains in `git worktree list`.
+- Preserved the useful `/tmp/sanctuary-threat-model` lesson by adding `Recheck CI Before Interpreting User-Reported Errors` to `tasks/lessons.md`.
+- Skipped the detached PR420 config diff because current `origin/main` already contains the `SANCTUARY_SHARED_DIST`/shared-dist alias behavior.
+- Skipped the untracked `.claude/worktrees/claude-router-plan/tasks/claude-router-plan.md` note because it was external Claude-router planning, not an app improvement for this repo.
+- Verified the stale local `main` documentation commit's useful content already exists in current `docs/plans/rationalization-plan.md`, `tasks/todo.md`, and `tasks/lessons.md`, then reset local `main` to `origin/main`.
+- Deleted stale local branches after worktree removal. Remote-tracking branches were not deleted.
+- Final local branch state is `codex/verified-origin-main-2026-05-16` and `main`, both at `49ba5556` tracking `origin/main`.
+- Verification passed: `git worktree list --porcelain`, `git branch -vv`, `git status --short --branch`, and `git diff --check -- tasks/todo.md tasks/lessons.md`.
+
+---
+
 # Task: Codebase Health Remediation Phase 6 Final Grade 2026-05-16
 
 Status: merged and verified via PR #504 as squash commit `73acc0841f4b3032f839848a41ca05e2ab7f33af`.

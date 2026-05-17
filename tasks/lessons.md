@@ -2338,3 +2338,42 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Before giving final next-step guidance, re-check the active `tasks/todo.md` entry, current health report top risks, and any freshly merged slice notes.
 - If stale historical TODOs exist, do not blindly resume them; classify whether each is superseded, still live, or requires fresh measurement.
 - When the user asked for iterative bug-scrub delivery, default to refreshing current evidence and selecting the next slice instead of declaring the loop done after one class of findings closes.
+
+## Recheck CI Before Interpreting User-Reported Errors
+
+**Rule:** When the user reports that a previously pending CI lane has "errors" or "finished," re-query the authoritative commit status and lane status before classifying it as failed.
+
+**Why:** The post-merge critical mutation lane showed noisy Stryker output while still running, then completed successfully. Treating visible step output as a final failure would have sent the investigation down the wrong path.
+
+**How to apply:**
+
+- Check the commit status state and the exact context status first.
+- Distinguish `pending`/running step output from a terminal `failure`.
+- Start local reproduction only when it is needed, and stop it once the remote authoritative status has resolved.
+
+## Prove Codex Skill Availability In A Fresh Registry
+
+**Rule:** After creating or installing a Codex skill, distinguish filesystem installation from parseable metadata and active registry availability; a skill is not proven usable until a fresh prompt's injected skill list includes it.
+
+**Why:** The Sanctuary `$release` skill was present at `~/.codex/skills/release/SKILL.md`, but a fresh session still did not load it because the YAML frontmatter description contained an unquoted `: ` sequence. Saying "start a new session; it should appear" is only a workaround, not proof, and line-shape checks are not enough to validate frontmatter.
+
+**How to apply:**
+
+- Verify the skill file path, permissions, and YAML frontmatter parsing before changing anything else.
+- Quote or fold skill descriptions that contain YAML-sensitive text such as `: `, `$`, paths, or punctuation-heavy workflow names.
+- Use `codex debug prompt-input '$skill'` as the fast proof that a fresh prompt injects the skill entry.
+- Do not assume a missing in-session skill means the install failed, but also do not assume a raw skill folder will be loaded until fresh prompt construction proves it.
+- If a fresh prompt still does not list the skill, inspect Codex skill-loader warnings and compare against a known-working skill's metadata/layout.
+- For project-local skill mirrors, first check whether `.codex` is a directory; do not replace an existing file without explicit permission.
+
+## Sanctuary Release Skill Bumps Minor Versions By Default
+
+**Rule:** When using the Sanctuary `$release` skill to cut the next stable release, default to the next minor version, not the next patch version, unless the user explicitly says they want a patch or hotfix.
+
+**Why:** The user corrected a planned `0.8.54` patch target and clarified that this release workflow should bump the minor release line.
+
+**How to apply:**
+
+- From `0.8.53`, the normal `$release` stable target is `0.9.0` / `v0.9.0`.
+- Treat a user-provided patch-looking version as ambiguous if they also invoke the Sanctuary release skill; confirm or apply the latest clarification before tagging.
+- Do not create or push a tag until the package version, tag name, release notes, and workflow target agree.
