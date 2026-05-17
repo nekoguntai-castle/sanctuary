@@ -11,10 +11,11 @@ export const draftSchemas = {
     type: 'object',
     properties: {
       address: { type: 'string' },
-      amount: { type: 'number', minimum: 1 },
+      amount: { type: 'number', minimum: 0 },
       sendMax: { type: 'boolean' },
     },
     required: ['address', 'amount'],
+    additionalProperties: false,
   },
   DraftInput: {
     type: 'object',
@@ -25,6 +26,7 @@ export const draftSchemas = {
       amount: { type: 'number' },
     },
     required: ['txid', 'vout', 'address', 'amount'],
+    additionalProperties: false,
   },
   DraftTransaction: {
     type: 'object',
@@ -91,9 +93,26 @@ export const draftSchemas = {
       enableRBF: { type: 'boolean' },
       subtractFees: { type: 'boolean' },
       sendMax: { type: 'boolean' },
-      outputs: {},
-      inputs: {},
-      decoyOutputs: {},
+      outputs: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/DraftOutput' },
+      },
+      inputs: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/DraftInput' },
+      },
+      decoyOutputs: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            address: { type: 'string' },
+            amount: { type: 'number' },
+          },
+          required: ['address', 'amount'],
+          additionalProperties: false,
+        },
+      },
       payjoinUrl: { type: 'string' },
       isRBF: { type: 'boolean' },
       label: { type: 'string', nullable: true },
@@ -105,10 +124,11 @@ export const draftSchemas = {
       changeAmount: { oneOf: [{ type: 'number' }, { type: 'string' }] },
       changeAddress: { type: 'string' },
       effectiveAmount: { oneOf: [{ type: 'number' }, { type: 'string' }] },
-      inputPaths: {},
+      inputPaths: { type: 'array', items: { type: 'string', minLength: 1 } },
       signedPsbtBase64: { type: 'string', minLength: 1 },
       signedDeviceId: { type: 'string', minLength: 1 },
     },
+    required: ['recipient', 'amount', 'feeRate', 'psbtBase64'],
     additionalProperties: false,
   },
   UpdateDraftRequest: {

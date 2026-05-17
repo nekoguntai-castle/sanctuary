@@ -13,49 +13,78 @@ import { z } from 'zod';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireWalletAccess } from '../middleware/walletAccess';
 import { validate } from '../middleware/validate';
+import { ACTIONABLE_DRAFT_STATUSES } from '../repositories/draftRepository';
 import { draftService } from '../services/draftService';
 import { serializeDraftTransaction, serializeDraftTransactions } from '../utils/serialization';
 import { asyncHandler } from '../errors/errorHandler';
 
 const router = Router();
 
-const DraftNumericValueSchema = z.union([z.number(), z.string()]);
+const DraftIntegerValueSchema = z.custom<number | string>(
+  (value) => (
+    (typeof value === 'number' && Number.isInteger(value) && value >= 0) ||
+    (typeof value === 'string' && /^\d+$/.test(value))
+  ),
+  { message: 'Expected a non-negative integer value' }
+);
+const DraftFeeRateSchema = z.custom<number | string>(
+  (value) => (
+    (typeof value === 'number' && Number.isFinite(value) && value > 0) ||
+    (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value) && Number(value) > 0)
+  ),
+  { message: 'Expected a positive fee rate' }
+);
 const OptionalDraftTextSchema = z.union([z.string(), z.null()]);
+const DraftOutputSchema = z.object({
+  address: z.string().min(1),
+  amount: DraftIntegerValueSchema,
+  sendMax: z.boolean().optional(),
+}).strict();
+const DraftInputSchema = z.object({
+  txid: z.string().regex(/^[a-fA-F0-9]{64}$/),
+  vout: z.number().int().nonnegative(),
+  address: z.string(),
+  amount: DraftIntegerValueSchema,
+}).strict();
+const DraftDecoyOutputSchema = z.object({
+  address: z.string().min(1),
+  amount: DraftIntegerValueSchema,
+}).strict();
 
 const CreateDraftBodySchema = z.object({
-  recipient: z.string().optional(),
-  amount: DraftNumericValueSchema.optional(),
-  feeRate: DraftNumericValueSchema.optional(),
+  recipient: z.string().min(1),
+  amount: DraftIntegerValueSchema,
+  feeRate: DraftFeeRateSchema,
   selectedUtxoIds: z.array(z.string()).optional(),
   enableRBF: z.boolean().optional(),
   subtractFees: z.boolean().optional(),
   sendMax: z.boolean().optional(),
-  outputs: z.unknown().optional(),
-  inputs: z.unknown().optional(),
-  decoyOutputs: z.unknown().optional(),
+  outputs: z.array(DraftOutputSchema).optional(),
+  inputs: z.array(DraftInputSchema).optional(),
+  decoyOutputs: z.array(DraftDecoyOutputSchema).optional(),
   payjoinUrl: z.string().optional(),
   isRBF: z.boolean().optional(),
   label: OptionalDraftTextSchema.optional(),
   memo: OptionalDraftTextSchema.optional(),
-  psbtBase64: z.string().optional(),
-  fee: DraftNumericValueSchema.optional(),
-  totalInput: DraftNumericValueSchema.optional(),
-  totalOutput: DraftNumericValueSchema.optional(),
-  changeAmount: DraftNumericValueSchema.optional(),
+  psbtBase64: z.string().min(1),
+  fee: DraftIntegerValueSchema.optional(),
+  totalInput: DraftIntegerValueSchema.optional(),
+  totalOutput: DraftIntegerValueSchema.optional(),
+  changeAmount: DraftIntegerValueSchema.optional(),
   changeAddress: z.string().optional(),
-  effectiveAmount: DraftNumericValueSchema.optional(),
-  inputPaths: z.unknown().optional(),
+  effectiveAmount: DraftIntegerValueSchema.optional(),
+  inputPaths: z.array(z.string().min(1)).optional(),
   signedPsbtBase64: z.string().min(1).optional(),
   signedDeviceId: z.string().min(1).optional(),
-});
+}).strict();
 
 const UpdateDraftBodySchema = z.object({
-  signedPsbtBase64: z.string().optional(),
-  signedDeviceId: z.string().optional(),
-  status: z.string().optional(),
+  signedPsbtBase64: z.string().min(1).optional(),
+  signedDeviceId: z.string().min(1).optional(),
+  status: z.enum(ACTIONABLE_DRAFT_STATUSES).optional(),
   label: OptionalDraftTextSchema.optional(),
   memo: OptionalDraftTextSchema.optional(),
-});
+}).strict();
 
 // All routes require authentication
 router.use(authenticate);

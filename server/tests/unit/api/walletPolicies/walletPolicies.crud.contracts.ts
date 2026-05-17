@@ -75,9 +75,9 @@ export function registerWalletPolicyCrudTests(): void {
       name: 'Daily Limit',
       description: 'Max 1 BTC per day',
       type: 'spending_limit',
-      config: { maxAmount: '100000000', windowType: 'rolling', windowDuration: 86400 },
+      config: { daily: 100000000, scope: 'wallet' },
       priority: 10,
-      enforcement: 'block',
+      enforcement: 'enforce',
       enabled: true,
     };
 
@@ -103,7 +103,7 @@ export function registerWalletPolicyCrudTests(): void {
         type: 'spending_limit',
         config: createPayload.config,
         priority: 10,
-        enforcement: 'block',
+        enforcement: 'enforce',
         enabled: true,
       });
       expect(mockLogFromRequest).toHaveBeenCalledWith(
@@ -122,12 +122,13 @@ export function registerWalletPolicyCrudTests(): void {
     });
 
     it('creates a policy with minimal fields (undefined optional fields)', async () => {
+      const config = { daily: 1, scope: 'wallet' };
       const createdPolicy = { id: 'pol-2', name: 'Basic', type: 'spending_limit' };
       mockCreatePolicy.mockResolvedValue(createdPolicy);
 
       const response = await walletPoliciesRequest()
         .post('/api/v1/wallets/wallet-1/policies')
-        .send({ name: 'Basic', type: 'spending_limit' });
+        .send({ name: 'Basic', type: 'spending_limit', config });
 
       expect(response.status).toBe(201);
       expect(mockCreatePolicy).toHaveBeenCalledWith('user-1', {
@@ -135,11 +136,171 @@ export function registerWalletPolicyCrudTests(): void {
         name: 'Basic',
         description: undefined,
         type: 'spending_limit',
-        config: undefined,
+        config,
         priority: undefined,
         enforcement: undefined,
         enabled: undefined,
       });
+    });
+
+    it('rejects missing create config before calling the service', async () => {
+      const response = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies')
+        .send({ name: 'Basic', type: 'spending_limit' });
+
+      expect(response.status).toBe(400);
+      expect(mockCreatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('rejects legacy spending limit config before calling the service', async () => {
+      const response = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies')
+        .send({
+          ...createPayload,
+          config: { maxAmount: '100000000', windowType: 'rolling', windowDuration: 86400 },
+        });
+
+      expect(response.status).toBe(400);
+      expect(mockCreatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid enforcement before calling the service', async () => {
+      const response = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies')
+        .send({ ...createPayload, enforcement: 'block' });
+
+      expect(response.status).toBe(400);
+      expect(mockCreatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('rejects approval-required triggers without a condition before calling the service', async () => {
+      const response = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies')
+        .send({
+          name: 'Approval',
+          type: 'approval_required',
+          config: {
+            trigger: {},
+            requiredApprovals: 1,
+            quorumType: 'any_n',
+            allowSelfApproval: false,
+            expirationHours: 24,
+          },
+        });
+
+      expect(response.status).toBe(400);
+      expect(mockCreatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('rejects specific approval quorum without approvers before calling the service', async () => {
+      const response = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies')
+        .send({
+          name: 'Approval',
+          type: 'approval_required',
+          config: {
+            trigger: { always: true },
+            requiredApprovals: 1,
+            quorumType: 'specific',
+            allowSelfApproval: false,
+            expirationHours: 24,
+          },
+        });
+
+      expect(response.status).toBe(400);
+      expect(mockCreatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('creates a time delay policy with specific vetoers', async () => {
+      const timeDelayPayload = {
+        name: 'Large Send Delay',
+        type: 'time_delay',
+        config: {
+          trigger: { amountAbove: 1000000 },
+          delayHours: 24,
+          vetoEligible: 'specific',
+          specificVetoers: ['approver-1'],
+          notifyOnStart: true,
+          notifyOnVeto: true,
+          notifyOnClear: false,
+        },
+      };
+      const createdPolicy = { id: 'pol-delay', name: 'Large Send Delay', type: 'time_delay' };
+      mockCreatePolicy.mockResolvedValue(createdPolicy);
+
+      const response = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies')
+        .send(timeDelayPayload);
+
+      expect(response.status).toBe(201);
+      expect(mockCreatePolicy).toHaveBeenCalledWith('user-1', {
+        walletId: 'wallet-1',
+        name: 'Large Send Delay',
+        description: undefined,
+        type: 'time_delay',
+        config: timeDelayPayload.config,
+        priority: undefined,
+        enforcement: undefined,
+        enabled: undefined,
+      });
+    });
+
+    it('rejects time delay triggers without a condition before calling the service', async () => {
+      const response = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies')
+        .send({
+          name: 'Delay',
+          type: 'time_delay',
+          config: {
+            trigger: {},
+            delayHours: 1,
+            vetoEligible: 'any_approver',
+            notifyOnStart: true,
+            notifyOnVeto: true,
+            notifyOnClear: true,
+          },
+        });
+
+      expect(response.status).toBe(400);
+      expect(mockCreatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('rejects specific time delay veto eligibility without vetoers before calling the service', async () => {
+      const response = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies')
+        .send({
+          name: 'Delay',
+          type: 'time_delay',
+          config: {
+            trigger: { always: true },
+            delayHours: 1,
+            vetoEligible: 'specific',
+            notifyOnStart: true,
+            notifyOnVeto: true,
+            notifyOnClear: true,
+          },
+        });
+
+      expect(response.status).toBe(400);
+      expect(mockCreatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('rejects velocity configs without a non-zero limit before calling the service', async () => {
+      const response = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies')
+        .send({
+          name: 'Velocity',
+          type: 'velocity',
+          config: {
+            maxPerHour: 0,
+            maxPerDay: 0,
+            maxPerWeek: 0,
+            scope: 'wallet',
+          },
+        });
+
+      expect(response.status).toBe(400);
+      expect(mockCreatePolicy).not.toHaveBeenCalled();
     });
 
     it('returns 500 when createPolicy throws', async () => {
@@ -193,9 +354,9 @@ export function registerWalletPolicyCrudTests(): void {
       const patchBody = {
         name: 'New Name',
         description: 'New description',
-        config: { maxAmount: '500000' },
+        config: { daily: 500000, scope: 'wallet' },
         priority: 5,
-        enforcement: 'warn',
+        enforcement: 'monitor',
         enabled: true,
       };
 
@@ -205,6 +366,26 @@ export function registerWalletPolicyCrudTests(): void {
 
       expect(response.status).toBe(200);
       expect(mockUpdatePolicy).toHaveBeenCalledWith('pol-1', 'user-1', patchBody);
+    });
+
+    it('rejects unknown update fields before calling the service', async () => {
+      const response = await walletPoliciesRequest()
+        .patch('/api/v1/wallets/wallet-1/policies/pol-1')
+        .send({ name: 'New Name', unexpected: true });
+
+      expect(response.status).toBe(400);
+      expect(mockGetPolicyInWallet).not.toHaveBeenCalled();
+      expect(mockUpdatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid update enforcement before calling the service', async () => {
+      const response = await walletPoliciesRequest()
+        .patch('/api/v1/wallets/wallet-1/policies/pol-1')
+        .send({ enforcement: 'warn' });
+
+      expect(response.status).toBe(400);
+      expect(mockGetPolicyInWallet).not.toHaveBeenCalled();
+      expect(mockUpdatePolicy).not.toHaveBeenCalled();
     });
 
     it('sends empty input object when no fields are provided', async () => {

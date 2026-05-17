@@ -1,3 +1,49 @@
+# Task: Grade Follow-Ups Policy Draft Schemas And Recipients Complexity 2026-05-17
+
+Status: complete.
+
+Goal: complete grade follow-ups 2 and 3 by tightening wallet policy/draft route schemas and simplifying `RecipientsSection` enough to clear the production lizard warning without behavior changes.
+
+## Plan
+
+- [x] Inspect current policy/draft route schemas, route tests, and the `RecipientsSection` lizard hotspot.
+- [x] Replace loose policy/draft route fields with stricter schemas that match existing service contracts and preserve accepted client payloads.
+- [x] Add/adjust focused route tests for null/empty/error/boundary schema behavior.
+- [x] Refactor `RecipientsSection` rendering branches into smaller helpers/components.
+- [x] Verify with focused tests, type/lint checks, and touched-file lizard.
+
+## Review
+
+- Tightened wallet policy route validation: policy evaluation outputs are typed, policy create/update payloads now use strict service-shaped config/enforcement/status fields, and address-list validation keeps prior client-facing error messages.
+- Tightened draft route validation: create requires the service-required draft fields, output/input/decoy/inputPath shapes are strict, update status uses the repository actionable status enum, and OpenAPI draft request schemas now reflect those narrower shapes.
+- Simplified `RecipientsSection` by extracting title/unit/fiat helpers and avoiding duplicate max-amount calculation; touched-file lizard reports `RecipientsSection` at CCN 7 with zero warnings.
+- Verification passed: `npm test -- tests/unit/api/wallets-policies-routes.test.ts tests/unit/api/drafts-routes.test.ts`; `npm test -- tests/contract/api.contract.test.ts`; `npm run typecheck:tests` in `server`; `npm run typecheck:app`; targeted ESLint on touched production files; `node scripts/check-api-body-validation.mjs`; touched-file lizard; `git diff --check`.
+
+---
+
+# Task: Full Codebase Grade 2026-05-17
+
+Status: complete.
+
+Goal: run the full `$grade` repository audit at the current checkout, update `docs/plans/codebase-health-assessment.md`, append grade history, and document the evidence.
+
+## Plan
+
+- [x] Collect repository status, commit provenance, prior grade history, and full mechanical signals.
+- [x] Inspect judged evidence for correctness, reliability, maintainability, security, performance, test quality, operational readiness, and divergent paths.
+- [x] Score the rubric, apply any hard-fail gates, compare against prior history, and update the health assessment.
+- [x] Append the grade history entry and run final documentation sanity checks.
+
+## Review
+
+- Updated `docs/plans/codebase-health-assessment.md` for the full 2026-05-17 audit at commit `92b014c9`: 95/100, A, High confidence, with no hard-fail blockers.
+- Appended the full-mode history row to `docs/plans/grade-history/sanctuary_.jsonl`.
+- Verification passed outside the sandbox: full grade collector with tests/lint/typecheck/coverage/audit/secrets/lizard, plus repo-owned jscpd duplication measurement at 1.65%.
+- The first sandboxed grade run was discarded because subprocess-based script tests failed with sandbox `spawnSync ... EPERM`; the unsandboxed rerun passed those tests.
+- Remaining risks: 11 missing physical hardware signing evidence rows, 3 moderate / 20 low dependency advisories with 0 high/critical, policy/draft schema watch items, and small lizard/file-size warnings.
+
+---
+
 # Task: Stable Patch Release 0.8.54 2026-05-16
 
 Status: in progress.

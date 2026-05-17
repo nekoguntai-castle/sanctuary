@@ -169,6 +169,19 @@ export function registerWalletPolicyEventsEvaluationTests(): void {
       );
     });
 
+    it('rejects malformed outputs before calling the evaluator', async () => {
+      const response = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies/evaluate')
+        .send({
+          recipient: 'tb1qaddr',
+          amount: 50000,
+          outputs: [{ address: 'tb1qout', amount: '50000' }],
+        });
+
+      expect(response.status).toBe(400);
+      expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+    });
+
     it('returns 400 when recipient is missing', async () => {
       const response = await walletPoliciesRequest()
         .post('/api/v1/wallets/wallet-1/policies/evaluate')

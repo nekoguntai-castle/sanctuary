@@ -176,7 +176,7 @@ describe('Draft Routes', () => {
       subtractFees: false,
       sendMax: false,
       outputs: [{ address: 'tb1qout', amount: 10000 }],
-      inputs: [{ txid: 'a'.repeat(64), vout: 0 }],
+      inputs: [{ txid: 'a'.repeat(64), vout: 0, address: 'tb1qinput', amount: 12000 }],
       decoyOutputs: [{ address: 'tb1qdecoy', amount: 1200 }],
       payjoinUrl: 'https://example.com/pj',
       isRBF: false,
@@ -189,7 +189,7 @@ describe('Draft Routes', () => {
       changeAmount: 0,
       changeAddress: 'tb1qchange',
       effectiveAmount: 10000,
-      inputPaths: { '0': "m/84'/1'/0'/0/0" },
+      inputPaths: ["m/84'/1'/0'/0/0"],
     };
 
     const response = await request(app)
@@ -229,6 +229,38 @@ describe('Draft Routes', () => {
     expect(mockCreateDraft).not.toHaveBeenCalled();
   });
 
+  it('rejects malformed draft outputs before calling the service', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/drafts')
+      .send({
+        recipient: 'tb1qrecipient',
+        amount: 10000,
+        feeRate: 5,
+        psbtBase64: 'cHNi',
+        outputs: [{ amount: 10000 }],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    expect(mockCreateDraft).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale input path maps before calling the service', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/drafts')
+      .send({
+        recipient: 'tb1qrecipient',
+        amount: 10000,
+        feeRate: 5,
+        psbtBase64: 'cHNi',
+        inputPaths: { '0': "m/84'/1'/0'/0/0" },
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    expect(mockCreateDraft).not.toHaveBeenCalled();
+  });
+
   it('accepts string-encoded numeric draft values', async () => {
     const payload = {
       recipient: 'tb1qrecipient',
@@ -257,7 +289,7 @@ describe('Draft Routes', () => {
 
     const response = await request(app)
       .post('/api/v1/wallets/wallet-1/drafts')
-      .send({ recipient: 'tb1q', amount: 1 });
+      .send({ recipient: 'tb1q', amount: 1, feeRate: 1, psbtBase64: 'cHNi' });
 
     expect(response.status).toBe(403);
     expect(response.body).toMatchObject({
@@ -271,7 +303,7 @@ describe('Draft Routes', () => {
 
     const response = await request(app)
       .post('/api/v1/wallets/wallet-1/drafts')
-      .send({ recipient: 'tb1q', amount: 1 });
+      .send({ recipient: 'tb1q', amount: 1, feeRate: 1, psbtBase64: 'cHNi' });
 
     expect(response.status).toBe(500);
     expect(response.body.message).toBe('An unexpected error occurred');
@@ -281,7 +313,7 @@ describe('Draft Routes', () => {
     const patch = {
       signedPsbtBase64: 'signed-psbt',
       signedDeviceId: 'device-1',
-      status: 'partially_signed',
+      status: 'partial',
       label: 'Updated label',
       memo: 'Updated memo',
     };
@@ -293,6 +325,16 @@ describe('Draft Routes', () => {
     expect(response.status).toBe(200);
     expect(mockUpdateDraft).toHaveBeenCalledWith('wallet-1', 'draft-1', patch);
     expect(response.body).toEqual({ id: 'draft-updated', serialized: true });
+  });
+
+  it('rejects stale draft status values before calling the service', async () => {
+    const response = await request(app)
+      .patch('/api/v1/wallets/wallet-1/drafts/draft-1')
+      .send({ status: 'partially_signed' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    expect(mockUpdateDraft).not.toHaveBeenCalled();
   });
 
   it('rejects invalid update draft field types before calling the service', async () => {
