@@ -1,21 +1,21 @@
-# Task: Stable Minor Release 0.9.0 2026-05-16
+# Task: Stable Patch Release 0.8.54 2026-05-16
 
 Status: in progress.
 
-Goal: prepare, validate, tag, publish, and verify the next Sanctuary stable minor release as `v0.9.0`.
+Goal: prepare, validate, tag, publish, and verify the next Sanctuary stable patch release as `v0.8.54`.
 
 ## Plan
 
-- [x] Record the minor-release correction and update release policy notes.
-- [x] Bump package metadata from `0.8.53` to `0.9.0`.
-- [x] Run focused/full release gates after the version bump.
-- [ ] Commit and push the release-prep commit to `origin/main`.
-- [ ] Create and push stable tag `v0.9.0`.
+- [x] Record the corrected patch-release default and update release policy notes.
+- [x] Correct package metadata from the superseded `0.9.0` prep commit to `0.8.54`.
+- [x] Run focused/full release gates after the version correction.
+- [ ] Commit and push the corrected release-prep commit to `origin/main`.
+- [ ] Create and push stable tag `v0.8.54`.
 - [ ] Monitor release workflows, image publishing, Umbrel dispatch, and release object creation.
 
 ## Review
 
-- Pending.
+- No `v0.9.0` tag was created locally or remotely before the release target correction, so recovery is a normal follow-up commit on `origin/main`, not a tag rewrite.
 
 ---
 

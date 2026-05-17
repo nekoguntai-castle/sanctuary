@@ -2366,14 +2366,14 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - If a fresh prompt still does not list the skill, inspect Codex skill-loader warnings and compare against a known-working skill's metadata/layout.
 - For project-local skill mirrors, first check whether `.codex` is a directory; do not replace an existing file without explicit permission.
 
-## Sanctuary Release Skill Bumps Minor Versions By Default
+## Sanctuary Release Skill Defaults To Patch Versions
 
-**Rule:** When using the Sanctuary `$release` skill to cut the next stable release, default to the next minor version, not the next patch version, unless the user explicitly says they want a patch or hotfix.
+**Rule:** When using the Sanctuary `$release` skill to cut the next stable release, default to the next patch version unless the user explicitly asks for a minor, major, prerelease, or hotfix-specific target.
 
-**Why:** The user corrected a planned `0.8.54` patch target and clarified that this release workflow should bump the minor release line.
+**Why:** The user first corrected a planned `0.8.54` patch target toward a minor release, then clarified that was a misspeak and the skill itself should default to patch releases unless told otherwise.
 
 **How to apply:**
 
-- From `0.8.53`, the normal `$release` stable target is `0.9.0` / `v0.9.0`.
-- Treat a user-provided patch-looking version as ambiguous if they also invoke the Sanctuary release skill; confirm or apply the latest clarification before tagging.
+- From `0.8.53`, the normal `$release` stable target is `0.8.54` / `v0.8.54`.
+- Treat explicit user versions as authoritative when they match the default patch rule; only deviate when the user clearly requests a minor/major/prerelease target.
 - Do not create or push a tag until the package version, tag name, release notes, and workflow target agree.
