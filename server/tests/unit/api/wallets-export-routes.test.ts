@@ -58,7 +58,8 @@ vi.mock('../../../src/utils/logger', () => ({
 }));
 
 import { errorHandler } from '../../../src/errors/errorHandler';
-import exportRouter, { mapDeviceTypeToWalletModel } from '../../../src/api/wallets/export';
+import exportRouter from '../../../src/api/wallets/export';
+import { mapDeviceTypeToSparrowWalletModel } from '../../../src/services/export/sparrowWalletModel';
 
 function buildWallet(overrides: Record<string, any> = {}) {
   return {
@@ -572,13 +573,13 @@ describe('Wallets Export Routes', () => {
   });
 
   it('maps known and unknown hardware device types for Sparrow model names', () => {
-    expect(mapDeviceTypeToWalletModel('coldcard')).toBe('COLDCARD');
-    expect(mapDeviceTypeToWalletModel('ledger nano x')).toBe('LEDGER_NANO_X');
-    expect(mapDeviceTypeToWalletModel('ledger nano s plus')).toBe('LEDGER_NANO_S_PLUS');
-    expect(mapDeviceTypeToWalletModel('ledger_gen_5')).toBe('LEDGER_NANO_GEN5');
-    expect(mapDeviceTypeToWalletModel('Ledger Gen 5')).toBe('LEDGER_NANO_GEN5');
-    expect(mapDeviceTypeToWalletModel('trezor_safe_7')).toBe('TREZOR_SAFE_5');
-    expect(mapDeviceTypeToWalletModel('generic_sd')).toBe('COLDCARD');
-    expect(mapDeviceTypeToWalletModel('Unknown Device')).toBe('COLDCARD');
+    expect(mapDeviceTypeToSparrowWalletModel('coldcard')).toBe('COLDCARD');
+    expect(mapDeviceTypeToSparrowWalletModel('ledger nano x')).toBe('LEDGER_NANO_X');
+    expect(mapDeviceTypeToSparrowWalletModel('ledger nano s plus')).toBe('LEDGER_NANO_S_PLUS');
+    expect(mapDeviceTypeToSparrowWalletModel('ledger_gen_5')).toBe('LEDGER_NANO_GEN5');
+    expect(mapDeviceTypeToSparrowWalletModel('Ledger Gen 5')).toBe('LEDGER_NANO_GEN5');
+    expect(mapDeviceTypeToSparrowWalletModel('trezor_safe_7')).toBe('TREZOR_SAFE_5');
+    expect(mapDeviceTypeToSparrowWalletModel('generic_sd')).toBe('COLDCARD');
+    expect(mapDeviceTypeToSparrowWalletModel('Unknown Device')).toBe('COLDCARD');
   });
 });

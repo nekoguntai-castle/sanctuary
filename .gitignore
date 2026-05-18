@@ -73,3 +73,6 @@ scripts/offline/keys/*.key
 # Local CI runner registration state — never commit (contains runner token,
 # even if for a deleted runner instance)
 .runner
+
+# Session scratch notes (Claude Code automation scratchpad)
+tasks/automation-notes.md

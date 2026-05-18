@@ -10,7 +10,6 @@ import { walletRepository, transactionRepository, addressRepository } from '../.
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { exportFormatRegistry, type WalletExportData } from '../../services/export';
-import { mapDeviceTypeToSparrowWalletModel } from '../../services/export/sparrowWalletModel';
 import type { ScriptType, Network } from '../../services/bitcoin/descriptorParser';
 import { parseDerivationPath } from '@sanctuary/shared/utils/bitcoin';
 import {
@@ -20,8 +19,6 @@ import {
 } from '@sanctuary/shared/constants/walletIdentity';
 
 const router = Router();
-
-export const mapDeviceTypeToWalletModel = mapDeviceTypeToSparrowWalletModel;
 
 function walletCoinType(network: string | null | undefined): number {
   return network && network !== 'mainnet' ? 1 : 0;

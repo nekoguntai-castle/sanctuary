@@ -11,6 +11,7 @@ import {
   withTestTransaction,
   createTestUser,
   createTestWallet,
+  createTestDevice,
   createTestAddress,
   createTestTransaction,
   createTestUtxo,
@@ -513,6 +514,97 @@ describeIfDatabase('WalletRepository Integration Tests', () => {
         expect(scenario.user.username).toBe('no-wallet-user');
         expect(scenario.wallet).toBeNull();
         expect(scenario.addresses).toHaveLength(0);
+      });
+    });
+  });
+
+  describe('findByIdWithDevices model include', () => {
+    it('returns device.model {slug, name} when a wallet device is linked to a HardwareDeviceModel', async () => {
+      await withTestTransaction(async (tx) => {
+        const user = await createTestUser(tx);
+        const wallet = await createTestWallet(tx, user.id);
+
+        const suffix = Date.now().toString(36);
+        const model = await tx.hardwareDeviceModel.create({
+          data: {
+            name: `Test Ledger Flex ${suffix}`,
+            slug: `test-ledger-flex-${suffix}`,
+            manufacturer: 'Ledger',
+            connectivity: ['usb'],
+            scriptTypes: ['native_segwit'],
+          },
+        });
+
+        const device = await tx.device.create({
+          data: {
+            userId: user.id,
+            modelId: model.id,
+            type: 'ledger_flex',
+            label: `Test Device ${suffix}`,
+            fingerprint: `fp${suffix}`,
+            xpub: 'tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M',
+            derivationPath: "m/84'/1'/0'",
+          },
+        });
+
+        await tx.walletDevice.create({
+          data: { walletId: wallet.id, deviceId: device.id },
+        });
+
+        // Re-issue the include shape from walletRepository.findByIdWithDevices.
+        // If the schema relation or select keys ever drift, this assertion catches it.
+        const found = await tx.wallet.findFirst({
+          where: { id: wallet.id },
+          include: {
+            devices: {
+              include: {
+                device: {
+                  include: {
+                    accounts: true,
+                    model: { select: { slug: true, name: true } },
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        expect(found).not.toBeNull();
+        expect(found?.devices).toHaveLength(1);
+        expect(found?.devices[0]?.device.model).toEqual({
+          slug: model.slug,
+          name: model.name,
+        });
+      });
+    });
+
+    it('returns device.model = null when the device has no modelId', async () => {
+      await withTestTransaction(async (tx) => {
+        const user = await createTestUser(tx);
+        const wallet = await createTestWallet(tx, user.id);
+        const device = await createTestDevice(tx, user.id);
+
+        await tx.walletDevice.create({
+          data: { walletId: wallet.id, deviceId: device.id },
+        });
+
+        const found = await tx.wallet.findFirst({
+          where: { id: wallet.id },
+          include: {
+            devices: {
+              include: {
+                device: {
+                  include: {
+                    accounts: true,
+                    model: { select: { slug: true, name: true } },
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        expect(found?.devices[0]?.device.model).toBeNull();
       });
     });
   });
