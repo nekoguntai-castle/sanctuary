@@ -757,7 +757,20 @@ case "$1" in
         ;;
     fetch)
         current_source="$(cat "$remote_file" 2>/dev/null || echo github)"
-        echo "fetch:$current_source" >> "$log_file"
+        fetch_args=" $* "
+        if [[ "$fetch_args" == *" --force "* ]]; then
+            echo "fetch-force:$current_source" >> "$log_file"
+        else
+            echo "fetch:$current_source" >> "$log_file"
+        fi
+        if [ "$current_source" = "codeberg" ] && [ "${FAKE_GIT_FETCH_CLOBBER_CODEBERG:-false}" = "true" ] && [[ "$fetch_args" != *" --force "* ]]; then
+            echo ' ! [rejected]            v0.7.4      -> v0.7.4  (would clobber existing tag)' >&2
+            exit 1
+        fi
+        if [ "$current_source" = "github" ] && [ "${FAKE_GIT_FETCH_CLOBBER_GITHUB:-false}" = "true" ] && [[ "$fetch_args" != *" --force "* ]]; then
+            echo ' ! [rejected]            v0.7.4      -> v0.7.4  (would clobber existing tag)' >&2
+            exit 1
+        fi
         if [ "$current_source" = "codeberg" ] && [ "${FAKE_GIT_FETCH_FAIL_CODEBERG:-false}" = "true" ]; then
             exit 1
         fi
@@ -821,6 +834,8 @@ run_forge_installer() {
             FAKE_CURL_GITHUB_RELEASE="${FAKE_CURL_GITHUB_RELEASE:-v9.9.9}" \
             FAKE_GIT_FETCH_FAIL_CODEBERG="${FAKE_GIT_FETCH_FAIL_CODEBERG:-false}" \
             FAKE_GIT_FETCH_FAIL_GITHUB="${FAKE_GIT_FETCH_FAIL_GITHUB:-false}" \
+            FAKE_GIT_FETCH_CLOBBER_CODEBERG="${FAKE_GIT_FETCH_CLOBBER_CODEBERG:-false}" \
+            FAKE_GIT_FETCH_CLOBBER_GITHUB="${FAKE_GIT_FETCH_CLOBBER_GITHUB:-false}" \
             FAKE_GIT_LS_REMOTE_FAIL_CODEBERG="${FAKE_GIT_LS_REMOTE_FAIL_CODEBERG:-false}" \
             FAKE_GIT_LS_REMOTE_FAIL_GITHUB="${FAKE_GIT_LS_REMOTE_FAIL_GITHUB:-false}" \
             FAKE_GIT_CLONE_FAIL_CODEBERG="${FAKE_GIT_CLONE_FAIL_CODEBERG:-false}" \
@@ -869,6 +884,27 @@ test_explicit_source_failure_does_not_fall_back() {
     assert_contains "$(cat "$output")" "Explicit --source codeberg" "failure should explain no alternate forge was tried" || return 1
     if echo "$log" | grep -q "fetch:github"; then
         echo -e "${RED}ASSERTION FAILED:${NC} explicit source failure should not fall back to GitHub"
+        echo "$log"
+        return 1
+    fi
+}
+
+test_explicit_source_tag_clobber_retries_forced_tags_without_fallback() {
+    setup_forge_installer_fixture "explicit-clobber"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    FAKE_GIT_FETCH_CLOBBER_CODEBERG=true run_forge_installer "$output" --source codeberg || {
+        cat "$output"
+        return 1
+    }
+
+    local log
+    log="$(cat "$FORGE_STATE_DIR/git.log")"
+    assert_contains "$log" "fetch:codeberg" "tag-clobber recovery should first try normal Codeberg fetch" || return 1
+    assert_contains "$log" "fetch-force:codeberg" "tag-clobber recovery should force-refresh Codeberg tags" || return 1
+    assert_contains "$(cat "$output")" "Refreshing tags for forge migration" "operator should see why tags are force-refreshed" || return 1
+    if echo "$log" | grep -q "fetch:github"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} tag-clobber recovery should not fall back to GitHub"
         echo "$log"
         return 1
     fi
@@ -1790,6 +1826,7 @@ main() {
     echo -e "${YELLOW}Test Suite: Installer Forge Source Behavior${NC}"
     run_test "explicit Codeberg rewrites stale GitHub origin" test_explicit_codeberg_rewrites_stale_github_origin_without_prompt
     run_test "explicit source failure does not fall back" test_explicit_source_failure_does_not_fall_back
+    run_test "explicit source tag clobber force-refreshes tags" test_explicit_source_tag_clobber_retries_forced_tags_without_fallback
     run_test "automatic source fetch failure falls back" test_auto_source_fetch_failure_falls_back_prompt_free
     echo ""
 

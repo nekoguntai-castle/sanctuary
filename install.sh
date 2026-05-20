@@ -550,12 +550,23 @@ ensure_origin_url() {
 
 try_fetch_source() {
     local source="$1"
-    local repo_url
+    local repo_url fetch_output
 
     repo_url="$(source_repo_url "$source")"
     [ -n "$repo_url" ] || return 1
     ensure_origin_url "$repo_url" || return 1
-    git_no_prompt fetch --tags origin >/dev/null 2>&1
+
+    if fetch_output="$(git_no_prompt fetch --tags origin 2>&1)"; then
+        return 0
+    fi
+
+    if [[ "$fetch_output" == *"would clobber existing tag"* ]]; then
+        echo -e "${YELLOW}Local release tags differ from $(source_platform_name "$source"). Refreshing tags for forge migration...${NC}" >&2
+        git_no_prompt fetch --tags --force origin >/dev/null 2>&1
+        return $?
+    fi
+
+    return 1
 }
 
 fetch_existing_installation() {

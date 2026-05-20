@@ -1,3 +1,27 @@
+# Task: Codeberg Tag Clobber Upgrade Recovery 2026-05-20
+
+Status: complete.
+
+Goal: make upgrades from old GitHub-tagged installs to Codeberg recover from divergent local release tags, and give the operator a safe command path to complete the remote `v0.8.50` to `v0.8.54` upgrade.
+
+## Plan
+
+- [x] Confirm the remote failure mode from the manual fetch output.
+- [x] Update `install.sh` to retry forced tag refresh only for Git's `would clobber existing tag` migration error.
+- [x] Add focused installer unit coverage for the tag-clobber retry path.
+- [x] Run focused installer tests and shell syntax checks.
+- [x] Review the diff for minimal scope and document operator recovery commands.
+
+## Review
+
+- `install.sh` now captures the selected-forge fetch failure, detects Git's `would clobber existing tag` migration error, and retries the same forge with `git fetch --tags --force origin`. Other fetch failures still fail normally or use the existing non-explicit fallback path.
+- Added installer unit coverage proving explicit Codeberg upgrades force-refresh divergent tags without falling back to GitHub and print an operator-facing migration message.
+- Remote operator recovery path: the already-backed-up host can finish with `git fetch --tags --force origin`, `git checkout v0.8.54`, then `./install.sh --source codeberg --skip-upgrade-backup`.
+- Verification passed: `bash -n install.sh`; `bash -n tests/install/unit/install-script.test.sh`; `bash tests/install/unit/install-script.test.sh` (92/92 passed); `git diff --check -- install.sh tests/install/unit/install-script.test.sh tasks/todo.md`; `/home/nekoguntai/.local/bin/lizard install.sh` with 0 warnings.
+- Touched-file lizard across the installer test file still reports pre-existing warnings in `assert_length` and `test_setup_script_retries_corrupt_buildkit_cache_with_fake_docker`; the new tag-clobber test is CCN 6 and below threshold.
+
+---
+
 # Task: Grade Follow-Ups Policy Draft Schemas And Recipients Complexity 2026-05-17
 
 Status: complete.
