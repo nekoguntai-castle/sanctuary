@@ -233,6 +233,43 @@ describe("aiService model operations", () => {
     });
   });
 
+  it("returns list-models config sync rejection before querying stale proxy config", async () => {
+    mocks.systemSettingFindMany.mockResolvedValue([
+      setting("aiEnabled", true),
+      setting("aiEndpoint", "http://192.168.1.20:1234/v1"),
+      setting("aiModel", "lmstudio-community/model"),
+      setting("aiActiveProviderProfileId", "lm-studio"),
+      setting("aiProviderProfiles", [
+        {
+          id: "lm-studio",
+          name: "LM Studio",
+          providerType: "openai-compatible",
+          endpoint: "http://192.168.1.20:1234/v1",
+          model: "lmstudio-community/model",
+          capabilities: { chat: true, toolCalls: false, strictJson: true },
+        },
+      ]),
+    ] as any);
+    mocks.fetch.mockResolvedValueOnce(
+      errJson(400, {
+        error: "AI endpoint is not allowed",
+        reason: "host_not_allowed",
+      }),
+    );
+
+    const mod = await import("../../../src/services/aiService");
+    await expect(mod.listModels()).resolves.toEqual({
+      models: [],
+      error:
+        "AI endpoint is not allowed: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS for numeric LAN IP endpoints.",
+    });
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      "http://llm-egress-proxy:3100/config",
+      expect.any(Object),
+    );
+  });
+
   it("returns list-models invalid response when payload is malformed", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),
@@ -264,6 +301,113 @@ describe("aiService model operations", () => {
     await expect(mod.listModels()).resolves.toEqual({
       models: [],
       error: "Cannot connect to LLM egress proxy",
+    });
+  });
+
+  it("formats config sync failures for generic reasons, status codes, and plain errors", async () => {
+    const { describeConfigSyncFailure } =
+      await import("../../../src/services/ai/config");
+
+    expect(
+      describeConfigSyncFailure({
+        success: false,
+        error: "AI endpoint is not allowed",
+        reason: "unsupported_protocol",
+      }),
+    ).toBe("AI endpoint is not allowed: unsupported_protocol");
+    expect(
+      describeConfigSyncFailure({
+        success: false,
+        status: 401,
+      }),
+    ).toBe("Failed to sync AI configuration (HTTP 401)");
+    expect(
+      describeConfigSyncFailure({
+        success: false,
+        error: "Failed to connect to LLM egress proxy for config sync",
+      }),
+    ).toBe("Failed to connect to LLM egress proxy for config sync");
+  });
+
+  it("returns config sync connection failure details when the proxy request throws", async () => {
+    mocks.fetch.mockRejectedValueOnce(new Error("connection refused"));
+
+    const { syncConfigToLlmEgressProxyResult } =
+      await import("../../../src/services/ai/config");
+    await expect(
+      syncConfigToLlmEgressProxyResult(
+        {
+          enabled: true,
+          endpoint: "http://host.docker.internal:11434",
+          model: "llama3.2",
+          providerProfileId: "default-ollama",
+          providerType: "ollama",
+        },
+        true,
+      ),
+    ).resolves.toEqual({
+      success: false,
+      error: "Failed to connect to LLM egress proxy for config sync",
+    });
+  });
+
+  it("falls back when config sync rejection bodies are malformed", async () => {
+    const { describeConfigSyncFailure, syncConfigToLlmEgressProxyResult } =
+      await import("../../../src/services/ai/config");
+    const provider = {
+      enabled: true,
+      endpoint: "http://host.docker.internal:11434",
+      model: "llama3.2",
+      providerProfileId: "default-ollama",
+      providerType: "ollama" as const,
+    };
+
+    mocks.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 418,
+      json: vi.fn().mockResolvedValue("not-an-object"),
+    } as any);
+    await expect(
+      syncConfigToLlmEgressProxyResult(provider, true),
+    ).resolves.toEqual({
+      success: false,
+      status: 418,
+      error: "Failed to sync AI configuration",
+      reason: undefined,
+    });
+
+    mocks.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      json: vi.fn().mockResolvedValue({ error: " ", reason: 7 }),
+    } as any);
+    const blankBodyResult = await syncConfigToLlmEgressProxyResult(
+      provider,
+      true,
+    );
+
+    expect(blankBodyResult).toEqual({
+      success: false,
+      status: 429,
+      error: "Failed to sync AI configuration",
+      reason: undefined,
+    });
+    expect(describeConfigSyncFailure(blankBodyResult)).toBe(
+      "Failed to sync AI configuration (HTTP 429)",
+    );
+
+    mocks.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      json: vi.fn().mockRejectedValue(new Error("invalid json")),
+    } as any);
+    await expect(
+      syncConfigToLlmEgressProxyResult(provider, true),
+    ).resolves.toEqual({
+      success: false,
+      status: 503,
+      error: "Failed to sync AI configuration",
+      reason: undefined,
     });
   });
 

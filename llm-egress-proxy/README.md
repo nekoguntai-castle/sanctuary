@@ -90,6 +90,7 @@ In Sanctuary Admin → AI Settings:
 1. Enable AI Features
 2. Set AI Endpoint URL:
    - Host Ollama: `http://host.docker.internal:11434`
+   - Host LM Studio/OpenAI-compatible: `http://host.docker.internal:1234/v1`
    - LAN Ollama: `http://192.168.1.20:11434` (requires `LLM_EGRESS_PROXY_ALLOWED_CIDRS`)
    - LM Studio/OpenAI-compatible: `http://192.168.1.20:1234/v1` (requires `LLM_EGRESS_PROXY_ALLOWED_CIDRS`)
    - Cloud: `https://api.openai.com` (requires explicit endpoint allowlisting)
@@ -107,7 +108,8 @@ ollama pull llama3.2:3b
 # Start the provider app/server outside Sanctuary.
 
 # Endpoints:
-# - Host: http://host.docker.internal:11434
+# - Host Ollama: http://host.docker.internal:11434
+# - Host LM Studio: http://host.docker.internal:1234/v1
 # - LM Studio LAN: http://<host-or-ip>:1234/v1
 #   Add the LAN CIDR to LLM_EGRESS_PROXY_ALLOWED_CIDRS first.
 ```

@@ -6,9 +6,10 @@
 
 import { createLogger } from "../../utils/logger";
 import {
+  describeConfigSyncFailure,
   getAIConfig,
   getLlmEgressProxyUrl,
-  syncConfigToLlmEgressProxy,
+  syncConfigToLlmEgressProxyResult,
 } from "./config";
 import { buildLlmEgressProxyJsonHeaders } from "./llmEgressProxyClient";
 import { validateResponse } from "./validation";
@@ -99,7 +100,16 @@ export async function checkHealth(): Promise<{
   }
 
   // Sync config and test connection
-  await syncConfigToLlmEgressProxy(config);
+  const syncResult = await syncConfigToLlmEgressProxyResult(config);
+  if (!syncResult.success) {
+    return {
+      available: false,
+      model: config.model,
+      endpoint: config.endpoint,
+      proxyAvailable: true,
+      error: describeConfigSyncFailure(syncResult),
+    };
+  }
 
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}/test`, {

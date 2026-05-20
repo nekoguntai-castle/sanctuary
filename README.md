@@ -1324,7 +1324,8 @@ Sanctuary includes optional AI surfaces for:
    - Set the endpoint to `http://host.docker.internal:11434` when Sanctuary runs in Docker
 
    **Option B: LAN or desktop OpenAI-compatible provider**
-   - LM Studio: use a `/v1` endpoint such as `http://192.168.1.20:1234/v1`
+   - Same Docker host LM Studio: use `http://host.docker.internal:1234/v1`
+   - LAN LM Studio: use a `/v1` endpoint such as `http://192.168.1.20:1234/v1`
    - llama.cpp, vLLM, or another trusted provider: enter its OpenAI-compatible base URL
    - Add numeric LAN ranges to `LLM_EGRESS_PROXY_ALLOWED_CIDRS` before using LAN IP endpoints
 

@@ -66,6 +66,57 @@ interface ActiveProviderCredentialSyncState {
   credentialConfiguredAt?: string;
 }
 
+export interface ConfigSyncResult {
+  success: boolean;
+  status?: number;
+  error?: string;
+  reason?: string;
+}
+
+function getStringField(
+  value: unknown,
+  field: string,
+): string | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const fieldValue = (value as Record<string, unknown>)[field];
+  return typeof fieldValue === "string" && fieldValue.trim()
+    ? fieldValue.trim()
+    : undefined;
+}
+
+async function buildFailedConfigSyncResult(
+  response: Response,
+): Promise<ConfigSyncResult> {
+  const body = await response.json().catch(() => undefined);
+  return {
+    success: false,
+    status: response.status,
+    error: getStringField(body, "error") ?? "Failed to sync AI configuration",
+    reason: getStringField(body, "reason"),
+  };
+}
+
+export function describeConfigSyncFailure(result: ConfigSyncResult): string {
+  const error = result.error ?? "Failed to sync AI configuration";
+
+  if (result.reason === "host_not_allowed") {
+    return `${error}: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS for numeric LAN IP endpoints.`;
+  }
+
+  if (result.reason) {
+    return `${error}: ${result.reason}`;
+  }
+
+  if (result.status) {
+    return `${error} (HTTP ${result.status})`;
+  }
+
+  return error;
+}
+
 function getActiveProviderCredentialSyncState(
   credentialsValue: unknown,
   profileId: string,
@@ -195,10 +246,10 @@ export async function getAIConfig(): Promise<AIConfig> {
  * SECURITY: Only syncs when config actually changes (hash-based detection)
  * SECURITY: Requires LLM_EGRESS_PROXY_SECRET for authentication
  */
-export async function syncConfigToLlmEgressProxy(
+export async function syncConfigToLlmEgressProxyResult(
   config: AIConfig,
   force = false,
-): Promise<boolean> {
+): Promise<ConfigSyncResult> {
   const currentHash = hashConfig(config);
   const timeSinceLastSync = Date.now() - configSyncState.lastSyncTime;
 
@@ -210,7 +261,7 @@ export async function syncConfigToLlmEgressProxy(
     configSyncState.syncSuccess &&
     timeSinceLastSync < CONFIG_RESYNC_INTERVAL_MS
   ) {
-    return true;
+    return { success: true };
   }
 
   // Warn if no secret is configured
@@ -235,31 +286,45 @@ export async function syncConfigToLlmEgressProxy(
       signal: AbortSignal.timeout(5000),
     });
 
-    const success = response.ok;
+    const syncResult = response.ok
+      ? { success: true }
+      : await buildFailedConfigSyncResult(response);
 
     // Update sync state
     configSyncState = {
       lastHash: currentHash,
       lastSyncTime: Date.now(),
-      syncSuccess: success,
+      syncSuccess: syncResult.success,
     };
 
-    if (!success) {
+    if (!syncResult.success) {
       log.error("Failed to sync config to LLM egress proxy", {
-        status: response.status,
+        status: syncResult.status,
+        reason: syncResult.reason,
       });
     } else {
       log.info("AI config synced to LLM egress proxy");
     }
 
-    return success;
+    return syncResult;
   } catch (error) {
     log.error("Failed to sync config to LLM egress proxy", {
       error: getErrorMessage(error),
     });
     configSyncState.syncSuccess = false;
-    return false;
+    return {
+      success: false,
+      error: "Failed to connect to LLM egress proxy for config sync",
+    };
   }
+}
+
+export async function syncConfigToLlmEgressProxy(
+  config: AIConfig,
+  force = false,
+): Promise<boolean> {
+  const result = await syncConfigToLlmEgressProxyResult(config, force);
+  return result.success;
 }
 
 /**

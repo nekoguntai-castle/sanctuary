@@ -54,6 +54,12 @@ describe("LLM egress proxy endpoint policy", () => {
       reason: "host_not_allowed",
     });
     expect(
+      evaluateProviderEndpoint("http://192.168.1.20:1234/v1", defaultOptions),
+    ).toMatchObject({
+      allowed: false,
+      reason: "host_not_allowed",
+    });
+    expect(
       evaluateProviderEndpoint(
         "http://user:pass@host.docker.internal:11434",
         defaultOptions,
@@ -103,6 +109,12 @@ describe("LLM egress proxy endpoint policy", () => {
     ).toBe(true);
     expect(
       evaluateProviderEndpoint("http://192.168.1.20:11434", {
+        ...defaultOptions,
+        allowedCidrs: ["192.168.1.0/24"],
+      }).allowed,
+    ).toBe(true);
+    expect(
+      evaluateProviderEndpoint("http://192.168.1.20:1234/v1", {
         ...defaultOptions,
         allowedCidrs: ["192.168.1.0/24"],
       }).allowed,

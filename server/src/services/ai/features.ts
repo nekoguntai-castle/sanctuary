@@ -15,7 +15,13 @@
 
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
-import { getAIConfig, syncConfigToLlmEgressProxy, getLlmEgressProxyUrl } from "./config";
+import {
+  describeConfigSyncFailure,
+  getAIConfig,
+  syncConfigToLlmEgressProxy,
+  syncConfigToLlmEgressProxyResult,
+  getLlmEgressProxyUrl,
+} from "./config";
 import { validateResponse } from "./validation";
 import {
   buildLlmEgressProxyAuthHeaders,
@@ -238,8 +244,11 @@ export async function listModels(): Promise<{
     return { models: [], error: "No AI endpoint configured" };
   }
 
-  // Sync config first so the LLM egress proxy knows the endpoint
-  await syncConfigToLlmEgressProxy(config);
+  // Sync config first so the LLM egress proxy knows the endpoint.
+  const syncResult = await syncConfigToLlmEgressProxyResult(config);
+  if (!syncResult.success) {
+    return { models: [], error: describeConfigSyncFailure(syncResult) };
+  }
 
   try {
     const response = await fetch(`${LLM_EGRESS_PROXY_URL}/list-models`, {

@@ -316,6 +316,31 @@ describe("aiService", () => {
     );
   });
 
+  it("reports config sync rejection before testing stale proxy config", async () => {
+    mockConfiguredAiSettings();
+    mocks.fetch
+      .mockResolvedValueOnce(okJson({ status: "ok" }))
+      .mockResolvedValueOnce(
+        errJson(400, {
+          error: "AI endpoint is not allowed",
+          reason: "host_not_allowed",
+        }),
+      );
+
+    const mod = await import("../../../src/services/aiService");
+    const health = await mod.checkHealth();
+
+    expect(health).toEqual({
+      available: false,
+      model: "llama3.2",
+      endpoint: "http://host.docker.internal:11434",
+      proxyAvailable: true,
+      error:
+        "AI endpoint is not allowed: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS for numeric LAN IP endpoints.",
+    });
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("reports unavailable when endpoint or model is missing", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),

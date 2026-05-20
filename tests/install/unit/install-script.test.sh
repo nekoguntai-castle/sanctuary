@@ -1064,6 +1064,24 @@ test_backend_compose_exposes_auth_rate_limit_overrides() {
     fi
 }
 
+test_llm_egress_proxy_maps_host_gateway_for_host_providers() {
+    local service_block
+    service_block="$(
+        awk '
+            /^  llm-egress-proxy:/ { in_service=1; next }
+            /^  [A-Za-z0-9_-]+:/ { if (in_service) exit }
+            in_service { print }
+        ' "$PROJECT_ROOT/docker-compose.yml"
+    )"
+
+    if echo "$service_block" | grep -Fq 'host.docker.internal:host-gateway'; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} llm-egress-proxy should map host.docker.internal for host-local LLM providers"
+        return 1
+    fi
+}
+
 test_worker_compose_command_matches_backend_dist_layout() {
     if grep -Fq 'command: ["node", "dist/server/src/worker.js"]' "$PROJECT_ROOT/docker-compose.yml" \
         && grep -Fq 'command: ["node", "dist/server/src/worker.js"]' "$PROJECT_ROOT/docker-compose.ghcr.yml" \
@@ -1691,6 +1709,39 @@ test_setup_script_generates_unique_salt_for_fresh_install() {
         "setup.sh should report generated salt for fresh installs"
 }
 
+test_setup_script_persists_llm_egress_policy_env() {
+    local env_file="$TEST_TMP_DIR/llm-egress-policy.env"
+    local ssl_dir="$TEST_TMP_DIR/llm-egress-policy-ssl"
+    local output=""
+    local contents=""
+
+    output=$(
+        export SANCTUARY_ENV_FILE="$env_file"
+        export SANCTUARY_SSL_DIR="$ssl_dir"
+        export HTTPS_PORT=58446
+        export HTTP_PORT=58083
+        export GATEWAY_PORT=54003
+        export ENABLE_MONITORING=no
+        export ENABLE_TOR=no
+        export LLM_EGRESS_PROXY_ALLOWED_HOSTS="studio.local"
+        export LLM_EGRESS_PROXY_ALLOWED_CIDRS="192.168.1.0/24"
+        export LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS=false
+        bash "$SETUP_SCRIPT" --force --non-interactive --no-start --skip-ssl --skip-prereqs 2>&1
+    ) || {
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should persist LLM egress policy env"
+        echo "$output"
+        return 1
+    }
+
+    contents="$(cat "$env_file")"
+    assert_contains "$contents" "LLM_EGRESS_PROXY_ALLOWED_HOSTS=studio.local" \
+        "setup.sh should preserve explicit LLM egress allowed hosts"
+    assert_contains "$contents" "LLM_EGRESS_PROXY_ALLOWED_CIDRS=192.168.1.0/24" \
+        "setup.sh should preserve explicit LLM egress allowed CIDRs"
+    assert_contains "$contents" "LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS=false" \
+        "setup.sh should preserve explicit LLM public HTTPS policy"
+}
+
 # ============================================
 # Unit Tests: .env.example
 # ============================================
@@ -1844,6 +1895,7 @@ main() {
     run_test "start script .env has set -a" test_start_script_env_has_set_a
     run_test "start script .env.local has set -a" test_start_script_env_local_has_set_a
     run_test "backend compose exposes auth rate-limit overrides" test_backend_compose_exposes_auth_rate_limit_overrides
+    run_test "llm egress proxy maps host gateway for host providers" test_llm_egress_proxy_maps_host_gateway_for_host_providers
     run_test "worker compose command matches backend dist layout" test_worker_compose_command_matches_backend_dist_layout
     echo ""
 
@@ -1896,6 +1948,7 @@ main() {
     run_test "setup script rejects missing salt for existing key" test_setup_script_rejects_missing_salt_for_existing_key
     run_test "setup script rejects legacy default salt" test_setup_script_rejects_legacy_default_salt
     run_test "setup script generates unique salt for fresh install" test_setup_script_generates_unique_salt_for_fresh_install
+    run_test "setup script persists LLM egress policy env" test_setup_script_persists_llm_egress_policy_env
     echo ""
 
     echo -e "${YELLOW}Test Suite: .env.example${NC}"

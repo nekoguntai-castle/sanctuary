@@ -1,3 +1,48 @@
+# Task: PR Delivery Remote Install LLM Connectivity 2026-05-20
+
+Status: in progress.
+
+Goal: open, monitor, merge, and verify the remote LLM connectivity fix through the Forgejo PR workflow.
+
+## Plan
+
+- [x] Preflight repo state, current branch, target base, and forge type.
+- [x] Commit the scoped remote LLM connectivity fix on a topic branch.
+- [ ] Push the branch and open or update a Forgejo PR against `main`.
+- [ ] Monitor checks/reviews, fix failures if any, and merge when green.
+- [ ] Verify the platform merge commit is reachable from `origin/main`.
+
+## Review
+
+- Pending.
+
+---
+
+# Task: Remote Install LLM Connectivity 2026-05-20
+
+Status: complete.
+
+Goal: fix the remote install path where Sanctuary cannot connect to an operator-provided LLM even though the remote host can reach the provider on port 1234.
+
+## Plan
+
+- [x] Inspect LLM egress proxy endpoint policy, provider detection, request normalization, and compose/install defaults.
+- [x] Identify why raw port reachability on 1234 does not translate into a successful Sanctuary LLM connection.
+- [x] Apply the smallest code/config/doc fix that preserves the LLM egress boundary.
+- [x] Add or update focused regression coverage for the remote 1234 provider case.
+- [x] Run focused verification and review the diff for unnecessary complexity.
+
+## Review
+
+- Support bundle `~/sanctuary-support-2026-05-20-22-19-46.json` showed backend could reach the LLM egress proxy (`proxyAvailable: true`) and had an active OpenAI-compatible provider with endpoint/model, but proxy `/test` returned `AI not configured`. That means the backend-to-proxy `/config` sync failed or was rejected before provider testing; raw port 1234 reachability alone did not prove the proxy accepted/resolved the endpoint.
+- Added `host.docker.internal:host-gateway` to the `llm-egress-proxy` service so Linux remote installs can use documented same-host provider endpoints such as `http://host.docker.internal:1234/v1`.
+- Persisted `LLM_EGRESS_PROXY_ALLOWED_HOSTS`, `LLM_EGRESS_PROXY_ALLOWED_CIDRS`, and `LLM_EGRESS_PROXY_ALLOW_PUBLIC_HTTPS` through setup/install/start runtime env handling so numeric LAN IP allowlists survive upgrades and restarts.
+- Changed AI health/model-listing flow to stop after a failed proxy config sync and surface the real sync rejection, including `host_not_allowed` guidance for same-host versus numeric LAN IP endpoints, instead of testing stale proxy config and reporting `AI not configured`.
+- Updated README guidance for same-host LM Studio (`host.docker.internal:1234/v1`) versus LAN LM Studio (`<LAN IP>:1234/v1` plus CIDR allowlist).
+- Verification passed: `bash -n install.sh start.sh scripts/setup.sh tests/install/unit/install-script.test.sh`; `npm --prefix llm-egress-proxy run test -- tests/llm-egress-proxy/endpointPolicy.test.ts`; `npm test -- --run tests/unit/services/aiService.test.ts tests/unit/services/aiService.modelOperations.test.ts` in `server`; `bash tests/install/unit/install-script.test.sh` (94/94); `npm --prefix llm-egress-proxy run build`; `npm run typecheck:tests` in `server`; `npx eslint server/src/services/ai/config.ts server/src/services/ai/health.ts server/src/services/ai/features.ts`; `docker compose config --quiet` with dummy required secrets; `git diff --check`; touched-file lizard on server AI files with 0 warnings.
+
+---
+
 # Task: Codeberg Tag Clobber Upgrade Recovery 2026-05-20
 
 Status: complete.
