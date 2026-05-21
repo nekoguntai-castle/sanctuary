@@ -93,6 +93,8 @@ describe("LLM egress proxy provider detection", () => {
     expect(result).toMatchObject({
       found: false,
       blockedReason: "host_not_allowed",
+      message:
+        "AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.",
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });

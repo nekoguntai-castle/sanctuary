@@ -1,5 +1,30 @@
-import { ChevronDown, Loader2, RefreshCw, Search } from 'lucide-react';
+import {
+  AlertCircle,
+  ChevronDown,
+  Loader2,
+  RefreshCw,
+  Search,
+} from 'lucide-react';
 import type { SettingsTabProps } from '../types';
+
+const SUCCESS_DETECT_MESSAGE_TOKENS = ['found', 'connected', 'saved'];
+const ERROR_DETECT_MESSAGE_TOKENS = [
+  'blocked',
+  'not allowed',
+  'host_not_allowed',
+  'failed',
+  'not reachable',
+];
+const DETECT_MESSAGE_CLASSES = {
+  success: 'text-emerald-600 dark:text-emerald-400',
+  error: 'text-rose-600 dark:text-rose-400',
+  neutral: 'text-sanctuary-500',
+};
+const DETECT_MESSAGE_ROLES = {
+  success: 'status',
+  error: 'alert',
+  neutral: 'status',
+} as const;
 
 type EndpointControlsProps = Pick<
   SettingsTabProps,
@@ -23,6 +48,7 @@ export function EndpointControls({
     providerType === 'openai-compatible'
       ? 'http://host.docker.internal:1234/v1'
       : 'http://host.docker.internal:11434';
+  const messageTone = getDetectMessageTone(detectMessage);
 
   return (
     <div>
@@ -55,14 +81,42 @@ export function EndpointControls({
         </button>
       </div>
       {detectMessage && (
-        <p
-          className={`text-xs mt-1 ${detectMessage.includes('Found') || detectMessage.includes('Connected') || detectMessage.includes('saved') ? 'text-emerald-600 dark:text-emerald-400' : 'text-sanctuary-500'}`}
+        <div
+          role={DETECT_MESSAGE_ROLES[messageTone]}
+          className={`mt-2 flex items-start gap-1.5 text-xs ${getDetectMessageClass(messageTone)}`}
         >
-          {detectMessage}
-        </p>
+          <DetectMessageIcon tone={messageTone} />
+          <span>{detectMessage}</span>
+        </div>
       )}
     </div>
   );
+}
+
+function getDetectMessageTone(
+  message: string,
+): 'success' | 'error' | 'neutral' {
+  const normalizedMessage = message.toLowerCase();
+  const hasToken = (token: string) => normalizedMessage.includes(token);
+  const success = SUCCESS_DETECT_MESSAGE_TOKENS.some(hasToken);
+  const error = ERROR_DETECT_MESSAGE_TOKENS.some(hasToken);
+
+  return success ? 'success' : error ? 'error' : 'neutral';
+}
+
+function getDetectMessageClass(
+  tone: ReturnType<typeof getDetectMessageTone>,
+): string {
+  return DETECT_MESSAGE_CLASSES[tone];
+}
+
+function DetectMessageIcon({
+  tone,
+}: {
+  tone: ReturnType<typeof getDetectMessageTone>;
+}) {
+  if (tone !== 'error') return null;
+  return <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />;
 }
 
 type ModelSelectionControlsProps = Pick<

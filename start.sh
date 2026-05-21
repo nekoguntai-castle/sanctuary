@@ -55,6 +55,27 @@ if [ -f "$ENV_FILE" ]; then
     set +a
 fi
 
+persist_runtime_env_value() {
+    local key="$1"
+    local value="$2"
+
+    if [ -z "$key" ] || [ -z "$value" ]; then
+        return 0
+    fi
+
+    local env_dir
+    env_dir="$(dirname "$ENV_FILE")"
+    mkdir -p "$env_dir"
+    touch "$ENV_FILE"
+    chmod 600 "$ENV_FILE" 2>/dev/null || true
+
+    if grep -q "^${key}=" "$ENV_FILE"; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+    else
+        printf '\n%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+    fi
+}
+
 IS_OFFLINE_INSTALL=false
 if [ "${SANCTUARY_INSTALL_MODE:-}" = "offline" ]; then
     IS_OFFLINE_INSTALL=true
@@ -87,6 +108,7 @@ fi
 # Auto-generate LLM_EGRESS_PROXY_SECRET if not set
 if [ -z "$LLM_EGRESS_PROXY_SECRET" ]; then
     export LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32)
+    persist_runtime_env_value "LLM_EGRESS_PROXY_SECRET" "$LLM_EGRESS_PROXY_SECRET"
 fi
 
 # Export for docker compose

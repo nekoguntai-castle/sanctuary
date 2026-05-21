@@ -301,6 +301,20 @@ describe("SettingsTab", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders blocked endpoint detection messages as visible errors", () => {
+    render(
+      <SettingsTab
+        {...baseProps}
+        detectMessage="AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints."
+      />,
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("host_not_allowed");
+    expect(alert).toHaveTextContent("LLM_EGRESS_PROXY_ALLOWED_CIDRS");
+    expect(alert.className).toContain("text-rose");
+  });
+
   it("renders direct model selection loading controls", () => {
     const { container } = render(
       <ModelSelectionControls

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAISettings } from '../../../../components/AISettings/hooks/useAISettings';
 import * as adminApi from '../../../../src/api/admin';
 import * as aiApi from '../../../../src/api/ai';
+import { ApiError } from '../../../../src/api/client';
 
 vi.mock('../../../../src/api/admin', () => ({
   getSystemSettings: vi.fn(),
@@ -264,6 +265,113 @@ describe('useAISettings', () => {
     expect(result.current.detectMessage).toBe(
       'No supported model provider responded at this endpoint.',
     );
+  });
+
+  it('shows blocked numeric IP endpoint guidance from provider detection', async () => {
+    vi.mocked(adminApi.getSystemSettings).mockResolvedValueOnce({
+      aiEnabled: true,
+      aiEndpoint: 'http://10.114.123.214:1234',
+      aiModel: '',
+      aiProviderProfiles: [
+        {
+          id: 'lm-studio',
+          name: 'LM Studio',
+          providerType: 'openai-compatible',
+          endpoint: 'http://10.114.123.214:1234',
+          model: '',
+          capabilities: { chat: true, toolCalls: true, strictJson: true },
+        },
+      ],
+      aiActiveProviderProfileId: 'lm-studio',
+    } as never);
+    vi.mocked(aiApi.detectProvider).mockResolvedValueOnce({
+      found: false,
+      blockedReason: 'host_not_allowed',
+      message:
+        'AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.',
+    } as never);
+
+    const { result } = renderHook(() => useAISettings());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handleDetectOllama();
+    });
+
+    expect(result.current.detectMessage).toBe(
+      'AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.',
+    );
+    expect(result.current.availableModels).toEqual([]);
+    expect(adminApi.updateSystemSettings).not.toHaveBeenCalledWith(
+      expect.objectContaining({ aiEndpoint: 'http://10.114.123.214:1234' }),
+    );
+  });
+
+  it('shows blocked endpoint guidance when model refresh fails during load', async () => {
+    vi.mocked(aiApi.listModels).mockRejectedValueOnce(
+      new ApiError(
+        'AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.',
+        502,
+        {
+          message:
+            'AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.',
+        },
+      ),
+    );
+
+    const { result } = renderHook(() => useAISettings());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(result.current.detectMessage).toBe(
+        'AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.',
+      );
+    });
+    expect(result.current.availableModels).toEqual([]);
+  });
+
+  it('uses API error messages when model refresh errors omit response messages', async () => {
+    vi.mocked(aiApi.listModels).mockRejectedValueOnce(
+      new ApiError('remote provider refused the connection', 502, {}),
+    );
+
+    const { result } = renderHook(() => useAISettings());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(result.current.detectMessage).toBe(
+        'remote provider refused the connection',
+      );
+    });
+    expect(result.current.availableModels).toEqual([]);
+  });
+
+  it('uses the model refresh fallback when API errors have blank messages', async () => {
+    vi.mocked(aiApi.listModels).mockRejectedValueOnce(
+      new ApiError('   ', 502, {}),
+    );
+
+    const { result } = renderHook(() => useAISettings());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(result.current.detectMessage).toBe(
+        'Failed to load provider models.',
+      );
+    });
+    expect(result.current.availableModels).toEqual([]);
   });
 
   it('saves detected provider endpoints even when no models are reported', async () => {

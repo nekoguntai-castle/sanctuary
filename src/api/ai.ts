@@ -4,7 +4,7 @@
  * API calls for AI-powered features (transaction labeling, natural language queries)
  */
 
-import apiClient from "./client";
+import apiClient, { ApiError } from "./client";
 import type { AIProviderType } from "./admin/types";
 
 const AI_NATURAL_QUERY_TIMEOUT_MS = 120_000;
@@ -112,6 +112,7 @@ export interface DetectProviderResponse {
   endpoint?: string;
   models?: ProviderModel[];
   message?: string;
+  blockedReason?: string;
 }
 
 export interface ProviderModel {
@@ -138,7 +139,26 @@ export async function detectOllama(): Promise<DetectOllamaResponse> {
 export async function detectProvider(
   request: DetectProviderRequest,
 ): Promise<DetectProviderResponse> {
-  return apiClient.post<DetectProviderResponse>("/ai/detect-provider", request);
+  try {
+    return await apiClient.post<DetectProviderResponse>(
+      "/ai/detect-provider",
+      request,
+    );
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 400 || error.status === 502)) {
+      const blockedReason =
+        typeof error.response?.blockedReason === "string"
+          ? error.response.blockedReason
+          : undefined;
+      return {
+        found: false,
+        message: error.message,
+        blockedReason,
+      };
+    }
+
+    throw error;
+  }
 }
 
 /**

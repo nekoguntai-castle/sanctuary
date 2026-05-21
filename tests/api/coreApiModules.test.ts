@@ -16,6 +16,19 @@ const mockPatch = vi.fn();
 const mockPut = vi.fn();
 const mockDelete = vi.fn();
 const mockDownload = vi.fn();
+const MockApiError = vi.hoisted(
+  () =>
+    class ApiError extends Error {
+      constructor(
+        message: string,
+        public status: number,
+        public response?: Record<string, unknown>,
+      ) {
+        super(message);
+        this.name = 'ApiError';
+      }
+    },
+);
 
 vi.mock('../../src/api/client', () => ({
   default: {
@@ -26,9 +39,11 @@ vi.mock('../../src/api/client', () => ({
     delete: (...args: unknown[]) => mockDelete(...args),
     download: (...args: unknown[]) => mockDownload(...args),
   },
+  ApiError: MockApiError,
 }));
 
 import * as aiApi from '../../src/api/ai';
+import { ApiError } from '../../src/api/client';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import * as devicesApi from '../../src/api/devices';
 import * as walletsApi from '../../src/api/wallets';
@@ -71,6 +86,73 @@ describe('Core API Modules', () => {
         preferredProviderType: 'openai-compatible',
       });
       expect(mockGet).toHaveBeenCalledWith('/ai/models');
+    });
+
+    it('returns blocked provider detection API errors as visible detection results', async () => {
+      mockPost.mockRejectedValueOnce(
+        new ApiError(
+          'AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.',
+          400,
+          {
+            message:
+              'AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.',
+            blockedReason: 'host_not_allowed',
+          },
+        ),
+      );
+
+      await expect(
+        aiApi.detectProvider({
+          endpoint: 'http://10.114.123.214:1234',
+          preferredProviderType: 'openai-compatible',
+        }),
+      ).resolves.toEqual({
+        found: false,
+        message:
+          'AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.',
+        blockedReason: 'host_not_allowed',
+      });
+    });
+
+    it('returns provider detection proxy failures without blocked reasons', async () => {
+      mockPost.mockRejectedValueOnce(
+        new ApiError('Provider endpoint did not respond', 502, {}),
+      );
+
+      await expect(
+        aiApi.detectProvider({
+          endpoint: 'http://studio.local:1234',
+          preferredProviderType: 'openai-compatible',
+        }),
+      ).resolves.toEqual({
+        found: false,
+        message: 'Provider endpoint did not respond',
+        blockedReason: undefined,
+      });
+    });
+
+    it('rethrows unexpected provider detection API statuses', async () => {
+      const apiError = new ApiError('internal error', 500, {});
+      mockPost.mockRejectedValueOnce(apiError);
+
+      await expect(
+        aiApi.detectProvider({
+          endpoint: 'http://studio.local:1234',
+          preferredProviderType: 'openai-compatible',
+        }),
+      ).rejects.toBe(apiError);
+    });
+
+    it('rethrows unexpected provider detection errors', async () => {
+      const unexpectedError = new Error('socket closed');
+      mockPost.mockRejectedValueOnce(unexpectedError);
+
+      await expect(
+        aiApi.detectProvider({
+          endpoint: 'http://studio.local:1234',
+          preferredProviderType: 'openai-compatible',
+        }),
+      ).rejects.toBe(unexpectedError);
     });
   });
 

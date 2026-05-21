@@ -87,6 +87,7 @@ export function createModelsRouter(): Router {
         return res.status(result.blockedReason ? 400 : 502).json({
           error: result.blockedReason ? 'Bad Request' : 'Bad Gateway',
           message: result.message || 'Provider detection failed',
+          blockedReason: result.blockedReason,
         });
       }
 

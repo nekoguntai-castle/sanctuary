@@ -2,6 +2,7 @@ import { act,renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { useAIConnectionStatus } from '../../../../components/AISettings/hooks/useAIConnectionStatus';
 import * as aiApi from '../../../../src/api/ai';
+import { ApiError } from '../../../../src/api/client';
 
 const loggerSpies = vi.hoisted(() => ({
   error: vi.fn(),
@@ -79,5 +80,62 @@ describe('useAIConnectionStatus branch coverage', () => {
     expect(loggerSpies.error).toHaveBeenCalledWith('Failed to test AI connection', {
       error: expect.any(Error),
     });
+  });
+
+  it('surfaces API error messages from failed connection tests', async () => {
+    vi.mocked(aiApi.testAIConnection).mockRejectedValueOnce(
+      new ApiError(
+        'AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.',
+        502,
+        {
+          message:
+            'AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.',
+        },
+      ),
+    );
+
+    const { result } = renderHook(() => useAIConnectionStatus());
+
+    await act(async () => {
+      await result.current.handleTestConnection();
+    });
+
+    expect(result.current.aiStatus).toBe('error');
+    expect(result.current.aiStatusMessage).toContain('host_not_allowed');
+    expect(result.current.aiStatusMessage).toContain(
+      'LLM_EGRESS_PROXY_ALLOWED_CIDRS',
+    );
+  });
+
+  it('uses API error messages when connection errors omit response messages', async () => {
+    vi.mocked(aiApi.testAIConnection).mockRejectedValueOnce(
+      new ApiError('remote provider refused the connection', 502, {}),
+    );
+
+    const { result } = renderHook(() => useAIConnectionStatus());
+
+    await act(async () => {
+      await result.current.handleTestConnection();
+    });
+
+    expect(result.current.aiStatus).toBe('error');
+    expect(result.current.aiStatusMessage).toBe(
+      'remote provider refused the connection',
+    );
+  });
+
+  it('uses the connection fallback when API errors have blank messages', async () => {
+    vi.mocked(aiApi.testAIConnection).mockRejectedValueOnce(
+      new ApiError('   ', 502, {}),
+    );
+
+    const { result } = renderHook(() => useAIConnectionStatus());
+
+    await act(async () => {
+      await result.current.handleTestConnection();
+    });
+
+    expect(result.current.aiStatus).toBe('error');
+    expect(result.current.aiStatusMessage).toBe('Failed to connect');
   });
 });

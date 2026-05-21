@@ -1,3 +1,28 @@
+# Task: Persistent Remote LLM Error Visibility 2026-05-20
+
+Status: complete.
+
+Goal: make remote LLM endpoint allowlist fixes persist across reboot/start paths and show blocked-IP failures clearly in the AI settings UI.
+
+## Plan
+
+- [x] Verify current persistence and UI error handling paths for remote LLM endpoints.
+- [x] Persist generated LLM egress runtime secrets/settings needed after reboot or a fresh `docker compose` invocation.
+- [x] Preserve and surface blocked endpoint policy messages through API/UI layers.
+- [x] Add focused regression tests for persisted env handling and blocked-IP UI feedback.
+- [x] Run focused verification and review the diff for scope and clarity.
+
+## Review
+
+- `start.sh` now writes an auto-generated `LLM_EGRESS_PROXY_SECRET` back to the selected runtime env file, so a start path that had to generate the proxy secret leaves the value available for later reboots, restarts, and direct `docker compose` commands.
+- Blocked provider detection now returns explicit `host_not_allowed` guidance that names `host.docker.internal` for host-local providers and `LLM_EGRESS_PROXY_ALLOWED_CIDRS` for numeric LAN IP endpoints.
+- The backend preserves `blockedReason` on `/api/v1/ai/detect-provider`, the frontend API converts expected 400/502 detection failures into normal `found: false` results, and AI Settings renders blocked endpoint messages as red `role="alert"` feedback instead of a generic connection failure.
+- Model refresh and Test Connection catch API error bodies and show the server/proxy message when available.
+- The first Forgejo PR run exposed a missing frontend branch-coverage gate for the new API error fallback paths; added focused tests for non-400/502 provider detection errors, 502 provider failures without `blockedReason`, and blank API message fallbacks.
+- Verification passed: frontend AI settings/API focused tests, full frontend coverage at 100% statements/branches/functions/lines, server AI API/service tests, LLM egress proxy endpoint/provider tests, installer unit suite, shell syntax checks, app/test/server typechecks, targeted ESLint, touched-file lizard with 0 warnings, and `git diff --check`.
+
+---
+
 # Task: PR Delivery Remote Install LLM Connectivity 2026-05-20
 
 Status: in progress.

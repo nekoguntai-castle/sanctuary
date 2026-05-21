@@ -1052,6 +1052,48 @@ test_start_script_env_has_set_a() {
     fi
 }
 
+test_start_script_persists_generated_llm_egress_secret() {
+    local fixture_dir="$TEST_TMP_DIR/start-llm-secret"
+    local env_file="$fixture_dir/sanctuary.env"
+    local output=""
+    local contents=""
+
+    mkdir -p "$fixture_dir/bin"
+    cat > "$env_file" << EOF
+JWT_SECRET=test-jwt-secret
+ENCRYPTION_KEY=test-encryption-key
+GATEWAY_SECRET=test-gateway-secret
+POSTGRES_PASSWORD=test-postgres-password
+EOF
+
+    cat > "$fixture_dir/bin/docker" << 'EOF'
+#!/bin/sh
+case "$*" in
+  "info"|"compose version"|"image inspect sanctuary-backend:local"|"image inspect sanctuary-frontend:local"|"image inspect sanctuary-gateway:local")
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+EOF
+    chmod +x "$fixture_dir/bin/docker"
+
+    output=$(
+        SANCTUARY_ENV_FILE="$env_file" \
+        PATH="$fixture_dir/bin:$PATH" \
+        bash "$START_SCRIPT" --help 2>&1
+    ) || {
+        echo -e "${RED}ASSERTION FAILED:${NC} start.sh should persist generated LLM egress secret"
+        echo "$output"
+        return 1
+    }
+
+    contents="$(cat "$env_file")"
+    assert_contains "$contents" "LLM_EGRESS_PROXY_SECRET=" \
+        "start.sh should persist generated LLM egress proxy secret for future docker compose/start invocations"
+}
+
 test_backend_compose_exposes_auth_rate_limit_overrides() {
     if grep -q 'RATE_LIMIT_LOGIN:.*RATE_LIMIT_LOGIN' "$PROJECT_ROOT/docker-compose.yml" \
         && grep -q 'RATE_LIMIT_2FA:.*RATE_LIMIT_2FA' "$PROJECT_ROOT/docker-compose.yml" \
@@ -1894,6 +1936,7 @@ main() {
     run_test "start script has .env.local fallback" test_start_script_has_env_local_fallback
     run_test "start script .env has set -a" test_start_script_env_has_set_a
     run_test "start script .env.local has set -a" test_start_script_env_local_has_set_a
+    run_test "start script persists generated LLM egress secret" test_start_script_persists_generated_llm_egress_secret
     run_test "backend compose exposes auth rate-limit overrides" test_backend_compose_exposes_auth_rate_limit_overrides
     run_test "llm egress proxy maps host gateway for host providers" test_llm_egress_proxy_maps_host_gateway_for_host_providers
     run_test "worker compose command matches backend dist layout" test_worker_compose_command_matches_backend_dist_layout

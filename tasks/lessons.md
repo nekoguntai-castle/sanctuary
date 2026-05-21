@@ -2377,3 +2377,16 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - From `0.8.53`, the normal `$release` stable target is `0.8.54` / `v0.8.54`.
 - Treat explicit user versions as authoritative when they match the default patch rule; only deviate when the user clearly requests a minor/major/prerelease target.
 - Do not create or push a tag until the package version, tag name, release notes, and workflow target agree.
+
+## Prove Configured Remote LLM Reachability Through The Egress Proxy
+
+**Rule:** For remote LLM connectivity incidents, success means the exact LLM endpoint stored in Sanctuary settings resolves and returns provider models through the `llm-egress-proxy` path.
+
+**Why:** Container health, host-level port reachability, or a copied endpoint probe can all pass while the configured app URL still fails due to endpoint policy, CIDR allowlist, stale settings, or provider type mismatch.
+
+**How to apply:**
+
+- Read the configured `aiEndpoint`, active provider profile, and model from Sanctuary settings before declaring success.
+- Probe via the egress proxy route, such as `/detect-provider`, using the configured endpoint and expected provider type.
+- Confirm the configured model appears in returned models when model selection is part of the failure.
+- Treat `LLM_EGRESS_PROXY_ALLOWED_CIDRS` and proxy secret export as runtime requirements, not just compose health checks.

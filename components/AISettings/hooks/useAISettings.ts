@@ -24,6 +24,18 @@ import {
 
 const log = createLogger("AISettings:useAISettings");
 
+function getApiDisplayMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const responseMessage = error.response?.message;
+    if (typeof responseMessage === "string" && responseMessage.trim()) {
+      return responseMessage;
+    }
+    if (error.message.trim()) return error.message;
+  }
+
+  return fallback;
+}
+
 interface UseAISettingsReturn {
   // State
   featureUnavailable: boolean;
@@ -166,6 +178,10 @@ export function useAISettings(): UseAISettingsReturn {
       setAvailableModels(result.models || []);
     } catch (error) {
       log.error("Failed to load models", { error });
+      setAvailableModels([]);
+      setDetectMessage(
+        getApiDisplayMessage(error, "Failed to load provider models."),
+      );
     } finally {
       setIsLoadingModels(false);
     }
@@ -407,9 +423,12 @@ export function useAISettings(): UseAISettingsReturn {
     } catch (error) {
       log.error("AI provider detection failed", { error });
       setDetectMessage(
-        providerType === "openai-compatible"
-          ? "Connection failed. Check the endpoint URL and LLM egress proxy allowlist."
-          : "Detection failed. Check LLM egress proxy logs.",
+        getApiDisplayMessage(
+          error,
+          providerType === "openai-compatible"
+            ? "Connection failed. Check the endpoint URL and LLM egress proxy allowlist."
+            : "Detection failed. Check LLM egress proxy logs.",
+        ),
       );
     } finally {
       setIsDetecting(false);

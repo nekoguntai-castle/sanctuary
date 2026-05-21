@@ -1,8 +1,21 @@
 import { useState } from 'react';
 import * as aiApi from '../../../src/api/ai';
+import { ApiError } from '../../../src/api/client';
 import { createLogger } from '../../../utils/logger';
 
 const log = createLogger('AISettings');
+
+function getConnectionErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const responseMessage = error.response?.message;
+    if (typeof responseMessage === 'string' && responseMessage.trim()) {
+      return responseMessage;
+    }
+    if (error.message.trim()) return error.message;
+  }
+
+  return 'Failed to connect';
+}
 
 export function useAIConnectionStatus() {
   const [aiStatus, setAiStatus] = useState<'idle' | 'checking' | 'connected' | 'error'>('idle');
@@ -24,7 +37,7 @@ export function useAIConnectionStatus() {
     } catch (error) {
       log.error('Failed to test AI connection', { error });
       setAiStatus('error');
-      setAiStatusMessage('Failed to connect');
+      setAiStatusMessage(getConnectionErrorMessage(error));
     }
   };
 

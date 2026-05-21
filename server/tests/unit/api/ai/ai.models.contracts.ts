@@ -101,7 +101,8 @@ export function registerDetectOllamaContracts() {
     (aiService.detectProviderEndpoint as Mock).mockResolvedValue({
       found: false,
       blockedReason: 'host_not_allowed',
-      message: 'AI endpoint is not allowed: host_not_allowed',
+      message:
+        'AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.',
     });
 
     const response = await request(app)
@@ -115,8 +116,9 @@ export function registerDetectOllamaContracts() {
 
     expect(response.status).toBe(400);
     expect(response.body.message).toBe(
-      'AI endpoint is not allowed: host_not_allowed',
+      'AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.',
     );
+    expect(response.body.blockedReason).toBe('host_not_allowed');
   });
 
   it('should return fallback provider detection messages when proxy omits a message', async () => {

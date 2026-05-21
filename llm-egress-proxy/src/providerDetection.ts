@@ -35,6 +35,14 @@ export function getProviderDetectionOrder(
   ];
 }
 
+function describeBlockedEndpoint(reason?: string): string {
+  if (reason === "host_not_allowed") {
+    return "AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.";
+  }
+
+  return `AI endpoint is not allowed: ${reason ?? "blocked"}`;
+}
+
 export async function detectProviderModels(
   aiConfig: AiConfig,
   endpoint: string,
@@ -46,7 +54,7 @@ export async function detectProviderModels(
     return {
       found: false,
       blockedReason: decision.reason,
-      message: `AI endpoint is not allowed: ${decision.reason ?? "blocked"}`,
+      message: describeBlockedEndpoint(decision.reason),
     };
   }
 
