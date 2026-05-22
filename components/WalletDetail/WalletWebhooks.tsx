@@ -87,9 +87,10 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
   }
 
   async function loadDeliveries(webhook: WalletWebhookEndpoint) {
+    const currentDeliveries = deliveryState[webhook.id]?.deliveries ?? [];
     setDeliveryState(prev => ({
       ...prev,
-      [webhook.id]: { loading: true, deliveries: prev[webhook.id]?.deliveries ?? [], error: null },
+      [webhook.id]: { loading: true, deliveries: currentDeliveries, error: null },
     }));
     try {
       const deliveries = await walletsApi.getWalletWebhookDeliveries(walletId, webhook.id, 25);
@@ -102,7 +103,7 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
         ...prev,
         [webhook.id]: {
           loading: false,
-          deliveries: prev[webhook.id]?.deliveries ?? [],
+          deliveries: currentDeliveries,
           error: err instanceof Error ? err.message : 'Failed to load deliveries',
         },
       }));

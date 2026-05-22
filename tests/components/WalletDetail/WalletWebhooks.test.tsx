@@ -120,7 +120,113 @@ describe('WalletWebhooks', () => {
       }),
     }));
   });
+
+  it('surfaces load errors and refreshes the list', async () => {
+    mockListWalletWebhooks
+      .mockRejectedValueOnce(new Error('Cannot load webhooks'))
+      .mockRejectedValueOnce('offline');
+    render(<WalletWebhooks walletId="wallet-1" />);
+
+    expect(await screen.findByText('Cannot load webhooks')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Refresh webhooks'));
+    expect(await screen.findByText('Failed to load webhooks')).toBeInTheDocument();
+    expect(mockListWalletWebhooks).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports create errors from validation and API failures', async () => {
+    mockListWalletWebhooks.mockResolvedValue([]);
+    render(<WalletWebhooks walletId="wallet-1" />);
+
+    fillRequiredFields();
+    fireEvent.click(screen.getByText('Advanced'));
+    fireEvent.change(screen.getByLabelText('Filters JSON'), {
+      target: { value: '[' },
+    });
+    fireEvent.click(screen.getByText('Add webhook'));
+
+    expect(await screen.findByText('Unexpected end of JSON input')).toBeInTheDocument();
+    expect(mockCreateWalletWebhook).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Filters JSON'), {
+      target: { value: '' },
+    });
+    mockCreateWalletWebhook.mockRejectedValueOnce('offline');
+    fireEvent.click(screen.getByText('Add webhook'));
+
+    expect(await screen.findByText('Failed to save webhook')).toBeInTheDocument();
+  });
+
+  it('toggles and deletes existing webhooks', async () => {
+    mockListWalletWebhooks
+      .mockResolvedValueOnce([makeWebhook()])
+      .mockResolvedValueOnce([makeWebhook({ enabled: false })])
+      .mockResolvedValueOnce([]);
+    render(<WalletWebhooks walletId="wallet-1" />);
+
+    expect(await screen.findByText('Accounting')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Enabled'));
+
+    await waitFor(() => {
+      expect(mockUpdateWalletWebhook).toHaveBeenCalledWith('wallet-1', 'webhook-1', { enabled: false });
+    });
+    expect(await screen.findByText('Disabled')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Delete Accounting'));
+    await waitFor(() => {
+      expect(mockDeleteWalletWebhook).toHaveBeenCalledWith('wallet-1', 'webhook-1');
+    });
+    expect(await screen.findByText('No webhooks configured.')).toBeInTheDocument();
+  });
+
+  it('reports endpoint action and delivery history failures', async () => {
+    mockUpdateWalletWebhook.mockRejectedValueOnce('offline');
+    mockTestWalletWebhook.mockRejectedValueOnce(new Error('Test endpoint failed'));
+    mockGetWalletWebhookDeliveries
+      .mockRejectedValueOnce(new Error('History failed'))
+      .mockRejectedValueOnce('offline');
+    render(<WalletWebhooks walletId="wallet-1" />);
+
+    expect(await screen.findByText('Accounting')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Enabled'));
+    expect(await screen.findByText('Failed to update webhook')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Test'));
+    expect(await screen.findByText('Test endpoint failed')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('History'));
+    expect(await screen.findByText('History failed')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('History'));
+    expect(await screen.findByText('Failed to load deliveries')).toBeInTheDocument();
+  });
+
+  it('preserves existing delivery rows when a history refresh fails', async () => {
+    mockGetWalletWebhookDeliveries
+      .mockResolvedValueOnce([makeDelivery()])
+      .mockRejectedValueOnce('offline');
+    render(<WalletWebhooks walletId="wallet-1" />);
+
+    expect(await screen.findByText('Accounting')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('History'));
+    expect(await screen.findByText('event-1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('History'));
+    expect(await screen.findByText('Failed to load deliveries')).toBeInTheDocument();
+    expect(screen.getByText('event-1')).toBeInTheDocument();
+  });
 });
+
+function fillRequiredFields() {
+  fireEvent.change(screen.getByPlaceholderText('Endpoint name'), {
+    target: { value: 'External receiver' },
+  });
+  fireEvent.change(screen.getByPlaceholderText('https://example.com/webhook'), {
+    target: { value: 'https://example.com/webhook' },
+  });
+}
 
 function makeWebhook(overrides: Record<string, unknown> = {}) {
   return {

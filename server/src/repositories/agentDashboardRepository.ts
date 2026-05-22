@@ -3,8 +3,8 @@ import {
   Prisma,
   type AgentAlert,
 } from '../generated/prisma/client';
+import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import type { WalletAgentWithDetails } from './agentRepository';
-import { ACTIONABLE_DRAFT_STATUSES } from './draftRepository';
 
 const DASHBOARD_DRAFT_SELECT = {
   id: true,
@@ -192,7 +192,7 @@ export async function findDashboardRows(options?: { limit?: number }): Promise<A
       by: ['agentId'],
       where: {
         agentId: { in: agentIds },
-        status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
+        status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
         OR: [
           { expiresAt: null },
           { expiresAt: { gt: now } },

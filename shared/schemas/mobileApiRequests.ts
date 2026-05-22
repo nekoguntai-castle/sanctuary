@@ -4,6 +4,7 @@ import {
   DEVICE_ACCOUNT_PURPOSE_VALUES,
   WALLET_SCRIPT_TYPE_VALUES,
 } from '../constants/walletIdentity';
+import { ACTIONABLE_DRAFT_STATUS_VALUES } from '../constants/drafts';
 
 /**
  * Shared mobile API request contracts consumed by gateway validation, backend
@@ -27,7 +28,7 @@ export const MOBILE_ACTIONS = [
 
 export type MobileAction = typeof MOBILE_ACTIONS[number];
 
-export const MOBILE_DRAFT_STATUS_VALUES = ['unsigned', 'partial', 'signed'] as const;
+export const MOBILE_DRAFT_STATUS_VALUES = ACTIONABLE_DRAFT_STATUS_VALUES;
 export const MOBILE_DEVICE_ACCOUNT_PURPOSES = DEVICE_ACCOUNT_PURPOSE_VALUES;
 export const MOBILE_DEVICE_SCRIPT_TYPES = WALLET_SCRIPT_TYPE_VALUES;
 

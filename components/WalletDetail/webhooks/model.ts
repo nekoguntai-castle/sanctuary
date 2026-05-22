@@ -1,8 +1,18 @@
 import type { WalletWebhookInput } from '../../../types';
+import {
+  WEBHOOK_AUTH_TYPE_NONE,
+  WEBHOOK_DEFAULT_WALLET_TRANSACTION_EVENTS,
+  WEBHOOK_PAYLOAD_PROFILE_GENERIC,
+  WEBHOOK_PAYLOAD_PROFILE_MAPPED_JSON,
+  WEBHOOK_VALUATION_MODE_DISABLED,
+  type WebhookAuthType,
+  type WebhookPayloadProfile,
+  type WebhookValuationMode,
+} from '@sanctuary/shared/constants/webhooks';
 
-export type PayloadProfile = 'sanctuary_wallet_event_v1' | 'mapped_json_v1';
-export type AuthType = 'none' | 'bearer' | 'hmac_sha256' | 'configured_hmac_sha256';
-export type ValuationMode = 'disabled' | 'optional' | 'required';
+export type PayloadProfile = WebhookPayloadProfile;
+export type AuthType = WebhookAuthType;
+export type ValuationMode = WebhookValuationMode;
 
 export interface WebhookFormState {
   name: string;
@@ -24,7 +34,7 @@ export interface WebhookFormState {
   retryBackoffMultiplier: number;
 }
 
-export const DEFAULT_EVENTS = 'wallet.transaction.received,wallet.transaction.sent,wallet.transaction.confirmed';
+export const DEFAULT_EVENTS = WEBHOOK_DEFAULT_WALLET_TRANSACTION_EVENTS.join(',');
 
 export const DEFAULT_BODY_MAPPING = JSON.stringify({
   eventId: { path: 'eventId' },
@@ -52,8 +62,8 @@ export const defaultForm = (): WebhookFormState => ({
   name: '',
   url: '',
   eventTypes: DEFAULT_EVENTS,
-  payloadProfile: 'sanctuary_wallet_event_v1',
-  authType: 'none',
+  payloadProfile: WEBHOOK_PAYLOAD_PROFILE_GENERIC,
+  authType: WEBHOOK_AUTH_TYPE_NONE,
   secret: '',
   maxAttempts: 5,
   failureNotificationEnabled: true,
@@ -61,7 +71,7 @@ export const defaultForm = (): WebhookFormState => ({
   filtersJson: '',
   headerConfigJson: '',
   bodyMappingJson: DEFAULT_BODY_MAPPING,
-  valuationMode: 'disabled',
+  valuationMode: WEBHOOK_VALUATION_MODE_DISABLED,
   valuationCurrency: 'USD',
   retryInitialDelayMs: 30000,
   retryMaxDelayMs: 1800000,
@@ -87,7 +97,7 @@ export function buildWebhookInput(form: WebhookFormState): WalletWebhookInput {
     ...(form.authType !== 'none' ? { secret: form.secret.trim() } : {}),
     ...(filters ? { filters } : {}),
     ...(headerConfig ? { headerConfig } : {}),
-    ...(form.payloadProfile === 'mapped_json_v1' ? { profileConfig: buildMappedJsonConfig(form) } : {}),
+    ...(form.payloadProfile === WEBHOOK_PAYLOAD_PROFILE_MAPPED_JSON ? { profileConfig: buildMappedJsonConfig(form) } : {}),
   };
 }
 
@@ -96,7 +106,7 @@ function buildMappedJsonConfig(form: WebhookFormState): Record<string, unknown> 
   if (!body) throw new Error('Body mapping JSON is required for mapped JSON webhooks');
   return {
     body,
-    ...(form.valuationMode !== 'disabled'
+    ...(form.valuationMode !== WEBHOOK_VALUATION_MODE_DISABLED
       ? {
           valuation: {
             mode: form.valuationMode,

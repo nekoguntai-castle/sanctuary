@@ -29,6 +29,16 @@ import {
 } from '../../../services/vaultPolicy/types';
 
 const WALLET_NETWORK_VALUES = BITCOIN_NETWORKS;
+const POSITIVE_SAFE_INTEGER_INPUT = {
+  oneOf: [
+    { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+    {
+      type: 'string',
+      pattern: '^(?:0*[1-9]\\d{0,14}|0*[1-8]\\d{15}|0*900719925474099[0-1])$',
+      description: 'Positive safe integer.',
+    },
+  ],
+} as const;
 
 export const walletSchemas = {
   Wallet: {
@@ -73,8 +83,8 @@ export const walletSchemas = {
       type: { type: 'string', enum: [...WALLET_TYPE_VALUES] },
       scriptType: { type: 'string', enum: [...WALLET_SCRIPT_TYPE_VALUES] },
       network: { type: 'string', enum: [...WALLET_NETWORK_VALUES] },
-      quorum: { type: 'integer' },
-      totalSigners: { type: 'integer' },
+      quorum: POSITIVE_SAFE_INTEGER_INPUT,
+      totalSigners: POSITIVE_SAFE_INTEGER_INPUT,
       descriptor: { type: 'string' },
       fingerprint: { type: 'string' },
       groupId: { type: 'string' },

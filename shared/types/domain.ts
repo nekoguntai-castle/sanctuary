@@ -17,6 +17,7 @@ import type {
   RbfStatus as CanonicalRbfStatus,
   UtxoSelectionStrategy as CanonicalUtxoSelectionStrategy,
 } from '../constants/transactions';
+import type { DraftStatus as CanonicalDraftStatus } from '../constants/drafts';
 import {
   WalletType as CanonicalWalletType,
   type WalletScriptType as CanonicalWalletScriptType,
@@ -98,7 +99,7 @@ export type SelectionStrategy = CanonicalUtxoSelectionStrategy;
 /**
  * Draft transaction signing status
  */
-export type DraftStatus = 'unsigned' | 'partial' | 'signed';
+export type DraftStatus = CanonicalDraftStatus;
 
 // =============================================================================
 // Transfer Enums

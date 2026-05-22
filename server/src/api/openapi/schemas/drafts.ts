@@ -4,7 +4,7 @@
  * Schema definitions for gateway-exposed draft transaction routes.
  */
 
-import { MOBILE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/schemas/mobileApiRequests';
+import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 
 export const draftSchemas = {
   DraftOutput: {
@@ -73,7 +73,7 @@ export const draftSchemas = {
       changeAddress: { type: 'string', nullable: true },
       effectiveAmount: { type: 'number', nullable: true },
       inputPaths: { type: 'array', items: { type: 'string' } },
-      status: { type: 'string', enum: [...MOBILE_DRAFT_STATUS_VALUES] },
+      status: { type: 'string', enum: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
       signedDeviceIds: { type: 'array', items: { type: 'string' } },
       agentId: { type: 'string', nullable: true },
       agentOperationalWalletId: { type: 'string', nullable: true },
@@ -136,7 +136,7 @@ export const draftSchemas = {
     properties: {
       signedPsbtBase64: { type: 'string', minLength: 1 },
       signedDeviceId: { type: 'string', minLength: 1 },
-      status: { type: 'string', enum: [...MOBILE_DRAFT_STATUS_VALUES] },
+      status: { type: 'string', enum: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
       label: { type: 'string' },
       memo: { type: 'string' },
     },

@@ -1,5 +1,6 @@
 import type { DraftTransaction } from '../generated/prisma/client';
 import * as bitcoin from 'bitcoinjs-lib';
+import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import { draftRepository, type DraftStatus } from '../repositories';
 import { ConflictError, InvalidInputError, NotFoundError } from '../errors';
 import { createLogger } from '../utils/logger';
@@ -20,7 +21,7 @@ interface DraftUpdateData {
 }
 
 const assertValidDraftStatus = (status: DraftStatus | undefined): void => {
-  if (status !== undefined && !['unsigned', 'partial', 'signed'].includes(status)) {
+  if (status !== undefined && !ACTIONABLE_DRAFT_STATUS_VALUES.includes(status)) {
     throw new InvalidInputError('Invalid status. Must be unsigned, partial, or signed');
   }
 };

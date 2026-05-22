@@ -2,6 +2,18 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Sequence Follow-Up Skills After The Active Delivery Phase
+
+**Rule:** When the user says a follow-up skill such as `$rationalize` should run after implementation phases complete, finish the active implementation and PR-delivery loop before starting another rationalization pass.
+
+**Why:** Running rationalization in the middle of delivery can blur the current objective and delay the user's requested ship/fix/merge loop.
+
+**How to apply:**
+
+- Treat the newest sequencing correction as the source of truth.
+- Update `tasks/todo.md` before continuing so the delivery path stays explicit.
+- Do not start another plan-review or rationalization cycle until the named implementation phases and CI/PR delivery work are closed or blocked.
+
 ## Match Skill Behavior To The Intended Workflow, Not Just The Current File
 
 **Rule:** When the user questions whether a Codex skill matches a previously analyzed workflow, inspect the skill and compare it against the intended behavior before treating the current implementation as correct.

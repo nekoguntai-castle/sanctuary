@@ -1,4 +1,10 @@
 import type { WebhookEndpoint } from '../../../generated/prisma/client';
+import {
+  WEBHOOK_VALUATION_MODE_DISABLED,
+  WEBHOOK_VALUATION_MODE_OPTIONAL,
+  WEBHOOK_VALUATION_MODE_REQUIRED,
+  type WebhookValuationMode,
+} from '@sanctuary/shared/constants/webhooks';
 import { getPriceService } from '../../price';
 import { getProfileConfig, type JsonRecord } from '../config';
 import { hashWebhookBody } from '../json';
@@ -10,7 +16,6 @@ import {
   type WebhookPayloadProfileHandler,
 } from '../types';
 
-type ValuationMode = 'disabled' | 'optional' | 'required';
 type MappingContext = Record<string, unknown>;
 
 const OMIT = Symbol('omit');
@@ -115,12 +120,12 @@ async function buildValuation(
 ): Promise<Record<string, unknown> | null> {
   const valuationConfig = toJsonRecord(config.valuation);
   const mode = getValuationMode(valuationConfig.mode);
-  if (mode === 'disabled') return null;
+  if (mode === WEBHOOK_VALUATION_MODE_DISABLED) return null;
 
   try {
     return await resolveValuation(event, valuationConfig);
   } catch {
-    if (mode === 'required') {
+    if (mode === WEBHOOK_VALUATION_MODE_REQUIRED) {
       throw new WebhookRetryableError('Configured webhook valuation is required but unavailable');
     }
     return null;
@@ -174,9 +179,9 @@ function toJsonRecord(value: unknown): JsonRecord {
   return isJsonRecord(value) ? value : {};
 }
 
-function getValuationMode(value: unknown): ValuationMode {
-  if (value === 'optional' || value === 'required') return value;
-  return 'disabled';
+function getValuationMode(value: unknown): WebhookValuationMode {
+  if (value === WEBHOOK_VALUATION_MODE_OPTIONAL || value === WEBHOOK_VALUATION_MODE_REQUIRED) return value;
+  return WEBHOOK_VALUATION_MODE_DISABLED;
 }
 
 function getString(value: unknown): string | undefined {

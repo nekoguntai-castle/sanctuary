@@ -1,5 +1,12 @@
 import { createHmac } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  WEBHOOK_AUTH_TYPE_BEARER,
+  WEBHOOK_AUTH_TYPE_CONFIGURED_HMAC_SHA256,
+  WEBHOOK_AUTH_TYPE_HMAC_SHA256,
+  WEBHOOK_PAYLOAD_PROFILE_GENERIC,
+  WEBHOOK_PAYLOAD_PROFILE_MAPPED_JSON,
+} from '@sanctuary/shared/constants/webhooks';
 import type { WebhookEndpoint } from '../../../../src/generated/prisma/client';
 import { getFilterConfig, getRetryConfig } from '../../../../src/services/webhooks/config';
 import { validateWebhookEndpointUrl } from '../../../../src/services/webhooks/endpointPolicy';
@@ -45,6 +52,14 @@ describe('webhook core', () => {
     delete process.env.WEBHOOK_ALLOWED_CIDRS;
     delete process.env.WEBHOOK_ALLOWED_HOSTS;
     delete process.env.WEBHOOK_ALLOW_HTTP;
+  });
+
+  it('reuses shared webhook constants for service built-ins', () => {
+    expect(GENERIC_WEBHOOK_PROFILE).toBe(WEBHOOK_PAYLOAD_PROFILE_GENERIC);
+    expect(MAPPED_JSON_WEBHOOK_PROFILE).toBe(WEBHOOK_PAYLOAD_PROFILE_MAPPED_JSON);
+    expect(WEBHOOK_AUTH_BEARER).toBe(WEBHOOK_AUTH_TYPE_BEARER);
+    expect(WEBHOOK_AUTH_HMAC_SHA256).toBe(WEBHOOK_AUTH_TYPE_HMAC_SHA256);
+    expect(WEBHOOK_AUTH_CONFIGURED_HMAC_SHA256).toBe(WEBHOOK_AUTH_TYPE_CONFIGURED_HMAC_SHA256);
   });
 
   it('builds the generic Sanctuary wallet event payload', async () => {

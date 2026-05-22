@@ -8,17 +8,21 @@
 import prisma from '../models/prisma';
 import { Prisma } from '../generated/prisma/client';
 import type { DraftTransaction } from '../generated/prisma/client';
+import {
+  ACTIONABLE_DRAFT_STATUS_VALUES,
+  BROADCASTED_DRAFT_STATUS,
+  type DraftLifecycleStatus,
+  type DraftStatus,
+} from '@sanctuary/shared/constants/drafts';
 import { buildWalletAccessWhere } from './accessControl';
 
 /**
  * Draft status types. Broadcasted is a retained terminal state: default
  * repository list/update/cleanup paths treat it as archived, not actionable.
  */
-export const ACTIONABLE_DRAFT_STATUSES = ['unsigned', 'partial', 'signed'] as const;
-export const BROADCASTED_DRAFT_STATUS = 'broadcasted';
-
-export type DraftStatus = typeof ACTIONABLE_DRAFT_STATUSES[number];
-export type DraftLifecycleStatus = DraftStatus | typeof BROADCASTED_DRAFT_STATUS;
+export const ACTIONABLE_DRAFT_STATUSES = ACTIONABLE_DRAFT_STATUS_VALUES;
+export { BROADCASTED_DRAFT_STATUS };
+export type { DraftLifecycleStatus, DraftStatus };
 
 /**
  * Create draft input
@@ -174,7 +178,7 @@ function buildPendingAgentDraftWhereForUser(
 ): Prisma.DraftTransactionWhereInput {
   return {
     ...buildAgentDraftWhereForUser(userId, draftId),
-    status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
+    status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
     approvalStatus: { notIn: ['rejected', 'vetoed', 'expired'] },
     OR: [
       { expiresAt: null },
@@ -230,7 +234,7 @@ export async function findAgentDraftByIdForUser(
 export async function findExpired(): Promise<DraftTransaction[]> {
   return prisma.draftTransaction.findMany({
     where: {
-      status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
+      status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
       expiresAt: { lt: new Date() },
     },
   });
@@ -301,7 +305,7 @@ function buildActionableDraftWhere(
 ): Prisma.DraftTransactionWhereInput {
   return {
     ...where,
-    status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
+    status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
   };
 }
 
@@ -311,7 +315,7 @@ function buildDraftUpdateWhere(
 ): Prisma.DraftTransactionWhereInput {
   return {
     id: draftId,
-    status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
+    status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
     ...(expectedUpdatedAt !== undefined && { updatedAt: expectedUpdatedAt }),
   };
 }
@@ -367,7 +371,7 @@ export async function remove(draftId: string): Promise<void> {
 export async function deleteExpired(): Promise<number> {
   const result = await prisma.draftTransaction.deleteMany({
     where: {
-      status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
+      status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
       expiresAt: { lt: new Date() },
     },
   });
@@ -452,7 +456,7 @@ export async function deleteManyByIds(draftIds: string[]): Promise<number> {
   const result = await prisma.draftTransaction.deleteMany({
     where: {
       id: { in: draftIds },
-      status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
+      status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
     },
   });
   return result.count;

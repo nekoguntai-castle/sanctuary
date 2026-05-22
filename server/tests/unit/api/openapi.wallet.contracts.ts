@@ -187,6 +187,24 @@ export function registerOpenApiWalletTests() {
     expect(deleteResponses[204]).not.toHaveProperty('content');
   });
 
+  it('documents create-wallet quorum fields as positive safe integer inputs', () => {
+    const createWalletSchema = openApiSpec.components.schemas.CreateWalletRequest;
+
+    expect(openApiSpec.paths['/wallets'].post.requestBody.content['application/json'].schema)
+      .toEqual({ $ref: '#/components/schemas/CreateWalletRequest' });
+    expect(createWalletSchema.properties.quorum).toEqual({
+      oneOf: [
+        { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+        {
+          type: 'string',
+          pattern: '^(?:0*[1-9]\\d{0,14}|0*[1-8]\\d{15}|0*900719925474099[0-1])$',
+          description: 'Positive safe integer.',
+        },
+      ],
+    });
+    expect(createWalletSchema.properties.totalSigners).toEqual(createWalletSchema.properties.quorum);
+  });
+
   it('documents wallet webhook routes including replay', () => {
     const routes: Array<[OpenApiPathKey, string]> = [
       ['/wallets/{walletId}/webhooks', 'get'],

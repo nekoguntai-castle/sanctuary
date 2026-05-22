@@ -17,10 +17,8 @@ import { auditService, AuditCategory, AuditAction } from '../../services/auditSe
 import { policyEvaluationEngine } from '../../services/vaultPolicy';
 import * as txService from '../../services/bitcoin/transactionService';
 import { parseTransaction } from '../../services/bitcoin/utils';
-import {
-  ACTIONABLE_DRAFT_STATUSES,
-  draftRepository,
-} from '../../repositories/draftRepository';
+import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
+import { draftRepository } from '../../repositories/draftRepository';
 import { walletRepository } from '../../repositories/walletRepository';
 import { addressRepository } from '../../repositories/addressRepository';
 import { findByOutpointsForWallet } from '../../repositories/utxoRepository';
@@ -59,7 +57,7 @@ const log = createLogger('TX_BROADCAST:ROUTE');
 type WalletRequest = Request & { walletId?: string };
 type PsbtBroadcastBody = MobilePsbtBroadcastRequest;
 
-const ACTIONABLE_BROADCAST_DRAFT_STATUSES = new Set<string>(ACTIONABLE_DRAFT_STATUSES);
+const ACTIONABLE_BROADCAST_DRAFT_STATUSES = new Set<string>(ACTIONABLE_DRAFT_STATUS_VALUES);
 const APPROVED_BROADCAST_APPROVAL_STATUSES = new Set(['not_required', 'approved']);
 const APPROVAL_REJECTION_REASONS: Record<string, string> = {
   pending: 'pending_approval',

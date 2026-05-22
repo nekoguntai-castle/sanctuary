@@ -170,13 +170,27 @@ describe('Transactions Privacy Routes', () => {
     expect(response.body.code).toBe('INTERNAL_ERROR');
   });
 
-  it('validates spend-analysis utxoIds payload type', async () => {
+  it('validates spend-analysis utxoIds payload shape', async () => {
     const response = await request(app)
       .post('/api/v1/wallets/wallet-1/privacy/spend-analysis')
       .send({ utxoIds: 'not-an-array' });
 
     expect(response.status).toBe(400);
-    expect(response.body.message).toBe('utxoIds must be an array');
+    expect(response.body.message).toBe('utxoIds must be a non-empty array of strings');
+  });
+
+  it.each([
+    ['empty array', []],
+    ['blank id', ['utxo-1', '']],
+    ['non-string id', ['utxo-1', 123]],
+  ])('rejects spend-analysis invalid utxoIds: %s', async (_case, utxoIds) => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/privacy/spend-analysis')
+      .send({ utxoIds });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('utxoIds must be a non-empty array of strings');
+    expect(mockPrismaClient.uTXO.count).not.toHaveBeenCalled();
   });
 
   it('returns 400 when spend-analysis utxos do not all belong to wallet', async () => {

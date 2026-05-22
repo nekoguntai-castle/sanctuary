@@ -1,3 +1,52 @@
+# Task: Implement Rationalization Phases V-X 2026-05-22
+
+Status: in progress.
+
+Goal: implement the actionable rationalization follow-ups, deliver them through PR, and keep Sanctuary's webhook framework generic without embedding private receiver contract details.
+
+## Plan
+
+- [x] Run PR-delivery preflight and move work from `main` to a feature branch.
+- [x] Phase V: tighten wallet-create `quorum` and `totalSigners` route validation with focused route/service tests.
+- [x] Phase W: centralize actionable draft status constants across shared, repository, route, mobile schema, and OpenAPI contracts.
+- [x] Phase X: centralize or parity-test built-in webhook event/auth/profile/valuation values while preserving open string/config extensibility.
+- [x] Phase Y review: inspect remaining generic route-boundary schemas and document why they are deferred or tighten any same-scope item found.
+- [x] After Phases V-Y are complete, rerun `$rationalize` and loop on any new findings until the plan has no actionable converge items left in this scope.
+- [x] Run focused tests, typechecks/lint/lizard as appropriate, and `git diff --check`.
+- [ ] Commit, push, open/update PR, monitor CI/reviews, fix failures, merge, verify ancestry, and clean up.
+
+## Review
+
+- Phases V-Y are implemented locally and the post-phase rationalize loop found no new same-scope converge items.
+- Local verification passed: shared build, focused server and frontend/shared tests, app and test typechecks, server test typecheck, app/server/gateway lint, blocking-IO check, OpenAPI route coverage, frontend build, server build, lizard, and `git diff --check`.
+- CI frontend coverage failure was reproduced locally, fixed with focused wallet webhook UI/model/API coverage, and reverified with `npm run test:coverage` at 100%.
+- Post-fix verification passed: focused wallet webhook tests, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, `bash scripts/quality/lizard-only.sh`, and `git diff --check`.
+- PR delivery is pending.
+
+---
+
+# Task: Repo Rationalization Refresh 2026-05-22
+
+Status: complete.
+
+Goal: refresh `docs/plans/rationalization-plan.md` against current `main` after the wallet webhook work, preserving completed historical convergence decisions while identifying any current converge/watch/keep-separate items.
+
+## Plan
+
+- [x] Read rationalize skill instructions, project instructions, existing rationalization plan, and current grade/remediation context.
+- [x] Search current route/schema/type surfaces for drift candidates, focusing on webhook contracts, wallet creation, wallet policy schemas, draft statuses, and remaining generic route-boundary schemas.
+- [x] Update the rationalization plan with evidence-backed dispositions and next phases.
+- [x] Verify the documentation diff and record results.
+
+## Review
+
+- Updated `docs/plans/rationalization-plan.md` for current `main` at `c43b6c41`.
+- Preserved the completed historical convergence queue, corrected stale post-Phase-T watch text for wallet policy and draft routes, and added current Phases V-Y.
+- Classified wallet-create quorum parsing as the only current converge item, draft status constants and webhook built-in vocabulary as as-touched/watch items, and private webhook receiver support as intentionally generic/config-driven.
+- Verification passed with `git diff --check`; `git status --short` shows only this docs/task update.
+
+---
+
 # Task: Wallet-Level Webhook Notifications Plan 2026-05-22
 
 Status: local implementation, hook-review fixes, CI coverage remediation, and final post-fix local gates are complete; PR delivery and container rebuild remain.

@@ -7,7 +7,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
-import { WALLET_TYPE_VALUES } from '@sanctuary/shared/constants/walletIdentity';
+import { WalletType, WALLET_TYPE_VALUES } from '@sanctuary/shared/constants/walletIdentity';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -17,32 +17,99 @@ import { isValidScriptType, scriptTypeRegistry } from '../../services/scriptType
 import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
+const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+
+function parsePositiveSafeInteger(value: number | string): number | null {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+
+  const parsed = BigInt(value);
+  if (parsed <= BigInt(0) || parsed > MAX_SAFE_INTEGER_BIGINT) {
+    return null;
+  }
+  return Number(parsed);
+}
+
+const positiveSafeIntegerSchema = (field: string) => z.unknown().transform((value, ctx) => {
+  const parsed = (typeof value === 'number' || typeof value === 'string')
+    ? parsePositiveSafeInteger(value)
+    : null;
+  if (parsed === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${field} must be a positive safe integer`,
+    });
+    return z.NEVER;
+  }
+  return parsed;
+});
 
 const CreateWalletBodySchema = z.object({
   name: z.string().min(1),
   type: z.enum(WALLET_TYPE_VALUES),
   scriptType: z.string().min(1),
   network: z.enum(BITCOIN_NETWORKS).optional(),
-  quorum: z.unknown().optional(),
-  totalSigners: z.unknown().optional(),
+  quorum: positiveSafeIntegerSchema('quorum').optional(),
+  totalSigners: positiveSafeIntegerSchema('totalSigners').optional(),
   descriptor: z.string().optional(),
   fingerprint: z.string().optional(),
   groupId: z.string().optional(),
   deviceIds: z.array(z.string()).optional(),
-});
+}).superRefine((data, ctx) => {
+  if (data.type !== WalletType.MULTI_SIG) {
+    return;
+  }
+
+  if (data.quorum === undefined || data.totalSigners === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'quorum and totalSigners required for multi-sig wallets',
+      path: ['quorum'],
+    });
+    return;
+  }
+
+  if (data.totalSigners < 2) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'totalSigners must be at least 2 for multi-sig wallets',
+      path: ['totalSigners'],
+    });
+  }
+
+  if (data.quorum > data.totalSigners) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'quorum cannot exceed totalSigners',
+      path: ['quorum'],
+    });
+  }
+}).transform(data => (
+  data.type === WalletType.MULTI_SIG
+    ? data
+    : { ...data, quorum: undefined, totalSigners: undefined }
+));
 
 const UpdateWalletBodySchema = z.object({
   name: z.string().optional(),
   descriptor: z.string().optional(),
 });
 
-const createWalletValidationMessage = (issues: Array<{ path: string }>) => {
+const createWalletValidationMessage = (issues: Array<{ path: string; message: string }>) => {
   if (issues.some(issue => ['name', 'scriptType'].includes(issue.path))) {
     return 'name, type, and scriptType are required';
   }
   /* v8 ignore next -- route schema tests cover type-specific validation messages */
   if (issues.some(issue => issue.path === 'type')) {
     return 'type must be single_sig or multi_sig';
+  }
+  if (issues.some(issue => ['quorum', 'totalSigners'].includes(issue.path))) {
+    return issues.find(issue => ['quorum', 'totalSigners'].includes(issue.path))!.message;
   }
   /* v8 ignore next -- ZodError from safeParse has at least one issue */
   return 'Invalid wallet request';

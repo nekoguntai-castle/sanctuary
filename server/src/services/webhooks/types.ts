@@ -1,27 +1,34 @@
 import type { WebhookDelivery, WebhookEndpoint } from '../../generated/prisma/client';
+import {
+  WEBHOOK_AUTH_TYPE_BEARER,
+  WEBHOOK_AUTH_TYPE_CONFIGURED_HMAC_SHA256,
+  WEBHOOK_AUTH_TYPE_HMAC_SHA256,
+  WEBHOOK_AUTH_TYPE_NONE,
+  WEBHOOK_EVENT_TRANSACTION_CONFIRMED,
+  WEBHOOK_EVENT_TRANSACTION_OBSERVED,
+  WEBHOOK_EVENT_TRANSACTION_RECEIVED,
+  WEBHOOK_EVENT_TRANSACTION_SENT,
+  WEBHOOK_PAYLOAD_PROFILE_GENERIC,
+  WEBHOOK_PAYLOAD_PROFILE_MAPPED_JSON,
+  type WebhookAuthType,
+  type WebhookPayloadProfile,
+} from '@sanctuary/shared/constants/webhooks';
 
-export const WEBHOOK_EVENT_TRANSACTION_OBSERVED = 'wallet.transaction.observed';
-export const WEBHOOK_EVENT_TRANSACTION_RECEIVED = 'wallet.transaction.received';
-export const WEBHOOK_EVENT_TRANSACTION_SENT = 'wallet.transaction.sent';
-export const WEBHOOK_EVENT_TRANSACTION_CONFIRMED = 'wallet.transaction.confirmed';
+export {
+  WEBHOOK_EVENT_TRANSACTION_CONFIRMED,
+  WEBHOOK_EVENT_TRANSACTION_OBSERVED,
+  WEBHOOK_EVENT_TRANSACTION_RECEIVED,
+  WEBHOOK_EVENT_TRANSACTION_SENT,
+};
 
-export const GENERIC_WEBHOOK_PROFILE = 'sanctuary_wallet_event_v1';
-export const MAPPED_JSON_WEBHOOK_PROFILE = 'mapped_json_v1';
+export const GENERIC_WEBHOOK_PROFILE = WEBHOOK_PAYLOAD_PROFILE_GENERIC;
+export const MAPPED_JSON_WEBHOOK_PROFILE = WEBHOOK_PAYLOAD_PROFILE_MAPPED_JSON;
 
-export const WEBHOOK_AUTH_NONE = 'none';
-export const WEBHOOK_AUTH_BEARER = 'bearer';
-export const WEBHOOK_AUTH_HMAC_SHA256 = 'hmac_sha256';
-export const WEBHOOK_AUTH_CONFIGURED_HMAC_SHA256 = 'configured_hmac_sha256';
-
-export type WebhookAuthType =
-  | typeof WEBHOOK_AUTH_NONE
-  | typeof WEBHOOK_AUTH_BEARER
-  | typeof WEBHOOK_AUTH_HMAC_SHA256
-  | typeof WEBHOOK_AUTH_CONFIGURED_HMAC_SHA256;
-
-export type WebhookPayloadProfile =
-  | typeof GENERIC_WEBHOOK_PROFILE
-  | typeof MAPPED_JSON_WEBHOOK_PROFILE;
+export const WEBHOOK_AUTH_NONE = WEBHOOK_AUTH_TYPE_NONE;
+export const WEBHOOK_AUTH_BEARER = WEBHOOK_AUTH_TYPE_BEARER;
+export const WEBHOOK_AUTH_HMAC_SHA256 = WEBHOOK_AUTH_TYPE_HMAC_SHA256;
+export const WEBHOOK_AUTH_CONFIGURED_HMAC_SHA256 = WEBHOOK_AUTH_TYPE_CONFIGURED_HMAC_SHA256;
+export type { WebhookAuthType, WebhookPayloadProfile };
 
 export interface WalletWebhookEvent {
   schemaVersion: 'v1';

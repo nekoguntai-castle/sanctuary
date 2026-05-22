@@ -10,10 +10,10 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireWalletAccess } from '../middleware/walletAccess';
 import { validate } from '../middleware/validate';
-import { ACTIONABLE_DRAFT_STATUSES } from '../repositories/draftRepository';
 import { draftService } from '../services/draftService';
 import { serializeDraftTransaction, serializeDraftTransactions } from '../utils/serialization';
 import { asyncHandler } from '../errors/errorHandler';
@@ -81,7 +81,7 @@ const CreateDraftBodySchema = z.object({
 const UpdateDraftBodySchema = z.object({
   signedPsbtBase64: z.string().min(1).optional(),
   signedDeviceId: z.string().min(1).optional(),
-  status: z.enum(ACTIONABLE_DRAFT_STATUSES).optional(),
+  status: z.enum(ACTIONABLE_DRAFT_STATUS_VALUES).optional(),
   label: OptionalDraftTextSchema.optional(),
   memo: OptionalDraftTextSchema.optional(),
 }).strict();

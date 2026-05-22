@@ -81,6 +81,56 @@ export const registerWalletCrudContracts = () => {
       expect(response.body.totalSigners).toBe(3);
     });
 
+    it('should normalize numeric string multisig quorum settings before service dispatch', async () => {
+      const walletData = {
+        name: 'String Multisig Vault',
+        type: 'multi_sig',
+        scriptType: 'native_segwit',
+        quorum: '2',
+        totalSigners: '3',
+      };
+
+      mockCreateWallet.mockResolvedValue({
+        id: 'wallet-multisig',
+        ...walletData,
+        quorum: 2,
+        totalSigners: 3,
+        createdAt: new Date(),
+      });
+
+      const response = await request(walletRouter)
+        .post('/api/v1/wallets')
+        .send(walletData);
+
+      expect(response.status).toBe(201);
+      expect(mockCreateWallet).toHaveBeenCalledWith('test-user-id', expect.objectContaining({
+        quorum: 2,
+        totalSigners: 3,
+      }));
+    });
+
+    it('should drop single-sig quorum settings before service dispatch', async () => {
+      const walletData = {
+        name: 'Single Sig Wallet',
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        quorum: 1,
+        totalSigners: 1,
+      };
+
+      mockCreateWallet.mockResolvedValue({ id: 'wallet-single', ...walletData, createdAt: new Date() });
+
+      const response = await request(walletRouter)
+        .post('/api/v1/wallets')
+        .send(walletData);
+
+      expect(response.status).toBe(201);
+      expect(mockCreateWallet).toHaveBeenCalledWith('test-user-id', expect.objectContaining({
+        quorum: undefined,
+        totalSigners: undefined,
+      }));
+    });
+
     it('should reject wallet without required fields', async () => {
       const response = await request(walletRouter)
         .post('/api/v1/wallets')
@@ -97,6 +147,50 @@ export const registerWalletCrudContracts = () => {
 
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('single_sig or multi_sig');
+    });
+
+    it.each([
+      ['missing quorum', { totalSigners: 3 }, 'quorum and totalSigners required for multi-sig wallets'],
+      ['missing total signers', { quorum: 2 }, 'quorum and totalSigners required for multi-sig wallets'],
+      ['object quorum', { quorum: { value: 2 }, totalSigners: 3 }, 'quorum must be a positive safe integer'],
+      ['null quorum', { quorum: null, totalSigners: 3 }, 'quorum must be a positive safe integer'],
+      ['zero quorum', { quorum: 0, totalSigners: 3 }, 'quorum must be a positive safe integer'],
+      ['zero string quorum', { quorum: '0', totalSigners: 3 }, 'quorum must be a positive safe integer'],
+      ['negative quorum', { quorum: -1, totalSigners: 3 }, 'quorum must be a positive safe integer'],
+      ['decimal quorum', { quorum: 1.5, totalSigners: 3 }, 'quorum must be a positive safe integer'],
+      ['decimal string quorum', { quorum: '1.5', totalSigners: 3 }, 'quorum must be a positive safe integer'],
+      ['unsafe total signers', { quorum: 2, totalSigners: Number.MAX_SAFE_INTEGER + 1 }, 'totalSigners must be a positive safe integer'],
+      ['unsafe string total signers', { quorum: 2, totalSigners: '9007199254740992' }, 'totalSigners must be a positive safe integer'],
+      ['one total signer', { quorum: 1, totalSigners: 1 }, 'totalSigners must be at least 2 for multi-sig wallets'],
+      ['quorum exceeds total signers', { quorum: 3, totalSigners: 2 }, 'quorum cannot exceed totalSigners'],
+    ])('should reject invalid multisig quorum settings: %s', async (_case, quorumFields, expectedMessage) => {
+      const response = await request(walletRouter)
+        .post('/api/v1/wallets')
+        .send({
+          name: 'Bad Multisig',
+          type: 'multi_sig',
+          scriptType: 'native_segwit',
+          ...quorumFields,
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe(expectedMessage);
+      expect(mockCreateWallet).not.toHaveBeenCalled();
+    });
+
+    it('should reject malformed create-wallet fields outside custom message groups', async () => {
+      const response = await request(walletRouter)
+        .post('/api/v1/wallets')
+        .send({
+          name: 'Bad Wallet',
+          type: 'single_sig',
+          scriptType: 'native_segwit',
+          deviceIds: [123],
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toBe('Invalid wallet request');
+      expect(mockCreateWallet).not.toHaveBeenCalled();
     });
 
     it('should reject invalid script type', async () => {

@@ -1,5 +1,9 @@
 import prisma from '../models/prisma';
 import { Prisma, type WebhookDelivery, type WebhookEndpoint } from '../generated/prisma/client';
+import {
+  WEBHOOK_AUTH_TYPE_NONE,
+  WEBHOOK_PAYLOAD_PROFILE_GENERIC,
+} from '@sanctuary/shared/constants/webhooks';
 
 export interface CreateWebhookEndpointInput {
   walletId: string;
@@ -108,8 +112,8 @@ export async function createEndpoint(
       url: input.url,
       eventTypes: input.eventTypes,
       filters: jsonValueOrUndefined(input.filters),
-      payloadProfile: input.payloadProfile ?? 'sanctuary_wallet_event_v1',
-      authType: input.authType ?? 'none',
+      payloadProfile: input.payloadProfile ?? WEBHOOK_PAYLOAD_PROFILE_GENERIC,
+      authType: input.authType ?? WEBHOOK_AUTH_TYPE_NONE,
       secretEncrypted: input.secretEncrypted ?? null,
       headerConfig: jsonValueOrUndefined(input.headerConfig),
       profileConfig: jsonValueOrUndefined(input.profileConfig),

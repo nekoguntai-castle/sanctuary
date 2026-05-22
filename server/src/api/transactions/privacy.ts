@@ -17,8 +17,8 @@ import * as privacyService from '../../services/privacyService';
 const router = Router();
 
 const SpendAnalysisBodySchema = z.object({
-  utxoIds: z.array(z.unknown()),
-});
+  utxoIds: z.array(z.string().min(1)).min(1),
+}).strict();
 
 /**
  * GET /api/v1/wallets/:walletId/privacy
@@ -76,7 +76,7 @@ router.get('/utxos/:utxoId/privacy', asyncHandler(async (req, res) => {
  */
 router.post('/wallets/:walletId/privacy/spend-analysis', requireWalletAccess('view'), validate(
   { body: SpendAnalysisBodySchema },
-  { message: 'utxoIds must be an array' }
+  { message: 'utxoIds must be a non-empty array of strings' }
 ), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
   const { utxoIds } = req.body;

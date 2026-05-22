@@ -1,5 +1,16 @@
 import { Send } from 'lucide-react';
 import {
+  WEBHOOK_AUTH_TYPE_BEARER,
+  WEBHOOK_AUTH_TYPE_CONFIGURED_HMAC_SHA256,
+  WEBHOOK_AUTH_TYPE_HMAC_SHA256,
+  WEBHOOK_AUTH_TYPE_NONE,
+  WEBHOOK_PAYLOAD_PROFILE_GENERIC,
+  WEBHOOK_PAYLOAD_PROFILE_MAPPED_JSON,
+  WEBHOOK_VALUATION_MODE_DISABLED,
+  WEBHOOK_VALUATION_MODE_OPTIONAL,
+  WEBHOOK_VALUATION_MODE_REQUIRED,
+} from '@sanctuary/shared/constants/webhooks';
+import {
   clampNumber,
   DEFAULT_HMAC_CONFIG,
   inputClassName,
@@ -55,8 +66,8 @@ export function WalletWebhookForm({
           value={form.payloadProfile}
           onChange={(value) => update('payloadProfile', value as PayloadProfile)}
           options={[
-            ['sanctuary_wallet_event_v1', 'Sanctuary event'],
-            ['mapped_json_v1', 'Mapped JSON'],
+            [WEBHOOK_PAYLOAD_PROFILE_GENERIC, 'Sanctuary event'],
+            [WEBHOOK_PAYLOAD_PROFILE_MAPPED_JSON, 'Mapped JSON'],
           ]}
         />
         <SelectField
@@ -67,16 +78,16 @@ export function WalletWebhookForm({
             onFormChange({
               ...form,
               authType,
-              headerConfigJson: authType === 'configured_hmac_sha256' && !form.headerConfigJson.trim()
+              headerConfigJson: authType === WEBHOOK_AUTH_TYPE_CONFIGURED_HMAC_SHA256 && !form.headerConfigJson.trim()
                 ? DEFAULT_HMAC_CONFIG
                 : form.headerConfigJson,
             });
           }}
           options={[
-            ['none', 'None'],
-            ['bearer', 'Bearer'],
-            ['hmac_sha256', 'Sanctuary HMAC'],
-            ['configured_hmac_sha256', 'Configured HMAC'],
+            [WEBHOOK_AUTH_TYPE_NONE, 'None'],
+            [WEBHOOK_AUTH_TYPE_BEARER, 'Bearer'],
+            [WEBHOOK_AUTH_TYPE_HMAC_SHA256, 'Sanctuary HMAC'],
+            [WEBHOOK_AUTH_TYPE_CONFIGURED_HMAC_SHA256, 'Configured HMAC'],
           ]}
         />
         <label className={labelClassName}>
@@ -84,7 +95,7 @@ export function WalletWebhookForm({
           <input
             value={form.secret}
             onChange={(event) => update('secret', event.target.value)}
-            placeholder={form.authType === 'none' ? 'No secret required' : 'Signing secret'}
+            placeholder={form.authType === WEBHOOK_AUTH_TYPE_NONE ? 'No secret required' : 'Signing secret'}
             type="password"
             className={inputClassName}
           />
@@ -151,9 +162,9 @@ function AdvancedWebhookFields({
           value={form.valuationMode}
           onChange={(value) => update('valuationMode', value as ValuationMode)}
           options={[
-            ['disabled', 'Disabled'],
-            ['optional', 'Optional'],
-            ['required', 'Required'],
+            [WEBHOOK_VALUATION_MODE_DISABLED, 'Disabled'],
+            [WEBHOOK_VALUATION_MODE_OPTIONAL, 'Optional'],
+            [WEBHOOK_VALUATION_MODE_REQUIRED, 'Required'],
           ]}
         />
         <label className={labelClassName}>
@@ -182,7 +193,7 @@ function AdvancedWebhookFields({
         <DelayField label="Max retry delay ms" value={form.retryMaxDelayMs} onChange={(value) => update('retryMaxDelayMs', value)} />
       </div>
       <JsonTextarea label="Filters JSON" value={form.filtersJson} onChange={(value) => update('filtersJson', value)} />
-      {form.payloadProfile === 'mapped_json_v1' && (
+      {form.payloadProfile === WEBHOOK_PAYLOAD_PROFILE_MAPPED_JSON && (
         <JsonTextarea label="Body mapping JSON" value={form.bodyMappingJson} onChange={(value) => update('bodyMappingJson', value)} />
       )}
       <JsonTextarea label="Headers and HMAC JSON" value={form.headerConfigJson} onChange={(value) => update('headerConfigJson', value)} />

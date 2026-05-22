@@ -494,5 +494,60 @@ describe('Core API Modules', () => {
       expect(mockGet).toHaveBeenCalledWith('/wallets/w1/telegram');
       expect(mockPatch).toHaveBeenCalledWith('/wallets/w1/telegram', { notifySent: true });
     });
+
+    it('handles wallet webhook endpoints and response unwrapping', async () => {
+      const webhook = { id: 'webhook-1', walletId: 'w1', name: 'Accounting' };
+      const delivery = { id: 'delivery-1', endpointId: 'webhook-1', walletId: 'w1' };
+      const input = {
+        name: 'Accounting',
+        url: 'https://example.com/hook',
+        eventTypes: ['wallet.transaction.received'],
+      };
+
+      mockGet
+        .mockResolvedValueOnce({ webhooks: [webhook] })
+        .mockResolvedValueOnce({ webhook })
+        .mockResolvedValueOnce({ deliveries: [delivery] })
+        .mockResolvedValueOnce({ deliveries: [] });
+      mockPost
+        .mockResolvedValueOnce({ webhook })
+        .mockResolvedValueOnce({ success: true, message: 'Webhook endpoint URL is allowed' })
+        .mockResolvedValueOnce({
+          success: true,
+          queued: true,
+          message: 'Webhook delivery replay queued',
+          delivery,
+        });
+      mockPatch.mockResolvedValueOnce({ webhook });
+      mockDelete.mockResolvedValueOnce(undefined);
+
+      await expect(walletsApi.listWalletWebhooks('w1')).resolves.toEqual([webhook]);
+      await expect(walletsApi.getWalletWebhook('w1', 'webhook-1')).resolves.toEqual(webhook);
+      await expect(walletsApi.createWalletWebhook('w1', input)).resolves.toEqual(webhook);
+      await expect(walletsApi.updateWalletWebhook('w1', 'webhook-1', { enabled: false })).resolves.toEqual(webhook);
+      await expect(walletsApi.deleteWalletWebhook('w1', 'webhook-1')).resolves.toBeUndefined();
+      await expect(walletsApi.testWalletWebhook('w1', 'webhook-1')).resolves.toEqual({
+        success: true,
+        message: 'Webhook endpoint URL is allowed',
+      });
+      await expect(walletsApi.getWalletWebhookDeliveries('w1', 'webhook-1')).resolves.toEqual([delivery]);
+      await expect(walletsApi.getWalletWebhookDeliveries('w1', 'webhook-1', 25)).resolves.toEqual([]);
+      await expect(walletsApi.replayWalletWebhookDelivery('w1', 'webhook-1', 'delivery-1')).resolves.toEqual({
+        success: true,
+        queued: true,
+        message: 'Webhook delivery replay queued',
+        delivery,
+      });
+
+      expect(mockGet).toHaveBeenCalledWith('/wallets/w1/webhooks');
+      expect(mockGet).toHaveBeenCalledWith('/wallets/w1/webhooks/webhook-1');
+      expect(mockPost).toHaveBeenCalledWith('/wallets/w1/webhooks', input);
+      expect(mockPatch).toHaveBeenCalledWith('/wallets/w1/webhooks/webhook-1', { enabled: false });
+      expect(mockDelete).toHaveBeenCalledWith('/wallets/w1/webhooks/webhook-1');
+      expect(mockPost).toHaveBeenCalledWith('/wallets/w1/webhooks/webhook-1/test');
+      expect(mockGet).toHaveBeenCalledWith('/wallets/w1/webhooks/webhook-1/deliveries', { limit: 50 });
+      expect(mockGet).toHaveBeenCalledWith('/wallets/w1/webhooks/webhook-1/deliveries', { limit: 25 });
+      expect(mockPost).toHaveBeenCalledWith('/wallets/w1/webhooks/webhook-1/deliveries/delivery-1/replay');
+    });
   });
 });

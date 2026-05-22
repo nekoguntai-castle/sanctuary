@@ -7,6 +7,7 @@
  */
 
 import net from 'node:net';
+import { WEBHOOK_VALUATION_MODE_DISABLED } from '@sanctuary/shared/constants/webhooks';
 import { webhookRepository } from '../../../repositories';
 import { registerCollector } from './registry';
 import type { CollectorContext } from '../types';
@@ -85,7 +86,7 @@ function summarizeProfileConfig(config: JsonRecord) {
     hasProfileConfig: Object.keys(config).length > 0,
     bodyMappingFieldCount: Object.keys(body).length,
     includeNulls: config.includeNulls === true,
-    valuationMode: getString(valuation.mode) ?? 'disabled',
+    valuationMode: getString(valuation.mode) ?? WEBHOOK_VALUATION_MODE_DISABLED,
     valuationCurrency: getString(valuation.currency) ?? null,
   };
 }

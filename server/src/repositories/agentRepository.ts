@@ -13,6 +13,7 @@ import type {
   AgentFundingOverrideStatus,
   WalletAgentStatus,
 } from '@sanctuary/shared/constants/adminAgents';
+import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 import { InvalidInputError, NotFoundError } from '../errors';
 import {
   Prisma,
@@ -23,7 +24,6 @@ import {
   type WalletAgent,
 } from '../generated/prisma/client';
 import { findDashboardRows } from './agentDashboardRepository';
-import { ACTIONABLE_DRAFT_STATUSES } from './draftRepository';
 import { getSupportStats } from './agentSupportStatsRepository';
 export { findDashboardRows } from './agentDashboardRepository';
 export { getSupportStats } from './agentSupportStatsRepository';
@@ -432,7 +432,7 @@ export async function sumAgentDraftAmountsSince(agentId: string, since: Date): P
     where: {
       agentId,
       createdAt: { gte: since },
-      status: { in: [...ACTIONABLE_DRAFT_STATUSES] },
+      status: { in: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
     },
     _sum: { amount: true },
   });
