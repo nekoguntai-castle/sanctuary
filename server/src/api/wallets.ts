@@ -12,6 +12,7 @@
  * - import.ts         - Wallet import from descriptors/JSON
  * - xpubValidation.ts - XPUB validation utility
  * - telegram.ts       - Per-wallet notification settings
+ * - webhooks.ts       - Per-wallet webhook notification endpoints
  * - autopilot.ts      - Treasury Autopilot settings and status
  */
 
@@ -27,6 +28,7 @@ import devicesRouter from './wallets/devices';
 import exportRouter from './wallets/export';
 import sharingRouter from './wallets/sharing';
 import telegramRouter from './wallets/telegram';
+import webhooksRouter from './wallets/webhooks';
 import autopilotRouter from './wallets/autopilot';
 import policiesRouter from './wallets/policies';
 import approvalsRouter from './wallets/approvals';
@@ -47,6 +49,7 @@ router.use('/', devicesRouter);
 router.use('/', exportRouter);
 router.use('/', sharingRouter);
 router.use('/', telegramRouter);
+router.use('/', webhooksRouter);
 router.use('/', autopilotRouter);
 router.use('/', policiesRouter);
 router.use('/', approvalsRouter);

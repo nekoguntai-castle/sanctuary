@@ -7,6 +7,7 @@
 import React from 'react';
 import { WalletTelegramSettings } from '../WalletTelegramSettings';
 import { WalletAutopilotSettings } from '../WalletAutopilotSettings';
+import { WalletWebhooks } from '../WalletWebhooks';
 import { SettingsSubTabs, GeneralSettings, DevicesSettings, AdvancedSettings } from './settings';
 import type { Wallet, Device } from '../../../types';
 import type { SettingsSubTab } from '../types';
@@ -78,6 +79,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
     {settingsSubTab === 'notifications' && (
       <WalletTelegramSettings walletId={wallet.id} />
+    )}
+
+    {settingsSubTab === 'webhooks' && (
+      <WalletWebhooks walletId={wallet.id} />
     )}
 
     {settingsSubTab === 'advanced' && (

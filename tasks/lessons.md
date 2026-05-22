@@ -2390,3 +2390,16 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Probe via the egress proxy route, such as `/detect-provider`, using the configured endpoint and expected provider type.
 - Confirm the configured model appears in returned models when model selection is part of the failure.
 - Treat `LLM_EGRESS_PROXY_ALLOWED_CIDRS` and proxy secret export as runtime requirements, not just compose health checks.
+
+## Keep Private Integration Contracts Out Of The Repo
+
+**Rule:** When a user says a feature must support a private external system, implement generic primitives and keep the system-specific payload fields, header names, routes, and profile names outside tracked project code and docs.
+
+**Why:** A wallet webhook adapter initially used configurable values but still encoded the private receiver's payload shape and HMAC header vocabulary in a built-in profile. That made the public repo aware of a contract it only needed to support through configuration.
+
+**How to apply:**
+
+- Prefer generic payload mappers, configurable signing/canonicalization, and endpoint-local JSON config over named profiles for private systems.
+- Do not add tests, OpenAPI examples, task notes, or comments containing private field names, header names, route paths, or partner/application labels.
+- If a private deployment needs exact examples, keep them in an untracked local note or deployment secret/config, not in repo docs.
+- After designing extensibility, run a targeted search for private terms before finalizing.

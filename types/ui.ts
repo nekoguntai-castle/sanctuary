@@ -71,6 +71,74 @@ export interface WalletAutopilotSettings {
   maxUtxoSize: number;
 }
 
+export interface WalletWebhookEndpoint {
+  id: string;
+  walletId: string;
+  name: string;
+  enabled: boolean;
+  url: string;
+  eventTypes: string[];
+  filters: Record<string, unknown> | null;
+  payloadProfile: string;
+  authType: string;
+  hasSecret: boolean;
+  headerConfig: Record<string, unknown> | null;
+  profileConfig: Record<string, unknown> | null;
+  retryConfig: Record<string, unknown> | null;
+  maxAttempts: number;
+  failureNotificationEnabled: boolean;
+  createdByUserId: string | null;
+  lastDeliveryStatus: string | null;
+  lastDeliveredAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WalletWebhookDelivery {
+  id: string;
+  endpointId: string;
+  walletId: string;
+  eventId: string;
+  eventType: string;
+  payloadProfile: string;
+  status: string;
+  attemptCount: number;
+  nextAttemptAt: string | null;
+  lastAttemptAt: string | null;
+  deliveredAt: string | null;
+  lastStatusCode: number | null;
+  lastError: string | null;
+  requestBodyHash: string | null;
+  requestHeadersRedacted: Record<string, unknown> | null;
+  responseBodyHash: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WalletWebhookInput {
+  name: string;
+  enabled?: boolean;
+  url: string;
+  eventTypes: string[];
+  filters?: Record<string, unknown>;
+  payloadProfile?: string;
+  authType?: string;
+  secret?: string;
+  headerConfig?: Record<string, unknown>;
+  profileConfig?: Record<string, unknown>;
+  retryConfig?: Record<string, unknown>;
+  maxAttempts?: number;
+  failureNotificationEnabled?: boolean;
+}
+
+export interface WalletWebhookReplayResult {
+  success: boolean;
+  queued: boolean;
+  message: string;
+  delivery: WalletWebhookDelivery;
+}
+
 export interface UtxoHealthStatus {
   totalUtxos: number;
   dustCount: number;

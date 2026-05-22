@@ -14,6 +14,7 @@ const TAB_ITEMS: { key: SettingsSubTab; label: string }[] = [
   { key: 'general', label: 'General' },
   { key: 'devices', label: 'Devices' },
   { key: 'notifications', label: 'Notifications' },
+  { key: 'webhooks', label: 'Webhooks' },
   { key: 'advanced', label: 'Advanced' },
   { key: 'autopilot', label: 'Autopilot' },
 ];

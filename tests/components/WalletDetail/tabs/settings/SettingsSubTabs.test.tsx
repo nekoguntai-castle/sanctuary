@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SettingsSubTabs } from '../../../../../components/WalletDetail/tabs/settings/SettingsSubTabs';
 
 describe('SettingsSubTabs', () => {
-  it('renders all five tab buttons', () => {
+  it('renders all settings tab buttons', () => {
     render(
       <SettingsSubTabs settingsSubTab="general" onSettingsSubTabChange={vi.fn()} />,
     );
@@ -11,6 +11,7 @@ describe('SettingsSubTabs', () => {
     expect(screen.getByText('General')).toBeInTheDocument();
     expect(screen.getByText('Devices')).toBeInTheDocument();
     expect(screen.getByText('Notifications')).toBeInTheDocument();
+    expect(screen.getByText('Webhooks')).toBeInTheDocument();
     expect(screen.getByText('Advanced')).toBeInTheDocument();
     expect(screen.getByText('Autopilot')).toBeInTheDocument();
   });
@@ -42,6 +43,9 @@ describe('SettingsSubTabs', () => {
 
     fireEvent.click(screen.getByText('Notifications'));
     expect(onChange).toHaveBeenCalledWith('notifications');
+
+    fireEvent.click(screen.getByText('Webhooks'));
+    expect(onChange).toHaveBeenCalledWith('webhooks');
 
     fireEvent.click(screen.getByText('Autopilot'));
     expect(onChange).toHaveBeenCalledWith('autopilot');

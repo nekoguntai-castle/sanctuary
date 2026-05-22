@@ -1,3 +1,278 @@
+# Task: Wallet-Level Webhook Notifications Plan 2026-05-22
+
+Status: local implementation, hook-review fixes, CI coverage remediation, and final post-fix local gates are complete; PR delivery and container rebuild remain.
+
+Goal: add configurable wallet-level outbound webhooks to the notification system while keeping Sanctuary unaware of any private receiver contract. The project should provide generic primitives that can support private deployment-specific payloads and HMAC layouts through endpoint configuration, not built-in receiver-specific profiles.
+
+## Findings
+
+- Sanctuary already has the right extension point: `server/src/services/notifications/channels/*` registers pluggable channels for Telegram, push, and AI insight delivery.
+- Existing notification delivery uses `dispatchTransactionNotifications` to queue `transaction-notify` jobs through BullMQ and falls back to inline delivery if Redis is unavailable.
+- A webhook implementation should not rely only on the aggregate notification job retry result. Current notification job failure semantics only retry when every channel fails; a webhook failure after Telegram succeeds could otherwise be treated as a partial success and not retried.
+- Telegram wallet settings are stored per user in `User.preferences.telegram.wallets[walletId]`. Webhooks should be wallet-owned integration resources instead, because they contain shared endpoint secrets and should fire once per wallet event, not once per user.
+- Private receiver formats must remain outside tracked project code and docs. Sanctuary should support arbitrary payload/header shapes through generic mapping and signing configuration.
+
+## Architecture Decision
+
+Add webhooks as a first-class outbound notification channel, but route actual HTTP delivery through a dedicated webhook outbox/delivery service. The notification channel should translate wallet notification events into durable webhook delivery records and return success when eligible deliveries are queued. The webhook worker owns endpoint-specific retries, idempotency, audit logging, and delivery status.
+
+The project default stays generic: ordinary Sanctuary users can configure arbitrary wallet webhooks without inheriting any deployment-specific payload fields, header names, route shapes, or business vocabulary.
+
+Keep the webhook system generic around four separable concepts:
+
+- **Wallet event envelope**: Sanctuary's canonical, versioned event shape.
+- **Webhook subscription**: wallet-scoped endpoint configuration, filters, auth, payload profile, and retry policy.
+- **Payload profile**: deterministic mapper from a canonical event to a request body. Built-ins are generic only.
+- **Delivery engine**: outbox, HTTP client, signing, endpoint safety checks, retries, metrics, and audit.
+
+## Event Model
+
+Start with transaction events because they match the existing notification path.
+
+- `wallet.transaction.observed`: a new wallet transaction was discovered.
+- `wallet.transaction.confirmed`: a wallet transaction reached the configured confirmation threshold.
+- `wallet.transaction.sent`: optional alias/filter for sent transactions.
+- `wallet.transaction.received`: optional alias/filter for received transactions.
+- `wallet.draft.created`: later phase; reuse the same webhook substrate.
+- `wallet.consolidation.suggested`: later phase; reuse the same webhook substrate.
+
+Canonical event fields:
+
+- `schemaVersion`
+- `eventId`
+- `eventType`
+- `occurredAt`
+- `wallet`: `id`, `name`, `network`, optional configured `label`
+- `transaction`: `txid`, `type`, `amountSats`, `feeSats`, `confirmations`, `blockHeight`, `blockTime`, `memo`, `label`, optional `counterpartyAddress`
+- `source`: `service`, `dispatchPath`, optional source metadata
+- `metadata`: narrow JSON object for future generic inputs
+
+Use deterministic event ids, for example `wallet:{walletId}:tx:{txid}:{eventType}:v1`, so retries and receiver idempotency remain stable.
+
+## Data Model
+
+Add Prisma models instead of extending user preferences:
+
+- `WebhookEndpoint`
+  - `id`
+  - `walletId`
+  - `name`
+  - `enabled`
+  - `url`
+  - `eventTypes String[]`
+  - `filters Json` for direction, confirmation threshold, minimum amount, and generic event predicates
+  - `payloadProfile` such as `sanctuary_wallet_event_v1` or `mapped_json_v1`
+  - `authType` such as `none`, `bearer`, `hmac_sha256`, or `configured_hmac_sha256`
+  - `secretEncrypted String?`
+  - `headerConfig Json?`
+  - `profileConfig Json?`
+  - `retryConfig Json?`
+  - `maxAttempts`
+  - `failureNotificationEnabled`
+  - `createdByUserId`
+  - `lastDeliveryStatus`, `lastDeliveredAt`, `lastError`
+  - timestamps
+
+- `WebhookDelivery`
+  - `id`
+  - `endpointId`
+  - `walletId`
+  - `eventId`
+  - `eventType`
+  - `payloadProfile`
+  - `requestBodyHash`
+  - `requestHeadersRedacted Json`
+  - `status`: `pending`, `delivered`, `failed`, `dead`
+  - `attemptCount`
+  - `nextAttemptAt`
+  - `lastStatusCode`
+  - `lastError`
+  - `responseBodyHash` or redacted/truncated diagnostic metadata
+  - timestamps
+  - unique constraint on `[endpointId, eventId, payloadProfile]`
+
+Secrets should use the existing AES-GCM encryption utility. A follow-up support-package collector should expose only redacted endpoint metadata, delivery health, and failure counts while never exporting secrets, full signed headers, request bodies, or private mapped payload keys.
+
+## Services And Files
+
+Production modules:
+
+- `server/src/services/webhooks/types.ts`: canonical wallet event, endpoint config, delivery result, payload profile interfaces.
+- `server/src/services/webhooks/eventBuilder.ts`: converts current `TransactionNotification` and future notification inputs into canonical wallet events.
+- `server/src/services/webhooks/subscriptions.ts`: reads eligible endpoints for wallet/event/filter combinations.
+- `server/src/services/webhooks/payloadProfiles/generic.ts`: generic Sanctuary webhook payload.
+- `server/src/services/webhooks/payloadProfiles/mappedJson.ts`: generic configurable JSON body mapper with optional valuation enrichment.
+- `server/src/services/webhooks/signers.ts`: bearer, generic Sanctuary HMAC, and configured HMAC auth generation.
+- `server/src/services/webhooks/endpointPolicy.ts`: URL validation, blocked hosts, CIDR allowlists, redirect policy.
+- `server/src/services/webhooks/deliveryService.ts`: creates outbox rows and sends pending deliveries.
+- `server/src/services/notifications/channels/webhook.ts`: notification channel adapter that queues webhook deliveries.
+- `server/src/worker/jobs/webhookDeliveryJobs.ts`: retry-capable HTTP delivery trigger.
+
+Register `webhookChannelHandler` in `server/src/services/notifications/channels/index.ts`, but keep HTTP send logic out of the registry itself.
+
+## Private Receiver Support
+
+Do not add a built-in profile for any private receiver. Support that class of integration with generic configuration:
+
+- `mapped_json_v1` maps arbitrary output keys to canonical event paths, literal values, fallback paths, and optional required checks.
+- `mapped_json_v1` can enrich the mapping context with fiat valuation when endpoint config sets valuation mode to `optional` or `required`; required valuation failures are retryable.
+- `configured_hmac_sha256` lets endpoint config choose timestamp format, canonical components, idempotency key source, separator, and generated header names.
+- Static custom headers live in endpoint `headerConfig.headers`.
+- Receiver-specific payload keys, header names, static values, URL paths, and business vocabulary must be provided by private deployment configuration, not tracked Sanctuary code.
+
+## Endpoint Safety
+
+Outbound webhooks are a potential SSRF path, so require an explicit policy.
+
+- Default to HTTPS public endpoints only.
+- Allow HTTP/LAN targets only when enabled by deployment config and matching `WEBHOOK_ALLOWED_HOSTS` or `WEBHOOK_ALLOWED_CIDRS`.
+- Block localhost, link-local, cloud metadata IPs, and private networks unless explicitly allowlisted.
+- Resolve DNS before send and re-check the resolved address.
+- Disable redirects by default or re-validate every redirect target.
+- Use short timeouts, small response-body capture limits, and no credential leakage in logs.
+
+Document how to configure a LAN receiver such as `192.168.5.0/24` without making all private networks globally reachable.
+
+## API And UI
+
+Backend routes:
+
+- `GET /api/v1/wallets/:walletId/webhooks`
+- `POST /api/v1/wallets/:walletId/webhooks`
+- `GET /api/v1/wallets/:walletId/webhooks/:webhookId`
+- `PATCH /api/v1/wallets/:walletId/webhooks/:webhookId`
+- `DELETE /api/v1/wallets/:walletId/webhooks/:webhookId`
+- `POST /api/v1/wallets/:walletId/webhooks/:webhookId/test`
+- `GET /api/v1/wallets/:walletId/webhooks/:webhookId/deliveries`
+
+Authorization should require wallet owner/admin-level access for create/update/delete and at least signer/owner/admin access for delivery diagnostics because endpoint URLs, event ids, and failure metadata may be sensitive. Do not expose stored secrets after creation.
+
+Frontend:
+
+- Add a wallet settings Webhooks panel beside Telegram/Autopilot settings. The current slice covers basic generic endpoint create/toggle/delete.
+- Follow-up UI work should show endpoint status, recent delivery history, event filters, payload profile, URL validation/test action, and manual replay controls.
+- Expose advanced mapped JSON and configured HMAC controls without baking in any receiver-specific field names.
+- Keep raw advanced JSON config hidden behind an advanced section so future profiles can add fields without reshaping the whole UI.
+
+OpenAPI and typed client updates should land with the API routes.
+
+## Delivery Semantics
+
+- At-least-once delivery with receiver idempotency.
+- Durable outbox row before HTTP send.
+- Unique `[endpointId, eventId, payloadProfile]` prevents duplicate sends for the same logical event.
+- Per-endpoint retries with exponential backoff and dead-letter state after the configured attempt limit.
+- When a webhook reaches max retries/dead state, emit a wallet-visible alert. The current implementation writes a real-time `WEBHOOK` wallet log entry; a distinct Webhooks-panel alert/toast is follow-up UI work if wallet logs are not visible enough.
+- Manual replay from delivery history is a follow-up: it should create a new attempt for the same delivery row, not mint a new event id.
+- Notification channel result should count queued deliveries, while webhook delivery success/failure is tracked independently.
+
+## Implementation Phases
+
+- [x] Phase 1: write the detailed internal spec and event/profile contract, including generic payload-mapping and canonical HMAC signing fixtures.
+- [x] Phase 2: add Prisma models, repository methods, migration, durable outbox rows, and redacted API responses.
+- [x] Phase 3: build webhook core services: event builder, subscription matching, endpoint policy, payload profile interface, generic payload profile, mapped JSON profile, HMAC signers.
+- [x] Phase 4: add the webhook notification channel adapter and durable delivery worker/outbox processing with metrics, wallet logs, retry/dead-letter behavior.
+- [x] Phase 5: add wallet webhook API routes, schemas, OpenAPI, typed frontend API helpers, and URL validation test action.
+- [x] Phase 5b: tighten or explicitly re-approve delivery diagnostics permissions, then add route tests for CRUD, secret readback, diagnostics access, and URL validation/test behavior.
+- [x] Phase 6a: add wallet settings UI for basic generic webhook management.
+- [x] Phase 6b: add advanced wallet settings UI for mapped JSON, configured HMAC, valuation mode, and secret rotation.
+- [x] Phase 6c: add delivery-history UI, URL validation/test action wiring, and manual replay API/UI.
+- [x] Phase 7: add end-to-end verification using a local webhook receiver that asserts headers, HMAC, idempotency, payload shape, retry behavior, and no secret leakage.
+- [x] Phase 8: add support-package coverage for redacted webhook endpoint/delivery health without secrets, full headers, request bodies, or private mapped payload keys.
+- [x] Phase 9: update README/operator docs for generic webhooks, mapped payloads, configured HMAC, LAN allowlists, valuation modes, retry behavior, max-retry wallet logs, and private contract hygiene.
+
+## Verification Plan
+
+- Unit: payload profile mapping, amount/rate rounding, HMAC canonical string, idempotency keys, endpoint policy, redaction, filter matching, retry scheduling.
+- Worker: delivery success, 4xx non-retry/dead behavior where appropriate, 5xx retry, timeout retry, partial notification channel success does not suppress webhook retry.
+- Failure notification: max-retry exhaustion creates a user-visible/wallet-visible notification without leaking endpoint secrets.
+- API: CRUD permissions, diagnostics permissions, secret create/rotate behavior, no secret readback, URL validation/test behavior, manual replay behavior, OpenAPI route coverage.
+- Integration: wallet transaction confirmation produces one queued delivery per eligible endpoint; duplicate notification events reuse the same delivery row.
+- UI: settings panel validation, secret rotation flow, delivery status rendering, delivery history, test action, and replay action.
+- Support package: webhook collector redacts secrets, signed headers, request bodies, endpoint-private mapped keys, and URLs beyond safe host/status metadata.
+- Quality gates: focused server tests, frontend webhook settings tests, OpenAPI contract tests, typechecks, targeted ESLint, `git diff --check`, and touched-file lizard.
+
+## Review
+
+Implemented the generic wallet-level webhook framework:
+
+- Added wallet-owned `WebhookEndpoint` and durable `WebhookDelivery` tables with migration `20260522000000_add_wallet_webhooks`.
+- Added repository, endpoint service, redacted response DTOs, endpoint URL safety policy, canonical event builder, filter matching, generic payload profile, mapped JSON payload profile, generic HMAC/bearer auth, and configured HMAC auth.
+- Registered a `webhook` notification channel that queues durable delivery rows per wallet event and a dedicated `webhook-delivery` worker job for HTTP delivery attempts.
+- Added per-endpoint retry configuration with exponential backoff, dead-letter state after max attempts, and wallet-visible `WEBHOOK` error log entries when failure notifications are enabled.
+- Added wallet webhook CRUD/test/delivery-history API routes, OpenAPI schemas/paths, typed frontend API helpers, and a basic wallet settings Webhooks panel for generic webhook endpoints.
+- Removed receiver-specific payload/auth profiles from the repo. Generic Sanctuary webhook endpoints default to `sanctuary_wallet_event_v1`; private receiver shapes are supported through `mapped_json_v1` plus endpoint-local config.
+- Added optional/required/disabled fiat valuation behavior to the mapped JSON profile. Required valuation failures are retryable so the delivery is not sent without configured valuation data.
+
+Verification passed:
+
+- `npm exec prisma validate` from `server/`
+- `npm --prefix server run prisma:generate`
+- `npm --prefix server run typecheck:tests`
+- `npm run typecheck:app`
+- `npm --prefix server test -- tests/unit/api/wallet-webhooks-routes.test.ts tests/unit/services/webhooks/webhookCore.test.ts tests/unit/services/webhooks/deliveryService.test.ts tests/unit/services/webhooks/eventBuilder.test.ts tests/unit/services/supportPackage/webhooksCollector.test.ts tests/unit/repositories/transactionRepository.test.ts tests/unit/api/openapi.test.ts`
+- `npm test -- tests/components/WalletDetail/WalletWebhooks.test.tsx tests/components/WalletDetail/tabs/SettingsTab.test.tsx tests/components/WalletDetail/tabs/settings/SettingsSubTabs.test.tsx`
+- `npm run lint:server`
+- `npm run lint:app`
+- `npm run check:openapi-route-coverage`
+- `bash scripts/quality/lizard-only.sh`
+- `git diff --check`
+- Targeted private-contract term search across webhook implementation, focused tests, UI/API helpers, schema, README, notification architecture docs, and task notes found no webhook-related traces; the only hit was an unrelated historical task note outside the webhook work.
+
+Completed follow-up phases:
+
+- Tightened delivery diagnostics and replay routes to signer-level wallet access and added route-level coverage for CRUD, URL test action, secret non-readback, diagnostics access, and replay.
+- Added manual delivery replay on the same durable delivery row without minting a new event id.
+- Expanded the Webhooks settings UI with mapped JSON, configured HMAC, valuation mode, retry controls, secret rotation, URL test action, delivery history, and replay.
+- Added a local HTTP receiver delivery test that validates configured HMAC headers, idempotency, payload shape, HTTP delivery, and secret redaction.
+- Added a support-package webhooks collector that reports redacted endpoint/delivery health without secrets, full URLs, signed headers, request bodies, raw failure messages, or mapped payload field names.
+- Updated README/operator docs and notification architecture docs for generic webhooks, mapped payloads, configured HMAC, LAN allowlists, valuation modes, retry behavior, max-retry wallet logs, and private contract hygiene.
+- Addressed hook-review findings before PR delivery: dark-mode success alert contrast, DNS target pinning after endpoint policy validation, absolute delivery deadline for pinned sends, single-pass request body/signature persistence, batch transaction/event endpoint lookup, replay attempt-count reset, explicit HMAC/SSRF policy comments, and targeted coverage for the pinned DNS path, pinned timeout path, wildcard matching, batch queueing, and Node connection-error retries.
+- Addressed PR backend coverage failure by adding focused tests for webhook endpoint service/repository behavior, notification dispatcher webhook queueing, webhook worker job results, notification channel behavior, endpoint policy edge cases, mapped JSON/signing/filter branches, route not-found/default-limit paths, support-package classifications, and retry/dead-letter delivery branches. Simplified unreachable endpoint-policy parsing branches and removed the unused confirmation suffix parameter from webhook event id construction.
+- Re-ran `npm --prefix server run test:coverage`; backend unit coverage is now 100% statements, branches, functions, and lines.
+- Re-ran final post-fix gates after the latest `endpointPolicy` and `eventBuilder` hook-review follow-up: `npm --prefix server run typecheck:tests`, `npm run lint:server`, `bash scripts/quality/lizard-only.sh`, and `git diff --check`.
+
+Remaining work before the user objective is complete:
+
+- Amend the final commit and force-push the PR branch with lease.
+- Deliver and merge through `$pr-delivery`.
+- Rebuild running containers after the merge is verified.
+
+## Recursive Plan Review Notes
+
+Pass 1 accepted improvements:
+
+- Removed stale private-receiver fixture wording from the completed Phase 1 description.
+- Split remaining product work into advanced UI, delivery history/test/replay, E2E, support-package, and docs phases.
+- Clarified that manual replay and support-package redaction are not implemented in the current slice.
+- Tightened verification criteria for manual replay, delivery history, URL validation/test action, support-package redaction, and private-contract hygiene.
+
+Pass 2 accepted improvements:
+
+- Made route parameter naming match the implemented `:walletId` routes.
+- Added a follow-up phase for diagnostics permission review and route-level permission tests.
+- Clarified that max-retry visibility is currently a wallet-log alert, with a distinct Webhooks-panel alert/toast left as UI follow-up if needed.
+
+Pass 3 result:
+
+- No additional verified actionable plan comments remained after re-reading the updated plan and checking it against the current webhook implementation surface.
+- At that earlier review point, deferred implementation work remained tracked in Phases 5b, 6b, 6c, 7, 8, and 9 rather than being folded into that plan-review pass.
+
+Pass 4 accepted improvements:
+
+- Reconciled stale completion language with the current git state: full backend coverage has been re-run after the hook-review follow-up, but final typecheck/lint/lizard/diff-check gates still need to run before amend, push, CI, merge, and rebuild.
+- Clarified that the earlier deferred implementation phases are now complete and no longer the active next work.
+
+Pass 5 result:
+
+- No additional verified actionable plan comments remained after re-reading the updated plan against the current git status and latest backend coverage result.
+
+Delivery pass update:
+
+- Final post-fix local gates passed after the recursive plan review update; the active remaining work is commit amend, force-push, PR CI/merge, merge ancestry verification, and container rebuild.
+
+---
+
 # Task: Persistent Remote LLM Error Visibility 2026-05-20
 
 Status: complete.

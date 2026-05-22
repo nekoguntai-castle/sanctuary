@@ -10,6 +10,7 @@ export { maintenanceJobs } from './maintenanceJobs';
 export { autopilotJobs } from './autopilotJobs';
 export { intelligenceJobs } from './intelligenceJobs';
 export { diagnosticJobs } from './diagnosticJobs';
+export { webhookDeliveryJobs } from './webhookDeliveryJobs';
 
 import type { WorkerJobQueue } from '../workerJobQueue';
 import type { WorkerJobHandler } from './types';
@@ -19,6 +20,7 @@ import { maintenanceJobs } from './maintenanceJobs';
 import { autopilotJobs } from './autopilotJobs';
 import { intelligenceJobs } from './intelligenceJobs';
 import { diagnosticJobs } from './diagnosticJobs';
+import { webhookDeliveryJobs } from './webhookDeliveryJobs';
 
 /**
  * Register all job handlers with the worker queue
@@ -31,6 +33,7 @@ export function registerWorkerJobs(queue: WorkerJobQueue): void {
     ...autopilotJobs,
     ...intelligenceJobs,
     ...diagnosticJobs,
+    ...webhookDeliveryJobs,
   ];
 
   for (const job of allJobs) {

@@ -150,6 +150,8 @@ model Wallet {
   mobilePermissions MobilePermission[]
   vaultPolicies     VaultPolicy[]
   aiInsights        AIInsight[]
+  webhookEndpoints  WebhookEndpoint[]
+  webhookDeliveries WebhookDelivery[]
   agentFundingLinks     WalletAgent[] @relation("AgentFundingWallet")
   agentOperationalLinks WalletAgent[] @relation("AgentOperationalWallet")
 
@@ -835,6 +837,89 @@ model PushDevice {
   @@index([userId])
   @@index([platform]) // For notification routing by platform
   @@map("push_devices")
+}
+
+// ========================================
+// WEBHOOK NOTIFICATIONS
+// ========================================
+
+// Wallet-owned outbound webhook endpoint configuration.
+model WebhookEndpoint {
+  id       String @id @default(uuid())
+  walletId String
+
+  name    String
+  enabled Boolean @default(true)
+  url     String
+
+  // Generic event/filter/profile configuration. Private receiver needs belong
+  // in endpoint-local config rather than in the canonical webhook model.
+  eventTypes      String[]
+  filters         Json?
+  payloadProfile  String  @default("sanctuary_wallet_event_v1")
+  authType        String  @default("none")
+  secretEncrypted String?
+  headerConfig    Json?
+  profileConfig   Json?
+  retryConfig     Json?
+
+  maxAttempts                Int     @default(5)
+  failureNotificationEnabled Boolean @default(true)
+
+  createdByUserId    String?
+  lastDeliveryStatus String?
+  lastDeliveredAt    DateTime?
+  lastError          String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  wallet     Wallet            @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([walletId])
+  @@index([walletId, enabled])
+  @@index([payloadProfile])
+  @@map("webhook_endpoints")
+}
+
+// Durable per-endpoint delivery outbox row.
+model WebhookDelivery {
+  id         String @id @default(uuid())
+  endpointId String
+  walletId   String
+
+  eventId        String
+  eventType      String
+  payloadProfile String
+  targetUrl      String
+
+  eventPayload           Json
+  requestBody            Json?
+  requestBodyHash        String?
+  requestHeadersRedacted Json?
+
+  status        String    @default("pending") // pending, delivered, failed, dead
+  attemptCount  Int       @default(0)
+  nextAttemptAt DateTime?
+  lastAttemptAt DateTime?
+  deliveredAt   DateTime?
+
+  lastStatusCode  Int?
+  lastError       String?
+  responseBodyHash String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  wallet   Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@unique([endpointId, eventId, payloadProfile])
+  @@index([walletId])
+  @@index([endpointId])
+  @@index([status, nextAttemptAt])
+  @@index([eventId])
+  @@map("webhook_deliveries")
 }
 
 // ========================================

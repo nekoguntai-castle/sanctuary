@@ -15,6 +15,7 @@ import './config';
 import './circuitBreakers';
 import './deadLetterQueue';
 import './telegram';
+import './webhooks';
 import './sync';
 import './database';
 import './wallets';

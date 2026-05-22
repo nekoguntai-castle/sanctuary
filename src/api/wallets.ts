@@ -339,7 +339,15 @@ export async function exportLabelsBip329(walletId: string, walletName: string): 
 // TELEGRAM SETTINGS
 // ============================================================================
 
-import type { WalletTelegramSettings, WalletAutopilotSettings, AutopilotStatus } from '../../types';
+import type {
+  WalletAutopilotSettings,
+  WalletWebhookDelivery,
+  WalletWebhookEndpoint,
+  WalletWebhookInput,
+  WalletWebhookReplayResult,
+  WalletTelegramSettings,
+  AutopilotStatus,
+} from '../../types';
 
 /**
  * Get Telegram notification settings for a wallet
@@ -357,6 +365,73 @@ export async function updateWalletTelegramSettings(
   settings: Partial<WalletTelegramSettings>
 ): Promise<void> {
   await apiClient.patch(`/wallets/${walletId}/telegram`, settings);
+}
+
+// ============================================================================
+// WEBHOOK SETTINGS
+// ============================================================================
+
+export async function listWalletWebhooks(walletId: string): Promise<WalletWebhookEndpoint[]> {
+  const response = await apiClient.get<{ webhooks: WalletWebhookEndpoint[] }>(`/wallets/${walletId}/webhooks`);
+  return response.webhooks;
+}
+
+export async function getWalletWebhook(
+  walletId: string,
+  webhookId: string
+): Promise<WalletWebhookEndpoint> {
+  const response = await apiClient.get<{ webhook: WalletWebhookEndpoint }>(`/wallets/${walletId}/webhooks/${webhookId}`);
+  return response.webhook;
+}
+
+export async function createWalletWebhook(
+  walletId: string,
+  input: WalletWebhookInput
+): Promise<WalletWebhookEndpoint> {
+  const response = await apiClient.post<{ webhook: WalletWebhookEndpoint }>(`/wallets/${walletId}/webhooks`, input);
+  return response.webhook;
+}
+
+export async function updateWalletWebhook(
+  walletId: string,
+  webhookId: string,
+  input: Partial<WalletWebhookInput>
+): Promise<WalletWebhookEndpoint> {
+  const response = await apiClient.patch<{ webhook: WalletWebhookEndpoint }>(`/wallets/${walletId}/webhooks/${webhookId}`, input);
+  return response.webhook;
+}
+
+export async function deleteWalletWebhook(walletId: string, webhookId: string): Promise<void> {
+  await apiClient.delete(`/wallets/${walletId}/webhooks/${webhookId}`);
+}
+
+export async function testWalletWebhook(
+  walletId: string,
+  webhookId: string
+): Promise<{ success: boolean; message: string }> {
+  return apiClient.post<{ success: boolean; message: string }>(`/wallets/${walletId}/webhooks/${webhookId}/test`);
+}
+
+export async function getWalletWebhookDeliveries(
+  walletId: string,
+  webhookId: string,
+  limit = 50
+): Promise<WalletWebhookDelivery[]> {
+  const response = await apiClient.get<{ deliveries: WalletWebhookDelivery[] }>(
+    `/wallets/${walletId}/webhooks/${webhookId}/deliveries`,
+    { limit }
+  );
+  return response.deliveries;
+}
+
+export async function replayWalletWebhookDelivery(
+  walletId: string,
+  webhookId: string,
+  deliveryId: string
+): Promise<WalletWebhookReplayResult> {
+  return apiClient.post<WalletWebhookReplayResult>(
+    `/wallets/${walletId}/webhooks/${webhookId}/deliveries/${deliveryId}/replay`
+  );
 }
 
 // ============================================================================

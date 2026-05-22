@@ -31,6 +31,7 @@ vi.mock("../../../src/utils/logger", () => ({
 import {
   queueConsolidationSuggestionNotification,
   queueDraftNotification,
+  queueWebhookDeliveryNotification,
   queueTransactionNotification,
   shutdownNotificationDispatcher,
 } from "../../../src/infrastructure/notificationDispatcher";
@@ -137,6 +138,60 @@ describe("notificationDispatcher", () => {
         ),
       },
     );
+  });
+
+  it("queues a webhook delivery notification with retry delay", async () => {
+    const result = await queueWebhookDeliveryNotification(
+      { deliveryId: "delivery-1", attempt: 2 },
+      { delayMs: 5000 },
+    );
+
+    expect(result).toBe(true);
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      "webhook-delivery",
+      { deliveryId: "delivery-1", attempt: 2 },
+      {
+        jobId: toBullMqJobId("webhook-delivery:delivery-1:2"),
+        delay: 5000,
+      },
+    );
+  });
+
+  it("uses attempt zero in webhook delivery job ids when attempt is absent", async () => {
+    const result = await queueWebhookDeliveryNotification({ deliveryId: "delivery-2" });
+
+    expect(result).toBe(true);
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      "webhook-delivery",
+      { deliveryId: "delivery-2" },
+      {
+        jobId: toBullMqJobId("webhook-delivery:delivery-2:0"),
+        delay: undefined,
+      },
+    );
+  });
+
+  it("returns false for webhook delivery notifications when Redis is not connected", async () => {
+    vi.mocked(isRedisConnected).mockReturnValueOnce(false);
+
+    const result = await queueWebhookDeliveryNotification({ deliveryId: "delivery-1", attempt: 1 });
+
+    expect(result).toBe(false);
+    expect(mockQueueAdd).not.toHaveBeenCalled();
+  });
+
+  it("returns false when webhook delivery queue add fails", async () => {
+    await queueTransactionNotification({
+      walletId: "w1",
+      txid: "tx-ok",
+      type: "received",
+      amount: "100",
+    });
+    mockQueueAdd.mockRejectedValueOnce(new Error("Redis timeout"));
+
+    const result = await queueWebhookDeliveryNotification({ deliveryId: "delivery-1", attempt: 1 });
+
+    expect(result).toBe(false);
   });
 
   it("falls back to a draft+creator job id when no dedupeKey is provided", async () => {

@@ -9,7 +9,7 @@ export { WALLET_DETAIL_TAB_IDS } from './tabDefinitions';
 export type { WalletDetailTabId as TabType } from './tabDefinitions';
 export type AddressSubTab = 'receive' | 'change';
 export type AccessSubTab = 'ownership' | 'sharing' | 'transfers';
-export type SettingsSubTab = 'general' | 'devices' | 'notifications' | 'advanced' | 'autopilot';
+export type SettingsSubTab = 'general' | 'devices' | 'notifications' | 'webhooks' | 'advanced' | 'autopilot';
 
 // Device share prompt state (used by useWalletSharing hook and DeviceSharePromptModal)
 export interface DeviceSharePromptState {

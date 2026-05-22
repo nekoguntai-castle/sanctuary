@@ -310,6 +310,32 @@ describe('Transaction Repository', () => {
     });
   });
 
+  describe('findManyByTxids', () => {
+    it('should find transactions by unique txids and wallet', async () => {
+      (prisma.transaction.findMany as Mock).mockResolvedValue([mockTransaction]);
+
+      const result = await transactionRepository.findManyByTxids(
+        ['abc123def456', 'abc123def456', ''],
+        'wallet-456',
+      );
+
+      expect(result).toEqual([mockTransaction]);
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith({
+        where: {
+          walletId: 'wallet-456',
+          txid: { in: ['abc123def456'] },
+        },
+      });
+    });
+
+    it('should skip the database when no txids are provided', async () => {
+      const result = await transactionRepository.findManyByTxids([], 'wallet-456');
+
+      expect(result).toEqual([]);
+      expect(prisma.transaction.findMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('findForBalanceHistory', () => {
     it('should find transactions for balance chart', async () => {
       const historyData = [

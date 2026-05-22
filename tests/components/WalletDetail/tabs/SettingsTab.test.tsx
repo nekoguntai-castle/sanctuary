@@ -21,6 +21,10 @@ vi.mock('../../../../components/WalletDetail/WalletTelegramSettings', () => ({
   WalletTelegramSettings: () => <div data-testid="wallet-telegram-settings">Telegram settings</div>,
 }));
 
+vi.mock('../../../../components/WalletDetail/WalletWebhooks', () => ({
+  WalletWebhooks: () => <div data-testid="wallet-webhooks">Webhook settings</div>,
+}));
+
 vi.mock('../../../../components/WalletDetail/WalletAutopilotSettings', () => ({
   WalletAutopilotSettings: () => <div data-testid="wallet-autopilot-settings">Autopilot settings</div>,
 }));
@@ -120,18 +124,25 @@ describe('SettingsTab', () => {
     expect(screen.getByTestId('wallet-telegram-settings')).toBeInTheDocument();
   });
 
+  it('renders webhooks subtab component', () => {
+    render(<SettingsTab {...baseProps} settingsSubTab="webhooks" />);
+    expect(screen.getByTestId('wallet-webhooks')).toBeInTheDocument();
+  });
+
   it('invokes settings sub-tab change handlers', () => {
     render(<SettingsTab {...baseProps} settingsSubTab="general" />);
 
     fireEvent.click(screen.getByText('General'));
     fireEvent.click(screen.getByText('Devices'));
     fireEvent.click(screen.getByText('Notifications'));
+    fireEvent.click(screen.getByText('Webhooks'));
     fireEvent.click(screen.getByText('Advanced'));
     fireEvent.click(screen.getByText('Autopilot'));
 
     expect(baseProps.onSettingsSubTabChange).toHaveBeenCalledWith('general');
     expect(baseProps.onSettingsSubTabChange).toHaveBeenCalledWith('devices');
     expect(baseProps.onSettingsSubTabChange).toHaveBeenCalledWith('notifications');
+    expect(baseProps.onSettingsSubTabChange).toHaveBeenCalledWith('webhooks');
     expect(baseProps.onSettingsSubTabChange).toHaveBeenCalledWith('advanced');
     expect(baseProps.onSettingsSubTabChange).toHaveBeenCalledWith('autopilot');
   });

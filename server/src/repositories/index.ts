@@ -42,6 +42,7 @@ export { assistantReadRepository, default as assistantReadRepo } from './assista
 export { mcpReadRepository, default as mcpReadRepo } from './mcpReadRepository';
 export { agentRepository, default as agentRepo } from './agentRepository';
 export { consoleRepository, default as consoleRepo } from './consoleRepository';
+export { webhookRepository, default as webhookRepo } from './webhookRepository';
 
 // Access control helpers
 export { buildWalletAccessWhere, buildDeviceAccessWhere } from './accessControl';
@@ -143,3 +144,11 @@ export type {
   CreateMobilePermissionInput,
   UpdateMobilePermissionInput,
 } from './mobilePermissionRepository';
+
+export type {
+  CreateWebhookDeliveryInput,
+  CreateWebhookEndpointInput,
+  MarkDeliveryDeadInput,
+  MarkDeliveryFailedInput,
+  UpdateWebhookEndpointInput,
+} from './webhookRepository';

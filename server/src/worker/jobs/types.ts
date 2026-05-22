@@ -116,6 +116,11 @@ export interface ConsolidationSuggestionNotifyJobData {
   queuedAt: string;
 }
 
+export interface WebhookDeliveryJobData {
+  deliveryId: string;
+  attempt?: number;
+}
+
 /**
  * Sync job results
  */

@@ -94,6 +94,11 @@ export interface ConsolidationSuggestionNotificationPayload {
   queuedAt: string;
 }
 
+export interface WebhookDeliveryNotificationPayload {
+  deliveryId: string;
+  attempt?: number;
+}
+
 /**
  * Queue a transaction notification for retry-capable delivery.
  * Returns true if the job was queued, false if Redis was unavailable.
@@ -191,6 +196,38 @@ export async function queueConsolidationSuggestionNotification(
       {
         error: getErrorMessage(error),
         walletId: payload.walletId,
+      },
+    );
+    return false;
+  }
+}
+
+/**
+ * Queue an outbound webhook delivery attempt.
+ * Returns true if the job was queued, false if Redis was unavailable.
+ */
+export async function queueWebhookDeliveryNotification(
+  payload: WebhookDeliveryNotificationPayload,
+  options: { delayMs?: number } = {},
+): Promise<boolean> {
+  const queue = getQueue();
+  if (!queue) return false;
+
+  try {
+    await queue.add("webhook-delivery", payload, {
+      jobId: toBullMqJobId(`webhook-delivery:${payload.deliveryId}:${payload.attempt ?? 0}`),
+      delay: options.delayMs,
+    });
+    log.debug("Webhook delivery queued", {
+      deliveryId: payload.deliveryId,
+    });
+    return true;
+  } catch (error) {
+    log.warn(
+      "Failed to queue webhook delivery notification, caller should fall back to inline",
+      {
+        error: getErrorMessage(error),
+        deliveryId: payload.deliveryId,
       },
     );
     return false;

@@ -187,6 +187,36 @@ export function registerOpenApiWalletTests() {
     expect(deleteResponses[204]).not.toHaveProperty('content');
   });
 
+  it('documents wallet webhook routes including replay', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/wallets/{walletId}/webhooks', 'get'],
+      ['/wallets/{walletId}/webhooks', 'post'],
+      ['/wallets/{walletId}/webhooks/{webhookId}', 'get'],
+      ['/wallets/{walletId}/webhooks/{webhookId}', 'patch'],
+      ['/wallets/{walletId}/webhooks/{webhookId}', 'delete'],
+      ['/wallets/{walletId}/webhooks/{webhookId}/test', 'post'],
+      ['/wallets/{walletId}/webhooks/{webhookId}/deliveries', 'get'],
+      ['/wallets/{walletId}/webhooks/{webhookId}/deliveries/{deliveryId}/replay', 'post'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.components.schemas.WalletWebhookEndpoint.properties).not.toHaveProperty('secret');
+    expect(openApiSpec.components.schemas.WalletWebhookEndpointRequest.properties.secret.writeOnly).toBe(true);
+    expect(openApiSpec.components.schemas.WalletWebhookReplayResponse.required).toEqual([
+      'success',
+      'queued',
+      'message',
+      'delivery',
+    ]);
+    expect(
+      openApiSpec.paths['/wallets/{walletId}/webhooks/{webhookId}/deliveries/{deliveryId}/replay']
+        .post.responses[200].content['application/json'].schema,
+    ).toEqual({ $ref: '#/components/schemas/WalletWebhookReplayResponse' });
+  });
+
   it('documents wallet sharing routes', () => {
     const routes: Array<[OpenApiPathKey, string]> = [
       ['/wallets/{walletId}/share', 'get'],

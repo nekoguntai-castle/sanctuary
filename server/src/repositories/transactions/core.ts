@@ -120,6 +120,18 @@ export async function findByTxid(txid: string, walletId: string): Promise<Transa
   });
 }
 
+export async function findManyByTxids(txids: string[], walletId: string): Promise<Transaction[]> {
+  const uniqueTxids = Array.from(new Set(txids.filter(txid => txid.length > 0)));
+  if (uniqueTxids.length === 0) return [];
+
+  return prisma.transaction.findMany({
+    where: {
+      walletId,
+      txid: { in: uniqueTxids },
+    },
+  });
+}
+
 export async function findForBalanceHistory(
   walletId: string,
   startDate: Date

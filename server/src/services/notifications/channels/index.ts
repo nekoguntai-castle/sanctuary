@@ -20,11 +20,13 @@ import { notificationChannelRegistry } from './registry';
 import { telegramChannelHandler } from './telegram';
 import { pushChannelHandler } from './push';
 import { aiInsightsChannelHandler } from './aiInsights';
+import { webhookChannelHandler } from './webhook';
 
 // Register handlers
 notificationChannelRegistry.register(telegramChannelHandler);
 notificationChannelRegistry.register(pushChannelHandler);
 notificationChannelRegistry.register(aiInsightsChannelHandler);
+notificationChannelRegistry.register(webhookChannelHandler);
 
 // Export the registry and types
 export { notificationChannelRegistry } from './registry';
@@ -42,3 +44,4 @@ export type {
 export { telegramChannelHandler } from './telegram';
 export { pushChannelHandler } from './push';
 export { aiInsightsChannelHandler } from './aiInsights';
+export { webhookChannelHandler } from './webhook';

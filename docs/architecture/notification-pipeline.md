@@ -21,12 +21,16 @@ graph TD
     ChannelTelegram["src/services/notifications/channels/telegram.ts"]
     ChannelPush["src/services/notifications/channels/push.ts"]
     ChannelAi["src/services/notifications/channels/aiInsights.ts"]
+    ChannelWebhook["src/services/notifications/channels/webhook.ts"]
+    WebhookOutbox[("PostgreSQL<br/>webhook_deliveries")]
+    WebhookWorker["src/worker/jobs/webhookDeliveryJobs.ts"]
 
     DirectTg["src/services/telegram/notifications.ts<br/><b>Path B: direct, no retry</b>"]
     TelegramApi["src/services/telegram/api.ts<br/>(sendTelegramMessage)"]
 
     Telegram["Telegram Bot API"]
     GatewayPush["Gateway → FCM / APNs"]
+    ExternalWebhook["Configured HTTPS/LAN webhook receiver"]
 
     %% Path A — preferred
     WalletSync --> Dispatcher
@@ -37,9 +41,13 @@ graph TD
     Registry --> ChannelTelegram
     Registry --> ChannelPush
     Registry --> ChannelAi
+    Registry --> ChannelWebhook
     ChannelTelegram --> TelegramApi
     ChannelPush --> GatewayPush
     ChannelAi --> TelegramApi
+    ChannelWebhook --> WebhookOutbox
+    WebhookOutbox --> WebhookWorker
+    WebhookWorker --> ExternalWebhook
 
     %% Path B — direct
     Autopilot --> DirectTg
@@ -53,6 +61,8 @@ graph TD
     click ChannelTelegram href "../../server/src/services/notifications/channels/telegram.ts#telegramChannelHandler"
     click ChannelPush href "../../server/src/services/notifications/channels/push.ts"
     click ChannelAi href "../../server/src/services/notifications/channels/aiInsights.ts"
+    click ChannelWebhook href "../../server/src/services/notifications/channels/webhook.ts"
+    click WebhookWorker href "../../server/src/worker/jobs/webhookDeliveryJobs.ts"
     click DirectTg href "../../server/src/services/telegram/notifications.ts#notifyNewTransactions"
     click TelegramApi href "../../server/src/services/telegram/api.ts#sendTelegramMessage"
     click Worker href "../../server/src/worker/jobs/notificationJobs.ts"
@@ -60,7 +70,7 @@ graph TD
 
     classDef pathA fill:#dbeafe,stroke:#1e3a8a;
     classDef pathB fill:#fee2e2,stroke:#991b1b;
-    class Dispatcher,Queue,Registry,ChannelTelegram,ChannelPush,ChannelAi pathA;
+    class Dispatcher,Queue,Registry,ChannelTelegram,ChannelPush,ChannelAi,ChannelWebhook,WebhookOutbox,WebhookWorker pathA;
     class DirectTg pathB;
 ```
 
@@ -70,10 +80,12 @@ graph TD
 
 | Path | Origin | Properties |
 |---|---|---|
-| **A — Dispatcher → Queue → Worker → Channel registry** | Newer | Persisted in Redis; 5 retry attempts with exponential backoff; survives restarts; uniform across channels (Telegram, push, AI insights) |
+| **A — Dispatcher → Queue → Worker → Channel registry** | Newer | Persisted in Redis; 5 retry attempts with exponential backoff for notification jobs; survives restarts; uniform entry point across channels (Telegram, push, AI insights, webhooks) |
 | **B — Direct `services/telegram/notifications.ts`** | Older | Synchronous; no retry; no DLQ; bypasses channel registry entirely |
 
 Both call into `services/telegram/api.ts → sendTelegramMessage`, so the Telegram API itself is reached the same way — but everything *upstream* (delivery guarantees, observability, gating) is different.
+
+Webhook channel delivery has a second durable layer: the channel writes a `webhook_deliveries` outbox row and queues a `webhook-delivery` worker job per endpoint/event. That worker owns endpoint URL safety checks, payload mapping, signing, per-endpoint retries, dead-letter state, delivery history, replay, and max-retry wallet log alerts. This keeps webhook HTTP failures from being hidden by a successful Telegram or push channel result in the aggregate notification job.
 
 ## Convergence plan
 

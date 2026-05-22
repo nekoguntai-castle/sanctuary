@@ -31,8 +31,10 @@ export {
   queueConsolidationSuggestionNotification,
   queueDraftNotification,
   queueTransactionNotification,
+  queueWebhookDeliveryNotification,
   shutdownNotificationDispatcher,
   type ConsolidationSuggestionNotificationPayload,
   type DraftNotificationPayload,
   type TransactionNotificationPayload,
+  type WebhookDeliveryNotificationPayload,
 } from './notificationDispatcher';

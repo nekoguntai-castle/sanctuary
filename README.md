@@ -290,7 +290,7 @@ The worker runs as a dedicated container, separate from the API server, handling
 |----------|-------------|
 | **Electrum Manager** | Maintains persistent connections to Electrum servers with automatic reconnection. Subscribes to new blocks and address activity for real-time transaction detection. |
 | **Sync Jobs** | Wallet synchronization with the blockchain. Uses distributed locks to prevent duplicate syncs. Records block height for consistency tracking. |
-| **Notification Jobs** | Sends Telegram and push notifications with retry logic (exponential backoff). Handles delivery failures gracefully. |
+| **Notification Jobs** | Sends Telegram, push, AI insight, and wallet webhook notifications with retry logic. Webhooks use a durable per-endpoint outbox. |
 | **Confirmation Jobs** | Updates transaction confirmations when new blocks are mined. Triggers milestone notifications (1, 3, 6 confirmations). |
 
 **Why a separate worker?**
@@ -978,6 +978,28 @@ Receive transaction alerts via Telegram using your own bot:
    - Go to any wallet's **Settings** tab
    - Enable Telegram notifications for that wallet
    - Choose which events to receive: received, sent, consolidation
+
+#### Wallet Webhooks
+
+Wallet owners can configure outbound webhooks from a wallet's **Settings → Webhooks** tab. Webhooks are wallet-scoped integration resources, so one wallet event queues one delivery per matching endpoint instead of one delivery per user.
+
+Supported endpoint options:
+- Event filters for transaction events such as received, sent, and confirmed.
+- Payload profiles: the default Sanctuary wallet event envelope or a generic mapped JSON profile.
+- Authentication: none, bearer token, Sanctuary HMAC, or configured HMAC with endpoint-defined header names and canonical fields.
+- Optional, required, or disabled fiat valuation enrichment for mapped JSON payloads.
+- Per-endpoint retry limits and exponential backoff.
+- URL validation, delivery history, manual replay, and max-retry wallet log alerts.
+
+Webhook safety defaults are strict: public HTTPS endpoints are allowed by default, while HTTP, LAN, private IP, and loopback targets require explicit deployment allowlists. Operators can use:
+
+```env
+WEBHOOK_ALLOW_HTTP=true
+WEBHOOK_ALLOWED_HOSTS=receiver.example.local
+WEBHOOK_ALLOWED_CIDRS=192.168.5.0/24
+```
+
+Support packages include only redacted webhook health metadata. They do not include endpoint secrets, full URLs, signed headers, request bodies, receiver-specific mapped field names, or raw failure messages. Private receiver contracts should live in deployment-local configuration, not in tracked Sanctuary code or docs.
 
 #### Notification Sounds
 
