@@ -1,3 +1,68 @@
+# Task: Pre-commit Agent Gate Phase Z 2026-05-22
+
+Status: complete.
+
+Goal: fix the pre-commit agent-gate rationalization issues by converging duplicated Claude invocation logic and adding deterministic malformed-output smoke coverage.
+
+## Plan
+
+- [x] Inspect existing CI shell-test patterns and the current pre-commit hook.
+- [x] Extract one Claude invocation helper shared by first-attempt and retry paths.
+- [x] Add a stubbed shell smoke test for malformed cache rerun, fresh malformed retry success, and persistent `UNKNOWN` no-cache blocking.
+- [x] Wire the smoke test into the quality workflow.
+- [x] Run focused hook, test, workflow-composition, and diff verification.
+
+## Review
+
+- `server/.husky/pre-commit` now uses `invoke_claude_agent` for both initial and retry agent calls.
+- `tests/ci/pre-commit-agent-gate.test.sh` covers the malformed-output recovery paths with a stubbed `claude` executable and temp cache/log state.
+- `.github/workflows/quality.yml` runs the new smoke test in the CI helper suite.
+- Verification passed with `sh -n server/.husky/pre-commit`, `bash -n server/.husky/pre-commit`, a direct-execution guard check for `SANCTUARY_PRE_COMMIT_LIBRARY_ONLY=1`, `bash -n tests/ci/pre-commit-agent-gate.test.sh`, `bash tests/ci/pre-commit-agent-gate.test.sh`, `bash tests/ci/check-workflow-composition.test.sh`, `node tests/ci/check-github-action-runtimes.test.mjs`, and `git diff --check`.
+
+---
+
+# Task: Pre-commit Agent Gate Rationalization 2026-05-22
+
+Status: complete.
+
+Goal: update the rationalization plan for the current pre-commit agent gate hardening, identifying whether the hook should keep its current split or converge duplicated runner/cache/retry behavior.
+
+## Plan
+
+- [x] Read rationalize instructions, repo status, and the existing rationalization plan.
+- [x] Inspect the current hook diff and adjacent agent gate/cache/parser paths.
+- [x] Update `docs/plans/rationalization-plan.md` with evidence-backed dispositions and any follow-up phase.
+- [x] Verify the documentation/task diff and record results.
+
+## Review
+
+- `docs/plans/rationalization-plan.md` now records the pre-commit AI-agent gate as a watch/as-touched item with `server/.husky/pre-commit` as the canonical parser/verdict owner.
+- No broad convergence phase was reopened. Phase Z was implemented locally after this pass: the hook now has a tiny Claude invocation helper and deterministic smoke coverage.
+- Verification passed with `sh -n server/.husky/pre-commit`, `bash -n server/.husky/pre-commit`, and `git diff --check`.
+
+---
+
+# Task: Pre-commit Malformed Agent Output Hardening 2026-05-22
+
+Status: local fix verified.
+
+Goal: keep the fail-closed pre-commit agent gate, but avoid poisoning commits with stale or transient malformed AI-agent output.
+
+## Plan
+
+- [x] Locate the backend-quality hook/cache path that produced the malformed-output gate.
+- [x] Check whether current backend-quality cache entries are malformed local state.
+- [x] Harden the tracked hook so malformed cache entries rerun and fresh malformed outputs get one strict JSON retry.
+- [x] Verify shell syntax and review the diff.
+
+## Review
+
+- Current backend-quality cache entries parse as single JSON objects, so the failure was most likely a transient fresh agent response rather than a currently poisoned cache file.
+- `server/.husky/pre-commit` now ignores UNKNOWN cache hits and reruns the agent, retries a fresh UNKNOWN response once with a strict JSON-only correction prompt, and only caches parseable non-UNKNOWN outputs.
+- Verification passed with `sh -n server/.husky/pre-commit` and `bash -n server/.husky/pre-commit`.
+
+---
+
 # Task: Implement Rationalization Phases V-X 2026-05-22
 
 Status: in progress.

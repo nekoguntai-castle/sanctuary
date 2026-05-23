@@ -682,6 +682,7 @@ jobs:
           bash -n tests/ci/report-workflow-trends.test.sh
           bash -n tests/ci/report-timing-notices.test.sh
           bash -n tests/ci/retry-command.test.sh
+          bash -n tests/ci/pre-commit-agent-gate.test.sh
           bash -n tests/ci/run-quality-lint.test.sh
           bash -n tests/ci/verify-addresses-repeatable.test.sh
           bash -n tests/ci/redactor-fixture.test.sh
@@ -728,6 +729,7 @@ jobs:
           bash tests/ci/report-workflow-trends.test.sh
           bash tests/ci/report-timing-notices.test.sh
           bash tests/ci/retry-command.test.sh
+          bash tests/ci/pre-commit-agent-gate.test.sh
           bash tests/ci/run-quality-lint.test.sh
           bash tests/ci/retry-playwright-infrastructure-failure.test.sh
           bash tests/ci/verify-addresses-repeatable.test.sh

@@ -23,7 +23,9 @@ UI_CONSISTENCY_STOP=0
 BACKEND_QUALITY_STOP=0
 DOCUMENTATION_STOP=0
 
-echo "${YELLOW}Running pre-commit checks...${NC}"
+if [ "${SANCTUARY_PRE_COMMIT_LIBRARY_ONLY:-0}" != "1" ]; then
+    echo "${YELLOW}Running pre-commit checks...${NC}"
+fi
 
 # Get the repository root
 REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -38,7 +40,7 @@ GIT_DIR=$(git rev-parse --git-dir)
 # reviewed recently (common during `git commit --amend` and rebases).
 # Both live under .claude/ which is gitignored — state stays local per-dev.
 
-AGENT_LOG_DIR="$REPO_ROOT/.claude"
+AGENT_LOG_DIR="${SANCTUARY_AGENT_LOG_DIR:-$REPO_ROOT/.claude}"
 AGENT_LOG_FILE="$AGENT_LOG_DIR/agent-audit.jsonl"
 AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
 # Bump when ANY agent prompt changes to invalidate cache globally.
@@ -76,7 +78,12 @@ AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
 #      "inside the fence", bypassing the gate. Strict markers close that.
 PROMPT_VERSION="v11"
 # Per-commit scratch dir for parallel agent outputs and stop markers.
-AGENT_TMP_DIR=$(mktemp -d -t sanctuary-agents-XXXXXX)
+AGENT_TMP_DIR="${SANCTUARY_AGENT_TMP_DIR:-}"
+if [ -z "$AGENT_TMP_DIR" ]; then
+    AGENT_TMP_DIR=$(mktemp -d -t sanctuary-agents-XXXXXX)
+else
+    mkdir -p "$AGENT_TMP_DIR"
+fi
 trap 'rm -rf "$AGENT_TMP_DIR"' EXIT
 
 mkdir -p "$AGENT_LOG_DIR" "$AGENT_CACHE_DIR"
@@ -421,6 +428,19 @@ print_gate_banner() {
     fi
 }
 
+invoke_claude_agent() {
+    # $1=claude_agent(empty=general) $2=prompt $3=output_file
+    local claude_agent="$1"
+    local prompt="$2"
+    local output_file="$3"
+
+    if [ -n "$claude_agent" ]; then
+        echo "$prompt" | claude --agent "$claude_agent" --print > "$output_file" 2>&1 || true
+    else
+        echo "$prompt" | claude --print > "$output_file" 2>&1 || true
+    fi
+}
+
 # Run the agent unless the same (diff, agent, prompt-version) tuple has a
 # cached verdict — in which case replay the cached output and skip claude.
 # $1=agent_name $2=claude_agent_type(empty=general) $3=prompt
@@ -442,35 +462,57 @@ invoke_agent_with_cache() {
         # Defensive: extract_verdict always echoes a value, but if something
         # goes catastrophically wrong default to UNKNOWN (fail closed).
         verdict="${verdict:-UNKNOWN}"
-        # CRITICAL: set the gate marker before any UI/logging operation.
-        # Any failure below (render error, log write, etc.) must NOT drop
-        # the STOP/UNKNOWN signal.
-        ensure_gate_decision "$verdict" "$stop_name"
+        if [ "$verdict" = "UNKNOWN" ]; then
+            printf '%b\n' "${YELLOW}(cached ${agent_name} output was malformed — rerunning agent)${NC}"
+        else
+            # CRITICAL: set the gate marker before any UI/logging operation.
+            # Any failure below (render error, log write, etc.) must NOT drop
+            # the STOP/UNKNOWN signal.
+            ensure_gate_decision "$verdict" "$stop_name"
 
-        render_agent_body "$cache_file" || true
-        echo ""
-        printf '%b\n' "${CYAN}(cache hit — identical diff reviewed previously)${NC}"
-        print_gate_banner "$verdict" "$agent_name"
-        log_agent_run "$agent_name" "$verdict" 0 "$file_count" "$cache_file" 1 || true
-        return 0
+            render_agent_body "$cache_file" || true
+            echo ""
+            printf '%b\n' "${CYAN}(cache hit — identical diff reviewed previously)${NC}"
+            print_gate_banner "$verdict" "$agent_name"
+            log_agent_run "$agent_name" "$verdict" 0 "$file_count" "$cache_file" 1 || true
+            return 0
+        fi
     fi
 
-    local start_time temp_output duration verdict
+    local start_time temp_output retry_output duration verdict retry_verdict retry_prompt
     start_time=$(date +%s)
     temp_output=$(mktemp)
 
     # `|| true` prevents set -e from aborting if claude itself errors —
     # we still want other agents to finish and an UNKNOWN verdict logged
     # (which will then block via the fail-closed policy).
-    if [ -n "$claude_agent" ]; then
-        echo "$prompt" | claude --agent "$claude_agent" --print > "$temp_output" 2>&1 || true
-    else
-        echo "$prompt" | claude --print > "$temp_output" 2>&1 || true
+    invoke_claude_agent "$claude_agent" "$prompt" "$temp_output"
+
+    verdict=$(extract_verdict "$temp_output")
+    verdict="${verdict:-UNKNOWN}"
+
+    if [ "$verdict" = "UNKNOWN" ]; then
+        retry_output=$(mktemp)
+        retry_prompt="${prompt}
+
+Your previous response was malformed or unparseable by the pre-commit gate.
+Return ONLY one JSON object matching the schema above. No markdown fences. No prose."
+
+        invoke_claude_agent "$claude_agent" "$retry_prompt" "$retry_output"
+
+        retry_verdict=$(extract_verdict "$retry_output")
+        retry_verdict="${retry_verdict:-UNKNOWN}"
+        if [ "$retry_verdict" != "UNKNOWN" ]; then
+            rm -f "$temp_output" 2>/dev/null || true
+            temp_output="$retry_output"
+            verdict="$retry_verdict"
+            printf '%b\n' "${YELLOW}(${agent_name} output was malformed on first attempt; retry produced parseable JSON)${NC}"
+        else
+            rm -f "$retry_output" 2>/dev/null || true
+        fi
     fi
 
     duration=$(( $(date +%s) - start_time ))
-    verdict=$(extract_verdict "$temp_output")
-    verdict="${verdict:-UNKNOWN}"
     # CRITICAL: gate marker BEFORE render/log/cache. Any failure in those
     # downstream operations (render on weird output, disk-full on cp,
     # journal write error) must not silently drop a blocking verdict.
@@ -479,9 +521,24 @@ invoke_agent_with_cache() {
     render_agent_body "$temp_output" || cat "$temp_output" 2>/dev/null || true
     print_gate_banner "$verdict" "$agent_name"
     log_agent_run "$agent_name" "$verdict" "$duration" "$file_count" "$temp_output" 0 || true
-    cp "$temp_output" "$cache_file" 2>/dev/null || true
+    if [ "$verdict" != "UNKNOWN" ]; then
+        cp "$temp_output" "$cache_file" 2>/dev/null || true
+    fi
     rm -f "$temp_output" 2>/dev/null || true
 }
+
+if [ "${SANCTUARY_PRE_COMMIT_LIBRARY_ONLY:-0}" = "1" ]; then
+    case "$0" in
+        */pre-commit|pre-commit)
+            echo "SANCTUARY_PRE_COMMIT_LIBRARY_ONLY is only supported by sourced hook tests" >&2
+            exit 1
+            ;;
+    esac
+    return 0 2>/dev/null || {
+        echo "SANCTUARY_PRE_COMMIT_LIBRARY_ONLY could not return from sourced hook test" >&2
+        exit 1
+    }
+fi
 
 # =============================================
 # Skip AI agents during non-interactive git ops
