@@ -7,6 +7,7 @@ import {
   mockBlockchain,
   mockMempool,
   mockNodeClient,
+  mockSilentPayments,
   mockUtils,
   request,
 } from './bitcoinTestHarness';
@@ -245,6 +246,11 @@ export const registerBitcoinNetworkRouteTests = () => {
               network: 'testnet3',
               isHealthy: true,
               lastHealthCheck: null,
+              serverUsage: 'silent_payments',
+              supportsVerbose: true,
+              supportsSilentPaymentsV0: true,
+              lastCapabilityCheck: '2026-05-23T12:00:00.000Z',
+              lastCapabilityError: null,
             },
             {
               id: 'testnet3-server-1',
@@ -303,6 +309,11 @@ export const registerBitcoinNetworkRouteTests = () => {
             label: 'Backup Testnet3',
             host: 'backup-testnet3.example.com',
             port: 60002,
+            serverUsage: 'silent_payments',
+            supportsVerbose: true,
+            supportsSilentPaymentsV0: true,
+            lastCapabilityCheck: new Date('2026-05-23T12:00:00.000Z'),
+            lastCapabilityError: null,
           }),
           expect.objectContaining({
             serverId: 'testnet3-server-3',
@@ -391,6 +402,43 @@ export const registerBitcoinNetworkRouteTests = () => {
             lastHealthCheck: new Date(lastHealthCheck),
           }),
         ]);
+      });
+    });
+
+    describe('GET /bitcoin/silent-payments/readiness', () => {
+      it('returns Silent Payments readiness for the selected network', async () => {
+        mockSilentPayments.getSilentPaymentReadiness.mockResolvedValueOnce({
+          featureEnabled: true,
+          ready: false,
+          network: 'testnet4',
+          requiredFeatures: ['silent_payments_v0'],
+          blockers: ['NO_SILENT_PAYMENT_ENDPOINT'],
+          compatibleServerCount: 0,
+          endpointCount: 0,
+          featurePoolHealthy: false,
+          servers: [],
+        });
+
+        const response = await request(app)
+          .get('/bitcoin/silent-payments/readiness?network=testnet4');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({
+          ready: false,
+          network: 'testnet4',
+          blockers: ['NO_SILENT_PAYMENT_ENDPOINT'],
+        });
+        expect(mockSilentPayments.getSilentPaymentReadiness)
+          .toHaveBeenCalledWith('testnet4');
+      });
+
+      it('rejects invalid Silent Payments readiness network input', async () => {
+        const response = await request(app)
+          .get('/bitcoin/silent-payments/readiness?network=testnet');
+
+        expect(response.status).toBe(400);
+        expect(response.body.message).toContain('Invalid network');
+        expect(mockSilentPayments.getSilentPaymentReadiness).not.toHaveBeenCalled();
       });
     });
 

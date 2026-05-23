@@ -61,8 +61,16 @@ describe('Node Config Repository', () => {
     lastHealthCheck: new Date(),
     lastHealthCheckError: null,
     healthCheckFails: 0,
+    serverUsage: 'general',
+    serverFeatures: null,
+    serverVersion: null,
+    protocolVersion: null,
     supportsVerbose: true,
+    silentPaymentVersions: null,
+    supportsSilentPaymentsV0: null,
+    capabilityProfileKey: null,
     lastCapabilityCheck: new Date(),
+    lastCapabilityError: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -443,6 +451,37 @@ describe('Node Config Repository', () => {
       });
     });
 
+    it('should include normalized server capability data when provided', async () => {
+      (prisma.electrumServer.update as Mock).mockResolvedValue(mockElectrumServer);
+
+      const capabilityDate = new Date('2025-01-15');
+      await nodeConfigRepository.electrumServer.updateHealth('es-1', {
+        isHealthy: true,
+        serverFeatures: { silent_payments: [0] },
+        serverVersion: 'Frigate',
+        protocolVersion: '1.6',
+        silentPaymentVersions: [0],
+        supportsSilentPaymentsV0: true,
+        capabilityProfileKey: 'cap-key',
+        lastCapabilityError: null,
+        lastCapabilityCheck: capabilityDate,
+      });
+
+      expect(prisma.electrumServer.update).toHaveBeenCalledWith({
+        where: { id: 'es-1' },
+        data: expect.objectContaining({
+          serverFeatures: { silent_payments: [0] },
+          serverVersion: 'Frigate',
+          protocolVersion: '1.6',
+          silentPaymentVersions: [0],
+          supportsSilentPaymentsV0: true,
+          capabilityProfileKey: 'cap-key',
+          lastCapabilityError: null,
+          lastCapabilityCheck: capabilityDate,
+        }),
+      });
+    });
+
     it('should use default date for lastCapabilityCheck when not provided', async () => {
       (prisma.electrumServer.update as Mock).mockResolvedValue(mockElectrumServer);
 
@@ -455,6 +494,23 @@ describe('Node Config Repository', () => {
         where: { id: 'es-1' },
         data: expect.objectContaining({
           supportsVerbose: false,
+          lastCapabilityCheck: expect.any(Date),
+        }),
+      });
+    });
+
+    it('should use default capability check date for Silent Payments capability updates', async () => {
+      (prisma.electrumServer.update as Mock).mockResolvedValue(mockElectrumServer);
+
+      await nodeConfigRepository.electrumServer.updateHealth('es-1', {
+        isHealthy: true,
+        supportsSilentPaymentsV0: false,
+      });
+
+      expect(prisma.electrumServer.update).toHaveBeenCalledWith({
+        where: { id: 'es-1' },
+        data: expect.objectContaining({
+          supportsSilentPaymentsV0: false,
           lastCapabilityCheck: expect.any(Date),
         }),
       });

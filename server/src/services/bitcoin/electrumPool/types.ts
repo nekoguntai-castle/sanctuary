@@ -6,6 +6,10 @@
 
 import { ElectrumClient } from '../electrum';
 import type { NetworkType as BitcoinNetworkType } from '@sanctuary/shared/constants/bitcoin';
+import type {
+  ElectrumFeature,
+  ElectrumServerUsage,
+} from '../electrum/capabilities';
 
 /**
  * Load balancing strategies
@@ -39,8 +43,15 @@ export interface ServerConfig {
   useSsl: boolean;
   priority: number;
   enabled: boolean;
+  network?: NetworkType;
+  serverUsage?: ElectrumServerUsage;
   // Capability flags
   supportsVerbose?: boolean | null; // null = unknown
+  supportsSilentPaymentsV0?: boolean | null; // null = unknown
+  silentPaymentVersions?: number[] | null;
+  capabilityProfileKey?: string | null;
+  lastCapabilityCheck?: Date | null;
+  lastCapabilityError?: string | null;
 }
 
 /**
@@ -66,6 +77,10 @@ export interface ServerStats {
   healthHistory: HealthCheckResult[];
   // Capability flags
   supportsVerbose?: boolean | null; // null = unknown
+  supportsSilentPaymentsV0?: boolean | null; // null = unknown
+  serverUsage?: ElectrumServerUsage;
+  lastCapabilityCheck?: Date | null;
+  lastCapabilityError?: string | null;
 }
 
 /**
@@ -209,6 +224,15 @@ export interface AcquireOptions {
   purpose?: string;
   timeoutMs?: number;
   network?: NetworkType;
+}
+
+/**
+ * Feature-scoped pool selection options.
+ */
+export interface ElectrumPoolFeatureScope {
+  requiredFeatures?: ElectrumFeature[];
+  serverUsage?: ElectrumServerUsage;
+  capabilityStaleAfterMs?: number;
 }
 
 /**

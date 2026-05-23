@@ -1,3 +1,83 @@
+# Task: Silent Payments PR Delivery 2026-05-23
+
+Status: in progress.
+
+Goal: commit the Silent Payments infrastructure slice, push a feature branch, open or update a PR, monitor required checks/reviews, merge safely, and verify the merge landed on the target branch.
+
+## Plan
+
+- [x] Move the dirty Silent Payments implementation off `main` onto a feature branch.
+- [x] Re-audit the implementation diff and local verification evidence before committing.
+- [x] Commit the scoped implementation changes.
+- [x] Push the branch and open or update the pull request.
+- [ ] Monitor required checks/reviews and fix any failures.
+- [ ] Merge through the forge-supported path and verify the merge commit is reachable from the target branch.
+
+## Review
+
+- Local delivery verification passed before commit: focused backend Vitest suite, server test typecheck, app typecheck, server lint/safety guards, server build, whitespace check, and touched-file lizard complexity review.
+- First commit attempt correctly aborted on broader changed-test coverage: admin Electrum route test expected the old test payload shape, and pool reload tests exposed sparse mocked DB config plus missing network metadata. Patched the tests and tightened pool reload/feature-pool shutdown behavior; the hook-equivalent `npm run test:fast` now passes.
+- Committed the Silent Payments infrastructure slice. The final amend passed pre-commit agents, backend changed tests, and all hook checks.
+- Pushed `silent-payments-infra` and created Forgejo PR #514: http://10.14.23.20:3000/nekoguntai-castle/sanctuary/pulls/514
+- CI Test Suite initially failed in the merged backend coverage job after both coverage shards passed. Reproduced locally with `bash ../scripts/ci/backend-coverage-shard.sh 1 2`, `bash ../scripts/ci/backend-coverage-shard.sh 2 2`, and `bash ../scripts/ci/backend-coverage-merge.sh`; added focused route/service/pool/capability tests until the merged report reached 100% statements, branches, functions, and lines.
+- After the backend fix, CI exposed the matching frontend merged coverage gate: the new Silent Payments readiness API wrapper in `src/api/bitcoin.ts` was untested. Added `tests/api/bitcoin.test.ts` and reproduced the exact frontend gate locally with fresh coverage blobs; `bash scripts/ci/frontend-coverage-merge.sh .vitest-reports` now reports 100% statements, branches, functions, and lines.
+
+---
+
+# Task: Silent Payments Infrastructure Slice 2026-05-23
+
+Status: complete.
+
+Goal: implement the first backend infrastructure slice for Silent Payments readiness: Electrum capability probing, persisted server capability metadata, feature-scoped pool selection by network/usage/feature parity, and focused tests proving ordinary sync remains unchanged.
+
+## Plan
+
+- [x] Inspect existing Electrum method, pool registry, server config, admin health, and test seams.
+- [x] Add typed `server.features` support and capability normalization.
+- [x] Add additive Electrum server capability/usage schema fields and repository mappings.
+- [x] Add feature-scoped pool filtering and acquisition helpers without changing ordinary general-pool routing.
+- [x] Add Silent Payments readiness service/API contract for UI gating.
+- [x] Add focused tests for feature-scoped pool routing, stale/unknown exclusions, migration defaults, and saved-server capability checks.
+- [x] Run focused backend tests, type/lint checks where practical, `git diff --check`, and touched-file complexity review.
+
+## Review
+
+- Implemented typed Electrum `server.features` probing and normalization, including `silent_payments_v0` detection from `silent_payments: [0]` and fail-closed handling for malformed or missing feature data.
+- Added persisted Electrum server usage/capability metadata so operators can configure per-network `general`, `silent_payments`, or `both` endpoints and keep Silent Payments scanning out of mixed ordinary Electrum pools.
+- Added feature-scoped Electrum pool acquisition keyed by network, usage, required feature set, and capability freshness. Ordinary sync still uses general pools; Silent Payments readiness and future scanners require a compatible scoped pool.
+- Added Silent Payments readiness service/API and frontend API types so the UI can gate setup/receive surfaces on feature flag state, endpoint presence, compatible fresh capability data, and scoped pool health.
+- Verification passed: `npm run prisma:generate`, `npm run test:pool`, focused backend Vitest suite, `npm run typecheck:tests -- --pretty false`, root `npm run typecheck:app`, server `npm run build`, root `npm run lint:server`, `git diff --check`, and touched-file lizard complexity review.
+
+---
+
+# Task: Silent Payments Architecture Plan 2026-05-22
+
+Status: recursive plan review complete; first-slice product decisions accepted.
+
+Goal: define what Sanctuary would need to support BIP352 Silent Payments similar to Sparrow, including the Electrum/Frigate server topology, wallet data model, sync integration, PSBT changes, UI work, and verification gates.
+
+## Plan
+
+- [x] Inspect Sanctuary's current Electrum client, wallet sync, address model, transaction construction, and feature-flag surfaces.
+- [x] Verify current Silent Payments, Sparrow, and Frigate requirements from primary sources.
+- [x] Write the implementation plan in `docs/plans/silent-payments-plan.md`.
+- [x] Record the active task here for review.
+- [x] Review plan with the user and decide whether to start implementation, narrow scope to receive-only, or revise the storage/server assumptions.
+
+## Review
+
+- Current conclusion: Sparrow-like receive support needs a Silent Payments capable Electrum endpoint. Ordinary Fulcrum/electrs/ElectrumX can be the backend, but Sanctuary should connect to Frigate or an equivalent BIP352-aware front-end when Silent Payments discovery is enabled.
+- Recommended first implementation slice is receive-only watch-only support behind `FEATURE_EXP_SILENT_PAYMENTS`, using Frigate notifications after the scan-key persistence decision is made.
+- Spending discovered outputs and sending to `sp1...` recipients should follow after BIP376 and BIP375 PSBT/hardware-signer compatibility is proven.
+- Recursive plan review tightened acceptance criteria, non-goals, decision gates, Address schema migration risk, Frigate notification semantics, per-network scanner ownership, label-0 handling, PSBTv2/SIGHASH constraints, redaction requirements, and hardware signer gates.
+- UI follow-up added detailed integration points for Node Config capability status, import/setup, the wallet Addresses tab, the receive modal, UTXO/transaction source badges, and guarded send validation.
+- Infrastructure gate clarified: Silent Payments UI/API should use a backend readiness service based on feature flag state, per-network Silent Payments mode, endpoint connection, network identity, parsed `server.features`, compatible `silent_payments` version support, and scanner/indexing state after account subscription.
+- Pool follow-up planned feature-scoped Electrum pools keyed by network, server usage, and required feature set so Silent Payments scans acquire only from a homogeneous `silent_payments_v0` pool while ordinary wallet sync keeps using general Electrum pools. Recursive review added acceptance criteria, capability-profile migration/index notes, saved-server network test correction, stale capability invalidation, scoped pool reload requirements, readiness member counts, migration/backout safety, and routing tests.
+- Product decisions accepted: persist scan private keys only as encrypted watch-only material, use `Address.source` with nullable BIP32-only `derivationPath`, keep Frigate docs-only for the receive-only slice, import Silent Payments key material only, and keep Silent Payments spends disabled until BIP376 hardware compatibility is proven.
+- Verification passed with source reads, current Frigate/BIP documentation checks, and `git diff --check`.
+
+---
+
 # Task: Pre-commit Agent Gate Phase Z 2026-05-22
 
 Status: complete.

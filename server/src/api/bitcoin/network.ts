@@ -10,6 +10,7 @@ import { BITCOIN_NETWORKS, BITCOIN_NON_REGTEST_NETWORKS } from '@sanctuary/share
 import { getElectrumClient } from '../../services/bitcoin/electrum';
 import * as mempool from '../../services/bitcoin/mempool';
 import { getBitcoinNetworkStatus } from '../../services/bitcoin/networkStatusService';
+import { getSilentPaymentReadiness } from '../../services/silentPayments/readiness';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { getRequestAbortSignal } from '../../utils/requestAbort';
@@ -76,6 +77,20 @@ router.get('/status', asyncHandler(async (req: Request, res: Response) => {
       error: getErrorMessage(error),
     });
   }
+}));
+
+/**
+ * GET /api/v1/bitcoin/silent-payments/readiness
+ * Report whether Silent Payments receive can be shown for a network.
+ */
+router.get('/silent-payments/readiness', asyncHandler(async (req: Request, res: Response) => {
+  const network = parseNetworkQuery(
+    StatusNetworkSchema,
+    req.query.network,
+    STATUS_NETWORK_VALUES,
+  );
+
+  res.json(await getSilentPaymentReadiness(network));
 }));
 
 /**

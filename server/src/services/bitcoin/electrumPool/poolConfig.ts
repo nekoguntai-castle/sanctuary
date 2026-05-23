@@ -9,12 +9,24 @@ import {
   type NodeNetworkConfigSource,
 } from '@sanctuary/shared/constants/nodeConfig';
 import type {
+  ElectrumPoolFeatureScope,
   ElectrumPoolConfig,
   LoadBalancingStrategy,
   NetworkType,
   ProxyConfig,
   ServerConfig,
 } from './types';
+import {
+  normalizeServerUsage,
+  parseSilentPaymentVersionsValue,
+  resolveFeaturePoolUsage,
+  serverSatisfiesRequiredFeatures,
+  serverUsageMatchesPool,
+} from '../electrum/capabilities';
+import type {
+  ElectrumFeature,
+  ElectrumServerUsage,
+} from '../electrum/capabilities';
 
 const log = createLogger('ELECTRUM_POOL:SVC_CONFIG');
 
@@ -26,7 +38,13 @@ interface PersistedServer {
   useSsl: boolean;
   priority: number;
   enabled: boolean;
+  serverUsage?: string | null;
   supportsVerbose: boolean | null;
+  silentPaymentVersions?: unknown;
+  supportsSilentPaymentsV0?: boolean | null;
+  capabilityProfileKey?: string | null;
+  lastCapabilityCheck?: Date | null;
+  lastCapabilityError?: string | null;
   network: string;
 }
 
@@ -59,8 +77,31 @@ interface PersistedPoolConfig {
   servers: PersistedServer[];
 }
 
+interface BuildNetworkServersOptions {
+  requiredFeatures: ElectrumFeature[];
+  serverUsage: ElectrumServerUsage;
+  capabilityStaleAfterMs?: number;
+}
+
 function serverMatchesNetwork(server: PersistedServer, network: NetworkType): boolean {
   return server.enabled && server.network === network;
+}
+
+function serverMatchesFeatureScope(
+  server: PersistedServer,
+  options: BuildNetworkServersOptions,
+): boolean {
+  return serverUsageMatchesPool(server.serverUsage, options.serverUsage) &&
+    serverSatisfiesRequiredFeatures(
+      {
+        supportsVerbose: server.supportsVerbose,
+        supportsSilentPaymentsV0: server.supportsSilentPaymentsV0,
+        lastCapabilityCheck: server.lastCapabilityCheck,
+        lastCapabilityError: server.lastCapabilityError,
+      },
+      options.requiredFeatures,
+      { capabilityStaleAfterMs: options.capabilityStaleAfterMs },
+    );
 }
 
 function toServerConfig(server: PersistedServer): ServerConfig {
@@ -72,16 +113,25 @@ function toServerConfig(server: PersistedServer): ServerConfig {
     useSsl: server.useSsl,
     priority: server.priority,
     enabled: server.enabled,
+    network: server.network as NetworkType,
+    serverUsage: normalizeServerUsage(server.serverUsage),
     supportsVerbose: server.supportsVerbose,
+    supportsSilentPaymentsV0: server.supportsSilentPaymentsV0,
+    silentPaymentVersions: parseSilentPaymentVersionsValue(server.silentPaymentVersions),
+    capabilityProfileKey: server.capabilityProfileKey ?? null,
+    lastCapabilityCheck: server.lastCapabilityCheck ?? null,
+    lastCapabilityError: server.lastCapabilityError ?? null,
   };
 }
 
 function buildNetworkServers(
   nodeConfig: PersistedPoolConfig,
-  network: NetworkType
+  network: NetworkType,
+  options: BuildNetworkServersOptions
 ): ServerConfig[] {
   return nodeConfig.servers
     .filter(server => serverMatchesNetwork(server, network))
+    .filter(server => serverMatchesFeatureScope(server, options))
     /* v8 ignore start -- deterministic server priority comparator branch is a V8 coverage artifact */
     .sort((a, b) => a.priority - b.priority)
     /* v8 ignore stop */
@@ -131,14 +181,29 @@ function getNetworkPoolOverrides(
 }
 
 function poolConfigFromNodeConfig(
+  nodeConfig: PersistedPoolConfig
+): Partial<ElectrumPoolConfig> {
+  const config: Partial<ElectrumPoolConfig> = {
+    ...compactPoolOverrides({
+      minConnections: nodeConfig.poolMinConnections,
+      maxConnections: nodeConfig.poolMaxConnections,
+      loadBalancing: optionalLoadBalancing(nodeConfig.poolLoadBalancing),
+    }),
+  };
+
+  if (typeof nodeConfig.poolEnabled === 'boolean') {
+    config.enabled = nodeConfig.poolEnabled;
+  }
+
+  return config;
+}
+
+function scopedPoolConfigFromNodeConfig(
   nodeConfig: PersistedPoolConfig,
   network: NetworkType
 ): Partial<ElectrumPoolConfig> {
   return {
-    enabled: nodeConfig.poolEnabled,
-    minConnections: nodeConfig.poolMinConnections,
-    maxConnections: nodeConfig.poolMaxConnections,
-    loadBalancing: nodeConfig.poolLoadBalancing as LoadBalancingStrategy,
+    ...poolConfigFromNodeConfig(nodeConfig),
     ...getNetworkPoolOverrides(nodeConfig, network),
   };
 }
@@ -147,18 +212,43 @@ function poolConfigFromNodeConfig(
  * Load pool configuration from database for a specific network.
  * Returns empty config when database settings are unavailable.
  */
-export async function loadPoolConfigFromDatabase(network: NetworkType = 'mainnet'): Promise<{
+export async function loadPoolConfigFromDatabase(network?: NetworkType): Promise<{
+  config: Partial<ElectrumPoolConfig>;
+  servers: ServerConfig[];
+  proxy: ProxyConfig | null;
+}>;
+export async function loadPoolConfigFromDatabase(
+  network: NetworkType,
+  featureScope: ElectrumPoolFeatureScope,
+): Promise<{
+  config: Partial<ElectrumPoolConfig>;
+  servers: ServerConfig[];
+  proxy: ProxyConfig | null;
+}>;
+export async function loadPoolConfigFromDatabase(
+  network: NetworkType = 'mainnet',
+  featureScope: ElectrumPoolFeatureScope = {},
+): Promise<{
   config: Partial<ElectrumPoolConfig>;
   servers: ServerConfig[];
   proxy: ProxyConfig | null;
 }> {
+  const requiredFeatures = featureScope.requiredFeatures ?? [];
+  const serverUsage = resolveFeaturePoolUsage(
+    requiredFeatures,
+    featureScope.serverUsage,
+  );
   try {
     const nodeConfig = await nodeConfigRepository.findDefaultWithServers();
 
     if (nodeConfig && nodeConfig.type === 'electrum') {
       return {
-        config: poolConfigFromNodeConfig(nodeConfig, network),
-        servers: buildNetworkServers(nodeConfig, network),
+        config: scopedPoolConfigFromNodeConfig(nodeConfig, network),
+        servers: buildNetworkServers(nodeConfig, network, {
+          requiredFeatures,
+          serverUsage,
+          capabilityStaleAfterMs: featureScope.capabilityStaleAfterMs,
+        }),
         proxy: proxyConfigFromNodeConfig(nodeConfig),
       };
     }

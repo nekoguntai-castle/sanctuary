@@ -9,7 +9,6 @@
 import { EventEmitter } from 'events';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
-import { nodeConfigRepository } from '../../../repositories';
 import type { CircuitBreaker } from '../../circuitBreaker';
 import type {
   ElectrumPoolConfig,
@@ -59,11 +58,7 @@ import {
 } from './acquisitionQueue';
 import { computePoolStats, exportMetrics } from './metricsExporter';
 import { getSubscriptionConnection as getSubscriptionConn } from './subscriptionConnection';
-import {
-  getLoadBalancingStrategy,
-  getProxyConfig,
-  mapEnabledServers,
-} from './nodeConfigMapper';
+import { loadPoolConfigFromDatabase } from './poolConfig';
 import { createElectrumPoolCircuitBreaker } from './poolCircuitBreaker';
 
 const log = createLogger('ELECTRUM_POOL:SVC');
@@ -242,28 +237,29 @@ export class ElectrumPool extends EventEmitter {
    */
   async reloadServers(): Promise<void> {
     try {
-      const nodeConfig = await nodeConfigRepository.findDefaultWithServers();
+      const { config, servers, proxy } = await loadPoolConfigFromDatabase(this.network);
+      const hasReloadedState =
+        Object.keys(config).length > 0 || servers.length > 0 || proxy !== null;
 
-      if (nodeConfig && nodeConfig.type === 'electrum') {
-        const servers = mapEnabledServers(nodeConfig.servers);
-
-        this.setServers(servers);
-
-        const loadBalancing = getLoadBalancingStrategy(nodeConfig);
-        if (loadBalancing) {
-          this.config.loadBalancing = loadBalancing;
-        }
-
-        this.setProxyConfig(getProxyConfig(nodeConfig));
-
-        log.info(`Reloaded ${servers.length} servers from database`, {
-          proxyEnabled: this.proxyConfig?.enabled ?? false,
+      if (!hasReloadedState) {
+        log.warn('No Electrum database config available during reload; keeping current pool state', {
+          network: this.network,
         });
+        return;
+      }
 
-        // Ensure new servers have connections
-        if (this.isInitialized) {
-          await this.ensureMinimumConnections();
-        }
+      this.config = { ...this.config, ...config };
+      this.setServers(servers);
+      this.setProxyConfig(proxy);
+
+      log.info(`Reloaded ${servers.length} servers from database`, {
+        network: this.network,
+        proxyEnabled: this.proxyConfig?.enabled ?? false,
+      });
+
+      // Ensure new servers have connections
+      if (this.isInitialized) {
+        await this.ensureMinimumConnections();
       }
     } catch (error) {
       log.error('Failed to reload servers from database', { error: getErrorMessage(error) });

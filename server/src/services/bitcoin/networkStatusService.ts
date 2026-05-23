@@ -26,6 +26,11 @@ interface ConfiguredServer {
   priority?: number | null;
   lastHealthCheck?: Date | string | null;
   isHealthy?: boolean | null;
+  serverUsage?: 'general' | 'silent_payments' | 'both' | null;
+  supportsVerbose?: boolean | null;
+  supportsSilentPaymentsV0?: boolean | null;
+  lastCapabilityCheck?: Date | string | null;
+  lastCapabilityError?: string | null;
 }
 
 interface StatusNodeConfig {
@@ -99,6 +104,11 @@ function toConfiguredServerStat(server: ConfiguredServer): ElectrumPoolStats['se
     cooldownUntil: null,
     weight: 1,
     healthHistory: [],
+    serverUsage: server.serverUsage ?? 'general',
+    supportsVerbose: server.supportsVerbose ?? null,
+    supportsSilentPaymentsV0: server.supportsSilentPaymentsV0 ?? null,
+    lastCapabilityCheck: server.lastCapabilityCheck ? new Date(server.lastCapabilityCheck) : null,
+    lastCapabilityError: server.lastCapabilityError ?? null,
   };
 }
 

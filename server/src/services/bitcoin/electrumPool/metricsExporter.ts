@@ -55,6 +55,10 @@ function buildServerStats(
       weight: stats?.weight ?? 1.0,
       healthHistory: stats?.healthHistory || [],
       supportsVerbose: server.supportsVerbose,
+      supportsSilentPaymentsV0: server.supportsSilentPaymentsV0,
+      serverUsage: server.serverUsage,
+      lastCapabilityCheck: server.lastCapabilityCheck ?? null,
+      lastCapabilityError: server.lastCapabilityError ?? null,
     };
   });
 }

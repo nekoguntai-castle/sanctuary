@@ -10,6 +10,7 @@ import type { NodeConfig, ElectrumServer, Prisma } from '../generated/prisma/cli
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('NODE_CONFIG:REPO');
+type NullableJsonInput = Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue;
 
 // ---------------------------------------------------------------------------
 // NodeConfig methods
@@ -202,6 +203,13 @@ async function esUpdateHealth(
     lastHealthCheckError?: string | null;
     healthCheckFails?: number;
     supportsVerbose?: boolean;
+    serverFeatures?: NullableJsonInput;
+    serverVersion?: string | null;
+    protocolVersion?: string | null;
+    silentPaymentVersions?: NullableJsonInput;
+    supportsSilentPaymentsV0?: boolean;
+    capabilityProfileKey?: string | null;
+    lastCapabilityError?: string | null;
     lastCapabilityCheck?: Date;
   }
 ): Promise<void> {
@@ -222,6 +230,30 @@ async function esUpdateHealth(
               supportsVerbose: healthData.supportsVerbose,
               lastCapabilityCheck: healthData.lastCapabilityCheck ?? new Date(),
             }
+          : {}),
+        ...(healthData.serverFeatures !== undefined
+          ? { serverFeatures: healthData.serverFeatures }
+          : {}),
+        ...(healthData.serverVersion !== undefined
+          ? { serverVersion: healthData.serverVersion }
+          : {}),
+        ...(healthData.protocolVersion !== undefined
+          ? { protocolVersion: healthData.protocolVersion }
+          : {}),
+        ...(healthData.silentPaymentVersions !== undefined
+          ? { silentPaymentVersions: healthData.silentPaymentVersions }
+          : {}),
+        ...(healthData.supportsSilentPaymentsV0 !== undefined
+          ? {
+              supportsSilentPaymentsV0: healthData.supportsSilentPaymentsV0,
+              lastCapabilityCheck: healthData.lastCapabilityCheck ?? new Date(),
+            }
+          : {}),
+        ...(healthData.capabilityProfileKey !== undefined
+          ? { capabilityProfileKey: healthData.capabilityProfileKey }
+          : {}),
+        ...(healthData.lastCapabilityError !== undefined
+          ? { lastCapabilityError: healthData.lastCapabilityError }
           : {}),
       },
     });

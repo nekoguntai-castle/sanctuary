@@ -75,8 +75,16 @@ function buildServer(overrides: Record<string, unknown> = {}) {
     lastHealthCheck: null,
     lastHealthCheckError: null,
     healthCheckFails: 0,
+    serverUsage: 'general',
+    serverFeatures: null,
+    serverVersion: null,
+    protocolVersion: null,
     supportsVerbose: null,
+    silentPaymentVersions: null,
+    supportsSilentPaymentsV0: null,
+    capabilityProfileKey: null,
     lastCapabilityCheck: null,
+    lastCapabilityError: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
@@ -105,7 +113,17 @@ describe('adminElectrumServerService', () => {
     mocks.testNodeConfig.mockResolvedValue({
       success: true,
       message: 'Connected',
-      info: { blockHeight: 850000, supportsVerbose: true },
+      info: {
+        blockHeight: 850000,
+        supportsVerbose: true,
+        serverFeatures: { silent_payments: [0] },
+        serverVersion: 'Frigate',
+        protocolVersion: '1.6',
+        silentPaymentVersions: [0],
+        supportsSilentPaymentsV0: true,
+        capabilityProfileKey: 'cap-key',
+        lastCapabilityError: null,
+      },
     });
   });
 
@@ -202,8 +220,9 @@ describe('adminElectrumServerService', () => {
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
       nodeConfig: { connect: { id: 'default' } },
       priority: 5,
+      serverUsage: 'general',
     }));
-    expect(mocks.reloadElectrumServers).toHaveBeenCalledTimes(1);
+    expect(mocks.reloadElectrumServers).toHaveBeenCalledWith('mainnet');
 
     mocks.findByHostAndPort.mockResolvedValueOnce(buildServer({ label: 'Duplicate' }));
     await expect(createElectrumServer({
@@ -241,9 +260,48 @@ describe('adminElectrumServerService', () => {
       priority: 3,
       enabled: false,
       network: 'mainnet',
+      serverUsage: 'general',
+      supportsVerbose: null,
+      supportsSilentPaymentsV0: null,
       updatedAt: expect.any(Date),
     }));
-    expect(mocks.reloadElectrumServers).toHaveBeenCalledTimes(1);
+    expect(mocks.reloadElectrumServers).toHaveBeenCalledWith('mainnet');
+  });
+
+  it('reloads both old and new network pools when a server changes networks', async () => {
+    const { updateElectrumServer } = await loadService();
+    mocks.findById.mockResolvedValueOnce(buildServer({
+      id: 'srv-1',
+      network: 'mainnet',
+      host: 'move.example.com',
+      port: 50002,
+    }));
+
+    await updateElectrumServer('srv-1', { network: 'testnet4' });
+
+    expect(mocks.findByHostAndPort).toHaveBeenCalledWith(
+      'move.example.com',
+      50002,
+      'testnet4',
+      'srv-1',
+    );
+    expect(mocks.reloadElectrumServers).toHaveBeenNthCalledWith(1, 'mainnet');
+    expect(mocks.reloadElectrumServers).toHaveBeenNthCalledWith(2, 'testnet4');
+  });
+
+  it('falls back to a full pool reload when existing server network metadata is invalid', async () => {
+    const { updateElectrumServer } = await loadService();
+    mocks.findById.mockResolvedValueOnce(buildServer({
+      id: 'srv-legacy',
+      network: 'testnet',
+      host: 'legacy.example.com',
+      port: 50002,
+    }));
+
+    await updateElectrumServer('srv-legacy', { network: 'mainnet' });
+
+    expect(mocks.reloadElectrumServers).toHaveBeenNthCalledWith(1, undefined);
+    expect(mocks.reloadElectrumServers).toHaveBeenNthCalledWith(2, 'mainnet');
   });
 
   it('throws not found for missing update/delete/test targets', async () => {
@@ -265,7 +323,7 @@ describe('adminElectrumServerService', () => {
     await expect(deleteElectrumServer('srv-1')).resolves.toMatchObject({ id: 'srv-1' });
 
     expect(mocks.deleteServer).toHaveBeenCalledWith('srv-1');
-    expect(mocks.reloadElectrumServers).toHaveBeenCalledTimes(1);
+    expect(mocks.reloadElectrumServers).toHaveBeenCalledWith('mainnet');
   });
 
   it('tests saved servers and persists successful health capability data', async () => {
@@ -288,6 +346,7 @@ describe('adminElectrumServerService', () => {
       host: 'health.example.com',
       port: 50001,
       protocol: 'tcp',
+      network: 'mainnet',
     });
     expect(mocks.updateHealth).toHaveBeenCalledWith('srv-1', expect.objectContaining({
       isHealthy: true,
@@ -295,8 +354,16 @@ describe('adminElectrumServerService', () => {
       lastHealthCheckError: null,
       healthCheckFails: 0,
       supportsVerbose: true,
+      serverFeatures: { silent_payments: [0] },
+      serverVersion: 'Frigate',
+      protocolVersion: '1.6',
+      silentPaymentVersions: [0],
+      supportsSilentPaymentsV0: true,
+      capabilityProfileKey: 'cap-key',
+      lastCapabilityError: null,
       lastCapabilityCheck: expect.any(Date),
     }));
+    expect(mocks.reloadElectrumServers).toHaveBeenCalledWith('mainnet');
   });
 
   it('tracks failed saved-server health checks', async () => {

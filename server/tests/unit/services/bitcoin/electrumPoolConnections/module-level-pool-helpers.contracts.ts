@@ -5,6 +5,8 @@ import {
   getElectrumPool,
   getElectrumPoolAsync,
   getElectrumPoolForNetwork,
+  getElectrumPoolForNetworkAndFeatures,
+  getSubscriptionConnectionForFeatures,
   getPoolConfig,
   getElectrumServers,
   initializeElectrumPool,
@@ -14,7 +16,11 @@ import {
   resetElectrumPoolForNetwork,
   shutdownElectrumPool,
 } from '../../../../../src/services/bitcoin/electrumPool';
-import { getLoadBalancingStrategy } from '../../../../../src/services/bitcoin/electrumPool/nodeConfigMapper';
+import {
+  getLoadBalancingStrategy,
+  getProxyConfig,
+  mapEnabledServers,
+} from '../../../../../src/services/bitcoin/electrumPool/nodeConfigMapper';
 import prisma from '../../../../../src/models/prisma';
 
 export function registerElectrumPoolModuleHelperTests(): void {
@@ -176,6 +182,114 @@ export function registerElectrumPoolModuleHelperTests(): void {
       expect(signetPool.getServers()).toHaveLength(1);
     });
 
+    it('partitions general and Silent Payments feature pools by usage and capability freshness', async () => {
+      const freshCapabilityCheck = new Date();
+      const staleCapabilityCheck = new Date(Date.now() - (25 * 60 * 60 * 1000));
+      (prisma as any).nodeConfig.findFirst.mockResolvedValue({
+        type: 'electrum',
+        poolEnabled: true,
+        poolMinConnections: 1,
+        poolMaxConnections: 2,
+        poolLoadBalancing: 'round_robin',
+        proxyEnabled: false,
+        proxyHost: null,
+        proxyPort: null,
+        servers: [
+          {
+            id: 'general-1',
+            label: 'General',
+            host: 'general.example.com',
+            port: 50002,
+            useSsl: true,
+            priority: 0,
+            enabled: true,
+            network: 'mainnet',
+            serverUsage: 'general',
+            supportsVerbose: null,
+          },
+          {
+            id: 'sp-1',
+            label: 'Frigate',
+            host: 'frigate.example.com',
+            port: 50002,
+            useSsl: true,
+            priority: 1,
+            enabled: true,
+            network: 'mainnet',
+            serverUsage: 'silent_payments',
+            supportsVerbose: true,
+            supportsSilentPaymentsV0: true,
+            silentPaymentVersions: [0],
+            lastCapabilityCheck: freshCapabilityCheck,
+            lastCapabilityError: null,
+          },
+          {
+            id: 'both-1',
+            label: 'Both',
+            host: 'both.example.com',
+            port: 50002,
+            useSsl: true,
+            priority: 2,
+            enabled: true,
+            network: 'mainnet',
+            serverUsage: 'both',
+            supportsVerbose: true,
+            supportsSilentPaymentsV0: true,
+            silentPaymentVersions: [0],
+            lastCapabilityCheck: freshCapabilityCheck,
+            lastCapabilityError: null,
+          },
+          {
+            id: 'sp-stale',
+            label: 'Stale Frigate',
+            host: 'stale.example.com',
+            port: 50002,
+            useSsl: true,
+            priority: 3,
+            enabled: true,
+            network: 'mainnet',
+            serverUsage: 'silent_payments',
+            supportsVerbose: true,
+            supportsSilentPaymentsV0: true,
+            silentPaymentVersions: [0],
+            lastCapabilityCheck: staleCapabilityCheck,
+            lastCapabilityError: null,
+          },
+          {
+            id: 'sp-unknown',
+            label: 'Unknown Frigate',
+            host: 'unknown.example.com',
+            port: 50002,
+            useSsl: true,
+            priority: 4,
+            enabled: true,
+            network: 'mainnet',
+            serverUsage: 'silent_payments',
+            supportsVerbose: true,
+            supportsSilentPaymentsV0: null,
+            silentPaymentVersions: null,
+            lastCapabilityCheck: null,
+            lastCapabilityError: null,
+          },
+        ],
+      });
+
+      const generalPool = await getElectrumPoolForNetwork('mainnet');
+      expect(generalPool.getServers().map(server => server.id)).toEqual([
+        'general-1',
+        'both-1',
+      ]);
+
+      const silentPaymentsPool = await getElectrumPoolForNetworkAndFeatures(
+        'mainnet',
+        ['silent_payments_v0'],
+      );
+      expect(silentPaymentsPool.getServers().map(server => server.id)).toEqual([
+        'sp-1',
+        'both-1',
+      ]);
+    });
+
     it('falls back to global pool settings when per-network settings are missing and omits null proxy credentials', async () => {
       (prisma as any).nodeConfig.findFirst.mockResolvedValueOnce({
         type: 'electrum',
@@ -260,6 +374,86 @@ export function registerElectrumPoolModuleHelperTests(): void {
       expect(getLoadBalancingStrategy({ poolLoadBalancing: null })).toBeNull();
     });
 
+    it('maps enabled saved servers with normalized Silent Payments capability metadata', () => {
+      const mapped = mapEnabledServers([
+        {
+          id: 'enabled-sp',
+          label: 'Frigate',
+          host: 'frigate.example.com',
+          port: 50002,
+          useSsl: true,
+          priority: 0,
+          enabled: true,
+          network: 'mainnet',
+          serverUsage: 'silent_payments',
+          supportsVerbose: true,
+          supportsSilentPaymentsV0: true,
+          silentPaymentVersions: [0, 0],
+          capabilityProfileKey: 'cap-key',
+          lastCapabilityCheck: new Date('2026-05-23T12:00:00.000Z'),
+          lastCapabilityError: null,
+        },
+        {
+          id: 'disabled',
+          label: 'Disabled',
+          host: 'disabled.example.com',
+          port: 50002,
+          useSsl: true,
+          priority: 1,
+          enabled: false,
+          supportsVerbose: null,
+        },
+      ]);
+
+      expect(mapped).toEqual([
+        expect.objectContaining({
+          id: 'enabled-sp',
+          network: 'mainnet',
+          serverUsage: 'silent_payments',
+          silentPaymentVersions: [0],
+          supportsSilentPaymentsV0: true,
+          capabilityProfileKey: 'cap-key',
+        }),
+      ]);
+
+      expect(mapEnabledServers([
+        {
+          id: 'enabled-general',
+          label: 'General',
+          host: 'general.example.com',
+          port: 50002,
+          useSsl: true,
+          priority: 0,
+          enabled: true,
+          supportsVerbose: null,
+        },
+      ])).toEqual([
+        expect.objectContaining({
+          id: 'enabled-general',
+          serverUsage: 'general',
+          capabilityProfileKey: null,
+          lastCapabilityCheck: null,
+        }),
+      ]);
+    });
+
+    it('projects proxy configuration through the shared node config helper', () => {
+      expect(getProxyConfig({
+        proxyEnabled: true,
+        proxyHost: '127.0.0.1',
+        proxyPort: 9050,
+        proxyUsername: 'tor-user',
+        proxyPassword: 'tor-pass',
+      })).toEqual({
+        enabled: true,
+        host: '127.0.0.1',
+        port: 9050,
+        username: 'tor-user',
+        password: 'tor-pass',
+      });
+      expect(getProxyConfig({ proxyEnabled: false })).toBeNull();
+    });
+
     it('keeps base pool settings for regtest (no per-network override branch)', async () => {
       (prisma as any).nodeConfig.findFirst.mockResolvedValueOnce({
         type: 'electrum',
@@ -311,6 +505,405 @@ export function registerElectrumPoolModuleHelperTests(): void {
       const config = getPoolConfig();
       expect(config?.enabled).toBe(false);
       expect(config?.minConnections).toBe(1);
+    });
+
+    it('swallows database reload failures for an existing pool', async () => {
+      const configured = await initializeElectrumPool({
+        enabled: false,
+        minConnections: 1,
+        maxConnections: 1,
+      });
+      (prisma as any).nodeConfig.findFirst.mockResolvedValueOnce({
+        type: 'electrum',
+        poolEnabled: true,
+        poolMinConnections: 1,
+        poolMaxConnections: 1,
+        poolLoadBalancing: 'round_robin',
+        proxyEnabled: false,
+        proxyHost: null,
+        proxyPort: null,
+        servers: [
+          {
+            id: 'reload-failure',
+            label: 'Reload Failure',
+            host: 'reload-failure.example.com',
+            port: 50002,
+            useSsl: true,
+            priority: 0,
+            enabled: true,
+            network: 'mainnet',
+            supportsVerbose: null,
+          },
+        ],
+      });
+      const setServersSpy = vi.spyOn(configured, 'setServers')
+        .mockImplementationOnce(() => {
+          throw new Error('set servers failed');
+        });
+
+      await expect(configured.reloadServers()).resolves.toBeUndefined();
+
+      expect(setServersSpy).toHaveBeenCalledTimes(1);
+      setServersSpy.mockRestore();
+    });
+
+    it('reloads a selected network pool without resetting other network pools', async () => {
+      const testnetPool = await getElectrumPoolForNetwork('testnet3');
+      const signetPool = await getElectrumPoolForNetwork('signet');
+      const testnetShutdown = vi.spyOn(testnetPool, 'shutdown').mockResolvedValue(undefined);
+      const signetShutdown = vi.spyOn(signetPool, 'shutdown').mockResolvedValue(undefined);
+
+      await reloadElectrumServers('testnet3');
+
+      expect(testnetShutdown).toHaveBeenCalledTimes(1);
+      expect(signetShutdown).not.toHaveBeenCalled();
+      testnetShutdown.mockRestore();
+      signetShutdown.mockRestore();
+    });
+
+    it('clears the legacy singleton when resetting the mainnet network pool', async () => {
+      await getElectrumPoolForNetwork('mainnet');
+      expect(getPoolConfig()).not.toBeNull();
+
+      await resetElectrumPoolForNetwork('mainnet');
+
+      expect(getPoolConfig()).toBeNull();
+    });
+
+    it('keeps a replaced network pool entry during shutdown cleanup', async () => {
+      await getElectrumPoolForNetwork('signet');
+      const replacementPool = new ElectrumPool({
+        enabled: true,
+        minConnections: 1,
+        maxConnections: 1,
+      });
+      const originalGet = Map.prototype.get;
+      const getSpy = vi.spyOn(Map.prototype, 'get')
+        .mockImplementation(function(this: Map<any, any>, key: any) {
+          if (key === 'signet') {
+            return replacementPool as any;
+          }
+          return originalGet.call(this, key);
+        });
+
+      try {
+        await shutdownElectrumPool();
+      } finally {
+        getSpy.mockRestore();
+        await resetElectrumPoolForNetwork('signet');
+      }
+    });
+
+    it('reloads each initialized network pool when no specific network is supplied', async () => {
+      const testnetPool = await getElectrumPoolForNetwork('testnet3');
+      const signetPool = await getElectrumPoolForNetwork('signet');
+      const testnetShutdown = vi.spyOn(testnetPool, 'shutdown').mockResolvedValue(undefined);
+      const signetShutdown = vi.spyOn(signetPool, 'shutdown').mockResolvedValue(undefined);
+
+      await reloadElectrumServers();
+
+      expect(testnetShutdown).toHaveBeenCalledTimes(1);
+      expect(signetShutdown).toHaveBeenCalledTimes(1);
+      testnetShutdown.mockRestore();
+      signetShutdown.mockRestore();
+    });
+
+    it('logs and swallows pool shutdown failures during reset', async () => {
+      const pool = await getElectrumPoolForNetwork('testnet3');
+      const shutdownSpy = vi.spyOn(pool, 'shutdown')
+        .mockRejectedValueOnce(new Error('shutdown failed'));
+
+      await expect(reloadElectrumServers('testnet3')).resolves.toBeUndefined();
+
+      expect(shutdownSpy).toHaveBeenCalledTimes(1);
+      shutdownSpy.mockRestore();
+    });
+
+    it('logs and removes feature-scoped pools even when shutdown rejects', async () => {
+      const freshCapabilityCheck = new Date();
+      (prisma as any).nodeConfig.findFirst.mockResolvedValueOnce({
+        type: 'electrum',
+        poolEnabled: true,
+        poolMinConnections: 1,
+        poolMaxConnections: 2,
+        poolLoadBalancing: 'round_robin',
+        proxyEnabled: false,
+        proxyHost: null,
+        proxyPort: null,
+        servers: [
+          {
+            id: 'sp-1',
+            label: 'Frigate',
+            host: 'frigate.example.com',
+            port: 50002,
+            useSsl: true,
+            priority: 0,
+            enabled: true,
+            network: 'mainnet',
+            serverUsage: 'silent_payments',
+            supportsVerbose: true,
+            supportsSilentPaymentsV0: true,
+            silentPaymentVersions: [0],
+            lastCapabilityCheck: freshCapabilityCheck,
+            lastCapabilityError: null,
+          },
+        ],
+      });
+      const featurePool = await getElectrumPoolForNetworkAndFeatures(
+        'mainnet',
+        ['silent_payments_v0'],
+      );
+      const shutdownSpy = vi.spyOn(featurePool, 'shutdown')
+        .mockRejectedValueOnce(new Error('feature shutdown failed'));
+
+      await expect(resetElectrumPoolForNetwork('mainnet')).resolves.toBeUndefined();
+
+      expect(shutdownSpy).toHaveBeenCalledTimes(1);
+      shutdownSpy.mockRestore();
+    });
+
+    it('keeps a replaced feature-scoped pool entry during shutdown cleanup', async () => {
+      const freshCapabilityCheck = new Date();
+      (prisma as any).nodeConfig.findFirst.mockResolvedValueOnce({
+        type: 'electrum',
+        poolEnabled: true,
+        poolMinConnections: 1,
+        poolMaxConnections: 2,
+        poolLoadBalancing: 'round_robin',
+        proxyEnabled: false,
+        proxyHost: null,
+        proxyPort: null,
+        servers: [
+          {
+            id: 'sp-replaced',
+            label: 'Frigate Replaced',
+            host: 'frigate-replaced.example.com',
+            port: 50002,
+            useSsl: true,
+            priority: 0,
+            enabled: true,
+            network: 'mainnet',
+            serverUsage: 'silent_payments',
+            supportsVerbose: true,
+            supportsSilentPaymentsV0: true,
+            silentPaymentVersions: [0],
+            lastCapabilityCheck: freshCapabilityCheck,
+            lastCapabilityError: null,
+          },
+        ],
+      });
+      await getElectrumPoolForNetworkAndFeatures(
+        'mainnet',
+        ['silent_payments_v0'],
+      );
+      const replacementPool = new ElectrumPool({
+        enabled: true,
+        minConnections: 1,
+        maxConnections: 1,
+      });
+      const originalGet = Map.prototype.get;
+      const getSpy = vi.spyOn(Map.prototype, 'get')
+        .mockImplementation(function(this: Map<any, any>, key: any) {
+          if (typeof key === 'string' && key.includes('silent_payments_v0')) {
+            return replacementPool as any;
+          }
+          return originalGet.call(this, key);
+        });
+
+      try {
+        await resetElectrumPoolForNetwork('mainnet');
+      } finally {
+        getSpy.mockRestore();
+        await resetElectrumPoolForNetwork('mainnet');
+      }
+    });
+
+    it('returns subscription connections from feature-scoped pools', async () => {
+      const fakeClient = { isConnected: vi.fn().mockReturnValue(true) } as any;
+      const subscriptionSpy = vi.spyOn(ElectrumPool.prototype, 'getSubscriptionConnection')
+        .mockResolvedValueOnce(fakeClient);
+
+      await expect(getSubscriptionConnectionForFeatures(
+        'mainnet',
+        ['base_electrum'],
+      )).resolves.toBe(fakeClient);
+
+      expect(subscriptionSpy).toHaveBeenCalledTimes(1);
+      subscriptionSpy.mockRestore();
+    });
+
+    it('routes empty feature requirements to the general network pool', async () => {
+      const networkPool = await getElectrumPoolForNetwork('testnet3');
+
+      await expect(getElectrumPoolForNetworkAndFeatures(
+        'testnet3',
+        [],
+      )).resolves.toBe(networkPool);
+    });
+
+    it('reuses existing feature-scoped pools for repeated requests', async () => {
+      const freshCapabilityCheck = new Date();
+      (prisma as any).nodeConfig.findFirst.mockResolvedValueOnce({
+        type: 'electrum',
+        poolEnabled: true,
+        poolMinConnections: 1,
+        poolMaxConnections: 2,
+        poolLoadBalancing: 'round_robin',
+        proxyEnabled: false,
+        proxyHost: null,
+        proxyPort: null,
+        servers: [
+          {
+            id: 'sp-existing',
+            label: 'Frigate Existing',
+            host: 'frigate-existing.example.com',
+            port: 50002,
+            useSsl: true,
+            priority: 0,
+            enabled: true,
+            network: 'mainnet',
+            serverUsage: 'silent_payments',
+            supportsVerbose: true,
+            supportsSilentPaymentsV0: true,
+            silentPaymentVersions: [0],
+            lastCapabilityCheck: freshCapabilityCheck,
+            lastCapabilityError: null,
+          },
+        ],
+      });
+
+      const first = await getElectrumPoolForNetworkAndFeatures(
+        'mainnet',
+        ['silent_payments_v0'],
+      );
+      const second = await getElectrumPoolForNetworkAndFeatures(
+        'mainnet',
+        ['silent_payments_v0'],
+      );
+
+      expect(second).toBe(first);
+    });
+
+    it('reuses in-flight feature-scoped pool initialization for concurrent callers', async () => {
+      let resolveConfig: (value: unknown) => void = () => undefined;
+      const delayedConfig = new Promise((resolve) => {
+        resolveConfig = resolve;
+      });
+      (prisma as any).nodeConfig.findFirst.mockReturnValueOnce(delayedConfig);
+
+      const first = getElectrumPoolForNetworkAndFeatures(
+        'mainnet',
+        ['silent_payments_v0'],
+      );
+      const second = getElectrumPoolForNetworkAndFeatures(
+        'mainnet',
+        ['silent_payments_v0'],
+      );
+      resolveConfig({
+        type: 'electrum',
+        poolEnabled: true,
+        poolMinConnections: 1,
+        poolMaxConnections: 1,
+        poolLoadBalancing: 'round_robin',
+        proxyEnabled: false,
+        proxyHost: null,
+        proxyPort: null,
+        servers: [],
+      });
+
+      const [firstPool, secondPool] = await Promise.all([first, second]);
+
+      expect(secondPool).toBe(firstPool);
+    });
+
+    it('returns a feature pool that appears during the inner initialization guard', async () => {
+      const fallbackPool = new ElectrumPool({
+        enabled: true,
+        minConnections: 1,
+        maxConnections: 1,
+      });
+      const originalGet = Map.prototype.get;
+      let featureKeyLookupCount = 0;
+      const getSpy = vi.spyOn(Map.prototype, 'get')
+        .mockImplementation(function(this: Map<any, any>, key: any) {
+          if (typeof key === 'string' && key.includes('silent_payments_v0')) {
+            featureKeyLookupCount += 1;
+            if (featureKeyLookupCount === 3) {
+              return fallbackPool as any;
+            }
+          }
+          return originalGet.call(this, key);
+        });
+
+      try {
+        const loaded = await getElectrumPoolForNetworkAndFeatures(
+          'mainnet',
+          ['silent_payments_v0'],
+        );
+
+        expect(loaded).toBe(fallbackPool);
+      } finally {
+        getSpy.mockRestore();
+      }
+    });
+
+    it('evicts oldest feature-scoped pools when the feature registry exceeds its limit', async () => {
+      (prisma as any).nodeConfig.findFirst.mockResolvedValue({
+        type: 'electrum',
+        poolEnabled: true,
+        poolMinConnections: 1,
+        poolMaxConnections: 1,
+        poolLoadBalancing: 'round_robin',
+        proxyEnabled: false,
+        proxyHost: null,
+        proxyPort: null,
+        servers: [],
+      });
+      const shutdownSpy = vi.spyOn(ElectrumPool.prototype, 'shutdown')
+        .mockResolvedValue(undefined);
+
+      try {
+        for (let staleAfterMs = 1; staleAfterMs <= 17; staleAfterMs += 1) {
+          await getElectrumPoolForNetworkAndFeatures(
+            'mainnet',
+            ['silent_payments_v0'],
+            { capabilityStaleAfterMs: staleAfterMs },
+          );
+        }
+
+        expect(shutdownSpy).toHaveBeenCalled();
+      } finally {
+        shutdownSpy.mockRestore();
+      }
+    });
+
+    it('drops in-flight feature pool init keys during network reset', async () => {
+      let resolveConfig: (value: unknown) => void = () => undefined;
+      const delayedConfig = new Promise((resolve) => {
+        resolveConfig = resolve;
+      });
+      (prisma as any).nodeConfig.findFirst.mockReturnValueOnce(delayedConfig);
+
+      const pendingPool = getElectrumPoolForNetworkAndFeatures(
+        'mainnet',
+        ['silent_payments_v0'],
+      );
+
+      await resetElectrumPoolForNetwork('mainnet');
+      resolveConfig({
+        type: 'electrum',
+        poolEnabled: true,
+        poolMinConnections: 1,
+        poolMaxConnections: 1,
+        poolLoadBalancing: 'round_robin',
+        proxyEnabled: false,
+        proxyHost: null,
+        proxyPort: null,
+        servers: [],
+      });
+      const pool = await pendingPool;
+
+      expect(pool).toBeInstanceOf(ElectrumPool);
     });
 
     it('loads servers and proxy settings from database during async bootstrap', async () => {

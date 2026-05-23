@@ -12,7 +12,11 @@
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import * as methods from './methods';
-import type { TransactionDetails, BitcoinNetwork } from './types';
+import type {
+  ElectrumServerFeatures,
+  TransactionDetails,
+  BitcoinNetwork,
+} from './types';
 
 const log = createLogger('ELECTRUM:SVC_API');
 
@@ -32,6 +36,15 @@ export async function getServerVersion(
   requestFn: RequestFn
 ): Promise<{ server: string; protocol: string }> {
   return methods.getServerVersion(requestFn);
+}
+
+/**
+ * Get server feature advertisement
+ */
+export async function getServerFeatures(
+  requestFn: RequestFn
+): Promise<ElectrumServerFeatures> {
+  return methods.getServerFeatures(requestFn);
 }
 
 /**

@@ -19,6 +19,8 @@ import { ADMIN_GROUP_ROLE_VALUES } from '../admin/groupRoles';
 // Electrum Server Configuration
 // =============================================================================
 
+const ElectrumServerUsageSchema = z.enum(['general', 'silent_payments', 'both']);
+
 export const ElectrumServerSchema = z.object({
   type: z.enum(['public', 'custom']),
   host: z.string().min(1, 'Host is required'),
@@ -36,6 +38,7 @@ export const CreateElectrumServerSchema = z.object({
   priority: z.number().int().min(0).max(100).optional(),
   enabled: z.boolean().default(true),
   network: NetworkTypeSchema.default('mainnet'),
+  serverUsage: ElectrumServerUsageSchema.default('general'),
 });
 
 export const UpdateElectrumServerSchema = z.object({
@@ -46,6 +49,7 @@ export const UpdateElectrumServerSchema = z.object({
   priority: z.number().int().min(0).max(100).optional(),
   enabled: z.boolean().optional(),
   network: NetworkTypeSchema.optional(),
+  serverUsage: ElectrumServerUsageSchema.optional(),
 });
 
 export const TestElectrumServerSchema = z.object({

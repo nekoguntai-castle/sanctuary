@@ -45,6 +45,9 @@ const bitcoinApiMocks = vi.hoisted(() => ({
     createCPFPTransaction: vi.fn(),
     createBatchTransaction: vi.fn(),
   },
+  mockSilentPayments: {
+    getSilentPaymentReadiness: vi.fn(),
+  },
 }));
 
 export const mockNodeClient = bitcoinApiMocks.mockNodeClient;
@@ -52,6 +55,7 @@ export const mockBlockchain = bitcoinApiMocks.mockBlockchain;
 export const mockMempool = bitcoinApiMocks.mockMempool;
 export const mockUtils = bitcoinApiMocks.mockUtils;
 export const mockAdvancedTx = bitcoinApiMocks.mockAdvancedTx;
+export const mockSilentPayments = bitcoinApiMocks.mockSilentPayments;
 export { createMockTransaction, mockElectrumClient, mockElectrumPool, mockPrismaClient };
 
 vi.mock('../../../../src/models/prisma', () => ({
@@ -64,6 +68,7 @@ vi.mock('../../../../src/services/bitcoin/blockchain', () => bitcoinApiMocks.moc
 vi.mock('../../../../src/services/bitcoin/mempool', () => bitcoinApiMocks.mockMempool);
 vi.mock('../../../../src/services/bitcoin/utils', () => bitcoinApiMocks.mockUtils);
 vi.mock('../../../../src/services/bitcoin/advancedTx', () => bitcoinApiMocks.mockAdvancedTx);
+vi.mock('../../../../src/services/silentPayments/readiness', () => bitcoinApiMocks.mockSilentPayments);
 vi.mock('../../../../src/services/bitcoin/electrum', () => ({
   getElectrumClient: () => mockElectrumClient,
 }));
@@ -226,6 +231,17 @@ export const setupBitcoinApiMocks = () => {
   mockNodeClient.isConnected.mockReturnValue(true);
   mockNodeClient.getElectrumPool.mockReturnValue(mockElectrumPool);
   mockNodeClient.getNodeClient.mockResolvedValue(mockElectrumClient);
+  mockSilentPayments.getSilentPaymentReadiness.mockResolvedValue({
+    featureEnabled: true,
+    ready: true,
+    network: 'mainnet',
+    requiredFeatures: ['silent_payments_v0'],
+    blockers: [],
+    compatibleServerCount: 1,
+    endpointCount: 1,
+    featurePoolHealthy: true,
+    servers: [],
+  });
 
   // Default prisma mocks
   mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({

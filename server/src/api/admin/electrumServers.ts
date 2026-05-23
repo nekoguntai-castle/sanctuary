@@ -115,7 +115,7 @@ router.get('/:network', authenticate, requireAdmin, asyncHandler(async (req, res
  *   - network: Network (mainnet, testnet3, testnet4, signet, regtest) - defaults to mainnet
  */
 router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
-  const { label, host, port, useSsl, priority, enabled, network } = parseAdminRequestBody(
+  const { label, host, port, useSsl, priority, enabled, network, serverUsage } = parseAdminRequestBody(
     CreateElectrumServerSchema,
     req.body,
     formatElectrumServerValidation('Label, host, and port are required')
@@ -131,6 +131,7 @@ router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
     useSsl,
     priority,
     enabled,
+    serverUsage,
   });
 
   log.info('Electrum server added', { id: server.id, label, host, port, network: serverNetwork });

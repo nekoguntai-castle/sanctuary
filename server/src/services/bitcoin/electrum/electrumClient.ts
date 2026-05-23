@@ -19,6 +19,7 @@ import * as publicApi from './publicApi';
 import * as methods from './methods';
 import type {
   ElectrumConfig,
+  ElectrumServerFeatures,
   TransactionDetails,
   BitcoinNetwork,
   PendingRequest,
@@ -354,6 +355,12 @@ class ElectrumClient extends EventEmitter {
       (method, params) => this.request(method, params)
     );
     return this.serverVersion;
+  }
+
+  async getServerFeatures(): Promise<ElectrumServerFeatures> {
+    return publicApi.getServerFeatures(
+      (method, params) => this.request(method, params)
+    );
   }
 
   async ping(): Promise<null> {

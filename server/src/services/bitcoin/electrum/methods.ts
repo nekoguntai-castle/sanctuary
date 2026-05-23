@@ -19,10 +19,15 @@ import {
   HistoryItemSchema,
   UtxoItemSchema,
   ServerVersionSchema,
+  ServerFeaturesSchema,
   HeadersSubscribeSchema,
   validateResponse,
 } from './types';
-import type { TransactionDetails, BitcoinNetwork } from './types';
+import type {
+  ElectrumServerFeatures,
+  TransactionDetails,
+  BitcoinNetwork,
+} from './types';
 import { bitcoinJsNetworkName } from '../networks';
 
 const log = createLogger('ELECTRUM:SVC_METHODS');
@@ -142,6 +147,16 @@ export async function getServerVersion(
     server: validated[0],
     protocol: validated[1],
   };
+}
+
+/**
+ * Get server feature advertisement.
+ */
+export async function getServerFeatures(
+  requestFn: RequestFn
+): Promise<ElectrumServerFeatures> {
+  const result = await requestFn('server.features');
+  return validateResponse(ServerFeaturesSchema, result, 'getServerFeatures');
 }
 
 /**

@@ -182,6 +182,18 @@ describe('ElectrumClient behavior', () => {
     expect(requestSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('requests and validates server feature advertisements', async () => {
+    const client = makeClient();
+    const requestSpy = vi.spyOn(client as any, 'request')
+      .mockResolvedValueOnce({ server_version: 'Frigate', silent_payments: [0] });
+
+    await expect(client.getServerFeatures()).resolves.toEqual({
+      server_version: 'Frigate',
+      silent_payments: [0],
+    });
+    expect(requestSpy).toHaveBeenCalledWith('server.features', undefined);
+  });
+
   it('tests verbose support outcomes', async () => {
     const client = makeClient();
     const requestSpy = vi.spyOn(client as any, 'request');

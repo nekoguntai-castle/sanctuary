@@ -589,6 +589,7 @@ describe('admin electrum servers router', () => {
       host: 'health.electrum.example',
       port: 51002,
       protocol: 'tcp',
+      network: 'mainnet',
     });
     expect(mockPrismaClient.electrumServer.update).toHaveBeenCalledWith(
       expect.objectContaining({

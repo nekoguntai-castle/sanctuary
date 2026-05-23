@@ -10,10 +10,18 @@ export function registerNodeClientTestConfigTests(
     const connect = vi.fn().mockResolvedValue(undefined);
     const disconnect = vi.fn();
     const getBlockHeight = vi.fn().mockResolvedValue(901234);
+    const getServerVersion = vi
+      .fn()
+      .mockResolvedValue({ server: "Frigate", protocol: "1.6" });
+    const getServerFeatures = vi
+      .fn()
+      .mockResolvedValue({ silent_payments: [0] });
     const testVerboseSupportFn = vi.fn().mockResolvedValue(true);
     mocks.electrumClientCtor.mockImplementationOnce(() => ({
       connect,
       disconnect,
+      getServerVersion,
+      getServerFeatures,
       getBlockHeight,
       testVerboseSupport: testVerboseSupportFn,
     }));
@@ -28,6 +36,20 @@ export function registerNodeClientTestConfigTests(
     expect(result.info).toEqual({
       blockHeight: 901234,
       supportsVerbose: true,
+      serverFeatures: { silent_payments: [0] },
+      serverVersion: "Frigate",
+      protocolVersion: "1.6",
+      silentPaymentVersions: [0],
+      supportsSilentPaymentsV0: true,
+      capabilityProfileKey: JSON.stringify({
+        serverVersion: "Frigate",
+        protocolVersion: "1.6",
+        supportsVerbose: true,
+        silentPaymentVersions: [0],
+        supportsSilentPaymentsV0: true,
+        lastCapabilityError: null,
+      }),
+      lastCapabilityError: null,
     });
     expect(disconnect).toHaveBeenCalledTimes(1);
   });
@@ -36,6 +58,10 @@ export function registerNodeClientTestConfigTests(
     const testClient = {
       connect: vi.fn().mockResolvedValue(undefined),
       disconnect: vi.fn(),
+      getServerVersion: vi
+        .fn()
+        .mockResolvedValue({ server: "ElectrumX", protocol: "1.4" }),
+      getServerFeatures: vi.fn().mockResolvedValue({}),
       getBlockHeight: vi.fn().mockResolvedValue(133929),
       getBlockHeader: vi.fn(),
       testVerboseSupport: vi.fn().mockResolvedValue(true),
@@ -63,6 +89,10 @@ export function registerNodeClientTestConfigTests(
     const testClient = {
       connect: vi.fn().mockResolvedValue(undefined),
       disconnect: vi.fn(),
+      getServerVersion: vi
+        .fn()
+        .mockResolvedValue({ server: "ElectrumX", protocol: "1.4" }),
+      getServerFeatures: vi.fn().mockResolvedValue({}),
       getBlockHeight: vi.fn().mockResolvedValue(4959040),
       getBlockHeader: vi.fn(),
       testVerboseSupport: vi.fn().mockResolvedValue(true),
@@ -89,12 +119,18 @@ export function registerNodeClientTestConfigTests(
     const connect = vi.fn().mockResolvedValue(undefined);
     const disconnect = vi.fn();
     const getBlockHeight = vi.fn().mockResolvedValue(901234);
+    const getServerVersion = vi
+      .fn()
+      .mockResolvedValue({ server: "ElectrumX", protocol: "1.4" });
+    const getServerFeatures = vi.fn().mockResolvedValue({});
     const testVerboseSupportFn = vi
       .fn()
       .mockRejectedValue(new Error("capability unavailable"));
     mocks.electrumClientCtor.mockImplementationOnce(() => ({
       connect,
       disconnect,
+      getServerVersion,
+      getServerFeatures,
       getBlockHeight,
       testVerboseSupport: testVerboseSupportFn,
     }));
@@ -109,6 +145,50 @@ export function registerNodeClientTestConfigTests(
     expect(result.info).toEqual({
       blockHeight: 901234,
       supportsVerbose: undefined,
+      serverFeatures: {},
+      serverVersion: "ElectrumX",
+      protocolVersion: "1.4",
+      silentPaymentVersions: [],
+      supportsSilentPaymentsV0: false,
+      capabilityProfileKey: JSON.stringify({
+        serverVersion: "ElectrumX",
+        protocolVersion: "1.4",
+        supportsVerbose: null,
+        silentPaymentVersions: [],
+        supportsSilentPaymentsV0: false,
+        lastCapabilityError: null,
+      }),
+      lastCapabilityError: null,
+    });
+    expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats clients without server.features support as unknown but non-errored", async () => {
+    const connect = vi.fn().mockResolvedValue(undefined);
+    const disconnect = vi.fn();
+    mocks.electrumClientCtor.mockImplementationOnce(() => ({
+      connect,
+      disconnect,
+      getServerVersion: vi
+        .fn()
+        .mockResolvedValue({ server: "Legacy Electrum", protocol: "1.4" }),
+      getBlockHeight: vi.fn().mockResolvedValue(901234),
+      testVerboseSupport: vi.fn().mockResolvedValue(true),
+    }));
+
+    const result = await testNodeConfig({
+      host: "legacy.example.com",
+      port: 50002,
+      protocol: "ssl",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain("silent payments: no");
+    expect(result.info).toMatchObject({
+      serverFeatures: null,
+      supportsSilentPaymentsV0: false,
+      silentPaymentVersions: [],
+      lastCapabilityError: null,
     });
     expect(disconnect).toHaveBeenCalledTimes(1);
   });
@@ -117,10 +197,16 @@ export function registerNodeClientTestConfigTests(
     const connect = vi.fn().mockResolvedValue(undefined);
     const disconnect = vi.fn();
     const getBlockHeight = vi.fn().mockResolvedValue(901234);
+    const getServerVersion = vi
+      .fn()
+      .mockResolvedValue({ server: "ElectrumX", protocol: "1.4" });
+    const getServerFeatures = vi.fn().mockResolvedValue({});
     const testVerboseSupportFn = vi.fn().mockResolvedValue(false);
     mocks.electrumClientCtor.mockImplementationOnce(() => ({
       connect,
       disconnect,
+      getServerVersion,
+      getServerFeatures,
       getBlockHeight,
       testVerboseSupport: testVerboseSupportFn,
     }));
@@ -136,6 +222,20 @@ export function registerNodeClientTestConfigTests(
     expect(result.info).toEqual({
       blockHeight: 901234,
       supportsVerbose: false,
+      serverFeatures: {},
+      serverVersion: "ElectrumX",
+      protocolVersion: "1.4",
+      silentPaymentVersions: [],
+      supportsSilentPaymentsV0: false,
+      capabilityProfileKey: JSON.stringify({
+        serverVersion: "ElectrumX",
+        protocolVersion: "1.4",
+        supportsVerbose: false,
+        silentPaymentVersions: [],
+        supportsSilentPaymentsV0: false,
+        lastCapabilityError: null,
+      }),
+      lastCapabilityError: null,
     });
   });
 
@@ -144,6 +244,8 @@ export function registerNodeClientTestConfigTests(
     mocks.electrumClientCtor.mockImplementationOnce(() => ({
       connect,
       disconnect: vi.fn(),
+      getServerVersion: vi.fn(),
+      getServerFeatures: vi.fn(),
       getBlockHeight: vi.fn(),
       testVerboseSupport: vi.fn(),
     }));
@@ -180,6 +282,10 @@ export function registerNodeClientTestConfigTests(
     mocks.electrumClientCtor.mockImplementationOnce(() => ({
       connect,
       disconnect,
+      getServerVersion: vi
+        .fn()
+        .mockResolvedValue({ server: "ElectrumX", protocol: "1.4" }),
+      getServerFeatures: vi.fn().mockResolvedValue({}),
       getBlockHeight,
       testVerboseSupport: vi.fn().mockResolvedValue(true),
     }));
@@ -197,5 +303,38 @@ export function registerNodeClientTestConfigTests(
         protocol: "ssl",
       }),
     );
+  });
+
+  it("reports server.features probe failures as unknown Silent Payments capability", async () => {
+    const connect = vi.fn().mockResolvedValue(undefined);
+    const disconnect = vi.fn();
+    mocks.electrumClientCtor.mockImplementationOnce(() => ({
+      connect,
+      disconnect,
+      getServerVersion: vi
+        .fn()
+        .mockResolvedValue({ server: "ElectrumX", protocol: "1.4" }),
+      getServerFeatures: vi
+        .fn()
+        .mockRejectedValue(new Error("method unavailable")),
+      getBlockHeight: vi.fn().mockResolvedValue(901234),
+      testVerboseSupport: vi.fn().mockResolvedValue(true),
+    }));
+
+    const result = await testNodeConfig({
+      host: "electrum.example.com",
+      port: 50002,
+      protocol: "ssl",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain("silent payments: unknown");
+    expect(result.info).toMatchObject({
+      serverFeatures: null,
+      supportsSilentPaymentsV0: false,
+      silentPaymentVersions: [],
+      lastCapabilityError: "method unavailable",
+    });
+    expect(disconnect).toHaveBeenCalledTimes(1);
   });
 }

@@ -20,9 +20,16 @@ export type {
   TransactionOutput,
   TransactionDetails,
   ElectrumConfig,
+  ElectrumServerFeatures,
   ProxyConfig,
   BitcoinNetwork,
 } from './types';
+
+export type {
+  ElectrumCapabilityProfile,
+  ElectrumFeature,
+  ElectrumServerUsage,
+} from './capabilities';
 
 // ==============================================================================
 // NETWORK-KEYED CLIENT REGISTRY

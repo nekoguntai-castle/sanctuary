@@ -7,9 +7,24 @@
  */
 
 import { createLogger } from '../../../utils/logger';
+import { getErrorMessage } from '../../../utils/errors';
 import { ElectrumPool } from './electrumPool';
 import { loadPoolConfigFromDatabase } from './poolConfig';
-import type { ElectrumPoolConfig, ServerConfig, NetworkType } from './types';
+import {
+  normalizeRequiredFeatures,
+  resolveFeaturePoolUsage,
+} from '../electrum/capabilities';
+import type {
+  ElectrumFeature,
+  ElectrumServerUsage,
+} from '../electrum/capabilities';
+import type {
+  ElectrumPoolConfig,
+  ElectrumPoolFeatureScope,
+  ServerConfig,
+  NetworkType,
+} from './types';
+import type { ElectrumClient } from '../electrum';
 
 const log = createLogger('ELECTRUM_POOL:SVC_REGISTRY');
 
@@ -21,6 +36,12 @@ let poolInitPromise: Promise<ElectrumPool> | null = null;
 // Per-network pool registry
 const networkPools = new Map<NetworkType, ElectrumPool>();
 const networkPoolInitPromises = new Map<NetworkType, Promise<ElectrumPool>>();
+
+// Feature-scoped pool registry. These pools are filtered by network, usage,
+// and required capability set before any connections are opened.
+const featurePools = new Map<string, ElectrumPool>();
+const featurePoolInitPromises = new Map<string, Promise<ElectrumPool>>();
+const MAX_FEATURE_POOL_INSTANCES = 16;
 
 /**
  * Parse environment variables for pool configuration
@@ -44,6 +65,92 @@ function getEnvPoolConfig(): Partial<ElectrumPoolConfig> {
       10
     ),
   };
+}
+
+function buildFeaturePoolKey(
+  network: NetworkType,
+  requiredFeatures: readonly ElectrumFeature[],
+  serverUsage: ElectrumServerUsage,
+  capabilityStaleAfterMs?: number,
+): string {
+  const features = normalizeRequiredFeatures(requiredFeatures).join(',');
+  return `${network}:${serverUsage}:${features}:${capabilityStaleAfterMs ?? 'default'}`;
+}
+
+async function shutdownPoolSafely(
+  pool: ElectrumPool,
+  context: Record<string, unknown>,
+): Promise<void> {
+  const shutdownError = await pool.shutdown().then(
+    () => null,
+    (error: unknown) => error,
+  );
+  if (shutdownError) {
+    log.warn('Electrum pool shutdown failed', {
+      ...context,
+      error: getErrorMessage(shutdownError),
+    });
+  }
+}
+
+async function shutdownFeaturePoolEntries(
+  entries: Array<[string, ElectrumPool]>,
+): Promise<void> {
+  await Promise.all(entries.map(async ([key, pool]) => {
+    const shutdownError = await pool.shutdown().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    if (shutdownError) {
+      log.warn('Feature-scoped Electrum pool shutdown failed', {
+        key,
+        error: getErrorMessage(shutdownError),
+      });
+    }
+    if (featurePools.get(key) === pool) {
+      featurePools.delete(key);
+    }
+  }));
+}
+
+async function trimFeaturePoolRegistry(maxPools: number): Promise<void> {
+  if (featurePools.size <= maxPools) {
+    return;
+  }
+
+  const entriesToEvict = [...featurePools.entries()].slice(
+    0,
+    featurePools.size - maxPools,
+  );
+  await shutdownFeaturePoolEntries(entriesToEvict);
+}
+
+async function createPool(
+  network: NetworkType,
+  scope: ElectrumPoolFeatureScope = {},
+): Promise<{ pool: ElectrumPool; serverCount: number }> {
+  const { config: dbConfig, servers, proxy } = await loadPoolConfigFromDatabase(
+    network,
+    scope,
+  );
+  const envConfig = getEnvPoolConfig();
+  const pool = new ElectrumPool({
+    ...envConfig,
+    ...dbConfig,
+  });
+
+  pool.setNetwork(network);
+
+  if (proxy) {
+    pool.setProxyConfig(proxy);
+  }
+
+  if (servers.length > 0) {
+    pool.setServers(servers);
+  }
+
+  await pool.initialize();
+  return { pool, serverCount: servers.length };
 }
 
 /**
@@ -74,33 +181,9 @@ export async function getElectrumPoolForNetwork(network: NetworkType): Promise<E
 
     log.info(`Initializing Electrum pool for network: ${network}`);
 
-    // Load config and servers from database for this specific network
-    const { config: dbConfig, servers, proxy } = await loadPoolConfigFromDatabase(network);
-
-    // Environment variables as fallback
-    const envConfig = getEnvPoolConfig();
-
-    // Database config takes precedence over environment variables
-    const pool = new ElectrumPool({
-      ...envConfig,
-      ...dbConfig,
+    const { pool, serverCount } = await createPool(network, {
+      serverUsage: 'general',
     });
-
-    // Set the network for metrics
-    pool.setNetwork(network);
-
-    // Configure proxy if enabled
-    if (proxy) {
-      pool.setProxyConfig(proxy);
-    }
-
-    // Configure servers for this network
-    if (servers.length > 0) {
-      pool.setServers(servers);
-    }
-
-    // Initialize the pool (creates minimum connections)
-    await pool.initialize();
 
     // Store in registry
     networkPools.set(network, pool);
@@ -110,7 +193,7 @@ export async function getElectrumPoolForNetwork(network: NetworkType): Promise<E
       poolInstance = pool;
     }
 
-    log.info(`Electrum pool for ${network} initialized with ${servers.length} servers`);
+    log.info(`Electrum pool for ${network} initialized with ${serverCount} servers`);
 
     return pool;
   })();
@@ -126,15 +209,116 @@ export async function getElectrumPoolForNetwork(network: NetworkType): Promise<E
 }
 
 /**
+ * Get or create a feature-scoped Electrum pool for a network.
+ */
+export async function getElectrumPoolForNetworkAndFeatures(
+  network: NetworkType,
+  requiredFeatures: ElectrumFeature[],
+  scope: Omit<ElectrumPoolFeatureScope, 'requiredFeatures'> = {},
+): Promise<ElectrumPool> {
+  const normalizedFeatures = normalizeRequiredFeatures(requiredFeatures);
+  const serverUsage = resolveFeaturePoolUsage(
+    normalizedFeatures,
+    scope.serverUsage,
+  );
+
+  const onlyBaseElectrum = normalizedFeatures.every(
+    (feature) => feature === 'base_electrum',
+  );
+  if (serverUsage === 'general' && (normalizedFeatures.length === 0 || onlyBaseElectrum)) {
+    return getElectrumPoolForNetwork(network);
+  }
+
+  const key = buildFeaturePoolKey(
+    network,
+    normalizedFeatures,
+    serverUsage,
+    scope.capabilityStaleAfterMs,
+  );
+  const existingPool = featurePools.get(key);
+  if (existingPool) {
+    return existingPool;
+  }
+
+  const existingPromise = featurePoolInitPromises.get(key);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const initPromise = (async () => {
+    const poolCheck = featurePools.get(key);
+    if (poolCheck) {
+      return poolCheck;
+    }
+
+    log.info('Initializing feature-scoped Electrum pool', {
+      network,
+      requiredFeatures: normalizedFeatures,
+      serverUsage,
+    });
+
+    const { pool, serverCount } = await createPool(network, {
+      ...scope,
+      requiredFeatures: normalizedFeatures,
+      serverUsage,
+    });
+    await trimFeaturePoolRegistry(MAX_FEATURE_POOL_INSTANCES - 1);
+    featurePools.set(key, pool);
+    log.info('Feature-scoped Electrum pool initialized', {
+      network,
+      requiredFeatures: normalizedFeatures,
+      serverUsage,
+      serverCount,
+    });
+    return pool;
+  })();
+
+  featurePoolInitPromises.set(key, initPromise);
+
+  try {
+    return await initPromise;
+  } finally {
+    featurePoolInitPromises.delete(key);
+  }
+}
+
+/**
+ * Get a subscription connection from a feature-scoped pool.
+ */
+export async function getSubscriptionConnectionForFeatures(
+  network: NetworkType,
+  requiredFeatures: ElectrumFeature[],
+  scope: Omit<ElectrumPoolFeatureScope, 'requiredFeatures'> = {},
+): Promise<ElectrumClient> {
+  const pool = await getElectrumPoolForNetworkAndFeatures(
+    network,
+    requiredFeatures,
+    scope,
+  );
+  return pool.getSubscriptionConnection();
+}
+
+/**
  * Reset the pool for a specific network (for testing or config changes)
  */
 export async function resetElectrumPoolForNetwork(network: NetworkType): Promise<void> {
   const pool = networkPools.get(network);
   if (pool) {
-    await pool.shutdown();
+    await shutdownPoolSafely(pool, { network, scope: 'network' });
     networkPools.delete(network);
+    if (poolInstance === pool) {
+      poolInstance = null;
+    }
     log.info(`Electrum pool for ${network} has been reset`);
   }
+  const featureEntries = [...featurePools.entries()]
+    .filter(([key]) => key.startsWith(`${network}:`));
+  const featureInitKeys = [...featurePoolInitPromises.keys()]
+    .filter((key) => key.startsWith(`${network}:`));
+  for (const key of featureInitKeys) {
+    featurePoolInitPromises.delete(key);
+  }
+  await shutdownFeaturePoolEntries(featureEntries);
 }
 
 /**
@@ -241,11 +425,21 @@ export async function initializeElectrumPool(
 export async function shutdownElectrumPool(): Promise<void> {
   // Clear init promise to prevent new initialization during shutdown
   poolInitPromise = null;
+  networkPoolInitPromises.clear();
+  featurePoolInitPromises.clear();
 
   if (poolInstance) {
-    await poolInstance.shutdown();
+    await shutdownPoolSafely(poolInstance, { scope: 'global' });
     poolInstance = null;
   }
+  const networkEntries = [...networkPools.entries()];
+  await Promise.all(networkEntries.map(async ([network, pool]) => {
+    await shutdownPoolSafely(pool, { network, scope: 'network' });
+    if (networkPools.get(network) === pool) {
+      networkPools.delete(network);
+    }
+  }));
+  await shutdownFeaturePoolEntries([...featurePools.entries()]);
 }
 
 /**
@@ -274,8 +468,20 @@ export function isPoolEnabled(): boolean {
 /**
  * Reload servers from database (call after adding/removing servers)
  */
-export async function reloadElectrumServers(): Promise<void> {
-  if (poolInstance) {
+export async function reloadElectrumServers(network?: NetworkType): Promise<void> {
+  if (network) {
+    await resetElectrumPoolForNetwork(network);
+    return;
+  }
+
+  const networks = [...networkPools.keys()];
+  for (const poolNetwork of networks) {
+    await resetElectrumPoolForNetwork(poolNetwork);
+  }
+
+  await shutdownFeaturePoolEntries([...featurePools.entries()]);
+
+  if (poolInstance && networks.length === 0) {
     await poolInstance.reloadServers();
   }
 }

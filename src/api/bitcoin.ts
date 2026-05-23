@@ -39,6 +39,11 @@ export interface ServerStats {
   weight: number;
   // Health check history (most recent first)
   healthHistory: HealthCheckResult[];
+  serverUsage?: 'general' | 'silent_payments' | 'both';
+  supportsVerbose?: boolean | null;
+  supportsSilentPaymentsV0?: boolean | null;
+  lastCapabilityCheck?: string | null;
+  lastCapabilityError?: string | null;
 }
 
 export interface PoolStats {
@@ -126,6 +131,38 @@ export interface EstimateFeeResponse {
   size: number;
   fee: number;
   feeRate: number;
+}
+
+export interface SilentPaymentServerReadiness {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  useSsl: boolean;
+  serverUsage: 'general' | 'silent_payments' | 'both';
+  capabilityStatus: 'supported' | 'unsupported' | 'unknown' | 'stale' | 'error';
+  supportsSilentPaymentsV0: boolean | null;
+  silentPaymentVersions: number[];
+  lastCapabilityCheck: string | null;
+  lastCapabilityError: string | null;
+}
+
+export interface SilentPaymentReadiness {
+  featureEnabled: boolean;
+  ready: boolean;
+  network: NetworkType;
+  requiredFeatures: ['silent_payments_v0'];
+  blockers: string[];
+  compatibleServerCount: number;
+  endpointCount: number;
+  featurePoolHealthy: boolean;
+  servers: SilentPaymentServerReadiness[];
+}
+
+export async function getSilentPaymentReadiness(
+  network: NetworkType = 'mainnet'
+): Promise<SilentPaymentReadiness> {
+  return apiClient.get<SilentPaymentReadiness>('/bitcoin/silent-payments/readiness', { network });
 }
 
 /**

@@ -63,6 +63,11 @@ export const UtxoItemSchema = z.object({
 export const ServerVersionSchema = z.tuple([z.string(), z.string()]);
 
 /**
+ * Server feature response schema.
+ */
+export const ServerFeaturesSchema = z.record(z.string(), z.unknown());
+
+/**
  * Block headers subscribe response schema
  */
 export const HeadersSubscribeSchema = z.object({
@@ -142,6 +147,8 @@ export interface ElectrumConfig {
   requestTimeoutMs?: number; // Optional: per-request timeout (default: 30000ms, higher for Tor)
   batchRequestTimeoutMs?: number; // Optional: batch request timeout (default: 60000ms, higher for Tor)
 }
+
+export type ElectrumServerFeatures = Record<string, unknown>;
 
 /**
  * Script public key info in transaction output

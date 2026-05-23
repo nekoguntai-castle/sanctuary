@@ -251,8 +251,16 @@ export interface ElectrumServer {
   healthCheckFails?: number;
   isHealthy?: boolean;
   lastHealthCheckError?: string | null;
+  serverUsage?: "general" | "silent_payments" | "both";
+  serverFeatures?: Record<string, unknown> | null;
+  serverVersion?: string | null;
+  protocolVersion?: string | null;
   supportsVerbose?: boolean | null;
+  silentPaymentVersions?: number[] | null;
+  supportsSilentPaymentsV0?: boolean | null;
+  capabilityProfileKey?: string | null;
   lastCapabilityCheck?: string | null;
+  lastCapabilityError?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

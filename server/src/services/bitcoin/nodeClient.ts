@@ -18,6 +18,10 @@ import { getErrorMessage } from '../../utils/errors';
 import { getNetworkModeConfig } from './nodeClientConfig';
 import { verifyNodeClientNetwork } from './networkIdentity';
 import { getNodeNetworkDefaults } from '@sanctuary/shared/constants/nodeConfig';
+import {
+  normalizeElectrumCapabilityProfile,
+  type ElectrumCapabilityProfile,
+} from './electrum/capabilities';
 
 const log = createLogger('BITCOIN:SVC_NODE_CLIENT');
 
@@ -48,6 +52,7 @@ export interface NodeClientInterface {
   disconnect(): void;
   isConnected(): boolean;
   getServerVersion(): Promise<{ server: string; protocol: string }>;
+  getServerFeatures(): Promise<Record<string, unknown>>;
   getBlockHeight(): Promise<number>;
   getBlockHeader(height: number): Promise<string>;
   getAddressHistory(address: string): Promise<Array<{ tx_hash: string; height: number }>>;
@@ -300,9 +305,20 @@ export async function testNodeConfig(config: NodeConfig): Promise<{
   info?: {
     blockHeight: number;
     supportsVerbose?: boolean;
+    serverFeatures?: Record<string, unknown> | null;
+    serverVersion?: string | null;
+    protocolVersion?: string | null;
+    silentPaymentVersions?: number[];
+    supportsSilentPaymentsV0?: boolean;
+    capabilityProfileKey?: string;
+    lastCapabilityError?: string | null;
   };
 }> {
-  let testClient: (NodeClientInterface & { testVerboseSupport?: () => Promise<boolean> }) | null = null;
+  type CapabilityProbeClient = NodeClientInterface & {
+    testVerboseSupport?: () => Promise<boolean>;
+    getServerFeatures?: () => Promise<Record<string, unknown>>;
+  };
+  let testClient: CapabilityProbeClient | null = null;
   try {
     const ElectrumClientClass = (await import('./electrum')).ElectrumClient;
     testClient = new ElectrumClientClass({
@@ -310,9 +326,10 @@ export async function testNodeConfig(config: NodeConfig): Promise<{
       port: config.port,
       protocol: config.protocol || 'ssl',
       network: config.network,
-    }) as NodeClientInterface & { testVerboseSupport?: () => Promise<boolean> };
+    }) as CapabilityProbeClient;
 
     await testClient.connect();
+    const version = await testClient.getServerVersion();
     const height = await testClient.getBlockHeight();
     if (config.network) {
       await verifyNodeClientNetwork(testClient, config.network);
@@ -328,13 +345,31 @@ export async function testNodeConfig(config: NodeConfig): Promise<{
       log.debug(`Could not determine verbose capability for ${config.host}:${config.port}: ${getErrorMessage(capabilityError)}`);
     }
 
+    const capabilityProfile = await probeServerFeatures(testClient, {
+      host: config.host,
+      port: config.port,
+      version,
+      supportsVerbose,
+    });
+
     const verboseStatus = supportsVerbose === true ? ' (verbose: yes)' :
                           supportsVerbose === false ? ' (verbose: no)' : '';
+    const silentPaymentsStatus = getSilentPaymentsStatusSuffix(capabilityProfile);
 
     return {
       success: true,
-      message: `Connected to Electrum server at block ${height}${verboseStatus}`,
-      info: { blockHeight: height, supportsVerbose },
+      message: `Connected to Electrum server at block ${height}${verboseStatus}${silentPaymentsStatus}`,
+      info: {
+        blockHeight: height,
+        supportsVerbose,
+        serverFeatures: capabilityProfile.serverFeatures,
+        serverVersion: capabilityProfile.serverVersion,
+        protocolVersion: capabilityProfile.protocolVersion,
+        silentPaymentVersions: capabilityProfile.silentPaymentVersions,
+        supportsSilentPaymentsV0: capabilityProfile.supportsSilentPaymentsV0,
+        capabilityProfileKey: capabilityProfile.capabilityProfileKey,
+        lastCapabilityError: capabilityProfile.lastCapabilityError,
+      },
     };
   } catch (error) {
     return {
@@ -346,4 +381,64 @@ export async function testNodeConfig(config: NodeConfig): Promise<{
       disconnectQuietly(testClient, `Test client ${config.host}:${config.port}`);
     }
   }
+}
+
+async function probeServerFeatures(
+  client: {
+    getServerFeatures?: () => Promise<Record<string, unknown>>;
+  },
+  context: {
+    host: string;
+    port: number;
+    version: { server: string; protocol: string };
+    supportsVerbose: boolean | undefined;
+  },
+): Promise<ElectrumCapabilityProfile> {
+  const { serverFeatures, lastCapabilityError } = await getServerFeaturesResult(
+    client,
+    context,
+  );
+
+  return normalizeElectrumCapabilityProfile({
+    serverFeatures,
+    serverVersion: context.version.server,
+    protocolVersion: context.version.protocol,
+    supportsVerbose: context.supportsVerbose,
+    lastCapabilityError,
+  });
+}
+
+function getServerFeaturesResult(
+  client: {
+    getServerFeatures?: () => Promise<Record<string, unknown>>;
+  },
+  context: { host: string; port: number },
+): Promise<{
+  serverFeatures: Record<string, unknown> | null;
+  lastCapabilityError: string | null;
+}> {
+  if (!client.getServerFeatures) {
+    return Promise.resolve({ serverFeatures: null, lastCapabilityError: null });
+  }
+
+  return client.getServerFeatures().then(
+    (serverFeatures) => ({ serverFeatures, lastCapabilityError: null }),
+    (capabilityError) => {
+      const lastCapabilityError = getErrorMessage(capabilityError);
+      log.debug(`Could not determine server.features for ${context.host}:${context.port}: ${lastCapabilityError}`);
+      return { serverFeatures: null, lastCapabilityError };
+    },
+  );
+}
+
+function getSilentPaymentsStatusSuffix(
+  profile: Pick<ElectrumCapabilityProfile, 'supportsSilentPaymentsV0' | 'lastCapabilityError'>,
+): string {
+  if (profile.lastCapabilityError) {
+    return ' (silent payments: unknown)';
+  }
+
+  return profile.supportsSilentPaymentsV0
+    ? ' (silent payments: yes)'
+    : ' (silent payments: no)';
 }

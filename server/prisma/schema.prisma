@@ -692,8 +692,16 @@ model ElectrumServer {
   lastHealthCheckError String? // Last error message (e.g., "Certificate mismatch: expected x, got y")
 
   // Capability tracking
-  supportsVerbose      Boolean?  // null = unknown, true = supports verbose tx, false = doesn't support
-  lastCapabilityCheck  DateTime? // When verbose capability was last tested
+  serverUsage              String    @default("general") // general, silent_payments, both
+  serverFeatures           Json?     // Raw server.features response for diagnostics
+  serverVersion            String?
+  protocolVersion          String?
+  supportsVerbose          Boolean?  // null = unknown, true = supports verbose tx, false = doesn't support
+  silentPaymentVersions    Json?     // Array of supported Silent Payments protocol versions
+  supportsSilentPaymentsV0 Boolean?  // null = unknown, true = supports BIP352 v0, false = doesn't support
+  capabilityProfileKey     String?   // Stable fingerprint of normalized capability profile
+  lastCapabilityCheck      DateTime? // When capability profile was last tested
+  lastCapabilityError      String?   // Last capability probe or parse error
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -701,6 +709,8 @@ model ElectrumServer {
   nodeConfig NodeConfig @relation(fields: [nodeConfigId], references: [id], onDelete: Cascade)
 
   @@index([nodeConfigId])
+  @@index([network, enabled, serverUsage])
+  @@index([network, enabled, supportsSilentPaymentsV0])
   @@index([priority])
   @@map("electrum_servers")
 }

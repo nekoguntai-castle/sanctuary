@@ -184,6 +184,8 @@ describe("nodeClient service", () => {
     mocks.electrumClientCtor.mockImplementation(() => ({
       connect: vi.fn().mockResolvedValue(undefined),
       disconnect: vi.fn(),
+      getServerVersion: vi.fn().mockResolvedValue({ server: 'ElectrumX', protocol: '1.4' }),
+      getServerFeatures: vi.fn().mockResolvedValue({ server_version: 'ElectrumX' }),
       getBlockHeight: vi.fn().mockResolvedValue(850000),
       getBlockHeader: vi.fn(),
       testVerboseSupport: vi.fn().mockResolvedValue(true),

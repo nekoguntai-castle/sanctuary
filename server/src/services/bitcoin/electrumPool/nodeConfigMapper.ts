@@ -8,6 +8,11 @@ import {
   projectNodeProxyConfig,
   type NodeNetworkConfigSource,
 } from '@sanctuary/shared/constants/nodeConfig';
+import {
+  normalizeServerUsage,
+  parseSilentPaymentVersionsValue,
+} from '../electrum/capabilities';
+import type { NetworkType } from '@sanctuary/shared/constants/bitcoin';
 
 type NodeConfigServer = {
   id: string;
@@ -18,6 +23,13 @@ type NodeConfigServer = {
   priority: number;
   enabled: boolean;
   supportsVerbose: boolean | null;
+  network?: string;
+  serverUsage?: string | null;
+  silentPaymentVersions?: unknown;
+  supportsSilentPaymentsV0?: boolean | null;
+  capabilityProfileKey?: string | null;
+  lastCapabilityCheck?: Date | null;
+  lastCapabilityError?: string | null;
 };
 
 type ElectrumNodeConfig = {
@@ -40,7 +52,14 @@ export function mapEnabledServers(servers: NodeConfigServer[]): ServerConfig[] {
       useSsl: server.useSsl,
       priority: server.priority,
       enabled: server.enabled,
+      network: server.network as NetworkType | undefined,
+      serverUsage: normalizeServerUsage(server.serverUsage),
       supportsVerbose: server.supportsVerbose,
+      supportsSilentPaymentsV0: server.supportsSilentPaymentsV0,
+      silentPaymentVersions: parseSilentPaymentVersionsValue(server.silentPaymentVersions),
+      capabilityProfileKey: server.capabilityProfileKey ?? null,
+      lastCapabilityCheck: server.lastCapabilityCheck ?? null,
+      lastCapabilityError: server.lastCapabilityError ?? null,
     }));
 }
 

@@ -49,6 +49,7 @@ export async function createConnection(
         host: targetServer.host,
         port: targetServer.port,
         protocol: targetServer.useSsl ? 'ssl' : 'tcp',
+        network: targetServer.network,
         connectionTimeoutMs: connectionTimeout,
         proxy: proxyConfig ?? undefined,
       })
