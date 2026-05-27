@@ -113,8 +113,8 @@ describe('DeviceDetail page', () => {
 
     await screen.findByText('Passport One');
 
-    await user.click(screen.getByRole('button', { name: /access/i }));
-    await user.click(screen.getByRole('button', { name: 'sharing' }));
+    await user.click(screen.getByRole('tab', { name: /access/i }));
+    await user.click(screen.getByRole('tab', { name: 'sharing' }));
 
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'g1' } });
     await user.click(screen.getByRole('button', { name: 'Add as Viewer' }));
@@ -155,8 +155,8 @@ describe('DeviceDetail page', () => {
 
     await screen.findByText('Passport One');
 
-    await user.click(screen.getByRole('button', { name: /access/i }));
-    await user.click(screen.getByRole('button', { name: 'sharing' }));
+    await user.click(screen.getByRole('tab', { name: /access/i }));
+    await user.click(screen.getByRole('tab', { name: 'sharing' }));
 
     const removeIcons = screen.getAllByTestId('x-icon');
     await user.click(removeIcons[0].closest('button')!);
@@ -174,7 +174,7 @@ describe('DeviceDetail page', () => {
 
     await screen.findByText('Passport One');
 
-    await user.click(screen.getByRole('button', { name: /access/i }));
+    await user.click(screen.getByRole('tab', { name: /access/i }));
     await user.click(screen.getByText('Transfer'));
     expect(screen.getByTestId('transfer-modal')).toBeInTheDocument();
 
@@ -183,7 +183,7 @@ describe('DeviceDetail page', () => {
       expect(screen.queryByTestId('transfer-modal')).not.toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: 'transfers' }));
+    await user.click(screen.getByRole('tab', { name: 'transfers' }));
     const callsBeforeComplete = mockGetDevice.mock.calls.length;
     await user.click(screen.getByText('Complete transfer'));
 
@@ -344,7 +344,7 @@ describe('DeviceDetail page', () => {
     expect(screen.getByText('Taproot (BIP-86)')).toBeInTheDocument();
     expect(screen.getByText("m/86'/0'/0'")).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Multisig/i }));
+    await user.click(screen.getByRole('tab', { name: /Multisig/i }));
 
     expect(screen.getByText('Multisig Native SegWit (BIP-48)')).toBeInTheDocument();
     expect(screen.getByText('Recommended')).toBeInTheDocument();
@@ -359,8 +359,8 @@ describe('DeviceDetail page', () => {
     render(<DeviceDetail />);
 
     await screen.findByText('Passport One');
-    await user.click(screen.getByRole('button', { name: /access/i }));
-    await user.click(screen.getByRole('button', { name: 'sharing' }));
+    await user.click(screen.getByRole('tab', { name: /access/i }));
+    await user.click(screen.getByRole('tab', { name: 'sharing' }));
 
     await user.type(screen.getByPlaceholderText('Add user...'), 'b');
 
@@ -643,7 +643,7 @@ describe('DeviceDetail page', () => {
     render(<DeviceDetail />);
 
     await screen.findByText('Passport One');
-    await user.click(screen.getByRole('button', { name: /access/i }));
+    await user.click(screen.getByRole('tab', { name: /access/i }));
     await user.click(screen.getByText('Transfer'));
     expect(screen.getByTestId('transfer-modal')).toBeInTheDocument();
 

@@ -43,10 +43,24 @@ describe('NetworkTabs', () => {
     it('should render all four network tabs', () => {
       render(<NetworkTabs {...defaultProps} />);
 
+      expect(screen.getByRole('tablist', { name: 'Network tabs' })).toBeInTheDocument();
       expect(screen.getByText('Mainnet')).toBeInTheDocument();
       expect(screen.getByText('Testnet3')).toBeInTheDocument();
       expect(screen.getByText('Testnet4')).toBeInTheDocument();
       expect(screen.getByText('Signet')).toBeInTheDocument();
+    });
+
+    it('marks the active network with tab semantics', () => {
+      render(<NetworkTabs {...defaultProps} selectedNetwork="testnet3" />);
+
+      expect(screen.getByRole('tab', { name: 'Testnet3' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+      expect(screen.getByRole('tab', { name: 'Mainnet' })).toHaveAttribute(
+        'aria-selected',
+        'false'
+      );
     });
 
     it('should not display wallet counts in compact sidebar tabs', () => {
@@ -92,8 +106,8 @@ describe('NetworkTabs', () => {
         />
       );
 
-      const nav = screen.getByRole('navigation', { name: 'Network tabs' });
-      const selectedButton = screen.getByRole('button', { name: 'Testnet4' });
+      const nav = screen.getByRole('tablist', { name: 'Network tabs' });
+      const selectedButton = screen.getByRole('tab', { name: 'Testnet4' });
 
       expect(nav).toHaveClass('grid', 'grid-cols-2', 'w-full');
       expect(screen.queryByTestId('network-tabs-indicator')).not.toBeInTheDocument();
@@ -121,7 +135,7 @@ describe('NetworkTabs', () => {
       render(
         <NetworkTabs {...defaultProps} selectedNetwork="testnet4" fullWidth />
       );
-      const testnetButton = screen.getByRole('button', { name: 'Testnet4' });
+      const testnetButton = screen.getByRole('tab', { name: 'Testnet4' });
       const indicator = screen.getByTestId('network-tabs-indicator') as HTMLElement;
 
       setTabLayout(testnetButton, 44, 76);
@@ -139,7 +153,7 @@ describe('NetworkTabs', () => {
 
       render(<NetworkTabs {...defaultProps} />);
 
-      expect(screen.getByRole('button', { name: 'Mainnet' })).toHaveAttribute('data-active', 'true');
+      expect(screen.getByRole('tab', { name: 'Mainnet' })).toHaveAttribute('data-active', 'true');
     });
 
     it('ignores measurement when no active tab exists', () => {
@@ -284,7 +298,7 @@ describe('NetworkTabs', () => {
         />
       );
 
-      const testnetButton = screen.getByRole('button', { name: 'Testnet4' });
+      const testnetButton = screen.getByRole('tab', { name: 'Testnet4' });
       fireEvent.click(testnetButton);
 
       expect(testnetButton).toHaveAttribute('aria-disabled', 'true');
@@ -294,6 +308,37 @@ describe('NetworkTabs', () => {
       );
       expect(testnetButton).toHaveClass('cursor-not-allowed', 'text-sanctuary-300');
       expect(mockOnNetworkChange).not.toHaveBeenCalled();
+    });
+
+    it('supports arrow-key selection while skipping disabled networks', () => {
+      render(
+        <NetworkTabs
+          {...defaultProps}
+          networkAvailability={{ mainnet: true, testnet3: false, testnet4: true, signet: true }}
+        />
+      );
+
+      fireEvent.keyDown(screen.getByRole('tablist', { name: 'Network tabs' }), {
+        key: 'ArrowRight',
+      });
+
+      expect(mockOnNetworkChange).toHaveBeenCalledWith('testnet4');
+    });
+
+    it('moves backward from a disabled active network to the previous enabled tab', () => {
+      render(
+        <NetworkTabs
+          {...defaultProps}
+          selectedNetwork="testnet3"
+          networkAvailability={{ mainnet: true, testnet3: false, testnet4: true, signet: true }}
+        />
+      );
+
+      fireEvent.keyDown(screen.getByRole('tablist', { name: 'Network tabs' }), {
+        key: 'ArrowLeft',
+      });
+
+      expect(mockOnNetworkChange).toHaveBeenCalledWith('mainnet');
     });
 
     it('blocks disabled networks in grid layout', () => {
@@ -306,7 +351,7 @@ describe('NetworkTabs', () => {
         />
       );
 
-      const testnetButton = screen.getByRole('button', { name: 'Testnet3' });
+      const testnetButton = screen.getByRole('tab', { name: 'Testnet3' });
       fireEvent.click(testnetButton);
 
       expect(testnetButton).toHaveAttribute('aria-disabled', 'true');

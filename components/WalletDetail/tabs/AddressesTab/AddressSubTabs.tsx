@@ -1,6 +1,7 @@
 import type React from 'react';
 import { ArrowDownLeft, ArrowUpRight, Plus } from 'lucide-react';
 import { Button } from '../../../ui/Button';
+import { useTabsA11y } from '../../../ui/useTabsA11y';
 import type { AddressSubTab } from '../../types';
 
 type AddressSubTabsProps = {
@@ -12,6 +13,11 @@ type AddressSubTabsProps = {
   onGenerateMoreAddresses: () => void;
 };
 
+const ADDRESS_SUB_TABS: AddressSubTab[] = ['receive', 'change'];
+type AddressTabButtonProps = ReturnType<
+  ReturnType<typeof useTabsA11y<AddressSubTab>>['getTabProps']
+>;
+
 export function AddressSubTabs({
   addressSubTab,
   receiveCount,
@@ -20,25 +26,29 @@ export function AddressSubTabs({
   onAddressSubTabChange,
   onGenerateMoreAddresses,
 }: AddressSubTabsProps) {
+  const { getTabListProps, getTabProps } = useTabsA11y({
+    tabs: ADDRESS_SUB_TABS,
+    activeTab: addressSubTab,
+    onTabChange: onAddressSubTabChange,
+  });
+
   return (
     <div className="px-6 py-3 surface-muted border-b border-sanctuary-100 dark:border-sanctuary-800">
       <div className="flex items-center justify-between">
-        <div className="flex space-x-1">
+        <div {...getTabListProps('Address type')} className="flex space-x-1">
           <AddressSubTabButton
             active={addressSubTab === 'receive'}
-            tab="receive"
             label="Receive"
             count={receiveCount}
             icon={<ArrowDownLeft className="w-4 h-4" />}
-            onAddressSubTabChange={onAddressSubTabChange}
+            tabProps={getTabProps('receive')}
           />
           <AddressSubTabButton
             active={addressSubTab === 'change'}
-            tab="change"
             label="Change"
             count={changeCount}
             icon={<ArrowUpRight className="w-4 h-4" />}
-            onAddressSubTabChange={onAddressSubTabChange}
+            tabProps={getTabProps('change')}
           />
         </div>
         <Button variant="ghost" size="sm" onClick={onGenerateMoreAddresses} isLoading={loadingAddresses}>
@@ -52,22 +62,20 @@ export function AddressSubTabs({
 
 function AddressSubTabButton({
   active,
-  tab,
   label,
   count,
   icon,
-  onAddressSubTabChange,
+  tabProps,
 }: {
   active: boolean;
-  tab: AddressSubTab;
   label: string;
   count: number;
   icon: React.ReactNode;
-  onAddressSubTabChange: (tab: AddressSubTab) => void;
+  tabProps: AddressTabButtonProps;
 }) {
   return (
     <button
-      onClick={() => onAddressSubTabChange(tab)}
+      {...tabProps}
       className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
         active
           ? 'bg-white dark:bg-sanctuary-800 text-primary-600 dark:text-primary-400 shadow-sm'

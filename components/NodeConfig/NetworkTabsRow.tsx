@@ -1,4 +1,5 @@
 import type { NodeConfig as NodeConfigType } from '../../types';
+import { useTabsA11y } from '../ui/useTabsA11y';
 import {
   getNodeNetworkEnabled,
   type NodeNetworkConfigSource,
@@ -7,6 +8,9 @@ import type { NetworkTab } from './types';
 import { formatNetworkTitle, getNetworkColorClass } from '../../src/app/networks';
 
 const NETWORK_TABS: NetworkTab[] = ['mainnet', 'testnet3', 'testnet4', 'signet'];
+type NodeNetworkTabButtonProps = ReturnType<
+  ReturnType<typeof useTabsA11y<NetworkTab>>['getTabProps']
+>;
 
 export function NetworkTabsRow({
   nodeConfig,
@@ -19,8 +23,17 @@ export function NetworkTabsRow({
   onNetworkTabChange: (network: NetworkTab) => void;
   getServerCount: (network: NetworkTab) => number;
 }) {
+  const { getTabListProps, getTabProps } = useTabsA11y({
+    tabs: NETWORK_TABS,
+    activeTab: activeNetworkTab,
+    onTabChange: onNetworkTabChange,
+  });
+
   return (
-    <div className="flex border-b border-sanctuary-100 dark:border-sanctuary-800">
+    <div
+      {...getTabListProps('Node network configuration')}
+      className="flex border-b border-sanctuary-100 dark:border-sanctuary-800"
+    >
       {NETWORK_TABS.map(network => (
         <NetworkTabButton
           key={network}
@@ -28,7 +41,7 @@ export function NetworkTabsRow({
           active={activeNetworkTab === network}
           enabled={isNetworkEnabled(nodeConfig, network)}
           serverCount={getServerCount(network)}
-          onClick={() => onNetworkTabChange(network)}
+          tabProps={getTabProps(network)}
         />
       ))}
     </div>
@@ -40,17 +53,17 @@ function NetworkTabButton({
   active,
   enabled,
   serverCount,
-  onClick,
+  tabProps,
 }: {
   network: NetworkTab;
   active: boolean;
   enabled: boolean;
   serverCount: number;
-  onClick: () => void;
+  tabProps: NodeNetworkTabButtonProps;
 }) {
   return (
     <button
-      onClick={onClick}
+      {...tabProps}
       className={`flex-1 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${networkTabClass(network, active)}`}
     >
       <span>{formatNetworkTitle(network)}</span>

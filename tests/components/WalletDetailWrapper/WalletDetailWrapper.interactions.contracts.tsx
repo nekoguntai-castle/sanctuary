@@ -69,7 +69,7 @@ export const registerWalletDetailWrapperInteractionContracts = () => {
       await user.click(screen.getByRole('button', { name: 'device-share-dismiss' }));
       expect(mocks.dismissSharePrompt).toHaveBeenCalled();
 
-      await user.click(screen.getByRole('button', { name: /addresses/i }));
+      await user.click(screen.getByRole('tab', { name: /addresses/i }));
       expect(screen.getByTestId('addresses-tab')).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: 'addr-load-more' }));
@@ -97,7 +97,7 @@ export const registerWalletDetailWrapperInteractionContracts = () => {
       await user.click(screen.getByRole('button', { name: 'qr-close' }));
       expect(screen.queryByTestId('qr-modal')).not.toBeInTheDocument();
 
-      await user.click(screen.getByRole('button', { name: /utxos/i }));
+      await user.click(screen.getByRole('tab', { name: /utxos/i }));
       await user.click(screen.getByRole('button', { name: 'utxo-select' }));
       await user.click(screen.getByRole('button', { name: 'utxo-send-selected' }));
       expect(mocks.navigate).toHaveBeenCalledWith('/wallets/wallet-1/send', {
@@ -109,7 +109,7 @@ export const registerWalletDetailWrapperInteractionContracts = () => {
         expect(mocks.freezeUTXO).toHaveBeenCalledWith('utxo-1', true);
       });
 
-      await user.click(screen.getByRole('button', { name: /drafts/i }));
+      await user.click(screen.getByRole('tab', { name: /drafts/i }));
       await user.click(screen.getByRole('button', { name: 'drafts-add' }));
       expect(mocks.addAppNotification).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'pending_drafts' }),
@@ -117,14 +117,14 @@ export const registerWalletDetailWrapperInteractionContracts = () => {
       await user.click(screen.getByRole('button', { name: 'drafts-clear' }));
       expect(mocks.removeNotificationsByType).toHaveBeenCalledWith('pending_drafts', 'wallet-1');
 
-      await user.click(screen.getByRole('button', { name: /transactions/i }));
+      await user.click(screen.getByRole('tab', { name: /transactions/i }));
       expect(screen.getByText('tx-highlight')).toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'tx-export' }));
       expect(screen.getByTestId('tx-export-modal')).toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'tx-export-close' }));
       expect(screen.queryByTestId('tx-export-modal')).not.toBeInTheDocument();
 
-      await user.click(screen.getByRole('button', { name: /access/i }));
+      await user.click(screen.getByRole('tab', { name: /access/i }));
       await user.click(screen.getByRole('button', { name: 'access-transfer' }));
       expect(screen.getByTestId('transfer-modal')).toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'transfer-close' }));
@@ -135,7 +135,7 @@ export const registerWalletDetailWrapperInteractionContracts = () => {
       await user.click(screen.getByRole('button', { name: 'transfer-confirm' }));
       expect(mocks.transferComplete).toHaveBeenCalled();
 
-      await user.click(screen.getByRole('button', { name: /settings/i }));
+      await user.click(screen.getByRole('tab', { name: /settings/i }));
       await user.click(screen.getByRole('button', { name: 'settings-update' }));
       expect(mocks.updateWallet).toHaveBeenCalledWith('wallet-1', {
         name: 'Renamed Wallet',

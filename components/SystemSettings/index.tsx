@@ -4,6 +4,7 @@ import { Shield, Radio, LifeBuoy } from 'lucide-react';
 import { AccessControlTab } from './AccessControlTab';
 import { WebSocketStatsCard } from './WebSocketStatsCard';
 import { SupportPackageCard } from './SupportPackageCard';
+import { useTabsA11y } from '../ui/useTabsA11y';
 
 // Tab type definition
 type SystemSettingsTab = 'access' | 'websocket' | 'support';
@@ -14,9 +15,15 @@ const SYSTEM_SETTINGS_TABS: { id: SystemSettingsTab; name: string; icon: React.F
   { id: 'websocket', name: 'WebSocket', icon: Radio },
   { id: 'support', name: 'Support', icon: LifeBuoy },
 ];
+const SYSTEM_SETTINGS_TAB_IDS = SYSTEM_SETTINGS_TABS.map((tab) => tab.id);
 
 export const SystemSettings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SystemSettingsTab>('access');
+  const { getTabListProps, getTabProps } = useTabsA11y({
+    tabs: SYSTEM_SETTINGS_TAB_IDS,
+    activeTab,
+    onTabChange: setActiveTab,
+  });
 
   return (
     <div className="max-w-2xl mx-auto animate-fade-in pb-12">
@@ -27,11 +34,14 @@ export const SystemSettings: React.FC = () => {
 
       {/* Tabs */}
       <div className="mb-6">
-        <div className="flex space-x-1 surface-secondary rounded-lg p-1">
+        <div
+          {...getTabListProps('System settings sections')}
+          className="flex space-x-1 surface-secondary rounded-lg p-1"
+        >
           {SYSTEM_SETTINGS_TABS.map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              {...getTabProps(tab.id)}
               className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all ${
                 activeTab === tab.id
                   ? 'bg-white dark:bg-sanctuary-800 text-primary-700 dark:text-primary-300 shadow-sm'

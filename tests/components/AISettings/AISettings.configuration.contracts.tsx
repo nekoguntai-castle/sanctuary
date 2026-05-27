@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   mockGetSystemSettings,
@@ -54,6 +54,27 @@ export function registerAISettingsConfigurationContracts() {
       // Settings tab exists but should be disabled
       const settingsTab = getTabButton('Settings');
       expect(settingsTab).toBeDisabled();
+    });
+
+    it('skips disabled configuration tabs during keyboard navigation', async () => {
+      mockGetSystemSettings.mockResolvedValue(defaultSettings);
+      render(<AISettings />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Enable AI Features')).toBeInTheDocument();
+      });
+
+      fireEvent.keyDown(screen.getByRole('tablist', { name: 'AI settings sections' }), {
+        key: 'ArrowRight',
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('MCP Server')).toBeInTheDocument();
+      });
+      expect(screen.getByRole('tab', { name: /mcp access/i })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
     });
 
     it('should update endpoint input value', async () => {

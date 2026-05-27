@@ -105,9 +105,8 @@ async function renderAndWaitForReady() {
 }
 
 function clickTopTab(label: 'Status' | 'Settings' | 'Models') {
-  const tabButton = screen.getAllByRole('button').find((button) => button.textContent?.includes(label));
-  expect(tabButton).toBeDefined();
-  fireEvent.click(tabButton as HTMLButtonElement);
+  const tabButton = screen.getByRole('tab', { name: new RegExp(label) });
+  fireEvent.click(tabButton);
 }
 
 describe('AISettings logic branches', () => {

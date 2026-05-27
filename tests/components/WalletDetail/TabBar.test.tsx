@@ -14,12 +14,12 @@ describe('TabBar', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: 'Transactions' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'UTXOs' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /drafts/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /access/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Transactions' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'UTXOs' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /drafts/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /access/i })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'UTXOs' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'UTXOs' }));
     expect(onTabChange).toHaveBeenCalledWith('utxo');
   });
 
@@ -33,8 +33,8 @@ describe('TabBar', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: /drafts/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /access/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /drafts/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /access/i })).toBeInTheDocument();
     expect(screen.queryByText('9+')).not.toBeInTheDocument();
   });
 
@@ -72,7 +72,7 @@ describe('TabBar', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: 'Transactions' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'UTXOs' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Transactions' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'UTXOs' })).toBeInTheDocument();
   });
 });

@@ -313,7 +313,7 @@ describe('Layout branch coverage', () => {
       expect(addNotification).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'connection_error',
-          actionUrl: '/admin/node',
+          actionUrl: '/admin/node-config',
           actionLabel: 'Configure Node',
         })
       );
@@ -334,7 +334,7 @@ describe('Layout branch coverage', () => {
       expect(addNotification).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'connection_error',
-          actionUrl: '/admin/node',
+          actionUrl: '/admin/node-config',
           actionLabel: 'Configure Node',
         })
       );

@@ -257,7 +257,7 @@ describe("Settings Component", () => {
       "Services",
       "Notifications",
     ]) {
-      expect(screen.getByRole("button", { name: tabName })).toHaveAttribute(
+      expect(screen.getByRole("tab", { name: tabName })).toHaveAttribute(
         "aria-label",
         tabName,
       );

@@ -30,6 +30,7 @@ import { EnableModal } from "./components/EnableModal";
 import type { AISettingsTab } from "./types";
 import { toCredentialStatusText } from "./providerProfileModel";
 import { useMcpAccess } from "./hooks/useMcpAccess";
+import { useTabsA11y } from "../ui/useTabsA11y";
 
 export default function AISettings() {
   // Tab state
@@ -52,6 +53,51 @@ export default function AISettings() {
   const toggle = useAIFeatureToggle({
     aiEnabled: settings.aiEnabled,
     setAiEnabled: settings.setAiEnabled,
+  });
+
+  // Tab configuration - progressive unlocking
+  const tabs: {
+    id: AISettingsTab;
+    label: string;
+    icon: React.ReactNode;
+    enabled: boolean;
+    description: string;
+  }[] = [
+    {
+      id: "status",
+      label: "Status",
+      icon: <Brain className="w-4 h-4" />,
+      enabled: true,
+      description: "Enable AI",
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      icon: <Server className="w-4 h-4" />,
+      enabled: settings.aiEnabled,
+      description: "Configure endpoint",
+    },
+    {
+      id: "models",
+      label: "Models",
+      icon: <Server className="w-4 h-4" />,
+      enabled: settings.aiEnabled && !!settings.aiEndpoint,
+      description: "Select model",
+    },
+    {
+      id: "mcp",
+      label: "MCP Access",
+      icon: <KeyRound className="w-4 h-4" />,
+      enabled: true,
+      description: "Manage MCP keys",
+    },
+  ];
+  const tabIds = tabs.map((tab) => tab.id);
+  const { getTabListProps, getTabProps } = useTabsA11y({
+    tabs: tabIds,
+    activeTab,
+    onTabChange: setActiveTab,
+    isTabDisabled: (tabId) => !tabs.find((tab) => tab.id === tabId)?.enabled,
   });
 
   if (settings.loading) {
@@ -97,44 +143,6 @@ export default function AISettings() {
     );
   }
 
-  // Tab configuration - progressive unlocking
-  const tabs: {
-    id: AISettingsTab;
-    label: string;
-    icon: React.ReactNode;
-    enabled: boolean;
-    description: string;
-  }[] = [
-    {
-      id: "status",
-      label: "Status",
-      icon: <Brain className="w-4 h-4" />,
-      enabled: true,
-      description: "Enable AI",
-    },
-    {
-      id: "settings",
-      label: "Settings",
-      icon: <Server className="w-4 h-4" />,
-      enabled: settings.aiEnabled,
-      description: "Configure endpoint",
-    },
-    {
-      id: "models",
-      label: "Models",
-      icon: <Server className="w-4 h-4" />,
-      enabled: settings.aiEnabled && !!settings.aiEndpoint,
-      description: "Select model",
-    },
-    {
-      id: "mcp",
-      label: "MCP Access",
-      icon: <KeyRound className="w-4 h-4" />,
-      enabled: true,
-      description: "Manage MCP keys",
-    },
-  ];
-
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       {/* Header */}
@@ -155,11 +163,14 @@ export default function AISettings() {
 
       {/* Tab Navigation */}
       <div className="surface-elevated rounded-xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
-        <div className="flex border-b border-sanctuary-200 dark:border-sanctuary-700">
+        <div
+          {...getTabListProps('AI settings sections')}
+          className="flex border-b border-sanctuary-200 dark:border-sanctuary-700"
+        >
           {tabs.map((tab, index) => (
             <button
               key={tab.id}
-              onClick={() => tab.enabled && setActiveTab(tab.id)}
+              {...getTabProps(tab.id, { disabled: !tab.enabled })}
               disabled={!tab.enabled}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors relative ${
                 activeTab === tab.id

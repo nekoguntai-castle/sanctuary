@@ -82,9 +82,9 @@ describe('SystemSettings', () => {
     it('renders tab navigation', async () => {
       await renderSystemSettings();
 
-      expect(screen.getByRole('button', { name: 'Access Control' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'WebSocket' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Support' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Access Control' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'WebSocket' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Support' })).toBeInTheDocument();
 
       await waitFor(() => {
         expect(adminApi.getSystemSettings).toHaveBeenCalled();

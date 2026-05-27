@@ -1,3 +1,4 @@
+import { useTabsA11y } from '../../ui/useTabsA11y';
 import { INTELLIGENCE_TABS } from './tabDefinitions';
 import type { TabId } from './types';
 
@@ -6,16 +7,27 @@ interface TabNavigationProps {
   onSelectTab: (tabId: TabId) => void;
 }
 
+const INTELLIGENCE_TAB_IDS = INTELLIGENCE_TABS.map((tab) => tab.id);
+
 export function TabNavigation({ activeTab, onSelectTab }: TabNavigationProps) {
+  const { getTabListProps, getTabProps } = useTabsA11y({
+    tabs: INTELLIGENCE_TAB_IDS,
+    activeTab,
+    onTabChange: onSelectTab,
+  });
+
   return (
-    <div className="flex gap-1 rounded-lg border border-sanctuary-200 bg-sanctuary-50 p-0.5 dark:border-sanctuary-800 dark:bg-sanctuary-950">
+    <div
+      {...getTabListProps('Intelligence sections')}
+      className="flex gap-1 rounded-lg border border-sanctuary-200 bg-sanctuary-50 p-0.5 dark:border-sanctuary-800 dark:bg-sanctuary-950"
+    >
       {INTELLIGENCE_TABS.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;
         return (
           <button
             key={tab.id}
-            onClick={() => onSelectTab(tab.id)}
+            {...getTabProps(tab.id)}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition-all ${
               isActive
                 ? 'bg-white text-primary-600 shadow-sm dark:bg-sanctuary-800 dark:text-primary-300'

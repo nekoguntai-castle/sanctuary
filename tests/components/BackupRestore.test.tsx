@@ -154,7 +154,7 @@ describe('BackupRestore Component', () => {
     await renderBackupRestore(BackupRestore);
 
     // Click the Restore tab
-    const restoreTab = screen.getByRole('button', { name: /restore/i });
+    const restoreTab = screen.getByRole('tab', { name: /^restore$/i });
     await user.click(restoreTab);
 
     // Should show restore content - look for the heading specifically
@@ -162,7 +162,7 @@ describe('BackupRestore Component', () => {
       expect(screen.getByRole('heading', { name: /restore from backup/i })).toBeInTheDocument();
     });
 
-    const backupTab = screen.getByRole('button', { name: /^backup$/i });
+    const backupTab = screen.getByRole('tab', { name: /^backup$/i });
     await user.click(backupTab);
 
     await waitFor(() => {
@@ -259,7 +259,7 @@ describe('BackupRestore Component', () => {
     await renderBackupRestore(BackupRestore);
 
     // Click the Restore tab
-    const restoreTab = screen.getByRole('button', { name: /restore/i });
+    const restoreTab = screen.getByRole('tab', { name: /^restore$/i });
     await user.click(restoreTab);
 
     await waitFor(() => {
@@ -274,7 +274,7 @@ describe('BackupRestore Component', () => {
     await renderBackupRestore(BackupRestore);
 
     // Click the Restore tab
-    const restoreTab = screen.getByRole('button', { name: /restore/i });
+    const restoreTab = screen.getByRole('tab', { name: /^restore$/i });
     await user.click(restoreTab);
 
     await waitFor(() => {
@@ -298,7 +298,7 @@ describe('BackupRestore Component', () => {
     await renderBackupRestore(BackupRestore);
 
     // Click the Restore tab
-    const restoreTab = screen.getByRole('button', { name: /restore/i });
+    const restoreTab = screen.getByRole('tab', { name: /^restore$/i });
     await user.click(restoreTab);
 
     await waitFor(() => {
@@ -428,7 +428,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
 
-    await user.click(screen.getByRole('button', { name: /restore/i }));
+    await user.click(screen.getByRole('tab', { name: /^restore$/i }));
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     await user.upload(fileInput, new File(['not-json'], 'broken.json', { type: 'application/json' }));
 
@@ -456,7 +456,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
 
-    await user.click(screen.getByRole('button', { name: /restore/i }));
+    await user.click(screen.getByRole('tab', { name: /^restore$/i }));
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File([''], 'backup.json', { type: 'application/json' });
     Object.defineProperty(file, 'text', { value: () => Promise.resolve(JSON.stringify(backup)) });
@@ -497,7 +497,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
     try {
       await renderBackupRestore(BackupRestore);
 
-      await user.click(screen.getByRole('button', { name: /restore/i }));
+      await user.click(screen.getByRole('tab', { name: /^restore$/i }));
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
       const file = new File([''], 'backup.json', { type: 'application/json' });
       Object.defineProperty(file, 'text', { value: () => Promise.resolve(JSON.stringify(backup)) });
@@ -526,7 +526,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
 
-    await user.click(screen.getByRole('button', { name: /restore/i }));
+    await user.click(screen.getByRole('tab', { name: /^restore$/i }));
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File([''], 'backup.json', { type: 'application/json' });
     Object.defineProperty(file, 'text', { value: () => Promise.resolve(JSON.stringify(backup)) });
@@ -560,7 +560,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
 
-    await user.click(screen.getByRole('button', { name: /restore/i }));
+    await user.click(screen.getByRole('tab', { name: /^restore$/i }));
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File([''], 'backup.json', { type: 'application/json' });
     Object.defineProperty(file, 'text', { value: () => Promise.resolve(JSON.stringify(backup)) });
@@ -604,7 +604,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
 
-    await user.click(screen.getByRole('button', { name: /restore/i }));
+    await user.click(screen.getByRole('tab', { name: /^restore$/i }));
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File([''], 'backup.json', { type: 'application/json' });
     Object.defineProperty(file, 'text', { value: () => Promise.resolve(JSON.stringify(backup)) });

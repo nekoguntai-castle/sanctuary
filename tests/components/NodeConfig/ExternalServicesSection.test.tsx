@@ -112,14 +112,14 @@ describe("ExternalServicesSection", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Testnet3" }));
+    await user.click(screen.getByRole("tab", { name: "Testnet3" }));
     await user.click(screen.getByRole("button", { name: "blockstream.info" }));
     expect(onConfigChange).toHaveBeenLastCalledWith({
       ...nodeConfig,
       testnet3ExplorerUrl: "https://blockstream.info/testnet",
     });
 
-    await user.click(screen.getByRole("button", { name: "Testnet4" }));
+    await user.click(screen.getByRole("tab", { name: "Testnet4" }));
     fireEvent.change(screen.getByLabelText("Testnet4 block explorer URL"), {
       target: { value: "https://explorer.testnet4.example" },
     });
@@ -144,7 +144,7 @@ describe("ExternalServicesSection", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Testnet4" }));
+    await user.click(screen.getByRole("tab", { name: "Testnet4" }));
     await user.click(screen.getByRole("radio", { name: "Mempool API" }));
     expect(onConfigChange).toHaveBeenLastCalledWith({
       ...createNodeConfig({ testnet4FeeEstimatorUrl: "" }),

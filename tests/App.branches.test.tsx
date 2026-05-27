@@ -468,6 +468,28 @@ describe("App branch coverage", () => {
     expect(screen.queryByText("Intelligence Page")).not.toBeInTheDocument();
   });
 
+  it("blocks direct Console route access when Console is unavailable", async () => {
+    mockUseUser.mockReturnValue({
+      isAuthenticated: true,
+      logout: vi.fn(),
+      user: {
+        usingDefaultPassword: false,
+        preferences: {},
+      },
+      updatePreferences: vi.fn(),
+    });
+    mockUseAppCapabilityStates.mockReturnValue({
+      console: { available: false, loading: false },
+      intelligence: { available: true, loading: false },
+    });
+    window.location.hash = "#/console/results";
+
+    render(<App />);
+
+    expect(await screen.findByTestId("route-capability-unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Console Results Page")).not.toBeInTheDocument();
+  });
+
   it("handles password refresh success and failure during forced password change", async () => {
     const baseUser = {
       isAuthenticated: true,

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { DeviceAccountsSection } from '../../../components/DeviceDetail/DeviceDetail/DeviceAccountsSection';
@@ -61,10 +61,10 @@ describe('DeviceAccountsSection', () => {
 
     expect(screen.getByText("m/84'/0'/0'")).toBeInTheDocument();
     expect(screen.queryByText("m/84'/1'/0'")).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /mainnet \(1\)/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /testnet-family \/ signet \(1\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /mainnet \(1\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /testnet-family \/ signet \(1\)/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /testnet-family \/ signet \(1\)/i }));
+    await user.click(screen.getByRole('tab', { name: /testnet-family \/ signet \(1\)/i }));
 
     expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
   });
@@ -97,9 +97,9 @@ describe('DeviceAccountsSection', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /testnet-family \/ signet \(2\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /testnet-family \/ signet \(2\)/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /testnet-family \/ signet \(2\)/i }));
+    await user.click(screen.getByRole('tab', { name: /testnet-family \/ signet \(2\)/i }));
 
     expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
     expect(screen.getByText("m/86'/1'/0'")).toBeInTheDocument();
@@ -152,11 +152,11 @@ describe('DeviceAccountsSection', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /multisig \(1\)/i }));
+    await user.click(screen.getByRole('tab', { name: /multisig \(1\)/i }));
 
     expect(screen.getByText("m/48'/0'/0'/2'")).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /single-sig \(1\)/i }));
+    await user.click(screen.getByRole('tab', { name: /single-sig \(1\)/i }));
     expect(screen.getByText("m/84'/0'/0'")).toBeInTheDocument();
   });
 
@@ -186,8 +186,36 @@ describe('DeviceAccountsSection', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /multisig \(1\)/i })).toHaveClass('surface-secondary');
+    expect(screen.getByRole('tab', { name: /multisig \(1\)/i })).toHaveClass('surface-secondary');
     expect(screen.getByText("m/48'/0'/0'/2'")).toBeInTheDocument();
+  });
+
+  it('skips empty account purpose tabs during keyboard navigation', () => {
+    activeNetworkMock.selectedNetwork = 'mainnet';
+
+    render(
+      <DeviceAccountsSection
+        deviceId="device-1"
+        device={baseDevice as any}
+        isOwner={false}
+        showAddAccount={false}
+        onShowAddAccount={vi.fn()}
+        onCloseAddAccount={vi.fn()}
+        onDeviceUpdated={vi.fn()}
+      />,
+    );
+
+    const singleSigTab = screen.getByRole('tab', { name: /single-sig \(1\)/i });
+    const multisigTab = screen.getByRole('tab', { name: /multisig \(0\)/i });
+
+    expect(multisigTab).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.keyDown(screen.getByRole('tablist', { name: 'Device account purposes' }), {
+      key: 'ArrowRight',
+    });
+
+    expect(singleSigTab).toHaveAttribute('aria-selected', 'true');
+    expect(multisigTab).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByText("m/84'/0'/0'")).toBeInTheDocument();
   });
 
   it('falls back from stale selected tabs when the account set changes', async () => {
@@ -217,10 +245,14 @@ describe('DeviceAccountsSection', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: /testnet-family \/ signet \(1\)/i }));
-    expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: /multisig \(1\)/i }));
+    expect(screen.getByText("m/48'/0'/0'/2'")).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /multisig \(0\)/i }));
+    await user.click(screen.getByRole('tab', { name: /testnet-family \/ signet \(1\)/i }));
+    expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /single-sig \(1\)/i })).toHaveAttribute('aria-selected', 'true');
+
+    await user.click(screen.getByRole('tab', { name: /multisig \(0\)/i }));
     expect(screen.getByText("m/84'/1'/0'")).toBeInTheDocument();
 
     rerender(

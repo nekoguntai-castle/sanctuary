@@ -121,7 +121,7 @@ describe('SidebarContent branch coverage', () => {
       />
     );
 
-    const testnetButton = screen.getByRole('button', { name: 'Testnet3' });
+    const testnetButton = screen.getByRole('tab', { name: 'Testnet3' });
     fireEvent.click(testnetButton);
 
     expect(testnetButton).toHaveAttribute('aria-disabled', 'true');
@@ -179,7 +179,7 @@ describe('SidebarContent branch coverage', () => {
     const props = buildProps({ capabilities: { console: true, intelligence: true } });
     render(<SidebarContent {...props} />);
 
-    const mainnetButton = screen.getByRole('button', { name: 'Mainnet' });
+    const mainnetButton = screen.getByRole('tab', { name: 'Mainnet' });
     const consoleButton = screen.getByRole('button', { name: 'Open AI Console' });
     const shortcutsButton = screen.getByRole('button', { name: 'Show keyboard shortcuts' });
     const dashboard = screen.getByRole('button', { name: 'Dashboard' });
@@ -187,7 +187,7 @@ describe('SidebarContent branch coverage', () => {
     const nav = screen.getByText('Actions').closest('nav');
 
     expect(screen.queryByText('Network')).not.toBeInTheDocument();
-    expect(mainnetButton.closest('nav')).toHaveAttribute('aria-label', 'Network tabs');
+    expect(mainnetButton.closest('[role="tablist"]')).toHaveAttribute('aria-label', 'Network tabs');
     expect(screen.getByText('Actions')).toHaveClass(
       'px-4',
       'text-[9px]',

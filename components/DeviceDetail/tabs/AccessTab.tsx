@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { DeviceShareInfo } from '../../../types';
 import type { SearchUser } from '../../../src/api/auth';
+import { useTabsA11y } from '../../ui/useTabsA11y';
 import { OwnershipSection } from '../access/OwnershipSection';
 import { SharingSection } from '../access/SharingSection';
 import { TransfersSection } from '../access/TransfersSection';
@@ -31,6 +32,9 @@ interface AccessTabProps {
   onTransferComplete: () => void;
 }
 
+type AccessSubTab = 'ownership' | 'sharing' | 'transfers';
+const ACCESS_SUB_TABS: AccessSubTab[] = ['ownership', 'sharing', 'transfers'];
+
 export const AccessTab: React.FC<AccessTabProps> = ({
   deviceId,
   isOwner,
@@ -51,16 +55,24 @@ export const AccessTab: React.FC<AccessTabProps> = ({
   onTransfer,
   onTransferComplete,
 }) => {
-  const [accessSubTab, setAccessSubTab] = useState<'ownership' | 'sharing' | 'transfers'>('ownership');
+  const [accessSubTab, setAccessSubTab] = useState<AccessSubTab>('ownership');
+  const { getTabListProps, getTabProps } = useTabsA11y({
+    tabs: ACCESS_SUB_TABS,
+    activeTab: accessSubTab,
+    onTabChange: setAccessSubTab,
+  });
 
   return (
     <div className="space-y-4">
       {/* Sub-tabs */}
-      <div className="flex space-x-1 p-1 surface-secondary rounded-lg w-fit">
-        {(['ownership', 'sharing', 'transfers'] as const).map((tab) => (
+      <div
+        {...getTabListProps('Device access sections')}
+        className="flex space-x-1 p-1 surface-secondary rounded-lg w-fit"
+      >
+        {ACCESS_SUB_TABS.map((tab) => (
           <button
             key={tab}
-            onClick={() => setAccessSubTab(tab)}
+            {...getTabProps(tab)}
             className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors capitalize ${
               accessSubTab === tab
                 ? 'bg-white dark:bg-sanctuary-700 text-sanctuary-900 dark:text-sanctuary-100 shadow-sm'

@@ -55,10 +55,20 @@ const MobileMenuOverlay: React.FC<MobileMenuOverlayProps> = ({
 }) => {
   if (!isOpen) return null;
 
+  const handlePanelClick: React.MouseEventHandler<HTMLDivElement> = (event) => {
+    if (event.target instanceof Element && event.target.closest('a[href]')) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="md:hidden fixed inset-0 z-40 flex">
+    <div className="md:hidden fixed inset-0 z-40 flex" data-testid="mobile-sidebar-overlay">
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}></div>
-      <div className="relative flex-1 flex flex-col max-w-xs w-full surface-elevated">
+      <div
+        className="relative flex-1 flex flex-col max-w-xs w-full surface-elevated"
+        data-testid="mobile-sidebar-panel"
+        onClick={handlePanelClick}
+      >
         {sidebarContent}
       </div>
     </div>

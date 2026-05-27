@@ -5,6 +5,7 @@ import type { Device, DeviceAccount } from '../../../types';
 import { useActiveNetwork } from '../../../contexts/ActiveNetworkContext';
 import { AddAccountFlow } from '../accounts/AddAccountFlow';
 import { getAccountTypeInfo } from '../accountTypes';
+import { useTabsA11y } from '../../ui/useTabsA11y';
 import {
   groupAccountsByNetwork,
   groupAccountsByPurpose,
@@ -12,6 +13,18 @@ import {
   type DerivationNetworkGroup,
   type DeviceAccountPurpose,
 } from '../../../utils/derivationPathGroups';
+
+type NetworkAccountTabProps = ReturnType<
+  ReturnType<typeof useTabsA11y<DerivationNetworkGroup>>['getTabProps']
+>;
+type PurposeAccountTabProps = ReturnType<
+  ReturnType<typeof useTabsA11y<DeviceAccountPurpose>>['getTabProps']
+>;
+
+const PURPOSE_TABS: readonly DeviceAccountPurpose[] = [
+  DeviceAccountPurposeValue.SINGLE_SIG,
+  DeviceAccountPurposeValue.MULTISIG,
+];
 
 type DeviceAccountsSectionProps = {
   deviceId: string;
@@ -97,12 +110,11 @@ function DeviceAccountTabs({
   const availableNetworkTabs = (['mainnet', 'testnet-signet'] as const).filter(
     tab => accountsByNetwork[tab].length > 0
   );
-  /* v8 ignore next -- defensive guard; parent renders legacy card before empty account groups reach tabs. */
-  if (availableNetworkTabs.length === 0) return null;
-
+  /* v8 ignore next -- account groups contain at least one network tab whenever accounts exist. */
+  const fallbackNetworkTab = availableNetworkTabs[0] ?? networkTab;
   const activeNetworkTab: DerivationNetworkGroup = accountsByNetwork[networkTab].length > 0
     ? networkTab
-    : availableNetworkTabs[0];
+    : fallbackNetworkTab;
   const accountsByPurpose = groupAccountsByPurpose(accountsByNetwork[activeNetworkTab]);
   const activePurposeTab: DeviceAccountPurpose = accountsByPurpose[purposeTab].length > 0
     ? purposeTab
@@ -110,36 +122,62 @@ function DeviceAccountTabs({
     ? DeviceAccountPurposeValue.MULTISIG
     : DeviceAccountPurposeValue.SINGLE_SIG;
   const activeAccounts = accountsByPurpose[activePurposeTab];
+  const {
+    getTabListProps: getNetworkTabListProps,
+    getTabProps: getNetworkTabProps,
+  } = useTabsA11y({
+    tabs: availableNetworkTabs,
+    activeTab: activeNetworkTab,
+    onTabChange: setNetworkTab,
+  });
+  const {
+    getTabListProps: getPurposeTabListProps,
+    getTabProps: getPurposeTabProps,
+  } = useTabsA11y({
+    tabs: PURPOSE_TABS,
+    activeTab: activePurposeTab,
+    onTabChange: setPurposeTab,
+    isTabDisabled: (purpose) => accountsByPurpose[purpose].length === 0,
+  });
 
   useEffect(() => {
     setNetworkTab(initialNetworkTab);
   }, [initialNetworkTab]);
 
+  /* v8 ignore next -- defensive guard; parent renders legacy card before empty account groups reach tabs. */
+  if (availableNetworkTabs.length === 0) return null;
+
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div
+        {...getNetworkTabListProps('Device account networks')}
+        className="flex flex-wrap items-center gap-2"
+      >
         {availableNetworkTabs.map(tab => (
           <NetworkAccountTabButton
             key={tab}
             tab={tab}
             active={tab === activeNetworkTab}
             count={accountsByNetwork[tab].length}
-            onClick={() => setNetworkTab(tab)}
+            tabProps={getNetworkTabProps(tab)}
           />
         ))}
       </div>
-      <div className="flex items-center gap-2">
+      <div
+        {...getPurposeTabListProps('Device account purposes')}
+        className="flex items-center gap-2"
+      >
         <PurposeAccountTabButton
           purpose={DeviceAccountPurposeValue.SINGLE_SIG}
           active={activePurposeTab === DeviceAccountPurposeValue.SINGLE_SIG}
           count={accountsByPurpose[DeviceAccountPurposeValue.SINGLE_SIG].length}
-          onClick={() => setPurposeTab(DeviceAccountPurposeValue.SINGLE_SIG)}
+          tabProps={getPurposeTabProps(DeviceAccountPurposeValue.SINGLE_SIG)}
         />
         <PurposeAccountTabButton
           purpose={DeviceAccountPurposeValue.MULTISIG}
           active={activePurposeTab === DeviceAccountPurposeValue.MULTISIG}
           count={accountsByPurpose[DeviceAccountPurposeValue.MULTISIG].length}
-          onClick={() => setPurposeTab(DeviceAccountPurposeValue.MULTISIG)}
+          tabProps={getPurposeTabProps(DeviceAccountPurposeValue.MULTISIG)}
         />
       </div>
       <div className="space-y-3">
@@ -155,12 +193,12 @@ function NetworkAccountTabButton({
   tab,
   active,
   count,
-  onClick,
+  tabProps,
 }: {
   tab: DerivationNetworkGroup;
   active: boolean;
   count: number;
-  onClick: () => void;
+  tabProps: NetworkAccountTabProps;
 }) {
   const isMainnet = tab === 'mainnet';
   const label = isMainnet ? 'Mainnet' : 'Testnet-family / Signet';
@@ -170,13 +208,12 @@ function NetworkAccountTabButton({
 
   return (
     <button
-      type="button"
+      {...tabProps}
       className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
         active
           ? activeClass
           : 'border-sanctuary-200 dark:border-sanctuary-800 text-sanctuary-600 dark:text-sanctuary-400 hover:border-sanctuary-400'
       }`}
-      onClick={onClick}
     >
       {label} <span className="text-[10px] opacity-70">({count})</span>
     </button>
@@ -187,22 +224,24 @@ function PurposeAccountTabButton({
   purpose,
   active,
   count,
-  onClick,
+  tabProps,
 }: {
   purpose: DeviceAccountPurpose;
   active: boolean;
   count: number;
-  onClick: () => void;
+  tabProps: PurposeAccountTabProps;
 }) {
+  const disabled = count === 0;
   return (
     <button
-      type="button"
+      {...tabProps}
       className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
         active
           ? 'surface-secondary text-sanctuary-900 dark:text-sanctuary-100 border-sanctuary-300 dark:border-sanctuary-700'
+          : disabled
+          ? 'border-sanctuary-200 dark:border-sanctuary-800 text-sanctuary-300 dark:text-sanctuary-600 cursor-not-allowed'
           : 'border-sanctuary-200 dark:border-sanctuary-800 text-sanctuary-600 dark:text-sanctuary-400 hover:border-sanctuary-400'
       }`}
-      onClick={onClick}
     >
       {purpose === DeviceAccountPurposeValue.MULTISIG ? 'Multisig' : 'Single-sig'} <span className="text-[10px] opacity-70">({count})</span>
     </button>

@@ -1,4 +1,5 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import { useTabsA11y } from '../ui/useTabsA11y';
 import { getWalletDetailTabs } from './tabDefinitions';
 import type { TabType } from './types';
 
@@ -15,7 +16,13 @@ export const TabBar: React.FC<TabBarProps> = ({
   userRole,
   draftsCount,
 }) => {
-  const tabs = getWalletDetailTabs(userRole);
+  const tabs = useMemo(() => getWalletDetailTabs(userRole), [userRole]);
+  const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
+  const { getTabListProps, getTabProps } = useTabsA11y({
+    tabs: tabIds,
+    activeTab,
+    onTabChange,
+  });
 
   const navRef = useRef<HTMLElement>(null);
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
@@ -45,7 +52,11 @@ export const TabBar: React.FC<TabBarProps> = ({
 
   return (
     <div className="overflow-x-auto scrollbar-hide">
-      <nav ref={navRef} className="relative flex gap-1 p-1 surface-secondary rounded-lg" aria-label="Tabs">
+      <nav
+        ref={navRef}
+        {...getTabListProps('Wallet sections')}
+        className="relative flex gap-1 p-1 surface-secondary rounded-lg"
+      >
         {/* Sliding indicator */}
         <div
           className="absolute top-1 bottom-1 rounded-md bg-white dark:bg-sanctuary-600 shadow-sm transition-all duration-300 ease-out z-0"
@@ -54,8 +65,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            data-active={activeTab === tab.id}
-            onClick={() => onTabChange(tab.id)}
+            {...getTabProps(tab.id)}
             className={`${
               activeTab === tab.id
                 ? 'text-primary-700 dark:text-primary-700'

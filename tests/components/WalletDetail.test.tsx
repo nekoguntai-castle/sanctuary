@@ -410,13 +410,13 @@ describe('WalletDetail', () => {
       renderWalletDetail();
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /^transactions$/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /^utxos$/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /^addresses$/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /^drafts$/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /^stats$/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /^access$/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /^settings$/i })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: /^transactions$/i })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: /^utxos$/i })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: /^addresses$/i })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: /^drafts$/i })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: /^stats$/i })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: /^access$/i })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: /^settings$/i })).toBeInTheDocument();
       });
     });
 
@@ -448,10 +448,10 @@ describe('WalletDetail', () => {
       renderWalletDetail();
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /stats/i })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: /stats/i })).toBeInTheDocument();
       });
 
-      await user.click(screen.getByRole('button', { name: /stats/i }));
+      await user.click(screen.getByRole('tab', { name: /stats/i }));
 
       await waitFor(() => {
         expect(screen.getByTestId('wallet-stats')).toBeInTheDocument();
@@ -463,10 +463,10 @@ describe('WalletDetail', () => {
       renderWalletDetail();
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /drafts/i })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: /drafts/i })).toBeInTheDocument();
       });
 
-      await user.click(screen.getByRole('button', { name: /drafts/i }));
+      await user.click(screen.getByRole('tab', { name: /drafts/i }));
 
       await waitFor(() => {
         expect(screen.getByTestId('draft-list')).toBeInTheDocument();
@@ -588,7 +588,7 @@ describe('WalletDetail', () => {
 
       await waitFor(() => {
         expect(draftsApi.getDrafts).toHaveBeenCalled();
-        expect(screen.getByRole('button', { name: /^drafts$/i })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: /^drafts$/i })).toBeInTheDocument();
       });
     });
   });

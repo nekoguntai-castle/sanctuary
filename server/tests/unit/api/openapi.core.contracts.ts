@@ -272,6 +272,7 @@ export function registerOpenApiCoreTests() {
   it("documents broader Bitcoin utility and node routes", () => {
     const routes: Array<[OpenApiPathKey, string]> = [
       ["/bitcoin/status", "get"],
+      ["/bitcoin/silent-payments/readiness", "get"],
       ["/bitcoin/mempool", "get"],
       ["/bitcoin/blocks/recent", "get"],
       ["/bitcoin/block/{height}", "get"],
@@ -302,6 +303,29 @@ export function registerOpenApiCoreTests() {
       name: "Node",
       description: "Bitcoin node connectivity checks",
     });
+    expect(
+      openApiSpec.paths["/bitcoin/silent-payments/readiness"].get.responses[200]
+        .content["application/json"].schema,
+    ).toEqual({
+      $ref: "#/components/schemas/SilentPaymentReadiness",
+    });
+    expect(
+      openApiSpec.components.schemas.SilentPaymentReadiness.required,
+    ).toEqual([
+      "featureEnabled",
+      "ready",
+      "network",
+      "requiredFeatures",
+      "blockers",
+      "compatibleServerCount",
+      "endpointCount",
+      "featurePoolHealthy",
+      "servers",
+    ]);
+    expect(
+      openApiSpec.components.schemas.SilentPaymentServerReadiness.properties
+        .serverUsage.enum,
+    ).toEqual(["general", "silent_payments", "both"]);
     expect(
       openApiSpec.paths["/bitcoin/mempool"].get.responses[500].content[
         "application/json"

@@ -76,3 +76,5 @@ scripts/offline/keys/*.key
 
 # Session scratch notes (Claude Code automation scratchpad)
 tasks/automation-notes.md
+tasks/todo.md
+tasks/lessons.md

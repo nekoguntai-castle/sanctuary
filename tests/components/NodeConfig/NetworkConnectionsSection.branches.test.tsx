@@ -53,8 +53,8 @@ describe('NetworkConnectionsSection branch coverage', () => {
     );
 
     expect(screen.getByTestId('network-server-count')).toHaveTextContent('2');
-    expect(screen.getByRole('button', { name: /testnet3\(1\)/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /testnet4\(1\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /testnet3\(1\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /testnet4\(1\)/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('update-config'));
     expect(onConfigChange).toHaveBeenCalledWith({

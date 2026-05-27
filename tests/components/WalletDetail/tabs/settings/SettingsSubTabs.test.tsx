@@ -8,6 +8,7 @@ describe('SettingsSubTabs', () => {
       <SettingsSubTabs settingsSubTab="general" onSettingsSubTabChange={vi.fn()} />,
     );
 
+    expect(screen.getByRole('tablist', { name: 'Wallet settings sections' })).toBeInTheDocument();
     expect(screen.getByText('General')).toBeInTheDocument();
     expect(screen.getByText('Devices')).toBeInTheDocument();
     expect(screen.getByText('Notifications')).toBeInTheDocument();
@@ -23,6 +24,10 @@ describe('SettingsSubTabs', () => {
 
     const devicesButton = screen.getByText('Devices');
     expect(devicesButton.className).toContain('bg-white');
+    expect(screen.getByRole('tab', { name: 'Devices' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
   });
 
   it('calls onSettingsSubTabChange when a tab is clicked', () => {
@@ -48,6 +53,19 @@ describe('SettingsSubTabs', () => {
     expect(onChange).toHaveBeenCalledWith('webhooks');
 
     fireEvent.click(screen.getByText('Autopilot'));
+    expect(onChange).toHaveBeenCalledWith('autopilot');
+  });
+
+  it('supports keyboard navigation between tabs', () => {
+    const onChange = vi.fn();
+    render(
+      <SettingsSubTabs settingsSubTab="general" onSettingsSubTabChange={onChange} />,
+    );
+
+    fireEvent.keyDown(screen.getByRole('tablist', { name: 'Wallet settings sections' }), {
+      key: 'End',
+    });
+
     expect(onChange).toHaveBeenCalledWith('autopilot');
   });
 });

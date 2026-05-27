@@ -59,7 +59,7 @@ export const getExpandedState = (pathname: string): ExpandedState => ({
 const getAdminConnectionAction = (isAdmin: boolean) =>
   isAdmin
     ? {
-        actionUrl: '/admin/node',
+        actionUrl: '/admin/node-config',
         actionLabel: 'Configure Node',
       }
     : {};

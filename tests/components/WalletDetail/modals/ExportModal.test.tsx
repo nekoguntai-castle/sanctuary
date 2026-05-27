@@ -523,7 +523,7 @@ describe('ExportModal', () => {
     // Helper to get the Device tab button
     const getDeviceTab = () => {
       // The Device tab is in the tab bar area, get the last button in the tab row
-      const tabButtons = screen.getAllByRole('button');
+      const tabButtons = screen.getAllByRole('tab');
       // Device tab contains the device icon
       return tabButtons.find(
         (btn) => btn.textContent?.includes('Device') && btn.querySelector('[data-testid="device-icon"]')

@@ -381,6 +381,42 @@ describe('Layout', () => {
         // Menu should be open
       }
     });
+
+    it('closes mobile menu when a sidebar link is activated', async () => {
+      const user = userEvent.setup();
+      renderLayout('/wallets');
+
+      const mobileToggle = screen.getByRole('button', { name: /open sidebar/i });
+      await user.click(mobileToggle);
+
+      expect(screen.getByTestId('mobile-sidebar-overlay')).toBeInTheDocument();
+
+      const mobilePanel = screen.getByTestId('mobile-sidebar-panel');
+      const dashboardLink = Array
+        .from(mobilePanel.querySelectorAll('a'))
+        .find((link) => link.textContent?.includes('Dashboard'));
+
+      if (!dashboardLink) throw new Error('Expected mobile Dashboard link');
+
+      await user.click(dashboardLink);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('mobile-sidebar-overlay')).not.toBeInTheDocument();
+      });
+    });
+
+    it('keeps mobile menu open when non-link panel content is activated', async () => {
+      const user = userEvent.setup();
+      renderLayout('/wallets');
+
+      const mobileToggle = screen.getByRole('button', { name: /open sidebar/i });
+      await user.click(mobileToggle);
+
+      const mobilePanel = screen.getByTestId('mobile-sidebar-panel');
+      await user.click(mobilePanel);
+
+      expect(screen.getByTestId('mobile-sidebar-overlay')).toBeInTheDocument();
+    });
   });
 
   describe('Version modal', () => {

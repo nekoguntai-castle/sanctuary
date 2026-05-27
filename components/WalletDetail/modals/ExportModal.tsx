@@ -27,6 +27,7 @@ import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { useCopyToClipboard } from '../../../hooks/useCopyToClipboard';
 import * as walletsApi from '../../../src/api/wallets';
 import { isMultisigType, getQuorumM, getQuorumN, type Quorum } from '../../../types';
+import { useTabsA11y } from '../../ui/useTabsA11y';
 
 interface ExportDevice {
   fingerprint: string;
@@ -39,6 +40,10 @@ const log = createLogger('ExportModal');
 
 type ExportTab = 'qr' | 'json' | 'text' | 'labels' | 'device';
 type QrFormat = 'passport' | 'descriptor';
+
+const BASE_EXPORT_TABS: readonly ExportTab[] = ['qr', 'json', 'text', 'labels'];
+const MULTISIG_EXPORT_TABS: readonly ExportTab[] = [...BASE_EXPORT_TABS, 'device'];
+const QR_FORMAT_TABS: readonly QrFormat[] = ['passport', 'descriptor'];
 
 interface ExportFormat {
   id: string;
@@ -119,6 +124,23 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [loadingFormats, setLoadingFormats] = useState(false);
 
   const isMultisig = isMultisigType(walletType);
+  const visibleExportTabs = isMultisig ? MULTISIG_EXPORT_TABS : BASE_EXPORT_TABS;
+  const {
+    getTabListProps: getExportTabListProps,
+    getTabProps: getExportTabProps,
+  } = useTabsA11y({
+    tabs: visibleExportTabs,
+    activeTab: exportTab,
+    onTabChange: setExportTab,
+  });
+  const {
+    getTabListProps: getQrFormatTabListProps,
+    getTabProps: getQrFormatTabProps,
+  } = useTabsA11y({
+    tabs: QR_FORMAT_TABS,
+    activeTab: qrFormat,
+    onTabChange: setQrFormat,
+  });
 
   // Fetch export formats when device tab is selected
   useEffect(() => {
@@ -189,9 +211,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         </div>
 
         {/* Export Tabs */}
-        <div className="flex border-b border-sanctuary-200 dark:border-sanctuary-800 mb-6">
+        <div
+          {...getExportTabListProps('Wallet export sections')}
+          className="flex border-b border-sanctuary-200 dark:border-sanctuary-800 mb-6"
+        >
           <button
-            onClick={() => setExportTab('qr')}
+            {...getExportTabProps('qr')}
             className={`flex-1 py-2 text-sm font-medium border-b-2 ${
               exportTab === 'qr'
                 ? 'border-primary-600 dark:border-primary-400 text-primary-700 dark:text-primary-300'
@@ -202,7 +227,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             QR Code
           </button>
           <button
-            onClick={() => setExportTab('json')}
+            {...getExportTabProps('json')}
             className={`flex-1 py-2 text-sm font-medium border-b-2 ${
               exportTab === 'json'
                 ? 'border-primary-600 dark:border-primary-400 text-primary-700 dark:text-primary-300'
@@ -213,7 +238,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             JSON File
           </button>
           <button
-            onClick={() => setExportTab('text')}
+            {...getExportTabProps('text')}
             className={`flex-1 py-2 text-sm font-medium border-b-2 ${
               exportTab === 'text'
                 ? 'border-primary-600 dark:border-primary-400 text-primary-700 dark:text-primary-300'
@@ -224,7 +249,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             Descriptor
           </button>
           <button
-            onClick={() => setExportTab('labels')}
+            {...getExportTabProps('labels')}
             className={`flex-1 py-2 text-sm font-medium border-b-2 ${
               exportTab === 'labels'
                 ? 'border-primary-600 dark:border-primary-400 text-primary-700 dark:text-primary-300'
@@ -236,7 +261,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </button>
           {isMultisig && (
             <button
-              onClick={() => setExportTab('device')}
+              {...getExportTabProps('device')}
               className={`flex-1 py-2 text-sm font-medium border-b-2 ${
                 exportTab === 'device'
                   ? 'border-primary-600 dark:border-primary-400 text-primary-700 dark:text-primary-300'
@@ -254,9 +279,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {exportTab === 'qr' && (
             <div className="w-full">
               {isMultisig && devices.length > 0 && (
-                <div className="flex gap-2 mb-4 justify-center">
+                <div
+                  {...getQrFormatTabListProps('QR export format')}
+                  className="flex gap-2 mb-4 justify-center"
+                >
                   <button
-                    onClick={() => setQrFormat('passport')}
+                    {...getQrFormatTabProps('passport')}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                       qrFormat === 'passport'
                         ? 'bg-primary-600 text-white'
@@ -266,7 +294,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     Passport/Coldcard
                   </button>
                   <button
-                    onClick={() => setQrFormat('descriptor')}
+                    {...getQrFormatTabProps('descriptor')}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                       qrFormat === 'descriptor'
                         ? 'bg-primary-600 text-white'

@@ -18,10 +18,13 @@ import { RestorePanel } from './RestorePanel';
 import { EncryptionKeyDisplay } from './EncryptionKeyDisplay';
 import { BackupCompleteModal } from './BackupCompleteModal';
 import { useBackupHandlers } from './hooks/useBackupHandlers';
+import { useTabsA11y } from '../ui/useTabsA11y';
 
 const log = createLogger('BackupRestore');
 
 type BackupTab = 'backup' | 'restore';
+
+const BACKUP_TAB_IDS: readonly BackupTab[] = ['backup', 'restore'];
 
 const BACKUP_TABS: { id: BackupTab; name: string; icon: React.FC<{ className?: string }> }[] = [
   { id: 'backup', name: 'Backup', icon: Download },
@@ -30,6 +33,11 @@ const BACKUP_TABS: { id: BackupTab; name: string; icon: React.FC<{ className?: s
 
 export const BackupRestore: React.FC = () => {
   const [activeTab, setActiveTab] = useState<BackupTab>('backup');
+  const { getTabListProps, getTabProps } = useTabsA11y({
+    tabs: BACKUP_TAB_IDS,
+    activeTab,
+    onTabChange: setActiveTab,
+  });
 
   // Encryption keys state
   const [encryptionKeys, setEncryptionKeys] = useState<EncryptionKeysResponse | null>(null);
@@ -73,11 +81,14 @@ export const BackupRestore: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex space-x-1 surface-secondary rounded-lg p-1">
+      <div
+        {...getTabListProps('Backup and restore sections')}
+        className="flex space-x-1 surface-secondary rounded-lg p-1"
+      >
         {BACKUP_TABS.map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            {...getTabProps(tab.id)}
             className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all ${
               activeTab === tab.id
                 ? 'bg-white dark:bg-sanctuary-800 text-primary-700 dark:text-primary-300 shadow-sm'

@@ -185,6 +185,7 @@ export const appRouteDefinitions: AppRouteDefinition[] = [
     path: "/console/results",
     component: ConsoleResults,
     fallback: <ListSkeleton />,
+    requiredCapabilities: ["console"],
   },
   {
     id: "wallet-create",

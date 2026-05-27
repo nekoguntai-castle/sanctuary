@@ -4,6 +4,7 @@ import { AppearanceTab } from './sections/ThemeSection';
 import { DisplayTab } from './sections/DisplaySection';
 import { ServicesTab } from './sections/ServicesSection';
 import { NotificationsTab } from './sections/NotificationsSection';
+import { useTabsA11y } from '../ui/useTabsA11y';
 
 type SettingsTab = 'appearance' | 'display' | 'services' | 'notifications';
 
@@ -13,9 +14,15 @@ const SETTINGS_TABS: { id: SettingsTab; name: string; icon: React.FC<{ className
   { id: 'services', name: 'Services', icon: Globe },
   { id: 'notifications', name: 'Notifications', icon: Volume2 },
 ];
+const SETTINGS_TAB_IDS = SETTINGS_TABS.map((tab) => tab.id);
 
 export const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
+  const { getTabListProps, getTabProps } = useTabsA11y({
+    tabs: SETTINGS_TAB_IDS,
+    activeTab,
+    onTabChange: setActiveTab,
+  });
 
   return (
     <div className="max-w-2xl mx-auto animate-fade-in pb-12">
@@ -27,13 +34,15 @@ export const Settings: React.FC = () => {
 
       {/* Tabs */}
       <div className="mb-6">
-        <div className="flex space-x-1 surface-secondary rounded-lg p-1">
+        <div
+          {...getTabListProps('Settings sections')}
+          className="flex space-x-1 surface-secondary rounded-lg p-1"
+        >
           {SETTINGS_TABS.map(tab => (
             <button
               key={tab.id}
-              type="button"
+              {...getTabProps(tab.id)}
               aria-label={tab.name}
-              onClick={() => setActiveTab(tab.id)}
               className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all ${
                 activeTab === tab.id
                   ? 'bg-white dark:bg-sanctuary-800 text-primary-700 dark:text-primary-300 shadow-sm'

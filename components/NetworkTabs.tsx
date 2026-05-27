@@ -4,6 +4,7 @@ import {
   networkConfigs,
   type TabNetwork,
 } from '../src/app/networks';
+import { useTabsA11y } from './ui/useTabsA11y';
 
 export type { TabNetwork };
 
@@ -12,10 +13,10 @@ type NetworkTabsLayout = 'row' | 'grid';
 interface NetworkTabButtonProps {
   network: TabNetwork;
   selectedNetwork: TabNetwork;
-  onNetworkChange: (network: TabNetwork) => void;
   networkAvailability?: Record<TabNetwork, boolean>;
   layout: NetworkTabsLayout;
   fullWidth: boolean;
+  getTabProps: ReturnType<typeof useTabsA11y<TabNetwork>>['getTabProps'];
 }
 
 interface NetworkTabsProps {
@@ -194,10 +195,10 @@ function SlidingTabIndicator({ indicator }: { indicator: { left: number; width: 
 function NetworkTabButton({
   network,
   selectedNetwork,
-  onNetworkChange,
   networkAvailability,
   layout,
   fullWidth,
+  getTabProps,
 }: NetworkTabButtonProps) {
   const config = networkConfigs[network];
   const isSelected = selectedNetwork === network;
@@ -206,13 +207,8 @@ function NetworkTabButton({
   return (
     <button
       key={network}
-      type="button"
-      data-active={isSelected}
-      aria-disabled={isDisabled}
+      {...getTabProps(network, { disabled: isDisabled })}
       title={isDisabled ? getDisabledTitle(network) : undefined}
-      onClick={() => {
-        if (!isDisabled) onNetworkChange(network);
-      }}
       className={getButtonClassName(isSelected, isDisabled, layout, fullWidth)}
     >
       <span className="flex min-w-0 items-center justify-center gap-1.5">
@@ -237,13 +233,23 @@ export const NetworkTabs = ({
   layout = 'row',
 }: NetworkTabsProps) => {
   const { navRef, indicator } = useNetworkTabIndicator(layout, selectedNetwork);
+  const isTabDisabled = useCallback(
+    (network: TabNetwork) => networkAvailability?.[network] === false,
+    [networkAvailability]
+  );
+  const { getTabListProps, getTabProps } = useTabsA11y({
+    tabs: TAB_NETWORKS,
+    activeTab: selectedNetwork,
+    onTabChange: onNetworkChange,
+    isTabDisabled,
+  });
 
   return (
     <div className={className}>
       <nav
         ref={navRef}
+        {...getTabListProps('Network tabs')}
         className={getNavClassName(layout, fullWidth)}
-        aria-label="Network tabs"
       >
         {layout === 'row' && <SlidingTabIndicator indicator={indicator} />}
         {TAB_NETWORKS.map((network) => (
@@ -251,10 +257,10 @@ export const NetworkTabs = ({
             key={network}
             network={network}
             selectedNetwork={selectedNetwork}
-            onNetworkChange={onNetworkChange}
             networkAvailability={networkAvailability}
             layout={layout}
             fullWidth={fullWidth}
+            getTabProps={getTabProps}
           />
         ))}
       </nav>

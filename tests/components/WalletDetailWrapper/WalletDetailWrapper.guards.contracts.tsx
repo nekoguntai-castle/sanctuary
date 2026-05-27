@@ -24,7 +24,7 @@ export const registerWalletDetailWrapperGuardContracts = () => {
 
       render(<WalletDetail />);
 
-      await user.click(screen.getByRole('button', { name: /addresses/i }));
+      await user.click(screen.getByRole('tab', { name: /addresses/i }));
       await user.click(screen.getByRole('button', { name: 'addr-load-more' }));
       expect(mocks.loadAddresses).not.toHaveBeenCalled();
       await user.click(screen.getByRole('button', { name: 'addr-generate' }));
@@ -32,7 +32,7 @@ export const registerWalletDetailWrapperGuardContracts = () => {
         expect(mocks.handleError).toHaveBeenCalledWith(expect.any(Error), 'Failed to Generate Addresses');
       });
 
-      await user.click(screen.getByRole('button', { name: /utxos/i }));
+      await user.click(screen.getByRole('tab', { name: /utxos/i }));
       await user.click(screen.getByRole('button', { name: 'utxo-freeze-missing' }));
       expect(mocks.freezeUTXO).not.toHaveBeenCalled();
 
@@ -41,7 +41,7 @@ export const registerWalletDetailWrapperGuardContracts = () => {
         expect(mocks.handleError).toHaveBeenCalledWith(expect.any(Error), 'Failed to Freeze UTXO');
       });
 
-      await user.click(screen.getByRole('button', { name: /settings/i }));
+      await user.click(screen.getByRole('tab', { name: /settings/i }));
       await user.click(screen.getByRole('button', { name: 'settings-update' }));
       await waitFor(() => {
         expect(mocks.handleError).toHaveBeenCalledWith(expect.any(Error), 'Update Failed');
@@ -60,11 +60,11 @@ export const registerWalletDetailWrapperGuardContracts = () => {
 
       render(<WalletDetail />);
 
-      await user.click(screen.getByRole('button', { name: /addresses/i }));
+      await user.click(screen.getByRole('tab', { name: /addresses/i }));
       await user.click(screen.getByRole('button', { name: 'addr-generate' }));
       expect(mocks.generateAddresses).not.toHaveBeenCalled();
 
-      await user.click(screen.getByRole('button', { name: /settings/i }));
+      await user.click(screen.getByRole('tab', { name: /settings/i }));
       await user.click(screen.getByRole('button', { name: 'settings-update' }));
       expect(mocks.updateWallet).not.toHaveBeenCalled();
     });
@@ -103,7 +103,7 @@ export const registerWalletDetailWrapperGuardContracts = () => {
       expect(screen.getByTestId('addr-descriptor')).toHaveTextContent('null');
       expect(screen.getByTestId('addr-network')).toHaveTextContent('mainnet');
 
-      await user.click(screen.getByRole('button', { name: /transactions/i }));
+      await user.click(screen.getByRole('tab', { name: /transactions/i }));
       await user.click(screen.getByRole('button', { name: 'tx-labels-change' }));
       expect(mocks.fetchData).toHaveBeenCalledWith(true);
 
@@ -111,7 +111,7 @@ export const registerWalletDetailWrapperGuardContracts = () => {
       expect(screen.getByTestId('receive-modal')).toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'receive-close' }));
 
-      await user.click(screen.getByRole('button', { name: /utxos/i }));
+      await user.click(screen.getByRole('tab', { name: /utxos/i }));
       expect(screen.getByTestId('utxo-network')).toHaveTextContent('mainnet');
       expect(screen.getByTestId('utxo-role')).toHaveTextContent('viewer');
 

@@ -1,8 +1,17 @@
 import { BITCOIN_NETWORKS } from "@sanctuary/shared/constants/bitcoin";
 import { WALLET_SCRIPT_TYPE_VALUES } from "@sanctuary/shared/constants/walletIdentity";
+import { ELECTRUM_SERVER_USAGE_VALUES } from "../../../services/bitcoin/electrum/capabilities";
 
 export { syncSchemas } from "./bitcoinSync";
 export { priceSchemas } from "./price";
+
+const SILENT_PAYMENT_READINESS_BLOCKERS = [
+  "FEATURE_DISABLED",
+  "NO_SILENT_PAYMENT_ENDPOINT",
+  "NO_COMPATIBLE_SERVER",
+  "FEATURE_POOL_UNHEALTHY",
+  "FEATURE_POOL_UNAVAILABLE",
+] as const;
 
 export const bitcoinSchemas = {
   BitcoinSimpleErrorResponse: {
@@ -32,6 +41,84 @@ export const bitcoinSchemas = {
       },
     },
     required: ["connected"],
+  },
+  SilentPaymentReadinessBlocker: {
+    type: "string",
+    enum: [...SILENT_PAYMENT_READINESS_BLOCKERS],
+  },
+  SilentPaymentServerReadiness: {
+    type: "object",
+    properties: {
+      id: { type: "string" },
+      label: { type: "string" },
+      host: { type: "string" },
+      port: { type: "integer", minimum: 1, maximum: 65535 },
+      useSsl: { type: "boolean" },
+      serverUsage: {
+        type: "string",
+        enum: [...ELECTRUM_SERVER_USAGE_VALUES],
+      },
+      capabilityStatus: {
+        type: "string",
+        enum: ["supported", "unsupported", "unknown", "stale", "error"],
+      },
+      supportsSilentPaymentsV0: { type: "boolean", nullable: true },
+      silentPaymentVersions: {
+        type: "array",
+        items: { type: "integer", minimum: 0 },
+      },
+      lastCapabilityCheck: { type: "string", format: "date-time", nullable: true },
+      lastCapabilityError: { type: "string", nullable: true },
+    },
+    required: [
+      "id",
+      "label",
+      "host",
+      "port",
+      "useSsl",
+      "serverUsage",
+      "capabilityStatus",
+      "supportsSilentPaymentsV0",
+      "silentPaymentVersions",
+      "lastCapabilityCheck",
+      "lastCapabilityError",
+    ],
+    additionalProperties: false,
+  },
+  SilentPaymentReadiness: {
+    type: "object",
+    properties: {
+      featureEnabled: { type: "boolean" },
+      ready: { type: "boolean" },
+      network: { type: "string", enum: [...BITCOIN_NETWORKS] },
+      requiredFeatures: {
+        type: "array",
+        items: { type: "string", enum: ["silent_payments_v0"] },
+      },
+      blockers: {
+        type: "array",
+        items: { $ref: "#/components/schemas/SilentPaymentReadinessBlocker" },
+      },
+      compatibleServerCount: { type: "integer", minimum: 0 },
+      endpointCount: { type: "integer", minimum: 0 },
+      featurePoolHealthy: { type: "boolean" },
+      servers: {
+        type: "array",
+        items: { $ref: "#/components/schemas/SilentPaymentServerReadiness" },
+      },
+    },
+    required: [
+      "featureEnabled",
+      "ready",
+      "network",
+      "requiredFeatures",
+      "blockers",
+      "compatibleServerCount",
+      "endpointCount",
+      "featurePoolHealthy",
+      "servers",
+    ],
+    additionalProperties: false,
   },
   BitcoinMempoolBlock: {
     type: "object",

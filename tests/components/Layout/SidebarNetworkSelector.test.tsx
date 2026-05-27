@@ -4,7 +4,7 @@ import { SidebarNetworkSelector } from '../../../components/Layout/SidebarConten
 
 describe('SidebarNetworkSelector', () => {
   const availability = { mainnet: true, testnet3: true, testnet4: true, signet: true };
-  const selectorSpacing = () => screen.getByRole('navigation', { name: 'Network tabs' }).parentElement?.parentElement;
+  const selectorSpacing = () => screen.getByRole('tablist', { name: 'Network tabs' }).parentElement?.parentElement;
 
   it('shows the section label in expanded sidebar mode', () => {
     render(
@@ -28,11 +28,11 @@ describe('SidebarNetworkSelector', () => {
       />
     );
 
-    const nav = screen.getByRole('navigation', { name: 'Network tabs' });
-    const selectedButton = screen.getByRole('button', { name: 'Testnet4' });
+    const nav = screen.getByRole('tablist', { name: 'Network tabs' });
+    const selectedButton = screen.getByRole('tab', { name: 'Testnet4' });
 
     expect(nav).toHaveClass('grid', 'grid-cols-2', 'w-full');
-    expect(screen.getAllByRole('button')).toHaveLength(4);
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
     expect(screen.queryByTestId('network-tabs-indicator')).not.toBeInTheDocument();
     expect(selectedButton).toHaveClass('bg-white', 'shadow-sm', 'text-sanctuary-900');
   });

@@ -1,5 +1,6 @@
 import type React from 'react';
 import { Shield } from 'lucide-react';
+import { useTabsA11y } from '../../ui/useTabsA11y';
 import type { DeviceDetailTab } from './types';
 
 type DeviceDetailTabsProps = {
@@ -7,22 +8,31 @@ type DeviceDetailTabsProps = {
   onTabChange: (tab: DeviceDetailTab) => void;
 };
 
+const DEVICE_DETAIL_TABS: DeviceDetailTab[] = ['details', 'access'];
+type DeviceDetailTabButtonProps = ReturnType<
+  ReturnType<typeof useTabsA11y<DeviceDetailTab>>['getTabProps']
+>;
+
 export function DeviceDetailTabs({ activeTab, onTabChange }: DeviceDetailTabsProps) {
+  const { getTabListProps, getTabProps } = useTabsA11y({
+    tabs: DEVICE_DETAIL_TABS,
+    activeTab,
+    onTabChange,
+  });
+
   return (
     <div className="border-b border-sanctuary-200 dark:border-sanctuary-800">
-      <nav className="flex space-x-8">
+      <nav {...getTabListProps('Device detail sections')} className="flex space-x-8">
         <DeviceTabButton
           active={activeTab === 'details'}
-          tab="details"
           label="Details"
-          onTabChange={onTabChange}
+          tabProps={getTabProps('details')}
         />
         <DeviceTabButton
           active={activeTab === 'access'}
-          tab="access"
           label="Access"
           icon={<Shield className="w-4 h-4" />}
-          onTabChange={onTabChange}
+          tabProps={getTabProps('access')}
         />
       </nav>
     </div>
@@ -31,16 +41,14 @@ export function DeviceDetailTabs({ activeTab, onTabChange }: DeviceDetailTabsPro
 
 function DeviceTabButton({
   active,
-  tab,
   label,
   icon,
-  onTabChange,
+  tabProps,
 }: {
   active: boolean;
-  tab: DeviceDetailTab;
   label: string;
   icon?: React.ReactNode;
-  onTabChange: (tab: DeviceDetailTab) => void;
+  tabProps: DeviceDetailTabButtonProps;
 }) {
   const className = active
     ? 'border-primary-500 text-primary-600 dark:text-primary-400'
@@ -48,7 +56,7 @@ function DeviceTabButton({
 
   return (
     <button
-      onClick={() => onTabChange(tab)}
+      {...tabProps}
       className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${icon ? 'flex items-center gap-2' : ''} ${className}`}
     >
       {icon}

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ExternalLink, ChevronRight } from "lucide-react";
 import { Input } from "../ui/Input";
+import { useTabsA11y } from "../ui/useTabsA11y";
 import { PriceProviderDiagnostics } from "../PriceProviderDiagnostics";
 import type { NodeConfig as NodeConfigType } from "../../types";
 import {
@@ -117,6 +118,11 @@ export const ExternalServicesSection: React.FC<
   ExternalServicesSectionProps
 > = ({ nodeConfig, onConfigChange, expanded, onToggle, summary }) => {
   const [activeNetwork, setActiveNetwork] = useState<NetworkTab>("mainnet");
+  const { getTabListProps, getTabProps } = useTabsA11y({
+    tabs: NETWORK_TABS,
+    activeTab: activeNetwork,
+    onTabChange: setActiveNetwork,
+  });
   const serviceConfig = NETWORK_EXTERNAL_SERVICES[activeNetwork];
   const explorerUrl = getUrlValue(nodeConfig, serviceConfig.explorerField);
   const feeEstimatorUrl = getUrlValue(nodeConfig, serviceConfig.feeField);
@@ -145,13 +151,14 @@ export const ExternalServicesSection: React.FC<
 
       {expanded && (
         <div className="px-4 pb-4 space-y-4 border-t border-sanctuary-100 dark:border-sanctuary-800 pt-4">
-          <div className="flex flex-wrap gap-2">
+          <div
+            {...getTabListProps("External service network")}
+            className="flex flex-wrap gap-2"
+          >
             {NETWORK_TABS.map((network) => (
               <button
                 key={network}
-                type="button"
-                onClick={() => setActiveNetwork(network)}
-                aria-pressed={activeNetwork === network}
+                {...getTabProps(network)}
                 className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${tabButtonClass(activeNetwork === network)}`}
               >
                 {NETWORK_EXTERNAL_SERVICES[network].label}

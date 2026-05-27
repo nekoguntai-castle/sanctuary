@@ -18,10 +18,10 @@ describe('NotificationsSection branch coverage', () => {
 
     expect(screen.getByTestId('sound-content')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /telegram/i }));
+    await user.click(screen.getByRole('tab', { name: /telegram/i }));
     expect(screen.getByTestId('telegram-content')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /sound/i }));
+    await user.click(screen.getByRole('tab', { name: /sound/i }));
     expect(screen.getByTestId('sound-content')).toBeInTheDocument();
   });
 });

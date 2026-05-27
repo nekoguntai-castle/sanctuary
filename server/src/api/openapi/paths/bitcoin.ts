@@ -222,6 +222,7 @@ export const bitcoinPaths = {
       summary: "Get Bitcoin status",
       description:
         "Get Bitcoin node and network status with graceful degradation when unavailable",
+      parameters: [addressNetworkQueryParameter],
       responses: {
         200: {
           description: "Bitcoin status",
@@ -231,6 +232,23 @@ export const bitcoinPaths = {
             },
           },
         },
+      },
+    },
+  },
+  "/bitcoin/silent-payments/readiness": {
+    get: {
+      tags: ["Bitcoin"],
+      summary: "Get Silent Payments readiness",
+      description:
+        "Report whether Silent Payments receive infrastructure is ready for a Bitcoin network.",
+      parameters: [addressNetworkQueryParameter],
+      responses: {
+        200: jsonResponse(
+          "Silent Payments readiness",
+          "#/components/schemas/SilentPaymentReadiness",
+        ),
+        400: apiErrorResponse,
+        500: apiErrorResponse,
       },
     },
   },
