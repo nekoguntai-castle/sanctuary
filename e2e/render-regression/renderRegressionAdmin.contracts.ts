@@ -70,7 +70,7 @@ export async function renderAdminNodeConfigRouteRendersCollapsibleSectionsAndKey
 
   await page.getByRole('button', { name: /Network Connections/i }).click();
   await expect(page.getByText('Connection Mode')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'mainnet (1)' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /^mainnet\(1\)$/i })).toBeVisible();
 
   await page.getByRole('button', { name: /Proxy \/ Tor/i }).click();
   await expect(page.locator('span', { hasText: 'Bundled Tor' })).toBeVisible();
