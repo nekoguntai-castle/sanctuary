@@ -376,7 +376,7 @@ test.describe('Error recovery', () => {
 
     // Transaction section may show error or empty state
     await expect(
-      page.getByRole('button', { name: 'Transactions', exact: true })
+      page.getByRole('tab', { name: 'Transactions', exact: true })
     ).toBeVisible();
   });
 
@@ -389,13 +389,13 @@ test.describe('Error recovery', () => {
     await expect(page.getByRole('heading', { name: WALLET.name })).toBeVisible();
 
     // Switch to UTXOs tab
-    await page.getByRole('button', { name: 'UTXOs', exact: true }).click();
+    await page.getByRole('tab', { name: 'UTXOs', exact: true }).click();
 
     // Tab should render with error or empty state, not crash
     await expect(page.getByRole('main')).toBeVisible();
 
     // Can switch to other tabs
-    await page.getByRole('button', { name: 'Transactions', exact: true }).click();
+    await page.getByRole('tab', { name: 'Transactions', exact: true }).click();
     await expect(page.getByText(/No transactions/i)).toBeVisible();
   });
 

@@ -240,7 +240,7 @@ test.describe('Settings persistence', () => {
     await page.goto('/#/settings');
     const main = page.getByRole('main');
 
-    await main.getByRole('button', { name: 'Display', exact: true }).click();
+    await main.getByRole('tab', { name: 'Display', exact: true }).click();
     await expect(page.getByText('Display Preferences')).toBeVisible();
 
     // Unit selector buttons
@@ -259,7 +259,7 @@ test.describe('Settings persistence', () => {
     await page.goto('/#/settings');
     const main = page.getByRole('main');
 
-    await main.getByRole('button', { name: 'Display', exact: true }).click();
+    await main.getByRole('tab', { name: 'Display', exact: true }).click();
     await expect(page.getByText('Display Preferences')).toBeVisible();
 
     // Unit options should be visible (Sats/BTC buttons or text)
@@ -274,7 +274,7 @@ test.describe('Settings persistence', () => {
     await page.goto('/#/settings');
     const main = page.getByRole('main');
 
-    await main.getByRole('button', { name: 'Display', exact: true }).click();
+    await main.getByRole('tab', { name: 'Display', exact: true }).click();
     await expect(page.getByText('Fiat Currency')).toBeVisible();
 
     // Currency selector should be present
@@ -300,15 +300,15 @@ test.describe('Settings persistence', () => {
     await expect(main.getByText('Dark Mode')).toBeVisible();
 
     // Switch to Display
-    await main.getByRole('button', { name: 'Display', exact: true }).click();
+    await main.getByRole('tab', { name: 'Display', exact: true }).click();
     await expect(page.getByText('Display Preferences')).toBeVisible();
 
     // Switch to Notifications
-    await main.getByRole('button', { name: 'Notifications', exact: true }).click();
+    await main.getByRole('tab', { name: 'Notifications', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Notification Sounds' })).toBeVisible();
 
     // Switch back to Appearance
-    await main.getByRole('button', { name: 'Appearance', exact: true }).click();
+    await main.getByRole('tab', { name: 'Appearance', exact: true }).click();
     await expect(main.getByText('Dark Mode')).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
@@ -344,7 +344,7 @@ test.describe('Settings persistence', () => {
     await page.goto('/#/settings');
     const main = page.getByRole('main');
 
-    await main.getByRole('button', { name: 'Notifications', exact: true }).click();
+    await main.getByRole('tab', { name: 'Notifications', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Notification Sounds' })).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);

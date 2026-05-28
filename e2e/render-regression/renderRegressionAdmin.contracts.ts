@@ -17,12 +17,12 @@ export async function renderAdminSystemSettingsRouteRendersAccessAndWebsocketPan
   await page.goto('/#/admin/settings');
 
   await expect(page.getByRole('heading', { name: 'System Settings' })).toBeVisible();
-  await expect(main.getByRole('button', { name: 'Access Control', exact: true })).toBeVisible();
-  await expect(main.getByRole('button', { name: 'WebSocket', exact: true })).toBeVisible();
+  await expect(main.getByRole('tab', { name: 'Access Control', exact: true })).toBeVisible();
+  await expect(main.getByRole('tab', { name: 'WebSocket', exact: true })).toBeVisible();
   await expect(page.getByText('Public Registration', { exact: true })).toBeVisible();
   await expect(page.getByText('Public registration is disabled. Only admins can create accounts.')).toBeVisible();
 
-  await main.getByRole('button', { name: 'WebSocket', exact: true }).click();
+  await main.getByRole('tab', { name: 'WebSocket', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'WebSocket Status' })).toBeVisible();
   await expect(page.getByText('Rate Limit Configuration')).toBeVisible();
   await expect(page.getByText('Max subscriptions/connection')).toBeVisible();
@@ -166,8 +166,8 @@ export async function renderAdminBackupRouteRendersTabsAndEncryptionKeysPanel({ 
   await page.goto('/#/admin/backup');
 
   await expect(main.getByRole('heading', { name: 'Backup & Restore' })).toBeVisible();
-  await expect(main.getByRole('button', { name: 'Backup', exact: true })).toBeVisible();
-  await expect(main.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
+  await expect(main.getByRole('tab', { name: 'Backup', exact: true })).toBeVisible();
+  await expect(main.getByRole('tab', { name: 'Restore', exact: true })).toBeVisible();
   await expect(main.getByRole('heading', { name: 'Create Backup' })).toBeVisible();
   await expect(main.getByRole('heading', { name: 'Encryption Keys' })).toBeVisible();
   await expect(main.getByText('Enter your password to reveal encryption keys.')).toBeVisible();
@@ -177,7 +177,7 @@ export async function renderAdminBackupRouteRendersTabsAndEncryptionKeysPanel({ 
   await main.getByRole('button', { name: 'Reveal' }).click();
   await expect(main.getByText('ENCRYPTION_KEY', { exact: true })).toBeVisible();
 
-  await main.getByRole('button', { name: 'Restore', exact: true }).click();
+  await main.getByRole('tab', { name: 'Restore', exact: true }).click();
   await expect(main.getByRole('heading', { name: 'Restore from Backup' })).toBeVisible();
   await expect(main.getByText('Drop backup file here or click to browse')).toBeVisible();
 
@@ -254,7 +254,7 @@ export async function renderAdminSettingsRouteRendersWebsocketErrorPanelWhenStat
 
   await page.goto('/#/admin/settings');
 
-  await main.getByRole('button', { name: 'WebSocket', exact: true }).click();
+  await main.getByRole('tab', { name: 'WebSocket', exact: true }).click();
   await expect(main.getByText('WebSocket stats failed in test')).toBeVisible({ timeout: 20000 });
 
   expect(unhandledRequests).toEqual([]);

@@ -100,13 +100,13 @@ test.describe('User journey flows', () => {
     await page.goto(`/#/wallets/${MAINNET_WALLET_ID}`);
     await expect(page.getByRole('heading', { name: 'Journey Main Wallet' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'UTXOs', exact: true }).click();
+    await page.getByRole('tab', { name: 'UTXOs', exact: true }).click();
     await expect(page.getByText('Available Outputs')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Drafts', exact: true }).click();
+    await page.getByRole('tab', { name: 'Drafts', exact: true }).click();
     await expect(page.getByText('No draft transactions')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Transactions', exact: true }).click();
+    await page.getByRole('tab', { name: 'Transactions', exact: true }).click();
     await expect(page.getByText('No transactions found.')).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
@@ -116,15 +116,15 @@ test.describe('User journey flows', () => {
 
   test('sidebar network switcher toggles dashboard between mainnet and Testnet3', async ({ page }) => {
     const unhandledRequests = await mockAuthenticatedApi(page);
-    const networkTabs = page.getByRole('navigation', { name: 'Network tabs' });
+    const networkTabs = page.getByRole('tablist', { name: 'Network tabs' });
 
     await page.goto('/#/');
     await expect(page.getByText('Bitcoin Price')).toBeVisible();
 
-    await networkTabs.getByRole('button', { name: 'Testnet3' }).click();
+    await networkTabs.getByRole('tab', { name: 'Testnet3' }).click();
     await expect(page.getByText('Testnet3 coins have no market value')).toBeVisible();
 
-    await networkTabs.getByRole('button', { name: /Mainnet/i }).click();
+    await networkTabs.getByRole('tab', { name: /Mainnet/i }).click();
     await expect(page.getByText('Bitcoin Price')).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
@@ -138,7 +138,7 @@ test.describe('User journey flows', () => {
     await page.goto('/#/settings');
     const main = page.getByRole('main');
 
-    await expect(main.getByRole('button', { name: 'Appearance', exact: true })).toBeVisible();
+    await expect(main.getByRole('tab', { name: 'Appearance', exact: true })).toBeVisible();
     await expect(page.getByText('Dark Mode')).toBeVisible();
     await expect(page.getByText('Theme')).toBeVisible();
 
@@ -151,7 +151,7 @@ test.describe('User journey flows', () => {
     await page.goto('/#/settings');
     const main = page.getByRole('main');
 
-    await main.getByRole('button', { name: 'Display', exact: true }).click();
+    await main.getByRole('tab', { name: 'Display', exact: true }).click();
     await expect(page.getByText('Display Preferences')).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
@@ -163,7 +163,7 @@ test.describe('User journey flows', () => {
     await page.goto('/#/settings');
     const main = page.getByRole('main');
 
-    await main.getByRole('button', { name: 'Notifications', exact: true }).click();
+    await main.getByRole('tab', { name: 'Notifications', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Notification Sounds' })).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
@@ -325,14 +325,14 @@ test.describe('User journey flows', () => {
 
   test('sidebar network selector filters wallets correctly', async ({ page }) => {
     const unhandledRequests = await mockAuthenticatedApi(page);
-    const networkTabs = page.getByRole('navigation', { name: 'Network tabs' });
+    const networkTabs = page.getByRole('tablist', { name: 'Network tabs' });
 
     await page.goto('/#/wallets');
 
     await expect(page.getByText('Journey Main Wallet')).toBeVisible();
     await expect(page.getByText('Journey Testnet Wallet')).not.toBeVisible();
 
-    await networkTabs.getByRole('button', { name: 'Testnet3' }).click();
+    await networkTabs.getByRole('tab', { name: 'Testnet3' }).click();
     await expect(page.getByText('Journey Testnet Wallet')).toBeVisible();
     await expect(page.getByText('Journey Main Wallet')).not.toBeVisible();
 
@@ -367,11 +367,11 @@ test.describe('User journey flows', () => {
 
     await expect(main.getByRole('heading', { name: 'Create Backup' })).toBeVisible();
 
-    await main.getByRole('button', { name: 'Restore', exact: true }).click();
+    await main.getByRole('tab', { name: 'Restore', exact: true }).click();
     await expect(main.getByRole('heading', { name: 'Restore from Backup' })).toBeVisible();
     await expect(main.getByText('Drop backup file here or click to browse')).toBeVisible();
 
-    await main.getByRole('button', { name: 'Backup', exact: true }).click();
+    await main.getByRole('tab', { name: 'Backup', exact: true }).click();
     await expect(main.getByRole('heading', { name: 'Create Backup' })).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);

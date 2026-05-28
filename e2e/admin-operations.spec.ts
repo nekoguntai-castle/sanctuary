@@ -552,7 +552,7 @@ test.describe("Admin operations", () => {
     const main = page.getByRole("main");
 
     await page.goto("/#/admin/backup");
-    await main.getByRole("button", { name: "Restore", exact: true }).click();
+    await main.getByRole("tab", { name: "Restore", exact: true }).click();
 
     await expect(
       main.getByRole("heading", { name: "Restore from Backup" }),

@@ -361,9 +361,10 @@ test.describe('Accessibility', () => {
   test('buttons have proper role attributes', async ({ page }) => {
     const unhandledRequests = await mockA11yApi(page);
 
-    await page.goto('/#/wallets');
+    await page.goto('/#/wallets/create');
+    await expect(page.getByRole('heading', { name: 'Select Wallet Topology' })).toBeVisible();
 
-    // Buttons should have button role
+    // Command controls should still expose the button role.
     const buttons = page.getByRole('button');
     const count = await buttons.count();
     expect(count).toBeGreaterThan(0);
@@ -395,8 +396,8 @@ test.describe('Accessibility', () => {
     await page.goto(`/#/wallets/${WALLET_ID}`);
     await expect(page.getByRole('heading', { name: WALLET.name })).toBeVisible();
 
-    // Tab buttons should be focusable
-    const txTab = page.getByRole('button', { name: 'Transactions', exact: true });
+    // Tabs should be focusable.
+    const txTab = page.getByRole('tab', { name: 'Transactions', exact: true });
     await expect(txTab).toBeVisible();
     await txTab.focus();
     await expect(txTab).toBeFocused();
@@ -421,7 +422,7 @@ test.describe('Accessibility', () => {
     await expect(main.getByText('Theme')).toBeVisible();
 
     // Display tab
-    await main.getByRole('button', { name: 'Display', exact: true }).click();
+    await main.getByRole('tab', { name: 'Display', exact: true }).click();
     await expect(page.getByText('Fiat Currency')).toBeVisible();
     await expect(page.getByText('Bitcoin Unit')).toBeVisible();
 

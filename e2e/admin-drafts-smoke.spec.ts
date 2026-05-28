@@ -240,8 +240,8 @@ test.describe('Admin and drafts smoke routes', () => {
 
   test('renders wallet drafts tab empty state', async ({ page }) => {
     await page.goto(`/#/wallets/${WALLET_ID}`);
-    await expect(page.getByRole('button', { name: /drafts/i })).toBeVisible();
-    await page.getByRole('button', { name: /drafts/i }).click();
+    await expect(page.getByRole('tab', { name: /drafts/i })).toBeVisible();
+    await page.getByRole('tab', { name: /drafts/i }).click();
     await expect(page.getByText('No draft transactions')).toBeVisible();
   });
 });

@@ -324,6 +324,8 @@ const getWalletResponse: ShareApiResponder = (
     return mockResponse([]);
   if (requestKey === `GET /wallets/${WALLET_ID}/share`)
     return mockResponse(shareState);
+  if (requestKey === `GET /sync/logs/${WALLET_ID}`)
+    return mockResponse({ logs: [] });
   return null;
 };
 
@@ -593,7 +595,7 @@ test.describe("Wallet sharing and privacy", () => {
     await gotoWalletDetail(page);
 
     // Click access tab
-    await page.getByRole("button", { name: /access/i }).click();
+    await page.getByRole("tab", { name: /access/i }).click();
 
     // Should show ownership section with admin as owner
     await expect(page.getByText("admin").first()).toBeVisible();
@@ -605,7 +607,7 @@ test.describe("Wallet sharing and privacy", () => {
     const unhandledRequests = await mockShareApi(page);
 
     await gotoWalletDetail(page);
-    await page.getByRole("button", { name: /access/i }).click();
+    await page.getByRole("tab", { name: /access/i }).click();
 
     // Access tab should render without crashing
     await expect(page.getByRole("main")).toBeVisible();
@@ -613,7 +615,7 @@ test.describe("Wallet sharing and privacy", () => {
     expect(unhandledRequests).toEqual([]);
   });
 
-  // --- Tab Buttons ---
+  // --- Tabs ---
 
   for (const { tab, locator } of [
     { tab: "UTXOs", locator: { name: "UTXOs", exact: true } },
@@ -628,7 +630,7 @@ test.describe("Wallet sharing and privacy", () => {
 
       await gotoWalletDetail(page);
 
-      const tabButton = page.getByRole("button", locator);
+      const tabButton = page.getByRole("tab", locator);
       await expect(tabButton).toBeVisible();
       await tabButton.click();
 
@@ -658,7 +660,7 @@ test.describe("Wallet sharing and privacy", () => {
 
     await gotoWalletDetail(page);
 
-    await page.getByRole("button", { name: /stats/i }).click();
+    await page.getByRole("tab", { name: /stats/i }).click();
 
     // Stats tab shows cards like "BTC Value", "UTXO Count", "Avg UTXO Age", "First Activity"
     await expect(page.getByText("BTC Value")).toBeVisible();
@@ -674,7 +676,7 @@ test.describe("Wallet sharing and privacy", () => {
 
     await gotoWalletDetail(page);
 
-    await page.getByRole("button", { name: /settings/i }).click();
+    await page.getByRole("tab", { name: /settings/i }).click();
 
     // Settings tab shows "Wallet Name" heading and sub-tabs like "General", "Devices", etc.
     await expect(
@@ -703,7 +705,7 @@ test.describe("Wallet sharing and privacy", () => {
       "log",
     ];
     for (const tab of tabs) {
-      const tabButton = page.getByRole("button", {
+      const tabButton = page.getByRole("tab", {
         name: new RegExp(tab, "i"),
       });
       if (await tabButton.isVisible({ timeout: 1000 }).catch(() => false)) {

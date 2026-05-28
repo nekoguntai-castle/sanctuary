@@ -27,8 +27,8 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
   await expect(page.getByText("22 sat/vB")).toBeVisible();
 
   await page
-    .getByRole("navigation", { name: "Network tabs" })
-    .getByRole("button", { name: "Testnet3" })
+    .getByRole("tablist", { name: "Network tabs" })
+    .getByRole("tab", { name: "Testnet3" })
     .click();
   await expect(
     page.getByText("Testnet3 coins have no market value"),
@@ -54,23 +54,23 @@ export async function renderWalletDetailRendersTabShellsAndEmptyStateContent({
     page.getByRole("heading", { name: "Render Main Wallet" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Transactions", exact: true }),
+    page.getByRole("tab", { name: "Transactions", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "UTXOs", exact: true }),
+    page.getByRole("tab", { name: "UTXOs", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Drafts", exact: true }),
+    page.getByRole("tab", { name: "Drafts", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("No transactions found.")).toBeVisible();
 
-  await page.getByRole("button", { name: "UTXOs", exact: true }).click();
+  await page.getByRole("tab", { name: "UTXOs", exact: true }).click();
   await expect(page.getByText("Available Outputs")).toBeVisible();
 
-  await page.getByRole("button", { name: "Drafts", exact: true }).click();
+  await page.getByRole("tab", { name: "Drafts", exact: true }).click();
   await expect(page.getByText("No draft transactions")).toBeVisible();
 
-  await page.getByRole("button", { name: "Addresses", exact: true }).click();
+  await page.getByRole("tab", { name: "Addresses", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "No Addresses Available" }),
   ).toBeVisible();
@@ -151,8 +151,8 @@ export async function renderWalletListRendersNetworkScopedCardsAndControls({
   await expect(page.getByText("Render Testnet Wallet")).not.toBeVisible();
 
   await page
-    .getByRole("navigation", { name: "Network tabs" })
-    .getByRole("button", { name: "Testnet3" })
+    .getByRole("tablist", { name: "Network tabs" })
+    .getByRole("tab", { name: "Testnet3" })
     .click();
   await expect(
     page.getByRole("heading", { name: "Testnet3 Wallets" }),
@@ -210,34 +210,34 @@ export async function renderSettingsRouteRendersTabPanelsAndNotificationSubTabs(
     page.getByRole("heading", { name: "System Settings" }),
   ).toBeVisible();
   await expect(
-    main.getByRole("button", { name: "Appearance", exact: true }),
+    main.getByRole("tab", { name: "Appearance", exact: true }),
   ).toBeVisible();
   await expect(
-    main.getByRole("button", { name: "Display", exact: true }),
+    main.getByRole("tab", { name: "Display", exact: true }),
   ).toBeVisible();
   await expect(
-    main.getByRole("button", { name: "Services", exact: true }),
+    main.getByRole("tab", { name: "Services", exact: true }),
   ).toBeVisible();
   await expect(
-    main.getByRole("button", { name: "Notifications", exact: true }),
+    main.getByRole("tab", { name: "Notifications", exact: true }),
   ).toBeVisible();
 
-  await main.getByRole("button", { name: "Display", exact: true }).click();
+  await main.getByRole("tab", { name: "Display", exact: true }).click();
   await expect(page.getByText("Display Preferences")).toBeVisible();
 
-  await main.getByRole("button", { name: "Services", exact: true }).click();
+  await main.getByRole("tab", { name: "Services", exact: true }).click();
   await expect(
     main.getByRole("heading", { name: "Price Provider", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Current Bitcoin Price")).toBeVisible();
 
   await main
-    .getByRole("button", { name: "Notifications", exact: true })
+    .getByRole("tab", { name: "Notifications", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "Notification Sounds" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Telegram", exact: true }).click();
+  await page.getByRole("tab", { name: "Telegram", exact: true }).click();
   await expect(page.getByText("Telegram Notifications")).toBeVisible();
   await expectChromiumMainScreenshot(
     page,

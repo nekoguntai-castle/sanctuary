@@ -75,8 +75,8 @@ export async function renderCreateWalletRouteConfigurationShowsNetworkWarningFor
   await expect(main.getByRole('heading', { name: 'Configuration' })).toBeVisible();
   await expect(main.getByText('Script Type')).toBeVisible();
   await page
-    .getByRole('navigation', { name: 'Network tabs' })
-    .getByRole('button', { name: 'Testnet3' })
+    .getByRole('tablist', { name: 'Network tabs' })
+    .getByRole('tab', { name: 'Testnet3' })
     .click();
   await expect(main.getByText('Testnet coins have no real-world value.')).toBeVisible();
 
@@ -118,7 +118,7 @@ export async function renderSendTransactionRouteRedirectsViewersBackToWalletDeta
 
   await expect(page).toHaveURL(new RegExp(`#\\/wallets\\/${MAINNET_WALLET_ID}$`));
   await expect(main.getByRole('heading', { name: MAINNET_WALLET.name })).toBeVisible();
-  await expect(main.getByRole('button', { name: 'Transactions', exact: true })).toBeVisible();
+  await expect(main.getByRole('tab', { name: 'Transactions', exact: true })).toBeVisible();
 
   expect(unhandledRequests).toEqual([]);
 }
