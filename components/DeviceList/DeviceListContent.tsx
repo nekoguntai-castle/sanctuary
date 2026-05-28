@@ -1,8 +1,8 @@
 import type React from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Device, HardwareDeviceModel } from '../../types';
-import { ConfigurableTable } from '../ui/ConfigurableTable';
 import type { CellRendererProps } from '../ui/ConfigurableTable';
+import { FeatureTableView } from '../ui/FeatureTable';
 import { DEVICE_COLUMNS } from '../columns/deviceColumns';
 import type { DeviceWithWallets } from '../cells/DeviceCells';
 import type {
@@ -120,7 +120,7 @@ export function DeviceListContent({
       />
 
       {viewMode === 'list' && (
-        <ConfigurableTable<DeviceWithWallets>
+        <FeatureTableView<DeviceWithWallets>
           columns={DEVICE_COLUMNS}
           columnOrder={columnOrder}
           visibleColumns={visibleColumns}

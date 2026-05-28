@@ -1,4 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
+import type React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { SidebarContent } from '../../../components/Layout/SidebarContent';
 import { hasRequiredCapabilities } from '../../../src/app/capabilities';
@@ -82,6 +84,10 @@ const buildProps = (
   };
 };
 
+function renderSidebarContent(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
 describe('SidebarContent branch coverage', () => {
   beforeEach(() => {
     vi.mocked(hasRequiredCapabilities).mockImplementation(defaultHasRequiredCapabilities);
@@ -89,13 +95,13 @@ describe('SidebarContent branch coverage', () => {
 
   it('falls back to ? when username is missing', () => {
     const props = buildProps({ user: { username: '', isAdmin: false } });
-    render(<SidebarContent {...props} />);
+    renderSidebarContent(<SidebarContent {...props} />);
     expect(screen.getByText('?')).toBeInTheDocument();
   });
 
   it('covers empty wallets/devices state and all toggle callback paths', () => {
     const props = buildProps();
-    render(<SidebarContent {...props} />);
+    renderSidebarContent(<SidebarContent {...props} />);
 
     expect(screen.getByText('No wallets created')).toBeInTheDocument();
     expect(screen.getByText('No devices connected')).toBeInTheDocument();
@@ -112,7 +118,7 @@ describe('SidebarContent branch coverage', () => {
 
   it('shows node configuration guidance and blocks disabled network selection', () => {
     const setSelectedNetwork = vi.fn();
-    render(
+    renderSidebarContent(
       <SidebarContent
         {...buildProps({
           setSelectedNetwork,
@@ -133,7 +139,7 @@ describe('SidebarContent branch coverage', () => {
   });
 
   it('covers wallet/device mapping with multisig and single-sig icon/class branches', () => {
-    render(
+    renderSidebarContent(
       <SidebarContent
         {...buildProps({
           user: { username: 'alice', isAdmin: false },
@@ -170,14 +176,14 @@ describe('SidebarContent branch coverage', () => {
 
   it('renders Intelligence nav item when its required capability is available', () => {
     const props = buildProps({ capabilities: { intelligence: true } });
-    render(<SidebarContent {...props} />);
+    renderSidebarContent(<SidebarContent {...props} />);
 
     expect(screen.getByText('Intelligence')).toBeInTheDocument();
   });
 
   it('uses compact header network selector and keeps navigation order clean', () => {
     const props = buildProps({ capabilities: { console: true, intelligence: true } });
-    render(<SidebarContent {...props} />);
+    renderSidebarContent(<SidebarContent {...props} />);
 
     const mainnetButton = screen.getByRole('tab', { name: 'Mainnet' });
     const consoleButton = screen.getByRole('button', { name: 'Open AI Console' });
@@ -213,7 +219,7 @@ describe('SidebarContent branch coverage', () => {
 
   it('hides only the Console quick action when Console is unavailable', () => {
     const props = buildProps({ capabilities: { console: false, intelligence: true } });
-    render(<SidebarContent {...props} />);
+    renderSidebarContent(<SidebarContent {...props} />);
 
     expect(screen.getByText('Actions')).toBeInTheDocument();
     expect(
@@ -227,7 +233,7 @@ describe('SidebarContent branch coverage', () => {
 
   it('hides Intelligence nav item when its required capability is unavailable', () => {
     const props = buildProps({ capabilities: { intelligence: false } });
-    render(<SidebarContent {...props} />);
+    renderSidebarContent(<SidebarContent {...props} />);
 
     expect(screen.queryByText('Intelligence')).not.toBeInTheDocument();
   });
@@ -236,7 +242,7 @@ describe('SidebarContent branch coverage', () => {
     vi.mocked(hasRequiredCapabilities).mockReturnValue(false);
 
     const props = buildProps({ user: { username: 'alice', isAdmin: true } });
-    render(<SidebarContent {...props} />);
+    renderSidebarContent(<SidebarContent {...props} />);
 
     expect(screen.queryByRole('button', { name: 'Wallets' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Devices' })).not.toBeInTheDocument();
@@ -248,13 +254,13 @@ describe('SidebarContent branch coverage', () => {
 
   it('renders dark mode theme button title and Sun icon when darkMode is true', () => {
     const props = buildProps({ darkMode: true });
-    render(<SidebarContent {...props} />);
+    renderSidebarContent(<SidebarContent {...props} />);
 
     expect(screen.getByTitle('Switch to light mode')).toBeInTheDocument();
   });
 
   it('covers all wallet sync status branches', () => {
-    render(
+    renderSidebarContent(
       <SidebarContent
         {...buildProps({
           wallets: [

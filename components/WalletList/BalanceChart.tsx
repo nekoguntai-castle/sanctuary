@@ -13,6 +13,13 @@ interface BalanceChartProps {
   selectedNetwork: string;
 }
 
+const BALANCE_CHART_TOOLTIP_STYLE = {
+  backgroundColor: 'var(--color-chart-tooltip-bg)',
+  border: 'none',
+  borderRadius: '8px',
+  color: 'var(--color-chart-tooltip-text)',
+};
+
 /**
  * Displays the total balance summary and a historical balance area chart
  * with selectable timeframe controls.
@@ -68,16 +75,16 @@ export const BalanceChart: React.FC<BalanceChartProps> = ({
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="colorOverview" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-success-500)" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="var(--color-success-500)" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="var(--color-chart-series-success)" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="var(--color-chart-series-success)" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#a39e93'}} />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: 'var(--color-chart-axis)'}} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#1c1c1e', border: 'none', borderRadius: '8px', color: '#fff' }}
-                    itemStyle={{ color: 'var(--color-success-500)' }}
+                    contentStyle={BALANCE_CHART_TOOLTIP_STYLE}
+                    itemStyle={{ color: 'var(--color-chart-series-success)' }}
                   />
-                  <Area type="monotone" dataKey="value" stroke="var(--color-success-500)" strokeWidth={2} fillOpacity={1} fill="url(#colorOverview)" />
+                  <Area type="monotone" dataKey="value" stroke="var(--color-chart-series-success)" strokeWidth={2} fillOpacity={1} fill="url(#colorOverview)" />
                 </AreaChart>
               </ResponsiveContainer>
             )}

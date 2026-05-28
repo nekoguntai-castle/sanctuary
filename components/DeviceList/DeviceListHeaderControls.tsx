@@ -33,14 +33,18 @@ export function OwnershipFilterControl({
   return (
     <div className="flex surface-elevated p-1 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800">
       <button
+        type="button"
         onClick={() => onChange('all')}
+        aria-pressed={ownershipFilter === 'all'}
         className={ownershipButtonClass(ownershipFilter === 'all')}
         title="Show all devices"
       >
         All ({deviceCount})
       </button>
       <button
+        type="button"
         onClick={() => onChange('owned')}
+        aria-pressed={ownershipFilter === 'owned'}
         className={ownershipButtonClass(ownershipFilter === 'owned', true)}
         title="Show owned devices only"
       >
@@ -48,7 +52,9 @@ export function OwnershipFilterControl({
         Owned ({ownedCount})
       </button>
       <button
+        type="button"
         onClick={() => onChange('shared')}
+        aria-pressed={ownershipFilter === 'shared'}
         className={ownershipButtonClass(ownershipFilter === 'shared', true)}
         title="Show shared devices only"
       >
@@ -88,7 +94,10 @@ export function WalletFilterDropdown({
     <div className="relative" ref={dropdownRef}>
       <div className="flex surface-elevated p-1 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800">
         <button
+          type="button"
           onClick={() => setIsOpen(current => !current)}
+          aria-expanded={isOpen}
+          aria-haspopup="menu"
           className={walletTriggerClass(walletFilter !== 'all')}
           title="Filter by wallet"
         >
@@ -131,14 +140,20 @@ export function ViewModeControls({
   return (
     <div className="flex surface-elevated p-1 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800">
       <button
+        type="button"
         onClick={() => onChange('list')}
+        aria-label="List View"
+        aria-pressed={viewMode === 'list'}
         className={viewModeButtonClass(viewMode === 'list')}
         title="List View"
       >
         <ListIcon className="w-4 h-4" />
       </button>
       <button
+        type="button"
         onClick={() => onChange('grouped')}
+        aria-label="Grouped View"
+        aria-pressed={viewMode === 'grouped'}
         className={viewModeButtonClass(viewMode === 'grouped')}
         title="Grouped View"
       >
@@ -227,7 +242,9 @@ function WalletFilterMenuItem({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`w-full px-3 py-2 text-xs text-left flex items-center justify-between transition-colors ${walletMenuItemClass(active)}`}
     >
       {children}
@@ -247,7 +264,9 @@ function WalletOptionMenuItem({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`w-full px-3 py-2 text-xs text-left flex items-center justify-between transition-colors ${walletMenuItemClass(active)}`}
     >
       <span className="flex items-center gap-1.5 truncate">

@@ -1,6 +1,12 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import type React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { EmptyState, WalletEmptyState, DeviceEmptyState } from '../../../components/ui/EmptyState';
+
+function renderWithRouter(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 describe('EmptyState', () => {
   it('renders title and description', () => {
@@ -19,11 +25,9 @@ describe('EmptyState', () => {
     expect(screen.getByText('text-icon')).toBeInTheDocument();
   });
 
-  it('renders action button and navigates via hash when actionTo is set', () => {
-    render(<EmptyState title="Empty" actionLabel="Go" actionTo="/somewhere" />);
-    const button = screen.getByText('Go');
-    fireEvent.click(button);
-    expect(window.location.hash).toBe('#/somewhere');
+  it('renders route actions as links when actionTo is set', () => {
+    renderWithRouter(<EmptyState title="Empty" actionLabel="Go" actionTo="/somewhere" />);
+    expect(screen.getByRole('link', { name: 'Go' })).toHaveAttribute('href', '/somewhere');
   });
 
   it('calls onAction callback when clicked', () => {
@@ -34,10 +38,9 @@ describe('EmptyState', () => {
   });
 
   it('renders compact variant', () => {
-    render(<EmptyState title="Compact" compact actionLabel="Act" actionTo="/x" />);
+    renderWithRouter(<EmptyState title="Compact" compact actionLabel="Act" actionTo="/x" />);
     expect(screen.getByText('Compact')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Act'));
-    expect(window.location.hash).toBe('#/x');
+    expect(screen.getByRole('link', { name: 'Act' })).toHaveAttribute('href', '/x');
   });
 
   it('renders compact with onAction', () => {
@@ -45,6 +48,13 @@ describe('EmptyState', () => {
     render(<EmptyState title="Compact" compact actionLabel="Act" onAction={onAction} />);
     fireEvent.click(screen.getByText('Act'));
     expect(onAction).toHaveBeenCalled();
+  });
+
+  it('omits compact action when no action label is provided', () => {
+    render(<EmptyState title="Compact" compact />);
+    expect(screen.getByText('Compact')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
   it('handles action click with no actionTo or onAction', () => {
@@ -57,19 +67,19 @@ describe('EmptyState', () => {
 
 describe('WalletEmptyState', () => {
   it('renders with default network', () => {
-    render(<WalletEmptyState />);
+    renderWithRouter(<WalletEmptyState />);
     expect(screen.getByText('No mainnet wallets yet')).toBeInTheDocument();
   });
 
   it('renders with custom network', () => {
-    render(<WalletEmptyState network="testnet" />);
+    renderWithRouter(<WalletEmptyState network="testnet" />);
     expect(screen.getByText('No testnet wallets yet')).toBeInTheDocument();
   });
 });
 
 describe('DeviceEmptyState', () => {
   it('renders device empty state', () => {
-    render(<DeviceEmptyState />);
+    renderWithRouter(<DeviceEmptyState />);
     expect(screen.getByText('No devices connected')).toBeInTheDocument();
     expect(screen.getByText('Connect Device')).toBeInTheDocument();
   });

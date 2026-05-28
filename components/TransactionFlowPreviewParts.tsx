@@ -1,10 +1,15 @@
+import type { CSSProperties } from 'react';
 import { truncateAddress } from '../utils/formatters';
 import type { FlowInput, FlowOutput } from './TransactionFlowPreview';
 
-const INPUT_COLOR = '#1a9436';
-const OUTPUT_COLOR = '#9c4dc4';
-const CHANGE_COLOR = '#6c757d';
-const FEE_COLOR = '#dc3545';
+const INPUT_COLOR = 'var(--color-flow-input-start)';
+const OUTPUT_COLOR = 'var(--color-flow-output-start)';
+const FLOW_ROW_SURFACE_STYLE: CSSProperties = {
+  background: 'var(--color-flow-row-surface)',
+};
+const FLOW_BORDER_STYLE: CSSProperties = {
+  borderColor: 'var(--color-flow-border)',
+};
 
 type SatsFormatter = (sats: number) => string;
 type FiatFormatter = (sats: number) => string | null;
@@ -104,14 +109,16 @@ export function getBarHeight(amount: number, maxAmount: number): number {
 }
 
 function getOutputGradient(output: FlowOutput): string {
-  const endColor = output.isChange ? '#4b5563' : '#7c3aed';
-  const startColor = output.isChange ? CHANGE_COLOR : OUTPUT_COLOR;
-  return `linear-gradient(135deg, ${startColor} 0%, ${endColor} 100%)`;
+  if (output.isChange) {
+    return 'linear-gradient(135deg, var(--color-flow-change-start) 0%, var(--color-flow-change-end) 100%)';
+  }
+
+  return 'linear-gradient(135deg, var(--color-flow-output-start) 0%, var(--color-flow-output-end) 100%)';
 }
 
 export function PreviewHeader({ isEstimate, inputCount, outputCount }: PreviewHeaderProps) {
   return (
-    <div className="px-3 py-2 border-b border-[#2d2f43]/50 flex items-center justify-between">
+    <div className="px-3 py-2 border-b flex items-center justify-between" style={FLOW_BORDER_STYLE}>
       <span className="text-xs font-bold text-white">
         Preview
         {isEstimate && (
@@ -135,7 +142,7 @@ function FlowInputRow({ input, barHeight, format, formatFiat, isEstimate }: Flow
     >
       <div
         className="h-full flex items-center justify-end px-2 min-w-[60px] rounded-l-xl flex-shrink-0"
-        style={{ background: `linear-gradient(135deg, ${INPUT_COLOR} 0%, #15803d 100%)` }}
+        style={{ background: 'linear-gradient(135deg, var(--color-flow-input-start) 0%, var(--color-flow-input-end) 100%)' }}
       >
         <FlowAmountText
           amountText={format(input.amount)}
@@ -144,7 +151,7 @@ function FlowInputRow({ input, barHeight, format, formatFiat, isEstimate }: Flow
           isEstimate={isEstimate}
         />
       </div>
-      <div className="flex-1 min-w-0 px-2 py-1 bg-[#2d2f43]/80 backdrop-blur-sm flex items-center rounded-r-xl overflow-hidden">
+      <div className="flex-1 min-w-0 px-2 py-1 backdrop-blur-sm flex items-center rounded-r-xl overflow-hidden" style={FLOW_ROW_SURFACE_STYLE}>
         <span className="font-mono text-xs text-white/90 truncate flex-shrink min-w-0">
           {truncateAddress(input.address, 8, 8)}
         </span>
@@ -189,7 +196,7 @@ function FlowOutputRow({
       className="flex items-center rounded-lg overflow-hidden transition-all duration-200 hover:scale-[1.01]"
       style={{ height: barHeight }}
     >
-      <div className="flex-1 min-w-0 px-2 py-1 bg-[#2d2f43]/80 backdrop-blur-sm flex items-center rounded-l-xl overflow-hidden">
+      <div className="flex-1 min-w-0 px-2 py-1 backdrop-blur-sm flex items-center rounded-l-xl overflow-hidden" style={FLOW_ROW_SURFACE_STYLE}>
         <span className="font-mono text-xs text-white/90 truncate flex-shrink min-w-0">
           {truncateAddress(output.address, 8, 8)}
         </span>
@@ -212,7 +219,7 @@ function FlowOutputRow({
 
 function EmptyFlowColumn({ label }: { label: string }) {
   return (
-    <div className="flex-1 flex items-center justify-center rounded-xl bg-[#2d2f43]/50 text-white/60 text-sm font-medium">
+    <div className="flex-1 flex items-center justify-center rounded-xl text-white/60 text-sm font-medium" style={FLOW_ROW_SURFACE_STYLE}>
       {label}
     </div>
   );
@@ -245,8 +252,11 @@ export function InputsColumn({
 export function FlowConnector() {
   return (
     <div className="w-8 flex flex-col items-center justify-center relative">
-      <div className="absolute top-1 bottom-1 w-0.5 rounded-full bg-gradient-to-b from-[#1a9436] via-[#4e4e7a] to-[#9c4dc4]" />
-      <div className="relative z-10 w-5 h-5 rounded-full bg-[#4e4e7a] flex items-center justify-center">
+      <div
+        className="absolute top-1 bottom-1 w-0.5 rounded-full"
+        style={{ background: 'linear-gradient(to bottom, var(--color-flow-input-start), var(--color-flow-connector-mid), var(--color-flow-output-start))' }}
+      />
+      <div className="relative z-10 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--color-flow-connector-mid)' }}>
         <span className="text-white text-xs">→</span>
       </div>
     </div>
@@ -259,14 +269,14 @@ function FlowFeeRow({ fee, feeRate, barHeight, isEstimate }: FlowFeeRowProps) {
       className="flex items-center rounded-lg overflow-hidden transition-all duration-200"
       style={{ height: Math.max(24, barHeight * 0.5) }}
     >
-      <div className="flex-1 px-2 py-1 bg-[#2d2f43]/80 backdrop-blur-sm flex items-center rounded-l-xl">
+      <div className="flex-1 px-2 py-1 backdrop-blur-sm flex items-center rounded-l-xl" style={FLOW_ROW_SURFACE_STYLE}>
         <span className="text-[10px] font-medium text-white/80">
           Fee ({feeRate} sat/vB)
         </span>
       </div>
       <div
         className="h-full flex items-center justify-start px-2 min-w-[60px] rounded-r-xl flex-shrink-0"
-        style={{ background: `linear-gradient(135deg, ${FEE_COLOR} 0%, #b91c1c 100%)` }}
+        style={{ background: 'linear-gradient(135deg, var(--color-flow-fee-start) 0%, var(--color-flow-fee-end) 100%)' }}
       >
         <span className="text-white text-[11px] font-semibold whitespace-nowrap drop-shadow-sm">
           {isEstimate && '~'}{fee.toLocaleString()} sats
@@ -319,7 +329,7 @@ export function PreviewFooter({
   isEstimate,
 }: PreviewFooterProps) {
   return (
-    <div className="px-3 py-2 border-t border-[#2d2f43] flex items-center justify-between text-xs">
+    <div className="px-3 py-2 border-t flex items-center justify-between text-xs" style={FLOW_BORDER_STYLE}>
       <div className="flex items-center gap-1.5">
         <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: INPUT_COLOR }} />
         <span className="text-white/70">In:</span>

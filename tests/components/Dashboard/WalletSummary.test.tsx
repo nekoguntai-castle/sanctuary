@@ -1,4 +1,6 @@
 import { act,render,screen } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { WalletSummary } from '../../../components/Dashboard/WalletSummary';
@@ -29,13 +31,16 @@ vi.mock('lucide-react', () => ({
   Loader2: () => <span data-testid="loader-icon" />,
 }));
 
+const renderWalletSummary = (ui: ReactElement) =>
+  render(<MemoryRouter>{ui}</MemoryRouter>);
+
 describe('WalletSummary', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('renders empty-state row when no wallets exist', () => {
-    render(
+    renderWalletSummary(
       <WalletSummary selectedNetwork="testnet3" filteredWallets={[]} totalBalance={0} />
     );
 
@@ -53,7 +58,7 @@ describe('WalletSummary', () => {
       { id: 'w5', name: 'Epsilon', type: 'single_sig', balance: 5000 },
     ] as any[];
 
-    render(
+    renderWalletSummary(
       <WalletSummary
         selectedNetwork="mainnet"
         filteredWallets={wallets as any}
@@ -89,7 +94,7 @@ describe('WalletSummary', () => {
       },
     ] as any[];
 
-    const { container } = render(
+    const { container } = renderWalletSummary(
       <WalletSummary
         selectedNetwork="mainnet"
         filteredWallets={wallets as any}
@@ -110,7 +115,7 @@ describe('WalletSummary', () => {
         { id: 'w-animated', name: 'Animated', type: 'single_sig', balance: 5000 },
       ] as any[];
 
-      const { container } = render(
+      const { container } = renderWalletSummary(
         <WalletSummary selectedNetwork="mainnet" filteredWallets={wallets} totalBalance={5000} />
       );
 
@@ -134,7 +139,7 @@ describe('WalletSummary', () => {
       { id: 'w2', name: 'Beta', type: 'single_sig', balance: 5000, lastSyncStatus: 'success' },
     ] as any[];
 
-    const { container } = render(
+    const { container } = renderWalletSummary(
       <WalletSummary selectedNetwork="mainnet" filteredWallets={wallets} totalBalance={10000} />
     );
 

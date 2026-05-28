@@ -17,13 +17,18 @@ interface ChartPanelProps {
 }
 
 const TOOLTIP_STYLE = {
-  backgroundColor: '#1c1917',
+  backgroundColor: 'var(--color-chart-tooltip-bg)',
   border: 'none',
   borderRadius: '8px',
-  color: '#fff',
+  color: 'var(--color-chart-tooltip-text)',
 };
 
-const AGE_BUCKET_COLORS = ['#d4b483', '#84a98c', '#57534e', '#a8a29e'];
+const AGE_BUCKET_COLORS = [
+  'var(--color-chart-series-primary)',
+  'var(--color-chart-series-success)',
+  'var(--color-chart-series-muted)',
+  'var(--color-chart-series-neutral)',
+];
 
 function ChartPanel({ children, title }: ChartPanelProps) {
   return (
@@ -50,17 +55,17 @@ function AccumulationHistoryChart({
           <AreaChart data={data}>
             <defs>
               <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#d4b483" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#d4b483" stopOpacity={0} />
+                <stop offset="5%" stopColor="var(--color-chart-series-primary)" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="var(--color-chart-series-primary)" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#a8a29e' }} />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--color-chart-axis)' }} />
             <YAxis hide domain={[0, 'dataMax']} />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
               formatter={(value) => [format(value as number), 'Balance']}
             />
-            <Area type="monotone" dataKey="amount" stroke="#d4b483" strokeWidth={2} fillOpacity={1} fill="url(#colorAmount)" />
+            <Area type="monotone" dataKey="amount" stroke="var(--color-chart-series-primary)" strokeWidth={2} fillOpacity={1} fill="url(#colorAmount)" />
           </AreaChart>
         </ResponsiveContainer>
       )}
@@ -82,7 +87,7 @@ function UtxoAgeDistributionChart({
       {chartReady && (
         <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
           <BarChart data={data}>
-            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#a8a29e' }} />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--color-chart-axis)' }} />
             <YAxis hide />
             <Tooltip
               cursor={{ fill: 'transparent' }}

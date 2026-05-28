@@ -1,13 +1,13 @@
 /**
- * FeatureTable - Generic table wrapper with preference persistence
+ * FeatureTable - generic table helpers for feature-owned list views
  *
- * Wraps ConfigurableTable with:
- * - Column visibility/order preferences (persisted via useUserPreference)
- * - Sort state persistence
+ * Provides a controlled table view plus preference helpers for:
+ * - Column visibility/order preferences
  * - Standard ColumnConfigButton integration
- * - Optional network tabs with URL-synced state
+ * - ConfigurableTable rendering with a feature-owned data model
  *
- * Reduces per-feature boilerplate to just defining columns, cell renderers, and data.
+ * Reduces per-feature boilerplate to defining columns, cell renderers, and
+ * feature-specific sorting/view state.
  *
  * @example How WalletList table view would be simplified:
  *
@@ -30,7 +30,7 @@
  * />
  * ```
  *
- * The ColumnConfigButton is exposed via renderColumnConfig() for flexible toolbar placement.
+ * The companion hook exposes ColumnConfigButton props for flexible toolbar placement.
  */
 
 import React, { useMemo, useCallback } from 'react';
@@ -38,43 +38,10 @@ import { ConfigurableTable } from './ConfigurableTable';
 import { useUserPreference } from '../../hooks/useUserPreference';
 import type { TableColumnConfig } from '../../types';
 import type { CellRendererProps } from './ConfigurableTable';
+import { mergeColumnOrder } from './featureTableColumns';
 
 // Re-export for consumer convenience
 export type { CellRendererProps };
-
-/**
- * Merge saved column order with current column definitions.
- * Handles new columns added after a user saved preferences, and removes
- * stale column IDs that no longer exist in the definition.
- */
-function mergeColumnOrder(
-  savedOrder: string[] | undefined,
-  defaultOrder: string[],
-  columns: Record<string, TableColumnConfig>,
-): string[] {
-  if (!savedOrder?.length) return defaultOrder;
-
-  const validIds = new Set(Object.keys(columns));
-  const result: string[] = [];
-  const seen = new Set<string>();
-
-  // Preserve saved order for columns that still exist
-  for (const id of savedOrder) {
-    if (validIds.has(id) && !seen.has(id)) {
-      result.push(id);
-      seen.add(id);
-    }
-  }
-
-  // Append any new columns not in saved order
-  for (const id of defaultOrder) {
-    if (!seen.has(id)) {
-      result.push(id);
-    }
-  }
-
-  return result;
-}
 
 // ---------------------------------------------------------------------------
 // Props
@@ -118,6 +85,50 @@ interface FeatureTableProps<T> {
   emptyMessage?: string;
 }
 
+interface FeatureTableViewProps<T> {
+  columns: Record<string, TableColumnConfig>;
+  columnOrder: string[];
+  visibleColumns: string[];
+  data: T[];
+  keyExtractor: (item: T) => string;
+  cellRenderers: Record<string, React.FC<CellRendererProps<T>>>;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  onSort?: (field: string) => void;
+  onRowClick?: (item: T) => void;
+  emptyMessage?: string;
+}
+
+export function FeatureTableView<T>({
+  columns,
+  columnOrder,
+  visibleColumns,
+  data,
+  keyExtractor,
+  cellRenderers,
+  sortBy,
+  sortOrder,
+  onSort,
+  onRowClick,
+  emptyMessage,
+}: FeatureTableViewProps<T>) {
+  return (
+    <ConfigurableTable<T>
+      columns={columns}
+      columnOrder={columnOrder}
+      visibleColumns={visibleColumns}
+      data={data}
+      keyExtractor={keyExtractor}
+      cellRenderers={cellRenderers}
+      sortBy={sortBy}
+      sortOrder={sortOrder}
+      onSort={onSort}
+      onRowClick={onRowClick}
+      emptyMessage={emptyMessage}
+    />
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -156,7 +167,7 @@ export function FeatureTable<T>({
 
   return (
     <div>
-      <ConfigurableTable<T>
+      <FeatureTableView<T>
         columns={columns}
         columnOrder={columnOrder}
         visibleColumns={visibleColumns}

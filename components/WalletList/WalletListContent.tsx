@@ -1,8 +1,8 @@
 import type React from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Wallet } from '../../src/api/wallets';
-import { ConfigurableTable } from '../ui/ConfigurableTable';
 import type { CellRendererProps } from '../ui/ConfigurableTable';
+import { FeatureTableView } from '../ui/FeatureTable';
 import { WALLET_COLUMNS } from '../columns/walletColumns';
 import type { WalletWithPending } from '../cells/WalletCells';
 import type { TabNetwork } from '../NetworkTabs';
@@ -98,7 +98,7 @@ export function WalletListContent({
       )}
 
       {viewMode === 'table' && (
-        <ConfigurableTable<WalletWithPending>
+        <FeatureTableView<WalletWithPending>
           columns={WALLET_COLUMNS}
           columnOrder={columnOrder}
           visibleColumns={visibleColumns}

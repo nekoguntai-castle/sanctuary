@@ -62,7 +62,10 @@ export const TransactionFlowPreview: React.FC<TransactionFlowPreviewProps> = ({
   }
 
   return (
-    <div className={`rounded-3xl overflow-hidden bg-[#1d1f31] shadow-xl shadow-black/20 ring-1 ring-white/10 ${className}`}>
+    <div
+      className={`rounded-3xl overflow-hidden shadow-xl shadow-black/20 ring-1 ring-white/10 ${className}`}
+      style={{ backgroundColor: 'var(--color-flow-surface)' }}
+    >
       <PreviewHeader isEstimate={isEstimate} inputCount={inputs.length} outputCount={outputs.length} />
 
       <div className="p-3 overflow-x-auto">

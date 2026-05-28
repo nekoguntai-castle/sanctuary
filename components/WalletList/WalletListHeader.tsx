@@ -147,13 +147,21 @@ function WalletViewControls({
   return (
     <div className="flex surface-elevated p-1 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800">
       <button
+        type="button"
         onClick={() => setViewMode('grid')}
+        aria-label="Show wallet grid"
+        aria-pressed={viewMode === 'grid'}
+        title="Show wallet grid"
         className={viewModeButtonClass(viewMode === 'grid')}
       >
         <LayoutGrid className="w-4 h-4" />
       </button>
       <button
+        type="button"
         onClick={() => setViewMode('table')}
+        aria-label="Show wallet table"
+        aria-pressed={viewMode === 'table'}
+        title="Show wallet table"
         className={viewModeButtonClass(viewMode === 'table')}
       >
         <ListIcon className="w-4 h-4" />

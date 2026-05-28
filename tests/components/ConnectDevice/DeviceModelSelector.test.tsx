@@ -62,7 +62,7 @@ describe('DeviceModelSelector', () => {
     expect(screen.getByText('2 devices')).toBeInTheDocument();
     expect(screen.getByText('Untested')).toBeInTheDocument();
 
-    await user.type(screen.getByPlaceholderText('Search devices...'), ' x');
+    await user.type(screen.getByRole('textbox', { name: 'Search devices' }), ' x');
     expect(onSearchChange).toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'Foundation' }));
@@ -74,7 +74,7 @@ describe('DeviceModelSelector', () => {
     await user.click(screen.getByRole('button', { name: /ledger nano/i }));
     expect(onSelectModel).toHaveBeenCalledWith(models[0]);
 
-    const clearSearchButton = screen.getByRole('button', { name: '' });
+    const clearSearchButton = screen.getByRole('button', { name: 'Clear device search' });
     await user.click(clearSearchButton);
     expect(onSearchChange).toHaveBeenCalledWith('');
   });

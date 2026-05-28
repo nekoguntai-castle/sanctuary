@@ -1,6 +1,8 @@
 import React from "react";
 import { Plus } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "./Button";
+import { LinkButton } from "./LinkButton";
 
 // Bespoke SVG illustration: minimalist vault door
 const VaultIllustration: React.FC<{ className?: string }> = ({ className }) => (
@@ -154,18 +156,63 @@ interface EmptyStateProps {
   illustration?: "vault" | "key";
 }
 
-function runEmptyStateAction(actionTo?: string, onAction?: () => void) {
-  if (actionTo) {
-    window.location.hash = actionTo;
-    return;
-  }
-  onAction?.();
-}
-
 function getIllustrationComponent(illustration?: "vault" | "key") {
   if (illustration === "vault") return VaultIllustration;
   if (illustration === "key") return KeyIllustration;
   return null;
+}
+
+function CompactEmptyStateAction({
+  actionLabel,
+  actionTo,
+  onAction,
+}: Pick<EmptyStateProps, "actionLabel" | "actionTo" | "onAction">) {
+  if (!actionLabel) return null;
+
+  const className = "mt-1 text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors";
+
+  if (actionTo) {
+    return (
+      <Link to={actionTo} className={className}>
+        {actionLabel}
+      </Link>
+    );
+  }
+
+  return (
+    <button type="button" onClick={onAction} className={className}>
+      {actionLabel}
+    </button>
+  );
+}
+
+function EmptyStateAction({
+  actionLabel,
+  actionTo,
+  onAction,
+}: Pick<EmptyStateProps, "actionLabel" | "actionTo" | "onAction">) {
+  if (!actionLabel) return null;
+
+  const children = (
+    <>
+      <Plus className="w-4 h-4 mr-1.5" />
+      {actionLabel}
+    </>
+  );
+
+  if (actionTo) {
+    return (
+      <LinkButton to={actionTo} variant="secondary" size="sm">
+        {children}
+      </LinkButton>
+    );
+  }
+
+  return (
+    <Button variant="secondary" size="sm" onClick={onAction}>
+      {children}
+    </Button>
+  );
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
@@ -184,14 +231,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         <p className="text-xs text-sanctuary-400 dark:text-sanctuary-500">
           {title}
         </p>
-        {actionLabel && (
-          <button
-            onClick={() => runEmptyStateAction(actionTo, onAction)}
-            className="mt-1 text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
-          >
-            {actionLabel}
-          </button>
-        )}
+        <CompactEmptyStateAction actionLabel={actionLabel} actionTo={actionTo} onAction={onAction} />
       </div>
     );
   }
@@ -231,16 +271,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
           {description}
         </p>
       )}
-      {actionLabel && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => runEmptyStateAction(actionTo, onAction)}
-        >
-          <Plus className="w-4 h-4 mr-1.5" />
-          {actionLabel}
-        </Button>
-      )}
+      <EmptyStateAction actionLabel={actionLabel} actionTo={actionTo} onAction={onAction} />
     </div>
   );
 };

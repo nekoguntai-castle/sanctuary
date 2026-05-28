@@ -1,5 +1,7 @@
+import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSidebarNetworkAvailability } from '../../../components/Layout/useLayoutController';
+import { useSidebarNetworkAvailability } from '../../../components/Layout/useSidebarNetworkAvailability';
 import * as bitcoinApi from '../../../src/api/bitcoin';
 
 vi.mock('../../../src/api/bitcoin', () => ({
@@ -35,6 +37,26 @@ describe('sidebar network availability', () => {
       testnet3: true,
       testnet4: true,
       signet: true,
+    });
+  });
+
+  it('moves selection back to mainnet when the selected network is disabled', async () => {
+    const setSelectedNetwork = vi.fn();
+    vi.mocked(bitcoinApi.getStatus).mockImplementation(async (network) => ({
+      connected: false,
+      error: network === 'testnet3'
+        ? 'Testnet sync is off in Node Configuration. Enable Testnet under Network Connections.'
+        : 'Connection refused',
+    }) as any);
+
+    renderHook(() => useSidebarNetworkAvailability({
+      enabled: true,
+      selectedNetwork: 'testnet3',
+      setSelectedNetwork,
+    }));
+
+    await waitFor(() => {
+      expect(setSelectedNetwork).toHaveBeenCalledWith('mainnet');
     });
   });
 });
