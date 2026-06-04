@@ -14,6 +14,7 @@ useUserPreferences,
 import * as authApi from '../../src/api/auth';
 import { ApiError } from '../../src/api/client';
 import * as twoFactorApi from '../../src/api/twoFactor';
+import type { User } from '../../types';
 import {
   mockTwoFactorResponse,
   mockUser,
@@ -67,6 +68,48 @@ vi.mock('../../themes', () => ({
     applyFlyoutOpacity: vi.fn(),
   },
 }));
+
+const mappedUserFieldIds = [
+  'id',
+  'email',
+  'verified',
+  'admin',
+  'preferences',
+  'created',
+  'two-factor',
+  'default-password',
+] as const;
+
+type MappedUserFieldId = typeof mappedUserFieldIds[number];
+
+function getMappedUserValues(user: User | null): Record<MappedUserFieldId, string> {
+  return {
+    id: user?.id ?? 'none',
+    email: formatNullableEmail(user?.email),
+    verified: formatOptionalBoolean(user?.emailVerified),
+    admin: formatOptionalBoolean(user?.isAdmin),
+    preferences: formatNullablePreferences(user?.preferences),
+    created: user?.createdAt ?? 'none',
+    'two-factor': formatOptionalBoolean(user?.twoFactorEnabled),
+    'default-password': formatOptionalBoolean(user?.usingDefaultPassword),
+  };
+}
+
+function formatNullableEmail(email: User['email'] | undefined): string {
+  if (email === null) return 'null';
+
+  return email ?? 'undefined';
+}
+
+function formatNullablePreferences(preferences: User['preferences'] | undefined): string {
+  if (preferences === null) return 'null';
+
+  return 'not-null';
+}
+
+function formatOptionalBoolean(value: boolean | undefined): string {
+  return String(value);
+}
 
 describe('UserContext', () => {
   beforeEach(() => {
@@ -222,17 +265,14 @@ describe('UserContext', () => {
       function MappingConsumer() {
         const currentUser = useCurrentUser();
         const { login } = useUser();
+        const mappedValues = getMappedUserValues(currentUser);
+
         return (
           <div>
             <button data-testid="login" onClick={() => login('mappeduser', 'password')}>Login</button>
-            <span data-testid="id">{currentUser?.id ?? 'none'}</span>
-            <span data-testid="email">{currentUser?.email === null ? 'null' : currentUser?.email ?? 'undefined'}</span>
-            <span data-testid="verified">{String(currentUser?.emailVerified)}</span>
-            <span data-testid="admin">{String(currentUser?.isAdmin)}</span>
-            <span data-testid="preferences">{currentUser?.preferences === null ? 'null' : 'not-null'}</span>
-            <span data-testid="created">{currentUser?.createdAt ?? 'none'}</span>
-            <span data-testid="two-factor">{String(currentUser?.twoFactorEnabled)}</span>
-            <span data-testid="default-password">{String(currentUser?.usingDefaultPassword)}</span>
+            {mappedUserFieldIds.map(fieldId => (
+              <span key={fieldId} data-testid={fieldId}>{mappedValues[fieldId]}</span>
+            ))}
           </div>
         );
       }

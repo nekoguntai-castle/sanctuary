@@ -17,6 +17,56 @@ import type {
   NetworkType,
 } from './types';
 
+function connectionsForServer(
+  connections: PooledConnection[],
+  serverId: string,
+) {
+  return connections.filter(connection => connection.serverId === serverId);
+}
+
+function countHealthyConnections(connections: PooledConnection[]) {
+  return connections.filter(isHealthyConnection).length;
+}
+
+function isHealthyConnection(connection: PooledConnection) {
+  return connection.state !== 'closed' && connection.client.isConnected();
+}
+
+function activeCooldownUntil(stats: ServerState | undefined, now: number) {
+  if (!stats?.cooldownUntil) return null;
+  return stats.cooldownUntil.getTime() > now ? stats.cooldownUntil : null;
+}
+
+function buildServerStat(
+  server: ServerConfig,
+  stats: ServerState | undefined,
+  connections: PooledConnection[],
+  now: number,
+) {
+  return {
+    serverId: server.id,
+    label: server.label,
+    host: server.host,
+    port: server.port,
+    connectionCount: connections.length,
+    healthyConnections: countHealthyConnections(connections),
+    totalRequests: stats?.totalRequests || 0,
+    failedRequests: stats?.failedRequests || 0,
+    isHealthy: stats?.isHealthy ?? true,
+    lastHealthCheck: stats?.lastHealthCheck || null,
+    consecutiveFailures: stats?.consecutiveFailures || 0,
+    backoffLevel: stats?.backoffLevel || 0,
+    cooldownUntil: activeCooldownUntil(stats, now),
+    weight: stats?.weight ?? 1.0,
+    healthHistory: stats?.healthHistory || [],
+    supportsVerbose: server.supportsVerbose,
+    supportsSilentPaymentsV0: server.supportsSilentPaymentsV0,
+    serverUsage: server.serverUsage,
+    lastCapabilityCheck: server.lastCapabilityCheck ?? null,
+    lastCapabilityError: server.lastCapabilityError ?? null,
+  };
+}
+
 /**
  * Build per-server stats array from current server/connection state.
  */
@@ -24,43 +74,15 @@ function buildServerStats(
   servers: ServerConfig[],
   serverStats: Map<string, ServerState>,
   connections: PooledConnection[],
-): ServerStats[] {
+) {
   const now = Date.now();
 
-  return servers.map(server => {
-    const serverConnections = connections.filter(c => c.serverId === server.id);
-    const healthyConns = serverConnections.filter(
-      c => c.state !== 'closed' && c.client.isConnected(),
-    ).length;
-    const stats = serverStats.get(server.id);
-
-    const inCooldown = stats?.cooldownUntil
-      ? stats.cooldownUntil.getTime() > now
-      : false;
-
-    return {
-      serverId: server.id,
-      label: server.label,
-      host: server.host,
-      port: server.port,
-      connectionCount: serverConnections.length,
-      healthyConnections: healthyConns,
-      totalRequests: stats?.totalRequests || 0,
-      failedRequests: stats?.failedRequests || 0,
-      isHealthy: stats?.isHealthy ?? true,
-      lastHealthCheck: stats?.lastHealthCheck || null,
-      consecutiveFailures: stats?.consecutiveFailures || 0,
-      backoffLevel: stats?.backoffLevel || 0,
-      cooldownUntil: inCooldown ? stats!.cooldownUntil : null,
-      weight: stats?.weight ?? 1.0,
-      healthHistory: stats?.healthHistory || [],
-      supportsVerbose: server.supportsVerbose,
-      supportsSilentPaymentsV0: server.supportsSilentPaymentsV0,
-      serverUsage: server.serverUsage,
-      lastCapabilityCheck: server.lastCapabilityCheck ?? null,
-      lastCapabilityError: server.lastCapabilityError ?? null,
-    };
-  });
+  return servers.map(server => buildServerStat(
+    server,
+    serverStats.get(server.id),
+    connectionsForServer(connections, server.id),
+    now,
+  ));
 }
 
 /**

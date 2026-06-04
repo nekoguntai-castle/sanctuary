@@ -210,7 +210,7 @@
     },
     {
       "file": "server/src/services/bitcoin/networkStatusService.ts",
-      "functionName": "getBitcoinNetworkStatus",
+      "functionName": "readNetworkBackendStatus",
       "issue": "non-terminal-catch",
       "count": 1,
       "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",

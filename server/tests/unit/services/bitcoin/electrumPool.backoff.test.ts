@@ -530,6 +530,25 @@ describe('ElectrumPool', () => {
         expect(server1Stats!.weight).toBeLessThan(1.0);
       });
 
+      it('should omit expired cooldowns from server stats', () => {
+        pool = createPool();
+        pool.setServers(servers);
+        const baseStats = (pool as any).serverStats.get('server-1');
+        (pool as any).serverStats.set('server-1', {
+          ...baseStats,
+          consecutiveFailures: 3,
+          backoffLevel: 1,
+          cooldownUntil: new Date(Date.now() - 60_000),
+          weight: 0.5,
+        });
+
+        const stats = pool.getPoolStats();
+        const server1Stats = stats.servers.find(s => s.serverId === 'server-1');
+
+        expect(server1Stats).toBeDefined();
+        expect(server1Stats!.cooldownUntil).toBeNull();
+      });
+
       it('should include health history in server stats', () => {
         pool = createPool();
         pool.setServers(servers);

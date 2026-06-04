@@ -46,6 +46,22 @@ interface StatusNodeConfig {
   servers?: ConfiguredServer[];
 }
 
+interface ElectrumVersion {
+  server: string;
+  protocol: string;
+}
+
+interface NetworkBackendStatus {
+  version: ElectrumVersion;
+  blockHeight?: number;
+  poolStats: ElectrumPoolStats | null;
+}
+
+interface ConfirmationThresholds {
+  confirmationThreshold: number;
+  deepConfirmationThreshold: number;
+}
+
 export interface BitcoinNetworkStatus {
   connected: true;
   server: string;
@@ -67,27 +83,16 @@ export interface BitcoinNetworkStatus {
   } | null;
 }
 
-function getExplorerUrl(
-  nodeConfig: StatusNodeConfig | null,
-  network: NetworkType,
-): string {
-  return getNodeExternalServiceUrl(
-    nodeConfig as NodeNetworkConfigSource | null,
-    network,
-    'explorer',
-  );
-}
-
 function getConfiguredServers(
   nodeConfig: StatusNodeConfig | null,
   network: NetworkType,
-): ConfiguredServer[] {
+) {
   return (nodeConfig?.servers ?? [])
     .filter((server) => server.enabled && server.network === network)
     .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
 }
 
-function toConfiguredServerStat(server: ConfiguredServer): ElectrumPoolStats['servers'][number] {
+function toConfiguredServerStat(server: ConfiguredServer) {
   return {
     serverId: server.id,
     label: server.label,
@@ -115,7 +120,7 @@ function toConfiguredServerStat(server: ConfiguredServer): ElectrumPoolStats['se
 function configuredServerStats(
   nodeConfig: StatusNodeConfig | null,
   network: NetworkType,
-): ElectrumPoolStats | null {
+) {
   const servers = getConfiguredServers(nodeConfig, network);
   if (servers.length === 0) return null;
 
@@ -171,7 +176,7 @@ function getDisplayConnection(
 }
 
 async function checkPoolStatus(network: NetworkType): Promise<{
-  version: { server: string; protocol: string } | null;
+  version: ElectrumVersion | null;
   blockHeight?: number;
   poolStats: ElectrumPoolStats | null;
 }> {
@@ -197,68 +202,146 @@ async function checkPoolStatus(network: NetworkType): Promise<{
   return { version: null, poolStats };
 }
 
-export async function getBitcoinNetworkStatus(
-  network: NetworkType = 'mainnet',
-): Promise<BitcoinNetworkStatus> {
-  const nodeConfig = await nodeConfigRepository.findDefaultWithServers() as StatusNodeConfig | null;
-  const modeConfig = await getNetworkModeConfig(network);
+function shouldUsePool(
+  nodeConfig: StatusNodeConfig | null,
+  modeConfig: NetworkModeConfig,
+): boolean {
+  return nodeConfig?.type === 'electrum' && modeConfig.mode === 'pool';
+}
 
-  let version: { server: string; protocol: string } | null = null;
-  let blockHeight: number | undefined;
+async function readSingletonStatus(network: NetworkType): Promise<{
+  version: ElectrumVersion | null;
+  blockHeight?: number;
+}> {
+  const client = await getNodeClient(network);
+  const [version, blockHeight] = await Promise.all([
+    client.getServerVersion(),
+    client.getBlockHeight(),
+  ]);
+
+  return { version, blockHeight };
+}
+
+async function readNetworkBackendStatus(
+  network: NetworkType,
+  usePool: boolean,
+): Promise<NetworkBackendStatus> {
   let poolStats: ElectrumPoolStats | null = null;
-  const usePool = nodeConfig?.type === 'electrum' && modeConfig.mode === 'pool';
-  const displayConnection = getDisplayConnection(nodeConfig, network, modeConfig);
 
   if (usePool) {
     try {
       const poolStatus = await checkPoolStatus(network);
-      version = poolStatus.version;
-      blockHeight = poolStatus.blockHeight;
       poolStats = poolStatus.poolStats;
+      if (poolStatus.version) {
+        return {
+          version: poolStatus.version,
+          blockHeight: poolStatus.blockHeight,
+          poolStats,
+        };
+      }
     } catch (poolError) {
       log.debug('Pool status check failed, falling back to singleton', { error: String(poolError) });
     }
   }
 
-  if (!version) {
-    const client = await getNodeClient(network);
-    const [ver, height] = await Promise.all([
-      client.getServerVersion(),
-      client.getBlockHeight(),
-    ]);
-    version = ver;
-    blockHeight = height;
-  }
-
-  if (!version) {
+  const singletonStatus = await readSingletonStatus(network);
+  if (!singletonStatus.version) {
     throw new Error(`Unable to read ${network} Electrum server version`);
   }
 
+  return {
+    version: singletonStatus.version,
+    blockHeight: singletonStatus.blockHeight,
+    poolStats,
+  };
+}
+
+async function loadConfirmationThresholds(): Promise<ConfirmationThresholds> {
   const [confirmationThreshold, deepConfirmationThreshold] = await Promise.all([
-    systemSettingRepository.getParsed('confirmationThreshold', SystemSettingSchemas.number, DEFAULT_CONFIRMATION_THRESHOLD),
-    systemSettingRepository.getParsed('deepConfirmationThreshold', SystemSettingSchemas.number, DEFAULT_DEEP_CONFIRMATION_THRESHOLD),
+    systemSettingRepository.getParsed(
+      'confirmationThreshold',
+      SystemSettingSchemas.number,
+      DEFAULT_CONFIRMATION_THRESHOLD,
+    ),
+    systemSettingRepository.getParsed(
+      'deepConfirmationThreshold',
+      SystemSettingSchemas.number,
+      DEFAULT_DEEP_CONFIRMATION_THRESHOLD,
+    ),
   ]);
+
+  return { confirmationThreshold, deepConfirmationThreshold };
+}
+
+function selectPoolStats(
+  nodeConfig: StatusNodeConfig | null,
+  network: NetworkType,
+  poolStats: ElectrumPoolStats | null,
+): ElectrumPoolStats | null {
+  if (poolStats && poolStats.servers.length > 0) {
+    return poolStats;
+  }
+
+  return configuredServerStats(nodeConfig, network) ?? poolStats;
+}
+
+function buildPoolStatus(
+  nodeConfig: StatusNodeConfig | null,
+  network: NetworkType,
+  modeConfig: NetworkModeConfig,
+  usePool: boolean,
+  poolStats: ElectrumPoolStats | null,
+): BitcoinNetworkStatus['pool'] {
+  if (nodeConfig?.type !== 'electrum') return null;
+
+  return {
+    enabled: usePool,
+    minConnections: modeConfig.poolMin ?? 1,
+    maxConnections: modeConfig.poolMax ?? 5,
+    configuredMin: modeConfig.poolMin,
+    configuredMax: modeConfig.poolMax,
+    stats: selectPoolStats(nodeConfig, network, poolStats),
+  };
+}
+
+function getExplorerUrl(
+  nodeConfig: StatusNodeConfig | null,
+  network: NetworkType,
+): string {
+  return getNodeExternalServiceUrl(
+    nodeConfig as NodeNetworkConfigSource | null,
+    network,
+    'explorer',
+  );
+}
+
+export async function getBitcoinNetworkStatus(
+  network: NetworkType = 'mainnet',
+): Promise<BitcoinNetworkStatus> {
+  const nodeConfig = await nodeConfigRepository.findDefaultWithServers() as StatusNodeConfig | null;
+  const modeConfig = await getNetworkModeConfig(network);
+  const usePool = shouldUsePool(nodeConfig, modeConfig);
+  const displayConnection = getDisplayConnection(nodeConfig, network, modeConfig);
+  const backendStatus = await readNetworkBackendStatus(network, usePool);
+  const thresholds = await loadConfirmationThresholds();
 
   return {
     connected: true,
-    server: version.server,
-    protocol: version.protocol,
-    blockHeight,
+    server: backendStatus.version.server,
+    protocol: backendStatus.version.protocol,
+    blockHeight: backendStatus.blockHeight,
     network,
     host: displayConnection.host,
     useSsl: displayConnection.useSsl,
     explorerUrl: getExplorerUrl(nodeConfig, network),
-    confirmationThreshold,
-    deepConfirmationThreshold,
-    pool: nodeConfig?.type === 'electrum' ? {
-      enabled: usePool,
-      minConnections: modeConfig.poolMin ?? 1,
-      maxConnections: modeConfig.poolMax ?? 5,
-      configuredMin: modeConfig.poolMin,
-      configuredMax: modeConfig.poolMax,
-      stats: poolStats && poolStats.servers.length > 0
-        ? poolStats
-        : configuredServerStats(nodeConfig, network) ?? poolStats,
-    } : null,
+    confirmationThreshold: thresholds.confirmationThreshold,
+    deepConfirmationThreshold: thresholds.deepConfirmationThreshold,
+    pool: buildPoolStatus(
+      nodeConfig,
+      network,
+      modeConfig,
+      usePool,
+      backendStatus.poolStats,
+    ),
   };
 }

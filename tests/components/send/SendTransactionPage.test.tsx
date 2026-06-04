@@ -63,20 +63,67 @@ vi.mock('../../../src/api/devices', () => ({
 }));
 
 // Mock the wizard component
-vi.mock('../../../components/send/SendTransactionWizard', () => ({
-  SendTransactionWizard: (props: any) => (
-    <div data-testid="send-wizard">
-      <span data-testid="wizard-wallet-name">{props.wallet?.name}</span>
-      <span data-testid="wizard-wallet-network">{props.wallet?.network ?? ''}</span>
-      <span data-testid="wizard-utxo-count">{props.utxos?.length}</span>
-      <span data-testid="wizard-initial-step">{props.initialState?.currentStep ?? ''}</span>
-      <span data-testid="wizard-draft-id">{props.initialState?.draftId ?? ''}</span>
-      <span data-testid="wizard-draft-fee">{props.draftTxData?.fee ?? ''}</span>
-      <span data-testid="wizard-calculated-fee">{props.calculateFee ? props.calculateFee(2, 3, 5) : ''}</span>
-      <button data-testid="wizard-cancel" onClick={props.onCancel}>Cancel</button>
-    </div>
-  ),
-}));
+vi.mock('../../../components/send/SendTransactionWizard', () => {
+  type MockSendTransactionWizardProps = {
+    wallet?: { name?: string; network?: string };
+    utxos?: unknown[];
+    initialState?: { currentStep?: string; draftId?: string };
+    draftTxData?: { fee?: number };
+    calculateFee?: (inputs: number, outputs: number, feeRate: number) => number;
+    onCancel?: () => void;
+  };
+
+  function MockSendTransactionWizard(props: MockSendTransactionWizardProps) {
+    return (
+      <div data-testid="send-wizard">
+        <span data-testid="wizard-wallet-name">{getWalletName(props)}</span>
+        <span data-testid="wizard-wallet-network">{formatOptionalValue(getWalletNetwork(props))}</span>
+        <span data-testid="wizard-utxo-count">{getUtxoCount(props)}</span>
+        <span data-testid="wizard-initial-step">{formatOptionalValue(getInitialStep(props))}</span>
+        <span data-testid="wizard-draft-id">{formatOptionalValue(getDraftId(props))}</span>
+        <span data-testid="wizard-draft-fee">{formatOptionalValue(getDraftFee(props))}</span>
+        <span data-testid="wizard-calculated-fee">{getCalculatedFee(props)}</span>
+        <button data-testid="wizard-cancel" onClick={props.onCancel}>Cancel</button>
+      </div>
+    );
+  }
+
+  function getWalletName(props: MockSendTransactionWizardProps): string | undefined {
+    return props.wallet?.name;
+  }
+
+  function getWalletNetwork(props: MockSendTransactionWizardProps): string | undefined {
+    return props.wallet?.network;
+  }
+
+  function getUtxoCount(props: MockSendTransactionWizardProps): number | undefined {
+    return props.utxos?.length;
+  }
+
+  function getInitialStep(props: MockSendTransactionWizardProps): string | undefined {
+    return props.initialState?.currentStep;
+  }
+
+  function getDraftId(props: MockSendTransactionWizardProps): string | undefined {
+    return props.initialState?.draftId;
+  }
+
+  function getDraftFee(props: MockSendTransactionWizardProps): number | undefined {
+    return props.draftTxData?.fee;
+  }
+
+  function formatOptionalValue(value: number | string | undefined): number | string {
+    return value ?? '';
+  }
+
+  function getCalculatedFee(props: MockSendTransactionWizardProps): number | string {
+    if (!props.calculateFee) return '';
+
+    return props.calculateFee(2, 3, 5);
+  }
+
+  return { SendTransactionWizard: MockSendTransactionWizard };
+});
 
 describe('SendTransactionPage', () => {
   const mockWallet = {

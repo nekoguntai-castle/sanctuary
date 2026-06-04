@@ -11,6 +11,21 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('NODE_CONFIG:REPO');
 type NullableJsonInput = Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue;
+type ElectrumServerHealthData = {
+  isHealthy: boolean;
+  lastHealthCheck?: Date;
+  lastHealthCheckError?: string | null;
+  healthCheckFails?: number;
+  supportsVerbose?: boolean;
+  serverFeatures?: NullableJsonInput;
+  serverVersion?: string | null;
+  protocolVersion?: string | null;
+  silentPaymentVersions?: NullableJsonInput;
+  supportsSilentPaymentsV0?: boolean;
+  capabilityProfileKey?: string | null;
+  lastCapabilityError?: string | null;
+  lastCapabilityCheck?: Date;
+};
 
 // ---------------------------------------------------------------------------
 // NodeConfig methods
@@ -197,69 +212,93 @@ async function esDelete(id: string): Promise<ElectrumServer> {
  */
 async function esUpdateHealth(
   id: string,
-  healthData: {
-    isHealthy: boolean;
-    lastHealthCheck?: Date;
-    lastHealthCheckError?: string | null;
-    healthCheckFails?: number;
-    supportsVerbose?: boolean;
-    serverFeatures?: NullableJsonInput;
-    serverVersion?: string | null;
-    protocolVersion?: string | null;
-    silentPaymentVersions?: NullableJsonInput;
-    supportsSilentPaymentsV0?: boolean;
-    capabilityProfileKey?: string | null;
-    lastCapabilityError?: string | null;
-    lastCapabilityCheck?: Date;
-  }
+  healthData: ElectrumServerHealthData
 ): Promise<void> {
   try {
     await prisma.electrumServer.update({
       where: { id },
-      data: {
-        isHealthy: healthData.isHealthy,
-        lastHealthCheck: healthData.lastHealthCheck ?? new Date(),
-        lastHealthCheckError: healthData.isHealthy
-          ? null
-          : (healthData.lastHealthCheckError ?? null),
-        ...(healthData.healthCheckFails !== undefined
-          ? { healthCheckFails: healthData.healthCheckFails }
-          : {}),
-        ...(healthData.supportsVerbose !== undefined
-          ? {
-              supportsVerbose: healthData.supportsVerbose,
-              lastCapabilityCheck: healthData.lastCapabilityCheck ?? new Date(),
-            }
-          : {}),
-        ...(healthData.serverFeatures !== undefined
-          ? { serverFeatures: healthData.serverFeatures }
-          : {}),
-        ...(healthData.serverVersion !== undefined
-          ? { serverVersion: healthData.serverVersion }
-          : {}),
-        ...(healthData.protocolVersion !== undefined
-          ? { protocolVersion: healthData.protocolVersion }
-          : {}),
-        ...(healthData.silentPaymentVersions !== undefined
-          ? { silentPaymentVersions: healthData.silentPaymentVersions }
-          : {}),
-        ...(healthData.supportsSilentPaymentsV0 !== undefined
-          ? {
-              supportsSilentPaymentsV0: healthData.supportsSilentPaymentsV0,
-              lastCapabilityCheck: healthData.lastCapabilityCheck ?? new Date(),
-            }
-          : {}),
-        ...(healthData.capabilityProfileKey !== undefined
-          ? { capabilityProfileKey: healthData.capabilityProfileKey }
-          : {}),
-        ...(healthData.lastCapabilityError !== undefined
-          ? { lastCapabilityError: healthData.lastCapabilityError }
-          : {}),
-      },
+      data: buildElectrumServerHealthUpdateData(healthData),
     });
   } catch (error) {
     // Don't log loudly - this is often a background operation
     log.debug(`Failed to update server health in db: ${error}`);
+  }
+}
+
+function buildElectrumServerHealthUpdateData(
+  healthData: ElectrumServerHealthData
+): Prisma.ElectrumServerUpdateInput {
+  const data: Prisma.ElectrumServerUpdateInput = {
+    isHealthy: healthData.isHealthy,
+    lastHealthCheck: healthData.lastHealthCheck ?? new Date(),
+    lastHealthCheckError: healthData.isHealthy
+      ? null
+      : (healthData.lastHealthCheckError ?? null),
+  };
+
+  appendHealthCheckFails(data, healthData);
+  appendVerboseCapability(data, healthData);
+  appendServerCapabilityFields(data, healthData);
+  appendSilentPaymentsCapability(data, healthData);
+  appendCapabilityMetadata(data, healthData);
+
+  return data;
+}
+
+function appendHealthCheckFails(
+  data: Prisma.ElectrumServerUpdateInput,
+  healthData: ElectrumServerHealthData
+): void {
+  if (healthData.healthCheckFails !== undefined) {
+    data.healthCheckFails = healthData.healthCheckFails;
+  }
+}
+
+function appendVerboseCapability(
+  data: Prisma.ElectrumServerUpdateInput,
+  healthData: ElectrumServerHealthData
+): void {
+  if (healthData.supportsVerbose !== undefined) {
+    data.supportsVerbose = healthData.supportsVerbose;
+    data.lastCapabilityCheck = healthData.lastCapabilityCheck ?? new Date();
+  }
+}
+
+function appendServerCapabilityFields(
+  data: Prisma.ElectrumServerUpdateInput,
+  healthData: ElectrumServerHealthData
+): void {
+  appendIfDefined(data, 'serverFeatures', healthData.serverFeatures);
+  appendIfDefined(data, 'serverVersion', healthData.serverVersion);
+  appendIfDefined(data, 'protocolVersion', healthData.protocolVersion);
+  appendIfDefined(data, 'silentPaymentVersions', healthData.silentPaymentVersions);
+}
+
+function appendSilentPaymentsCapability(
+  data: Prisma.ElectrumServerUpdateInput,
+  healthData: ElectrumServerHealthData
+): void {
+  if (healthData.supportsSilentPaymentsV0 !== undefined) {
+    data.supportsSilentPaymentsV0 = healthData.supportsSilentPaymentsV0;
+    data.lastCapabilityCheck = healthData.lastCapabilityCheck ?? new Date();
+  }
+}
+
+function appendCapabilityMetadata(
+  data: Prisma.ElectrumServerUpdateInput,
+  healthData: ElectrumServerHealthData
+): void {
+  appendIfDefined(data, 'capabilityProfileKey', healthData.capabilityProfileKey);
+  appendIfDefined(data, 'lastCapabilityError', healthData.lastCapabilityError);
+}
+
+function appendIfDefined<Key extends keyof Prisma.ElectrumServerUpdateInput>(
+  data: Prisma.ElectrumServerUpdateInput,
+  key: Key,
+  value: Prisma.ElectrumServerUpdateInput[Key] | undefined
+): void {
+  if (value !== undefined) {
+    data[key] = value;
   }
 }
 
