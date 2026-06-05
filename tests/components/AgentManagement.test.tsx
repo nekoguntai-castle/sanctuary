@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { AgentManagement } from '../../components/AgentManagement';
 import * as adminApi from '../../src/api/admin';
 import * as walletsApi from '../../src/api/wallets';
@@ -156,6 +157,24 @@ const fundingOverride = {
   updatedAt: '2026-04-16T00:00:00.000Z',
 } as any;
 
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="current-route">{location.pathname}</div>;
+}
+
+function renderAgentManagement() {
+  return render(
+    <MemoryRouter initialEntries={['/admin/agents']}>
+      <LocationProbe />
+      <Routes>
+        <Route path="/admin/agents" element={<AgentManagement />} />
+        <Route path="/admin/agent-wallets" element={<div>Agent Wallets route</div>} />
+        <Route path="/wallets/import" element={<div>Import Wallet route</div>} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
 describe('AgentManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -231,11 +250,10 @@ describe('AgentManagement', () => {
       configurable: true,
       value: { writeText: writeTextMock },
     });
-    window.location.hash = '';
   });
 
   it('loads and renders wallet agent summary, policy, and key metadata', async () => {
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     expect(await screen.findByText('Treasury Agent')).toBeInTheDocument();
     expect(screen.getByText('Active agents')).toBeInTheDocument();
@@ -251,7 +269,7 @@ describe('AgentManagement', () => {
     const user = userEvent.setup();
     vi.mocked(adminApi.getWalletAgents).mockRejectedValueOnce(new Error('network down'));
 
-    const { unmount } = render(<AgentManagement />);
+    const { unmount } = renderAgentManagement();
 
     expect(await screen.findByText('network down')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Retry/i }));
@@ -260,14 +278,14 @@ describe('AgentManagement', () => {
     unmount();
 
     vi.mocked(adminApi.getWalletAgents).mockResolvedValueOnce([]);
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     expect(await screen.findByText('No wallet agents registered.')).toBeInTheDocument();
   });
 
   it('creates an agent using filtered wallet and signer options', async () => {
     const user = userEvent.setup();
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByRole('button', { name: /Add Agent Wallet/i }));
@@ -279,7 +297,7 @@ describe('AgentManagement', () => {
 
     expect(screen.getByRole('link', { name: 'Open full import page' })).toHaveAttribute(
       'href',
-      '#/wallets/import'
+      '/wallets/import'
     );
     selects = screen.getAllByRole('combobox');
     await user.selectOptions(selects[0], 'funding-1');
@@ -318,7 +336,8 @@ describe('AgentManagement', () => {
         })
       )
     );
-    expect(window.location.hash).toBe('#/admin/agent-wallets');
+    expect(await screen.findByText('Agent Wallets route')).toBeInTheDocument();
+    expect(screen.getByTestId('current-route')).toHaveTextContent('/admin/agent-wallets');
   });
 
   it('imports a watch-only operational wallet inline and creates with the imported wallet', async () => {
@@ -336,7 +355,7 @@ describe('AgentManagement', () => {
       .mockResolvedValueOnce(initialOptions)
       .mockResolvedValueOnce(optionsWithImported);
 
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByRole('button', { name: /Add Agent Wallet/i }));
@@ -403,7 +422,7 @@ describe('AgentManagement', () => {
       accountPath: "86'/1'/0'",
     });
 
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByRole('button', { name: /Add Agent Wallet/i }));
@@ -439,7 +458,7 @@ describe('AgentManagement', () => {
 
   it('rejects raw multisig extended keys in the operational wallet import', async () => {
     const user = userEvent.setup();
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByRole('button', { name: /Add Agent Wallet/i }));
@@ -477,7 +496,7 @@ describe('AgentManagement', () => {
       devices: [],
     });
 
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByRole('button', { name: /Add Agent Wallet/i }));
@@ -500,7 +519,7 @@ describe('AgentManagement', () => {
 
   it('updates agent policy and issues a one-time key', async () => {
     const user = userEvent.setup();
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByRole('button', { name: 'Edit' }));
@@ -547,7 +566,7 @@ describe('AgentManagement', () => {
 
   it('creates and revokes owner funding overrides', async () => {
     const user = userEvent.setup();
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByRole('button', { name: 'Overrides' }));
@@ -599,7 +618,7 @@ describe('AgentManagement', () => {
       },
     ]);
 
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByRole('button', { name: 'Overrides' }));
@@ -618,7 +637,7 @@ describe('AgentManagement', () => {
     vi.mocked(adminApi.createAgentFundingOverride).mockRejectedValueOnce(new Error('create failed'));
     vi.mocked(adminApi.revokeAgentFundingOverride).mockRejectedValueOnce(new Error('revoke failed'));
 
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByRole('button', { name: 'Overrides' }));
@@ -640,7 +659,7 @@ describe('AgentManagement', () => {
       vi.fn(() => false)
     );
 
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByRole('button', { name: 'Overrides' }));
@@ -657,7 +676,7 @@ describe('AgentManagement', () => {
       value: undefined,
     });
 
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByRole('button', { name: 'Issue Key' }));
@@ -672,7 +691,7 @@ describe('AgentManagement', () => {
 
   it('revokes keys and agents after confirmation', async () => {
     const user = userEvent.setup();
-    render(<AgentManagement />);
+    renderAgentManagement();
 
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByText('Revoke', { selector: 'button.text-rose-500' }));

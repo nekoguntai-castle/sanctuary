@@ -1,4 +1,5 @@
 import { ArrowLeft, ArrowRight, Upload } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Input';
 import { Toggle } from '../../ui/Toggle';
@@ -48,20 +49,29 @@ export function AgentNameField({ value, onChange }: { value: string; onChange: (
 }
 
 export function FullImportPageLink({ disabled = false }: { disabled?: boolean }) {
+  const className = `inline-flex items-center gap-2 text-sm font-medium ${
+    disabled
+      ? 'pointer-events-none text-sanctuary-300 dark:text-sanctuary-700'
+      : 'text-primary-700 hover:text-primary-800 dark:text-primary-200 dark:hover:text-primary-100'
+  }`;
+  const children = (
+    <>
+      <Upload className="h-4 w-4" />
+      Open full import page
+    </>
+  );
+
   return (
     <div className="flex items-end">
-      <a
-        href={disabled ? undefined : '#/wallets/import'}
-        aria-disabled={disabled}
-        className={`inline-flex items-center gap-2 text-sm font-medium ${
-          disabled
-            ? 'pointer-events-none text-sanctuary-300 dark:text-sanctuary-700'
-            : 'text-primary-700 hover:text-primary-800 dark:text-primary-200 dark:hover:text-primary-100'
-        }`}
-      >
-        <Upload className="h-4 w-4" />
-        Open full import page
-      </a>
+      {disabled ? (
+        <span aria-disabled="true" className={className}>
+          {children}
+        </span>
+      ) : (
+        <Link to="/wallets/import" className={className}>
+          {children}
+        </Link>
+      )}
     </div>
   );
 }

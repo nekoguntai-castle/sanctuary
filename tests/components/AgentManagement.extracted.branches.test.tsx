@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import type { ReactElement } from 'react';
 import { ActiveKeyList } from '../../components/AgentManagement/AgentManagement/ActiveKeyList';
 import { AgentFormModal } from '../../components/AgentManagement/AgentManagement/AgentFormModal';
 import { canAdvanceCreateStep } from '../../components/AgentManagement/AgentManagement/AgentFormSections';
@@ -192,6 +194,10 @@ function validForm(overrides: Partial<AgentFormState> = {}): AgentFormState {
   };
 }
 
+function renderAgentFormModal(element: ReactElement) {
+  return render(<MemoryRouter>{element}</MemoryRouter>);
+}
+
 describe('AgentManagement extracted branches', () => {
   it('renders header status and active-key empty/click branches', async () => {
     const user = userEvent.setup();
@@ -367,7 +373,7 @@ describe('AgentManagement extracted branches', () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
 
-    render(
+    renderAgentFormModal(
       <AgentFormModal
         title="Add Agent Wallet"
         options={options}
@@ -387,7 +393,7 @@ describe('AgentManagement extracted branches', () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
 
-    render(
+    renderAgentFormModal(
       <AgentFormModal
         title="Edit Agent"
         agent={makeAgent()}
@@ -427,7 +433,7 @@ describe('AgentManagement extracted branches', () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
 
-    render(
+    renderAgentFormModal(
       <AgentFormModal
         title="Add Agent Wallet"
         options={options}

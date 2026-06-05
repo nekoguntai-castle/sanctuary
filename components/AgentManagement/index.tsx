@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Copy, Loader2, Plus, RotateCcw, ShieldCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import * as adminApi from '../../src/api/admin';
 import type {
   AgentManagementOptions,
@@ -106,11 +107,8 @@ function buildUpdatePayload(form: AgentFormState): UpdateWalletAgentRequest {
   };
 }
 
-function navigateToAgentWalletDashboard(): void {
-  window.location.hash = '/admin/agent-wallets';
-}
-
 export function AgentManagement() {
+  const navigate = useNavigate();
   const [agents, setAgents] = useState<WalletAgentMetadata[]>([]);
   const [options, setOptions] = useState<AgentManagementOptions>(EMPTY_OPTIONS);
   const [loading, setLoading] = useState(true);
@@ -169,7 +167,7 @@ export function AgentManagement() {
       await adminApi.createWalletAgent(buildCreatePayload(form));
       setShowCreate(false);
       await loadData();
-      navigateToAgentWalletDashboard();
+      navigate('/admin/agent-wallets');
     });
   };
 
