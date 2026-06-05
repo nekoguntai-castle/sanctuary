@@ -1,6 +1,6 @@
-import { render,screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe,expect,it,vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ConfigurableTable } from '../../../components/ui/ConfigurableTable';
 import type { TableColumnConfig } from '../../../types';
 
@@ -88,9 +88,44 @@ describe('ConfigurableTable', () => {
       />
     );
 
-    await user.click(screen.getByText('Name'));
+    expect(screen.getByRole('columnheader', { name: 'Name' })).toHaveAttribute('aria-sort', 'ascending');
+
+    await user.click(screen.getByRole('button', { name: 'Name' }));
     expect(onSort).toHaveBeenCalledWith('name');
     expect(screen.getByTestId('chevron-up')).toBeInTheDocument();
+  });
+
+  it('supports keyboard sorting for sortable headers', async () => {
+    const user = userEvent.setup();
+    const onSort = vi.fn();
+
+    render(
+      <ConfigurableTable
+        columns={columns}
+        columnOrder={['name']}
+        visibleColumns={['name']}
+        data={data}
+        keyExtractor={(item) => item.id}
+        cellRenderers={cellRenderers}
+        onSort={onSort}
+        sortBy="age"
+        sortOrder="asc"
+      />
+    );
+
+    const header = screen.getByRole('columnheader', { name: 'Name' });
+    const sortButton = screen.getByRole('button', { name: 'Name' });
+
+    expect(header).toHaveAttribute('aria-sort', 'none');
+
+    sortButton.focus();
+    expect(sortButton).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    await user.keyboard(' ');
+
+    expect(onSort).toHaveBeenNthCalledWith(1, 'name');
+    expect(onSort).toHaveBeenNthCalledWith(2, 'name');
   });
 
   it('renders descending sort indicator for active sortable column', () => {
@@ -107,6 +142,7 @@ describe('ConfigurableTable', () => {
       />
     );
 
+    expect(screen.getByRole('columnheader', { name: 'Name' })).toHaveAttribute('aria-sort', 'descending');
     expect(screen.getByTestId('chevron-down')).toBeInTheDocument();
   });
 
@@ -127,6 +163,8 @@ describe('ConfigurableTable', () => {
     );
 
     await user.click(screen.getByText('Age'));
+    expect(screen.getByRole('columnheader', { name: 'Age' })).not.toHaveAttribute('aria-sort');
+    expect(screen.queryByRole('button', { name: 'Age' })).not.toBeInTheDocument();
     expect(onSort).not.toHaveBeenCalled();
   });
 
@@ -148,6 +186,78 @@ describe('ConfigurableTable', () => {
 
     await user.click(screen.getByText('Alice'));
     expect(onRowClick).toHaveBeenCalledWith(data[0]);
+  });
+
+  it('invokes onRowClick from keyboard activation on focusable rows', async () => {
+    const user = userEvent.setup();
+    const onRowClick = vi.fn();
+
+    render(
+      <ConfigurableTable
+        columns={columns}
+        columnOrder={['name']}
+        visibleColumns={['name']}
+        data={data}
+        keyExtractor={(item) => item.id}
+        cellRenderers={cellRenderers}
+        onRowClick={onRowClick}
+      />
+    );
+
+    const firstRow = screen.getByText('Alice').closest('tr') as HTMLTableRowElement;
+
+    expect(firstRow).toHaveAttribute('tabindex', '0');
+
+    firstRow.focus();
+    expect(firstRow).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    await user.keyboard(' ');
+
+    expect(onRowClick).toHaveBeenNthCalledWith(1, data[0]);
+    expect(onRowClick).toHaveBeenNthCalledWith(2, data[0]);
+  });
+
+  it('leaves rows inert when no row click handler is provided', () => {
+    render(
+      <ConfigurableTable
+        columns={columns}
+        columnOrder={['name']}
+        visibleColumns={['name']}
+        data={data}
+        keyExtractor={(item) => item.id}
+        cellRenderers={cellRenderers}
+      />
+    );
+
+    const firstRow = screen.getByText('Alice').closest('tr') as HTMLTableRowElement;
+
+    fireEvent.keyDown(firstRow, { key: 'Enter' });
+    expect(firstRow).not.toHaveAttribute('tabindex');
+  });
+
+  it('ignores row key events from nested targets and unrelated keys', () => {
+    const onRowClick = vi.fn();
+
+    render(
+      <ConfigurableTable
+        columns={columns}
+        columnOrder={['name']}
+        visibleColumns={['name']}
+        data={data}
+        keyExtractor={(item) => item.id}
+        cellRenderers={cellRenderers}
+        onRowClick={onRowClick}
+      />
+    );
+
+    const firstCellText = screen.getByText('Alice');
+    const firstRow = firstCellText.closest('tr') as HTMLTableRowElement;
+
+    fireEvent.keyDown(firstCellText, { key: 'Enter' });
+    fireEvent.keyDown(firstRow, { key: 'Escape' });
+
+    expect(onRowClick).not.toHaveBeenCalled();
   });
 
   it('renders centered alignment classes and empty cells when renderer is missing', () => {

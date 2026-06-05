@@ -1,6 +1,7 @@
 import { getAlignmentClass } from './tableColumns';
 import type { CellRenderers } from './types';
 import type { TableColumnConfig } from '../../../types';
+import type { KeyboardEvent } from 'react';
 
 interface ConfigurableTableBodyProps<T> {
   columns: TableColumnConfig[];
@@ -45,12 +46,16 @@ function ConfigurableTableRow<T>({
   cellRenderers,
   onRowClick,
 }: ConfigurableTableRowProps<T>) {
+  const isClickable = Boolean(onRowClick);
+
   return (
     <tr
       onClick={() => onRowClick?.(item)}
+      onKeyDown={(event) => handleRowKeyDown(event, item, onRowClick)}
+      tabIndex={isClickable ? 0 : undefined}
       className={`
         hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800 transition-colors
-        ${onRowClick ? 'cursor-pointer' : ''}
+        ${isClickable ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500' : ''}
       `}
     >
       {columns.map((column) => (
@@ -63,6 +68,21 @@ function ConfigurableTableRow<T>({
       ))}
     </tr>
   );
+}
+
+function handleRowKeyDown<T>(
+  event: KeyboardEvent<HTMLTableRowElement>,
+  item: T,
+  onRowClick?: (item: T) => void
+) {
+  if (!onRowClick || event.currentTarget !== event.target) {
+    return;
+  }
+
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    onRowClick(item);
+  }
 }
 
 interface ConfigurableTableCellProps<T> {
