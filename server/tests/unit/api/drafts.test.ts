@@ -4,6 +4,7 @@ import { registerDraftMultisigContracts } from './drafts/drafts.multisig.contrac
 import { registerDraftOutputContracts } from './drafts/drafts.outputs.contracts';
 import { registerDraftReadContracts } from './drafts/drafts.read.contracts';
 import { registerDraftUpdateDeleteContracts } from './drafts/drafts.update-delete.contracts';
+import { registerDraftValidationContracts } from './drafts/drafts.validation.contracts';
 import { setupDraftApiMocks } from './drafts/draftsTestHarness';
 
 describe('Draft Transaction API', () => {
@@ -14,4 +15,5 @@ describe('Draft Transaction API', () => {
   registerDraftUpdateDeleteContracts();
   registerDraftOutputContracts();
   registerDraftMultisigContracts();
+  registerDraftValidationContracts();
 });

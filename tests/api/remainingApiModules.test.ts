@@ -38,23 +38,55 @@ describe("Remaining API Modules", () => {
       await draftsApi.getDraft("w1", "d1");
       await draftsApi.createDraft("w1", {
         recipient: "bc1qdest",
-        amount: 1000,
-        feeRate: 5,
+        amount: "1000",
+        feeRate: "5.5",
+        outputs: [{ address: "bc1qdest", amount: "750", sendMax: false }],
+        inputs: [{
+          txid: "a".repeat(64),
+          vout: 0,
+          address: "bc1qsource",
+          amount: "1250",
+        }],
+        decoyOutputs: [{ address: "bc1qdecoy", amount: "50" }],
+        label: null,
+        memo: null,
         psbtBase64: "psbt",
+        fee: "50",
+        totalInput: "1250",
+        totalOutput: "1200",
+        changeAmount: "200",
+        effectiveAmount: "1000",
       });
-      await draftsApi.updateDraft("w1", "d1", { status: "signed" });
+      await draftsApi.updateDraft("w1", "d1", { status: "signed", label: null, memo: null });
       await draftsApi.deleteDraft("w1", "d1");
 
       expect(mockGet).toHaveBeenCalledWith("/wallets/w1/drafts");
       expect(mockGet).toHaveBeenCalledWith("/wallets/w1/drafts/d1");
       expect(mockPost).toHaveBeenCalledWith("/wallets/w1/drafts", {
         recipient: "bc1qdest",
-        amount: 1000,
-        feeRate: 5,
+        amount: "1000",
+        feeRate: "5.5",
+        outputs: [{ address: "bc1qdest", amount: "750", sendMax: false }],
+        inputs: [{
+          txid: "a".repeat(64),
+          vout: 0,
+          address: "bc1qsource",
+          amount: "1250",
+        }],
+        decoyOutputs: [{ address: "bc1qdecoy", amount: "50" }],
+        label: null,
+        memo: null,
         psbtBase64: "psbt",
+        fee: "50",
+        totalInput: "1250",
+        totalOutput: "1200",
+        changeAmount: "200",
+        effectiveAmount: "1000",
       });
       expect(mockPatch).toHaveBeenCalledWith("/wallets/w1/drafts/d1", {
         status: "signed",
+        label: null,
+        memo: null,
       });
       expect(mockDelete).toHaveBeenCalledWith("/wallets/w1/drafts/d1");
     });

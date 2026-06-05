@@ -465,6 +465,45 @@ export function registerOpenApiGatewayTests() {
     expect(openApiSpec.components.schemas.UpdateDraftRequest.properties.status.enum).toEqual([
       ...MOBILE_DRAFT_STATUS_VALUES,
     ]);
+    const draftIntegerValueSchema = {
+      oneOf: [
+        { type: 'integer', minimum: 0 },
+        { type: 'string', pattern: '^\\d+$' },
+      ],
+    };
+    const draftFeeRateValueSchema = {
+      oneOf: [
+        { type: 'number', minimum: 0, exclusiveMinimum: true },
+        { type: 'string', pattern: '^(?=.*[1-9])\\d+(\\.\\d+)?$' },
+      ],
+    };
+    expect(openApiSpec.components.schemas.CreateDraftRequest.properties.amount).toEqual(draftIntegerValueSchema);
+    expect(openApiSpec.components.schemas.CreateDraftRequest.properties.feeRate).toEqual(draftFeeRateValueSchema);
+    expect(openApiSpec.components.schemas.CreateDraftRequest.properties.fee).toEqual(draftIntegerValueSchema);
+    expect(openApiSpec.components.schemas.CreateDraftRequest.properties.totalInput).toEqual(draftIntegerValueSchema);
+    expect(openApiSpec.components.schemas.CreateDraftRequest.properties.totalOutput).toEqual(draftIntegerValueSchema);
+    expect(openApiSpec.components.schemas.CreateDraftRequest.properties.changeAmount).toEqual(draftIntegerValueSchema);
+    expect(openApiSpec.components.schemas.CreateDraftRequest.properties.effectiveAmount).toEqual(draftIntegerValueSchema);
+    expect(openApiSpec.components.schemas.CreateDraftRequest.properties.outputs.items).toEqual({
+      $ref: '#/components/schemas/DraftOutputRequest',
+    });
+    expect(openApiSpec.components.schemas.CreateDraftRequest.properties.inputs.items).toEqual({
+      $ref: '#/components/schemas/DraftInputRequest',
+    });
+    expect(openApiSpec.components.schemas.CreateDraftRequest.properties.decoyOutputs.items).toEqual({
+      $ref: '#/components/schemas/DraftDecoyOutputRequest',
+    });
+    expect(openApiSpec.components.schemas.DraftOutputRequest.properties.amount).toEqual(draftIntegerValueSchema);
+    expect(openApiSpec.components.schemas.DraftInputRequest.properties.amount).toEqual(draftIntegerValueSchema);
+    expect(openApiSpec.components.schemas.DraftDecoyOutputRequest.properties.amount).toEqual(draftIntegerValueSchema);
+    expect(openApiSpec.components.schemas.UpdateDraftRequest.properties.label).toEqual({
+      type: 'string',
+      nullable: true,
+    });
+    expect(openApiSpec.components.schemas.UpdateDraftRequest.properties.memo).toEqual({
+      type: 'string',
+      nullable: true,
+    });
     expect(openApiSpec.components.schemas.UpdateDraftRequest).toHaveProperty('additionalProperties', false);
   });
 

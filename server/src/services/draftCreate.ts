@@ -1,4 +1,5 @@
-import type { DraftTransaction } from '../generated/prisma/client';
+import type { DraftTransaction, Prisma } from '../generated/prisma/client';
+import { CreateDraftRequestSchema } from '@sanctuary/shared/schemas/draftRequests';
 import { draftRepository, systemSettingRepository } from '../repositories';
 import type { DraftDbClient } from '../repositories/draftRepository';
 import type { DraftLockDbClient } from '../repositories/draftLockRepository';
@@ -16,14 +17,63 @@ import type { CreateDraftInput, InitialSigningState } from './draftTypes';
 const log = createLogger('DRAFT:SVC_CREATE');
 
 type CreateDraftDbClient = DraftDbClient & DraftLockDbClient;
+type DraftRequestJsonField = CreateDraftInput['outputs'];
 
 export interface CreateDraftOptions {
   client?: CreateDraftDbClient;
   runSideEffects?: boolean;
 }
 
+const optionalDraftJsonField = (value: DraftRequestJsonField): unknown => {
+  return value === null ? undefined : value;
+};
+
+const toDraftAmountNumber = (value: unknown): unknown => {
+  return typeof value === 'string' ? Number(value) : value;
+};
+
+const normalizeDraftJsonAmounts = (
+  value: DraftRequestJsonField
+): Prisma.InputJsonValue | null => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  return (value as Array<Record<string, unknown>>).map((item) => ({
+    ...item,
+    amount: toDraftAmountNumber(item.amount),
+  })) as Prisma.InputJsonValue;
+};
+
+const buildDraftRequestValidationInput = (data: CreateDraftInput): Record<string, unknown> => ({
+  recipient: data.recipient,
+  amount: data.amount,
+  feeRate: data.feeRate,
+  selectedUtxoIds: data.selectedUtxoIds,
+  enableRBF: data.enableRBF,
+  subtractFees: data.subtractFees,
+  sendMax: data.sendMax,
+  outputs: optionalDraftJsonField(data.outputs),
+  inputs: optionalDraftJsonField(data.inputs),
+  decoyOutputs: optionalDraftJsonField(data.decoyOutputs),
+  payjoinUrl: data.payjoinUrl,
+  isRBF: data.isRBF,
+  label: data.label,
+  memo: data.memo,
+  psbtBase64: data.psbtBase64,
+  fee: data.fee,
+  totalInput: data.totalInput,
+  totalOutput: data.totalOutput,
+  changeAmount: data.changeAmount,
+  changeAddress: data.changeAddress,
+  effectiveAmount: data.effectiveAmount,
+  inputPaths: data.inputPaths,
+  signedPsbtBase64: data.signedPsbtBase64,
+  signedDeviceId: data.signedDeviceId,
+});
+
 const assertValidCreateDraftInput = (data: CreateDraftInput): void => {
-  if (!data.recipient || data.amount === undefined || !data.feeRate || !data.psbtBase64) {
+  if (!CreateDraftRequestSchema.safeParse(buildDraftRequestValidationInput(data)).success) {
     throw new InvalidInputError('recipient, amount, feeRate, and psbtBase64 are required');
   }
 };
@@ -52,9 +102,9 @@ const buildDraftBehaviorFields = (data: CreateDraftInput) => ({
 });
 
 const buildDraftJsonFields = (data: CreateDraftInput) => ({
-  outputs: data.outputs || null,
-  inputs: data.inputs || null,
-  decoyOutputs: data.decoyOutputs || null,
+  outputs: normalizeDraftJsonAmounts(data.outputs),
+  inputs: normalizeDraftJsonAmounts(data.inputs),
+  decoyOutputs: normalizeDraftJsonAmounts(data.decoyOutputs),
 });
 
 const buildDraftTextFields = (data: CreateDraftInput) => ({
@@ -89,7 +139,7 @@ const createDraftRecord = async (
     walletId,
     userId,
     recipient: data.recipient,
-    feeRate: data.feeRate,
+    feeRate: Number(data.feeRate),
     ...buildDraftBehaviorFields(data),
     ...buildDraftJsonFields(data),
     ...buildDraftTextFields(data),

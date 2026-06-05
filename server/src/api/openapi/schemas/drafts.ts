@@ -6,6 +6,20 @@
 
 import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
 
+const draftIntegerValueSchema = {
+  oneOf: [
+    { type: 'integer', minimum: 0 },
+    { type: 'string', pattern: '^\\d+$' },
+  ],
+} as const;
+
+const draftFeeRateValueSchema = {
+  oneOf: [
+    { type: 'number', minimum: 0, exclusiveMinimum: true },
+    { type: 'string', pattern: '^(?=.*[1-9])\\d+(\\.\\d+)?$' },
+  ],
+} as const;
+
 export const draftSchemas = {
   DraftOutput: {
     type: 'object',
@@ -26,6 +40,45 @@ export const draftSchemas = {
       amount: { type: 'number' },
     },
     required: ['txid', 'vout', 'address', 'amount'],
+    additionalProperties: false,
+  },
+  DraftDecoyOutput: {
+    type: 'object',
+    properties: {
+      address: { type: 'string' },
+      amount: { type: 'number' },
+    },
+    required: ['address', 'amount'],
+    additionalProperties: false,
+  },
+  DraftOutputRequest: {
+    type: 'object',
+    properties: {
+      address: { type: 'string' },
+      amount: draftIntegerValueSchema,
+      sendMax: { type: 'boolean' },
+    },
+    required: ['address', 'amount'],
+    additionalProperties: false,
+  },
+  DraftInputRequest: {
+    type: 'object',
+    properties: {
+      txid: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' },
+      vout: { type: 'integer', minimum: 0 },
+      address: { type: 'string' },
+      amount: draftIntegerValueSchema,
+    },
+    required: ['txid', 'vout', 'address', 'amount'],
+    additionalProperties: false,
+  },
+  DraftDecoyOutputRequest: {
+    type: 'object',
+    properties: {
+      address: { type: 'string' },
+      amount: draftIntegerValueSchema,
+    },
+    required: ['address', 'amount'],
     additionalProperties: false,
   },
   DraftTransaction: {
@@ -52,14 +105,7 @@ export const draftSchemas = {
       },
       decoyOutputs: {
         type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            address: { type: 'string' },
-            amount: { type: 'number' },
-          },
-          required: ['address', 'amount'],
-        },
+        items: { $ref: '#/components/schemas/DraftDecoyOutput' },
       },
       payjoinUrl: { type: 'string', nullable: true },
       label: { type: 'string', nullable: true },
@@ -87,43 +133,35 @@ export const draftSchemas = {
     type: 'object',
     properties: {
       recipient: { type: 'string' },
-      amount: { oneOf: [{ type: 'number' }, { type: 'string' }] },
-      feeRate: { oneOf: [{ type: 'number' }, { type: 'string' }] },
+      amount: draftIntegerValueSchema,
+      feeRate: draftFeeRateValueSchema,
       selectedUtxoIds: { type: 'array', items: { type: 'string' } },
       enableRBF: { type: 'boolean' },
       subtractFees: { type: 'boolean' },
       sendMax: { type: 'boolean' },
       outputs: {
         type: 'array',
-        items: { $ref: '#/components/schemas/DraftOutput' },
+        items: { $ref: '#/components/schemas/DraftOutputRequest' },
       },
       inputs: {
         type: 'array',
-        items: { $ref: '#/components/schemas/DraftInput' },
+        items: { $ref: '#/components/schemas/DraftInputRequest' },
       },
       decoyOutputs: {
         type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            address: { type: 'string' },
-            amount: { type: 'number' },
-          },
-          required: ['address', 'amount'],
-          additionalProperties: false,
-        },
+        items: { $ref: '#/components/schemas/DraftDecoyOutputRequest' },
       },
       payjoinUrl: { type: 'string' },
       isRBF: { type: 'boolean' },
       label: { type: 'string', nullable: true },
       memo: { type: 'string', nullable: true },
       psbtBase64: { type: 'string' },
-      fee: { oneOf: [{ type: 'number' }, { type: 'string' }] },
-      totalInput: { oneOf: [{ type: 'number' }, { type: 'string' }] },
-      totalOutput: { oneOf: [{ type: 'number' }, { type: 'string' }] },
-      changeAmount: { oneOf: [{ type: 'number' }, { type: 'string' }] },
+      fee: draftIntegerValueSchema,
+      totalInput: draftIntegerValueSchema,
+      totalOutput: draftIntegerValueSchema,
+      changeAmount: draftIntegerValueSchema,
       changeAddress: { type: 'string' },
-      effectiveAmount: { oneOf: [{ type: 'number' }, { type: 'string' }] },
+      effectiveAmount: draftIntegerValueSchema,
       inputPaths: { type: 'array', items: { type: 'string', minLength: 1 } },
       signedPsbtBase64: { type: 'string', minLength: 1 },
       signedDeviceId: { type: 'string', minLength: 1 },
@@ -137,8 +175,8 @@ export const draftSchemas = {
       signedPsbtBase64: { type: 'string', minLength: 1 },
       signedDeviceId: { type: 'string', minLength: 1 },
       status: { type: 'string', enum: [...ACTIONABLE_DRAFT_STATUS_VALUES] },
-      label: { type: 'string' },
-      memo: { type: 'string' },
+      label: { type: 'string', nullable: true },
+      memo: { type: 'string', nullable: true },
     },
     additionalProperties: false,
   },

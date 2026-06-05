@@ -8,7 +8,7 @@ import type { PolicyEvaluationResult } from './vaultPolicy/types';
 export interface CreateDraftInput {
   recipient: string;
   amount: number | string;
-  feeRate: number;
+  feeRate: number | string;
   selectedUtxoIds?: string[];
   enableRBF?: boolean;
   subtractFees?: boolean;
@@ -18,8 +18,8 @@ export interface CreateDraftInput {
   decoyOutputs?: Prisma.InputJsonValue | null;
   payjoinUrl?: string;
   isRBF?: boolean;
-  label?: string;
-  memo?: string;
+  label?: string | null;
+  memo?: string | null;
   psbtBase64: string;
   fee?: number | string;
   totalInput?: number | string;
@@ -51,6 +51,6 @@ export interface UpdateDraftInput {
   signedPsbtBase64?: string;
   signedDeviceId?: string;
   status?: DraftStatus;
-  label?: string;
-  memo?: string;
+  label?: string | null;
+  memo?: string | null;
 }

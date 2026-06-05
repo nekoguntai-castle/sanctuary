@@ -161,6 +161,50 @@ describe('DraftService', () => {
       expect(result).toEqual(mockDraft);
     });
 
+    it('normalizes string fee rates and rejects invalid direct create payloads', async () => {
+      await createDraft(walletId, userId, {
+        ...validInput,
+        amount: '100000',
+        feeRate: '5.5',
+        outputs: [{ address: 'tb1qoutput', amount: '25000' }],
+        inputs: [{ txid: 'a'.repeat(64), vout: 0, address: 'tb1qinput', amount: '100000' }],
+        decoyOutputs: [{ address: 'tb1qdecoy', amount: '5000' }],
+      });
+
+      expect(draftRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+        amount: BigInt(100000),
+        feeRate: 5.5,
+        outputs: [{ address: 'tb1qoutput', amount: 25000 }],
+        inputs: [{ txid: 'a'.repeat(64), vout: 0, address: 'tb1qinput', amount: 100000 }],
+        decoyOutputs: [{ address: 'tb1qdecoy', amount: 5000 }],
+      }));
+
+      await expect(createDraft(walletId, userId, {
+        ...validInput,
+        feeRate: '0',
+      })).rejects.toThrow(InvalidInputError);
+
+      await expect(createDraft(walletId, userId, {
+        ...validInput,
+        outputs: [{ address: 'tb1qoutput', amount: { sats: 1 } }],
+      })).rejects.toThrow(InvalidInputError);
+    });
+
+    it('keeps numeric nested amount metadata and accepts null JSON metadata fields', async () => {
+      await createDraft(walletId, userId, {
+        ...validInput,
+        outputs: [{ address: 'tb1qoutput', amount: 25000 }],
+        inputs: [{ txid: 'b'.repeat(64), vout: 0, address: 'tb1qinput', amount: 100000 }],
+        decoyOutputs: null,
+      });
+
+      expect(draftRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+        outputs: [{ address: 'tb1qoutput', amount: 25000 }],
+        inputs: [{ txid: 'b'.repeat(64), vout: 0, address: 'tb1qinput', amount: 100000 }],
+        decoyOutputs: null,
+      }));
+    });
+
     it('creates a partial draft when initial signed PSBT and signer device are provided', async () => {
       (walletRepository.findByIdWithSigningDevices as Mock).mockResolvedValue({
         id: walletId,

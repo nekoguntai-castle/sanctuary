@@ -36,7 +36,7 @@ export const DraftFeeWarningBanner: React.FC<DraftFeeWarningBannerProps> = ({
   );
 };
 
-export const DraftLabel: React.FC<{ label?: string }> = ({ label }) => {
+export const DraftLabel: React.FC<{ label?: string | null }> = ({ label }) => {
   if (!label) return null;
 
   return (

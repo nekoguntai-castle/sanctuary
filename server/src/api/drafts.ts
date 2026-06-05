@@ -9,8 +9,10 @@
  */
 
 import { Router } from 'express';
-import { z } from 'zod';
-import { ACTIONABLE_DRAFT_STATUS_VALUES } from '@sanctuary/shared/constants/drafts';
+import {
+  CreateDraftRequestSchema,
+  UpdateDraftRequestSchema,
+} from '@sanctuary/shared/schemas/draftRequests';
 import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireWalletAccess } from '../middleware/walletAccess';
 import { validate } from '../middleware/validate';
@@ -19,72 +21,6 @@ import { serializeDraftTransaction, serializeDraftTransactions } from '../utils/
 import { asyncHandler } from '../errors/errorHandler';
 
 const router = Router();
-
-const DraftIntegerValueSchema = z.custom<number | string>(
-  (value) => (
-    (typeof value === 'number' && Number.isInteger(value) && value >= 0) ||
-    (typeof value === 'string' && /^\d+$/.test(value))
-  ),
-  { message: 'Expected a non-negative integer value' }
-);
-const DraftFeeRateSchema = z.custom<number | string>(
-  (value) => (
-    (typeof value === 'number' && Number.isFinite(value) && value > 0) ||
-    (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value) && Number(value) > 0)
-  ),
-  { message: 'Expected a positive fee rate' }
-);
-const OptionalDraftTextSchema = z.union([z.string(), z.null()]);
-const DraftOutputSchema = z.object({
-  address: z.string().min(1),
-  amount: DraftIntegerValueSchema,
-  sendMax: z.boolean().optional(),
-}).strict();
-const DraftInputSchema = z.object({
-  txid: z.string().regex(/^[a-fA-F0-9]{64}$/),
-  vout: z.number().int().nonnegative(),
-  address: z.string(),
-  amount: DraftIntegerValueSchema,
-}).strict();
-const DraftDecoyOutputSchema = z.object({
-  address: z.string().min(1),
-  amount: DraftIntegerValueSchema,
-}).strict();
-
-const CreateDraftBodySchema = z.object({
-  recipient: z.string().min(1),
-  amount: DraftIntegerValueSchema,
-  feeRate: DraftFeeRateSchema,
-  selectedUtxoIds: z.array(z.string()).optional(),
-  enableRBF: z.boolean().optional(),
-  subtractFees: z.boolean().optional(),
-  sendMax: z.boolean().optional(),
-  outputs: z.array(DraftOutputSchema).optional(),
-  inputs: z.array(DraftInputSchema).optional(),
-  decoyOutputs: z.array(DraftDecoyOutputSchema).optional(),
-  payjoinUrl: z.string().optional(),
-  isRBF: z.boolean().optional(),
-  label: OptionalDraftTextSchema.optional(),
-  memo: OptionalDraftTextSchema.optional(),
-  psbtBase64: z.string().min(1),
-  fee: DraftIntegerValueSchema.optional(),
-  totalInput: DraftIntegerValueSchema.optional(),
-  totalOutput: DraftIntegerValueSchema.optional(),
-  changeAmount: DraftIntegerValueSchema.optional(),
-  changeAddress: z.string().optional(),
-  effectiveAmount: DraftIntegerValueSchema.optional(),
-  inputPaths: z.array(z.string().min(1)).optional(),
-  signedPsbtBase64: z.string().min(1).optional(),
-  signedDeviceId: z.string().min(1).optional(),
-}).strict();
-
-const UpdateDraftBodySchema = z.object({
-  signedPsbtBase64: z.string().min(1).optional(),
-  signedDeviceId: z.string().min(1).optional(),
-  status: z.enum(ACTIONABLE_DRAFT_STATUS_VALUES).optional(),
-  label: OptionalDraftTextSchema.optional(),
-  memo: OptionalDraftTextSchema.optional(),
-}).strict();
 
 // All routes require authentication
 router.use(authenticate);
@@ -116,7 +52,7 @@ router.get('/wallets/:walletId/drafts/:draftId', requireWalletAccess('view'), as
  * Create a new draft transaction
  */
 router.post('/wallets/:walletId/drafts', requireWalletAccess('edit'), validate(
-  { body: CreateDraftBodySchema }
+  { body: CreateDraftRequestSchema }
 ), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
@@ -182,7 +118,7 @@ router.post('/wallets/:walletId/drafts', requireWalletAccess('edit'), validate(
  * Update a draft transaction (e.g., add signature)
  */
 router.patch('/wallets/:walletId/drafts/:draftId', requireWalletAccess('edit'), validate(
-  { body: UpdateDraftBodySchema }
+  { body: UpdateDraftRequestSchema }
 ), asyncHandler(async (req, res) => {
   const { walletId, draftId } = req.params;
   const { signedPsbtBase64, signedDeviceId, status, label, memo } = req.body;

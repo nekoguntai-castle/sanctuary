@@ -6,6 +6,9 @@
 
 import apiClient from './client';
 
+export type DraftIntegerValue = number | string;
+export type DraftTextValue = string | null;
+
 export interface DraftOutput {
   address: string;
   amount: number;
@@ -17,6 +20,19 @@ export interface DraftInput {
   vout: number;
   address: string;
   amount: number;
+}
+
+export interface DraftOutputRequest {
+  address: string;
+  amount: DraftIntegerValue;
+  sendMax?: boolean;
+}
+
+export interface DraftInputRequest {
+  txid: string;
+  vout: number;
+  address: string;
+  amount: DraftIntegerValue;
 }
 
 export interface DraftTransaction {
@@ -47,8 +63,8 @@ export interface DraftTransaction {
   payjoinUrl?: string;
 
   // Labels
-  label?: string;
-  memo?: string;
+  label?: DraftTextValue;
+  memo?: DraftTextValue;
 
   // PSBT data
   psbtBase64: string;
@@ -75,26 +91,26 @@ export interface DraftTransaction {
 
 export interface CreateDraftRequest {
   recipient: string;
-  amount: number;
-  feeRate: number;
+  amount: DraftIntegerValue;
+  feeRate: number | string;
   selectedUtxoIds?: string[];
   enableRBF?: boolean;
   subtractFees?: boolean;
   sendMax?: boolean;
   isRBF?: boolean; // Skip UTXO locking for RBF replacement transactions
-  outputs?: DraftOutput[]; // Multiple outputs support
-  inputs?: DraftInput[]; // Multiple inputs for flow visualization
-  decoyOutputs?: Array<{ address: string; amount: number }>; // Decoy change outputs
+  outputs?: DraftOutputRequest[]; // Multiple outputs support
+  inputs?: DraftInputRequest[]; // Multiple inputs for flow visualization
+  decoyOutputs?: Array<{ address: string; amount: DraftIntegerValue }>; // Decoy change outputs
   payjoinUrl?: string; // Payjoin endpoint URL
-  label?: string;
-  memo?: string;
+  label?: DraftTextValue;
+  memo?: DraftTextValue;
   psbtBase64: string;
-  fee?: number;
-  totalInput?: number;
-  totalOutput?: number;
-  changeAmount?: number;
+  fee?: DraftIntegerValue;
+  totalInput?: DraftIntegerValue;
+  totalOutput?: DraftIntegerValue;
+  changeAmount?: DraftIntegerValue;
   changeAddress?: string;
-  effectiveAmount?: number;
+  effectiveAmount?: DraftIntegerValue;
   inputPaths?: string[];
   signedPsbtBase64?: string;
   signedDeviceId?: string;
@@ -104,8 +120,8 @@ export interface UpdateDraftRequest {
   signedPsbtBase64?: string;
   signedDeviceId?: string;
   status?: 'unsigned' | 'partial' | 'signed';
-  label?: string;
-  memo?: string;
+  label?: DraftTextValue;
+  memo?: DraftTextValue;
 }
 
 /**

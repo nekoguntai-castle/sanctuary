@@ -5,6 +5,7 @@ import {
   WALLET_SCRIPT_TYPE_VALUES,
 } from '../constants/walletIdentity';
 import { ACTIONABLE_DRAFT_STATUS_VALUES } from '../constants/drafts';
+import { UpdateDraftRequestSchema } from './draftRequests';
 
 /**
  * Shared mobile API request contracts consumed by gateway validation, backend
@@ -254,13 +255,7 @@ export const MobilePermissionUpdateRequestSchema = z
     'At least one permission must be provided'
   );
 
-export const MobileDraftUpdateRequestSchema = z.object({
-  signedPsbtBase64: z.string().min(1).optional(),
-  signedDeviceId: z.string().min(1).optional(),
-  status: z.enum(MOBILE_DRAFT_STATUS_VALUES).optional(),
-  label: z.string().optional(),
-  memo: z.string().optional(),
-}).strict();
+export const MobileDraftUpdateRequestSchema = UpdateDraftRequestSchema;
 
 export const MobileUtxoReferenceSchema = z.object({
   txid: z.string().regex(/^[a-fA-F0-9]{64}$/, 'Invalid transaction ID'),

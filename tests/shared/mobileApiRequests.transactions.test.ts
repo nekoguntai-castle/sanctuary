@@ -1,11 +1,23 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  MobileDraftUpdateRequestSchema,
   MobilePsbtCreateRequestSchema,
   MobileTransactionBroadcastRequestSchema,
 } from '../../shared/schemas/mobileApiRequests';
 
 describe('mobile API transaction request schemas', () => {
+  it('accepts nullable draft metadata updates', () => {
+    expect(MobileDraftUpdateRequestSchema.safeParse({
+      label: null,
+      memo: null,
+    }).success).toBe(true);
+
+    expect(MobileDraftUpdateRequestSchema.safeParse({
+      label: { text: 'invalid' },
+    }).success).toBe(false);
+  });
+
   it('accepts each supported transaction broadcast source', () => {
     expect(MobileTransactionBroadcastRequestSchema.safeParse({
       signedPsbtBase64: 'cHNi',

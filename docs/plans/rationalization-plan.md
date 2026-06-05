@@ -2,7 +2,7 @@
 
 Date: 2026-06-04
 Owner: Codex
-Status: 2026-06-04 rationalize-loop in progress; Phase AA vault policy request-schema convergence is implemented locally, with adversarial review and PR delivery pending
+Status: 2026-06-04 rationalize-loop second pass in progress; Phase AA vault policy request-schema convergence closed in PR #517, and Phase AB draft request-schema/OpenAPI parity is selected for the final autonomous follow-up pass
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, preference patch semantics, later contract/runtime drift follow-up queues, the wallet webhook contract refresh after PR #511, and the local pre-commit AI-agent gate
 
 ## Executive Summary
@@ -18,11 +18,12 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 - The wallet webhook framework is intentionally generic. Sanctuary should keep support for mapped JSON bodies, configured HMAC headers, and optional valuation enrichment, but no private receiver field names, URL shapes, or business contract vocabulary should become a built-in profile, default, test fixture, or project doc.
 - Webhook built-in event/profile/auth/valuation values now derive from shared constants while the public API remains extensible as strings and endpoint JSON configs stay open for future profiles and deployment-local private mappings.
 - The pre-commit AI-agent gate keeps one strict parser/verdict owner in `server/.husky/pre-commit`. Local hardening closes malformed cache poisoning and transient malformed output without weakening the fail-closed `UNKNOWN` gate; Phase Z also converged the duplicated Claude invocation branch and added shell smoke coverage.
-- 2026-06-04 rationalize-loop selection: wallet-scoped policy routes already validate policy config with type-specific Zod schemas, while admin policy routes still accept `Record<string, unknown>` configs and OpenAPI documents policy `config` as an open object. Phase AA will make a shared route-schema owner for vault policy create/update requests, keep service validation as the final invariant owner, and tighten OpenAPI/request tests to reduce route/admin/wallet drift.
-- Draft status drift is not selected for implementation in this pass because status ownership is already converged: current source imports `ACTIONABLE_DRAFT_STATUS_VALUES` from `shared/constants/drafts.ts` in `server/src/api/drafts.ts`, mobile request schemas, repositories, and services; `broadcasted` remains a deliberately separate lifecycle state. A separate draft request-schema/OpenAPI drift item remains real and is deferred to Phase AB so this PR does not bundle unrelated API contracts.
-- Phase AA local implementation now shares vault policy create/update request schemas between wallet and admin routes, rejects malformed legacy admin configs before service dispatch, preserves `description: null`, documents bounded OpenAPI request config components while keeping persisted `VaultPolicy.config` responses open JSON, and keeps `vaultPolicyService` aligned as the final invariant owner for direct service callers.
+- 2026-06-04 first-pass selection: Phase AA closed the route/admin/wallet vault policy request-schema drift by making a shared route-schema owner for policy create/update requests, keeping service validation as the final invariant owner, and tightening OpenAPI/request tests.
+- Draft status drift was not selected because status ownership is already converged: current source imports `ACTIONABLE_DRAFT_STATUS_VALUES` from `shared/constants/drafts.ts` in `server/src/api/drafts.ts`, mobile request schemas, repositories, and services; `broadcasted` remains a deliberately separate lifecycle state. The separate draft request-schema/OpenAPI drift item was deferred from PR #517 and is now selected as Phase AB.
+- Phase AA closed in PR #517 as squash merge `8068d6962178793f13ffe445249268b2e8f2492f`: wallet/admin policy routes share request schemas, malformed legacy admin configs reject before service dispatch, `description: null` compatibility is preserved, request OpenAPI config docs are bounded while persisted `VaultPolicy.config` responses remain open JSON, and `vaultPolicyService` stays the final invariant owner for direct service callers.
+- Post-closeout rationalize check selected Phase AB for the one allowed follow-up pass: draft create/update route schemas accept nullable metadata and string-encoded integer amounts, while mobile update schema, OpenAPI update docs, nested draft amount docs, and frontend draft request types still lag that wire contract.
 
-## Current Loop Selection - Phase AA Vault Policy Request Schemas
+## Closed Loop Selection - Phase AA Vault Policy Request Schemas
 
 Source plan: `docs/plans/rationalization-plan.md`
 Date: 2026-06-04
@@ -78,39 +79,74 @@ Reduce drift risk between system-wide admin policy creation/update and wallet-sc
 | AA.2 | Tighten OpenAPI policy request config docs | `server/src/api/openapi/schemas/wallet.ts`, OpenAPI contract tests | OpenAPI wallet/admin policy tests | Create/update policy requests no longer document policy config as an unconstrained open object; `VaultPolicy.config` response docs remain open JSON because persisted policies can be returned across source types. |
 | AA.3 | Add drift and boundary tests | Admin policy route tests, wallet policy route tests, OpenAPI contract tests | Focused tests plus `git diff --check` and touched-file lizard if logic changed | Malformed admin config rejects before service dispatch; valid admin/wallet config still dispatches; null description compatibility is covered. |
 
-### Next Deferred Candidate - Phase AB Draft Request Schemas
+## Current Loop Selection - Phase AB Draft Request Schemas
+
+Source plan: `docs/plans/rationalization-plan.md`
+Date: 2026-06-04
+Commit: `8068d696`
+Scope: second and final autonomous rationalize-loop pass after PR #517 closeout.
 
 | Area | Evidence | Disposition |
 | --- | --- | --- |
-| Draft create/update request schema and OpenAPI parity | `server/src/api/drafts.ts` defines local create/update schemas; `shared/schemas/mobileApiRequests.ts` exports mobile update schema that does not accept nullable `label`/`memo`; `server/src/api/openapi/schemas/drafts.ts` documents nested amount fields as number-only while the route accepts number or digit string. | Defer to next bounded convergence PR |
+| Draft create/update request schema and OpenAPI parity | `server/src/api/drafts.ts` defines local create/update schemas that accept nullable `label`/`memo` and number-or-digit-string amount fields; `shared/schemas/mobileApiRequests.ts` exports mobile update schema with string-only metadata; `server/src/api/openapi/schemas/drafts.ts` documents `UpdateDraftRequest.label`/`memo` as non-null strings and nested draft output/input/decoy amounts as number-only; `src/api/drafts.ts` frontend draft request and response types also narrow server-compatible string amounts and nullable metadata. | Converge |
 
-Phase AB should extract or extend canonical draft request schemas, import them into `server/src/api/drafts.ts`, keep mobile-agent signature requirements separate, update OpenAPI to mirror nullable metadata and string-or-number nested amounts, and add route/OpenAPI tests for `PATCH { label: null, memo: null }` plus nested numeric-string amounts.
+### Canonical Path Decision
+
+| Area | Canonical Path | Paths To Retire Or Wrap | Compatibility Policy | Decision Needed |
+| --- | --- | --- | --- | --- |
+| Draft create/update request validation | Shared draft request schemas in `shared/schemas/draftRequests.ts`, imported by server draft routes and reused by mobile request schemas where the wire contract is shared. | Route-local draft create/update Zod schemas in `server/src/api/drafts.ts`; mobile-only duplicate nullable metadata rules; OpenAPI request docs that understate accepted string amounts or nullable metadata. | Preserve existing valid server requests, including string-encoded non-negative integer amounts and `PATCH { label: null, memo: null }`. Keep mobile-agent funding draft signature/comment routes separate because they are a different review/signature workflow. | None |
+
+### Objective
+
+Reduce drift between server route validation, shared/mobile request validation, OpenAPI request docs, and frontend draft request types for draft transaction create/update payloads.
+
+### Non-Goals
+
+- Do not change draft transaction persistence, PSBT generation, signing, approval, locking, or broadcast behavior.
+- Do not merge mobile agent funding draft review/signature schemas into wallet draft create/update schemas.
+- Do not broaden general mobile transaction create/broadcast request compatibility beyond the existing draft-specific wire contract.
+- Do not remove numeric-string compatibility for stored draft amount metadata.
+
+### Compatibility, Migration, And Backout
+
+- Compatibility is request-compatible for valid clients. Existing numeric request values remain valid; existing string-encoded non-negative integer amount metadata remains valid.
+- `PATCH { label: null, memo: null }` remains valid and should be documented across shared/mobile/OpenAPI/frontend contracts.
+- Invalid objects, arrays, negative values, decimals for integer amount fields, empty required strings, and unknown request fields remain rejected by strict route schemas.
+- No data migration is required. Existing stored draft rows are unchanged; new string-encoded request amount metadata is normalized before persistence to preserve the existing numeric draft response shape.
+- Backout is a single-PR revert because the change only moves request schema ownership and aligns types/docs/tests.
+
+### Implementation Phases
+
+| Phase | Work | Files / Owners | Verification | Exit Criteria |
+| --- | --- | --- | --- | --- |
+| AB.1 | Extract shared draft request schemas | `shared/schemas/draftRequests.ts`, `server/src/api/drafts.ts`, `shared/schemas/mobileApiRequests.ts` | Shared schema tests, focused draft route tests, mobile schema tests | Server draft routes import shared create/update schemas; mobile draft update schema accepts the same nullable metadata contract. |
+| AB.2 | Align public docs and frontend request types | `server/src/api/openapi/schemas/drafts.ts`, `server/tests/unit/api/openapi.gateway.contracts.ts`, `src/api/drafts.ts`, frontend API tests | OpenAPI contract tests and frontend API type/test coverage | OpenAPI documents nullable update metadata and number-or-string nested amount fields; frontend request types match the accepted server wire shape. |
+| AB.3 | Add drift/boundary coverage | Draft route tests and shared/mobile schema tests | Focused route/shared/frontend tests plus typechecks | `PATCH { label: null, memo: null }`, nested numeric-string create amounts, invalid amount objects, and stale non-null docs are covered. |
 
 ### Acceptance Criteria
 
-- Admin and wallet policy routes import shared create/update policy request schemas.
-- A negative search shows no route-local `z.record(z.string(), z.unknown())` policy config schema remains in admin/wallet policy routes.
-- Admin create/update malformed policy configs reject before `vaultPolicyService` calls.
-- Admin route tests prove legacy `{ maxAmount, window }` spending configs reject before service dispatch.
-- Existing valid wallet policy route tests and admin policy route tests still pass.
-- OpenAPI policy request schemas document bounded policy config shapes.
-- OpenAPI create policy request schemas pair each policy `type` literal with its matching config shape.
-- Direct `vaultPolicyService` callers reject malformed policy config field values, unknown config keys, false-only triggers, and missing specific approver/vetoer lists.
-- A service update regression test covers route-valid config shapes that are invalid for the existing persisted policy type.
+- `server/src/api/drafts.ts` imports shared create/update draft request schemas instead of defining route-local create/update schemas.
+- `shared/schemas/mobileApiRequests.ts` reuses the shared nullable draft metadata contract for `MobileDraftUpdateRequestSchema`.
+- Route tests prove `PATCH { label: null, memo: null }` succeeds and malformed non-string/non-null metadata rejects.
+- Route tests prove nested `outputs`, `inputs`, and `decoyOutputs` accept string-encoded non-negative integer amounts and reject invalid amount objects.
+- OpenAPI `CreateDraftRequest` and its output/input/decoy request components document number-or-string amount fields where the route accepts them.
+- OpenAPI `UpdateDraftRequest.label` and `UpdateDraftRequest.memo` document nullable strings.
+- Frontend draft API request types accept server-compatible string amount values and nullable metadata; response metadata types allow `null`.
+- Focused shared, server, frontend, and OpenAPI tests pass, followed by typechecks/builds proportional to the shared contract change.
 
 ### Edge Cases
 
-- `spending_limit` and `velocity` require at least one positive/non-zero limit.
-- `approval_required` and `time_delay` triggers require at least one condition.
-- `specific` approver/vetoer quorum types require non-empty specific user lists.
-- `address_control` keeps its `allowlist`/`denylist`, `allowSelfSend`, and `managedBy` semantics.
-- PATCH `config` remains shape-validated first, then service-validated against the existing policy type.
-- Admin `description: null` remains valid.
+- Draft integer amount fields accept non-negative integer numbers or digit-only strings, matching the current route contract.
+- Draft fee rate accepts positive finite numbers or positive numeric strings, including decimal strings.
+- Empty strings remain invalid for required string fields such as `recipient`, `psbtBase64`, `signedPsbtBase64`, `signedDeviceId`, and `inputPaths` entries.
+- `label` and `memo` accept strings or `null` when present; omission remains a no-op.
+- Arrays and objects remain invalid for numeric draft amount fields and metadata fields.
+- Mobile agent funding draft comment/signature payloads stay separate from wallet draft update payloads.
 
 ### Deferred Or Rejected
 
 - Draft transaction status convergence is already converged/watch: `shared/constants/drafts.ts` owns actionable statuses, and `broadcasted` is intentionally lifecycle-only.
-- Draft create/update request-schema convergence is deferred to Phase AB: `server/src/api/drafts.ts` owns local create/update Zod schemas, shared mobile update schema and OpenAPI do not fully mirror nullable `label`/`memo`, and OpenAPI documents nested draft output/input/decoy `amount` values as number-only while the route accepts string-encoded integers for compatibility.
+- Draft create/update request-schema convergence is selected for Phase AB. This pass does not change draft statuses, broadcast lifecycle values, mobile agent funding draft review payloads, or transaction create/broadcast mobile schemas beyond reusing the nullable metadata owner where the existing mobile draft update contract already overlaps.
 - Physical hardware signing evidence remains outside this loop because it requires devices.
 - Moderate/low dependency advisory triage is not contract convergence.
 - LLM egress proxy utilities remain intentionally separate because proxy isolation is a security boundary.
