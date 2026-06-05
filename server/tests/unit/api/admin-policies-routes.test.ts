@@ -147,7 +147,7 @@ describe('Admin Policies Routes', () => {
       name: 'Max Spend',
       description: 'Limit daily spending',
       type: 'spending_limit',
-      config: { maxAmount: 100000, window: '24h' },
+      config: { scope: 'wallet', daily: 100000 },
       priority: 10,
       enforcement: 'enforce',
       enabled: true,
@@ -158,7 +158,7 @@ describe('Admin Policies Routes', () => {
       name: 'Max Spend',
       description: 'Limit daily spending',
       type: 'spending_limit',
-      config: { maxAmount: 100000, window: '24h' },
+      config: { scope: 'wallet', daily: 100000 },
       priority: 10,
       enforcement: 'enforce',
       enabled: true,
@@ -178,7 +178,7 @@ describe('Admin Policies Routes', () => {
         name: 'Max Spend',
         description: 'Limit daily spending',
         type: 'spending_limit',
-        config: { maxAmount: 100000, window: '24h' },
+        config: { scope: 'wallet', daily: 100000 },
         priority: 10,
         enforcement: 'enforce',
         enabled: true,
@@ -236,6 +236,46 @@ describe('Admin Policies Routes', () => {
       expect(response.status).toBe(400);
       expect(response.body.code).toBe('VALIDATION_ERROR');
       expect(mockCreatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('should reject legacy spending config before calling the service', async () => {
+      const response = await request(app)
+        .post(url)
+        .send({
+          name: 'Legacy Spend',
+          type: 'spending_limit',
+          config: { maxAmount: 100000, window: '24h' },
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(mockCreatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('should preserve null descriptions for admin-created policies', async () => {
+      const result = {
+        id: 'pol-null-description',
+        name: 'Null Description',
+        description: null,
+        type: 'spending_limit',
+        config: { scope: 'wallet', daily: 100000 },
+        sourceType: 'system',
+      };
+      mockCreatePolicy.mockResolvedValue(result);
+
+      const response = await request(app)
+        .post(url)
+        .send({
+          name: 'Null Description',
+          description: null,
+          type: 'spending_limit',
+          config: { scope: 'wallet', daily: 100000 },
+        });
+
+      expect(response.status).toBe(201);
+      expect(mockCreatePolicy).toHaveBeenCalledWith('admin-1', expect.objectContaining({
+        description: null,
+      }));
     });
 
     it('should log audit event after successful creation', async () => {
@@ -329,7 +369,7 @@ describe('Admin Policies Routes', () => {
       const patchBody = {
         name: 'Updated',
         description: 'New description',
-        config: { maxAmount: 500000 },
+        config: { daily: 500000, scope: 'wallet' },
         priority: 5,
         enforcement: 'monitor',
         enabled: false,
@@ -346,7 +386,7 @@ describe('Admin Policies Routes', () => {
         {
           name: 'Updated',
           description: 'New description',
-          config: { maxAmount: 500000 },
+          config: { daily: 500000, scope: 'wallet' },
           priority: 5,
           enforcement: 'monitor',
           enabled: false,
@@ -377,6 +417,17 @@ describe('Admin Policies Routes', () => {
       expect(mockUpdatePolicy).not.toHaveBeenCalled();
     });
 
+    it('should reject legacy update config before loading the policy', async () => {
+      const response = await request(app)
+        .patch(url)
+        .send({ config: { maxAmount: 500000 } });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(mockGetPolicy).not.toHaveBeenCalled();
+      expect(mockUpdatePolicy).not.toHaveBeenCalled();
+    });
+
     it('should only include defined fields in update input', async () => {
       mockGetPolicy.mockResolvedValue(existingPolicy);
       mockUpdatePolicy.mockResolvedValue(updatedPolicy);
@@ -389,6 +440,23 @@ describe('Admin Policies Routes', () => {
         'pol-1',
         'admin-1',
         { name: 'Only name' },
+        { isAdmin: true },
+      );
+    });
+
+    it('should preserve null descriptions for admin updates', async () => {
+      mockGetPolicy.mockResolvedValue(existingPolicy);
+      mockUpdatePolicy.mockResolvedValue(updatedPolicy);
+
+      const response = await request(app)
+        .patch(url)
+        .send({ description: null });
+
+      expect(response.status).toBe(200);
+      expect(mockUpdatePolicy).toHaveBeenCalledWith(
+        'pol-1',
+        'admin-1',
+        { description: null },
         { isAdmin: true },
       );
     });

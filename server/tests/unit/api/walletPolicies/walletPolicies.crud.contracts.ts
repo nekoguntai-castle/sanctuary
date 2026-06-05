@@ -143,6 +143,21 @@ export function registerWalletPolicyCrudTests(): void {
       });
     });
 
+    it('creates a policy with a null description for clear-description compatibility', async () => {
+      const config = { daily: 1, scope: 'wallet' };
+      const createdPolicy = { id: 'pol-null', name: 'Basic', type: 'spending_limit', description: null };
+      mockCreatePolicy.mockResolvedValue(createdPolicy);
+
+      const response = await walletPoliciesRequest()
+        .post('/api/v1/wallets/wallet-1/policies')
+        .send({ name: 'Basic', description: null, type: 'spending_limit', config });
+
+      expect(response.status).toBe(201);
+      expect(mockCreatePolicy).toHaveBeenCalledWith('user-1', expect.objectContaining({
+        description: null,
+      }));
+    });
+
     it('rejects missing create config before calling the service', async () => {
       const response = await walletPoliciesRequest()
         .post('/api/v1/wallets/wallet-1/policies')
@@ -366,6 +381,18 @@ export function registerWalletPolicyCrudTests(): void {
 
       expect(response.status).toBe(200);
       expect(mockUpdatePolicy).toHaveBeenCalledWith('pol-1', 'user-1', patchBody);
+    });
+
+    it('passes null descriptions through on update', async () => {
+      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1' });
+      mockUpdatePolicy.mockResolvedValue({ id: 'pol-1', description: null });
+
+      const response = await walletPoliciesRequest()
+        .patch('/api/v1/wallets/wallet-1/policies/pol-1')
+        .send({ description: null });
+
+      expect(response.status).toBe(200);
+      expect(mockUpdatePolicy).toHaveBeenCalledWith('pol-1', 'user-1', { description: null });
     });
 
     it('rejects unknown update fields before calling the service', async () => {

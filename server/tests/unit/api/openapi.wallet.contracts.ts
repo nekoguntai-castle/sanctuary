@@ -485,6 +485,73 @@ export function registerOpenApiWalletPolicyTests() {
       ...VALID_SOURCE_TYPES,
     ]);
     expect(openApiSpec.components.schemas.CreateVaultPolicyRequest.required).toEqual(['name', 'type', 'config']);
+    expect(openApiSpec.components.schemas.CreateVaultPolicyRequest.properties.description).toEqual({
+      type: 'string',
+      nullable: true,
+    });
+    expect(openApiSpec.components.schemas.CreateVaultPolicyRequest.properties.config.oneOf).toEqual([
+      { $ref: '#/components/schemas/SpendingLimitPolicyConfig' },
+      { $ref: '#/components/schemas/ApprovalRequiredPolicyConfig' },
+      { $ref: '#/components/schemas/TimeDelayPolicyConfig' },
+      { $ref: '#/components/schemas/AddressControlPolicyConfig' },
+      { $ref: '#/components/schemas/VelocityPolicyConfig' },
+    ]);
+    expect(openApiSpec.components.schemas.CreateVaultPolicyRequest.oneOf).toContainEqual({
+      required: ['type', 'config'],
+      properties: {
+        type: { type: 'string', enum: ['spending_limit'] },
+        config: { $ref: '#/components/schemas/SpendingLimitPolicyConfig' },
+      },
+    });
+    expect(openApiSpec.components.schemas.CreateVaultPolicyRequest.oneOf).toContainEqual({
+      required: ['type', 'config'],
+      properties: {
+        type: { type: 'string', enum: ['address_control'] },
+        config: { $ref: '#/components/schemas/AddressControlPolicyConfig' },
+      },
+    });
+    expect(openApiSpec.components.schemas.UpdateVaultPolicyRequest.properties.config.oneOf)
+      .toEqual(openApiSpec.components.schemas.CreateVaultPolicyRequest.properties.config.oneOf);
+    expect(openApiSpec.components.schemas.SpendingLimitPolicyConfig.additionalProperties).toBe(false);
+    expect(openApiSpec.components.schemas.SpendingLimitPolicyConfig.anyOf).toContainEqual({
+      required: ['daily'],
+      properties: { daily: { type: 'integer', minimum: 1 } },
+    });
+    expect(openApiSpec.components.schemas.ApprovalRequiredPolicyConfig.properties.trigger.anyOf).toContainEqual({
+      required: ['always'],
+      properties: { always: { type: 'boolean', enum: [true] } },
+    });
+    expect(openApiSpec.components.schemas.ApprovalRequiredPolicyConfig.anyOf).toContainEqual({
+      required: ['specificApprovers'],
+      properties: {
+        quorumType: { type: 'string', enum: ['specific'] },
+        specificApprovers: { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1 },
+      },
+    });
+    expect(openApiSpec.components.schemas.TimeDelayPolicyConfig.additionalProperties).toBe(false);
+    expect(openApiSpec.components.schemas.TimeDelayPolicyConfig.properties.delayHours).toEqual({
+      type: 'number',
+      minimum: 0,
+      exclusiveMinimum: true,
+      maximum: 168,
+    });
+    expect(openApiSpec.components.schemas.TimeDelayPolicyConfig.anyOf).toContainEqual({
+      required: ['specificVetoers'],
+      properties: {
+        vetoEligible: { type: 'string', enum: ['specific'] },
+        specificVetoers: { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1 },
+      },
+    });
+    expect(openApiSpec.components.schemas.AddressControlPolicyConfig.required).toEqual([
+      'mode',
+      'allowSelfSend',
+      'managedBy',
+    ]);
+    expect(openApiSpec.components.schemas.VelocityPolicyConfig.additionalProperties).toBe(false);
+    expect(openApiSpec.components.schemas.VelocityPolicyConfig.anyOf).toContainEqual({
+      required: ['maxPerDay'],
+      properties: { maxPerDay: { type: 'integer', minimum: 1 } },
+    });
     expect(openApiSpec.components.schemas.PolicyEvaluationRequest.required).toEqual(['recipient', 'amount']);
     expect(openApiSpec.components.schemas.PolicyEvaluationRequest.properties.amount.oneOf).toContainEqual({
       type: 'string',

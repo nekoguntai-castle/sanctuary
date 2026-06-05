@@ -1,8 +1,8 @@
 # Rationalization Plan
 
-Date: 2026-05-22
+Date: 2026-06-04
 Owner: Codex
-Status: Original and optional convergence queues complete through Phase T; 2026-05-22 webhook-era Phases V-Z implemented locally with final PR delivery pending
+Status: 2026-06-04 rationalize-loop in progress; Phase AA vault policy request-schema convergence is implemented locally, with adversarial review and PR delivery pending
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, preference patch semantics, later contract/runtime drift follow-up queues, the wallet webhook contract refresh after PR #511, and the local pre-commit AI-agent gate
 
 ## Executive Summary
@@ -18,6 +18,111 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 - The wallet webhook framework is intentionally generic. Sanctuary should keep support for mapped JSON bodies, configured HMAC headers, and optional valuation enrichment, but no private receiver field names, URL shapes, or business contract vocabulary should become a built-in profile, default, test fixture, or project doc.
 - Webhook built-in event/profile/auth/valuation values now derive from shared constants while the public API remains extensible as strings and endpoint JSON configs stay open for future profiles and deployment-local private mappings.
 - The pre-commit AI-agent gate keeps one strict parser/verdict owner in `server/.husky/pre-commit`. Local hardening closes malformed cache poisoning and transient malformed output without weakening the fail-closed `UNKNOWN` gate; Phase Z also converged the duplicated Claude invocation branch and added shell smoke coverage.
+- 2026-06-04 rationalize-loop selection: wallet-scoped policy routes already validate policy config with type-specific Zod schemas, while admin policy routes still accept `Record<string, unknown>` configs and OpenAPI documents policy `config` as an open object. Phase AA will make a shared route-schema owner for vault policy create/update requests, keep service validation as the final invariant owner, and tighten OpenAPI/request tests to reduce route/admin/wallet drift.
+- Draft status drift is not selected for implementation in this pass because status ownership is already converged: current source imports `ACTIONABLE_DRAFT_STATUS_VALUES` from `shared/constants/drafts.ts` in `server/src/api/drafts.ts`, mobile request schemas, repositories, and services; `broadcasted` remains a deliberately separate lifecycle state. A separate draft request-schema/OpenAPI drift item remains real and is deferred to Phase AB so this PR does not bundle unrelated API contracts.
+- Phase AA local implementation now shares vault policy create/update request schemas between wallet and admin routes, rejects malformed legacy admin configs before service dispatch, preserves `description: null`, documents bounded OpenAPI request config components while keeping persisted `VaultPolicy.config` responses open JSON, and keeps `vaultPolicyService` aligned as the final invariant owner for direct service callers.
+
+## Current Loop Selection - Phase AA Vault Policy Request Schemas
+
+Source plan: `docs/plans/rationalization-plan.md`
+Date: 2026-06-04
+Commit: `dd9ae950`
+Scope: repo-wide rationalize-loop, narrowed to highest-evidence active contract drift.
+
+### Selected Finding
+
+| Area | Evidence | Disposition |
+| --- | --- | --- |
+| Admin/wallet vault policy request schemas | `server/src/api/wallets/policies.ts:60-206` owns strict type-specific config schemas; `server/src/api/admin/policies.ts:19-46` accepts any object config; `server/src/api/openapi/schemas/wallet.ts:708-732` documents create/update policy config as an open object. | Converge |
+
+### Canonical Path Decision
+
+| Area | Canonical Path | Paths To Retire Or Wrap | Compatibility Policy | Decision Needed |
+| --- | --- | --- | --- | --- |
+| Vault policy create/update request validation | A shared server API schema module for policy request fields and policy config schemas, imported by both wallet and admin policy routes. `vaultPolicyService` remains the final invariant owner for stored/existing policy type checks. | Route-local policy type/enforcement/config schema definitions in wallet/admin routes; OpenAPI open-object request config docs. | Preserve existing valid wallet and admin payloads, including admin `description: null` clear semantics. Reject malformed policy configs at the route boundary before service dispatch. PATCH `config` remains type-independent at the route layer and is rechecked against the existing policy type by the service. | None |
+
+### Objective
+
+Reduce drift risk between system-wide admin policy creation/update and wallet-scoped policy creation/update by sharing the same request schema owner and making OpenAPI document the accepted policy config shapes.
+
+### Non-Goals
+
+- Do not change policy evaluation behavior, storage schema, or policy inheritance.
+- Do not remove `vaultPolicyService` validation; it still protects persisted/existing policy invariants and PATCH config/type compatibility.
+- Do not remove either route family. Wallet routes remain wallet-scoped owner operations; admin routes remain system-policy admin operations with the existing non-system rejection checks.
+- Do not introduce generated clients or a broad policy abstraction beyond route/OpenAPI request schemas.
+- Do not change draft transaction status contracts in this PR.
+
+### Paths To Keep, Wrap, Converge, Or Remove
+
+| Action | Paths |
+| --- | --- |
+| Keep | `server/src/services/vaultPolicy/vaultPolicyService.ts` as final policy invariant and persistence validation owner. |
+| Converge | Policy create/update request schemas used by `server/src/api/wallets/policies.ts` and `server/src/api/admin/policies.ts`. |
+| Converge | OpenAPI `CreateVaultPolicyRequest` and `UpdateVaultPolicyRequest` config documentation away from unconstrained `additionalProperties: true`. |
+| Remove | Route-local duplicate policy type/enforcement/config schema declarations after shared schema import. |
+
+### Compatibility, Migration, And Backout
+
+- Compatibility is request-compatible for valid clients. Invalid admin configs that previously reached service validation should now fail earlier with a validation response and should not call `vaultPolicyService`.
+- Legacy-looking admin configs such as `{ maxAmount, window }` for `spending_limit` are treated as invalid contract drift and should be rejected at the route boundary.
+- Admin `description: null` must remain valid so clients can clear descriptions; route code may widen wallet route acceptance of `null` if the shared schema makes that the canonical request shape.
+- No data migration is required. Existing stored policies are still validated by service code when updated or evaluated.
+- Backout is a single-PR revert because no migration or persistent format change is introduced.
+
+### Implementation Phases
+
+| Phase | Work | Files / Owners | Verification | Exit Criteria |
+| --- | --- | --- | --- | --- |
+| AA.1 | Extract shared policy request/config schemas and imports | `server/src/api/schemas/vaultPolicy.ts`, `server/src/api/wallets/policies.ts`, `server/src/api/admin/policies.ts`, `server/src/services/vaultPolicy/types.ts` if null description typing needs to match behavior | Focused admin/wallet policy route tests | Both routes use the same create/update schema exports; route-local duplicate config schemas are gone. |
+| AA.2 | Tighten OpenAPI policy request config docs | `server/src/api/openapi/schemas/wallet.ts`, OpenAPI contract tests | OpenAPI wallet/admin policy tests | Create/update policy requests no longer document policy config as an unconstrained open object; `VaultPolicy.config` response docs remain open JSON because persisted policies can be returned across source types. |
+| AA.3 | Add drift and boundary tests | Admin policy route tests, wallet policy route tests, OpenAPI contract tests | Focused tests plus `git diff --check` and touched-file lizard if logic changed | Malformed admin config rejects before service dispatch; valid admin/wallet config still dispatches; null description compatibility is covered. |
+
+### Next Deferred Candidate - Phase AB Draft Request Schemas
+
+| Area | Evidence | Disposition |
+| --- | --- | --- |
+| Draft create/update request schema and OpenAPI parity | `server/src/api/drafts.ts` defines local create/update schemas; `shared/schemas/mobileApiRequests.ts` exports mobile update schema that does not accept nullable `label`/`memo`; `server/src/api/openapi/schemas/drafts.ts` documents nested amount fields as number-only while the route accepts number or digit string. | Defer to next bounded convergence PR |
+
+Phase AB should extract or extend canonical draft request schemas, import them into `server/src/api/drafts.ts`, keep mobile-agent signature requirements separate, update OpenAPI to mirror nullable metadata and string-or-number nested amounts, and add route/OpenAPI tests for `PATCH { label: null, memo: null }` plus nested numeric-string amounts.
+
+### Acceptance Criteria
+
+- Admin and wallet policy routes import shared create/update policy request schemas.
+- A negative search shows no route-local `z.record(z.string(), z.unknown())` policy config schema remains in admin/wallet policy routes.
+- Admin create/update malformed policy configs reject before `vaultPolicyService` calls.
+- Admin route tests prove legacy `{ maxAmount, window }` spending configs reject before service dispatch.
+- Existing valid wallet policy route tests and admin policy route tests still pass.
+- OpenAPI policy request schemas document bounded policy config shapes.
+- OpenAPI create policy request schemas pair each policy `type` literal with its matching config shape.
+- Direct `vaultPolicyService` callers reject malformed policy config field values, unknown config keys, false-only triggers, and missing specific approver/vetoer lists.
+- A service update regression test covers route-valid config shapes that are invalid for the existing persisted policy type.
+
+### Edge Cases
+
+- `spending_limit` and `velocity` require at least one positive/non-zero limit.
+- `approval_required` and `time_delay` triggers require at least one condition.
+- `specific` approver/vetoer quorum types require non-empty specific user lists.
+- `address_control` keeps its `allowlist`/`denylist`, `allowSelfSend`, and `managedBy` semantics.
+- PATCH `config` remains shape-validated first, then service-validated against the existing policy type.
+- Admin `description: null` remains valid.
+
+### Deferred Or Rejected
+
+- Draft transaction status convergence is already converged/watch: `shared/constants/drafts.ts` owns actionable statuses, and `broadcasted` is intentionally lifecycle-only.
+- Draft create/update request-schema convergence is deferred to Phase AB: `server/src/api/drafts.ts` owns local create/update Zod schemas, shared mobile update schema and OpenAPI do not fully mirror nullable `label`/`memo`, and OpenAPI documents nested draft output/input/decoy `amount` values as number-only while the route accepts string-encoded integers for compatibility.
+- Physical hardware signing evidence remains outside this loop because it requires devices.
+- Moderate/low dependency advisory triage is not contract convergence.
+- LLM egress proxy utilities remain intentionally separate because proxy isolation is a security boundary.
+- Electrum singleton compatibility remains watch-only and documented.
+
+### Verification Notes
+
+- `cd server && npm run test:run -- tests/unit/services/vaultPolicyService.test.ts tests/unit/api/admin-policies-routes.test.ts tests/unit/api/wallets-policies-routes.test.ts tests/unit/api/openapi.test.ts` passed with 217 tests.
+- `cd server && npm run typecheck:tests` passed.
+- `cd server && npm run build` passed.
+- `npm run quality:lizard` passed.
+- `git diff --check` passed.
 
 ## Divergence Inventory
 

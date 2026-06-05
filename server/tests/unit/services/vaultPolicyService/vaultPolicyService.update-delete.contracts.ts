@@ -180,5 +180,25 @@ export function registerVaultPolicyUpdateDeleteContracts(): void {
         })
       ).rejects.toThrow('at least one non-zero limit');
     });
+
+    it('rejects route-valid config that does not match the existing policy type', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue({
+        id: policyId,
+        type: 'spending_limit',
+        sourceType: 'wallet',
+      });
+
+      await expect(
+        vaultPolicyService.updatePolicy(policyId, userId, {
+          config: {
+            mode: 'allowlist',
+            allowSelfSend: true,
+            managedBy: 'owner_only',
+          } as any,
+        })
+      ).rejects.toThrow('spending_limit config contains unknown field: mode');
+
+      expect(mockPolicyRepo.updatePolicy).not.toHaveBeenCalled();
+    });
   });
 }

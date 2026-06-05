@@ -130,7 +130,7 @@ export interface CreatePolicyInput {
   walletId?: string;
   groupId?: string;
   name: string;
-  description?: string;
+  description?: string | null;
   type: PolicyType;
   config: PolicyConfig;
   priority?: number;
@@ -140,7 +140,7 @@ export interface CreatePolicyInput {
 
 export interface UpdatePolicyInput {
   name?: string;
-  description?: string;
+  description?: string | null;
   config?: PolicyConfig;
   priority?: number;
   enforcement?: PolicyEnforcement;
@@ -181,15 +181,15 @@ export interface CreateApprovalVoteInput {
 // Validation Constants
 // ========================================
 
-export const VALID_POLICY_TYPES: PolicyType[] = [
+export const VALID_POLICY_TYPES = [
   'spending_limit',
   'approval_required',
   'time_delay',
   'address_control',
   'velocity',
-];
+] as const satisfies readonly PolicyType[];
 
-export const VALID_ENFORCEMENT_MODES: PolicyEnforcement[] = ['enforce', 'monitor'];
+export const VALID_ENFORCEMENT_MODES = ['enforce', 'monitor'] as const satisfies readonly PolicyEnforcement[];
 
 export const VALID_SOURCE_TYPES: PolicySourceType[] = ['system', 'group', 'wallet'];
 

@@ -72,6 +72,40 @@ export function registerVaultPolicyCreateValidationContracts(): void {
       expect(result.id).toBe(policyId);
     });
 
+    it('creates a specific quorum approval_required policy with approvers', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Specific Approval',
+        type: 'approval_required',
+        config: {
+          trigger: { always: true },
+          requiredApprovals: 1,
+          quorumType: 'specific',
+          specificApprovers: ['security-admin'],
+          allowSelfApproval: false,
+          expirationHours: 24,
+        },
+      };
+
+      mockPolicyRepo.createPolicy.mockResolvedValue({
+        id: policyId,
+        ...input,
+        config: input.config,
+      });
+
+      const result = await vaultPolicyService.createPolicy(userId, input);
+
+      expect(result.id).toBe(policyId);
+      expect(mockPolicyRepo.createPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            quorumType: 'specific',
+            specificApprovers: ['security-admin'],
+          }),
+        }),
+      );
+    });
+
     it('creates a system-wide policy when no walletId or groupId', async () => {
       const input: CreatePolicyInput = {
         name: 'Org Spending Cap',
@@ -161,6 +195,42 @@ export function registerVaultPolicyCreateValidationContracts(): void {
         .rejects.toThrow('scope');
     });
 
+    it('rejects non-object policy configs', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Bad Config',
+        type: 'spending_limit',
+        config: null as any,
+      };
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('spending_limit config must be an object');
+    });
+
+    it('rejects unknown policy config fields', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Extra Config',
+        type: 'spending_limit',
+        config: { daily: 100, scope: 'wallet', maxAmount: 100 } as any,
+      };
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('spending_limit config contains unknown field: maxAmount');
+    });
+
+    it('rejects spending_limit with invalid limit values', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Bad Limit',
+        type: 'spending_limit',
+        config: { daily: -1, weekly: 100, scope: 'wallet' } as any,
+      };
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('daily must be a non-negative integer');
+    });
+
     it('rejects approval_required with no trigger', async () => {
       const input: CreatePolicyInput = {
         walletId,
@@ -177,6 +247,24 @@ export function registerVaultPolicyCreateValidationContracts(): void {
 
       await expect(vaultPolicyService.createPolicy(userId, input))
         .rejects.toThrow('at least one condition');
+    });
+
+    it('rejects unknown approval trigger fields', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Extra Trigger',
+        type: 'approval_required',
+        config: {
+          trigger: { amountAbove: 1, window: '24h' },
+          requiredApprovals: 1,
+          quorumType: 'any_n',
+          allowSelfApproval: false,
+          expirationHours: 24,
+        } as any,
+      };
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('approval_required trigger contains unknown field: window');
     });
 
     it('rejects approval_required with zero requiredApprovals', async () => {
@@ -215,6 +303,61 @@ export function registerVaultPolicyCreateValidationContracts(): void {
         .rejects.toThrow('specificApprovers');
     });
 
+    it('rejects specific quorum with an empty specificApprovers array', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Specific Empty Approvers',
+        type: 'approval_required',
+        config: {
+          trigger: { always: true },
+          requiredApprovals: 1,
+          quorumType: 'specific',
+          specificApprovers: [],
+          allowSelfApproval: false,
+          expirationHours: 24,
+        },
+      };
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('specific quorum requires specificApprovers array');
+    });
+
+    it('rejects approval_required with false-only trigger flags', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'False Trigger',
+        type: 'approval_required',
+        config: {
+          trigger: { always: false, unknownAddressesOnly: false },
+          requiredApprovals: 1,
+          quorumType: 'any_n',
+          allowSelfApproval: false,
+          expirationHours: 24,
+        },
+      };
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('at least one condition');
+    });
+
+    it('rejects approval_required with invalid required fields', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Bad Approval Fields',
+        type: 'approval_required',
+        config: {
+          trigger: { amountAbove: 1 },
+          requiredApprovals: 1,
+          quorumType: 'any_n',
+          allowSelfApproval: 'no' as any,
+          expirationHours: 24,
+        },
+      };
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('allowSelfApproval must be a boolean');
+    });
+
     it('rejects time_delay exceeding 7 days', async () => {
       const input: CreatePolicyInput = {
         walletId,
@@ -234,6 +377,44 @@ export function registerVaultPolicyCreateValidationContracts(): void {
         .rejects.toThrow('168');
     });
 
+    it('rejects time_delay with false-only trigger flags', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'False Trigger',
+        type: 'time_delay',
+        config: {
+          trigger: { always: false },
+          delayHours: 24,
+          vetoEligible: 'any_approver',
+          notifyOnStart: true,
+          notifyOnVeto: true,
+          notifyOnClear: true,
+        },
+      };
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('at least one condition');
+    });
+
+    it('rejects specific time_delay veto eligibility without vetoers', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'No Vetoers',
+        type: 'time_delay',
+        config: {
+          trigger: { amountAbove: 1 },
+          delayHours: 24,
+          vetoEligible: 'specific',
+          notifyOnStart: true,
+          notifyOnVeto: true,
+          notifyOnClear: true,
+        },
+      };
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('specificVetoers');
+    });
+
     it('rejects velocity with no limits', async () => {
       const input: CreatePolicyInput = {
         walletId,
@@ -244,6 +425,18 @@ export function registerVaultPolicyCreateValidationContracts(): void {
 
       await expect(vaultPolicyService.createPolicy(userId, input))
         .rejects.toThrow('at least one non-zero limit');
+    });
+
+    it('rejects velocity with invalid limit values', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Bad Velocity Limit',
+        type: 'velocity',
+        config: { maxPerHour: 1.5, maxPerDay: 10, scope: 'wallet' } as any,
+      };
+
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('maxPerHour must be a non-negative integer');
     });
 
     it('validates address_control config', async () => {
@@ -350,6 +543,24 @@ export function registerVaultPolicyCreateValidationContracts(): void {
         .rejects.toThrow('vetoEligible');
     });
 
+    it('rejects time_delay with invalid notification fields', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Bad Notify',
+        type: 'time_delay',
+        config: {
+          trigger: { always: true },
+          delayHours: 24,
+          vetoEligible: 'any_approver',
+          notifyOnStart: 'yes' as any,
+          notifyOnVeto: true,
+          notifyOnClear: true,
+        },
+      };
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('notifyOnStart must be a boolean');
+    });
+
     it('rejects address_control with invalid mode', async () => {
       const input: CreatePolicyInput = {
         walletId,
@@ -380,6 +591,21 @@ export function registerVaultPolicyCreateValidationContracts(): void {
         .rejects.toThrow('allowSelfSend must be a boolean');
     });
 
+    it('rejects address_control with invalid managedBy', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Bad Manager',
+        type: 'address_control',
+        config: {
+          mode: 'allowlist',
+          allowSelfSend: true,
+          managedBy: 'admins' as any,
+        },
+      };
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('managedBy');
+    });
+
     it('rejects velocity with invalid scope', async () => {
       const input: CreatePolicyInput = {
         walletId,
@@ -392,6 +618,21 @@ export function registerVaultPolicyCreateValidationContracts(): void {
       };
       await expect(vaultPolicyService.createPolicy(userId, input))
         .rejects.toThrow('scope');
+    });
+
+    it('rejects invalid optional role lists', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Bad Roles',
+        type: 'velocity',
+        config: {
+          maxPerDay: 10,
+          scope: 'wallet',
+          exemptRoles: ['owner', ''],
+        },
+      };
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('exemptRoles');
     });
 
     it('rejects approval_required with invalid quorumType', async () => {

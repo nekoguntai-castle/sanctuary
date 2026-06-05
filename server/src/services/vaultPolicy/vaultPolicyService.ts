@@ -337,6 +337,8 @@ const validateOptionalEnforcement = (
 };
 
 const validatePolicyConfig = (type: PolicyType, config: PolicyConfig): void => {
+  validateRecord(config, `${type} config`);
+
   switch (type) {
     case 'spending_limit':
       validateSpendingLimitConfig(config as SpendingLimitConfig);
@@ -360,47 +362,60 @@ const validatePolicyConfig = (type: PolicyType, config: PolicyConfig): void => {
 };
 
 const validateSpendingLimitConfig = (config: SpendingLimitConfig): void => {
+  validateAllowedKeys(
+    config as unknown as Record<string, unknown>,
+    ['perTransaction', 'daily', 'weekly', 'monthly', 'scope', 'exemptRoles'],
+    'spending_limit config',
+  );
+
   if (!config.scope || !['wallet', 'per_user'].includes(config.scope)) {
     throw new InvalidInputError('spending_limit config requires scope: "wallet" or "per_user"');
   }
 
-  if (!hasPositiveLimit(config.perTransaction, config.daily, config.weekly, config.monthly)) {
-    throw new InvalidInputError('spending_limit config requires at least one non-zero limit');
-  }
+  validateStringList(config.exemptRoles, 'exemptRoles');
+  validateLimitFields(
+    config as unknown as Record<string, unknown>,
+    ['perTransaction', 'daily', 'weekly', 'monthly'],
+    'spending_limit',
+  );
 };
 
 const validateApprovalRequiredConfig = (config: ApprovalRequiredConfig): void => {
-  if (!config.trigger) {
-    throw new InvalidInputError('approval_required config requires a trigger');
-  }
+  validateAllowedKeys(
+    config as unknown as Record<string, unknown>,
+    ['trigger', 'requiredApprovals', 'quorumType', 'specificApprovers', 'allowSelfApproval', 'expirationHours'],
+    'approval_required config',
+  );
 
-  if (!config.trigger.always && !config.trigger.amountAbove && !config.trigger.unknownAddressesOnly) {
-    throw new InvalidInputError('approval_required trigger must specify at least one condition');
-  }
-
-  if (typeof config.requiredApprovals !== 'number' || config.requiredApprovals < 1) {
-    throw new InvalidInputError('requiredApprovals must be a positive integer');
-  }
+  validateApprovalTrigger(config.trigger);
+  validatePositiveIntegerField(config.requiredApprovals, 'requiredApprovals');
 
   const validQuorums = ['any_n', 'specific', 'all'];
   if (!validQuorums.includes(config.quorumType)) {
     throw new InvalidInputError(`quorumType must be one of: ${validQuorums.join(', ')}`);
   }
 
+  validateStringList(config.specificApprovers, 'specificApprovers');
   if (config.quorumType === 'specific') {
-    /* v8 ignore next -- schema-level validation covers specific approver requirements */
-    if (!config.specificApprovers || config.specificApprovers.length === 0) {
+    if (!config.specificApprovers?.length) {
       throw new InvalidInputError('specific quorum requires specificApprovers array');
     }
   }
+
+  validateBooleanField(config.allowSelfApproval, 'allowSelfApproval');
+  validateNonNegativeIntegerField(config.expirationHours, 'expirationHours');
 };
 
 const validateTimeDelayConfig = (config: TimeDelayConfig): void => {
-  if (!config.trigger) {
-    throw new InvalidInputError('time_delay config requires a trigger');
-  }
+  validateAllowedKeys(
+    config as unknown as Record<string, unknown>,
+    ['trigger', 'delayHours', 'vetoEligible', 'specificVetoers', 'notifyOnStart', 'notifyOnVeto', 'notifyOnClear'],
+    'time_delay config',
+  );
 
-  if (typeof config.delayHours !== 'number' || config.delayHours <= 0) {
+  validateTimeDelayTrigger(config.trigger);
+
+  if (typeof config.delayHours !== 'number' || !Number.isFinite(config.delayHours) || config.delayHours <= 0) {
     throw new InvalidInputError('delayHours must be a positive number');
   }
 
@@ -412,9 +427,24 @@ const validateTimeDelayConfig = (config: TimeDelayConfig): void => {
   if (!validEligible.includes(config.vetoEligible)) {
     throw new InvalidInputError(`vetoEligible must be one of: ${validEligible.join(', ')}`);
   }
+
+  validateStringList(config.specificVetoers, 'specificVetoers');
+  if (config.vetoEligible === 'specific' && !config.specificVetoers?.length) {
+    throw new InvalidInputError('specific veto eligibility requires specificVetoers array');
+  }
+
+  validateBooleanField(config.notifyOnStart, 'notifyOnStart');
+  validateBooleanField(config.notifyOnVeto, 'notifyOnVeto');
+  validateBooleanField(config.notifyOnClear, 'notifyOnClear');
 };
 
 const validateAddressControlConfig = (config: AddressControlConfig): void => {
+  validateAllowedKeys(
+    config as unknown as Record<string, unknown>,
+    ['mode', 'allowSelfSend', 'managedBy'],
+    'address_control config',
+  );
+
   const validModes = ['allowlist', 'denylist'];
   if (!validModes.includes(config.mode)) {
     throw new InvalidInputError(`address_control mode must be one of: ${validModes.join(', ')}`);
@@ -423,21 +453,150 @@ const validateAddressControlConfig = (config: AddressControlConfig): void => {
   if (typeof config.allowSelfSend !== 'boolean') {
     throw new InvalidInputError('allowSelfSend must be a boolean');
   }
+
+  const validManagers = ['owner_only', 'approvers'];
+  if (!validManagers.includes(config.managedBy)) {
+    throw new InvalidInputError(`managedBy must be one of: ${validManagers.join(', ')}`);
+  }
 };
 
 const validateVelocityConfig = (config: VelocityConfig): void => {
+  validateAllowedKeys(
+    config as unknown as Record<string, unknown>,
+    ['maxPerHour', 'maxPerDay', 'maxPerWeek', 'scope', 'exemptRoles'],
+    'velocity config',
+  );
+
   if (!config.scope || !['wallet', 'per_user'].includes(config.scope)) {
     throw new InvalidInputError('velocity config requires scope: "wallet" or "per_user"');
   }
 
-  if (!hasPositiveLimit(config.maxPerHour, config.maxPerDay, config.maxPerWeek)) {
-    throw new InvalidInputError('velocity config requires at least one non-zero limit');
+  validateStringList(config.exemptRoles, 'exemptRoles');
+  validateLimitFields(
+    config as unknown as Record<string, unknown>,
+    ['maxPerHour', 'maxPerDay', 'maxPerWeek'],
+    'velocity',
+  );
+};
+
+const validateApprovalTrigger = (trigger: ApprovalRequiredConfig['trigger']): void => {
+  if (!trigger) {
+    throw new InvalidInputError('approval_required config requires a trigger');
+  }
+
+  validateRecord(trigger, 'approval_required trigger');
+  validateAllowedKeys(trigger, ['always', 'amountAbove', 'unknownAddressesOnly'], 'approval_required trigger');
+  validateOptionalBooleanField(trigger.always, 'always');
+  validateOptionalPositiveIntegerField(trigger.amountAbove, 'amountAbove');
+  validateOptionalBooleanField(trigger.unknownAddressesOnly, 'unknownAddressesOnly');
+
+  if (
+    trigger.always !== true &&
+    trigger.amountAbove === undefined &&
+    trigger.unknownAddressesOnly !== true
+  ) {
+    throw new InvalidInputError('approval_required trigger must specify at least one condition');
   }
 };
 
-/** Undefined limit fields do not count as positive limits. */
-const hasPositiveLimit = (...limits: Array<number | undefined>): boolean =>
-  limits.some((limit) => limit !== undefined && limit > 0);
+const validateTimeDelayTrigger = (trigger: TimeDelayConfig['trigger']): void => {
+  if (!trigger) {
+    throw new InvalidInputError('time_delay config requires a trigger');
+  }
+
+  validateRecord(trigger, 'time_delay trigger');
+  validateAllowedKeys(trigger, ['always', 'amountAbove'], 'time_delay trigger');
+  validateOptionalBooleanField(trigger.always, 'always');
+  validateOptionalPositiveIntegerField(trigger.amountAbove, 'amountAbove');
+
+  if (trigger.always !== true && trigger.amountAbove === undefined) {
+    throw new InvalidInputError('time_delay trigger must specify at least one condition');
+  }
+};
+
+const validateLimitFields = (
+  config: Record<string, unknown>,
+  fieldNames: string[],
+  policyType: string,
+): void => {
+  for (const fieldName of fieldNames) {
+    validateOptionalNonNegativeIntegerField(config[fieldName], fieldName);
+  }
+
+  if (!fieldNames.some((fieldName) => isPositiveInteger(config[fieldName]))) {
+    throw new InvalidInputError(`${policyType} config requires at least one non-zero limit`);
+  }
+};
+
+const validateAllowedKeys = (
+  value: Record<string, unknown>,
+  allowedKeys: string[],
+  label: string,
+): void => {
+  const unknownKey = Object.keys(value).find((key) => !allowedKeys.includes(key));
+  if (unknownKey) {
+    throw new InvalidInputError(`${label} contains unknown field: ${unknownKey}`);
+  }
+};
+
+const validateRecord: (
+  value: unknown,
+  label: string,
+) => asserts value is Record<string, unknown> = (value, label) => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new InvalidInputError(`${label} must be an object`);
+  }
+};
+
+const validateStringList = (value: unknown, fieldName: string): void => {
+  if (value === undefined) return;
+
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string' || entry.length === 0)) {
+    throw new InvalidInputError(`${fieldName} must be an array of non-empty strings`);
+  }
+};
+
+const validateBooleanField = (value: unknown, fieldName: string): void => {
+  if (typeof value !== 'boolean') {
+    throw new InvalidInputError(`${fieldName} must be a boolean`);
+  }
+};
+
+const validateOptionalBooleanField = (value: unknown, fieldName: string): void => {
+  if (value !== undefined) {
+    validateBooleanField(value, fieldName);
+  }
+};
+
+const validatePositiveIntegerField = (value: unknown, fieldName: string): void => {
+  if (!isPositiveInteger(value)) {
+    throw new InvalidInputError(`${fieldName} must be a positive integer`);
+  }
+};
+
+const validateOptionalPositiveIntegerField = (value: unknown, fieldName: string): void => {
+  if (value !== undefined) {
+    validatePositiveIntegerField(value, fieldName);
+  }
+};
+
+const validateNonNegativeIntegerField = (value: unknown, fieldName: string): void => {
+  if (!isNonNegativeInteger(value)) {
+    throw new InvalidInputError(`${fieldName} must be a non-negative integer`);
+  }
+};
+
+const validateOptionalNonNegativeIntegerField = (value: unknown, fieldName: string): void => {
+  if (value !== undefined) {
+    validateNonNegativeIntegerField(value, fieldName);
+  }
+};
+
+const isPositiveInteger = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0;
+
+const isNonNegativeInteger = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0;
 
 // ========================================
 // EXPORTS

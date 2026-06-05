@@ -500,12 +500,32 @@ export function registerOpenApiAdminOpsTests() {
       'type',
       'config',
     ]);
+    expect(openApiSpec.components.schemas.CreateVaultPolicyRequest.properties.description).toEqual({
+      type: 'string',
+      nullable: true,
+    });
     expect(openApiSpec.components.schemas.CreateVaultPolicyRequest.properties.type.enum).toEqual([
       ...VALID_POLICY_TYPES,
     ]);
     expect(openApiSpec.components.schemas.CreateVaultPolicyRequest.properties.enforcement.enum).toEqual([
       ...VALID_ENFORCEMENT_MODES,
     ]);
+    expect(openApiSpec.components.schemas.CreateVaultPolicyRequest.properties.config.oneOf).toEqual([
+      { $ref: '#/components/schemas/SpendingLimitPolicyConfig' },
+      { $ref: '#/components/schemas/ApprovalRequiredPolicyConfig' },
+      { $ref: '#/components/schemas/TimeDelayPolicyConfig' },
+      { $ref: '#/components/schemas/AddressControlPolicyConfig' },
+      { $ref: '#/components/schemas/VelocityPolicyConfig' },
+    ]);
+    expect(openApiSpec.components.schemas.CreateVaultPolicyRequest.oneOf).toContainEqual({
+      required: ['type', 'config'],
+      properties: {
+        type: { type: 'string', enum: ['approval_required'] },
+        config: { $ref: '#/components/schemas/ApprovalRequiredPolicyConfig' },
+      },
+    });
+    expect(openApiSpec.components.schemas.UpdateVaultPolicyRequest.properties.config.oneOf)
+      .toEqual(openApiSpec.components.schemas.CreateVaultPolicyRequest.properties.config.oneOf);
     expect(openApiSpec.paths['/admin/policies/{policyId}'].patch.parameters).toContainEqual(
       expect.objectContaining({
         name: 'policyId',

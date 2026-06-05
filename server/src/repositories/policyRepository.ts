@@ -28,7 +28,7 @@ type CreatePolicyInput = {
   walletId?: string;
   groupId?: string;
   name: string;
-  description?: string;
+  description?: string | null;
   type: PolicyType;
   config: Prisma.InputJsonValue;
   priority?: number;
@@ -129,7 +129,7 @@ export async function updatePolicy(
   policyId: string,
   data: {
     name?: string;
-    description?: string;
+    description?: string | null;
     config?: Prisma.InputJsonValue;
     priority?: number;
     enforcement?: string;
