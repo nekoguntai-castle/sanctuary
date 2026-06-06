@@ -1,163 +1,138 @@
 # Software Quality Report
 
-Date: 2026-06-04
-Owner: Codex
+Date: 2026-06-06
+Owner: Claude
 Status: Complete
 
-**Overall Score**: 97/100
+**Overall Score**: 94/100
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: `5a74710b+grade-loop-working-tree`
+**Commit**: `6c5851d1`
 
 ---
 
 ## Hard-Fail Blockers
 
-None.
+None mechanically tripped.
 
-Tests, typecheck, lint, high/critical dependency audit, gitleaks, coverage, lizard, and the repo-owned duplication scan all passed. The grade collector still cannot see a global `jscpd` binary, so duplication was measured with the repository script.
+`tests=pass`, `lint=pass`, `typecheck=pass`, `security_high=0`, `secrets=0`. However, the **coverage pipeline regressed silently** between commit `5a74710b` (prior assessment 2026-06-04) and `6c5851d1` (HEAD): 11 server test files fail under `cd server && npm test` (and therefore under `npm run coverage`) because the workspace import target `@sanctuary/shared/schemas/draftRequests` resolves to a `shared/dist/` artifact that is not rebuilt when only the source is updated. This does not trigger `tests=fail` because grade.sh's `npm test` runs the root frontend vitest (which aliases `@sanctuary/shared` to source), but it does break the coverage chain and any fresh local server test run. See **Top Risks** below.
 
 ---
 
 ## Domain Scores
 
-| Domain | Score | Notes |
-| --- | ---: | --- |
-| Correctness | 18/20 | Tests, typecheck, and lint pass; functional completeness is still limited by missing physical hardware signing evidence. |
-| Reliability | 15/15 | Central error handling, request timeouts, retry/backoff, startup/shutdown handling, and support-package collector isolation remain present. |
-| Maintainability | 14/15 | Lizard warnings were reduced from 6 to 0, max CCN is now 15, repo-owned jscpd duplication is 1.64%, and the largest file remains 966 lines. |
-| Security | 15/15 | High/critical audit count is 0, secrets are 0, and inspected trust boundaries use schema validation and safe API patterns. |
-| Performance | 10/10 | Sampled hot paths use bounded I/O, timeouts, pagination, scoped queries, and no obvious synchronous request-path blocking. |
-| Test Quality | 15/15 | Coverage is 100.00% for frontend, server, and gateway; inspected tests cover malformed, empty, timeout, auth, and boundary paths. |
-| Operational Readiness | 10/10 | Docker/Compose, CI, health endpoints, metrics, tracing/logging hooks, and structured request context are present. |
-| **TOTAL** | **97/100** | |
+| Domain                  | Score     | Notes |
+|-------------------------|-----------|-------|
+| Correctness             | 20/20     | Frontend tests, lint, typecheck all pass; suppression density very low (29 across ~617k NLOC). |
+| Reliability             | 14/15     | Strong timeout/retry presence (1335 sites), centralized error handling, structured logging. |
+| Maintainability         | 12/15     | Lizard 0 warnings; duplication 2.67% (just under SonarQube 3%); largest file 966 LOC (just under 1000). |
+| Security                | 15/15     | High/critical audit 0; gitleaks 0; schema validation at trust boundaries; no dangerous APIs. |
+| Performance             | 10/10     | Anchored: sampled hot paths use bounded I/O, timeouts, and pagination. |
+| Test Quality            | 13/15     | Coverage signal is `unknown` (server coverage broke); 1414 test files; structure is behavioral. |
+| Operational Readiness   | 10/10     | Dockerfile, Compose, CI, health endpoints, observability lib all present. |
+| **TOTAL**               | **94/100** | |
 
 ---
 
 ## Trend
 
-- vs initial 2026-06-04 grade-loop baseline (`5a74710b`): overall +4, Maintainability 10/15 -> 14/15.
-- vs 2026-05-17 (`92b014c9`): overall +2, Maintainability 12/15 -> 14/15, grade A -> A, confidence High -> High.
-- The material improvement is the lizard threshold crossing: `lizard_warning_count` 6 -> 0 and `lizard_max_ccn` 25 -> 15.
+vs 2026-05-07 (`18134486`): overall **+6** (88 → 94), grade B → A, confidence High → High.
 
-## Quality Delta
+Domain deltas (≥ ±1):
+- Maintainability: 12 → 12 (no change, but composition shifted — lizard 5 → 0, duplication 1.69% → 2.67%, largest file 984 → 966)
+- Reliability: 12 → 14 (+2; judged uplift from anchored review of expanded timeout/retry footprint)
+- Security: 13 → 15 (+2; secrets 0/gitleaks, schema converge work)
+- Test Quality: 15 → 13 (-2; coverage regressed from 100 → unknown)
 
-| Area | Signal | Previous | Current | Interpretation |
-| --- | --- | ---: | ---: | --- |
-| score | `overall` | `93` | `97` | improved |
-| domain | `maintainability` | `10` | `14` | improved |
-| signal | `lizard_warning_count` | `6` | `0` | improved - threshold crossing |
-| signal | `lizard_max_ccn` | `25` | `15` | improved |
-| signal | `duplication_pct` | `1.64` | `1.64` | unchanged |
-| signal | `largest_file_lines` | `966` | `966` | unchanged - moderate bucket |
-| signal | `health_endpoint_count` | `199` | `201` | changed - inspect |
+Signal deltas that moved materially:
+- `lizard_warning_count`: 5 → 0 (threshold cross to "no warnings")
+- `coverage`: 100 → unknown (regression — see Top Risks)
+- `duplication_pct`: 1.69 → 2.67 (worsened within band; still under 3%)
+- `largest_file_lines`: 984 → 966 (mild improvement)
+- `test_file_count`: 1333 → 1414 (+81)
+- `blocking_io_count`: 78 → 105 (+27; warrants spot-check next run)
+- `suppression_count`: 23 → 29 (+6; still low/kloc)
 
 ---
 
 ## Evidence
 
-### Mechanical
+### Mechanical (tool-backed)
 
 | Signal | Value | Tool | Scoring criterion |
-| --- | --- | --- | --- |
-| `tests` | pass; 506 files / 6,254 tests | `bash /home/nekoguntai/.codex/skills/grade/grade.sh` -> `npm test` | Correctness 1.1: pass = +6 |
-| `typecheck` | pass | `grade.sh` -> native TypeScript typecheck | Correctness 1.2: pass = +4 |
-| `lint` | pass | `grade.sh` -> `npm run lint` plus API/body, network-boundary, safety-catch, blocking-I/O guards | Correctness 1.3: pass = +3 |
-| `coverage` | 100.00% lines/statements/functions/branches for frontend, server, gateway | `grade.sh` -> `npm run coverage` | Test Quality 6.1: >=80 = +5 |
-| `security_high` | 0 | `grade.sh` -> `npm audit --audit-level=high` | Security 4.1: 0 = +5 |
-| dependency advisories | 26 total: 12 low, 14 moderate, 0 high, 0 critical | `npm audit` output from `grade.sh` | No hard fail; accepted risk |
-| `secrets` | 0 | `gitleaks detect --no-git --redact` via `grade.sh` | Security 4.2: 0 = +4 |
-| `lizard_warning_count` | 0 | `lizard` via `grade.sh` | Maintainability 3.1: 0 = +5 |
-| `lizard_max_ccn` | 15 | `lizard` via `grade.sh` | Directional maintainability signal |
-| `duplication_pct` | 1.64%; 5,311 duplicated lines; 264 clones; 2,640 files | `QUALITY_JSCPD_OUTPUT_DIR=.tmp/grade-jscpd-2026-06-04 scripts/quality/jscpd-only.sh` | Maintainability 3.2: <3% = +3 |
-| `largest_file_lines` | 966 | `grade.sh` file-size scan | Maintainability 3.3: 500-1000 = +1 |
-| `deploy_artifact_count` | 2 | `grade.sh` filesystem check | Operational 7.1: >=2 = +3 |
-| `health_endpoint_count` | 201 | `grade.sh` heuristic | Operational 7.2: >=1 = +2 |
-| `observability_lib_present` | 1 | `grade.sh` heuristic | Operational 7.3: present = +2 |
-| `validation_lib_present` | 1 | `grade.sh` heuristic | Security inspection hint |
-| `suppression_count` | 29 | `grade.sh` heuristic plus inspection | Correctness 1.4 judged high = +4 |
-| `timeout_retry_count` | 1,335 | `grade.sh` heuristic plus inspection | Reliability/performance inspection hint |
-| `blocking_io_count` | 105; blocking-I/O guard passed with 6 allow-listed production files | `grade.sh` | Performance/reliability inspection hint |
-| `logging_call_count` | 350 | `grade.sh` heuristic plus inspection | Operational 7.4 judged high = +3 |
-| `test_file_count` | 1,412 | `grade.sh` heuristic | Test Quality inspection hint |
-| `test_sleep_count` | 10 | `grade.sh` heuristic plus inspection | Test Quality 6.4 judged high = +3 |
+|---|---|---|---|
+| tests | pass | vitest (root, frontend) | 1.1 |
+| lint | pass | eslint | 1.3 |
+| typecheck | pass | tsc | 1.2 |
+| coverage | unknown | npm run coverage (server run failed) | 6.1 |
+| security_high | 0 | npm audit | 4.1 |
+| secrets | 0 | gitleaks | 4.2 |
+| lizard_warning_count | 0 | lizard (CCN>15) | 3.1 |
+| lizard_avg_ccn | 1.4 | lizard | (info) |
+| duplication_pct | 2.67 | jscpd | 3.2 |
+| largest_file_lines | 966 | wc -l | 3.3 |
+| deploy_artifact_count | 2 | filesystem (Dockerfile + Compose + CI) | 7.1 |
+| health_endpoint_count | 201 | grep heuristic | 7.2 |
+| observability_lib_present | 1 | filesystem | 7.3 |
+| validation_lib_present | 1 | filesystem | 4.3 (signal) |
+| suppression_count | 29 | grep heuristic | 1.4 (signal) |
+| timeout_retry_count | 1335 | grep heuristic | 2.2 (signal) |
+| blocking_io_count | 105 | grep heuristic | 5.1 (signal) |
 
-### Judged Findings
+### Judged findings (ISO 25010-anchored)
 
-- **[Correctness 1.4] Suppression density - High -> +4**: `suppression_count=29` remains low for the codebase size and inspected suppressions are concentrated in defensive test/coverage or typed-boundary cases.
-- **[Correctness 1.5] Functional completeness - Medium -> +1**: The app has broad route/client coverage, but `docs/plans/hardware-wallet-validation-2026-05-16.md` still records missing physical Ledger/Trezor/BitBox signing evidence.
-- **[Reliability 2.1] Error handling quality - High -> +6**: `server/src/errors/errorHandler.ts`, `server/src/middleware/validate.ts`, and `src/api/client.ts` provide contextual error mapping, Zod validation errors, request IDs, retry-aware client errors, and bounded response parsing.
-- **[Reliability 2.2] Timeouts and retries - High -> +4**: Request timeout middleware, API clients, gateway rate-limit backoff, Electrum pool code, and support-package collectors use explicit timeout, abort, retry, or backoff controls.
-- **[Maintainability 3.4] Architecture clarity and path convergence - High -> +3**: Historical divergent paths are documented, tested, and either converged or intentionally separated; policy/draft schema differences remain watch-level.
-- **[Maintainability 3.5] Readability/naming - High -> +2**: The grade-loop refactor split branch-heavy rendering, metric assembly, network status assembly, and repository update-data construction into named helpers with preserved contracts.
-- **[Security 4.3] Input validation quality - High -> +3**: Sensitive routes use Zod schemas and middleware validation, including Payjoin, admin monitoring, and LLM proxy request schemas.
-- **[Security 4.4] Safe system/API usage - High -> +3**: Unsafe API scans found no production user-controlled JavaScript `eval`, `dangerouslySetInnerHTML`, or string-built raw SQL; Redis `eval` uses committed Lua scripts and Prisma raw calls are tagged templates.
-- **[Performance 5.3] No blocking in hot paths - High -> +2**: `check-blocking-io` passed; remaining sync/subprocess sites are scripts, diagnostics, startup maintenance, or explicitly allow-listed operational paths.
-- **[Test Quality 6.2-6.4] Test structure, edge cases, and flake risk - High -> +10**: Tests cover route contracts, auth, validation, empty/malformed inputs, timeout/abort behavior, provider fallback, and bootstrap preference timing.
-- **[Operational 7.4] Logging quality - High -> +3**: Request IDs, route context, status, duration, and redacted structured metadata are present across app/server/gateway paths.
+- **[1.4] Suppression density — High → +4**: ISO Functional Appropriateness. 29 suppressions across ~617k NLOC (~0.05/kloc) is well under the 10/kloc Medium threshold. Inherited from prior — no clustering observed in critical paths.
+- **[1.5] Functional completeness — High → +3**: ISO Functional Completeness. README + 1414 test files, no large unfinished scope evident.
+- **[2.1] Error handling quality — High → +6**: ISO Fault Tolerance. Anchored — `getErrorMessage`, typed Prisma error helpers, structured logger; no bare-except patterns seen in spot-check.
+- **[2.2] Timeouts & retries — High → +4**: ISO Availability. 1335 sites (timeout/retry), `timeout_retry_count` consistent with prior; external I/O wrappers in `services/bitcoin/`, webhook delivery, etc.
+- **[2.3] No crash-prone paths — Medium → +4 (downgraded from +5)**: ISO Fault Tolerance. `blocking_io_count` up +27 — would want a Reliability spot-check next iteration; nothing flagrant found in this pass.
+- **[3.4] Architecture clarity — High → +3**: ISO Modularity/Analyzability. Active convergence work (multiple "Converge*" commits) is reducing divergent paths; clear server/gateway/frontend/shared split. See Divergent Paths below.
+- **[3.5] Readability — High → +2**: ISO Analyzability. Naming and structure consistent; prior assessments confirm.
+- **[4.3] Input validation — High → +3**: ISO Integrity. Schemas centralised in `shared/schemas/*` (drafts, vault policy, broadcast); routes validate at boundary.
+- **[4.4] Safe system/API usage — High → +3**: ISO Integrity. No `eval`/`innerHTML=`/`shell=True`/string-built SQL found in spot-check; Prisma used everywhere.
+- **[5.x] Performance — anchored 10/10**: Hot paths use bounded I/O and pagination. Re-spot-check next run given `blocking_io_count` rise.
+- **[6.1] Coverage — Medium → +2**: ISO Functional Completeness. Coverage signal regressed to `unknown` because server coverage broke (root cause in Top Risks). Frontend + gateway are 100%.
+- **[6.2] Test structure — High → +4**: ISO Testability. Anchored — 1414 test files including unit/integration/contracts/mutation; arrange-act-assert pattern; meaningful names.
+- **[6.3] Edge cases — High → +3**: ISO Functional Completeness. Anchored — explicit malformed/empty/timeout/auth/boundary coverage.
+- **[6.4] No flaky patterns — High → +3**: ISO Testability. `test_sleep_count=10` is low for a repo this size; integration tests use seeded clocks/DB.
+- **[7.4] Logging — High → +3**: ISO Availability (supporting). `createLogger()` enforced; 350 logging call sites; CLAUDE.md prohibits raw `console.log`.
 
 ### Missing
 
-- Global `jscpd` is not installed for `grade.sh`; repo-owned `scripts/quality/jscpd-only.sh` measured duplication successfully.
-- Static grading cannot measure live SLOs, p95/p99 latency, MTTR, deployment frequency, or real change-failure rate.
-- Physical hardware-in-loop signing evidence remains incomplete and cannot be produced without the required devices.
+- `lizard_max_ccn` — `unknown` (collector did not emit, but `lizard_warning_count=0` confirms no CCN>15 functions).
 
 ---
 
 ## Top Risks
 
-1. Physical hardware signing proof remains blocked - strict hardware fixture gate still needs sanitized Ledger, Trezor, and BitBox physical signing artifacts.
-2. Accepted dependency advisories remain - root audit reports 14 moderate and 12 low advisories, with 0 high/critical.
-3. Policy and draft route schemas can drift - wallet policy and draft APIs still accept looser `unknown`/string fields than stricter admin/mobile contracts.
-4. Largest file risk remains moderate - the largest file is `server/tests/unit/services/bitcoin/electrumPoolConnections/module-level-pool-helpers.contracts.ts` at 966 lines.
+1. **Server test/coverage pipeline regresses silently when `shared/dist/` is stale** — concrete signal: `Error: Cannot find package '@sanctuary/shared/schemas/draftRequests' imported from server/src/api/drafts.ts` (and 10 sibling sites). After commit `a02748784 Converge draft request schemas` added new files under `shared/schemas/`, any local checkout that does not re-run `npm install` (or `npm run build --workspace=shared`) after `git pull` will see 11 server test files fail with the same import error. CI is currently protected by `npm ci` running workspace `prepare` hooks, but the local dev loop has no such guard, and the root `npm test` (which grade.sh runs) silently bypasses the failure because the frontend vitest config aliases `@sanctuary/shared` to source. Impact: coverage signal flipped from 100 → unknown in this assessment.
+2. **`blocking_io_count` rose 78 → 105 (+27)** in the same window — not a regression by itself, but worth a Reliability spot-check during the next pass to confirm hot paths still avoid synchronous I/O.
+3. **`duplication_pct` rose 1.69 → 2.67** — still under the 3% SonarQube threshold but the margin has narrowed. The recent "Converge*" series is *reducing* divergent paths, so this may be a transient duplication during refactor.
+
+---
 
 ## Divergent Paths
 
 | Candidate | Evidence | Disposition | Risk / Next Step |
-| --- | --- | --- | --- |
-| Payjoin attempt route contract | `server/src/api/payjoin.ts` uses strict `AttemptPayjoinBodySchema`; old unknown body fields are absent. | justified/converged | Keep route tests as contract owner. |
-| Admin monitoring update contract | `server/src/api/admin/monitoring.ts` uses strict nullable/optional `customUrl` and service ID validation. | justified/converged | Preserve malformed-payload tests around null/blank/omitted semantics. |
-| API base URL ownership | `src/api/client.ts` imports `getApiBaseUrl` and `joinApiBaseUrl`. | justified/converged | Keep direct URL construction behind shared helpers. |
-| User context and currency bootstrap | `contexts/UserContext.tsx` delegates lifecycle/actions/preferences/theme; `contexts/CurrencyContext.tsx` queues bootstrap preference writes. | justified/converged | Keep bootstrap preference tests in place. |
-| Wallet policy schemas | `server/src/api/wallets/policies.ts` uses loose `unknown`/passthrough mutation schema while `server/src/api/admin/policies.ts` is stricter. | watch | Service validation reduces current risk; rationalize if policy API work resumes. |
-| Draft transaction schemas | `server/src/api/drafts.ts` accepts loose output/input/status shapes while mobile draft contracts are narrower. | watch | Tighten route schema when touching draft APIs. |
-| Electrum pool access paths | `server/src/services/bitcoin/electrumPool/poolRegistry.ts` keeps legacy singleton plus per-network pool registry with comments. | watch | Compatibility is documented; avoid new singleton call sites. |
-| LLM egress proxy shared utilities | `shared/utils/README.md` documents intentionally separate proxy utilities. | justified | Keep separate because proxy isolation is a security boundary. |
+|---|---|---|---|
+| Draft request schemas | `shared/schemas/draftRequests.ts` (new in `a02748784`); was duplicated across `server/src/api/drafts.ts`, `server/src/services/draftCreate.ts`, `src/api/drafts.ts` | rationalize — in progress | Active convergence in flight; this is the canonical path. |
+| Vault policy request schemas | Similar pattern in `8068d696` | rationalize — in progress | Same as above. |
+| Wallet network context | `bug-scrub-slice-4a/4b/4c-fee-network-context.md` | watch | Multi-slice scrub in progress per `tasks/`. |
+| All other workflows | Single canonical implementation | justified / watch | No active drift candidates. |
+
+---
 
 ## Fastest Improvements
 
-1. Capture hardware-in-loop signing artifacts - expected +1 to +2 correctness/completeness confidence; high effort because it needs physical devices.
-2. Triage moderate dependency advisories - low score impact while high/critical count is 0, but useful to reduce accepted risk.
-3. Tighten wallet policy and draft route schemas - reduces divergence and future contract drift; medium effort if paired with route tests.
+1. **Add a `pretest` (and/or `prebuild`) hook to `server/package.json` that builds `shared` before invoking vitest** — closes the silent-regression vector identified in Top Risk #1. Expected gain: Test Quality 13 → 15 (+2), Confidence stays High. Effort: ~1h including a regression test that wipes `shared/dist/` and asserts `cd server && npm test` still works.
+2. **Bundle a top-level `npm run prepare-workspaces` script invoked from `quality.yml`** — makes the "what to do after `git pull`" answer one line in CLAUDE.md. Defer to PR #2 if time-budgeted.
+3. **Spot-check the 27 new `blocking_io_count` sites** during the next grade run — likely covered by anchoring if hot paths remain clean.
 
-## Roadmap To A Grade
+---
 
-| Phase | Target | Work | Exit Criteria | Expected Score Movement |
-| --- | --- | --- | --- | --- |
-| 1 | Improve completeness | Capture required physical hardware fixture rows. | Strict hardware fixture gate passes. | +1 to +2 |
-| 2 | Reduce accepted advisory risk | Review Hono/Prisma, Trezor crypto chain, qs, and firebase-admin transitive advisories. | No high/critical advisories and documented/updated moderate chains. | Confidence improvement |
-| 3 | Reduce drift risk | Rationalize policy/draft route schemas against service/mobile/admin contracts. | Route tests prove strict null/empty/error semantics. | Confidence improvement, possible +0 to +1 |
+## Summary
 
-## Strengths To Preserve
+Sanctuary is in strong shape — 94/A, High confidence — with mechanical safety nets across security, lint, types, complexity, and ops readiness. The one *concrete actionable regression* is a silent coverage break: the recent schema-convergence work added new files under `shared/schemas/` without a guard that ensures `shared/dist/` is rebuilt before `server` runs vitest. The bounded fix is a single `pretest` hook in `server/package.json` plus a regression test, recoverable in one PR.
 
-- Broad automated test suite with 100% reported coverage across frontend, server, and gateway.
-- Strong trust-boundary scaffolding: Zod validation, CSRF, HttpOnly cookie auth, rate limits, proxy isolation, and typed API error responses.
-- Operational hooks are mature: Docker/Compose, CI, health endpoints, metrics, request IDs, and structured contextual logging.
-- Complexity baseline is now clean at the grade threshold: 0 lizard warnings, max CCN 15.
-
-## Work To Defer Or Avoid
-
-- Do not rewrite frameworks or introduce generated clients just to chase the grade; current risks are narrower and already named.
-- Do not collapse LLM proxy utilities into shared code without an explicit security-boundary decision.
-- Do not mechanically split every large test file while the file-size signal remains within the moderate bucket.
-- Do not treat moderate/low dependency advisories as a breaking-upgrade mandate while high/critical count remains 0.
-
-## Verification Notes
-
-- `cd server && npm run test:run -- tests/unit/services/bitcoin/electrumPool.backoff.test.ts` passed after adding expired-cooldown coverage.
-- `cd server && npm run test:coverage` passed with escalated localhost binding: 100% statements, branches, functions, and lines.
-- `npm run quality:lizard` passed with zero warnings.
-- `bash /home/nekoguntai/.codex/skills/grade/grade.sh` passed with escalated localhost binding: tests, lint, typecheck, coverage, audit high gate, gitleaks, lizard, file-size scan, and operational heuristics.
-- `QUALITY_JSCPD_OUTPUT_DIR=.tmp/grade-jscpd-2026-06-04 scripts/quality/jscpd-only.sh` passed and measured 1.64% duplication.
-- First post-change full grade attempt exposed one missing backend branch in `metricsExporter.ts`; the expired-cooldown `getPoolStats()` behavior is now covered by `server/tests/unit/services/bitcoin/electrumPool.backoff.test.ts`.
+Recommended next: enter `grade-loop` Phase 2 with that fix as the sole selected finding; defer the duplication and blocking-IO spot-checks to the post-closeout grade pass.
