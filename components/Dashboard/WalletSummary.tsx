@@ -290,6 +290,8 @@ function WalletSummaryRow({
       onKeyDown={(event) => handleWalletRowKeyDown(event, wallet.id, onNavigate)}
       onMouseEnter={() => onHover(wallet.id)}
       onMouseLeave={onLeave}
+      onFocus={() => onHover(wallet.id)}
+      onBlur={onLeave}
       tabIndex={0}
       className={`group cursor-pointer transition-all duration-200 hover:shadow-sm active:bg-sanctuary-100 dark:active:bg-sanctuary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 ${
         isHighlighted

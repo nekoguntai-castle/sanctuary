@@ -1,4 +1,4 @@
-import { act,render,screen } from '@testing-library/react';
+import { act,fireEvent,render,screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
@@ -159,6 +159,24 @@ describe('WalletSummary', () => {
     const betaRow = screen.getByText('Beta').closest('tr')!;
     await user.hover(betaRow);
     await user.unhover(betaRow);
+  });
+
+  it('mirrors hover-driven cross-highlight when a row is focused via keyboard', () => {
+    const wallets = [
+      { id: 'w1', name: 'Alpha', type: 'single_sig', balance: 5000, lastSyncStatus: 'success' },
+      { id: 'w2', name: 'Beta', type: 'single_sig', balance: 5000, lastSyncStatus: 'success' },
+    ] as any[];
+
+    renderWalletSummary(
+      <WalletSummary selectedNetwork="mainnet" filteredWallets={wallets} totalBalance={10000} />
+    );
+
+    const betaRow = screen.getByText('Beta').closest('tr') as HTMLTableRowElement;
+    fireEvent.focus(betaRow);
+    expect(screen.getByText('50.0% of total')).toBeInTheDocument();
+
+    fireEvent.blur(betaRow);
+    expect(screen.queryByText('50.0% of total')).not.toBeInTheDocument();
   });
 
   it('navigates to wallet detail when a row is activated by keyboard', async () => {
