@@ -88,6 +88,50 @@ describe('AuditLogs LogTable', () => {
     expect(onSelectLog).toHaveBeenCalledWith(unknownCategoryLog);
   });
 
+  it('triggers row selection on Enter and Space when the row is focused', async () => {
+    const user = userEvent.setup();
+    const log = makeLog({ id: 'log-keyboard' });
+    const { onSelectLog } = renderTable({ logs: [log], total: 1 });
+
+    const row = screen.getByText('alice').closest('tr') as HTMLTableRowElement;
+    expect(row.tabIndex).toBe(0);
+
+    row.focus();
+    await user.keyboard('{Enter}');
+    expect(onSelectLog).toHaveBeenCalledTimes(1);
+    expect(onSelectLog).toHaveBeenLastCalledWith(log);
+
+    onSelectLog.mockClear();
+    row.focus();
+    await user.keyboard(' ');
+    expect(onSelectLog).toHaveBeenCalledTimes(1);
+    expect(onSelectLog).toHaveBeenLastCalledWith(log);
+  });
+
+  it('does not trigger row selection on unrelated keys', async () => {
+    const user = userEvent.setup();
+    const log = makeLog({ id: 'log-other-key' });
+    const { onSelectLog } = renderTable({ logs: [log], total: 1 });
+
+    const row = screen.getByText('alice').closest('tr') as HTMLTableRowElement;
+    row.focus();
+    await user.keyboard('{Escape}');
+    expect(onSelectLog).not.toHaveBeenCalled();
+  });
+
+  it('does not trigger row selection when key events originate inside a row cell', async () => {
+    const log = makeLog({ id: 'log-inner-key' });
+    const { onSelectLog } = renderTable({ logs: [log], total: 1 });
+
+    const row = screen.getByText('alice').closest('tr') as HTMLTableRowElement;
+    const firstCell = row.querySelector('td') as HTMLTableCellElement;
+    firstCell.focus();
+    firstCell.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    );
+    expect(onSelectLog).not.toHaveBeenCalled();
+  });
+
   it('shows pagination and applies previous/next navigation bounds', async () => {
     const user = userEvent.setup();
     const logs = [makeLog()];

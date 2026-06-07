@@ -1,4 +1,5 @@
 import React from 'react';
+import type { KeyboardEvent } from 'react';
 import {
   RefreshCw,
   CheckCircle,
@@ -9,6 +10,20 @@ import {
 } from 'lucide-react';
 import type { AuditLogEntry } from '../../src/api/admin';
 import { categoryIcons, categoryColors, formatAction, formatRelativeTime } from './constants';
+
+function handleRowKeyDown(
+  event: KeyboardEvent<HTMLTableRowElement>,
+  log: AuditLogEntry,
+  onSelectLog: (log: AuditLogEntry) => void
+) {
+  if (event.currentTarget !== event.target) {
+    return;
+  }
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    onSelectLog(log);
+  }
+}
 
 interface LogTableProps {
   logs: AuditLogEntry[];
@@ -79,7 +94,9 @@ export const LogTable: React.FC<LogTableProps> = ({
                 <tr
                   key={log.id}
                   onClick={() => onSelectLog(log)}
-                  className="hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800/50 cursor-pointer transition-colors"
+                  onKeyDown={(event) => handleRowKeyDown(event, log, onSelectLog)}
+                  tabIndex={0}
+                  className="hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800/50 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
                 >
                   <td className="px-4 py-3 whitespace-nowrap">
                     <div className="flex items-center text-sm">
