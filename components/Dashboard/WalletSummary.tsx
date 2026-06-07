@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import type { KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wallet, isMultisigType } from '../../types';
 import { Wallet as WalletIcon, ChevronRight, RefreshCw, Check, AlertTriangle, Clock } from 'lucide-react';
@@ -250,6 +251,20 @@ function WalletSyncStatus({ wallet }: { wallet: Wallet }) {
   );
 }
 
+function handleWalletRowKeyDown(
+  event: KeyboardEvent<HTMLTableRowElement>,
+  walletId: string,
+  onNavigate: (walletId: string) => void
+) {
+  if (event.currentTarget !== event.target) {
+    return;
+  }
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    onNavigate(walletId);
+  }
+}
+
 function WalletSummaryRow({
   wallet,
   index,
@@ -272,9 +287,11 @@ function WalletSummaryRow({
   return (
     <tr
       onClick={() => onNavigate(wallet.id)}
+      onKeyDown={(event) => handleWalletRowKeyDown(event, wallet.id, onNavigate)}
       onMouseEnter={() => onHover(wallet.id)}
       onMouseLeave={onLeave}
-      className={`group cursor-pointer transition-all duration-200 hover:shadow-sm active:bg-sanctuary-100 dark:active:bg-sanctuary-700 ${
+      tabIndex={0}
+      className={`group cursor-pointer transition-all duration-200 hover:shadow-sm active:bg-sanctuary-100 dark:active:bg-sanctuary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 ${
         isHighlighted
           ? 'bg-sanctuary-50 dark:bg-sanctuary-800'
           : 'hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800'

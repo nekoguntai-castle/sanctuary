@@ -160,4 +160,62 @@ describe('WalletSummary', () => {
     await user.hover(betaRow);
     await user.unhover(betaRow);
   });
+
+  it('navigates to wallet detail when a row is activated by keyboard', async () => {
+    const user = userEvent.setup();
+    const wallets = [
+      { id: 'w1', name: 'Alpha', type: 'single_sig', balance: 5000, lastSyncStatus: 'success' },
+    ] as any[];
+
+    renderWalletSummary(
+      <WalletSummary selectedNetwork="mainnet" filteredWallets={wallets} totalBalance={5000} />
+    );
+
+    const row = screen.getByText('Alpha').closest('tr') as HTMLTableRowElement;
+    expect(row.tabIndex).toBe(0);
+
+    row.focus();
+    await user.keyboard('{Enter}');
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenLastCalledWith('/wallets/w1');
+
+    mockNavigate.mockClear();
+    row.focus();
+    await user.keyboard(' ');
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenLastCalledWith('/wallets/w1');
+  });
+
+  it('does not navigate when an unrelated key is pressed on a focused row', async () => {
+    const user = userEvent.setup();
+    const wallets = [
+      { id: 'w1', name: 'Alpha', type: 'single_sig', balance: 5000, lastSyncStatus: 'success' },
+    ] as any[];
+
+    renderWalletSummary(
+      <WalletSummary selectedNetwork="mainnet" filteredWallets={wallets} totalBalance={5000} />
+    );
+
+    const row = screen.getByText('Alpha').closest('tr') as HTMLTableRowElement;
+    row.focus();
+    await user.keyboard('{Escape}');
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('ignores key events that originate inside a cell', () => {
+    const wallets = [
+      { id: 'w1', name: 'Alpha', type: 'single_sig', balance: 5000, lastSyncStatus: 'success' },
+    ] as any[];
+
+    renderWalletSummary(
+      <WalletSummary selectedNetwork="mainnet" filteredWallets={wallets} totalBalance={5000} />
+    );
+
+    const row = screen.getByText('Alpha').closest('tr') as HTMLTableRowElement;
+    const cell = row.querySelector('td') as HTMLTableCellElement;
+    cell.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    );
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
 });
