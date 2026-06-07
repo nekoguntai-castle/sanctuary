@@ -6,7 +6,7 @@
  * and backdrop-click-to-close behavior.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 
 const MAX_WIDTH_CLASSES = {
@@ -39,8 +39,21 @@ export function ModalWrapper({
   headerBorder = false,
   animation = 'animate-modal-enter',
 }: ModalWrapperProps) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
       onClick={onClose}
     >
@@ -60,6 +73,7 @@ export function ModalWrapper({
           </h3>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="p-1 text-sanctuary-400 hover:text-sanctuary-600 dark:hover:text-sanctuary-300 rounded"
           >
             <X className="w-5 h-5" />

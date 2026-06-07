@@ -108,4 +108,49 @@ describe('ModalWrapper', () => {
     expect(container.querySelector('.animate-fade-in')).toBeInTheDocument();
     expect(container.querySelector('.animate-modal-enter')).not.toBeInTheDocument();
   });
+
+  it('exposes role=dialog with aria-modal and aria-label', () => {
+    render(
+      <ModalWrapper title="Dialog Aria" onClose={vi.fn()}>
+        <p>Content</p>
+      </ModalWrapper>
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Dialog Aria' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+  });
+
+  it('closes when Escape is pressed', () => {
+    const onClose = vi.fn();
+    render(
+      <ModalWrapper title="Escape Test" onClose={onClose}>
+        <p>Content</p>
+      </ModalWrapper>
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('does not close on unrelated keys', () => {
+    const onClose = vi.fn();
+    render(
+      <ModalWrapper title="Other Key" onClose={onClose}>
+        <p>Content</p>
+      </ModalWrapper>
+    );
+    fireEvent.keyDown(document, { key: 'Enter' });
+    fireEvent.keyDown(document, { key: 'a' });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('removes the Escape listener on unmount', () => {
+    const onClose = vi.fn();
+    const { unmount } = render(
+      <ModalWrapper title="Cleanup Test" onClose={onClose}>
+        <p>Content</p>
+      </ModalWrapper>
+    );
+    unmount();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
