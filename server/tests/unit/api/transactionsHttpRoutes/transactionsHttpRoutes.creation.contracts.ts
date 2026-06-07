@@ -412,6 +412,66 @@ export function registerTransactionHttpCreationTests(): void {
     expect(response.body.message).toContain('Only one output can have sendMax');
   });
 
+  it('rejects batch transactions with unknown root extras before wallet lookup', async () => {
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/batch`)
+      .send({
+        feeRate: 1,
+        outputs: [{ address: 'tb1qone', amount: 10000 }],
+        extraField: 'nope',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_ERROR');
+    expect(mockWalletFindById).not.toHaveBeenCalled();
+    expect(mockCreateBatchTransaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects batch transactions with unknown per-output extras before wallet lookup', async () => {
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/batch`)
+      .send({
+        feeRate: 1,
+        outputs: [{ address: 'tb1qone', amount: 10000, surprise: true }],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('VALIDATION_ERROR');
+    expect(mockWalletFindById).not.toHaveBeenCalled();
+    expect(mockCreateBatchTransaction).not.toHaveBeenCalled();
+  });
+
+  it('reports per-output index when later outputs are missing required fields', async () => {
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/batch`)
+      .send({
+        feeRate: 1,
+        outputs: [
+          { address: 'tb1qone', amount: 10000 },
+          { address: 'tb1qtwo' },
+        ],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Output 2: amount is required');
+    expect(mockCreateBatchTransaction).not.toHaveBeenCalled();
+  });
+
+  it('accepts a single sendMax output without amount', async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'testnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/batch`)
+      .send({
+        feeRate: 1,
+        outputs: [{ address: 'tb1qone', sendMax: true }],
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockCreateBatchTransaction).toHaveBeenCalled();
+  });
+
   it('creates batch transaction with validated outputs', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'testnet' });
     mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });

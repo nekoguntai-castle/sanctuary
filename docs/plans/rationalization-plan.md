@@ -2,7 +2,7 @@
 
 Date: 2026-06-04
 Owner: Codex
-Status: 2026-06-04 rationalize-loop second pass in progress; Phase AA vault policy request-schema convergence closed in PR #517, and Phase AB draft request-schema/OpenAPI parity is selected for the final autonomous follow-up pass
+Status: 2026-06-06 rationalize-loop first pass in progress; Phase AA vault policy request-schema convergence closed in PR #517, Phase AB draft request-schema/OpenAPI parity closed in PR #519 (merge commit `a0274878`), and Phase AC batch transaction request-schema/OpenAPI parity is selected for this loop's convergence pass
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, preference patch semantics, later contract/runtime drift follow-up queues, the wallet webhook contract refresh after PR #511, and the local pre-commit AI-agent gate
 
 ## Executive Summary
@@ -21,7 +21,8 @@ Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, tra
 - 2026-06-04 first-pass selection: Phase AA closed the route/admin/wallet vault policy request-schema drift by making a shared route-schema owner for policy create/update requests, keeping service validation as the final invariant owner, and tightening OpenAPI/request tests.
 - Draft status drift was not selected because status ownership is already converged: current source imports `ACTIONABLE_DRAFT_STATUS_VALUES` from `shared/constants/drafts.ts` in `server/src/api/drafts.ts`, mobile request schemas, repositories, and services; `broadcasted` remains a deliberately separate lifecycle state. The separate draft request-schema/OpenAPI drift item was deferred from PR #517 and is now selected as Phase AB.
 - Phase AA closed in PR #517 as squash merge `8068d6962178793f13ffe445249268b2e8f2492f`: wallet/admin policy routes share request schemas, malformed legacy admin configs reject before service dispatch, `description: null` compatibility is preserved, request OpenAPI config docs are bounded while persisted `VaultPolicy.config` responses remain open JSON, and `vaultPolicyService` stays the final invariant owner for direct service callers.
-- Post-closeout rationalize check selected Phase AB for the one allowed follow-up pass: draft create/update route schemas accept nullable metadata and string-encoded integer amounts, while mobile update schema, OpenAPI update docs, nested draft amount docs, and frontend draft request types still lag that wire contract.
+- Phase AB closed in PR #519 as squash merge `a0274878`: draft create/update routes import shared `draftRequests.ts` schemas, mobile update schema reuses the nullable metadata owner, OpenAPI docs `UpdateDraftRequest.label`/`memo` as nullable strings and nested amount fields as number-or-string, and frontend `src/api/drafts.ts` request/response types align with the server wire shape.
+- 2026-06-06 first-pass selection: Phase AC closes the wallet batch transaction route-schema drift. `server/src/api/transactions/drafting.ts` defines `BatchTransactionRequestSchema`/`BatchTransactionOutputSchema` with `.passthrough()` and all-optional fields and manually re-validates outputs in helper functions, while `server/src/api/openapi/schemas/transactions.ts` `TransactionBatchRequest`/`TransactionBatchOutput` document `additionalProperties: false`, required `outputs` and `feeRate`, `outputs` `minItems: 1`, and required `address` per output, and the frontend `CreateBatchTransactionRequest`/`BatchTransactionOutput` types in `src/api/transactions/types.ts` already match the strict shape.
 
 ## Closed Loop Selection - Phase AA Vault Policy Request Schemas
 
@@ -79,12 +80,150 @@ Reduce drift risk between system-wide admin policy creation/update and wallet-sc
 | AA.2 | Tighten OpenAPI policy request config docs | `server/src/api/openapi/schemas/wallet.ts`, OpenAPI contract tests | OpenAPI wallet/admin policy tests | Create/update policy requests no longer document policy config as an unconstrained open object; `VaultPolicy.config` response docs remain open JSON because persisted policies can be returned across source types. |
 | AA.3 | Add drift and boundary tests | Admin policy route tests, wallet policy route tests, OpenAPI contract tests | Focused tests plus `git diff --check` and touched-file lizard if logic changed | Malformed admin config rejects before service dispatch; valid admin/wallet config still dispatches; null description compatibility is covered. |
 
-## Current Loop Selection - Phase AB Draft Request Schemas
+## Current Loop Selection - Phase AC Batch Transaction Request Schemas
+
+Source plan: `docs/plans/rationalization-plan.md`
+Date: 2026-06-06
+Commit: `7db313cf`
+Scope: first autonomous rationalize-loop pass after PR #519 closeout.
+
+### Selected Finding
+
+| Area | Evidence | Disposition |
+| --- | --- | --- |
+| Wallet batch transaction create request schema, OpenAPI parity, and route-layer manual revalidation | `server/src/api/transactions/drafting.ts:31-44` declares `BatchTransactionOutputSchema` / `BatchTransactionRequestSchema` with `.passthrough()`, all-optional fields, and no `minItems` on `outputs`; `server/src/api/transactions/drafting.ts:50-92` re-implements address/amount/sendMax/`feeRate` validation in JS helpers and throws `ValidationError` after the schema accepts the body; `server/src/api/openapi/schemas/transactions.ts:275-301` documents `TransactionBatchOutput`/`TransactionBatchRequest` with `additionalProperties: false`, required `outputs`/`feeRate`, `outputs.minItems: 1`, required output `address`, and output `amount.minimum: 1`; `src/api/transactions/types.ts:184-197` exposes the strict `BatchTransactionOutput`/`CreateBatchTransactionRequest` types to frontend callers; `shared/schemas/mobileApiRequests.ts` owns single-recipient `MobileTransactionCreateRequestSchema` / `MobilePsbtCreateRequestSchema` but has no batch counterpart. | Converge |
+
+### Canonical Path Decision
+
+| Area | Canonical Path | Paths To Retire Or Wrap | Compatibility Policy | Decision Needed |
+| --- | --- | --- | --- | --- |
+| Batch transaction create request validation | A shared route-schema owner for `TransactionBatchOutput`/`TransactionBatchRequest` parsed at the route boundary using the same vocabulary (`MOBILE_API_REQUEST_LIMITS.minFeeRate`, positive non-zero integer `amount`, required `address`, optional `sendMax`, exactly-one `sendMax` flag, optional `selectedUtxoIds`, `enableRBF`, `label`, `memo`) before the wallet network address check runs. Bitcoin address validation against the wallet network and policy evaluation remain in the route since they need wallet state. | Route-local `BatchTransactionRequestSchema`/`BatchTransactionOutputSchema` with `.passthrough()` and all-optional fields; route-local helpers that throw `ValidationError` for missing `address`, missing `amount`, `feeRate < MIN_FEE_RATE`, or multi-`sendMax` (the route schema should own these so OpenAPI documents the contract); the `feeRate < MIN_FEE_RATE` check should align with `MOBILE_API_REQUEST_LIMITS.minFeeRate` already documented in OpenAPI. | Preserve valid current batch requests, including numeric `amount`, numeric `feeRate`, optional `selectedUtxoIds`, `enableRBF`, `label`, and `memo`. Continue to require Bitcoin address validation against the wallet network at the route after the boundary schema accepts the body. Reject malformed bodies, extras, non-positive `amount` outputs without `sendMax`, multi-`sendMax`, empty `outputs`, and `feeRate` below the documented minimum at the route boundary, returning a 400. | None |
+
+### Objective
+
+Reduce drift between server batch-transaction route validation, OpenAPI batch request docs, and frontend batch request types by sharing one strict request schema owner with the documented wire shape, and folding route-local manual revalidation into the schema where it does not depend on wallet state.
+
+### Non-Goals
+
+- Do not change batch transaction PSBT generation, policy evaluation order, change address handling, or response shape.
+- Do not change the single-recipient `MobileTransactionCreateRequestSchema` / `MobilePsbtCreateRequestSchema` contracts; this phase only converges the batch create surface.
+- Do not collapse raw `/bitcoin/transaction/batch` (frontend `src/api/bitcoin.ts` `BatchTransactionRequest`) with the wallet-scoped `/wallets/:walletId/transactions/batch` route. They remain intentionally distinct operations.
+- Do not move Bitcoin address validation out of the route. Address validation depends on wallet network and remains a route concern.
+- Do not broaden compatibility to accept `additionalProperties` on batch requests after this phase.
+
+### Paths To Keep, Wrap, Converge, Or Remove
+
+| Action | Paths |
+| --- | --- |
+| Keep | `server/src/services/bitcoin/transactionService.ts` `createBatchTransaction` as the behavior owner for batch PSBT generation. |
+| Keep | `validateAddress` and wallet-network resolution in the route, because they depend on wallet state. |
+| Converge | Batch transaction create request schema definition into a shared schema module (e.g. `shared/schemas/mobileApiRequests.ts` or a new `shared/schemas/batchTransactionRequests.ts`) so the same schema drives route validation and OpenAPI contract tests. |
+| Converge | Route-layer manual `outputs` validation that doesn't depend on wallet state into the boundary schema (`address` required, `amount` positive integer or `sendMax: true`, exactly-one `sendMax` across the batch). |
+| Remove | `.passthrough()` and all-optional fields on `BatchTransactionRequestSchema`/`BatchTransactionOutputSchema` after the shared schema is adopted. |
+
+### Compatibility, Migration, And Backout
+
+- Compatibility is request-compatible for valid clients. Existing batch requests with at least one `address`+`amount` output, valid `feeRate`, and optional `selectedUtxoIds`/`enableRBF`/`label`/`memo` continue to succeed.
+- Invalid bodies that previously reached the route helpers (missing address, missing amount, multi-`sendMax`, sub-minimum `feeRate`, extras) now reject at the boundary with a 400 instead of a route-thrown `ValidationError`. Error messages should preserve the current phrasing for the most common cases (`outputs array is required with at least one output`, `Only one output can have sendMax enabled`, `Output N: address is required`, `Output N: amount is required (or set sendMax: true)`, `feeRate must be at least 0.1 sat/vB`) so existing client error parsing keeps working. Phrasing must be set via Zod custom messages (`.min(1, { message: ... })`, `.refine(..., { message: ... })`, `superRefine` for the multi-`sendMax` check and per-index output messages) because `parseTransactionRequestBody` formats Zod issues as `${path}: ${message}` and the existing `transactionsHttpRoutes.creation.contracts.ts` assertions use `toContain(...)` on the substrings above.
+- `MIN_FEE_RATE` in `server/src/constants.ts` and `MOBILE_API_REQUEST_LIMITS.minFeeRate` in `shared/schemas/mobileApiRequests.ts` are both `0.1` today; the convergence keeps them in sync by sourcing the boundary schema's minimum from `MOBILE_API_REQUEST_LIMITS.minFeeRate` and dropping the route's separate `MIN_FEE_RATE` check (or aliasing `MIN_FEE_RATE` to the shared constant so single-recipient code paths keep importing the same value).
+- The OpenAPI `TransactionBatchRequest`/`TransactionBatchOutput` schemas already document the strict shape, so OpenAPI does not need broadening.
+- No data migration is required. The change only moves request schema ownership and tightens the route boundary.
+- Backout is a single-PR revert.
+
+### Implementation Phases
+
+| Phase | Work | Files / Owners | Verification | Exit Criteria |
+| --- | --- | --- | --- | --- |
+| AC.1 | Add shared batch transaction request schema with strict output and request shapes (required `address`, positive integer `amount` when `sendMax` is false/absent, optional `sendMax`, `outputs.min(1)`, `feeRate.min(MOBILE_API_REQUEST_LIMITS.minFeeRate)`, optional `selectedUtxoIds`/`enableRBF`/`label`/`memo`, exactly-one `sendMax`). | `shared/schemas/mobileApiRequests.ts` (or new `shared/schemas/batchTransactionRequests.ts`), `server/src/api/transactions/drafting.ts`, `server/src/api/transactions/requestValidation.ts` if error mapping needs adjustment | Shared schema unit tests, focused batch route tests | Shared schema accepts valid current batch payloads, rejects empty outputs, missing address, non-positive amount without `sendMax`, multi-`sendMax`, sub-minimum `feeRate`, and extras. |
+| AC.2 | Replace route-local `BatchTransactionRequestSchema`/`BatchTransactionOutputSchema` and remove route-local `validateBatchOutputs`/`validateBatchOutput` JS helpers in favor of the boundary schema; keep wallet-network address check in the route. | `server/src/api/transactions/drafting.ts` | Focused batch route tests (`server/tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.creation.contracts.ts`), OpenAPI contract tests (`server/tests/unit/api/openapi.wallet.contracts.ts`) | Route handler reads a strictly typed body, route file no longer carries `.passthrough()` for batch, no helper throws for shape errors the schema already catches. |
+| AC.3 | Add drift/boundary coverage: malformed bodies, extras, empty outputs, missing address, non-positive amount, multi-`sendMax`, sub-minimum `feeRate`, and a positive case that exercises every documented field. Verify OpenAPI contract test for `TransactionBatchRequest` still matches the shared schema (snapshot or derived) and the frontend `CreateBatchTransactionRequest`/`BatchTransactionOutput` types compile against the shared schema's TypeScript shape. | Batch route tests, OpenAPI contract tests, shared schema tests, optional frontend typecheck | Focused tests plus `npx tsc --noEmit` and `git diff --check` | New tests cover each boundary; OpenAPI parity test passes; no production caller depends on the removed `.passthrough()` behavior. |
+
+### Acceptance Criteria
+
+- `server/src/api/transactions/drafting.ts` imports a shared batch transaction request schema and no longer defines `.passthrough()` or all-optional request shapes for `/wallets/:walletId/transactions/batch`.
+- The route-local `validateBatchOutputs`/`validateBatchOutput` helpers are removed or reduced to a single Bitcoin-address-against-wallet-network check that only runs after the boundary schema accepts the body.
+- Boundary schema rejects empty `outputs`, missing `address`, non-positive `amount` without `sendMax`, multiple `sendMax: true` outputs, sub-minimum `feeRate`, and unknown extras at request parse time.
+- OpenAPI `TransactionBatchRequest`/`TransactionBatchOutput` continue to document `additionalProperties: false`, `outputs.minItems: 1`, required `address`, and required `outputs`/`feeRate`; contract tests pass.
+- Frontend `CreateBatchTransactionRequest`/`BatchTransactionOutput` types in `src/api/transactions/types.ts` remain assignable to / compatible with the shared schema's inferred type.
+- Existing happy-path batch route tests pass without modification; new error-path tests preserve current error-message phrasing for the common cases.
+- Focused server, shared, and OpenAPI tests pass; `npx tsc --noEmit` in `server/` and root passes; `git diff --check` passes.
+
+### Edge Cases
+
+- An output with `sendMax: true` has no `amount` requirement; without `sendMax`, `amount` is a positive integer (`> 0`).
+- Exactly one output can have `sendMax: true`; zero is also valid.
+- `feeRate` must meet the documented `MOBILE_API_REQUEST_LIMITS.minFeeRate`. The route's current `MIN_FEE_RATE` constant and `MOBILE_API_REQUEST_LIMITS.minFeeRate` are both `0.1` today, so this is a no-op reconciliation; the boundary schema simply consumes the shared constant so future changes stay in one place.
+- `selectedUtxoIds`, `enableRBF`, `label`, and `memo` remain optional and unchanged in semantics.
+- Bitcoin address-against-wallet-network validation continues to happen in the route after schema acceptance because it needs the wallet record.
+- Raw `/bitcoin/transaction/batch` (frontend `src/api/bitcoin.ts` `BatchTransactionRequest`) and the wallet-scoped `/wallets/:walletId/transactions/batch` route are intentionally different operations and are not merged.
+- The `BatchTransactionResponse` shape is unchanged; only the request boundary is converged.
+- Policy evaluation order (vault policies before PSBT creation) is unchanged.
+
+### Deferred Or Rejected
+
+- Single-recipient `/wallets/:walletId/transactions/create` and `/wallets/:walletId/psbt/create` already use `MobileTransactionCreateRequestSchema` / `MobilePsbtCreateRequestSchema`. No convergence is needed in those routes for this phase.
+- `server/src/api/intelligence.ts` `walletContext: z.record(z.string(), z.unknown())` remains an intentional open AI-assistant extension surface.
+- `server/src/api/auth/tokens.ts` `RefreshBodySchema.passthrough()` remains the intentional dual cookie/body refresh surface.
+- `server/src/api/push.ts` `GatewayAuditBodySchema.passthrough()` remains the documented adapter telemetry boundary.
+- `server/src/api/wallets/import.ts` descriptor/json/data `z.unknown()` fields remain the documented importer adapter boundary.
+- `server/src/api/admin/nodeConfig.ts` `servers: z.unknown().optional()` remains the documented admin compatibility boundary.
+- `server/src/api/schemas/admin.ts` `SystemSettingsUpdateSchema` / backup `meta`+`data` remain documented admin extension/backup compatibility boundaries.
+- Frontend `src/api/price.ts`, `src/api/sync.ts`, `src/api/bitcoin.ts` interface duplication remains a documented "Watch; converge opportunistically" item and is not selected for this phase.
+
+### Verification Notes
+
+- Verification pending implementation. Plan to run, at minimum: `cd server && npm run test:run -- tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.creation.contracts.ts tests/unit/api/openapi.wallet.contracts.ts tests/unit/api/transactions/transactions.mutations.contracts.ts`, root `npm test -- tests/shared/<new batch schema test path>` for the shared schema unit tests, `cd server && npm run typecheck:tests`, `cd server && npm run build`, root `npm run quality:lizard` (the script lives in the root `package.json` and runs `bash scripts/quality/lizard-only.sh`), and `git diff --check`.
+
+## Post-Phase-AB Reanalysis - 2026-06-06
+
+Scope: fresh scrub of current `main` at `7db313cf` after Phase AA (PR #517) and Phase AB (PR #519) merged. This addendum re-checks the deferred route-boundary loose-schema queue against the current source and selects the next single-PR convergence finding without reopening closed phases.
+
+### Reanalysis Verdict
+
+- Phases 1-6 and A-T plus V-Z, AA, AB remain closed. No active production code reopens the auth-session, wallet-role, wallet-identity, node-config-projection, contract-helper, login-health, feature-flag, draft-status, AI-provider, transaction-vocabulary, sync-priority, mempool-estimator, gateway-deploy, transfer-validation, UTXO-route, websocket-protocol, frontend-API-hygiene, UTXO-strategy, low-risk value, ConnectDevice, API base URL, Payjoin, admin monitoring, hardware/export, wallet-create-quorum, webhook-built-in, pre-commit-agent, vault-policy, or draft-request schema findings.
+- The strongest remaining single-PR convergence finding is the wallet batch transaction request schema. Route validation is loose (`.passthrough()`, all-optional, JS helper throws), OpenAPI is strict (`additionalProperties: false`, required fields, `minItems`, output `amount.minimum`), and the frontend type in `src/api/transactions/types.ts` already matches the strict shape. This is the same drift pattern Phase M, M2, V, AA, and AB previously closed for adjacent routes.
+- Other surviving loose route-boundary schemas in `server/src/api/**` are documented adapter/extension boundaries (wallet import descriptor/JSON, push gateway audit extras, admin system-settings/backup compatibility, admin `nodeConfig.servers`, intelligence wallet context, auth refresh dual-surface). They are explicitly deferred and should not be re-selected without domain-specific compatibility tests.
+
+### Reanalysis Inventory
+
+| Area | Evidence | Disposition |
+| --- | --- | --- |
+| Wallet batch transaction create request | `server/src/api/transactions/drafting.ts:31-44` `.passthrough()` / all-optional vs `server/src/api/openapi/schemas/transactions.ts:275-301` strict shape; `src/api/transactions/types.ts:184-197` strict frontend types. | Converge (selected Phase AC) |
+| Raw `/bitcoin/transaction/batch` recipient schema | `server/src/api/bitcoin/transactions.ts:43-51` `BatchTransactionBodySchema` uses `.passthrough()` on each recipient. Same loose-extras pattern, but intentionally separate raw-bitcoin operation from the wallet-scoped route. | Keep separate (per Phase AC Non-Goals) |
+| Single-recipient transaction create / PSBT create | `MobileTransactionCreateRequestSchema` / `MobilePsbtCreateRequestSchema` already own the boundary. | Closed (Phases A-T queue) |
+| Wallet vault policy create/update request | Shared route schema owner adopted in Phase AA. | Closed (PR #517) |
+| Draft create/update request | Shared `shared/schemas/draftRequests.ts` owner adopted in Phase AB. | Closed (PR #519) |
+| Wallet import descriptor/json/data | `server/src/api/wallets/import.ts:21-40` `z.unknown().optional()` is the documented importer adapter boundary. | Keep separate |
+| Push gateway audit body | `server/src/api/push.ts:60-63` `GatewayAuditBodySchema.passthrough()` is the documented adapter telemetry boundary. | Keep separate |
+| Admin system settings / backup payloads | `server/src/api/schemas/admin.ts:134,153-156` `z.record(z.string(), z.unknown())` / `.passthrough()` are documented admin extension/backup compatibility boundaries. | Keep separate |
+| Admin node config `servers` body | `server/src/api/admin/nodeConfig.ts:105` `servers: z.unknown().optional()` is the documented admin compatibility boundary. | Watch (per post-Phase-T) |
+| Intelligence wallet context | `server/src/api/intelligence.ts:54` `walletContext: z.record(z.string(), z.unknown())` is the documented AI-assistant extension surface. | Keep separate |
+| Auth refresh body | `server/src/api/auth/tokens.ts:31-37` `.passthrough()` supports the cookie+body dual-surface contract. | Keep separate |
+| Wallet create positive safe integer parsing | `server/src/api/wallets/crud.ts:38` `z.unknown().transform` is the documented positive safe integer parser implementation detail, not an open unknown-forwarding route field. | Keep (per Phase V notes) |
+| Wallet webhook `profileConfig`/`headerConfig` | `server/src/api/wallets/webhooks.ts:27` `JsonRecordSchema` is the documented generic webhook extension point. | Keep separate (per Phase X notes) |
+| Frontend `src/api/price.ts`/`src/api/sync.ts`/`src/api/bitcoin.ts` response duplicates | Already documented as `Watch; converge opportunistically` in the Post-Phase-I inventory. | Watch |
+
+### Recommended Follow-Up Order
+
+| Phase | Work | Verification | Exit Criteria |
+| --- | --- | --- | --- |
+| AC | Centralize the wallet batch transaction create request schema; remove `.passthrough()` and route-local JS shape validation; preserve wallet-network address check and policy evaluation in the route. | Focused batch route tests, OpenAPI contract tests, shared schema tests, typechecks/build/`git diff --check`. | Selected for this loop; see "Current Loop Selection - Phase AC Batch Transaction Request Schemas" above. |
+| AD (deferred) | Frontend API helper response-shape reuse from `shared/types/api.ts` for `src/api/price.ts`, `src/api/sync.ts`, `src/api/bitcoin.ts` where types already overlap. | Type-only tests, app/test typechecks, negative search for duplicated response interfaces. | Defer; not selected this loop because the documented Phase O finding called this "Watch; converge opportunistically" with no confirmed behavior drift. |
+
+### Edge Cases
+
+- Phase AC must keep raw `/bitcoin/transaction/batch` separate from wallet-scoped `/wallets/:walletId/transactions/batch`.
+- Phase AC must keep policy evaluation between schema acceptance and PSBT creation; it must not run policy evaluation against a body that has not been validated.
+- Phase AC must reconcile `MIN_FEE_RATE` and `MOBILE_API_REQUEST_LIMITS.minFeeRate` such that OpenAPI and shared schema agree; do not weaken either.
+- Phase AC must preserve current error message phrasing for the common batch errors so external batch clients with custom error parsers keep working.
+
+## Closed Loop Selection - Phase AB Draft Request Schemas
 
 Source plan: `docs/plans/rationalization-plan.md`
 Date: 2026-06-04
+Closeout: 2026-06-06 (PR #519 merged as `a0274878`)
 Commit: `8068d696`
-Scope: second and final autonomous rationalize-loop pass after PR #517 closeout.
+Scope: second autonomous rationalize-loop pass after PR #517 closeout. Closed.
 
 | Area | Evidence | Disposition |
 | --- | --- | --- |

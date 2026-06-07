@@ -6,7 +6,6 @@
  */
 
 import { Router } from 'express';
-import { z } from 'zod';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { createLogger } from '../../utils/logger';
 import { walletRepository } from '../../repositories/walletRepository';
@@ -15,80 +14,41 @@ import { ValidationError, NotFoundError, ForbiddenError } from '../../errors/Api
 import { validateAddress } from '../../services/bitcoin/utils';
 import { normalizeLegacyBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import { policyEvaluationEngine } from '../../services/vaultPolicy';
-import { MIN_FEE_RATE } from '../../constants';
 import * as txService from '../../services/bitcoin/transactionService';
 import {
   MobilePsbtCreateRequestSchema,
   MobileTransactionCreateRequestSchema,
   MobileTransactionEstimateRequestSchema,
 } from '@sanctuary/shared/schemas/mobileApiRequests';
+import {
+  BatchTransactionRequestSchema,
+  type BatchTransactionRequest,
+} from '@sanctuary/shared/schemas/batchTransactionRequests';
 import { parseTransactionRequestBody } from './requestValidation';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 const log = createLogger('TX_DRAFT:ROUTE');
 
-const BatchTransactionOutputSchema = z.object({
-  address: z.string().optional(),
-  amount: z.number().optional(),
-  sendMax: z.boolean().optional(),
-}).passthrough();
-
-const BatchTransactionRequestSchema = z.object({
-  outputs: z.array(BatchTransactionOutputSchema).optional(),
-  feeRate: z.number().optional(),
-  selectedUtxoIds: z.array(z.string()).optional(),
-  enableRBF: z.boolean().optional(),
-  label: z.string().optional(),
-  memo: z.string().optional(),
-}).passthrough();
-
 type WalletNetwork = BitcoinNetwork;
-type BatchTransactionOutputInput = z.infer<typeof BatchTransactionOutputSchema>;
 type ValidatedBatchOutput = { address: string; amount: number; sendMax?: boolean };
 
-function validateBatchOutputs(
-  outputs: BatchTransactionOutputInput[] | undefined,
+function resolveBatchOutputs(
+  outputs: BatchTransactionRequest['outputs'],
   network: WalletNetwork
 ): ValidatedBatchOutput[] {
-  if (!outputs || outputs.length === 0) {
-    throw new ValidationError('outputs array is required with at least one output');
-  }
-
-  const validatedOutputs = outputs.map((output, index) =>
-    validateBatchOutput(output, index, network)
-  );
-
-  if (validatedOutputs.filter((output) => output.sendMax).length > 1) {
-    throw new ValidationError('Only one output can have sendMax enabled');
-  }
-
-  return validatedOutputs;
-}
-
-function validateBatchOutput(
-  output: BatchTransactionOutputInput,
-  index: number,
-  network: WalletNetwork
-): ValidatedBatchOutput {
-  if (!output.address) {
-    throw new ValidationError(`Output ${index + 1}: address is required`);
-  }
-
-  if (!output.sendMax && (!output.amount || output.amount <= 0)) {
-    throw new ValidationError(`Output ${index + 1}: amount is required (or set sendMax: true)`);
-  }
-
-  const addressValidation = validateAddress(output.address, network);
-  if (!addressValidation.valid) {
-    throw new ValidationError(`Output ${index + 1}: Invalid Bitcoin address: ${addressValidation.error}`);
-  }
-
-  return {
-    address: output.address,
-    amount: output.amount ?? 0,
-    ...(output.sendMax !== undefined && { sendMax: output.sendMax }),
-  };
+  return outputs.map((output, index) => {
+    const address = output.address as string;
+    const addressValidation = validateAddress(address, network);
+    if (!addressValidation.valid) {
+      throw new ValidationError(`Output ${index + 1}: Invalid Bitcoin address: ${addressValidation.error}`);
+    }
+    return {
+      address,
+      amount: typeof output.amount === 'number' ? output.amount : 0,
+      ...(output.sendMax !== undefined && { sendMax: output.sendMax }),
+    };
+  });
 }
 
 /**
@@ -202,10 +162,6 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     memo,
   } = parseTransactionRequestBody(BatchTransactionRequestSchema, req.body);
 
-  if (!feeRate || feeRate < MIN_FEE_RATE) {
-    throw new ValidationError(`feeRate must be at least ${MIN_FEE_RATE} sat/vB`);
-  }
-
   // Fetch wallet for network validation
   const wallet = await walletRepository.findById(walletId);
 
@@ -214,7 +170,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
   }
 
   const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet') as WalletNetwork;
-  const validatedOutputs = validateBatchOutputs(outputs, network);
+  const validatedOutputs = resolveBatchOutputs(outputs, network);
 
   // Evaluate vault policies BEFORE creating the batch PSBT
   // Note: sendMax outputs have amount=0 here; address control still applies
