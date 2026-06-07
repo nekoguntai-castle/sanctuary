@@ -100,6 +100,36 @@ describe('UTXORow', () => {
     expect(container.querySelector('.w-5.h-5.rounded.border.cursor-pointer')).not.toBeInTheDocument();
   });
 
+  it('exposes ARIA checkbox semantics and toggles via Space/Enter', () => {
+    const onToggleSelect = vi.fn();
+    renderRow({ onToggleSelect });
+
+    const checkbox = screen.getByRole('checkbox', { name: /select utxo/i });
+    expect(checkbox).toHaveAttribute('aria-checked', 'false');
+    expect((checkbox as HTMLElement).tabIndex).toBe(0);
+
+    fireEvent.keyDown(checkbox, { key: ' ' });
+    expect(onToggleSelect).toHaveBeenCalledWith('abc123def456:0');
+
+    onToggleSelect.mockClear();
+    fireEvent.keyDown(checkbox, { key: 'Enter' });
+    expect(onToggleSelect).toHaveBeenCalledWith('abc123def456:0');
+  });
+
+  it('does not toggle on unrelated key presses', () => {
+    const onToggleSelect = vi.fn();
+    renderRow({ onToggleSelect });
+    const checkbox = screen.getByRole('checkbox', { name: /select utxo/i });
+    fireEvent.keyDown(checkbox, { key: 'Escape' });
+    expect(onToggleSelect).not.toHaveBeenCalled();
+  });
+
+  it('reports aria-checked=true when selected', () => {
+    renderRow({ isSelected: true });
+    const checkbox = screen.getByRole('checkbox', { name: /select utxo/i });
+    expect(checkbox).toHaveAttribute('aria-checked', 'true');
+  });
+
   it('hides checkbox when frozen', () => {
     const { container } = renderRow({ utxo: makeUtxo({ frozen: true }) });
     expect(container.querySelector('.w-5.h-5.rounded.border.cursor-pointer')).not.toBeInTheDocument();
