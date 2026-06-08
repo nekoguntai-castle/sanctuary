@@ -112,8 +112,8 @@ export function DashboardContent({ data }: DashboardContentProps) {
         />
       </div>
 
-      {/* Top Stats Row - 3 columns */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 stagger-enter">
+      {/* Top Stats Row - 3 columns at lg+, 2 cols on tablet portrait, 1 on phone */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-enter">
 
         {/* BTC Price Card - Compact with animated price */}
         <div className="surface-elevated rounded-xl p-5 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive animate-fade-in-up-1">

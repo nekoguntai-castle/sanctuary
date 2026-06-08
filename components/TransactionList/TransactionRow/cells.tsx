@@ -287,7 +287,7 @@ export function TransactionBalanceCell({
 
   return (
     <ClickableCell
-      className="px-4 py-3 whitespace-nowrap text-right"
+      className="px-4 py-3 whitespace-nowrap text-right hidden sm:table-cell"
       highlightClass={highlightClass}
       onTxClick={onTxClick}
       tx={tx}
@@ -372,7 +372,7 @@ export function TransactionWalletBadgeCell({
 
   return (
     <ClickableCell
-      className="px-4 py-3 whitespace-nowrap"
+      className="px-4 py-3 whitespace-nowrap hidden md:table-cell"
       highlightClass={highlightClass}
       onTxClick={onTxClick}
       tx={tx}

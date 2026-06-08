@@ -17,6 +17,12 @@
         darkMode: 'class',
         theme: {
           extend: {
+            // tablet breakpoint sits between md (768px) and lg (1024px) so
+            // iPad portrait (834px) and similar mid-widths can adapt before
+            // hitting the desktop layout.
+            screens: {
+              tablet: '900px',
+            },
             colors: {
               // Sanctuary = Structural Palette (Backgrounds/Borders/Neutral Text)
               // Updated to use CSS variables for Deep Theming support

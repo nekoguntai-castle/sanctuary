@@ -10,19 +10,27 @@ export function TransactionTableHeader({
       <HeaderCell label="Date" align="left" />
       <HeaderCell label="Type" align="left" />
       <HeaderCell label="Amount" align="right" />
-      {showBalance && <HeaderCell label="Balance" align="right" />}
+      {showBalance && <HeaderCell label="Balance" align="right" responsiveClass="hidden sm:table-cell" />}
       <HeaderCell label="Confs" align="center" />
       <HeaderCell label="Labels" align="left" />
-      {showWalletBadge && <HeaderCell label="Wallet" align="left" />}
+      {showWalletBadge && <HeaderCell label="Wallet" align="left" responsiveClass="hidden md:table-cell" />}
     </tr>
   );
 }
 
-function HeaderCell({ label, align }: { label: string; align: 'left' | 'right' | 'center' }) {
+function HeaderCell({
+  label,
+  align,
+  responsiveClass = '',
+}: {
+  label: string;
+  align: 'left' | 'right' | 'center';
+  responsiveClass?: string;
+}) {
   const alignClass = getHeaderAlignClass(align);
 
   return (
-    <th scope="col" className={`px-4 py-3 ${alignClass} text-xs font-medium text-sanctuary-500 uppercase tracking-wider`}>
+    <th scope="col" className={`px-4 py-3 ${alignClass} ${responsiveClass} text-xs font-medium text-sanctuary-500 uppercase tracking-wider`}>
       {label}
     </th>
   );
