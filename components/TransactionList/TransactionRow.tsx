@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import {
   getDirectionBorderClass,
   getHighlightClass,
@@ -12,7 +12,7 @@ import {
 } from './TransactionRow/cells';
 import type { TransactionRowProps } from './TransactionRow/types';
 
-export const TransactionRow: React.FC<TransactionRowProps> = ({
+const TransactionRowImpl: React.FC<TransactionRowProps> = ({
   confirmationThreshold,
   deepConfirmationThreshold,
   isConsolidation,
@@ -50,3 +50,10 @@ export const TransactionRow: React.FC<TransactionRowProps> = ({
     </>
   );
 };
+TransactionRowImpl.displayName = 'TransactionRow';
+
+// memo'd so virtualized lists don't re-render every row when the parent
+// re-renders for unrelated state (e.g. price-feed updates). Default shallow
+// prop comparison is sufficient when the parent passes stable callbacks via
+// useCallback and a stable tx object reference; see TransactionList.tsx.
+export const TransactionRow = memo(TransactionRowImpl);

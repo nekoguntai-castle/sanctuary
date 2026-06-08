@@ -11,7 +11,7 @@
  * Extracted from SendTransaction.tsx for maintainability.
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, memo } from "react";
 import { Scanner, IDetectedBarcode } from "@yudiel/react-qr-scanner";
 import {
   Check,
@@ -548,7 +548,7 @@ function AmountSection({
   );
 }
 
-export function OutputRow({
+function OutputRowImpl({
   output,
   index,
   totalOutputs,
@@ -681,3 +681,10 @@ export function OutputRow({
     </div>
   );
 }
+OutputRowImpl.displayName = 'OutputRow';
+
+// memo'd so the row doesn't re-render when an unrelated sibling output
+// changes. The 20-prop signature is wide; default shallow equality assumes
+// parents pass stable callbacks and stable currency-format / fiat refs.
+// See SendTransactionPage / OutputsStep for the call site.
+export const OutputRow = memo(OutputRowImpl);

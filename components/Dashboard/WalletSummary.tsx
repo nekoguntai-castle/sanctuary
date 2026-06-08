@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import type { KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wallet, isMultisigType } from '../../types';
@@ -384,7 +384,7 @@ function WalletSummaryTable({
   );
 }
 
-export const WalletSummary: React.FC<WalletSummaryProps> = ({
+const WalletSummaryImpl: React.FC<WalletSummaryProps> = ({
   selectedNetwork,
   filteredWallets,
   totalBalance,
@@ -425,3 +425,10 @@ export const WalletSummary: React.FC<WalletSummaryProps> = ({
     </div>
   );
 };
+WalletSummaryImpl.displayName = 'WalletSummary';
+
+// memo'd so the Dashboard doesn't re-render the wallet table when only an
+// unrelated card (price feed, fees, node status) updates. Default shallow
+// equality assumes Dashboard passes a stable `filteredWallets` array
+// reference (useMemo'd in useDashboardData).
+export const WalletSummary = memo(WalletSummaryImpl);

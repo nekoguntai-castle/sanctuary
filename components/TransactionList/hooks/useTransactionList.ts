@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Transaction, Wallet, Label } from '../../../types';
 import * as bitcoinApi from '../../../src/api/bitcoin';
 import * as labelsApi from '../../../src/api/labels';
@@ -149,14 +149,20 @@ export function useTransactionList({
     }
   };
 
-  const handleTxClick = (tx: Transaction) => {
-    if (onTransactionClick) {
-      onTransactionClick(tx);
-    } else {
-      setSelectedTx(tx);
-      setEditingLabels(false);
-    }
-  };
+  // Stable reference: TransactionRow is memo'd, so passing a fresh
+  // function ref every render would defeat the memo. Dependencies are the
+  // external handler (caller-controlled) and React's stable setState refs.
+  const handleTxClick = useCallback(
+    (tx: Transaction) => {
+      if (onTransactionClick) {
+        onTransactionClick(tx);
+      } else {
+        setSelectedTx(tx);
+        setEditingLabels(false);
+      }
+    },
+    [onTransactionClick],
+  );
 
   const handleEditLabels = async (tx: Transaction) => {
     setEditingLabels(true);

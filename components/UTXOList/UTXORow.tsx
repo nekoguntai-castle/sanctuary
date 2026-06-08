@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { createUtxoRowModel } from './UTXORow/utxoRowModel';
 import { UtxoAddressLink } from './UTXORow/UtxoAddressLink';
 import { UtxoAgeTransactionDetails } from './UTXORow/UtxoAgeTransactionDetails';
@@ -8,7 +8,7 @@ import { UtxoFreezeButton } from './UTXORow/UtxoFreezeButton';
 import { UtxoSelectionControl } from './UTXORow/UtxoSelectionControl';
 import type { UTXORowProps } from './UTXORow/types';
 
-export const UTXORow: React.FC<UTXORowProps> = ({
+const UTXORowImpl: React.FC<UTXORowProps> = ({
   utxo,
   isSelected,
   selectable,
@@ -63,3 +63,10 @@ export const UTXORow: React.FC<UTXORowProps> = ({
     </div>
   );
 };
+UTXORowImpl.displayName = 'UTXORow';
+
+// memo'd so virtualized lists don't re-render every row when the parent
+// re-renders for unrelated state (e.g. price-feed updates). Default shallow
+// prop comparison is sufficient when the parent passes stable callbacks via
+// useCallback; see UTXOList.tsx.
+export const UTXORow = memo(UTXORowImpl);
