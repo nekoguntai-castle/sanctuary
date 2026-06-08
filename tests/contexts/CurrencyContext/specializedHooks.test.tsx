@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as priceApi from "../../../src/api/price";
@@ -6,7 +6,10 @@ import {
   useBtcPrice,
   useCurrencyFormatter,
   useCurrencySettings,
+  usePriceFreeFormatter,
 } from "../../../contexts/CurrencyContext";
+import { usePriceContext } from "../../../contexts/PriceContext";
+import { useCurrencyPreferencesContext } from "../../../contexts/CurrencyPreferencesContext";
 import { renderWithProviders, setupDefaultMocks } from "./helpers";
 
 vi.mock("../../../utils/logger", () => ({
@@ -129,5 +132,86 @@ describe("CurrencyContext - Specialized hooks", () => {
     await user.click(screen.getByTestId("toggle"));
 
     expect(screen.getByTestId("showFiat")).toHaveTextContent("true");
+  });
+
+  it("usePriceFreeFormatter returns only format + unit", async () => {
+    const TestPriceFree = () => {
+      const { format, unit } = usePriceFreeFormatter();
+      return (
+        <div>
+          <span data-testid="format">{format(50000)}</span>
+          <span data-testid="format-btc">
+            {format(100000000, { forceSats: false })}
+          </span>
+          <span data-testid="unit">{unit}</span>
+        </div>
+      );
+    };
+
+    renderWithProviders(<TestPriceFree />);
+
+    await waitFor(() => {
+      expect(priceApi.getPrice).toHaveBeenCalled();
+    });
+
+    expect(screen.getByTestId("format")).toHaveTextContent("50,000 sats");
+    expect(screen.getByTestId("unit")).toHaveTextContent("sats");
+  });
+
+  it("usePriceContext throws when used outside PriceProvider", () => {
+    const Outside = () => {
+      usePriceContext();
+      return null;
+    };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => render(<Outside />)).toThrow(
+      /usePriceContext must be used within PriceProvider/,
+    );
+    spy.mockRestore();
+  });
+
+  it("useCurrencyPreferencesContext throws when used outside its provider", () => {
+    const Outside = () => {
+      useCurrencyPreferencesContext();
+      return null;
+    };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => render(<Outside />)).toThrow(
+      /must be used within CurrencyPreferencesProvider/,
+    );
+    spy.mockRestore();
+  });
+
+  it("keeps the same availableProviders reference when the list is unchanged", async () => {
+    const refs: string[][] = [];
+    const TestProviders = () => {
+      const { availableProviders } = useCurrencySettings();
+      refs.push(availableProviders);
+      return <span data-testid="providers">{availableProviders.join(",")}</span>;
+    };
+
+    renderWithProviders(<TestProviders />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("providers")).toHaveTextContent(
+        "auto,mempool,coingecko,kraken,coinbase",
+      );
+    });
+
+    const stableRef = refs[refs.length - 1];
+
+    // Fire the providers-changed event with the SAME provider list. The
+    // shallow-equal guard in applyAvailableProviders must return the prior
+    // array reference rather than producing a new one.
+    await waitFor(() => {
+      window.dispatchEvent(new Event(priceApi.PRICE_PROVIDERS_CHANGED_EVENT));
+    });
+
+    await waitFor(() => {
+      expect(priceApi.getProviders).toHaveBeenCalledTimes(2);
+    });
+
+    // The last captured reference is identical to the one before the event.
+    expect(refs[refs.length - 1]).toBe(stableRef);
   });
 });

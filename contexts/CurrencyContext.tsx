@@ -1,280 +1,120 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-} from "react";
-import { useUser } from "./UserContext";
-import { useOptionalActiveNetwork } from "./ActiveNetworkContext";
-import * as priceApi from "../src/api/price";
-import { suppressFiatForNetwork } from "../src/app/networks";
-import { createLogger } from "../utils/logger";
-import { satsToBTC, formatBTC } from "@sanctuary/shared/utils/bitcoin";
-import type { UserPreferences } from "../types";
+/**
+ * CurrencyContext (compatibility shim)
+ *
+ * The original monolithic CurrencyContext has been split into:
+ *   - CurrencyPreferencesContext — slow-changing user prefs + format helpers
+ *     that don't depend on the live price
+ *   - PriceContext                — volatile price state + 60 s refresh
+ *
+ * This file remains the public entry point. CurrencyProvider wires both
+ * providers (in the correct order — PriceProvider reads fiatCurrency and
+ * priceProvider out of CurrencyPreferencesContext). The hooks here keep
+ * the existing public API so consumers don't churn:
+ *
+ *   - useCurrency()           — legacy combined hook; subscribes to BOTH
+ *                               contexts. Prefer one of the selectors.
+ *   - useBtcPrice()           — subscribes to PriceContext only.
+ *   - useCurrencySettings()   — subscribes to CurrencyPreferencesContext only.
+ *   - useCurrencyFormatter()  — subscribes to both because formatFiat /
+ *                               getFiatValue need price + showFiat + symbol.
+ */
 
-const log = createLogger("Currency");
+import React, { useCallback } from 'react';
+import {
+  CurrencyPreferencesProvider,
+  useCurrencyPreferencesContext,
+} from './CurrencyPreferencesContext';
+import type {
+  BitcoinUnit,
+  FiatCurrency,
+} from './CurrencyPreferencesContext';
+import { PriceProvider, usePriceContext } from './PriceContext';
+import { useOptionalActiveNetwork } from './ActiveNetworkContext';
+import { suppressFiatForNetwork } from '../src/app/networks';
+import { satsToBTC } from '@sanctuary/shared/utils/bitcoin';
 
-export type FiatCurrency = "USD" | "EUR" | "GBP" | "JPY";
-export type BitcoinUnit = "sats" | "btc";
+export type { BitcoinUnit, FiatCurrency };
+
 export type FiatNetworkOptions = { network?: string | null };
-
-interface CurrencyContextType {
-  showFiat: boolean;
-  toggleShowFiat: () => void;
-  fiatCurrency: FiatCurrency;
-  setFiatCurrency: (code: FiatCurrency) => void;
-  unit: BitcoinUnit;
-  setUnit: (unit: BitcoinUnit) => void;
-  btcPrice: number | null;
-  priceChange24h: number | null;
-  currencySymbol: string;
-  format: (sats: number, options?: { forceSats?: boolean }) => string;
-  formatFiat: (sats: number, options?: FiatNetworkOptions) => string | null;
-  getFiatValue: (sats: number, options?: FiatNetworkOptions) => number | null;
-  formatFiatPrice: (price: number | null) => string;
-  priceLoading: boolean;
-  priceError: string | null;
-  lastPriceUpdate: Date | null;
-  refreshPrice: () => Promise<void>;
-  priceProvider: string;
-  setPriceProvider: (provider: string) => void;
-  availableProviders: string[];
-  reloadAvailableProviders: () => Promise<void>;
-}
-
-const CurrencyContext = createContext<CurrencyContextType | undefined>(
-  undefined,
-);
-
-const SYMBOLS: Record<FiatCurrency, string> = {
-  USD: "$",
-  EUR: "€",
-  GBP: "£",
-  JPY: "¥",
-};
-
-const FALLBACK_PRICE_PROVIDERS = [
-  "auto",
-  "mempool",
-  "coingecko",
-  "kraken",
-  "coinbase",
-];
 
 export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
-}) => {
-  const { user, isLoading, updatePreferences } = useUser();
-  const activeNetwork = useOptionalActiveNetwork()?.selectedNetwork;
+}) => (
+  <CurrencyPreferencesProvider>
+    <PriceProvider>{children}</PriceProvider>
+  </CurrencyPreferencesProvider>
+);
 
-  // Local state fallbacks for when user is not logged in yet (or if preferences are missing)
-  const [localShowFiat, setLocalShowFiat] = useState(false);
-  const [localFiatCurrency, setLocalFiatCurrency] =
-    useState<FiatCurrency>("USD");
-  const [localUnit, setLocalUnit] = useState<BitcoinUnit>("sats");
-  const [localPriceProvider, setLocalPriceProvider] = useState<string>("auto");
+/**
+ * Hook for components that only need the live BTC price.
+ *
+ * Subscribes to PriceContext only — preference changes won't re-render.
+ */
+export function useBtcPrice() {
+  const {
+    btcPrice,
+    priceChange24h,
+    priceLoading,
+    priceError,
+    lastPriceUpdate,
+    refreshPrice,
+  } = usePriceContext();
+  return {
+    btcPrice,
+    priceChange24h,
+    priceLoading,
+    priceError,
+    lastPriceUpdate,
+    refreshPrice,
+  };
+}
 
-  // Price fetching state - start with null until first real price is fetched
-  const [btcPrice, setBtcPrice] = useState<number | null>(null);
-  const [priceChange24h, setPriceChange24h] = useState<number | null>(null);
-  const [priceLoading, setPriceLoading] = useState(true);
-  const [priceError, setPriceError] = useState<string | null>(null);
-  const [lastPriceUpdate, setLastPriceUpdate] = useState<Date | null>(null);
-  const [availableProviders, setAvailableProviders] = useState<string[]>([
-    "auto",
-  ]);
-
-  // Derive values from user prefs if available, else local
-  const showFiat = user?.preferences?.showFiat ?? localShowFiat;
-  const fiatCurrency =
-    (user?.preferences?.fiatCurrency as FiatCurrency) ?? localFiatCurrency;
-  const unit = (user?.preferences?.unit as BitcoinUnit) ?? localUnit;
-  const priceProvider =
-    (user?.preferences?.priceProvider as string) ?? localPriceProvider;
-  const priceProviderRef = useRef(priceProvider);
-  const pendingBootstrapPreferencesRef = useRef<Partial<UserPreferences>>({});
-
-  useEffect(() => {
-    priceProviderRef.current = priceProvider;
-  }, [priceProvider]);
-
-  const queueBootstrapPreference = useCallback(
-    (patch: Partial<UserPreferences>) => {
-      if (!isLoading) return;
-      pendingBootstrapPreferencesRef.current = {
-        ...pendingBootstrapPreferencesRef.current,
-        ...patch,
-      };
-    },
-    [isLoading],
-  );
-
-  useEffect(() => {
-    const pending = pendingBootstrapPreferencesRef.current;
-    if (Object.keys(pending).length === 0) return;
-
-    if (user) {
-      pendingBootstrapPreferencesRef.current = {};
-      updatePreferences(pending);
-      return;
-    }
-
-    if (!isLoading) {
-      pendingBootstrapPreferencesRef.current = {};
-    }
-  }, [isLoading, user, updatePreferences]);
-
-  const setFiatCurrency = useCallback(
-    (code: FiatCurrency) => {
-      if (user) updatePreferences({ fiatCurrency: code });
-      else {
-        setLocalFiatCurrency(code);
-        queueBootstrapPreference({ fiatCurrency: code });
-      }
-    },
-    [user, updatePreferences, queueBootstrapPreference],
-  );
-
-  const setUnit = useCallback(
-    (u: BitcoinUnit) => {
-      if (user) updatePreferences({ unit: u });
-      else {
-        setLocalUnit(u);
-        queueBootstrapPreference({ unit: u });
-      }
-    },
-    [user, updatePreferences, queueBootstrapPreference],
-  );
-
-  const setPriceProvider = useCallback(
-    (provider: string) => {
-      if (user) updatePreferences({ priceProvider: provider });
-      else {
-        setLocalPriceProvider(provider);
-        queueBootstrapPreference({ priceProvider: provider });
-      }
-    },
-    [user, updatePreferences, queueBootstrapPreference],
-  );
-
-  const toggleShowFiat = useCallback(() => {
-    if (user) updatePreferences({ showFiat: !showFiat });
-    else {
-      const nextShowFiat = !localShowFiat;
-      setLocalShowFiat(nextShowFiat);
-      queueBootstrapPreference({ showFiat: nextShowFiat });
-    }
-  }, [
-    user,
-    updatePreferences,
+/**
+ * Hook for components that only need preference state (Settings screens,
+ * unit toggles, fiat-currency pickers).
+ *
+ * Subscribes to CurrencyPreferencesContext only — the 60-second price
+ * refresh won't re-render.
+ */
+export function useCurrencySettings() {
+  const {
     showFiat,
-    localShowFiat,
-    queueBootstrapPreference,
-  ]);
+    toggleShowFiat,
+    fiatCurrency,
+    setFiatCurrency,
+    unit,
+    setUnit,
+    priceProvider,
+    setPriceProvider,
+    availableProviders,
+    reloadAvailableProviders,
+  } = useCurrencyPreferencesContext();
+  return {
+    showFiat,
+    toggleShowFiat,
+    fiatCurrency,
+    setFiatCurrency,
+    unit,
+    setUnit,
+    priceProvider,
+    setPriceProvider,
+    availableProviders,
+    reloadAvailableProviders,
+  };
+}
 
-  const currencySymbol = SYMBOLS[fiatCurrency];
-
-  // Fetch live price from API
-  const refreshPrice = useCallback(async () => {
-    try {
-      setPriceLoading(true);
-      setPriceError(null);
-
-      const priceData =
-        priceProvider === "auto"
-          ? await priceApi.getPrice(fiatCurrency, true)
-          : await priceApi.getPriceFromProvider(priceProvider, fiatCurrency);
-      setBtcPrice(priceData.price);
-      setPriceChange24h(priceData.change24h ?? null);
-      setLastPriceUpdate(new Date(priceData.timestamp));
-    } catch (error) {
-      log.error("Failed to fetch BTC price", { error });
-      setPriceError("Failed to fetch price");
-      // Keep btcPrice as null to show "-----" instead of stale fallback
-    } finally {
-      setPriceLoading(false);
-    }
-  }, [fiatCurrency, priceProvider]);
-
-  const applyAvailableProviders = useCallback(
-    (providers: string[]) => {
-      const nextProviders = [
-        "auto",
-        ...providers.filter((provider) => provider !== "auto"),
-      ];
-      setAvailableProviders(nextProviders);
-
-      const currentProvider = priceProviderRef.current;
-      if (
-        currentProvider !== "auto" &&
-        !nextProviders.includes(currentProvider)
-      ) {
-        setPriceProvider("auto");
-      }
-    },
-    [setPriceProvider],
-  );
-
-  const reloadAvailableProviders = useCallback(async () => {
-    try {
-      const { providers } = await priceApi.getProviders();
-      applyAvailableProviders(providers);
-    } catch (error) {
-      log.warn("Failed to load price providers", { error });
-      setAvailableProviders(FALLBACK_PRICE_PROVIDERS);
-    }
-  }, [applyAvailableProviders]);
-
-  // Load enabled providers from the backend, keeping a static fallback for offline settings.
-  useEffect(() => {
-    let mounted = true;
-
-    priceApi
-      .getProviders()
-      .then(({ providers }) => {
-        if (!mounted) return;
-        applyAvailableProviders(providers);
-      })
-      .catch((error) => {
-        log.warn("Failed to load price providers", { error });
-        if (mounted) {
-          setAvailableProviders(FALLBACK_PRICE_PROVIDERS);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [applyAvailableProviders]);
-
-  useEffect(() => {
-    const onProvidersChanged = () => {
-      void reloadAvailableProviders();
-    };
-
-    window.addEventListener(
-      priceApi.PRICE_PROVIDERS_CHANGED_EVENT,
-      onProvidersChanged,
-    );
-    return () => {
-      window.removeEventListener(
-        priceApi.PRICE_PROVIDERS_CHANGED_EVENT,
-        onProvidersChanged,
-      );
-    };
-  }, [reloadAvailableProviders]);
-
-  // Fetch price on mount and when currency changes
-  useEffect(() => {
-    refreshPrice();
-
-    // Refresh price every 60 seconds
-    const interval = setInterval(refreshPrice, 60000);
-    return () => clearInterval(interval);
-  }, [refreshPrice]);
+/**
+ * Hook for components that need to format values (sats/btc + optional fiat).
+ *
+ * Subscribes to BOTH contexts because formatFiat / getFiatValue need the
+ * live BTC price. If a component never displays fiat, prefer accessing
+ * only `format` via the lighter usePriceFreeFormatter() hook below.
+ */
+export function useCurrencyFormatter() {
+  const { format, formatFiatPrice, currencySymbol, unit, showFiat } =
+    useCurrencyPreferencesContext();
+  const { btcPrice } = usePriceContext();
+  const activeNetwork = useOptionalActiveNetwork()?.selectedNetwork;
 
   const getFiatValue = useCallback(
     (sats: number, options?: FiatNetworkOptions): number | null => {
@@ -285,120 +125,20 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
     [activeNetwork, btcPrice],
   );
 
-  // Format fiat price - returns "-----" if price not yet loaded
-  const formatFiatPrice = useCallback(
-    (price: number | null): string => {
-      if (price === null) return "-----";
-      return `${currencySymbol}${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    },
-    [currencySymbol],
-  );
-
-  // Format BTC/sats value only (no fiat)
-  const format = useCallback(
-    (sats: number, options?: { forceSats?: boolean }) => {
-      const useSats = options?.forceSats || unit === "sats";
-
-      if (useSats) {
-        return `${sats.toLocaleString()} sats`;
-      } else {
-        // Format as BTC with trailing zeros trimmed
-        return `${formatBTC(satsToBTC(sats))} BTC`;
-      }
-    },
-    [unit],
-  );
-
-  // Format fiat value only (returns null if fiat is disabled or price unavailable)
   const formatFiat = useCallback(
     (sats: number, options?: FiatNetworkOptions): string | null => {
       if (!showFiat) return null;
       if (suppressFiatForNetwork(options?.network ?? activeNetwork)) return null;
       const fiatVal = getFiatValue(sats, options);
-      if (fiatVal === null) return "-----";
-      return `${currencySymbol}${fiatVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      if (fiatVal === null) return '-----';
+      return `${currencySymbol}${fiatVal.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
     },
     [activeNetwork, showFiat, getFiatValue, currencySymbol],
   );
 
-  // Memoize context value to prevent unnecessary re-renders
-  const value = useMemo<CurrencyContextType>(
-    () => ({
-      showFiat,
-      toggleShowFiat,
-      fiatCurrency,
-      setFiatCurrency,
-      unit,
-      setUnit,
-      btcPrice,
-      priceChange24h,
-      currencySymbol,
-      format,
-      formatFiat,
-      getFiatValue,
-      formatFiatPrice,
-      priceLoading,
-      priceError,
-      lastPriceUpdate,
-      refreshPrice,
-      priceProvider,
-      setPriceProvider,
-      availableProviders,
-      reloadAvailableProviders,
-    }),
-    [
-      showFiat,
-      toggleShowFiat,
-      fiatCurrency,
-      setFiatCurrency,
-      unit,
-      setUnit,
-      btcPrice,
-      priceChange24h,
-      currencySymbol,
-      format,
-      formatFiat,
-      getFiatValue,
-      formatFiatPrice,
-      priceLoading,
-      priceError,
-      lastPriceUpdate,
-      refreshPrice,
-      priceProvider,
-      setPriceProvider,
-      availableProviders,
-      reloadAvailableProviders,
-    ],
-  );
-
-  return (
-    <CurrencyContext.Provider value={value}>
-      {children}
-    </CurrencyContext.Provider>
-  );
-};
-
-export const useCurrency = () => {
-  const context = useContext(CurrencyContext);
-  if (!context)
-    throw new Error("useCurrency must be used within CurrencyProvider");
-  return context;
-};
-
-/**
- * Hook for components that only need to format values
- * Reduces re-renders when price state changes
- */
-export const useCurrencyFormatter = () => {
-  const {
-    format,
-    formatFiat,
-    getFiatValue,
-    formatFiatPrice,
-    currencySymbol,
-    unit,
-    showFiat,
-  } = useCurrency();
   return {
     format,
     formatFiat,
@@ -408,56 +148,30 @@ export const useCurrencyFormatter = () => {
     unit,
     showFiat,
   };
-};
+}
 
 /**
- * Hook for components that only need price data
+ * Lighter formatter hook for components that never display fiat — only the
+ * sats/BTC unit-aware `format` + `unit`. Subscribes to preferences only.
  */
-export const useBtcPrice = () => {
-  const {
-    btcPrice,
-    priceChange24h,
-    priceLoading,
-    priceError,
-    lastPriceUpdate,
-    refreshPrice,
-  } = useCurrency();
-  return {
-    btcPrice,
-    priceChange24h,
-    priceLoading,
-    priceError,
-    lastPriceUpdate,
-    refreshPrice,
-  };
-};
+export function usePriceFreeFormatter() {
+  const { format, unit } = useCurrencyPreferencesContext();
+  return { format, unit };
+}
 
 /**
- * Hook for settings that control currency display
+ * Legacy combined hook. Subscribes to BOTH contexts. New consumers should
+ * prefer one of the targeted selector hooks above so they don't re-render
+ * on every price refresh / settings change.
  */
-export const useCurrencySettings = () => {
-  const {
-    showFiat,
-    toggleShowFiat,
-    fiatCurrency,
-    setFiatCurrency,
-    unit,
-    setUnit,
-    priceProvider,
-    setPriceProvider,
-    availableProviders,
-    reloadAvailableProviders,
-  } = useCurrency();
+export function useCurrency() {
+  const prefs = useCurrencyPreferencesContext();
+  const price = usePriceContext();
+  const formatter = useCurrencyFormatter();
   return {
-    showFiat,
-    toggleShowFiat,
-    fiatCurrency,
-    setFiatCurrency,
-    unit,
-    setUnit,
-    priceProvider,
-    setPriceProvider,
-    availableProviders,
-    reloadAvailableProviders,
+    ...prefs,
+    ...price,
+    formatFiat: formatter.formatFiat,
+    getFiatValue: formatter.getFiatValue,
   };
-};
+}

@@ -48,8 +48,11 @@ describe("CurrencyContext - useCurrency hook", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
+    // After the CurrencyContext split, the error message names the
+    // specific sub-provider that's missing. The contract — throws when
+    // outside the provider tree — is preserved.
     expect(() => render(<TestComponent />)).toThrow(
-      "useCurrency must be used within CurrencyProvider",
+      /must be used within CurrencyPreferencesProvider/,
     );
 
     consoleSpy.mockRestore();
