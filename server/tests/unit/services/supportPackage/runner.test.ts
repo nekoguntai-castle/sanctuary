@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import Module from 'module';
 
 // Mock collectors registry before importing runner
 const mockCollectors = new Map<string, (ctx: any) => Promise<Record<string, unknown>>>();
@@ -82,31 +81,12 @@ describe('generateSupportPackage', () => {
     expect(result).toMatch(/^wallet-[a-f0-9]{8}$/);
   });
 
-  it('sets serverVersion to "unknown" when package.json require fails', async () => {
-    // Remove package.json from require cache so it will be re-required
-    const pkgJsonPath = require.resolve('../../../../package.json');
-    const cachedValue = require.cache[pkgJsonPath];
-    delete require.cache[pkgJsonPath];
-
-    // Intercept Module._resolveFilename to make require('...package.json') throw
-    const originalResolve = (Module as any)._resolveFilename;
-    (Module as any)._resolveFilename = function (request: string, ...args: unknown[]) {
-      if (request.endsWith('package.json') && !request.includes('node_modules')) {
-        throw new Error('Simulated: Cannot find module');
-      }
-      return originalResolve.call(this, request, ...args);
-    };
-
+  it('uses the package version cached at module load', async () => {
     mockCollectors.set('test', async () => ({ ok: true }));
 
-    try {
-      const pkg = await generateSupportPackage();
-      expect(pkg.serverVersion).toBe('unknown');
-    } finally {
-      (Module as any)._resolveFilename = originalResolve;
-      // Restore cache
-      if (cachedValue) require.cache[pkgJsonPath] = cachedValue;
-    }
+    const pkg = await generateSupportPackage();
+
+    expect(pkg.serverVersion).toMatch(/^\d+\.\d+\.\d+/);
   });
 
   it('runs collectors in parallel', async () => {

@@ -6,44 +6,14 @@
  */
 
 import { Router } from 'express';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import { asyncHandler } from '../../errors/errorHandler';
+import { PACKAGE_VERSION } from '../../config/packageInfo';
 import { createLogger } from '../../utils/logger';
 
 const router = Router();
 const log = createLogger('ADMIN_VERSION:ROUTE');
 
-// Read version from package.json at startup
-let currentVersion = '0.0.0';
-try {
-  // In Docker: dist/app/src/api/ -> need ../../../../package.json
-  // In dev: dist/src/api/ -> need ../../../package.json
-  const paths = [
-    join(__dirname, '../../../../../package.json'),  // Docker production (admin/ subdirectory)
-    join(__dirname, '../../../../package.json'),     // Development (admin/ subdirectory)
-    join(__dirname, '../../../package.json'),        // Fallback
-  ];
-
-  for (const pkgPath of paths) {
-    try {
-      const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-      if (pkg.version) {
-        currentVersion = pkg.version;
-        break;
-      }
-    } catch (error) {
-      log.debug('Package version path did not resolve', { path: pkgPath, error: String(error) });
-      // Try next path
-    }
-  }
-
-  if (currentVersion === '0.0.0') {
-    log.warn('Could not read version from package.json');
-  }
-} catch {
-  log.warn('Could not read version from package.json');
-}
+const currentVersion = PACKAGE_VERSION;
 
 // Codeberg (Forgejo API) is the source of truth for official releases.
 // /releases/latest filters out drafts and prereleases automatically, so RC

@@ -3,7 +3,11 @@
  */
 
 import { vi } from 'vitest';
-import { getOperationType } from '../../../src/models/prisma';
+import {
+  getOperationType,
+  parseSlowQueryThresholdMs,
+  summarizeDatabaseUrlParams,
+} from '../../../src/models/prisma';
 
 describe('getOperationType', () => {
   describe('select operations', () => {
@@ -57,6 +61,68 @@ describe('getOperationType', () => {
     ])('should return "other" for %s', (action) => {
       expect(getOperationType(action)).toBe('other');
     });
+  });
+});
+
+describe('parseSlowQueryThresholdMs', () => {
+  it('defaults to 50 when env is unset', () => {
+    expect(parseSlowQueryThresholdMs(undefined)).toBe(50);
+  });
+
+  it('defaults to 50 when env is empty', () => {
+    expect(parseSlowQueryThresholdMs('')).toBe(50);
+  });
+
+  it('parses a positive integer', () => {
+    expect(parseSlowQueryThresholdMs('120')).toBe(120);
+  });
+
+  it('parses a string that starts with digits', () => {
+    expect(parseSlowQueryThresholdMs('75ms')).toBe(75);
+  });
+
+  it('falls back to 50 on non-numeric input', () => {
+    expect(parseSlowQueryThresholdMs('not-a-number')).toBe(50);
+  });
+
+  it('falls back to 50 on zero', () => {
+    expect(parseSlowQueryThresholdMs('0')).toBe(50);
+  });
+
+  it('falls back to 50 on negative input', () => {
+    expect(parseSlowQueryThresholdMs('-1')).toBe(50);
+  });
+});
+
+describe('summarizeDatabaseUrlParams', () => {
+  it('returns the four tracked params when present in the URL', () => {
+    const result = summarizeDatabaseUrlParams(
+      'postgresql://u:p@h:5432/db?connection_limit=30&pool_timeout=20&connect_timeout=10&statement_timeout=30000',
+    );
+    expect(result).toEqual({
+      connection_limit: '30',
+      pool_timeout: '20',
+      connect_timeout: '10',
+      statement_timeout: '30000',
+    });
+  });
+
+  it('returns undefined entries when params are absent', () => {
+    const result = summarizeDatabaseUrlParams('postgresql://u:p@h:5432/db');
+    expect(result).toEqual({
+      connection_limit: undefined,
+      pool_timeout: undefined,
+      connect_timeout: undefined,
+      statement_timeout: undefined,
+    });
+  });
+
+  it('returns an empty object when the URL is undefined', () => {
+    expect(summarizeDatabaseUrlParams(undefined)).toEqual({});
+  });
+
+  it('returns an empty object when the URL is malformed', () => {
+    expect(summarizeDatabaseUrlParams('not a url')).toEqual({});
   });
 });
 

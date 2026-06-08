@@ -559,6 +559,9 @@ describe('Node Config Repository', () => {
   });
 
   describe('electrumServer.getMaxPriority', () => {
+    // Query shape backed by @@index([nodeConfigId, network, priority]) in
+    // schema.prisma. Any change here that drops nodeConfigId, drops network,
+    // or stops sorting by priority will silently regress to a full-scan plan.
     it('should return highest priority value', async () => {
       (prisma.electrumServer.findFirst as Mock).mockResolvedValue({ priority: 5 });
 

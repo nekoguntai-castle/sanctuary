@@ -8,6 +8,7 @@
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { withTimeout } from '../../utils/async';
+import { PACKAGE_VERSION } from '../../config/packageInfo';
 import { generateSalt, createAnonymizer } from './anonymizer';
 import { getCollectors } from './collectors';
 import type { SupportPackage, CollectorContext, GenerateOptions } from './types';
@@ -81,19 +82,10 @@ export async function generateSupportPackage(options: GenerateOptions = {}): Pro
     }
   }
 
-  // Get server version
-  let serverVersion = 'unknown';
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    serverVersion = require('../../../package.json').version;
-  } catch {
-    log.debug('Could not read server version from package.json');
-  }
-
   const pkg: SupportPackage = {
     version: '1.0.0',
     generatedAt: generatedAt.toISOString(),
-    serverVersion,
+    serverVersion: PACKAGE_VERSION,
     collectors,
     meta: {
       totalDurationMs: Date.now() - startTime,

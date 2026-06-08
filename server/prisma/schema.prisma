@@ -709,6 +709,7 @@ model ElectrumServer {
   nodeConfig NodeConfig @relation(fields: [nodeConfigId], references: [id], onDelete: Cascade)
 
   @@index([nodeConfigId])
+  @@index([nodeConfigId, network, priority])
   @@index([network, enabled, serverUsage])
   @@index([network, enabled, supportsSilentPaymentsV0])
   @@index([priority])

@@ -13,7 +13,7 @@ const EXCLUDED_SUFFIXES = ['.test.ts', '.spec.ts'];
 const BLOCKING_PATTERN = /\b(readFileSync|writeFileSync|existsSync|readdirSync|statSync|lstatSync|execSync|spawnSync|appendFileSync|unlinkSync|mkdirSync|rmSync|copyFileSync|chmodSync|renameSync)\b/;
 
 const ALLOWLIST = new Set([
-  'server/src/api/admin/version.ts',
+  'server/src/config/packageInfo.ts',
   'server/src/services/migrationService.ts',
   'server/src/services/push/providers/fcm.ts',
   'server/src/services/push/providers/apns.ts',

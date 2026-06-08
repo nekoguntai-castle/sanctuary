@@ -22,8 +22,21 @@ import { dbQueryDuration } from '../observability/metrics';
 
 const log = createLogger('INFRA:DB');
 
-// Slow query threshold in milliseconds
-const SLOW_QUERY_THRESHOLD_MS = 100;
+/**
+ * Parse a positive-integer ms threshold from a raw env value.
+ * Exported for unit testing; consumers should read SLOW_QUERY_THRESHOLD_MS instead.
+ * @internal
+ */
+export function parseSlowQueryThresholdMs(raw: string | undefined): number {
+  if (!raw) return 50;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
+}
+
+// Slow query threshold in milliseconds. Configurable via SLOW_QUERY_THRESHOLD_MS env.
+// Default of 50ms surfaces regressions in the 50-100ms band that the previous
+// 100ms default silently dropped.
+const SLOW_QUERY_THRESHOLD_MS = parseSlowQueryThresholdMs(process.env.SLOW_QUERY_THRESHOLD_MS);
 
 // Connection retry configuration
 const MAX_RETRIES = 5;
@@ -101,11 +114,39 @@ const prisma = new PrismaClient({ adapter }).$extends({
 });
 
 /**
+ * Parse the connection-pool params we care about out of a DATABASE_URL so a
+ * mis-tuned pool surfaces in startup logs instead of as a mystery stall.
+ * Exported for unit testing.
+ * @internal
+ */
+export function summarizeDatabaseUrlParams(
+  databaseUrl: string | undefined,
+): Record<string, string | undefined> {
+  try {
+    const url = new URL(databaseUrl || '');
+    return {
+      connection_limit: url.searchParams.get('connection_limit') ?? undefined,
+      pool_timeout: url.searchParams.get('pool_timeout') ?? undefined,
+      connect_timeout: url.searchParams.get('connect_timeout') ?? undefined,
+      statement_timeout: url.searchParams.get('statement_timeout') ?? undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Connect to database with retry logic
  * Implements exponential backoff for resilience during startup
  */
 export async function connectWithRetry(): Promise<void> {
   let lastError: Error | null = null;
+
+  const poolParams = summarizeDatabaseUrlParams(process.env.DATABASE_URL);
+  log.info('Database connection pool configuration', {
+    slowQueryThresholdMs: SLOW_QUERY_THRESHOLD_MS,
+    ...poolParams,
+  });
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
