@@ -107,7 +107,15 @@ export const LayoutShell: React.FC<LayoutShellProps> = ({
   sidebarContent,
   children,
 }) => (
-  <div className="flex h-screen overflow-hidden text-sanctuary-900 dark:text-sanctuary-100 transition-colors duration-500 noise-overlay">
+  <div
+    className="flex h-screen overflow-hidden text-sanctuary-900 dark:text-sanctuary-100 transition-colors duration-500 noise-overlay"
+    style={{
+      paddingTop: 'env(safe-area-inset-top)',
+      paddingBottom: 'env(safe-area-inset-bottom)',
+      paddingLeft: 'env(safe-area-inset-left)',
+      paddingRight: 'env(safe-area-inset-right)',
+    }}
+  >
     <DesktopSidebar sidebarContent={sidebarContent} />
 
     <div className="flex flex-col flex-1 w-0 overflow-hidden bg-transparent">
