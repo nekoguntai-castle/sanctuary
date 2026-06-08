@@ -45,6 +45,10 @@ vi.mock('../../../contexts/CurrencyContext', () => ({
   useCurrency: () => ({
     format: (sats: number) => `${sats} sats`,
   }),
+  usePriceFreeFormatter: () => ({
+    format: (sats: number) => `${sats} sats`,
+    unit: 'sats',
+  }),
 }));
 
 vi.mock('../../../hooks/useErrorHandler', () => ({

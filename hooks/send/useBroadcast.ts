@@ -11,7 +11,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 import * as transactionsApi from '../../src/api/transactions';
 import { useErrorHandler } from '../useErrorHandler';
 import { useNotificationSound } from '../useNotificationSound';
-import { useCurrency } from '../../contexts/CurrencyContext';
+import { usePriceFreeFormatter } from '../../contexts/CurrencyContext';
 import { queryClient } from '../../providers/QueryProvider';
 import { isMultisigType } from '../../types';
 import { createLogger } from '../../utils/logger';
@@ -227,7 +227,7 @@ export function useBroadcast({
   setError,
 }: UseBroadcastDeps): UseBroadcastResult {
   const navigate = useNavigate();
-  const { format } = useCurrency();
+  const { format } = usePriceFreeFormatter();
   const { showSuccess } = useErrorHandler();
   const { playEventSound } = useNotificationSound();
 

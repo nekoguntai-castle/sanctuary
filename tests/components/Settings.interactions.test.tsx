@@ -50,8 +50,8 @@ vi.mock("../../contexts/UserContext", () => ({
   }),
 }));
 
-vi.mock("../../contexts/CurrencyContext", () => ({
-  useCurrency: () => ({
+vi.mock("../../contexts/CurrencyContext", () => {
+  const value = () => ({
     currency: "USD",
     setCurrency: vi.fn(),
     format: (sats: number) => `$${sats}`,
@@ -69,14 +69,19 @@ vi.mock("../../contexts/CurrencyContext", () => ({
     priceLoading: false,
     lastPriceUpdate: new Date("2026-03-01T12:00:00Z"),
     currencySymbol: "$",
-  }),
-  FiatCurrency: {
-    USD: "USD",
-    EUR: "EUR",
-    GBP: "GBP",
-    JPY: "JPY",
-  },
-}));
+  });
+  return {
+    useCurrency: value,
+    useCurrencySettings: value,
+    usePriceFreeFormatter: value,
+    FiatCurrency: {
+      USD: "USD",
+      EUR: "EUR",
+      GBP: "GBP",
+      JPY: "JPY",
+    },
+  };
+});
 
 vi.mock("../../components/PriceProviderDiagnostics", () => ({
   PriceProviderDiagnostics: () => (

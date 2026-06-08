@@ -1,9 +1,9 @@
 import React from 'react';
-import { useCurrency, FiatCurrency } from '../../../contexts/CurrencyContext';
+import { useCurrencySettings, FiatCurrency } from '../../../contexts/CurrencyContext';
 import { DollarSign, Globe } from 'lucide-react';
 
 const DisplayTab: React.FC = () => {
-  const { showFiat, toggleShowFiat, fiatCurrency, setFiatCurrency, unit, setUnit } = useCurrency();
+  const { showFiat, toggleShowFiat, fiatCurrency, setFiatCurrency, unit, setUnit } = useCurrencySettings();
 
   return (
     <div className="space-y-6">

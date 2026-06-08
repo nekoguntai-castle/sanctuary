@@ -8,11 +8,16 @@ import type { Transaction } from '../../../types';
 
 const useTransactionListMock = vi.fn();
 
-vi.mock('../../../contexts/CurrencyContext', () => ({
-  useCurrency: () => ({
+vi.mock('../../../contexts/CurrencyContext', () => {
+  const value = {
     format: (value: number) => `${value.toLocaleString()} sats`,
-  }),
-}));
+    unit: 'sats',
+  };
+  return {
+    useCurrency: () => value,
+    usePriceFreeFormatter: () => value,
+  };
+});
 
 vi.mock('../../../hooks/useAIStatus', () => ({
   useAIStatus: () => ({

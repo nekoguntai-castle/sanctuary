@@ -11,11 +11,16 @@ import { PrivacyDetailPanel } from '../../components/PrivacyDetailPanel';
 import type { UtxoPrivacyInfo } from '../../src/api/transactions';
 
 // Mock useCurrency
-vi.mock('../../contexts/CurrencyContext', () => ({
-  useCurrency: () => ({
+vi.mock('../../contexts/CurrencyContext', () => {
+  const value = {
     format: (amount: number) => `${amount} sats`,
-  }),
-}));
+    unit: 'sats',
+  };
+  return {
+    useCurrency: () => value,
+    usePriceFreeFormatter: () => value,
+  };
+});
 
 describe('PrivacyDetailPanel', () => {
   const mockUtxo = {

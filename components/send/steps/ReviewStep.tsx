@@ -7,7 +7,7 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useSendTransaction } from '../../../contexts/send';
-import { useCurrency } from '../../../contexts/CurrencyContext';
+import { usePriceFreeFormatter } from '../../../contexts/CurrencyContext';
 import { createLogger } from '../../../utils/logger';
 import type { TransactionData } from '../../../hooks/send/useSendTransactionActions';
 import { isMultisigType } from '../../../types';
@@ -93,7 +93,7 @@ export function ReviewStep({
     isReadyToSign,
   } = useSendTransaction();
 
-  const { format } = useCurrency();
+  const { format } = usePriceFreeFormatter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const deviceFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [signingDeviceId, setSigningDeviceId] = useState<string | null>(null);

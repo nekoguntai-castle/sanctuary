@@ -39,6 +39,10 @@ vi.mock('../../contexts/CurrencyContext', () => ({
   useCurrency: () => ({
     format: mocks.format,
   }),
+  usePriceFreeFormatter: () => ({
+    format: mocks.format,
+    unit: 'sats',
+  }),
 }));
 
 vi.mock('../../src/api/transactions', () => ({

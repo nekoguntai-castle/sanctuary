@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { UTXO } from '../../types';
-import { useCurrency } from '../../contexts/CurrencyContext';
+import { usePriceFreeFormatter } from '../../contexts/CurrencyContext';
 import { useFeeEstimates } from '../../hooks/queries/useBitcoin';
 import type { BitcoinFeeNetwork } from '../../src/api/bitcoin';
 import type { UtxoPrivacyInfo, WalletPrivacySummary } from '../../src/api/transactions';
@@ -50,7 +50,7 @@ export const UTXOList: React.FC<UTXOListProps> = ({
   showPrivacy = false,
   network = 'mainnet',
 }) => {
-  const { format } = useCurrency();
+  const { format } = usePriceFreeFormatter();
   const explorerUrl = useExplorerUrl();
   const feeNetwork = toFeeNetwork(network);
   const { data: feeEstimates } = useFeeEstimates(feeNetwork);

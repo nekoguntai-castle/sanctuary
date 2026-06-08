@@ -25,6 +25,7 @@ vi.mock('../../../contexts/send', () => ({
 
 vi.mock('../../../contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
+  usePriceFreeFormatter: vi.fn(),
 }));
 
 // Mock child components
@@ -103,6 +104,7 @@ describe('ReviewStep', () => {
     vi.clearAllMocks();
     vi.mocked(SendContext.useSendTransaction).mockReturnValue(defaultContext as any);
     vi.mocked(CurrencyContext.useCurrency).mockReturnValue(defaultCurrencyContext as any);
+    vi.mocked(CurrencyContext.usePriceFreeFormatter).mockReturnValue(defaultCurrencyContext as any);
   });
 
   describe('Rendering', () => {

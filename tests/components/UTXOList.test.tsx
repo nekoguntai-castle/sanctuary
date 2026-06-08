@@ -13,6 +13,7 @@ import * as bitcoinApi from '../../src/api/bitcoin';
 // Mock contexts and hooks
 vi.mock('../../contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
+  usePriceFreeFormatter: vi.fn(),
 }));
 
 vi.mock('../../hooks/queries/useBitcoin', () => ({
@@ -80,6 +81,10 @@ describe('UTXOList', () => {
     vi.clearAllMocks();
 
     vi.mocked(CurrencyContext.useCurrency).mockReturnValue({
+      format: (sats: number) => `${sats} sats`,
+      unit: 'sats',
+    } as any);
+    vi.mocked(CurrencyContext.usePriceFreeFormatter).mockReturnValue({
       format: (sats: number) => `${sats} sats`,
       unit: 'sats',
     } as any);

@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Transaction, Wallet, Label } from '../../types';
-import { useCurrency } from '../../contexts/CurrencyContext';
+import { usePriceFreeFormatter } from '../../contexts/CurrencyContext';
 import { useAIStatus } from '../../hooks/useAIStatus';
 import { useTransactionList } from './hooks/useTransactionList';
 import type { TransactionStats } from '../../src/api/transactions';
@@ -47,7 +47,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   walletBalance,
   transactionStats,
 }) => {
-  const { format } = useCurrency();
+  const { format } = usePriceFreeFormatter();
   const { enabled: aiEnabled } = useAIStatus();
 
   const {

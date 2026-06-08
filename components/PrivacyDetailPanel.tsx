@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Shield, AlertTriangle, ChevronDown, ChevronUp, Info, ExternalLink } from 'lucide-react';
 import type { UtxoPrivacyInfo, PrivacyFactor } from '../src/api/transactions';
-import { useCurrency } from '../contexts/CurrencyContext';
+import { usePriceFreeFormatter } from '../contexts/CurrencyContext';
 import {
   normalizePrivacyGrade,
   normalizePrivacyList,
@@ -254,7 +254,7 @@ function LearnMoreSection() {
  * Main Privacy Detail Panel Component
  */
 export function PrivacyDetailPanel({ utxo, privacyInfo, onClose }: PrivacyDetailPanelProps) {
-  const { format } = useCurrency();
+  const { format } = usePriceFreeFormatter();
   const [isVisible, setIsVisible] = useState(false);
 
   const scoreData = privacyInfo?.score;

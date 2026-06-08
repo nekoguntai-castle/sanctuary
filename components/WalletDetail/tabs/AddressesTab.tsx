@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { useCurrency } from '../../../contexts/CurrencyContext';
+import { usePriceFreeFormatter } from '../../../contexts/CurrencyContext';
 import { useCopyToClipboard } from '../../../hooks/useCopyToClipboard';
 import { AddressFooter } from './AddressesTab/AddressFooter';
 import { AddressListPanel } from './AddressesTab/AddressListPanel';
@@ -38,7 +38,7 @@ export const AddressesTab: React.FC<AddressesTabProps> = ({
   onShowQrModal,
   explorerUrl,
 }) => {
-  const { format } = useCurrency();
+  const { format } = usePriceFreeFormatter();
   const { copy, isCopied } = useCopyToClipboard();
   const { receiveAddresses, changeAddresses } = splitAddresses(addresses);
 

@@ -23,11 +23,16 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../../../contexts/CurrencyContext', () => ({
-  useCurrency: () => ({
+vi.mock('../../../contexts/CurrencyContext', () => {
+  const value = {
     format: (value: number) => `${value} sats`,
-  }),
-}));
+    unit: 'sats',
+  };
+  return {
+    useCurrency: () => value,
+    usePriceFreeFormatter: () => value,
+  };
+});
 
 vi.mock('../../../src/api/drafts', () => ({
   getDrafts: vi.fn(),

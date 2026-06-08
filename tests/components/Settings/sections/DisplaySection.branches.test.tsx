@@ -18,16 +18,20 @@ const {
   mockSetUnit: vi.fn(),
 }));
 
-vi.mock('../../../../contexts/CurrencyContext', () => ({
-  useCurrency: () => ({
+vi.mock('../../../../contexts/CurrencyContext', () => {
+  const value = () => ({
     showFiat: state.showFiat,
     fiatCurrency: state.fiatCurrency,
     unit: state.unit,
     toggleShowFiat: mockToggleShowFiat,
     setFiatCurrency: mockSetFiatCurrency,
     setUnit: mockSetUnit,
-  }),
-}));
+  });
+  return {
+    useCurrency: value,
+    useCurrencySettings: value,
+  };
+});
 
 describe('DisplaySection branch coverage', () => {
   beforeEach(() => {

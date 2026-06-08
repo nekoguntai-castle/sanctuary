@@ -5,11 +5,16 @@ import { AddressesTab } from '../../../../components/WalletDetail/tabs/Addresses
 const copyMock = vi.fn();
 const isCopiedMock = vi.fn((_value?: string) => false);
 
-vi.mock('../../../../contexts/CurrencyContext', () => ({
-  useCurrency: () => ({
+vi.mock('../../../../contexts/CurrencyContext', () => {
+  const value = {
     format: (value: number) => `${value} sats`,
-  }),
-}));
+    unit: 'sats',
+  };
+  return {
+    useCurrency: () => value,
+    usePriceFreeFormatter: () => value,
+  };
+});
 
 vi.mock('../../../../hooks/useCopyToClipboard', () => ({
   useCopyToClipboard: () => ({

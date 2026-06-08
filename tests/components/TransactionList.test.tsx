@@ -15,13 +15,18 @@ import * as transactionsApi from '../../src/api/transactions';
 import type { Transaction,Wallet } from '../../types';
 
 // Mock the CurrencyContext
-vi.mock('../../contexts/CurrencyContext', () => ({
-  useCurrency: () => ({
+vi.mock('../../contexts/CurrencyContext', () => {
+  const value = {
     format: (sats: number) => `${sats.toLocaleString()} sats`,
     btcPrice: 50000,
     currency: 'USD',
-  }),
-}));
+    unit: 'sats',
+  };
+  return {
+    useCurrency: () => value,
+    usePriceFreeFormatter: () => value,
+  };
+});
 
 // Mock AI status hook
 vi.mock('../../hooks/useAIStatus', () => ({

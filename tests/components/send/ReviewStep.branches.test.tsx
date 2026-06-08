@@ -30,6 +30,7 @@ vi.mock('../../../contexts/send', () => ({
 
 vi.mock('../../../contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
+  usePriceFreeFormatter: vi.fn(),
 }));
 
 vi.mock('../../../src/api/bitcoin', () => ({
@@ -194,6 +195,10 @@ describe('ReviewStep branch coverage', () => {
     vi.mocked(CurrencyContext.useCurrency).mockReturnValue({
       format: (sats: number) => `${sats}`,
       formatFiat: () => '$0.00',
+    } as never);
+    vi.mocked(CurrencyContext.usePriceFreeFormatter).mockReturnValue({
+      format: (sats: number) => `${sats}`,
+      unit: 'sats',
     } as never);
 
     vi.mocked(SendContext.useSendTransaction).mockReturnValue(makeContext() as never);

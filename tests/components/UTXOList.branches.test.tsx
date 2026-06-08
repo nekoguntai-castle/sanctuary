@@ -16,6 +16,7 @@ vi.mock('../../utils/logger', () => ({
 
 vi.mock('../../contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
+  usePriceFreeFormatter: vi.fn(),
 }));
 
 vi.mock('../../hooks/queries/useBitcoin', () => ({
@@ -63,6 +64,10 @@ describe('UTXOList branch coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(currencyContext.useCurrency).mockReturnValue({
+      format: (sats: number) => `${sats} sats`,
+      unit: 'sats',
+    } as any);
+    vi.mocked(currencyContext.usePriceFreeFormatter).mockReturnValue({
       format: (sats: number) => `${sats} sats`,
       unit: 'sats',
     } as any);

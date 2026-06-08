@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { deleteDraft, DraftTransaction, getDrafts, updateDraft } from '../../src/api/drafts';
-import { useCurrency } from '../../contexts/CurrencyContext';
+import { usePriceFreeFormatter } from '../../contexts/CurrencyContext';
 import { useLoadingState } from '../../hooks/useLoadingState';
 import { createLogger } from '../../utils/logger';
 import { downloadBlob } from '../../utils/download';
@@ -45,7 +45,7 @@ export function useDraftListController({
   walletType,
 }: DraftListProps): DraftListController {
   const navigate = useNavigate();
-  const { format } = useCurrency();
+  const { format } = usePriceFreeFormatter();
   const [drafts, setDrafts] = useState<DraftTransaction[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [expandedDraft, setExpandedDraft] = useState<string | null>(null);
