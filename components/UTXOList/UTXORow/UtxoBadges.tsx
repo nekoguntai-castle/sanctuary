@@ -24,7 +24,7 @@ function UtxoLabelBadge({ label }: UtxoLabelBadgeProps) {
   }
 
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-sanctuary-100 text-sanctuary-800 dark:bg-sanctuary-800 dark:text-sanctuary-300">
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] lg:text-xs font-medium bg-sanctuary-100 text-sanctuary-800 dark:bg-sanctuary-800 dark:text-sanctuary-300">
       {label}
     </span>
   );
@@ -41,7 +41,7 @@ function LockedDraftBadge({ model }: LockedDraftBadgeProps) {
 
   return (
     <span
-      className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
+      className="inline-flex items-center px-2 py-0.5 rounded text-[10px] lg:text-xs font-medium bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
       title={`Reserved for draft: ${model.utxo.lockedByDraftLabel || 'Unnamed draft'}`}
     >
       <FileText className="w-3 h-3 mr-1" />

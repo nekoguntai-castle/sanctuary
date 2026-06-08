@@ -245,7 +245,7 @@ function PrivacyMetricGrid({
           <div className="text-lg font-bold text-sanctuary-900 dark:text-sanctuary-100">
             {metric.value}
           </div>
-          <div className="text-[10px] text-sanctuary-500">{metric.label}</div>
+          <div className="text-[10px] lg:text-xs text-sanctuary-500">{metric.label}</div>
         </div>
       ))}
     </div>

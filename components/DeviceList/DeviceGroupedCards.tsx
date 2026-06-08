@@ -275,13 +275,13 @@ function DeviceOwnerActions({
 }) {
   return (
     <>
-      <button onClick={(event) => { event.stopPropagation(); onEdit(); }} className="opacity-0 group-hover:opacity-100 text-sanctuary-400 hover:text-sanctuary-600 transition-opacity">
+      <button onClick={(event) => { event.stopPropagation(); onEdit(); }} className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 text-sanctuary-400 hover:text-sanctuary-600 transition-opacity">
         <Edit2 className="w-3 h-3" />
       </button>
       {canDelete && (
         <button
           onClick={(event) => { event.stopPropagation(); onDeletePrompt(); }}
-          className="opacity-0 group-hover:opacity-100 text-sanctuary-400 hover:text-rose-600 transition-opacity ml-1"
+          className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 text-sanctuary-400 hover:text-rose-600 transition-opacity ml-1"
           title="Delete device"
         >
           <Trash2 className="w-3 h-3" />

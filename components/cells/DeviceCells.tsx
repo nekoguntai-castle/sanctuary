@@ -144,7 +144,7 @@ export function createDeviceCellRenderers(
                       e.stopPropagation();
                       handleEdit(device);
                     }}
-                    className="ml-2 opacity-0 group-hover:opacity-100 text-sanctuary-400 hover:text-sanctuary-600 transition-opacity"
+                    className="ml-2 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 text-sanctuary-400 hover:text-sanctuary-600 transition-opacity"
                   >
                     <Edit2 className="w-3 h-3" />
                   </button>

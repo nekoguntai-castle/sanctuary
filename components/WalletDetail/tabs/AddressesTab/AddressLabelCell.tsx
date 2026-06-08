@@ -148,7 +148,7 @@ function AddressLabelReadOnly({
       {address.id && (
         <button
           onClick={() => onEditAddressLabels(address)}
-          className="opacity-0 group-hover:opacity-100 p-1 text-sanctuary-400 hover:text-primary-500 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 rounded transition-all"
+          className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 p-1 text-sanctuary-400 hover:text-primary-500 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 rounded transition-all"
           title="Edit labels"
         >
           <Edit2 className="w-3 h-3" />

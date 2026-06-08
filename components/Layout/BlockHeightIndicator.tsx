@@ -45,7 +45,7 @@ export const BlockHeightIndicator: React.FC = () => {
 
   return (
     <div
-      className={`flex items-center gap-1.5 text-[10px] text-sanctuary-400 transition-colors ${tick ? 'text-success-500' : ''}`}
+      className={`flex items-center gap-1.5 text-[10px] lg:text-xs text-sanctuary-400 transition-colors ${tick ? 'text-success-500' : ''}`}
       title={`${formatNetworkTitle(selectedNetwork)} block height`}
     >
       <Blocks className={`w-3 h-3 transition-transform ${tick ? 'scale-110' : ''}`} />

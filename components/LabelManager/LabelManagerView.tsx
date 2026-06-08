@@ -231,7 +231,7 @@ const UsageCounts = ({ label }: { label: Label }) => (
 );
 
 const LabelActions = ({ label, controller }: { label: Label; controller: LabelManagerController }) => (
-  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
     <button
       onClick={() => controller.handleEdit(label)}
       className="p-1.5 text-sanctuary-500 hover:text-primary-500 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 rounded transition-colors"

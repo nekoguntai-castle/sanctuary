@@ -23,9 +23,14 @@ const buttonVariants: Record<ButtonVariant, string> = {
   ghost: "text-sanctuary-500 hover:text-primary-700 hover:bg-sanctuary-100 dark:text-sanctuary-400 dark:hover:text-primary-200 dark:hover:bg-sanctuary-800",
 };
 
+// Touch floor: 44px is the Apple HIG target. We apply it only on touch
+// devices via `[@media(hover:none)]:min-h-[44px]` so pointer-driven UI stays
+// compact (per CLAUDE.md: compact UI is intentional). `sm` is deliberately
+// for dense controls (sidebars, inline pills) — no touch floor applied.
+// `lg` is already ~48px so the floor is redundant.
 const buttonSizes: Record<ButtonSize, string> = {
   sm: "px-3 py-1.5 text-sm",
-  md: "px-4 py-2 text-base",
+  md: "px-4 py-2 text-base [@media(hover:none)]:min-h-[44px]",
   lg: "px-6 py-3 text-lg",
 };
 

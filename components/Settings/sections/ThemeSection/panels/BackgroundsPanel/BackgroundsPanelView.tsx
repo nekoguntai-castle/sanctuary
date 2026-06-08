@@ -269,7 +269,7 @@ function FavoriteButton({
         absolute top-1 right-1 p-1 rounded-full transition-all
         ${background.isFavorite
           ? 'text-rose-500'
-          : 'text-sanctuary-300 dark:text-sanctuary-600 opacity-0 group-hover:opacity-100 hover:text-rose-400'
+          : 'text-sanctuary-300 dark:text-sanctuary-600 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 hover:text-rose-400'
         }
       `}
       title={background.isFavorite ? 'Remove from favorites' : 'Add to favorites'}

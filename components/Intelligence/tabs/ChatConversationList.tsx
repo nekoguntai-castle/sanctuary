@@ -125,7 +125,7 @@ const ConversationListItem: React.FC<ConversationListItemProps> = ({
         e.stopPropagation();
         onDeleteConversation(conversation.id);
       }}
-      className="flex-shrink-0 rounded p-0.5 text-sanctuary-400 opacity-0 transition-opacity hover:text-rose-500 group-hover:opacity-100 dark:text-sanctuary-500 dark:hover:text-rose-400"
+      className="flex-shrink-0 rounded p-0.5 text-sanctuary-400 opacity-0 transition-opacity hover:text-rose-500 group-hover:opacity-100 [@media(hover:none)]:opacity-100 dark:text-sanctuary-500 dark:hover:text-rose-400"
       title="Delete conversation"
     >
       <Trash2 className="h-3 w-3" />
