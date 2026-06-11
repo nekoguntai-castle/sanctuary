@@ -25,7 +25,6 @@ Conceptual docs: *why* things work the way they do.
 Procedural guides for operators and developers.
 
 - [Operations runbooks](how-to/operations-runbooks.md) — triage, monitoring, alert handling
-- [Forgejo runner host bootstrap](how-to/forgejo-runner-host.md) — operate CI runner hosts; the bootstrap script now lives in `runner-infra`
 - [Agent wallet funding](how-to/agent-wallet-funding.md) — operate agent-funded multisig drafts with human review
 - [AI Settings, Sanctuary Console, and MCP access](how-to/ai-mcp-console.md) — configure trusted model providers, use the Console, and manage external MCP keys
 - [MCP server](how-to/mcp-server.md) — direct read-only MCP endpoint setup for loopback and advanced LAN clients

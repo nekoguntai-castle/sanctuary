@@ -302,17 +302,16 @@ with headroom for retries.
 4. **`scripts/setup.sh`** — verify it does not hard-code a registry;
    pass through `IMAGE_REGISTRY` if set. (Audit during PR.)
 5. **`README.md`** — update the "Pre-built images" section.
-6. **`docs/how-to/forgejo-runner-host.md`** — currently references
-   `ghcr.io` for the runner host's image cache; change to Codeberg.
-7. **`runner-infra/scripts/ops/bootstrap-forgejo-runner-host.sh`** — same;
-   the runner bootstrap script now lives outside this repository.
-8. **`.github/workflows/docker-build.yml`** — currently pushes branch
+6. **`runner-infra/scripts/ops/bootstrap-forgejo-runner-host.sh`** — update
+   the runner host image cache references there; the runner bootstrap script
+   lives outside this repository.
+7. **`.github/workflows/docker-build.yml`** — currently pushes branch
    builds to GHCR. Disable on Forgejo
    (`if: github.server_url == 'https://github.com'`) since GitHub no
    longer receives commits anyway. Branch images on Codeberg are not
    useful — they would just clutter the registry. (Per release skill
    memory: `feedback_github_mirror_decommissioned.md`.)
-9. **`tasks/todo.md`** — sweep for any open items referencing GHCR.
+8. **`tasks/todo.md`** — sweep for any open items referencing GHCR.
 
 ### Phase D — Validate via v0.8.53 release (~1 hr active + CI wall time)
 
