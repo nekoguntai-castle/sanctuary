@@ -304,7 +304,8 @@ with headroom for retries.
 5. **`README.md`** — update the "Pre-built images" section.
 6. **`docs/how-to/forgejo-runner-host.md`** — currently references
    `ghcr.io` for the runner host's image cache; change to Codeberg.
-7. **`scripts/ops/bootstrap-forgejo-runner-host.sh`** — same.
+7. **`runner-infra/scripts/ops/bootstrap-forgejo-runner-host.sh`** — same;
+   the runner bootstrap script now lives outside this repository.
 8. **`.github/workflows/docker-build.yml`** — currently pushes branch
    builds to GHCR. Disable on Forgejo
    (`if: github.server_url == 'https://github.com'`) since GitHub no

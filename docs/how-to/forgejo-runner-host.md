@@ -4,6 +4,11 @@ Use this runbook when adding or rebuilding a Sanctuary Forgejo Actions runner
 host. It turns the runner capacity and cleanup pattern into repeatable host
 configuration instead of a one-off repair.
 
+The bootstrap script is managed outside this repository in the runner-infra
+repository at `scripts/ops/bootstrap-forgejo-runner-host.sh`. Keep changes to
+the script and its regression tests there; this runbook records the Sanctuary
+runner operating contract.
+
 The bootstrap path creates a Docker-in-Docker runner stack, a systemd service
 that starts it after reboot, and a timer that prunes unused Docker resources so
 the runner does not exhaust containers, networks, images, or build cache.
@@ -44,7 +49,7 @@ variable for the current shell and unsetting it after registration.
 
 ## Bootstrap
 
-From a fresh checkout on the runner host:
+From a fresh `runner-infra` checkout on the runner host:
 
 ```bash
 export FORGEJO_INSTANCE_URL="https://forgejo.example.invalid"
@@ -154,10 +159,10 @@ runner churn from recreating the exhaustion.
 
 ## Updating Existing Hosts
 
-For an existing runner host, run the script with the same `--service-name` and
-`--runner-name`. If the host is already registered, the script keeps the
-existing runner registration and rewrites the compose, config, systemd, and
-cleanup files.
+For an existing runner host, run the script from the `runner-infra` checkout
+with the same `--service-name` and `--runner-name`. If the host is already
+registered, the script keeps the existing runner registration and rewrites the
+compose, config, systemd, and cleanup files.
 
 Use `--skip-register` when you only want to refresh host files:
 
