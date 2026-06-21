@@ -8,7 +8,7 @@
   },
   "overrides": {
     "@tootallnate/once": "3.0.1",
-    "protobufjs": "7.5.5",
+    "protobufjs": "7.6.4",
     "uuid": "14.0.0"
   },
   "scripts": {
@@ -29,9 +29,9 @@
     "express-rate-limit": "^8.3.2",
     "firebase-admin": "^13.7.0",
     "helmet": "^8.1.0",
-    "http-proxy-middleware": "^3.0.5",
+    "http-proxy-middleware": "^3.0.7",
     "jsonwebtoken": "^9.0.2",
-    "ws": "^8.18.0",
+    "ws": "^8.21.0",
     "zod": "^4.3.4",
     "@sanctuary/shared": "*"
   },

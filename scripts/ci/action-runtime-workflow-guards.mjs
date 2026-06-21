@@ -201,16 +201,35 @@ function inspectFullLaneParallelization(workflow, relativePath, state) {
     state,
     'full-backend-integration-tests',
   );
-  for (const group of ['api', 'flows', 'ops-workers', 'repositories-core', 'repositories-sharing']) {
-    requireJobText(
-      backendIntegrationBody,
-      relativePath,
+  // Must stay sequential (one job, one Postgres) — mirrors full-browser-e2e-tests.
+  // A matrix span up five concurrent Postgres `services:` containers that get
+  // OOM-killed and recreated empty mid-run under shared-runner memory pressure
+  // (schema vanishes -> "table public.users does not exist").
+  if (/\n\s+matrix:/.test(backendIntegrationBody)) {
+    addUniqueError(
       state,
-      'full-backend-integration-tests',
-      group,
-      `must include backend integration group "${group}"`,
+      `${relativePath}: full-backend-integration-tests must stay sequential; concurrent Postgres "services:" containers are OOM-killed under shared-runner load. Loop the groups in one job instead.`,
     );
   }
+  // Coverage of all groups is enforced by backend-integration-groups.sh --groups
+  // (+ its --check guard, exercised by tests/ci/backend-integration-groups.test.sh),
+  // so the single job must enumerate groups through that script rather than hard-code them.
+  requireJobText(
+    backendIntegrationBody,
+    relativePath,
+    state,
+    'full-backend-integration-tests',
+    'backend-integration-groups.sh',
+    'must enumerate integration groups via backend-integration-groups.sh',
+  );
+  requireJobText(
+    backendIntegrationBody,
+    relativePath,
+    state,
+    'full-backend-integration-tests',
+    '--groups',
+    'must loop all integration groups via backend-integration-groups.sh --groups',
+  );
 
   const backendAggregateBody = requireJobBody(
     workflow,

@@ -1513,9 +1513,23 @@ jobs:
 
       - name: Reclaim disk space before multi-arch build
         run: |
-          # arm64 cross-builds via QEMU pile up large intermediate
-          # layers. Prune anything stale before we start.
-          docker system prune -f || true
+          # arm64 cross-builds via QEMU pile up large intermediate build-cache
+          # layers. Reclaim ONLY the buildkit cache here.
+          #
+          # Do NOT use `docker system prune`: it also sweeps STOPPED containers
+          # on the shared daemon, and can delete a concurrent job's Postgres
+          # `services:` container (e.g. test.yml's backend-integration shards) if
+          # it is briefly stopped under load. Forgejo then recreates the service
+          # empty and that job's schema vanishes mid-run
+          # ("table public.users does not exist"). `builder prune` only touches
+          # buildkit cache — never containers, networks, or volumes.
+          #
+          # Additionally hold the shared node-toolchain runner lock (bounded
+          # wait) so this stays off the daemon while an integration shard's tests
+          # are executing.
+          SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS=120 \
+            "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
+            docker builder prune -f || true
           df -h | head -5
 
       - name: Bootstrap multi-arch buildx + QEMU

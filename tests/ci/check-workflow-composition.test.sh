@@ -488,15 +488,17 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "full backend integration diagnostics" \
   "full-backend-integration-tests:" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/integration-tests.log"' \
+  "scripts/ci/backend-integration-groups.sh" \
+  "scripts/ci/prepare-integration-db.sh" \
   "scripts/ci/with-runner-lock.sh" \
   "scripts/ci/retry-vitest-infrastructure-failure.sh" \
   "backend integration" \
   "scripts/ci/time-command.sh" \
   'npm run test:run:ci -- "${specs[@]}"' \
   "Write backend integration diagnostic summary" \
-  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Integration (${{ matrix.group }})"' \
+  'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Integration"' \
   "Upload backend integration diagnostics" \
-  'ci-diagnostics-backend-integration-${{ matrix.group }}'
+  "ci-diagnostics-backend-integration"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full gateway diagnostics" \

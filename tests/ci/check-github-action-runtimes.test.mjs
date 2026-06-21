@@ -346,20 +346,14 @@ jobs:
   # Full Lane (pull requests, merge queue, main, nightly, manual)
   # ============================================
   full-backend-integration-tests:
-    name: Full Backend Integration Tests (\${{ matrix.group }})
+    name: Full Backend Integration Tests
     runs-on: ubuntu-latest
     needs: [detect-changes, full-lane-ready]
-    strategy:
-      fail-fast: false
-      matrix:
-        group:
-          - api
-          - flows
-          - ops-workers
-          - repositories-core
-          - repositories-sharing
     steps:
-      - run: echo integration group "\${{ matrix.group }}"
+      - run: |
+          for g in $(scripts/ci/backend-integration-groups.sh --groups); do
+            scripts/ci/backend-integration-groups.sh "$g"
+          done
   full-backend-tests:
     name: Full Backend Tests
     runs-on: ubuntu-latest
@@ -665,7 +659,7 @@ jobs: {}
   assert.match(result.errors.join('\n'), /workflow must be named "Test Suite"/);
 }
 
-async function assertBlocksMissingBackendIntegrationGroup() {
+async function assertBlocksBackendIntegrationMatrix() {
   const result = await runFixture(
     `
 name: Runtime Check
@@ -675,7 +669,10 @@ jobs: {}
     (rootDir) => {
       writeFile(
         path.join(rootDir, '.github/workflows/test.yml'),
-        validTestSuiteWorkflow().replace('\n          - repositories-sharing', ''),
+        validTestSuiteWorkflow().replace(
+          '    name: Full Backend Integration Tests\n',
+          '    name: Full Backend Integration Tests\n    strategy:\n      matrix:\n        group: [api, flows]\n',
+        ),
       );
     },
   );
@@ -683,7 +680,7 @@ jobs: {}
   assert.equal(result.findings.length, 0);
   assert.match(
     result.errors.join('\n'),
-    /workflow job "full-backend-integration-tests" must include backend integration group "repositories-sharing"/,
+    /full-backend-integration-tests must stay sequential/,
   );
 }
 
@@ -724,6 +721,6 @@ await assertBlocksMissingFrontendCoverageSplit();
 await assertBlocksCoverageShardSelfDependency();
 await assertBlocksFalseFullLaneDependency();
 await assertBlocksRenamedTestSuiteWorkflow();
-await assertBlocksMissingBackendIntegrationGroup();
+await assertBlocksBackendIntegrationMatrix();
 await assertAllowsRealFullTestSummaryGate();
 console.log('github action runtime guard regression checks passed');

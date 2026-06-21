@@ -449,11 +449,12 @@ jobs:
           '
 
       - name: Run database migrations
+        # See prepare-integration-db.sh — real readiness gate + post-migrate
+        # schema assertion + bounded re-migrate, replacing the racy bare migrate.
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/prisma-migrate.log"
-          ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend smoke prisma migrate"
           ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend smoke prisma migrate"
-          npx prisma migrate deploy
+          ${{ github.workspace }}/scripts/ci/prepare-integration-db.sh
 
       - name: Run integration smoke tests
         env:
@@ -1371,7 +1372,16 @@ jobs:
           retention-days: 14
 
   full-backend-integration-tests:
-    name: Full Backend Integration Tests (${{ matrix.group }})
+    name: Full Backend Integration Tests
+    # Single job that loops every backend-integration group against ONE Postgres
+    # service. The former 5-way matrix span up five concurrent Postgres
+    # `services:` containers which, under shared-runner memory pressure, get
+    # OOM-killed and recreated empty mid-run — the schema vanishes
+    # ("table public.users does not exist") partway through a shard. Forgejo
+    # runner v12.10.1 ignores matrix max-parallel, so the matrix bought no real
+    # parallelism, only contention. This mirrors the already-sequential
+    # full-browser-e2e-tests job. Group coverage stays guaranteed by
+    # backend-integration-groups.sh --groups (and its --check completeness guard).
     if: >-
       always() &&
       needs.full-lane-ready.result == 'success' &&
@@ -1379,19 +1389,10 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     needs: [detect-changes, full-lane-ready]
     env:
-      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-integration-${{ matrix.group }}
-    strategy:
-      fail-fast: false
-      matrix:
-        group:
-          - api
-          - flows
-          - ops-workers
-          - repositories-core
-          - repositories-sharing
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-integration
     defaults:
       run:
         working-directory: server
@@ -1436,54 +1437,79 @@ jobs:
             echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
           '
 
-      - name: Run database migrations
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/prisma-migrate.log"
-          ${{ github.workspace }}/scripts/ci/retry-command.sh "backend integration prisma migrate"
-          ${{ github.workspace }}/scripts/ci/time-command.sh "backend integration prisma migrate"
-          npx prisma migrate deploy
-
       - name: Run integration tests
         env:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
           SANCTUARY_VITEST_INFRA_ATTEMPTS: '5'
-          MATRIX_GROUP: ${{ matrix.group }}
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/integration-tests.log" bash -c '
-            set -euo pipefail
-            group="${MATRIX_GROUP:?}"
-            mapfile -t specs < <("${{ github.workspace }}/scripts/ci/backend-integration-groups.sh" "$group")
-
-            if [ "${#specs[@]}" -eq 0 ]; then
-              echo "::error::No backend integration specs found for group ${group}"
+            set -uo pipefail
+            groups_script="${{ github.workspace }}/scripts/ci/backend-integration-groups.sh"
+            mapfile -t groups < <("$groups_script" --groups)
+            if [ "${#groups[@]}" -eq 0 ]; then
+              echo "::error::No backend integration groups found"
               exit 1
             fi
 
-            printf "Running backend integration group %s:\n" "$group"
+            # Collect every group from backend-integration-groups.sh --groups and
+            # run them in ONE vitest process against the single Postgres. Running
+            # groups as separate vitest invocations against a shared Postgres let
+            # one group leak DB state into the next (the old matrix gave each group
+            # a fresh Postgres). A single vitest run keeps the tests own per-test
+            # isolation authoritative (withTestTransaction rollback +
+            # cleanupTestData) — exactly the local integration harness.
+            specs=()
+            for group in "${groups[@]}"; do
+              mapfile -t group_specs < <("$groups_script" "$group")
+              if [ "${#group_specs[@]}" -eq 0 ]; then
+                echo "::error::No backend integration specs found for group ${group}"
+                exit 1
+              fi
+              specs+=("${group_specs[@]}")
+            done
+            printf "Running %s backend integration spec(s) in one vitest:\n" "${#specs[@]}"
             printf "  %s\n" "${specs[@]}"
 
-            "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
-              "${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh" \
-              "backend integration ${group}" \
-              "${{ github.workspace }}/scripts/ci/time-command.sh" \
-              "backend integration ${group}" \
-              npm run test:run:ci -- "${specs[@]}"
+            # Self-heal a mid-run Postgres wipe (service container OOM-killed and
+            # recreated empty under shared-runner load): each attempt re-establishes
+            # the schema via prepare-integration-db.sh (idempotent: readiness gate +
+            # migrate deploy + schema assertion) before running. The inner
+            # retry-vitest-infrastructure-failure handles native worker crashes.
+            attempts="${SANCTUARY_INTEGRATION_GROUP_ATTEMPTS:-3}"
+            for attempt in $(seq 1 "$attempts"); do
+              printf "\n::group::backend integration (attempt %s/%s)\n" "$attempt" "$attempts"
+              if "${{ github.workspace }}/scripts/ci/prepare-integration-db.sh" \
+                 && "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
+                      "${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh" \
+                      "backend integration" \
+                      "${{ github.workspace }}/scripts/ci/time-command.sh" \
+                      "backend integration" \
+                      npm run test:run:ci -- "${specs[@]}"; then
+                printf "::endgroup::\n"
+                exit 0
+              fi
+              printf "::warning::backend integration attempt %s/%s failed; re-establishing schema and retrying\n" "$attempt" "$attempts"
+              printf "::endgroup::\n"
+            done
+
+            echo "::error::backend integration failed after ${attempts} attempt(s)"
+            exit 1
           '
 
       - name: Write backend integration diagnostic summary
         if: always()
         continue-on-error: true
-        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Integration (${{ matrix.group }})"
+        run: ${{ github.workspace }}/scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Integration"
 
       - name: Upload backend integration diagnostics
         if: always()
         continue-on-error: true
         uses: ./.github/actions/upload-artifact
         with:
-          name: ci-diagnostics-backend-integration-${{ matrix.group }}
-          path: .tmp/ci-diagnostics/backend-integration-${{ matrix.group }}/
+          name: ci-diagnostics-backend-integration
+          path: .tmp/ci-diagnostics/backend-integration/
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
