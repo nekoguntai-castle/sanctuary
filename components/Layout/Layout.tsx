@@ -1,13 +1,16 @@
 import React from 'react';
+import { useLocation } from 'react-router-dom';
 import { ConsoleDrawer } from '../ConsoleDrawer';
 import { SidebarContent } from './SidebarContent';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import { LayoutShell } from './LayoutShell';
 import { LayoutProps } from './types';
 import { useLayoutController } from './useLayoutController';
+import { resolvePageContentWidth } from '../../src/app/resolvePageContentWidth';
 
 export const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme }) => {
   const controller = useLayoutController();
+  const contentWidth = resolvePageContentWidth(useLocation().pathname);
 
   const sidebarContent = (
     <SidebarContent
@@ -33,7 +36,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme 
 
   return (
     <>
-      <LayoutShell controller={controller} sidebarContent={sidebarContent}>
+      <LayoutShell
+        controller={controller}
+        sidebarContent={sidebarContent}
+        contentWidth={contentWidth}
+      >
         {children}
       </LayoutShell>
       <ConsoleDrawer

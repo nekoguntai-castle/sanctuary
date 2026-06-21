@@ -4,11 +4,20 @@ import { AlertTriangle, Menu, X } from 'lucide-react';
 import { SanctuaryLogo } from '../ui/CustomIcons';
 import { AboutModal } from './AboutModal';
 import type { LayoutController } from './useLayoutController';
+import type { PageContentWidth } from '../../src/app/appRouteTypes';
+
+const CONTENT_WIDTH_CLASS: Record<PageContentWidth, string> = {
+  default: 'max-w-7xl',
+  // Keep max-w-7xl up to xl, then widen at 2xl so wide screens aren't wasted.
+  wide: 'max-w-7xl 2xl:max-w-[96rem]',
+  full: 'max-w-none',
+};
 
 interface LayoutShellProps {
   controller: LayoutController;
   sidebarContent: React.ReactNode;
   children: React.ReactNode;
+  contentWidth: PageContentWidth;
 }
 
 interface MobileHeaderProps {
@@ -106,6 +115,7 @@ export const LayoutShell: React.FC<LayoutShellProps> = ({
   controller,
   sidebarContent,
   children,
+  contentWidth,
 }) => (
   <div
     className="flex h-screen overflow-hidden text-sanctuary-900 dark:text-sanctuary-100 transition-colors duration-500 noise-overlay"
@@ -133,7 +143,7 @@ export const LayoutShell: React.FC<LayoutShellProps> = ({
         <DefaultPasswordWarning
           show={!!controller.user?.isAdmin && !!controller.user?.usingDefaultPassword}
         />
-        <div className="py-8 px-4 sm:px-6 md:px-8 max-w-7xl mx-auto">
+        <div className={`py-8 px-4 sm:px-6 md:px-8 mx-auto ${CONTENT_WIDTH_CLASS[contentWidth]}`}>
           {children}
         </div>
       </main>

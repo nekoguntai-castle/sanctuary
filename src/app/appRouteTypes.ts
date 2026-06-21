@@ -32,6 +32,14 @@ export interface AppRouteNavDefinition {
   requiredCapabilities?: readonly AppCapability[];
 }
 
+/**
+ * Page content-width policy for the main layout container.
+ * - "default": the standard max-w-7xl cap.
+ * - "wide": keeps max-w-7xl up to xl, then widens at the 2xl breakpoint.
+ * - "full": no max-width cap (content spans the available width).
+ */
+export type PageContentWidth = "default" | "wide" | "full";
+
 export interface AppRouteDefinition {
   id: string;
   path: string;
@@ -39,6 +47,8 @@ export interface AppRouteDefinition {
   fallback: ReactNode;
   requiredCapabilities?: readonly AppCapability[];
   nav?: AppRouteNavDefinition;
+  /** Optional override of the layout content width for this route. */
+  contentWidth?: PageContentWidth;
 }
 
 export interface AppRedirectRoute {

@@ -88,6 +88,8 @@ export const appRouteDefinitions: AppRouteDefinition[] = [
     path: "/wallets/:id",
     component: WalletDetail,
     fallback: <WalletDetailSkeleton />,
+    // Data-dense (balances, UTXO grid, transaction list) — use the extra 2xl width.
+    contentWidth: "wide",
   },
   {
     id: "console-results",
