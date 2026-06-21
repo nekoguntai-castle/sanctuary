@@ -31,9 +31,12 @@ interface MobileMenuOverlayProps {
   sidebarContent: React.ReactNode;
 }
 
+// Icon-only rail between md and lg (768–1024px); full labeled sidebar at lg+.
+// The same sidebarContent renders in the mobile overlay (md:hidden) below md, so
+// the collapse uses md:/lg: variants only — mobile labels are never affected.
 const DesktopSidebar: React.FC<{ sidebarContent: React.ReactNode }> = ({ sidebarContent }) => (
   <div className="hidden md:flex md:flex-shrink-0">
-    <div className="flex flex-col w-64">
+    <div className="flex flex-col w-64 md:w-16 lg:w-64">
       <div className="flex flex-col h-0 flex-1 border-r border-sanctuary-200 dark:border-sanctuary-800 surface-elevated">
         {sidebarContent}
       </div>

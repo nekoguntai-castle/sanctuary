@@ -24,10 +24,10 @@ export const SidebarConsoleQuickActions: React.FC<
       aria-label="Sidebar actions"
       className="mb-2 mt-4"
     >
-      <p className="px-4 pb-1.5 text-[9px] font-semibold uppercase tracking-[0.15em] text-sanctuary-400 dark:text-sanctuary-500">
+      <p className="px-4 pb-1.5 text-[9px] font-semibold uppercase tracking-[0.15em] text-sanctuary-400 dark:text-sanctuary-500 md:hidden lg:block">
         Actions
       </p>
-      <div className="flex h-8 items-center gap-1.5 px-3">
+      <div className="flex h-8 items-center gap-1.5 px-3 md:flex-col md:h-auto md:px-0 lg:flex-row lg:h-8 lg:px-3">
         {consoleAvailable && onOpenConsole ? (
           <button
             type="button"

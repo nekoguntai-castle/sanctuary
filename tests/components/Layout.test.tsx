@@ -2,7 +2,7 @@
  * Tests for Layout component
  */
 
-import { cleanup,render,screen,waitFor } from '@testing-library/react';
+import { cleanup,render,screen,waitFor,within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
@@ -587,6 +587,39 @@ describe('Layout', () => {
       renderLayout('/wallets/abc123');
       const wrapper = screen.getByTestId('page-content').parentElement;
       expect(wrapper?.className).toContain('2xl:max-w-[96rem]');
+    });
+  });
+
+  describe('Sidebar icon-rail collapse (#51)', () => {
+    it('collapses the desktop sidebar to an icon rail at md and expands at lg', () => {
+      const { container } = renderLayout('/');
+      // The only element carrying the rail width is the desktop sidebar wrapper.
+      const rail = container.querySelector('.md\\:w-16');
+      expect(rail).not.toBeNull();
+      expect(rail).toHaveClass('w-64', 'md:w-16', 'lg:w-64');
+    });
+
+    it('never applies rail collapse to the mobile overlay (labels + full width survive below md)', async () => {
+      const user = userEvent.setup();
+      renderLayout('/wallets');
+
+      await user.click(screen.getByRole('button', { name: /open sidebar/i }));
+      const panel = screen.getByTestId('mobile-sidebar-panel');
+
+      // The drawer keeps its full-width sizing — it must not inherit the icon-rail width.
+      expect(panel).toHaveClass('max-w-xs', 'w-full');
+      expect(panel).not.toHaveClass('md:w-16');
+
+      // Nav labels collapse md→lg only (md:hidden). A bare `hidden` would also blank
+      // them in this mobile drawer, which renders from the same element tree.
+      const dashboardLabel = within(panel).getByText('Dashboard');
+      expect(dashboardLabel).toHaveClass('md:hidden', 'lg:inline');
+      expect(dashboardLabel).not.toHaveClass('hidden');
+    });
+
+    it('keeps an accessible-named Logout control when the footer collapses to icons', () => {
+      renderLayout('/');
+      expect(screen.getByRole('button', { name: 'Logout' })).toBeInTheDocument();
     });
   });
 });

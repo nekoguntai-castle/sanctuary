@@ -41,7 +41,7 @@ const SidebarAdminSection: React.FC<Pick<
         onToggle={onAdminToggle}
       />
       {isAdminExpanded && (
-        <div className="animate-accordion-open space-y-0.5 mb-2 overflow-hidden">
+        <div className="animate-accordion-open space-y-0.5 mb-2 overflow-hidden md:hidden lg:block">
           {adminNavItems.map((item) => (
             <SubNavItem
               key={item.id}
@@ -67,7 +67,7 @@ export const SidebarSystemSection: React.FC<SidebarSystemSectionProps> = ({
   showSettingsNavItem,
 }) => (
   <>
-    <div className="pt-6 pb-2">
+    <div className="pt-6 pb-2 md:hidden lg:block">
       <div className="px-4 text-xs font-semibold text-sanctuary-400 uppercase tracking-wider">
         System
       </div>

@@ -19,7 +19,7 @@ const DeviceSubNavList: React.FC<Pick<SidebarDeviceSectionProps, 'devices' | 'ge
   devices,
   getDeviceCount,
 }) => (
-  <div className="animate-accordion-open space-y-0.5 mb-2 overflow-hidden">
+  <div className="animate-accordion-open space-y-0.5 mb-2 overflow-hidden md:hidden lg:block">
     {devices.length === 0 && (
       <EmptyState
         compact
@@ -53,7 +53,7 @@ export const SidebarDeviceSection: React.FC<SidebarDeviceSectionProps> = ({
 
   return (
     <>
-      <div className="pt-4 pb-1.5">
+      <div className="pt-4 pb-1.5 md:hidden lg:block">
         <div className="px-4 text-[9px] font-semibold text-sanctuary-400 dark:text-sanctuary-500 uppercase tracking-[0.15em]">
           Hardware
         </div>

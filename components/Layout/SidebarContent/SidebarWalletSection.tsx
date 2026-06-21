@@ -24,7 +24,7 @@ const WalletSubNavList: React.FC<Pick<SidebarWalletSectionProps, 'wallets' | 'ge
   wallets,
   getWalletCount,
 }) => (
-  <div className="animate-accordion-open space-y-0.5 mb-2 overflow-hidden">
+  <div className="animate-accordion-open space-y-0.5 mb-2 overflow-hidden md:hidden lg:block">
     {wallets.length === 0 && (
       <EmptyState
         compact
@@ -60,7 +60,7 @@ export const SidebarWalletSection: React.FC<SidebarWalletSectionProps> = ({
 
   return (
     <>
-      <div className="pt-5 pb-1.5">
+      <div className="pt-5 pb-1.5 md:hidden lg:block">
         <div className="px-4 text-[9px] font-semibold text-sanctuary-400 dark:text-sanctuary-500 uppercase tracking-[0.15em]">
           Wallets
         </div>

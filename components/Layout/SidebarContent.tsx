@@ -69,7 +69,7 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
         networkAvailability={networkAvailability}
       />
 
-      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-4 md:px-2 lg:px-4 py-6 space-y-1 overflow-y-auto">
         <SidebarPrimaryNav
           items={primaryNavItems}
         />
