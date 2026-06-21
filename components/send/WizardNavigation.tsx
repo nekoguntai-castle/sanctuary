@@ -78,6 +78,12 @@ export function WizardNavigation({
                 type="button"
                 onClick={() => isClickable && goToStep(step)}
                 disabled={!isClickable}
+                aria-current={status === 'current' ? 'step' : undefined}
+                aria-label={
+                  isClickable && status !== 'current'
+                    ? `Edit step ${index + 1}: ${STEP_LABELS[step]}`
+                    : undefined
+                }
                 className={`
                   relative flex flex-col items-center group
                   ${isClickable ? 'cursor-pointer' : 'cursor-default'}
@@ -100,7 +106,7 @@ export function WizardNavigation({
                   `}
                 >
                   {status === 'completed' ? (
-                    <Check className="w-5 h-5" />
+                    <Check className="w-5 h-5" aria-hidden="true" />
                   ) : (
                     <span className="text-sm font-semibold">{index + 1}</span>
                   )}
@@ -123,7 +129,7 @@ export function WizardNavigation({
 
                 {/* Tooltip on hover for clickable steps */}
                 {isClickable && status !== 'current' && (
-                  <div className="absolute -bottom-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute -bottom-8 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                     <span className="text-[10px] text-sanctuary-500 whitespace-nowrap">
                       Click to edit
                     </span>

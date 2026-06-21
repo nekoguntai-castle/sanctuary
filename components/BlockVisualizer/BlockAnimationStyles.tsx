@@ -85,7 +85,8 @@ export const BlockAnimationStyles: React.FC = () => (
       z-index: 50;
     }
 
-    .block-visualizer-frame:hover .block-visualizer-tooltip {
+    .block-visualizer-frame:hover .block-visualizer-tooltip,
+    .block-visualizer-frame:focus-within .block-visualizer-tooltip {
       opacity: 1;
       transform: translate(-50%, 0);
     }

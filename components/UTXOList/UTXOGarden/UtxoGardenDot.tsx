@@ -25,7 +25,9 @@ export function UtxoGardenDot({ model, onToggleSelect }: UtxoGardenDotProps) {
       `}
       title={model.title}
     >
-      <span className="text-[9px] font-bold opacity-0 hover:opacity-100 transition-opacity absolute bg-black/80 text-white px-1.5 py-0.5 rounded whitespace-nowrap -top-6 z-20 pointer-events-none">
+      {/* hover:none keeps the amount visible on touch devices, where :hover
+          never fires and the native title= tooltip does not surface. */}
+      <span className="text-[9px] font-bold opacity-0 hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity absolute bg-black/80 text-white px-1.5 py-0.5 rounded whitespace-nowrap -top-6 z-20 pointer-events-none">
         {model.formattedAmount}
       </span>
     </div>

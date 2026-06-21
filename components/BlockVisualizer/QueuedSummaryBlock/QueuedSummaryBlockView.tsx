@@ -1,4 +1,6 @@
+import { useRef, useState } from 'react';
 import type { PendingTransaction } from '../../../src/types';
+import { useDismissable } from '../../../hooks/useDismissable';
 import { PendingTxDot } from '../PendingTxDot';
 import type { QueuedSummaryViewModel } from './queuedSummaryHelpers';
 
@@ -15,8 +17,13 @@ export function QueuedSummaryBlockView({
   explorerUrl,
   viewModel,
 }: QueuedSummaryBlockViewProps) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useDismissable(showTooltip, rootRef, () => setShowTooltip(false));
+
   return (
-    <div className="relative group flex flex-col items-center">
+    <div ref={rootRef} className="relative group flex flex-col items-center">
       <div
         className={`
           relative flex-shrink-0 flex flex-col
@@ -25,6 +32,12 @@ export function QueuedSummaryBlockView({
           bg-warning-500 dark:bg-warning-100
         `}
       >
+        <QueuedSummaryToggle
+          compact={compact}
+          isOpen={showTooltip}
+          tooltipText={viewModel.tooltipText}
+          onToggle={() => setShowTooltip((open) => !open)}
+        />
         <StuckTxDots
           stuckTxs={stuckTxs}
           explorerUrl={explorerUrl}
@@ -41,8 +54,41 @@ export function QueuedSummaryBlockView({
       <QueuedTooltip
         compact={compact}
         tooltipText={viewModel.tooltipText}
+        isOpen={showTooltip}
       />
     </div>
+  );
+}
+
+// The queued figure ("N txs waiting • M stuck") lives only in the hover
+// tooltip and the card has no other tap target, so on touch/keyboard it is
+// otherwise unreachable. This overlay is a real <button> (native Enter/Space,
+// no manual key handling) that is a SIBLING of the stuck-tx dot buttons rather
+// than an ancestor — so the dots stay independently operable and we avoid
+// nesting interactive content. It sits above the static content (z-20) but
+// below the dots (z-30); the figure is in aria-label so screen readers hear it
+// on focus. Only rendered in non-compact mode (compact has no tooltip).
+function QueuedSummaryToggle({
+  compact,
+  isOpen,
+  tooltipText,
+  onToggle,
+}: {
+  compact: boolean;
+  isOpen: boolean;
+  tooltipText: string;
+  onToggle: () => void;
+}) {
+  if (compact) return null;
+
+  return (
+    <button
+      type="button"
+      aria-expanded={isOpen}
+      aria-label={tooltipText}
+      onClick={onToggle}
+      className="absolute inset-0 z-20 cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sanctuary-400"
+    />
   );
 }
 
@@ -61,7 +107,7 @@ function StuckTxDots({
 
   return (
     <div className={`
-      absolute z-20
+      absolute z-30
       ${compact ? 'top-0.5 right-0.5' : 'top-1 right-1'}
       flex flex-wrap gap-0.5 max-w-[50%] justify-end
     `}>
@@ -145,20 +191,29 @@ function QueuedCompactLabel({ compact }: { compact: boolean }) {
 function QueuedTooltip({
   compact,
   tooltipText,
+  isOpen,
 }: {
   compact: boolean;
   tooltipText: string;
+  isOpen: boolean;
 }) {
   if (compact) return null;
 
+  // Visual only: aria-hidden because the same figure is in the toggle
+  // button's aria-label, so screen readers hear it on focus without a
+  // duplicate read. Reveal is driven by the toggle state (tap/Enter/Space)
+  // OR mouse hover.
   return (
-    <div className={`
-      absolute bottom-full left-1/2 -translate-x-1/2 mb-1
-      text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded
-      bg-sanctuary-800 text-white dark:bg-white dark:text-sanctuary-900
-      opacity-0 group-hover:opacity-100 transition-opacity duration-200
-      whitespace-nowrap z-50 pointer-events-none shadow-lg
-    `}>
+    <div
+      aria-hidden="true"
+      className={`
+        absolute bottom-full left-1/2 -translate-x-1/2 mb-1
+        text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded
+        bg-sanctuary-800 text-white dark:bg-white dark:text-sanctuary-900
+        ${isOpen ? 'opacity-100' : 'opacity-0'} group-hover:opacity-100 transition-opacity duration-200
+        whitespace-nowrap z-50 pointer-events-none shadow-lg
+      `}
+    >
       {tooltipText}
     </div>
   );

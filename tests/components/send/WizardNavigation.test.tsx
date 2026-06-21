@@ -277,4 +277,52 @@ describe('WizardNavigation', () => {
       expect(primaryConnectors.length).toBeGreaterThan(0);
     });
   });
+
+  describe('Touch and keyboard accessibility (#50)', () => {
+    it('marks the current step with aria-current and gives non-clickable steps no edit label', () => {
+      render(<WizardNavigation />);
+
+      const currentStep = screen.getByText('Type').closest('button')!;
+      expect(currentStep).toHaveAttribute('aria-current', 'step');
+      expect(currentStep).not.toHaveAttribute('aria-label');
+
+      const upcomingStep = screen.getByText('Compose').closest('button')!;
+      expect(upcomingStep).not.toHaveAttribute('aria-current');
+      expect(upcomingStep).not.toHaveAttribute('aria-label');
+    });
+
+    it('labels clickable steps for editing, reveals the hint on focus/touch, and hides the decorative check', () => {
+      mockCanJumpTo.mockReturnValue(true);
+      vi.mocked(SendContext.useSendTransaction).mockReturnValue({
+        ...defaultContext,
+        currentStep: 'outputs',
+        canJumpTo: mockCanJumpTo,
+        state: { completedSteps: new Set(['type']) },
+      } as any);
+
+      render(<WizardNavigation />);
+
+      // Completed + clickable step gets an "Edit step" accessible name; its
+      // check icon is decorative (the step is already identified by the name).
+      const typeStep = screen.getByRole('button', { name: 'Edit step 1: Type' });
+      expect(typeStep).not.toHaveAttribute('aria-current');
+      expect(typeStep.querySelector('[aria-hidden="true"]')).not.toBeNull();
+
+      // Upcoming-but-clickable step also gets an edit label.
+      expect(
+        screen.getByRole('button', { name: 'Edit step 3: Review' })
+      ).toBeInTheDocument();
+
+      // The current step stays current and is NOT given an edit label even
+      // though it is jumpable.
+      const currentStep = screen.getByText('Compose').closest('button')!;
+      expect(currentStep).toHaveAttribute('aria-current', 'step');
+      expect(currentStep).not.toHaveAttribute('aria-label');
+
+      // The "Click to edit" hint reveals on keyboard focus and on touch.
+      const hint = screen.getAllByText('Click to edit')[0].closest('div')!;
+      expect(hint).toHaveClass('group-focus-within:opacity-100');
+      expect(hint).toHaveClass('[@media(hover:none)]:opacity-100');
+    });
+  });
 });

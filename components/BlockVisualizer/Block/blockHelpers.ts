@@ -32,15 +32,24 @@ export const getBlockButtonLabel = (
 ) => {
   const blockType = viewModel.isPending ? 'Pending block' : 'Confirmed block';
   const blockHeight = formatAccessibleBlockHeight(block.height);
-  const txCount = block.txCount === undefined
-    ? 'transaction count unavailable'
-    : `${block.txCount.toLocaleString()} transactions`;
 
-  return [
+  const parts = [
     `${blockType} ${blockHeight}`,
     `median fee ${viewModel.formattedMedianFee} sat/vB`,
-    txCount,
-  ].join(', ');
+  ];
+
+  if (block.txCount === undefined) {
+    parts.push('transaction count unavailable');
+  } else {
+    // Bring the accessible name to parity with the hover tooltip (which is
+    // not reachable on touch): the tooltip shows txs, median, fee range and
+    // fullness — median is already above, so add txs, range and fullness.
+    parts.push(`${block.txCount.toLocaleString()} transactions`);
+    parts.push(`fee range ${block.feeRange}`);
+    parts.push(`${Math.round(viewModel.fillPercentage)}% full`);
+  }
+
+  return parts.join(', ');
 };
 
 const getFillPercentage = (size: number) => {

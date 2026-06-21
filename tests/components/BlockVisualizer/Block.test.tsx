@@ -88,7 +88,7 @@ describe('Block', () => {
     expect(screen.getByText('BLK mempool')).toBeInTheDocument();
     expect(screen.getByText('5m')).toBeInTheDocument();
     expect(screen.getByRole('button', {
-      name: 'Pending block mempool, median fee 12 sat/vB, 1,234 transactions',
+      name: 'Pending block mempool, median fee 12 sat/vB, 1,234 transactions, fee range 10-20, 100% full',
     })).toBeInTheDocument();
 
     const dots = screen.getAllByTestId('pending-dot');
@@ -206,11 +206,33 @@ describe('Block', () => {
     expect(screen.getByText(/50%/)).toBeInTheDocument();
 
     const blockButton = screen.getByRole('button', {
-      name: 'Confirmed block 800,000, median fee 0.7 sat/vB, 420 transactions',
+      name: 'Confirmed block 800,000, median fee 0.7 sat/vB, 420 transactions, fee range 1-2, 50% full',
     });
 
     fireEvent.click(blockButton);
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('reveals the tooltip on keyboard focus via the focus-within variant', () => {
+    const { container } = render(
+      <Block
+        block={confirmedBlock}
+        index={0}
+        onClick={vi.fn()}
+        compact={false}
+        isAnimating={false}
+        animationDirection="none"
+        explorerUrl="https://mempool.space"
+      />
+    );
+
+    // The tooltip is hover-only by default; a keyboard user who Tabs to the
+    // block button reveals it via the group-focus-within variant (and the
+    // matching :focus-within rule injected by BlockAnimationStyles).
+    const tooltip = container.querySelector('.block-visualizer-tooltip');
+    expect(tooltip).not.toBeNull();
+    expect(tooltip).toHaveClass('group-focus-within:opacity-100');
+    expect(tooltip).toHaveClass('group-focus-within:translate-y-0');
   });
 
   it('handles compact confirmed block height formatting and missing optional sections', () => {

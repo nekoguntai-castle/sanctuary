@@ -1,4 +1,5 @@
-import { render,screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
 import { QueuedSummaryBlock } from '../../../components/BlockVisualizer/QueuedSummaryBlock';
 import type { PendingTransaction } from '../../../src/types';
@@ -21,6 +22,9 @@ vi.mock('../../../components/BlockVisualizer/PendingTxDot', () => ({
       data-explorer={explorerUrl}
       data-compact={String(compact)}
       data-stuck={String(isStuck)}
+      // The real PendingTxDot stops propagation so its explorer tap does not
+      // also toggle the queued-summary card; mirror that here.
+      onClick={(event) => event.stopPropagation()}
     />
   ),
 }));
@@ -111,5 +115,89 @@ describe('QueuedSummaryBlock', () => {
     );
 
     expect(screen.getByTestId('pending-dot')).toHaveAttribute('data-explorer', 'https://mempool.space');
+  });
+
+  describe('non-compact tooltip disclosure (touch/keyboard accessible)', () => {
+    const TOOLTIP = '12,345 txs waiting • 6 stuck';
+
+    const renderCard = () =>
+      render(
+        <QueuedSummaryBlock
+          summary={{ blockCount: 10, totalTransactions: 12345, averageFee: 12.6, totalFees: 0 }}
+          compact={false}
+          stuckTxs={[1, 2, 3, 4, 5, 6].map(makeTx)}
+          explorerUrl="https://custom.explorer"
+        />
+      );
+
+    it('exposes the queued figure as a button accessible name and toggles the tooltip on click', () => {
+      renderCard();
+      const card = screen.getByRole('button', { name: TOOLTIP });
+      const tooltip = screen.getByText(TOOLTIP);
+
+      expect(card).toHaveAttribute('aria-expanded', 'false');
+      expect(tooltip).toHaveClass('opacity-0');
+
+      fireEvent.click(card);
+      expect(card).toHaveAttribute('aria-expanded', 'true');
+      expect(tooltip).toHaveClass('opacity-100');
+
+      fireEvent.click(card);
+      expect(card).toHaveAttribute('aria-expanded', 'false');
+      expect(tooltip).toHaveClass('opacity-0');
+    });
+
+    it('toggles on native keyboard activation (Enter and Space)', async () => {
+      const user = userEvent.setup();
+      renderCard();
+      const card = screen.getByRole('button', { name: TOOLTIP });
+
+      card.focus();
+      await user.keyboard('{Enter}');
+      expect(card).toHaveAttribute('aria-expanded', 'true');
+
+      await user.keyboard(' ');
+      expect(card).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('closes on Escape and on an outside mousedown, and ignores other keys', () => {
+      renderCard();
+      const card = screen.getByRole('button', { name: TOOLTIP });
+
+      fireEvent.click(card);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(card).toHaveAttribute('aria-expanded', 'false');
+
+      fireEvent.click(card);
+      fireEvent.mouseDown(document.body);
+      expect(card).toHaveAttribute('aria-expanded', 'false');
+
+      fireEvent.click(card);
+      fireEvent.keyDown(document, { key: 'a' });
+      expect(card).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('does not toggle the card when a stuck-tx dot is clicked', () => {
+      renderCard();
+      const card = screen.getByRole('button', { name: TOOLTIP });
+
+      // The stuck-tx dots are siblings of the toggle button, not descendants,
+      // so a dot tap never reaches the toggle.
+      fireEvent.click(screen.getAllByTestId('pending-dot')[0]);
+      expect(card).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('renders no toggle button in compact mode', () => {
+      const { container } = render(
+        <QueuedSummaryBlock
+          summary={{ blockCount: 3, totalTransactions: 20, averageFee: 0.7, totalFees: 0 }}
+          compact={true}
+          stuckTxs={[makeTx(1)]}
+        />
+      );
+
+      expect(screen.queryByRole('button')).toBeNull();
+      expect(container.querySelector('[aria-expanded]')).toBeNull();
+    });
   });
 });
