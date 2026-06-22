@@ -5,14 +5,23 @@
  * transaction details, and label management.
  */
 
-import { fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { fireEvent,render as rtlRender,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import * as labelsApi from '../../src/api/labels';
 import * as transactionsApi from '../../src/api/transactions';
 import type { Transaction,Wallet } from '../../types';
+
+// TransactionList -> useTransactionList -> useSearchParams requires a Router.
+// Wrap every render in a MemoryRouter (default at "/"); pass { wrapper } to seed
+// a ?tx deep-link entry.
+const render = (
+  ui: Parameters<typeof rtlRender>[0],
+  options?: Parameters<typeof rtlRender>[1],
+) => rtlRender(ui, { wrapper: MemoryRouter, ...options });
 
 // Mock the CurrencyContext
 vi.mock('../../contexts/CurrencyContext', () => {
@@ -626,5 +635,66 @@ describe('TransactionList - Additional behaviors', () => {
 
     expect(screen.getByRole('columnheader', { name: /balance/i })).toBeInTheDocument();
     expect(screen.getAllByText(/1,234 sats|5,678 sats/).length).toBeGreaterThan(0);
+  });
+});
+
+describe('TransactionList - Master-detail split (#52)', () => {
+  const baseTx = {
+    id: 'tx-1',
+    txid: 'txid-1',
+    walletId: 'wallet-1',
+    amount: 1000,
+    fee: 10,
+    timestamp: Date.now(),
+    confirmations: 2,
+    type: 'received',
+  } as Transaction;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(bitcoinApi.getStatus).mockResolvedValue({} as any);
+    vi.mocked(transactionsApi.getTransaction).mockResolvedValue({} as any);
+  });
+
+  it('shows the split layout with an empty detail pane when it owns selection and nothing is selected', async () => {
+    const { TransactionList } = await import('../../components/TransactionList');
+    const { container } = render(<TransactionList transactions={[baseTx]} />);
+
+    // Master column opts into the tablet split row.
+    expect(container.querySelector('.tablet\\:flex')).not.toBeNull();
+    const pane = screen.getByTestId('transaction-detail-pane');
+    // Pane is hidden below tablet, shown as a column at tablet+.
+    expect(pane).toHaveClass('hidden', 'tablet:flex');
+    expect(screen.getByText('Select a transaction to see its details')).toBeInTheDocument();
+    // Nothing selected → the modal/pane detail host is absent.
+    expect(screen.queryByTestId('transaction-detail')).not.toBeInTheDocument();
+  });
+
+  it('swaps the empty pane for the responsive detail host once a transaction is selected', async () => {
+    const user = userEvent.setup();
+    const { TransactionList } = await import('../../components/TransactionList');
+    render(<TransactionList transactions={[baseTx]} />);
+
+    await user.click(screen.getByTestId('transaction-row').querySelectorAll('td')[0]);
+
+    const detail = await screen.findByTestId('transaction-detail');
+    // One element that is a modal below tablet and an inline pane at tablet+.
+    expect(detail).toHaveClass('fixed', 'inset-0', 'z-50', 'tablet:static');
+    // The empty pane is gone; details render exactly once.
+    expect(screen.queryByTestId('transaction-detail-pane')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Transaction Details')).toHaveLength(1);
+  });
+
+  it('renders no detail host when a caller owns selection via onTransactionClick', async () => {
+    const { TransactionList } = await import('../../components/TransactionList');
+    const onTransactionClick = vi.fn();
+    const { container } = render(
+      <TransactionList transactions={[baseTx]} onTransactionClick={onTransactionClick} />
+    );
+
+    // Delegating list: no split row, no pane, no modal.
+    expect(container.querySelector('.tablet\\:flex')).toBeNull();
+    expect(screen.queryByTestId('transaction-detail-pane')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('transaction-detail')).not.toBeInTheDocument();
   });
 });

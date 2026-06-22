@@ -4,9 +4,10 @@ import { usePriceFreeFormatter } from '../../contexts/CurrencyContext';
 import { useAIStatus } from '../../hooks/useAIStatus';
 import { useTransactionList } from './hooks/useTransactionList';
 import type { TransactionStats } from '../../src/api/transactions';
-import { TransactionDetailsModal } from './TransactionList/TransactionDetailsModal';
+import { TransactionDetail } from './TransactionList/TransactionDetail';
 import { TransactionStatsGrid } from './TransactionList/TransactionStatsGrid';
 import { TransactionTable } from './TransactionList/TransactionTable';
+import type { TransactionDetailsContentProps } from './TransactionList/types';
 
 // Stable empty arrays to prevent re-renders when props aren't provided
 const EMPTY_WALLETS: Wallet[] = [];
@@ -52,7 +53,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
   const {
     selectedTx,
-    setSelectedTx,
+    clearSelectedTx,
+    ownsSelection,
     explorerUrl,
     copied,
     editingLabels,
@@ -113,55 +115,63 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     );
   }
 
+  // Shared by the phone modal and the tablet+ split pane — both render the same
+  // TransactionDetailsBody, so the detail props are assembled once here.
+  const detailProps: Omit<TransactionDetailsContentProps, 'selectedTx'> = {
+    wallets,
+    walletAddresses,
+    explorerUrl,
+    copied,
+    fullTxDetails,
+    loadingDetails,
+    editingLabels,
+    availableLabels,
+    selectedLabelIds,
+    savingLabels,
+    canEdit,
+    aiEnabled,
+    confirmationThreshold,
+    deepConfirmationThreshold,
+    format,
+    onClose: clearSelectedTx,
+    onLabelsChange,
+    onCopyToClipboard: copyToClipboard,
+    onEditLabels: handleEditLabels,
+    onSaveLabels: handleSaveLabels,
+    onCancelEdit: () => setEditingLabels(false),
+    onToggleLabel: handleToggleLabel,
+    onAISuggestion: handleAISuggestion,
+  };
+
   return (
     <>
       <TransactionStatsGrid txStats={txStats} />
 
-      <div ref={tableContainerRef}>
-        <TransactionTable
-          filteredTransactions={filteredTransactions}
-          virtuosoRef={virtuosoRef}
-          tableHeight={tableHeight}
-          showWalletBadge={showWalletBadge}
-          walletBalance={walletBalance}
-          confirmationThreshold={confirmationThreshold}
-          deepConfirmationThreshold={deepConfirmationThreshold}
-          highlightedTxId={highlightedTxId}
-          getWallet={getWallet}
-          getTxTypeInfo={getTxTypeInfo}
-          onWalletClick={onWalletClick}
-          onTxClick={handleTxClick}
-        />
-      </div>
+      <div className={ownsSelection ? 'tablet:flex tablet:gap-4 tablet:items-start' : undefined}>
+        <div
+          ref={tableContainerRef}
+          className={ownsSelection ? 'tablet:flex-1 tablet:min-w-0' : undefined}
+        >
+          <TransactionTable
+            filteredTransactions={filteredTransactions}
+            virtuosoRef={virtuosoRef}
+            tableHeight={tableHeight}
+            showWalletBadge={showWalletBadge}
+            walletBalance={walletBalance}
+            confirmationThreshold={confirmationThreshold}
+            deepConfirmationThreshold={deepConfirmationThreshold}
+            highlightedTxId={highlightedTxId}
+            getWallet={getWallet}
+            getTxTypeInfo={getTxTypeInfo}
+            onWalletClick={onWalletClick}
+            onTxClick={handleTxClick}
+          />
+        </div>
 
-      {selectedTx && (
-        <TransactionDetailsModal
-          selectedTx={selectedTx}
-          wallets={wallets}
-          walletAddresses={walletAddresses}
-          explorerUrl={explorerUrl}
-          copied={copied}
-          fullTxDetails={fullTxDetails}
-          loadingDetails={loadingDetails}
-          editingLabels={editingLabels}
-          availableLabels={availableLabels}
-          selectedLabelIds={selectedLabelIds}
-          savingLabels={savingLabels}
-          canEdit={canEdit}
-          aiEnabled={aiEnabled}
-          confirmationThreshold={confirmationThreshold}
-          deepConfirmationThreshold={deepConfirmationThreshold}
-          format={format}
-          onClose={() => setSelectedTx(null)}
-          onLabelsChange={onLabelsChange}
-          onCopyToClipboard={copyToClipboard}
-          onEditLabels={handleEditLabels}
-          onSaveLabels={handleSaveLabels}
-          onCancelEdit={() => setEditingLabels(false)}
-          onToggleLabel={handleToggleLabel}
-          onAISuggestion={handleAISuggestion}
-        />
-      )}
+        {ownsSelection && (
+          <TransactionDetail selectedTx={selectedTx} tableHeight={tableHeight} {...detailProps} />
+        )}
+      </div>
     </>
   );
 };

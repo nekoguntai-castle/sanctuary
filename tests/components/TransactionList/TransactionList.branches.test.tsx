@@ -121,6 +121,7 @@ vi.mock('../../../components/TransactionList/LabelEditor', () => ({
 
 describe('TransactionList branch coverage', () => {
   const setSelectedTx = vi.fn();
+  const clearSelectedTx = vi.fn();
   const setEditingLabels = vi.fn();
 
   const baseTx: Transaction = {
@@ -151,6 +152,8 @@ describe('TransactionList branch coverage', () => {
     return {
       selectedTx,
       setSelectedTx,
+      clearSelectedTx,
+      ownsSelection: true,
       explorerUrl: 'https://mempool.space',
       copied: false,
       editingLabels: false,
@@ -330,7 +333,7 @@ describe('TransactionList branch coverage', () => {
     await user.click(screen.getByTestId('action-close'));
     await user.click(screen.getByTestId('cancel-edit'));
 
-    expect(setSelectedTx).toHaveBeenCalledWith(null);
+    expect(clearSelectedTx).toHaveBeenCalled();
     expect(setEditingLabels).toHaveBeenCalledWith(false);
   });
 });

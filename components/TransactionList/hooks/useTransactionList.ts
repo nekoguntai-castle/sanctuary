@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Transaction, Wallet, Label } from '../../../types';
 import * as bitcoinApi from '../../../src/api/bitcoin';
 import * as labelsApi from '../../../src/api/labels';
@@ -38,6 +39,11 @@ export function useTransactionList({
   transactionStats,
 }: UseTransactionListParams) {
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+  // This list owns selection (opens the modal / split-view pane and the ?tx URL
+  // param) only when the caller doesn't take selection over via onTransactionClick
+  // — e.g. the Dashboard recent-tx list and Console results delegate instead.
+  const ownsSelection = !onTransactionClick;
+  const [searchParams, setSearchParams] = useSearchParams();
   const [explorerUrl, setExplorerUrl] = useState(getDefaultNodeExternalServiceUrl('mainnet'));
   const [copied, setCopied] = useState(false);
   const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -149,19 +155,68 @@ export function useTransactionList({
     }
   };
 
+  // Selection is single-source-of-truth in the ?tx URL param: selectTx/clearTx
+  // only write the URL, and the reconcile effect below derives selectedTx from
+  // it. This one-way flow makes selection deep-linkable + refresh-proof and
+  // avoids a state/URL ping-pong (which otherwise double-fired the details
+  // fetch). all-replace — the split pane is part of the page, not a sub-route.
+  const selectTx = useCallback(
+    (tx: Transaction) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('tx', tx.txid);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const clearSelectedTx = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('tx');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
+
+  // Reconcile selection FROM the URL: deep links, refresh, and back/forward.
+  // Only when this list owns selection; otherwise a stray ?tx (e.g. on the
+  // Dashboard) must not hijack a delegating list. Keyed on the transactions too
+  // so a param that arrives before the data resolves once the data loads.
+  const txParam = searchParams.get('tx');
+  useEffect(() => {
+    if (!ownsSelection) return;
+    if (txParam) {
+      if (selectedTx?.txid !== txParam) {
+        const found = filteredTransactions.find((tx) => tx.txid === txParam);
+        if (found) {
+          setSelectedTx(found);
+          setEditingLabels(false);
+        }
+      }
+    } else if (selectedTx) {
+      setSelectedTx(null);
+    }
+  }, [ownsSelection, txParam, filteredTransactions, selectedTx]);
+
   // Stable reference: TransactionRow is memo'd, so passing a fresh
   // function ref every render would defeat the memo. Dependencies are the
-  // external handler (caller-controlled) and React's stable setState refs.
+  // external handler (caller-controlled), selectTx, and stable setState refs.
   const handleTxClick = useCallback(
     (tx: Transaction) => {
       if (onTransactionClick) {
         onTransactionClick(tx);
       } else {
-        setSelectedTx(tx);
-        setEditingLabels(false);
+        selectTx(tx);
       }
     },
-    [onTransactionClick],
+    [onTransactionClick, selectTx],
   );
 
   const handleEditLabels = async (tx: Transaction) => {
@@ -288,6 +343,8 @@ export function useTransactionList({
   return {
     selectedTx,
     setSelectedTx,
+    clearSelectedTx,
+    ownsSelection,
     explorerUrl,
     copied,
     editingLabels,

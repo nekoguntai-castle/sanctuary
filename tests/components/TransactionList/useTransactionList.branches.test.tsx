@@ -1,4 +1,12 @@
-import { act,renderHook,waitFor } from '@testing-library/react';
+import {
+  act,
+  renderHook,
+  waitFor,
+  type RenderHookOptions,
+  type RenderHookResult,
+} from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { MemoryRouter, useSearchParams } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { useTransactionList } from '../../../components/TransactionList/hooks/useTransactionList';
 import * as bitcoinApi from '../../../src/api/bitcoin';
@@ -39,6 +47,21 @@ const makeTx = (overrides: Partial<Transaction> = {}): Transaction => ({
   ...overrides,
 });
 
+// useTransactionList calls useSearchParams, so the hook must render inside a
+// Router. renderTxHook injects a MemoryRouter wrapper (default at "/"); pass a
+// custom one via options.wrapper to seed the ?tx deep-link param.
+const makeRouterWrapper = (initialEntries: string[] = ['/']) =>
+  function RouterWrapper({ children }: { children: ReactNode }) {
+    return <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>;
+  };
+
+function renderTxHook<Result, Props>(
+  callback: (props: Props) => Result,
+  options?: RenderHookOptions<Props>,
+): RenderHookResult<Result, Props> {
+  return renderHook(callback, { wrapper: makeRouterWrapper(), ...options });
+}
+
 describe('useTransactionList branches', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,7 +84,7 @@ describe('useTransactionList branches', () => {
   it('keeps default explorer URL when API response omits explorerUrl', async () => {
     vi.mocked(bitcoinApi.getStatus).mockResolvedValueOnce({} as Awaited<ReturnType<typeof bitcoinApi.getStatus>>);
 
-    const { result } = renderHook(() => useTransactionList({ transactions: [] }));
+    const { result } = renderTxHook(() => useTransactionList({ transactions: [] }));
 
     await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalled());
     expect(result.current.explorerUrl).toBe('https://mempool.space');
@@ -73,7 +96,7 @@ describe('useTransactionList branches', () => {
     const tx1 = makeTx({ id: 'tx-1', txid: 'txid-1' });
     const tx2 = makeTx({ id: 'tx-2', txid: 'txid-2' });
 
-    const { result, rerender } = renderHook(
+    const { result, rerender } = renderTxHook(
       ({ highlightedTxId }) => useTransactionList({ transactions: [tx1, tx2], highlightedTxId }),
       { initialProps: { highlightedTxId: undefined as string | undefined } }
     );
@@ -131,7 +154,7 @@ describe('useTransactionList branches', () => {
     });
 
     const tx = makeTx({ id: 'tx-fail', txid: 'txid-fail' });
-    const { result } = renderHook(() => useTransactionList({ transactions: [tx] }));
+    const { result } = renderTxHook(() => useTransactionList({ transactions: [tx] }));
 
     act(() => {
       result.current.handleTxClick(tx);
@@ -162,7 +185,7 @@ describe('useTransactionList branches', () => {
   });
 
   it('no-ops save labels and AI suggestion when no transaction is selected', async () => {
-    const { result } = renderHook(() => useTransactionList({ transactions: [makeTx()] }));
+    const { result } = renderTxHook(() => useTransactionList({ transactions: [makeTx()] }));
 
     await act(async () => {
       await result.current.handleSaveLabels();
@@ -180,7 +203,7 @@ describe('useTransactionList branches', () => {
       labels: undefined as any,
     });
 
-    const { result } = renderHook(() =>
+    const { result } = renderTxHook(() =>
       useTransactionList({
         transactions: [tx],
       })
@@ -222,7 +245,7 @@ describe('useTransactionList branches', () => {
       updatedAt: new Date().toISOString(),
     };
 
-    const { result } = renderHook(() =>
+    const { result } = renderTxHook(() =>
       useTransactionList({
         transactions: [tx],
         walletLabels: [labelA, labelB],
@@ -269,7 +292,7 @@ describe('useTransactionList branches', () => {
     vi.mocked(labelsApi.setTransactionLabels).mockRejectedValueOnce(new Error('save failed'));
     vi.mocked(labelsApi.createLabel).mockRejectedValueOnce(new Error('create failed'));
 
-    const { result } = renderHook(() =>
+    const { result } = renderTxHook(() =>
       useTransactionList({
         transactions: [tx],
       })
@@ -320,7 +343,7 @@ describe('useTransactionList branches', () => {
     };
     vi.mocked(labelsApi.createLabel).mockResolvedValueOnce(created);
 
-    const { result } = renderHook(() =>
+    const { result } = renderTxHook(() =>
       useTransactionList({
         transactions: [tx],
         walletLabels: [existing],
@@ -412,7 +435,7 @@ describe('useTransactionList branches', () => {
       rbfStatus: 'replaced',
     });
 
-    const { result } = renderHook(() =>
+    const { result } = renderTxHook(() =>
       useTransactionList({
         transactions: [
           txConsolidationType,
@@ -465,7 +488,7 @@ describe('useTransactionList branches', () => {
       walletBalance: 500000,
     };
 
-    const { result } = renderHook(() =>
+    const { result } = renderTxHook(() =>
       useTransactionList({
         transactions: [makeTx()],
         transactionStats,
@@ -480,6 +503,85 @@ describe('useTransactionList branches', () => {
       totalReceived: 120000,
       totalSent: 90000,
       totalFees: 1400,
+    });
+  });
+
+  describe('URL selection sync (#52)', () => {
+    it('writes ?tx on select, clears it on clear, and clears selection when ?tx is removed externally', async () => {
+      const tx = makeTx({ id: 'tx-1', txid: 'txid-1' });
+      const { result } = renderTxHook(() => {
+        const list = useTransactionList({ transactions: [tx] });
+        const [params, setParams] = useSearchParams();
+        return { list, txParam: params.get('tx'), setParams };
+      });
+
+      // Settle the mount-time explorer-URL fetch before driving selection.
+      await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalled());
+      expect(result.current.list.ownsSelection).toBe(true);
+      expect(result.current.txParam).toBeNull();
+
+      // Selecting writes ?tx; the reconcile effect then resolves it to selectedTx.
+      await act(async () => result.current.list.handleTxClick(tx));
+      expect(result.current.list.selectedTx?.txid).toBe('txid-1');
+      expect(result.current.txParam).toBe('txid-1');
+
+      // Explicit clear removes ?tx.
+      await act(async () => result.current.list.clearSelectedTx());
+      expect(result.current.list.selectedTx).toBeNull();
+      expect(result.current.txParam).toBeNull();
+
+      // Re-select, then drop ?tx externally (e.g. browser back) → selection clears.
+      await act(async () => result.current.list.handleTxClick(tx));
+      expect(result.current.list.selectedTx?.txid).toBe('txid-1');
+      await act(async () => result.current.setParams(new URLSearchParams()));
+      expect(result.current.list.selectedTx).toBeNull();
+    });
+
+    it('resolves a deep-linked ?tx once the matching transaction loads', async () => {
+      const tx = makeTx({ id: 'tx-2', txid: 'txid-2' });
+      const { result, rerender } = renderTxHook(
+        ({ transactions }: { transactions: Transaction[] }) =>
+          useTransactionList({ transactions }),
+        {
+          initialProps: { transactions: [] as Transaction[] },
+          wrapper: makeRouterWrapper(['/?tx=txid-2']),
+        },
+      );
+
+      // Param present but data not loaded yet → no selection.
+      expect(result.current.selectedTx).toBeNull();
+
+      // Data arrives → the effect resolves the param to the transaction.
+      rerender({ transactions: [tx] });
+      await waitFor(() => expect(result.current.selectedTx?.txid).toBe('txid-2'));
+    });
+
+    it('leaves selection empty for a ?tx that matches no transaction', async () => {
+      const tx = makeTx({ id: 'tx-1', txid: 'txid-1' });
+      const { result } = renderTxHook(() => useTransactionList({ transactions: [tx] }), {
+        wrapper: makeRouterWrapper(['/?tx=does-not-exist']),
+      });
+
+      await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalled());
+      expect(result.current.selectedTx).toBeNull();
+    });
+
+    it('ignores ?tx and delegates clicks when a caller owns selection via onTransactionClick', async () => {
+      const tx = makeTx({ id: 'tx-1', txid: 'txid-1' });
+      const onTransactionClick = vi.fn();
+      const { result } = renderTxHook(
+        () => useTransactionList({ transactions: [tx], onTransactionClick }),
+        { wrapper: makeRouterWrapper(['/?tx=txid-1']) },
+      );
+
+      await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalled());
+      expect(result.current.ownsSelection).toBe(false);
+      // The matching ?tx must NOT hijack a delegating list.
+      expect(result.current.selectedTx).toBeNull();
+
+      act(() => result.current.handleTxClick(tx));
+      expect(onTransactionClick).toHaveBeenCalledWith(tx);
+      expect(result.current.selectedTx).toBeNull();
     });
   });
 });
