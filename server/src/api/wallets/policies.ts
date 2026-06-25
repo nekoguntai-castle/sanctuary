@@ -14,6 +14,7 @@ import { ErrorCodes } from '../../errors/ApiError';
 import { vaultPolicyService, policyEvaluationEngine } from '../../services/vaultPolicy';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
 import type { CreatePolicyInput, UpdatePolicyInput } from '../../services/vaultPolicy/types';
+import { VALID_ADDRESS_LIST_TYPES } from '../../services/vaultPolicy/types';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 import {
   CreateVaultPolicyBodySchema,
@@ -67,7 +68,7 @@ const PolicyAddressBodySchema = z
       .max(100, 'address must be a string of 100 characters or fewer')
       .optional(),
     label: z.string().optional(),
-    listType: z.enum(['allow', 'deny'], { message: 'listType must be "allow" or "deny"' }).optional(),
+    listType: z.enum(VALID_ADDRESS_LIST_TYPES, { message: 'listType must be "allow" or "deny"' }).optional(),
   })
   .strict()
   .superRefine((data, ctx) => {

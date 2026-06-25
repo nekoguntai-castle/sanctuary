@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   VALID_ENFORCEMENT_MODES,
   VALID_POLICY_TYPES,
+  VALID_VOTE_DECISIONS,
 } from '../../services/vaultPolicy/types';
 
 export const PolicyNameSchema = z.string()
@@ -13,6 +14,7 @@ export const PolicyNameSchema = z.string()
 export const PolicyDescriptionSchema = z.union([z.string(), z.null()]);
 export const PolicyTypeSchema = z.enum(VALID_POLICY_TYPES);
 export const PolicyEnforcementSchema = z.enum(VALID_ENFORCEMENT_MODES);
+export const VoteDecisionSchema = z.enum(VALID_VOTE_DECISIONS);
 
 const PolicyScopeSchema = z.enum(['wallet', 'per_user']);
 const PolicyLimitSchema = z.number().int().nonnegative();

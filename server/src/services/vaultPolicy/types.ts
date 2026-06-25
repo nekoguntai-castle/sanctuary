@@ -193,6 +193,8 @@ export const VALID_ENFORCEMENT_MODES = ['enforce', 'monitor'] as const satisfies
 
 export const VALID_SOURCE_TYPES: PolicySourceType[] = ['system', 'group', 'wallet'];
 
-export const VALID_VOTE_DECISIONS: VoteDecision[] = ['approve', 'reject', 'veto'];
+export const VALID_VOTE_DECISIONS = ['approve', 'reject', 'veto'] as const satisfies readonly VoteDecision[];
 
 export const VALID_QUORUM_TYPES: QuorumType[] = ['any_n', 'specific', 'all'];
+
+export const VALID_ADDRESS_LIST_TYPES = ['allow', 'deny'] as const satisfies readonly AddressListType[];

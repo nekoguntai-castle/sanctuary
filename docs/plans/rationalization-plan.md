@@ -1540,3 +1540,77 @@ Closeout (proportional — server only):
 
 - **Create-wallet `scriptType` enum convergence** — deferred. The runtime authority is the dynamic `scriptTypeRegistry`, not the static `WALLET_SCRIPT_TYPE_VALUES`; converging the Zod schema to the static enum risks diverging from the registry boundary. Revisit only with a decision on whether the static enum or the registry is the canonical owner.
 - **validate-xpub `scriptType` enum convergence** — deferred. Converging changes behavior from silent-default to rejection; needs a compatibility decision on whether lenient clients are supported. Not a safe autonomous slice.
+
+---
+
+## Phase AE — vaultPolicy Route Enum Constants Convergence
+
+Source plan: `docs/plans/rationalization-plan.md`
+Date: 2026-06-25
+Commit: `370b9aec`
+Scope: post-closeout rationalize check after Phase AD (PR #550) merged. A fresh independent scrub found two route Zod schemas hardcoding enum literals that disagree (in source-of-truth terms) with the canonical `services/vaultPolicy/types.ts` constants already used by OpenAPI.
+
+### Divergence Inventory (this pass)
+
+| Area | Paths | Behavior | Evidence | Disposition |
+| --- | --- | --- | --- | --- |
+| Approval vote decision | `server/src/api/wallets/approvals.ts:22` (`z.enum(['approve','reject','veto'])`) vs `server/src/services/vaultPolicy/types.ts:196` (`VALID_VOTE_DECISIONS`), already consumed by OpenAPI `walletPolicy.ts:392,405` | Same values | Route hardcodes the literal; canonical constant exists and OpenAPI uses it. Established precedent: `api/schemas/vaultPolicy.ts:14-15` already does `z.enum(VALID_POLICY_TYPES)` / `z.enum(VALID_ENFORCEMENT_MODES)`. | **converge** |
+| Address-list type | `server/src/api/wallets/policies.ts:70` (`z.enum(['allow','deny'], { message })`) vs `services/vaultPolicy/types.ts:43` (`type AddressListType = 'allow' \| 'deny'`, no `VALID_*` constant) | Same values | The only policy enum without a `VALID_*` constant; inconsistent with `VALID_POLICY_TYPES`/`VALID_ENFORCEMENT_MODES`/`VALID_VOTE_DECISIONS`/`VALID_QUORUM_TYPES`. | **converge** |
+
+### Canonical Path Decision
+
+| Area | Canonical Path | Paths To Retire Or Wrap | Compatibility Policy | Decision Needed |
+| --- | --- | --- | --- | --- |
+| Policy/approval route enum values | `services/vaultPolicy/types.ts` `VALID_*` constants, surfaced as Zod via `api/schemas/vaultPolicy.ts` (existing owner module) | Route-local `z.enum([...literals...])` in `approvals.ts` / `policies.ts` | Behavior-preserving: identical accepted values and identical route error messages; only the value source changes. | None |
+
+### Objective
+
+Make the approval-vote and address-list route schemas derive their accepted values from the canonical `services/vaultPolicy/types.ts` constants (via the existing `api/schemas/vaultPolicy.ts` owner), so route validation and OpenAPI can never drift.
+
+### Non-Goals
+
+- No behavior change (same accepted values, same error messages, same optionality).
+- Do not touch the inline `PolicyScopeSchema = z.enum(['wallet','per_user'])` (route↔OpenAPI already consistent; out of scope).
+- Do not converge the two deferred `scriptType` items (registry-owner / lenient-vs-reject decisions still pending).
+- Do not change OpenAPI docs (already use the canonical constants).
+
+### Paths To Keep, Wrap, Converge, Or Remove
+
+| Action | Paths |
+| --- | --- |
+| Convert to `as const` tuple (enables `z.enum`) | `VALID_VOTE_DECISIONS` in `services/vaultPolicy/types.ts:196` → `['approve','reject','veto'] as const satisfies readonly VoteDecision[]` (matches `VALID_ENFORCEMENT_MODES`). Verified consumers (`vaultPolicy/index.ts:35` re-export, OpenAPI `[...spread]`) are spread/re-export only → zero ripple. |
+| Add constant | `export const VALID_ADDRESS_LIST_TYPES = ['allow','deny'] as const satisfies readonly AddressListType[]` in `services/vaultPolicy/types.ts` |
+| Add owner schema | `export const VoteDecisionSchema = z.enum(VALID_VOTE_DECISIONS)` in `api/schemas/vaultPolicy.ts` |
+| Converge | `approvals.ts:23` `decision: VoteDecisionSchema`; `policies.ts:70` `z.enum(VALID_ADDRESS_LIST_TYPES, { message })` (preserve the route-specific message) |
+| Converge siblings (repo "fix all instances" rule) | `assistant/tools/policyReadTools.ts:19` `listType: z.enum(VALID_ADDRESS_LIST_TYPES).optional()` (same allow/deny contract in the assistant policy-read tool); `approvals.ts:31` `decisionValidationMessage` derive the value list from the constant — `` `decision is required and must be one of: ${VALID_VOTE_DECISIONS.join(', ')}` `` (prose drift sibling) |
+
+### Phases
+
+| Phase | Work | Files | Verification | Exit Criteria |
+| --- | --- | --- | --- | --- |
+| AE.1 | Add/convert the canonical constants | `services/vaultPolicy/types.ts` | `cd server && npx tsc --noEmit` | tuple-typed constants compile; consumers unaffected |
+| AE.2 | Add `VoteDecisionSchema`; converge all sites (both routes + the assistant tool + the prose message) | `api/schemas/vaultPolicy.ts`, `api/wallets/approvals.ts`, `api/wallets/policies.ts`, `assistant/tools/policyReadTools.ts` | focused route + assistant-tool tests + tsc | no route-local `['approve','reject','veto']` or `['allow','deny']` literal remains in server/src outside the canonical constants |
+| AE.3 | Drift tests asserting each route schema accepts exactly the canonical values and rejects others | route test files | `cd server && npx vitest run <route tests>` | tests pass; iterate the constants |
+
+### Compatibility / Rollback
+
+- No wire/contract change; identical accepted values + messages. Rollback = revert the single commit.
+
+### Verification Commands
+
+- `cd server && npx tsc --noEmit`
+- `cd server && npx vitest run` (focused route tests for approvals + policies)
+- `cd server && npx eslint "src/api/wallets/approvals.ts" "src/api/wallets/policies.ts" "src/api/schemas/vaultPolicy.ts" "src/services/vaultPolicy/types.ts"`
+- `cd server && npm run test:coverage` (99% gate)
+
+### Acceptance Criteria
+
+- [ ] All four sites (`approvals.ts` vote schema, `approvals.ts` validation message, `policies.ts` listType, `policyReadTools.ts` listType) derive from `services/vaultPolicy/types.ts`.
+- [ ] `grep -rn "z.enum(\['approve'\|z.enum(\['allow', *'deny'\]" server/src` returns no matches (siblings all converged).
+- [ ] Route error messages and accepted values unchanged.
+- [ ] Drift tests iterate the canonical constants and pass.
+- [ ] Server tsc, lint, and 99% coverage gate pass.
+
+### Deferred (unchanged)
+
+- create-wallet `scriptType` (registry-vs-static-enum owner decision) and validate-xpub `scriptType` (lenient-vs-reject compatibility decision) remain decision-blocked.

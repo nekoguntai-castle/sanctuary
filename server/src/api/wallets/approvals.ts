@@ -16,11 +16,13 @@ import { auditService, AuditAction, AuditCategory } from '../../services/auditSe
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes, NotFoundError } from '../../errors/ApiError';
 import { requireAuthenticatedUser } from '../../middleware/auth';
+import { VoteDecisionSchema } from '../schemas/vaultPolicy';
+import { VALID_VOTE_DECISIONS } from '../../services/vaultPolicy/types';
 
 const router = Router();
 
 const VoteBodySchema = z.object({
-  decision: z.enum(['approve', 'reject', 'veto']),
+  decision: VoteDecisionSchema,
   reason: z.string().optional(),
 });
 
@@ -28,7 +30,7 @@ const OverrideBodySchema = z.object({
   reason: z.string().trim().min(1),
 });
 
-const decisionValidationMessage = 'decision is required and must be one of: approve, reject, veto';
+const decisionValidationMessage = `decision is required and must be one of: ${VALID_VOTE_DECISIONS.join(', ')}`;
 const overrideValidationMessage = 'A reason is required for owner override';
 
 async function requireDraftInRouteWallet(draftId: string, walletId: string): Promise<void> {

@@ -3,6 +3,7 @@ import { assistantReadRepository } from '../../repositories';
 import { toPolicyAddressDto, toPolicyEventDto, toPolicySummaryDto } from './dto';
 import { AssistantToolError, createToolEnvelope, type AssistantReadToolDefinition } from './types';
 import { enforceDateRange, parseDateInput, parseToolLimit, truncateRows } from './utils';
+import { VALID_ADDRESS_LIST_TYPES } from '../../services/vaultPolicy/types';
 
 const genericOutputSchema = z.object({}).passthrough();
 const policyListBudget = { maxRows: 100, maxBytes: 128_000 };
@@ -16,7 +17,7 @@ const listPoliciesInputSchema = {
 const policyDetailInputSchema = {
   walletId: z.string().uuid(),
   policyId: z.string().uuid(),
-  listType: z.enum(['allow', 'deny']).optional(),
+  listType: z.enum(VALID_ADDRESS_LIST_TYPES).optional(),
 } as const;
 
 const policyEventsInputSchema = {
