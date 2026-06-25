@@ -16,9 +16,8 @@ import {
 import { asyncHandler } from "../../../errors/errorHandler";
 import { getCachedBlockHeight } from "../../../services/bitcoin/blockchain";
 import { normalizeLegacyBitcoinNetwork } from "../../../services/bitcoin/networks";
+import { isPersistedTransactionType } from "@sanctuary/shared/constants/transactions";
 import { calculateConfirmations } from "./utils";
-
-const TRANSACTION_TYPES = new Set(["sent", "received", "consolidation"]);
 
 function getQueryString(value: unknown): string | undefined {
   if (Array.isArray(value)) {
@@ -62,7 +61,7 @@ function buildTransactionListWhere(
   return {
     walletId,
     rbfStatus: { not: "replaced" },
-    ...(type && TRANSACTION_TYPES.has(type) ? { type } : {}),
+    ...(type && isPersistedTransactionType(type) ? { type } : {}),
     ...(blockTime ? { blockTime } : {}),
   };
 }

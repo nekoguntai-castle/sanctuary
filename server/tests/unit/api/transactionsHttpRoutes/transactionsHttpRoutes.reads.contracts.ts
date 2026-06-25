@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import request from "supertest";
 
+import { PERSISTED_TRANSACTION_TYPES } from "@sanctuary/shared/constants/transactions";
 import { mockPrismaClient } from "../../../mocks/prisma";
 import {
   app,
@@ -134,6 +135,38 @@ export function registerTransactionHttpReadTests(): void {
         },
       }),
     );
+  });
+
+  it("applies the wallet transaction type filter for exactly the canonical persisted types", async () => {
+    // Drift guard: the route filter derives its accepted `type` values from the
+    // shared `PERSISTED_TRANSACTION_TYPES` contract. Iterating the constant keeps
+    // this test in lockstep — a new persisted type added to shared is covered
+    // automatically, and a value that is public-but-not-persisted (e.g. the
+    // `receive` alias) must NOT pass the filter.
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: "testnet" });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([]);
+
+    for (const type of PERSISTED_TRANSACTION_TYPES) {
+      const response = await request(app)
+        .get(`/api/v1/wallets/${walletId}/transactions`)
+        .query({ type });
+
+      expect(response.status).toBe(200);
+      expect(mockPrismaClient.transaction.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ walletId, type }),
+        }),
+      );
+    }
+
+    const aliasResponse = await request(app)
+      .get(`/api/v1/wallets/${walletId}/transactions`)
+      .query({ type: "receive" });
+
+    expect(aliasResponse.status).toBe(200);
+    const aliasWhere = mockPrismaClient.transaction.findMany.mock.lastCall?.[0]
+      ?.where as Record<string, unknown>;
+    expect(aliasWhere).not.toHaveProperty("type");
   });
 
   it("returns internal server error when transaction listing fails", async () => {

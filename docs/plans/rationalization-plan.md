@@ -2,7 +2,7 @@
 
 Date: 2026-06-04
 Owner: Codex
-Status: 2026-06-06 rationalize-loop first pass in progress; Phase AA vault policy request-schema convergence closed in PR #517, Phase AB draft request-schema/OpenAPI parity closed in PR #519 (merge commit `a0274878`), and Phase AC batch transaction request-schema/OpenAPI parity is selected for this loop's convergence pass
+Status: 2026-06-25 rationalize-loop pass; Phase AA vault policy request-schema convergence closed in PR #517, Phase AB draft request-schema/OpenAPI parity closed in PR #519 (`a0274878`), Phase AC batch transaction request-schema/OpenAPI parity closed in PR #522 (`0331fba0`). Phase AD (listTransactions type-filter value-contract convergence) selected for this loop — see the dated "Phase AD" section at the end of this file.
 Scope: repo-wide divergence scrub focused on auth, Bitcoin network identity, transaction broadcast naming, LLM provider management, preference patch semantics, later contract/runtime drift follow-up queues, the wallet webhook contract refresh after PR #511, and the local pre-commit AI-agent gate
 
 ## Executive Summary
@@ -1455,3 +1455,88 @@ Scope: repo-wide scrub for login-style divergent paths after Phase T and closeou
 - Phase 6 PR #460 passed required Architecture, Build Dev Images summary, Code Quality, and Test Suite checks on head `38d6231090736094593f75e476e3e0f0be7fff6a`, then squash-merged as `26bbd2d052afe1e22421107dea77b6597e873f4c`.
 - The Phase 6 merge commit was verified as an ancestor of `origin/main`; local `main` was fast-forwarded to `26bbd2d052afe1e22421107dea77b6597e873f4c`; the local and remote Phase 6 branches were deleted.
 - Local Phase 6 verification passed: focused preference tests, full frontend coverage at 100% across 6112 tests, server nested settings tests, app/test/server typechecks, app/server lint, touched-file lizard, test hygiene, large-file classification, architecture graph regeneration, and `git diff --check`.
+
+---
+
+## Phase AD — listTransactions Type-Filter Value-Contract Convergence
+
+Source plan: `docs/plans/rationalization-plan.md`
+Date: 2026-06-25
+Commit: `c8f359b6`
+Scope: fresh repo-wide divergence scrub on current `main` after all prior phases (A–T, V–Z, AA–AC) merged. A read-only inventory subagent surfaced three candidates; two were rejected for boundary/behavior-change risk (see Deferred). The remaining `remove`-class duplicate value contract is selected.
+
+### Divergence Inventory (this pass)
+
+| Area | Paths | Behavior | Evidence | Disposition |
+| --- | --- | --- | --- | --- |
+| listTransactions type filter | `server/src/api/transactions/walletTransactions/listTransactions.ts:21,65` (local `const TRANSACTION_TYPES = new Set(["sent","received","consolidation"])`) vs `shared/constants/transactions.ts:10-14,74` (`PERSISTED_TRANSACTION_TYPES` + `isPersistedTransactionType`) | Same values today | Hardcoded Set duplicates the canonical persisted-type contract with no import link; `shared/constants/transactions.ts` doc explicitly states filters should use the canonical values | **converge / remove** |
+| Create-wallet `scriptType` | `server/src/api/wallets/crud.ts:55` (`z.string().min(1)` + runtime `isValidScriptType` via `scriptTypeRegistry.getIds()`) vs OpenAPI `wallet.ts:169` (`enum: WALLET_SCRIPT_TYPE_VALUES`) | Runtime check uses a **dynamic registry**, not the static enum | Converging Zod to the static enum could wrongly diverge from the registry source-of-truth; the registry is the intended runtime authority | **watch / defer** |
+| validate-xpub `scriptType` | `server/src/api/wallets/xpubValidation.ts:19` (`z.string().optional()` → silent default NATIVE_SEGWIT) vs OpenAPI enum | Currently lenient: invalid → silent default | Converging to `z.enum(...).optional()` is a **behavior change** (reject vs silent-default) that could break lenient clients; needs a compatibility decision | **defer** |
+
+### Canonical Path Decision
+
+| Area | Canonical Path | Paths To Retire Or Wrap | Compatibility Policy | Decision Needed |
+| --- | --- | --- | --- | --- |
+| Persisted transaction type filter values | `shared/constants/transactions.ts` — `PERSISTED_TRANSACTION_TYPES` and the `isPersistedTransactionType` type-guard | The route-local `TRANSACTION_TYPES` Set in `listTransactions.ts` | Behavior-preserving: values are identical today, so the filter accepts exactly the same set before and after. The change only re-sources the values from the canonical owner. | None |
+
+### Objective
+
+Remove the duplicate route-local transaction-type contract so the wallet transaction list filter derives its accepted `type` values from the canonical `shared` owner. A future addition to `PERSISTED_TRANSACTION_TYPES` then flows into the filter automatically instead of being silently dropped.
+
+### Non-Goals
+
+- Do not change the filter's user-facing behavior (identical accepted values, identical "ignore unknown type" semantics).
+- Do not touch `PUBLIC_TRANSACTION_TYPES`, alias normalization, or response contracts.
+- Do not converge the two `scriptType` candidates (registry-boundary and behavior-change risk — deferred).
+- Do not alter OpenAPI docs or other routes.
+
+### Paths To Keep, Wrap, Converge, Or Remove
+
+| Action | Paths |
+| --- | --- |
+| Remove | `const TRANSACTION_TYPES = new Set([...])` in `listTransactions.ts:21` |
+| Converge | `listTransactions.ts:65` filter guard → `isPersistedTransactionType(type)` imported from `@sanctuary/shared/constants/transactions` |
+| Keep | `shared/constants/transactions.ts` as the single owner |
+
+### Phases
+
+| Phase | Work | Files | Verification | Exit Criteria |
+| --- | --- | --- | --- | --- |
+| AD.1 | Add a drift test asserting the route applies the `type` filter (Prisma `findMany` `where.type`) for **every** value in `PERSISTED_TRANSACTION_TYPES` (iterating the imported constant) and omits `where.type` for a non-persisted value | `server/tests/unit/api/transactionsHttpRoutes/transactionsHttpRoutes.reads.contracts.ts` (extend) | `cd server && npx vitest run tests/unit/api/transactions-http-routes.test.ts` | Test passes against current code (proves baseline) |
+| AD.2 | Replace the local Set with `isPersistedTransactionType` from shared | `server/src/api/transactions/walletTransactions/listTransactions.ts` | same focused test + `npx tsc --noEmit` | Local Set removed; filter sources from shared; tests green |
+
+Test wiring note: the `transactionsHttpRoutes/` dir contains only `*.contracts.ts` modules + a harness. vitest's include glob is `tests/**/*.test.ts`, so those `it(...)` blocks run **only** through the runnable parent entry `tests/unit/api/transactions-http-routes.test.ts`. Always run that entry, never the directory.
+
+### Compatibility / Migration / Rollback
+
+- No wire/contract change; no migration. Rollback = revert the single commit.
+- Behavior parity is guaranteed because the canonical and local value sets are identical at selection time; the drift test locks this in.
+
+### Edge Cases
+
+- Case sensitivity unchanged: `getQueryString` trims but does not lowercase, and both `Set.has` and `isPersistedTransactionType` are exact-match on lowercase canonical values, so `type=Sent` is rejected by the filter before and after (no behavior change).
+- Blank/undefined/array `type`: `getQueryString` already returns `undefined` for blank/non-string; the `type && ...` short-circuit is unchanged.
+- Aliases (`send`/`receive`) are intentionally **not** normalized at this filter (only persisted values pass) — same as today; alias normalization stays a separate concern.
+
+### Verification Commands
+
+Focused:
+- `cd server && npx vitest run tests/unit/api/transactions-http-routes.test.ts`
+- `cd server && npx tsc --noEmit`
+
+Closeout (proportional — server only):
+- `cd server && npx vitest run --coverage` (99% gate)
+- `cd server && npx eslint "src/api/transactions/**/*.ts"`
+- `git diff --check`
+
+### Acceptance Criteria
+
+- [ ] Route-local `TRANSACTION_TYPES` Set removed; filter uses `isPersistedTransactionType` from shared.
+- [ ] New drift test iterates `PERSISTED_TRANSACTION_TYPES` and passes.
+- [ ] No behavior change (same accepted values, unknown types still ignored).
+- [ ] Server typecheck, lint, and 99% coverage gate pass.
+
+### Deferred / Rejected (this pass)
+
+- **Create-wallet `scriptType` enum convergence** — deferred. The runtime authority is the dynamic `scriptTypeRegistry`, not the static `WALLET_SCRIPT_TYPE_VALUES`; converging the Zod schema to the static enum risks diverging from the registry boundary. Revisit only with a decision on whether the static enum or the registry is the canonical owner.
+- **validate-xpub `scriptType` enum convergence** — deferred. Converging changes behavior from silent-default to rejection; needs a compatibility decision on whether lenient clients are supported. Not a safe autonomous slice.
