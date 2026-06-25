@@ -1,138 +1,182 @@
 # Software Quality Report
 
-Date: 2026-06-06
+Date: 2026-06-25
 Owner: Claude
 Status: Complete
 
-**Overall Score**: 94/100
+**Overall Score**: 93/100
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: `6c5851d1`
+**Commit**: `7ae26a00`
 
 ---
 
 ## Hard-Fail Blockers
 
-None mechanically tripped.
-
-`tests=pass`, `lint=pass`, `typecheck=pass`, `security_high=0`, `secrets=0`. However, the **coverage pipeline regressed silently** between commit `5a74710b` (prior assessment 2026-06-04) and `6c5851d1` (HEAD): 11 server test files fail under `cd server && npm test` (and therefore under `npm run coverage`) because the workspace import target `@sanctuary/shared/schemas/draftRequests` resolves to a `shared/dist/` artifact that is not rebuilt when only the source is updated. This does not trigger `tests=fail` because grade.sh's `npm test` runs the root frontend vitest (which aliases `@sanctuary/shared` to source), but it does break the coverage chain and any fresh local server test run. See **Top Risks** below.
+None. `tests=pass`, `typecheck=pass`, `lint=pass`, `security_high=0`, `secrets=0`.
 
 ---
 
 ## Domain Scores
 
-| Domain                  | Score     | Notes |
-|-------------------------|-----------|-------|
-| Correctness             | 20/20     | Frontend tests, lint, typecheck all pass; suppression density very low (29 across ~617k NLOC). |
-| Reliability             | 14/15     | Strong timeout/retry presence (1335 sites), centralized error handling, structured logging. |
-| Maintainability         | 12/15     | Lizard 0 warnings; duplication 2.67% (just under SonarQube 3%); largest file 966 LOC (just under 1000). |
-| Security                | 15/15     | High/critical audit 0; gitleaks 0; schema validation at trust boundaries; no dangerous APIs. |
-| Performance             | 10/10     | Anchored: sampled hot paths use bounded I/O, timeouts, and pagination. |
-| Test Quality            | 13/15     | Coverage signal is `unknown` (server coverage broke); 1414 test files; structure is behavioral. |
-| Operational Readiness   | 10/10     | Dockerfile, Compose, CI, health endpoints, observability lib all present. |
-| **TOTAL**               | **94/100** | |
+| Domain | Score | Notes |
+| --- | ---: | --- |
+| Correctness | 20/20 | Frontend/server/gateway tests, lint, typecheck all pass; suppression density ~0.05/KLOC (28 sites). |
+| Reliability | 14/15 | 1339 timeout/retry sites; typed error handling (`getErrorMessage`, Prisma helpers); `blocking_io_count=106` keeps 2.3 at Medium. |
+| Maintainability | 9/15 | **3.1 drops to 0**: ESLint AST complexity finds **35 functions CCN>15** (lizard's 2 is a known TS under-count — see standards.md). Duplication 2.68% (<3%, +3); largest file 966 (+1); architecture/readability High. |
+| Security | 15/15 | npm audit high=0; gitleaks 0; Zod validation at trust boundaries; no `eval`/`innerHTML`/string-SQL. |
+| Performance | 10/10 | Anchored: sampled hot paths use bounded I/O, timeouts, pagination; Prisma everywhere. |
+| Test Quality | 15/15 | **Coverage 100%** (frontend/server/gateway, authoritative run); 1423 test files; behavioral structure; `test_sleep_count=10`. |
+| Operational Readiness | 10/10 | Dockerfile + Compose + CI (2 deploy artifacts); 201 health endpoints; observability lib; structured logging (352 sites). |
+| **TOTAL** | **93/100** | |
 
 ---
 
 ## Trend
 
-vs 2026-05-07 (`18134486`): overall **+6** (88 → 94), grade B → A, confidence High → High.
+vs 2026-06-06 (`7db313cf`): overall **98 → 93 (-5)**, grade **A → A**, confidence High → High.
 
-Domain deltas (≥ ±1):
-- Maintainability: 12 → 12 (no change, but composition shifted — lizard 5 → 0, duplication 1.69% → 2.67%, largest file 984 → 966)
-- Reliability: 12 → 14 (+2; judged uplift from anchored review of expanded timeout/retry footprint)
-- Security: 13 → 15 (+2; secrets 0/gitleaks, schema converge work)
-- Test Quality: 15 → 13 (-2; coverage regressed from 100 → unknown)
+Domain deltas:
+- Maintainability: 14 → 9 (**-5**) — driven entirely by **complexity measurement methodology change**, not a code regression. The prior run scored 3.1 from lizard (`lizard_warning_count=0` → +5). This run uses ESLint's AST-based `complexity` rule (`complexity_tool=eslint`, `complexity_warning_count=35`), which standards.md mandates for TS repos because lizard mis-parses `.tsx`/generic signatures. 35 functions exceed CCN 15 → mechanical 3.1 = 0. These functions are pre-existing; the signal is **newly measured, not newly introduced**.
 
-Signal deltas that moved materially:
-- `lizard_warning_count`: 5 → 0 (threshold cross to "no warnings")
-- `coverage`: 100 → unknown (regression — see Top Risks)
-- `duplication_pct`: 1.69 → 2.67 (worsened within band; still under 3%)
-- `largest_file_lines`: 984 → 966 (mild improvement)
-- `test_file_count`: 1333 → 1414 (+81)
-- `blocking_io_count`: 78 → 105 (+27; warrants spot-check next run)
-- `suppression_count`: 23 → 29 (+6; still low/kloc)
+Signal deltas (vs prior):
+- `complexity_warning_count`: (lizard 0) → 35 (eslint) — **measurement change**, see above.
+- `coverage`: 100 → 100 (no change; grade.sh's `GRADE_TIMEOUT=120` killed the coverage chain mid-run, so its inline signal showed `unknown`. Authoritative `npm run coverage` confirms 100% across all three packages).
+- `duplication_pct`: 2.67 → 2.68 (flat, under 3%).
+- `largest_file_lines`: 966 → 966 (flat).
+- `test_file_count`: 1415 → 1423 (+8).
+- `suppression_count`: 29 → 28 (-1).
+- `blocking_io_count`: 105 → 106 (+1).
+- `timeout_retry_count`: 1335 → 1339 (+4).
+
+---
+
+## Quality Delta
+
+- **threshold crossing (3.1 complexity)**: `>15 warnings` bucket — but caused by switching to the accurate ESLint measurement, not by code change. Real per-function complexity was always above lizard's report.
+- **newly measured**: ESLint AST complexity (35 functions CCN>15). This is now the authoritative maintainability complexity signal for this repo.
+- **no lost evidence**: coverage re-confirmed at 100% out-of-band.
 
 ---
 
 ## Evidence
 
-### Mechanical (tool-backed)
+### Mechanical
 
 | Signal | Value | Tool | Scoring criterion |
-|---|---|---|---|
-| tests | pass | vitest (root, frontend) | 1.1 |
-| lint | pass | eslint | 1.3 |
-| typecheck | pass | tsc | 1.2 |
-| coverage | unknown | npm run coverage (server run failed) | 6.1 |
-| security_high | 0 | npm audit | 4.1 |
-| secrets | 0 | gitleaks | 4.2 |
-| lizard_warning_count | 0 | lizard (CCN>15) | 3.1 |
+| --- | --- | --- | --- |
+| tests | pass | vitest (frontend+server+gateway) | 1.1 → +6 |
+| typecheck | pass | tsc | 1.2 → +4 |
+| lint | pass | eslint | 1.3 → +3 |
+| coverage | 100 | `npm run coverage` (authoritative; grade.sh inline = unknown due to 120s timeout) | 6.1 → +5 |
+| security_high | 0 | npm audit | 4.1 → +5 |
+| secrets | 0 | gitleaks | 4.2 → +4 |
+| complexity_warning_count | 35 | eslint `complexity:[error,15]` (AST) | **3.1 → 0** |
+| lizard_warning_count | 2 | lizard (TS under-count; provenance only) | (info) |
 | lizard_avg_ccn | 1.4 | lizard | (info) |
-| duplication_pct | 2.67 | jscpd | 3.2 |
-| largest_file_lines | 966 | wc -l | 3.3 |
-| deploy_artifact_count | 2 | filesystem (Dockerfile + Compose + CI) | 7.1 |
-| health_endpoint_count | 201 | grep heuristic | 7.2 |
-| observability_lib_present | 1 | filesystem | 7.3 |
+| duplication_pct | 2.68 | jscpd | 3.2 → +3 |
+| largest_file_lines | 966 | wc -l | 3.3 → +1 |
+| deploy_artifact_count | 2 | filesystem | 7.1 → +3 |
+| health_endpoint_count | 201 | grep heuristic | 7.2 → +2 |
+| observability_lib_present | 1 | filesystem | 7.3 → +2 |
 | validation_lib_present | 1 | filesystem | 4.3 (signal) |
-| suppression_count | 29 | grep heuristic | 1.4 (signal) |
-| timeout_retry_count | 1335 | grep heuristic | 2.2 (signal) |
-| blocking_io_count | 105 | grep heuristic | 5.1 (signal) |
+| suppression_count | 28 | grep heuristic | 1.4 (signal) |
+| timeout_retry_count | 1339 | grep heuristic | 2.2 (signal) |
+| blocking_io_count | 106 | grep heuristic | 5.1/2.3 (signal) |
+| logging_call_count | 352 | grep heuristic | 7.4 (signal) |
+| test_file_count | 1423 | filesystem | 6.2 (signal) |
+| test_sleep_count | 10 | grep heuristic | 6.4 (signal) |
 
-### Judged findings (ISO 25010-anchored)
+### Complexity Hotspots (ESLint AST, CCN>15) — full list
 
-- **[1.4] Suppression density — High → +4**: ISO Functional Appropriateness. 29 suppressions across ~617k NLOC (~0.05/kloc) is well under the 10/kloc Medium threshold. Inherited from prior — no clustering observed in critical paths.
-- **[1.5] Functional completeness — High → +3**: ISO Functional Completeness. README + 1414 test files, no large unfinished scope evident.
-- **[2.1] Error handling quality — High → +6**: ISO Fault Tolerance. Anchored — `getErrorMessage`, typed Prisma error helpers, structured logger; no bare-except patterns seen in spot-check.
-- **[2.2] Timeouts & retries — High → +4**: ISO Availability. 1335 sites (timeout/retry), `timeout_retry_count` consistent with prior; external I/O wrappers in `services/bitcoin/`, webhook delivery, etc.
-- **[2.3] No crash-prone paths — Medium → +4 (downgraded from +5)**: ISO Fault Tolerance. `blocking_io_count` up +27 — would want a Reliability spot-check next iteration; nothing flagrant found in this pass.
-- **[3.4] Architecture clarity — High → +3**: ISO Modularity/Analyzability. Active convergence work (multiple "Converge*" commits) is reducing divergent paths; clear server/gateway/frontend/shared split. See Divergent Paths below.
-- **[3.5] Readability — High → +2**: ISO Analyzability. Naming and structure consistent; prior assessments confirm.
-- **[4.3] Input validation — High → +3**: ISO Integrity. Schemas centralised in `shared/schemas/*` (drafts, vault policy, broadcast); routes validate at boundary.
-- **[4.4] Safe system/API usage — High → +3**: ISO Integrity. No `eval`/`innerHTML=`/`shell=True`/string-built SQL found in spot-check; Prisma used everywhere.
-- **[5.x] Performance — anchored 10/10**: Hot paths use bounded I/O and pagination. Re-spot-check next run given `blocking_io_count` rise.
-- **[6.1] Coverage — Medium → +2**: ISO Functional Completeness. Coverage signal regressed to `unknown` because server coverage broke (root cause in Top Risks). Frontend + gateway are 100%.
-- **[6.2] Test structure — High → +4**: ISO Testability. Anchored — 1414 test files including unit/integration/contracts/mutation; arrange-act-assert pattern; meaningful names.
-- **[6.3] Edge cases — High → +3**: ISO Functional Completeness. Anchored — explicit malformed/empty/timeout/auth/boundary coverage.
-- **[6.4] No flaky patterns — High → +3**: ISO Testability. `test_sleep_count=10` is low for a repo this size; integration tests use seeded clocks/DB.
-- **[7.4] Logging — High → +3**: ISO Availability (supporting). `createLogger()` enforced; 350 logging call sites; CLAUDE.md prohibits raw `console.log`.
+Source-scoped: **14 frontend + 17 server + 0 gateway = 31 production functions**, plus 4 in `scripts/`. Top offenders:
 
-### Missing
+| CCN | Function | File | Domain |
+| ---: | --- | --- | --- |
+| 31 | Arrow (component body) | `components/WalletDetail/modals/ExportModal.tsx` | frontend (presentational) |
+| 23 | Arrow | `components/ChangePasswordModal.tsx` | frontend |
+| 23 | `signPsbt` | `services/hardwareWallet/adapters/ledger/signPsbt.ts` | frontend (signing) |
+| 23 | Arrow (route) | `server/src/api/admin/version.ts` | server (admin) |
+| 22 | `signPSBT` | `services/hardwareWallet/adapters/jade.ts` | frontend (signing) |
+| 22 | `enforceAgentFundingPolicy` | `server/src/services/agentFundingPolicy.ts` | server (funds) |
+| 22 | Arrow (route) | `server/src/api/auth/tokens.ts` | server (auth) |
+| 21 | `DashboardContent` | `components/Dashboard/DashboardContent.tsx` | frontend |
+| 21 | `notifyAIInsight` | `server/src/services/notifications/channels/aiInsights.ts` | server |
+| 21 | `workerHealth` arrow | `server/src/services/workerHealth.ts` | server |
+| 18 | `handleMessage` | `services/websocket.ts` | frontend |
+| 18 | `updateAgent` | `server/src/repositories/agentRepository.ts` | server |
+| 18 | `invoke` | `server/src/providers/registry.ts` | server |
+| 17–16 | 18 more (mix of frontend/server) | (see eslint output) | mixed |
 
-- `lizard_max_ccn` — `unknown` (collector did not emit, but `lizard_warning_count=0` confirms no CCN>15 functions).
+### Judged Findings (ISO 25010-anchored)
+
+- **[1.4] Suppression density — High → +4**: 28 suppressions across ~617k NLOC (~0.05/KLOC), well under 10/KLOC. No critical-path clustering.
+- **[1.5] Functional completeness — High → +3**: README + 1423 test files; no large unfinished scope.
+- **[2.1] Error handling — High → +6**: `getErrorMessage`, typed Prisma helpers, `createLogger`; no bare catches in spot-check.
+- **[2.2] Timeouts & retries — High → +4**: 1339 sites; external I/O wrappers in `services/bitcoin/`, webhook delivery.
+- **[2.3] Crash-prone paths — Medium → +4**: `blocking_io_count=106` (flat vs prior); nothing flagrant in hot-path spot-check.
+- **[3.1] Complexity — 0 (mechanical)**: 35 functions CCN>15 per ESLint AST. ISO Modularity/Modifiability. See hotspot table; remediation requires a phased effort (Roadmap).
+- **[3.4] Architecture clarity — High → +3**: clear frontend/server/gateway/shared split; `@sanctuary/shared` workspace; no unjustified parallel paths in this pass.
+- **[3.5] Readability — High → +2**: naming/structure consistent.
+- **[4.3] Input validation — High → +3**: Zod schemas in `shared/schemas/*`; routes validate at boundary.
+- **[4.4] Safe API usage — High → +3**: no dangerous sinks; Prisma everywhere.
+- **[5.x] Performance — anchored 10/10**: bounded I/O, pagination, timeouts on sampled hot paths.
+- **[6.1] Coverage — +5**: 100% across all packages (authoritative run).
+- **[6.2/6.3/6.4] Test structure/edge/flaky — High**: behavioral tests, explicit boundaries, low sleep count.
+- **[7.4] Logging — High → +3**: `createLogger()` enforced; 352 sites; raw `console.log` prohibited by CLAUDE.md.
+
+### Missing / Caveats
+
+- `lizard_max_ccn` — unknown (collector did not emit; eslint count supersedes for scoring).
+- grade.sh inline `coverage=unknown` is a `GRADE_TIMEOUT=120` artifact, **not** a repo regression — re-run out-of-band at 100%.
+- v1 trend JSON schema has no `complexity_warning_count` field; the 35-count is recorded here in the report. JSON keeps `lizard_warning_count=2` for schema continuity, so automated lizard-based trend lines understate complexity.
 
 ---
 
 ## Top Risks
 
-1. **Server test/coverage pipeline regresses silently when `shared/dist/` is stale** — concrete signal: `Error: Cannot find package '@sanctuary/shared/schemas/draftRequests' imported from server/src/api/drafts.ts` (and 10 sibling sites). After commit `a02748784 Converge draft request schemas` added new files under `shared/schemas/`, any local checkout that does not re-run `npm install` (or `npm run build --workspace=shared`) after `git pull` will see 11 server test files fail with the same import error. CI is currently protected by `npm ci` running workspace `prepare` hooks, but the local dev loop has no such guard, and the root `npm test` (which grade.sh runs) silently bypasses the failure because the frontend vitest config aliases `@sanctuary/shared` to source. Impact: coverage signal flipped from 100 → unknown in this assessment.
-2. **`blocking_io_count` rose 78 → 105 (+27)** in the same window — not a regression by itself, but worth a Reliability spot-check during the next pass to confirm hot paths still avoid synchronous I/O.
-3. **`duplication_pct` rose 1.69 → 2.67** — still under the 3% SonarQube threshold but the margin has narrowed. The recent "Converge*" series is *reducing* divergent paths, so this may be a transient duplication during refactor.
-
----
+1. **Distributed cyclomatic complexity (31 production functions CCN>15)** — highest-risk instances are in funds/auth/signing code (`enforceAgentFundingPolicy` 22, `tokens.ts` 22, ledger/jade `signPsbt` 22–23). Complexity here raises change-cost and bug risk in exactly the paths where mistakes move money. Currently **ungated** — the repo's own ESLint config does not enable the `complexity` rule, so this has crept up silently.
+2. **No complexity guardrail** — nothing prevents further creep. The lizard-based history masked it (0 → "really 35").
+3. **`blocking_io_count` 106 (flat)** — re-spot-check hot paths next pass; no regression this run.
 
 ## Divergent Paths
 
 | Candidate | Evidence | Disposition | Risk / Next Step |
-|---|---|---|---|
-| Draft request schemas | `shared/schemas/draftRequests.ts` (new in `a02748784`); was duplicated across `server/src/api/drafts.ts`, `server/src/services/draftCreate.ts`, `src/api/drafts.ts` | rationalize — in progress | Active convergence in flight; this is the canonical path. |
-| Vault policy request schemas | Similar pattern in `8068d696` | rationalize — in progress | Same as above. |
-| Wallet network context | `bug-scrub-slice-4a/4b/4c-fee-network-context.md` | watch | Multi-slice scrub in progress per `tasks/`. |
-| All other workflows | Single canonical implementation | justified / watch | No active drift candidates. |
-
----
+| --- | --- | --- | --- |
+| Hardware-wallet PSBT signing | `adapters/ledger/signPsbt.ts`, `adapters/jade.ts` both CCN 22–23 | watch | Per-device adapters are a justified boundary; complexity is internal, not duplication. Reduce individually. |
+| All other workflows | Single canonical implementation | justified / watch | No active drift candidates found this pass. |
 
 ## Fastest Improvements
 
-1. **Add a `pretest` (and/or `prebuild`) hook to `server/package.json` that builds `shared` before invoking vitest** — closes the silent-regression vector identified in Top Risk #1. Expected gain: Test Quality 13 → 15 (+2), Confidence stays High. Effort: ~1h including a regression test that wipes `shared/dist/` and asserts `cd server && npm test` still works.
-2. **Bundle a top-level `npm run prepare-workspaces` script invoked from `quality.yml`** — makes the "what to do after `git pull`" answer one line in CLAUDE.md. Defer to PR #2 if time-budgeted.
-3. **Spot-check the 27 new `blocking_io_count` sites** during the next grade run — likely covered by anchoring if hot paths remain clean.
+1. **Reduce the worst hotspot (`ExportModal.tsx`, CCN 31 → <15)** by extracting its 5 tab bodies into sub-components — low-risk (46 existing tests), no funds/auth logic. ~1–2h. (Selected for this loop.)
+2. **Add a complexity-budget guardrail** (eslint `complexity` ratchet) so the count can only decrease. Defer — adds a new CI gate to a documented-fragile CI; sequence after a reduction pass lands.
+3. **Phased reduction of funds/auth/signing hotspots** (write non-regression tests first per CLAUDE.md, then refactor) — defer to subsequent bounded passes.
 
----
+## Roadmap To A Grade
 
-## Summary
+| Phase | Target | Work | Exit Criteria | Expected Score Movement |
+| --- | --- | --- | --- | --- |
+| 1 (this loop) | Reduce worst hotspot | `ExportModal.tsx` 31 → <15 via tab sub-components | 46 tests green; eslint complexity clean on file | Maintainability cleanup (mechanical bucket unchanged until ≤15 total) |
+| 2 | Funds/auth/signing | Reduce the 6 CCN≥21 funds/auth/signing functions with non-regression tests first | Each ≤15; tests green | Risk reduction in money paths |
+| 3 | Cross below thresholds | Reduce remaining until ≤15 total functions CCN>15 | `complexity_warning_count` ≤15 | 3.1: 0 → +1 (Maintainability 9 → 10) |
+| 4 | Guardrail | Add eslint `complexity` ratchet to CI once count is low | New violations fail CI | Locks the gain |
 
-Sanctuary is in strong shape — 94/A, High confidence — with mechanical safety nets across security, lint, types, complexity, and ops readiness. The one *concrete actionable regression* is a silent coverage break: the recent schema-convergence work added new files under `shared/schemas/` without a guard that ensures `shared/dist/` is rebuilt before `server` runs vitest. The bounded fix is a single `pretest` hook in `server/package.json` plus a regression test, recoverable in one PR.
+## Strengths To Preserve
 
-Recommended next: enter `grade-loop` Phase 2 with that fix as the sole selected finding; defer the duplication and blocking-IO spot-checks to the post-closeout grade pass.
+- 100% coverage across three packages with a real behavioral suite (1423 files).
+- Zero secrets, zero high-vuln deps, Zod validation at boundaries, Prisma-only data access.
+- Strong ops readiness: health endpoints, observability, structured logging, enforced logger.
+
+## Work To Defer Or Avoid
+
+- **Do not** cram all 35 complexity reductions into one PR — the rubric warns against broad refactoring campaigns, and no single PR moves the all-or-nothing mechanical bucket (need ≤15 total).
+- **Do not** add the complexity CI gate before reductions land — it would lock in 35 violations and add a failure surface to a fragile CI.
+- Do not refactor funds/auth/signing complexity without non-regression tests first.
+
+## Verification Notes
+
+- `bash grade.sh` (full): tests=pass, lint=pass, typecheck=pass, security_high=0, secrets=0, complexity_warning_count=35 (eslint), duplication=2.68%, largest_file=966.
+- `npm run coverage` (out-of-band, GRADE_TIMEOUT=1800): 100% stmts/branches/funcs/lines across frontend, server, gateway.
+- `npx eslint <globs> --rule '{"complexity":["error",15]}'`: 14 frontend + 17 server + 0 gateway + 4 scripts = 35.
+- Commit `7ae26a00`, branch `main`, working tree clean except untracked `.prismatic-thread.yaml` (unrelated tooling config, preserved).

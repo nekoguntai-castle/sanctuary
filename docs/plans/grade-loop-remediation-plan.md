@@ -1,172 +1,86 @@
 # Grade-Loop Remediation Plan
 
 **Source grade report**: `docs/plans/codebase-health-assessment.md`
-**Source grade date**: 2026-06-06
-**Source commit**: `6c5851d1`
-**Source score**: 94/100 (A, High confidence)
-**Selected finding**: Top Risk #1 — server test/coverage pipeline regresses silently when `shared/dist/` is stale.
+**Source grade date**: 2026-06-25
+**Source commit**: `7ae26a00`
+**Source score**: 93/100 (A, High confidence)
+**Selected finding**: Maintainability 3.1 — worst cyclomatic-complexity hotspot. `components/WalletDetail/modals/ExportModal.tsx` has a component body at **CCN 31** (2× the McCabe/SonarQube threshold of 15), the highest in the codebase among 35 functions flagged by ESLint's AST `complexity` rule.
 
 ---
 
 ## Objective
 
-Make `cd server && npm test` (and the coverage chain that depends on it) succeed deterministically from any local working state, by ensuring `@sanctuary/shared` is built before the server vitest run resolves its workspace imports.
+Reduce the `ExportModal` component-body cyclomatic complexity from **31 to ≤15** by extracting its five self-contained tab bodies (and the tab bar) into focused presentational sub-components, with **no change to rendered DOM, accessibility semantics, or behavior**.
 
-**Acceptance criterion**: starting from a wiped `shared/dist/`, running `cd server && npm test` succeeds without the operator manually rebuilding `shared`. The coverage chain (`npm run coverage` from the root) emits a real server coverage summary again rather than the "no coverage-summary.json" stub.
+**Acceptance criterion**: `npx eslint components/WalletDetail/modals/ExportModal.tsx --rule '{"complexity":["error",15]}'` reports **zero** complexity violations, and the existing 46-test suite (`tests/components/WalletDetail/modals/ExportModal.test.tsx`) passes unchanged. Frontend coverage stays at 100%.
 
 ## Non-Goals
 
-- Do **not** change the `vitest.config.ts` aliasing strategy. The frontend deliberately aliases `@sanctuary/shared` to source for coverage instrumentation; server/gateway deliberately resolve to `shared/dist/` for runtime parity. Both are documented; preserve them.
-- Do **not** broaden into a "rebuild every workspace before every script" refactor. Scope is server's test entry points only.
-- Do **not** add a CLAUDE.md doc-only mitigation. A doc note cannot replace a deterministic build step.
-- Do **not** fix duplication_pct or blocking_io_count drift in this PR — those are deferred to the post-closeout grade pass.
-- Do **not** touch CI workflows. CI is already protected by `npm ci` running workspace `prepare` hooks; this fix is for local + grade.sh coverage parity.
+- **No** behavior, layout, styling, or a11y change. This is a pure structural extraction; the DOM output must be identical so the existing tests pass without modification.
+- **No** change to `generateMultisigConfigText` (exported and independently tested) — it stays exported from `ExportModal.tsx`.
+- **No** change to the public `ExportModal` named export or its props/`index.ts` barrel — all five importers must keep working untouched.
+- **Do not** refactor the other 30 production CCN>15 functions in this PR (see Deferred Findings). The rubric warns against broad refactoring campaigns, and no single PR moves the all-or-nothing mechanical 3.1 bucket (needs ≤15 total).
+- **Do not** add an ESLint `complexity` CI gate yet — that would lock in 35 violations and add a failure surface to a documented-fragile CI. Sequence after reductions land.
+- **Do not** touch CI workflows or version files.
 
 ## Selected Slice
 
-Add a shared `_predistshared` helper script in `server/package.json` that rebuilds `@sanctuary/shared`, and wire it into the **five** server test entry points that the grade-loop, CI workflows, and dev workflow actually use: `pretest`, `pretest:run`, `pretest:run:ci`, `pretest:coverage`, `pretest:ci`. Add a small regression test that proves the hook strings stay intact. One `package.json` edit, one new test file.
+Extract from the `ExportModal` body into a new sibling folder `components/WalletDetail/modals/exportTabs/`:
 
-**Why five hooks and not one**: npm's `pre<X>` lifecycle fires only for `npm <X>` (or `npm run <X>` when X is a named script). It is **not** triggered transitively — `pretest` does NOT fire for `npm run test:coverage`. Verified empirically with a minimal repro before writing this plan. The five hook names are the minimum set that covers:
-- `pretest` — bare `cd server && npm test` (dev workflow).
-- `pretest:run` — `cd server && npm run test:run` (common dev "run once" entry).
-- `pretest:run:ci` — `cd server && npm run test:run:ci` (used directly by `.github/workflows/test.yml` and `verify-vectors.yml`).
-- `pretest:coverage` — the root `npm run coverage` chain reaches this via `npm run test:backend:coverage` → `cd server && npm run test:coverage`.
-- `pretest:ci` — `cd server && npm run test:ci` (CI entrypoint with JUnit reporter).
+1. `ExportTabBar.tsx` — the five-button tab navigation (removes the `isMultisig &&` device-button branch + five active-state ternaries from the parent). **Constraint**: the existing Device-tab tests (`tests/.../ExportModal.test.tsx:524`) locate the Device tab as "the last `<button>` in the tab row containing the device icon", so the extracted tab bar must keep the identical container element, button ordering, and the `HardDrive` icon inside the Device button.
+2. `QrExportTab.tsx` — QR format toggle, size slider, QR render, multisig notes (the highest-branch section: `isMultisig`, `devices.length`, `qrFormat` conditionals).
+3. `JsonExportTab.tsx`, `TextExportTab.tsx`, `LabelsExportTab.tsx` — the three simple tab bodies (Text carries the `isCopied` ternaries).
+4. `DeviceExportTab.tsx` — loading / empty / list tri-state.
 
-Other `test:*` variants (test:unit, test:integration, test:bitcoin, test:fast, etc.) are dev-driven scopes that the operator runs shortly after `npm install` (or after one of the hooked entries already built `shared/dist/`). Chasing all 20 variants would be churn for no real benefit. If a future commit needs one of them to be stale-resilient, add the `pre*` hook in the same shape as the five above.
+The parent `ExportModal` keeps all state (`exportTab`, `qrFormat`, `qrSize`, `exportFormats`, `loadingFormats`), the `useEffect`, the handlers (`downloadJson`, `downloadLabels`, `downloadDeviceFormat`, `getQrValue`), the a11y hooks, and renders `{exportTab === 'qr' && <QrExportTab .../>}` etc. Moving the branch-heavy JSX into child components removes those decision points from the parent's McCabe count.
 
 ## Phases
 
-### Phase A — Implement the hooks
+### Phase A — Extract tab bodies (dependency-ordered, lowest risk first)
+- File areas: new `components/WalletDetail/modals/exportTabs/*.tsx`; edited `components/WalletDetail/modals/ExportModal.tsx`.
+- Extract the three simple tabs first (Json, Labels, Text), then DeviceExportTab, then QrExportTab, then ExportTabBar — re-running the focused eslint complexity check after each to confirm the count drops monotonically and the parent crosses ≤15.
+- Pass only the props each child needs; keep all callbacks and state in the parent.
 
-**File**: `server/package.json`
+### Phase B — Verify DOM parity
+- Run the existing 46-test suite unchanged. Any failure means the extraction altered output — fix the extraction, not the test.
 
-**Change 1**: add a private helper script that rebuilds shared from a workspace child dir using the only invocation pattern that npm actually supports here (subshell `cd ..` — `npm --prefix .. --workspace=shared` errors with "No workspaces found" because npm resolves `--workspace` relative to cwd, not prefix; verified before writing this plan).
+### Phase C — Coverage parity
+- The new sub-components are exercised transitively by the existing ExportModal tests (which render every tab). Confirm frontend coverage stays 100%; add a focused test only if coverage reveals a genuinely new uncovered branch introduced by a prop-defaulting decision.
 
-```
-"_predistshared": "cd .. && npm run build --workspace=shared"
-```
+## Compatibility / Rollback
 
-**Change 2**: add five `pre*` hooks that chain the helper before the existing `prisma generate` step.
+- Risk is low: presentational extraction guarded by 46 existing tests and the 100% frontend coverage gate. No funds/auth/signing logic is touched.
+- Rollback: revert the single commit; the public `ExportModal` API is unchanged, so no caller is affected.
 
-```
-"pretest": "npm run _predistshared && prisma generate"
-"pretest:run": "npm run _predistshared && prisma generate"
-"pretest:run:ci": "npm run _predistshared && prisma generate"
-"pretest:coverage": "npm run _predistshared && prisma generate"
-"pretest:ci": "npm run _predistshared && prisma generate"
-```
+## Verification Commands
 
-Rationale:
-- `_predistshared` is a single source of truth for the build invocation — fixing the command in the future means editing one line, not three.
-- The `cd .. && npm run build --workspace=shared` form is the verified working pattern from `server/`.
-- `prisma generate` stays in each hook (was already there in `pretest`; we mirror it into the two new hooks to preserve the existing pre-test invariant that prisma client is regenerated).
-- Do **not** add `_predistshared` to `prebuild` — server `build` does not depend on shared dist today, and adding it would slow the inner-loop unnecessarily.
-- Do **not** add `_predistshared` to `postinstall` — that already runs `prisma generate`, and the shared workspace's own `prepare` script handles the install-time build. The gap we are closing is the *post-pull, pre-test* gap, not the install gap.
+Focused (per phase):
+- `npx --no-install eslint components/WalletDetail/modals/ExportModal.tsx components/WalletDetail/modals/exportTabs/ --rule '{"complexity":["error",15]}'` → 0 violations.
+- `npm run test:run -- tests/components/WalletDetail/modals/ExportModal.test.tsx` → 46 pass.
 
-### Phase B — Regression test
+Closeout (proportional to blast radius — frontend only):
+- `npm run typecheck:app && npm run typecheck:tests`
+- `npm run lint:app`
+- `npm run build`
+- `npm run test:coverage` (frontend) → 100%
+- `git diff --check`
 
-**File**: `server/tests/unit/packaging/sharedPretestRebuild.test.ts` (new)
+## Acceptance Criteria
 
-A unit-level test that:
-1. Reads `server/package.json` and asserts the `_predistshared` helper exists and equals exactly `cd .. && npm run build --workspace=shared`.
-2. Asserts each of `pretest`, `pretest:run`, `pretest:run:ci`, `pretest:coverage`, `pretest:ci` equals exactly `npm run _predistshared && prisma generate`.
-3. Has a doc comment in the file header explaining *why* the hook is shaped that way and which scenario it prevents (stale `shared/dist/` after `git pull`).
+- [ ] `ExportModal.tsx` component body ≤ CCN 15 (eslint complexity clean on the file + new folder).
+- [ ] Existing 46 ExportModal tests pass **unmodified**.
+- [ ] Frontend typecheck, lint, build pass.
+- [ ] Frontend coverage 100%.
+- [ ] `ExportModal` public export, props, and barrel unchanged; all 5 importers untouched.
+- [ ] No DOM/behavior/a11y change.
 
-Why a script-shape assertion rather than a full integration test that wipes `dist/` and re-runs vitest:
-- Wiping `shared/dist/` from a vitest test would race the parent vitest process which is already importing through `dist/`. The shape assertion is deterministic and catches future regressions like "someone removed the hook" or "someone replaced npm with pnpm without updating the hook".
-- The behavioural proof lives in the Phase D verification, executed once by the author and once by CI.
+## Deferred Findings (explicit)
 
-### Phase C — Self-review pass
+The remaining 30 production CCN>15 functions are **not** in scope. Recommended phased order (write non-regression tests first per CLAUDE.md, then refactor):
 
-After Phase A and B, run `/simplify` mentally over the diff:
-- No new abstractions, no helper scripts, no env vars.
-- No unrelated cleanup.
-- Test file follows existing `server/tests/unit/**` conventions.
+1. **Funds/auth/signing (highest risk)** — `enforceAgentFundingPolicy` (22), `server/src/api/auth/tokens.ts` route (22), ledger `signPsbt` (23), jade `signPSBT` (22), `createTransaction` (16).
+2. **Frontend components** — `ChangePasswordModal` (23), `DashboardContent` (21), `AdvancedSettings` (18), `WizardNavigation` (18), `useWalletData`/`useAppearanceTabController`/`useDeviceListPreferences` hooks (17).
+3. **Server services/repos** — `notifyAIInsight` (21), `workerHealth` (21), `updateAgent` (18), `registry.invoke` (18), `metricsExporter.buildServerStat` (19), `getMetrics` (17), `executeSyncPipeline` (17), others (16).
+4. **scripts/** (4, lowest priority) — perf/architecture tooling.
 
-### Phase D — Verification
-
-**Focused (fast) verification**, run from repo root:
-
-```bash
-# Wipe shared dist to simulate fresh checkout
-rm -rf shared/dist
-
-# Confirm the bare-test hook rebuilds shared and tests pass
-cd server && npm test
-# Expect: 460+ test files pass, 0 fail, exit 0
-
-# Wipe again, confirm the coverage hook does the same
-cd ~/sanctuary && rm -rf shared/dist
-cd server && npm run test:coverage 2>&1 | tail -20
-# Expect: 460+ test files pass, coverage report emitted under server/coverage/
-
-# Confirm the regression test itself is green
-cd ~/sanctuary/server && npx vitest run tests/unit/packaging/sharedPretestRebuild.test.ts
-# Expect: 1 test file, all assertions pass
-```
-
-**Broader closeout gates**, run from repo root:
-
-```bash
-# Server typecheck stays green
-cd server && npx tsc --noEmit && cd ..
-
-# Frontend typecheck + tests stay green
-npx tsc --noEmit && npx vitest run
-
-# Lint stays green
-npm run lint
-
-# Full coverage chain (slower; runs only once before commit)
-rm -rf shared/dist && npm run coverage 2>&1 | tail -20
-# Expect: "Coverage Summary" shows server with real numbers
-#         (not "(no coverage-summary.json found — run coverage for this package)")
-```
-
-**Final closeout gate** (Phase 7 of the loop):
-
-```bash
-# Re-run /grade and confirm:
-#   - coverage signal is no longer "unknown"
-#   - Test Quality score recovers from 13 → 15
-#   - Overall score regresses upward (94 → 96 expected)
-```
-
-## Compatibility, Migration, Rollback, Backout
-
-- **Compatibility**: no public API change, no schema change, no DB migration. The hook adds a build step that was previously implicit (developers had to remember to run `npm install` after pulling new shared files). Existing developer workflows are not broken — `npm install` still works, the hook just makes `npm test` self-sufficient.
-- **Migration**: none. The hook fires on next `npm test`.
-- **Rollback**: revert the one-line edit to `server/package.json` and delete the new test file. No state to undo.
-- **Backout signal**: if the `npm --prefix ..` invocation fails on some developer setup (Windows path quoting, npm version <7), the hook would block `npm test`. Mitigation: the error message would be loud and immediately attributable to the new hook; revert path is trivial.
-
-## Risks
-
-1. **Workspace `--workspace=shared` from a child dir**: npm resolves `--workspace` relative to cwd, not `--prefix`. Verified before writing this plan: `cd server && npm --prefix .. run build --workspace=shared` fails with "No workspaces found". The plan uses the subshell `cd ..` form which is verified working. Anyone refactoring this hook must keep the cwd at the root before invoking `--workspace=shared`.
-2. **npm version**: workspaces require npm 7+. Verify the repo's `.nvmrc`/`engines` (or CI Node version) before merging by running `npm -v` in the install-test environment.
-3. **Hook cost**: builds `shared` (a small tsc invocation) on every `npm test`/`test:coverage`/`test:ci`. tsc's incremental cache (`tsBuildInfoFile`/`incremental: true` if enabled) should make repeat runs near-instant. The first run after `rm -rf shared/dist` is a cold compile (~1-3s on this host); subsequent runs should be <500ms.
-4. **Race with parallel server test invocations**: if two `npm test` invocations run concurrently, both will try to build `shared`. tsc handles this safely (idempotent output, last writer wins), but it's worth noting.
-5. **Subshell `cd ..` is bash/sh-friendly**: works on macOS and Linux. On Windows `cmd.exe` the chained `&&` works the same way. `npm run` invokes scripts via the configured shell (`script-shell` in npmrc, defaults to `sh`/`cmd.exe`). No PowerShell-specific issues expected.
-
-## Verification Acceptance Criteria
-
-The PR is acceptance-ready when **all** are true:
-
-- [ ] `rm -rf shared/dist && cd server && npm test` exits 0 (was: exit 1 with 11 import errors).
-- [ ] `rm -rf shared/dist && cd server && npm run test:coverage` exits 0 with a coverage report.
-- [ ] `rm -rf shared/dist && npm run coverage` (from root) produces a non-empty server coverage summary (was: `(no coverage-summary.json found — run coverage for this package)`).
-- [ ] The regression test `tests/unit/packaging/sharedPretestRebuild.test.ts` is green and its assertions reference the exact strings used in `server/package.json`.
-- [ ] Server `npx tsc --noEmit` is green.
-- [ ] Frontend `npx tsc --noEmit && npx vitest run` is green.
-- [ ] Root `npm run lint` is green.
-- [ ] Only `server/package.json` and `server/tests/unit/packaging/sharedPretestRebuild.test.ts` change in the diff (plus their `package-lock.json` if any — none expected).
-
-## Deferred Findings
-
-- **`blocking_io_count` 78 → 105 (+27)** — defer to post-closeout grade spot-check (Phase 7). If hot paths still avoid synchronous I/O, leave anchored at +10 Performance. Reason: not a regression by itself, and addressing it would expand scope.
-- **`duplication_pct` 1.69 → 2.67** — defer. Active "Converge*" series is *reducing* drift; transient duplication during refactor is expected and the margin is still under 3%.
-- **Top-level `prepare-workspaces` convenience script** — defer to a follow-up PR if Phase D suggests the `pretest` hook is sufficient.
-
-## Pass Budget
-
-This is autonomous pass 1 of the grade-loop. Budget allows one additional pass after post-closeout if the post-closeout grade reveals another major actionable item. Beyond that, defer.
+Mechanical 3.1 stays at 0 until the total is ≤15; it reaches +1 at ≤15 and +3 at ≤5. A complexity-budget ESLint ratchet should be added **after** the count is low, not before.

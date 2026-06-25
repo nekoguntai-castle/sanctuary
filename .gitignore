@@ -78,3 +78,6 @@ scripts/offline/keys/*.key
 tasks/automation-notes.md
 tasks/todo.md
 tasks/lessons.md
+
+# Prismatic-thread local capture config (per-machine tooling, not source)
+.prismatic-thread.yaml

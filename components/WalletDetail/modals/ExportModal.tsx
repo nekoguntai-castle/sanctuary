@@ -10,46 +10,27 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
-import {
-  X,
-  QrCode,
-  FileJson,
-  FileText,
-  Tag,
-  HardDrive,
-  Download,
-  Copy,
-  Check,
-} from 'lucide-react';
+import { X } from 'lucide-react';
 import { Button } from '../../ui/Button';
 import { WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
 import { useCopyToClipboard } from '../../../hooks/useCopyToClipboard';
 import * as walletsApi from '../../../src/api/wallets';
 import { isMultisigType, getQuorumM, getQuorumN, type Quorum } from '../../../types';
 import { useTabsA11y } from '../../ui/useTabsA11y';
-
-interface ExportDevice {
-  fingerprint: string;
-  derivationPath?: string;
-  xpub?: string;
-}
 import { createLogger } from '../../../utils/logger';
+import { ExportTabBar } from './exportTabs/ExportTabBar';
+import { QrExportTab } from './exportTabs/QrExportTab';
+import { JsonExportTab } from './exportTabs/JsonExportTab';
+import { TextExportTab } from './exportTabs/TextExportTab';
+import { LabelsExportTab } from './exportTabs/LabelsExportTab';
+import { DeviceExportTab } from './exportTabs/DeviceExportTab';
+import type { ExportTab, QrFormat, ExportDevice, ExportFormat } from './exportTabs/types';
 
 const log = createLogger('ExportModal');
-
-type ExportTab = 'qr' | 'json' | 'text' | 'labels' | 'device';
-type QrFormat = 'passport' | 'descriptor';
 
 const BASE_EXPORT_TABS: readonly ExportTab[] = ['qr', 'json', 'text', 'labels'];
 const MULTISIG_EXPORT_TABS: readonly ExportTab[] = [...BASE_EXPORT_TABS, 'device'];
 const QR_FORMAT_TABS: readonly QrFormat[] = ['passport', 'descriptor'];
-
-interface ExportFormat {
-  id: string;
-  name: string;
-  extension: string;
-}
 
 interface ExportModalProps {
   walletId: string;
@@ -211,235 +192,47 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         </div>
 
         {/* Export Tabs */}
-        <div
-          {...getExportTabListProps('Wallet export sections')}
-          className="flex border-b border-sanctuary-200 dark:border-sanctuary-800 mb-6"
-        >
-          <button
-            {...getExportTabProps('qr')}
-            className={`flex-1 py-2 text-sm font-medium border-b-2 ${
-              exportTab === 'qr'
-                ? 'border-primary-600 dark:border-primary-400 text-primary-700 dark:text-primary-300'
-                : 'border-transparent text-sanctuary-400'
-            }`}
-          >
-            <QrCode className="w-4 h-4 mx-auto mb-1" />
-            QR Code
-          </button>
-          <button
-            {...getExportTabProps('json')}
-            className={`flex-1 py-2 text-sm font-medium border-b-2 ${
-              exportTab === 'json'
-                ? 'border-primary-600 dark:border-primary-400 text-primary-700 dark:text-primary-300'
-                : 'border-transparent text-sanctuary-400'
-            }`}
-          >
-            <FileJson className="w-4 h-4 mx-auto mb-1" />
-            JSON File
-          </button>
-          <button
-            {...getExportTabProps('text')}
-            className={`flex-1 py-2 text-sm font-medium border-b-2 ${
-              exportTab === 'text'
-                ? 'border-primary-600 dark:border-primary-400 text-primary-700 dark:text-primary-300'
-                : 'border-transparent text-sanctuary-400'
-            }`}
-          >
-            <FileText className="w-4 h-4 mx-auto mb-1" />
-            Descriptor
-          </button>
-          <button
-            {...getExportTabProps('labels')}
-            className={`flex-1 py-2 text-sm font-medium border-b-2 ${
-              exportTab === 'labels'
-                ? 'border-primary-600 dark:border-primary-400 text-primary-700 dark:text-primary-300'
-                : 'border-transparent text-sanctuary-400'
-            }`}
-          >
-            <Tag className="w-4 h-4 mx-auto mb-1" />
-            Labels
-          </button>
-          {isMultisig && (
-            <button
-              {...getExportTabProps('device')}
-              className={`flex-1 py-2 text-sm font-medium border-b-2 ${
-                exportTab === 'device'
-                  ? 'border-primary-600 dark:border-primary-400 text-primary-700 dark:text-primary-300'
-                  : 'border-transparent text-sanctuary-400'
-              }`}
-            >
-              <HardDrive className="w-4 h-4 mx-auto mb-1" />
-              Device
-            </button>
-          )}
-        </div>
+        <ExportTabBar
+          exportTab={exportTab}
+          isMultisig={isMultisig}
+          getTabListProps={getExportTabListProps}
+          getTabProps={getExportTabProps}
+        />
 
         <div className="flex flex-col items-center space-y-6">
-          {/* QR Tab */}
           {exportTab === 'qr' && (
-            <div className="w-full">
-              {isMultisig && devices.length > 0 && (
-                <div
-                  {...getQrFormatTabListProps('QR export format')}
-                  className="flex gap-2 mb-4 justify-center"
-                >
-                  <button
-                    {...getQrFormatTabProps('passport')}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                      qrFormat === 'passport'
-                        ? 'bg-primary-600 text-white'
-                        : 'bg-sanctuary-100 dark:bg-sanctuary-800 text-sanctuary-600 dark:text-sanctuary-400 hover:bg-sanctuary-200 dark:hover:bg-sanctuary-700'
-                    }`}
-                  >
-                    Passport/Coldcard
-                  </button>
-                  <button
-                    {...getQrFormatTabProps('descriptor')}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                      qrFormat === 'descriptor'
-                        ? 'bg-primary-600 text-white'
-                        : 'bg-sanctuary-100 dark:bg-sanctuary-800 text-sanctuary-600 dark:text-sanctuary-400 hover:bg-sanctuary-200 dark:hover:bg-sanctuary-700'
-                    }`}
-                  >
-                    Raw Descriptor
-                  </button>
-                </div>
-              )}
-
-              <div className="w-full mb-4">
-                <div className="flex items-center justify-between text-xs text-sanctuary-500 mb-1">
-                  <span>QR Code Size</span>
-                  <span>{qrSize}px</span>
-                </div>
-                <input
-                  type="range"
-                  min="180"
-                  max="400"
-                  step="20"
-                  value={qrSize}
-                  onChange={(e) => setQrSize(Number(e.target.value))}
-                  className="w-full h-2 bg-sanctuary-200 dark:bg-sanctuary-700 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                />
-              </div>
-
-              <div className="p-4 bg-white rounded-lg shadow-inner border border-sanctuary-100 flex flex-col items-center overflow-auto max-h-[500px]">
-                <QRCodeSVG value={getQrValue()} size={qrSize} level="M" />
-                <p className="text-center text-xs text-sanctuary-400 mt-2">
-                  {isMultisig && qrFormat === 'passport'
-                    ? 'Coldcard/Passport compatible format'
-                    : 'Scan to import into another device'}
-                </p>
-              </div>
-
-              {isMultisig && qrFormat === 'passport' && devices.length === 0 && (
-                <p className="text-center text-xs text-amber-500 mt-2">
-                  Note: No devices found. Using raw descriptor format instead.
-                </p>
-              )}
-            </div>
+            <QrExportTab
+              isMultisig={isMultisig}
+              devices={devices}
+              qrFormat={qrFormat}
+              qrSize={qrSize}
+              qrValue={getQrValue()}
+              onQrSizeChange={setQrSize}
+              getQrFormatTabListProps={getQrFormatTabListProps}
+              getQrFormatTabProps={getQrFormatTabProps}
+            />
           )}
 
-          {/* JSON Tab */}
-          {exportTab === 'json' && (
-            <div className="text-center w-full">
-              <FileJson className="w-16 h-16 text-sanctuary-300 mx-auto mb-4" />
-              <p className="text-sm text-sanctuary-500 mb-6">
-                Download the full wallet backup in JSON format. Store this file
-                securely.
-              </p>
-              <Button onClick={downloadJson} className="w-full">
-                <Download className="w-4 h-4 mr-2" /> Download Backup
-              </Button>
-            </div>
-          )}
+          {exportTab === 'json' && <JsonExportTab onDownload={downloadJson} />}
 
-          {/* Text/Descriptor Tab */}
           {exportTab === 'text' && (
-            <div className="w-full">
-              <label className="block text-xs font-medium text-sanctuary-500 mb-1">
-                Output Descriptor
-              </label>
-              <textarea
-                readOnly
-                className="w-full h-32 p-3 text-xs font-mono surface-muted border border-sanctuary-200 dark:border-sanctuary-800 rounded-md resize-none focus:outline-none"
-                value={descriptor || ''}
-              />
-              <Button
-                className="w-full mt-4"
-                variant={isCopied(descriptor || '') ? 'primary' : 'secondary'}
-                onClick={() => copy(descriptor || '')}
-              >
-                {isCopied(descriptor || '') ? (
-                  <Check className="w-4 h-4 mr-2" />
-                ) : (
-                  <Copy className="w-4 h-4 mr-2" />
-                )}
-                {isCopied(descriptor || '') ? 'Copied!' : 'Copy to Clipboard'}
-              </Button>
-            </div>
+            <TextExportTab
+              descriptor={descriptor || ''}
+              isCopied={isCopied}
+              onCopy={copy}
+            />
           )}
 
-          {/* Labels Tab */}
           {exportTab === 'labels' && (
-            <div className="text-center w-full">
-              <Tag className="w-16 h-16 text-sanctuary-300 mx-auto mb-4" />
-              <p className="text-sm text-sanctuary-500 mb-2">
-                Export wallet labels in BIP 329 format.
-              </p>
-              <p className="text-xs text-sanctuary-400 mb-6">
-                This exports transaction and address labels as a JSON Lines file
-                compatible with Sparrow, Electrum, and other BIP 329 supporting
-                wallets.
-              </p>
-              <Button onClick={downloadLabels} className="w-full">
-                <Download className="w-4 h-4 mr-2" /> Download Labels (BIP 329)
-              </Button>
-            </div>
+            <LabelsExportTab onDownload={downloadLabels} />
           )}
 
-          {/* Device Tab */}
           {exportTab === 'device' && (
-            <div className="w-full">
-              <HardDrive className="w-16 h-16 text-sanctuary-300 mx-auto mb-4" />
-              <p className="text-sm text-sanctuary-500 mb-2 text-center">
-                Export wallet configuration for hardware devices.
-              </p>
-              <p className="text-xs text-sanctuary-400 mb-6 text-center">
-                Download a file that can be imported directly onto your hardware
-                wallet to set up the multisig configuration.
-              </p>
-
-              {loadingFormats ? (
-                <div className="text-center text-sanctuary-400 py-4">
-                  Loading export formats...
-                </div>
-              ) : exportFormats.length === 0 ? (
-                <div className="text-center text-sanctuary-400 py-4">
-                  No device export formats available for this wallet type.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {exportFormats
-                    .filter((f) => f.id !== 'sparrow' && f.id !== 'descriptor')
-                    .map((format) => (
-                      <Button
-                        key={format.id}
-                        onClick={() => downloadDeviceFormat(format.id, format.name)}
-                        variant="secondary"
-                        className="w-full justify-between"
-                      >
-                        <div className="flex items-center">
-                          <Download className="w-4 h-4 mr-2" />
-                          <span>{format.name}</span>
-                        </div>
-                        <span className="text-xs text-sanctuary-400">
-                          {format.extension}
-                        </span>
-                      </Button>
-                    ))}
-                </div>
-              )}
-            </div>
+            <DeviceExportTab
+              loadingFormats={loadingFormats}
+              exportFormats={exportFormats}
+              onDownloadFormat={downloadDeviceFormat}
+            />
           )}
         </div>
 
