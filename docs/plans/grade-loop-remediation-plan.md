@@ -1,3 +1,20 @@
+---
+thread: grade-loop-remediation-plan
+threadTitle: Grade-Loop Remediation
+artifactKey: grade-loop-remediation-plan
+type: plan
+format: markdown
+title: "Grade-Loop Remediation Plan"
+status: approved
+summary: "Audit-driven, bounded grade-loop remediation record; observational, not open triage."
+tags:
+  - grade-loop
+  - audit
+metadata:
+  workStatus: audit
+  disposition: audit
+---
+
 # Grade-Loop Remediation Plan
 
 **Source grade report**: `docs/plans/codebase-health-assessment.md`
