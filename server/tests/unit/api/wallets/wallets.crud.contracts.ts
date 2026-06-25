@@ -193,16 +193,16 @@ export const registerWalletCrudContracts = () => {
       expect(mockCreateWallet).not.toHaveBeenCalled();
     });
 
-    it('should reject invalid script type', async () => {
-      const { isValidScriptType } = await import('../../../../src/services/scriptTypes');
-      vi.mocked(isValidScriptType).mockReturnValueOnce(false);
-
+    it('should reject invalid script type at the schema boundary', async () => {
+      // scriptType is validated only by the canonical z.enum(WALLET_SCRIPT_TYPE_VALUES)
+      // schema — an unknown value is rejected before the create service is called.
       const response = await request(walletRouter)
         .post('/api/v1/wallets')
         .send({ name: 'Bad Wallet', type: 'single_sig', scriptType: 'invalid_script' });
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('Invalid scriptType');
+      expect(response.body.message).toContain('scriptType');
+      expect(mockCreateWallet).not.toHaveBeenCalled();
     });
 
     it('should handle service creation error', async () => {

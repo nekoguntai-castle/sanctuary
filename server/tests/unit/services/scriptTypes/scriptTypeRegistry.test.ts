@@ -5,8 +5,12 @@ import { vi } from 'vitest';
  * Tests for the pluggable script type handler system.
  */
 
-import { WALLET_SCRIPT_TYPE_VALUES } from '@sanctuary/shared/constants/walletIdentity';
-import { isValidScriptType, scriptTypeRegistry } from '../../../../src/services/scriptTypes';
+import { WALLET_SCRIPT_TYPE_VALUES, type WalletScriptType } from '@sanctuary/shared/constants/walletIdentity';
+import {
+  isValidScriptType,
+  scriptTypeRegistry,
+  assertScriptTypeRegistryCovers,
+} from '../../../../src/services/scriptTypes';
 import { ScriptTypeRegistry } from '../../../../src/services/scriptTypes/registry';
 import type { ScriptTypeHandler, DeviceKeyInfo, DescriptorBuildOptions } from '../../../../src/services/scriptTypes/types';
 
@@ -51,6 +55,22 @@ describe('registered script type identity', () => {
     expect(isValidScriptType('p2wpkh')).toBe(false);
     expect(isValidScriptType('')).toBe(false);
     expect(isValidScriptType('segwit')).toBe(false);
+  });
+
+  describe('assertScriptTypeRegistryCovers', () => {
+    it('passes when every canonical script type has a registered handler', () => {
+      expect(() =>
+        assertScriptTypeRegistryCovers(WALLET_SCRIPT_TYPE_VALUES),
+      ).not.toThrow();
+    });
+
+    it('throws (fail fast at boot) when a declared script type has no handler', () => {
+      expect(() =>
+        assertScriptTypeRegistryCovers([
+          'unimplemented_script_type' as WalletScriptType,
+        ]),
+      ).toThrow(/missing handlers for: unimplemented_script_type/);
+    });
   });
 });
 

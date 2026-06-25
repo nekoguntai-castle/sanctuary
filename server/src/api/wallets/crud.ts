@@ -7,13 +7,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
-import { WalletType, WALLET_TYPE_VALUES } from '@sanctuary/shared/constants/walletIdentity';
+import { WalletType, WALLET_TYPE_VALUES, WALLET_SCRIPT_TYPE_VALUES } from '@sanctuary/shared/constants/walletIdentity';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
-import { ErrorCodes, InvalidInputError, NotFoundError } from '../../errors/ApiError';
+import { ErrorCodes, NotFoundError } from '../../errors/ApiError';
 import * as walletService from '../../services/wallet';
-import { isValidScriptType, scriptTypeRegistry } from '../../services/scriptTypes';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
@@ -52,7 +51,7 @@ const positiveSafeIntegerSchema = (field: string) => z.unknown().transform((valu
 const CreateWalletBodySchema = z.object({
   name: z.string().min(1),
   type: z.enum(WALLET_TYPE_VALUES),
-  scriptType: z.string().min(1),
+  scriptType: z.enum(WALLET_SCRIPT_TYPE_VALUES),
   network: z.enum(BITCOIN_NETWORKS).optional(),
   quorum: positiveSafeIntegerSchema('quorum').optional(),
   totalSigners: positiveSafeIntegerSchema('totalSigners').optional(),
@@ -147,10 +146,6 @@ router.post('/', validate(
     groupId,
     deviceIds,
   } = req.body;
-
-  if (!isValidScriptType(scriptType)) {
-    throw new InvalidInputError(`Invalid scriptType. Valid types: ${scriptTypeRegistry.getIds().join(', ')}`);
-  }
 
   const wallet = await walletService.createWallet(userId, {
     name,

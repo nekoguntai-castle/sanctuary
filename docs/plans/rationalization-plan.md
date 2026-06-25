@@ -1614,3 +1614,66 @@ Make the approval-vote and address-list route schemas derive their accepted valu
 ### Deferred (unchanged)
 
 - create-wallet `scriptType` (registry-vs-static-enum owner decision) and validate-xpub `scriptType` (lenient-vs-reject compatibility decision) remain decision-blocked.
+
+---
+
+## Phase AF — create-wallet scriptType Single-Source Validation
+
+Source plan: `docs/plans/rationalization-plan.md`
+Date: 2026-06-25
+Commit: `027590ae`
+Scope: the first deferred `scriptType` item, now decided. User direction: single source of truth.
+
+### Decision
+
+Canonical source = `WALLET_SCRIPT_TYPE_VALUES` (shared). The route currently validates `scriptType` in **two** places: a loose `z.string().min(1)` plus a per-request `isValidScriptType()` check (which couples `parseWalletScriptType` + `scriptTypeRegistry.has`), while OpenAPI documents the static enum. Consolidate to ONE wire authority — `z.enum(WALLET_SCRIPT_TYPE_VALUES)` — matching OpenAPI, and remove the redundant route check.
+
+The "is a handler actually implemented" guarantee that `isValidScriptType` provided is **preserved and upgraded**: the registry's `getDerivationPath`/`buildSingleSigDescriptor` already `throw 'Unknown script type'` downstream if a handler is missing, and we additionally add a **boot-time invariant** asserting the registry covers every `WALLET_SCRIPT_TYPE_VALUES` entry — so a "declared but unimplemented" script type fails fast at startup instead of at first wallet creation.
+
+### Non-Goals
+
+- Do NOT change `isValidScriptType` (it stays as a utility; it has its own unit test in `scriptTypeRegistry.test.ts` and is used elsewhere conceptually). We only remove the route's *call* to it.
+- Do NOT touch validate-xpub `scriptType` (Phase deferred item #2): research showed it already rejects invalid input via the descriptor switch — it's not a bug; tightening is cosmetic and out of scope here.
+- Do NOT convert runtime `listType === 'allow'` comparisons (readable idiom, not a value-list contract).
+- No behavior change beyond: invalid `scriptType` is still rejected with 400, but via the schema (message becomes the existing grouped `'name, type, and scriptType are required'` instead of the removed check's `'Invalid scriptType. Valid types: …'`; OpenAPI documents the valid values, and no real caller sends an invalid value — the frontend uses the enum).
+
+### Paths To Keep, Wrap, Converge, Or Remove
+
+| Action | Paths |
+| --- | --- |
+| Converge | `server/src/api/wallets/crud.ts` — `scriptType: z.enum(WALLET_SCRIPT_TYPE_VALUES)` (was `z.string().min(1)`); import `WALLET_SCRIPT_TYPE_VALUES` |
+| Remove | the per-request `if (!isValidScriptType(scriptType)) throw …` block + the now-unused `import { isValidScriptType, scriptTypeRegistry }` in crud.ts |
+| Add (guardrail) | `server/src/services/scriptTypes/index.ts` — `assertScriptTypeRegistryCovers(WALLET_SCRIPT_TYPE_VALUES)` (exported, called after handler registration; throws listing any canonical id without a handler) |
+| Keep | `isValidScriptType` (still exported + unit-tested); registry downstream throws unchanged |
+
+### Phases
+
+| Phase | Work | Files | Verification | Exit Criteria |
+| --- | --- | --- | --- | --- |
+| AF.1 | Add the boot invariant + its unit test | `services/scriptTypes/index.ts`, `tests/unit/services/scriptTypes/scriptTypeRegistry.test.ts` | `cd server && npx vitest run tests/unit/services/scriptTypes/` | invariant passes for the canonical list, throws for a missing id (both branches covered) |
+| AF.2 | `z.enum` + remove redundant route check/imports | `api/wallets/crud.ts` | tsc + crud route tests | no `isValidScriptType`/`scriptTypeRegistry` import in crud; invalid scriptType → 400 via schema |
+| AF.3 | Update the one route test that mocked `isValidScriptType` | `tests/unit/api/wallets/wallets.crud.contracts.ts` (the `registerWalletCrudContracts` block; runs via the parent `tests/unit/api/wallets.test.ts`) | `cd server && npx vitest run tests/unit/api/wallets.test.ts` | test sends an invalid scriptType (no mock), asserts 400 + service not called |
+
+### Compatibility / Rollback
+
+- Invalid `scriptType` is still rejected (400); only the error message changes (no real caller hits it). Valid/missing behavior unchanged. The implementation-presence guarantee is preserved (downstream throw) and upgraded (boot invariant). Rollback = revert the single commit.
+
+### Verification Commands
+
+- `cd server && npx tsc --noEmit`
+- `cd server && npx vitest run tests/unit/services/scriptTypes/ tests/unit/api/wallets.test.ts` (the `wallets/*.contracts.ts` modules run only via the `wallets.test.ts` parent, not the directory)
+- `cd server && npx eslint "src/api/wallets/crud.ts" "src/services/scriptTypes/index.ts"`
+- `cd server && npm run test:coverage` (99% gate)
+
+### Acceptance Criteria
+
+- [ ] `crud.ts` validates `scriptType` only via `z.enum(WALLET_SCRIPT_TYPE_VALUES)`; the redundant `isValidScriptType` call + its imports are gone.
+- [ ] Boot invariant asserts the registry covers `WALLET_SCRIPT_TYPE_VALUES`; unit-tested (pass + throw).
+- [ ] Invalid `scriptType` still returns 400 and does not call the create service.
+- [ ] `isValidScriptType` unchanged and still covered.
+- [ ] Server tsc, lint, 99% coverage gate pass.
+
+### Deferred (unchanged)
+
+- validate-xpub `scriptType` (not a bug — already rejects invalid; cosmetic only).
+- runtime `listType === 'allow'` comparisons (readable idiom, not a contract).

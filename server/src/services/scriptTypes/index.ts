@@ -24,6 +24,7 @@
 
 import {
   parseWalletScriptType,
+  WALLET_SCRIPT_TYPE_VALUES,
   type WalletScriptType,
 } from '@sanctuary/shared/constants/walletIdentity';
 import { scriptTypeRegistry } from './registry';
@@ -39,6 +40,28 @@ scriptTypeRegistry.register(nativeSegwitHandler);
 scriptTypeRegistry.register(nestedSegwitHandler);
 scriptTypeRegistry.register(legacyHandler);
 scriptTypeRegistry.register(taprootHandler);
+
+/**
+ * Boot-time invariant: every canonical `WALLET_SCRIPT_TYPE_VALUES` entry must
+ * have a registered handler. `WALLET_SCRIPT_TYPE_VALUES` is the single source of
+ * truth for accepted script types (the create-wallet Zod schema and OpenAPI both
+ * derive from it); this fails fast at startup if a declared script type lacks an
+ * implementation, instead of surfacing a generic "Unknown script type" on the
+ * first wallet creation that uses it.
+ */
+export function assertScriptTypeRegistryCovers(
+  ids: readonly WalletScriptType[],
+): void {
+  const missing = ids.filter((id) => !scriptTypeRegistry.has(id));
+  if (missing.length > 0) {
+    throw new Error(
+      `Script type registry is missing handlers for: ${missing.join(', ')}. ` +
+        'Every WALLET_SCRIPT_TYPE_VALUES entry must have a registered handler.',
+    );
+  }
+}
+
+assertScriptTypeRegistryCovers(WALLET_SCRIPT_TYPE_VALUES);
 
 // Export the registry and types
 export { scriptTypeRegistry } from './registry';
