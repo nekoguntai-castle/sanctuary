@@ -1390,7 +1390,19 @@ jobs:
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    needs: [detect-changes, full-lane-ready]
+    # Serialized to run ALONE among the Postgres-heavy full lanes. Root cause of
+    # the recurring "table public.users does not exist": the Forgejo runner
+    # v12.10.1 ignores job/matrix concurrency (only runner.capacity caps it), so
+    # full-backend-unit-coverage-shards (2 Postgres), full-browser-e2e-tests
+    # (1 Postgres) and this lane (1 Postgres) all started together at
+    # full-lane-ready and the resulting memory pressure OOM-killed this lane's
+    # `services: postgres`, which is recreated empty mid-run (schema verified by
+    # prepare-integration-db.sh, then gone). Depending on those lanes makes this
+    # one start only after they finish, so no other Postgres lane is live during
+    # the integration run. These needs add ORDERING ONLY — the always()-guarded
+    # `if:` above is unchanged, so a skipped/failed upstream lane never skips or
+    # blocks this one.
+    needs: [detect-changes, full-lane-ready, full-backend-unit-coverage-shards, full-browser-e2e-tests]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-integration
     defaults:
@@ -2225,7 +2237,11 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    needs: [detect-changes, full-lane-ready]
+    # Serialized after full-backend-unit-coverage-shards so the Postgres-heavy
+    # full lanes do not co-reside on the shared DIND daemon (see the
+    # full-backend-integration-tests needs: comment for the OOM root cause).
+    # Ordering only; the always()-guarded `if:` above is unchanged.
+    needs: [detect-changes, full-lane-ready, full-backend-unit-coverage-shards]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/browser-e2e
 
