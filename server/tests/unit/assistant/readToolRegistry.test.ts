@@ -41,6 +41,9 @@ const mocks = vi.hoisted(() => ({
   draftRepository: {
     findByWalletId: vi.fn(),
   },
+  deviceRepository: {
+    findHardwareModels: vi.fn(),
+  },
   getBitcoinNetworkStatus: vi.fn(),
 }));
 
@@ -52,6 +55,7 @@ vi.mock('../../../src/repositories', () => ({
   policyRepository: mocks.policyRepository,
   intelligenceRepository: mocks.intelligenceRepository,
   draftRepository: mocks.draftRepository,
+  deviceRepository: mocks.deviceRepository,
 }));
 
 vi.mock('../../../src/services/bitcoin/networkStatusService', () => ({
@@ -110,6 +114,7 @@ describe('assistant read-tool registry', () => {
       'query_utxos',
       'search_addresses',
       'get_wallet_overview',
+      'get_wallet_privacy',
       'get_wallet_detail_summary',
       'get_transaction_stats',
       'get_pending_transactions',
@@ -128,9 +133,13 @@ describe('assistant read-tool registry', () => {
       'get_draft_detail',
       'list_insights',
       'get_insight_detail',
+      'list_supported_device_models',
       'get_market_status',
+      'get_historical_price',
       'get_admin_operational_summary',
       'get_bitcoin_network_status',
+      'get_mempool_status',
+      'get_recent_blocks',
       'get_fee_estimates',
       'convert_price',
     ]);

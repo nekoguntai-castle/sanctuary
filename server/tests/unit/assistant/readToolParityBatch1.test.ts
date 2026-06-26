@@ -41,6 +41,9 @@ const mocks = vi.hoisted(() => ({
   draftRepository: {
     findByWalletId: vi.fn(),
   },
+  deviceRepository: {
+    findHardwareModels: vi.fn(),
+  },
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -51,6 +54,7 @@ vi.mock('../../../src/repositories', () => ({
   policyRepository: mocks.policyRepository,
   intelligenceRepository: mocks.intelligenceRepository,
   draftRepository: mocks.draftRepository,
+  deviceRepository: mocks.deviceRepository,
 }));
 
 import { assistantReadToolRegistry, type AssistantToolContext } from '../../../src/assistant/tools';

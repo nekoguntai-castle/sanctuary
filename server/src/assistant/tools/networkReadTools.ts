@@ -2,14 +2,25 @@ import * as z from 'zod/v4';
 import { getCachedBtcPrice, getCachedFeeEstimates } from './cache';
 import { AssistantToolError, createToolEnvelope, type AssistantReadToolDefinition } from './types';
 import { parseSats } from './utils';
+import * as mempool from '../../services/bitcoin/mempool';
 import { getBitcoinNetworkStatus } from '../../services/bitcoin/networkStatusService';
 import { getErrorMessage } from '../../utils/errors';
 
 const genericOutputSchema = z.object({}).passthrough();
 const publicBudget = { maxRows: 1, maxBytes: 32_000 };
+const blockListBudget = { maxRows: 100, maxBytes: 128_000 };
+const MEMPOOL_CACHE_TTL_MS = 15_000;
+const MEMPOOL_STALE_TTL_MS = 300_000;
+const MAX_RECENT_BLOCKS_COUNT = 100;
 
 const bitcoinNetworkStatusInputSchema = {} as const;
+const mempoolStatusInputSchema = {} as const;
 const feeEstimatesInputSchema = {} as const;
+const recentBlocksInputSchema = {
+  count: z.coerce.number().int().min(1).catch(10)
+    .transform(count => Math.min(count, MAX_RECENT_BLOCKS_COUNT))
+    .optional(),
+} as const;
 
 const priceConversionInputSchema = {
   sats: z.union([z.string(), z.number()]).optional(),
@@ -20,6 +31,17 @@ const priceConversionInputSchema = {
 type PriceConversionAmountInput =
   | { kind: 'sats'; sats: string | number }
   | { kind: 'fiat'; fiatAmount: number };
+type MempoolStatus = Awaited<ReturnType<typeof mempool.getBlocksAndMempool>>;
+type MempoolCacheEntry = {
+  data: MempoolStatus;
+  timestamp: number;
+};
+
+let mempoolStatusCache: MempoolCacheEntry | null = null;
+
+export function resetMempoolStatusCacheForTests(): void {
+  mempoolStatusCache = null;
+}
 
 function requireSafeSatsNumber(sats: bigint): number {
   if (sats > BigInt(Number.MAX_SAFE_INTEGER) || sats < BigInt(Number.MIN_SAFE_INTEGER)) {
@@ -44,6 +66,51 @@ function requireExactlyOneConversionInput(input: { sats?: string | number; fiatA
 function requireValidPrice(price: number): void {
   if (!Number.isFinite(price) || price <= 0) {
     throw new AssistantToolError(400, 'Cached BTC price is invalid');
+  }
+}
+
+async function readMainnetMempoolStatus(): Promise<{
+  data: MempoolStatus & { stale?: true };
+  asOf: string;
+  stale: boolean;
+  warnings: string[];
+  sourceType: 'sanctuary_cache' | 'computed';
+}> {
+  const now = Date.now();
+  const cached = mempoolStatusCache;
+
+  if (cached && now - cached.timestamp < MEMPOOL_CACHE_TTL_MS) {
+    return {
+      data: cached.data,
+      asOf: new Date(cached.timestamp).toISOString(),
+      stale: false,
+      warnings: [],
+      sourceType: 'sanctuary_cache',
+    };
+  }
+
+  try {
+    const data = await mempool.getBlocksAndMempool('mainnet');
+    mempoolStatusCache = { data, timestamp: now };
+    return {
+      data,
+      asOf: new Date(now).toISOString(),
+      stale: false,
+      warnings: [],
+      sourceType: 'computed',
+    };
+  } catch (error) {
+    if (cached && now - cached.timestamp < MEMPOOL_STALE_TTL_MS) {
+      return {
+        data: { ...cached.data, stale: true },
+        asOf: new Date(cached.timestamp).toISOString(),
+        stale: true,
+        warnings: ['mempool_status_stale'],
+        sourceType: 'sanctuary_cache',
+      };
+    }
+
+    throw new AssistantToolError(502, `Failed to fetch mempool data: ${getErrorMessage(error)}`);
   }
 }
 
@@ -96,6 +163,78 @@ export const bitcoinNetworkStatusTool: AssistantReadToolDefinition<typeof bitcoi
         warnings: ['bitcoin_network_status_unavailable'],
       });
     }
+  },
+};
+
+export const mempoolStatusTool: AssistantReadToolDefinition<typeof mempoolStatusInputSchema> = {
+  name: 'get_mempool_status',
+  title: 'Get Mempool Status',
+  description: 'Get mainnet mempool and recent block dashboard data with short-lived caching',
+  inputSchema: mempoolStatusInputSchema,
+  outputSchema: genericOutputSchema,
+  sensitivity: 'public',
+  requiredScope: {
+    kind: 'authenticated',
+    description: 'Requires an authenticated Sanctuary session or MCP client profile.',
+  },
+  budgets: publicBudget,
+  async execute(_input, context) {
+    const status = await readMainnetMempoolStatus();
+    return createToolEnvelope({
+      tool: mempoolStatusTool,
+      context,
+      data: {
+        network: 'mainnet',
+        asOf: status.asOf,
+        status: status.data,
+      },
+      summary: status.stale ? 'Returned stale mainnet mempool status.' : 'Returned mainnet mempool status.',
+      facts: [
+        { label: 'network', value: 'mainnet' },
+        { label: 'mempool_transaction_count', value: status.data.mempoolInfo.count },
+        { label: 'stale', value: status.stale },
+      ],
+      provenanceSources: [{ type: status.sourceType, label: 'mainnet_mempool', asOf: status.asOf }],
+      warnings: status.warnings,
+      audit: { rowCount: 1 },
+    });
+  },
+};
+
+export const recentBlocksTool: AssistantReadToolDefinition<typeof recentBlocksInputSchema> = {
+  name: 'get_recent_blocks',
+  title: 'Get Recent Blocks',
+  description: 'Get recent confirmed Bitcoin mainnet blocks, capped at 100',
+  inputSchema: recentBlocksInputSchema,
+  outputSchema: genericOutputSchema,
+  sensitivity: 'public',
+  requiredScope: {
+    kind: 'authenticated',
+    description: 'Requires an authenticated Sanctuary session or MCP client profile.',
+  },
+  budgets: blockListBudget,
+  async execute(input, context) {
+    const count = input.count ?? 10;
+    const blocks = await mempool.getRecentBlocks(count, 'mainnet');
+
+    return createToolEnvelope({
+      tool: recentBlocksTool,
+      context,
+      data: {
+        network: 'mainnet',
+        requestedCount: count,
+        count: blocks.length,
+        blocks,
+      },
+      summary: `Returned ${blocks.length} recent mainnet blocks.`,
+      facts: [
+        { label: 'network', value: 'mainnet' },
+        { label: 'requested_block_count', value: count },
+        { label: 'returned_block_count', value: blocks.length },
+      ],
+      provenanceSources: [{ type: 'computed', label: 'mainnet_recent_blocks' }],
+      audit: { rowCount: blocks.length },
+    });
   },
 };
 
@@ -191,4 +330,10 @@ function buildPriceConversion(
   };
 }
 
-export const networkReadTools = [bitcoinNetworkStatusTool, feeEstimatesTool, priceConversionTool];
+export const networkReadTools = [
+  bitcoinNetworkStatusTool,
+  mempoolStatusTool,
+  recentBlocksTool,
+  feeEstimatesTool,
+  priceConversionTool,
+];

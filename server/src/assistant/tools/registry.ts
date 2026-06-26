@@ -3,6 +3,7 @@ import { adminReadTools } from './adminReadTools';
 import { addressReadTools } from './addressReadTools';
 import { analyticsReadTools } from './analyticsReadTools';
 import { dashboardReadTools } from './dashboardReadTools';
+import { deviceReadTools } from './deviceReadTools';
 import { draftReadTools } from './draftReadTools';
 import { insightReadTools } from './insightReadTools';
 import { labelReadTools } from './labelReadTools';
@@ -80,6 +81,7 @@ export const assistantReadToolDefinitions = [
   ...policyReadTools,
   ...draftReadTools,
   ...insightReadTools,
+  ...deviceReadTools,
   ...marketReadTools,
   ...adminReadTools,
   ...networkReadTools,

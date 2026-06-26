@@ -33,6 +33,19 @@ const mocks = vi.hoisted(() => ({
   draftRepository: {
     findByWalletId: vi.fn(),
   },
+  deviceRepository: {
+    findHardwareModels: vi.fn(),
+  },
+  privacyService: {
+    calculateWalletPrivacy: vi.fn(),
+  },
+  priceService: {
+    getHistoricalPrice: vi.fn(),
+  },
+  mempool: {
+    getBlocksAndMempool: vi.fn(),
+    getRecentBlocks: vi.fn(),
+  },
   getBitcoinNetworkStatus: vi.fn(),
 }));
 
@@ -44,6 +57,20 @@ vi.mock('../../../src/repositories', () => ({
   policyRepository: mocks.policyRepository,
   intelligenceRepository: mocks.intelligenceRepository,
   draftRepository: mocks.draftRepository,
+  deviceRepository: mocks.deviceRepository,
+}));
+
+vi.mock('../../../src/services/privacyService', () => ({
+  calculateWalletPrivacy: mocks.privacyService.calculateWalletPrivacy,
+}));
+
+vi.mock('../../../src/services/price', () => ({
+  getPriceService: () => mocks.priceService,
+}));
+
+vi.mock('../../../src/services/bitcoin/mempool', () => ({
+  getBlocksAndMempool: mocks.mempool.getBlocksAndMempool,
+  getRecentBlocks: mocks.mempool.getRecentBlocks,
 }));
 
 vi.mock('../../../src/services/bitcoin/networkStatusService', () => ({
@@ -51,6 +78,7 @@ vi.mock('../../../src/services/bitcoin/networkStatusService', () => ({
 }));
 
 import { assistantReadToolRegistry, type AssistantToolContext } from '../../../src/assistant/tools';
+import { resetMempoolStatusCacheForTests } from '../../../src/assistant/tools/networkReadTools';
 
 const walletId = '11111111-1111-4111-8111-111111111111';
 const secondWalletId = '22222222-2222-4222-8222-222222222222';
@@ -77,6 +105,7 @@ function priceRow(price: number | null, currency = 'USD', createdAt = new Date('
 describe('assistant read-tool executors', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetMempoolStatusCacheForTests();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-26T12:00:00.000Z'));
   });
@@ -544,6 +573,187 @@ describe('assistant read-tool executors', () => {
     expect(network.facts.items).toEqual(expect.arrayContaining([
       { label: 'block_height', value: null },
     ]));
+    expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
+  });
+
+  it('returns wallet privacy scores without raw address or outpoint material', async () => {
+    const context = createContext();
+    mocks.privacyService.calculateWalletPrivacy.mockResolvedValue({
+      utxos: [
+        {
+          utxoId: 'utxo-1',
+          txid: 'secret-txid',
+          vout: 1,
+          address: 'bc1qsecret',
+          amount: 25_000n,
+          score: {
+            score: 80,
+            grade: 'good',
+            factors: [{ factor: 'Address reuse', impact: -20, description: 'reused' }],
+            warnings: ['address reuse'],
+          },
+        },
+      ],
+      summary: {
+        averageScore: 80,
+        grade: 'good',
+        utxoCount: 1,
+        addressReuseCount: 1,
+        roundAmountCount: 0,
+        clusterCount: 0,
+        recommendations: ['Avoid address reuse'],
+      },
+    });
+
+    const envelope = await assistantReadToolRegistry.execute('get_wallet_privacy', { walletId }, context);
+
+    expect(context.authorizeWalletAccess).toHaveBeenCalledWith(walletId);
+    expect(mocks.privacyService.calculateWalletPrivacy).toHaveBeenCalledWith(walletId);
+    expect(envelope.data).toMatchObject({
+      walletId,
+      count: 1,
+      utxos: [{ utxoId: 'utxo-1', amount: 25000, score: expect.objectContaining({ grade: 'good' }) }],
+    });
+    expect(JSON.stringify(envelope.data)).not.toContain('secret-txid');
+    expect(JSON.stringify(envelope.data)).not.toContain('bc1qsecret');
+    expect(envelope.redactions).toEqual(expect.arrayContaining([
+      'wallet_privacy_utxo_addresses',
+      'wallet_privacy_utxo_txids',
+      'wallet_privacy_utxo_outpoints',
+    ]));
+  });
+
+  it('does not calculate wallet privacy after authorization denial', async () => {
+    const context = createContext();
+    context.authorizeWalletAccess.mockRejectedValue(new Error('denied'));
+
+    await expect(
+      assistantReadToolRegistry.execute('get_wallet_privacy', { walletId }, context)
+    ).rejects.toThrow('denied');
+
+    expect(mocks.privacyService.calculateWalletPrivacy).not.toHaveBeenCalled();
+  });
+
+  it('lists supported device models with route-equivalent discontinued defaults', async () => {
+    const context = createContext();
+    mocks.deviceRepository.findHardwareModels
+      .mockResolvedValueOnce([
+        {
+          id: 'model-1',
+          name: 'Coldcard Mk4',
+          slug: 'coldcard-mk4',
+          manufacturer: 'Coinkite',
+          connectivity: ['usb', 'sd_card'],
+          airGapped: true,
+          discontinued: false,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'model-2',
+          name: 'Legacy Device',
+          slug: 'legacy-device',
+          manufacturer: 'Example',
+          connectivity: ['usb'],
+          airGapped: false,
+          discontinued: true,
+        },
+      ]);
+
+    const defaultList = await assistantReadToolRegistry.execute(
+      'list_supported_device_models',
+      { manufacturer: 'Coinkite', airGapped: false, connectivity: 'usb' },
+      context
+    );
+    const withDiscontinued = await assistantReadToolRegistry.execute(
+      'list_supported_device_models',
+      { includeDiscontinued: true },
+      context
+    );
+
+    expect(mocks.deviceRepository.findHardwareModels).toHaveBeenNthCalledWith(1, {
+      manufacturer: 'Coinkite',
+      airGapped: false,
+      connectivity: 'usb',
+      discontinued: false,
+    });
+    expect(mocks.deviceRepository.findHardwareModels).toHaveBeenNthCalledWith(2, {});
+    expect(defaultList.data).toMatchObject({ count: 1, includeDiscontinued: false });
+    expect(withDiscontinued.data).toMatchObject({ count: 1, includeDiscontinued: true });
+    expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
+  });
+
+  it('returns historical prices and rejects invalid or future dates', async () => {
+    const context = createContext();
+    mocks.priceService.getHistoricalPrice.mockResolvedValue(42_000);
+
+    const envelope = await assistantReadToolRegistry.execute(
+      'get_historical_price',
+      { date: '2026-04-25', currency: 'usd' },
+      context
+    );
+
+    expect(mocks.priceService.getHistoricalPrice).toHaveBeenCalledWith('USD', new Date('2026-04-25'));
+    expect(envelope.data).toMatchObject({
+      date: new Date('2026-04-25').toISOString(),
+      currency: 'USD',
+      price: 42_000,
+      provider: 'coingecko',
+    });
+    await expect(
+      assistantReadToolRegistry.execute('get_historical_price', { date: 'not-a-date' }, context)
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await expect(
+      assistantReadToolRegistry.execute('get_historical_price', { date: '2026-04-27T00:00:00.000Z' }, context)
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
+  });
+
+  it('returns mainnet mempool status with fresh cache and stale fallback', async () => {
+    const context = createContext();
+    const mempoolData = {
+      mempool: [{ height: 'Next', medianFee: 4, feeRange: '2-4 sat/vB', size: 1, time: '~10m', status: 'pending', txCount: 12, totalFees: 0.01 }],
+      blocks: [{ height: 840123, medianFee: 2 }],
+      mempoolInfo: { count: 12, size: 1.2, totalFees: 0.02 },
+      queuedBlocksSummary: null,
+    };
+    mocks.mempool.getBlocksAndMempool.mockResolvedValueOnce(mempoolData);
+
+    const fetched = await assistantReadToolRegistry.execute('get_mempool_status', {}, context);
+    const cached = await assistantReadToolRegistry.execute('get_mempool_status', {}, context);
+    vi.setSystemTime(new Date('2026-04-26T12:00:16.000Z'));
+    mocks.mempool.getBlocksAndMempool.mockRejectedValueOnce(new Error('mempool down'));
+    const stale = await assistantReadToolRegistry.execute('get_mempool_status', {}, context);
+    vi.setSystemTime(new Date('2026-04-26T12:05:01.000Z'));
+    mocks.mempool.getBlocksAndMempool.mockRejectedValueOnce(new Error('mempool still down'));
+
+    await expect(assistantReadToolRegistry.execute('get_mempool_status', {}, context)).rejects.toMatchObject({
+      statusCode: 502,
+    });
+
+    expect(mocks.mempool.getBlocksAndMempool).toHaveBeenCalledTimes(3);
+    expect(mocks.mempool.getBlocksAndMempool).toHaveBeenCalledWith('mainnet');
+    expect(fetched.data).toMatchObject({ network: 'mainnet', status: mempoolData });
+    expect(cached.provenance.sources[0]).toMatchObject({ type: 'sanctuary_cache' });
+    expect(stale.data.status).toMatchObject({ stale: true });
+    expect(stale.warnings).toContain('mempool_status_stale');
+    expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
+  });
+
+  it('returns recent mainnet blocks with defaults and count capping', async () => {
+    const context = createContext();
+    const block = { id: 'block-1', height: 840123 };
+    mocks.mempool.getRecentBlocks
+      .mockResolvedValueOnce([block])
+      .mockResolvedValueOnce([block, { id: 'block-2', height: 840122 }]);
+
+    const defaults = await assistantReadToolRegistry.execute('get_recent_blocks', {}, context);
+    const capped = await assistantReadToolRegistry.execute('get_recent_blocks', { count: 200 }, context);
+
+    expect(mocks.mempool.getRecentBlocks).toHaveBeenNthCalledWith(1, 10, 'mainnet');
+    expect(mocks.mempool.getRecentBlocks).toHaveBeenNthCalledWith(2, 100, 'mainnet');
+    expect(defaults.data).toMatchObject({ network: 'mainnet', requestedCount: 10, count: 1 });
+    expect(capped.data).toMatchObject({ network: 'mainnet', requestedCount: 100, count: 2 });
     expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
   });
 });

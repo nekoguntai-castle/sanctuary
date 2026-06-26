@@ -1,6 +1,7 @@
 import * as z from 'zod/v4';
 import { PERSISTED_TRANSACTION_TYPES } from '@sanctuary/shared/constants/transactions';
 import type { Prisma } from '../../generated/prisma/client';
+import * as privacyService from '../../services/privacyService';
 import {
   assistantReadRepository,
   intelligenceRepository,
@@ -49,6 +50,21 @@ const searchAddressesInputSchema = {
 const walletOverviewInputSchema = {
   walletId: z.string().uuid(),
 } as const;
+
+const walletPrivacyInputSchema = {
+  walletId: z.string().uuid(),
+} as const;
+
+type WalletPrivacyResult = Awaited<ReturnType<typeof privacyService.calculateWalletPrivacy>>;
+type WalletPrivacyUtxo = WalletPrivacyResult['utxos'][number];
+
+function toWalletPrivacyUtxoDto(utxo: WalletPrivacyUtxo) {
+  return {
+    utxoId: utxo.utxoId,
+    amount: Number(utxo.amount),
+    score: utxo.score,
+  };
+}
 
 export const queryTransactionsTool: AssistantReadToolDefinition<typeof queryTransactionsInputSchema> = {
   name: 'query_transactions',
@@ -236,9 +252,56 @@ export const walletOverviewTool: AssistantReadToolDefinition<typeof walletOvervi
   },
 };
 
+export const walletPrivacyTool: AssistantReadToolDefinition<typeof walletPrivacyInputSchema> = {
+  name: 'get_wallet_privacy',
+  title: 'Get Wallet Privacy',
+  description: 'Summarize wallet UTXO privacy scores without exposing raw addresses or outpoints',
+  inputSchema: walletPrivacyInputSchema,
+  outputSchema: genericOutputSchema,
+  sensitivity: 'wallet',
+  requiredScope: {
+    kind: 'wallet',
+    walletIdInput: 'walletId',
+    description: 'Requires read access to the requested wallet.',
+  },
+  budgets: walletBudget,
+  async execute(input, context) {
+    await context.authorizeWalletAccess(input.walletId);
+    const result = await privacyService.calculateWalletPrivacy(input.walletId);
+    const utxos = result.utxos.map(toWalletPrivacyUtxoDto);
+
+    return createToolEnvelope({
+      tool: walletPrivacyTool,
+      context,
+      data: {
+        walletId: input.walletId,
+        summary: result.summary,
+        count: utxos.length,
+        utxos,
+      },
+      summary: `Wallet privacy grade is ${result.summary.grade} across ${result.summary.utxoCount} UTXOs.`,
+      facts: [
+        { label: 'privacy_grade', value: result.summary.grade },
+        { label: 'average_privacy_score', value: result.summary.averageScore },
+        { label: 'utxo_count', value: result.summary.utxoCount },
+        { label: 'address_reuse_count', value: result.summary.addressReuseCount },
+        { label: 'cluster_count', value: result.summary.clusterCount },
+      ],
+      provenanceSources: [{ type: 'computed', label: 'wallet_privacy' }],
+      redactions: [
+        'wallet_privacy_utxo_addresses',
+        'wallet_privacy_utxo_txids',
+        'wallet_privacy_utxo_outpoints',
+      ],
+      audit: { walletCount: 1, rowCount: utxos.length },
+    });
+  },
+};
+
 export const walletReadTools = [
   queryTransactionsTool,
   queryUtxosTool,
   searchAddressesTool,
   walletOverviewTool,
+  walletPrivacyTool,
 ];
