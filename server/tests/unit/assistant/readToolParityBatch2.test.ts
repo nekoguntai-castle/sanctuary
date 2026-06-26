@@ -30,9 +30,16 @@ const mocks = vi.hoisted(() => ({
   walletRepository: {
     findByIdWithAccess: vi.fn(),
   },
+  userRepository: {
+    findByIdWithSelect: vi.fn(),
+  },
+  walletSharingRepository: {
+    findWalletIdsByUserRole: vi.fn(),
+  },
   utxoRepository: {
     aggregateUnspent: vi.fn(),
     countByWalletId: vi.fn(),
+    findWalletIdByUtxoId: vi.fn(),
   },
   transactionRepository: {
     countByWalletId: vi.fn(),
@@ -58,6 +65,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../src/repositories', () => ({
   assistantReadRepository: mocks.assistantReadRepository,
   walletRepository: mocks.walletRepository,
+  userRepository: mocks.userRepository,
+  walletSharingRepository: mocks.walletSharingRepository,
   utxoRepository: mocks.utxoRepository,
   transactionRepository: mocks.transactionRepository,
   policyRepository: mocks.policyRepository,

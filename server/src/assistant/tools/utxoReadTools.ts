@@ -1,13 +1,19 @@
 import * as z from 'zod/v4';
-import { assistantReadRepository } from '../../repositories';
+import { assistantReadRepository, utxoRepository } from '../../repositories';
+import * as privacyService from '../../services/privacyService';
 import { buildUtxoSummary } from './summary';
-import { createToolEnvelope, type AssistantReadToolDefinition } from './types';
+import { AssistantToolError, createToolEnvelope, type AssistantReadToolDefinition } from './types';
 
 const genericOutputSchema = z.object({}).passthrough();
 const utxoSummaryBudget = { maxRows: 50, maxBytes: 64_000 };
+const utxoPrivacyBudget = { maxRows: 1, maxBytes: 32_000 };
 
 const utxoSummaryInputSchema = {
   walletId: z.string().uuid(),
+} as const;
+
+const utxoPrivacyInputSchema = {
+  utxoId: z.string().min(1),
 } as const;
 
 export const utxoSummaryTool: AssistantReadToolDefinition<typeof utxoSummaryInputSchema> = {
@@ -44,4 +50,49 @@ export const utxoSummaryTool: AssistantReadToolDefinition<typeof utxoSummaryInpu
   },
 };
 
-export const utxoReadTools = [utxoSummaryTool];
+export const utxoPrivacyTool: AssistantReadToolDefinition<typeof utxoPrivacyInputSchema> = {
+  name: 'get_utxo_privacy',
+  title: 'Get UTXO Privacy',
+  description: 'Get a privacy score for one UTXO after resolving and authorizing its wallet',
+  inputSchema: utxoPrivacyInputSchema,
+  outputSchema: genericOutputSchema,
+  sensitivity: 'wallet',
+  requiredScope: {
+    kind: 'wallet',
+    description: 'Requires read access to the wallet that owns the requested UTXO.',
+  },
+  budgets: utxoPrivacyBudget,
+  async execute(input, context) {
+    const walletId = await utxoRepository.findWalletIdByUtxoId(input.utxoId);
+    if (!walletId) {
+      throw new AssistantToolError(404, 'UTXO not found');
+    }
+    await context.authorizeWalletAccess(walletId);
+    const score = await privacyService.calculateUtxoPrivacy(input.utxoId);
+
+    return createToolEnvelope({
+      tool: utxoPrivacyTool,
+      context,
+      data: {
+        walletId,
+        utxoId: input.utxoId,
+        score,
+      },
+      summary: `UTXO privacy grade is ${score.grade} with score ${score.score}.`,
+      facts: [
+        { label: 'privacy_grade', value: score.grade },
+        { label: 'privacy_score', value: score.score },
+        { label: 'warning_count', value: score.warnings.length },
+      ],
+      provenanceSources: [{ type: 'computed', label: 'utxo_privacy' }],
+      redactions: [
+        'utxo_addresses',
+        'utxo_txids',
+        'utxo_outpoints',
+      ],
+      audit: { walletCount: 1, rowCount: 1 },
+    });
+  },
+};
+
+export const utxoReadTools = [utxoSummaryTool, utxoPrivacyTool];

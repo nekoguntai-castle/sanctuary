@@ -267,6 +267,26 @@ describe("console tool execution", () => {
         actor: actor(),
       }),
     ).resolves.toMatchObject({ status: "completed" });
+
+    mocks.assistantReadToolRegistry.get.mockReturnValueOnce(
+      definition({
+        name: "get_utxo_privacy",
+        requiredScope: {
+          kind: "wallet",
+          description: "executor resolves UTXO owner wallet",
+        },
+        inputSchema: { utxoId: {} },
+      }),
+    );
+    await expect(
+      executePlannedTool({
+        call: { name: "get_utxo_privacy", input: { utxoId: "utxo-1" } },
+        turnId,
+        scope: { kind: "wallet_set", walletIds: [walletId] },
+        maxSensitivity: "wallet",
+        actor: actor(),
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
   });
 
   it("denies a non-admin admin-tool call as admin_access_required even when the sensitivity ceiling is also exceeded", async () => {

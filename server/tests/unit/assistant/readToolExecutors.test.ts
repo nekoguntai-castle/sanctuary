@@ -13,9 +13,16 @@ const mocks = vi.hoisted(() => ({
   walletRepository: {
     findByIdWithAccess: vi.fn(),
   },
+  userRepository: {
+    findByIdWithSelect: vi.fn(),
+  },
+  walletSharingRepository: {
+    findWalletIdsByUserRole: vi.fn(),
+  },
   utxoRepository: {
     aggregateUnspent: vi.fn(),
     countByWalletId: vi.fn(),
+    findWalletIdByUtxoId: vi.fn(),
   },
   transactionRepository: {
     countByWalletId: vi.fn(),
@@ -38,6 +45,13 @@ const mocks = vi.hoisted(() => ({
   },
   privacyService: {
     calculateWalletPrivacy: vi.fn(),
+    calculateUtxoPrivacy: vi.fn(),
+  },
+  approvalService: {
+    getPendingApprovalsForUser: vi.fn(),
+  },
+  deviceAccess: {
+    getUserAccessibleDevices: vi.fn(),
   },
   priceService: {
     getHistoricalPrice: vi.fn(),
@@ -52,6 +66,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../src/repositories', () => ({
   assistantReadRepository: mocks.assistantReadRepository,
   walletRepository: mocks.walletRepository,
+  userRepository: mocks.userRepository,
+  walletSharingRepository: mocks.walletSharingRepository,
   utxoRepository: mocks.utxoRepository,
   transactionRepository: mocks.transactionRepository,
   policyRepository: mocks.policyRepository,
@@ -62,10 +78,19 @@ vi.mock('../../../src/repositories', () => ({
 
 vi.mock('../../../src/services/privacyService', () => ({
   calculateWalletPrivacy: mocks.privacyService.calculateWalletPrivacy,
+  calculateUtxoPrivacy: mocks.privacyService.calculateUtxoPrivacy,
+}));
+
+vi.mock('../../../src/services/vaultPolicy/approvalService', () => ({
+  approvalService: mocks.approvalService,
 }));
 
 vi.mock('../../../src/services/price', () => ({
   getPriceService: () => mocks.priceService,
+}));
+
+vi.mock('../../../src/services/deviceAccess', () => ({
+  getUserAccessibleDevices: mocks.deviceAccess.getUserAccessibleDevices,
 }));
 
 vi.mock('../../../src/services/bitcoin/mempool', () => ({
@@ -82,6 +107,7 @@ import { resetMempoolStatusCacheForTests } from '../../../src/assistant/tools/ne
 
 const walletId = '11111111-1111-4111-8111-111111111111';
 const secondWalletId = '22222222-2222-4222-8222-222222222222';
+const utxoId = 'utxo-1';
 
 function createContext(): AssistantToolContext & {
   authorizeWalletAccess: ReturnType<typeof vi.fn>;
@@ -755,5 +781,172 @@ describe('assistant read-tool executors', () => {
     expect(defaults.data).toMatchObject({ network: 'mainnet', requestedCount: 10, count: 1 });
     expect(capped.data).toMatchObject({ network: 'mainnet', requestedCount: 100, count: 2 });
     expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
+  });
+
+  it('resolves UTXO wallet access before returning redacted UTXO privacy', async () => {
+    const context = createContext();
+    mocks.utxoRepository.findWalletIdByUtxoId
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(walletId)
+      .mockResolvedValueOnce(walletId);
+    mocks.privacyService.calculateUtxoPrivacy.mockResolvedValue({
+      score: 70,
+      grade: 'good',
+      factors: [{ factor: 'Round Amount', impact: -10, description: 'round' }],
+      warnings: ['round amount'],
+    });
+
+    await expect(
+      assistantReadToolRegistry.execute('get_utxo_privacy', { utxoId }, context)
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
+
+    context.authorizeWalletAccess.mockRejectedValueOnce(new Error('wallet denied'));
+    await expect(
+      assistantReadToolRegistry.execute('get_utxo_privacy', { utxoId }, context)
+    ).rejects.toThrow('wallet denied');
+    expect(mocks.privacyService.calculateUtxoPrivacy).not.toHaveBeenCalled();
+
+    const envelope = await assistantReadToolRegistry.execute('get_utxo_privacy', { utxoId }, context);
+
+    expect(mocks.utxoRepository.findWalletIdByUtxoId).toHaveBeenCalledWith(utxoId);
+    expect(context.authorizeWalletAccess).toHaveBeenLastCalledWith(walletId);
+    expect(mocks.privacyService.calculateUtxoPrivacy).toHaveBeenCalledWith(utxoId);
+    expect(envelope.data).toMatchObject({
+      walletId,
+      utxoId,
+      score: { grade: 'good', score: 70 },
+    });
+    expect(envelope.redactions).toEqual(expect.arrayContaining([
+      'utxo_addresses',
+      'utxo_txids',
+      'utxo_outpoints',
+    ]));
+  });
+
+  it('lists pending approvals for approve-capable wallets without recipient addresses', async () => {
+    const context = createContext();
+    mocks.walletSharingRepository.findWalletIdsByUserRole.mockResolvedValue([walletId, secondWalletId]);
+    mocks.approvalService.getPendingApprovalsForUser.mockResolvedValue([
+      {
+        id: 'approval-1',
+        draftTransactionId: 'draft-1',
+        status: 'pending',
+        requiredApprovals: 2,
+        expiresAt: null,
+        createdAt: new Date('2026-04-26T11:00:00.000Z'),
+        votes: [
+          { decision: 'approve', userId: 'do-not-return' },
+          { decision: 'reject', userId: 'do-not-return-2' },
+        ],
+        draftTransaction: {
+          walletId,
+          recipient: 'bc1qrecipient',
+          amount: 1234n,
+        },
+      },
+    ]);
+
+    const envelope = await assistantReadToolRegistry.execute('get_pending_approvals', {}, context);
+
+    expect(mocks.walletSharingRepository.findWalletIdsByUserRole).toHaveBeenCalledWith('user-1', expect.any(Array));
+    expect(mocks.approvalService.getPendingApprovalsForUser).toHaveBeenCalledWith([walletId, secondWalletId]);
+    expect(envelope.data).toMatchObject({
+      total: 1,
+      approvals: [{
+        id: 'approval-1',
+        walletId,
+        currentApprovals: 1,
+        totalVotes: 2,
+        amount: '1234',
+      }],
+    });
+    expect(JSON.stringify(envelope.data)).not.toContain('bc1qrecipient');
+    expect(JSON.stringify(envelope.data)).not.toContain('do-not-return');
+    expect(envelope.redactions).toEqual(expect.arrayContaining([
+      'approval_recipient_addresses',
+      'approval_vote_user_details',
+    ]));
+  });
+
+  it('returns the caller fiat currency preference with safe defaults only', async () => {
+    const context = createContext();
+    mocks.userRepository.findByIdWithSelect
+      .mockResolvedValueOnce({ preferences: { fiatCurrency: 'eur' } })
+      .mockResolvedValueOnce({ preferences: { fiatCurrency: '   ' } })
+      .mockResolvedValueOnce({ preferences: [] })
+      .mockResolvedValueOnce(null);
+
+    const explicit = await assistantReadToolRegistry.execute('get_user_preferences', {}, context);
+    const blankDefault = await assistantReadToolRegistry.execute('get_user_preferences', {}, context);
+    const arrayDefault = await assistantReadToolRegistry.execute('get_user_preferences', {}, context);
+
+    await expect(
+      assistantReadToolRegistry.execute('get_user_preferences', {}, context)
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    expect(mocks.userRepository.findByIdWithSelect).toHaveBeenCalledWith('user-1', { preferences: true });
+    expect(explicit.data).toEqual({ userId: 'user-1', fiatCurrency: 'EUR' });
+    expect(blankDefault.data).toEqual({ userId: 'user-1', fiatCurrency: 'USD' });
+    expect(arrayDefault.data).toEqual({ userId: 'user-1', fiatCurrency: 'USD' });
+    expect(JSON.stringify(explicit.data)).not.toContain('password');
+    expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
+  });
+
+  it('lists devices through an allow-list projection without signer secrets or wallet details', async () => {
+    const context = createContext();
+    mocks.deviceAccess.getUserAccessibleDevices.mockResolvedValue([
+      {
+        id: 'device-1',
+        userId: 'owner-1',
+        modelId: 'model-1',
+        type: 'coldcard',
+        label: 'Treasury signer',
+        fingerprint: 'secret-fingerprint',
+        derivationPath: 'm/48h/0h/0h/2h',
+        xpub: 'xpub-secret',
+        groupId: 'group-1',
+        groupRole: 'viewer',
+        createdAt: new Date('2026-04-25T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-26T00:00:00.000Z'),
+        isOwner: false,
+        userRole: 'viewer',
+        sharedBy: 'do-not-return',
+        model: { id: 'model-1', slug: 'coldcard-mk4', name: 'Coldcard Mk4' },
+        walletCount: 2,
+        wallets: [{ wallet: { id: walletId, name: 'Treasury', type: 'multisig', scriptType: 'p2wsh', network: 'mainnet' } }],
+        accounts: [{ id: 'account-1', purpose: '84', scriptType: 'p2wpkh', derivationPath: 'm/84h', xpub: 'account-xpub-secret' }],
+      },
+    ]);
+
+    const envelope = await assistantReadToolRegistry.execute('list_devices', {}, context);
+
+    expect(mocks.deviceAccess.getUserAccessibleDevices).toHaveBeenCalledWith('user-1');
+    expect(envelope.data).toMatchObject({
+      count: 1,
+      devices: [{
+        id: 'device-1',
+        label: 'Treasury signer',
+        type: 'coldcard',
+        model: { slug: 'coldcard-mk4' },
+        isOwner: false,
+        userRole: 'viewer',
+        walletCount: 2,
+        createdAt: '2026-04-25T00:00:00.000Z',
+        updatedAt: '2026-04-26T00:00:00.000Z',
+      }],
+    });
+    const serialized = JSON.stringify(envelope.data);
+    expect(serialized).not.toContain('secret-fingerprint');
+    expect(serialized).not.toContain('xpub-secret');
+    expect(serialized).not.toContain('account-xpub-secret');
+    expect(serialized).not.toContain('do-not-return');
+    expect(serialized).not.toContain(walletId);
+    expect(envelope.redactions).toEqual(expect.arrayContaining([
+      'device_xpubs',
+      'device_fingerprints',
+      'device_wallet_associations',
+      'device_account_details',
+    ]));
   });
 });

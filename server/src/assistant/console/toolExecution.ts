@@ -107,7 +107,10 @@ function walletInputFromCall(
   definition: AssistantReadToolDefinition,
   call: ConsoleToolCall,
 ): string | null {
-  const field = definition.requiredScope.walletIdInput ?? "walletId";
+  const field = definition.requiredScope.walletIdInput;
+  if (!field) {
+    return null;
+  }
   const value = call.input[field];
   return typeof value === "string" ? value : null;
 }
@@ -143,6 +146,12 @@ function validateToolCall(
   }
   if (definition.requiredScope.kind === "wallet") {
     const walletId = walletInputFromCall(definition, call);
+    // Some wallet-owned resources are keyed by an object id, not a wallet id.
+    // Those tools still require a wallet-scoped turn; their executor resolves
+    // the owner wallet and calls authorizeWalletAccess before reading data.
+    if (!walletId && !definition.requiredScope.walletIdInput) {
+      return null;
+    }
     return walletId && scopeIncludesWallet(scope, walletId)
       ? null
       : {

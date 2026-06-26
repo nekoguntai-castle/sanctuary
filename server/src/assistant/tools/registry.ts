@@ -2,6 +2,7 @@ import * as z from 'zod/v4';
 import { adminReadTools } from './adminReadTools';
 import { addressReadTools } from './addressReadTools';
 import { analyticsReadTools } from './analyticsReadTools';
+import { approvalReadTools } from './approvalReadTools';
 import { dashboardReadTools } from './dashboardReadTools';
 import { deviceReadTools } from './deviceReadTools';
 import { draftReadTools } from './draftReadTools';
@@ -19,6 +20,7 @@ import {
 } from './types';
 import { transactionReadTools } from './transactionReadTools';
 import { utxoReadTools } from './utxoReadTools';
+import { userReadTools } from './userReadTools';
 import { walletDetailReadTools } from './walletDetailReadTools';
 import { walletReadTools } from './walletReadTools';
 
@@ -79,9 +81,11 @@ export const assistantReadToolDefinitions = [
   ...analyticsReadTools,
   ...labelReadTools,
   ...policyReadTools,
+  ...approvalReadTools,
   ...draftReadTools,
   ...insightReadTools,
   ...deviceReadTools,
+  ...userReadTools,
   ...marketReadTools,
   ...adminReadTools,
   ...networkReadTools,

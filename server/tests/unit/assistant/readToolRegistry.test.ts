@@ -21,9 +21,16 @@ const mocks = vi.hoisted(() => ({
   walletRepository: {
     findByIdWithAccess: vi.fn(),
   },
+  userRepository: {
+    findByIdWithSelect: vi.fn(),
+  },
+  walletSharingRepository: {
+    findWalletIdsByUserRole: vi.fn(),
+  },
   utxoRepository: {
     aggregateUnspent: vi.fn(),
     countByWalletId: vi.fn(),
+    findWalletIdByUtxoId: vi.fn(),
   },
   transactionRepository: {
     countByWalletId: vi.fn(),
@@ -50,6 +57,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../src/repositories', () => ({
   assistantReadRepository: mocks.assistantReadRepository,
   walletRepository: mocks.walletRepository,
+  userRepository: mocks.userRepository,
+  walletSharingRepository: mocks.walletSharingRepository,
   utxoRepository: mocks.utxoRepository,
   transactionRepository: mocks.transactionRepository,
   policyRepository: mocks.policyRepository,
@@ -120,6 +129,7 @@ describe('assistant read-tool registry', () => {
       'get_pending_transactions',
       'get_transaction_detail',
       'get_utxo_summary',
+      'get_utxo_privacy',
       'get_address_summary',
       'get_address_detail',
       'get_wallet_analytics',
@@ -130,10 +140,13 @@ describe('assistant read-tool registry', () => {
       'list_policies',
       'get_policy_detail',
       'get_policy_events',
+      'get_pending_approvals',
       'get_draft_detail',
       'list_insights',
       'get_insight_detail',
       'list_supported_device_models',
+      'list_devices',
+      'get_user_preferences',
       'get_market_status',
       'get_historical_price',
       'get_admin_operational_summary',
