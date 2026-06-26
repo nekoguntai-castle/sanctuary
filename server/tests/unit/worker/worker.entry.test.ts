@@ -293,6 +293,25 @@ describe('worker entrypoint', () => {
     expect(mocks.queueInstance.scheduleRecurring).not.toHaveBeenCalled();
   });
 
+  it('schedules recurring price and fee persistence independently of feature flags', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    expect(mocks.queueInstance.scheduleRecurring).toHaveBeenCalledWith(
+      'maintenance',
+      'persist:price-fees',
+      {},
+      '* * * * *'
+    );
+  });
+
   it('schedules autopilot recurring jobs when treasuryAutopilot feature flag is enabled', async () => {
     vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
       void event;

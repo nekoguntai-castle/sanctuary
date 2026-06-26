@@ -17,6 +17,7 @@ import {
   cleanupExpiredTokensJob,
   weeklyVacuumJob,
   monthlyCleanupJob,
+  persistPriceFeesJob,
   scheduledBackupJob,
 } from '../../jobs/definitions/maintenance';
 
@@ -112,6 +113,16 @@ export const maintenanceJobs: WorkerJobHandler<unknown, unknown>[] = [
     lockOptions: {
       lockKey: () => `maintenance:${monthlyCleanupJob.name}`,
       lockTtlMs: MONTHLY_LOCK_TTL_MS,
+    },
+  },
+  {
+    name: persistPriceFeesJob.name,
+    queue: 'maintenance',
+    handler: persistPriceFeesJob.handler as AnyJobHandler,
+    options: persistPriceFeesJob.options,
+    lockOptions: {
+      lockKey: () => `maintenance:${persistPriceFeesJob.name}`,
+      lockTtlMs: CLEANUP_LOCK_TTL_MS,
     },
   },
   {

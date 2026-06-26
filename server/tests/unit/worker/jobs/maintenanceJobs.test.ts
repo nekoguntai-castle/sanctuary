@@ -9,6 +9,7 @@ const mockJobs = vi.hoisted(() => ({
   cleanupExpiredTokensJob: { name: 'cleanupExpiredTokens', handler: vi.fn(), options: { attempts: 6 } },
   weeklyVacuumJob: { name: 'weeklyVacuum', handler: vi.fn(), options: { attempts: 7 } },
   monthlyCleanupJob: { name: 'monthlyCleanup', handler: vi.fn(), options: { attempts: 8 } },
+  persistPriceFeesJob: { name: 'persist:price-fees', handler: vi.fn(), options: { attempts: 3 } },
   scheduledBackupJob: { name: 'backup:scheduled', handler: vi.fn(), options: { attempts: 2 } },
 }));
 
@@ -33,6 +34,8 @@ const FORWARDED_MAINTENANCE_JOBS: Array<{
   { name: 'cleanupExpiredTokens', definition: mockJobs.cleanupExpiredTokensJob },
   { name: 'weeklyVacuum', definition: mockJobs.weeklyVacuumJob },
   { name: 'monthlyCleanup', definition: mockJobs.monthlyCleanupJob },
+  { name: 'persist:price-fees', definition: mockJobs.persistPriceFeesJob },
+  { name: 'backup:scheduled', definition: mockJobs.scheduledBackupJob },
 ];
 
 function maintenanceJobsByName() {
@@ -51,7 +54,7 @@ function expectForwardedMaintenanceJob(
 
 describe('worker maintenanceJobs', () => {
   it('exports all maintenance job handlers with queue and lock configuration', () => {
-    expect(maintenanceJobs).toHaveLength(9);
+    expect(maintenanceJobs).toHaveLength(10);
     expect(maintenanceJobs.map(j => j.name)).toEqual([
       'cleanupAuditLogs',
       'cleanupPriceData',
@@ -61,6 +64,7 @@ describe('worker maintenanceJobs', () => {
       'cleanupExpiredTokens',
       'weeklyVacuum',
       'monthlyCleanup',
+      'persist:price-fees',
       'backup:scheduled',
     ]);
     expect(maintenanceJobs.every(j => j.queue === 'maintenance')).toBe(true);
@@ -76,6 +80,7 @@ describe('worker maintenanceJobs', () => {
       'cleanupExpiredDrafts',
       'cleanupExpiredTransfers',
       'cleanupExpiredTokens',
+      'persist:price-fees',
     ]) {
       const job = byName.get(name)!;
       expect(job.lockOptions?.lockKey()).toBe(`maintenance:${name}`);

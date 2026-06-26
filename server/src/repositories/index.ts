@@ -37,6 +37,7 @@ export { transferRepository, default as transferRepo } from './transferRepositor
 export { featureFlagRepository, default as featureFlagRepo } from './featureFlagRepository';
 export { draftLockRepository, default as draftLockRepo } from './draftLockRepository';
 export { maintenanceRepository, default as maintenanceRepo } from './maintenanceRepository';
+export { priceDataRepository, default as priceDataRepo } from './priceDataRepository';
 export { mcpApiKeyRepository, default as mcpApiKeyRepo } from './mcpApiKeyRepository';
 export { assistantReadRepository, default as assistantReadRepo } from './assistantReadRepository';
 export { mcpReadRepository, default as mcpReadRepo } from './mcpReadRepository';

@@ -65,12 +65,12 @@ function createContext(): AssistantToolContext & {
   };
 }
 
-function priceRow(price: number | null, currency = 'USD') {
+function priceRow(price: number | null, currency = 'USD', createdAt = new Date('2026-04-26T00:00:00.000Z')) {
   return {
     currency,
     price,
     source: 'test',
-    createdAt: new Date('2026-04-26T00:00:00.000Z'),
+    createdAt,
   };
 }
 
@@ -455,6 +455,53 @@ describe('assistant read-tool executors', () => {
         context
       )
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('returns market status availability from cached price and fee rows', async () => {
+    const context = createContext();
+    mocks.assistantReadRepository.getLatestFeeEstimate.mockResolvedValue({
+      fastest: 8,
+      halfHour: 4,
+      hour: 2,
+      createdAt: new Date('2026-04-26T11:55:00.000Z'),
+    });
+    mocks.assistantReadRepository.getLatestPrice
+      .mockResolvedValueOnce(priceRow(65_000, 'USD', new Date('2026-04-26T11:55:00.000Z')))
+      .mockResolvedValueOnce(null);
+
+    const available = await assistantReadToolRegistry.execute(
+      'get_market_status',
+      { currencies: ['usd'], includeFees: true },
+      context
+    );
+    const unavailable = await assistantReadToolRegistry.execute(
+      'get_market_status',
+      { currencies: ['usd'], includeFees: false },
+      context
+    );
+
+    expect(available.data.prices).toEqual([
+      expect.objectContaining({
+        available: true,
+        currency: 'USD',
+        price: 65_000,
+        stale: false,
+      }),
+    ]);
+    expect(available.data.fees).toMatchObject({
+      available: true,
+      fastest: 8,
+      stale: false,
+    });
+    expect(unavailable.data.prices).toEqual([
+      expect.objectContaining({
+        available: false,
+        currency: 'USD',
+        price: null,
+        stale: true,
+      }),
+    ]);
+    expect(unavailable.data.fees).toBeNull();
   });
 
   it('returns a closed network-status envelope when the Bitcoin status read fails', async () => {

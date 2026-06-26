@@ -1,8 +1,12 @@
 import {
   parseConsoleIntent,
   rawPlanIntents,
+  type BitcoinNetworkStatusIntent,
   type ConsoleIntent,
   type DashboardSummaryIntent,
+  type FeeEstimatesIntent,
+  type MarketStatusIntent,
+  type PriceConversionIntent,
   type TransactionIntent,
   type WalletOverviewIntent,
 } from "./consoleProtocolIntents";
@@ -128,6 +132,7 @@ export function buildFallbackToolPlan(
   if (!input || maxToolCalls <= 0) return emptyFallbackPlan();
 
   const candidates = [
+    buildPublicToolFallbackPlan(input, maxToolCalls),
     buildTransactionFallbackPlan(input, maxToolCalls),
     buildDashboardFallbackPlan(input),
     buildOverviewFallbackPlan(input),
@@ -245,6 +250,108 @@ function buildDashboardSummaryIntentToolPlan(
   };
 }
 
+function buildPublicToolIntentPlan(
+  input: ConsolePlanInput,
+  toolName: string,
+  callInput: Record<string, unknown>,
+  reason: string,
+  maxToolCalls: number,
+): FallbackToolPlan {
+  if (!hasTool(input, toolName) || maxToolCalls <= 0) {
+    return emptyFallbackPlan();
+  }
+
+  return {
+    toolCalls: [
+      {
+        name: toolName,
+        input: callInput,
+        reason,
+      },
+    ],
+    warnings: [],
+  };
+}
+
+function marketStatusCallInput(
+  intent: MarketStatusIntent,
+): Record<string, unknown> {
+  return {
+    ...(intent.currencies ? { currencies: intent.currencies } : {}),
+    ...(intent.includeFees === undefined
+      ? {}
+      : { includeFees: intent.includeFees }),
+  };
+}
+
+function priceConversionCallInput(
+  intent: PriceConversionIntent,
+): Record<string, unknown> {
+  return {
+    ...(intent.sats === undefined ? {} : { sats: intent.sats }),
+    ...(intent.fiatAmount === undefined
+      ? {}
+      : { fiatAmount: intent.fiatAmount }),
+    ...(intent.currency ? { currency: intent.currency } : {}),
+  };
+}
+
+function buildMarketStatusIntentToolPlan(
+  intent: MarketStatusIntent,
+  input: ConsolePlanInput,
+  maxToolCalls: number,
+) {
+  return buildPublicToolIntentPlan(
+    input,
+    "get_market_status",
+    marketStatusCallInput(intent),
+    intent.reason ?? "Resolved market status intent.",
+    maxToolCalls,
+  );
+}
+
+function buildFeeEstimatesIntentToolPlan(
+  intent: FeeEstimatesIntent,
+  input: ConsolePlanInput,
+  maxToolCalls: number,
+) {
+  return buildPublicToolIntentPlan(
+    input,
+    "get_fee_estimates",
+    {},
+    intent.reason ?? "Resolved fee estimates intent.",
+    maxToolCalls,
+  );
+}
+
+function buildBitcoinNetworkStatusIntentToolPlan(
+  intent: BitcoinNetworkStatusIntent,
+  input: ConsolePlanInput,
+  maxToolCalls: number,
+) {
+  return buildPublicToolIntentPlan(
+    input,
+    "get_bitcoin_network_status",
+    {},
+    intent.reason ?? "Resolved Bitcoin network status intent.",
+    maxToolCalls,
+  );
+}
+
+function buildPriceConversionIntentToolPlan(
+  intent: PriceConversionIntent,
+  input: ConsolePlanInput,
+  maxToolCalls: number,
+) {
+  return buildPublicToolIntentPlan(
+    input,
+    "convert_price",
+    priceConversionCallInput(intent),
+    intent.reason ?? "Resolved price conversion intent.",
+    maxToolCalls,
+  );
+}
+
 function buildConsoleIntentToolPlan(
   intent: ConsoleIntent,
   input: ConsolePlanInput,
@@ -257,6 +364,18 @@ function buildConsoleIntentToolPlan(
       return buildWalletOverviewIntentToolPlan(intent, input, maxToolCalls);
     case "get_dashboard_summary":
       return buildDashboardSummaryIntentToolPlan(intent, input, maxToolCalls);
+    case "get_market_status":
+      return buildMarketStatusIntentToolPlan(intent, input, maxToolCalls);
+    case "get_fee_estimates":
+      return buildFeeEstimatesIntentToolPlan(intent, input, maxToolCalls);
+    case "get_bitcoin_network_status":
+      return buildBitcoinNetworkStatusIntentToolPlan(
+        intent,
+        input,
+        maxToolCalls,
+      );
+    case "convert_price":
+      return buildPriceConversionIntentToolPlan(intent, input, maxToolCalls);
   }
 }
 
@@ -308,6 +427,61 @@ function asksForOverviewFallback(prompt: string): boolean {
   return (
     containsAnyTerm(text, OVERVIEW_PROMPT_TERMS) || asksForBroadHealth(text)
   );
+}
+
+function buildPublicToolFallbackPlan(
+  input: ConsolePlanInput,
+  maxToolCalls: number,
+): FallbackToolPlan {
+  if (maxToolCalls <= 0) return emptyFallbackPlan();
+
+  const text = input.prompt.toLowerCase();
+  if (/\b(fees?|fee estimates?|sat\/vbytes?|sat\/vbs?)\b/.test(text)) {
+    return hasTool(input, "get_fee_estimates")
+      ? {
+          toolCalls: [
+            {
+              name: "get_fee_estimates",
+              input: {},
+              reason: "Fallback plan for fee estimate request.",
+            },
+          ],
+          warnings: [],
+        }
+      : emptyFallbackPlan();
+  }
+
+  if (/\b(network|mempool|block height|height|blocks?)\b/.test(text)) {
+    return hasTool(input, "get_bitcoin_network_status")
+      ? {
+          toolCalls: [
+            {
+              name: "get_bitcoin_network_status",
+              input: {},
+              reason: "Fallback plan for Bitcoin network status request.",
+            },
+          ],
+          warnings: [],
+        }
+      : emptyFallbackPlan();
+  }
+
+  if (/\b(price|worth|rate|market)\b/.test(text)) {
+    return hasTool(input, "get_market_status")
+      ? {
+          toolCalls: [
+            {
+              name: "get_market_status",
+              input: {},
+              reason: "Fallback plan for market status request.",
+            },
+          ],
+          warnings: [],
+        }
+      : emptyFallbackPlan();
+  }
+
+  return emptyFallbackPlan();
 }
 
 function buildOverviewFallbackPlan(input: ConsolePlanInput): FallbackToolPlan {

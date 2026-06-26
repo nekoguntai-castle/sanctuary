@@ -384,6 +384,13 @@ async function scheduleRecurringJobs(): Promise<void> {
 
   await jobQueue.scheduleRecurring(
     'maintenance',
+    'persist:price-fees',
+    {},
+    '* * * * *' // Every minute
+  );
+
+  await jobQueue.scheduleRecurring(
+    'maintenance',
     'cleanup:expired-tokens',
     {},
     '0 5 * * *' // Daily 5 AM

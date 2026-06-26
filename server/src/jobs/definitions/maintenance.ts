@@ -7,10 +7,13 @@
 
 import type { Job } from 'bullmq';
 import type { JobDefinition } from '../types';
-import { maintenanceRepository, pushDeviceRepository } from '../../repositories';
+import { maintenanceRepository, priceDataRepository, pushDeviceRepository } from '../../repositories';
 import prisma from '../../models/prisma';
 import { auditService, AuditCategory } from '../../services/auditService';
+import { getCurrentFeeEstimates } from '../../services/bitcoin/feeService';
+import { getPriceService } from '../../services/price';
 import { expireOldTransfers } from '../../services/transferService';
+import { getErrorMessage } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('JOB:MAINTENANCE');
@@ -26,6 +29,11 @@ interface CleanupJobData {
 interface DatabaseMaintenanceData {
   tables?: string[];
   timeout?: number;
+}
+
+interface PersistPriceFeesResult {
+  pricesWritten: number;
+  feesWritten: number;
 }
 
 // =============================================================================
@@ -103,6 +111,67 @@ export const cleanupFeeEstimatesJob: JobDefinition<CleanupJobData, number> = {
     }
 
     return deleted;
+  },
+  options: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 5000 },
+  },
+};
+
+async function persistPriceSnapshots(): Promise<number> {
+  const priceService = getPriceService();
+  const currencies = priceService.getSupportedCurrencies();
+  const prices = await priceService.getPrices(currencies);
+  let pricesWritten = 0;
+
+  for (const [currency, aggregate] of Object.entries(prices)) {
+    await priceDataRepository.insertPriceData({
+      currency: currency.trim().toUpperCase(),
+      price: aggregate.price,
+      source: 'aggregate',
+    });
+    pricesWritten += 1;
+  }
+
+  return pricesWritten;
+}
+
+async function persistFeeSnapshot(): Promise<number> {
+  const fees = await getCurrentFeeEstimates('mainnet');
+  await priceDataRepository.insertFeeEstimate({
+    fastest: fees.fastest,
+    halfHour: fees.halfHour,
+    hour: fees.hour,
+  });
+  return 1;
+}
+
+/**
+ * Persist current price and fee snapshots for assistant cache reads
+ */
+export const persistPriceFeesJob: JobDefinition<void, PersistPriceFeesResult> = {
+  name: 'persist:price-fees',
+  handler: async () => {
+    let pricesWritten = 0;
+    let feesWritten = 0;
+
+    try {
+      pricesWritten = await persistPriceSnapshots();
+    } catch (error) {
+      log.warn('Price snapshot persistence failed', { error: getErrorMessage(error) });
+    }
+
+    try {
+      feesWritten = await persistFeeSnapshot();
+    } catch (error) {
+      log.warn('Fee snapshot persistence failed', { error: getErrorMessage(error) });
+    }
+
+    if (pricesWritten > 0 || feesWritten > 0) {
+      log.info('Price and fee snapshot persistence completed', { pricesWritten, feesWritten });
+    }
+
+    return { pricesWritten, feesWritten };
   },
   options: {
     attempts: 3,
@@ -403,5 +472,6 @@ export const maintenanceJobs = [
   cleanupExpiredTokensJob,
   weeklyVacuumJob,
   monthlyCleanupJob,
+  persistPriceFeesJob,
   scheduledBackupJob,
 ];

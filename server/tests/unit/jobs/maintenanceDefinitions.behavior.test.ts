@@ -6,6 +6,10 @@ const {
   mockDeleteDrafts,
   mockDeleteRefreshTokens,
   mockDeletePushDevices,
+  mockInsertPriceData,
+  mockInsertFeeEstimate,
+  mockGetPriceService,
+  mockGetCurrentFeeEstimates,
   mockExecuteRaw,
   mockAuditCleanup,
   mockAuditLog,
@@ -20,6 +24,10 @@ const {
   mockDeleteDrafts: vi.fn(),
   mockDeleteRefreshTokens: vi.fn(),
   mockDeletePushDevices: vi.fn(),
+  mockInsertPriceData: vi.fn(),
+  mockInsertFeeEstimate: vi.fn(),
+  mockGetPriceService: vi.fn(),
+  mockGetCurrentFeeEstimates: vi.fn(),
   mockExecuteRaw: vi.fn(),
   mockAuditCleanup: vi.fn(),
   mockAuditLog: vi.fn(),
@@ -47,6 +55,10 @@ vi.mock('../../../src/repositories', () => ({
   pushDeviceRepository: {
     deleteStale: (...args: unknown[]) => mockDeletePushDevices(...args),
   },
+  priceDataRepository: {
+    insertPriceData: (...args: unknown[]) => mockInsertPriceData(...args),
+    insertFeeEstimate: (...args: unknown[]) => mockInsertFeeEstimate(...args),
+  },
 }));
 
 vi.mock('../../../src/services/auditService', () => ({
@@ -61,6 +73,14 @@ vi.mock('../../../src/services/auditService', () => ({
 
 vi.mock('../../../src/services/transferService', () => ({
   expireOldTransfers: mockExpireOldTransfers,
+}));
+
+vi.mock('../../../src/services/price', () => ({
+  getPriceService: mockGetPriceService,
+}));
+
+vi.mock('../../../src/services/bitcoin/feeService', () => ({
+  getCurrentFeeEstimates: mockGetCurrentFeeEstimates,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -81,6 +101,7 @@ import {
   cleanupExpiredTokensJob,
   weeklyVacuumJob,
   monthlyCleanupJob,
+  persistPriceFeesJob,
   scheduledBackupJob,
   maintenanceJobs,
 } from '../../../src/jobs/definitions/maintenance';
@@ -101,6 +122,23 @@ describe('Maintenance job definitions behavior', () => {
     mockDeleteDrafts.mockResolvedValue(0);
     mockDeleteRefreshTokens.mockResolvedValue(0);
     mockDeletePushDevices.mockResolvedValue(0);
+    mockInsertPriceData.mockResolvedValue(undefined);
+    mockInsertFeeEstimate.mockResolvedValue(undefined);
+    mockGetPriceService.mockReturnValue({
+      getSupportedCurrencies: () => ['usd', 'EUR'],
+      getPrices: vi.fn().mockResolvedValue({
+        usd: { price: 61_000 },
+        EUR: { price: 57_000 },
+      }),
+    });
+    mockGetCurrentFeeEstimates.mockResolvedValue({
+      fastest: 12,
+      halfHour: 8,
+      hour: 4,
+      economy: 2,
+      minimum: 1,
+      source: 'mempool',
+    });
     mockExecuteRaw.mockResolvedValue(0);
     mockAuditCleanup.mockResolvedValue(0);
     mockAuditLog.mockResolvedValue(undefined);
@@ -181,6 +219,49 @@ describe('Maintenance job definitions behavior', () => {
     expect(priceDeleted).toBe(0);
     expect(feeDeleted).toBe(0);
     expect(tokenDeleted).toBe(0);
+  });
+
+  it('persists price and fee snapshots for assistant cache reads', async () => {
+    const result = await persistPriceFeesJob.handler({ data: {} } as any);
+
+    expect(result).toEqual({ pricesWritten: 2, feesWritten: 1 });
+    expect(mockInsertPriceData).toHaveBeenCalledWith({
+      currency: 'USD',
+      price: 61_000,
+      source: 'aggregate',
+    });
+    expect(mockInsertPriceData).toHaveBeenCalledWith({
+      currency: 'EUR',
+      price: 57_000,
+      source: 'aggregate',
+    });
+    expect(mockInsertFeeEstimate).toHaveBeenCalledWith({
+      fastest: 12,
+      halfHour: 8,
+      hour: 4,
+    });
+  });
+
+  it('keeps price and fee persistence failures isolated', async () => {
+    mockGetPriceService.mockReturnValueOnce({
+      getSupportedCurrencies: () => ['USD'],
+      getPrices: vi.fn().mockRejectedValue(new Error('price unavailable')),
+    });
+    mockGetCurrentFeeEstimates.mockRejectedValueOnce(new Error('fees unavailable'));
+
+    const result = await persistPriceFeesJob.handler({ data: {} } as any);
+
+    expect(result).toEqual({ pricesWritten: 0, feesWritten: 0 });
+    expect(mockInsertPriceData).not.toHaveBeenCalled();
+    expect(mockInsertFeeEstimate).not.toHaveBeenCalled();
+    expect(mockLogWarn).toHaveBeenCalledWith(
+      'Price snapshot persistence failed',
+      expect.objectContaining({ error: 'price unavailable' })
+    );
+    expect(mockLogWarn).toHaveBeenCalledWith(
+      'Fee snapshot persistence failed',
+      expect.objectContaining({ error: 'fees unavailable' })
+    );
   });
 
   it('runs weekly vacuum + reindex job and resets statement timeout', async () => {
@@ -372,7 +453,8 @@ describe('Maintenance job definitions behavior', () => {
       cleanupExpiredTokensJob,
       weeklyVacuumJob,
       monthlyCleanupJob,
+      persistPriceFeesJob,
     ]));
-    expect(maintenanceJobs).toHaveLength(9);
+    expect(maintenanceJobs).toHaveLength(10);
   });
 });

@@ -142,15 +142,80 @@ const DashboardSummaryIntentSchema = z.preprocess(
     .strict(),
 );
 
+const MarketStatusIntentSchema = z.preprocess(
+  normalizedIntentRecord,
+  z
+    .object({
+      name: z.literal("get_market_status"),
+      currencies: z
+        .array(z.string().trim().min(3).max(8))
+        .min(1)
+        .max(8)
+        .optional(),
+      includeFees: z.boolean().optional(),
+      reason: z.string().trim().max(240).optional(),
+    })
+    .strict(),
+);
+
+const FeeEstimatesIntentSchema = z.preprocess(
+  normalizedIntentRecord,
+  z
+    .object({
+      name: z.literal("get_fee_estimates"),
+      reason: z.string().trim().max(240).optional(),
+    })
+    .strict(),
+);
+
+const BitcoinNetworkStatusIntentSchema = z.preprocess(
+  normalizedIntentRecord,
+  z
+    .object({
+      name: z.literal("get_bitcoin_network_status"),
+      reason: z.string().trim().max(240).optional(),
+    })
+    .strict(),
+);
+
+const PriceConversionIntentSchema = z.preprocess(
+  normalizedIntentRecord,
+  z
+    .object({
+      name: z.literal("convert_price"),
+      sats: z
+        .union([z.string().trim().min(1), z.number().positive()])
+        .optional(),
+      fiatAmount: z.number().positive().optional(),
+      currency: z.string().trim().min(3).max(8).optional(),
+      reason: z.string().trim().max(240).optional(),
+    })
+    .strict()
+    .refine(
+      (value) =>
+        (value.sats === undefined) !== (value.fiatAmount === undefined),
+    ),
+);
+
 export type TransactionIntent = z.infer<typeof TransactionIntentSchema>;
 export type WalletOverviewIntent = z.infer<typeof WalletOverviewIntentSchema>;
 export type DashboardSummaryIntent = z.infer<
   typeof DashboardSummaryIntentSchema
 >;
+export type MarketStatusIntent = z.infer<typeof MarketStatusIntentSchema>;
+export type FeeEstimatesIntent = z.infer<typeof FeeEstimatesIntentSchema>;
+export type BitcoinNetworkStatusIntent = z.infer<
+  typeof BitcoinNetworkStatusIntentSchema
+>;
+export type PriceConversionIntent = z.infer<typeof PriceConversionIntentSchema>;
 export type ConsoleIntent =
   | TransactionIntent
   | WalletOverviewIntent
-  | DashboardSummaryIntent;
+  | DashboardSummaryIntent
+  | MarketStatusIntent
+  | FeeEstimatesIntent
+  | BitcoinNetworkStatusIntent
+  | PriceConversionIntent;
 export type WalletTargetIntent = z.infer<typeof WalletTargetIntentSchema>;
 export type DateRangeIntent = z.infer<typeof DateRangeIntentSchema>;
 export type RelativeDateRangeValue = z.infer<
@@ -181,6 +246,22 @@ export function parseConsoleIntent(value: unknown): ConsoleIntent | null {
     }
     case "get_dashboard_summary": {
       const parsed = DashboardSummaryIntentSchema.safeParse(value);
+      return parsed.success ? parsed.data : null;
+    }
+    case "get_market_status": {
+      const parsed = MarketStatusIntentSchema.safeParse(value);
+      return parsed.success ? parsed.data : null;
+    }
+    case "get_fee_estimates": {
+      const parsed = FeeEstimatesIntentSchema.safeParse(value);
+      return parsed.success ? parsed.data : null;
+    }
+    case "get_bitcoin_network_status": {
+      const parsed = BitcoinNetworkStatusIntentSchema.safeParse(value);
+      return parsed.success ? parsed.data : null;
+    }
+    case "convert_price": {
+      const parsed = PriceConversionIntentSchema.safeParse(value);
       return parsed.success ? parsed.data : null;
     }
     default:
