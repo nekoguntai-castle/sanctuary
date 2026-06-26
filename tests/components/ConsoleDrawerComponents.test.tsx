@@ -1,35 +1,39 @@
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
-import { ConsoleMessageList } from '../../components/ConsoleDrawer/ConsoleMessageList';
-import { ConsoleScopeSelector } from '../../components/ConsoleDrawer/ConsoleScopeSelector';
-import { MAX_WALLET_SET_SCOPE_WALLETS } from '../../components/ConsoleDrawer/consoleDrawerUtils';
-import type { ConsoleMessage } from '../../components/ConsoleDrawer/types';
-import { KeyboardShortcutsModal } from '../../components/Layout/KeyboardShortcutsModal';
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import React from "react";
+import { describe, expect, it, vi } from "vitest";
+import { ConsoleMessageList } from "../../components/ConsoleDrawer/ConsoleMessageList";
+import { ConsoleScopeSelector } from "../../components/ConsoleDrawer/ConsoleScopeSelector";
+import { MAX_WALLET_SET_SCOPE_WALLETS } from "../../components/ConsoleDrawer/consoleDrawerUtils";
+import type { ConsoleMessage } from "../../components/ConsoleDrawer/types";
+import { KeyboardShortcutsModal } from "../../components/Layout/KeyboardShortcutsModal";
 
-function turnMessages(id: string, prompt: string, response: string): ConsoleMessage[] {
+function turnMessages(
+  id: string,
+  prompt: string,
+  response: string,
+): ConsoleMessage[] {
   return [
     {
       id: `${id}:prompt`,
-      role: 'user',
+      role: "user",
       content: prompt,
-      createdAt: '2026-04-26T01:00:00.000Z',
+      createdAt: "2026-04-26T01:00:00.000Z",
     },
     {
       id: `${id}:response`,
-      role: 'assistant',
+      role: "assistant",
       content: response,
-      createdAt: '2026-04-26T01:00:01.000Z',
-      state: 'completed',
+      createdAt: "2026-04-26T01:00:01.000Z",
+      state: "completed",
     },
   ];
 }
 
-describe('Console drawer child components', () => {
-  it('renders compressed history summaries with duplicate rerun counts', () => {
+describe("Console drawer child components", () => {
+  it("renders compressed history summaries with duplicate rerun counts", () => {
     const messages = [
-      ...turnMessages('turn-1', 'current block?', 'block 840000'),
+      ...turnMessages("turn-1", "current block?", "block 840000"),
       ...Array.from({ length: 8 }, (_, index) =>
         turnMessages(
           `turn-${index + 2}`,
@@ -37,7 +41,7 @@ describe('Console drawer child components', () => {
           `response ${index}`,
         ),
       ).flat(),
-      ...turnMessages('turn-10', 'current block?', 'block 840000'),
+      ...turnMessages("turn-10", "current block?", "block 840000"),
     ];
 
     const { rerender } = render(
@@ -50,7 +54,7 @@ describe('Console drawer child components', () => {
     );
 
     expect(screen.getByText(/Earlier history compressed/i)).toHaveTextContent(
-      '4 messages hidden · 1 duplicate rerun hidden',
+      "4 messages hidden · 1 duplicate rerun hidden",
     );
 
     rerender(
@@ -69,11 +73,41 @@ describe('Console drawer child components', () => {
     );
 
     const summary = screen.getByText(/Earlier history compressed/i);
-    expect(summary).toHaveTextContent('4 messages hidden');
-    expect(summary).not.toHaveTextContent('duplicate rerun');
+    expect(summary).toHaveTextContent("4 messages hidden");
+    expect(summary).not.toHaveTextContent("duplicate rerun");
   });
 
-  it('labels all-wallet scope truncation in the selector', async () => {
+  it("renders elevated access retry banners for assistant messages", async () => {
+    const user = userEvent.setup();
+    const onRaiseAccess = vi.fn();
+
+    render(
+      <ConsoleMessageList
+        messages={[
+          {
+            id: "turn-1:response",
+            role: "assistant",
+            content: "Elevated access required.",
+            createdAt: "2026-04-26T01:00:01.000Z",
+            promptHistoryId: "prompt-1",
+            accessWarnings: ["elevated_access_required"],
+          },
+        ]}
+        loading={false}
+        sending={false}
+        messagesEndRef={React.createRef<HTMLDivElement>()}
+        onRaiseAccess={onRaiseAccess}
+      />,
+    );
+
+    expect(screen.getByText("Elevated access required")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Raise access and retry" }),
+    );
+    expect(onRaiseAccess).toHaveBeenCalledWith("prompt-1");
+  });
+
+  it("labels all-wallet scope truncation in the selector", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     const wallets = Array.from(
@@ -81,7 +115,7 @@ describe('Console drawer child components', () => {
       (_, index) => ({
         id: `wallet-${index}`,
         name: `Wallet ${index}`,
-        type: 'single_sig',
+        type: "single_sig",
       }),
     ) as any;
 
@@ -94,18 +128,21 @@ describe('Console drawer child components', () => {
     );
 
     expect(
-      screen.getByRole('option', {
+      screen.getByRole("option", {
         name: `All visible wallets (first ${MAX_WALLET_SET_SCOPE_WALLETS})`,
       }),
     ).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Console context'), 'wallet-2');
-    expect(onChange).toHaveBeenCalledWith('wallet-2');
+    await user.selectOptions(
+      screen.getByLabelText("Console context"),
+      "wallet-2",
+    );
+    expect(onChange).toHaveBeenCalledWith("wallet-2");
   });
 });
 
-describe('KeyboardShortcutsModal', () => {
-  it('renders nothing while closed', () => {
+describe("KeyboardShortcutsModal", () => {
+  it("renders nothing while closed", () => {
     const { container } = render(
       <KeyboardShortcutsModal
         show={false}
@@ -117,7 +154,7 @@ describe('KeyboardShortcutsModal', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('filters the AI Console shortcut by availability and closes from the icon button', async () => {
+  it("filters the AI Console shortcut by availability and closes from the icon button", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     const { rerender } = render(
@@ -128,16 +165,16 @@ describe('KeyboardShortcutsModal', () => {
       />,
     );
 
-    expect(screen.getByText('Show keyboard shortcuts')).toBeInTheDocument();
-    expect(screen.queryByText('Open AI Console')).not.toBeInTheDocument();
+    expect(screen.getByText("Show keyboard shortcuts")).toBeInTheDocument();
+    expect(screen.queryByText("Open AI Console")).not.toBeInTheDocument();
 
     rerender(
       <KeyboardShortcutsModal show consoleAvailable={true} onClose={onClose} />,
     );
-    expect(screen.getByText('Open AI Console')).toBeInTheDocument();
+    expect(screen.getByText("Open AI Console")).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole('button', { name: 'Close keyboard shortcuts' }),
+      screen.getByRole("button", { name: "Close keyboard shortcuts" }),
     );
     expect(onClose).toHaveBeenCalledTimes(1);
   });

@@ -142,6 +142,7 @@ const ConsoleToolResultSchema = z
     redactions: z.unknown().optional(),
     truncation: z.unknown().optional(),
     warnings: z.unknown().optional(),
+    errorCode: z.string().trim().max(100).optional(),
     error: z.string().trim().max(500).optional(),
   })
   .strict();

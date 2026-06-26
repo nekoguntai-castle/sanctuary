@@ -67,6 +67,7 @@ const baseTrace: ConsoleToolTrace = {
   createdAt: "2026-04-26T01:00:00.000Z",
   facts: { balance: 1, labels: ["cold"], nested: { count: 2 } },
   provenance: {},
+  errorCode: null,
   errorMessage: null,
 };
 
@@ -89,12 +90,16 @@ describe("console drawer utilities", () => {
       mode: "auto",
       selectedNetwork: "mainnet",
     });
-    expect(buildConsoleClientContext(AUTO_CONTEXT_ID, "testnet3", "wallet-1")).toEqual({
+    expect(
+      buildConsoleClientContext(AUTO_CONTEXT_ID, "testnet3", "wallet-1"),
+    ).toEqual({
       mode: "auto",
       selectedNetwork: "testnet3",
       routeWalletId: "wallet-1",
     });
-    expect(buildConsoleClientContext(GENERAL_SCOPE_ID, "mainnet")).toBeUndefined();
+    expect(
+      buildConsoleClientContext(GENERAL_SCOPE_ID, "mainnet"),
+    ).toBeUndefined();
     expect(buildConsoleScope(AUTO_CONTEXT_ID)).toEqual({ kind: "general" });
     expect(buildConsoleScope(GENERAL_SCOPE_ID)).toEqual({ kind: "general" });
     expect(buildConsoleScope("wallet-1")).toEqual({
@@ -231,6 +236,13 @@ describe("console drawer utilities", () => {
     expect(summarizeTrace({ ...baseTrace, status: "denied" })).toBe(
       "Denied by scope or sensitivity",
     );
+    expect(
+      summarizeTrace({
+        ...baseTrace,
+        status: "denied",
+        errorMessage: "raise access",
+      }),
+    ).toBe("raise access");
     expect(summarizeTrace({ ...baseTrace, facts: null })).toBe("Completed");
     expect(summarizeTrace({ ...baseTrace, facts: {} })).toBe("Completed");
     expect(
@@ -291,6 +303,14 @@ describe("console drawer utilities", () => {
     );
     expect(messages[1]?.traces).toEqual([baseTrace]);
     expect(messages[1]?.details).toContain("wallet.summary");
+    expect(
+      turnsToMessages([
+        {
+          ...baseTurn,
+          plannedTools: { warnings: ["elevated_access_required", "other"] },
+        },
+      ])[1]?.accessWarnings,
+    ).toEqual(["elevated_access_required"]);
     const erroredTurnDetails = getTurnDetails(
       {
         ...baseTurn,
@@ -309,6 +329,7 @@ describe("console drawer utilities", () => {
           ...baseTrace,
           status: "failed",
           sensitivity: null,
+          errorCode: "tool_failed",
           errorMessage: "tool exploded",
           facts: null,
           provenance: null,
@@ -316,6 +337,7 @@ describe("console drawer utilities", () => {
       ],
     );
     expect(failedTraceDetails).toContain("State: failed");
+    expect(failedTraceDetails).toContain("Error code: tool_failed");
     expect(failedTraceDetails).toContain("Error: tool exploded");
     expect(failedTraceDetails).not.toContain("Sensitivity:");
     expect(failedTraceDetails).not.toContain("Facts:");

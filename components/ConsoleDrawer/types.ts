@@ -2,6 +2,7 @@ import type React from "react";
 import type {
   ConsolePromptHistory,
   ConsoleScope,
+  ConsoleSensitivity,
   ConsoleSetupReason,
   ConsoleSession,
   ConsoleTool,
@@ -26,6 +27,7 @@ export interface ConsoleMessage {
   details?: string;
   state?: string;
   traces?: ConsoleToolTrace[];
+  accessWarnings?: string[];
   promptHistoryId?: string | null;
 }
 
@@ -36,6 +38,7 @@ export interface ConsoleDrawerController {
   messages: ConsoleMessage[];
   selectedSessionId: string | null;
   selectedWalletId: string;
+  maxSensitivity: ConsoleSensitivity;
   input: string;
   promptSearch: string;
   loading: boolean;
@@ -51,6 +54,7 @@ export interface ConsoleDrawerController {
   setPromptSearch: (value: string) => void;
   setSelectedWalletId: (value: string) => void;
   setSelectedSessionId: (value: string | null) => void;
+  setMaxSensitivity: (value: ConsoleSensitivity) => void;
   selectSession: (sessionId: string | null) => Promise<void>;
   startNewSession: () => void;
   clearDisplay: () => void;
@@ -58,6 +62,7 @@ export interface ConsoleDrawerController {
   clearPromptHistory: () => Promise<void>;
   sendPrompt: () => Promise<void>;
   replayPrompt: (promptId: string) => Promise<void>;
+  raiseAccessAndReplay: (promptId?: string | null) => Promise<void>;
   deletePrompt: (promptId: string) => Promise<void>;
   togglePromptSaved: (prompt: ConsolePromptHistory) => Promise<void>;
   setPromptExpiration: (

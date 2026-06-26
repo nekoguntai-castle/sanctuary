@@ -1,6 +1,6 @@
 # P1 — Close the highest-value AI access gaps
 
-**Status:** Proposed
+**Status:** In progress
 **Date:** 2026-06-25
 **Source audit:** `reports/ai-access-audit-2026-06-25.md`
 **Depends on:** P0 (`ai-access-p0-price-fee-planner.md`) landed first
@@ -206,7 +206,7 @@ registry singleton** with a case per branch (happy path + each 404 / denial / re
 
 ## Definition of done
 
-- [ ] Denial reasons reach synthesis (`errorCode` carried) and the UI shows an
+- [x] Denial reasons reach synthesis (`errorCode` carried) and the UI shows an
       "elevated access required" banner with a working raise-sensitivity action.
 - [ ] Tier A tools landed with serialization/guards replicated; appear in Console + MCP.
 - [ ] Tier B tools landed with access glue + redaction + per-branch tests.

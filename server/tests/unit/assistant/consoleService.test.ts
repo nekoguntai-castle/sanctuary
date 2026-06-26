@@ -195,7 +195,9 @@ describe("console service", () => {
       maxSensitivity: "wallet",
     });
 
-    expect(mocks.walletRepository.findAccessibleWithSelect).toHaveBeenCalledWith(
+    expect(
+      mocks.walletRepository.findAccessibleWithSelect,
+    ).toHaveBeenCalledWith(
       "user-1",
       { id: true, name: true, network: true },
       { network: "testnet3" },
@@ -299,13 +301,44 @@ describe("console service", () => {
 
     expect(result.toolTraces[0]).toMatchObject({
       status: "denied",
-      errorCode: "tool_denied",
+      errorCode: "wallet_scope_required",
       errorMessage: "Wallet-sensitive tools require an explicit wallet scope",
     });
     expect(mocks.assistantReadToolRegistry.execute).not.toHaveBeenCalled();
     expect(mocks.synthesizeConsoleAnswer).toHaveBeenCalledWith(
       expect.objectContaining({
         toolResults: [expect.objectContaining({ status: "denied" })],
+      }),
+    );
+  });
+
+  it("surfaces sensitivity denials to synthesis and turn warnings", async () => {
+    mocks.planConsoleTools.mockResolvedValue({
+      toolCalls: [{ name: "get_wallet_overview", input: { walletId } }],
+      warnings: ["planner_warning"],
+    });
+
+    await runConsoleTurn(actor(), {
+      prompt: "Run the wallet overview at public access",
+      scope: { kind: "wallet", walletId },
+      maxSensitivity: "public",
+    });
+
+    expect(mocks.synthesizeConsoleAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolResults: [
+          expect.objectContaining({
+            status: "denied",
+            errorCode: "sensitivity_ceiling_exceeded",
+          }),
+        ],
+      }),
+    );
+    expect(mocks.consoleRepository.completeTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        plannedTools: expect.objectContaining({
+          warnings: ["planner_warning", "elevated_access_required"],
+        }),
       }),
     );
   });

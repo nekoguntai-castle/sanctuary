@@ -18,6 +18,7 @@ import {
 } from "../../../contexts/CurrencyContext";
 import { UserProvider } from "../../../contexts/UserContext";
 import * as authApi from "../../../src/api/auth";
+import { ApiError } from "../../../src/api/client";
 import * as priceApi from "../../../src/api/price";
 
 export const authenticatedUser = {
@@ -134,7 +135,9 @@ export function setupDefaultMocks() {
   vi.clearAllMocks();
   vi.useFakeTimers({ shouldAdvanceTime: true });
 
-  vi.mocked(authApi.getCurrentUser).mockResolvedValue(null as any);
+  vi.mocked(authApi.getCurrentUser).mockRejectedValue(
+    new ApiError("Unauthorized", 401),
+  );
   vi.mocked(priceApi.getPrice).mockResolvedValue(makeAggregatedPrice());
   vi.mocked(priceApi.getPriceFromProvider).mockResolvedValue(
     makeAggregatedPrice().sources[0],

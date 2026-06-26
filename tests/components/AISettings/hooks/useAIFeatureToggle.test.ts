@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAIFeatureToggle } from '../../../../components/AISettings/hooks/useAIFeatureToggle';
 import { invalidateAIStatusCache } from '../../../../hooks/useAIStatus';
 import * as adminApi from '../../../../src/api/admin';
@@ -36,6 +36,10 @@ describe('useAIFeatureToggle', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.mocked(adminApi.updateSystemSettings).mockResolvedValue({} as never);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('opens and closes the enable modal when toggling from disabled', async () => {
@@ -77,6 +81,24 @@ describe('useAIFeatureToggle', () => {
     expect(adminApi.updateSystemSettings).toHaveBeenCalledWith({ aiEnabled: false });
     expect(props.setAiEnabled).toHaveBeenCalledWith(false);
     expect(result.current.showEnableModal).toBe(false);
+  });
+
+  it('clears the prior success timeout when saving again', async () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const { result } = renderToggle();
+
+    try {
+      await act(async () => {
+        await result.current.performToggleAI(true);
+      });
+      await act(async () => {
+        await result.current.performToggleAI(false);
+      });
+
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+    } finally {
+      clearTimeoutSpy.mockRestore();
+    }
   });
 
   it('sets saveError when the settings update fails', async () => {

@@ -16,6 +16,7 @@ export const GENERAL_SCOPE_ID = "general";
 export const AUTO_CONTEXT_ID = "auto";
 export const ALL_WALLETS_SCOPE_ID = "all-wallets";
 export const MAX_WALLET_SET_SCOPE_WALLETS = 25;
+export const ELEVATED_ACCESS_WARNING = "elevated_access_required";
 const DEFAULT_VISIBLE_MESSAGE_UNITS = 8;
 
 export interface ConsoleCompressedHistoryItem {
@@ -70,7 +71,9 @@ export function buildConsoleClientContext(
   contextId: string,
   selectedNetwork: TabNetwork,
   routeWalletId?: string | null,
-): { mode: "auto"; selectedNetwork: TabNetwork; routeWalletId?: string } | undefined {
+):
+  | { mode: "auto"; selectedNetwork: TabNetwork; routeWalletId?: string }
+  | undefined {
   if (contextId !== AUTO_CONTEXT_ID) return undefined;
   return {
     mode: "auto",
@@ -175,7 +178,9 @@ export function formatShortDate(value?: string | null): string {
 
 export function summarizeTrace(trace: ConsoleToolTrace): string {
   if (trace.status === "failed") return trace.errorMessage || "Tool failed";
-  if (trace.status === "denied") return "Denied by scope or sensitivity";
+  if (trace.status === "denied") {
+    return trace.errorMessage || "Denied by scope or sensitivity";
+  }
   if (!trace.facts) return "Completed";
 
   const entries = Object.entries(trace.facts).slice(0, 2);
@@ -235,6 +240,7 @@ export function turnsToMessages(turns: ConsoleTurn[]): ConsoleMessage[] {
       details: getTurnDetails(turn, turn.toolTraces ?? []),
       state: turn.state,
       traces: turn.toolTraces ?? [],
+      accessWarnings: getTurnAccessWarnings(turn),
       promptHistoryId: turn.promptHistoryId,
     },
   ]);
@@ -296,6 +302,7 @@ export function appendTurnResult(
       details: getTurnDetails(result.turn, result.toolTraces),
       state: result.turn.state,
       traces: result.toolTraces,
+      accessWarnings: getTurnAccessWarnings(result.turn),
       promptHistoryId: result.promptHistory.id,
     },
   ];
@@ -447,6 +454,7 @@ function buildUnitDedupeKey(messages: ConsoleMessage[]): string | null {
     normalizeMessageContent(prompt.content),
     normalizeMessageContent(response.content),
     response.state ?? "",
+    (response.accessWarnings ?? []).join(","),
     (response.traces ?? [])
       .map((trace) => `${trace.toolName}:${trace.status}`)
       .sort()
@@ -497,6 +505,7 @@ function formatTraceDetails(trace: ConsoleToolTrace): string {
     `Tool: ${trace.toolName}`,
     `Status: ${trace.status}`,
     trace.sensitivity ? `Sensitivity: ${trace.sensitivity}` : "",
+    trace.errorCode ? `Error code: ${trace.errorCode}` : "",
     trace.errorMessage ? `Error: ${trace.errorMessage}` : "",
     trace.facts ? `Facts:\n${formatDiagnosticValue(trace.facts)}` : "",
     trace.provenance
@@ -520,4 +529,15 @@ function toRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function getTurnAccessWarnings(turn: ConsoleTurn): string[] | undefined {
+  const plannedTools = toRecord(turn.plannedTools);
+  const warnings = Array.isArray(plannedTools?.warnings)
+    ? plannedTools.warnings.filter((warning) => typeof warning === "string")
+    : [];
+  const accessWarnings = warnings.filter(
+    (warning) => warning === ELEVATED_ACCESS_WARNING,
+  );
+  return accessWarnings.length > 0 ? accessWarnings : undefined;
 }

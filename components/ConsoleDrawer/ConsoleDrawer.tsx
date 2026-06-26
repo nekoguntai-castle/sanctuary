@@ -22,7 +22,10 @@ import {
   extractConsoleTransactionQuery,
   walletIdFromWalletRoute,
 } from "../../src/app/consoleTransactionNavigation";
-import type { ConsoleTurnResult } from "../../src/api/console";
+import type {
+  ConsoleSensitivity,
+  ConsoleTurnResult,
+} from "../../src/api/console";
 import { ConsoleComposer } from "./ConsoleComposer";
 import { ConsoleMessageList } from "./ConsoleMessageList";
 import { ConsolePromptHistory } from "./ConsolePromptHistory";
@@ -32,6 +35,19 @@ import { useConsoleDrawerController } from "./useConsoleDrawerController";
 import type { ConsoleDrawerProps } from "./types";
 
 const NEW_SESSION_VALUE = "new-session";
+const ACCESS_OPTIONS: ConsoleSensitivity[] = ["public", "wallet", "high"];
+const ADMIN_ACCESS_OPTIONS: ConsoleSensitivity[] = [
+  "public",
+  "wallet",
+  "high",
+  "admin",
+];
+const ACCESS_LABELS: Record<ConsoleSensitivity, string> = {
+  public: "Public",
+  wallet: "Wallet",
+  high: "High",
+  admin: "Admin",
+};
 
 const DrawerHeader: React.FC<{
   toolCount: number;
@@ -116,6 +132,29 @@ const DrawerHeader: React.FC<{
   </header>
 );
 
+const ConsoleAccessSelector: React.FC<{
+  value: ConsoleSensitivity;
+  isAdmin: boolean;
+  onChange: (value: ConsoleSensitivity) => void;
+}> = ({ value, isAdmin, onChange }) => {
+  const options = isAdmin ? ADMIN_ACCESS_OPTIONS : ACCESS_OPTIONS;
+
+  return (
+    <select
+      aria-label="Console access level"
+      value={value}
+      onChange={(event) => onChange(event.target.value as ConsoleSensitivity)}
+      className="w-24 flex-shrink-0 rounded-md border border-sanctuary-200 bg-transparent px-2 py-1 text-xs text-sanctuary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-sanctuary-700 dark:text-sanctuary-100"
+    >
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {ACCESS_LABELS[option]}
+        </option>
+      ))}
+    </select>
+  );
+};
+
 export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
   isOpen,
   onClose,
@@ -179,6 +218,7 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
     wallets,
     selectedNetwork,
     defaultWalletId,
+    isAdmin,
     onTurnComplete: handleTurnComplete,
   });
 
@@ -250,13 +290,20 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
             className="inline-flex items-center gap-1.5 rounded-md border border-sanctuary-200 px-2 py-1 text-xs font-medium text-sanctuary-600 dark:border-sanctuary-700 dark:text-sanctuary-300"
             title={`Console network: ${networkConfigs[selectedNetwork].label}`}
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${networkConfigs[selectedNetwork].dotColor}`} />
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${networkConfigs[selectedNetwork].dotColor}`}
+            />
             {networkConfigs[selectedNetwork].label}
           </span>
           <ConsoleScopeSelector
             wallets={wallets}
             selectedWalletId={controller.selectedWalletId}
             onChange={controller.setSelectedWalletId}
+          />
+          <ConsoleAccessSelector
+            value={controller.maxSensitivity}
+            isAdmin={isAdmin}
+            onChange={controller.setMaxSensitivity}
           />
           <select
             aria-label="Console session"
@@ -308,6 +355,7 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
               loading={controller.loading}
               sending={controller.sending}
               messagesEndRef={controller.messagesEndRef}
+              onRaiseAccess={controller.raiseAccessAndReplay}
             />
             <ConsolePromptHistory
               prompts={controller.prompts}

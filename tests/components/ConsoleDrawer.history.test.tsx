@@ -129,6 +129,7 @@ it("replays, saves, expires, and deletes prompt history rows", async () => {
   await waitFor(() => {
     expect(consoleApi.replayPromptHistory).toHaveBeenCalledWith("prompt-1", {
       clientContext: { mode: "auto", selectedNetwork: "mainnet" },
+      maxSensitivity: "wallet",
       sessionId: undefined,
     });
   });
@@ -230,6 +231,7 @@ it("replays prompt history with an explicit wallet scope", async () => {
 
   await waitFor(() => {
     expect(consoleApi.replayPromptHistory).toHaveBeenCalledWith("prompt-1", {
+      maxSensitivity: "wallet",
       scope: { kind: "wallet", walletId: "wallet-1" },
     });
   });

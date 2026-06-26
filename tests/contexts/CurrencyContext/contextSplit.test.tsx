@@ -20,7 +20,6 @@ import {
   useCurrencySettings,
 } from '../../../contexts/CurrencyContext';
 import { UserProvider } from '../../../contexts/UserContext';
-import * as authApi from '../../../src/api/auth';
 import * as priceApi from '../../../src/api/price';
 import { makeAggregatedPrice, setupDefaultMocks } from './helpers';
 
@@ -123,8 +122,6 @@ describe('CurrencyContext split — selector isolation', () => {
   it('toggling a preference does NOT re-render a useBtcPrice consumer', async () => {
     const priceRenders = vi.fn();
 
-    vi.mocked(authApi.getCurrentUser).mockResolvedValue(null as any);
-
     const { getByTestId } = renderTree(
       <>
         <PriceOnlyConsumer onRender={priceRenders} />
@@ -134,6 +131,13 @@ describe('CurrencyContext split — selector isolation', () => {
 
     await waitFor(() => {
       expect(priceApi.getPrice).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(getByTestId('price')).toHaveTextContent('50000');
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
     const before = priceRenders.mock.calls.length;

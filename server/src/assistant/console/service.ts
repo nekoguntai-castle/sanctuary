@@ -33,6 +33,7 @@ import {
 } from "./toolExecution";
 
 const MAX_TOOL_CALLS_PER_TURN = 5;
+const ELEVATED_ACCESS_WARNING = "elevated_access_required";
 
 interface ConsoleAuditContext {
   ipAddress?: string;
@@ -108,6 +109,26 @@ function buildSynthesisFallbackResponse(
   ].join("\n");
 }
 
+function hasElevatedAccessDenial(traces: ExecutedConsoleToolTrace[]): boolean {
+  return traces.some(
+    (trace) =>
+      trace.status === "denied" &&
+      trace.errorCode === "sensitivity_ceiling_exceeded",
+  );
+}
+
+function buildTurnWarnings(input: {
+  planWarnings: string[];
+  traces: ExecutedConsoleToolTrace[];
+  synthesisFallbackApplied: boolean;
+}): string[] {
+  return [
+    ...input.planWarnings,
+    ...(hasElevatedAccessDenial(input.traces) ? [ELEVATED_ACCESS_WARNING] : []),
+    ...(input.synthesisFallbackApplied ? ["synthesis_fallback_applied"] : []),
+  ];
+}
+
 function selectAutoContextWallets<TWallet extends { id: string }>(
   wallets: TWallet[],
   routeWalletId?: string,
@@ -133,7 +154,9 @@ async function resolveAutoConsoleContext(
   const accessibleWallets = await walletRepository.findAccessibleWithSelect(
     actor.userId,
     { id: true, name: true, network: true },
-    clientContext.selectedNetwork ? { network: clientContext.selectedNetwork } : undefined,
+    clientContext.selectedNetwork
+      ? { network: clientContext.selectedNetwork }
+      : undefined,
   );
   const wallets = selectAutoContextWallets(
     accessibleWallets,
@@ -395,10 +418,11 @@ export async function runConsoleTurn(
     const providerProfileId =
       plan.providerProfileId ?? synthesis.providerProfileId;
     const model = plan.model ?? synthesis.model;
-    const warnings = [
-      ...plan.warnings,
-      ...(synthesisFallbackApplied ? ["synthesis_fallback_applied"] : []),
-    ];
+    const warnings = buildTurnWarnings({
+      planWarnings: plan.warnings,
+      traces,
+      synthesisFallbackApplied,
+    });
     const completedTurn = await consoleRepository.completeTurn({
       id: turn.id,
       response: synthesis.response,

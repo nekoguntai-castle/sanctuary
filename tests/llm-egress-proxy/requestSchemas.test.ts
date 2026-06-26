@@ -266,6 +266,7 @@ describe("LLM egress proxy request schemas", () => {
             toolName: "get_fee_estimates",
             status: "completed",
             input: { walletId: "wallet-1" },
+            errorCode: "sensitivity_ceiling_exceeded",
           },
         ],
       }),
@@ -277,6 +278,7 @@ describe("LLM egress proxy request schemas", () => {
           toolName: "get_fee_estimates",
           status: "completed",
           input: { walletId: "wallet-1" },
+          errorCode: "sensitivity_ceiling_exceeded",
         },
       ],
     });

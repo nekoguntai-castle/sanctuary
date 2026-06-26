@@ -126,6 +126,7 @@ export interface ConsoleToolTrace {
   facts?: Record<string, unknown> | null;
   provenance?: Record<string, unknown> | null;
   sensitivity?: ConsoleSensitivity | null;
+  errorCode?: string | null;
   errorMessage?: string | null;
   createdAt: string;
 }

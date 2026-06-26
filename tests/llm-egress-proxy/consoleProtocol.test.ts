@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildConsolePlanMessages,
+  buildConsoleSynthesisMessages,
   parseConsolePlanResponse,
 } from "../../llm-egress-proxy/src/consoleProtocol";
 
@@ -125,6 +126,24 @@ describe("console planner protocol", () => {
 
     expect(messages[0]?.content).toContain("semantic intents");
     expect(messages[1]?.content).toContain('"currentDate": "2026-04-28"');
+  });
+
+  it("instructs synthesis to surface elevated access denials", () => {
+    const messages = buildConsoleSynthesisMessages({
+      prompt: "show high sensitivity wallet data",
+      toolResults: [
+        {
+          toolName: "get_wallet_overview",
+          status: "denied",
+          errorCode: "sensitivity_ceiling_exceeded",
+        },
+      ],
+    });
+
+    expect(messages[0]?.content).toContain("elevated access is required");
+    expect(messages[1]?.content).toContain(
+      '"errorCode": "sensitivity_ceiling_exceeded"',
+    );
   });
 
   it("resolves current-year transaction intents without phrase parsing", () => {

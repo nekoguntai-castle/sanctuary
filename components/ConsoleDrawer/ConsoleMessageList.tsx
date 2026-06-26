@@ -5,10 +5,12 @@ import {
   CircleAlert,
   CircleSlash,
   LoaderCircle,
+  ShieldAlert,
   UserRound,
 } from "lucide-react";
 import {
   compressConsoleMessages,
+  ELEVATED_ACCESS_WARNING,
   summarizeTrace,
   type ConsoleCompressedHistoryItem,
   type ConsoleMessageDisplayItem,
@@ -20,6 +22,7 @@ interface ConsoleMessageListProps {
   loading: boolean;
   sending: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  onRaiseAccess?: (promptHistoryId?: string | null) => void;
 }
 
 const traceIcon = {
@@ -70,6 +73,28 @@ const ConsoleMessageDetails: React.FC<{ details?: string }> = ({ details }) => {
   );
 };
 
+const ConsoleAccessWarning: React.FC<{
+  message: ConsoleMessage;
+  onRaiseAccess?: (promptHistoryId?: string | null) => void;
+}> = ({ message, onRaiseAccess }) => {
+  if (!message.accessWarnings?.includes(ELEVATED_ACCESS_WARNING)) return null;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-warning-200 bg-warning-50 px-2 py-1.5 text-[11px] text-warning-800 dark:border-warning-800 dark:bg-warning-900/20 dark:text-warning-300">
+      <ShieldAlert className="h-3.5 w-3.5 flex-shrink-0" />
+      <span className="font-medium">Elevated access required</span>
+      <button
+        type="button"
+        disabled={!message.promptHistoryId || !onRaiseAccess}
+        onClick={() => onRaiseAccess?.(message.promptHistoryId)}
+        className="ml-auto rounded border border-warning-200 px-2 py-0.5 font-medium hover:bg-warning-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-warning-800 dark:hover:bg-warning-900/50"
+      >
+        Raise access and retry
+      </button>
+    </div>
+  );
+};
+
 const EmptyConsoleState = () => (
   <div className="flex min-h-[260px] items-center justify-center px-8 text-center">
     <div>
@@ -113,9 +138,10 @@ const ConsoleHistorySummary: React.FC<{
   );
 };
 
-const ConsoleMessageBubble: React.FC<{ message: ConsoleMessage }> = ({
-  message,
-}) => {
+const ConsoleMessageBubble: React.FC<{
+  message: ConsoleMessage;
+  onRaiseAccess?: (promptHistoryId?: string | null) => void;
+}> = ({ message, onRaiseAccess }) => {
   const isUser = message.role === "user";
   const Icon = isUser ? UserRound : Brain;
 
@@ -137,6 +163,10 @@ const ConsoleMessageBubble: React.FC<{ message: ConsoleMessage }> = ({
         <p className="whitespace-pre-wrap break-words">{message.content}</p>
         {!isUser && (
           <>
+            <ConsoleAccessWarning
+              message={message}
+              onRaiseAccess={onRaiseAccess}
+            />
             <ConsoleTraceList traces={message.traces} />
             <ConsoleMessageDetails details={message.details} />
           </>
@@ -148,11 +178,15 @@ const ConsoleMessageBubble: React.FC<{ message: ConsoleMessage }> = ({
 
 const ConsoleDisplayItem: React.FC<{
   item: ConsoleMessageDisplayItem;
-}> = ({ item }) =>
+  onRaiseAccess?: (promptHistoryId?: string | null) => void;
+}> = ({ item, onRaiseAccess }) =>
   item.kind === "summary" ? (
     <ConsoleHistorySummary item={item} />
   ) : (
-    <ConsoleMessageBubble message={item.message} />
+    <ConsoleMessageBubble
+      message={item.message}
+      onRaiseAccess={onRaiseAccess}
+    />
   );
 
 const ConsoleSendingIndicator = () => (
@@ -172,6 +206,7 @@ export const ConsoleMessageList: React.FC<ConsoleMessageListProps> = ({
   loading,
   sending,
   messagesEndRef,
+  onRaiseAccess,
 }) => {
   if (loading) return <LoadingConsoleState />;
 
@@ -186,6 +221,7 @@ export const ConsoleMessageList: React.FC<ConsoleMessageListProps> = ({
           <ConsoleDisplayItem
             key={item.kind === "summary" ? item.id : item.message.id}
             item={item}
+            onRaiseAccess={onRaiseAccess}
           />
         ))}
         {sending ? <ConsoleSendingIndicator /> : null}

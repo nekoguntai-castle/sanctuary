@@ -37,6 +37,7 @@ export interface ConsoleToolResultForSynthesis {
   redactions?: unknown;
   truncation?: unknown;
   warnings?: unknown;
+  errorCode?: string;
   error?: string;
 }
 

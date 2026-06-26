@@ -26,6 +26,11 @@ export function toJson(value: unknown): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
 }
 
+interface ToolCallDenial {
+  errorCode: string;
+  errorMessage: string;
+}
+
 function isWalletScoped(scope: ConsoleScope): boolean {
   return ["wallet", "wallet_set", "object"].includes(scope.kind);
 }
@@ -113,25 +118,37 @@ function validateToolCall(
   scope: ConsoleScope,
   maxSensitivity: ConsoleSensitivity,
   actor: AssistantToolActor,
-): string | null {
-  if (!sensitivityAllowed(definition.sensitivity, maxSensitivity)) {
-    return `Tool sensitivity ${definition.sensitivity} exceeds turn limit ${maxSensitivity}`;
-  }
+): ToolCallDenial | null {
   if (
     (definition.requiredScope.kind === "admin" ||
       definition.requiredScope.kind === "audit") &&
     !actor.isAdmin
   ) {
-    return "Tool requires admin access";
+    return {
+      errorCode: "admin_access_required",
+      errorMessage: "Tool requires admin access",
+    };
+  }
+  if (!sensitivityAllowed(definition.sensitivity, maxSensitivity)) {
+    return {
+      errorCode: "sensitivity_ceiling_exceeded",
+      errorMessage: `Tool sensitivity ${definition.sensitivity} exceeds turn limit ${maxSensitivity}`,
+    };
   }
   if (toolNeedsExplicitScope(definition) && !isWalletScoped(scope)) {
-    return "Wallet-sensitive tools require an explicit wallet scope";
+    return {
+      errorCode: "wallet_scope_required",
+      errorMessage: "Wallet-sensitive tools require an explicit wallet scope",
+    };
   }
   if (definition.requiredScope.kind === "wallet") {
     const walletId = walletInputFromCall(definition, call);
     return walletId && scopeIncludesWallet(scope, walletId)
       ? null
-      : "Tool wallet input is outside the selected scope";
+      : {
+          errorCode: "wallet_input_scope_mismatch",
+          errorMessage: "Tool wallet input is outside the selected scope",
+        };
   }
   return null;
 }
@@ -155,6 +172,7 @@ export function traceForSynthesis(
     ...(trace.redactions ? { redactions: trace.redactions } : {}),
     ...(trace.truncation ? { truncation: trace.truncation } : {}),
     ...(trace.warnings ? { warnings: trace.warnings } : {}),
+    ...(trace.errorCode ? { errorCode: trace.errorCode } : {}),
     ...(trace.errorMessage ? { error: trace.errorMessage } : {}),
   };
 }
@@ -208,8 +226,8 @@ export async function executePlannedTool(input: {
       turnId: input.turnId,
       toolName: definition.name,
       callInput: input.call.input,
-      errorCode: "tool_denied",
-      errorMessage: denial,
+      errorCode: denial.errorCode,
+      errorMessage: denial.errorMessage,
       sensitivity: definition.sensitivity,
     });
   }

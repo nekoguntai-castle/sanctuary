@@ -185,6 +185,7 @@ describe("console tool execution", () => {
       }),
     ).resolves.toMatchObject({
       status: "denied",
+      errorCode: "sensitivity_ceiling_exceeded",
       errorMessage: "Tool sensitivity wallet exceeds turn limit public",
     });
 
@@ -204,6 +205,7 @@ describe("console tool execution", () => {
       }),
     ).resolves.toMatchObject({
       status: "denied",
+      errorCode: "admin_access_required",
       errorMessage: "Tool requires admin access",
     });
 
@@ -220,6 +222,7 @@ describe("console tool execution", () => {
       }),
     ).resolves.toMatchObject({
       status: "denied",
+      errorCode: "wallet_input_scope_mismatch",
       errorMessage: "Tool wallet input is outside the selected scope",
     });
 
@@ -242,6 +245,7 @@ describe("console tool execution", () => {
       }),
     ).resolves.toMatchObject({
       status: "denied",
+      errorCode: "wallet_input_scope_mismatch",
       errorMessage: "Tool wallet input is outside the selected scope",
     });
 
@@ -263,6 +267,34 @@ describe("console tool execution", () => {
         actor: actor(),
       }),
     ).resolves.toMatchObject({ status: "completed" });
+  });
+
+  it("denies a non-admin admin-tool call as admin_access_required even when the sensitivity ceiling is also exceeded", async () => {
+    mocks.assistantReadToolRegistry.get.mockReturnValueOnce(
+      definition({
+        name: "get_admin_operational_summary",
+        sensitivity: "admin",
+        requiredScope: { kind: "admin", description: "admin scope" },
+      }),
+    );
+
+    await expect(
+      executePlannedTool({
+        call: { name: "get_admin_operational_summary", input: {} },
+        turnId,
+        scope: { kind: "admin" },
+        // Ceiling is below the tool's "admin" sensitivity, so both the admin
+        // and sensitivity checks would deny. The admin denial must win because
+        // a non-admin cannot raise access; surfacing a raisable ceiling error
+        // would trap them in a retry loop.
+        maxSensitivity: "wallet",
+        actor: actor(false),
+      }),
+    ).resolves.toMatchObject({
+      status: "denied",
+      errorCode: "admin_access_required",
+      errorMessage: "Tool requires admin access",
+    });
   });
 
   it("executes allowed tools with console context and returns compact synthesis traces", async () => {
@@ -329,6 +361,7 @@ describe("console tool execution", () => {
         redactions: null,
         truncation: null,
         warnings: null,
+        errorCode: "sensitivity_ceiling_exceeded",
         errorMessage: "denied",
       }),
     ).toEqual({
@@ -336,6 +369,7 @@ describe("console tool execution", () => {
       status: "completed",
       input: { walletId },
       sensitivity: "wallet",
+      errorCode: "sensitivity_ceiling_exceeded",
       error: "denied",
     });
     expect(

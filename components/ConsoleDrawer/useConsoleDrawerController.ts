@@ -28,10 +28,27 @@ interface UseConsoleDrawerControllerOptions {
   wallets: Wallet[];
   selectedNetwork: TabNetwork;
   defaultWalletId?: string | null;
+  isAdmin?: boolean;
   onTurnComplete?: (result: consoleApi.ConsoleTurnResult) => void;
 }
 
 const PROMPT_LIMIT = 24;
+
+function clampConsoleSensitivity(
+  value: consoleApi.ConsoleSensitivity,
+  isAdmin: boolean,
+): consoleApi.ConsoleSensitivity {
+  return value === "admin" && !isAdmin ? "high" : value;
+}
+
+function getRaisedConsoleSensitivity(
+  value: consoleApi.ConsoleSensitivity,
+  isAdmin: boolean,
+): consoleApi.ConsoleSensitivity {
+  if (value === "public" || value === "wallet") return "high";
+  if (value === "high" && isAdmin) return "admin";
+  return value;
+}
 
 function getExpirationDate(days: number): string {
   const date = new Date();
@@ -44,6 +61,7 @@ export function useConsoleDrawerController({
   wallets,
   selectedNetwork,
   defaultWalletId,
+  isAdmin = false,
   onTurnComplete,
 }: UseConsoleDrawerControllerOptions): ConsoleDrawerController {
   const [sessions, setSessions] = useState<consoleApi.ConsoleSession[]>([]);
@@ -54,6 +72,8 @@ export function useConsoleDrawerController({
     string | null
   >(null);
   const [selectedWalletId, setSelectedWalletId] = useState(AUTO_CONTEXT_ID);
+  const [maxSensitivity, setMaxSensitivityState] =
+    useState<consoleApi.ConsoleSensitivity>("wallet");
   const [input, setInput] = useState("");
   const [promptSearch, setPromptSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -74,8 +94,20 @@ export function useConsoleDrawerController({
     [selectedWalletId, wallets],
   );
   const clientContext = useMemo(
-    () => buildConsoleClientContext(selectedWalletId, selectedNetwork, defaultWalletId),
+    () =>
+      buildConsoleClientContext(
+        selectedWalletId,
+        selectedNetwork,
+        defaultWalletId,
+      ),
     [defaultWalletId, selectedNetwork, selectedWalletId],
+  );
+
+  const setMaxSensitivity = useCallback(
+    (value: consoleApi.ConsoleSensitivity) => {
+      setMaxSensitivityState(clampConsoleSensitivity(value, isAdmin));
+    },
+    [isAdmin],
   );
 
   const setSelectedSessionId = useCallback((sessionId: string | null) => {
@@ -161,6 +193,12 @@ export function useConsoleDrawerController({
     if (!isOpen) return;
     void loadConsoleState();
   }, [isOpen, loadConsoleState]);
+
+  useEffect(() => {
+    setMaxSensitivityState((current) =>
+      clampConsoleSensitivity(current, isAdmin),
+    );
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -273,6 +311,7 @@ export function useConsoleDrawerController({
       const result = await consoleApi.runConsoleTurn({
         sessionId: selectedSessionId ?? undefined,
         prompt,
+        maxSensitivity,
         ...(clientContext ? { clientContext } : { scope }),
       });
       setSelectedSessionId(result.session.id);
@@ -307,6 +346,7 @@ export function useConsoleDrawerController({
     handleConsoleError,
     input,
     clientContext,
+    maxSensitivity,
     onTurnComplete,
     scope,
     selectedSessionId,
@@ -314,13 +354,17 @@ export function useConsoleDrawerController({
     setSelectedSessionId,
   ]);
 
-  const replayPrompt = useCallback(
-    async (promptId: string) => {
+  const replayPromptWithSensitivity = useCallback(
+    async (
+      promptId: string,
+      replaySensitivity: consoleApi.ConsoleSensitivity,
+    ) => {
       setReplayingPromptId(promptId);
       setError(null);
       try {
         const result = await consoleApi.replayPromptHistory(promptId, {
           sessionId: selectedSessionId ?? undefined,
+          maxSensitivity: replaySensitivity,
           ...(clientContext ? { clientContext } : { scope }),
         });
         setSelectedSessionId(result.session.id);
@@ -345,6 +389,26 @@ export function useConsoleDrawerController({
       selectedSessionId,
       setSelectedSessionId,
     ],
+  );
+
+  const replayPrompt = useCallback(
+    async (promptId: string) => {
+      await replayPromptWithSensitivity(promptId, maxSensitivity);
+    },
+    [maxSensitivity, replayPromptWithSensitivity],
+  );
+
+  const raiseAccessAndReplay = useCallback(
+    async (promptId?: string | null) => {
+      if (!promptId) return;
+      const nextSensitivity = getRaisedConsoleSensitivity(
+        maxSensitivity,
+        isAdmin,
+      );
+      setMaxSensitivityState(nextSensitivity);
+      await replayPromptWithSensitivity(promptId, nextSensitivity);
+    },
+    [isAdmin, maxSensitivity, replayPromptWithSensitivity],
   );
 
   const deletePrompt = useCallback(
@@ -402,6 +466,7 @@ export function useConsoleDrawerController({
     messages,
     selectedSessionId,
     selectedWalletId,
+    maxSensitivity,
     input,
     promptSearch,
     loading,
@@ -417,6 +482,7 @@ export function useConsoleDrawerController({
     setPromptSearch,
     setSelectedWalletId,
     setSelectedSessionId,
+    setMaxSensitivity,
     selectSession,
     startNewSession,
     clearDisplay,
@@ -424,6 +490,7 @@ export function useConsoleDrawerController({
     clearPromptHistory,
     sendPrompt,
     replayPrompt,
+    raiseAccessAndReplay,
     deletePrompt,
     togglePromptSaved,
     setPromptExpiration,

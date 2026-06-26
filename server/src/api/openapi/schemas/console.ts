@@ -74,6 +74,7 @@ export const consoleSchemas = {
       facts: { type: 'object', nullable: true, additionalProperties: true },
       provenance: { type: 'object', nullable: true, additionalProperties: true },
       sensitivity: { type: 'string', nullable: true },
+      errorCode: { type: 'string', nullable: true },
       errorMessage: { type: 'string', nullable: true },
       createdAt: { type: 'string', format: 'date-time' },
     },

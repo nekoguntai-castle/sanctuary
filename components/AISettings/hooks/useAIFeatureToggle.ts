@@ -5,7 +5,7 @@
  * feature toggle and owns the confirmation modal state.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as adminApi from "../../../src/api/admin";
 import { createLogger } from "../../../utils/logger";
 import { invalidateAIStatusCache } from "../../../hooks/useAIStatus";
@@ -35,6 +35,18 @@ export function useAIFeatureToggle({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showEnableModal, setShowEnableModal] = useState(false);
+  const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  useEffect(
+    () => () => {
+      if (saveSuccessTimeoutRef.current) {
+        clearTimeout(saveSuccessTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   const handleCloseEnableModal = () => {
     setShowEnableModal(false);
@@ -61,8 +73,12 @@ export function useAIFeatureToggle({
       invalidateAIStatusCache();
 
       setSaveSuccess(true);
-      setTimeout(() => {
+      if (saveSuccessTimeoutRef.current) {
+        clearTimeout(saveSuccessTimeoutRef.current);
+      }
+      saveSuccessTimeoutRef.current = setTimeout(() => {
         setSaveSuccess(false);
+        saveSuccessTimeoutRef.current = null;
       }, 5000);
     } catch (error) {
       log.error("Failed to toggle AI", { error });

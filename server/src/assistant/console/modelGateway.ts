@@ -38,6 +38,7 @@ export interface ConsoleGatewayToolResult {
   redactions?: unknown;
   truncation?: unknown;
   warnings?: unknown;
+  errorCode?: string;
   error?: string;
 }
 

@@ -43,12 +43,35 @@ it("loads Console state and submits an auto-context prompt", async () => {
     expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
       prompt: "How long ago was block 800000?",
       clientContext: { mode: "auto", selectedNetwork: "mainnet" },
+      maxSensitivity: "wallet",
       sessionId: undefined,
     });
   });
   expect(
     await screen.findByText("Block 800000 was mined about 2 years ago."),
   ).toBeInTheDocument();
+});
+
+it("submits prompts with the selected Console access level", async () => {
+  const user = userEvent.setup();
+  renderDrawer();
+
+  await screen.findByText("Block age");
+  fireEvent.change(screen.getByLabelText("Console access level"), {
+    target: { value: "high" },
+  });
+
+  await user.type(screen.getByLabelText("Console prompt"), "retry high");
+  await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+  await waitFor(() => {
+    expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
+      prompt: "retry high",
+      clientContext: { mode: "auto", selectedNetwork: "mainnet" },
+      maxSensitivity: "high",
+      sessionId: undefined,
+    });
+  });
 });
 
 it("keeps Auto selected and sends the current wallet route as context", async () => {
@@ -74,6 +97,7 @@ it("keeps Auto selected and sends the current wallet route as context", async ()
         routeWalletId: "wallet-1",
         selectedNetwork: "mainnet",
       },
+      maxSensitivity: "wallet",
       sessionId: undefined,
     });
   });
@@ -97,6 +121,7 @@ it("submits prompts with an all-visible-wallets scope", async () => {
   await waitFor(() => {
     expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
       prompt: "summarize all wallets",
+      maxSensitivity: "wallet",
       scope: { kind: "wallet_set", walletIds: ["wallet-1", "wallet-2"] },
     });
   });
@@ -202,6 +227,7 @@ it("navigates to AI Results when all-visible-wallet planning returns multiple tr
   await waitFor(() => {
     expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
       prompt: "show me transactions between feb 2020 and june 2020",
+      maxSensitivity: "wallet",
       scope: { kind: "wallet_set", walletIds: ["wallet-1", "wallet-2"] },
     });
   });
@@ -364,6 +390,30 @@ it("keeps the page backdrop transparent while the drawer surface is translucent"
   );
 });
 
+it("gates the Admin access level behind admin users", async () => {
+  const { rerender } = renderDrawer({ isAdmin: false });
+  await screen.findByText("Block age");
+
+  expect(screen.getByLabelText("Console access level")).toHaveValue("wallet");
+  expect(
+    screen.queryByRole("option", { name: "Admin" }),
+  ).not.toBeInTheDocument();
+
+  rerender(
+    <MemoryRouter>
+      <ConsoleDrawer
+        isOpen
+        onClose={vi.fn()}
+        wallets={wallets}
+        selectedNetwork="mainnet"
+        isAdmin
+      />
+    </MemoryRouter>,
+  );
+
+  expect(screen.getByRole("option", { name: "Admin" })).toBeInTheDocument();
+});
+
 it("keeps the Console open for outside-click and Escape behavior while pinned", async () => {
   const user = userEvent.setup();
   const onClose = vi.fn();
@@ -460,7 +510,13 @@ it("handles session selection, wallet scope, keyboard send, prompt search, and c
     );
     view.rerender(
       <MemoryRouter>
-        <ConsoleDrawer isOpen onClose={onClose} wallets={wallets} selectedNetwork="mainnet" isAdmin />
+        <ConsoleDrawer
+          isOpen
+          onClose={onClose}
+          wallets={wallets}
+          selectedNetwork="mainnet"
+          isAdmin
+        />
       </MemoryRouter>,
     );
     await waitFor(() => {
@@ -488,6 +544,7 @@ it("handles session selection, wallet scope, keyboard send, prompt search, and c
     await waitFor(() => {
       expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
         prompt: "summarize this wallet",
+        maxSensitivity: "wallet",
         scope: { kind: "wallet", walletId: "wallet-1" },
       });
     });
@@ -530,7 +587,13 @@ it("falls back to auto context when a selected wallet disappears", async () => {
 
   view.rerender(
     <MemoryRouter>
-      <ConsoleDrawer isOpen onClose={vi.fn()} wallets={[]} selectedNetwork="mainnet" isAdmin />
+      <ConsoleDrawer
+        isOpen
+        onClose={vi.fn()}
+        wallets={[]}
+        selectedNetwork="mainnet"
+        isAdmin
+      />
     </MemoryRouter>,
   );
 
@@ -550,7 +613,13 @@ it("falls back to auto context when all-visible-wallets has no wallets", async (
 
   view.rerender(
     <MemoryRouter>
-      <ConsoleDrawer isOpen onClose={vi.fn()} wallets={[]} selectedNetwork="mainnet" isAdmin />
+      <ConsoleDrawer
+        isOpen
+        onClose={vi.fn()}
+        wallets={[]}
+        selectedNetwork="mainnet"
+        isAdmin
+      />
     </MemoryRouter>,
   );
 
