@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import './backupServiceTestHarness';
+import { mockAllBackupTablesExist } from './backupServiceTestHarness';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 import { sampleUsers, sampleWallets } from '../../../fixtures/bitcoin';
 import { BackupService, type SanctuaryBackup, type BackupMeta } from '../../../../src/services/backupService';
@@ -52,6 +52,7 @@ describe('Restore Error Handling', () => {
       { tablename: 'users' },
       { tablename: 'wallets' },
     ]);
+    mockAllBackupTablesExist();
   });
 
   it('should rollback on createMany failure', async () => {
@@ -109,7 +110,7 @@ describe('Restore Error Handling', () => {
     expect(result.error).toContain('timeout');
   });
 
-  it('should skip non-existent tables gracefully', async () => {
+  it('should fail preflight before deletion when a required live table is missing', async () => {
     const backup = createValidBackup();
     backup.data.newFutureTable = [{ id: 'item-1', data: 'test' }];
 
@@ -130,8 +131,9 @@ describe('Restore Error Handling', () => {
 
     const result = await backupService.restoreFromBackup(backup);
 
-    // Should succeed but skip the unknown table
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Restore preflight failed: missing live database tables');
+    expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
   });
 
   it('should abort and roll back when deleting an existing table fails', async () => {
@@ -142,6 +144,7 @@ describe('Restore Error Handling', () => {
       { tablename: 'wallets' },
       { tablename: 'wallet_users' },
     ]);
+    mockAllBackupTablesExist();
     mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
 
     const client = mockPrismaClient as any;
@@ -178,6 +181,7 @@ describe('Restore Error Handling', () => {
     mockPrismaClient.$queryRaw.mockResolvedValue([
       { tablename: 'users' },
     ]);
+    mockAllBackupTablesExist();
     mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
 
     const client = mockPrismaClient as any;

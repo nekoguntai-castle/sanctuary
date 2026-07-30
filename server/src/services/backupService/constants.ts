@@ -4,64 +4,141 @@
  * Table ordering, migration registry, and configuration constants.
  */
 
-import type { BackupMigration } from './types';
+import type { BackupMeta, BackupMigration } from './types';
 
 // Current backup format version
-export const BACKUP_FORMAT_VERSION = '1.0.0';
+export const BACKUP_FORMAT_VERSION = '1.1.0';
+export const LEGACY_BACKUP_FORMAT_VERSION = '1.0.0';
+export const COMPLETE_TABLE_POLICY_VERSION = 'complete-v1';
+
+export type BackupTableClassification =
+  | 'durable-restored'
+  | 'cache-optional'
+  | 'security-ephemeral';
+
+interface BackupTablePolicyEntry {
+  model: string;
+  table: string;
+  classification: BackupTableClassification;
+}
 
 /**
- * Tables in dependency order for export/import.
- * Tables with no foreign keys come first, then tables that depend on them.
+ * Canonical classification and FK-safe insertion order for every Prisma model.
+ * Deletion uses the reverse of this order. Security-ephemeral tables are never
+ * exported or restored, but are always deleted during restore.
  */
-export const TABLE_ORDER = [
-  // Independent tables (no foreign keys)
-  'hardwareDeviceModel',  // Prisma model name
+export const COMPLETE_TABLE_POLICY: readonly BackupTablePolicyEntry[] = [
+  { model: 'HardwareDeviceModel', table: 'hardwareDeviceModel', classification: 'durable-restored' },
+  { model: 'SystemSetting', table: 'systemSetting', classification: 'durable-restored' },
+  { model: 'NodeConfig', table: 'nodeConfig', classification: 'durable-restored' },
+  { model: 'User', table: 'user', classification: 'durable-restored' },
+  { model: 'Group', table: 'group', classification: 'durable-restored' },
+  { model: 'FeatureFlag', table: 'featureFlag', classification: 'durable-restored' },
+  { model: 'AuditLog', table: 'auditLog', classification: 'durable-restored' },
+  { model: 'Wallet', table: 'wallet', classification: 'durable-restored' },
+  { model: 'Device', table: 'device', classification: 'durable-restored' },
+  { model: 'GroupMember', table: 'groupMember', classification: 'durable-restored' },
+  { model: 'PushDevice', table: 'pushDevice', classification: 'security-ephemeral' },
+  { model: 'ElectrumServer', table: 'electrumServer', classification: 'durable-restored' },
+  { model: 'OwnershipTransfer', table: 'ownershipTransfer', classification: 'durable-restored' },
+  { model: 'McpApiKey', table: 'mcpApiKey', classification: 'durable-restored' },
+  { model: 'WalletUser', table: 'walletUser', classification: 'durable-restored' },
+  { model: 'DeviceUser', table: 'deviceUser', classification: 'durable-restored' },
+  { model: 'DeviceAccount', table: 'deviceAccount', classification: 'durable-restored' },
+  { model: 'WalletDevice', table: 'walletDevice', classification: 'durable-restored' },
+  { model: 'Address', table: 'address', classification: 'durable-restored' },
+  { model: 'Label', table: 'label', classification: 'durable-restored' },
+  { model: 'DraftTransaction', table: 'draftTransaction', classification: 'durable-restored' },
+  { model: 'MobilePermission', table: 'mobilePermission', classification: 'durable-restored' },
+  { model: 'WebhookEndpoint', table: 'webhookEndpoint', classification: 'durable-restored' },
+  { model: 'WalletAgent', table: 'walletAgent', classification: 'durable-restored' },
+  { model: 'VaultPolicy', table: 'vaultPolicy', classification: 'durable-restored' },
+  { model: 'AIInsight', table: 'aIInsight', classification: 'durable-restored' },
+  { model: 'AIConversation', table: 'aIConversation', classification: 'durable-restored' },
+  { model: 'ConsoleSession', table: 'consoleSession', classification: 'durable-restored' },
+  { model: 'FeatureFlagAudit', table: 'featureFlagAudit', classification: 'durable-restored' },
+  { model: 'Transaction', table: 'transaction', classification: 'durable-restored' },
+  { model: 'UTXO', table: 'uTXO', classification: 'durable-restored' },
+  { model: 'WebhookDelivery', table: 'webhookDelivery', classification: 'durable-restored' },
+  { model: 'AgentApiKey', table: 'agentApiKey', classification: 'durable-restored' },
+  { model: 'AgentFundingOverride', table: 'agentFundingOverride', classification: 'durable-restored' },
+  { model: 'AgentAlert', table: 'agentAlert', classification: 'durable-restored' },
+  { model: 'AgentFundingAttempt', table: 'agentFundingAttempt', classification: 'durable-restored' },
+  { model: 'ApprovalRequest', table: 'approvalRequest', classification: 'durable-restored' },
+  { model: 'PolicyEvent', table: 'policyEvent', classification: 'durable-restored' },
+  { model: 'PolicyAddress', table: 'policyAddress', classification: 'durable-restored' },
+  { model: 'PolicyUsageWindow', table: 'policyUsageWindow', classification: 'durable-restored' },
+  { model: 'ConsolePromptHistory', table: 'consolePromptHistory', classification: 'durable-restored' },
+  { model: 'ConsoleTurn', table: 'consoleTurn', classification: 'durable-restored' },
+  { model: 'AIMessage', table: 'aIMessage', classification: 'durable-restored' },
+  { model: 'TransactionInput', table: 'transactionInput', classification: 'durable-restored' },
+  { model: 'TransactionOutput', table: 'transactionOutput', classification: 'durable-restored' },
+  { model: 'TransactionLabel', table: 'transactionLabel', classification: 'durable-restored' },
+  { model: 'AddressLabel', table: 'addressLabel', classification: 'durable-restored' },
+  { model: 'DraftUtxoLock', table: 'draftUtxoLock', classification: 'durable-restored' },
+  { model: 'ApprovalVote', table: 'approvalVote', classification: 'durable-restored' },
+  { model: 'ConsoleToolTrace', table: 'consoleToolTrace', classification: 'durable-restored' },
+  { model: 'FeeEstimate', table: 'feeEstimate', classification: 'cache-optional' },
+  { model: 'PriceData', table: 'priceData', classification: 'cache-optional' },
+  { model: 'RefreshToken', table: 'refreshToken', classification: 'security-ephemeral' },
+  { model: 'RevokedToken', table: 'revokedToken', classification: 'security-ephemeral' },
+  { model: 'EmailVerificationToken', table: 'emailVerificationToken', classification: 'security-ephemeral' },
+] as const;
+
+const getTablesByClassification = (classification: BackupTableClassification): string[] =>
+  COMPLETE_TABLE_POLICY
+    .filter((entry) => entry.classification === classification)
+    .map((entry) => entry.table);
+
+export const TABLE_ORDER = getTablesByClassification('durable-restored');
+export const CACHE_TABLES = getTablesByClassification('cache-optional');
+export const EPHEMERAL_TABLES = getTablesByClassification('security-ephemeral');
+
+/**
+ * SHA-256 of JSON.stringify(COMPLETE_TABLE_POLICY). The schema-classification
+ * contract test recomputes this value so policy edits cannot retain a stale ID.
+ */
+export const COMPLETE_TABLE_POLICY_HASH =
+  'b68866b707d3835f156c5152686290862f0ccc83e6c165ca5798c8a877ce00aa';
+
+/**
+ * The immutable table manifest used by pre-fix 1.0.0 backups.
+ */
+export const LEGACY_TABLE_ORDER = [
+  'hardwareDeviceModel',
   'systemSetting',
   'nodeConfig',
   'user',
-  'mcpApiKey',       // FK: userId
+  'mcpApiKey',
   'group',
-
-  // First-level dependencies
-  'groupMember',     // FK: userId, groupId
-  'device',          // FK: userId, modelId
-  'wallet',          // FK: groupId
-  'pushDevice',      // FK: userId
-  'electrumServer',  // FK: nodeConfigId
-
-  // Second-level dependencies
-  'walletUser',      // FK: walletId, userId
-  'walletDevice',    // FK: walletId, deviceId
-  'address',         // FK: walletId
-  'label',           // FK: walletId
-  'walletAgent',     // FK: userId, fundingWalletId, operationalWalletId, signerDeviceId
-  'draftTransaction', // FK: walletId, userId
-  'consoleSession',  // FK: userId
-
-  // Third-level dependencies
-  'agentApiKey',          // FK: agentId
-  'agentFundingOverride', // FK: agentId
-  'agentAlert',           // FK: agentId
-  'agentFundingAttempt',  // FK: agentId
-  'consolePromptHistory', // FK: userId, sessionId
-  'consoleTurn',          // FK: sessionId
-  'transaction',     // FK: walletId, userId, addressId
-  'uTXO',            // FK: walletId
-
-  // Fourth-level dependencies
-  'consoleToolTrace', // FK: turnId
-  'transactionInput',  // FK: transactionId
-  'transactionOutput', // FK: transactionId
-  'transactionLabel',  // FK: transactionId, labelId
-  'addressLabel',      // FK: addressId, labelId
-  'draftUtxoLock',     // FK: draftId, utxoId
-
-  // Independent tables (no FK) - placed last for logical grouping
-  'auditLog',         // No FK (userId stored as string for history)
+  'groupMember',
+  'device',
+  'wallet',
+  'pushDevice',
+  'electrumServer',
+  'walletUser',
+  'walletDevice',
+  'address',
+  'label',
+  'walletAgent',
+  'draftTransaction',
+  'consoleSession',
+  'agentApiKey',
+  'agentFundingOverride',
+  'agentAlert',
+  'agentFundingAttempt',
+  'consolePromptHistory',
+  'consoleTurn',
+  'transaction',
+  'uTXO',
+  'consoleToolTrace',
+  'transactionInput',
+  'transactionOutput',
+  'transactionLabel',
+  'addressLabel',
+  'draftUtxoLock',
+  'auditLog',
 ] as const;
-
-// Optional cache tables (excluded by default)
-export const CACHE_TABLES = ['priceData', 'feeEstimate'] as const;
 
 const BASELINE_RESTORE_SCHEMA_VERSION = 1;
 
@@ -71,7 +148,7 @@ const BASELINE_RESTORE_SCHEMA_VERSION = 1;
  * but a current-schema backup that omits one of its known tables is partial and
  * must not be allowed to wipe live data.
  */
-export const RESTORE_TABLE_MIN_SCHEMA_VERSION = {
+export const LEGACY_RESTORE_TABLE_MIN_SCHEMA_VERSION: Record<string, number> = {
   hardwareDeviceModel: BASELINE_RESTORE_SCHEMA_VERSION,
   systemSetting: BASELINE_RESTORE_SCHEMA_VERSION,
   nodeConfig: BASELINE_RESTORE_SCHEMA_VERSION,
@@ -105,19 +182,37 @@ export const RESTORE_TABLE_MIN_SCHEMA_VERSION = {
   addressLabel: BASELINE_RESTORE_SCHEMA_VERSION,
   draftUtxoLock: 29,
   auditLog: BASELINE_RESTORE_SCHEMA_VERSION,
-} satisfies Record<(typeof TABLE_ORDER)[number], number>;
+};
 
 export function getRequiredRestoreTables(
-  schemaVersion: number,
-  includesCache: boolean
+  meta: Pick<BackupMeta, 'version' | 'schemaVersion' | 'includesCache'>
 ): string[] {
-  const requiredTables = TABLE_ORDER.filter(
-    (table) => schemaVersion >= RESTORE_TABLE_MIN_SCHEMA_VERSION[table]
-  );
+  const requiredTables = meta.version === LEGACY_BACKUP_FORMAT_VERSION
+    ? LEGACY_TABLE_ORDER.filter(
+      (table) => meta.schemaVersion >= LEGACY_RESTORE_TABLE_MIN_SCHEMA_VERSION[table]
+    )
+    : TABLE_ORDER;
 
-  return includesCache
+  return meta.includesCache
     ? [...requiredTables, ...CACHE_TABLES]
     : requiredTables;
+}
+
+/**
+ * Return the tables whose records may be inserted from this backup. Unlike
+ * getRequiredRestoreTables, this excludes legacy security-ephemeral data and
+ * is used after completeness validation has succeeded.
+ */
+export function getRestoreTables(
+  meta: Pick<BackupMeta, 'version' | 'includesCache'>
+): string[] {
+  const durableTables = meta.version === LEGACY_BACKUP_FORMAT_VERSION
+    ? LEGACY_TABLE_ORDER.filter((table) => !EPHEMERAL_TABLES.includes(table))
+    : TABLE_ORDER;
+
+  return meta.includesCache
+    ? [...durableTables, ...CACHE_TABLES]
+    : durableTables;
 }
 
 // Tables that can grow large and should use cursor-based pagination for export
@@ -126,7 +221,8 @@ export const LARGE_TABLES = new Set([
   'transaction', 'uTXO', 'transactionInput', 'transactionOutput',
   'address', 'auditLog', 'addressLabel', 'transactionLabel',
   'agentFundingAttempt', 'agentAlert', 'consolePromptHistory', 'consoleTurn',
-  'consoleToolTrace',
+  'consoleToolTrace', 'webhookDelivery', 'featureFlagAudit', 'policyEvent',
+  'approvalVote', 'aIInsight', 'aIMessage',
 ]);
 
 // Number of rows to fetch per cursor page during backup export

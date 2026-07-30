@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import './backupServiceTestHarness';
+import { mockAllBackupTablesExist } from './backupServiceTestHarness';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 import { sampleUsers, sampleWallets } from '../../../fixtures/bitcoin';
 import { BackupService, type SanctuaryBackup, type BackupMeta } from '../../../../src/services/backupService';
@@ -16,6 +16,7 @@ describe('Backup Edge Cases', () => {
     resetPrismaMocks();
 
     mockPrismaClient.$queryRaw.mockResolvedValue([{ tablename: 'users' }]);
+    mockAllBackupTablesExist();
   });
 
   it('should handle special characters in string fields', async () => {
@@ -317,6 +318,7 @@ describe('Backup Edge Cases', () => {
       { tablename: 'users' },
       { tablename: 'devices' },
     ]);
+    mockAllBackupTablesExist();
     mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
 
     let capturedData: any = null;
@@ -387,6 +389,7 @@ describe('Backup Edge Cases', () => {
       { tablename: 'users' },
       { tablename: 'devices' },
     ]);
+    mockAllBackupTablesExist();
     mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
 
     let capturedData: any = null;
@@ -462,6 +465,7 @@ describe('Backup Edge Cases', () => {
       { tablename: 'users' },
       { tablename: 'devices' },
     ]);
+    mockAllBackupTablesExist();
     mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
 
     let capturedData: any = null;

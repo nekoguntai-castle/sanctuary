@@ -1,8 +1,8 @@
 /**
  * Backup Serialization
  *
- * Handles serialization and deserialization of backup records.
- * Converts between Prisma model types (Date, BigInt) and JSON-safe representations.
+ * Handles serialization of backup records.
+ * Converts Prisma model types (Date, BigInt) to JSON-safe representations.
  */
 
 import type { BackupRecord } from './types';
@@ -46,77 +46,6 @@ function serializeValue(value: unknown): unknown {
 }
 
 /**
- * Process a record to convert string dates back to Date objects
- * and BigInt markers back to BigInt
- */
-export function processRecord(record: BackupRecord): BackupRecord {
-  const processed: BackupRecord = { ...record };
-
-  for (const key of Object.keys(processed)) {
-    processed[key] = processValue(processed[key]);
-  }
-
-  return processed;
-}
-
-/**
- * Process a single value during restore
- */
-function processValue(value: unknown): unknown {
-  if (value === null || value === undefined) {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    // Check for BigInt marker
-    if (value.startsWith('__bigint__')) {
-      return BigInt(value.replace('__bigint__', ''));
-    }
-    // Check for ISO date string
-    if (isISODateString(value)) {
-      return new Date(value);
-    }
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    // Process each array element
-    return value.map((item: unknown) => processValue(item));
-  }
-
-  if (typeof value === 'object') {
-    const obj = value as BackupRecord;
-    // Check if this is a legacy array serialized as object with numeric keys
-    // e.g., {0: "usb", 1: "bluetooth"} should become ["usb", "bluetooth"]
-    const keys = Object.keys(obj);
-    const isNumericObject = keys.length > 0 && keys.every((k) => /^\d+$/.test(k));
-    if (isNumericObject) {
-      // Convert back to array, sorted by numeric key
-      const sortedKeys = keys.map(Number).sort((a, b) => a - b);
-      return sortedKeys.map((k) => processValue(obj[k]));
-    }
-
-    // Regular object - process recursively
-    const processed: BackupRecord = {};
-    for (const k of keys) {
-      processed[k] = processValue(obj[k]);
-    }
-    return processed;
-  }
-
-  return value;
-}
-
-/**
- * Check if a string is an ISO date string
- */
-function isISODateString(value: string): boolean {
-  // Match ISO 8601 date format
-  const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
-  return isoDateRegex.test(value);
-}
-
-/**
  * Convert Prisma model name (camelCase) to PostgreSQL table name (snake_case, plural)
  * Prisma uses lowercase plural snake_case for table names by default
  */
@@ -132,6 +61,8 @@ export function camelToSnakeCase(modelName: string): string {
     'electrumServer': 'electrum_servers',
     'walletUser': 'wallet_users',
     'walletDevice': 'wallet_devices',
+    'deviceAccount': 'device_accounts',
+    'deviceUser': 'device_users',
     'draftTransaction': 'draft_transactions',
     'draftUtxoLock': 'draft_utxo_locks',
     'transactionInput': 'transaction_inputs',
@@ -140,6 +71,33 @@ export function camelToSnakeCase(modelName: string): string {
     'addressLabel': 'address_labels',
     'auditLog': 'audit_logs',
     'mcpApiKey': 'mcp_api_keys',
+    'webhookEndpoint': 'webhook_endpoints',
+    'webhookDelivery': 'webhook_deliveries',
+    'refreshToken': 'refresh_tokens',
+    'revokedToken': 'revoked_tokens',
+    'ownershipTransfer': 'ownership_transfers',
+    'mobilePermission': 'mobile_permissions',
+    'featureFlag': 'feature_flags',
+    'featureFlagAudit': 'feature_flag_audit',
+    'emailVerificationToken': 'email_verification_tokens',
+    'vaultPolicy': 'vault_policies',
+    'approvalRequest': 'approval_requests',
+    'approvalVote': 'approval_votes',
+    'policyEvent': 'policy_events',
+    'policyAddress': 'policy_addresses',
+    'policyUsageWindow': 'policy_usage_windows',
+    'aIInsight': 'ai_insights',
+    'aIConversation': 'ai_conversations',
+    'aIMessage': 'ai_messages',
+    'consoleSession': 'console_sessions',
+    'consoleTurn': 'console_turns',
+    'consoleToolTrace': 'console_tool_traces',
+    'consolePromptHistory': 'console_prompt_history',
+    'walletAgent': 'wallet_agents',
+    'agentApiKey': 'agent_api_keys',
+    'agentFundingAttempt': 'agent_funding_attempts',
+    'agentFundingOverride': 'agent_funding_overrides',
+    'agentAlert': 'agent_alerts',
     'priceData': 'price_data',
     'feeEstimate': 'fee_estimates',
   };

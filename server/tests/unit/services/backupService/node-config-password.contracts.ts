@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import './backupServiceTestHarness';
+import { mockAllBackupTablesExist } from './backupServiceTestHarness';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 import { sampleUsers, sampleWallets } from '../../../fixtures/bitcoin';
 import { BackupService, type SanctuaryBackup, type BackupMeta } from '../../../../src/services/backupService';
@@ -19,9 +19,10 @@ describe('Node Config Password Handling', () => {
       { tablename: 'users' },
       { tablename: 'node_configs' },
     ]);
+    mockAllBackupTablesExist();
   });
 
-  it('should warn when node config password cannot be decrypted', async () => {
+  it('should disable and clear an undecryptable proxy password', async () => {
     // Mock isEncrypted to return true
     vi.mocked(encryption.isEncrypted).mockReturnValue(true);
     vi.mocked(encryption.decrypt).mockImplementation(() => {
@@ -57,7 +58,8 @@ describe('Node Config Password Handling', () => {
           type: 'electrum',
           host: 'electrum.example.com',
           port: 50002,
-          password: 'enc:v1:someencryptedpassword', // Encrypted with different key
+          proxyEnabled: true,
+          proxyPassword: 'enc:v1:someencryptedpassword',
         }],
         systemSetting: [],
         auditLog: [],
@@ -89,15 +91,15 @@ describe('Node Config Password Handling', () => {
     const result = await backupService.restoreFromBackup(backup);
 
     expect(result.success).toBe(true);
-    expect(result.warnings.some((w) => w.includes('password could not be restored'))).toBe(true);
-    expect(capturedData[0].password).toBeNull();
+    expect(result.warnings.some((w) => w.includes('proxy configuration'))).toBe(true);
+    expect(capturedData[0]).toMatchObject({ proxyEnabled: false, proxyPassword: null });
 
     // Reset mocks
     encryption.isEncrypted.mockReturnValue(false);
     encryption.decrypt.mockImplementation((v: any) => v);
   });
 
-  it('should preserve node config password when decryption succeeds', async () => {
+  it('should fail closed even when the proxy password uses the current key', async () => {
     vi.mocked(encryption.isEncrypted).mockReturnValue(true);
     vi.mocked(encryption.decrypt).mockReturnValue('decrypted-password');
 
@@ -130,7 +132,8 @@ describe('Node Config Password Handling', () => {
           type: 'electrum',
           host: 'electrum.example.com',
           port: 50002,
-          password: 'enc:v1:validencryptedpassword',
+          proxyEnabled: true,
+          proxyPassword: 'enc:v1:validencryptedpassword',
         }],
         systemSetting: [],
         auditLog: [],
@@ -162,14 +165,14 @@ describe('Node Config Password Handling', () => {
     const result = await backupService.restoreFromBackup(backup);
 
     expect(result.success).toBe(true);
-    expect(result.warnings).toEqual([]);
-    expect(capturedData[0].password).toBe('enc:v1:validencryptedpassword');
+    expect(result.warnings.some((w) => w.includes('proxy configuration'))).toBe(true);
+    expect(capturedData[0]).toMatchObject({ proxyEnabled: false, proxyPassword: null });
 
     encryption.isEncrypted.mockReturnValue(false);
     encryption.decrypt.mockImplementation((v: any) => v);
   });
 
-  it('should preserve plaintext node config passwords without decryption checks', async () => {
+  it('should clear plaintext proxy credentials', async () => {
     vi.mocked(encryption.isEncrypted).mockReturnValue(false);
 
     const backup: SanctuaryBackup = {
@@ -201,7 +204,8 @@ describe('Node Config Password Handling', () => {
           type: 'electrum',
           host: 'electrum.example.com',
           port: 50002,
-          password: 'plain-text-password',
+          proxyEnabled: true,
+          proxyPassword: 'plain-text-password',
         }],
         systemSetting: [],
         auditLog: [],
@@ -233,11 +237,11 @@ describe('Node Config Password Handling', () => {
     const result = await backupService.restoreFromBackup(backup);
 
     expect(result.success).toBe(true);
-    expect(result.warnings).toEqual([]);
-    expect(capturedData[0].password).toBe('plain-text-password');
+    expect(result.warnings.some((w) => w.includes('proxy configuration'))).toBe(true);
+    expect(capturedData[0]).toMatchObject({ proxyEnabled: false, proxyPassword: null });
   });
 
-  it('should use generic node label in warning when node type is missing', async () => {
+  it('should disable proxy credentials when node type is missing', async () => {
     vi.mocked(encryption.isEncrypted).mockReturnValue(true);
     vi.mocked(encryption.decrypt).mockImplementation(() => {
       throw new Error('Decryption failed: wrong key');
@@ -271,7 +275,8 @@ describe('Node Config Password Handling', () => {
           id: 'node-unknown-type',
           host: 'electrum.example.com',
           port: 50002,
-          password: 'enc:v1:someencryptedpassword',
+          proxyEnabled: true,
+          proxyPassword: 'enc:v1:someencryptedpassword',
         }],
         systemSetting: [],
         auditLog: [],
@@ -303,8 +308,8 @@ describe('Node Config Password Handling', () => {
     const result = await backupService.restoreFromBackup(backup);
 
     expect(result.success).toBe(true);
-    expect(result.warnings.some((w) => w.includes('update your node password'))).toBe(true);
-    expect(capturedData[0].password).toBeNull();
+    expect(result.warnings.some((w) => w.includes('proxy configuration'))).toBe(true);
+    expect(capturedData[0]).toMatchObject({ proxyEnabled: false, proxyPassword: null });
 
     encryption.isEncrypted.mockReturnValue(false);
     encryption.decrypt.mockImplementation((v: any) => v);

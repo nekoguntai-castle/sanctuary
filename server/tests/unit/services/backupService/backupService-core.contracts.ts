@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import './backupServiceTestHarness';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 import { sampleUsers, sampleWallets } from '../../../fixtures/bitcoin';
@@ -7,6 +10,26 @@ import { camelToSnakeCase } from '../../../../src/services/backupService/seriali
 import { migrateBackup } from '../../../../src/services/backupService/migration';
 import * as encryption from '../../../../src/utils/encryption';
 import { migrationService } from '../../../../src/services/migrationService';
+import {
+  CACHE_TABLES,
+  COMPLETE_TABLE_POLICY_HASH,
+  COMPLETE_TABLE_POLICY,
+  COMPLETE_TABLE_POLICY_VERSION,
+  EPHEMERAL_TABLES,
+  LEGACY_TABLE_ORDER,
+  TABLE_ORDER,
+} from '../../../../src/services/backupService/constants';
+import {
+  deserializeRecordForTable,
+  RESTORE_BIGINT_FIELDS,
+  RESTORE_DATE_FIELDS,
+} from '../../../../src/services/backupService/restoreDeserialization';
+import {
+  processNodeConfigRecords,
+  processUserRecords,
+  processWebhookDeliveryRecords,
+  processWebhookEndpointRecords,
+} from '../../../../src/services/backupService/restoreTransforms';
 
 export function registerBackupServiceCoreTests(): void {
 describe('BackupService', () => {
@@ -314,6 +337,31 @@ describe('BackupService', () => {
   });
 
   describe('validateBackupForRestore', () => {
+    const createSameSchemaLegacyBackup = (): SanctuaryBackup => {
+      const backup = createValidBackup();
+      for (const table of LEGACY_TABLE_ORDER) {
+        backup.data[table] ??= [];
+      }
+      backup.meta.schemaVersion = 61;
+      return backup;
+    };
+
+    const createCompleteBackup = (): SanctuaryBackup => {
+      const backup = createSameSchemaLegacyBackup();
+      for (const table of TABLE_ORDER) {
+        backup.data[table] ??= [];
+      }
+      backup.meta.version = '1.1.0';
+      backup.meta.tablePolicy = {
+        version: COMPLETE_TABLE_POLICY_VERSION,
+        hash: COMPLETE_TABLE_POLICY_HASH,
+      };
+      backup.meta.recordCounts = Object.fromEntries(
+        Object.entries(backup.data).map(([table, records]) => [table, records.length])
+      );
+      return backup;
+    };
+
     it('should return structure validation for non-object restore input', async () => {
       const result = await backupService.validateBackupForRestore(null);
 
@@ -375,13 +423,138 @@ describe('BackupService', () => {
       expect(result.issues).toContain('Missing required restore table: walletAgent');
       expect(result.issues).toContain('Missing required restore table: consoleSession');
     });
+
+    it('should accept a same-schema 1.0.0 backup under the explicit legacy policy', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createSameSchemaLegacyBackup();
+
+      expect(backup.data).not.toHaveProperty('webhookEndpoint');
+      expect(backup.data).not.toHaveProperty('vaultPolicy');
+      expect(backup.data).not.toHaveProperty('aIConversation');
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(true);
+    });
+
+    it('should reject a 1.1.0 backup without its complete table-policy discriminator', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createSameSchemaLegacyBackup();
+      backup.meta.version = '1.1.0';
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Missing table policy for backup format 1.1.0');
+    });
+
+    it('should reject an unknown table policy instead of downgrading to legacy rules', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createSameSchemaLegacyBackup() as SanctuaryBackup & {
+        meta: BackupMeta & { tablePolicy: { version: string; hash: string } };
+      };
+      backup.meta.version = '1.1.0';
+      backup.meta.tablePolicy = {
+        version: 'complete-v999',
+        hash: 'unknown',
+      };
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Unknown table policy: complete-v999/unknown');
+    });
+
+    it('should reject unsupported backup format versions', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createSameSchemaLegacyBackup();
+      backup.meta.version = '2.0.0';
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Unsupported backup format version: 2.0.0');
+    });
+
+    it('should reject a complete backup that omits a durable table', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      delete backup.data.webhookDelivery;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Missing required restore table: webhookDelivery');
+    });
+
+    it('should reject a downgraded complete policy on a 1.0.0 backup', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createSameSchemaLegacyBackup();
+      backup.meta.tablePolicy = {
+        version: COMPLETE_TABLE_POLICY_VERSION,
+        hash: COMPLETE_TABLE_POLICY_HASH,
+      };
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Table policy is not allowed for legacy backup format 1.0.0');
+    });
+
+    it('should reject a truncated table whose record count no longer matches', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      backup.data.user.push({
+        id: 'user-2',
+        username: 'second-admin',
+        isAdmin: true,
+      });
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Record count mismatch for user: expected 1, found 2');
+    });
+
+    it('should reject non-integer and negative record counts', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const backup = createCompleteBackup();
+      backup.meta.recordCounts.user = -1;
+      backup.meta.recordCounts.wallet = 0.5;
+
+      const result = await backupService.validateBackupForRestore(backup);
+
+      expect(result.valid).toBe(false);
+      expect(result.issues).toContain('Invalid record count for user: -1');
+      expect(result.issues).toContain('Invalid record count for wallet: 0.5');
+    });
+
+    it('should reject malformed and non-exact record-count manifests', async () => {
+      vi.mocked(migrationService.getSchemaVersion).mockResolvedValue(61);
+      const malformed = createCompleteBackup();
+      malformed.meta.recordCounts = null as unknown as Record<string, number>;
+
+      const malformedResult = await backupService.validateBackupForRestore(malformed);
+
+      expect(malformedResult.valid).toBe(false);
+      expect(malformedResult.issues).toContain('Invalid recordCounts: expected an object');
+
+      const extraCount = createCompleteBackup();
+      extraCount.meta.recordCounts.missingTable = 0;
+
+      const extraCountResult = await backupService.validateBackupForRestore(extraCount);
+
+      expect(extraCountResult.valid).toBe(false);
+      expect(extraCountResult.issues)
+        .toContain('Record count provided for missing or invalid table: missingTable');
+    });
   });
 
   describe('getFormatVersion', () => {
     it('should return the current format version', () => {
       const version = backupService.getFormatVersion();
 
-      expect(version).toBe('1.0.0');
+      expect(version).toBe('1.1.0');
     });
   });
 
@@ -413,7 +586,11 @@ describe('BackupService', () => {
       const backup = await backupService.createBackup('admin');
 
       expect(backup.meta).toBeDefined();
-      expect(backup.meta.version).toBe('1.0.0');
+      expect(backup.meta.version).toBe('1.1.0');
+      expect((backup.meta as BackupMeta & { tablePolicy?: unknown }).tablePolicy).toEqual({
+        version: 'complete-v1',
+        hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      });
       expect(backup.meta.createdBy).toBe('admin');
       expect(backup.meta.createdAt).toBeDefined();
       expect(backup.meta.includesCache).toBe(false);
@@ -469,13 +646,10 @@ describe('BackupService', () => {
       expect(backup.data.user[0].createdAt).toBe('2024-01-15T10:30:00.000Z');
     });
 
-    it('should handle tables that fail to export', async () => {
+    it('should abort when any table fails to export', async () => {
       mockPrismaClient.wallet.findMany.mockRejectedValue(new Error('DB error'));
 
-      const backup = await backupService.createBackup('admin');
-
-      expect(backup.data.wallet).toEqual([]);
-      expect(backup.meta.recordCounts.wallet).toBe(0);
+      await expect(backupService.createBackup('admin')).rejects.toThrow('DB error');
     });
 
     it('should include cache tables when requested', async () => {
@@ -531,6 +705,226 @@ describe('BackupService', () => {
 
       const backup = await backupService.createBackup('admin');
       expect(backup.data.user[0].tags).toEqual(['__bigint__1', { nested: '__bigint__2' }]);
+    });
+
+    it('should include every newly durable relation in the canonical export order', () => {
+      expect(TABLE_ORDER).toEqual(expect.arrayContaining([
+        'deviceAccount',
+        'deviceUser',
+        'webhookEndpoint',
+        'webhookDelivery',
+        'ownershipTransfer',
+        'mobilePermission',
+        'featureFlag',
+        'featureFlagAudit',
+        'vaultPolicy',
+        'approvalRequest',
+        'approvalVote',
+        'policyEvent',
+        'policyAddress',
+        'policyUsageWindow',
+        'aIInsight',
+        'aIConversation',
+        'aIMessage',
+      ]));
+    });
+
+    it('should export representative records from every previously omitted durable graph', async () => {
+      const client = mockPrismaClient as any;
+      client.deviceUser.findMany.mockResolvedValue([{ id: 'device-user-1' }]);
+      client.deviceAccount.findMany.mockResolvedValue([{ id: 'device-account-1' }]);
+      client.webhookEndpoint.findMany.mockResolvedValue([{ id: 'webhook-1' }]);
+      client.webhookDelivery.findMany.mockResolvedValue([{ id: 'delivery-1' }]);
+      client.vaultPolicy.findMany.mockResolvedValue([{ id: 'policy-1' }]);
+      client.approvalRequest.findMany.mockResolvedValue([{ id: 'approval-1' }]);
+      client.featureFlag.findMany.mockResolvedValue([{ id: 'flag-1' }]);
+      client.featureFlagAudit.findMany.mockResolvedValue([{ id: 'flag-audit-1' }]);
+      client.aIConversation.findMany.mockResolvedValue([{ id: 'conversation-1' }]);
+      client.aIMessage.findMany.mockResolvedValue([{ id: 'message-1' }]);
+      client.aIInsight.findMany.mockResolvedValue([{ id: 'insight-1' }]);
+
+      const backup = await backupService.createBackup('admin');
+
+      expect(backup.data.deviceUser).toEqual([{ id: 'device-user-1' }]);
+      expect(backup.data.deviceAccount).toEqual([{ id: 'device-account-1' }]);
+      expect(backup.data.webhookEndpoint).toEqual([{ id: 'webhook-1' }]);
+      expect(backup.data.webhookDelivery).toEqual([{ id: 'delivery-1' }]);
+      expect(backup.data.vaultPolicy).toEqual([{ id: 'policy-1' }]);
+      expect(backup.data.approvalRequest).toEqual([{ id: 'approval-1' }]);
+      expect(backup.data.featureFlag).toEqual([{ id: 'flag-1' }]);
+      expect(backup.data.featureFlagAudit).toEqual([{ id: 'flag-audit-1' }]);
+      expect(backup.data.aIConversation).toEqual([{ id: 'conversation-1' }]);
+      expect(backup.data.aIMessage).toEqual([{ id: 'message-1' }]);
+      expect(backup.data.aIInsight).toEqual([{ id: 'insight-1' }]);
+      expect(backup.data).not.toHaveProperty('pushDevice');
+    });
+
+    it('should classify every Prisma model exactly once', () => {
+      const schema = readFileSync(resolve(process.cwd(), 'prisma/schema.prisma'), 'utf8');
+      const schemaModels = [...schema.matchAll(/^model\s+(\w+)\s+\{/gm)]
+        .map((match) => match[1])
+        .sort();
+      const classifiedModels = COMPLETE_TABLE_POLICY.map((entry) => entry.model).sort();
+      const classifiedTables = [
+        ...TABLE_ORDER,
+        ...CACHE_TABLES,
+        ...EPHEMERAL_TABLES,
+      ];
+
+      expect(classifiedModels).toEqual(schemaModels);
+      expect(new Set(classifiedModels).size).toBe(classifiedModels.length);
+      expect(new Set(classifiedTables).size).toBe(classifiedTables.length);
+      expect(
+        createHash('sha256').update(JSON.stringify(COMPLETE_TABLE_POLICY)).digest('hex')
+      ).toBe(COMPLETE_TABLE_POLICY_HASH);
+      expect(EPHEMERAL_TABLES).toEqual(expect.arrayContaining([
+        'pushDevice',
+        'refreshToken',
+        'revokedToken',
+        'emailVerificationToken',
+      ]));
+    });
+
+    it('should classify every restored Prisma DateTime and BigInt field', () => {
+      const schema = readFileSync(resolve(process.cwd(), 'prisma/schema.prisma'), 'utf8');
+      const restoredTables = new Set([...TABLE_ORDER, ...CACHE_TABLES]);
+      const expectedDates: Record<string, string[]> = {};
+      const expectedBigInts: Record<string, string[]> = {};
+
+      for (const match of schema.matchAll(/^model\s+(\w+)\s+\{([\s\S]*?)^\}/gm)) {
+        const policy = COMPLETE_TABLE_POLICY.find(entry => entry.model === match[1]);
+        if (!policy || !restoredTables.has(policy.table)) continue;
+        for (const field of match[2].matchAll(/^\s*(\w+)\s+(DateTime|BigInt)(?:\?|\[\])?/gm)) {
+          const target = field[2] === 'DateTime' ? expectedDates : expectedBigInts;
+          (target[policy.table] ??= []).push(field[1]);
+        }
+      }
+
+      expect(RESTORE_DATE_FIELDS).toEqual(expectedDates);
+      expect(RESTORE_BIGINT_FIELDS).toEqual(expectedBigInts);
+    });
+
+    it('should never coerce ISO-looking strings or numeric-key JSON values', () => {
+      const record = deserializeRecordForTable('aIMessage', {
+        content: '2026-07-30T12:34:56.000Z',
+        metadata: { 0: 'zero', marker: '__bigint__42' },
+        createdAt: '2026-07-30T12:34:56.000Z',
+      });
+
+      expect(record.content).toBe('2026-07-30T12:34:56.000Z');
+      expect(record.metadata).toEqual({ 0: 'zero', marker: '__bigint__42' });
+      expect(record.createdAt).toBeInstanceOf(Date);
+    });
+
+    it('should deserialize only declared legacy array, DateTime, and BigInt fields', () => {
+      const record = deserializeRecordForTable('draftTransaction', {
+        selectedUtxoIds: { 1: 'utxo-b', 0: 'utxo-a' },
+        inputPaths: [],
+        signedDeviceIds: { label: 'not-an-array' },
+        createdAt: '2026-07-30T12:34:56.000Z',
+        updatedAt: null,
+        amount: '__bigint__42',
+        fee: 'plain-string',
+      });
+
+      expect(record.selectedUtxoIds).toEqual(['utxo-a', 'utxo-b']);
+      expect(record.inputPaths).toEqual([]);
+      expect(record.signedDeviceIds).toEqual({ label: 'not-an-array' });
+      expect(record.createdAt).toBeInstanceOf(Date);
+      expect(record.updatedAt).toBeNull();
+      expect(record.amount).toBe(42n);
+      expect(record.fee).toBe('plain-string');
+      expect(deserializeRecordForTable('unknown', { value: null })).toEqual({ value: null });
+    });
+
+    it('should disable zero, one, or multiple restored node proxy configurations', () => {
+      const noCredentialWarnings: string[] = [];
+      expect(processNodeConfigRecords(
+        [{ id: 'node-0', proxyEnabled: false, proxyPassword: null }],
+        noCredentialWarnings
+      )).toEqual([{ id: 'node-0', proxyEnabled: false, proxyPassword: null }]);
+      expect(noCredentialWarnings).toEqual([]);
+
+      const warnings: string[] = [];
+      const records = processNodeConfigRecords([
+        { id: 'node-1', proxyEnabled: false, proxyPassword: 'secret' },
+        { id: 'node-2', proxyEnabled: true, proxyPassword: null },
+      ], warnings);
+
+      expect(records).toEqual([
+        { id: 'node-1', proxyEnabled: false, proxyPassword: null },
+        { id: 'node-2', proxyEnabled: false, proxyPassword: null },
+      ]);
+      expect(warnings[0]).toContain('2 node proxy configurations restored disabled');
+    });
+
+    it('should clear every webhook credential shape and preserve terminal deliveries', () => {
+      const noCredentialWarnings: string[] = [];
+      processWebhookEndpointRecords(
+        [{ id: 'endpoint-0', enabled: false, secretEncrypted: null, headerConfig: null }],
+        noCredentialWarnings
+      );
+      expect(noCredentialWarnings).toEqual([]);
+
+      const warnings: string[] = [];
+      const endpoints = processWebhookEndpointRecords([
+        { id: 'endpoint-1', enabled: false, secretEncrypted: 'secret', headerConfig: null },
+        { id: 'endpoint-2', enabled: false, secretEncrypted: null, headerConfig: { headers: {} } },
+      ], warnings);
+      expect(endpoints).toEqual([
+        { id: 'endpoint-1', enabled: false, secretEncrypted: null, headerConfig: null },
+        { id: 'endpoint-2', enabled: false, secretEncrypted: null, headerConfig: null },
+      ]);
+      expect(warnings[0]).toContain('2 webhook endpoints restored disabled');
+
+      const delivered = { id: 'delivery-1', status: 'delivered' };
+      const dead = { id: 'delivery-2', status: 'dead' };
+      const pending = { id: 'delivery-3', status: 'pending', nextAttemptAt: 'later' };
+      expect(processWebhookDeliveryRecords([delivered, dead, pending])).toEqual([
+        delivered,
+        dead,
+        expect.objectContaining({ id: 'delivery-3', status: 'dead', nextAttemptAt: null }),
+      ]);
+    });
+
+    it('should disable each Telegram credential shape without warning for an empty config', () => {
+      const warnings: string[] = [];
+      const records = processUserRecords([
+        {
+          id: 'user-empty',
+          username: 'empty',
+          preferences: { telegram: { enabled: false, botToken: '', chatId: '' } },
+        },
+        {
+          id: 'user-enabled',
+          username: 'enabled',
+          preferences: { telegram: { enabled: true, botToken: '', chatId: '' } },
+        },
+        {
+          id: 'user-token',
+          username: 'token',
+          preferences: { telegram: { enabled: false, botToken: 'token', chatId: '' } },
+        },
+        {
+          id: 'user-chat',
+          username: 'chat',
+          preferences: { telegram: { enabled: false, botToken: '', chatId: 'chat' } },
+        },
+      ], warnings, new Map());
+
+      expect(records).toHaveLength(4);
+      expect(warnings).toHaveLength(3);
+      expect(records.every(record =>
+        (record.preferences as { telegram: { enabled: boolean } }).telegram.enabled === false
+      )).toBe(true);
+    });
+
+    it('should identify an invalid maximum session version even without a user id', () => {
+      expect(() => processUserRecords(
+        [{ username: 'missing-id', sessionVersion: 2_147_483_647 }],
+        [],
+        new Map()
+      )).toThrow('Cannot safely invalidate sessions for restored user <unknown>');
     });
   });
 

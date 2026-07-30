@@ -8,6 +8,7 @@
 // Types
 export type {
   BackupRecord,
+  BackupTablePolicyRef,
   BackupMeta,
   SanctuaryBackup,
   BackupOptions,

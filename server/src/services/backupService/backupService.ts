@@ -12,6 +12,7 @@
  *
  * Backup Format Version History:
  *   1.0.0 - Initial backup format
+ *   1.1.0 - Complete, explicitly classified Prisma table policy
  *
  * SECURITY CONSIDERATIONS FOR BACKUP ENCRYPTION:
  * ================================================
@@ -27,9 +28,10 @@
  *
  * Cross-Instance Restore Behavior:
  *   When restoring to an instance with different ENCRYPTION_KEY or ENCRYPTION_SALT:
- *   - Node passwords: Cleared with warning, user must re-enter
+ *   - Node proxy credentials: Cleared and proxying disabled
  *   - 2FA secrets: Cleared with warning, user must re-setup 2FA
- *   - All other data: Restored normally
+ *   - SMTP, Telegram, API key, webhook, and session credentials: Invalidated
+ *   - Durable non-credential data: Restored normally
  *
  * Recommendation:
  *   While password hashes and node passwords are already protected, we recommend:

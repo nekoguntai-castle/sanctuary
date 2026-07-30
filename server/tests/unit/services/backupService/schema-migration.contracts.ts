@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import './backupServiceTestHarness';
+import { mockAllBackupTablesExist } from './backupServiceTestHarness';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 import { sampleUsers, sampleWallets } from '../../../fixtures/bitcoin';
 import { BackupService, type SanctuaryBackup, type BackupMeta } from '../../../../src/services/backupService';
@@ -16,6 +16,7 @@ describe('Schema Version and Migration Handling', () => {
     resetPrismaMocks();
 
     mockPrismaClient.$queryRaw.mockResolvedValue([{ tablename: 'users' }]);
+    mockAllBackupTablesExist();
   });
 
   it('should restore older schema version with migration', async () => {

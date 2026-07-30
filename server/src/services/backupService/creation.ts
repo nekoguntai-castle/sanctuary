@@ -6,11 +6,18 @@
 
 import prisma from '../../models/prisma';
 import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
 import { version as appVersion } from '../../../package.json';
 import { migrationService } from '../migrationService';
 import { serializeRecord } from './serialization';
-import { BACKUP_FORMAT_VERSION, TABLE_ORDER, CACHE_TABLES, LARGE_TABLES, BACKUP_PAGE_SIZE } from './constants';
+import {
+  BACKUP_FORMAT_VERSION,
+  COMPLETE_TABLE_POLICY_HASH,
+  COMPLETE_TABLE_POLICY_VERSION,
+  TABLE_ORDER,
+  CACHE_TABLES,
+  LARGE_TABLES,
+  BACKUP_PAGE_SIZE,
+} from './constants';
 import type { BackupRecord, SanctuaryBackup, BackupOptions } from './types';
 
 const log = createLogger('BACKUP:SVC');
@@ -34,23 +41,17 @@ export async function createBackup(adminUser: string, options: BackupOptions = {
     : TABLE_ORDER;
 
   for (const table of tablesToExport) {
-    try {
-      if (LARGE_TABLES.has(table)) {
-        // Cursor-based pagination for large tables to reduce peak memory
-        data[table] = await exportTablePaginated(table);
-      } else {
-        // Small tables: single query is fine
-        // @ts-expect-error - Dynamic Prisma table access; table name validated against TABLE_ORDER constant
-        const records = await prisma[table].findMany();
-        data[table] = records.map((record: BackupRecord) => serializeRecord(record));
-      }
-      recordCounts[table] = data[table].length;
-      log.debug(`[BACKUP] Exported ${data[table].length} records from ${table}`);
-    } catch (error) {
-      log.warn(`[BACKUP] Failed to export table ${table}`, { error: getErrorMessage(error) });
-      data[table] = [];
-      recordCounts[table] = 0;
+    if (LARGE_TABLES.has(table)) {
+      // Cursor-based pagination for large tables to reduce peak memory
+      data[table] = await exportTablePaginated(table);
+    } else {
+      // Small tables: single query is fine
+      // @ts-expect-error - Dynamic Prisma table access; table name validated by the canonical policy
+      const records = await prisma[table].findMany();
+      data[table] = records.map((record: BackupRecord) => serializeRecord(record));
     }
+    recordCounts[table] = data[table].length;
+    log.debug(`[BACKUP] Exported ${data[table].length} records from ${table}`);
   }
 
   // Get current schema version from applied migrations
@@ -66,6 +67,10 @@ export async function createBackup(adminUser: string, options: BackupOptions = {
       description,
       includesCache: includeCache,
       recordCounts,
+      tablePolicy: {
+        version: COMPLETE_TABLE_POLICY_VERSION,
+        hash: COMPLETE_TABLE_POLICY_HASH,
+      },
     },
     data,
   };

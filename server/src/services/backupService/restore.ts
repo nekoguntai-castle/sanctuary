@@ -9,17 +9,26 @@ import prisma from '../../models/prisma';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { migrationService } from '../migrationService';
-import { isEncrypted, decrypt } from '../../utils/encryption';
-import { safeJsonParseUntyped } from '../../utils/safeJson';
-import {
-  AI_PROVIDER_CREDENTIALS_KEY,
-  disableAIProviderCredentialsForRestore,
-} from '../ai/providerCredentials';
-import { processRecord, camelToSnakeCase } from './serialization';
+import { camelToSnakeCase } from './serialization';
 import { migrateBackup } from './migration';
-import { TABLE_ORDER, CACHE_TABLES } from './constants';
+import {
+  TABLE_ORDER,
+  CACHE_TABLES,
+  EPHEMERAL_TABLES,
+  getRestoreTables,
+} from './constants';
 import { validateBackupForRestore } from './validation';
-import type { BackupRecord, SanctuaryBackup, RestoreResult } from './types';
+import { deserializeRecordForTable } from './restoreDeserialization';
+import {
+  processAgentApiKeyRecords,
+  processMcpApiKeyRecords,
+  processNodeConfigRecords,
+  processSystemSettingRecords,
+  processUserRecords,
+  processWebhookDeliveryRecords,
+  processWebhookEndpointRecords,
+} from './restoreTransforms';
+import type { SanctuaryBackup, RestoreResult } from './types';
 
 const log = createLogger('BACKUP:SVC');
 
@@ -65,24 +74,29 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
   // Get list of tables that actually exist in the database
   const existingTables = await getExistingTables();
   const existingTableSet = new Set(existingTables);
+  const tablesToDelete = [...TABLE_ORDER, ...CACHE_TABLES, ...EPHEMERAL_TABLES];
+  const tablesToRestore = getRestoreTables(migratedBackup.meta);
+  const missingTables = getMissingLiveTables(
+    [...new Set([...tablesToDelete, ...tablesToRestore])],
+    existingTableSet
+  );
+  if (missingTables.length > 0) {
+    return {
+      success: false,
+      tablesRestored: 0,
+      recordsRestored: 0,
+      warnings,
+      error: `Restore preflight failed: missing live database tables: ${missingTables.join(', ')}`,
+    };
+  }
 
   try {
     // Use Prisma transaction for atomicity
     await prisma.$transaction(async (tx) => {
+      const currentSessionVersions = await getCurrentSessionVersions(tx);
       // Delete all tables in REVERSE order (to handle foreign key constraints)
-      const allTables = migratedBackup.meta.includesCache
-        ? [...TABLE_ORDER, ...CACHE_TABLES]
-        : [...TABLE_ORDER];
-
       log.debug('[BACKUP] Deleting existing data in reverse order');
-      for (const table of [...allTables].reverse()) {
-        // Skip tables that don't exist in the current database
-        const snakeCase = camelToSnakeCase(table);
-        if (!existingTableSet.has(snakeCase)) {
-          log.debug(`[BACKUP] Skipping delete from ${table} (table does not exist)`);
-          continue;
-        }
-
+      for (const table of [...tablesToDelete].reverse()) {
         try {
           // @ts-expect-error - Dynamic Prisma table access; table name validated against TABLE_ORDER constant
           await tx[table].deleteMany({});
@@ -96,23 +110,15 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
 
       // Insert data in FORWARD order (respects foreign key dependencies)
       log.debug('[BACKUP] Inserting backup data in forward order');
-      for (const table of allTables) {
+      for (const table of tablesToRestore) {
         const records = migratedBackup.data[table];
         if (!records || !Array.isArray(records) || records.length === 0) {
           continue;
         }
 
-        // Skip tables that don't exist in the current database
-        const snakeCase = camelToSnakeCase(table);
-        if (!existingTableSet.has(snakeCase)) {
-          log.warn(`[BACKUP] Skipping restore of ${table} (${records.length} records) - table does not exist`);
-          warnings.push(`Table ${table} was skipped during restore (not in current database schema)`);
-          continue;
-        }
-
         try {
           // Handle DateTime fields (they come as strings from JSON)
-          let processedRecords = records.map((record) => processRecord(record));
+          let processedRecords = records.map((record) => deserializeRecordForTable(table, record));
 
           // Special handling for nodeConfig - check if encrypted passwords can be decrypted
           if (table === 'nodeConfig') {
@@ -126,13 +132,29 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
 
           // Special handling for user - check if encrypted 2FA secrets can be decrypted
           if (table === 'user') {
-            processedRecords = processUserRecords(processedRecords, warnings);
+            processedRecords = processUserRecords(
+              processedRecords,
+              warnings,
+              currentSessionVersions
+            );
           }
 
           // Restored MCP bearer-token hashes are external-access credentials.
           // Keep metadata for audit/admin review, but force every restored key closed.
           if (table === 'mcpApiKey') {
             processedRecords = processMcpApiKeyRecords(processedRecords, warnings);
+          }
+
+          if (table === 'agentApiKey') {
+            processedRecords = processAgentApiKeyRecords(processedRecords, warnings);
+          }
+
+          if (table === 'webhookEndpoint') {
+            processedRecords = processWebhookEndpointRecords(processedRecords, warnings);
+          }
+
+          if (table === 'webhookDelivery') {
+            processedRecords = processWebhookDeliveryRecords(processedRecords);
           }
 
           // Use createMany for bulk insert
@@ -152,6 +174,7 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
         }
       }
     }, {
+      maxWait: 10_000,
       timeout: 120000, // 2 minute timeout for large restores
     });
 
@@ -176,110 +199,6 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
 }
 
 /**
- * Process nodeConfig records - check if encrypted passwords can be decrypted
- */
-function processNodeConfigRecords(records: BackupRecord[], warnings: string[]): BackupRecord[] {
-  return records.map((record) => {
-    const password = record.password;
-    if (typeof password === 'string' && isEncrypted(password)) {
-      try {
-        // Try to decrypt with current ENCRYPTION_KEY
-        decrypt(password);
-        // If successful, keep the password
-      } catch (error) {
-        // Can't decrypt - password was encrypted with different key
-        log.warn('[BACKUP] Node config password cannot be decrypted (different ENCRYPTION_KEY)', {
-          nodeType: record.type,
-        });
-        warnings.push(
-          `Node configuration password could not be restored (encrypted with different key). Please update your ${record.type || 'node'} password in Settings > Node Configuration.`
-        );
-        // Clear the password so user knows to re-enter it
-        return { ...record, password: null };
-      }
-    }
-    return record;
-  });
-}
-
-/**
- * Process user records - check if encrypted 2FA secrets can be decrypted
- */
-function processUserRecords(records: BackupRecord[], warnings: string[]): BackupRecord[] {
-  return records.map((record) => {
-    const secret = record.twoFactorSecret;
-    if (typeof secret === 'string' && isEncrypted(secret)) {
-      try {
-        // Try to decrypt with current ENCRYPTION_KEY/ENCRYPTION_SALT
-        decrypt(secret);
-        // If successful, keep the 2FA secret
-      } catch (error) {
-        // Can't decrypt - 2FA secret was encrypted with different key/salt
-        log.warn('[BACKUP] 2FA secret cannot be decrypted (different ENCRYPTION_KEY/SALT)', {
-          username: record.username,
-        });
-        warnings.push(
-          `2FA for user "${record.username}" could not be restored (encrypted with different key). User will need to re-setup 2FA.`
-        );
-        // Clear 2FA settings so user can re-setup
-        return {
-          ...record,
-          twoFactorEnabled: false,
-          twoFactorSecret: null,
-          twoFactorBackupCodes: null,
-        };
-      }
-    }
-    return record;
-  });
-}
-
-/**
- * Process systemSetting records - restored AI provider credentials must be reviewed and re-entered.
- */
-function processSystemSettingRecords(records: BackupRecord[], warnings: string[]): BackupRecord[] {
-  return records.map((record) => {
-    if (record.key !== AI_PROVIDER_CREDENTIALS_KEY || typeof record.value !== 'string') {
-      return record;
-    }
-
-    const credentialValue = safeJsonParseUntyped(record.value, {}, `setting:${AI_PROVIDER_CREDENTIALS_KEY}`);
-    const result = disableAIProviderCredentialsForRestore(credentialValue);
-
-    if (result.disabledCount > 0) {
-      const credentialLabel = `AI provider credential${result.disabledCount === 1 ? '' : 's'}`;
-      warnings.push(
-        `${result.disabledCount} ${credentialLabel} restored disabled. Re-enter provider credentials in Admin > AI Settings before enabling external model access.`
-      );
-    }
-
-    return {
-      ...record,
-      value: JSON.stringify(result.credentials),
-    };
-  });
-}
-
-/**
- * Process MCP API key records - restored bearer-token hashes must not become usable.
- */
-function processMcpApiKeyRecords(records: BackupRecord[], warnings: string[]): BackupRecord[] {
-  const restoreRevokedAt = new Date();
-  const unrevokedCount = records.filter(record => !record.revokedAt).length;
-  if (unrevokedCount > 0) {
-    const keyLabel = `MCP API key${unrevokedCount === 1 ? '' : 's'}`;
-    warnings.push(
-      `${unrevokedCount} ${keyLabel} restored revoked. Regenerate MCP client credentials after reviewing external access.`
-    );
-  }
-
-  return records.map(record => ({
-    ...record,
-    revokedAt: record.revokedAt ?? restoreRevokedAt,
-  }));
-}
-
-/**
  * Get list of tables that exist in the database
  */
 async function getExistingTables(): Promise<string[]> {
@@ -289,4 +208,20 @@ async function getExistingTables(): Promise<string[]> {
     AND tablename NOT LIKE '_prisma%'
   `;
   return result.map((r) => r.tablename);
+}
+
+function getMissingLiveTables(tables: string[], existingTableSet: ReadonlySet<string>): string[] {
+  return tables.filter(table => !existingTableSet.has(camelToSnakeCase(table)));
+}
+
+async function getCurrentSessionVersions(
+  tx: Pick<typeof prisma, 'user'>
+): Promise<Map<string, number>> {
+  const users = await tx.user.findMany({
+    select: {
+      id: true,
+      sessionVersion: true,
+    },
+  });
+  return new Map(users.map(user => [user.id, user.sessionVersion]));
 }

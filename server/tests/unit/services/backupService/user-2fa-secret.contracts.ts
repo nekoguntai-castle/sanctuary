@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import './backupServiceTestHarness';
+import { mockAllBackupTablesExist } from './backupServiceTestHarness';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 import { sampleUsers, sampleWallets } from '../../../fixtures/bitcoin';
 import { BackupService, type SanctuaryBackup, type BackupMeta } from '../../../../src/services/backupService';
@@ -18,6 +18,7 @@ describe('User 2FA Secret Handling', () => {
     mockPrismaClient.$queryRaw.mockResolvedValue([
       { tablename: 'users' },
     ]);
+    mockAllBackupTablesExist();
   });
 
   it('should warn and clear 2FA when secret cannot be decrypted', async () => {

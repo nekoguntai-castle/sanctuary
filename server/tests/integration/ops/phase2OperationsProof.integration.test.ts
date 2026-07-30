@@ -12,6 +12,7 @@ import express, { type Express } from 'express';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { backupService as BackupServiceInstance } from '../../../src/services/backupService';
+import { TABLE_ORDER } from '../../../src/services/backupService/constants';
 import type { PrismaClient } from '../../../src/generated/prisma/client';
 import { errorHandler } from '../../../src/errors/errorHandler';
 import {
@@ -124,6 +125,15 @@ describeIfDb('Phase 2 operations proof', () => {
         email: `${username}@example.test`,
         emailVerified: true,
         isAdmin: true,
+        preferences: {
+          fiatCurrency: 'EUR',
+          telegram: {
+            enabled: true,
+            botToken: 'backup-drill-bot-token',
+            chatId: 'backup-drill-chat',
+            wallets: {},
+          },
+        },
       },
     });
 
@@ -151,6 +161,384 @@ describeIfDb('Phase 2 operations proof', () => {
         role: 'owner',
       },
     });
+    const groupMember = await prisma.groupMember.create({
+      data: { userId: user.id, groupId: group.id, role: 'owner' },
+    });
+    const operationalWallet = await prisma.wallet.create({
+      data: {
+        name: createUniqueId('phase2-operational-wallet'),
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'testnet3',
+      },
+    });
+
+    const device = await prisma.device.create({
+      data: {
+        userId: user.id,
+        type: 'coldcard',
+        label: 'Backup drill signer',
+        fingerprint: createUniqueId('fingerprint'),
+        xpub: createUniqueId('xpub'),
+      },
+    });
+    const hardwareModel = await prisma.hardwareDeviceModel.create({
+      data: {
+        name: createUniqueId('Backup drill model'),
+        slug: createUniqueId('backup-drill-model'),
+        manufacturer: 'Sanctuary Test',
+        connectivity: ['usb'],
+        scriptTypes: ['native_segwit'],
+      },
+    });
+    await prisma.device.update({
+      where: { id: device.id },
+      data: { modelId: hardwareModel.id },
+    });
+    const deviceAccount = await prisma.deviceAccount.create({
+      data: {
+        deviceId: device.id,
+        purpose: 'single_sig',
+        scriptType: 'native_segwit',
+        derivationPath: "m/84'/1'/0'",
+        xpub: createUniqueId('account-xpub'),
+      },
+    });
+    const deviceUser = await prisma.deviceUser.create({
+      data: {
+        deviceId: device.id,
+        userId: user.id,
+        role: 'owner',
+      },
+    });
+    const walletDevice = await prisma.walletDevice.create({
+      data: { walletId: wallet.id, deviceId: device.id, signerIndex: 0 },
+    });
+    const address = await prisma.address.create({
+      data: {
+        walletId: wallet.id,
+        address: createUniqueId('tb1qbackup-address'),
+        derivationPath: "m/84'/1'/0'/0/0",
+        index: 0,
+      },
+    });
+    const transaction = await prisma.transaction.create({
+      data: {
+        walletId: wallet.id,
+        userId: user.id,
+        addressId: address.id,
+        txid: createUniqueId('backup-txid'),
+        type: 'received',
+        amount: 25_000n,
+        confirmations: 1,
+        memo: '2026-07-30T12:34:56.000Z',
+      },
+    });
+    const transactionInput = await prisma.transactionInput.create({
+      data: {
+        transactionId: transaction.id,
+        inputIndex: 0,
+        txid: createUniqueId('input-txid'),
+        vout: 0,
+        address: address.address,
+        amount: 30_000n,
+      },
+    });
+    const transactionOutput = await prisma.transactionOutput.create({
+      data: {
+        transactionId: transaction.id,
+        outputIndex: 0,
+        address: address.address,
+        amount: 25_000n,
+      },
+    });
+    const utxo = await prisma.uTXO.create({
+      data: {
+        walletId: wallet.id,
+        txid: transaction.txid,
+        vout: 0,
+        address: address.address,
+        amount: 25_000n,
+        scriptPubKey: '0014backupdrill',
+        confirmations: 1,
+      },
+    });
+    const label = await prisma.label.create({
+      data: { walletId: wallet.id, name: 'Backup drill label', color: '#123456' },
+    });
+    const transactionLabel = await prisma.transactionLabel.create({
+      data: { transactionId: transaction.id, labelId: label.id },
+    });
+    const addressLabel = await prisma.addressLabel.create({
+      data: { addressId: address.id, labelId: label.id },
+    });
+    const webhookEndpoint = await prisma.webhookEndpoint.create({
+      data: {
+        walletId: wallet.id,
+        name: 'Backup drill webhook',
+        url: 'https://example.test/webhook',
+        eventTypes: ['transaction.confirmed'],
+        authType: 'hmac',
+        secretEncrypted: 'backup-drill-encrypted-secret',
+        headerConfig: {
+          headers: {
+            Authorization: 'Bearer backup-drill-secret',
+          },
+        },
+      },
+    });
+    const webhookDelivery = await prisma.webhookDelivery.create({
+      data: {
+        endpointId: webhookEndpoint.id,
+        walletId: wallet.id,
+        eventId: createUniqueId('event'),
+        eventType: 'transaction.confirmed',
+        payloadProfile: 'sanctuary_wallet_event_v1',
+        targetUrl: webhookEndpoint.url,
+        eventPayload: { txid: 'backup-drill-txid' },
+      },
+    });
+    const featureFlag = await prisma.featureFlag.create({
+      data: {
+        key: createUniqueId('backup-drill-flag'),
+        enabled: true,
+        modifiedBy: user.id,
+      },
+    });
+    const featureFlagAudit = await prisma.featureFlagAudit.create({
+      data: {
+        featureFlagId: featureFlag.id,
+        key: featureFlag.key,
+        previousValue: false,
+        newValue: true,
+        changedBy: user.id,
+      },
+    });
+    const ownershipTransfer = await prisma.ownershipTransfer.create({
+      data: {
+        resourceType: 'wallet',
+        resourceId: wallet.id,
+        fromUserId: user.id,
+        toUserId: user.id,
+        expiresAt: new Date(Date.now() + 86_400_000),
+      },
+    });
+    const mobilePermission = await prisma.mobilePermission.create({
+      data: {
+        walletId: wallet.id,
+        userId: user.id,
+      },
+    });
+    const nodeConfig = await prisma.nodeConfig.create({
+      data: {
+        isDefault: true,
+        proxyEnabled: true,
+        proxyHost: '127.0.0.1',
+        proxyPort: 9050,
+        proxyUsername: 'backup-drill',
+        proxyPassword: 'backup-drill-proxy-password',
+      },
+    });
+    const electrumServer = await prisma.electrumServer.create({
+      data: {
+        nodeConfigId: nodeConfig.id,
+        network: 'mainnet',
+        host: 'electrum.example.test',
+        port: 50002,
+        useSsl: true,
+        label: 'Backup drill electrum',
+      },
+    });
+    await prisma.systemSetting.createMany({
+      data: [
+        { key: 'smtp.host', value: JSON.stringify('smtp.example.test') },
+        { key: 'smtp.user', value: JSON.stringify('mailer') },
+        { key: 'smtp.password', value: JSON.stringify('backup-drill-smtp-password') },
+        { key: 'smtp.fromAddress', value: JSON.stringify('mail@example.test') },
+      ],
+    });
+    const mcpApiKey = await prisma.mcpApiKey.create({
+      data: {
+        userId: user.id,
+        name: 'Backup drill MCP key',
+        keyHash: createUniqueId('mcp-hash'),
+        keyPrefix: 'mcp_backup',
+      },
+    });
+    const draft = await prisma.draftTransaction.create({
+      data: {
+        walletId: wallet.id,
+        userId: user.id,
+        recipient: 'tb1qbackupdrillrecipient',
+        amount: 50_000n,
+        feeRate: 2,
+        selectedUtxoIds: [],
+        psbtBase64: 'cHNidP8=',
+        fee: 500n,
+        totalInput: 50_500n,
+        totalOutput: 50_000n,
+        changeAmount: 0n,
+        effectiveAmount: 50_000n,
+        inputPaths: [],
+      },
+    });
+    const draftUtxoLock = await prisma.draftUtxoLock.create({
+      data: { draftId: draft.id, utxoId: utxo.id },
+    });
+    const walletAgent = await prisma.walletAgent.create({
+      data: {
+        userId: user.id,
+        name: 'Backup drill agent',
+        fundingWalletId: wallet.id,
+        operationalWalletId: operationalWallet.id,
+        signerDeviceId: device.id,
+        maxFundingAmountSats: 100_000n,
+      },
+    });
+    const agentApiKey = await prisma.agentApiKey.create({
+      data: {
+        agentId: walletAgent.id,
+        name: 'Backup drill agent key',
+        keyHash: createUniqueId('agent-hash'),
+        keyPrefix: 'agent_backup',
+      },
+    });
+    const agentFundingOverride = await prisma.agentFundingOverride.create({
+      data: {
+        agentId: walletAgent.id,
+        fundingWalletId: wallet.id,
+        operationalWalletId: operationalWallet.id,
+        reason: 'Backup drill',
+        maxAmountSats: 50_000n,
+        expiresAt: new Date(Date.now() + 86_400_000),
+      },
+    });
+    const agentAlert = await prisma.agentAlert.create({
+      data: {
+        agentId: walletAgent.id,
+        type: 'balance_low',
+        severity: 'warning',
+        message: 'Backup drill alert',
+      },
+    });
+    const agentFundingAttempt = await prisma.agentFundingAttempt.create({
+      data: {
+        agentId: walletAgent.id,
+        fundingWalletId: wallet.id,
+        operationalWalletId: operationalWallet.id,
+        status: 'accepted',
+        amount: 25_000n,
+      },
+    });
+    const vaultPolicy = await prisma.vaultPolicy.create({
+      data: {
+        walletId: wallet.id,
+        name: 'Backup drill approval policy',
+        type: 'approval_required',
+        config: { requiredApprovals: 1 },
+        createdBy: user.id,
+      },
+    });
+    const approvalRequest = await prisma.approvalRequest.create({
+      data: {
+        draftTransactionId: draft.id,
+        policyId: vaultPolicy.id,
+        requiredApprovals: 1,
+      },
+    });
+    const approvalVote = await prisma.approvalVote.create({
+      data: {
+        approvalRequestId: approvalRequest.id,
+        userId: user.id,
+        decision: 'approve',
+      },
+    });
+    const policyAddress = await prisma.policyAddress.create({
+      data: {
+        policyId: vaultPolicy.id,
+        address: 'tb1qbackupdrillallowlist',
+        listType: 'allow',
+        addedBy: user.id,
+      },
+    });
+    const policyEvent = await prisma.policyEvent.create({
+      data: {
+        policyId: vaultPolicy.id,
+        walletId: wallet.id,
+        eventType: 'evaluated',
+        details: { source: 'backup-drill' },
+      },
+    });
+    const policyUsageWindow = await prisma.policyUsageWindow.create({
+      data: {
+        policyId: vaultPolicy.id,
+        walletId: wallet.id,
+        userId: user.id,
+        windowType: 'daily',
+        windowStart: new Date('2026-07-30T00:00:00.000Z'),
+        windowEnd: new Date('2026-07-31T00:00:00.000Z'),
+      },
+    });
+    const aiConversation = await prisma.aIConversation.create({
+      data: {
+        userId: user.id,
+        walletId: wallet.id,
+        title: 'Backup drill conversation',
+      },
+    });
+    const aiMessage = await prisma.aIMessage.create({
+      data: {
+        conversationId: aiConversation.id,
+        role: 'user',
+        content: '2026-07-30T12:34:56.000Z',
+        metadata: {
+          timestampLabel: '2026-07-30T12:34:56.000Z',
+          markerText: '__bigint__42',
+        },
+      },
+    });
+    const aiInsight = await prisma.aIInsight.create({
+      data: {
+        walletId: wallet.id,
+        type: 'utxo_health',
+        title: 'Backup drill insight',
+        summary: 'Round-trip summary',
+        analysis: 'Round-trip analysis',
+      },
+    });
+    const consoleSession = await prisma.consoleSession.create({
+      data: {
+        userId: user.id,
+        title: 'Backup drill console',
+        scope: { walletIds: [wallet.id] },
+      },
+    });
+    const consolePrompt = await prisma.consolePromptHistory.create({
+      data: {
+        userId: user.id,
+        sessionId: consoleSession.id,
+        prompt: 'Show backup status',
+        normalizedPrompt: 'show backup status',
+        saved: true,
+      },
+    });
+    const consoleTurn = await prisma.consoleTurn.create({
+      data: {
+        sessionId: consoleSession.id,
+        promptHistoryId: consolePrompt.id,
+        state: 'completed',
+        prompt: 'Show backup status',
+        response: 'Healthy',
+      },
+    });
+    const consoleToolTrace = await prisma.consoleToolTrace.create({
+      data: {
+        turnId: consoleTurn.id,
+        toolName: 'backup_status',
+        status: 'success',
+        facts: { checkedAt: '2026-07-30T12:34:56.000Z' },
+      },
+    });
 
     await prisma.auditLog.create({
       data: {
@@ -172,6 +560,21 @@ describeIfDb('Phase 2 operations proof', () => {
     expect(backup.meta.recordCounts.wallet).toBeGreaterThanOrEqual(1);
     expect(backup.meta.recordCounts.walletUser).toBeGreaterThanOrEqual(1);
     expect(backup.meta.recordCounts.auditLog).toBeGreaterThanOrEqual(1);
+    expect(backup.meta.recordCounts.deviceAccount).toBeGreaterThanOrEqual(1);
+    expect(backup.meta.recordCounts.deviceUser).toBeGreaterThanOrEqual(1);
+    expect(backup.meta.recordCounts.webhookEndpoint).toBeGreaterThanOrEqual(1);
+    expect(backup.meta.recordCounts.webhookDelivery).toBeGreaterThanOrEqual(1);
+    expect(backup.meta.recordCounts.vaultPolicy).toBeGreaterThanOrEqual(1);
+    expect(backup.meta.recordCounts.approvalVote).toBeGreaterThanOrEqual(1);
+    expect(backup.meta.recordCounts.featureFlagAudit).toBeGreaterThanOrEqual(1);
+    expect(backup.meta.recordCounts.aIMessage).toBeGreaterThanOrEqual(1);
+    expect(backup.data).not.toHaveProperty('pushDevice');
+    for (const table of TABLE_ORDER) {
+      expect(
+        backup.meta.recordCounts[table],
+        `durable table ${table} should have a round-trip fixture`
+      ).toBeGreaterThanOrEqual(1);
+    }
 
     const validation = await backupService.validateBackup(backup);
     expect(validation.valid).toBe(true);
@@ -179,10 +582,38 @@ describeIfDb('Phase 2 operations proof', () => {
     expect(validation.info.totalRecords).toBeGreaterThanOrEqual(4);
     expect(validation.info.tables).toContain('walletUser');
 
-    await cleanupTestData();
-
-    expect(await prisma.user.findUnique({ where: { id: user.id } })).toBeNull();
-    expect(await prisma.wallet.findUnique({ where: { id: wallet.id } })).toBeNull();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { sessionVersion: 7 },
+    });
+    await prisma.pushDevice.create({
+      data: {
+        userId: user.id,
+        token: createUniqueId('stale-push-token'),
+        platform: 'ios',
+      },
+    });
+    await prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: createUniqueId('stale-refresh-hash'),
+        expiresAt: new Date(Date.now() + 86_400_000),
+      },
+    });
+    await prisma.emailVerificationToken.create({
+      data: {
+        userId: user.id,
+        email: `${username}@example.test`,
+        tokenHash: createUniqueId('stale-email-hash'),
+        expiresAt: new Date(Date.now() + 86_400_000),
+      },
+    });
+    await prisma.priceData.create({
+      data: { currency: 'USD', price: 123, source: 'backup-drill' },
+    });
+    await prisma.feeEstimate.create({
+      data: { fastest: 10, halfHour: 8, hour: 5 },
+    });
 
     const restore = await backupService.restoreFromBackup(backup);
 
@@ -204,6 +635,102 @@ describeIfDb('Phase 2 operations proof', () => {
       .resolves.toEqual(expect.objectContaining({ role: 'owner' }));
     await expect(prisma.auditLog.findFirst({ where: { action: 'ops.backup_restore_drill.seed' } }))
       .resolves.toEqual(expect.objectContaining({ username }));
+    await expect(prisma.deviceAccount.findUnique({ where: { id: deviceAccount.id } }))
+      .resolves.toEqual(expect.objectContaining({ deviceId: device.id }));
+    await expect(prisma.hardwareDeviceModel.findUnique({ where: { id: hardwareModel.id } }))
+      .resolves.toEqual(expect.objectContaining({ manufacturer: 'Sanctuary Test' }));
+    await expect(prisma.deviceUser.findUnique({ where: { id: deviceUser.id } }))
+      .resolves.toEqual(expect.objectContaining({ userId: user.id }));
+    await expect(prisma.groupMember.findUnique({ where: { id: groupMember.id } }))
+      .resolves.toEqual(expect.objectContaining({ groupId: group.id }));
+    await expect(prisma.walletDevice.findUnique({ where: { id: walletDevice.id } }))
+      .resolves.toEqual(expect.objectContaining({ deviceId: device.id }));
+    await expect(prisma.transactionInput.findUnique({ where: { id: transactionInput.id } }))
+      .resolves.toEqual(expect.objectContaining({ amount: 30_000n }));
+    await expect(prisma.transactionOutput.findUnique({ where: { id: transactionOutput.id } }))
+      .resolves.toEqual(expect.objectContaining({ amount: 25_000n }));
+    await expect(prisma.transaction.findUnique({ where: { id: transaction.id } }))
+      .resolves.toEqual(expect.objectContaining({ memo: '2026-07-30T12:34:56.000Z' }));
+    await expect(prisma.transactionLabel.findUnique({ where: { id: transactionLabel.id } }))
+      .resolves.toEqual(expect.objectContaining({ labelId: label.id }));
+    await expect(prisma.addressLabel.findUnique({ where: { id: addressLabel.id } }))
+      .resolves.toEqual(expect.objectContaining({ addressId: address.id }));
+    await expect(prisma.draftUtxoLock.findUnique({ where: { id: draftUtxoLock.id } }))
+      .resolves.toEqual(expect.objectContaining({ utxoId: utxo.id }));
+    await expect(prisma.nodeConfig.findUnique({ where: { id: nodeConfig.id } }))
+      .resolves.toEqual(expect.objectContaining({ proxyEnabled: false, proxyPassword: null }));
+    await expect(prisma.electrumServer.findUnique({ where: { id: electrumServer.id } }))
+      .resolves.toEqual(expect.objectContaining({ nodeConfigId: nodeConfig.id }));
+    await expect(prisma.mcpApiKey.findUnique({ where: { id: mcpApiKey.id } }))
+      .resolves.toEqual(expect.objectContaining({ revokedAt: expect.any(Date) }));
+    await expect(prisma.walletAgent.findUnique({ where: { id: walletAgent.id } }))
+      .resolves.toEqual(expect.objectContaining({ operationalWalletId: operationalWallet.id }));
+    await expect(prisma.agentApiKey.findUnique({ where: { id: agentApiKey.id } }))
+      .resolves.toEqual(expect.objectContaining({ revokedAt: expect.any(Date) }));
+    await expect(prisma.agentFundingOverride.findUnique({ where: { id: agentFundingOverride.id } }))
+      .resolves.toEqual(expect.objectContaining({ maxAmountSats: 50_000n }));
+    await expect(prisma.agentAlert.findUnique({ where: { id: agentAlert.id } }))
+      .resolves.toEqual(expect.objectContaining({ message: 'Backup drill alert' }));
+    await expect(prisma.agentFundingAttempt.findUnique({ where: { id: agentFundingAttempt.id } }))
+      .resolves.toEqual(expect.objectContaining({ amount: 25_000n }));
+    await expect(prisma.webhookEndpoint.findUnique({ where: { id: webhookEndpoint.id } }))
+      .resolves.toEqual(expect.objectContaining({
+        enabled: false,
+        secretEncrypted: null,
+        headerConfig: null,
+      }));
+    await expect(prisma.webhookDelivery.findUnique({ where: { id: webhookDelivery.id } }))
+      .resolves.toEqual(expect.objectContaining({ walletId: wallet.id, status: 'dead' }));
+    await expect(prisma.featureFlagAudit.findUnique({ where: { id: featureFlagAudit.id } }))
+      .resolves.toEqual(expect.objectContaining({ featureFlagId: featureFlag.id }));
+    await expect(prisma.ownershipTransfer.findUnique({ where: { id: ownershipTransfer.id } }))
+      .resolves.toEqual(expect.objectContaining({ resourceId: wallet.id }));
+    await expect(prisma.mobilePermission.findUnique({ where: { id: mobilePermission.id } }))
+      .resolves.toEqual(expect.objectContaining({ userId: user.id }));
+    await expect(prisma.approvalVote.findUnique({ where: { id: approvalVote.id } }))
+      .resolves.toEqual(expect.objectContaining({ approvalRequestId: approvalRequest.id }));
+    await expect(prisma.policyAddress.findUnique({ where: { id: policyAddress.id } }))
+      .resolves.toEqual(expect.objectContaining({ policyId: vaultPolicy.id }));
+    await expect(prisma.policyEvent.findUnique({ where: { id: policyEvent.id } }))
+      .resolves.toEqual(expect.objectContaining({ walletId: wallet.id }));
+    await expect(prisma.policyUsageWindow.findUnique({ where: { id: policyUsageWindow.id } }))
+      .resolves.toEqual(expect.objectContaining({ policyId: vaultPolicy.id }));
+    await expect(prisma.aIMessage.findUnique({ where: { id: aiMessage.id } }))
+      .resolves.toEqual(expect.objectContaining({
+        conversationId: aiConversation.id,
+        content: '2026-07-30T12:34:56.000Z',
+        metadata: {
+          timestampLabel: '2026-07-30T12:34:56.000Z',
+          markerText: '__bigint__42',
+        },
+      }));
+    await expect(prisma.aIInsight.findUnique({ where: { id: aiInsight.id } }))
+      .resolves.toEqual(expect.objectContaining({ walletId: wallet.id }));
+    await expect(prisma.user.findUnique({ where: { id: user.id } }))
+      .resolves.toEqual(expect.objectContaining({
+        sessionVersion: 8,
+        preferences: expect.objectContaining({
+          fiatCurrency: 'EUR',
+          telegram: expect.objectContaining({ enabled: false, botToken: '', chatId: '' }),
+        }),
+      }));
+    await expect(prisma.consoleSession.findUnique({ where: { id: consoleSession.id } }))
+      .resolves.toEqual(expect.objectContaining({ userId: user.id }));
+    await expect(prisma.consolePromptHistory.findUnique({ where: { id: consolePrompt.id } }))
+      .resolves.toEqual(expect.objectContaining({ sessionId: consoleSession.id }));
+    await expect(prisma.consoleTurn.findUnique({ where: { id: consoleTurn.id } }))
+      .resolves.toEqual(expect.objectContaining({ sessionId: consoleSession.id }));
+    await expect(prisma.consoleToolTrace.findUnique({ where: { id: consoleToolTrace.id } }))
+      .resolves.toEqual(expect.objectContaining({
+        facts: { checkedAt: '2026-07-30T12:34:56.000Z' },
+      }));
+    await expect(prisma.systemSetting.findUnique({ where: { key: 'smtp.password' } }))
+      .resolves.toEqual(expect.objectContaining({ value: JSON.stringify('') }));
+    await expect(prisma.pushDevice.count()).resolves.toBe(0);
+    await expect(prisma.refreshToken.count()).resolves.toBe(0);
+    await expect(prisma.emailVerificationToken.count()).resolves.toBe(0);
+    await expect(prisma.priceData.count()).resolves.toBe(0);
+    await expect(prisma.feeEstimate.count()).resolves.toBe(0);
   });
 
   it('persists gateway audit events sent through the gateway HMAC path', async () => {

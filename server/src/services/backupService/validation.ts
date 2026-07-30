@@ -6,7 +6,14 @@
  */
 
 import { migrationService } from '../migrationService';
-import { getRequiredRestoreTables, TABLE_ORDER } from './constants';
+import {
+  BACKUP_FORMAT_VERSION,
+  COMPLETE_TABLE_POLICY_HASH,
+  COMPLETE_TABLE_POLICY_VERSION,
+  getRequiredRestoreTables,
+  LEGACY_BACKUP_FORMAT_VERSION,
+  TABLE_ORDER,
+} from './constants';
 import type { BackupRecord, BackupMeta, ValidationResult } from './types';
 
 /**
@@ -36,6 +43,9 @@ export async function validateBackup(backup: unknown): Promise<ValidationResult>
   const tables = Object.keys(data);
 
   validateBackupMeta(meta, currentSchemaVersion, issues, warnings);
+  if (meta.version === BACKUP_FORMAT_VERSION) {
+    validateRecordCounts(meta.recordCounts, data, issues);
+  }
   validateRequiredTables(data, issues, warnings);
   validateUsers(data, issues);
   validateDeviceReferences(data, issues);
@@ -75,7 +85,7 @@ export async function validateBackupForRestore(backup: unknown): Promise<Validat
 
   validateRestoreCompleteness(
     data,
-    getRequiredRestoreTables(meta.schemaVersion, meta.includesCache === true),
+    getRequiredRestoreTables(meta),
     issues
   );
 
@@ -144,6 +154,8 @@ const validateBackupMeta = (
 ): void => {
   if (!meta.version) {
     issues.push('Missing backup format version');
+  } else {
+    validateTablePolicy(meta, issues);
   }
 
   if (!meta.appVersion) {
@@ -151,6 +163,58 @@ const validateBackupMeta = (
   }
 
   validateSchemaVersion(meta, currentSchemaVersion, issues, warnings);
+};
+
+const validateTablePolicy = (meta: BackupMeta, issues: string[]): void => {
+  if (meta.version === LEGACY_BACKUP_FORMAT_VERSION) {
+    if (meta.tablePolicy) {
+      issues.push(`Table policy is not allowed for legacy backup format ${LEGACY_BACKUP_FORMAT_VERSION}`);
+    }
+    return;
+  }
+
+  if (meta.version !== BACKUP_FORMAT_VERSION) {
+    issues.push(`Unsupported backup format version: ${meta.version}`);
+    return;
+  }
+
+  if (!meta.tablePolicy) {
+    issues.push(`Missing table policy for backup format ${BACKUP_FORMAT_VERSION}`);
+    return;
+  }
+
+  const { version, hash } = meta.tablePolicy;
+  if (version !== COMPLETE_TABLE_POLICY_VERSION || hash !== COMPLETE_TABLE_POLICY_HASH) {
+    issues.push(`Unknown table policy: ${version}/${hash}`);
+  }
+};
+
+const validateRecordCounts = (
+  recordCounts: unknown,
+  data: Record<string, BackupRecord[]>,
+  issues: string[]
+): void => {
+  if (!recordCounts || typeof recordCounts !== 'object' || Array.isArray(recordCounts)) {
+    issues.push('Invalid recordCounts: expected an object');
+    return;
+  }
+  const counts = recordCounts as Record<string, unknown>;
+  const tables = new Set([...Object.keys(data), ...Object.keys(counts)]);
+  for (const table of tables) {
+    const count = counts[table];
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) {
+      issues.push(`Invalid record count for ${table}: ${String(count)}`);
+      continue;
+    }
+    const records = data[table];
+    if (!Array.isArray(records)) {
+      issues.push(`Record count provided for missing or invalid table: ${table}`);
+      continue;
+    }
+    if (count !== records.length) {
+      issues.push(`Record count mismatch for ${table}: expected ${count}, found ${records.length}`);
+    }
+  }
 };
 
 const validateSchemaVersion = (

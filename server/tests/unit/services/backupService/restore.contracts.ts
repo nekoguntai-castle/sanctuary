@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import './backupServiceTestHarness';
+import { mockAllBackupTablesExist } from './backupServiceTestHarness';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 import { sampleUsers, sampleWallets } from '../../../fixtures/bitcoin';
 import { BackupService, type SanctuaryBackup, type BackupMeta } from '../../../../src/services/backupService';
 import { camelToSnakeCase } from '../../../../src/services/backupService/serialization';
 import { migrateBackup } from '../../../../src/services/backupService/migration';
 import * as encryption from '../../../../src/utils/encryption';
+import {
+  CACHE_TABLES,
+  COMPLETE_TABLE_POLICY_HASH,
+  COMPLETE_TABLE_POLICY_VERSION,
+  EPHEMERAL_TABLES,
+  TABLE_ORDER,
+} from '../../../../src/services/backupService/constants';
 
 export function registerBackupRestoreTests(): void {
 describe('restoreFromBackup', () => {
@@ -97,6 +104,7 @@ describe('restoreFromBackup', () => {
       { tablename: 'transaction_labels' },
       { tablename: 'address_labels' },
     ]);
+    mockAllBackupTablesExist();
   });
 
   describe('successful restore', () => {
@@ -207,6 +215,7 @@ describe('restoreFromBackup', () => {
         { tablename: 'price_data' },
         { tablename: 'fee_estimates' },
       ]);
+      mockAllBackupTablesExist();
       mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
 
       const client = mockPrismaClient as any;
@@ -224,6 +233,191 @@ describe('restoreFromBackup', () => {
       expect(result.success).toBe(true);
       expect(mockPrismaClient.priceData.createMany).toHaveBeenCalled();
       expect(mockPrismaClient.feeEstimate.createMany).toHaveBeenCalled();
+    });
+
+    it('should restore the complete durable graph and invalidate cache and ephemeral state', async () => {
+      const backup = createValidBackup();
+      backup.meta.version = '1.1.0';
+      backup.meta.tablePolicy = {
+        version: COMPLETE_TABLE_POLICY_VERSION,
+        hash: COMPLETE_TABLE_POLICY_HASH,
+      };
+      for (const table of TABLE_ORDER) {
+        backup.data[table] ??= [];
+      }
+      backup.data.user[0].preferences = {
+        fiatCurrency: 'EUR',
+        telegram: {
+          enabled: true,
+          botToken: 'restored-bot-token',
+          chatId: 'restored-chat-id',
+          wallets: { 'wallet-1': { enabled: true } },
+        },
+      };
+      backup.data.user.push({
+        id: 'user-2',
+        username: 'preferences-only',
+        password: '$2a$10$hash',
+        isAdmin: false,
+        sessionVersion: 0,
+        preferences: { fiatCurrency: 'USD' },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      backup.data.systemSetting = [
+        { id: 'smtp-host', key: 'smtp.host', value: JSON.stringify('smtp.example.test') },
+        { id: 'smtp-user', key: 'smtp.user', value: JSON.stringify('mailer') },
+        { id: 'smtp-password', key: 'smtp.password', value: JSON.stringify('encrypted-password') },
+        { id: 'smtp-from', key: 'smtp.fromAddress', value: JSON.stringify('mail@example.test') },
+        { id: 'smtp-port', key: 'smtp.port', value: JSON.stringify(587) },
+        { id: 'unrelated', key: 'confirmationThreshold', value: JSON.stringify(6) },
+      ];
+      backup.data.deviceUser = [{ id: 'device-user-1' }];
+      backup.data.deviceAccount = [{ id: 'device-account-1' }];
+      backup.data.webhookEndpoint = [{
+        id: 'endpoint-1',
+        enabled: true,
+        secretEncrypted: 'encrypted-secret',
+        headerConfig: {
+          headers: {
+            Authorization: 'Bearer restored-secret',
+          },
+        },
+      }];
+      backup.data.webhookDelivery = [{ id: 'delivery-1' }];
+      backup.data.vaultPolicy = [{ id: 'policy-1' }];
+      backup.data.approvalRequest = [{ id: 'approval-1' }];
+      backup.data.featureFlag = [{ id: 'flag-1' }];
+      backup.data.featureFlagAudit = [{ id: 'flag-audit-1' }];
+      backup.data.aIConversation = [{ id: 'conversation-1' }];
+      backup.data.aIMessage = [{
+        id: 'message-1',
+        content: '2026-07-30T12:34:56.000Z',
+        metadata: {
+          timestampLabel: '2026-07-30T12:34:56.000Z',
+          markerText: '__bigint__42',
+        },
+        createdAt: '2026-07-30T12:34:56.000Z',
+      }];
+      backup.data.aIInsight = [{ id: 'insight-1' }];
+      backup.data.agentApiKey = [{ id: 'agent-key-1', revokedAt: null }];
+      backup.meta.recordCounts = Object.fromEntries(
+        Object.entries(backup.data).map(([table, records]) => [table, records.length])
+      );
+
+      const client = mockPrismaClient as any;
+      const allTables = [...TABLE_ORDER, ...CACHE_TABLES, ...EPHEMERAL_TABLES];
+      mockPrismaClient.$queryRaw.mockResolvedValue(
+        allTables.map((table) => ({ tablename: camelToSnakeCase(table) }))
+      );
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+
+      const insertOrder: string[] = [];
+      let restoredUsers: any[] = [];
+      let restoredSettings: any[] = [];
+      let restoredWebhookEndpoints: any[] = [];
+      let restoredWebhookDeliveries: any[] = [];
+      let restoredAgentKeys: any[] = [];
+      let restoredAiMessages: any[] = [];
+      client.user.findMany.mockResolvedValue([{ id: 'user-1', sessionVersion: 7 }]);
+      for (const table of allTables) {
+        client[table].deleteMany.mockResolvedValue({ count: 0 });
+        client[table].createMany.mockImplementation(async ({ data }: { data: any[] }) => {
+          insertOrder.push(table);
+          return { count: data.length };
+        });
+      }
+      client.webhookEndpoint.createMany.mockImplementation(async ({ data }: { data: any[] }) => {
+        insertOrder.push('webhookEndpoint');
+        restoredWebhookEndpoints = data;
+        return { count: data.length };
+      });
+      client.agentApiKey.createMany.mockImplementation(async ({ data }: { data: any[] }) => {
+        insertOrder.push('agentApiKey');
+        restoredAgentKeys = data;
+        return { count: data.length };
+      });
+      client.webhookDelivery.createMany.mockImplementation(async ({ data }: { data: any[] }) => {
+        insertOrder.push('webhookDelivery');
+        restoredWebhookDeliveries = data;
+        return { count: data.length };
+      });
+      client.user.createMany.mockImplementation(async ({ data }: { data: any[] }) => {
+        insertOrder.push('user');
+        restoredUsers = data;
+        return { count: data.length };
+      });
+      client.systemSetting.createMany.mockImplementation(async ({ data }: { data: any[] }) => {
+        insertOrder.push('systemSetting');
+        restoredSettings = data;
+        return { count: data.length };
+      });
+      client.aIMessage.createMany.mockImplementation(async ({ data }: { data: any[] }) => {
+        insertOrder.push('aIMessage');
+        restoredAiMessages = data;
+        return { count: data.length };
+      });
+
+      const result = await backupService.restoreFromBackup(backup);
+
+      expect(result.success).toBe(true);
+      expect(insertOrder.indexOf('webhookEndpoint')).toBeLessThan(insertOrder.indexOf('webhookDelivery'));
+      expect(insertOrder.indexOf('vaultPolicy')).toBeLessThan(insertOrder.indexOf('approvalRequest'));
+      expect(insertOrder.indexOf('aIConversation')).toBeLessThan(insertOrder.indexOf('aIMessage'));
+      expect(restoredWebhookEndpoints[0]).toMatchObject({
+        enabled: false,
+        secretEncrypted: null,
+        headerConfig: null,
+      });
+      expect(restoredWebhookDeliveries[0]).toMatchObject({
+        status: 'dead',
+        nextAttemptAt: null,
+      });
+      expect(restoredAgentKeys[0].revokedAt).toBeInstanceOf(Date);
+      expect(restoredUsers[0].sessionVersion).toBe(8);
+      expect(restoredUsers[0].preferences).toMatchObject({
+        fiatCurrency: 'EUR',
+        telegram: {
+          enabled: false,
+          botToken: '',
+          chatId: '',
+          wallets: { 'wallet-1': { enabled: true } },
+        },
+      });
+      expect(restoredUsers[1].preferences).toEqual({ fiatCurrency: 'USD' });
+      expect(restoredSettings.find(record => record.key === 'smtp.host').value)
+        .toBe(JSON.stringify(''));
+      expect(restoredSettings.find(record => record.key === 'smtp.password').value)
+        .toBe(JSON.stringify(''));
+      expect(restoredSettings.find(record => record.key === 'smtp.port').value)
+        .toBe(JSON.stringify(587));
+      expect(restoredSettings.find(record => record.key === 'confirmationThreshold').value)
+        .toBe(JSON.stringify(6));
+      expect(restoredAiMessages[0]).toMatchObject({
+        content: '2026-07-30T12:34:56.000Z',
+        metadata: {
+          timestampLabel: '2026-07-30T12:34:56.000Z',
+          markerText: '__bigint__42',
+        },
+      });
+      expect(restoredAiMessages[0].createdAt).toBeInstanceOf(Date);
+      expect(client.priceData.deleteMany).toHaveBeenCalled();
+      expect(client.feeEstimate.deleteMany).toHaveBeenCalled();
+      for (const table of EPHEMERAL_TABLES) {
+        expect(client[table].deleteMany).toHaveBeenCalled();
+        expect(client[table].createMany).not.toHaveBeenCalled();
+      }
+    });
+
+    it('should fail closed when a user session version cannot be incremented safely', async () => {
+      const backup = createValidBackup();
+      backup.data.user[0].sessionVersion = 2_147_483_647;
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+
+      const result = await backupService.restoreFromBackup(backup);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot safely invalidate sessions for restored user user-1');
     });
 
     it('should revoke restored MCP API keys so old bearer tokens fail closed', async () => {

@@ -7,6 +7,11 @@
 /** Generic record shape for backup serialization (Prisma rows, JSON objects) */
 export type BackupRecord = Record<string, unknown>;
 
+export interface BackupTablePolicyRef {
+  version: string;
+  hash: string;
+}
+
 /**
  * Backup metadata
  */
@@ -19,6 +24,7 @@ export interface BackupMeta {
   description?: string;      // Optional description
   includesCache: boolean;    // Whether cache tables are included
   recordCounts: Record<string, number>; // Per-table record counts
+  tablePolicy?: BackupTablePolicyRef; // Required for complete-format backups
 }
 
 /**
