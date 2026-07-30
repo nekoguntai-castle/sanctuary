@@ -48,7 +48,7 @@ env:
 jobs:
   determine-scope:
     name: Determine Quality Scope
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-determine-scope
@@ -103,7 +103,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
@@ -156,7 +156,7 @@ jobs:
 
   lockfile-peer-resolution:
     name: Lockfile peer resolution
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
@@ -212,7 +212,7 @@ jobs:
 
   dependency-audit:
     name: Dependency audit (npm)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
@@ -239,38 +239,17 @@ jobs:
           git clone --quiet --no-hardlinks "$source_workspace" "$audit_workdir/repo"
           cd "$audit_workdir/repo"
 
-          # Phase B: server, gateway, shared are workspace members; root npm audit
-          # covers them transitively. Stand-alone trees audit individually.
-          package_dirs=(
-            .
-            llm-egress-proxy
-            website
-            scripts/verify-addresses
-            scripts/verify-psbt
-          )
-
-          run_audit() {
-            label="$1"
-            shift
-            for attempt in 1 2 3; do
-              echo "npm audit ($label), attempt $attempt"
-              if "$@"; then
-                return 0
-              fi
-              if [ "$attempt" -eq 3 ]; then
-                return 1
-              fi
-              sleep $((attempt * 10))
-            done
-          }
-
-          for package_dir in "${package_dirs[@]}"; do
-            cache_name="${package_dir//\//-}"
-            if [ "$package_dir" = "." ]; then
-              run_audit root npm audit --audit-level=high --cache "$audit_workdir/.npm-cache/root"
-            else
-              run_audit "$package_dir" npm --prefix "$package_dir" audit --audit-level=high --cache "$audit_workdir/.npm-cache/$cache_name"
+          # One fail-closed policy owns every workspace and standalone lockfile.
+          # Retrying the complete aggregate preserves global exception accounting.
+          for attempt in 1 2 3; do
+            echo "npm audit aggregate gate, attempt $attempt"
+            if node scripts/ci/npm-audit-gate.mjs; then
+              exit 0
             fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 10))
           done
           QUALITY_NPM_AUDIT
 
@@ -301,7 +280,7 @@ jobs:
 
   gitleaks:
     name: Secret scan (gitleaks)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [determine-scope]
     if: always()
@@ -379,7 +358,7 @@ jobs:
 
   semgrep-sast:
     name: SAST (Semgrep)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     needs: [determine-scope]
     if: |
@@ -487,7 +466,7 @@ jobs:
 
   workflow-lint:
     name: Workflow lint (actionlint)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_workflow_quality == 'true'
@@ -554,7 +533,7 @@ jobs:
 
   workflow-action-runtime-guard:
     name: Workflow action runtime guard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_workflow_quality == 'true'
@@ -603,7 +582,7 @@ jobs:
 
   ci-classifier-tests:
     name: CI classifier tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_ci_classifier_tests == 'true'
@@ -772,7 +751,7 @@ jobs:
 
   lizard:
     name: Cyclomatic complexity (lizard)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
@@ -821,7 +800,7 @@ jobs:
 
   jscpd:
     name: Duplication (jscpd)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
@@ -890,7 +869,7 @@ jobs:
 
   large-file-classification:
     name: Large-file classification
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: [determine-scope]
     if: always() && needs.determine-scope.outputs.run_repo_quality == 'true'
@@ -937,7 +916,7 @@ jobs:
 
   quality-required-checks:
     name: Code Quality Required Checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     if: always()
     needs: [determine-scope, lint, lockfile-peer-resolution, dependency-audit, gitleaks, semgrep-sast, workflow-lint, workflow-action-runtime-guard, ci-classifier-tests, lizard, jscpd, large-file-classification]

@@ -291,20 +291,7 @@ run_lizard() {
 }
 
 run_npm_audit() {
-  npm audit --audit-level=high
-  npm audit --workspace server --audit-level=high
-  npm audit --workspace gateway --audit-level=high
-
-  local package_dirs=(
-    llm-egress-proxy
-    website
-    scripts/verify-addresses
-    scripts/verify-psbt
-  )
-
-  for package_dir in "${package_dirs[@]}"; do
-    npm --prefix "$package_dir" audit --audit-level=high
-  done
+  node scripts/ci/npm-audit-gate.mjs
 }
 
 run_jscpd() {

@@ -84,7 +84,7 @@ jobs:
   # ============================================
   detect-changes:
     name: Detect Changed Files
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     outputs:
       full_scan: ${{ steps.classify.outputs.full_scan }}
@@ -126,7 +126,7 @@ jobs:
   quick-test-hygiene:
     name: Quick Test Hygiene
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.test_files != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [detect-changes]
     env:
@@ -190,7 +190,7 @@ jobs:
        needs.quick-test-hygiene.result == 'skipped') &&
       (needs.quick-critical-mutation.result == 'success' ||
        needs.quick-critical-mutation.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [detect-changes, quick-test-hygiene, quick-critical-mutation]
     env:
@@ -248,7 +248,7 @@ jobs:
   quick-backend-typecheck:
     name: Quick Backend Typecheck
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.backend_changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [detect-changes]
     env:
@@ -300,7 +300,7 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.detect-changes.outputs.backend_changed == 'true' &&
       needs.quick-backend-typecheck.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [detect-changes, quick-backend-typecheck]
     env:
@@ -399,7 +399,7 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.detect-changes.outputs.backend_integration_changed == 'true' &&
       needs.quick-backend-tests.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     needs: [detect-changes, quick-backend-tests]
     env:
@@ -498,7 +498,7 @@ jobs:
       needs.detect-changes.outputs.critical_mutation_changed == 'true' &&
       (needs.quick-backend-integration-smoke.result == 'success' ||
        needs.quick-backend-integration-smoke.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     needs: [detect-changes, quick-backend-integration-smoke]
     strategy:
@@ -574,7 +574,7 @@ jobs:
       needs.detect-changes.outputs.critical_mutation_changed == 'true' &&
       (needs.quick-critical-mutation-shards.result == 'success' ||
        needs.quick-critical-mutation-shards.result == 'failure')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     needs: [detect-changes, quick-critical-mutation-shards]
     defaults:
@@ -628,7 +628,7 @@ jobs:
   quick-gateway-tests:
     name: Quick Gateway Tests
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.gateway_changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: [detect-changes]
     env:
@@ -695,7 +695,7 @@ jobs:
   quick-llm-egress-proxy-tests:
     name: Quick LLM Egress Proxy Tests
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.llm_egress_proxy_changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: [detect-changes]
     env:
@@ -772,7 +772,7 @@ jobs:
       needs.detect-changes.outputs.browser_smoke_changed == 'true' &&
       (needs.quick-frontend-tests.result == 'success' ||
        needs.quick-frontend-tests.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: [detect-changes, quick-frontend-tests]
     timeout-minutes: 30
     env:
@@ -863,7 +863,7 @@ jobs:
       needs.detect-changes.outputs.render_changed == 'true' &&
       (needs.quick-browser-smoke.result == 'success' ||
        needs.quick-browser-smoke.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: [detect-changes, quick-browser-smoke]
     timeout-minutes: 30
     env:
@@ -952,7 +952,7 @@ jobs:
     # and requires the full-lane summary, so merge-queue eligibility cannot
     # be satisfied by a no-op required check.
     if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs:
       - detect-changes
@@ -1030,7 +1030,7 @@ jobs:
   full-lane-ready:
     name: Full Lane Ready
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     needs:
       - detect-changes
@@ -1125,7 +1125,7 @@ jobs:
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     needs: [detect-changes, full-lane-ready]
     env:
@@ -1183,7 +1183,7 @@ jobs:
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     needs: [detect-changes, full-lane-ready, full-backend-typecheck]
     strategy:
@@ -1301,7 +1301,7 @@ jobs:
       always() &&
       (needs.full-backend-unit-coverage-shards.result == 'success' ||
        needs.full-backend-unit-coverage-shards.result == 'failure')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [detect-changes, full-lane-ready, full-backend-typecheck, full-backend-unit-coverage-shards]
     env:
@@ -1388,7 +1388,7 @@ jobs:
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_integration_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 75
     # Serialized to run ALONE among the Postgres-heavy full lanes. Root cause of
     # the recurring "table public.users does not exist": the Forgejo runner
@@ -1535,7 +1535,7 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.backend_changed == 'true' ||
        needs.detect-changes.outputs.backend_integration_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: [detect-changes, full-lane-ready, full-backend-typecheck, full-backend-unit-coverage, full-backend-integration-tests]
     steps:
@@ -1622,7 +1622,7 @@ jobs:
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     needs: [detect-changes, full-lane-ready]
     env:
@@ -1691,7 +1691,7 @@ jobs:
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     needs: [detect-changes, full-lane-ready]
     env:
@@ -1754,7 +1754,7 @@ jobs:
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1]
     env:
@@ -1818,7 +1818,7 @@ jobs:
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     needs: [detect-changes, full-lane-ready, full-frontend-coverage-shard-1, full-frontend-coverage-shard-2]
     env:
@@ -1892,7 +1892,7 @@ jobs:
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.frontend_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: [detect-changes, full-lane-ready, full-frontend-typechecks, full-frontend-coverage-merge]
 
@@ -1953,7 +1953,7 @@ jobs:
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.gateway_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     needs: [detect-changes, full-lane-ready]
     env:
@@ -2019,7 +2019,7 @@ jobs:
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.llm_egress_proxy_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     needs: [detect-changes, full-lane-ready]
     env:
@@ -2100,7 +2100,7 @@ jobs:
       needs.full-lane-ready.result == 'success' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.critical_mutation_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     needs: [detect-changes, full-lane-ready]
     strategy:
@@ -2176,7 +2176,7 @@ jobs:
       always() &&
       (needs.full-critical-mutation-shards.result == 'success' ||
        needs.full-critical-mutation-shards.result == 'failure')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     needs: [detect-changes, full-lane-ready, full-critical-mutation-shards]
     defaults:
@@ -2235,7 +2235,7 @@ jobs:
       (needs.detect-changes.outputs.browser_smoke_changed == 'true' ||
        needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     # Serialized after full-backend-unit-coverage-shards so the Postgres-heavy
     # full lanes do not co-reside on the shared DIND daemon (see the
@@ -2504,7 +2504,7 @@ jobs:
       (needs.detect-changes.outputs.render_changed == 'true' ||
        needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     needs: [detect-changes, full-lane-ready, full-browser-e2e-tests]
     env:
@@ -2603,7 +2603,7 @@ jobs:
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.build_changed == 'true')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     needs: [detect-changes, full-lane-ready]
     env:
@@ -2661,7 +2661,7 @@ jobs:
   full-test-summary:
     name: Full Test Summary
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     needs: [detect-changes, full-lane-ready, full-backend-tests, full-frontend-tests, full-gateway-tests, full-llm-egress-proxy-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
 

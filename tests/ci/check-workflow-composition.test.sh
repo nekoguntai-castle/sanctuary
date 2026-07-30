@@ -94,6 +94,111 @@ assert_not_contains() {
   fi
 }
 
+node24_runner_report() {
+  awk '
+      function finish_job() {
+        if (job != "" && !selected) {
+          print job
+        }
+        job = ""
+      }
+
+      /^jobs:$/ {
+        in_jobs = 1
+        next
+      }
+
+      in_jobs && /^[^ ]/ {
+        if ($0 ~ /^#/) {
+          next
+        }
+        finish_job()
+        in_jobs = 0
+      }
+
+      in_jobs && /^  [[:alnum:]_-]+:$/ {
+        finish_job()
+        job = $0
+        sub(/^  /, "", job)
+        sub(/:$/, "", job)
+        selected = 0
+        count += 1
+        next
+      }
+
+      in_jobs && /^    runs-on: ubuntu-22\.04$/ {
+        selected = 1
+      }
+
+      END {
+        finish_job()
+        print "__COUNT__=" count
+      }
+    ' "$1"
+}
+
+assert_jobs_use_node24_runners() {
+  local file="$1"
+  local label="$2"
+  local expected_jobs="$3"
+  local report
+  local actual_jobs
+  local missing
+
+  if [ ! -f "$file" ]; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: file not found: $file")
+    return 1
+  fi
+
+  report="$(node24_runner_report "$file")"
+  actual_jobs="$(printf '%s\n' "$report" | sed -n 's/^__COUNT__=//p')"
+  missing="$(printf '%s\n' "$report" | sed '/^__COUNT__=/d')"
+
+  if [ "$actual_jobs" != "$expected_jobs" ]; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: expected $expected_jobs jobs, parsed ${actual_jobs:-0}")
+    echo "FAIL: $label" >&2
+  elif [ -z "$missing" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: jobs missing ubuntu-22.04: $(printf '%s' "$missing" | tr '\n' ' ')")
+    echo "FAIL: $label" >&2
+  fi
+}
+
+assert_runner_parser_rejects_post_comment_drift() {
+  local fixture
+  local report
+  local actual_jobs
+  local missing
+
+  fixture="$(mktemp)"
+  printf '%s\n' \
+    'jobs:' \
+    '  valid-job:' \
+    '    runs-on: ubuntu-22.04' \
+    '# Column-zero comments must not truncate job scanning.' \
+    '  invalid-job:' \
+    '    runs-on: ubuntu-latest' > "$fixture"
+
+  report="$(node24_runner_report "$fixture")"
+  rm -f "$fixture"
+
+  actual_jobs="$(printf '%s\n' "$report" | sed -n 's/^__COUNT__=//p')"
+  missing="$(printf '%s\n' "$report" | sed '/^__COUNT__=/d')"
+  if [ "$actual_jobs" = "2" ] && [ "$missing" = "invalid-job" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: runner parser rejects post-comment drift"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("runner parser did not reject post-comment drift")
+    echo "FAIL: runner parser rejects post-comment drift" >&2
+  fi
+}
+
 # Each assertion below identifies one lock-protected wrapper invocation
 # and asserts the canonical order. The "command body" anchor (last needle)
 # distinguishes which step we are asserting on so two distinct lock-protected
@@ -986,7 +1091,7 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "dependency-audit:" \
   'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-dependency-audit' \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-audit.log"' \
-  "run_audit root npm audit" \
+  "node scripts/ci/npm-audit-gate.mjs" \
   "Write dependency audit diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Dependency Audit"' \
   "ci-diagnostics-quality-dependency-audit"
@@ -1087,6 +1192,18 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "Write quality required checks diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality Required Checks"' \
   "ci-diagnostics-quality-required-checks"
+
+assert_jobs_use_node24_runners \
+  "$QUALITY_WORKFLOW" \
+  "quality jobs select Node 24-capable runners" \
+  13
+
+assert_jobs_use_node24_runners \
+  "$REPO_ROOT/.github/workflows/test.yml" \
+  "test jobs select Node 24-capable runners" \
+  32
+
+assert_runner_parser_rejects_post_comment_drift
 
 # --- summary ----------------------------------------------------------------
 echo
