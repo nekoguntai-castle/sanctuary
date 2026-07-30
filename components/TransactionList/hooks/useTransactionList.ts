@@ -57,6 +57,7 @@ export function useTransactionList({
   // Full transaction details (with inputs/outputs)
   const [fullTxDetails, setFullTxDetails] = useState<Transaction | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const detailGenerationRef = useRef(0);
 
   // Load explorer URL from server config
   useEffect(() => {
@@ -73,23 +74,33 @@ export function useTransactionList({
 
   // Fetch full transaction details when modal opens
   useEffect(() => {
-    if (selectedTx) {
+    const generation = ++detailGenerationRef.current;
+    const txid = selectedTx?.txid;
+    setFullTxDetails(null);
+
+    if (txid) {
       setLoadingDetails(true);
-      setFullTxDetails(null);
-      transactionsApi.getTransaction(selectedTx.txid)
-        .then(details => {
+      transactionsApi.getTransaction(txid)
+        .then((details) => {
+          if (detailGenerationRef.current !== generation) return;
           setFullTxDetails(details);
         })
-        .catch(err => {
-          log.error('Failed to fetch transaction details', { error: err, txid: selectedTx.txid });
+        .catch((err) => {
+          if (detailGenerationRef.current !== generation) return;
+          log.error('Failed to fetch transaction details', { error: err, txid });
         })
         .finally(() => {
+          if (detailGenerationRef.current !== generation) return;
           setLoadingDetails(false);
         });
     } else {
-      setFullTxDetails(null);
+      setLoadingDetails(false);
     }
-  }, [selectedTx]);
+
+    return () => {
+      detailGenerationRef.current += 1;
+    };
+  }, [selectedTx?.txid]);
 
   // Filter out replaced transactions (rbfStatus === 'replaced')
   const filteredTransactions = useMemo(() => {
@@ -193,12 +204,13 @@ export function useTransactionList({
   useEffect(() => {
     if (!ownsSelection) return;
     if (txParam) {
-      if (selectedTx?.txid !== txParam) {
-        const found = filteredTransactions.find((tx) => tx.txid === txParam);
-        if (found) {
-          setSelectedTx(found);
-          setEditingLabels(false);
-        }
+      const found = filteredTransactions.find((tx) => tx.txid === txParam) ?? null;
+      if (!found && selectedTx) {
+        setSelectedTx(null);
+        setEditingLabels(false);
+      } else if (found && selectedTx?.txid !== txParam) {
+        setSelectedTx(found);
+        setEditingLabels(false);
       }
     } else if (selectedTx) {
       setSelectedTx(null);

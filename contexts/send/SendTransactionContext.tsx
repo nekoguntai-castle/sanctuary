@@ -120,7 +120,7 @@ export interface SendTransactionProviderProps {
 // PROVIDER COMPONENT
 // ============================================================================
 
-export function SendTransactionProvider({
+function SendTransactionProviderState({
   children,
   wallet,
   devices,
@@ -450,6 +450,10 @@ export function SendTransactionProvider({
       {children}
     </SendTransactionContext.Provider>
   );
+}
+
+export function SendTransactionProvider(props: SendTransactionProviderProps) {
+  return <SendTransactionProviderState key={props.wallet.id} {...props} />;
 }
 
 // ============================================================================

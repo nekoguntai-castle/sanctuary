@@ -196,6 +196,42 @@ describe('SendTransactionContext', () => {
       expect(screen.getByTestId('selected-total')).toHaveTextContent('1000000');
     });
 
+    it('resets all reducer-owned state when the wallet identity changes', async () => {
+      const user = userEvent.setup();
+      const view = renderWithProvider(<TestConsumer />);
+
+      await user.click(screen.getByTestId('set-standard'));
+      await user.click(screen.getByTestId('next'));
+      await user.click(screen.getByTestId('set-output-address'));
+      await user.click(screen.getByTestId('set-output-amount'));
+      await user.click(screen.getByTestId('toggle-utxo'));
+      await user.click(screen.getByTestId('load-draft'));
+
+      expect(screen.getByTestId('current-step')).toHaveTextContent('outputs');
+      expect(screen.getByTestId('first-output-address')).toHaveTextContent('bc1qdraft');
+      expect(screen.getByTestId('selected-utxos-count')).toHaveTextContent('1');
+
+      view.rerender(
+        <SendTransactionProvider
+          wallet={{ ...mockWallet, id: 'wallet-2', name: 'Second Wallet' }}
+          devices={mockDevices}
+          utxos={mockUtxos}
+          walletAddresses={mockWalletAddresses}
+          fees={{ ...mockFees, halfHourFee: 17 }}
+        >
+          <TestConsumer />
+        </SendTransactionProvider>,
+      );
+
+      expect(screen.getByTestId('current-step')).toHaveTextContent('type');
+      expect(screen.getByTestId('tx-type')).toHaveTextContent('none');
+      expect(screen.getByTestId('first-output-address')).toHaveTextContent('');
+      expect(screen.getByTestId('first-output-amount')).toHaveTextContent('');
+      expect(screen.getByTestId('selected-utxos-count')).toHaveTextContent('0');
+      expect(screen.getByTestId('show-coin-control')).toHaveTextContent('false');
+      expect(screen.getByTestId('fee-rate')).toHaveTextContent('17');
+    });
+
     it('filters out frozen UTXOs from spendable', () => {
       const frozenUtxos: UTXO[] = [
         { ...mockUtxos[0], frozen: true },

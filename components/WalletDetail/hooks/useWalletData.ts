@@ -1,16 +1,4 @@
-/**
- * useWalletData Hook
- *
- * Manages all wallet data fetching, pagination, and background data state.
- * This includes: wallet, devices, transactions, UTXOs, addresses, privacy,
- * drafts, explorer URL, groups, and share info.
- *
- * Extracted from WalletDetail.tsx to isolate data-layer concerns.
- * Loader functions and formatters live in sibling modules; this file
- * orchestrates state and calls into those pure helpers.
- */
-
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useLayoutEffect, useRef } from 'react';
 import { usePaginatedList } from '../../../hooks/usePaginatedList';
 import { useNavigate } from 'react-router-dom';
 import type {
@@ -26,7 +14,6 @@ import { createLogger } from '../../../utils/logger';
 import { logError } from '../../../utils/errorHandler';
 import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/nodeConfig';
 
-// Extracted pure modules
 import {
   TX_PAGE_SIZE, UTXO_PAGE_SIZE, ADDRESS_PAGE_SIZE,
 } from './walletDataTypes';
@@ -42,16 +29,16 @@ import {
   loadGroups,
   loadWalletShareInfo,
 } from './walletDataLoaders';
+import type { AuxiliaryData } from './walletDataLoaders';
 import { formatWalletFromApi } from './walletDataFormatters';
+import {
+  createWalletRequestOwnership,
+  type WalletRouteToken,
+} from './walletRequestOwnership';
 
-// Re-export types so existing consumers importing from this file still work
 export type { UseWalletDataParams, UseWalletDataReturn } from './walletDataTypes';
 
 const log = createLogger('useWalletData');
-
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
 
 export function useWalletData({
   id,
@@ -60,65 +47,44 @@ export function useWalletData({
   const navigate = useNavigate();
   const { handleError } = useErrorHandler();
   const { addNotification: addAppNotification, removeNotificationsByType } = useAppNotifications();
+  const routeKey = `${id ?? ''}:${user?.id ?? ''}`;
+  const ownershipRef = useRef<ReturnType<typeof createWalletRequestOwnership> | null>(null);
+  if (!ownershipRef.current) {
+    ownershipRef.current = createWalletRequestOwnership(routeKey);
+  }
+  const ownership = ownershipRef.current;
 
-  // -----------------------------------------------------------------------
-  // Core state
-  // -----------------------------------------------------------------------
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // -----------------------------------------------------------------------
-  // Transactions (paginated)
-  // -----------------------------------------------------------------------
   const txList = usePaginatedList<Transaction>();
   const [transactionStats, setTransactionStats] = useState<transactionsApi.TransactionStats | null>(null);
 
-  // -----------------------------------------------------------------------
-  // UTXOs (paginated)
-  // -----------------------------------------------------------------------
   const utxoList = usePaginatedList<UTXO>();
   const [utxoSummary, setUtxoSummary] = useState<{ count: number; totalBalance: number } | null>(null);
   const [utxoStats, setUtxoStats] = useState<UTXO[]>([]);
   const [loadingUtxoStats, setLoadingUtxoStats] = useState(false);
 
-  // -----------------------------------------------------------------------
-  // Privacy
-  // -----------------------------------------------------------------------
   const [privacyData, setPrivacyData] = useState<transactionsApi.UtxoPrivacyInfo[]>([]);
   const [privacySummary, setPrivacySummary] = useState<transactionsApi.WalletPrivacySummary | null>(null);
   const [showPrivacy] = useState(true);
 
-  // -----------------------------------------------------------------------
-  // Addresses (paginated)
-  // -----------------------------------------------------------------------
   const addrList = usePaginatedList<Address>();
   const [addressSummary, setAddressSummary] = useState<transactionsApi.AddressSummary | null>(null);
 
   // Memoize wallet addresses to prevent infinite re-renders in TransactionList
   const walletAddressStrings = useMemo(() => addrList.items.map(a => a.address), [addrList.items]);
 
-  // -----------------------------------------------------------------------
-  // Drafts
-  // -----------------------------------------------------------------------
   const [draftsCount, setDraftsCount] = useState(0);
 
-  // -----------------------------------------------------------------------
-  // Explorer
-  // -----------------------------------------------------------------------
   const [explorerUrl, setExplorerUrl] = useState(getDefaultNodeExternalServiceUrl('mainnet'));
 
-  // -----------------------------------------------------------------------
-  // Users & Groups & Share info
-  // -----------------------------------------------------------------------
   const [users] = useState<User[]>([]);
   const [groups, setGroups] = useState<authApi.UserGroup[]>([]);
   const [walletShareInfo, setWalletShareInfo] = useState<walletsApi.WalletShareInfo | null>(null);
 
-  // -----------------------------------------------------------------------
-  // Sync effects for pagination boundaries
-  // -----------------------------------------------------------------------
   useEffect(() => {
     if (addressSummary) {
       addrList.setHasMore(addrList.offset < addressSummary.totalAddresses);
@@ -131,29 +97,50 @@ export function useWalletData({
     }
   }, [utxoSummary, utxoList.offset]);
 
-  // Reset UTXO state when wallet ID changes
-  useEffect(() => {
+  useLayoutEffect(() => {
+    ownership.setRoute(routeKey);
+    setWallet(null);
+    setDevices([]);
+    setLoading(true);
+    setError(null);
+    txList.reset();
+    setTransactionStats(null);
     utxoList.reset();
     setUtxoSummary(null);
     setUtxoStats([]);
     setLoadingUtxoStats(false);
-  }, [id]);
+    setPrivacyData([]);
+    setPrivacySummary(null);
+    addrList.reset();
+    setAddressSummary(null);
+    setDraftsCount(0);
+    setExplorerUrl(getDefaultNodeExternalServiceUrl('mainnet'));
+    setGroups([]);
+    setWalletShareInfo(null);
+  }, [routeKey]);
 
-  // -----------------------------------------------------------------------
-  // Load helpers (thin wrappers that call loaders and apply state)
-  // -----------------------------------------------------------------------
+  useEffect(() => () => ownership.invalidate(), [ownership]);
+
+  const ownsRoute = (token: WalletRouteToken, walletId: string): boolean => (
+    ownership.isRouteOwner(token) && walletId === id
+  );
 
   const loadAddressSummaryFn = async (walletId: string) => {
+    const routeToken = ownership.captureRoute(routeKey);
+    if (!ownsRoute(routeToken, walletId)) return;
     const summary = await loadAddressSummaryLoader(walletId);
-    if (summary) setAddressSummary(summary);
+    if (summary && ownsRoute(routeToken, walletId)) setAddressSummary(summary);
   };
 
   const loadAddressesFn = async (walletId: string, limit: number, offset: number, reset = false) => {
+    const routeToken = ownership.captureRoute(routeKey);
+    if (!ownsRoute(routeToken, walletId)) return;
     try {
       addrList.setLoading(true);
       if (reset) addrList.setOffset(0);
 
       const formattedAddrs = await loadAddressPage(walletId, offset, limit);
+      if (!ownsRoute(routeToken, walletId)) return;
 
       if (reset) {
         addrList.replaceItems(formattedAddrs, formattedAddrs.length,
@@ -165,50 +152,57 @@ export function useWalletData({
       }
     } catch (err) {
       logError(log, err, 'Failed to load addresses');
-      addrList.setLoading(false);
+      if (ownsRoute(routeToken, walletId)) addrList.setLoading(false);
     }
   };
 
   const loadUtxos = async (walletId: string, limit: number, offset: number) => {
+    const routeToken = ownership.captureRoute(routeKey);
+    if (!ownsRoute(routeToken, walletId)) return;
     utxoList.setLoading(true);
 
     try {
       const page = await loadUtxoPage(walletId, offset, limit);
+      if (!ownsRoute(routeToken, walletId)) return;
       setUtxoSummary({ count: page.count, totalBalance: page.totalBalance });
       utxoList.appendItems(page.utxos, page.count, 'total');
     } catch (err) {
       logError(log, err, 'Failed to load UTXOs');
-      utxoList.setLoading(false);
+      if (ownsRoute(routeToken, walletId)) utxoList.setLoading(false);
     }
   };
 
   const loadUtxosForStatsFn = async (walletId: string) => {
+    const routeToken = ownership.captureRoute(routeKey);
+    if (!ownsRoute(routeToken, walletId)) return;
     setLoadingUtxoStats(true);
     try {
       const formattedUTXOs = await loadUtxosForStatsLoader(walletId);
-      setUtxoStats(formattedUTXOs);
+      if (ownsRoute(routeToken, walletId)) setUtxoStats(formattedUTXOs);
     } catch (err) {
       logError(log, err, 'Failed to load UTXOs for stats');
     } finally {
-      setLoadingUtxoStats(false);
+      if (ownsRoute(routeToken, walletId)) setLoadingUtxoStats(false);
     }
   };
 
-  // -----------------------------------------------------------------------
-  // Pagination actions
-  // -----------------------------------------------------------------------
-
   const loadMoreTransactions = async () => {
     if (!id || txList.loading || !txList.hasMore) return;
+    const walletId = id;
+    const routeToken = ownership.captureRoute(routeKey);
+    if (!ownsRoute(routeToken, walletId)) return;
 
     try {
       txList.setLoading(true);
-      const formattedTxs = await loadTransactionPage(id, txList.offset, TX_PAGE_SIZE);
+      const formattedTxs = await loadTransactionPage(walletId, txList.offset, TX_PAGE_SIZE);
+      if (!ownsRoute(routeToken, walletId)) return;
       txList.appendItems(formattedTxs, TX_PAGE_SIZE);
     } catch (err) {
       logError(log, err, 'Failed to load more transactions');
-      handleError(err, 'Failed to Load More Transactions');
-      txList.setLoading(false);
+      if (ownsRoute(routeToken, walletId)) {
+        handleError(err, 'Failed to Load More Transactions');
+        txList.setLoading(false);
+      }
     }
   };
 
@@ -217,44 +211,7 @@ export function useWalletData({
     await loadUtxos(id, UTXO_PAGE_SIZE, utxoList.offset);
   };
 
-  // -----------------------------------------------------------------------
-  // Main data fetcher
-  // -----------------------------------------------------------------------
-
-  const fetchData = useCallback(async (isRefresh = false) => {
-    if (!id || !user) return;
-
-    if (!isRefresh) setLoading(true);
-    setError(null);
-
-    // 1. Fetch core wallet -- critical, fail-fast
-    let apiWallet: Wallet;
-    try {
-      apiWallet = await fetchWalletCore(id);
-    } catch (err) {
-      log.error('Failed to fetch wallet', { error: err });
-      if (err instanceof ApiError) {
-        if (err.status === 404) { navigate('/wallets'); return; }
-        setError(err.message);
-      } else {
-        setError('Failed to load wallet');
-      }
-      setLoading(false);
-      return;
-    }
-
-    const formattedWallet = formatWalletFromApi(apiWallet, user.id);
-    setWallet(formattedWallet);
-    setLoading(false);
-
-    // 2. Fetch auxiliary data in parallel (non-critical)
-    const aux = await fetchAuxiliaryData(id, apiWallet, user.id, {
-      tx: TX_PAGE_SIZE,
-      utxo: UTXO_PAGE_SIZE,
-      address: ADDRESS_PAGE_SIZE,
-    });
-
-    // Apply auxiliary results to state (null values indicate failed fetches)
+  const applyAuxiliaryData = useCallback((aux: AuxiliaryData, walletId: string) => {
     if (aux.explorerUrl) setExplorerUrl(aux.explorerUrl);
     setDevices(aux.devices);
     if (aux.transactions !== null) {
@@ -275,47 +232,86 @@ export function useWalletData({
           ? aux.addresses.length < aux.addressSummary.totalAddresses
           : aux.addresses.length === ADDRESS_PAGE_SIZE);
     }
-
-    // Drafts + notifications
     setDraftsCount(aux.drafts.length);
     if (aux.drafts.length > 0) {
       addAppNotification({
-        type: 'pending_drafts',
-        scope: 'wallet',
-        scopeId: id,
-        severity: 'warning',
+        type: 'pending_drafts', scope: 'wallet', scopeId: walletId, severity: 'warning',
         title: `${aux.drafts.length} pending draft${aux.drafts.length > 1 ? 's' : ''}`,
-        message: 'Resume or broadcast your draft transactions',
-        count: aux.drafts.length,
-        actionUrl: `/wallets/${id}`,
-        actionLabel: 'View Drafts',
-        dismissible: true,
-        persistent: false,
+        message: 'Resume or broadcast your draft transactions', count: aux.drafts.length,
+        actionUrl: `/wallets/${walletId}`, actionLabel: 'View Drafts',
+        dismissible: true, persistent: false,
       });
     } else {
-      removeNotificationsByType('pending_drafts', id);
+      removeNotificationsByType('pending_drafts', walletId);
     }
+  }, [addAppNotification, addrList, removeNotificationsByType, txList, utxoList]);
+
+  const fetchData = useCallback(async (isRefresh = false) => {
+    const request = ownership.beginFetch(routeKey);
+    const ownsRequest = () => ownership.isFetchOwner(request);
+    if (!id || !user || !ownsRequest()) return;
+
+    if (!isRefresh) setLoading(true);
+    setError(null);
+
+    // 1. Fetch core wallet -- critical, fail-fast
+    let apiWallet: Wallet;
+    try {
+      apiWallet = await fetchWalletCore(id);
+    } catch (err) {
+      log.error('Failed to fetch wallet', { error: err });
+      if (!ownsRequest()) return;
+      if (err instanceof ApiError) {
+        if (err.status === 404) { navigate('/wallets'); return; }
+        setError(err.message);
+      } else {
+        setError('Failed to load wallet');
+      }
+      setLoading(false);
+      return;
+    }
+
+    if (!ownsRequest()) return;
+    const formattedWallet = formatWalletFromApi(apiWallet, user.id);
+    setWallet(formattedWallet);
+    setLoading(false);
+
+    // 2. Fetch auxiliary data in parallel (non-critical)
+    const aux = await fetchAuxiliaryData(id, apiWallet, user.id, {
+      tx: TX_PAGE_SIZE,
+      utxo: UTXO_PAGE_SIZE,
+      address: ADDRESS_PAGE_SIZE,
+    });
+    if (!ownsRequest()) return;
+
+    applyAuxiliaryData(aux, id);
 
     // 3. Groups & share info (sequential, after main parallel batch)
     const fetchedGroups = await loadGroups(user);
+    if (!ownsRequest()) return;
     setGroups(fetchedGroups);
 
     const shareInfo = await loadWalletShareInfo(id);
+    if (!ownsRequest()) return;
     setWalletShareInfo(shareInfo);
-  }, [id, user]);
+  }, [
+    applyAuxiliaryData,
+    id,
+    navigate,
+    ownership,
+    routeKey,
+    user,
+  ]);
 
-  // -----------------------------------------------------------------------
-  // Initial load effect
-  // -----------------------------------------------------------------------
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, [id, user]);
 
   // Refetch wallet data when window becomes visible (handles missed WS events)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && id && user) {
-        fetchData(true);
+        void fetchData(true);
       }
     };
 
@@ -325,9 +321,6 @@ export function useWalletData({
     };
   }, [id, user]);
 
-  // -----------------------------------------------------------------------
-  // Return
-  // -----------------------------------------------------------------------
   return {
     // Core
     wallet,

@@ -11,6 +11,7 @@ import * as devicesApi from '../../../../src/api/devices';
 import * as draftsApi from '../../../../src/api/drafts';
 import * as transactionsApi from '../../../../src/api/transactions';
 import * as walletsApi from '../../../../src/api/wallets';
+import type { Wallet } from '../../../../types';
 
 const mockNavigate = vi.fn();
 const mockHandleError = vi.fn();
@@ -97,22 +98,22 @@ vi.mock('../../../../src/api/admin', () => ({
   getGroups: vi.fn(),
 }));
 
-const baseWallet = {
+const baseWallet: Wallet = {
   id: 'wallet-1',
   name: 'Primary',
   type: 'multi_sig',
   network: 'mainnet',
   balance: 123456,
-  scriptType: 'wsh',
+  scriptType: 'wsh' as Wallet['scriptType'],
   descriptor: "wsh(sortedmulti(2,[aabbccdd/48'/0'/0'/2']xpub...))",
   fingerprint: 'aabbccdd',
-  quorum: '2',
+  quorum: 2,
   totalSigners: 3,
   lastSyncedAt: '2026-01-01T00:00:00.000Z',
   lastSyncStatus: 'success',
   syncInProgress: false,
   isShared: true,
-  sharedWith: [],
+  sharedWith: { userCount: 0 },
   userRole: 'owner',
   canEdit: true,
 };
@@ -129,6 +130,16 @@ const makeAddress = (id: string) => ({
   isChange: false,
   labels: [],
 });
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
 
 const defaultUser = { id: 'user-1', isAdmin: true } as any;
 
@@ -196,6 +207,425 @@ describe('useWalletData', () => {
     if (originalVisibilityDescriptor) {
       Object.defineProperty(document, 'visibilityState', originalVisibilityDescriptor);
     }
+  });
+
+  it('keeps wallet B state when wallet A resolves after a route change', async () => {
+    const walletA = createDeferred<typeof baseWallet>();
+    vi.mocked(walletsApi.getWallet).mockImplementation((walletId) => (
+      walletId === 'wallet-a'
+        ? walletA.promise as ReturnType<typeof walletsApi.getWallet>
+        : Promise.resolve({
+            ...baseWallet,
+            id: 'wallet-b',
+            name: 'Wallet B',
+          }) as ReturnType<typeof walletsApi.getWallet>
+    ));
+    const { result, rerender } = renderHook(
+      ({ id }) => useWalletData({ id, user: defaultUser }),
+      { initialProps: { id: 'wallet-a' } },
+    );
+    await waitFor(() => expect(walletsApi.getWallet).toHaveBeenCalledWith('wallet-a'));
+
+    rerender({ id: 'wallet-b' });
+    await waitFor(() => expect(result.current.wallet?.id).toBe('wallet-b'));
+    expect(result.current.loading).toBe(false);
+
+    await act(async () => {
+      walletA.resolve({ ...baseWallet, id: 'wallet-a', name: 'Wallet A' });
+      await walletA.promise;
+    });
+
+    expect(result.current.wallet?.id).toBe('wallet-b');
+    expect(result.current.wallet?.name).toBe('Wallet B');
+    expect(transactionsApi.getTransactions).not.toHaveBeenCalledWith(
+      'wallet-a',
+      expect.anything(),
+    );
+  });
+
+  it('clears every wallet-owned field before loading a partially failing wallet B', async () => {
+    vi.mocked(bitcoinApi.getStatus).mockResolvedValueOnce({
+      explorerUrl: 'https://wallet-a.example',
+    } as never);
+    const walletB = createDeferred<typeof baseWallet>();
+    vi.mocked(walletsApi.getWallet).mockImplementation((walletId) => (
+      walletId === 'wallet-b'
+        ? walletB.promise as ReturnType<typeof walletsApi.getWallet>
+        : Promise.resolve(baseWallet) as ReturnType<typeof walletsApi.getWallet>
+    ));
+    const { result, rerender } = renderHook(
+      ({ id }) => useWalletData({ id, user: defaultUser }),
+      { initialProps: { id: 'wallet-1' } },
+    );
+    await waitFor(() => expect(result.current.wallet?.id).toBe('wallet-1'));
+    await act(async () => {
+      await result.current.loadUtxosForStats('wallet-1');
+    });
+    expect(result.current.transactions.length).toBeGreaterThan(0);
+    expect(result.current.utxoStats.length).toBeGreaterThan(0);
+
+    vi.mocked(bitcoinApi.getStatus).mockRejectedValueOnce(new Error('B status failed'));
+    vi.mocked(devicesApi.getDevices).mockRejectedValueOnce(new Error('B devices failed'));
+    vi.mocked(transactionsApi.getTransactions).mockRejectedValueOnce(new Error('B tx failed'));
+    vi.mocked(transactionsApi.getTransactionStats).mockRejectedValueOnce(new Error('B stats failed'));
+    vi.mocked(transactionsApi.getUTXOs).mockRejectedValueOnce(new Error('B UTXO failed'));
+    vi.mocked(transactionsApi.getWalletPrivacy).mockRejectedValueOnce(new Error('B privacy failed'));
+    vi.mocked(transactionsApi.getAddressSummary).mockRejectedValueOnce(new Error('B summary failed'));
+    vi.mocked(transactionsApi.getAddresses).mockRejectedValueOnce(new Error('B addresses failed'));
+    vi.mocked(draftsApi.getDrafts).mockRejectedValueOnce(new Error('B drafts failed'));
+    vi.mocked(adminApi.getGroups).mockRejectedValueOnce(new Error('B groups failed'));
+    vi.mocked(walletsApi.getWalletShareInfo).mockRejectedValueOnce(new Error('B share failed'));
+
+    rerender({ id: 'wallet-b' });
+    expect(result.current.wallet).toBeNull();
+    expect(result.current.devices).toEqual([]);
+    expect(result.current.transactions).toEqual([]);
+    expect(result.current.transactionStats).toBeNull();
+    expect(result.current.utxos).toEqual([]);
+    expect(result.current.utxoSummary).toBeNull();
+    expect(result.current.utxoStats).toEqual([]);
+    expect(result.current.privacyData).toEqual([]);
+    expect(result.current.privacySummary).toBeNull();
+    expect(result.current.addresses).toEqual([]);
+    expect(result.current.addressSummary).toBeNull();
+    expect(result.current.draftsCount).toBe(0);
+    expect(result.current.groups).toEqual([]);
+    expect(result.current.walletShareInfo).toBeNull();
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      walletB.resolve({ ...baseWallet, id: 'wallet-b', name: 'Wallet B' });
+      await walletB.promise;
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.wallet?.id).toBe('wallet-b');
+    expect(result.current.devices).toEqual([]);
+    expect(result.current.transactions).toEqual([]);
+    expect(result.current.transactionStats).toBeNull();
+    expect(result.current.utxos).toEqual([]);
+    expect(result.current.utxoSummary).toBeNull();
+    expect(result.current.privacyData).toEqual([]);
+    expect(result.current.addresses).toEqual([]);
+    expect(result.current.addressSummary).toBeNull();
+    expect(result.current.groups).toEqual([]);
+    expect(result.current.walletShareInfo).toBeNull();
+    expect(result.current.explorerUrl).not.toBe('https://wallet-a.example');
+  });
+
+  it('rejects a retained wallet A address callback before it can mutate wallet B', async () => {
+    vi.mocked(walletsApi.getWallet).mockImplementation(async (walletId) => ({
+      ...baseWallet,
+      id: walletId,
+      name: walletId,
+    }));
+    const view = renderHook(
+      ({ id }) => useWalletData({ id, user: defaultUser }),
+      { initialProps: { id: 'wallet-a' } },
+    );
+    await waitFor(() => expect(view.result.current.wallet?.id).toBe('wallet-a'));
+    const retainedLoadAddresses = view.result.current.loadAddresses;
+    const retainedLoadAddressSummary = view.result.current.loadAddressSummary;
+
+    view.rerender({ id: 'wallet-b' });
+    await waitFor(() => expect(view.result.current.wallet?.id).toBe('wallet-b'));
+    const addressCalls = vi.mocked(transactionsApi.getAddresses).mock.calls.length;
+    const summaryCalls = vi.mocked(transactionsApi.getAddressSummary).mock.calls.length;
+    const addresses = view.result.current.addresses;
+    const offset = view.result.current.addressOffset;
+
+    await act(async () => {
+      await retainedLoadAddresses('wallet-a', 1, 0, true);
+      await retainedLoadAddressSummary('wallet-a');
+    });
+
+    expect(transactionsApi.getAddresses).toHaveBeenCalledTimes(addressCalls);
+    expect(transactionsApi.getAddressSummary).toHaveBeenCalledTimes(summaryCalls);
+    expect(view.result.current.addresses).toEqual(addresses);
+    expect(view.result.current.addressOffset).toBe(offset);
+    expect(view.result.current.loadingAddresses).toBe(false);
+  });
+
+  it('rejects a retained wallet A UTXO callback before it can mutate wallet B', async () => {
+    vi.mocked(walletsApi.getWallet).mockImplementation(async (walletId) => ({
+      ...baseWallet,
+      id: walletId,
+      name: walletId,
+    }));
+    const view = renderHook(
+      ({ id }) => useWalletData({ id, user: defaultUser }),
+      { initialProps: { id: 'wallet-a' } },
+    );
+    await waitFor(() => expect(view.result.current.wallet?.id).toBe('wallet-a'));
+    const retainedLoadMoreUtxos = view.result.current.loadMoreUtxos;
+
+    view.rerender({ id: 'wallet-b' });
+    await waitFor(() => expect(view.result.current.wallet?.id).toBe('wallet-b'));
+    const utxoCalls = vi.mocked(transactionsApi.getUTXOs).mock.calls.length;
+    const utxos = view.result.current.utxos;
+    const summary = view.result.current.utxoSummary;
+
+    await act(async () => {
+      await retainedLoadMoreUtxos();
+    });
+
+    expect(transactionsApi.getUTXOs).toHaveBeenCalledTimes(utxoCalls);
+    expect(view.result.current.utxos).toEqual(utxos);
+    expect(view.result.current.utxoSummary).toEqual(summary);
+    expect(view.result.current.loadingMoreUtxos).toBe(false);
+  });
+
+  it('rejects a retained wallet A stats callback before it can mutate wallet B', async () => {
+    vi.mocked(walletsApi.getWallet).mockImplementation(async (walletId) => ({
+      ...baseWallet,
+      id: walletId,
+      name: walletId,
+    }));
+    const view = renderHook(
+      ({ id }) => useWalletData({ id, user: defaultUser }),
+      { initialProps: { id: 'wallet-a' } },
+    );
+    await waitFor(() => expect(view.result.current.wallet?.id).toBe('wallet-a'));
+    const retainedLoadStats = view.result.current.loadUtxosForStats;
+
+    view.rerender({ id: 'wallet-b' });
+    await waitFor(() => expect(view.result.current.wallet?.id).toBe('wallet-b'));
+    const utxoCalls = vi.mocked(transactionsApi.getUTXOs).mock.calls.length;
+    const stats = view.result.current.utxoStats;
+
+    await act(async () => {
+      await retainedLoadStats('wallet-a');
+    });
+
+    expect(transactionsApi.getUTXOs).toHaveBeenCalledTimes(utxoCalls);
+    expect(view.result.current.utxoStats).toEqual(stats);
+    expect(view.result.current.loadingUtxoStats).toBe(false);
+  });
+
+  it('rejects a retained wallet A transaction callback before it can mutate wallet B', async () => {
+    vi.mocked(walletsApi.getWallet).mockImplementation(async (walletId) => ({
+      ...baseWallet,
+      id: walletId,
+      name: walletId,
+    }));
+    const view = renderHook(
+      ({ id }) => useWalletData({ id, user: defaultUser }),
+      { initialProps: { id: 'wallet-a' } },
+    );
+    await waitFor(() => expect(view.result.current.wallet?.id).toBe('wallet-a'));
+    const retainedLoadMoreTransactions = view.result.current.loadMoreTransactions;
+    const retainedRefresh = view.result.current.fetchData;
+
+    view.rerender({ id: 'wallet-b' });
+    await waitFor(() => expect(view.result.current.wallet?.id).toBe('wallet-b'));
+    const transactionCalls = vi.mocked(transactionsApi.getTransactions).mock.calls.length;
+    const walletCalls = vi.mocked(walletsApi.getWallet).mock.calls.length;
+    const transactions = view.result.current.transactions;
+    const offset = view.result.current.txOffset;
+
+    await act(async () => {
+      await retainedLoadMoreTransactions();
+      await retainedRefresh(true);
+    });
+
+    expect(transactionsApi.getTransactions).toHaveBeenCalledTimes(transactionCalls);
+    expect(walletsApi.getWallet).toHaveBeenCalledTimes(walletCalls);
+    expect(view.result.current.transactions).toEqual(transactions);
+    expect(view.result.current.txOffset).toBe(offset);
+    expect(view.result.current.loadingMoreTx).toBe(false);
+  });
+
+  it('ignores a wallet request that resolves after unmount', async () => {
+    const wallet = createDeferred<typeof baseWallet>();
+    vi.mocked(walletsApi.getWallet).mockReturnValue(
+      wallet.promise as ReturnType<typeof walletsApi.getWallet>,
+    );
+    const view = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(walletsApi.getWallet).toHaveBeenCalled());
+    view.unmount();
+
+    await act(async () => {
+      wallet.resolve(baseWallet);
+      await wallet.promise;
+    });
+
+    expect(transactionsApi.getTransactions).not.toHaveBeenCalled();
+    expect(mockAddNotification).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('keeps the newest of two same-wallet refreshes', async () => {
+    const { result } = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const older = createDeferred<typeof baseWallet>();
+    const newer = createDeferred<typeof baseWallet>();
+    vi.mocked(walletsApi.getWallet)
+      .mockReturnValueOnce(older.promise as ReturnType<typeof walletsApi.getWallet>)
+      .mockReturnValueOnce(newer.promise as ReturnType<typeof walletsApi.getWallet>);
+
+    let olderRefresh!: Promise<void>;
+    let newerRefresh!: Promise<void>;
+    act(() => {
+      olderRefresh = result.current.fetchData(true);
+      newerRefresh = result.current.fetchData(true);
+    });
+    await act(async () => {
+      newer.resolve({ ...baseWallet, name: 'Newest Wallet' });
+      await newerRefresh;
+    });
+    expect(result.current.wallet?.name).toBe('Newest Wallet');
+
+    await act(async () => {
+      older.resolve({ ...baseWallet, name: 'Older Wallet' });
+      await olderRefresh;
+    });
+    expect(result.current.wallet?.name).toBe('Newest Wallet');
+  });
+
+  it('ignores a stale core failure after a newer same-wallet refresh succeeds', async () => {
+    const { result } = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const older = createDeferred<Wallet>();
+    vi.mocked(walletsApi.getWallet)
+      .mockReturnValueOnce(older.promise)
+      .mockResolvedValueOnce({ ...baseWallet, name: 'Current Wallet' });
+
+    let olderRefresh!: Promise<void>;
+    let newerRefresh!: Promise<void>;
+    act(() => {
+      olderRefresh = result.current.fetchData(true);
+      newerRefresh = result.current.fetchData(true);
+    });
+    await act(async () => {
+      await newerRefresh;
+    });
+
+    await act(async () => {
+      older.reject(new Error('stale core failure'));
+      await olderRefresh;
+    });
+
+    expect(result.current.wallet?.name).toBe('Current Wallet');
+    expect(result.current.error).toBeNull();
+  });
+
+  it('ignores stale pagination completions and failures after unmount', async () => {
+    const view = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(view.result.current.loading).toBe(false));
+    const addressSuccess = createDeferred<Awaited<ReturnType<typeof transactionsApi.getAddresses>>>();
+    const utxoSuccess = createDeferred<Awaited<ReturnType<typeof transactionsApi.getUTXOs>>>();
+    const statsSuccess = createDeferred<Awaited<ReturnType<typeof transactionsApi.getUTXOs>>>();
+    const txSuccess = createDeferred<Awaited<ReturnType<typeof transactionsApi.getTransactions>>>();
+    vi.mocked(transactionsApi.getAddresses).mockReturnValueOnce(addressSuccess.promise);
+    vi.mocked(transactionsApi.getUTXOs)
+      .mockReturnValueOnce(utxoSuccess.promise)
+      .mockReturnValueOnce(statsSuccess.promise);
+    vi.mocked(transactionsApi.getTransactions).mockReturnValueOnce(txSuccess.promise);
+
+    let successes!: Promise<void>[];
+    act(() => {
+      successes = [
+        view.result.current.loadAddresses('wallet-1', 1, 0),
+        view.result.current.loadMoreUtxos(),
+        view.result.current.loadUtxosForStats('wallet-1'),
+        view.result.current.loadMoreTransactions(),
+      ];
+    });
+    view.unmount();
+    addressSuccess.resolve([makeAddress('stale')] as never);
+    utxoSuccess.resolve({ count: 1, totalBalance: 1000, utxos: [makeUtxo('stale')] } as never);
+    statsSuccess.resolve({ count: 1, totalBalance: 1000, utxos: [makeUtxo('stale')] } as never);
+    txSuccess.resolve([makeTx('stale')] as never);
+    await Promise.all(successes);
+
+    const failedView = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(failedView.result.current.loading).toBe(false));
+    const addressFailure = createDeferred<Awaited<ReturnType<typeof transactionsApi.getAddresses>>>();
+    const utxoFailure = createDeferred<Awaited<ReturnType<typeof transactionsApi.getUTXOs>>>();
+    const statsFailure = createDeferred<Awaited<ReturnType<typeof transactionsApi.getUTXOs>>>();
+    const txFailure = createDeferred<Awaited<ReturnType<typeof transactionsApi.getTransactions>>>();
+    vi.mocked(transactionsApi.getAddresses).mockReturnValueOnce(addressFailure.promise);
+    vi.mocked(transactionsApi.getUTXOs)
+      .mockReturnValueOnce(utxoFailure.promise)
+      .mockReturnValueOnce(statsFailure.promise);
+    vi.mocked(transactionsApi.getTransactions).mockReturnValueOnce(txFailure.promise);
+
+    let failures!: Promise<void>[];
+    act(() => {
+      failures = [
+        failedView.result.current.loadAddresses('wallet-1', 1, 0),
+        failedView.result.current.loadMoreUtxos(),
+        failedView.result.current.loadUtxosForStats('wallet-1'),
+        failedView.result.current.loadMoreTransactions(),
+      ];
+    });
+    failedView.unmount();
+    addressFailure.reject(new Error('stale address failure'));
+    utxoFailure.reject(new Error('stale UTXO failure'));
+    statsFailure.reject(new Error('stale stats failure'));
+    txFailure.reject(new Error('stale transaction failure'));
+    await Promise.all(failures);
+  });
+
+  it('ignores older refreshes that become stale during auxiliary, group, or share loading', async () => {
+    const { result } = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const staleAux = createDeferred<Awaited<ReturnType<typeof bitcoinApi.getStatus>>>();
+    const statusCalls = vi.mocked(bitcoinApi.getStatus).mock.calls.length;
+    vi.mocked(bitcoinApi.getStatus)
+      .mockReturnValueOnce(staleAux.promise)
+      .mockResolvedValueOnce({ explorerUrl: 'https://current.example' } as never);
+    let staleAuxRefresh!: Promise<void>;
+    act(() => {
+      staleAuxRefresh = result.current.fetchData(true);
+    });
+    await waitFor(() => expect(bitcoinApi.getStatus).toHaveBeenCalledTimes(statusCalls + 1));
+    await act(async () => {
+      await result.current.fetchData(true);
+    });
+    await act(async () => {
+      staleAux.resolve({ explorerUrl: 'https://stale.example' } as never);
+      await staleAuxRefresh;
+    });
+
+    const staleGroups = createDeferred<Awaited<ReturnType<typeof adminApi.getGroups>>>();
+    const groupCalls = vi.mocked(adminApi.getGroups).mock.calls.length;
+    vi.mocked(adminApi.getGroups)
+      .mockReturnValueOnce(staleGroups.promise)
+      .mockResolvedValueOnce([]);
+    let staleGroupRefresh!: Promise<void>;
+    act(() => {
+      staleGroupRefresh = result.current.fetchData(true);
+    });
+    await waitFor(() => expect(adminApi.getGroups).toHaveBeenCalledTimes(groupCalls + 1));
+    await act(async () => {
+      await result.current.fetchData(true);
+    });
+    await act(async () => {
+      staleGroups.resolve([]);
+      await staleGroupRefresh;
+    });
+
+    const staleShare = createDeferred<Awaited<ReturnType<typeof walletsApi.getWalletShareInfo>>>();
+    const shareCalls = vi.mocked(walletsApi.getWalletShareInfo).mock.calls.length;
+    vi.mocked(walletsApi.getWalletShareInfo)
+      .mockReturnValueOnce(staleShare.promise)
+      .mockResolvedValueOnce({ users: [], group: null } as never);
+    let staleShareRefresh!: Promise<void>;
+    act(() => {
+      staleShareRefresh = result.current.fetchData(true);
+    });
+    await waitFor(() => expect(walletsApi.getWalletShareInfo).toHaveBeenCalledTimes(shareCalls + 1));
+    await act(async () => {
+      await result.current.fetchData(true);
+    });
+    await act(async () => {
+      staleShare.resolve({ users: [], group: null } as never);
+      await staleShareRefresh;
+    });
+
+    expect(result.current.wallet?.id).toBe('wallet-1');
   });
 
   it('loads wallet data, maps related resources, and supports pagination actions', async () => {
