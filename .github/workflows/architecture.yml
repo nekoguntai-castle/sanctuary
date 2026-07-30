@@ -207,18 +207,7 @@ jobs:
           set -euo pipefail
           cd "$ARCH_WORKDIR"
           scripts/ci/retry-command.sh "docs build" npm run docs:build
-          if [ "${GITHUB_EVENT_NAME:-}" = "push" ] && [ "${GITHUB_REF:-}" = "refs/heads/main" ] && [ "${GITHUB_SERVER_URL:-}" = "https://github.com" ]; then
-            rm -rf "${GITHUB_WORKSPACE:-$PWD}/website/build"
-            mkdir -p "${GITHUB_WORKSPACE:-$PWD}/website"
-            cp -a website/build "${GITHUB_WORKSPACE:-$PWD}/website/build"
-          fi
           INNER
-
-      - name: Upload site artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.server_url == 'https://github.com'
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
-        with:
-          path: website/build
 
       - name: Write architecture diagnostic summary
         if: always()
@@ -242,20 +231,3 @@ jobs:
           if [ -n "${ARCH_ROOT:-}" ] && [ -d "$ARCH_ROOT" ]; then
             rm -rf "$ARCH_ROOT" || echo "::warning::Could not fully remove architecture temp workspace"
           fi
-
-  deploy:
-    name: Deploy to GitHub Pages
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.server_url == 'https://github.com'
-    needs: build
-    runs-on: ubuntu-20.04
-    timeout-minutes: 15
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d
-      - id: deployment
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128

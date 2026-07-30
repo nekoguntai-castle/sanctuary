@@ -1,4 +1,0 @@
-name: deploy-pages
-runs:
-  using: node24
-  main: dist/index.js

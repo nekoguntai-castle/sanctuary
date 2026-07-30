@@ -163,9 +163,9 @@ See [`docs/README.md`](docs/README.md) for the full docs index and per-doc-type 
 
 For decisions with non-obvious tradeoffs, create an ADR in `docs/adr/` using the next available number. Follow the existing template: Title, Date, Status, Context, Decision, Consequences, Supersedes.
 
-### Living docs site (Docusaurus)
+### Living docs (Docusaurus)
 
-The curated docs under [`docs/architecture/`](docs/architecture/README.md), selected [`docs/explanation/`](docs/explanation/address-derivation.md), [`docs/how-to/`](docs/how-to/agent-wallet-funding.md), [`docs/reference/`](docs/reference/ci-cd-strategy.md), [`docs/adr/`](docs/adr/0001-browser-auth-token-storage.md), selected per-service `ARCHITECTURE.md` files, [`docs/PRD.md`](docs/PRD.md), [`docs/README.md`](docs/README.md), and this `CONTRIBUTING.md` render as a unified [Docusaurus](https://docusaurus.io/) site at <https://nekoguntai-castle.github.io/sanctuary/>. Planning, idea, archive, package README/API, and release-history docs remain repository documents linked from the site to GitHub when useful. The site is built from source markdown — no copied documentation tree — and deployed to GitHub Pages by [`.github/workflows/architecture.yml`](.github/workflows/architecture.yml) on every merge to `main`.
+The curated docs under [`docs/architecture/`](docs/architecture/README.md), selected [`docs/explanation/`](docs/explanation/address-derivation.md), [`docs/how-to/`](docs/how-to/agent-wallet-funding.md), [`docs/reference/`](docs/reference/ci-cd-strategy.md), [`docs/adr/`](docs/adr/0001-browser-auth-token-storage.md), selected per-service `ARCHITECTURE.md` files, [`docs/PRD.md`](docs/PRD.md), [`docs/README.md`](docs/README.md), and this `CONTRIBUTING.md` form the Docusaurus documentation set. Planning, idea, archive, package README/API, and release-history docs remain repository documents. [`.github/workflows/architecture.yml`](.github/workflows/architecture.yml) validates the source markdown and proves the Docusaurus production build on Forgejo; it does not deploy the result.
 
 Local commands:
 

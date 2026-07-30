@@ -1,6 +1,6 @@
 # Sanctuary Architecture
 
-Living architecture documentation. Diagrams render natively on GitHub here in the markdown, and inside the unified Docusaurus docs site at <https://nekoguntai-castle.github.io/sanctuary/> with svg-pan-zoom for drill-down (built by [`.github/workflows/architecture.yml`](../../.github/workflows/architecture.yml) and hosted by GitHub Pages — no infrastructure to maintain).
+Living architecture documentation. Diagrams render natively in the mirrored GitHub markdown. [`.github/workflows/architecture.yml`](../../.github/workflows/architecture.yml) also validates the diagrams and proves the Docusaurus production build on Forgejo without publishing a separate site.
 
 This is a [C4-model](https://c4model.com/) view of the system, layered from broadest to most detailed:
 

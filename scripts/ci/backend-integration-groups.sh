@@ -63,6 +63,7 @@ list_group_specs() {
         tests/integration/ops/phase2OperationsProof.integration.test.ts \
         tests/integration/websocket/websocket.integration.test.ts \
         tests/integration/worker/featureFlagToggle.integration.test.ts \
+        tests/integration/worker/jobProcessorLockLoss.integration.test.ts \
         tests/integration/worker/worker.integration.test.ts \
         tests/integration/worker/workerJobQueueLock.integration.test.ts
       ;;
