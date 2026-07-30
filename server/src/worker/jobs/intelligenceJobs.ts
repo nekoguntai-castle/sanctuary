@@ -13,9 +13,10 @@ const ANALYZE_LOCK_TTL_MS = 300_000; // 5 minutes
 export const analyzeJob: WorkerJobHandler = {
   name: 'intelligence:analyze',
   queue: 'maintenance',
-  handler: async () => {
+  handler: async (_job, execution) => {
     const { runAnalysisPipelines } = await import('../../services/intelligence/analysisService');
-    await runAnalysisPipelines();
+    execution?.throwIfAborted();
+    await runAnalysisPipelines(execution?.signal);
   },
   options: { attempts: 1 },
   lockOptions: {

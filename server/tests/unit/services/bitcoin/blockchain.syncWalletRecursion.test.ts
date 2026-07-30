@@ -81,6 +81,51 @@ describe('Blockchain syncWallet recursion', () => {
     });
   });
 
+  it('propagates the cancellation signal into a recursive gap-limit sync', async () => {
+    const walletId = 'wallet-recursive-signal';
+    const scanAddress = 'tb1qrecursivesignal';
+    const controller = new AbortController();
+    mockExecuteSyncPipeline
+      .mockResolvedValueOnce({
+        addresses: 1,
+        transactions: 1,
+        utxos: 1,
+        stats: { newAddressesGenerated: 1 },
+      })
+      .mockResolvedValueOnce({
+        addresses: 1,
+        transactions: 0,
+        utxos: 0,
+        stats: { newAddressesGenerated: 0 },
+      });
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      id: walletId,
+      network: 'testnet',
+    });
+    mockPrismaClient.address.findMany.mockResolvedValue([
+      { id: 'addr-signal', address: scanAddress, used: false },
+    ]);
+    mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(
+      new Map([[scanAddress, [{ tx_hash: 'c'.repeat(64), height: 300 }]]])
+    );
+
+    await syncWallet(walletId, 0, controller.signal);
+
+    expect(mockExecuteSyncPipeline).toHaveBeenCalledTimes(2);
+    expect(mockExecuteSyncPipeline).toHaveBeenNthCalledWith(
+      1,
+      walletId,
+      [],
+      { signal: controller.signal },
+    );
+    expect(mockExecuteSyncPipeline).toHaveBeenNthCalledWith(
+      2,
+      walletId,
+      [],
+      { signal: controller.signal },
+    );
+  });
+
   it('continues with original result when scanning generated addresses fails', async () => {
     const walletId = 'wallet-scan-error';
     const scanAddress = 'tb1q4f6x6a9wruy6s8hwj5em8z2s9yc03tf0m3etf8';

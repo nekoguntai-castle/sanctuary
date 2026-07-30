@@ -51,4 +51,17 @@ describe('worker autopilotJobs', () => {
     expect(evaluateJob.lockOptions?.lockKey()).toBe('autopilot:evaluate');
     expect(evaluateJob.lockOptions?.lockTtlMs).toBe(120_000);
   });
+
+  it('forwards the execution signal to the long-running evaluator', async () => {
+    const controller = new AbortController();
+    const execution = {
+      signal: controller.signal,
+      throwIfAborted: () => controller.signal.throwIfAborted(),
+    };
+    mockEvaluateAllWallets.mockResolvedValueOnce(undefined);
+
+    await evaluateJob.handler(undefined as never, execution);
+
+    expect(mockEvaluateAllWallets).toHaveBeenCalledWith(controller.signal);
+  });
 });

@@ -118,6 +118,67 @@ describe('Sync Jobs', () => {
       expect(result.utxosUpdated).toBe(10);
     });
 
+    it('forwards the execution signal through sync and field-population phases', async () => {
+      vi.mocked(syncWallet).mockResolvedValueOnce({ transactions: 0, utxos: 0 });
+      const controller = new AbortController();
+      const execution = {
+        signal: controller.signal,
+        throwIfAborted: () => controller.signal.throwIfAborted(),
+      };
+      const job = {
+        id: 'job-signal',
+        data: { walletId: 'wallet-signal' },
+        attemptsMade: 0,
+      } as unknown as Job;
+
+      await syncWalletJob.handler(job, execution);
+
+      expect(syncWallet).toHaveBeenCalledWith('wallet-signal', 0, controller.signal);
+      expect(populateMissingTransactionFields)
+        .toHaveBeenCalledWith('wallet-signal', controller.signal);
+    });
+
+    it('resets syncInProgress when shutdown aborts while the mark-true update is in flight', async () => {
+      let markStarted!: () => void;
+      let finishMark!: () => void;
+      const markStartedPromise = new Promise<void>((resolve) => {
+        markStarted = resolve;
+      });
+      const finishMarkPromise = new Promise<void>((resolve) => {
+        finishMark = resolve;
+      });
+      vi.mocked(prisma.wallet.update)
+        .mockImplementationOnce(async () => {
+          markStarted();
+          await finishMarkPromise;
+          return {} as any;
+        })
+        .mockResolvedValueOnce({} as any);
+
+      const controller = new AbortController();
+      const execution = {
+        signal: controller.signal,
+        throwIfAborted: () => controller.signal.throwIfAborted(),
+      };
+      const job = {
+        id: 'job-abort-mark',
+        data: { walletId: 'wallet-abort-mark' },
+        attemptsMade: 0,
+      } as unknown as Job;
+
+      const processing = syncWalletJob.handler(job, execution);
+      await markStartedPromise;
+      controller.abort();
+      finishMark();
+
+      await expect(processing).rejects.toMatchObject({ name: 'AbortError' });
+      expect(prisma.wallet.update).toHaveBeenNthCalledWith(2, {
+        where: { id: 'wallet-abort-mark' },
+        data: { syncInProgress: false },
+      });
+      expect(syncWallet).not.toHaveBeenCalled();
+    });
+
     it('should return early when wallet does not exist', async () => {
       vi.mocked(prisma.wallet.findUnique).mockResolvedValueOnce(null as any);
 

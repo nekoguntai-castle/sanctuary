@@ -7,13 +7,24 @@
 import type { Job, JobsOptions } from 'bullmq';
 
 /**
+ * Cooperative cancellation context for job handlers.
+ *
+ * Handlers should check it only between completed atomic side effects. It is
+ * optional on handler signatures so existing direct callers remain compatible.
+ */
+export interface JobExecutionContext {
+  signal: AbortSignal;
+  throwIfAborted: () => void;
+}
+
+/**
  * Job definition for registering job handlers
  */
 export interface JobDefinition<T = unknown, R = void> {
   /** Unique job name */
   name: string;
   /** Job handler function */
-  handler: (job: Job<T>) => Promise<R>;
+  handler: (job: Job<T>, execution?: JobExecutionContext) => Promise<R>;
   /** Default job options */
   options?: JobsOptions;
 }

@@ -53,6 +53,19 @@ describe('Intelligence Worker Jobs', () => {
       expect(mockRunAnalysis).toHaveBeenCalledOnce();
     });
 
+    it('forwards the execution signal to analysis pipelines', async () => {
+      const controller = new AbortController();
+      const execution = {
+        signal: controller.signal,
+        throwIfAborted: () => controller.signal.throwIfAborted(),
+      };
+      mockRunAnalysis.mockResolvedValueOnce(undefined);
+
+      await analyzeJob.handler({} as any, execution);
+
+      expect(mockRunAnalysis).toHaveBeenCalledWith(controller.signal);
+    });
+
     it('propagates errors from runAnalysisPipelines', async () => {
       mockRunAnalysis.mockRejectedValueOnce(new Error('AI endpoint unreachable'));
 

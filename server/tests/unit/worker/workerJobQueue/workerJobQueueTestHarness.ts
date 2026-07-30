@@ -4,8 +4,12 @@ import { vi } from 'vitest';
 export const createdWorkers: Array<{ processFn?: (job: any) => Promise<any> }> = [];
 const hoistedMocks = vi.hoisted(() => ({
   mockDlqAdd: vi.fn().mockResolvedValue(undefined),
+  mockHardTerminate: vi.fn((_exitCode: number): never => {
+    throw new Error('test hard termination');
+  }),
 }));
 export const mockDlqAdd = hoistedMocks.mockDlqAdd;
+export const mockHardTerminate = hoistedMocks.mockHardTerminate;
 
 // Mock BullMQ with factory that creates instances
 vi.mock('bullmq', () => {
@@ -63,6 +67,10 @@ vi.mock('../../../../src/infrastructure/distributedLock', () => ({
   acquireLock: vi.fn().mockResolvedValue({ key: 'test', token: 'token' }),
   extendLock: vi.fn().mockResolvedValue({ key: 'test', token: 'token' }),
   releaseLock: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../../../src/worker/workerJobQueue/hardTermination', () => ({
+  hardTerminateProcess: hoistedMocks.mockHardTerminate,
 }));
 
 vi.mock('../../../../src/services/deadLetterQueue', () => ({

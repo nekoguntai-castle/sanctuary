@@ -41,9 +41,11 @@ type TransactionVelocityRows = Awaited<
  * Run all analysis pipelines for all opted-in wallets.
  * Main entry point called by the recurring worker job.
  */
-export async function runAnalysisPipelines(): Promise<void> {
+export async function runAnalysisPipelines(signal?: AbortSignal): Promise<void> {
   try {
+    signal?.throwIfAborted();
     const config = await getAIConfig();
+    signal?.throwIfAborted();
     if (!config.enabled || !config.endpoint || !config.model) {
       log.debug("AI not configured, skipping analysis");
       return;
@@ -51,14 +53,17 @@ export async function runAnalysisPipelines(): Promise<void> {
 
     // Sync config to LLM egress proxy
     await syncConfigToLlmEgressProxy(config);
+    signal?.throwIfAborted();
 
     const providerReady = await checkProviderReachable();
+    signal?.throwIfAborted();
     if (!providerReady) {
       log.debug("AI provider endpoint is not reachable, skipping analysis");
       return;
     }
 
     const enabledWallets = await getEnabledIntelligenceWallets();
+    signal?.throwIfAborted();
     if (enabledWallets.length === 0) {
       log.debug("No wallets with intelligence enabled");
       return;
@@ -71,9 +76,12 @@ export async function runAnalysisPipelines(): Promise<void> {
     for (const { walletId, walletName, settings } of enabledWallets) {
       try {
         for (const type of settings.typeFilter) {
-          await runPipeline(walletId, walletName, type);
+          signal?.throwIfAborted();
+          await runPipeline(walletId, walletName, type, signal);
+          signal?.throwIfAborted();
         }
       } catch (error) {
+        signal?.throwIfAborted();
         log.error("Error analyzing wallet", {
           walletId,
           error: getErrorMessage(error),
@@ -81,6 +89,7 @@ export async function runAnalysisPipelines(): Promise<void> {
       }
     }
   } catch (error) {
+    signal?.throwIfAborted();
     log.error("Error in runAnalysisPipelines", {
       error: getErrorMessage(error),
     });
@@ -94,7 +103,9 @@ async function runPipeline(
   walletId: string,
   walletName: string,
   type: InsightType,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   // Check deduplication
   if (await isDeduplicated(walletId, type)) {
     log.debug("Skipping deduplicated analysis", { walletId, type });
@@ -103,6 +114,7 @@ async function runPipeline(
 
   // Gather context based on type
   const context = await gatherContext(walletId, type);
+  signal?.throwIfAborted();
   if (!context) {
     log.debug("No context available for analysis", { walletId, type });
     return;
@@ -110,6 +122,7 @@ async function runPipeline(
 
   // Call LLM egress proxy for analysis
   const result = await callAnalysis(type, context);
+  signal?.throwIfAborted();
   if (!result) {
     log.debug("No analysis result", { walletId, type });
     return;

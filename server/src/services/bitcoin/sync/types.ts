@@ -194,6 +194,8 @@ export type SyncPhase = {
 
 /** Pipeline options */
 export interface PipelineOptions {
+  /** Cooperative cancellation checked between completed sync phases. */
+  signal?: AbortSignal;
   /** Skip certain phases (by name) */
   skipPhases?: string[];
   /** Run only these phases (by name) */

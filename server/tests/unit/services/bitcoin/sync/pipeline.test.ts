@@ -139,6 +139,51 @@ describe("Sync Pipeline", () => {
       mockElectrumClient.getBlockHeight.mockResolvedValue(800000);
     });
 
+    it("rejects a pre-aborted execution before loading the wallet", async () => {
+      const controller = new AbortController();
+      controller.abort(new Error("sync cancelled before start"));
+
+      await expect(executeSyncPipeline(walletId, [], {
+        signal: controller.signal,
+      })).rejects.toThrow("sync cancelled before start");
+      expect(mockPrismaClient.wallet.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("does not start the next phase when cancellation arrives during a phase", async () => {
+      const controller = new AbortController();
+      let phaseStarted!: () => void;
+      let finishPhase!: () => void;
+      const phaseStartedPromise = new Promise<void>((resolve) => {
+        phaseStarted = resolve;
+      });
+      const finishPhasePromise = new Promise<void>((resolve) => {
+        finishPhase = resolve;
+      });
+      const secondPhase = vi.fn(async (ctx: SyncContext) => ctx);
+      const phases: SyncPhase[] = [
+        createPhase("in-flight-phase", async (ctx) => {
+          phaseStarted();
+          await finishPhasePromise;
+          return ctx;
+        }),
+        createPhase("must-not-run", secondPhase),
+      ];
+
+      const execution = executeSyncPipeline(walletId, phases, {
+        signal: controller.signal,
+      });
+      await phaseStartedPromise;
+      controller.abort(new Error("sync cancelled mid-phase"));
+      finishPhase();
+
+      await expect(execution).rejects.toMatchObject({
+        name: "SyncPipelineError",
+        failedPhase: "in-flight-phase",
+        cause: expect.objectContaining({ message: "sync cancelled mid-phase" }),
+      });
+      expect(secondPhase).not.toHaveBeenCalled();
+    });
+
     it("should execute all phases in order", async () => {
       const executionOrder: string[] = [];
 

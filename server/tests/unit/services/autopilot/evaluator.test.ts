@@ -367,6 +367,39 @@ describe('autopilot evaluator', () => {
       expect(redis.del).toHaveBeenCalledWith('autopilot:stability:wallet-1');
     });
 
+    it('sets cooldown before honoring shutdown that arrives during notification', async () => {
+      let notificationStarted!: () => void;
+      let finishNotification!: () => void;
+      const notificationStartedPromise = new Promise<void>((resolve) => {
+        notificationStarted = resolve;
+      });
+      const finishNotificationPromise = new Promise<void>((resolve) => {
+        finishNotification = resolve;
+      });
+      (mockGetEnabledAutopilotWallets as Mock).mockResolvedValueOnce([
+        { walletId: 'wallet-1', walletName: 'Treasury', userId: 'u1', settings: baseSettings },
+      ]);
+      (mockQueueConsolidationSuggestionNotification as Mock).mockImplementationOnce(async () => {
+        notificationStarted();
+        await finishNotificationPromise;
+        return true;
+      });
+      const controller = new AbortController();
+
+      const evaluation = evaluateAllWallets(controller.signal);
+      await notificationStartedPromise;
+      controller.abort();
+      finishNotification();
+
+      await expect(evaluation).rejects.toMatchObject({ name: 'AbortError' });
+      expect(redis.set).toHaveBeenCalledWith(
+        'autopilot:cooldown:wallet-1',
+        '1',
+        'EX',
+        86_400,
+      );
+    });
+
     it('falls back to inline delivery when queueing fails and logs channel errors', async () => {
       (mockQueueConsolidationSuggestionNotification as Mock).mockResolvedValueOnce(false);
       (mockNotifyConsolidationSuggestion as Mock).mockResolvedValueOnce([

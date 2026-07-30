@@ -436,6 +436,15 @@ describe('Maintenance job definitions behavior', () => {
     expect(mockUnlink).toHaveBeenCalledTimes(1);
     expect(mockUnlink).toHaveBeenCalledWith(expect.stringContaining('2026-04-01'));
     expect(mockAuditLog).toHaveBeenCalled();
+
+    const defaultRetentionResult = await freshJob.handler({ data: {} } as any);
+    expect(defaultRetentionResult).toMatch(/^sanctuary-backup-/);
+    expect(mockLogInfo).toHaveBeenCalledWith(
+      'Running scheduled backup',
+      expect.objectContaining({ retentionCount: 7 }),
+    );
+    // The three existing backups fit under the default retention count.
+    expect(mockUnlink).toHaveBeenCalledTimes(1);
   });
 
   it('scheduledBackupJob uses default retentionCount of 7', async () => {

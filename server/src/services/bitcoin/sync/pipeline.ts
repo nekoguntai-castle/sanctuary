@@ -57,6 +57,7 @@ export async function executeSyncPipeline(
   phases: SyncPhase[],
   options?: PipelineOptions,
 ): Promise<SyncResult> {
+  options?.signal?.throwIfAborted();
   const startTime = Date.now();
 
   // Load wallet
@@ -153,11 +154,13 @@ export async function executeSyncPipeline(
 
   // Execute phases in sequence
   for (const phase of phasesToExecute) {
+    options?.signal?.throwIfAborted();
     const phaseStart = Date.now();
     log.debug(`[SYNC] Starting phase: ${phase.name}`);
 
     try {
       ctx = await phase.execute(ctx);
+      options?.signal?.throwIfAborted();
       ctx.completedPhases.push(phase.name);
 
       const phaseElapsed = Date.now() - phaseStart;

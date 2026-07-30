@@ -6,6 +6,9 @@
 
 import type { Job, JobsOptions } from 'bullmq';
 import type { SyncPriority } from '@sanctuary/shared/constants/sync';
+import type { JobExecutionContext } from '../../jobs/types';
+
+export type { JobExecutionContext } from '../../jobs/types';
 
 /**
  * Worker job handler definition
@@ -16,7 +19,7 @@ export interface WorkerJobHandler<T = unknown, R = void> {
   /** Queue this job belongs to */
   queue: 'sync' | 'notifications' | 'confirmations' | 'maintenance';
   /** Job handler function */
-  handler: (job: Job<T>) => Promise<R>;
+  handler: (job: Job<T>, execution?: JobExecutionContext) => Promise<R>;
   /** Default job options */
   options?: JobsOptions;
   /** Lock options for distributed locking */

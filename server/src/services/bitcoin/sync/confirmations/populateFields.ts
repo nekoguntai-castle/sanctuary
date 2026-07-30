@@ -41,7 +41,11 @@ const POPULATE_CHUNK_SIZE = 50;
  * OPTIMIZED with batch fetching and batch updates
  * Returns both count and confirmation updates for notification broadcasting
  */
-export async function populateMissingTransactionFields(walletId: string): Promise<PopulateFieldsResult> {
+export async function populateMissingTransactionFields(
+  walletId: string,
+  signal?: AbortSignal,
+): Promise<PopulateFieldsResult> {
+  signal?.throwIfAborted();
   // Get wallet to determine network for correct block height
   const network = await walletRepository.findNetwork(walletId);
   if (network === null) {
@@ -50,6 +54,7 @@ export async function populateMissingTransactionFields(walletId: string): Promis
 
   // Acquire semaphore to limit concurrent populate operations
   return populateSemaphore.run(async () => {
+    signal?.throwIfAborted();
     const castNetwork = normalizeLegacyBitcoinNetwork(network, 'mainnet');
     const client = await getNodeClient(castNetwork);
 
@@ -99,6 +104,7 @@ export async function populateMissingTransactionFields(walletId: string): Promis
     const totalChunks = Math.ceil(transactions.length / POPULATE_CHUNK_SIZE);
 
     for (let i = 0; i < transactions.length; i += POPULATE_CHUNK_SIZE) {
+      signal?.throwIfAborted();
       const chunk = transactions.slice(i, i + POPULATE_CHUNK_SIZE);
       const chunkNum = Math.floor(i / POPULATE_CHUNK_SIZE) + 1;
 
@@ -117,6 +123,7 @@ export async function populateMissingTransactionFields(walletId: string): Promis
 
       if (pendingUpdates.length > 0) {
         await executeInChunks(pendingUpdates, walletId);
+        signal?.throwIfAborted();
         if (pendingUpdates.some(u => u.data.amount !== undefined)) {
           hasAmountUpdates = true;
         }

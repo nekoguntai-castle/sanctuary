@@ -72,6 +72,24 @@ describe('worker diagnosticJobs', () => {
     vi.useRealTimers();
   });
 
+  it('cancels an in-flight diagnostic delay when worker shutdown is requested', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const execution = {
+      signal: controller.signal,
+      throwIfAborted: () => controller.signal.throwIfAborted(),
+    };
+
+    const resultPromise = workerDiagnosticPingJob.handler({
+      data: { delayMs: 5_000 },
+    } as Job, execution);
+    controller.abort(new Error('worker shutdown'));
+
+    await expect(resultPromise).rejects.toThrow('worker shutdown');
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+  });
+
   it('uses a deterministic lock key for locked diagnostic pings', () => {
     expect(workerDiagnosticLockedPingJob.lockOptions?.lockKey({
       proofId: 'proof-1',

@@ -8,6 +8,7 @@
 
 import type { Job } from 'bullmq';
 import type { WorkerJobHandler } from './types';
+import type { JobExecutionContext } from '../../jobs/types';
 import {
   cleanupAuditLogsJob,
   cleanupPriceDataJob,
@@ -22,7 +23,10 @@ import {
 } from '../../jobs/definitions/maintenance';
 
 // Type for handlers that accept any job data
-type AnyJobHandler = (job: Job<unknown>) => Promise<unknown>;
+type AnyJobHandler = (
+  job: Job<unknown>,
+  execution?: JobExecutionContext,
+) => Promise<unknown>;
 
 // Lock TTLs: job timeout (from backoff * attempts) + 60s grace period
 // Cleanup jobs: ~30s typical + 60s grace = 90s

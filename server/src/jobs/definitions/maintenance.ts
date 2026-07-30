@@ -15,6 +15,9 @@ import { getPriceService } from '../../services/price';
 import { expireOldTransfers } from '../../services/transferService';
 import { getErrorMessage } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
+import { scheduledBackupJob } from './scheduledBackup';
+
+export { scheduledBackupJob } from './scheduledBackup';
 
 const log = createLogger('JOB:MAINTENANCE');
 
@@ -45,7 +48,8 @@ interface PersistPriceFeesResult {
  */
 export const cleanupAuditLogsJob: JobDefinition<CleanupJobData, number> = {
   name: 'cleanup:audit-logs',
-  handler: async (job: Job<CleanupJobData>) => {
+  handler: async (job: Job<CleanupJobData>, execution) => {
+    execution?.throwIfAborted();
     const retentionDays = job.data.retentionDays ?? 90;
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
@@ -53,6 +57,7 @@ export const cleanupAuditLogsJob: JobDefinition<CleanupJobData, number> = {
     log.info('Running audit log cleanup job', { retentionDays, cutoffDate: cutoffDate.toISOString() });
 
     const deleted = await auditService.cleanup(cutoffDate);
+    execution?.throwIfAborted();
 
     if (deleted > 0) {
       log.info('Audit log cleanup completed', { deleted, olderThan: cutoffDate.toISOString() });
@@ -71,7 +76,8 @@ export const cleanupAuditLogsJob: JobDefinition<CleanupJobData, number> = {
  */
 export const cleanupPriceDataJob: JobDefinition<CleanupJobData, number> = {
   name: 'cleanup:price-data',
-  handler: async (job: Job<CleanupJobData>) => {
+  handler: async (job: Job<CleanupJobData>, execution) => {
+    execution?.throwIfAborted();
     const retentionDays = job.data.retentionDays ?? 30;
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
@@ -79,6 +85,7 @@ export const cleanupPriceDataJob: JobDefinition<CleanupJobData, number> = {
     log.info('Running price data cleanup job', { retentionDays });
 
     const deleted = await maintenanceRepository.deletePriceDataBefore(cutoffDate);
+    execution?.throwIfAborted();
 
     if (deleted > 0) {
       log.info('Price data cleanup completed', { deleted });
@@ -97,7 +104,8 @@ export const cleanupPriceDataJob: JobDefinition<CleanupJobData, number> = {
  */
 export const cleanupFeeEstimatesJob: JobDefinition<CleanupJobData, number> = {
   name: 'cleanup:fee-estimates',
-  handler: async (job: Job<CleanupJobData>) => {
+  handler: async (job: Job<CleanupJobData>, execution) => {
+    execution?.throwIfAborted();
     const retentionDays = job.data.retentionDays ?? 7;
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
@@ -105,6 +113,7 @@ export const cleanupFeeEstimatesJob: JobDefinition<CleanupJobData, number> = {
     log.info('Running fee estimate cleanup job', { retentionDays });
 
     const deleted = await maintenanceRepository.deleteFeeEstimatesBefore(cutoffDate);
+    execution?.throwIfAborted();
 
     if (deleted > 0) {
       log.info('Fee estimate cleanup completed', { deleted });
@@ -118,13 +127,14 @@ export const cleanupFeeEstimatesJob: JobDefinition<CleanupJobData, number> = {
   },
 };
 
-async function persistPriceSnapshots(): Promise<number> {
+async function persistPriceSnapshots(signal?: AbortSignal): Promise<number> {
   const priceService = getPriceService();
   const currencies = priceService.getSupportedCurrencies();
   const prices = await priceService.getPrices(currencies);
   let pricesWritten = 0;
 
   for (const [currency, aggregate] of Object.entries(prices)) {
+    signal?.throwIfAborted();
     await priceDataRepository.insertPriceData({
       currency: currency.trim().toUpperCase(),
       price: aggregate.price,
@@ -136,8 +146,10 @@ async function persistPriceSnapshots(): Promise<number> {
   return pricesWritten;
 }
 
-async function persistFeeSnapshot(): Promise<number> {
+async function persistFeeSnapshot(signal?: AbortSignal): Promise<number> {
+  signal?.throwIfAborted();
   const fees = await getCurrentFeeEstimates('mainnet');
+  signal?.throwIfAborted();
   await priceDataRepository.insertFeeEstimate({
     fastest: fees.fastest,
     halfHour: fees.halfHour,
@@ -151,19 +163,21 @@ async function persistFeeSnapshot(): Promise<number> {
  */
 export const persistPriceFeesJob: JobDefinition<void, PersistPriceFeesResult> = {
   name: 'persist:price-fees',
-  handler: async () => {
+  handler: async (_job, execution) => {
     let pricesWritten = 0;
     let feesWritten = 0;
 
     try {
-      pricesWritten = await persistPriceSnapshots();
+      pricesWritten = await persistPriceSnapshots(execution?.signal);
     } catch (error) {
+      execution?.throwIfAborted();
       log.warn('Price snapshot persistence failed', { error: getErrorMessage(error) });
     }
 
     try {
-      feesWritten = await persistFeeSnapshot();
+      feesWritten = await persistFeeSnapshot(execution?.signal);
     } catch (error) {
+      execution?.throwIfAborted();
       log.warn('Fee snapshot persistence failed', { error: getErrorMessage(error) });
     }
 
@@ -184,10 +198,12 @@ export const persistPriceFeesJob: JobDefinition<void, PersistPriceFeesResult> = 
  */
 export const cleanupExpiredDraftsJob: JobDefinition<void, number> = {
   name: 'cleanup:expired-drafts',
-  handler: async () => {
+  handler: async (_job, execution) => {
+    execution?.throwIfAborted();
     log.info('Running expired drafts cleanup job');
 
     const deleted = await maintenanceRepository.deleteExpiredDrafts();
+    execution?.throwIfAborted();
 
     if (deleted > 0) {
       log.info('Expired draft cleanup completed', { deleted });
@@ -199,6 +215,7 @@ export const cleanupExpiredDraftsJob: JobDefinition<void, number> = {
         details: { deletedCount: deleted },
         success: true,
       });
+      execution?.throwIfAborted();
     }
 
     return deleted;
@@ -214,10 +231,12 @@ export const cleanupExpiredDraftsJob: JobDefinition<void, number> = {
  */
 export const cleanupExpiredTransfersJob: JobDefinition<void, number> = {
   name: 'cleanup:expired-transfers',
-  handler: async () => {
+  handler: async (_job, execution) => {
+    execution?.throwIfAborted();
     log.info('Running expired transfers cleanup job');
 
     const count = await expireOldTransfers();
+    execution?.throwIfAborted();
 
     if (count > 0) {
       log.info('Expired transfers cleanup completed', { expired: count });
@@ -229,6 +248,7 @@ export const cleanupExpiredTransfersJob: JobDefinition<void, number> = {
         details: { expiredCount: count },
         success: true,
       });
+      execution?.throwIfAborted();
     }
 
     return count;
@@ -244,10 +264,12 @@ export const cleanupExpiredTransfersJob: JobDefinition<void, number> = {
  */
 export const cleanupExpiredTokensJob: JobDefinition<void, number> = {
   name: 'cleanup:expired-tokens',
-  handler: async () => {
+  handler: async (_job, execution) => {
+    execution?.throwIfAborted();
     log.info('Running expired tokens cleanup job');
 
     const deleted = await maintenanceRepository.deleteExpiredRefreshTokens();
+    execution?.throwIfAborted();
 
     if (deleted > 0) {
       log.info('Expired token cleanup completed', { deleted });
@@ -270,7 +292,8 @@ export const cleanupExpiredTokensJob: JobDefinition<void, number> = {
  */
 export const weeklyVacuumJob: JobDefinition<DatabaseMaintenanceData, void> = {
   name: 'maintenance:weekly-vacuum',
-  handler: async (job: Job<DatabaseMaintenanceData>) => {
+  handler: async (job: Job<DatabaseMaintenanceData>, execution) => {
+    execution?.throwIfAborted();
     const timeout = job.data.timeout ?? 300000; // 5 minutes default
     const startTime = Date.now();
 
@@ -280,15 +303,18 @@ export const weeklyVacuumJob: JobDefinition<DatabaseMaintenanceData, void> = {
 
     // Set statement timeout
     await prisma.$executeRaw`SET statement_timeout = ${timeout}`;
+    execution?.throwIfAborted();
 
     try {
       await prisma.$executeRaw`VACUUM ANALYZE`;
+      execution?.throwIfAborted();
       await job.updateProgress(50);
 
       // REINDEX heavily-updated tables
       const tables = job.data.tables ?? ['audit_logs', 'Transaction', 'UTXO'];
 
       for (let i = 0; i < tables.length; i++) {
+        execution?.throwIfAborted();
         const table = tables[i];
         log.info('Running REINDEX on table', { table });
 
@@ -306,6 +332,7 @@ export const weeklyVacuumJob: JobDefinition<DatabaseMaintenanceData, void> = {
         }
 
         await job.updateProgress(50 + Math.floor((i + 1) / tables.length * 40));
+        execution?.throwIfAborted();
       }
 
       const duration = Date.now() - startTime;
@@ -318,6 +345,7 @@ export const weeklyVacuumJob: JobDefinition<DatabaseMaintenanceData, void> = {
         details: { durationMs: duration, tablesReindexed: tables },
         success: true,
       });
+      execution?.throwIfAborted();
 
       await job.updateProgress(100);
     } finally {
@@ -334,7 +362,8 @@ export const weeklyVacuumJob: JobDefinition<DatabaseMaintenanceData, void> = {
  */
 export const monthlyCleanupJob: JobDefinition<void, { stalePushDevices: number; orphanedDrafts: number }> = {
   name: 'maintenance:monthly-cleanup',
-  handler: async (job) => {
+  handler: async (job, execution) => {
+    execution?.throwIfAborted();
     log.info('Running monthly stale record cleanup job');
 
     await job.updateProgress(10);
@@ -344,6 +373,7 @@ export const monthlyCleanupJob: JobDefinition<void, { stalePushDevices: number; 
     staleDate.setDate(staleDate.getDate() - 90);
 
     const stalePushDevicesCount = await pushDeviceRepository.deleteStale(staleDate);
+    execution?.throwIfAborted();
 
     await job.updateProgress(50);
 
@@ -353,6 +383,7 @@ export const monthlyCleanupJob: JobDefinition<void, { stalePushDevices: number; 
 
     // Clean up orphaned drafts
     const orphanedDraftsResult = await maintenanceRepository.deleteOrphanedDrafts();
+    execution?.throwIfAborted();
 
     await job.updateProgress(90);
 
@@ -370,6 +401,7 @@ export const monthlyCleanupJob: JobDefinition<void, { stalePushDevices: number; 
       },
       success: true,
     });
+    execution?.throwIfAborted();
 
     await job.updateProgress(100);
 
@@ -377,81 +409,6 @@ export const monthlyCleanupJob: JobDefinition<void, { stalePushDevices: number; 
       stalePushDevices: stalePushDevicesCount,
       orphanedDrafts: orphanedDraftsResult,
     };
-  },
-  options: {
-    attempts: 2,
-    backoff: { type: 'exponential', delay: 10000 },
-  },
-};
-
-// =============================================================================
-// Scheduled Backup Job
-// =============================================================================
-
-interface ScheduledBackupData {
-  retentionCount?: number;
-}
-
-/**
- * Daily scheduled backup
- * Creates a JSON backup and writes it to /data/backups/ (Docker volume).
- * Retains the most recent N backups (default 7).
- */
-export const scheduledBackupJob: JobDefinition<ScheduledBackupData, string> = {
-  name: 'backup:scheduled',
-  handler: async (job: Job<ScheduledBackupData>) => {
-    const fs = await import('fs/promises');
-    const path = await import('path');
-
-    const backupDir = process.env.BACKUP_DIR || '/data/backups';
-    /* v8 ignore next -- scheduled backup jobs default retention when queue payload omits it */
-    const retentionCount = job.data.retentionCount ?? 7;
-
-    log.info('Running scheduled backup', { backupDir, retentionCount });
-
-    // Ensure backup directory exists
-    await fs.mkdir(backupDir, { recursive: true });
-
-    // Create backup via backup service
-    const { BackupService } = await import('../../services/backupService/backupService');
-    const backupService = new BackupService();
-    const backup = await backupService.createBackup('system-scheduled', {
-      description: `Automated daily backup`,
-    });
-
-    // Write to file
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `sanctuary-backup-${timestamp}.json`;
-    const filepath = path.join(backupDir, filename);
-    await fs.writeFile(filepath, JSON.stringify(backup), 'utf-8');
-
-    log.info('Backup written', { filepath, records: backup.meta.recordCounts });
-
-    // Enforce retention: delete oldest files beyond retentionCount
-    const files = await fs.readdir(backupDir);
-    const backupFiles = files
-      .filter(f => f.startsWith('sanctuary-backup-') && f.endsWith('.json'))
-      .sort()
-      .reverse(); // newest first
-
-    /* v8 ignore next -- retention deletion branch is covered by backup-service pruning tests */
-    if (backupFiles.length > retentionCount) {
-      const toDelete = backupFiles.slice(retentionCount);
-      for (const file of toDelete) {
-        await fs.unlink(path.join(backupDir, file));
-        log.info('Deleted old backup', { file });
-      }
-    }
-
-    await auditService.log({
-      username: 'system',
-      action: 'maintenance.scheduled_backup',
-      category: AuditCategory.SYSTEM,
-      details: { filename, records: backup.meta.recordCounts },
-      success: true,
-    });
-
-    return filename;
   },
   options: {
     attempts: 2,

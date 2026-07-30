@@ -38,14 +38,29 @@ function normalizeDelayMs(value: unknown): number {
   return Math.min(Math.floor(value), MAX_DIAGNOSTIC_DELAY_MS);
 }
 
-async function maybeDelay(delayMs: number): Promise<void> {
+async function maybeDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
   if (delayMs <= 0) return;
-  await new Promise((resolve) => setTimeout(resolve, delayMs));
+  signal?.throwIfAborted();
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
-async function runDiagnosticPing(job: Job<DiagnosticPingJobData>): Promise<DiagnosticPingJobResult> {
+async function runDiagnosticPing(
+  job: Job<DiagnosticPingJobData>,
+  execution?: import('../../jobs/types').JobExecutionContext,
+): Promise<DiagnosticPingJobResult> {
   const startedAt = Date.now();
-  await maybeDelay(normalizeDelayMs(job.data?.delayMs));
+  await maybeDelay(normalizeDelayMs(job.data?.delayMs), execution?.signal);
+  execution?.throwIfAborted();
 
   return {
     success: true,

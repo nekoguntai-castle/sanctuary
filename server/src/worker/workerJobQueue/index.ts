@@ -114,6 +114,7 @@ export class WorkerJobQueue {
   private connection: ConnectionOptions | null = null;
   private initialized = false;
   private shutdownPromise: Promise<void> | null = null;
+  private shutdownController = new AbortController();
 
   constructor(config: WorkerJobQueueConfig) {
     this.config = {
@@ -134,6 +135,10 @@ export class WorkerJobQueue {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
+    if (this.shutdownController.signal.aborted) {
+      this.shutdownController = new AbortController();
+      this.shutdownPromise = null;
+    }
 
     const redis = getRedisClient();
     if (!redis || !isRedisConnected()) {
@@ -194,7 +199,9 @@ export class WorkerJobQueue {
       throw new Error(`No handler registered for ${handlerKey}`);
     }
 
-    return processJobWithLock(handlerKey, registered, job);
+    return processJobWithLock(handlerKey, registered, job, {
+      shutdownSignal: this.shutdownController.signal,
+    });
   }
 
   /**
@@ -211,7 +218,7 @@ export class WorkerJobQueue {
     }
 
     this.handlers.set(handlerKey, {
-      handler: handler.handler as (job: Job) => Promise<unknown>,
+      handler: handler.handler as RegisteredHandler["handler"],
       lockOptions: handler.lockOptions as RegisteredHandler["lockOptions"],
     });
 
@@ -537,6 +544,7 @@ export class WorkerJobQueue {
 
   private async doShutdown(): Promise<void> {
     log.info("Shutting down worker job queue...");
+    this.shutdownController.abort(new Error('Worker job queue is shutting down'));
 
     // Close all workers first (stop processing new jobs)
     const workerClosePromises = Array.from(this.queues.values()).map(

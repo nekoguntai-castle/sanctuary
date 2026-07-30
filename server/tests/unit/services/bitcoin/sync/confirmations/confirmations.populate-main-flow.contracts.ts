@@ -155,4 +155,45 @@ export function registerPopulateMissingTransactionFieldsMainFlowContracts() {
     });
     expect(mockRecalculateWalletBalances).toHaveBeenCalledWith('wallet-1');
   });
+
+  it('stops before fetching a later population chunk when cancellation arrives during the current chunk write', async () => {
+    const controller = new AbortController();
+    const transactions = Array.from({ length: 51 }, (_, index) => ({
+      id: `transaction-${index}`,
+      txid: `txid-${index}`,
+      type: 'received',
+      amount: BigInt(1000),
+      fee: BigInt(0),
+      blockHeight: null,
+      blockTime: new Date('2024-01-01T00:00:00.000Z'),
+      confirmations: 0,
+      addressId: 'address-1',
+      counterpartyAddress: 'sender',
+    }));
+    const mockClient = {
+      getAddressHistory: vi.fn().mockResolvedValue([]),
+      getTransaction: vi.fn().mockResolvedValue({
+        blockheight: 900,
+        vin: [],
+        vout: [],
+      }),
+    };
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'mainnet' });
+    mockPrismaClient.transaction.findMany.mockResolvedValue(transactions);
+    mockPrismaClient.address.findMany.mockResolvedValue([]);
+    mockGetNodeClient.mockResolvedValue(mockClient);
+    mockPrismaClient.transaction.update.mockImplementation((update) => {
+      controller.abort(new Error('cancel population after current chunk'));
+      return Promise.resolve({ id: update.where.id, ...update.data });
+    });
+
+    await expect(populateMissingTransactionFields(
+      'wallet-1',
+      controller.signal,
+    )).rejects.toThrow('cancel population after current chunk');
+
+    expect(mockClient.getTransaction).toHaveBeenCalledTimes(50);
+    expect(mockPrismaClient.transaction.update).toHaveBeenCalledTimes(50);
+    expect(mockClient.getTransaction).not.toHaveBeenCalledWith('txid-50', true);
+  });
 }

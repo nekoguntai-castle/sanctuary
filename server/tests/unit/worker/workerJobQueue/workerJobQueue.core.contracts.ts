@@ -52,6 +52,28 @@ export const registerWorkerJobQueueCoreContracts = (
       expect(secondHealth).toBe(true);
     });
 
+    it("replaces the aborted execution signal when reinitialized after shutdown", async () => {
+      await queue.initialize();
+      await queue.shutdown();
+      await queue.initialize();
+      let observedSignal: AbortSignal | undefined;
+      queue.registerHandler("sync", {
+        name: "after-reinitialize",
+        queue: "sync",
+        handler: vi.fn(async (_job, execution) => {
+          observedSignal = execution?.signal;
+          return { processed: true };
+        }),
+      });
+
+      await expect((queue as any).processJob("sync", {
+        id: "job-after-reinitialize",
+        name: "after-reinitialize",
+        data: {},
+      })).resolves.toEqual({ processed: true });
+      expect(observedSignal?.aborted).toBe(false);
+    });
+
     it("should throw if Redis is not connected", async () => {
       const { isRedisConnected } =
         await import("../../../../src/infrastructure");

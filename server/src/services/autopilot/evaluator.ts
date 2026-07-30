@@ -157,9 +157,11 @@ async function resetStability(walletId: string): Promise<void> {
  * Evaluate all wallets with autopilot enabled.
  * Main entry point called by the recurring worker job.
  */
-export async function evaluateAllWallets(): Promise<void> {
+export async function evaluateAllWallets(signal?: AbortSignal): Promise<void> {
   try {
+    signal?.throwIfAborted();
     const enabledWallets = await getEnabledAutopilotWallets();
+    signal?.throwIfAborted();
 
     if (enabledWallets.length === 0) {
       log.debug('No wallets with autopilot enabled');
@@ -170,20 +172,25 @@ export async function evaluateAllWallets(): Promise<void> {
 
     for (const { walletId, walletName, settings } of enabledWallets) {
       try {
+        signal?.throwIfAborted();
         const suggestion = await evaluateWallet(walletId, walletName, settings);
+        signal?.throwIfAborted();
 
         if (!suggestion) {
           await resetStability(walletId);
+          signal?.throwIfAborted();
           continue;
         }
 
         // Check stability + cooldown
         const shouldNotify = await checkStabilityAndCooldown(walletId, settings.cooldownHours);
+        signal?.throwIfAborted();
         if (!shouldNotify) continue;
 
         // Send notification
         await sendConsolidationNotification(suggestion, settings);
         await setCooldown(walletId, settings.cooldownHours);
+        signal?.throwIfAborted();
 
         log.info('Sent consolidation suggestion', {
           walletId,
@@ -193,6 +200,7 @@ export async function evaluateAllWallets(): Promise<void> {
           dustCount: suggestion.utxoHealth.dustCount,
         });
       } catch (error) {
+        signal?.throwIfAborted();
         log.error('Error evaluating wallet', {
           walletId,
           error: getErrorMessage(error),
@@ -200,6 +208,7 @@ export async function evaluateAllWallets(): Promise<void> {
       }
     }
   } catch (error) {
+    signal?.throwIfAborted();
     log.error('Error in evaluateAllWallets', { error: getErrorMessage(error) });
   }
 }

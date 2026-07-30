@@ -61,30 +61,45 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
     lockKey: (data) => `sync:wallet:${data.walletId}`,
     lockTtlMs: SYNC_LOCK_TTL_MS,
   },
-  handler: async (job: Job<SyncWalletJobData>): Promise<SyncWalletJobResult> => {
+  handler: async (job: Job<SyncWalletJobData>, execution): Promise<SyncWalletJobResult> => {
     const { walletId, reason } = job.data;
     const startTime = Date.now();
+    execution?.throwIfAborted();
 
     log.info(`Syncing wallet ${walletId}`, { reason, jobId: job.id });
 
     // Get wallet network for block height tracking
     const wallet = await walletRepository.findByIdWithSelect(walletId, { network: true });
+    execution?.throwIfAborted();
 
     if (!wallet) {
       log.warn(`Wallet ${walletId} not found, skipping sync`);
       return { success: false, duration: 0, error: 'Wallet not found' };
     }
 
-    // Mark wallet as syncing
-    await walletRepository.update(walletId, { syncInProgress: true });
-
+    let syncFlagSet = false;
     let flagCleared = false;
     try {
+      // Keep the mark and the abort checkpoint inside the cleanup guard. If
+      // cooperative shutdown arrives while the write is in flight, the flag is
+      // reset before the handler settles and its lock is released.
+      await walletRepository.update(walletId, { syncInProgress: true });
+      syncFlagSet = true;
+      execution?.throwIfAborted();
+
       // Execute sync
-      const result = await syncWallet(walletId);
+      const result = execution
+        ? await syncWallet(walletId, 0, execution.signal)
+        : await syncWallet(walletId);
+      execution?.throwIfAborted();
 
       // Populate missing transaction fields
-      await populateMissingTransactionFields(walletId);
+      if (execution) {
+        await populateMissingTransactionFields(walletId, execution.signal);
+      } else {
+        await populateMissingTransactionFields(walletId);
+      }
+      execution?.throwIfAborted();
 
       // Get current block height for this network
       const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
@@ -99,6 +114,7 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
         lastSyncError: null,
       });
       flagCleared = true;
+      execution?.throwIfAborted();
 
       const duration = Date.now() - startTime;
 
@@ -116,6 +132,7 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
         utxosUpdated: result.utxos,
       };
     } catch (error) {
+      execution?.throwIfAborted();
       const duration = Date.now() - startTime;
       const errorMsg = getErrorMessage(error);
 
@@ -149,7 +166,7 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
     } finally {
       // Safety net: if neither try nor catch managed to clear the flag,
       // force-reset it so the wallet doesn't stay stuck forever.
-      if (!flagCleared) {
+      if (syncFlagSet && !flagCleared) {
         try {
           await walletRepository.update(walletId, { syncInProgress: false });
           log.warn(`Safety-net reset syncInProgress for wallet ${walletId}`);

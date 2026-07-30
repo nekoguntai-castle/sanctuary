@@ -16,6 +16,95 @@ import {
 import { runAnalysisPipelines } from '../../../../../src/services/intelligence/analysisService';
 
 export function registerRunAnalysisErrorDedupContracts(): void {
+    it.each(['insight creation', 'dedup write'] as const)(
+      'finishes insight, dedup, and notification before honoring shutdown during %s',
+      async (abortPoint) => {
+        (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
+        (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ compatible: true }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+              title: 'UTXO Health Alert',
+              summary: 'Consider consolidating dust',
+              severity: 'warning',
+              analysis: 'Detailed analysis text',
+            }),
+          });
+        (mockGetEnabledIntelligenceWallets as Mock).mockResolvedValue([
+          {
+            walletId: 'wallet-1',
+            walletName: 'Main Wallet',
+            userId: 'user-1',
+            settings: { enabled: true, typeFilter: ['utxo_health'] },
+          },
+        ]);
+        (mockGetUtxoHealthProfile as Mock).mockResolvedValue({
+          totalUtxos: 25,
+          dustCount: 5,
+          dustValue: BigInt(5000),
+          totalValue: BigInt(500000),
+          avgUtxoSize: BigInt(20000),
+          consolidationCandidates: 3,
+        });
+        const insight = {
+          id: 'insight-shutdown',
+          walletId: 'wallet-1',
+          type: 'utxo_health',
+          severity: 'warning',
+          title: 'UTXO Health Alert',
+          summary: 'Consider consolidating dust',
+        };
+        (mockCreateInsight as Mock).mockResolvedValue(insight);
+        (mockNotificationChannelRegistry.notifyInsight as Mock).mockResolvedValue(undefined);
+
+        let phaseStarted!: () => void;
+        let finishPhase!: () => void;
+        const phaseStartedPromise = new Promise<void>((resolve) => {
+          phaseStarted = resolve;
+        });
+        const finishPhasePromise = new Promise<void>((resolve) => {
+          finishPhase = resolve;
+        });
+        if (abortPoint === 'insight creation') {
+          (mockCreateInsight as Mock).mockImplementationOnce(async () => {
+            phaseStarted();
+            await finishPhasePromise;
+            return insight;
+          });
+        } else {
+          redis.set.mockImplementationOnce(async () => {
+            phaseStarted();
+            await finishPhasePromise;
+            return 'OK';
+          });
+        }
+        const controller = new AbortController();
+
+        const analysis = runAnalysisPipelines(controller.signal);
+        await phaseStartedPromise;
+        controller.abort();
+        finishPhase();
+
+        await expect(analysis).rejects.toMatchObject({ name: 'AbortError' });
+        expect(mockCreateInsight).toHaveBeenCalledTimes(1);
+        expect(redis.set).toHaveBeenCalledWith(
+          'intelligence:dedup:wallet-1:utxo_health',
+          '1',
+          'EX',
+          21_600,
+        );
+        expect(mockNotificationChannelRegistry.notifyInsight).toHaveBeenCalledWith(
+          'wallet-1',
+          expect.objectContaining({ id: 'insight-shutdown' }),
+        );
+      },
+    );
+
     it('should skip when AI analysis returns non-ok response', async () => {
       (mockGetAIConfig as Mock).mockResolvedValue(validConfig);
       (mockSyncConfigToLlmEgressProxy as Mock).mockResolvedValue(undefined);

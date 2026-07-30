@@ -41,6 +41,8 @@ export interface SanctuaryBackup {
 export interface BackupOptions {
   includeCache?: boolean;
   description?: string;
+  /** Cooperative cancellation checked between completed table exports. */
+  signal?: AbortSignal;
 }
 
 /**

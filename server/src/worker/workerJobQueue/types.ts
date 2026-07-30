@@ -3,6 +3,7 @@
  */
 
 import type { Queue, Worker, QueueEvents, JobsOptions } from 'bullmq';
+import type { JobExecutionContext } from '../jobs/types';
 
 export interface WorkerJobQueueConfig {
   /** Worker concurrency per queue (default: 3) */
@@ -22,7 +23,10 @@ export interface QueueInstance {
 }
 
 export interface RegisteredHandler {
-  handler: (job: import('bullmq').Job) => Promise<unknown>;
+  handler: (
+    job: import('bullmq').Job,
+    execution?: JobExecutionContext
+  ) => Promise<unknown>;
   lockOptions?: {
     lockKey: (data: unknown) => string;
     lockTtlMs?: number;

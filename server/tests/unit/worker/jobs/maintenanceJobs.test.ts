@@ -107,4 +107,18 @@ describe('worker maintenanceJobs', () => {
       expectForwardedMaintenanceJob(byName, name, definition);
     }
   });
+
+  it('forwards execution context through every locked maintenance adapter', async () => {
+    const controller = new AbortController();
+    const execution = {
+      signal: controller.signal,
+      throwIfAborted: () => controller.signal.throwIfAborted(),
+    };
+    const job = { data: {} } as any;
+
+    for (const handler of maintenanceJobs) {
+      await handler.handler(job, execution);
+      expect(handler.handler).toHaveBeenLastCalledWith(job, execution);
+    }
+  });
 });

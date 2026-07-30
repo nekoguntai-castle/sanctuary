@@ -60,14 +60,24 @@ async function subscribeGeneratedAddresses(
  * 8. Update Addresses - Mark addresses with history as "used"
  * 9. Gap Limit - Generate new addresses if needed
  * 10. Fix Consolidations - Correct misclassified consolidation transactions
+ *
+ * The optional signal is checked between completed phases and recursive gap
+ * passes. An interrupted sync may leave already-committed phase work for the
+ * next idempotent sync to reconcile.
  */
 // BIP-44 gap limit expansion can trigger recursive syncs when newly generated
 // addresses have transactions. Cap recursion to prevent infinite loops when
 // scattered transaction patterns keep shrinking the consecutive unused gap.
 const MAX_GAP_LIMIT_RECURSION = 10;
 
-export async function syncWallet(walletId: string, depth = 0): Promise<SyncWalletResult> {
-  const result = await executeSyncPipeline(walletId, defaultSyncPhases);
+export async function syncWallet(
+  walletId: string,
+  depth = 0,
+  signal?: AbortSignal,
+): Promise<SyncWalletResult> {
+  signal?.throwIfAborted();
+  const result = await executeSyncPipeline(walletId, defaultSyncPhases, { signal });
+  signal?.throwIfAborted();
 
   // Handle recursive sync for gap limit expansion
   if (result.stats.newAddressesGenerated > 0) {
@@ -83,16 +93,20 @@ export async function syncWallet(walletId: string, depth = 0): Promise<SyncWalle
     }
 
     const wallet = await walletRepository.findById(walletId);
+    signal?.throwIfAborted();
     if (wallet) {
       const network = normalizeLegacyBitcoinNetwork(wallet.network, 'mainnet');
       const client = await getNodeClient(network);
 
       const newAddresses = await addressRepository.findRecentUnused(walletId, result.stats.newAddressesGenerated);
+      signal?.throwIfAborted();
 
       if (newAddresses.length > 0) {
         try {
           await subscribeGeneratedAddresses(walletId, client, newAddresses.map(a => a.address));
+          signal?.throwIfAborted();
           const newHistoryResults = await client.getAddressHistoryBatch(newAddresses.map(a => a.address));
+          signal?.throwIfAborted();
 
           let foundTransactions = false;
           for (const [, history] of newHistoryResults) {
@@ -104,7 +118,7 @@ export async function syncWallet(walletId: string, depth = 0): Promise<SyncWalle
 
           if (foundTransactions) {
             walletLog(walletId, 'info', 'BLOCKCHAIN', `Found transactions on new addresses, re-syncing (depth ${depth + 1})...`);
-            const recursiveResult = await syncWallet(walletId, depth + 1);
+            const recursiveResult = await syncWallet(walletId, depth + 1, signal);
             return {
               addresses: result.addresses + recursiveResult.addresses,
               transactions: result.transactions + recursiveResult.transactions,
@@ -112,6 +126,7 @@ export async function syncWallet(walletId: string, depth = 0): Promise<SyncWalle
             };
           }
         } catch (error) {
+          signal?.throwIfAborted();
           log.warn(`[BLOCKCHAIN] Failed to scan new addresses: ${error}`);
         }
       }

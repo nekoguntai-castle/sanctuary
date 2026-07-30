@@ -28,7 +28,8 @@ const log = createLogger('BACKUP:SVC');
  * entire tables into a single Prisma response buffer.
  */
 export async function createBackup(adminUser: string, options: BackupOptions = {}): Promise<SanctuaryBackup> {
-  const { includeCache = false, description } = options;
+  const { includeCache = false, description, signal } = options;
+  signal?.throwIfAborted();
 
   log.info('[BACKUP] Creating backup', { adminUser, includeCache });
 
@@ -41,6 +42,7 @@ export async function createBackup(adminUser: string, options: BackupOptions = {
     : TABLE_ORDER;
 
   for (const table of tablesToExport) {
+    signal?.throwIfAborted();
     if (LARGE_TABLES.has(table)) {
       // Cursor-based pagination for large tables to reduce peak memory
       data[table] = await exportTablePaginated(table);
@@ -51,6 +53,7 @@ export async function createBackup(adminUser: string, options: BackupOptions = {
       data[table] = records.map((record: BackupRecord) => serializeRecord(record));
     }
     recordCounts[table] = data[table].length;
+    signal?.throwIfAborted();
     log.debug(`[BACKUP] Exported ${data[table].length} records from ${table}`);
   }
 
