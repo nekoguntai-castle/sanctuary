@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 #
-# Build and push Sanctuary prebuilt core container images to Codeberg Packages.
+# Build and push Sanctuary prebuilt core container images to GHCR.
 #
 # Inputs (env):
-#   IMAGE_REGISTRY     default codeberg.org/nekoguntai-castle
+#   IMAGE_REGISTRY     default ghcr.io/nekoguntai-castle
 #   IMAGE_TAG          required (e.g. v0.8.53). MUST start with 'v'.
 #   IMAGE_PLATFORMS    default linux/amd64,linux/arm64
 #   IMAGES             default "frontend backend" - space-separated core subset
 #   PUSH               default "true"; set "false" for build-only dry-run
+#   DIST_DIR           default <repo>/dist
+#   IMAGE_SOURCE       default public GitHub mirror URL
+#   IMAGE_REVISION     default current git commit
 #
-# Outputs (under dist/):
+# Outputs (under DIST_DIR):
 #   image-digests-<tag>.json - { "frontend": "sha256:...", "backend": "sha256:..." }
 #   image-build-summary-<tag>.txt - human-readable log
 #
@@ -35,19 +38,30 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-IMAGE_REGISTRY="${IMAGE_REGISTRY:-codeberg.org/nekoguntai-castle}"
+IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io/nekoguntai-castle}"
 IMAGE_TAG="${IMAGE_TAG:?IMAGE_TAG must be set, e.g. v0.8.53}"
 IMAGE_PLATFORMS="${IMAGE_PLATFORMS:-linux/amd64,linux/arm64}"
 IMAGES="${IMAGES:-frontend backend}"
 PUSH="${PUSH:-true}"
+DIST_DIR="${DIST_DIR:-$ROOT_DIR/dist}"
+IMAGE_SOURCE="${IMAGE_SOURCE:-https://github.com/nekoguntai-castle/sanctuary}"
+IMAGE_REVISION="${IMAGE_REVISION:-$(git -C "$ROOT_DIR" rev-parse HEAD)}"
 
-if [[ ! "$IMAGE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "::error::IMAGE_TAG must match ^v[0-9]+\.[0-9]+\.[0-9]+$ (got '$IMAGE_TAG')." >&2
-  echo "::error::Pre-release tags are not published; this script must only run on stable tags." >&2
+if [ "$PUSH" != "true" ] && [ "$PUSH" != "false" ]; then
+  echo "::error::PUSH must be either 'true' or 'false' (got '$PUSH')." >&2
   exit 2
 fi
 
-DIST_DIR="$ROOT_DIR/dist"
+if [[ ! "$IMAGE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+  echo "::error::IMAGE_TAG must be a v-prefixed semantic version (got '$IMAGE_TAG')." >&2
+  exit 2
+fi
+
+if [ "$PUSH" = "true" ] && [[ ! "$IMAGE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "::error::Pre-release tags may only be used with PUSH=false; published tags must be stable." >&2
+  exit 2
+fi
+
 DIGEST_FILE="$DIST_DIR/image-digests-${IMAGE_TAG}.json"
 SUMMARY_FILE="$DIST_DIR/image-build-summary-${IMAGE_TAG}.txt"
 mkdir -p "$DIST_DIR"
@@ -68,7 +82,9 @@ dockerfile_for() {
 build_one() {
   local image="$1"
   local dockerfile
-  dockerfile="$(dockerfile_for "$image")"
+  if ! dockerfile="$(dockerfile_for "$image")"; then
+    return 1
+  fi
   local repo_image="${IMAGE_REGISTRY}/sanctuary-${image}"
   local fq_tag="${repo_image}:${IMAGE_TAG}"
 
@@ -88,15 +104,12 @@ build_one() {
   # Registry-based BuildKit cache. arm64 cross-build via QEMU is
   # ~3-5x slower than amd64-only; without a layer cache, every release
   # rebuilds from scratch and risks the 180-min job timeout. Pushing
-  # cache to a dedicated `:cache-${image}` tag in the same Codeberg
+  # cache to a dedicated `:cache-${image}` tag in the same registry
   # repo lets the next release reuse most layers, turning a 60-90min
   # first build into a ~10-15min incremental.
   #
-  # `ignore-error=true` is critical for Codeberg Packages: its OCI
-  # registry has rejected (400 Bad request) certain large cache blobs
-  # in the past; without this flag a cache-export failure cancels the
-  # image push and the whole release stalls. Image correctness is the
-  # contract; cache is best-effort.
+  # Cache export is best-effort so a registry cache failure cannot
+  # cancel an otherwise valid image push.
   local cache_ref="${repo_image}:cache-${image}"
   output_args+=(--cache-from="type=registry,ref=${cache_ref}")
   if [ "$PUSH" = "true" ]; then
@@ -108,6 +121,9 @@ build_one() {
   if ! docker buildx build \
       --platform "$IMAGE_PLATFORMS" \
       --tag "$fq_tag" \
+      --label "org.opencontainers.image.source=$IMAGE_SOURCE" \
+      --label "org.opencontainers.image.version=$IMAGE_TAG" \
+      --label "org.opencontainers.image.revision=$IMAGE_REVISION" \
       "${output_args[@]}" \
       -f "$ROOT_DIR/$dockerfile" \
       "$ROOT_DIR" 2>&1 | tee -a "$SUMMARY_FILE"; then
@@ -141,8 +157,8 @@ build_one() {
 }
 
 main() {
-  printf 'IMAGE_REGISTRY=%s\nIMAGE_TAG=%s\nIMAGE_PLATFORMS=%s\nIMAGES=%s\nPUSH=%s\n\n' \
-    "$IMAGE_REGISTRY" "$IMAGE_TAG" "$IMAGE_PLATFORMS" "$IMAGES" "$PUSH" \
+  printf 'IMAGE_REGISTRY=%s\nIMAGE_TAG=%s\nIMAGE_PLATFORMS=%s\nIMAGES=%s\nPUSH=%s\nIMAGE_SOURCE=%s\nIMAGE_REVISION=%s\n\n' \
+    "$IMAGE_REGISTRY" "$IMAGE_TAG" "$IMAGE_PLATFORMS" "$IMAGES" "$PUSH" "$IMAGE_SOURCE" "$IMAGE_REVISION" \
     | tee -a "$SUMMARY_FILE"
 
   for image in $IMAGES; do
@@ -153,7 +169,11 @@ main() {
     fi
   done
 
-  printf '\n=== all images published ===\n' | tee -a "$SUMMARY_FILE"
+  if [ "$PUSH" = "true" ]; then
+    printf '\n=== all images published ===\n' | tee -a "$SUMMARY_FILE"
+  else
+    printf '\n=== all dry-run builds completed ===\n' | tee -a "$SUMMARY_FILE"
+  fi
   cat "$DIGEST_FILE"
 }
 

@@ -160,6 +160,32 @@ function expectVerificationFailure(fixture, messagePattern) {
   );
 }
 
+function expectStrictImagesFailure(fixture, messagePattern) {
+  assert.throws(
+    () => verifyReleaseArtifacts({
+      manifestPath: fixture.manifestPath,
+      strictImages: true,
+    }),
+    (error) => error instanceof ReleaseArtifactVerificationError
+      && messagePattern.test(error.message),
+  );
+}
+
+function useContainerOnlyManifest(fixture) {
+  rewriteManifest(fixture, (manifest) => {
+    manifest.artifacts = manifest.artifacts.filter((artifact) => artifact.type === 'container-image');
+    for (const artifact of manifest.artifacts) {
+      delete artifact.sbom;
+      delete artifact.provenance;
+    }
+  });
+  fixture.manifest.artifacts = fixture.manifest.artifacts.filter((artifact) => artifact.type === 'container-image');
+  for (const artifact of fixture.manifest.artifacts) {
+    delete artifact.sbom;
+    delete artifact.provenance;
+  }
+}
+
 function withFixture(testFn) {
   const fixture = createCompleteFixture();
   try {
@@ -205,6 +231,94 @@ function testStableContainerRequiresArm64Digest() {
       manifest.artifacts[5].platforms = manifest.artifacts[5].platforms.filter((entry) => entry.platform !== 'linux/arm64');
     });
     expectVerificationFailure(fixture, /linux\/arm64 image digest evidence/);
+  });
+}
+
+function testStrictImagesContainerOnlyManifestPasses() {
+  withFixture((fixture) => {
+    useContainerOnlyManifest(fixture);
+    const result = verifyReleaseArtifacts({
+      manifestPath: fixture.manifestPath,
+      strictImages: true,
+    });
+    assert.equal(result.artifactsChecked, 2);
+    assert.equal(result.localFilesChecked, 0);
+    assert.equal(result.checksumEntries, 0);
+  });
+}
+
+function testStrictImagesRejectsNullPlatforms() {
+  withFixture((fixture) => {
+    useContainerOnlyManifest(fixture);
+    rewriteManifest(fixture, (manifest) => {
+      manifest.artifacts[0].platforms = null;
+    });
+    expectStrictImagesFailure(fixture, /platforms must contain linux\/amd64 and linux\/arm64/);
+  });
+}
+
+function testStrictImagesRejectsDuplicatePlatformDigest() {
+  withFixture((fixture) => {
+    useContainerOnlyManifest(fixture);
+    rewriteManifest(fixture, (manifest) => {
+      manifest.artifacts[0].platforms.push({
+        platform: 'linux/amd64',
+        digest: `sha256:${'1'.repeat(64)}`,
+      });
+    });
+    expectStrictImagesFailure(fixture, /duplicate linux\/amd64 image digest evidence/);
+  });
+}
+
+function testStrictImagesRejectsMissingPlatformDigest() {
+  withFixture((fixture) => {
+    useContainerOnlyManifest(fixture);
+    rewriteManifest(fixture, (manifest) => {
+      manifest.artifacts[1].platforms = manifest.artifacts[1].platforms
+        .filter((entry) => entry.platform !== 'linux/arm64');
+    });
+    expectStrictImagesFailure(fixture, /requires linux\/arm64 image digest evidence/);
+  });
+}
+
+function testStrictImagesRejectsDuplicateRole() {
+  withFixture((fixture) => {
+    useContainerOnlyManifest(fixture);
+    rewriteManifest(fixture, (manifest) => {
+      manifest.artifacts.push(structuredClone(manifest.artifacts[0]));
+    });
+    expectStrictImagesFailure(fixture, /exactly one frontend container-image artifact; found 2/);
+  });
+}
+
+function testStrictImagesRejectsMissingRole() {
+  withFixture((fixture) => {
+    useContainerOnlyManifest(fixture);
+    rewriteManifest(fixture, (manifest) => {
+      manifest.artifacts = manifest.artifacts.filter((artifact) => !artifact.image.endsWith('-backend'));
+    });
+    expectStrictImagesFailure(fixture, /requires one backend container-image artifact/);
+  });
+}
+
+function testStrictImagesRejectsMalformedManifestDigestBoundary() {
+  withFixture((fixture) => {
+    useContainerOnlyManifest(fixture);
+    rewriteManifest(fixture, (manifest) => {
+      manifest.artifacts[0].digest = `sha256:${'a'.repeat(63)}`;
+    });
+    expectStrictImagesFailure(fixture, /sha256 manifest digest/);
+  });
+}
+
+function testStrictImagesDoesNotMatchPartialRoleName() {
+  withFixture((fixture) => {
+    useContainerOnlyManifest(fixture);
+    rewriteManifest(fixture, (manifest) => {
+      manifest.artifacts[0].name = 'sanctuary frontendish image';
+      manifest.artifacts[0].image = 'ghcr.io/nekoguntai-castle/sanctuary-frontendish';
+    });
+    expectStrictImagesFailure(fixture, /requires one frontend container-image artifact/);
   });
 }
 
@@ -257,6 +371,14 @@ runTest('complete stable release manifest passes', testCompleteStableManifestPas
 runTest('stable release requires signed checksum file', testStableManifestRequiresSignedChecksumFile);
 runTest('stable offline bundle requires provenance', testStableOfflineBundleRequiresProvenance);
 runTest('stable container requires arm64 digest', testStableContainerRequiresArm64Digest);
+runTest('strict images accepts a complete container-only manifest', testStrictImagesContainerOnlyManifestPasses);
+runTest('strict images rejects null platform evidence', testStrictImagesRejectsNullPlatforms);
+runTest('strict images rejects duplicate platform digests', testStrictImagesRejectsDuplicatePlatformDigest);
+runTest('strict images rejects missing platform digests', testStrictImagesRejectsMissingPlatformDigest);
+runTest('strict images rejects duplicate role artifacts', testStrictImagesRejectsDuplicateRole);
+runTest('strict images rejects a missing role artifact', testStrictImagesRejectsMissingRole);
+runTest('strict images rejects a malformed manifest digest boundary', testStrictImagesRejectsMalformedManifestDigestBoundary);
+runTest('strict images does not match a partial role name', testStrictImagesDoesNotMatchPartialRoleName);
 runTest('tampered artifact fails checksum verification', testTamperedArtifactFailsChecksum);
 runTest('uncovered local artifact fails closed', testUncoveredArtifactFailsClosed);
 runTest('bad release identity fails closed', testBadReleaseIdentityFailsClosed);

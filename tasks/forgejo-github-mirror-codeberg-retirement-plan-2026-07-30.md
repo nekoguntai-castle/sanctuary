@@ -9,16 +9,18 @@ CI authority: Forgejo Actions, testing only
 ## Execution Ledger
 
 - target_branch: `main`
-- task_branch: `codex/implement-merge/github-mirror-foundation-20260730`
+- task_branch: `codex/implement-merge/github-release-distribution-20260730`
 - worktree_path: `/tmp/sanctuary-implement-merge-github-mirror`
 - created_by_loop: branch and isolated worktree
-- converted_to_next_phase: pending
+- converted_to_next_phase: 2026-07-30 HST after PR #562 merged
 - cleanup_status: pending
 - recovery_path:
   `/home/nekoguntai/sanctuary-recovery/github-mirror-cutover-20260730`
 - GitHub Actions disabled: 2026-07-30 HST
 - GitHub Dependabot security updates disabled: 2026-07-30 HST
 - approved public branch allowlist: `main` only; unfiltered mirroring is forbidden
+- Forgejo v16.0.1 branch filters propagate only matching branches, not tags;
+  release tags require the trusted operator's explicit GitHub ref creation
 - queued Dependabot dynamic runs: cancellation returns GitHub HTTP 500; repository
   config removal and post-mirror recheck pending
 
@@ -115,7 +117,8 @@ that Forgejo is authoritative and that direct GitHub contributions are not merge
    every current and future Forgejo branch.
 3. Use separate release credentials.
    - A GitHub fine-grained token scoped only to this repository with Contents
-     write permission creates GitHub Release objects.
+     write and Administration read creates GitHub Release objects and verifies
+     that Actions remains disabled before any tag mutation.
    - A dedicated classic PAT with `write:packages` publishes GHCR images, because
      GitHub Packages currently requires a classic PAT for external publishers.
    - Neither token is a GitHub Actions secret; store them in the operator secret
@@ -186,23 +189,23 @@ queued; GitHub is clearly marked non-authoritative.
 
 - [ ] Create the dedicated mirror SSH key in Forgejo and register its public key as
   a write-enabled deploy key on only `nekoguntai-castle/sanctuary`.
-- [ ] In a disposable repository, verify the installed Forgejo version's branch
+- [x] In a disposable repository, verify the installed Forgejo version's branch
   filter and tag behavior. Record whether `main` filtering still propagates
   annotated/lightweight tags and tag deletions.
 - [ ] Create the separate GitHub Release and GHCR credentials described above.
-- [ ] Update `scripts/ci/build-and-push-images.sh`:
+- [x] Update `scripts/ci/build-and-push-images.sh`:
   - default `IMAGE_REGISTRY` to `ghcr.io/nekoguntai-castle`;
   - remove Codeberg-specific cache comments and diagnostics;
   - preserve stable-tag validation, multi-architecture manifests, digests, and
     best-effort registry cache behavior.
-- [ ] Update `docker-compose.ghcr.yml` so every frontend/backend image defaults to
+- [x] Update `docker-compose.ghcr.yml` so every frontend/backend image defaults to
   `ghcr.io/nekoguntai-castle`, while preserving `IMAGE_REGISTRY` override support.
-- [ ] Replace the Codeberg target in `scripts/create-forge-release.sh` with GitHub:
+- [x] Replace the Codeberg target in `scripts/create-forge-release.sh` with GitHub:
   - continue creating the Forgejo release;
   - use GitHub's Releases API and the scoped release token;
   - remain idempotent when a release already exists;
   - fail the overall command if either required release target fails.
-- [ ] Add a release orchestration command under `scripts/release/` that:
+- [x] Add a release orchestration command under `scripts/release/` that:
   1. requires a clean checkout at an immutable stable tag;
   2. verifies the tag commit exists on Forgejo and the required Forgejo release
      gates are green;

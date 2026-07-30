@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { validateStrictImages } from './release-image-evidence.mjs';
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const SHA256_DIGEST_RE = /^sha256:[a-f0-9]{64}$/;
@@ -56,6 +57,7 @@ export function verifyReleaseArtifacts(inputOptions = {}) {
 
   validateChecksumCoverage(localRefs, checksumCoverage, errors);
   validateStrictStable(manifest, artifacts, checksumCoverage, context, errors);
+  validateStrictImages(artifacts, context.strictImages, errors);
 
   if (options.verifyImageDigests) {
     verifyPublishedImageDigests(artifacts, errors);
@@ -80,6 +82,7 @@ function normalizeOptions(options) {
     baseDir,
     publicKeyPath: options.publicKeyPath ? path.resolve(options.publicKeyPath) : '',
     strictStable: Boolean(options.strictStable),
+    strictImages: Boolean(options.strictImages),
     verifyImageDigests: Boolean(options.verifyImageDigests),
   };
 }
