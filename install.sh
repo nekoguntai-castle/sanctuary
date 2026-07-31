@@ -4,19 +4,16 @@
 # ============================================
 #
 # One-liner installation:
-#   curl -fsSL https://codeberg.org/nekoguntai-castle/sanctuary/raw/branch/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/install.sh | bash
 #
 # Or download and run:
-#   ./install.sh                       # default: Codeberg
-#   ./install.sh --source codeberg     # explicit Codeberg
-#   ./install.sh --source github       # explicit GitHub (currently unmaintained — org suspended)
+#   ./install.sh
 #
 # This script handles repository management (clone/update/version checkout),
 # then delegates to scripts/setup.sh for configuration and startup.
 #
-# Codeberg is the default source. GitHub remains available as an alternate
-# forge. Explicit --source choices are authoritative; automatic selection may
-# try the alternate forge when the preferred one is unavailable.
+# GitHub is the canonical online source for repository and release distribution.
+# Offline bundle installation remains available without GitHub connectivity.
 #
 # ============================================
 
@@ -30,167 +27,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
-
-# ============================================
-# Platform detection and configuration
-# ============================================
-
-# Repo metadata URL for a given source name. Used as a reachability probe
-# (curl returns 200 when the repo is publicly visible) and lets the script
-# fall through to alternate forges when the configured source is unreachable
-# (e.g., a shadow-banned GitHub org returning 404 to anonymous requests).
-_source_probe_url() {
-    case "$1" in
-        codeberg) echo "https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary" ;;
-        github)   echo "https://api.github.com/repos/nekoguntai-castle/sanctuary" ;;
-    esac
-}
-
-_source_reachable() {
-    local probe_url
-    probe_url=$(_source_probe_url "$1")
-    [ -n "$probe_url" ] || return 1
-    command -v curl &> /dev/null || return 0   # can't probe → assume yes
-    local code
-    code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 5 "$probe_url" 2>/dev/null || echo "000")
-    [ "$code" = "200" ]
-}
-
-source_repo_url() {
-    case "$1" in
-        codeberg) echo "https://codeberg.org/nekoguntai-castle/sanctuary.git" ;;
-        github)   echo "https://github.com/nekoguntai-castle/sanctuary.git" ;;
-    esac
-}
-
-source_api_url() {
-    case "$1" in
-        codeberg) echo "https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary/releases/latest" ;;
-        github)   echo "https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest" ;;
-    esac
-}
-
-source_platform_name() {
-    case "$1" in
-        codeberg) echo "Codeberg" ;;
-        github)   echo "GitHub" ;;
-        *)        echo "$1" ;;
-    esac
-}
-
-alternate_source() {
-    case "$1" in
-        codeberg) echo "github" ;;
-        github)   echo "codeberg" ;;
-    esac
-}
-
-requested_source_arg() {
-    local source=""
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --source)
-                source="$2"
-                shift 2
-                ;;
-            --source=*)
-                source="${1#*=}"
-                shift
-                ;;
-            *)
-                shift
-                ;;
-        esac
-    done
-
-    case "$source" in
-        codeberg|Codeberg) echo "codeberg" ;;
-        github|GitHub)     echo "github" ;;
-        *)                 echo "" ;;
-    esac
-}
-
-detect_source() {
-    local source=""
-    # Check if --source argument was provided
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --source)
-                source="$2"
-                shift 2
-                ;;
-            --source=*)
-                source="${1#*=}"
-                shift
-                ;;
-            *)
-                shift
-                ;;
-        esac
-    done
-
-    # If source specified, use it. Explicit source choices are authoritative:
-    # the installer will fail cleanly instead of falling back to another forge.
-    if [ -n "$source" ]; then
-        case "$source" in
-            codeberg|Codeberg)
-                echo "codeberg"
-                return
-                ;;
-            github|GitHub)
-                echo "github"
-                return
-                ;;
-            *)
-                echo -e "${YELLOW}Unknown source '$source', auto-detecting...${NC}" >&2
-                ;;
-        esac
-    fi
-
-    # Auto-detect from existing git remote, but only commit to it if the
-    # source is actually reachable. If origin is GitHub but GitHub is
-    # 404-ing the repo (account flagged, repo private, network blocked),
-    # fall through to the auto-probe instead of trying to git ls-remote
-    # against an unreachable endpoint and prompting for credentials.
-    local detected=""
-    if [ -d ".git" ] || [ -d "$INSTALL_DIR/.git" ]; then
-        local remote_url
-        if [ -d ".git" ]; then
-            remote_url=$(git config --get remote.origin.url 2>/dev/null || true)
-        else
-            remote_url=$(git -C "$INSTALL_DIR" config --get remote.origin.url 2>/dev/null || true)
-        fi
-
-        if echo "$remote_url" | grep -qi "codeberg"; then
-            detected="codeberg"
-        elif echo "$remote_url" | grep -qi "github"; then
-            detected="github"
-        fi
-    fi
-
-    if [ -n "$detected" ] && _source_reachable "$detected"; then
-        echo "$detected"
-        return
-    fi
-
-    if [ -n "$detected" ]; then
-        echo -e "${YELLOW}Detected source '$detected' from existing remote, but it is not reachable. Falling back to auto-probe.${NC}" >&2
-    fi
-
-    # Auto-probe public reachability. Prefer Codeberg by default, but allow
-    # GitHub as a prompt-free alternate when Codeberg is unavailable.
-    if command -v curl &> /dev/null; then
-        for candidate in codeberg github; do
-            if _source_reachable "$candidate"; then
-                echo "$candidate"
-                return
-            fi
-        done
-    fi
-
-    # Last-resort default: Codeberg (the one we know is consistently public)
-    echo "codeberg"
-}
 
 # Configuration
 INSTALL_DIR="${SANCTUARY_DIR:-$HOME/sanctuary}"
@@ -207,13 +43,10 @@ ASSUME_YES="${SANCTUARY_ASSUME_YES:-false}"
 SKIP_UPGRADE_BACKUP="${SANCTUARY_SKIP_UPGRADE_BACKUP:-false}"
 OFFLINE_TARGET_VERSION=""
 OFFLINE_MODE=false
-
-configure_source_platform() {
-    SOURCE_PLATFORM="$1"
-    REPO_URL="$(source_repo_url "$SOURCE_PLATFORM")"
-    API_URL="$(source_api_url "$SOURCE_PLATFORM")"
-    PLATFORM_NAME="$(source_platform_name "$SOURCE_PLATFORM")"
-}
+SOURCE_OPTION=""
+REPO_URL="https://github.com/nekoguntai-castle/sanctuary.git"
+RELEASE_API_URL="https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest"
+PLATFORM_NAME="GitHub"
 
 resolve_runtime_env_file() {
     local candidate="${SANCTUARY_ENV_FILE:-$DEFAULT_ENV_FILE}"
@@ -270,9 +103,19 @@ parse_install_options() {
                 shift
                 ;;
             --source)
+                if [ $# -lt 2 ] || [ -z "$2" ]; then
+                    echo -e "${RED}✗${NC} --source requires a value."
+                    exit 1
+                fi
+                SOURCE_OPTION="$2"
                 shift 2
                 ;;
             --source=*)
+                SOURCE_OPTION="${1#*=}"
+                if [ -z "$SOURCE_OPTION" ]; then
+                    echo -e "${RED}✗${NC} --source requires a value."
+                    exit 1
+                fi
                 shift
                 ;;
             *)
@@ -284,6 +127,22 @@ parse_install_options() {
     if [ -n "$OFFLINE_BUNDLE" ]; then
         OFFLINE_MODE=true
     fi
+}
+
+validate_online_source_option() {
+    [ "$OFFLINE_MODE" = true ] && return 0
+    [ -z "$SOURCE_OPTION" ] && return 0
+
+    case "$SOURCE_OPTION" in
+        github|GitHub)
+            return 0
+            ;;
+        *)
+            echo -e "${RED}✗${NC} Online installation is GitHub-only; source '$SOURCE_OPTION' is not supported."
+            echo "Remove --source and retry. GitHub source: $REPO_URL"
+            exit 1
+            ;;
+    esac
 }
 
 prepare_offline_bundle() {
@@ -456,19 +315,11 @@ create_upgrade_backup_or_prompt() {
 }
 
 parse_install_options "$@"
-
-# Detect source platform
-REQUESTED_SOURCE_PLATFORM="$(requested_source_arg "$@")"
-SOURCE_EXPLICIT=false
-if [ -n "$REQUESTED_SOURCE_PLATFORM" ]; then
-    SOURCE_EXPLICIT=true
-fi
-SOURCE_PLATFORM=$(detect_source "$@")
-configure_source_platform "$SOURCE_PLATFORM"
+validate_online_source_option
 
 if [ "$OFFLINE_MODE" = true ]; then
     REPO_URL="${OFFLINE_BUNDLE:-preloaded offline bundle}"
-    API_URL=""
+    RELEASE_API_URL=""
     PLATFORM_NAME="Offline bundle"
 fi
 
@@ -479,16 +330,10 @@ git_no_prompt() {
     GIT_TERMINAL_PROMPT=0 git "$@"
 }
 
-get_latest_release_for_source() {
-    local source="$1"
-    local api_url repo_url tag=""
-
-    api_url="$(source_api_url "$source")"
-    repo_url="$(source_repo_url "$source")"
-    [ -n "$api_url" ] && [ -n "$repo_url" ] || return 1
-
+get_latest_release() {
+    local tag=""
     if command -v curl &> /dev/null; then
-        tag=$(curl -fsSL "$api_url" 2>/dev/null \
+        tag=$(curl -fsSL "$RELEASE_API_URL" 2>/dev/null \
             | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
             | head -1)
 
@@ -498,7 +343,14 @@ get_latest_release_for_source() {
         fi
     fi
 
-    tag=$(git_no_prompt ls-remote --tags --sort=-v:refname "$repo_url" 2>/dev/null | head -1 | sed 's/.*refs\/tags\///' | sed 's/\^{}//')
+    tag=$(
+        git_no_prompt ls-remote --tags --sort=-v:refname "$REPO_URL" 2>/dev/null \
+            | awk '$2 ~ /^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$/ {
+                sub(/^refs\/tags\//, "", $2)
+                print $2
+                exit
+            }'
+    )
     if [ -n "$tag" ]; then
         echo "$tag"
         return 0
@@ -508,34 +360,9 @@ get_latest_release_for_source() {
 }
 
 resolve_latest_release() {
-    local primary_source="$SOURCE_PLATFORM"
-    local fallback_source tag=""
-
     RELEASE_TAG=""
-
-    tag="$(get_latest_release_for_source "$primary_source" || true)"
-    if [ -n "$tag" ]; then
-        RELEASE_TAG="$tag"
-        return 0
-    fi
-
-    if [ "$SOURCE_EXPLICIT" = true ]; then
-        return 1
-    fi
-
-    fallback_source="$(alternate_source "$primary_source")"
-    [ -n "$fallback_source" ] || return 1
-
-    echo -e "${YELLOW}Primary source $(source_platform_name "$primary_source") did not provide a release. Trying $(source_platform_name "$fallback_source")...${NC}"
-    tag="$(get_latest_release_for_source "$fallback_source" || true)"
-    if [ -n "$tag" ]; then
-        configure_source_platform "$fallback_source"
-        RELEASE_TAG="$tag"
-        echo -e "${GREEN}✓${NC} Using fallback source: ${PLATFORM_NAME} (${REPO_URL})"
-        return 0
-    fi
-
-    return 1
+    RELEASE_TAG="$(get_latest_release || true)"
+    [ -n "$RELEASE_TAG" ]
 }
 
 ensure_origin_url() {
@@ -548,108 +375,49 @@ ensure_origin_url() {
     fi
 }
 
-try_fetch_source() {
-    local source="$1"
-    local repo_url fetch_output
+fetch_existing_installation() {
+    local fetch_output
 
-    repo_url="$(source_repo_url "$source")"
-    [ -n "$repo_url" ] || return 1
-    ensure_origin_url "$repo_url" || return 1
-
+    ensure_origin_url "$REPO_URL" || {
+        echo -e "${RED}✗${NC} Could not configure the GitHub origin: $REPO_URL"
+        exit 1
+    }
     if fetch_output="$(git_no_prompt fetch --tags origin 2>&1)"; then
         return 0
     fi
 
     if [[ "$fetch_output" == *"would clobber existing tag"* ]]; then
-        echo -e "${YELLOW}Local release tags differ from $(source_platform_name "$source"). Refreshing tags for forge migration...${NC}" >&2
-        git_no_prompt fetch --tags --force origin >/dev/null 2>&1
-        return $?
+        echo -e "${YELLOW}Local release tags differ from GitHub. Refreshing tags from the canonical source...${NC}" >&2
+        if git_no_prompt fetch --tags --force origin >/dev/null 2>&1; then
+            return 0
+        fi
     fi
 
-    return 1
-}
-
-fetch_existing_installation() {
-    local primary_source="$SOURCE_PLATFORM"
-    local fallback_source
-
-    if try_fetch_source "$primary_source"; then
-        configure_source_platform "$primary_source"
-        return 0
-    fi
-
-    if [ "$SOURCE_EXPLICIT" = true ]; then
-        echo -e "${RED}✗${NC} Could not fetch updates from ${PLATFORM_NAME}."
-        echo "Explicit --source $SOURCE_PLATFORM was requested, so no alternate forge was tried."
-        exit 1
-    fi
-
-    fallback_source="$(alternate_source "$primary_source")"
-    [ -n "$fallback_source" ] || {
-        echo -e "${RED}✗${NC} Could not fetch updates from ${PLATFORM_NAME}."
-        exit 1
-    }
-
-    echo -e "${YELLOW}Could not fetch from $(source_platform_name "$primary_source"). Trying $(source_platform_name "$fallback_source")...${NC}"
-    if try_fetch_source "$fallback_source"; then
-        configure_source_platform "$fallback_source"
-        echo -e "${GREEN}✓${NC} Fetched updates from ${PLATFORM_NAME}"
-        return 0
-    fi
-
-    echo -e "${RED}✗${NC} Could not fetch updates from Codeberg or GitHub."
+    echo -e "${RED}✗${NC} Could not fetch updates from GitHub."
+    echo "Check GitHub connectivity and repository access: $REPO_URL"
     exit 1
 }
 
-try_clone_source() {
-    local source="$1"
-    local repo_url parent_dir temp_dir
-
-    repo_url="$(source_repo_url "$source")"
-    [ -n "$repo_url" ] || return 1
-
+clone_repository() {
+    local parent_dir temp_dir
     parent_dir="$(dirname "$INSTALL_DIR")"
-    mkdir -p "$parent_dir" || return 1
-    temp_dir="$(mktemp -d "$parent_dir/.sanctuary-clone.XXXXXX")" || return 1
+    mkdir -p "$parent_dir" || {
+        echo -e "${RED}✗${NC} Could not create the installation parent directory: $parent_dir"
+        exit 1
+    }
+    temp_dir="$(mktemp -d "$parent_dir/.sanctuary-clone.XXXXXX")" || {
+        echo -e "${RED}✗${NC} Could not create a temporary clone directory under: $parent_dir"
+        exit 1
+    }
 
-    if git_no_prompt clone "$repo_url" "$temp_dir" >/dev/null 2>&1; then
+    if git_no_prompt clone "$REPO_URL" "$temp_dir" >/dev/null 2>&1; then
         mv "$temp_dir" "$INSTALL_DIR"
         return 0
     fi
 
     rm -rf "$temp_dir"
-    return 1
-}
-
-clone_repository() {
-    local primary_source="$SOURCE_PLATFORM"
-    local fallback_source
-
-    if try_clone_source "$primary_source"; then
-        configure_source_platform "$primary_source"
-        return 0
-    fi
-
-    if [ "$SOURCE_EXPLICIT" = true ]; then
-        echo -e "${RED}✗${NC} Could not clone from ${PLATFORM_NAME}."
-        echo "Explicit --source $SOURCE_PLATFORM was requested, so no alternate forge was tried."
-        exit 1
-    fi
-
-    fallback_source="$(alternate_source "$primary_source")"
-    [ -n "$fallback_source" ] || {
-        echo -e "${RED}✗${NC} Could not clone from ${PLATFORM_NAME}."
-        exit 1
-    }
-
-    echo -e "${YELLOW}Could not clone from $(source_platform_name "$primary_source"). Trying $(source_platform_name "$fallback_source")...${NC}"
-    if try_clone_source "$fallback_source"; then
-        configure_source_platform "$fallback_source"
-        echo -e "${GREEN}✓${NC} Cloned from ${PLATFORM_NAME}"
-        return 0
-    fi
-
-    echo -e "${RED}✗${NC} Could not clone from Codeberg or GitHub."
+    echo -e "${RED}✗${NC} Could not clone Sanctuary from GitHub."
+    echo "Check GitHub connectivity and repository access: $REPO_URL"
     exit 1
 }
 

@@ -213,17 +213,6 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Platform detection (simplified for testing)
-SOURCE_PLATFORM="${SOURCE_PLATFORM:-github}"
-case "$SOURCE_PLATFORM" in
-    gitlab)
-        REPO_URL="https://gitlab.com/narusegawa-nekoworks/sanctuary.git"
-        ;;
-    github|*)
-        REPO_URL="https://github.com/nekoguntai-castle/sanctuary.git"
-        ;;
-esac
-
 # Configuration
 INSTALL_DIR="${SANCTUARY_DIR:-$HOME/sanctuary}"
 HTTPS_PORT="${HTTPS_PORT:-8443}"
@@ -634,7 +623,7 @@ test_install_script_no_hardcoded_container_names() {
 }
 
 # ============================================
-# Unit Tests: installer forge source behavior
+# Unit Tests: installer GitHub distribution behavior
 # ============================================
 
 setup_forge_installer_fixture() {
@@ -668,23 +657,6 @@ EOF
     cat > "$FORGE_FAKEBIN/curl" <<'EOF'
 #!/bin/bash
 url="${!#}"
-
-if [[ " $* " == *" -w "* ]]; then
-    if [[ "$url" == *"api.github.com/repos/nekoguntai-castle/sanctuary" ]]; then
-        printf '%s' "${FAKE_CURL_GITHUB_PROBE:-200}"
-    else
-        printf '%s' "${FAKE_CURL_CODEBERG_PROBE:-200}"
-    fi
-    exit 0
-fi
-
-if [[ "$url" == *"codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary/releases/latest" ]]; then
-    if [ "${FAKE_CURL_CODEBERG_RELEASE:-v9.9.9}" = "fail" ]; then
-        exit 22
-    fi
-    printf '{"tag_name":"%s"}\n' "${FAKE_CURL_CODEBERG_RELEASE:-v9.9.9}"
-    exit 0
-fi
 
 if [[ "$url" == *"api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest" ]]; then
     if [ "${FAKE_CURL_GITHUB_RELEASE:-v9.9.9}" = "fail" ]; then
@@ -763,15 +735,8 @@ case "$1" in
         else
             echo "fetch:$current_source" >> "$log_file"
         fi
-        if [ "$current_source" = "codeberg" ] && [ "${FAKE_GIT_FETCH_CLOBBER_CODEBERG:-false}" = "true" ] && [[ "$fetch_args" != *" --force "* ]]; then
-            echo ' ! [rejected]            v0.7.4      -> v0.7.4  (would clobber existing tag)' >&2
-            exit 1
-        fi
         if [ "$current_source" = "github" ] && [ "${FAKE_GIT_FETCH_CLOBBER_GITHUB:-false}" = "true" ] && [[ "$fetch_args" != *" --force "* ]]; then
             echo ' ! [rejected]            v0.7.4      -> v0.7.4  (would clobber existing tag)' >&2
-            exit 1
-        fi
-        if [ "$current_source" = "codeberg" ] && [ "${FAKE_GIT_FETCH_FAIL_CODEBERG:-false}" = "true" ]; then
             exit 1
         fi
         if [ "$current_source" = "github" ] && [ "${FAKE_GIT_FETCH_FAIL_GITHUB:-false}" = "true" ]; then
@@ -787,12 +752,10 @@ case "$1" in
         url="${!#}"
         source="$(source_from_url "$url")"
         echo "ls-remote:$source" >> "$log_file"
-        if [ "$source" = "codeberg" ] && [ "${FAKE_GIT_LS_REMOTE_FAIL_CODEBERG:-false}" = "true" ]; then
-            exit 1
-        fi
         if [ "$source" = "github" ] && [ "${FAKE_GIT_LS_REMOTE_FAIL_GITHUB:-false}" = "true" ]; then
             exit 1
         fi
+        printf 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\trefs/tags/v9.9.9-rc1\n'
         printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/tags/v9.9.9\n'
         exit 0
         ;;
@@ -801,9 +764,6 @@ case "$1" in
         target="$3"
         source="$(source_from_url "$url")"
         echo "clone:$source" >> "$log_file"
-        if [ "$source" = "codeberg" ] && [ "${FAKE_GIT_CLONE_FAIL_CODEBERG:-false}" = "true" ]; then
-            exit 1
-        fi
         if [ "$source" = "github" ] && [ "${FAKE_GIT_CLONE_FAIL_GITHUB:-false}" = "true" ]; then
             exit 1
         fi
@@ -828,17 +788,10 @@ run_forge_installer() {
         cd "$FORGE_RUN_DIR"
         PATH="$FORGE_FAKEBIN:$PATH" \
             FAKE_FORGE_STATE_DIR="$FORGE_STATE_DIR" \
-            FAKE_CURL_CODEBERG_PROBE="${FAKE_CURL_CODEBERG_PROBE:-200}" \
-            FAKE_CURL_GITHUB_PROBE="${FAKE_CURL_GITHUB_PROBE:-200}" \
-            FAKE_CURL_CODEBERG_RELEASE="${FAKE_CURL_CODEBERG_RELEASE:-v9.9.9}" \
             FAKE_CURL_GITHUB_RELEASE="${FAKE_CURL_GITHUB_RELEASE:-v9.9.9}" \
-            FAKE_GIT_FETCH_FAIL_CODEBERG="${FAKE_GIT_FETCH_FAIL_CODEBERG:-false}" \
             FAKE_GIT_FETCH_FAIL_GITHUB="${FAKE_GIT_FETCH_FAIL_GITHUB:-false}" \
-            FAKE_GIT_FETCH_CLOBBER_CODEBERG="${FAKE_GIT_FETCH_CLOBBER_CODEBERG:-false}" \
             FAKE_GIT_FETCH_CLOBBER_GITHUB="${FAKE_GIT_FETCH_CLOBBER_GITHUB:-false}" \
-            FAKE_GIT_LS_REMOTE_FAIL_CODEBERG="${FAKE_GIT_LS_REMOTE_FAIL_CODEBERG:-false}" \
             FAKE_GIT_LS_REMOTE_FAIL_GITHUB="${FAKE_GIT_LS_REMOTE_FAIL_GITHUB:-false}" \
-            FAKE_GIT_CLONE_FAIL_CODEBERG="${FAKE_GIT_CLONE_FAIL_CODEBERG:-false}" \
             FAKE_GIT_CLONE_FAIL_GITHUB="${FAKE_GIT_CLONE_FAIL_GITHUB:-false}" \
             SANCTUARY_DIR="$FORGE_INSTALL_DIR" \
             SANCTUARY_ASSUME_YES=true \
@@ -848,84 +801,170 @@ run_forge_installer() {
     )
 }
 
-test_explicit_codeberg_rewrites_stale_github_origin_without_prompt() {
-    setup_forge_installer_fixture "explicit-codeberg"
-    local output="$FORGE_STATE_DIR/output.log"
-
-    run_forge_installer "$output" --source codeberg || {
-        cat "$output"
-        return 1
-    }
-
-    local log
-    log="$(cat "$FORGE_STATE_DIR/git.log")"
-    assert_contains "$log" "remote-set-url:codeberg" "explicit Codeberg should rewrite stale origin before fetch" || return 1
-    assert_contains "$log" "fetch:codeberg" "explicit Codeberg should fetch from Codeberg" || return 1
-    if echo "$log" | grep -q "fetch:github"; then
-        echo -e "${RED}ASSERTION FAILED:${NC} explicit Codeberg should not fetch from GitHub"
-        echo "$log"
-        return 1
-    fi
-}
-
-test_explicit_source_failure_does_not_fall_back() {
-    setup_forge_installer_fixture "explicit-no-fallback"
-    local output="$FORGE_STATE_DIR/output.log"
-
-    if FAKE_GIT_FETCH_FAIL_CODEBERG=true run_forge_installer "$output" --source codeberg; then
-        echo -e "${RED}ASSERTION FAILED:${NC} explicit Codeberg fetch failure should fail install"
-        cat "$output"
-        return 1
-    fi
-
-    local log
-    log="$(cat "$FORGE_STATE_DIR/git.log")"
-    assert_contains "$log" "fetch:codeberg" "explicit Codeberg should attempt Codeberg fetch" || return 1
-    assert_contains "$(cat "$output")" "Explicit --source codeberg" "failure should explain no alternate forge was tried" || return 1
-    if echo "$log" | grep -q "fetch:github"; then
-        echo -e "${RED}ASSERTION FAILED:${NC} explicit source failure should not fall back to GitHub"
-        echo "$log"
-        return 1
-    fi
-}
-
-test_explicit_source_tag_clobber_retries_forced_tags_without_fallback() {
-    setup_forge_installer_fixture "explicit-clobber"
-    local output="$FORGE_STATE_DIR/output.log"
-
-    FAKE_GIT_FETCH_CLOBBER_CODEBERG=true run_forge_installer "$output" --source codeberg || {
-        cat "$output"
-        return 1
-    }
-
-    local log
-    log="$(cat "$FORGE_STATE_DIR/git.log")"
-    assert_contains "$log" "fetch:codeberg" "tag-clobber recovery should first try normal Codeberg fetch" || return 1
-    assert_contains "$log" "fetch-force:codeberg" "tag-clobber recovery should force-refresh Codeberg tags" || return 1
-    assert_contains "$(cat "$output")" "Refreshing tags for forge migration" "operator should see why tags are force-refreshed" || return 1
-    if echo "$log" | grep -q "fetch:github"; then
-        echo -e "${RED}ASSERTION FAILED:${NC} tag-clobber recovery should not fall back to GitHub"
-        echo "$log"
-        return 1
-    fi
-}
-
-test_auto_source_fetch_failure_falls_back_prompt_free() {
-    setup_forge_installer_fixture "auto-fallback"
+test_existing_installation_rewrites_stale_origin_to_github() {
+    setup_forge_installer_fixture "stale-origin"
     printf '%s\n' "codeberg" > "$FORGE_STATE_DIR/remote-source"
     local output="$FORGE_STATE_DIR/output.log"
 
-    FAKE_GIT_FETCH_FAIL_CODEBERG=true run_forge_installer "$output" || {
+    run_forge_installer "$output" || {
         cat "$output"
         return 1
     }
 
     local log
     log="$(cat "$FORGE_STATE_DIR/git.log")"
-    assert_contains "$log" "fetch:codeberg" "automatic mode should try the detected source first" || return 1
-    assert_contains "$log" "remote-set-url:github" "automatic mode should rewrite origin for fallback source" || return 1
-    assert_contains "$log" "fetch:github" "automatic mode should fetch from fallback source" || return 1
-    assert_contains "$(cat "$output")" "Trying GitHub" "automatic fallback should be visible to the operator"
+    assert_contains "$log" "remote-set-url:github" "upgrade should rewrite a stale origin to GitHub" || return 1
+    assert_contains "$log" "fetch:github" "upgrade should fetch from GitHub" || return 1
+    if echo "$log" | grep -q "fetch:codeberg"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} upgrade should not fetch from the stale origin"
+        echo "$log"
+        return 1
+    fi
+}
+
+test_online_codeberg_source_is_rejected() {
+    setup_forge_installer_fixture "source-rejected"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    if run_forge_installer "$output" --source codeberg; then
+        echo -e "${RED}ASSERTION FAILED:${NC} online Codeberg source should be rejected"
+        cat "$output"
+        return 1
+    fi
+
+    assert_contains "$(cat "$output")" "Online installation is GitHub-only" "failure should explain the supported source" || return 1
+    if [ -s "$FORGE_STATE_DIR/git.log" ]; then
+        echo -e "${RED}ASSERTION FAILED:${NC} rejected source should not invoke git"
+        cat "$FORGE_STATE_DIR/git.log"
+        return 1
+    fi
+}
+
+test_explicit_github_source_remains_compatible() {
+    setup_forge_installer_fixture "github-compatibility"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    run_forge_installer "$output" --source github || {
+        cat "$output"
+        return 1
+    }
+
+    local log
+    log="$(cat "$FORGE_STATE_DIR/git.log")"
+    assert_contains "$log" "fetch:github" "legacy explicit GitHub source should remain a no-op compatibility option"
+}
+
+test_github_fetch_failure_is_clear_and_does_not_fall_back() {
+    setup_forge_installer_fixture "github-unreachable"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    if FAKE_GIT_FETCH_FAIL_GITHUB=true run_forge_installer "$output"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} GitHub fetch failure should fail install"
+        cat "$output"
+        return 1
+    fi
+
+    local log
+    log="$(cat "$FORGE_STATE_DIR/git.log")"
+    assert_contains "$log" "fetch:github" "installer should attempt GitHub fetch" || return 1
+    assert_contains "$(cat "$output")" "Could not fetch updates from GitHub" "failure should identify GitHub" || return 1
+    if echo "$log" | grep -q "fetch:codeberg"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} GitHub failure should not fall back"
+        echo "$log"
+        return 1
+    fi
+}
+
+test_github_tag_clobber_retries_forced_tags() {
+    setup_forge_installer_fixture "tag-clobber"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    FAKE_GIT_FETCH_CLOBBER_GITHUB=true run_forge_installer "$output" || {
+        cat "$output"
+        return 1
+    }
+
+    local log
+    log="$(cat "$FORGE_STATE_DIR/git.log")"
+    assert_contains "$log" "fetch:github" "tag-clobber recovery should first try a normal GitHub fetch" || return 1
+    assert_contains "$log" "fetch-force:github" "tag-clobber recovery should force-refresh GitHub tags" || return 1
+    assert_contains "$(cat "$output")" "Refreshing tags from the canonical source" "operator should see why tags are refreshed"
+}
+
+test_release_api_failure_uses_github_tags() {
+    setup_forge_installer_fixture "release-tag-fallback"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    FAKE_CURL_GITHUB_RELEASE=fail run_forge_installer "$output" || {
+        cat "$output"
+        return 1
+    }
+
+    local log
+    log="$(cat "$FORGE_STATE_DIR/git.log")"
+    assert_contains "$log" "ls-remote:github" "release lookup should fall back to GitHub tags" || return 1
+    assert_contains "$log" "checkout:v9.9.9" "GitHub tag fallback should select the discovered release"
+    if echo "$log" | grep -q "checkout:v9.9.9-rc1"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} stable installer fallback should not select a release candidate"
+        return 1
+    fi
+}
+
+test_clean_install_clones_github() {
+    setup_forge_installer_fixture "clean-clone"
+    mv "$FORGE_INSTALL_DIR" "$FORGE_TEST_DIR/existing-install-fixture"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    run_forge_installer "$output" || {
+        cat "$output"
+        return 1
+    }
+
+    local log
+    log="$(cat "$FORGE_STATE_DIR/git.log")"
+    assert_contains "$log" "clone:github" "clean install should clone GitHub" || return 1
+    assert_contains "$log" "checkout:v9.9.9" "clean install should check out the GitHub release tag"
+}
+
+test_clean_install_github_failure_is_clear_and_atomic() {
+    setup_forge_installer_fixture "clone-failure"
+    mv "$FORGE_INSTALL_DIR" "$FORGE_TEST_DIR/existing-install-fixture"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    if FAKE_GIT_CLONE_FAIL_GITHUB=true run_forge_installer "$output"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} GitHub clone failure should fail install"
+        cat "$output"
+        return 1
+    fi
+
+    assert_contains "$(cat "$output")" "Could not clone Sanctuary from GitHub" "clone failure should identify GitHub" || return 1
+    if compgen -G "$FORGE_TEST_DIR/.sanctuary-clone.*" > /dev/null; then
+        echo -e "${RED}ASSERTION FAILED:${NC} failed clone should remove its temporary directory"
+        return 1
+    fi
+}
+
+test_offline_prepared_ignores_legacy_source_option() {
+    setup_forge_installer_fixture "offline-source"
+    local output="$FORGE_STATE_DIR/output.log"
+
+    run_forge_installer "$output" --offline-prepared --source codeberg || {
+        cat "$output"
+        return 1
+    }
+
+    assert_contains "$(cat "$output")" "Offline bundle" "offline-prepared behavior should not depend on an online source"
+}
+
+test_install_script_uses_only_github_online_distribution() {
+    if grep -qi "codeberg.org" "$INSTALL_SCRIPT"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} install.sh should not contain a Codeberg online endpoint"
+        return 1
+    fi
+
+    grep -q "raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/install.sh" "$INSTALL_SCRIPT" \
+        && grep -q "https://github.com/nekoguntai-castle/sanctuary.git" "$INSTALL_SCRIPT" \
+        && grep -q "https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest" "$INSTALL_SCRIPT"
 }
 
 # ============================================
@@ -1916,11 +1955,17 @@ main() {
     run_test "install script no hardcoded container names" test_install_script_no_hardcoded_container_names
     echo ""
 
-    echo -e "${YELLOW}Test Suite: Installer Forge Source Behavior${NC}"
-    run_test "explicit Codeberg rewrites stale GitHub origin" test_explicit_codeberg_rewrites_stale_github_origin_without_prompt
-    run_test "explicit source failure does not fall back" test_explicit_source_failure_does_not_fall_back
-    run_test "explicit source tag clobber force-refreshes tags" test_explicit_source_tag_clobber_retries_forced_tags_without_fallback
-    run_test "automatic source fetch failure falls back" test_auto_source_fetch_failure_falls_back_prompt_free
+    echo -e "${YELLOW}Test Suite: Installer GitHub Distribution Behavior${NC}"
+    run_test "existing installation rewrites stale origin to GitHub" test_existing_installation_rewrites_stale_origin_to_github
+    run_test "online Codeberg source is rejected" test_online_codeberg_source_is_rejected
+    run_test "explicit GitHub source remains compatible" test_explicit_github_source_remains_compatible
+    run_test "GitHub fetch failure is clear and has no fallback" test_github_fetch_failure_is_clear_and_does_not_fall_back
+    run_test "GitHub tag clobber force-refreshes tags" test_github_tag_clobber_retries_forced_tags
+    run_test "release API failure uses GitHub tags" test_release_api_failure_uses_github_tags
+    run_test "clean install clones GitHub" test_clean_install_clones_github
+    run_test "failed GitHub clone is clear and atomic" test_clean_install_github_failure_is_clear_and_atomic
+    run_test "offline prepared mode ignores legacy source option" test_offline_prepared_ignores_legacy_source_option
+    run_test "installer online distribution is GitHub-only" test_install_script_uses_only_github_online_distribution
     echo ""
 
     echo -e "${YELLOW}Test Suite: start.sh File Structure${NC}"

@@ -148,7 +148,7 @@ export function registerAdminRoutesAuditVersionContracts(): void {
   describe('GET /api/v1/admin/version', () => {
     it('should return version info', async () => {
       // Stub the release lookup so the test does not depend on outbound
-      // network access to Codeberg; route returns its package.json version
+      // network access to GitHub; route returns its package.json version
       // even when the upstream call fails.
       const originalFetch = global.fetch;
       global.fetch = (() =>

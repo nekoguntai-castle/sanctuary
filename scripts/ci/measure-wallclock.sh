@@ -3,9 +3,8 @@
 # parallelism / multi-worker / cache changes can be evaluated against a
 # known-state-of-the-runner reference.
 #
-# Provider-aware via scripts/ci/provider-context.sh — talks to Forgejo
-# Actions or GitHub Actions through the REST API. No `gh` CLI dependency
-# (which is GitHub-only).
+# Uses the authoritative Forgejo Actions REST API. GitHub is a passive mirror
+# and does not execute Sanctuary CI.
 #
 # Usage:
 #   scripts/ci/measure-wallclock.sh --workflow test.yml [--event pull_request]
@@ -18,8 +17,8 @@
 # plus a stderr-side summary (count, p50, p90, max) so the script is
 # useful both as a one-shot probe and as an artifact-producer in CI.
 #
-# Auth: reads SANCTUARY_FORGE_TOKEN (or FORGEJO_TOKEN, or GITHUB_TOKEN as
-# a fall-back). The token only needs read:repository.
+# Auth: reads SANCTUARY_FORGE_TOKEN (or FORGEJO_TOKEN). The token only needs
+# read:repository.
 
 set -euo pipefail
 
@@ -52,28 +51,31 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$workflow" ] || { usage >&2; exit 2; }
+[[ "$limit" =~ ^[1-9][0-9]*$ ]] || {
+  echo "measure-wallclock: --limit must be a positive integer" >&2
+  exit 2
+}
 
-token="${SANCTUARY_FORGE_TOKEN:-${FORGEJO_TOKEN:-${GITHUB_TOKEN:-}}}"
+token="${SANCTUARY_FORGE_TOKEN:-${FORGEJO_TOKEN:-}}"
 if [ -z "$token" ]; then
-  echo "measure-wallclock: no token in SANCTUARY_FORGE_TOKEN / FORGEJO_TOKEN / GITHUB_TOKEN" >&2
+  echo "measure-wallclock: no token in SANCTUARY_FORGE_TOKEN / FORGEJO_TOKEN" >&2
   exit 2
 fi
 
-# Resolve API base + repo path. Default to Forgejo when FORGEJO_URL is set,
-# otherwise GitHub.
-api_base="${SANCTUARY_FORGE_API_URL:-${FORGEJO_URL:-${GITHUB_API_URL:-https://api.github.com}}}"
+# Resolve the Forgejo API base + repository path explicitly.
+api_base="${SANCTUARY_FORGE_API_URL:-${FORGEJO_URL:-}}"
+[ -n "$api_base" ] || {
+  echo "measure-wallclock: no Forgejo API URL in SANCTUARY_FORGE_API_URL / FORGEJO_URL" >&2
+  exit 2
+}
+api_base="${api_base%/}"
 case "$api_base" in
-  *forgejo*|*codeberg*|http://10.*|http://192.*) api_base="${api_base%/}/api/v1" ;;
-  https://api.github.com) ;;
-  *) api_base="${api_base%/}/api/v1" ;;
+  */api/v1) ;;
+  *) api_base="$api_base/api/v1" ;;
 esac
 
-owner="${SANCTUARY_FORGE_OWNER:-${FORGEJO_OWNER:-${GITHUB_REPOSITORY_OWNER:-}}}"
+owner="${SANCTUARY_FORGE_OWNER:-${FORGEJO_OWNER:-}}"
 repo="${SANCTUARY_FORGE_REPO:-${FORGEJO_REPO:-}}"
-if [ -z "$repo" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
-  owner="${GITHUB_REPOSITORY%/*}"
-  repo="${GITHUB_REPOSITORY#*/}"
-fi
 [ -n "$owner" ] && [ -n "$repo" ] || {
   echo "measure-wallclock: cannot resolve owner/repo (set SANCTUARY_FORGE_OWNER / SANCTUARY_FORGE_REPO)" >&2
   exit 2
@@ -91,7 +93,8 @@ runs_url="$api_base/repos/$owner/$repo/actions/runs?$query_string"
 ci_emit_notice "measure-wallclock: fetching $runs_url"
 
 runs_payload="$(curl -sS -H "Authorization: token $token" -H "Accept: application/json" "$runs_url")"
-runs_count="$(echo "$runs_payload" | jq -r '[.workflow_runs[]? | select(.workflow_id == "'"$workflow"'")] | length')"
+runs_count="$(echo "$runs_payload" | jq -r --arg wf "$workflow" --argjson limit "$limit" \
+  '[limit($limit; .workflow_runs[]? | select(.workflow_id == $wf))] | length')"
 
 if [ "$runs_count" = "0" ]; then
   echo "measure-wallclock: no runs found for workflow=$workflow event=$event branch=$branch" >&2
@@ -143,8 +146,10 @@ while IFS=$'\t' read -r run_id run_number wf event_name commit_sha status starte
     printf '%s\n' "$row" >> "$out"
   fi
   printf '%s\n' "$row"
-done < <(echo "$runs_payload" | jq -r --arg wf "$workflow" \
-  '.workflow_runs[]? | select(.workflow_id == $wf) | [.id, .index_in_repo, .workflow_id, .event, .commit_sha, .status, .started, .stopped, .duration] | @tsv')
+done < <(echo "$runs_payload" | jq -r --arg wf "$workflow" --argjson limit "$limit" \
+  'limit($limit; .workflow_runs[]? | select(.workflow_id == $wf))
+   | [.id, .index_in_repo, .workflow_id, .event, .commit_sha, .status, .started, .stopped, .duration]
+   | @tsv')
 
 # Stderr summary so this is useful from a `script` invocation as well as a
 # CI step.

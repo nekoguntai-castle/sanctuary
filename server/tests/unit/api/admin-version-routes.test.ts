@@ -99,7 +99,7 @@ describe('Admin Version Routes', () => {
   it('returns release info and uses cache for repeated checks', async () => {
     const releaseJson = {
       tag_name: 'v1.4.0',
-      html_url: 'https://codeberg.org/nekoguntai-castle/sanctuary/releases/tag/v1.4.0',
+      html_url: 'https://github.com/nekoguntai-castle/sanctuary/releases/tag/v1.4.0',
       name: 'v1.4.0',
       published_at: '2026-01-01T00:00:00.000Z',
       body: 'Release notes',
@@ -129,7 +129,7 @@ describe('Admin Version Routes', () => {
       prerelease: false,
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary/releases/latest',
+      'https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest',
       expect.any(Object),
     );
     expect(secondResponse.status).toBe(200);
@@ -137,8 +137,8 @@ describe('Admin Version Routes', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back release fields when Codeberg payload is incomplete and marks downgrade as no update', async () => {
-    const { app } = await setupVersionRoute({
+  it('falls back when the GitHub payload is malformed', async () => {
+    const { app, warn } = await setupVersionRoute({
       fetchImpl: () =>
         Promise.resolve({
           ok: true,
@@ -151,9 +151,64 @@ describe('Admin Version Routes', () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       currentVersion: '1.2.3',
-      latestVersion: '0.0.0',
+      latestVersion: '1.2.3',
       updateAvailable: false,
-      releaseUrl: 'https://codeberg.org/nekoguntai-castle/sanctuary/releases',
+      releaseUrl: 'https://github.com/nekoguntai-castle/sanctuary/releases',
+      releaseName: '',
+      publishedAt: '',
+      releaseNotes: '',
+      prerelease: false,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      'Failed to fetch latest release from GitHub',
+      expect.objectContaining({
+        error: expect.stringContaining('malformed payload'),
+      }),
+    );
+  });
+
+  it.each([null, 'invalid'])(
+    'falls back when the GitHub payload is not an object: %j',
+    async (payload) => {
+      const { app } = await setupVersionRoute({
+        fetchImpl: () =>
+          Promise.resolve({
+            ok: true,
+            json: vi.fn().mockResolvedValue(payload),
+          }),
+      });
+
+      const response = await request(app).get('/api/v1/admin/version');
+
+      expect(response.status).toBe(200);
+      expect(response.body.latestVersion).toBe('1.2.3');
+      expect(response.body.updateAvailable).toBe(false);
+    },
+  );
+
+  it('accepts a non-prefixed stable downgrade and defaults wrong-typed metadata', async () => {
+    const { app } = await setupVersionRoute({
+      fetchImpl: () =>
+        Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            tag_name: '1.1.0',
+            html_url: 42,
+            name: null,
+            published_at: false,
+            body: {},
+            prerelease: false,
+          }),
+        }),
+    });
+
+    const response = await request(app).get('/api/v1/admin/version');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      latestVersion: '1.1.0',
+      updateAvailable: false,
+      releaseUrl: 'https://github.com/nekoguntai-castle/sanctuary/releases',
       releaseName: '',
       publishedAt: '',
       releaseNotes: '',
@@ -161,7 +216,7 @@ describe('Admin Version Routes', () => {
     });
   });
 
-  it('logs warning and falls back when Codeberg release fetch fails', async () => {
+  it('logs warning and falls back when GitHub release fetch fails', async () => {
     const { app, warn } = await setupVersionRoute({
       fetchImpl: () => Promise.reject(new Error('network down')),
     });
@@ -173,11 +228,108 @@ describe('Admin Version Routes', () => {
     expect(response.body.updateAvailable).toBe(false);
     expect(response.body.prerelease).toBe(false);
     expect(warn).toHaveBeenCalledWith(
-      'Failed to fetch latest release from Codeberg',
+      'Failed to fetch latest release from GitHub',
       expect.objectContaining({
         error: expect.stringContaining('network down'),
       })
     );
+  });
+
+  it('negative-caches a GitHub rate-limit response', async () => {
+    const { app, fetchMock, warn } = await setupVersionRoute({
+      fetchImpl: () =>
+        Promise.resolve({
+          ok: false,
+          status: 403,
+        }),
+    });
+
+    const firstResponse = await request(app).get('/api/v1/admin/version');
+    const secondResponse = await request(app).get('/api/v1/admin/version');
+
+    expect(firstResponse.status).toBe(200);
+    expect(firstResponse.body.latestVersion).toBe('1.2.3');
+    expect(secondResponse.status).toBe(200);
+    expect(secondResponse.body.latestVersion).toBe('1.2.3');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      'Failed to fetch latest release from GitHub',
+      expect.objectContaining({
+        error: expect.stringContaining('HTTP 403'),
+      }),
+    );
+  });
+
+  it('falls back when the GitHub release request times out', async () => {
+    const timeoutError = Object.assign(new Error('request timed out'), {
+      name: 'TimeoutError',
+    });
+    const { app, warn } = await setupVersionRoute({
+      fetchImpl: () => Promise.reject(timeoutError),
+    });
+
+    const response = await request(app).get('/api/v1/admin/version');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      currentVersion: '1.2.3',
+      latestVersion: '1.2.3',
+      updateAvailable: false,
+      releaseUrl: 'https://github.com/nekoguntai-castle/sanctuary/releases',
+      releaseName: '',
+      publishedAt: '',
+      releaseNotes: '',
+      prerelease: false,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      'Failed to fetch latest release from GitHub',
+      expect.objectContaining({
+        error: expect.stringContaining('TimeoutError'),
+      }),
+    );
+  });
+
+  it('rejects a non-stable GitHub tag without changing the response contract', async () => {
+    const { app } = await setupVersionRoute({
+      fetchImpl: () =>
+        Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            tag_name: 'v1.4.0-rc.1',
+            html_url: 'https://github.com/nekoguntai-castle/sanctuary/releases/tag/v1.4.0-rc.1',
+          }),
+        }),
+    });
+
+    const response = await request(app).get('/api/v1/admin/version');
+
+    expect(response.status).toBe(200);
+    expect(response.body.latestVersion).toBe('1.2.3');
+    expect(response.body.updateAvailable).toBe(false);
+    expect(response.body.releaseUrl).toBe(
+      'https://github.com/nekoguntai-castle/sanctuary/releases',
+    );
+  });
+
+  it('rejects a GitHub prerelease even when its tag has a stable shape', async () => {
+    const { app } = await setupVersionRoute({
+      fetchImpl: () =>
+        Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            tag_name: 'v1.4.0',
+            html_url: 'https://github.com/nekoguntai-castle/sanctuary/releases/tag/v1.4.0',
+            prerelease: true,
+          }),
+        }),
+    });
+
+    const response = await request(app).get('/api/v1/admin/version');
+
+    expect(response.status).toBe(200);
+    expect(response.body.latestVersion).toBe('1.2.3');
+    expect(response.body.updateAvailable).toBe(false);
+    expect(response.body.prerelease).toBe(false);
   });
 
   it('returns 500 when version comparison encounters invalid package version data', async () => {

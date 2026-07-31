@@ -9,7 +9,7 @@ CI authority: Forgejo Actions, testing only
 ## Execution Ledger
 
 - target_branch: `main`
-- task_branch: `codex/implement-merge/forgejo-ci-test-only-20260730`
+- task_branch: `codex/implement-merge/github-distribution-defaults-20260730`
 - worktree_path: `/tmp/sanctuary-implement-merge-github-mirror`
 - created_by_loop: branch and isolated worktree
 - converted_to_next_phase: 2026-07-30 HST after PR #562 merged
@@ -28,6 +28,16 @@ CI authority: Forgejo Actions, testing only
 - post-merge release-distribution evidence: architecture, Docker scope, and full
   Test Suite passed; install runs 7273 and 7275 failed before Sanctuary code ran
   because their `ubuntu-latest` job image lacked the Docker CLI
+- Forgejo test-only CI PR: #566 merged as
+  `1e178457f9fa4649fa4ea40260913a8b3555e620`; its PR and post-merge
+  architecture, Docker validation, install/upgrade, full test, quality, and vector
+  runs passed. The obsolete repository secrets `CODEBERG_USER`,
+  `CODEBERG_PACKAGE_TOKEN`, and `UMBREL_DISPATCH_TOKEN` were then removed;
+  `SANCTUARY_CI_LOG_SINK_TOKEN` remains.
+- GitHub passive metadata: description identifies the repository as a read-only
+  Forgejo mirror; Issues, Projects, Wiki, and Discussions are disabled. Actions
+  remains disabled and Pages remains absent. GitHub still returns HTTP 500 when
+  asked to cancel its 67 stale queued Dependabot dynamic runs.
 
 ## Outcome
 
@@ -221,7 +231,7 @@ queued; GitHub is clearly marked non-authoritative.
   7. dispatches the local Forgejo `sanctuary-umbrel` update only after image
      digests are verified;
   8. logs out and removes temporary credential files on every exit path.
-- [ ] Change the external `sanctuary-umbrel` repository to consume public GHCR
+- [x] Change the external `sanctuary-umbrel` repository to consume public GHCR
   images/digests before the first GitHub-backed Sanctuary release.
 - [ ] Publish/backfill GHCR images needed by supported upgrades, at minimum the
   currently supported baseline and latest stable release. Make both packages
@@ -258,17 +268,17 @@ their exact names, and repository tests enforce the no-publish policy.
 
 ### Phase 4 — Switch active product and documentation references
 
-- [ ] Simplify `install.sh` to GitHub-only online distribution:
+- [x] Simplify `install.sh` to GitHub-only online distribution:
   - GitHub clone/raw/release endpoints become canonical;
   - remove Codeberg source detection, fallback, `--source codeberg`, and
     Codeberg-specific tag-repair messages;
   - keep offline installation behavior unchanged;
   - provide a clear failure when GitHub is unreachable rather than silently using
     another forge.
-- [ ] Update `server/src/api/admin/version.ts` to query the GitHub latest-release
+- [x] Update `server/src/api/admin/version.ts` to query the GitHub latest-release
   endpoint and link to GitHub Releases; update its tests for success, timeout,
   malformed response, cache, and fallback behavior.
-- [ ] Update `components/Layout/AboutModal.tsx` and its tests to use GitHub
+- [x] Update `components/Layout/AboutModal.tsx` and its tests to use GitHub
   repository and release links.
 - [ ] Treat `README.template.md` as canonical, update it first, then regenerate
   `README.md` with `scripts/generate-readme.sh github`. Replace every Codeberg
@@ -278,7 +288,7 @@ their exact names, and repository tests enforce the no-publish policy.
   scripts to describe Forgejo-authoritative CI plus GitHub mirroring/distribution.
 - [ ] Update `scripts/bump-version.sh` instructions to use the operator release
   command and GitHub/Forgejo release objects.
-- [ ] Update `scripts/ci/measure-wallclock.sh` provider classification and any
+- [x] Update `scripts/ci/measure-wallclock.sh` provider classification and any
   remaining active Codeberg labels/comments.
 - [ ] Remove the superseded
   `docs/plans/codeberg-image-hosting-migration.md` from the active plan set.

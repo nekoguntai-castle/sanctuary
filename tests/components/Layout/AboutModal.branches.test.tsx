@@ -30,7 +30,7 @@ describe('AboutModal branch coverage', () => {
           latestVersion: '0.9.0',
           updateAvailable: true,
           releaseName: 'Hotfix Build',
-          releaseUrl: 'https://example.com/release',
+          releaseUrl: 'https://github.com/nekoguntai-castle/sanctuary/releases/tag/v0.9.0',
         } as any}
       />,
     );
@@ -40,6 +40,18 @@ describe('AboutModal branch coverage', () => {
     expect(screen.getAllByText('Copied!').length).toBeGreaterThan(0);
     expect(screen.getByTestId('logo')).toBeInTheDocument();
     expect(screen.getAllByTestId('qr-code').length).toBe(3);
+    expect(screen.getByRole('link', { name: /GitHub Repository/i })).toHaveAttribute(
+      'href',
+      'https://github.com/nekoguntai-castle/sanctuary',
+    );
+    expect(screen.getByRole('link', { name: 'Release Notes' })).toHaveAttribute(
+      'href',
+      'https://github.com/nekoguntai-castle/sanctuary/releases',
+    );
+    expect(screen.getByRole('link', { name: /View release notes/i })).toHaveAttribute(
+      'href',
+      'https://github.com/nekoguntai-castle/sanctuary/releases/tag/v0.9.0',
+    );
 
     // Click the first non-copied donation button and ensure copy callback fires.
     const copyButtons = screen.getAllByRole('button', { name: /Copy|Copied!/i });
@@ -59,7 +71,7 @@ describe('AboutModal branch coverage', () => {
           latestVersion: '0.9.1',
           updateAvailable: true,
           releaseName: '',
-          releaseUrl: 'https://example.com/release-2',
+          releaseUrl: 'https://github.com/nekoguntai-castle/sanctuary/releases/tag/v0.9.1',
         } as any}
       />,
     );

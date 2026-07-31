@@ -15,24 +15,74 @@ const log = createLogger('ADMIN_VERSION:ROUTE');
 
 const currentVersion = PACKAGE_VERSION;
 
-// Codeberg (Forgejo API) is the source of truth for official releases.
-// /releases/latest filters out drafts and prereleases automatically, so RC
-// tags marked prerelease=true at creation time are correctly excluded.
+// GitHub Releases is the public source of truth for official releases.
+// /releases/latest excludes drafts and prereleases, so release candidates are
+// not presented as stable updates.
 const RELEASE_API_URL =
-  'https://codeberg.org/api/v1/repos/nekoguntai-castle/sanctuary/releases/latest';
+  'https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest';
 const RELEASES_PAGE_URL =
-  'https://codeberg.org/nekoguntai-castle/sanctuary/releases';
+  'https://github.com/nekoguntai-castle/sanctuary/releases';
 
-let releaseCache: {
+interface ReleaseCache {
   latestVersion: string;
   releaseUrl: string;
   releaseName: string;
   publishedAt: string;
   body: string;
-  prerelease: boolean;
-  checkedAt: number;
-} | null = null;
+}
+
+interface GitHubRelease {
+  tag_name?: unknown;
+  html_url?: unknown;
+  name?: unknown;
+  published_at?: unknown;
+  body?: unknown;
+  prerelease?: unknown;
+}
+
+let releaseCache: ReleaseCache | null = null;
+let lastReleaseCheckAt = 0;
 const RELEASE_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+// Defense in depth: never offer RC/nonstandard tags even if the upstream
+// "latest" endpoint returns an unexpected payload.
+const STABLE_RELEASE_TAG = /^v?\d+\.\d+\.\d+$/;
+
+function optionalString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function parseRelease(payload: unknown): ReleaseCache | null {
+  if (!payload || typeof payload !== 'object') return null;
+
+  const release = payload as GitHubRelease;
+  if (
+    typeof release.tag_name !== 'string'
+    || !STABLE_RELEASE_TAG.test(release.tag_name)
+    || release.prerelease === true
+  ) {
+    return null;
+  }
+
+  return {
+    latestVersion: release.tag_name.replace(/^v/, ''),
+    releaseUrl: optionalString(release.html_url),
+    releaseName: optionalString(release.name),
+    publishedAt: optionalString(release.published_at),
+    body: optionalString(release.body),
+  };
+}
+
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = pa[i] || 0;
+    const nb = pb[i] || 0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
+}
 
 /**
  * GET /api/v1/admin/version
@@ -42,8 +92,11 @@ const RELEASE_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 router.get('/', asyncHandler(async (_req, res) => {
   const now = Date.now();
 
-  // Check if we need to refresh the cache
-  if (!releaseCache || (now - releaseCache.checkedAt) > RELEASE_CACHE_TTL) {
+  // Cache failed checks as well as successful ones so anonymous GitHub API
+  // failures cannot trigger one upstream request per UI poll. A failed refresh
+  // intentionally keeps serving the last valid release metadata until retry.
+  if (lastReleaseCheckAt === 0 || (now - lastReleaseCheckAt) > RELEASE_CACHE_TTL) {
+    lastReleaseCheckAt = now;
     try {
       const response = await fetch(RELEASE_API_URL, {
         headers: {
@@ -53,42 +106,17 @@ router.get('/', asyncHandler(async (_req, res) => {
         signal: AbortSignal.timeout(10_000),
       });
 
-      if (response.ok) {
-        const release = await response.json() as {
-          tag_name?: string;
-          html_url?: string;
-          name?: string;
-          published_at?: string;
-          body?: string;
-          prerelease?: boolean;
-        };
-        releaseCache = {
-          latestVersion: release.tag_name?.replace(/^v/, '') || '0.0.0',
-          releaseUrl: release.html_url || '',
-          releaseName: release.name || '',
-          publishedAt: release.published_at || '',
-          body: release.body || '',
-          prerelease: release.prerelease === true,
-          checkedAt: now,
-        };
+      if (!response.ok) {
+        throw new Error(`GitHub release API returned HTTP ${response.status}`);
       }
+
+      const release = parseRelease(await response.json());
+      if (!release) throw new Error('GitHub release API returned malformed payload');
+      releaseCache = release;
     } catch (fetchError) {
-      log.warn('Failed to fetch latest release from Codeberg', { error: String(fetchError) });
+      log.warn('Failed to fetch latest release from GitHub', { error: String(fetchError) });
     }
   }
-
-  // Compare versions
-  const compareVersions = (a: string, b: string): number => {
-    const pa = a.split('.').map(Number);
-    const pb = b.split('.').map(Number);
-    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-      const na = pa[i] || 0;
-      const nb = pb[i] || 0;
-      if (na > nb) return 1;
-      if (na < nb) return -1;
-    }
-    return 0;
-  };
 
   const latestVersion = releaseCache?.latestVersion || currentVersion;
   const updateAvailable = compareVersions(latestVersion, currentVersion) > 0;
@@ -101,7 +129,7 @@ router.get('/', asyncHandler(async (_req, res) => {
     releaseName: releaseCache?.releaseName || '',
     publishedAt: releaseCache?.publishedAt || '',
     releaseNotes: releaseCache?.body || '',
-    prerelease: releaseCache?.prerelease ?? false,
+    prerelease: false,
   });
 }));
 

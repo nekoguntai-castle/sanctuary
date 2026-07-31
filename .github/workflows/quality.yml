@@ -602,6 +602,7 @@ jobs:
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ci-classifier-tests.log" bash -euo pipefail <<'QUALITY_CI_CLASSIFIER_TESTS'
           # Production scripts (Phase 1-7 + pre-existing) — bash -n syntax sweep.
           bash -n scripts/ci/provider-context.sh
+          bash -n scripts/ci/measure-wallclock.sh
           bash -n scripts/ci/classify-files-lib.sh
           bash -n scripts/ci/plan-test-run.sh
           bash -n scripts/ci/run-lane.sh
@@ -640,6 +641,7 @@ jobs:
           bash -n scripts/verify-addresses/verify-repeatable.sh
           # Test files — bash -n syntax sweep.
           bash -n tests/ci/provider-context.test.sh
+          bash -n tests/ci/measure-wallclock.test.sh
           bash -n tests/ci/plan-test-run.test.sh
           bash -n tests/ci/run-lane.test.sh
           bash -n tests/ci/portability.test.sh
@@ -680,6 +682,7 @@ jobs:
           node tests/ci/provider-context-node.test.mjs
           # Phase 1-7 portability tests + leak gate.
           bash tests/ci/provider-context.test.sh
+          bash tests/ci/measure-wallclock.test.sh
           bash tests/ci/plan-test-run.test.sh
           bash tests/ci/run-lane.test.sh
           # portability.test.sh has explicit PROBE markers added at each

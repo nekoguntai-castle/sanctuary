@@ -1152,6 +1152,7 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "ci-classifier-tests:" \
   'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-ci-classifier-tests' \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/ci-classifier-tests.log"' \
+  "bash tests/ci/measure-wallclock.test.sh" \
   "bash tests/ci/check-workflow-composition.test.sh" \
   "Write CI classifier diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quality CI Classifier Tests"' \

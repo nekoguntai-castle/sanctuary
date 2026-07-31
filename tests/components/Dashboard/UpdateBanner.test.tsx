@@ -11,7 +11,7 @@ const baseVersionInfo = {
   currentVersion: '1.0.0',
   latestVersion: '1.1.0',
   updateAvailable: true,
-  releaseUrl: 'https://codeberg.org/example/releases/v1.1.0',
+  releaseUrl: 'https://github.com/nekoguntai-castle/sanctuary/releases/tag/v1.1.0',
   releaseName: 'Big Update',
   publishedAt: '2026-01-01',
   releaseNotes: 'Some notes',
@@ -45,6 +45,7 @@ describe('UpdateBanner', () => {
     const link = screen.getByText('View Release');
     expect(link).toHaveAttribute('href', baseVersionInfo.releaseUrl);
     expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('calls onDismiss when dismiss button is clicked', () => {
