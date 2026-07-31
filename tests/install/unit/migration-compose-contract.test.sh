@@ -1,0 +1,69 @@
+#!/bin/bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-contract-postgres-password}"
+export REDIS_PASSWORD="${REDIS_PASSWORD:-contract-redis-password}"
+export JWT_SECRET="${JWT_SECRET:-contract-jwt-secret-with-enough-length}"
+export ENCRYPTION_KEY="${ENCRYPTION_KEY:-contract-encryption-key-with-enough-length}"
+export ENCRYPTION_SALT="${ENCRYPTION_SALT:-contract-encryption-salt}"
+export GATEWAY_SECRET="${GATEWAY_SECRET:-contract-gateway-secret}"
+export LLM_EGRESS_PROXY_SECRET="${LLM_EGRESS_PROXY_SECRET:-contract-llm-secret}"
+export IMAGE_TAG="${IMAGE_TAG:-contract}"
+
+assert_compose_contract() {
+    local compose_file="$1"
+    local expect_local="false"
+    local rendered
+    if [ "$compose_file" = "$PROJECT_ROOT/docker-compose.yml" ]; then
+        expect_local="true"
+    fi
+    rendered="$(docker compose -f "$compose_file" config --format json)"
+
+    COMPOSE_EXPECT_LOCAL="$expect_local" COMPOSE_JSON="$rendered" node <<'NODE'
+const config = JSON.parse(process.env.COMPOSE_JSON);
+const services = config.services;
+for (const consumer of ['backend', 'worker']) {
+  const dependency = services[consumer]?.depends_on?.migrate;
+  if (dependency?.condition !== 'service_completed_successfully') {
+    throw new Error(`${consumer} must wait for successful migrations`);
+  }
+}
+if (services.migrate?.depends_on?.backend) {
+  throw new Error('migrate must not depend on backend');
+}
+const command = JSON.stringify(services.migrate?.command);
+if (command !== JSON.stringify(['sh', '/app/scripts/migrate.sh'])) {
+  throw new Error(`migrate must use the canonical script, got ${command}`);
+}
+if (process.env.COMPOSE_EXPECT_LOCAL === 'true') {
+  if (!services.backend?.build) {
+    throw new Error('local backend must remain the shared image build owner');
+  }
+  for (const consumer of ['worker', 'migrate']) {
+    if (services[consumer]?.build) {
+      throw new Error(`${consumer} must reuse rather than rebuild the backend image`);
+    }
+    if (services[consumer]?.image !== services.backend.image) {
+      throw new Error(`${consumer} must reuse the backend image`);
+    }
+  }
+}
+NODE
+}
+
+assert_compose_contract "$PROJECT_ROOT/docker-compose.yml"
+assert_compose_contract "$PROJECT_ROOT/docker-compose.ghcr.yml"
+
+grep -Fq 'COPY --from=builder /repo/server/prisma ./prisma' "$PROJECT_ROOT/server/Dockerfile"
+grep -Fq 'COPY --from=builder /repo/server/scripts ./scripts' "$PROJECT_ROOT/server/Dockerfile"
+
+if grep -Fq "migrationService" "$PROJECT_ROOT/server/src/index.ts"; then
+    echo "backend startup must not own or inspect migrations" >&2
+    exit 1
+fi
+
+echo "Migration and Compose contracts passed"

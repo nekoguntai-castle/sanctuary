@@ -10,8 +10,11 @@ import { createLogger } from '../../utils/logger';
 import { ForbiddenError, InvalidInputError, ConflictError, UserNotFoundError } from '../../errors';
 import { calculateExpiryDate, checkResourceOwnership, formatTransfer } from './helpers';
 import type { Transfer, InitiateTransferInput } from './types';
+import type { PrismaTx } from './types';
+import { isPrismaError } from '../../utils/errors';
 
 const log = createLogger('TRANSFER:SVC');
+const MAX_SERIALIZABLE_ATTEMPTS = 3;
 
 /**
  * Initiate an ownership transfer
@@ -36,9 +39,16 @@ export async function initiateTransfer(
 
   // Use a serializable transaction to ensure atomicity - prevents race condition where
   // two requests both pass the hasActiveTransfer check before either creates a transfer
-  const transfer = await transferRepository.withSerializableTransaction(async (tx) => {
+  const transfer = await initiateWithSerializableRetry(async (tx) => {
+    await transferRepository.lockResourceOwnership(resourceType, resourceId, tx);
+
     // Validation: check ownership
-    const isOwner = await checkResourceOwnership(resourceType, resourceId, ownerId);
+    const isOwner = await transferRepository.isDirectResourceOwner(
+      resourceType,
+      resourceId,
+      ownerId,
+      tx,
+    );
     if (!isOwner) {
       throw new ForbiddenError(`You are not the owner of this ${resourceType}`);
     }
@@ -51,7 +61,7 @@ export async function initiateTransfer(
     }
 
     // Validation: check target user is not already owner
-    const targetIsOwner = await checkResourceOwnership(resourceType, resourceId, toUserId);
+    const targetIsOwner = await checkResourceOwnership(resourceType, resourceId, toUserId, tx);
     if (targetIsOwner) {
       throw new ConflictError('Target user is already an owner of this resource');
     }
@@ -78,4 +88,37 @@ export async function initiateTransfer(
   });
 
   return formatTransfer(transfer);
+}
+
+async function initiateWithSerializableRetry<T>(
+  attemptTransaction: (tx: PrismaTx) => Promise<T>,
+): Promise<T> {
+  for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+    try {
+      return await transferRepository.withSerializableTransaction(attemptTransaction);
+    } catch (error) {
+      if (!isSerializableTransactionConflict(error)) throw error;
+      if (attempt === MAX_SERIALIZABLE_ATTEMPTS) {
+        throw new ConflictError(
+          'Transfer initiation conflicted with another update. Please retry.',
+        );
+      }
+      log.debug('Retrying transfer initiation after serialization conflict', { attempt });
+    }
+  }
+
+  /* v8 ignore next -- every loop path returns or throws */
+  throw new ConflictError('Transfer initiation failed after retry attempts');
+}
+
+function isSerializableTransactionConflict(error: unknown): boolean {
+  if (!isPrismaError(error)) return false;
+  if (error.code === 'P2034') return true;
+  // The driver adapter currently wraps PostgreSQL serialization failures in
+  // Prisma's generic raw-query error while preserving the conflict kind.
+  const driverAdapterError = error.meta?.driverAdapterError as
+    | { cause?: { kind?: unknown } }
+    | undefined;
+  return error.code === 'P2010'
+    && driverAdapterError?.cause?.kind === 'TransactionWriteConflict';
 }

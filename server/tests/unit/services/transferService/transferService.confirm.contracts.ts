@@ -47,6 +47,7 @@ export const registerTransferConfirmContracts = () => {
       mockPrismaClient.$transaction.mockImplementation(async (callback) => {
         // Create a tx mock with findUnique returning accepted status for validation
         const txMock = {
+          $executeRaw: vi.fn().mockResolvedValue(0),
           ownershipTransfer: {
             findUnique: vi.fn().mockResolvedValue(mockTransfer), // In-tx validation
             update: vi.fn().mockResolvedValue(confirmedTransfer),
@@ -123,6 +124,7 @@ export const registerTransferConfirmContracts = () => {
 
       mockPrismaClient.$transaction.mockImplementation(async (callback) => {
         const txMock = {
+          $executeRaw: vi.fn().mockResolvedValue(0),
           ownershipTransfer: {
             findUnique: vi.fn().mockResolvedValue({
               id: transferId,
@@ -152,8 +154,10 @@ export const registerTransferConfirmContracts = () => {
       });
 
       const updateSpy = vi.fn().mockResolvedValue({});
+      let transactionCommitted = false;
       mockPrismaClient.$transaction.mockImplementation(async (callback) => {
         const txMock = {
+          $executeRaw: vi.fn().mockResolvedValue(0),
           ownershipTransfer: {
             findUnique: vi.fn().mockResolvedValue({
               id: transferId,
@@ -169,7 +173,9 @@ export const registerTransferConfirmContracts = () => {
           },
           walletUser: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
         };
-        return callback(txMock as any);
+        const result = await callback(txMock as any);
+        transactionCommitted = true;
+        return result;
       });
 
       await expect(
@@ -179,6 +185,7 @@ export const registerTransferConfirmContracts = () => {
         where: { id: transferId },
         data: { status: 'expired' },
       });
+      expect(transactionCommitted).toBe(true);
     });
 
     it('should reject wallet confirm when current owner record is missing in transaction', async () => {
@@ -195,6 +202,7 @@ export const registerTransferConfirmContracts = () => {
 
       mockPrismaClient.$transaction.mockImplementation(async (callback) => {
         const txMock = {
+          $executeRaw: vi.fn().mockResolvedValue(0),
           ownershipTransfer: {
             findUnique: vi.fn().mockResolvedValue({
               id: transferId,
@@ -249,6 +257,7 @@ export const registerTransferConfirmContracts = () => {
       const walletDeleteSpy = vi.fn().mockResolvedValue({});
       mockPrismaClient.$transaction.mockImplementation(async (callback) => {
         const txMock = {
+          $executeRaw: vi.fn().mockResolvedValue(0),
           ownershipTransfer: {
             findUnique: vi.fn().mockResolvedValue(baseTransfer),
             update: vi.fn().mockResolvedValue({}),
@@ -302,6 +311,7 @@ export const registerTransferConfirmContracts = () => {
       const deviceUserUpdateSpy = vi.fn().mockResolvedValue({});
       mockPrismaClient.$transaction.mockImplementation(async (callback) => {
         const txMock = {
+          $executeRaw: vi.fn().mockResolvedValue(0),
           ownershipTransfer: {
             findUnique: vi.fn().mockResolvedValue(baseTransfer),
             update: vi.fn().mockResolvedValue({}),
@@ -363,6 +373,7 @@ export const registerTransferConfirmContracts = () => {
       const deviceUserDeleteSpy = vi.fn().mockResolvedValue({});
       mockPrismaClient.$transaction.mockImplementation(async (callback) => {
         const txMock = {
+          $executeRaw: vi.fn().mockResolvedValue(0),
           ownershipTransfer: {
             findUnique: vi.fn().mockResolvedValue(baseTransfer),
             update: vi.fn().mockResolvedValue({}),
@@ -411,6 +422,7 @@ export const registerTransferConfirmContracts = () => {
       mockPrismaClient.ownershipTransfer.findUnique.mockResolvedValueOnce(baseTransfer);
       mockPrismaClient.$transaction.mockImplementation(async (callback) => {
         const txMock = {
+          $executeRaw: vi.fn().mockResolvedValue(0),
           ownershipTransfer: {
             findUnique: vi.fn().mockResolvedValue(baseTransfer),
             update: vi.fn().mockResolvedValue({}),
@@ -451,6 +463,7 @@ export const registerTransferConfirmContracts = () => {
 
       mockPrismaClient.$transaction.mockImplementation(async (callback) => {
         const txMock = {
+          $executeRaw: vi.fn().mockResolvedValue(0),
           ownershipTransfer: {
             findUnique: vi.fn().mockResolvedValue(baseTransfer),
             update: vi.fn().mockResolvedValue({}),

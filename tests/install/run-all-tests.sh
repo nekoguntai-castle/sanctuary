@@ -137,6 +137,9 @@ run_unit_suites() {
     if ! run_test_suite "Unit Tests" "$SCRIPT_DIR/unit/install-script.test.sh"; then
         suite_failed=true
     fi
+    if ! run_test_suite "Migration Compose Contract Tests" "$SCRIPT_DIR/unit/migration-compose-contract.test.sh"; then
+        suite_failed=true
+    fi
     if ! run_test_suite "Reset 2FA Script Unit Tests" "$SCRIPT_DIR/unit/reset-user-2fa-script.test.sh"; then
         suite_failed=true
     fi

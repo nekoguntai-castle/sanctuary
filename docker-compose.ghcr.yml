@@ -83,6 +83,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       worker:
         condition: service_started
     environment:
@@ -211,6 +213,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -259,7 +263,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-sanctuary}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-sanctuary}?schema=public
-    command: ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed"]
+    command: ["sh", "/app/scripts/migrate.sh"]
     networks:
       - sanctuary-network
     restart: "no"

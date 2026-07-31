@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Prisma } from '../../../../src/generated/prisma/client';
 import { mockPrismaClient } from '../../../mocks/prisma';
 import { deviceId, mockCheckDeviceOwnerAccess, mockCheckWalletOwnerAccess, ownerId, recipientId, transferId, walletId } from './transferServiceTestHarness';
 import {
@@ -71,7 +72,8 @@ export const registerTransferInitiateContracts = () => {
       });
 
       // Mock non-owner check
-      mockCheckWalletOwnerAccess.mockResolvedValue(false);
+      mockPrismaClient.walletUser.findFirst.mockResolvedValue(null);
+      mockPrismaClient.wallet.findFirst.mockResolvedValue(null);
 
       await expect(
         initiateTransfer(ownerId, {
@@ -80,6 +82,38 @@ export const registerTransferInitiateContracts = () => {
           toUserId: recipientId,
         })
       ).rejects.toThrow(/not the owner/i);
+    });
+
+    it('rejects a wallet transfer initiated by a group-only owner', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: recipientId,
+        username: 'recipient',
+      });
+      mockPrismaClient.walletUser.findFirst.mockResolvedValue(null);
+      mockPrismaClient.wallet.findFirst.mockResolvedValue({ groupRole: 'owner' });
+
+      await expect(initiateTransfer(ownerId, {
+        resourceType: 'wallet',
+        resourceId: walletId,
+        toUserId: recipientId,
+      })).rejects.toThrow(/not the owner/i);
+      expect(mockPrismaClient.ownershipTransfer.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a device transfer initiated by a group-only owner', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: recipientId,
+        username: 'recipient',
+      });
+      mockPrismaClient.deviceUser.findFirst.mockResolvedValue(null);
+      mockPrismaClient.device.findFirst.mockResolvedValue({ groupRole: 'owner' });
+
+      await expect(initiateTransfer(ownerId, {
+        resourceType: 'device',
+        resourceId: deviceId,
+        toUserId: recipientId,
+      })).rejects.toThrow(/not the owner/i);
+      expect(mockPrismaClient.ownershipTransfer.create).not.toHaveBeenCalled();
     });
 
     it('should reject self-transfer', async () => {
@@ -148,10 +182,7 @@ export const registerTransferInitiateContracts = () => {
         username: 'recipient',
       });
       mockPrismaClient.ownershipTransfer.count.mockResolvedValue(0);
-      mockCheckWalletOwnerAccess.mockReset();
-      mockCheckWalletOwnerAccess
-        .mockResolvedValueOnce(true)
-        .mockResolvedValueOnce(true);
+      mockPrismaClient.walletUser.findFirst.mockResolvedValue({ role: 'owner' });
 
       await expect(
         initiateTransfer(ownerId, {
@@ -205,6 +236,112 @@ export const registerTransferInitiateContracts = () => {
 
       expect(result.resourceType).toBe('device');
       expect(result.status).toBe('pending');
+    });
+
+    it('retries the entire serializable initiation after one adapter write conflict', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: recipientId,
+        username: 'recipient',
+      });
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, name: 'Test Wallet' });
+      mockPrismaClient.ownershipTransfer.create.mockResolvedValue({
+        id: transferId,
+        resourceType: 'wallet',
+        resourceId: walletId,
+        fromUserId: ownerId,
+        toUserId: recipientId,
+        status: 'pending',
+        fromUser: { id: ownerId, username: 'owner' },
+        toUser: { id: recipientId, username: 'recipient' },
+      });
+      const transactionWriteConflict = new Prisma.PrismaClientKnownRequestError('write conflict', {
+        code: 'P2010',
+        clientVersion: 'test',
+        meta: {
+          driverAdapterError: {
+            cause: { kind: 'TransactionWriteConflict' },
+          },
+        },
+      });
+      let attempts = 0;
+      mockPrismaClient.$transaction.mockImplementation(async (callback) => {
+        const result = await callback(mockPrismaClient);
+        attempts += 1;
+        if (attempts === 1) throw transactionWriteConflict;
+        return result;
+      });
+
+      await expect(initiateTransfer(ownerId, {
+        resourceType: 'wallet',
+        resourceId: walletId,
+        toUserId: recipientId,
+      })).resolves.toMatchObject({ id: transferId });
+
+      expect(mockPrismaClient.$transaction).toHaveBeenCalledTimes(2);
+      expect(mockPrismaClient.$executeRaw).toHaveBeenCalledTimes(2);
+      expect(mockPrismaClient.walletUser.findFirst).toHaveBeenCalledTimes(4);
+      expect(mockPrismaClient.ownershipTransfer.count).toHaveBeenCalledTimes(2);
+    });
+
+    it('maps three P2034 conflicts to the existing conflict envelope', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: recipientId,
+        username: 'recipient',
+      });
+      const p2034 = new Prisma.PrismaClientKnownRequestError('write conflict', {
+        code: 'P2034',
+        clientVersion: 'test',
+      });
+      mockPrismaClient.$transaction.mockRejectedValue(p2034);
+
+      await expect(initiateTransfer(ownerId, {
+        resourceType: 'wallet',
+        resourceId: walletId,
+        toUserId: recipientId,
+      })).rejects.toMatchObject({
+        statusCode: 409,
+        code: 'CONFLICT',
+      });
+      expect(mockPrismaClient.$transaction).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not retry non-P2034 transaction failures', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: recipientId,
+        username: 'recipient',
+      });
+      mockPrismaClient.$transaction.mockRejectedValue(new Error('database unavailable'));
+
+      await expect(initiateTransfer(ownerId, {
+        resourceType: 'wallet',
+        resourceId: walletId,
+        toUserId: recipientId,
+      })).rejects.toThrow('database unavailable');
+      expect(mockPrismaClient.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      new Prisma.PrismaClientKnownRequestError('unique conflict', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+      new Prisma.PrismaClientKnownRequestError('raw query failed', {
+        code: 'P2010',
+        clientVersion: 'test',
+      }),
+    ])('does not retry unrelated Prisma failures', async prismaError => {
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: recipientId,
+        username: 'recipient',
+      });
+      mockPrismaClient.$transaction.mockRejectedValue(prismaError);
+
+      await expect(initiateTransfer(ownerId, {
+        resourceType: 'wallet',
+        resourceId: walletId,
+        toUserId: recipientId,
+      })).rejects.toBe(prismaError);
+      expect(mockPrismaClient.$transaction).toHaveBeenCalledTimes(1);
     });
   });
 };

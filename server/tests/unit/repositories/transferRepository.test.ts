@@ -9,6 +9,13 @@ import { vi, Mock } from 'vitest';
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
   default: {
+    $transaction: vi.fn(),
+    device: {
+      findFirst: vi.fn(),
+    },
+    deviceUser: {
+      findFirst: vi.fn(),
+    },
     ownershipTransfer: {
       findUnique: vi.fn(),
       findMany: vi.fn(),
@@ -16,6 +23,12 @@ vi.mock('../../../src/models/prisma', () => ({
       updateMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+    },
+    wallet: {
+      findFirst: vi.fn(),
+    },
+    walletUser: {
+      findFirst: vi.fn(),
     },
   },
 }));
@@ -289,6 +302,103 @@ describe('Transfer Repository', () => {
       expect(result).toBe(true);
       expect(mockTx.ownershipTransfer.count).toHaveBeenCalled();
     });
+  });
+
+  describe('resource ownership', () => {
+    it('uses the transaction client for wallet owner and target checks', async () => {
+      const tx = {
+        walletUser: {
+          findFirst: vi.fn()
+            .mockResolvedValueOnce({ role: 'owner' })
+            .mockResolvedValueOnce({ role: 'viewer' }),
+        },
+        wallet: { findFirst: vi.fn() },
+      };
+
+      await expect(transferRepository.isDirectResourceOwner(
+        'wallet',
+        'wallet-1',
+        'owner-1',
+        tx as any,
+      )).resolves.toBe(true);
+      await expect(transferRepository.isDirectResourceOwner(
+        'wallet',
+        'wallet-1',
+        'target-1',
+        tx as any,
+      )).resolves.toBe(false);
+
+      expect(tx.walletUser.findFirst).toHaveBeenCalledTimes(2);
+      expect(tx.wallet.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('preserves group-owner fallback when no direct wallet access exists', async () => {
+      const tx = {
+        walletUser: { findFirst: vi.fn().mockResolvedValue(null) },
+        wallet: { findFirst: vi.fn().mockResolvedValue({ groupRole: 'owner' }) },
+      };
+
+      await expect(transferRepository.isEffectiveResourceOwner(
+        'wallet',
+        'wallet-1',
+        'group-owner',
+        tx as any,
+      )).resolves.toBe(true);
+    });
+
+    it('uses direct and group ownership semantics for devices', async () => {
+      const directTx = {
+        deviceUser: { findFirst: vi.fn().mockResolvedValue({ role: 'owner' }) },
+        device: { findFirst: vi.fn() },
+      };
+      const groupTx = {
+        deviceUser: { findFirst: vi.fn().mockResolvedValue(null) },
+        device: { findFirst: vi.fn().mockResolvedValue({ groupRole: 'owner' }) },
+      };
+
+      await expect(transferRepository.isDirectResourceOwner(
+        'device',
+        'device-1',
+        'direct-owner',
+        directTx as any,
+      )).resolves.toBe(true);
+      await expect(transferRepository.isEffectiveResourceOwner(
+        'device',
+        'device-1',
+        'direct-owner',
+        directTx as any,
+      )).resolves.toBe(true);
+      await expect(transferRepository.isEffectiveResourceOwner(
+        'device',
+        'device-1',
+        'group-owner',
+        groupTx as any,
+      )).resolves.toBe(true);
+    });
+
+    it.each([
+      ['wallet', 'wallet-1', 'wallets'],
+      ['device', 'device-1', 'devices'],
+    ] as const)(
+      'creates a canonical transaction-scoped MVCC ownership fence for %s',
+      async (resourceType, resourceId, table) => {
+        const tx = { $executeRaw: vi.fn().mockResolvedValue(0) };
+
+        await transferRepository.lockResourceOwnership(
+          resourceType,
+          resourceId,
+          tx as any,
+        );
+
+        expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+        const template = tx.$executeRaw.mock.calls[0]![0] as TemplateStringsArray;
+        const interpolation = tx.$executeRaw.mock.calls[0]![1];
+        expect(template.join('?')).toContain(
+          `UPDATE "${table}" SET "updatedAt" = "updatedAt" WHERE "id" = ?`,
+        );
+        expect(interpolation).toBe(resourceId);
+      },
+    );
   });
 
   describe('getPendingIncomingCount', () => {

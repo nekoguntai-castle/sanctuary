@@ -36,7 +36,6 @@ import { defaultJsonParser, defaultUrlencodedParser } from './middleware/bodyPar
 import { doubleCsrfProtection } from './middleware/csrf';
 import { createServerCorsOptionsDelegate } from './middleware/corsOrigin';
 import { apiVersionMiddleware } from './middleware/apiVersion';
-import { migrationService } from './services/migrationService';
 import { getStartupStatus, isSystemDegraded } from './services/startupManager';
 import { startRegisteredServices, stopRegisteredServices } from './services/serviceRegistry';
 import { registerServerBackgroundServices } from './services/serverBackgroundServices';
@@ -268,19 +267,9 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
 
     log.info(`Service initialization completed in ${Date.now() - startupTimer}ms`);
 
-    log.info('Checking database migrations...');
-    const migrationResult = await migrationService.runMigrations();
-
     // Warm caches after all services are initialized (reduces cold-start latency)
     // This runs before server starts accepting requests
-      await warmCaches();
-
-    if (!migrationResult.success) {
-      log.error('Database migration failed - server may not function correctly', {
-        error: migrationResult.error,
-      });
-      // Continue anyway - some functionality may still work
-    }
+    await warmCaches();
 
     // Start background services before accepting requests so health reflects
     // the real startup state and critical dependencies fail before bind.
@@ -326,8 +315,6 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
         }
       }, 60_000);
 
-      // Log final migration status
-      await migrationService.logMigrationStatus();
     });
   } catch (error) {
     log.error('Failed to start server', {

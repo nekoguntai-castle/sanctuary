@@ -13,6 +13,7 @@ import type { PrismaTxClient } from '../models/prisma';
 const log = createLogger('TRANSFER:REPO');
 
 type PrismaTx = PrismaTxClient;
+type TransferResourceType = 'wallet' | 'device';
 
 const userSelect = { id: true, username: true } as const;
 
@@ -149,6 +150,103 @@ export async function hasActiveTransfer(
 }
 
 /**
+ * Check direct resource ownership inside the caller's transaction snapshot.
+ * Group-derived ownership intentionally does not authorize initiating a
+ * transfer because only a directly assigned owner can relinquish ownership.
+ */
+export async function isDirectResourceOwner(
+  resourceType: TransferResourceType,
+  resourceId: string,
+  userId: string,
+  tx: PrismaTx,
+): Promise<boolean> {
+  if (resourceType === 'wallet') {
+    const direct = await tx.walletUser.findFirst({
+      where: { walletId: resourceId, userId },
+      select: { role: true },
+    });
+    return direct?.role === 'owner';
+  }
+
+  const direct = await tx.deviceUser.findFirst({
+    where: { deviceId: resourceId, userId },
+    select: { role: true },
+  });
+  return direct?.role === 'owner';
+}
+
+/**
+ * Check effective ownership inside the caller's transaction snapshot.
+ * A direct assignment takes precedence; group-derived ownership is considered
+ * only when the user has no direct assignment for the resource.
+ */
+export async function isEffectiveResourceOwner(
+  resourceType: TransferResourceType,
+  resourceId: string,
+  userId: string,
+  tx: PrismaTx,
+): Promise<boolean> {
+  if (resourceType === 'wallet') {
+    const direct = await tx.walletUser.findFirst({
+      where: { walletId: resourceId, userId },
+      select: { role: true },
+    });
+    if (direct) return direct.role === 'owner';
+
+    const grouped = await tx.wallet.findFirst({
+      where: {
+        id: resourceId,
+        group: { members: { some: { userId } } },
+      },
+      select: { groupRole: true },
+    });
+    return grouped?.groupRole === 'owner';
+  }
+
+  const direct = await tx.deviceUser.findFirst({
+    where: { deviceId: resourceId, userId },
+    select: { role: true },
+  });
+  if (direct) return direct.role === 'owner';
+
+  const grouped = await tx.device.findFirst({
+    where: {
+      id: resourceId,
+      group: { members: { some: { userId } } },
+    },
+    select: { groupRole: true },
+  });
+  return grouped?.groupRole === 'owner';
+}
+
+/**
+ * Fence ownership changes on the canonical resource row.
+ * Call before ownership reads inside a serializable transaction; concurrent
+ * ownership writes force the caller to retry with a fresh snapshot.
+ */
+export async function lockResourceOwnership(
+  resourceType: TransferResourceType,
+  resourceId: string,
+  tx: PrismaTx,
+): Promise<void> {
+  // A logical no-op UPDATE creates an MVCC write fence on the canonical
+  // resource row. Under Serializable isolation, a waiter whose ownership
+  // snapshot became stale receives P2034 and retries the whole workflow with a
+  // fresh snapshot. A transaction advisory lock alone is insufficient because
+  // acquiring it establishes the stale snapshot before the wait.
+  if (resourceType === 'wallet') {
+    await tx.$executeRaw`
+      UPDATE "wallets" SET "updatedAt" = "updatedAt" WHERE "id" = ${resourceId}
+    `;
+    return;
+  }
+
+  await tx.$executeRaw`
+    UPDATE "devices" SET "updatedAt" = "updatedAt" WHERE "id" = ${resourceId}
+  `;
+}
+
+/**
  * Get count of pending incoming transfers for a user (notification badge)
  */
 export async function getPendingIncomingCount(userId: string): Promise<number> {
@@ -260,6 +358,9 @@ export const transferRepository = {
   findByUser,
   countByUser,
   hasActiveTransfer,
+  isDirectResourceOwner,
+  isEffectiveResourceOwner,
+  lockResourceOwnership,
   getPendingIncomingCount,
   getAwaitingConfirmationCount,
   atomicStatusUpdate,

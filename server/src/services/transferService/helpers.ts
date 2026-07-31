@@ -5,10 +5,9 @@
  * expiry calculation, ownership checks, resource name lookup, formatting.
  */
 
-import { walletRepository, deviceRepository } from '../../repositories';
-import { checkWalletOwnerAccess } from '../wallet';
-import { checkDeviceOwnerAccess } from '../deviceAccess';
+import { deviceRepository, transferRepository, walletRepository } from '../../repositories';
 import type { ResourceType, Transfer, TransferWithUsers } from './types';
+import type { PrismaTx } from './types';
 
 export const DEFAULT_EXPIRY_DAYS = 7;
 export const MAX_EXPIRY_DAYS = 30;
@@ -43,18 +42,17 @@ export async function getResourceName(resourceType: ResourceType, resourceId: st
 }
 
 /**
- * Check if user owns the resource
+ * Check effective ownership for a transfer target.
+ * Group-derived ownership counts here because transferring to an existing
+ * effective owner would not change that user's access.
  */
 export async function checkResourceOwnership(
   resourceType: ResourceType,
   resourceId: string,
-  userId: string
+  userId: string,
+  tx: PrismaTx,
 ): Promise<boolean> {
-  if (resourceType === 'wallet') {
-    return checkWalletOwnerAccess(resourceId, userId);
-  } else {
-    return checkDeviceOwnerAccess(resourceId, userId);
-  }
+  return transferRepository.isEffectiveResourceOwner(resourceType, resourceId, userId, tx);
 }
 
 /**

@@ -37,7 +37,7 @@ export async function confirmTransfer(
 
   // Execute everything in a serializable transaction to prevent race conditions
   // This ensures status check and execution are atomic
-  await transferRepository.withSerializableTransaction(async (tx) => {
+  const result = await transferRepository.withSerializableTransaction(async (tx) => {
     // Re-fetch and validate inside transaction
     const current = await tx.ownershipTransfer.findUnique({
       where: { id: transferId },
@@ -56,8 +56,15 @@ export async function confirmTransfer(
         where: { id: transferId },
         data: { status: 'expired' },
       });
-      throw new InvalidInputError('Transfer has expired');
+      // Return instead of throwing so the expired transition commits first.
+      return { expired: true };
     }
+
+    await transferRepository.lockResourceOwnership(
+      current.resourceType === 'wallet' ? 'wallet' : 'device',
+      current.resourceId,
+      tx,
+    );
 
     // Execute the ownership transfer based on resource type
     if (current.resourceType === 'wallet') {
@@ -65,7 +72,12 @@ export async function confirmTransfer(
     } else {
       await executeDeviceTransferTx(tx, current);
     }
+    return { expired: false };
   });
+
+  if (result.expired) {
+    throw new InvalidInputError('Transfer has expired');
+  }
 
   // Fetch updated transfer for return
   const updated = await transferRepository.findByIdWithUsers(transferId);

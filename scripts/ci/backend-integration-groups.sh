@@ -33,6 +33,7 @@ list_group_specs() {
         tests/integration/flows/labels.integration.test.ts \
         tests/integration/flows/payjoin.integration.test.ts \
         tests/integration/flows/security.integration.test.ts \
+        tests/integration/flows/transfers.integration.test.ts \
         tests/integration/flows/transactions.integration.test.ts \
         tests/integration/flows/transactionsCreationCrossWallet.integration.test.ts \
         tests/integration/flows/wallet.integration.test.ts

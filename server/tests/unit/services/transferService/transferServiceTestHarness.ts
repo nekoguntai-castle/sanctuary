@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { resetPrismaMocks } from '../../../mocks/prisma';
+import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 
 const transferServiceMocks = vi.hoisted(() => ({
   mockCheckWalletOwnerAccess: vi.fn(),
@@ -45,4 +45,10 @@ export const setupTransferServiceMocks = () => {
   vi.clearAllMocks();
   mockCheckWalletOwnerAccess.mockResolvedValue(true);
   mockCheckDeviceOwnerAccess.mockResolvedValue(true);
+  mockPrismaClient.walletUser.findFirst.mockImplementation(async ({ where }) => (
+    where.userId === ownerId ? { role: 'owner' } : null
+  ));
+  mockPrismaClient.deviceUser.findFirst.mockImplementation(async ({ where }) => (
+    where.userId === ownerId ? { role: 'owner' } : null
+  ));
 };

@@ -14,6 +14,8 @@ import prisma from '../models/prisma';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { execSync } from 'child_process';
+import { readdirSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 const log = createLogger('MIGRATION:SVC');
 
@@ -42,46 +44,63 @@ export interface SchemaVersionInfo {
   pendingMigrations: number;
 }
 
+const DEFAULT_MIGRATIONS_DIRECTORY = resolve(process.cwd(), 'prisma/migrations');
+
 /**
- * Expected migrations in order (update this when adding new migrations)
- * This serves as a manifest of all migrations that should exist
+ * Load the migration manifest shipped in the runtime image.
+ *
+ * Prisma treats every directory containing migration.sql as a migration,
+ * including legacy names that do not use the timestamp convention. A missing,
+ * malformed, or empty manifest is unsafe because it could make an out-of-date
+ * database appear current, so those states deliberately throw.
  */
-const EXPECTED_MIGRATIONS = [
-  '20251211212018_init',
-  '20251213000000_add_system_settings',
-  '20251213100000_add_group_role',
-  '20251213200000_add_audit_log',
-  '20251213210000_add_two_factor_auth',
-  '20251214000000_add_utxo_frozen',
-  '20251214100000_add_draft_transactions',
-  '20251215120000_add_performance_indexes',
-  '20251215130000_add_draft_outputs',
-  '20251217000000_fix_derivation_paths',
-  '20251218000000_add_mempool_estimator',
-  '20251218100000_decimal_fee_rates',
-  '20251219000000_add_balance_after_to_transactions',
-  '20251219200000_add_pool_settings',
-  '20251219210000_add_electrum_servers',
-  '20251219300000_add_allow_self_signed_cert',
-  '20251220000000_add_rbf_tracking',
-  '20251221000000_add_token_management',
-  '20251222000000_add_electrum_health_error',
-  '20251224000000_add_proxy_config',
-  '20251224100000_add_transaction_inputs_outputs',
-  '20251225000000_add_network_to_node_config',
-  '20251225090000_add_draft_inputs',
-  '20251225100000_add_decoy_outputs_to_drafts',
-  '20251225220000_add_payjoin_url_to_drafts',
-  '20251225230000_remove_bitcoin_rpc_support',
-  '20251226120000_add_verbose_capability_to_electrum_servers',
-  '20251228000000_add_type_blocktime_index',
-] as const;
+export function loadPackagedMigrationNames(
+  migrationsDirectory = DEFAULT_MIGRATIONS_DIRECTORY
+): string[] {
+  let entries;
+  try {
+    entries = readdirSync(migrationsDirectory, { withFileTypes: true });
+  } catch (error) {
+    throw new Error(
+      `Could not read packaged migration manifest: ${getErrorMessage(error)}`
+    );
+  }
+
+  const directories = entries.filter((entry) => entry.isDirectory());
+  for (const directory of directories) {
+    const migrationFile = join(migrationsDirectory, directory.name, 'migration.sql');
+    if (!statSync(migrationFile).isFile()) {
+      throw new Error(`${directory.name}/migration.sql is not a file`);
+    }
+  }
+
+  const migrationNames = directories.map((directory) => directory.name).sort();
+  if (migrationNames.length === 0) {
+    throw new Error('packaged migration manifest is empty');
+  }
+
+  return migrationNames;
+}
 
 /**
  * Get the expected schema version (number of expected migrations)
  */
 export function getExpectedSchemaVersion(): number {
-  return EXPECTED_MIGRATIONS.length;
+  return loadPackagedMigrationNames().length;
+}
+
+function isSuccessfulMigration(migration: PrismaMigration): boolean {
+  return migration.finished_at !== null && migration.rolled_back_at === null;
+}
+
+function findMissingMigrations(
+  expectedMigrations: string[],
+  appliedMigrations: PrismaMigration[]
+): string[] {
+  const appliedNames = new Set(
+    appliedMigrations.map((migration) => migration.migration_name)
+  );
+  return expectedMigrations.filter((migration) => !appliedNames.has(migration));
 }
 
 /**
@@ -95,11 +114,9 @@ class MigrationService {
     try {
       const migrations = await prisma.$queryRaw<PrismaMigration[]>`
         SELECT * FROM "_prisma_migrations"
-        WHERE finished_at IS NOT NULL
-          AND rolled_back_at IS NULL
-        ORDER BY finished_at ASC
+        ORDER BY started_at ASC
       `;
-      return migrations;
+      return migrations.filter(isSuccessfulMigration);
     } catch (error) {
       // Table might not exist if no migrations have run
       log.warn('Could not query migrations table', { error: getErrorMessage(error) });
@@ -119,15 +136,17 @@ class MigrationService {
    * Get detailed schema version info
    */
   async getSchemaVersionInfo(): Promise<SchemaVersionInfo> {
+    const expectedMigrations = loadPackagedMigrationNames();
     const migrations = await this.getAppliedMigrations();
     const latestMigration = migrations.length > 0 ? migrations[migrations.length - 1] : null;
+    const missingMigrations = findMissingMigrations(expectedMigrations, migrations);
 
     return {
       version: migrations.length,
       latestMigration: latestMigration?.migration_name || null,
       appliedAt: latestMigration?.finished_at || null,
-      totalMigrations: EXPECTED_MIGRATIONS.length,
-      pendingMigrations: Math.max(0, EXPECTED_MIGRATIONS.length - migrations.length),
+      totalMigrations: expectedMigrations.length,
+      pendingMigrations: missingMigrations.length,
     };
   }
 
@@ -141,35 +160,28 @@ class MigrationService {
     expected: number;
     missing: string[];
   }> {
+    const expectedMigrations = loadPackagedMigrationNames();
     const migrations = await this.getAppliedMigrations();
-    const appliedNames = new Set(migrations.map((m) => m.migration_name));
-
-    const missing: string[] = [];
-    for (const expected of EXPECTED_MIGRATIONS) {
-      if (!appliedNames.has(expected)) {
-        missing.push(expected);
-      }
-    }
-
+    const missing = findMissingMigrations(expectedMigrations, migrations);
     const valid = missing.length === 0;
 
     if (!valid) {
       log.warn('Database migrations are not up to date', {
         applied: migrations.length,
-        expected: EXPECTED_MIGRATIONS.length,
+        expected: expectedMigrations.length,
         missing,
       });
     } else {
       log.debug('Database migrations verified', {
         applied: migrations.length,
-        expected: EXPECTED_MIGRATIONS.length,
+        expected: expectedMigrations.length,
       });
     }
 
     return {
       valid,
       applied: migrations.length,
-      expected: EXPECTED_MIGRATIONS.length,
+      expected: expectedMigrations.length,
       missing,
     };
   }
@@ -207,6 +219,11 @@ class MigrationService {
       });
 
       const afterInfo = await this.getSchemaVersionInfo();
+      if (afterInfo.pendingMigrations > 0) {
+        throw new Error(
+          `${afterInfo.pendingMigrations} packaged migration(s) still missing after deploy`
+        );
+      }
       const applied = afterInfo.version - beforeInfo.version;
 
       log.info('Database migrations completed successfully', {

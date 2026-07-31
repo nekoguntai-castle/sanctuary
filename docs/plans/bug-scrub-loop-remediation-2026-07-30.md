@@ -286,32 +286,34 @@ Findings: `stale-migration-manifest-masks-pending-migrations`,
 `expired-transfer-update-rolls-back`, and
 `transfer-ownership-check-outside-serializable-snapshot`.
 
-- [ ] Replace the hand-maintained migration list/count shortcut with the migration
+- [x] Replace the hand-maintained migration list/count shortcut with the migration
       directory names packaged in the backend image. Compare exact successful
       `_prisma_migrations` names and states; add a filesystem-to-runtime drift gate.
-- [ ] Add tests for more historical applied rows than the old list, one missing
+- [x] Add tests for more historical applied rows than the old list, one missing
       current migration, failed/rolled-back rows, and fully current state.
-- [ ] Move the expired status transition to a transaction that commits before
+- [x] Move the expired status transition to a transaction that commits before
       returning the domain error, or return a transaction result and throw only
       after commit; add a DB-backed post-error assertion.
-- [ ] Add transaction-client ownership repository methods and use them for both
+- [x] Add transaction-client ownership repository methods and use them for both
       owner and target checks inside initiation's serializable transaction.
-- [ ] Add bounded P2034 retry around the entire initiation serializable callback,
+- [x] Add bounded serialization retry around the entire initiation callback for
+      Prisma `P2034` and adapter-mapped `P2010` write conflicts,
       re-running ownership and active-transfer checks on every attempt. Map
       exhaustion to the existing conflict envelope; never retry only the insert or
       reuse reads from outside the callback.
-- [ ] Make the Compose `migrate` service the single migration owner in both local
+- [x] Make the Compose `migrate` service the single migration owner in both local
       and GHCR definitions. Remove its backend dependency; make backend and worker
       depend on `migrate: service_completed_successfully`, and remove in-process
       migrate-and-continue startup behavior. Migration failure must prevent either
       database consumer from starting or becoming ready.
-- [ ] Use the same packaged `/app/scripts/migrate.sh` entrypoint in both Compose
+- [x] Use the same packaged `/app/scripts/migrate.sh` entrypoint in both Compose
       variants so legacy pre-restructure migration resolution, deploy, and seed
       behavior cannot diverge.
-- [ ] Add compose/startup contract tests for a fresh install, one-pending-migration
+- [x] Add compose/startup contract tests for a fresh install, one-pending-migration
       upgrade, a legacy pre-migration-table database, and migration failure. Add
-      transfer tests for coordinated ownership handoff, one P2034 then success, and
-      retry exhaustion; retain active-transfer uniqueness behavior.
+      transfer tests for coordinated ownership handoff, adapter write-conflict
+      recovery, and P2034 exhaustion; retain
+      active-transfer uniqueness behavior.
 
 Acceptance:
 

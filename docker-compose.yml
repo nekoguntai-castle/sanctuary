@@ -181,6 +181,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       worker:
         condition: service_started
     environment:
@@ -312,6 +314,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       # Node.js memory settings
       NODE_OPTIONS: "--max-old-space-size=1024"
@@ -462,8 +466,6 @@ services:
     image: sanctuary-backend:local
     pull_policy: never # Reuse image built by backend service
     depends_on:
-      backend:
-        condition: service_started
       postgres:
         condition: service_healthy
     environment:
