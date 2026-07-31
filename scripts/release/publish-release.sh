@@ -167,6 +167,9 @@ validate_checkout() {
 }
 
 setup_builder() {
+  DOCKER_CONFIG_DIR="$TEMP_DIR/docker-config"
+  mkdir -m 700 "$DOCKER_CONFIG_DIR"
+  export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
   BUILDER_NAME="sanctuary-release-${$}"
   docker run --privileged --rm tonistiigi/binfmt:latest --install arm64
   docker buildx create --name "$BUILDER_NAME" --driver docker-container \
@@ -175,13 +178,10 @@ setup_builder() {
 }
 
 login_ghcr() {
-  DOCKER_CONFIG_DIR="$TEMP_DIR/docker-config"
-  mkdir -m 700 "$DOCKER_CONFIG_DIR"
   printf '%s' "$GHCR_TOKEN" \
-    | DOCKER_CONFIG="$DOCKER_CONFIG_DIR" docker login ghcr.io \
+    | docker login ghcr.io \
       -u "$GHCR_USER" --password-stdin >/dev/null
   GHCR_LOGGED_IN=true
-  export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
 }
 
 build_images() {

@@ -98,10 +98,34 @@ for secret_name in FORGEJO_TOKEN GITHUB_RELEASE_TOKEN GHCR_TOKEN UMBREL_DISPATCH
   }
 done
 printf 'docker %s\n' "$*" >> "$TRACE_FILE"
+config_dir="${DOCKER_CONFIG:-$RELEASE_TEST_HOST_DOCKER_CONFIG}"
+printf 'docker-config %s %s\n' "$config_dir" "$*" >> "$TRACE_FILE"
 if [[ "${1:-}" == "login" ]]; then
   cat >/dev/null
   mkdir -p "$DOCKER_CONFIG"
   printf '{"auths":{"ghcr.io":{"auth":"test"}}}\n' > "$DOCKER_CONFIG/config.json"
+elif [[ "${1:-}" == "buildx" && "${2:-}" == "create" ]]; then
+  builder=""
+  while (( $# > 0 )); do
+    if [[ "$1" == "--name" ]]; then
+      builder="$2"
+      break
+    fi
+    shift
+  done
+  [[ -n "$builder" ]] || exit 95
+  mkdir -p "$config_dir/buildx"
+  printf '%s\n' "$builder" > "$config_dir/buildx/selected"
+elif [[ "${1:-}" == "buildx" && "${2:-}" == "inspect" ]]; then
+  [[ -s "$config_dir/buildx/selected" ]] || {
+    echo "buildx builder is not selected in $config_dir" >&2
+    exit 94
+  }
+elif [[ "${1:-}" == "buildx" && "${2:-}" == "rm" ]]; then
+  [[ -s "$config_dir/buildx/selected" ]] || {
+    echo "buildx builder is not available for cleanup in $config_dir" >&2
+    exit 93
+  }
 elif [[ "${1:-}" == "logout" && "${RELEASE_TEST_LOGOUT_FAIL:-false}" == "true" ]]; then
   exit 1
 elif [[ "$*" == *"Image.Config.Labels"* ]]; then
@@ -152,6 +176,11 @@ for secret_name in FORGEJO_TOKEN GITHUB_RELEASE_TOKEN GHCR_TOKEN UMBREL_DISPATCH
     exit 97
   }
 done
+[[ -n "${DOCKER_CONFIG:-}" && -s "$DOCKER_CONFIG/buildx/selected" ]] || {
+  echo "buildx builder is not selected in the build Docker config" >&2
+  exit 95
+}
+printf 'build-config %s\n' "$DOCKER_CONFIG" >> "$TRACE_FILE"
 printf 'build PUSH=%s TAG=%s IMAGES=%s\n' "$PUSH" "$IMAGE_TAG" "$IMAGES" >> "$TRACE_FILE"
 mkdir -p "$DIST_DIR"
 printf '{}\n' > "$DIST_DIR/image-digests-${IMAGE_TAG}.json"
@@ -232,6 +261,7 @@ run_publish() {
     RELEASE_TEST_STATE="$fixture/state" \
     RELEASE_TEST_TAG="$tag" \
     RELEASE_TEST_SHA="$sha" \
+    RELEASE_TEST_HOST_DOCKER_CONFIG="$fixture/host-docker-config" \
     SANCTUARY_RELEASE_CONFIG="$fixture/missing.env" \
     FORGEJO_URL="https://forgejo.test" \
     FORGEJO_OWNER="nekoguntai-castle" \
@@ -259,6 +289,8 @@ test_dry_run_has_no_external_mutations() {
   assert_not_contains "$fixture/trace.log" "docker login"
   assert_not_contains "$fixture/trace.log" "create-release"
   assert_contains "$fixture/output.log" "no registry or API mutations"
+  [[ ! -e "$fixture/host-docker-config" ]] \
+    || fail "dry run mutated the host Docker config"
 }
 
 test_real_publish_orders_verified_distribution() {
@@ -272,6 +304,13 @@ test_real_publish_orders_verified_distribution() {
   assert_contains "$fixture/trace.log" "verify --manifest"
   assert_contains "$fixture/trace.log" "create-release $tag"
   assert_contains "$fixture/trace.log" "curl POST https://forgejo.test/api/v1/repos/nekoguntai-castle/sanctuary-umbrel/actions/workflows/update-on-dispatch.yml/dispatches"
+  assert_not_contains "$fixture/trace.log" "$fixture/host-docker-config"
+  local docker_configs
+  docker_configs="$(grep '^docker-config ' "$fixture/trace.log" | cut -d' ' -f2 | sort -u)"
+  [[ "$(wc -l <<<"$docker_configs")" -eq 1 \
+    && "$docker_configs" == "$fixture/tmp/"*/docker-config ]] \
+    || fail "release Docker commands did not share one isolated Docker config"
+  assert_contains "$fixture/trace.log" "build-config $docker_configs"
   [[ -z "$(find "$fixture/tmp" -name config.json -print -quit)" ]] \
     || fail "temporary Docker credentials were not removed"
 
