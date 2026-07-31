@@ -1,5 +1,8 @@
 import { buildProviderHeaders, type AiConfig } from "./aiClient";
+import { requestProviderEndpoint } from "./providerHttpClient";
 import { normalizeOllamaBaseUrl, normalizeOpenAIBaseUrl } from "./utils";
+
+const PROVIDER_MODEL_LIST_TIMEOUT_MS = 5000;
 
 export interface ListedModel {
   name: string;
@@ -38,36 +41,39 @@ export async function listOpenAICompatibleModels(
   endpoint: string,
 ): Promise<ListedModel[]> {
   const baseUrl = normalizeOpenAIBaseUrl(endpoint);
-  const response = await fetch(`${baseUrl}/models`, {
+  const response = await requestProviderEndpoint({
+    url: `${baseUrl}/models`,
     headers: buildProviderHeaders(aiConfig),
-    signal: AbortSignal.timeout(5000),
+    timeoutMs: PROVIDER_MODEL_LIST_TIMEOUT_MS,
   });
 
   if (!response.ok) {
     throw new Error("Failed to fetch models from OpenAI-compatible endpoint");
   }
 
-  const data = (await response.json()) as {
+  const data = parseModelResponse<{
     data?: Array<{ id?: unknown; created?: unknown }>;
-  };
+  }>(response.body, "OpenAI-compatible");
   return mapOpenAICompatibleModels(data);
 }
 
 export async function listOllamaModels(
   endpoint: string,
+  timeoutMs = PROVIDER_MODEL_LIST_TIMEOUT_MS,
 ): Promise<ListedModel[]> {
   const baseUrl = normalizeOllamaBaseUrl(endpoint);
-  const response = await fetch(`${baseUrl}/api/tags`, {
-    signal: AbortSignal.timeout(5000),
+  const response = await requestProviderEndpoint({
+    url: `${baseUrl}/api/tags`,
+    timeoutMs,
   });
 
   if (!response.ok) {
     throw new Error("Failed to fetch models from Ollama endpoint");
   }
 
-  const data = (await response.json()) as {
+  const data = parseModelResponse<{
     models?: Array<{ name: string; size: number; modified_at: string }>;
-  };
+  }>(response.body, "Ollama");
   return (
     data.models?.map((model) => ({
       name: model.name,
@@ -75,6 +81,14 @@ export async function listOllamaModels(
       modifiedAt: model.modified_at,
     })) || []
   );
+}
+
+function parseModelResponse<T>(body: Buffer, providerName: string): T {
+  try {
+    return JSON.parse(body.toString("utf8")) as T;
+  } catch {
+    throw new Error(`Invalid JSON response from ${providerName} endpoint`);
+  }
 }
 
 export function listProviderModels(

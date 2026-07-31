@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   detectProviderModels: vi.fn(),
+  listOllamaModels: vi.fn(),
   listProviderModels: vi.fn(),
 }));
 
@@ -10,12 +11,11 @@ vi.mock("../../llm-egress-proxy/src/providerDetection", () => ({
 }));
 
 vi.mock("../../llm-egress-proxy/src/providerModels", () => ({
+  listOllamaModels: mocks.listOllamaModels,
   listProviderModels: mocks.listProviderModels,
 }));
 
 import { registerProviderRoutes } from "../../llm-egress-proxy/src/providerRoutes";
-
-const fetchMock = vi.fn();
 
 function makeApp() {
   const routes = {
@@ -74,12 +74,6 @@ function makeDeps(
 describe("LLM egress proxy provider routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchMock.mockReset();
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
   });
 
   it("registers provider discovery and model-listing routes only", () => {
@@ -121,7 +115,9 @@ describe("LLM egress proxy provider routes", () => {
     );
 
     expect(mocks.detectProviderModels).toHaveBeenCalledWith(
-      expect.objectContaining({ endpoint: "http://host.docker.internal:11434" }),
+      expect.objectContaining({
+        endpoint: "http://host.docker.internal:11434",
+      }),
       "http://host.docker.internal:11434",
       "ollama",
       undefined,
@@ -181,7 +177,10 @@ describe("LLM egress proxy provider routes", () => {
     });
 
     const missing = makeApp();
-    registerProviderRoutes(missing.app as any, makeDeps({ endpoint: "" }) as any);
+    registerProviderRoutes(
+      missing.app as any,
+      makeDeps({ endpoint: "" }) as any,
+    );
     const missingRes = makeResponse();
     await missing.routes.post.get("/check-provider")!({}, missingRes);
     expect(missingRes.json).toHaveBeenCalledWith({
@@ -207,13 +206,10 @@ describe("LLM egress proxy provider routes", () => {
     const deps = makeDeps();
     registerProviderRoutes(app as any, deps as any);
 
-    fetchMock.mockRejectedValueOnce(new Error("no host service"));
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: vi.fn().mockResolvedValue({
-        models: [{ name: "llama3.2" }],
-      }),
-    });
+    mocks.listOllamaModels.mockRejectedValueOnce(new Error("no host service"));
+    mocks.listOllamaModels.mockResolvedValueOnce([
+      { name: "llama3.2", size: 0, modifiedAt: "" },
+    ]);
 
     const res = makeResponse();
     await routes.post.get("/detect-ollama")!(
@@ -234,5 +230,15 @@ describe("LLM egress proxy provider routes", () => {
       endpoint: "http://localhost:11434",
       models: ["llama3.2"],
     });
+    expect(mocks.listOllamaModels).toHaveBeenNthCalledWith(
+      1,
+      "http://host.docker.internal:11434",
+      3000,
+    );
+    expect(mocks.listOllamaModels).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:11434",
+      3000,
+    );
   });
 });

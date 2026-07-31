@@ -364,27 +364,27 @@ Delivery: one webhook security PR.
 
 Finding: `llm-egress-redirect-bypasses-provider-endpoint-policy`.
 
-- [ ] Add local-server tests for relative and absolute redirects, denied private
+- [x] Add local-server tests for relative and absolute redirects, denied private
       targets, chains/loops, missing `Location`, 301/302/303 method conversion,
       307/308 body preservation, cross-origin credentials, chained origin
       changes, same-host/different-port redirects, and HTTPS downgrade.
-- [ ] Add one shared manual-redirect fetch helper that resolves each `Location`,
+- [x] Add one shared manual-redirect fetch helper that resolves each `Location`,
       evaluates every hop with `evaluateProviderEndpoint`, resolves and validates
       every DNS answer according to policy mode, connects to one validated/pinned
       address with the original Host/SNI, and enforces a small redirect limit.
-- [ ] Add resolver/transport tests for multiple DNS answers, rebinding,
+- [x] Add resolver/transport tests for multiple DNS answers, rebinding,
       IPv4-mapped IPv6, and public-host-to-private-address resolution.
-- [ ] Specify the redirect state machine: compare canonical origins by scheme,
+- [x] Specify the redirect state machine: compare canonical origins by scheme,
       hostname, and effective port; 301/302 convert POST to GET and 303 converts
       non-GET/HEAD to GET; conversions drop body/entity headers; 307/308 preserve
       method/body only after destination validation. Strip authorization on any
       cross-origin hop and never reconstruct it later in a chain. Reject HTTPS
       downgrade.
-- [ ] Use one abort deadline for the complete chain rather than resetting timeouts
+- [x] Use one abort deadline for the complete chain rather than resetting timeouts
       per hop.
-- [ ] Route chat/completion, model listing, Ollama detection, and provider tests
+- [x] Route chat/completion, model listing, Ollama detection, and provider tests
       through the helper so no provider fetch keeps default redirect following.
-- [ ] Add one raw-byte response cap shared by chat success/error, model listing,
+- [x] Add one raw-byte response cap shared by chat success/error, model listing,
       and detection. Abort the stream on oversized fixed-length or chunked bodies
       and return a sanitized bounded error.
 

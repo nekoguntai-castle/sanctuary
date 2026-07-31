@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const mocks = vi.hoisted(() => ({
+  requestProviderEndpoint: vi.fn(),
+}));
+
+vi.mock("../../llm-egress-proxy/src/providerHttpClient", () => ({
+  requestProviderEndpoint: mocks.requestProviderEndpoint,
+}));
+
 import {
   detectProviderModels,
   getProviderDetectionOrder,
@@ -18,7 +26,7 @@ const baseConfig = {
 describe("LLM egress proxy provider detection", () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.unstubAllGlobals();
+    mocks.requestProviderEndpoint.mockReset();
   });
 
   it("keeps detection order aligned with the proxy provider tuple without changing default precedence", () => {
@@ -48,13 +56,15 @@ describe("LLM egress proxy provider detection", () => {
   });
 
   it("detects LM Studio models on private LAN endpoints without an API key", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    mocks.requestProviderEndpoint.mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({
-        data: [{ id: "qwen/qwen3.6-35b-a3b" }],
-      }),
+      status: 200,
+      url: new URL("http://studio.local:1234/v1/models"),
+      headers: {},
+      body: Buffer.from(
+        JSON.stringify({ data: [{ id: "qwen/qwen3.6-35b-a3b" }] }),
+      ),
     });
-    vi.stubGlobal("fetch", fetchMock);
 
     const result = await detectProviderModels(
       { ...baseConfig, providerType: "openai-compatible" },
@@ -68,22 +78,18 @@ describe("LLM egress proxy provider detection", () => {
       endpoint: "http://studio.local:1234",
       models: [{ name: "qwen/qwen3.6-35b-a3b", size: 0, modifiedAt: "" }],
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://studio.local:1234/v1/models",
+    expect(mocks.requestProviderEndpoint).toHaveBeenCalledWith(
       expect.objectContaining({
+        url: "http://studio.local:1234/v1/models",
         headers: { "Content-Type": "application/json" },
       }),
     );
-    const requestOptions = fetchMock.mock.calls[0]?.[1] as
-      | RequestInit
-      | undefined;
+    const requestOptions = mocks.requestProviderEndpoint.mock.calls[0]?.[0] as
+      { headers?: Record<string, string> } | undefined;
     expect(requestOptions?.headers).not.toHaveProperty("Authorization");
   });
 
   it("reports blocked public HTTP endpoints instead of probing them", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-
     const result = await detectProviderModels(
       baseConfig,
       "http://203.0.113.10:1234",
@@ -96,6 +102,6 @@ describe("LLM egress proxy provider detection", () => {
       message:
         "AI endpoint is blocked: host_not_allowed. Use host.docker.internal for providers on the Docker host, or set LLM_EGRESS_PROXY_ALLOWED_CIDRS to include numeric LAN IP endpoints.",
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.requestProviderEndpoint).not.toHaveBeenCalled();
   });
 });

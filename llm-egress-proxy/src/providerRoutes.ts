@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { listProviderModels } from "./providerModels";
+import { listOllamaModels, listProviderModels } from "./providerModels";
 import { detectProviderModels } from "./providerDetection";
 import { rateLimit } from "./rateLimit";
 import type { Logger } from "./logger";
@@ -81,26 +81,13 @@ export function registerProviderRoutes(app: Express, deps: ProviderRouteDeps) {
     for (const endpoint of endpoints) {
       try {
         deps.log.debug(`Checking Ollama`, { endpoint });
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-        const response = await fetch(`${endpoint}/api/tags`, {
-          signal: controller.signal,
+        const models = await listOllamaModels(endpoint, 3000);
+        deps.log.info("Found Ollama", { endpoint });
+        return res.json({
+          found: true,
+          endpoint,
+          models: models.map((model) => model.name),
         });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const data = (await response.json()) as {
-            models?: Array<{ name: string }>;
-          };
-          deps.log.info("Found Ollama", { endpoint });
-          return res.json({
-            found: true,
-            endpoint,
-            models: data.models?.map((m) => m.name) || [],
-          });
-        }
       } catch (error) {
         deps.log.debug("No Ollama at endpoint", {
           endpoint,

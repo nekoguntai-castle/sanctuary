@@ -1,20 +1,21 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  requestProviderEndpoint: vi.fn(),
+}));
+
+vi.mock("../../llm-egress-proxy/src/providerHttpClient", () => ({
+  requestProviderEndpoint: mocks.requestProviderEndpoint,
+}));
 
 import {
   listProviderModels,
   mapOpenAICompatibleModels,
 } from "../../llm-egress-proxy/src/providerModels";
 
-const fetchMock = vi.fn();
-
 describe("LLM egress proxy provider model listing", () => {
   beforeEach(() => {
-    fetchMock.mockReset();
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
+    mocks.requestProviderEndpoint.mockReset();
   });
 
   it("maps OpenAI-compatible /v1/models responses into provider model options", () => {
@@ -36,11 +37,14 @@ describe("LLM egress proxy provider model listing", () => {
   });
 
   it("lists LM Studio models from OpenAI-compatible endpoints without requiring an API key", async () => {
-    fetchMock.mockResolvedValueOnce({
+    mocks.requestProviderEndpoint.mockResolvedValueOnce({
       ok: true,
-      json: vi.fn().mockResolvedValue({
-        data: [{ id: "lmstudio-community/model" }],
-      }),
+      status: 200,
+      url: new URL("http://lmstudio.local:1234/v1/models"),
+      headers: {},
+      body: Buffer.from(
+        JSON.stringify({ data: [{ id: "lmstudio-community/model" }] }),
+      ),
     });
 
     await expect(
@@ -61,26 +65,32 @@ describe("LLM egress proxy provider model listing", () => {
       },
     ]);
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://lmstudio.local:1234/v1/models",
+    expect(mocks.requestProviderEndpoint).toHaveBeenCalledWith(
       expect.objectContaining({
+        url: "http://lmstudio.local:1234/v1/models",
         headers: { "Content-Type": "application/json" },
+        timeoutMs: 5000,
       }),
     );
   });
 
   it("continues to list Ollama models with the native tags API", async () => {
-    fetchMock.mockResolvedValueOnce({
+    mocks.requestProviderEndpoint.mockResolvedValueOnce({
       ok: true,
-      json: vi.fn().mockResolvedValue({
-        models: [
-          {
-            name: "llama3.2:3b",
-            size: 2_000_000_000,
-            modified_at: "2026-04-01T00:00:00Z",
-          },
-        ],
-      }),
+      status: 200,
+      url: new URL("http://host.docker.internal:11434/api/tags"),
+      headers: {},
+      body: Buffer.from(
+        JSON.stringify({
+          models: [
+            {
+              name: "llama3.2:3b",
+              size: 2_000_000_000,
+              modified_at: "2026-04-01T00:00:00Z",
+            },
+          ],
+        }),
+      ),
     });
 
     await expect(
@@ -101,9 +111,33 @@ describe("LLM egress proxy provider model listing", () => {
       },
     ]);
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://host.docker.internal:11434/api/tags",
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    expect(mocks.requestProviderEndpoint).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "http://host.docker.internal:11434/api/tags",
+        timeoutMs: 5000,
+      }),
     );
+  });
+
+  it("rejects malformed bounded provider responses", async () => {
+    mocks.requestProviderEndpoint.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      url: new URL("http://host.docker.internal:11434/api/tags"),
+      headers: {},
+      body: Buffer.from("not-json"),
+    });
+
+    await expect(
+      listProviderModels(
+        {
+          enabled: true,
+          endpoint: "http://host.docker.internal:11434",
+          model: "",
+          providerType: "ollama",
+        },
+        "http://host.docker.internal:11434",
+      ),
+    ).rejects.toThrow("Invalid JSON response from Ollama endpoint");
   });
 });

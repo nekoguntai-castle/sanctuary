@@ -2,6 +2,7 @@ import { AI_REQUEST_TIMEOUT_MS } from "./constants";
 import { createLogger } from "./logger";
 import { extractErrorMessage, normalizeChatCompletionsUrl } from "./utils";
 import { requireAllowedProviderEndpoint } from "./endpointPolicy";
+import { requestProviderEndpoint } from "./providerHttpClient";
 
 const log = createLogger("AI");
 
@@ -112,6 +113,16 @@ const truncateErrorBody = (body: string): string => {
   return body.trim().replace(/\s+/g, " ").slice(0, 500);
 };
 
+const parseProviderJson = (body: Buffer): unknown => {
+  return JSON.parse(body.toString("utf8"));
+};
+
+const isResponseTooLargeError = (error: unknown): boolean => {
+  return (
+    error instanceof Error && error.name === "ProviderResponseTooLargeError"
+  );
+};
+
 const getTextValue = (value: unknown): string | null => {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 };
@@ -195,11 +206,9 @@ const callChatCompletions = async (
     maxTokens: options.maxTokens,
   });
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs);
-
   try {
-    const response = await fetch(endpoint, {
+    const response = await requestProviderEndpoint({
+      url: endpoint,
       method: "POST",
       headers: buildProviderHeaders(aiConfig),
       body: JSON.stringify({
@@ -208,11 +217,11 @@ const callChatCompletions = async (
         temperature: options.temperature,
         max_tokens: options.maxTokens,
       }),
-      signal: controller.signal,
+      timeoutMs: options.timeoutMs,
     });
 
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
+      const body = response.body.toString("utf8");
       const suffix = body ? `: ${truncateErrorBody(body)}` : "";
       log.error("External AI error", { status: response.status });
       return buildFailure(
@@ -224,7 +233,7 @@ const callChatCompletions = async (
 
     let data: unknown;
     try {
-      data = await response.json();
+      data = parseProviderJson(response.body);
     } catch {
       log.error("Invalid JSON response from external AI");
       return buildFailure(
@@ -252,14 +261,20 @@ const callChatCompletions = async (
       );
     }
 
+    if (isResponseTooLargeError(error)) {
+      log.error("AI endpoint response exceeded the response size limit");
+      return buildFailure(
+        "invalid_response",
+        "AI endpoint response exceeded the response size limit",
+      );
+    }
+
     const message = extractErrorMessage(error);
     log.error("Request failed", { error: message });
     return buildFailure(
       "request_failed",
       `AI endpoint request failed: ${message}`,
     );
-  } finally {
-    clearTimeout(timeoutId);
   }
 };
 

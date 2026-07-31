@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  requestProviderEndpoint: vi.fn(),
+}));
+
+vi.mock("../../llm-egress-proxy/src/providerHttpClient", () => ({
+  requestProviderEndpoint: mocks.requestProviderEndpoint,
+}));
 
 import {
   callExternalAI,
@@ -6,29 +14,23 @@ import {
   callExternalAIWithMessagesResult,
 } from "../../llm-egress-proxy/src/aiClient";
 
-const fetchMock = vi.fn();
-
 function okChatResponse(content: string) {
   return {
     ok: true,
-    json: vi.fn().mockResolvedValue({
-      choices: [{ message: { content } }],
-    }),
+    status: 200,
+    url: new URL("http://host.docker.internal:11434/v1/chat/completions"),
+    headers: {},
+    body: Buffer.from(JSON.stringify({ choices: [{ message: { content } }] })),
   };
 }
 
 describe("LLM egress proxy AI client", () => {
   beforeEach(() => {
-    fetchMock.mockReset();
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
+    mocks.requestProviderEndpoint.mockReset();
   });
 
   it("sends provider API keys only as authorization headers", async () => {
-    fetchMock.mockResolvedValueOnce(okChatResponse(" ok "));
+    mocks.requestProviderEndpoint.mockResolvedValueOnce(okChatResponse(" ok "));
 
     const result = await callExternalAI(
       {
@@ -42,9 +44,9 @@ describe("LLM egress proxy AI client", () => {
     );
 
     expect(result).toBe("ok");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://host.docker.internal:11434/v1/chat/completions",
+    expect(mocks.requestProviderEndpoint).toHaveBeenCalledWith(
       expect.objectContaining({
+        url: "http://host.docker.internal:11434/v1/chat/completions",
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -56,7 +58,9 @@ describe("LLM egress proxy AI client", () => {
   });
 
   it("omits provider authorization when no API key is configured", async () => {
-    fetchMock.mockResolvedValueOnce(okChatResponse("hello"));
+    mocks.requestProviderEndpoint.mockResolvedValueOnce(
+      okChatResponse("hello"),
+    );
 
     await callExternalAIWithMessages(
       {
@@ -67,16 +71,18 @@ describe("LLM egress proxy AI client", () => {
       [{ role: "user", content: "hello" }],
     );
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://host.docker.internal:11434/v1/chat/completions",
+    expect(mocks.requestProviderEndpoint).toHaveBeenCalledWith(
       expect.objectContaining({
+        url: "http://host.docker.internal:11434/v1/chat/completions",
         headers: { "Content-Type": "application/json" },
       }),
     );
   });
 
   it("sends bounded request options for local-model planning calls", async () => {
-    fetchMock.mockResolvedValueOnce(okChatResponse(" {\"toolCalls\":[]} "));
+    mocks.requestProviderEndpoint.mockResolvedValueOnce(
+      okChatResponse(' {"toolCalls":[]} '),
+    );
 
     const result = await callExternalAIWithMessagesResult(
       {
@@ -92,8 +98,10 @@ describe("LLM egress proxy AI client", () => {
       },
     );
 
-    expect(result).toEqual({ ok: true, content: "{\"toolCalls\":[]}" });
-    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(result).toEqual({ ok: true, content: '{"toolCalls":[]}' });
+    const requestBody = JSON.parse(
+      mocks.requestProviderEndpoint.mock.calls[0][0].body as string,
+    );
     expect(requestBody).toMatchObject({
       model: "llama3",
       temperature: 0,
@@ -102,18 +110,23 @@ describe("LLM egress proxy AI client", () => {
   });
 
   it("can use reasoning content for structured local-model planner calls", async () => {
-    fetchMock.mockResolvedValueOnce({
+    mocks.requestProviderEndpoint.mockResolvedValueOnce({
       ok: true,
-      json: vi.fn().mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: "",
-              reasoning_content: " {\"toolCalls\":[]} ",
+      status: 200,
+      url: new URL("http://host.docker.internal:11434/v1/chat/completions"),
+      headers: {},
+      body: Buffer.from(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: "",
+                reasoning_content: ' {"toolCalls":[]} ',
+              },
             },
-          },
-        ],
-      }),
+          ],
+        }),
+      ),
     });
 
     const result = await callExternalAIWithMessagesResult(
@@ -128,22 +141,27 @@ describe("LLM egress proxy AI client", () => {
       },
     );
 
-    expect(result).toEqual({ ok: true, content: "{\"toolCalls\":[]}" });
+    expect(result).toEqual({ ok: true, content: '{"toolCalls":[]}' });
   });
 
   it("rejects empty content when reasoning fallback is not enabled", async () => {
-    fetchMock.mockResolvedValueOnce({
+    mocks.requestProviderEndpoint.mockResolvedValueOnce({
       ok: true,
-      json: vi.fn().mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: "",
-              reasoning_content: "thinking only",
+      status: 200,
+      url: new URL("http://host.docker.internal:11434/v1/chat/completions"),
+      headers: {},
+      body: Buffer.from(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: "",
+                reasoning_content: "thinking only",
+              },
             },
-          },
-        ],
-      }),
+          ],
+        }),
+      ),
     });
 
     const result = await callExternalAIWithMessagesResult(
@@ -163,8 +181,10 @@ describe("LLM egress proxy AI client", () => {
   });
 
   it("returns structured timeout details for proxy callers", async () => {
-    const abortError = Object.assign(new Error("aborted"), { name: "AbortError" });
-    fetchMock.mockRejectedValueOnce(abortError);
+    const abortError = Object.assign(new Error("aborted"), {
+      name: "AbortError",
+    });
+    mocks.requestProviderEndpoint.mockRejectedValueOnce(abortError);
 
     const result = await callExternalAIWithMessagesResult(
       {
@@ -184,10 +204,12 @@ describe("LLM egress proxy AI client", () => {
   });
 
   it("returns structured upstream status details for proxy callers", async () => {
-    fetchMock.mockResolvedValueOnce({
+    mocks.requestProviderEndpoint.mockResolvedValueOnce({
       ok: false,
       status: 429,
-      text: vi.fn().mockResolvedValue("rate limited"),
+      url: new URL("http://host.docker.internal:11434/v1/chat/completions"),
+      headers: {},
+      body: Buffer.from("rate limited"),
     });
 
     const result = await callExternalAIWithMessagesResult(
@@ -207,8 +229,54 @@ describe("LLM egress proxy AI client", () => {
     });
   });
 
+  it("maps oversized provider responses to a bounded invalid-response failure", async () => {
+    const error = new Error("sensitive transport details");
+    error.name = "ProviderResponseTooLargeError";
+    mocks.requestProviderEndpoint.mockRejectedValueOnce(error);
+
+    const result = await callExternalAIWithMessagesResult(
+      {
+        enabled: true,
+        endpoint: "http://host.docker.internal:11434",
+        model: "llama3",
+      },
+      [{ role: "user", content: "hello" }],
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "invalid_response",
+      message: "AI endpoint response exceeded the response size limit",
+    });
+  });
+
+  it("maps malformed bounded response bodies to invalid-response failures", async () => {
+    mocks.requestProviderEndpoint.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      url: new URL("http://host.docker.internal:11434/v1/chat/completions"),
+      headers: {},
+      body: Buffer.from("not-json"),
+    });
+
+    const result = await callExternalAIWithMessagesResult(
+      {
+        enabled: true,
+        endpoint: "http://host.docker.internal:11434",
+        model: "llama3",
+      },
+      [{ role: "user", content: "hello" }],
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "invalid_response",
+      message: "Invalid JSON response from AI endpoint",
+    });
+  });
+
   it("accepts OpenAI-compatible /v1 base URLs without duplicating the version path", async () => {
-    fetchMock.mockResolvedValueOnce(okChatResponse("ok"));
+    mocks.requestProviderEndpoint.mockResolvedValueOnce(okChatResponse("ok"));
 
     await callExternalAI(
       {
@@ -220,9 +288,11 @@ describe("LLM egress proxy AI client", () => {
       "say ok",
     );
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://lmstudio.local:1234/v1/chat/completions",
-      expect.objectContaining({ method: "POST" }),
+    expect(mocks.requestProviderEndpoint).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "http://lmstudio.local:1234/v1/chat/completions",
+        method: "POST",
+      }),
     );
   });
 
@@ -237,6 +307,6 @@ describe("LLM egress proxy AI client", () => {
     );
 
     expect(result).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.requestProviderEndpoint).not.toHaveBeenCalled();
   });
 });
