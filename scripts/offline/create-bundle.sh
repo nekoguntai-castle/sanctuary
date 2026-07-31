@@ -155,7 +155,19 @@ build_sanctuary_images() {
   fi
 
   offline_log "Building Sanctuary images for $PLATFORM..."
-  DOCKER_DEFAULT_PLATFORM="$PLATFORM" docker compose -f "$OFFLINE_REPO_ROOT/docker-compose.yml" build backend frontend gateway llm-egress-proxy
+  # Compose interpolates required runtime secrets before it selects the build
+  # targets. Offline assembly must neither require production secrets nor copy
+  # values from the operator environment into build metadata, so override every
+  # required runtime-only value with an explicit non-production placeholder.
+  DOCKER_DEFAULT_PLATFORM="$PLATFORM" \
+    POSTGRES_PASSWORD="offline-build-postgres-password" \
+    REDIS_PASSWORD="offline-build-redis-password" \
+    JWT_SECRET="offline-build-jwt-secret-not-for-runtime" \
+    ENCRYPTION_KEY="offline-build-encryption-key-not-for-runtime" \
+    ENCRYPTION_SALT="offline-build-encryption-salt" \
+    LLM_EGRESS_PROXY_SECRET="0000000000000000000000000000000000000000000000000000000000000000" \
+    docker compose -f "$OFFLINE_REPO_ROOT/docker-compose.yml" build \
+      backend frontend gateway llm-egress-proxy
 }
 
 external_images() {

@@ -125,6 +125,15 @@ setup_fake_docker() {
 printf '%s\n' "$*" >> "$SANCTUARY_FAKE_DOCKER_LOG"
 
 case "$1" in
+  compose)
+    [ "$POSTGRES_PASSWORD" = "offline-build-postgres-password" ] || exit 1
+    [ "$REDIS_PASSWORD" = "offline-build-redis-password" ] || exit 1
+    [ "$JWT_SECRET" = "offline-build-jwt-secret-not-for-runtime" ] || exit 1
+    [ "$ENCRYPTION_KEY" = "offline-build-encryption-key-not-for-runtime" ] || exit 1
+    [ "$ENCRYPTION_SALT" = "offline-build-encryption-salt" ] || exit 1
+    [ "$LLM_EGRESS_PROXY_SECRET" = "0000000000000000000000000000000000000000000000000000000000000000" ] || exit 1
+    exit 0
+    ;;
   pull)
     exit 0
     ;;
@@ -256,7 +265,9 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
   output="$TEST_TMP_DIR/sanctuary-offline-test.tar.gz"
   PATH="$FAKE_BIN:$PATH" \
     SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
-    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only --skip-build >/dev/null || failures=1
+    POSTGRES_PASSWORD="operator-postgres-secret" \
+    ENCRYPTION_KEY="operator-encryption-secret" \
+    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only >/dev/null || failures=1
 
   if [ "$failures" -eq 0 ]; then
     list="$(tar -tzf "$output")" || failures=1
@@ -267,6 +278,8 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
     assert_contains "$list" "./images/core/sanctuary-backend-local.tar" "bundle should include backend image" || failures=1
     assert_contains "$list" "./images/core/sanctuary-gateway-local.tar" "bundle should include gateway image" || failures=1
     assert_contains "$list" "./images/core/sanctuary-llm-egress-proxy-local.tar" "bundle should include LLM egress proxy image" || failures=1
+    assert_contains "$(cat "$DOCKER_LOG")" "compose -f $PROJECT_ROOT/docker-compose.yml build backend frontend gateway llm-egress-proxy" \
+      "bundle creation should build Sanctuary images with the release Compose file" || failures=1
     manifest="$(tar -xOf "$output" ./manifest.env)" || failures=1
     assert_contains "$manifest" "SANCTUARY_BUNDLE_FLAVOR=core-dev" "dev core-only bundle should be marked" || failures=1
   fi
