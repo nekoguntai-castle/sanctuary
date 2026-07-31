@@ -9,6 +9,7 @@ import {
   mockSyncWallet,
   type SyncServiceTestContext,
 } from "./syncServiceTestHarness";
+import { LockAuthorityUnavailableError } from "../../../../src/infrastructure";
 
 export function registerSyncServiceExecutionRetryPollingTests(
   context: SyncServiceTestContext,
@@ -51,6 +52,66 @@ export function registerSyncServiceExecutionRetryPollingTests(
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Already syncing");
+    });
+
+    it("delays and retries once after lock authority recovers", async () => {
+      context.syncService["isRunning"] = true;
+      mockAcquireLock
+        .mockRejectedValueOnce(new LockAuthorityUnavailableError("acquire"))
+        .mockRejectedValueOnce(new LockAuthorityUnavailableError("acquire"));
+
+      const first = await context.syncService.syncNow("wallet-authority");
+      const duplicate = await context.syncService.syncNow("wallet-authority");
+
+      expect(first.error).toContain("Lock authority unavailable");
+      expect(duplicate.error).toContain("Lock authority unavailable");
+      expect(context.syncService["pendingRetries"].size).toBe(1);
+      expect(mockPrismaClient.wallet.update).not.toHaveBeenCalled();
+      expect(mockSyncWallet).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(context.syncService["pendingRetries"].size).toBe(0);
+      expect(mockSyncWallet).toHaveBeenCalledTimes(1);
+      expect(mockPrismaClient.wallet.update).toHaveBeenCalled();
+    });
+
+    it("does not run a delayed authority retry after the service stops", async () => {
+      context.syncService["isRunning"] = true;
+      mockAcquireLock.mockRejectedValueOnce(
+        new LockAuthorityUnavailableError("acquire"),
+      );
+
+      await context.syncService.syncNow("wallet-stopped-authority");
+      context.syncService["isRunning"] = false;
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(context.syncService["pendingRetries"].size).toBe(0);
+      expect(mockSyncWallet).not.toHaveBeenCalled();
+    });
+
+    it("propagates unexpected lock acquisition errors", async () => {
+      context.syncService["isRunning"] = true;
+      mockAcquireLock.mockRejectedValueOnce(new Error("unexpected lock error"));
+
+      await expect(
+        context.syncService.syncNow("wallet-lock-error"),
+      ).rejects.toThrow("unexpected lock error");
+
+      expect(context.syncService["pendingRetries"].size).toBe(0);
+    });
+
+    it("cancels an older pending retry after acquiring authority", async () => {
+      context.syncService["isRunning"] = true;
+      const pendingTimer = setTimeout(() => {}, 60_000);
+      context.syncService["pendingRetries"].set("wallet-recovered", pendingTimer);
+
+      const result = await context.syncService.syncNow("wallet-recovered");
+
+      expect(result.success).toBe(true);
+      expect(context.syncService["pendingRetries"].has("wallet-recovered")).toBe(
+        false,
+      );
     });
 
     it("returns false when trying to acquire a local lock already held in-memory", async () => {

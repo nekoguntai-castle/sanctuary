@@ -1,6 +1,11 @@
 import { createServer, type Server } from 'node:http';
 import config from './config';
-import { initializeRedis, shutdownDistributedLock, shutdownRedis } from './infrastructure';
+import {
+  initializeDistributedLock,
+  initializeRedis,
+  shutdownDistributedLock,
+  shutdownRedis,
+} from './infrastructure';
 import {
   connectWithRetry,
   disconnect,
@@ -31,6 +36,7 @@ async function startMcpServer(): Promise<void> {
   await connectWithRetry();
   startDatabaseHealthCheck();
   await initializeRedis();
+  initializeDistributedLock('redis-required');
   rateLimitService.initialize();
   metricsService.initialize();
 

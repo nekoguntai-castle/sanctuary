@@ -191,6 +191,12 @@ vi.mock('../../../../src/services/eventService', () => ({
 vi.mock('../../../../src/infrastructure', () => ({
   acquireLock: mockAcquireLock,
   extendLock: mockExtendLock,
+  LockAuthorityUnavailableError: class LockAuthorityUnavailableError extends Error {
+    constructor(operation: string) {
+      super(`Distributed lock authority unavailable during ${operation}`);
+      this.name = 'LockAuthorityUnavailableError';
+    }
+  },
   releaseLock: mockReleaseLock,
   withLock: mockWithLock,
 }));

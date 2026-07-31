@@ -34,7 +34,15 @@ import { exitNow } from './utils/processExit';
 import { metricsService } from './observability/metrics/registry';
 import { updateJobQueueMetrics } from './observability/metrics/helpers';
 import { connectWithRetry, disconnect } from './models/prisma';
-import { initializeRedis, shutdownRedis, isRedisConnected, shutdownDistributedLock, getDistributedEventBus, shutdownNotificationDispatcher } from './infrastructure';
+import {
+  getDistributedEventBus,
+  initializeDistributedLock,
+  initializeRedis,
+  isRedisConnected,
+  shutdownDistributedLock,
+  shutdownNotificationDispatcher,
+  shutdownRedis,
+} from './infrastructure';
 import { WorkerJobQueue } from './worker/workerJobQueue';
 import { ElectrumSubscriptionManager, type BitcoinNetwork } from './worker/electrumManager';
 import { startHealthServer, type HealthServerHandle } from './worker/healthServer';
@@ -93,6 +101,7 @@ async function startWorker(): Promise<void> {
   if (!isRedisConnected()) {
     throw new Error('Redis is required for worker - check REDIS_URL');
   }
+  initializeDistributedLock('redis-required');
   log.info('Redis connected');
 
   // Initialize job queue

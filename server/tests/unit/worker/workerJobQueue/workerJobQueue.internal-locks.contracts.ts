@@ -60,6 +60,34 @@ export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQ
       expect(result).toEqual({ skipped: true, reason: 'lock_held' });
     });
 
+    it('rejects without running the handler when lock authority is unavailable', async () => {
+      const authorityError = new Error('lock authority unavailable');
+      const handler = vi.fn(async () => ({ ok: true }));
+      vi.mocked(acquireLock).mockRejectedValueOnce(authorityError);
+
+      queue.registerHandler('sync', {
+        name: 'authority-unavailable',
+        queue: 'sync',
+        handler,
+        lockOptions: {
+          lockKey: () => 'lock:authority-unavailable',
+          lockTtlMs: 1500,
+        },
+      });
+
+      await expect(
+        (queue as any).processJob('sync', {
+          id: 'authority-job',
+          name: 'authority-unavailable',
+          data: {},
+        }),
+      ).rejects.toBe(authorityError);
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(vi.mocked(releaseLock)).not.toHaveBeenCalled();
+      expect(mockHardTerminate).not.toHaveBeenCalled();
+    });
+
     it('releases distributed lock after successful locked processing', async () => {
       const handler = vi.fn(async () => ({ processed: true }));
       vi.mocked(acquireLock).mockResolvedValueOnce({

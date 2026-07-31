@@ -3,7 +3,10 @@ import type { Job } from 'bullmq';
 import {
   acquireLock,
   extendLock,
+  getRedisClient,
+  initializeDistributedLock,
   initializeRedis,
+  LockAuthorityUnavailableError,
   releaseLock,
   shutdownRedis,
 } from '../../src/infrastructure';
@@ -71,17 +74,72 @@ async function runNewOwner(): Promise<void> {
   await shutdownRedis();
 }
 
+async function runUnavailableProbe(mode: 'disconnected' | 'set-rejection'): Promise<void> {
+  if (mode === 'disconnected') {
+    await shutdownRedis();
+  } else {
+    const redis = getRedisClient();
+    if (!redis) throw new Error('Redis client missing before SET rejection probe');
+    redis.set = async () => {
+      throw new Error('forced SET rejection');
+    };
+  }
+
+  try {
+    const lock = await acquireLock(lockKey, 30_000);
+    if (lock) {
+      await appendFile(sideEffectPath, `${mode}:acquired\n`);
+      notify({ type: 'authority-result', outcome: 'acquired' });
+      return;
+    }
+    notify({ type: 'authority-result', outcome: 'contended' });
+  } catch (error) {
+    if (!(error instanceof LockAuthorityUnavailableError)) throw error;
+    notify({ type: 'authority-result', outcome: 'unavailable' });
+  } finally {
+    await shutdownRedis();
+  }
+}
+
+async function runContender(): Promise<void> {
+  const lock = await acquireLock(lockKey, 30_000);
+  if (!lock) {
+    notify({ type: 'authority-result', outcome: 'contended' });
+    await shutdownRedis();
+    return;
+  }
+
+  await appendFile(sideEffectPath, 'acquired\n');
+  notify({ type: 'authority-result', outcome: 'acquired' });
+  await waitForParent('commit');
+  await releaseLock(lock);
+  await shutdownRedis();
+}
+
 async function main(): Promise<void> {
   if (!role || !lockKey || !sideEffectPath) {
     throw new Error('role, lock key, and side-effect path are required');
   }
   await initializeRedis();
+  initializeDistributedLock('redis-required');
   if (role === 'stale') {
     await runStaleWorker();
     return;
   }
   if (role === 'new-owner') {
     await runNewOwner();
+    return;
+  }
+  if (role === 'authority-disconnected') {
+    await runUnavailableProbe('disconnected');
+    return;
+  }
+  if (role === 'authority-set-rejection') {
+    await runUnavailableProbe('set-rejection');
+    return;
+  }
+  if (role === 'contender') {
+    await runContender();
     return;
   }
   throw new Error(`unknown fixture role: ${role}`);

@@ -11,6 +11,7 @@ import {
   type SyncServiceTestContext,
 } from './syncServiceTestHarness';
 import { startSubscriptionLockRefresh } from '../../../../src/services/sync/subscriptionManager';
+import { LockAuthorityUnavailableError } from '../../../../src/infrastructure';
 
 export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServiceTestContext): void {
   describe('real-time subscriptions and block handling', () => {
@@ -43,6 +44,19 @@ export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServic
       await context.syncService['setupRealTimeSubscriptions']();
 
       expect(context.syncService['subscriptionOwnership']).toBe('external');
+    });
+
+    it('distinguishes unavailable lock authority from external ownership', async () => {
+      mockAcquireLock.mockRejectedValueOnce(
+        new LockAuthorityUnavailableError('acquire'),
+      );
+
+      await expect(
+        context.syncService['setupRealTimeSubscriptions'](),
+      ).rejects.toBeInstanceOf(LockAuthorityUnavailableError);
+
+      expect(context.syncService['subscriptionOwnership']).toBe('unavailable');
+      expect(mockGetNodeClient).not.toHaveBeenCalled();
     });
 
     it('disables subscriptions when electrum client is unavailable', async () => {

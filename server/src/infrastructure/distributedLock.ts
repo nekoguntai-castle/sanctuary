@@ -7,7 +7,7 @@
  *
  * ## Features
  *
- * - Automatic fallback to in-memory locks when Redis unavailable
+ * - Explicit Redis-required or single-process local authority
  * - TTL-based automatic lock expiration (prevents deadlocks)
  * - Lock extension for long-running operations
  * - Fencing tokens for detecting stale locks
@@ -39,6 +39,17 @@ import { getRedisClient, isRedisConnected } from './redis';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import crypto from 'crypto';
+import {
+  LockAuthorityUnavailableError,
+  requireLockAuthorityMode,
+  resetLockAuthority,
+} from './lockAuthority';
+
+export {
+  initializeDistributedLock,
+  LockAuthorityUnavailableError,
+  type LockAuthorityMode,
+} from './lockAuthority';
 
 const log = createLogger('INFRA:DIST_LOCK');
 
@@ -62,8 +73,16 @@ export interface LockOptions {
   retryIntervalMs?: number;
 }
 
+function requireRedisAuthority(operation: string) {
+  const redis = getRedisClient();
+  if (!redis || !isRedisConnected()) {
+    throw new LockAuthorityUnavailableError(operation);
+  }
+  return redis;
+}
+
 // =============================================================================
-// In-Memory Fallback
+// Explicit Single-Process Local Authority
 // =============================================================================
 
 const localLocks = new Map<string, { token: string; expiresAt: number }>();
@@ -146,10 +165,11 @@ async function tryAcquireLock(
   token: string,
   ttlMs: number
 ): Promise<DistributedLock | null> {
-  const redis = getRedisClient();
   const expiresAt = Date.now() + ttlMs;
+  const mode = requireLockAuthorityMode();
 
-  if (redis && isRedisConnected()) {
+  if (mode === 'redis-required') {
+    const redis = requireRedisAuthority('acquire');
     try {
       // SET key token NX PX ttlMs
       // NX = only set if not exists
@@ -169,12 +189,15 @@ async function tryAcquireLock(
 
       return null; // Lock held by another
     } catch (error) {
-      log.warn(`Redis lock acquisition failed, falling back to local`, { key, error: getErrorMessage(error) });
-      // Fall through to local lock
+      log.warn('Redis lock acquisition failed', {
+        key,
+        error: getErrorMessage(error),
+      });
+      throw new LockAuthorityUnavailableError('acquire', error);
     }
   }
 
-  // Local fallback
+  // Explicit single-process local authority.
   ensureCleanupRunning();
   cleanupLocalLocks(); // Clean expired locks first
 
@@ -197,9 +220,12 @@ async function tryAcquireLock(
  * @returns true if released, false if lock was already released or held by another
  */
 export async function releaseLock(lock: DistributedLock): Promise<boolean> {
-  const redis = getRedisClient();
-
-  if (!lock.isLocal && redis && isRedisConnected()) {
+  if (!lock.isLocal) {
+    const redis = getRedisClient();
+    if (!redis || !isRedisConnected()) {
+      log.warn('Redis lock release failed: authority unavailable', { key: lock.key });
+      return false;
+    }
     try {
       // Lua script to atomically check and delete
       // Only delete if the token matches (we own the lock)
@@ -226,7 +252,7 @@ export async function releaseLock(lock: DistributedLock): Promise<boolean> {
     }
   }
 
-  // Local fallback
+  // Local locks are never inferred from Redis connection state.
   const existing = localLocks.get(lock.key);
   if (existing && existing.token === lock.token) {
     localLocks.delete(lock.key);
@@ -248,10 +274,14 @@ export async function extendLock(
   lock: DistributedLock,
   ttlMs: number
 ): Promise<DistributedLock | null> {
-  const redis = getRedisClient();
   const newExpiresAt = Date.now() + ttlMs;
 
-  if (!lock.isLocal && redis && isRedisConnected()) {
+  if (!lock.isLocal) {
+    const redis = getRedisClient();
+    if (!redis || !isRedisConnected()) {
+      log.warn('Redis lock extension failed: authority unavailable', { key: lock.key });
+      return null;
+    }
     try {
       // Lua script to atomically check ownership and extend
       const script = `
@@ -283,7 +313,7 @@ export async function extendLock(
     }
   }
 
-  // Local fallback
+  // Local locks are never inferred from Redis connection state.
   const existing = localLocks.get(lock.key);
   if (existing && existing.token === lock.token) {
     existing.expiresAt = newExpiresAt;
@@ -329,18 +359,19 @@ export async function withLock<T>(
  * Note: This is a point-in-time check. The lock status may change immediately after.
  */
 export async function isLocked(key: string): Promise<boolean> {
-  const redis = getRedisClient();
-
-  if (redis && isRedisConnected()) {
+  const mode = requireLockAuthorityMode();
+  if (mode === 'redis-required') {
+    const redis = requireRedisAuthority('check');
     try {
       const result = await redis.exists(`lock:${key}`);
       return result === 1;
     } catch (error) {
-      log.warn(`Redis lock check failed, checking local`, { key, error: getErrorMessage(error) });
+      log.warn('Redis lock check failed', { key, error: getErrorMessage(error) });
+      throw new LockAuthorityUnavailableError('check', error);
     }
   }
 
-  // Local fallback
+  // Explicit single-process local authority.
   cleanupLocalLocks();
   const existing = localLocks.get(key);
   return !!(existing && existing.expiresAt > Date.now());
@@ -355,4 +386,5 @@ export function shutdownDistributedLock(): void {
     cleanupInterval = null;
   }
   localLocks.clear();
+  resetLockAuthority();
 }

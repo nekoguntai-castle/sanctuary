@@ -27,6 +27,7 @@ import { DEFAULT_SYNC_PRIORITY, type SyncPriority } from '@sanctuary/shared/cons
 import type { SyncState, SyncResult, SyncHealthMetrics, PollingMode } from './types';
 import { queueSync as doQueueSync, processQueue as doProcessQueue } from './syncQueue';
 import { executeSyncJob as doExecuteSyncJob, acquireSyncLock as doAcquireSyncLock } from './walletSync';
+import { SubscriptionAuthorityRetryController } from './lockAuthorityRecovery';
 import {
   setupRealTimeSubscriptions as doSetupRealTimeSubscriptions,
   teardownRealTimeSubscriptions as doTeardownRealTimeSubscriptions,
@@ -52,6 +53,7 @@ class SyncService {
   private reconciliationInterval: NodeJS.Timeout | null = null;
   // Polls worker health to dynamically start/stop in-process intervals
   private workerHealthPollTimer: NodeJS.Timeout | null = null;
+  private readonly subscriptionAuthorityRetry: SubscriptionAuthorityRetryController;
 
   /**
    * Shared mutable state accessed by sub-modules.
@@ -72,7 +74,15 @@ class SyncService {
     pollingMode: 'in-process',
   };
 
-  private constructor() {}
+  private constructor() {
+    this.subscriptionAuthorityRetry = new SubscriptionAuthorityRetryController({
+      isRunning: () => this.state.isRunning,
+      getOwnership: () => this.state.subscriptionOwnership,
+      setup: () => this.setupRealTimeSubscriptions(),
+      teardown: () => this.teardownRealTimeSubscriptions(),
+      release: () => this.releaseSubscriptionLock(),
+    });
+  }
 
   static getInstance(): SyncService {
     if (!SyncService.instance) {
@@ -153,9 +163,7 @@ class SyncService {
     this.processQueue();
 
     // Set up real-time subscriptions (async, don't block startup)
-    this.setupRealTimeSubscriptions().catch(err => {
-      log.error('[SYNC] Failed to set up real-time subscriptions', { error: getErrorMessage(err) });
-    });
+    this.subscriptionAuthorityRetry.start();
 
     // Periodic reconciliation of addressToWalletMap (every hour)
     // Rebuilds map from database to clean up entries for deleted wallets
@@ -211,6 +219,8 @@ class SyncService {
       clearInterval(this.workerHealthPollTimer);
       this.workerHealthPollTimer = null;
     }
+
+    this.subscriptionAuthorityRetry.stop();
 
     await this.teardownRealTimeSubscriptions();
     await this.releaseSubscriptionLock();

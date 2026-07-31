@@ -7,8 +7,12 @@
 
 import { closeAllElectrumClients } from '../../services/bitcoin/electrum';
 import { getConfig } from '../../config';
+import { getErrorMessage } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
-import type { DistributedLock } from '../../infrastructure';
+import {
+  LockAuthorityUnavailableError,
+  type DistributedLock,
+} from '../../infrastructure';
 import { HEALTH_CHECK_INTERVAL_MS, ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS } from './types';
 import type {
   AddressWalletInfo,
@@ -64,7 +68,19 @@ export class ElectrumSubscriptionManager {
       return;
     }
 
-    const lock = await acquireSubscriptionLock();
+    let lock: DistributedLock | null;
+    try {
+      lock = await acquireSubscriptionLock();
+    } catch (error) {
+      if (!(error instanceof LockAuthorityUnavailableError)) {
+        throw error;
+      }
+      log.error('Electrum subscription lock authority unavailable; retrying', {
+        error: error.message,
+      });
+      this.startSubscriptionOwnershipRetry();
+      return;
+    }
     if (!lock) {
       this.startSubscriptionOwnershipRetry();
       return;
@@ -160,6 +176,10 @@ export class ElectrumSubscriptionManager {
         });
         this.startSubscriptionOwnershipRetry();
       }
+    } catch (error) {
+      log.error('Electrum subscription lock acquisition failed; retrying', {
+        error: getErrorMessage(error),
+      });
     } finally {
       this.subscriptionLockRetryInFlight = false;
     }

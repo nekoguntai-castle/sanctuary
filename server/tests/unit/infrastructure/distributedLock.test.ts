@@ -12,6 +12,7 @@ import {
   extendLock,
   withLock,
   isLocked,
+  initializeDistributedLock,
   shutdownDistributedLock,
   type DistributedLock,
 } from '../../../src/infrastructure/distributedLock';
@@ -26,6 +27,7 @@ describe('DistributedLock', () => {
   beforeEach(() => {
     // Clean up any locks from previous tests
     shutdownDistributedLock();
+    initializeDistributedLock('local');
     vi.useFakeTimers();
   });
 
@@ -42,7 +44,7 @@ describe('DistributedLock', () => {
       expect(lock).not.toBeNull();
       expect(lock!.key).toBe('test:key:1');
       expect(lock!.token).toBeDefined();
-      expect(lock!.isLocal).toBe(true); // Falls back to local when Redis unavailable
+      expect(lock!.isLocal).toBe(true);
       expect(lock!.expiresAt).toBeGreaterThan(Date.now());
     });
 
@@ -300,6 +302,7 @@ describe('DistributedLock', () => {
       await acquireLock('test:shutdown:3', 5000);
 
       shutdownDistributedLock();
+      initializeDistributedLock('local');
 
       // All locks should be cleared
       const locked1 = await isLocked('test:shutdown:1');

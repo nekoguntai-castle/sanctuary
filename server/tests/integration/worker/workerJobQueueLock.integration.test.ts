@@ -1,6 +1,9 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkerJobQueue } from '../../../src/worker/workerJobQueue';
-import { shutdownDistributedLock } from '../../../src/infrastructure/distributedLock';
+import {
+  initializeDistributedLock,
+  shutdownDistributedLock,
+} from '../../../src/infrastructure/distributedLock';
 
 function createDeferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -13,6 +16,11 @@ function createDeferred<T = void>() {
 }
 
 describe('worker job queue locking integration', () => {
+  beforeEach(() => {
+    shutdownDistributedLock();
+    initializeDistributedLock('local');
+  });
+
   afterEach(() => {
     shutdownDistributedLock();
     vi.useRealTimers();

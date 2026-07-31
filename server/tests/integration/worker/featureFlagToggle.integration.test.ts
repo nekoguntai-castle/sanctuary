@@ -213,6 +213,7 @@ describe('feature flag admin + worker integration', () => {
     }));
 
     vi.doMock('../../../src/infrastructure', () => ({
+      initializeDistributedLock: vi.fn(),
       initializeRedis: vi.fn(async () => undefined),
       shutdownRedis: vi.fn(async () => undefined),
       isRedisConnected: vi.fn(() => true),

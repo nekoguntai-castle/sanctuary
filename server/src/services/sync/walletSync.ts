@@ -23,7 +23,11 @@ import { getErrorMessage } from "../../utils/errors";
 import { getConfig } from "../../config";
 import { eventService } from "../eventService";
 import { recordSyncFailure } from "../deadLetterQueue";
-import { acquireLock, releaseLock } from "../../infrastructure";
+import {
+  acquireLock,
+  LockAuthorityUnavailableError,
+  releaseLock,
+} from "../../infrastructure";
 import {
   walletSyncsTotal,
   walletSyncDuration,
@@ -31,6 +35,7 @@ import {
 import type { SyncState, SyncResult } from "./types";
 import { processQueue } from "./syncQueue";
 import { isNetworkDisabledError } from "../bitcoin/errors";
+import { scheduleWalletLockAuthorityRetry } from "./lockAuthorityRecovery";
 
 const log = createLogger("SYNC:SVC_WALLET");
 
@@ -41,8 +46,8 @@ function shouldRetrySyncError(error: unknown): boolean {
 /**
  * Acquire a distributed lock for a wallet sync.
  *
- * Uses Redis for distributed locking across multiple server instances.
- * Falls back to in-memory locks when Redis is unavailable.
+ * Uses the process's explicitly initialized lock authority. Production requires
+ * Redis and propagates authority loss so the caller can retry safely.
  */
 export async function acquireSyncLock(
   state: SyncState,
@@ -115,7 +120,19 @@ export async function executeSyncJob(
   retryCount: number = 0,
 ): Promise<SyncResult> {
   // Try to acquire distributed lock - prevents race conditions across instances
-  if (!(await acquireSyncLock(state, walletId))) {
+  let acquired: boolean;
+  try {
+    acquired = await acquireSyncLock(state, walletId);
+  } catch (error) {
+    if (!(error instanceof LockAuthorityUnavailableError)) throw error;
+    return scheduleWalletLockAuthorityRetry(
+      state,
+      walletId,
+      retryCount,
+      executeSyncJobFn,
+    );
+  }
+  if (!acquired) {
     return {
       success: false,
       addresses: 0,
@@ -123,6 +140,11 @@ export async function executeSyncJob(
       utxos: 0,
       error: "Already syncing",
     };
+  }
+  const pendingRetry = state.pendingRetries.get(walletId);
+  if (pendingRetry) {
+    clearTimeout(pendingRetry);
+    state.pendingRetries.delete(walletId);
   }
 
   // Mark sync in progress

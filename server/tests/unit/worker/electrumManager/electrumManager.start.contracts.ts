@@ -4,7 +4,11 @@ import {
   mockClient,
 } from './electrumManagerTestHarness';
 import prisma from '../../../../src/models/prisma';
-import { acquireLock, releaseLock } from '../../../../src/infrastructure';
+import {
+  acquireLock,
+  LockAuthorityUnavailableError,
+  releaseLock,
+} from '../../../../src/infrastructure';
 import { getElectrumClientForNetwork } from '../../../../src/services/bitcoin/electrum';
 import { setCachedBlockHeight } from '../../../../src/services/bitcoin/blockchain';
 
@@ -18,6 +22,30 @@ export function registerElectrumManagerStartContracts() {
       expect(getElectrumClientForNetwork).not.toHaveBeenCalled();
       expect(manager.getHealthMetrics().isRunning).toBe(false);
       expect(manager.getHealthMetrics().ownershipRetryActive).toBe(true);
+    });
+
+    it('keeps ownership retry active when lock authority is unavailable', async () => {
+      vi.mocked(acquireLock).mockRejectedValueOnce(
+        new LockAuthorityUnavailableError('acquire'),
+      );
+
+      await expect(manager.start()).resolves.toBeUndefined();
+
+      expect(getElectrumClientForNetwork).not.toHaveBeenCalled();
+      expect(manager.getHealthMetrics().isRunning).toBe(false);
+      expect(manager.getHealthMetrics().ownershipRetryActive).toBe(true);
+    });
+
+    it('propagates unexpected subscription lock acquisition errors', async () => {
+      vi.mocked(acquireLock).mockRejectedValueOnce(
+        new Error('unexpected acquisition failure'),
+      );
+
+      await expect(manager.start()).rejects.toThrow(
+        'unexpected acquisition failure',
+      );
+
+      expect(manager.getHealthMetrics().ownershipRetryActive).toBe(false);
     });
 
     it('returns early when start is called while ownership retry is already scheduled', async () => {
@@ -48,6 +76,22 @@ export function registerElectrumManagerStartContracts() {
       expect(mockClient.subscribeHeaders).toHaveBeenCalled();
       expect(manager.getHealthMetrics().isRunning).toBe(true);
       expect(manager.getHealthMetrics().ownershipRetryActive).toBe(false);
+
+      vi.useRealTimers();
+    });
+
+    it('handles unavailable authority during a scheduled ownership retry', async () => {
+      vi.useFakeTimers();
+      vi.mocked(acquireLock)
+        .mockResolvedValueOnce(null)
+        .mockRejectedValueOnce(new LockAuthorityUnavailableError('acquire'));
+
+      await manager.start();
+      await vi.advanceTimersByTimeAsync(15_000);
+
+      expect(manager.getHealthMetrics().isRunning).toBe(false);
+      expect(manager.getHealthMetrics().ownershipRetryActive).toBe(true);
+      expect(vi.mocked(acquireLock)).toHaveBeenCalledTimes(2);
 
       vi.useRealTimers();
     });

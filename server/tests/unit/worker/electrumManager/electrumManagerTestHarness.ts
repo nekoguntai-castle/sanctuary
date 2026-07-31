@@ -74,6 +74,12 @@ vi.mock('../../../../src/utils/logger', () => ({
 vi.mock('../../../../src/infrastructure', () => ({
   acquireLock: vi.fn(),
   extendLock: vi.fn(),
+  LockAuthorityUnavailableError: class LockAuthorityUnavailableError extends Error {
+    constructor(operation: string) {
+      super(`Distributed lock authority unavailable during ${operation}`);
+      this.name = 'LockAuthorityUnavailableError';
+    }
+  },
   releaseLock: vi.fn(),
 }));
 

@@ -141,16 +141,16 @@ Delivery: one frontend API-client PR.
 
 Finding: `distributed-lock-acquisition-fails-open`.
 
-- [ ] Define an immutable authority mode during initialization. Production is
+- [x] Define an immutable authority mode during initialization. Production is
       `redis-required` under the current configuration contract; local mode is
       explicit and test/single-process only, never inferred from connection state.
-- [ ] Add two-process tests proving `SET` rejection and
+- [x] Add two-process tests proving `SET` rejection and
       disconnected/reconnecting/not-ready Redis cannot grant the same key to two
       workers.
-- [ ] Make acquire/withLock/isLocked distinguish `held` from
+- [x] Make acquire/withLock/isLocked distinguish `held` from
       `authority_unavailable`. Ensure subscription election, wallet sync, and
       maintenance callers delay/retry without performing unlocked work.
-- [ ] Ensure subscription management does not catch authority unavailability and
+- [x] Ensure subscription management does not catch authority unavailability and
       relabel it as ordinary ownership by another process.
 
 Acceptance:
@@ -165,6 +165,22 @@ Rollback: preserve lock keys. Roll back if worker startup or deliberate test-loc
 mode regresses.
 
 Delivery: one distributed-lock/caller-migration PR.
+
+Implementation verification:
+
+- Explicit local mode is confined to unit/single-process tests; API, worker, and
+  MCP entrypoints select Redis-required authority only after Redis initializes.
+- Focused distributed-lock, worker, Electrum, and sync-service suites pass
+  (316 tests), and the full backend suite passes 10,451 tests with literal 100%
+  statements, branches, functions, and lines.
+- Production/test typechecks, server lint and safety guards, Prisma boundaries,
+  blocking-I/O, architecture links, complexity, large-file classification, and
+  diff hygiene pass. Redis-gated two-process probes are committed for CI because
+  no local Redis service is running.
+- Independent adversarial review found and drove fixes for wallet retry
+  retention, API subscription recovery, initial-setup shutdown cleanup, and
+  rapid stop/start generation handoff; the final pass is clear of P0-P2
+  findings.
 
 ## Phase 3B — Globally truthful recurring scheduling
 

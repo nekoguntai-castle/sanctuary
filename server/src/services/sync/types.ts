@@ -35,7 +35,7 @@ export interface SyncHealthMetrics {
   pollingMode: PollingMode;
 }
 
-export type SubscriptionOwnership = 'self' | 'external' | 'disabled';
+export type SubscriptionOwnership = 'self' | 'external' | 'unavailable' | 'disabled';
 
 /**
  * Shared mutable state accessed by multiple sync sub-modules.

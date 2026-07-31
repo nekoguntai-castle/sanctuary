@@ -22,8 +22,11 @@ export {
   extendLock,
   withLock,
   isLocked,
+  initializeDistributedLock,
   shutdownDistributedLock,
+  LockAuthorityUnavailableError,
   type DistributedLock,
+  type LockAuthorityMode,
   type LockOptions,
 } from './distributedLock';
 

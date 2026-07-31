@@ -88,6 +88,7 @@ const mocks = vi.hoisted(() => {
     initializeOpenTelemetry: vi.fn(),
     connectWithRetry: vi.fn(),
     disconnect: vi.fn(),
+    initializeDistributedLock: vi.fn(),
     initializeRedis: vi.fn(),
     shutdownRedis: vi.fn(),
     isRedisConnected: vi.fn(),
@@ -132,6 +133,7 @@ vi.mock('../../../src/models/prisma', () => ({
 }));
 
 vi.mock('../../../src/infrastructure', () => ({
+  initializeDistributedLock: mocks.initializeDistributedLock,
   initializeRedis: mocks.initializeRedis,
   shutdownRedis: mocks.shutdownRedis,
   isRedisConnected: mocks.isRedisConnected,
@@ -246,6 +248,7 @@ describe('worker entrypoint', () => {
       'Worker startup failed',
       expect.objectContaining({ error: 'db unavailable' })
     );
+    expect(mocks.initializeDistributedLock).not.toHaveBeenCalled();
     expect(processExitSpy).toHaveBeenCalledWith(1);
     expect(handlers.SIGTERM).toHaveLength(1);
     expect(handlers.SIGINT).toHaveLength(1);
@@ -339,6 +342,9 @@ describe('worker entrypoint', () => {
     await import('../../../src/worker.ts');
     await vi.dynamicImportSettled();
 
+    expect(mocks.initializeDistributedLock).toHaveBeenCalledWith(
+      'redis-required',
+    );
     expect(mocks.queueInstance.scheduleRecurring).toHaveBeenCalledWith(
       'maintenance',
       'persist:price-fees',

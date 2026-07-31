@@ -127,6 +127,7 @@ export const createWorkerTestHarness = async (
   }));
 
   vi.doMock('../../../src/infrastructure', () => ({
+    initializeDistributedLock: vi.fn(() => undefined),
     initializeRedis: vi.fn(async () => undefined),
     shutdownRedis: vi.fn(async () => undefined),
     isRedisConnected: vi.fn(() => redisConnected),

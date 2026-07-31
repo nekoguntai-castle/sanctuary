@@ -19,7 +19,12 @@ import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
 import { getConfig } from "../../config";
 import { eventService } from "../eventService";
-import { acquireLock, extendLock, releaseLock } from "../../infrastructure";
+import {
+  acquireLock,
+  extendLock,
+  LockAuthorityUnavailableError,
+  releaseLock,
+} from "../../infrastructure";
 import { normalizeLegacyBitcoinNetwork } from "../bitcoin/networks";
 import type { SyncPriority } from "@sanctuary/shared/constants/sync";
 import type { SyncState } from "./types";
@@ -150,7 +155,13 @@ export async function setupRealTimeSubscriptions(
     });
     await releaseSubscriptionLock(state);
     if (state.subscriptionsEnabled) {
-      state.subscriptionOwnership = "external";
+      state.subscriptionOwnership =
+        error instanceof LockAuthorityUnavailableError
+          ? "unavailable"
+          : "external";
+    }
+    if (error instanceof LockAuthorityUnavailableError) {
+      throw error;
     }
   }
 }

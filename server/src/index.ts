@@ -47,7 +47,13 @@ import { metricsMiddleware } from './middleware/metrics';
 import { i18nMiddleware } from './middleware/i18n';
 import { i18nService } from './i18n/i18nService';
 import { connectWithRetry, disconnect, startDatabaseHealthCheck, stopDatabaseHealthCheck } from './models/prisma';
-import { initializeRedis, shutdownRedis, isRedisConnected, shutdownDistributedLock } from './infrastructure';
+import {
+  initializeDistributedLock,
+  initializeRedis,
+  shutdownDistributedLock,
+  shutdownRedis,
+  isRedisConnected,
+} from './infrastructure';
 import { shutdownElectrumPool } from './services/bitcoin/electrumPool';
 import { cache, warmCaches } from './services/cache/cacheService';
 import { walletLogBuffer } from './services/walletLogBuffer';
@@ -244,6 +250,7 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
       (async () => { metricsService.initialize(); })(),
       initializeRedis(), // Redis init
     ]);
+    initializeDistributedLock('redis-required');
 
     // Phase 2: Initialize services that need Redis (parallel)
     log.info('Initializing Redis-dependent services...');
