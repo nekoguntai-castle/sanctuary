@@ -113,6 +113,99 @@ export function registerTransactionHttpExportTests(): void {
     expect(dataRow).toContain(",,");
   });
 
+  it("preserves zero nullable numerics in JSON exports while retaining genuine nulls", async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: "Zero Wallet" });
+    const baseRow = {
+      type: "sent",
+      amount: BigInt(0),
+      confirmations: 0,
+      label: null,
+      memo: null,
+      counterpartyAddress: null,
+      blockTime: null,
+      createdAt: new Date("2025-01-06T00:00:00.000Z"),
+      transactionLabels: [],
+    };
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      {
+        ...baseRow,
+        txid: "5".repeat(64),
+        balanceAfter: BigInt(0),
+        fee: BigInt(0),
+        blockHeight: BigInt(0),
+      },
+      {
+        ...baseRow,
+        txid: "6".repeat(64),
+        balanceAfter: null,
+        fee: null,
+        blockHeight: null,
+      },
+    ]);
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/${walletId}/transactions/export`)
+      .query({ format: "json" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([
+      expect.objectContaining({
+        balanceAfterBtc: 0,
+        balanceAfterSats: 0,
+        feeSats: 0,
+        blockHeight: 0,
+      }),
+      expect.objectContaining({
+        balanceAfterBtc: null,
+        balanceAfterSats: null,
+        feeSats: null,
+        blockHeight: null,
+      }),
+    ]);
+  });
+
+  it("writes literal zero CSV columns and leaves only null numeric columns blank", async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: "Zero CSV" });
+    const baseRow = {
+      type: "sent",
+      amount: BigInt(0),
+      confirmations: 0,
+      label: null,
+      memo: null,
+      counterpartyAddress: null,
+      blockTime: null,
+      createdAt: new Date("2025-01-07T00:00:00.000Z"),
+      transactionLabels: [],
+    };
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      {
+        ...baseRow,
+        txid: "7".repeat(64),
+        balanceAfter: BigInt(0),
+        fee: BigInt(0),
+        blockHeight: BigInt(0),
+      },
+      {
+        ...baseRow,
+        txid: "8".repeat(64),
+        balanceAfter: null,
+        fee: null,
+        blockHeight: null,
+      },
+    ]);
+
+    const response = await request(app).get(
+      `/api/v1/wallets/${walletId}/transactions/export`,
+    );
+
+    expect(response.status).toBe(200);
+    const [, zeroRow, nullRow] = response.text.trimEnd().split("\n");
+    expect(zeroRow.split(",").slice(5, 8)).toEqual(["0", "0", "0"]);
+    expect(zeroRow.split(",")[12]).toBe("0");
+    expect(nullRow.split(",").slice(5, 8)).toEqual(["", "", ""]);
+    expect(nullRow.split(",")[12]).toBe("");
+  });
+
   it("returns error when transaction export fails", async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       name: "Err Wallet",

@@ -186,6 +186,26 @@ describe('UTXOList', () => {
   });
 
   describe('toggle freeze', () => {
+    it('disables only the database ID with a pending freeze mutation', () => {
+      const utxosWithIds = mockUtxos.map((utxo, index) => ({
+        ...utxo,
+        id: `utxo-${index}`,
+        frozen: index === 0,
+      }));
+
+      render(
+        <UTXOList
+          utxos={utxosWithIds}
+          pendingFreezeIds={new Set(['utxo-0'])}
+          onToggleFreeze={mockToggleFreeze}
+        />
+      );
+
+      expect(screen.getByRole('button', { name: 'Freezing coin' })).toBeDisabled();
+      expect(screen.getAllByRole('button', { name: /Freeze coin to prevent spending/ }))
+        .toHaveLength(2);
+    });
+
     it('calls onToggleFreeze when clicking freeze button', async () => {
       const user = userEvent.setup();
       render(<UTXOList utxos={mockUtxos} onToggleFreeze={mockToggleFreeze} />);

@@ -17,6 +17,7 @@ import {
 } from './UTXOList/utxoListModel';
 
 const FEE_NETWORKS = new Set<string>(['mainnet', 'testnet3', 'testnet4', 'signet', 'regtest']);
+const EMPTY_UTXO_IDS = new Set<string>();
 
 function toFeeNetwork(network: string): BitcoinFeeNetwork {
   if (network === 'testnet') return 'testnet3';
@@ -29,6 +30,7 @@ interface UTXOListProps {
   onToggleFreeze: (txid: string, vout: number) => void;
   selectable?: boolean;
   selectedUtxos?: Set<string>;
+  pendingFreezeIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
   onSendSelected?: () => void;
   privacyData?: UtxoPrivacyInfo[];
@@ -42,7 +44,8 @@ export const UTXOList: React.FC<UTXOListProps> = ({
   totalCount,
   onToggleFreeze,
   selectable = false,
-  selectedUtxos = new Set(),
+  selectedUtxos = EMPTY_UTXO_IDS,
+  pendingFreezeIds = EMPTY_UTXO_IDS,
   onToggleSelect,
   onSendSelected,
   privacyData,
@@ -105,6 +108,7 @@ export const UTXOList: React.FC<UTXOListProps> = ({
       <UtxoListRows
         utxos={utxos}
         selectedUtxos={selectedUtxos}
+        pendingFreezeIds={pendingFreezeIds}
         selectable={selectable}
         onToggleSelect={onToggleSelect}
         onToggleFreeze={onToggleFreeze}

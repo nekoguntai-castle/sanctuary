@@ -192,6 +192,7 @@ vi.mock('../../../components/WalletDetail/hooks/useAddressLabels', () => ({
 vi.mock('../../../components/WalletDetail/hooks/useUtxoActions', () => ({
   useUtxoActions: () => ({
     selectedUtxos: new Set(),
+    pendingFreezeIds: new Set(['pending-controller-utxo']),
     handleToggleFreeze: vi.fn(),
     handleToggleSelect: vi.fn(),
     handleSendSelected: vi.fn(),
@@ -279,5 +280,11 @@ describe('useWalletDetailController network preference alignment', () => {
 
     expect(controllerState.bitcoinStatusNetworks).toContain('testnet3');
     expect(controllerState.setSelectedNetwork).not.toHaveBeenCalled();
+  });
+
+  it('exposes pending freeze IDs from the UTXO actions controller', () => {
+    const { result } = renderHook(() => useWalletDetailController());
+
+    expect(result.current.pendingFreezeIds).toEqual(new Set(['pending-controller-utxo']));
   });
 });

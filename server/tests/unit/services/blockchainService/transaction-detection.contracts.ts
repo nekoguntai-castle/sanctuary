@@ -25,7 +25,7 @@ describe('Blockchain Service - Transaction Detection', () => {
       mockPrisma.address.findMany.mockResolvedValue([testAddress]);
       mockPrisma.transaction.findMany.mockResolvedValue([]);
       mockPrisma.transaction.findFirst.mockResolvedValue(null);
-      mockPrisma.transaction.create.mockResolvedValue({ id: 'tx-1' });
+      mockPrisma.transaction.createMany.mockResolvedValue({ count: 1 });
       mockPrisma.uTXO.findMany.mockResolvedValue([]);
 
       // Transaction where our address receives 0.1 BTC
@@ -69,16 +69,10 @@ describe('Blockchain Service - Transaction Detection', () => {
       const result = await syncAddress('addr-1');
 
       expect(result.transactions).toBeGreaterThanOrEqual(0);
-      // Verify it tried to create a received transaction
-      const createCalls = mockPrisma.transaction.create.mock.calls as any[];
-      if (createCalls.length > 0) {
-        const createCall = createCalls.find(
-          (call: any) => call[0]?.data?.type === 'received'
-        );
-        if (createCall) {
-          expect((createCall as any)[0].data.type).toBe('received');
-        }
-      }
+      expect(mockPrisma.transaction.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ type: 'received' })],
+        skipDuplicates: true,
+      });
     }, 30000);
 
     it('should sum all outputs to wallet addresses for batched payouts', async () => {

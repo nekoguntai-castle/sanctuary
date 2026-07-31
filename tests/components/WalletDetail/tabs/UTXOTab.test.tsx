@@ -17,6 +17,7 @@ const baseProps = {
   onToggleFreeze: vi.fn(),
   userRole: 'signer',
   selectedUtxos: new Set<string>(),
+  pendingFreezeIds: new Set(['utxo-pending']),
   onToggleSelect: vi.fn(),
   onSendSelected: vi.fn(),
   privacyData: [] as any[],
@@ -36,6 +37,7 @@ describe('UTXOTab', () => {
     expect(props.selectable).toBe(true);
     expect(props.onSendSelected).toBe(baseProps.onSendSelected);
     expect(props.privacySummary).toBeUndefined();
+    expect(props.pendingFreezeIds).toBe(baseProps.pendingFreezeIds);
   });
 
   it('disables selection actions for viewer users', () => {

@@ -4,6 +4,16 @@ import { useUtxoActions } from '../../../../components/WalletDetail/hooks/useUtx
 import * as transactionsApi from '../../../../src/api/transactions';
 import { logError } from '../../../../utils/errorHandler';
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 const loggerSpies = vi.hoisted(() => ({
   debug: vi.fn(),
   info: vi.fn(),
@@ -109,6 +119,128 @@ describe('useUtxoActions', () => {
     const statsAfterRollback = statsRollback(statsAfterOptimistic);
     expect(afterRollback[0].frozen).toBe(false);
     expect(statsAfterRollback[0].frozen).toBe(false);
+    expect(result.current.pendingFreezeIds.size).toBe(0);
+  });
+
+  it('rejects a same-ID second toggle synchronously before rerender', async () => {
+    const pending = createDeferred<void>();
+    vi.mocked(transactionsApi.freezeUTXO).mockReturnValueOnce(pending.promise as never);
+    const { result } = renderUtxoActions();
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.handleToggleFreeze('tx-1', 0);
+      second = result.current.handleToggleFreeze('tx-1', 0);
+    });
+
+    expect(transactionsApi.freezeUTXO).toHaveBeenCalledTimes(1);
+    expect(result.current.pendingFreezeIds).toEqual(new Set(['utxo-1']));
+
+    await act(async () => {
+      pending.resolve();
+      await Promise.all([first, second]);
+    });
+    expect(result.current.pendingFreezeIds.size).toBe(0);
+  });
+
+  it('allows independent UTXO IDs to mutate concurrently', async () => {
+    const firstPending = createDeferred<void>();
+    const secondPending = createDeferred<void>();
+    vi.mocked(transactionsApi.freezeUTXO)
+      .mockReturnValueOnce(firstPending.promise as never)
+      .mockReturnValueOnce(secondPending.promise as never);
+    const { result } = renderUtxoActions();
+
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.handleToggleFreeze('tx-1', 0);
+      second = result.current.handleToggleFreeze('tx-2', 1);
+    });
+
+    expect(transactionsApi.freezeUTXO).toHaveBeenCalledTimes(2);
+    expect(result.current.pendingFreezeIds).toEqual(new Set(['utxo-1', 'utxo-2']));
+
+    await act(async () => {
+      firstPending.resolve();
+      await first;
+    });
+    expect(result.current.pendingFreezeIds).toEqual(new Set(['utxo-2']));
+
+    await act(async () => {
+      secondPending.resolve();
+      await second;
+    });
+    expect(result.current.pendingFreezeIds.size).toBe(0);
+  });
+
+  it('ignores an old-wallet rejection without rolling back or releasing a new same-ID request', async () => {
+    const oldWalletPending = createDeferred<void>();
+    const newWalletPending = createDeferred<void>();
+    vi.mocked(transactionsApi.freezeUTXO)
+      .mockReturnValueOnce(oldWalletPending.promise as never)
+      .mockReturnValueOnce(newWalletPending.promise as never);
+    const walletBUtxos = [{ ...baseUtxos[0], txid: 'tx-wallet-b', frozen: false }];
+    const { result, rerender } = renderHook(
+      ({ walletId, utxos }) => useUtxoActions({
+        walletId,
+        utxos,
+        setUTXOs,
+        setUtxoStats,
+        handleError,
+        navigate,
+      }),
+      { initialProps: { walletId: 'wallet-a', utxos: baseUtxos } },
+    );
+
+    let request!: Promise<void>;
+    act(() => { request = result.current.handleToggleFreeze('tx-1', 0); });
+    expect(result.current.pendingFreezeIds).toEqual(new Set(['utxo-1']));
+
+    rerender({ walletId: 'wallet-b', utxos: walletBUtxos });
+    expect(result.current.pendingFreezeIds.size).toBe(0);
+    let newWalletRequest!: Promise<void>;
+    act(() => { newWalletRequest = result.current.handleToggleFreeze('tx-wallet-b', 0); });
+    expect(result.current.pendingFreezeIds).toEqual(new Set(['utxo-1']));
+    const callsBeforeOldSettlement = setUTXOs.mock.calls.length;
+
+    await act(async () => {
+      oldWalletPending.reject(new Error('old wallet failed'));
+      await request;
+    });
+
+    expect(setUTXOs).toHaveBeenCalledTimes(callsBeforeOldSettlement);
+    expect(setUtxoStats).toHaveBeenCalledTimes(callsBeforeOldSettlement);
+    expect(result.current.pendingFreezeIds).toEqual(new Set(['utxo-1']));
+    expect(handleError).not.toHaveBeenCalled();
+
+    await act(async () => {
+      newWalletPending.resolve();
+      await newWalletRequest;
+    });
+    expect(result.current.pendingFreezeIds.size).toBe(0);
+  });
+
+  it('suppresses settlement work after unmount', async () => {
+    const pending = createDeferred<void>();
+    vi.mocked(transactionsApi.freezeUTXO).mockReturnValueOnce(pending.promise as never);
+    const { result, unmount } = renderUtxoActions();
+    let request!: Promise<void>;
+    act(() => { request = result.current.handleToggleFreeze('tx-1', 0); });
+    const utxoUpdateCalls = setUTXOs.mock.calls.length;
+    const statsUpdateCalls = setUtxoStats.mock.calls.length;
+    unmount();
+
+    await act(async () => {
+      pending.reject(new Error('late failure'));
+      await request;
+    });
+
+    expect(setUTXOs).toHaveBeenCalledTimes(utxoUpdateCalls);
+    expect(setUtxoStats).toHaveBeenCalledTimes(statsUpdateCalls);
+    expect(handleError).not.toHaveBeenCalled();
+    expect(logError).not.toHaveBeenCalled();
   });
 
   it('guards when utxo is missing or missing id', async () => {

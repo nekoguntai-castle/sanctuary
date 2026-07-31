@@ -186,6 +186,7 @@ export const useWalletDetailController = () => {
 
   const {
     selectedUtxos,
+    pendingFreezeIds,
     handleToggleFreeze,
     handleToggleSelect,
     handleSendSelected,
@@ -359,6 +360,7 @@ export const useWalletDetailController = () => {
     handleToggleAddressLabel,
     handleCancelEditLabels,
     selectedUtxos,
+    pendingFreezeIds,
     handleToggleFreeze,
     handleToggleSelect,
     handleSendSelected,

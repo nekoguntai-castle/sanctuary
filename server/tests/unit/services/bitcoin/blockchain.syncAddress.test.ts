@@ -23,12 +23,18 @@ vi.mock('../../../../src/websocket/notifications', () => ({
 }));
 
 import { syncAddress, checkAddress } from '../../../../src/services/bitcoin/blockchain';
+import {
+  persistAddressSyncIORows,
+  reconcileAddressSyncTransaction,
+} from '../../../../src/repositories/transactions/sync';
+import { storeTransactionIO } from '../../../../src/services/bitcoin/blockchain/transactionIO';
 import { validateAddress } from '../../../../src/services/bitcoin/utils';
 
 describe('Blockchain syncAddress branch coverage', () => {
   beforeEach(() => {
     resetPrismaMocks();
     resetElectrumMocks();
+    mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 1 });
   });
 
   it('handles previous-tx batch fetch, consolidation detection, UTXO insert, and IO persistence', async () => {
@@ -59,10 +65,10 @@ describe('Blockchain syncAddress branch coverage', () => {
     mockElectrumClient.getAddressHistory.mockResolvedValue([
       { tx_hash: txMissing, height: 101 },
       { tx_hash: txMain, height: 100 },
+      { tx_hash: txMain, height: 100 },
     ]);
 
     mockPrismaClient.transaction.findMany
-      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         { id: 'sent-1', txid: 's'.repeat(64), type: 'sent' },
         { id: 'recv-1', txid: 'r'.repeat(64), type: 'received' },
@@ -176,9 +182,13 @@ describe('Blockchain syncAddress branch coverage', () => {
 
     const result = await syncAddress(addressId);
 
-    expect(result.transactions).toBe(2);
+    expect(result.transactions).toBe(1);
     expect(result.utxos).toBe(2);
-    expect(mockPrismaClient.transaction.create).toHaveBeenCalled();
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalled();
+    const txMainCreates = mockPrismaClient.transaction.createMany.mock.calls
+      .filter(([call]) => call.data[0].txid === txMain);
+    expect(txMainCreates).toHaveLength(1);
+    expect(txMainCreates[0][0].data[0].type).toBe('consolidation');
     expect(mockPrismaClient.uTXO.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.arrayContaining([
@@ -223,7 +233,6 @@ describe('Blockchain syncAddress branch coverage', () => {
     mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
     mockElectrumClient.getBlockHeight.mockRejectedValue(new Error('height unavailable'));
     mockPrismaClient.transaction.findMany
-      .mockResolvedValueOnce([])
       .mockRejectedValueOnce(new Error('io persistence failed'));
 
     const result = await syncAddress(addressId);
@@ -278,20 +287,18 @@ describe('Blockchain syncAddress branch coverage', () => {
     mockElectrumClient.getAddressUTXOs.mockResolvedValue([]);
     mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
     mockElectrumClient.getBlockHeight.mockResolvedValue(510);
-    mockPrismaClient.transaction.findMany
-      .mockResolvedValueOnce([{ txid, type: 'received' }])
-      .mockResolvedValueOnce([]);
+    mockPrismaClient.transaction.findMany.mockResolvedValueOnce([]);
 
     const result = await syncAddress(addressId);
 
     expect(result.transactions).toBe(1);
-    expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        data: [expect.objectContaining({
           type: 'sent',
           fee: null,
           amount: BigInt(-10_000),
-        }),
+        })],
       })
     );
   });
@@ -321,7 +328,6 @@ describe('Blockchain syncAddress branch coverage', () => {
       { tx_hash: zeroHeightUtxoTx, tx_pos: 0, value: 13_000, height: 0 },
     ]);
     mockPrismaClient.transaction.findMany
-      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ id: 'io-1', txid: ioTx, type: 'received' }]);
     mockPrismaClient.uTXO.findMany.mockResolvedValue([{ txid: existingUtxoTx, vout: 0 }]);
     mockElectrumClient.getBlockHeight.mockResolvedValue(150);
@@ -410,11 +416,15 @@ describe('Blockchain syncAddress branch coverage', () => {
     mockElectrumClient.getAddressUTXOs.mockResolvedValue([]);
     mockElectrumClient.getBlockHeight.mockResolvedValue(610);
     mockPrismaClient.transaction.findMany
-      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         { id: 'sent-io', txid: sentTx, type: 'sent' },
         { id: 'recv-io', txid: receivedTx, type: 'received' },
         { id: 'cons-io', txid: consolidationTx, type: 'consolidation' },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'sent-io', type: 'sent' },
+        { id: 'recv-io', type: 'received' },
+        { id: 'cons-io', type: 'consolidation' },
       ]);
     mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
 
@@ -702,41 +712,45 @@ describe('Blockchain syncAddress branch coverage', () => {
     mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
     mockPrismaClient.transaction.findMany
       .mockResolvedValueOnce([
-        { txid: existingSentTx, type: 'sent' },
-        { txid: existingConsolidationTx, type: 'consolidation' },
-      ])
-      .mockResolvedValueOnce([
         { id: 'io-cons', txid: existingConsolidationTx, type: 'consolidation' },
         { id: 'io-empty', txid: missingFieldsTx, type: 'sent' },
         { id: 'io-unknown', txid: unknownTypeTx, type: 'unknown' as any },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'io-cons', type: 'consolidation' },
+        { id: 'io-empty', type: 'sent' },
+        { id: 'io-unknown', type: 'unknown' as any },
       ]);
+
+    mockPrismaClient.transaction.createMany.mockImplementation(async ({ data }: any) => ({
+      count: [existingSentTx, existingConsolidationTx].includes(data[0].txid) ? 0 : 1,
+    }));
 
     const result = await syncAddress(addressId);
 
-    expect(result.transactions).toBe(3);
-    expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+    expect(result.transactions).toBe(2);
+    const sentTxCreates = mockPrismaClient.transaction.createMany.mock.calls
+      .filter(([call]) => call.data[0].txid === sentTx);
+    expect(sentTxCreates).toHaveLength(1);
+    expect(sentTxCreates[0][0].data[0].type).toBe('sent');
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        data: [expect.objectContaining({
           txid: receivedTx,
           type: 'received',
           confirmations: 0,
           blockHeight: null,
-        }),
+        })],
       })
     );
-    expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        data: [expect.objectContaining({
           txid: sentTx,
           type: 'sent',
           confirmations: 0,
           blockHeight: null,
-        }),
-      })
-    );
-    expect(mockPrismaClient.transaction.create).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ txid: existingSentTx }),
+        })],
       })
     );
     expect(mockPrismaClient.transactionOutput.createMany).toHaveBeenCalledWith(
@@ -753,6 +767,154 @@ describe('Blockchain syncAddress branch coverage', () => {
         ]),
       })
     );
+  });
+
+  it('retries missing transaction I/O when scalar reconciliation is unchanged', async () => {
+    const addressId = 'addr-io-retry';
+    const walletId = 'wallet-io-retry';
+    const mainAddress = testnetAddresses.nativeSegwit[0];
+    const txid = '5'.repeat(64);
+
+    mockPrismaClient.address.findUnique.mockResolvedValue({
+      id: addressId,
+      address: mainAddress,
+      walletId,
+      wallet: { id: walletId, network: 'regtest' },
+      used: true,
+    });
+    mockPrismaClient.address.findMany.mockResolvedValue([{ address: mainAddress }]);
+    mockElectrumClient.getAddressHistory.mockResolvedValue([{ tx_hash: txid, height: 0 }]);
+    mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([
+      [txid, {
+        txid,
+        hex: '00',
+        vin: [],
+        vout: [{
+          value: 0.0001,
+          n: 0,
+          scriptPubKey: { hex: '0014' + '51'.repeat(20), address: mainAddress },
+        }],
+      }],
+    ]));
+    mockElectrumClient.getAddressUTXOs.mockResolvedValue([]);
+    mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
+    mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 0 });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      { id: 'existing-io-retry', txid, type: 'received' },
+    ]);
+
+    const result = await syncAddress(addressId);
+
+    expect(result.transactions).toBe(0);
+    expect(mockPrismaClient.transactionOutput.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({ transactionId: 'existing-io-retry' })],
+        skipDuplicates: true,
+      })
+    );
+  });
+
+  it('repairs all output roles when promoting a received transaction to consolidation', async () => {
+    mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 0 });
+    mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 1 });
+
+    const outcome = await reconcileAddressSyncTransaction({
+      txid: '6'.repeat(64),
+      walletId: 'wallet-consolidation',
+      type: 'consolidation',
+      amount: BigInt(-100),
+      fee: BigInt(100),
+      confirmations: 1,
+    });
+
+    expect(outcome).toBe('repaired');
+    expect(mockPrismaClient.transactionOutput.updateMany).toHaveBeenCalledWith({
+      where: {
+        transaction: {
+          is: { txid: '6'.repeat(64), walletId: 'wallet-consolidation' },
+        },
+      },
+      data: { outputType: 'consolidation' },
+    });
+  });
+
+  it('repairs owned and external output roles when promoting a transaction to sent', async () => {
+    mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 0 });
+    mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 1 });
+
+    const outcome = await reconcileAddressSyncTransaction({
+      txid: '7'.repeat(64),
+      walletId: 'wallet-sent',
+      type: 'sent',
+      amount: BigInt(-200),
+      fee: BigInt(100),
+      confirmations: 1,
+    });
+
+    expect(outcome).toBe('repaired');
+    expect(mockPrismaClient.transactionOutput.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        transaction: {
+          is: { txid: '7'.repeat(64), walletId: 'wallet-sent' },
+        },
+        isOurs: true,
+      },
+      data: { outputType: 'change' },
+    });
+    expect(mockPrismaClient.transactionOutput.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        transaction: {
+          is: { txid: '7'.repeat(64), walletId: 'wallet-sent' },
+        },
+        isOurs: false,
+      },
+      data: { outputType: 'recipient' },
+    });
+  });
+
+  it('persists an inputs-only I/O repair atomically', async () => {
+    await persistAddressSyncIORows([
+      {
+        transactionId: 'inputs-only',
+        inputIndex: 0,
+        txid: '8'.repeat(64),
+        vout: 0,
+        address: 'input-address',
+        amount: BigInt(1),
+      },
+    ], []);
+
+    expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ transactionId: 'inputs-only' })],
+      skipDuplicates: true,
+    });
+    expect(mockPrismaClient.transactionOutput.createMany).not.toHaveBeenCalled();
+  });
+
+  it('skips the I/O transaction when there are no rows to persist', async () => {
+    await persistAddressSyncIORows([], []);
+
+    expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('bounds incomplete-I/O lookups to 100 history txids per batch', async () => {
+    const history = Array.from({ length: 101 }, (_, index) => ({
+      tx_hash: index.toString(16).padStart(64, '0'),
+      height: index,
+    }));
+    mockPrismaClient.transaction.findMany.mockResolvedValue([]);
+
+    await storeTransactionIO(
+      mockElectrumClient,
+      'wallet-batched-io',
+      history,
+      new Set()
+    );
+
+    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(2);
+    expect(mockPrismaClient.transaction.findMany.mock.calls[0][0].where.txid.in).toHaveLength(100);
+    expect(mockPrismaClient.transaction.findMany.mock.calls[1][0].where.txid.in).toHaveLength(1);
+    expect(mockElectrumClient.getTransactionsBatch).not.toHaveBeenCalled();
   });
 
   it('rethrows syncAddress errors after logging', async () => {
@@ -778,7 +940,7 @@ describe('Blockchain syncAddress branch coverage', () => {
       error: 'Invalid address format',
     });
 
-    const result = await checkAddress('bad-address', 'testnet');
+    const result = await checkAddress('bad-address', 'testnet3');
     expect(result.valid).toBe(false);
     expect(result.error).toContain('Invalid address');
     expect(mockElectrumClient.getAddressBalance).not.toHaveBeenCalled();

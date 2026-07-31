@@ -7,7 +7,7 @@
 
 import { getNodeClient, type NodeClientInterface } from '../nodeClient';
 import type { TransactionOutput, TransactionInput, BitcoinNetwork } from '../electrum';
-import { addressRepository, transactionRepository, utxoRepository } from '../../../repositories';
+import { addressRepository, utxoRepository } from '../../../repositories';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import { getBlockHeight } from '../utils/blockHeight';
@@ -102,15 +102,6 @@ function mergeTransactionDetails(target: TransactionDetailsMap, source: Transact
   }
 }
 
-async function loadExistingTransactionLookup(walletId: string, txids: string[]): Promise<Set<string>> {
-  const existingWalletTxs = await transactionRepository.findByWalletIdAndTxids(
-    walletId,
-    txids,
-    { txid: true, type: true }
-  );
-  return new Set(existingWalletTxs.map(tx => `${tx.txid}:${tx.type}`));
-}
-
 async function processUtxos(
   client: NodeClientInterface,
   txDetailsMap: TransactionDetailsMap,
@@ -191,18 +182,16 @@ async function markAddressUsedIfNeeded(
   }
 }
 
-async function storeTransactionIOForCreatedTransactions(context: {
-  transactionCount: number;
+async function storeTransactionIOForHistory(context: {
   client: NodeClientInterface;
   addressRecord: AddressRecord;
   history: AddressHistoryItem[];
   walletAddressSet: Set<string>;
 }): Promise<void> {
-  if (context.transactionCount <= 0) {
-    return;
-  }
-
   try {
+    // The repository query selects only incomplete rows. Running this after an
+    // unchanged scalar reconcile retries partial/failed backfills without
+    // re-fetching I/O for already-complete history.
     await storeTransactionIO(context.client, context.addressRecord.walletId, context.history, context.walletAddressSet);
   } catch (ioError) {
     log.warn(`[BLOCKCHAIN] Failed to store transaction I/O in address sync: ${ioError}`);
@@ -225,17 +214,14 @@ export async function syncAddress(addressId: string): Promise<SyncAddressResult>
 
   try {
     const history = await client.getAddressHistory(addressRecord.address);
-    const historyTxIds = history.map(h => h.tx_hash);
     const walletAddressSet = await loadWalletAddressSet(addressRecord.walletId);
     const txDetailsMap = await fetchHistoryTransactionDetails(client, history);
-    const existingTxLookup = await loadExistingTransactionLookup(addressRecord.walletId, historyTxIds);
 
     const transactionCount = await processHistoryTransactions({
       history,
       txDetailsMap,
       addressRecord,
       walletAddressSet,
-      existingTxLookup,
       network,
       getConfirmations,
       warnMissingTransaction: txid => log.warn(`[BLOCKCHAIN] Transaction ${txid} not found in batch fetch`),
@@ -243,8 +229,7 @@ export async function syncAddress(addressId: string): Promise<SyncAddressResult>
     const utxoCount = await processUtxos(client, txDetailsMap, addressRecord, network);
 
     await markAddressUsedIfNeeded(history, addressRecord, addressId);
-    await storeTransactionIOForCreatedTransactions({
-      transactionCount,
+    await storeTransactionIOForHistory({
       client,
       addressRecord,
       history,

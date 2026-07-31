@@ -1,4 +1,8 @@
 import { transactionRepository } from '../../../repositories';
+import type {
+  AddressSyncTransactionInput,
+  AddressSyncTransactionType,
+} from '../../../repositories/transactions/sync';
 import { getBlockTimestamp } from '../utils/blockHeight';
 import type { BitcoinNetwork, TransactionInput, TransactionOutput } from '../electrum';
 
@@ -35,7 +39,6 @@ interface HistoryTransactionContext {
   txDetailsMap: TransactionDetailsMap;
   addressRecord: AddressSyncRecord;
   walletAddressSet: Set<string>;
-  existingTxLookup: Set<string>;
   network: BitcoinNetwork;
   getConfirmations: ConfirmationsLoader;
   warnMissingTransaction: (txid: string) => void;
@@ -131,31 +134,14 @@ const getChainFields = async (
   };
 };
 
-const createReceivedTransactionIfMissing = async (
-  item: AddressHistoryItem,
+const getReceivedAmount = (
   outputs: TransactionOutput[],
-  blockTime: Date | null,
-  context: HistoryTransactionContext
-): Promise<number> => {
-  if (context.existingTxLookup.has(`${item.tx_hash}:received`)) {
-    return 0;
-  }
-
+  address: string
+): bigint => {
   const amount = outputs
-    .filter(out => outputMatchesAddress(out, context.addressRecord.address))
+    .filter(out => outputMatchesAddress(out, address))
     .reduce((sum, out) => sum + toSats(out.value), 0);
-  const chainFields = await getChainFields(item, context.network, blockTime, context.getConfirmations);
-
-  await transactionRepository.create({
-    txid: item.tx_hash,
-    walletId: context.addressRecord.walletId,
-    addressId: context.addressRecord.id,
-    type: 'received',
-    amount: BigInt(amount),
-    ...chainFields,
-  });
-
-  return 1;
+  return BigInt(amount);
 };
 
 const sumSentOutputs = (
@@ -191,120 +177,89 @@ const getValidFee = (
   return fee >= 0 ? fee : null;
 };
 
-const createSentTransactionIfMissing = async (
-  item: AddressHistoryItem,
-  totalToExternal: number,
-  validFee: number | null,
-  blockTime: Date | null,
-  context: HistoryTransactionContext
-): Promise<number> => {
-  if (context.existingTxLookup.has(`${item.tx_hash}:sent`)) {
-    return 0;
-  }
-
-  const sentAmount = -(totalToExternal + (validFee ?? 0));
-  const chainFields = await getChainFields(item, context.network, blockTime, context.getConfirmations);
-
-  await transactionRepository.create({
-    txid: item.tx_hash,
-    walletId: context.addressRecord.walletId,
-    addressId: context.addressRecord.id,
-    type: 'sent',
-    amount: BigInt(sentAmount),
-    fee: validFee !== null ? BigInt(validFee) : null,
-    ...chainFields,
-  });
-
-  return 1;
+type ClassifiedTransaction = {
+  type: AddressSyncTransactionType;
+  amount: bigint;
+  fee?: bigint | null;
 };
 
-const createConsolidationTransactionIfMissing = async (
-  item: AddressHistoryItem,
-  validFee: number | null,
-  blockTime: Date | null,
-  context: HistoryTransactionContext
-): Promise<number> => {
-  if (context.existingTxLookup.has(`${item.tx_hash}:consolidation`)) {
-    return 0;
-  }
-
-  const chainFields = await getChainFields(item, context.network, blockTime, context.getConfirmations);
-
-  await transactionRepository.create({
-    txid: item.tx_hash,
-    walletId: context.addressRecord.walletId,
-    addressId: context.addressRecord.id,
-    type: 'consolidation',
-    amount: validFee !== null ? BigInt(-validFee) : BigInt(0),
-    fee: validFee !== null ? BigInt(validFee) : null,
-    ...chainFields,
-  });
-
-  return 1;
-};
-
-const createSentOrConsolidationTransactionIfMissing = async (
-  item: AddressHistoryItem,
+const classifyHistoryTransaction = (
   outputs: TransactionOutput[],
   sentInputs: SentInputClassification,
-  blockTime: Date | null,
   context: HistoryTransactionContext
-): Promise<number> => {
+): ClassifiedTransaction | null => {
+  // Wallet-owned inputs take precedence. Sent amounts include the fee, while a
+  // wallet-only spend is a consolidation; output-only evidence is received.
   const outputTotals = sumSentOutputs(outputs, context.walletAddressSet);
-  const validFee = getValidFee(sentInputs, outputTotals);
-
-  if (outputTotals.totalToExternal > 0) {
-    return createSentTransactionIfMissing(item, outputTotals.totalToExternal, validFee, blockTime, context);
+  if (sentInputs.isSent) {
+    const validFee = getValidFee(sentInputs, outputTotals);
+    const fee = validFee === null ? null : BigInt(validFee);
+    if (outputTotals.totalToExternal > 0) {
+      return {
+        type: 'sent',
+        amount: BigInt(-(outputTotals.totalToExternal + (validFee ?? 0))),
+        fee,
+      };
+    }
+    if (outputTotals.totalToWallet > 0) {
+      return {
+        type: 'consolidation',
+        amount: validFee === null ? BigInt(0) : BigInt(-validFee),
+        fee,
+      };
+    }
   }
 
-  if (outputTotals.totalToWallet > 0) {
-    return createConsolidationTransactionIfMissing(item, validFee, blockTime, context);
+  if (outputs.some(out => outputMatchesAddress(out, context.addressRecord.address))) {
+    return {
+      type: 'received',
+      amount: getReceivedAmount(outputs, context.addressRecord.address),
+    };
   }
-
-  return 0;
+  return null;
 };
 
 const processHistoryTransaction = async (
   item: AddressHistoryItem,
   context: HistoryTransactionContext
-): Promise<number> => {
+): Promise<'created' | 'repaired' | 'unchanged' | null> => {
   const txDetails = context.txDetailsMap.get(item.tx_hash);
   if (!txDetails) {
     context.warnMissingTransaction(item.tx_hash);
-    return 0;
+    return null;
   }
 
   const outputs = txDetails.vout || [];
   const inputs = txDetails.vin || [];
-  const isReceived = outputs.some(out => outputMatchesAddress(out, context.addressRecord.address));
   const sentInputs = classifySentInputs(inputs, context.walletAddressSet, context.txDetailsMap);
+  const classification = classifyHistoryTransaction(outputs, sentInputs, context);
+  if (!classification) return null;
+
   const blockTime = await getBlockTime(txDetails.time, item.height);
-  let createdCount = 0;
-
-  if (isReceived) {
-    createdCount += await createReceivedTransactionIfMissing(item, outputs, blockTime, context);
-  }
-
-  if (sentInputs.isSent) {
-    createdCount += await createSentOrConsolidationTransactionIfMissing(
-      item,
-      outputs,
-      sentInputs,
-      blockTime,
-      context
-    );
-  }
-
-  return createdCount;
+  const chainFields = await getChainFields(item, context.network, blockTime, context.getConfirmations);
+  const candidate: AddressSyncTransactionInput = {
+    txid: item.tx_hash,
+    walletId: context.addressRecord.walletId,
+    addressId: context.addressRecord.id,
+    ...classification,
+    ...chainFields,
+  };
+  return transactionRepository.reconcileAddressSyncTransaction(candidate);
 };
 
 export async function processHistoryTransactions(
   context: HistoryTransactionContext
 ): Promise<number> {
   let transactionCount = 0;
+  const reconciledTxids = new Set<string>();
 
   for (const item of context.history) {
-    transactionCount += await processHistoryTransaction(item, context);
+    // One successful reconcile is sufficient for duplicate address-history rows;
+    // the repository remains the cross-request concurrency boundary.
+    if (reconciledTxids.has(item.tx_hash)) continue;
+    const outcome = await processHistoryTransaction(item, context);
+    if (outcome) reconciledTxids.add(item.tx_hash);
+    if (outcome === 'created' || outcome === 'repaired') transactionCount += 1;
   }
 
   return transactionCount;

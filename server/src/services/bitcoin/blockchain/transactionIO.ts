@@ -1,9 +1,15 @@
 import { transactionRepository } from '../../../repositories';
+import type {
+  AddressSyncInputRow,
+  AddressSyncOutputRow,
+} from '../../../repositories/transactions/sync';
 import { createLogger } from '../../../utils/logger';
 import type { NodeClientInterface } from '../nodeClient';
 import type { TransactionOutput, TransactionInput } from '../electrum';
 
 const log = createLogger('BITCOIN:SVC_TRANSACTION_IO');
+// Bounds Electrum requests, SQL IN lists, and parent-row lock duration.
+const IO_BACKFILL_BATCH_SIZE = 100;
 
 type AddressHistoryItem = { tx_hash: string; height: number };
 type TransactionDetailsLike = {
@@ -20,26 +26,9 @@ type ScriptPubKeySource = {
   };
 };
 type InputSource = { address?: string; value?: number };
-type TransactionInputCreate = {
-  transactionId: string;
-  inputIndex: number;
-  txid: string;
-  vout: number;
-  address: string;
-  amount: bigint;
-};
-type TransactionOutputCreate = {
-  transactionId: string;
-  outputIndex: number;
-  address: string;
-  amount: bigint;
-  scriptPubKey?: string;
-  outputType: string;
-  isOurs: boolean;
-};
 type TransactionIORows = {
-  inputs: TransactionInputCreate[];
-  outputs: TransactionOutputCreate[];
+  inputs: AddressSyncInputRow[];
+  outputs: AddressSyncOutputRow[];
 };
 
 const getScriptPubKeyAddress = (source: ScriptPubKeySource): string | undefined => {
@@ -69,27 +58,11 @@ const getDirectInputSource = (input: TransactionInput): InputSource => {
   };
 };
 
-const getOutputType = (transactionType: string, isOurs: boolean): string => {
-  if (transactionType === 'sent') {
-    return isOurs ? 'change' : 'recipient';
-  }
-
-  if (transactionType === 'received') {
-    return isOurs ? 'recipient' : 'unknown';
-  }
-
-  if (transactionType === 'consolidation') {
-    return 'consolidation';
-  }
-
-  return 'unknown';
-};
-
 const collectTransactionInputRows = (
   transactionId: string,
   inputs: TransactionInput[]
-): TransactionInputCreate[] => {
-  const rows: TransactionInputCreate[] = [];
+): AddressSyncInputRow[] => {
+  const rows: AddressSyncInputRow[] = [];
 
   for (let inputIdx = 0; inputIdx < inputs.length; inputIdx++) {
     const input = inputs[inputIdx];
@@ -115,8 +88,8 @@ const collectTransactionOutputRows = (
   txRecord: TransactionWithoutIO,
   outputs: TransactionOutput[],
   walletAddressSet: Set<string>
-): TransactionOutputCreate[] => {
-  const rows: TransactionOutputCreate[] = [];
+): AddressSyncOutputRow[] => {
+  const rows: AddressSyncOutputRow[] = [];
 
   for (let outputIdx = 0; outputIdx < outputs.length; outputIdx++) {
     const output = outputs[outputIdx];
@@ -131,7 +104,6 @@ const collectTransactionOutputRows = (
       address: outputAddress,
       amount: BigInt(toSats(output.value || 0)),
       scriptPubKey: output.scriptPubKey?.hex,
-      outputType: getOutputType(txRecord.type, isOurs),
       isOurs,
     });
   }
@@ -158,19 +130,7 @@ const collectTransactionIORows = (
 };
 
 const persistTransactionIORows = async (ioRows: TransactionIORows): Promise<void> => {
-  if (ioRows.inputs.length > 0) {
-    await transactionRepository.createManyInputs(
-      ioRows.inputs as unknown as Array<Record<string, unknown>>,
-      { skipDuplicates: true }
-    );
-  }
-
-  if (ioRows.outputs.length > 0) {
-    await transactionRepository.createManyOutputs(
-      ioRows.outputs as unknown as Array<Record<string, unknown>>,
-      { skipDuplicates: true }
-    );
-  }
+  await transactionRepository.persistAddressSyncIORows(ioRows.inputs, ioRows.outputs);
 };
 
 export async function storeTransactionIO(
@@ -179,19 +139,19 @@ export async function storeTransactionIO(
   history: AddressHistoryItem[],
   walletAddressSet: Set<string>
 ): Promise<void> {
-  const txsWithoutIO = await transactionRepository.findWithoutIO(
-    walletId,
-    history.map(h => h.tx_hash)
-  );
+  const historyTxids = [...new Set(history.map(item => item.tx_hash))];
+  for (let offset = 0; offset < historyTxids.length; offset += IO_BACKFILL_BATCH_SIZE) {
+    const txsWithoutIO = await transactionRepository.findWithoutIO(
+      walletId,
+      historyTxids.slice(offset, offset + IO_BACKFILL_BATCH_SIZE)
+    );
+    if (txsWithoutIO.length === 0) continue;
 
-  if (txsWithoutIO.length === 0) {
-    return;
+    const txidsToFetch = txsWithoutIO.map(tx => tx.txid);
+    const txDetailsMap: TransactionDetailsMap = await client.getTransactionsBatch(txidsToFetch, true);
+    const ioRows = collectTransactionIORows(txsWithoutIO, txDetailsMap, walletAddressSet);
+
+    await persistTransactionIORows(ioRows);
+    log.debug(`[BLOCKCHAIN] Stored I/O for ${txsWithoutIO.length} transactions (${ioRows.inputs.length} inputs, ${ioRows.outputs.length} outputs)`);
   }
-
-  const txidsToFetch = txsWithoutIO.map(tx => tx.txid);
-  const txDetailsMap: TransactionDetailsMap = await client.getTransactionsBatch(txidsToFetch, true);
-  const ioRows = collectTransactionIORows(txsWithoutIO, txDetailsMap, walletAddressSet);
-
-  await persistTransactionIORows(ioRows);
-  log.debug(`[BLOCKCHAIN] Stored I/O for ${txsWithoutIO.length} transactions (${ioRows.inputs.length} inputs, ${ioRows.outputs.length} outputs)`);
 }

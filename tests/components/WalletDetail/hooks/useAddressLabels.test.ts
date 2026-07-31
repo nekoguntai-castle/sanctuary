@@ -27,6 +27,16 @@ describe('useAddressLabels', () => {
       })
     );
 
+  const deferred = <T,>() => {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    return { promise, reject, resolve };
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(labelsApi.setAddressLabels).mockResolvedValue(undefined as never);
@@ -146,7 +156,212 @@ describe('useAddressLabels', () => {
     await act(async () => {
       await result.current.handleSaveAddressLabels();
     });
-    expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Failed to Save Labels');
+    expect(handleError).toHaveBeenCalledWith(expect.any(Error), expect.stringContaining('addr-1'));
     expect(result.current.savingAddressLabels).toBe(false);
+  });
+
+  it('uses the address id in save errors when the display address is unavailable', async () => {
+    const { result } = renderAddressLabels('wallet-1');
+    await act(async () => {
+      await result.current.handleEditAddressLabels({ id: 'addr-fallback', labels: [] } as any);
+    });
+    vi.mocked(labelsApi.setAddressLabels).mockRejectedValueOnce(new Error('save labels failed'));
+
+    await act(async () => {
+      await result.current.handleSaveAddressLabels();
+    });
+
+    expect(handleError).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.stringContaining('addr-fallback'),
+    );
+  });
+
+  it('omits selected label ids that are absent from the captured label snapshot', async () => {
+    const { result } = renderAddressLabels('wallet-1');
+    await act(async () => {
+      await result.current.handleEditAddressLabels({
+        id: 'addr-1',
+        address: 'bc1-address',
+        labels: [],
+      } as any);
+      result.current.handleToggleAddressLabel('missing-label');
+    });
+
+    await act(async () => {
+      await result.current.handleSaveAddressLabels();
+    });
+
+    const updater = setAddresses.mock.calls[0][0];
+    expect(updater([{ id: 'addr-1', labels: [mockLabels[0]] }])[0].labels).toEqual([]);
+  });
+
+  it.each(['success', 'failure'] as const)(
+    'keeps B editor ownership when stale save A settles with %s',
+    async (outcome) => {
+      const saveA = deferred<Label[]>();
+      const saveB = deferred<Label[]>();
+      vi.mocked(labelsApi.setAddressLabels)
+        .mockReturnValueOnce(saveA.promise)
+        .mockReturnValueOnce(saveB.promise);
+      const { result } = renderAddressLabels();
+      const addressA = { id: 'addr-a', address: 'bc1-address-a', labels: [mockLabels[0]] } as any;
+      const addressB = { id: 'addr-b', address: 'bc1-address-b', labels: [] } as any;
+
+      await act(async () => result.current.handleEditAddressLabels(addressA));
+      let promiseA!: Promise<void>;
+      act(() => { promiseA = result.current.handleSaveAddressLabels(); });
+      await act(async () => {
+        await result.current.handleEditAddressLabels(addressB);
+        result.current.handleToggleAddressLabel('label-2');
+      });
+      let promiseB!: Promise<void>;
+      act(() => { promiseB = result.current.handleSaveAddressLabels(); });
+      expect(result.current.editingAddressId).toBe('addr-b');
+      expect(result.current.savingAddressLabels).toBe(true);
+
+      await act(async () => {
+        if (outcome === 'success') saveA.resolve([mockLabels[0]]);
+        else saveA.reject(new Error('A failed'));
+        await promiseA;
+      });
+
+      expect(result.current.editingAddressId).toBe('addr-b');
+      expect(result.current.savingAddressLabels).toBe(true);
+      if (outcome === 'success') {
+        expect(setAddresses).toHaveBeenCalledTimes(1);
+      } else {
+        expect(setAddresses).not.toHaveBeenCalled();
+        expect(handleError).toHaveBeenCalledWith(
+          expect.any(Error),
+          expect.stringContaining('bc1-address-a'),
+        );
+      }
+
+      await act(async () => {
+        saveB.resolve([mockLabels[1]]);
+        await promiseB;
+      });
+      expect(result.current.editingAddressId).toBeNull();
+      expect(result.current.savingAddressLabels).toBe(false);
+    },
+  );
+
+  it.each(['success', 'failure'] as const)(
+    'keeps settled B state when save A finishes later with %s',
+    async (outcome) => {
+      const saveA = deferred<Label[]>();
+      const saveB = deferred<Label[]>();
+      vi.mocked(labelsApi.setAddressLabels)
+        .mockReturnValueOnce(saveA.promise)
+        .mockReturnValueOnce(saveB.promise);
+      const { result } = renderAddressLabels();
+      const addressA = { id: 'addr-a', address: 'bc1-address-a', labels: [mockLabels[0]] } as any;
+      const addressB = { id: 'addr-b', address: 'bc1-address-b', labels: [mockLabels[1]] } as any;
+
+      await act(async () => result.current.handleEditAddressLabels(addressA));
+      let promiseA!: Promise<void>;
+      act(() => { promiseA = result.current.handleSaveAddressLabels(); });
+      await act(async () => result.current.handleEditAddressLabels(addressB));
+      let promiseB!: Promise<void>;
+      act(() => { promiseB = result.current.handleSaveAddressLabels(); });
+      await act(async () => {
+        saveB.resolve([mockLabels[1]]);
+        await promiseB;
+      });
+      expect(result.current.editingAddressId).toBeNull();
+      expect(result.current.savingAddressLabels).toBe(false);
+
+      await act(async () => {
+        if (outcome === 'success') saveA.resolve([mockLabels[0]]);
+        else saveA.reject(new Error('late A failed'));
+        await promiseA;
+      });
+      expect(result.current.editingAddressId).toBeNull();
+      expect(result.current.savingAddressLabels).toBe(false);
+      if (outcome === 'success') {
+        expect(setAddresses).toHaveBeenCalledTimes(2);
+      } else {
+        expect(handleError).toHaveBeenCalledWith(
+          expect.any(Error),
+          expect.stringContaining('bc1-address-a'),
+        );
+      }
+    },
+  );
+
+  it('patches only captured A labels and preserves refreshed fields after cancel', async () => {
+    const save = deferred<Label[]>();
+    vi.mocked(labelsApi.setAddressLabels).mockReturnValueOnce(save.promise);
+    const { result } = renderAddressLabels();
+    const addressA = {
+      id: 'addr-a',
+      address: 'bc1-address-a',
+      labels: [mockLabels[0]],
+      balance: 10,
+      used: false,
+    } as any;
+
+    await act(async () => result.current.handleEditAddressLabels(addressA));
+    let savePromise!: Promise<void>;
+    act(() => { savePromise = result.current.handleSaveAddressLabels(); });
+    act(() => result.current.handleCancelEditLabels());
+    await act(async () => {
+      save.resolve([mockLabels[0]]);
+      await savePromise;
+    });
+
+    expect(result.current.editingAddressId).toBeNull();
+    expect(result.current.savingAddressLabels).toBe(false);
+    const updater = setAddresses.mock.calls[0][0];
+    expect(updater([{ ...addressA, balance: 999, used: true }])[0]).toMatchObject({
+      id: 'addr-a',
+      balance: 999,
+      used: true,
+      labels: [mockLabels[0]],
+    });
+  });
+
+  it('suppresses old-wallet completion UI work after wallet change', async () => {
+    const save = deferred<Label[]>();
+    vi.mocked(labelsApi.setAddressLabels).mockReturnValueOnce(save.promise);
+    const { result, rerender } = renderHook(
+      ({ walletId }) => useAddressLabels({ walletId, walletLabels: mockLabels, setAddresses, handleError }),
+      { initialProps: { walletId: 'wallet-a' } },
+    );
+    await act(async () => result.current.handleEditAddressLabels({
+      id: 'addr-a', address: 'bc1-address-a', labels: [],
+    } as any));
+    let savePromise!: Promise<void>;
+    act(() => { savePromise = result.current.handleSaveAddressLabels(); });
+    rerender({ walletId: 'wallet-b' });
+
+    await act(async () => {
+      save.reject(new Error('old wallet failed'));
+      await savePromise;
+    });
+
+    expect(result.current.editingAddressId).toBeNull();
+    expect(result.current.savingAddressLabels).toBe(false);
+    expect(setAddresses).not.toHaveBeenCalled();
+    expect(handleError).not.toHaveBeenCalled();
+  });
+
+  it('suppresses completion UI work after unmount', async () => {
+    const save = deferred<Label[]>();
+    vi.mocked(labelsApi.setAddressLabels).mockReturnValueOnce(save.promise);
+    const { result, unmount } = renderAddressLabels();
+    await act(async () => result.current.handleEditAddressLabels({
+      id: 'addr-a', address: 'bc1-address-a', labels: [],
+    } as any));
+    let savePromise!: Promise<void>;
+    act(() => { savePromise = result.current.handleSaveAddressLabels(); });
+    unmount();
+    await act(async () => {
+      save.resolve([]);
+      await savePromise;
+    });
+    expect(setAddresses).not.toHaveBeenCalled();
+    expect(handleError).not.toHaveBeenCalled();
   });
 });

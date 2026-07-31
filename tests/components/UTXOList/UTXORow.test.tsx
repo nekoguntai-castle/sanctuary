@@ -48,6 +48,7 @@ const defaultProps = {
   network: 'mainnet',
   explorerUrl: 'https://explorer.test',
   format,
+  isFreezePending: false,
 };
 
 const renderRow = (overrides: Partial<typeof defaultProps> = {}) =>
@@ -147,6 +148,27 @@ describe('UTXORow', () => {
   it('renders unfreeze button for frozen UTXOs', () => {
     renderRow({ utxo: makeUtxo({ frozen: true }) });
     expect(screen.getByTitle('Unfreeze coin for spending')).toBeInTheDocument();
+  });
+
+  it('disables and announces a pending freeze mutation', () => {
+    const onToggleFreeze = vi.fn();
+    renderRow({
+      utxo: makeUtxo({ frozen: true }),
+      isFreezePending: true,
+      onToggleFreeze,
+    });
+
+    const button = screen.getByRole('button', { name: 'Freezing coin' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    fireEvent.click(button);
+    expect(onToggleFreeze).not.toHaveBeenCalled();
+  });
+
+  it('announces a pending unfreeze mutation', () => {
+    renderRow({ isFreezePending: true });
+
+    expect(screen.getByRole('button', { name: 'Unfreezing coin' })).toBeDisabled();
   });
 
   it('shows DUST badge for dust UTXOs', () => {

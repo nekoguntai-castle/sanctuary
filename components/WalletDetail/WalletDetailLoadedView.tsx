@@ -108,6 +108,7 @@ function buildUtxoTabProps({
     onToggleFreeze: controller.handleToggleFreeze,
     userRole: controller.walletUserRole,
     selectedUtxos: controller.selectedUtxos,
+    pendingFreezeIds: controller.pendingFreezeIds,
     onToggleSelect: controller.handleToggleSelect,
     onSendSelected: controller.handleSendSelected,
     privacyData: controller.privacyData,

@@ -1,5 +1,161 @@
-import prisma from '../../models/prisma';
-import type { Prisma } from '../../generated/prisma/client';
+import prisma, { type PrismaTxClient } from '../../models/prisma';
+import { Prisma } from '../../generated/prisma/client';
+
+export type AddressSyncTransactionType = 'received' | 'consolidation' | 'sent';
+export type AddressSyncReconcileOutcome = 'created' | 'repaired' | 'unchanged';
+
+export type AddressSyncTransactionInput = Prisma.TransactionUncheckedCreateInput & {
+  type: AddressSyncTransactionType;
+};
+
+/** Input shape accepted by the address-sync I/O persistence boundary. */
+export type AddressSyncInputRow = Prisma.TransactionInputCreateManyInput;
+/**
+ * Output shape accepted by address sync. `outputType` is derived only after
+ * locking and reading the parent transaction's committed classification.
+ */
+export type AddressSyncOutputRow = Omit<
+  Prisma.TransactionOutputCreateManyInput,
+  'outputType'
+> & { isOurs: boolean };
+
+// Classification evidence is monotonic: owned inputs outrank output-only evidence,
+// and a positively identified external output distinguishes sent from consolidation.
+const promotionSources: Record<AddressSyncTransactionType, AddressSyncTransactionType[]> = {
+  received: [],
+  consolidation: ['received'],
+  sent: ['received', 'consolidation'],
+};
+
+const getPromotionData = (data: AddressSyncTransactionInput) => ({
+  type: data.type,
+  amount: data.amount,
+  fee: data.fee,
+  confirmations: data.confirmations,
+  blockHeight: data.blockHeight,
+  blockTime: data.blockTime,
+  addressId: data.addressId,
+});
+
+const reconcilePromotedOutputTypes = async (
+  tx: PrismaTxClient,
+  data: AddressSyncTransactionInput
+): Promise<void> => {
+  const transaction = {
+    is: { txid: data.txid, walletId: data.walletId },
+  };
+
+  if (data.type === 'consolidation') {
+    await tx.transactionOutput.updateMany({
+      where: { transaction },
+      data: { outputType: 'consolidation' },
+    });
+    return;
+  }
+
+  await tx.transactionOutput.updateMany({
+    where: { transaction, isOurs: true },
+    data: { outputType: 'change' },
+  });
+  await tx.transactionOutput.updateMany({
+    where: { transaction, isOurs: false },
+    data: { outputType: 'recipient' },
+  });
+};
+
+const getAddressSyncOutputType = (transactionType: string, isOurs: boolean): string => {
+  if (transactionType === 'sent') return isOurs ? 'change' : 'recipient';
+  if (transactionType === 'received') return isOurs ? 'recipient' : 'unknown';
+  if (transactionType === 'consolidation') return 'consolidation';
+  return 'unknown';
+};
+
+/**
+ * Atomically persists address-sync I/O using the current scalar transaction type.
+ * The ordered parent-row locks serialize deferred inserts with concurrent type
+ * promotion, preventing stale received roles from landing after a sent repair.
+ */
+export async function persistAddressSyncIORows(
+  inputs: AddressSyncInputRow[],
+  outputs: AddressSyncOutputRow[]
+): Promise<void> {
+  const transactionIds = [...new Set([
+    ...inputs.map(input => input.transactionId),
+    ...outputs.map(output => output.transactionId),
+  ])].sort();
+  if (transactionIds.length === 0) return;
+
+  await prisma.$transaction(async tx => {
+    await tx.$queryRaw(Prisma.sql`
+      /* address-sync-io-lock */
+      SELECT "id"
+      FROM "transactions"
+      WHERE "id" IN (${Prisma.join(transactionIds)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const transactions = await tx.transaction.findMany({
+      where: { id: { in: transactionIds } },
+      select: { id: true, type: true },
+    });
+    const typesById = new Map(transactions.map(transaction => [
+      transaction.id,
+      transaction.type,
+    ]));
+
+    if (inputs.length > 0) {
+      await tx.transactionInput.createMany({
+        data: inputs,
+        skipDuplicates: true,
+      });
+    }
+    if (outputs.length > 0) {
+      await tx.transactionOutput.createMany({
+        data: outputs.map(output => ({
+          ...output,
+          outputType: getAddressSyncOutputType(
+            typesById.get(output.transactionId) ?? 'unknown',
+            output.isOurs
+          ),
+        })),
+        skipDuplicates: true,
+      });
+    }
+  });
+}
+
+/**
+ * Inserts a missing address-sync transaction or promotes an existing weaker
+ * classification. Returns `created` or `repaired` for changed work and
+ * `unchanged` for duplicate, same-strength, or downgrade candidates.
+ */
+export async function reconcileAddressSyncTransaction(
+  data: AddressSyncTransactionInput
+): Promise<AddressSyncReconcileOutcome> {
+  return prisma.$transaction(async tx => {
+    const inserted = await tx.transaction.createMany({
+      data: [data],
+      skipDuplicates: true,
+    });
+    if (inserted.count === 1) return 'created';
+
+    const weakerTypes = promotionSources[data.type];
+    if (weakerTypes.length === 0) return 'unchanged';
+
+    const promoted = await tx.transaction.updateMany({
+      where: {
+        txid: data.txid,
+        walletId: data.walletId,
+        type: { in: weakerTypes },
+      },
+      data: getPromotionData(data),
+    });
+    if (promoted.count === 0) return 'unchanged';
+
+    await reconcilePromotedOutputTypes(tx, data);
+    return 'repaired';
+  });
+}
 
 export async function findByWalletIdAndTxids<T extends Prisma.TransactionSelect>(
   walletId: string,
@@ -107,12 +263,6 @@ export async function createMany(
   });
 }
 
-export async function create(
-  data: Prisma.TransactionUncheckedCreateInput
-) {
-  return prisma.transaction.create({ data });
-}
-
 export async function createManyInputs(
   data: Array<Record<string, unknown>>,
   options?: { skipDuplicates?: boolean }
@@ -153,12 +303,16 @@ export async function findWithoutIO(
   walletId: string,
   txids: string[]
 ) {
+  // Either missing side is retryable: an earlier backfill can fail after writing
+  // only inputs or outputs, and both createMany calls are duplicate-safe.
   return prisma.transaction.findMany({
     where: {
       walletId,
       txid: { in: txids },
-      inputs: { none: {} },
-      outputs: { none: {} },
+      OR: [
+        { inputs: { none: {} } },
+        { outputs: { none: {} } },
+      ],
     },
     select: { id: true, txid: true, type: true },
   });

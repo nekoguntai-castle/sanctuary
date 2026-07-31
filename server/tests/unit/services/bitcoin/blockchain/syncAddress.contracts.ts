@@ -18,6 +18,10 @@ export function registerBlockchainSyncAddressTests(): void {
     const walletId = 'test-wallet-id';
     const testAddress = testnetAddresses.nativeSegwit[0];
 
+    beforeEach(() => {
+      mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 1 });
+    });
+
     it('should sync address and create transactions', async () => {
       // Mock address record
       mockPrismaClient.address.findUnique.mockResolvedValue({
@@ -61,7 +65,7 @@ export function registerBlockchainSyncAddressTests(): void {
       const result = await getBlockchainService().syncAddress(addressId);
 
       expect(result.transactions).toBeGreaterThan(0);
-      expect(mockPrismaClient.transaction.create).toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalled();
     });
 
     it('should throw error when address not found', async () => {
@@ -183,7 +187,7 @@ export function registerBlockchainSyncAddressTests(): void {
       });
 
       mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-        if (args?.where?.walletId && args?.where?.txid?.in && !args?.where?.inputs) return [];
+        if (args?.where?.walletId && args?.where?.txid?.in && !args?.where?.OR) return [];
         if (args?.where?.inputs?.none && args?.where?.outputs?.none) return [];
         return [];
       });
@@ -193,13 +197,13 @@ export function registerBlockchainSyncAddressTests(): void {
 
       expect(result.transactions).toBe(1);
       expect(mockElectrumClient.getTransactionsBatch).toHaveBeenCalledWith([prevTxid], true);
-      expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
+          data: [expect.objectContaining({
             txid: txHash,
             type: 'sent',
             fee: BigInt(50000),
-          }),
+          })],
         }),
       );
     });
@@ -271,15 +275,15 @@ export function registerBlockchainSyncAddressTests(): void {
       const result = await getBlockchainService().syncAddress(addressId);
 
       expect(result.transactions).toBe(1);
-      expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
+          data: [expect.objectContaining({
             type: 'consolidation',
             amount: BigInt(0),
             fee: null,
             confirmations: 0,
             blockHeight: null,
-          }),
+          })],
         }),
       );
     });
@@ -371,8 +375,8 @@ export function registerBlockchainSyncAddressTests(): void {
         return new Map();
       });
       mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-        if (args?.where?.walletId && args?.where?.txid?.in && !args?.where?.inputs) return [];
-        if (args?.where?.inputs?.none && args?.where?.outputs?.none) {
+        if (args?.where?.walletId && args?.where?.txid?.in && !args?.where?.OR) return [];
+        if (args?.where?.OR) {
           return [{ id: 'tx-io-record', txid: txHash, type: 'received' }];
         }
         return [];
@@ -419,8 +423,8 @@ export function registerBlockchainSyncAddressTests(): void {
         ]]),
       );
       mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-        if (args?.where?.walletId && args?.where?.txid?.in && !args?.where?.inputs) return [];
-        if (args?.where?.inputs?.none && args?.where?.outputs?.none) {
+        if (args?.where?.walletId && args?.where?.txid?.in && !args?.where?.OR) return [];
+        if (args?.where?.OR) {
           return [{ id: 'tx-io-record', txid: txHash, type: 'received' }];
         }
         return [];
@@ -432,7 +436,7 @@ export function registerBlockchainSyncAddressTests(): void {
 
       expect(result.transactions).toBe(1);
       expect(result.utxos).toBe(0);
-      expect(mockPrismaClient.transaction.create).toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalled();
     });
 
     it('should return zero confirmations when block height lookup fails', async () => {
@@ -466,11 +470,11 @@ export function registerBlockchainSyncAddressTests(): void {
 
       await getBlockchainService().syncAddress(addressId);
 
-      expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
+          data: [expect.objectContaining({
             confirmations: 0,
-          }),
+          })],
         }),
       );
     });

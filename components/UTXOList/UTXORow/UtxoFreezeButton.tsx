@@ -9,10 +9,11 @@ const FREEZE_BUTTON_CLASSES: Record<'frozen' | 'default', string> = {
 
 interface UtxoFreezeButtonProps {
   model: UtxoRowModel;
+  isPending: boolean;
   onToggleFreeze: (txid: string, vout: number) => void;
 }
 
-export function UtxoFreezeButton({ model, onToggleFreeze }: UtxoFreezeButtonProps) {
+export function UtxoFreezeButton({ model, isPending, onToggleFreeze }: UtxoFreezeButtonProps) {
   const { txid, vout } = model.utxo;
 
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
@@ -21,13 +22,19 @@ export function UtxoFreezeButton({ model, onToggleFreeze }: UtxoFreezeButtonProp
   };
 
   const buttonState = model.isFrozen ? 'frozen' : 'default';
-  const title = model.isFrozen ? 'Unfreeze coin for spending' : 'Freeze coin to prevent spending';
+  const actionTitle = model.isFrozen ? 'Unfreeze coin for spending' : 'Freeze coin to prevent spending';
+  const title = isPending
+    ? model.isFrozen ? 'Freezing coin' : 'Unfreezing coin'
+    : actionTitle;
 
   return (
     <button
       onClick={handleClick}
+      disabled={isPending}
+      aria-busy={isPending}
+      aria-label={title}
       title={title}
-      className={`p-2 rounded-lg transition-colors ${FREEZE_BUTTON_CLASSES[buttonState]}`}
+      className={`p-2 rounded-lg transition-colors disabled:cursor-wait disabled:opacity-60 ${FREEZE_BUTTON_CLASSES[buttonState]}`}
     >
       {model.isFrozen ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
     </button>

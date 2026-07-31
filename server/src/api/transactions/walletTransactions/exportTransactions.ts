@@ -80,14 +80,14 @@ function toExportRow(tx: ExportTransactionRow): ExportRow {
     type: tx.type,
     amountBtc: signedAmount / 100_000_000,
     amountSats: signedAmount,
-    balanceAfterBtc: tx.balanceAfter ? Number(tx.balanceAfter) / 100_000_000 : null,
-    balanceAfterSats: tx.balanceAfter ? Number(tx.balanceAfter) : null,
-    feeSats: tx.fee ? Number(tx.fee) : null,
+    balanceAfterBtc: tx.balanceAfter == null ? null : Number(tx.balanceAfter) / 100_000_000,
+    balanceAfterSats: tx.balanceAfter == null ? null : Number(tx.balanceAfter),
+    feeSats: tx.fee == null ? null : Number(tx.fee),
     confirmations: tx.confirmations,
     label: tx.label || '',
     memo: tx.memo || '',
     counterpartyAddress: tx.counterpartyAddress || '',
-    blockHeight: tx.blockHeight ? Number(tx.blockHeight) : null,
+    blockHeight: tx.blockHeight == null ? null : Number(tx.blockHeight),
   };
 }
 

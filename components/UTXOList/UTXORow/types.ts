@@ -4,6 +4,7 @@ import type { UtxoPrivacyInfo } from '../../../src/api/transactions';
 export interface UTXORowProps {
   utxo: UTXO;
   isSelected: boolean;
+  isFreezePending?: boolean;
   selectable: boolean;
   onToggleSelect?: (id: string) => void;
   onToggleFreeze: (txid: string, vout: number) => void;

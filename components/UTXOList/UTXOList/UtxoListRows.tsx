@@ -6,6 +6,7 @@ import { getUtxoId } from './utxoListModel';
 interface UtxoListRowsProps {
   utxos: UTXO[];
   selectedUtxos: Set<string>;
+  pendingFreezeIds: Set<string>;
   selectable: boolean;
   onToggleSelect?: (id: string) => void;
   onToggleFreeze: (txid: string, vout: number) => void;
@@ -21,6 +22,7 @@ interface UtxoListRowsProps {
 export function UtxoListRows({
   utxos,
   selectedUtxos,
+  pendingFreezeIds,
   selectable,
   onToggleSelect,
   onToggleFreeze,
@@ -42,6 +44,7 @@ export function UtxoListRows({
             key={id}
             utxo={utxo}
             isSelected={selectedUtxos.has(id)}
+            isFreezePending={Boolean(utxo.id && pendingFreezeIds.has(utxo.id))}
             selectable={selectable}
             onToggleSelect={onToggleSelect}
             onToggleFreeze={onToggleFreeze}

@@ -6,7 +6,7 @@
  * Extracted from WalletDetail.tsx to isolate address-label concerns.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import * as labelsApi from '../../../src/api/labels';
 import type { Address, Label } from '../../../types';
 
@@ -44,6 +44,40 @@ export interface UseAddressLabelsReturn {
   handleCancelEditLabels: () => void;
 }
 
+interface AddressEditorTarget {
+  display: string;
+  id: string;
+  labels: Label[];
+}
+
+/**
+ * Wallet generation rejects cross-wallet completions, editor generation rejects
+ * stale modal ownership, and operation identifies the exact save within it.
+ */
+interface AddressSaveToken {
+  addressId: string;
+  display: string;
+  editorGeneration: number;
+  labels: Label[];
+  operation: number;
+  walletGeneration: number;
+  walletId: string;
+}
+
+function getAddressDisplay(address: Address, addressId: string): string {
+  const value = address.address;
+  if (typeof value === 'string' && value) return value;
+  return addressId;
+}
+
+function labelsForSnapshot(labelIds: string[], labels: Label[]): Label[] {
+  const labelsById = new Map(labels.map((label) => [label.id, label]));
+  return labelIds.flatMap((id) => {
+    const label = labelsById.get(id);
+    return label ? [label] : [];
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -57,34 +91,91 @@ export function useAddressLabels({
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
   const [savingAddressLabels, setSavingAddressLabels] = useState(false);
+  const mountedRef = useRef(true);
+  const walletIdRef = useRef(walletId);
+  walletIdRef.current = walletId;
+  const priorWalletIdRef = useRef(walletId);
+  const walletGenerationRef = useRef(0);
+  const editorGenerationRef = useRef(0);
+  const operationOwnerRef = useRef(0);
+  const editorTargetRef = useRef<AddressEditorTarget | null>(null);
+  const savingRef = useRef(false);
 
   const availableLabels = walletLabels;
 
+  const resetEditor = useCallback(() => {
+    editorGenerationRef.current += 1;
+    operationOwnerRef.current += 1;
+    editorTargetRef.current = null;
+    savingRef.current = false;
+    setEditingAddressId(null);
+    setSelectedLabelIds([]);
+    setSavingAddressLabels(false);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (priorWalletIdRef.current === walletId) return;
+    priorWalletIdRef.current = walletId;
+    walletGenerationRef.current += 1;
+    resetEditor();
+  }, [resetEditor, walletId]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      walletGenerationRef.current += 1;
+      editorGenerationRef.current += 1;
+      operationOwnerRef.current += 1;
+    };
+  }, []);
+
   const handleEditAddressLabels = useCallback(async (addr: Address) => {
     if (!addr.id || !walletId) return;
+    editorGenerationRef.current += 1;
+    operationOwnerRef.current += 1;
+    savingRef.current = false;
+    editorTargetRef.current = {
+      display: getAddressDisplay(addr, addr.id),
+      id: addr.id,
+      labels: addr.labels ?? [],
+    };
     setEditingAddressId(addr.id);
     setSelectedLabelIds(addr.labels?.map(l => l.id) || []);
+    setSavingAddressLabels(false);
   }, [walletId]);
 
   const handleSaveAddressLabels = useCallback(async () => {
-    if (!editingAddressId) return;
+    const target = editorTargetRef.current;
+    const activeWalletId = walletIdRef.current;
+    if (!target || !activeWalletId || savingRef.current) return;
+    const requestedLabelIds = [...selectedLabelIds];
+    const token: AddressSaveToken = {
+      addressId: target.id,
+      display: target.display,
+      editorGeneration: editorGenerationRef.current,
+      labels: labelsForSnapshot(requestedLabelIds, [...target.labels, ...availableLabels]),
+      operation: ++operationOwnerRef.current,
+      walletGeneration: walletGenerationRef.current,
+      walletId: activeWalletId,
+    };
+    savingRef.current = true;
+    setSavingAddressLabels(true);
     try {
-      setSavingAddressLabels(true);
-      await labelsApi.setAddressLabels(editingAddressId, selectedLabelIds);
-      // Update the address's labels locally
-      const updatedLabels = availableLabels.filter(l => selectedLabelIds.includes(l.id));
-      setAddresses(current =>
-        current.map(addr =>
-          addr.id === editingAddressId ? { ...addr, labels: updatedLabels } : addr
-        )
-      );
-      setEditingAddressId(null);
+      await labelsApi.setAddressLabels(token.addressId, requestedLabelIds);
+      if (!ownsWalletScope(token)) return;
+      setAddresses((current) => current.map((address) => (
+        address.id === token.addressId ? { ...address, labels: token.labels } : address
+      )));
+      if (ownsEditor(token)) resetEditor();
     } catch (err) {
-      handleError(err, 'Failed to Save Labels');
-    } finally {
+      if (!ownsWalletScope(token)) return;
+      handleError(err, `Failed to Save Labels for ${token.display}`);
+      if (!ownsEditor(token)) return;
+      savingRef.current = false;
       setSavingAddressLabels(false);
     }
-  }, [editingAddressId, selectedLabelIds, availableLabels, setAddresses, handleError]);
+  }, [availableLabels, handleError, resetEditor, selectedLabelIds, setAddresses]);
 
   const handleToggleAddressLabel = useCallback((labelId: string) => {
     setSelectedLabelIds(prev =>
@@ -95,8 +186,23 @@ export function useAddressLabels({
   }, []);
 
   const handleCancelEditLabels = useCallback(() => {
-    setEditingAddressId(null);
-  }, []);
+    resetEditor();
+  }, [resetEditor]);
+
+  function ownsWalletScope(token: AddressSaveToken): boolean {
+    return mountedRef.current
+      && token.walletGeneration === walletGenerationRef.current
+      && token.walletId === walletIdRef.current;
+  }
+
+  // Same-wallet stale saves may patch their captured address, but only the
+  // current editor operation owns modal-local state such as busy/close.
+  function ownsEditor(token: AddressSaveToken): boolean {
+    return ownsWalletScope(token)
+      && token.editorGeneration === editorGenerationRef.current
+      && token.operation === operationOwnerRef.current
+      && token.addressId === editorTargetRef.current?.id;
+  }
 
   return {
     editingAddressId,

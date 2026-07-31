@@ -11,6 +11,7 @@ import type { UTXORowProps } from './UTXORow/types';
 const UTXORowImpl: React.FC<UTXORowProps> = ({
   utxo,
   isSelected,
+  isFreezePending = false,
   selectable,
   onToggleSelect,
   onToggleFreeze,
@@ -52,7 +53,11 @@ const UTXORowImpl: React.FC<UTXORowProps> = ({
         </div>
 
         <div className="flex flex-col items-end space-y-2">
-          <UtxoFreezeButton model={model} onToggleFreeze={onToggleFreeze} />
+          <UtxoFreezeButton
+            model={model}
+            isPending={isFreezePending}
+            onToggleFreeze={onToggleFreeze}
+          />
           <UtxoAgeTransactionDetails
             utxo={utxo}
             network={network}

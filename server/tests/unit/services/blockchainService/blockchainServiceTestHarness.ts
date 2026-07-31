@@ -17,7 +17,7 @@ export const mockPrisma = {
     findFirst: vi.fn<any>(),
     findMany: vi.fn<any>(),
     create: vi.fn<any>(),
-    createMany: vi.fn<any>(),
+    createMany: vi.fn<any>().mockResolvedValue({ count: 1 }),
     update: vi.fn<any>(),
     updateMany: vi.fn<any>(),
     delete: vi.fn<any>(),
@@ -50,7 +50,11 @@ export const mockPrisma = {
   transactionLabel: {
     createMany: vi.fn<any>(),
   },
-  $transaction: vi.fn<any>((operations: any[]) => Promise.all(operations)),
+  $transaction: vi.fn<any>((operation: any) => (
+    typeof operation === 'function'
+      ? operation(mockPrisma)
+      : Promise.all(operation)
+  )),
 };
 
 vi.mock('../../../../src/models/prisma', () => ({

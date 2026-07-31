@@ -17,6 +17,7 @@ interface UTXOTabProps {
   onToggleFreeze: (txid: string, vout: number) => void;
   userRole: string;
   selectedUtxos: Set<string>;
+  pendingFreezeIds: Set<string>;
   onToggleSelect: (id: string) => void;
   onSendSelected: () => void;
   privacyData: UtxoPrivacyInfo[];
@@ -34,6 +35,7 @@ export const UTXOTab: React.FC<UTXOTabProps> = ({
   onToggleFreeze,
   userRole,
   selectedUtxos,
+  pendingFreezeIds,
   onToggleSelect,
   onSendSelected,
   privacyData,
@@ -54,6 +56,7 @@ export const UTXOTab: React.FC<UTXOTabProps> = ({
         onToggleFreeze={onToggleFreeze}
         selectable={canEdit}
         selectedUtxos={selectedUtxos}
+        pendingFreezeIds={pendingFreezeIds}
         onToggleSelect={onToggleSelect}
         onSendSelected={canEdit ? onSendSelected : undefined}
         privacyData={privacyData}
