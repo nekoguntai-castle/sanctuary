@@ -499,6 +499,7 @@ describe("TrezorAdapter class", () => {
 
     const response = await adapter.signPSBT({
       psbt: psbt.toBase64(),
+      walletId: "wallet-1",
       accountPath: "m/84'/0'/0'",
       inputPaths: ["m/84'/0'/0'/0/0"],
     });

@@ -19,6 +19,7 @@ export interface HardwareWalletDevice {
 }
 
 export interface PSBTSignRequest {
+  walletId?: string; // Required by adapters that fetch wallet-scoped transaction data
   psbt: string; // Base64 encoded PSBT
   inputPaths: string[]; // Derivation paths for inputs to sign
   changeOutputs?: number[]; // Indices of change outputs

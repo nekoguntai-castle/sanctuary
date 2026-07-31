@@ -545,15 +545,16 @@ export const bitcoinPaths = {
         "Check whether a transaction can be replaced with Replace-By-Fee.",
       security: bearerAuth,
       parameters: [txidParameter],
-      requestBody: optionalJsonRequestBody(
-        "#/components/schemas/RbfCheckRequest",
-      ),
+      requestBody: jsonRequestBody("#/components/schemas/RbfCheckRequest"),
       responses: {
         200: jsonResponse(
           "RBF eligibility result",
           "#/components/schemas/RbfCheckResponse",
         ),
+        400: apiErrorResponse,
         401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
@@ -575,6 +576,7 @@ export const bitcoinPaths = {
         400: apiErrorResponse,
         401: apiErrorResponse,
         403: apiErrorResponse,
+        404: apiErrorResponse,
         500: apiErrorResponse,
       },
     },

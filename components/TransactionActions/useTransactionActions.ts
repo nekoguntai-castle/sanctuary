@@ -42,7 +42,7 @@ export function useTransactionActions({
 
       try {
         setLoading(true);
-        const result = await bitcoinApi.checkRBF(txid);
+        const result = await bitcoinApi.checkRBF(txid, walletId);
         if (!mounted) return;
 
         setRbfStatus(result);
@@ -61,7 +61,7 @@ export function useTransactionActions({
     return () => {
       mounted = false;
     };
-  }, [txid, confirmed]);
+  }, [txid, walletId, confirmed]);
 
   const handleRBF = async () => {
     if (!rbfStatus?.replaceable || !newFeeRate) return;
@@ -70,7 +70,7 @@ export function useTransactionActions({
       setProcessing(true);
       setError(null);
 
-      const originalTx = await transactionsApi.getTransaction(txid);
+      const originalTx = await transactionsApi.getTransaction(walletId, txid);
       const result = await bitcoinApi.createRBFTransaction(txid, {
         newFeeRate,
         walletId,

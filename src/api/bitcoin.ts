@@ -358,11 +358,11 @@ export async function getAdvancedFeeEstimates(network?: BitcoinFeeNetwork): Prom
  */
 export async function checkRBF(
   txid: string,
-  network?: BitcoinFeeNetwork
+  walletId: string
 ): Promise<RBFCheckResult> {
   return apiClient.post<RBFCheckResult>(
     `/bitcoin/transaction/${txid}/rbf-check`,
-    network ? { network } : {}
+    { walletId }
   );
 }
 

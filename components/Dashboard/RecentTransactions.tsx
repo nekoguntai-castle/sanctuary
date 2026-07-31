@@ -32,7 +32,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
          showWalletBadge={true}
          wallets={wallets}
          onWalletClick={(id) => navigate(`/wallets/${id}`)}
-         onTransactionClick={(tx) => navigate(`/wallets/${tx.walletId}`, { state: { highlightTxId: tx.id } })}
+         onTransactionClick={(tx) => navigate(`/wallets/${tx.walletId}?tx=${encodeURIComponent(tx.txid)}`)}
          confirmationThreshold={confirmationThreshold}
          deepConfirmationThreshold={deepConfirmationThreshold}
       />

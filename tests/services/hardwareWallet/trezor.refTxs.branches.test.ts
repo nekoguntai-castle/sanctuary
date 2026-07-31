@@ -72,9 +72,17 @@ describe('trezor refTxs branch coverage', () => {
       'bb'.repeat(32),
     ]);
 
-    const refTxs = await fetchRefTxs(psbt);
+    const refTxs = await fetchRefTxs(psbt, 'wallet-primary');
 
     expect(mockApiGet).toHaveBeenCalledTimes(2);
+    expect(mockApiGet).toHaveBeenNthCalledWith(
+      1,
+      `/wallets/wallet-primary/transactions/${'aa'.repeat(32)}/raw`
+    );
+    expect(mockApiGet).toHaveBeenNthCalledWith(
+      2,
+      `/wallets/wallet-primary/transactions/${'bb'.repeat(32)}/raw`
+    );
     expect(refTxs).toHaveLength(2);
     expect(refTxs[0]).toEqual(
       expect.objectContaining({
@@ -106,12 +114,29 @@ describe('trezor refTxs branch coverage', () => {
       .mockResolvedValueOnce({ hex: makeRawTxHex() })
       .mockRejectedValueOnce(new Error('ref tx unavailable'));
 
-    const refTxs = await fetchRefTxs(psbt);
+    const refTxs = await fetchRefTxs(psbt, 'wallet-primary');
 
     expect(refTxs).toHaveLength(1);
     expect(mockLoggerWarn).toHaveBeenCalledWith(
       'Failed to fetch reference transaction',
       expect.any(Object)
+    );
+  });
+
+  it('keeps the same txid scoped to the wallet selected for signing', async () => {
+    const txid = 'ee'.repeat(32);
+    const psbt = makePsbtWithInputs([txid]);
+
+    await fetchRefTxs(psbt, 'wallet-one');
+    await fetchRefTxs(psbt, 'wallet-two');
+
+    expect(mockApiGet).toHaveBeenNthCalledWith(
+      1,
+      `/wallets/wallet-one/transactions/${txid}/raw`
+    );
+    expect(mockApiGet).toHaveBeenNthCalledWith(
+      2,
+      `/wallets/wallet-two/transactions/${txid}/raw`
     );
   });
 });

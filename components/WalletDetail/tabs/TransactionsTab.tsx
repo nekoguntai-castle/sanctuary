@@ -78,6 +78,8 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
 
       <TransactionList
         transactions={filteredTransactions}
+        selectionTransactions={transactions}
+        walletId={walletId}
         highlightedTxId={highlightTxId}
         onLabelsChange={onLabelsChange}
         walletAddresses={walletAddressStrings}

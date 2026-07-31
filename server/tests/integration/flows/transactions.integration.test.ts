@@ -596,6 +596,78 @@ describeWithDb('Transaction API Integration', () => {
         .set(authHeader(token))
         .expect(404);
     });
+
+    it('scopes duplicate txids by wallet and rejects ambiguous legacy lookup', async () => {
+      const { userId, token } = await createAndLoginUser(app, prisma);
+      const wallet1Id = await createWalletWithData(app, token, userId);
+      const wallet2Id = await createWalletWithData(app, token, userId);
+      const sharedTxid = uniqueTxid('shared-wallet-scope');
+      const [wallet1Transaction, wallet2Transaction] = await Promise.all([
+        prisma.transaction.findFirstOrThrow({ where: { walletId: wallet1Id } }),
+        prisma.transaction.findFirstOrThrow({ where: { walletId: wallet2Id } }),
+      ]);
+
+      await Promise.all([
+        prisma.transaction.update({
+          where: { id: wallet1Transaction.id },
+          data: { txid: sharedTxid, label: 'Wallet one label', rawTx: 'wallet-one-raw' },
+        }),
+        prisma.transaction.update({
+          where: { id: wallet2Transaction.id },
+          data: { txid: sharedTxid, label: 'Wallet two label', rawTx: 'wallet-two-raw' },
+        }),
+      ]);
+
+      const wallet1Response = await request(app)
+        .get(`/api/v1/transactions/wallets/${wallet1Id}/transactions/${sharedTxid}`)
+        .set(authHeader(token))
+        .expect(200);
+      const wallet2Response = await request(app)
+        .get(`/api/v1/transactions/wallets/${wallet2Id}/transactions/${sharedTxid}`)
+        .set(authHeader(token))
+        .expect(200);
+      const legacyResponse = await request(app)
+        .get(`/api/v1/transactions/transactions/${sharedTxid}`)
+        .set(authHeader(token))
+        .expect(409);
+      const wallet1RawResponse = await request(app)
+        .get(`/api/v1/transactions/wallets/${wallet1Id}/transactions/${sharedTxid}/raw`)
+        .set(authHeader(token))
+        .expect(200);
+      const legacyRawResponse = await request(app)
+        .get(`/api/v1/transactions/transactions/${sharedTxid}/raw`)
+        .set(authHeader(token))
+        .expect(409);
+
+      expect(wallet1Response.body).toMatchObject({
+        walletId: wallet1Id,
+        label: 'Wallet one label',
+      });
+      expect(wallet2Response.body).toMatchObject({
+        walletId: wallet2Id,
+        label: 'Wallet two label',
+      });
+      expect(legacyResponse.body.code).toBe('CONFLICT');
+      expect(legacyResponse.body).not.toHaveProperty('txid');
+      expect(legacyResponse.headers.deprecation).toBe('true');
+      expect(wallet1RawResponse.body).toEqual({ hex: 'wallet-one-raw' });
+      expect(legacyRawResponse.body).not.toHaveProperty('hex');
+      expect(legacyRawResponse.headers.deprecation).toBe('true');
+    });
+
+    it('returns 404 when a txid exists only in another accessible wallet', async () => {
+      const { userId, token } = await createAndLoginUser(app, prisma);
+      const wallet1Id = await createWalletWithData(app, token, userId);
+      const wallet2Id = await createWalletWithData(app, token, userId);
+      const transaction = await prisma.transaction.findFirstOrThrow({
+        where: { walletId: wallet1Id },
+      });
+
+      await request(app)
+        .get(`/api/v1/transactions/wallets/${wallet2Id}/transactions/${transaction.txid}`)
+        .set(authHeader(token))
+        .expect(404);
+    });
   });
 
   describe('GET /wallets/:walletId/utxos/recommended-strategy', () => {

@@ -20,7 +20,7 @@ vi.mock('../../../components/TransactionList', () => ({
     return (
       <div data-testid="transaction-list">
         <button onClick={() => props.onWalletClick?.('wallet-1')}>Trigger Wallet</button>
-        <button onClick={() => props.onTransactionClick?.({ id: 'tx-1', walletId: 'wallet-2' })}>
+        <button onClick={() => props.onTransactionClick?.({ id: 'tx-1', txid: 'abc123', walletId: 'wallet-2' })}>
           Trigger Tx
         </button>
       </div>
@@ -76,8 +76,6 @@ describe('RecentTransactions', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-1');
 
     await user.click(screen.getByRole('button', { name: 'Trigger Tx' }));
-    expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-2', {
-      state: { highlightTxId: 'tx-1' },
-    });
+    expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-2?tx=abc123');
   });
 });

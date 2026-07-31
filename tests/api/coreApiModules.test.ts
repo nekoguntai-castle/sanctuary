@@ -202,8 +202,8 @@ describe('Core API Modules', () => {
 
       await bitcoinApi.getAdvancedFeeEstimates();
       await bitcoinApi.getAdvancedFeeEstimates('testnet4');
-      await bitcoinApi.checkRBF('txid-2');
-      await bitcoinApi.checkRBF('txid-3', 'testnet3');
+      await bitcoinApi.checkRBF('txid-2', 'w1');
+      await bitcoinApi.checkRBF('txid-3', 'w2');
       await bitcoinApi.createRBFTransaction('txid-2', { walletId: 'w1', newFeeRate: 20 });
       await bitcoinApi.createCPFPTransaction({
         walletId: 'w1',
@@ -224,8 +224,8 @@ describe('Core API Modules', () => {
 
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees/advanced', undefined);
       expect(mockGet).toHaveBeenCalledWith('/bitcoin/fees/advanced', { network: 'testnet4' });
-      expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-2/rbf-check', {});
-      expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-3/rbf-check', { network: 'testnet3' });
+      expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-2/rbf-check', { walletId: 'w1' });
+      expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-3/rbf-check', { walletId: 'w2' });
       expect(mockPost).toHaveBeenCalledWith('/bitcoin/transaction/txid-2/rbf', {
         walletId: 'w1',
         newFeeRate: 20,

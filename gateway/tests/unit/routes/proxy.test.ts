@@ -328,22 +328,29 @@ describe('Proxy Routes', () => {
         expect(isAllowedRoute('GET', `/api/v1/wallets/${validUuid}/transactions`)).toBe(true);
       });
 
-      it('should allow GET single transaction by backend txid route', () => {
+      it('should allow canonical wallet-scoped transaction detail', () => {
+        expect(isAllowedRoute('GET', `/api/v1/wallets/${validUuid}/transactions/${validTxid}`)).toBe(true);
+      });
+
+      it('should block malformed canonical transaction identities', () => {
+        expect(isAllowedRoute('GET', `/api/v1/wallets/not-a-uuid/transactions/${validTxid}`)).toBe(false);
+        expect(isAllowedRoute('GET', `/api/v1/wallets/${validUuid}/transactions/${'a'.repeat(63)}`)).toBe(false);
+        expect(isAllowedRoute('GET', `/api/v1/wallets/${validUuid}/transactions/${'a'.repeat(65)}`)).toBe(false);
+        expect(isAllowedRoute('GET', `/api/v1/wallets/${validUuid}/transactions/${'A'.repeat(64)}`)).toBe(false);
+      });
+
+      it('should retain deprecated txid-only transaction detail during its compatibility window', () => {
         expect(isAllowedRoute('GET', `/api/v1/transactions/${validTxid}`)).toBe(true);
       });
 
-      it('should block malformed transaction txids', () => {
-        expect(isAllowedRoute('GET', `/api/v1/transactions/${'a'.repeat(63)}`)).toBe(false);
-        expect(isAllowedRoute('GET', `/api/v1/transactions/${'a'.repeat(65)}`)).toBe(false);
-        expect(isAllowedRoute('GET', `/api/v1/transactions/${'A'.repeat(64)}`)).toBe(false);
-      });
-
-      it('should block legacy wallet-scoped single transaction route', () => {
-        expect(isAllowedRoute('GET', `/api/v1/wallets/${validUuid}/transactions/${validTxid}`)).toBe(false);
-      });
-
-      it('should block raw transaction detail unless explicitly exposed', () => {
+      it('should block both canonical and deprecated raw transaction detail', () => {
+        expect(isAllowedRoute('GET', `/api/v1/wallets/${validUuid}/transactions/${validTxid}/raw`)).toBe(false);
         expect(isAllowedRoute('GET', `/api/v1/transactions/${validTxid}/raw`)).toBe(false);
+      });
+
+      it('should block non-GET methods on canonical transaction detail', () => {
+        expect(isAllowedRoute('POST', `/api/v1/wallets/${validUuid}/transactions/${validTxid}`)).toBe(false);
+        expect(isAllowedRoute('DELETE', `/api/v1/wallets/${validUuid}/transactions/${validTxid}`)).toBe(false);
       });
 
       it('should allow POST transaction create', () => {

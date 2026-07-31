@@ -114,10 +114,27 @@ export async function findByWalletIdPaginated(
   };
 }
 
-export async function findByTxid(txid: string, walletId: string): Promise<Transaction | null> {
-  return prisma.transaction.findFirst({
-    where: { txid, walletId },
-  });
+type FindByTxidOptions = Pick<Prisma.TransactionFindUniqueArgs, 'select' | 'include'>;
+
+export async function findByTxid(txid: string, walletId: string): Promise<Transaction | null>;
+export async function findByTxid<T extends FindByTxidOptions>(
+  txid: string,
+  walletId: string,
+  options: T
+): Promise<Prisma.TransactionGetPayload<T> | null>;
+export async function findByTxid(
+  txid: string,
+  walletId: string,
+  options?: FindByTxidOptions
+) {
+  const query: Prisma.TransactionFindUniqueArgs = {
+    where: {
+      txid_walletId: { txid, walletId },
+    },
+  };
+  if (options?.select) query.select = options.select;
+  if (options?.include) query.include = options.include;
+  return prisma.transaction.findUnique(query);
 }
 
 export async function findManyByTxids(txids: string[], walletId: string): Promise<Transaction[]> {
@@ -260,23 +277,26 @@ export async function findByIdWithAccess(
   return prisma.transaction.findFirst(query);
 }
 
-type FindByTxidWithAccessOptions = Omit<Prisma.TransactionFindFirstArgs, 'where'>;
+type FindAccessibleByTxidMatchesOptions = Pick<
+  Prisma.TransactionFindManyArgs,
+  'select' | 'include'
+>;
 
-export async function findByTxidWithAccess(
+export async function findAccessibleByTxidMatches(
   txid: string,
   userId: string
-): Promise<Transaction | null>;
-export async function findByTxidWithAccess<T extends FindByTxidWithAccessOptions>(
+): Promise<Transaction[]>;
+export async function findAccessibleByTxidMatches<T extends FindAccessibleByTxidMatchesOptions>(
   txid: string,
   userId: string,
   options: T
-): Promise<Prisma.TransactionGetPayload<T> | null>;
-export async function findByTxidWithAccess(
+): Promise<Array<Prisma.TransactionGetPayload<T>>>;
+export async function findAccessibleByTxidMatches(
   txid: string,
   userId: string,
-  options?: FindByTxidWithAccessOptions
+  options?: FindAccessibleByTxidMatchesOptions
 ) {
-  const query: Prisma.TransactionFindFirstArgs = {
+  const query: Prisma.TransactionFindManyArgs = {
     where: {
       txid,
       wallet: {
@@ -286,10 +306,12 @@ export async function findByTxidWithAccess(
         ],
       },
     },
+    orderBy: [{ walletId: 'asc' }, { id: 'asc' }],
+    take: 2,
   };
   if (options?.select) query.select = options.select;
   if (options?.include) query.include = options.include;
-  return prisma.transaction.findFirst(query);
+  return prisma.transaction.findMany(query);
 }
 
 export async function groupByType(walletId: string) {
@@ -401,10 +423,4 @@ export async function findWalletIdsWithPendingConfirmations(
     distinct: ['walletId'],
   });
   return results.map(r => r.walletId);
-}
-
-export async function findByTxidGlobal(txid: string): Promise<Transaction | null> {
-  return prisma.transaction.findFirst({
-    where: { txid },
-  });
 }

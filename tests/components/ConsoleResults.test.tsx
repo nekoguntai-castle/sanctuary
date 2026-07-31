@@ -281,8 +281,9 @@ describe("ConsoleResults", () => {
         onLocationChange.mock.calls.some(
           ([location]) =>
             location.pathname === "/wallets/wallet-1" &&
+            location.search === "?tx=tx-wallet-1" &&
             location.state?.activeTab === "tx" &&
-            location.state?.highlightTxId === "wallet-1-tx-wallet-1",
+            location.state?.highlightTxId === undefined,
         ),
       ).toBe(true);
     });

@@ -394,10 +394,16 @@ describe('useHardwareWallet', () => {
 
       let signResult: { psbt: string; rawTx?: string } | undefined;
       await act(async () => {
-        signResult = await result.current.signPSBT(mockPsbt, mockInputPaths);
+        signResult = await result.current.signPSBT(
+          mockPsbt,
+          mockInputPaths,
+          undefined,
+          'wallet-123'
+        );
       });
 
       expect(mockSignPSBT).toHaveBeenCalledWith({
+        walletId: 'wallet-123',
         psbt: mockPsbt,
         inputPaths: mockInputPaths,
       });

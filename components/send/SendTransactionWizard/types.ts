@@ -13,6 +13,7 @@ export interface DraftTransactionData {
 }
 
 export interface SendWizardActionHandlerProps {
+  walletId: string;
   actions: UseSendTransactionActionsResult;
   hardwareWallet: UseHardwareWalletReturn;
 }

@@ -436,6 +436,12 @@ export function registerOpenApiCoreTests() {
     expect(
       openApiSpec.components.schemas.RbfCheckResponse.properties,
     ).not.toHaveProperty("canReplace");
+    expect(openApiSpec.components.schemas.RbfCheckRequest.required).toEqual([
+      "walletId",
+    ]);
+    expect(
+      openApiSpec.components.schemas.RbfCheckRequest.properties,
+    ).not.toHaveProperty("network");
     expect(openApiSpec.components.schemas.RbfRequest.required).toEqual([
       "newFeeRate",
       "walletId",

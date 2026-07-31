@@ -36,6 +36,26 @@ const apiErrorResponse = {
   },
 } as const;
 
+const legacyDeprecationHeaders = {
+  Deprecation: {
+    description: 'Indicates that the txid-only route is deprecated.',
+    schema: { type: 'string', example: 'true' },
+  },
+  Sunset: {
+    description: 'Date after which the txid-only route may be removed.',
+    schema: { type: 'string', format: 'http-date', example: 'Sat, 31 Jul 2027 00:00:00 GMT' },
+  },
+  Link: {
+    description: 'Points to the wallet-scoped successor route.',
+    schema: { type: 'string' },
+  },
+} as const;
+
+const legacyApiErrorResponse = {
+  ...apiErrorResponse,
+  headers: legacyDeprecationHeaders,
+} as const;
+
 const jsonRequestBody = (schemaRef: string) => ({
   required: true,
   content: {
@@ -97,13 +117,18 @@ export const transactionPaths = {
     get: {
       tags: ['Transactions'],
       summary: 'Get transaction detail',
-      description: 'Get a transaction by txid if it belongs to a wallet the user can access.',
+      description: 'Deprecated txid-only lookup. Use the wallet-scoped transaction detail route.',
+      deprecated: true,
       security: bearerAuth,
       parameters: [txidParameter],
       responses: {
-        200: jsonResponse('Transaction detail', '#/components/schemas/Transaction'),
+        200: {
+          ...jsonResponse('Transaction detail', '#/components/schemas/Transaction'),
+          headers: legacyDeprecationHeaders,
+        },
         401: apiErrorResponse,
-        404: apiErrorResponse,
+        404: legacyApiErrorResponse,
+        409: legacyApiErrorResponse,
       },
     },
   },
@@ -111,12 +136,48 @@ export const transactionPaths = {
     get: {
       tags: ['Transactions'],
       summary: 'Get raw transaction hex',
-      description: 'Get raw transaction hex for hardware-wallet previous-transaction signing data.',
+      description: 'Deprecated txid-only raw lookup. Use the wallet-scoped raw transaction route.',
+      deprecated: true,
       security: bearerAuth,
       parameters: [txidParameter],
       responses: {
+        200: {
+          ...jsonResponse('Raw transaction hex', '#/components/schemas/RawTransactionResponse'),
+          headers: legacyDeprecationHeaders,
+        },
+        401: apiErrorResponse,
+        404: legacyApiErrorResponse,
+        409: legacyApiErrorResponse,
+        500: legacyApiErrorResponse,
+      },
+    },
+  },
+  '/wallets/{walletId}/transactions/{txid}': {
+    get: {
+      tags: ['Transactions'],
+      summary: 'Get wallet transaction detail',
+      description: 'Get a transaction by txid within a wallet the user can view.',
+      security: bearerAuth,
+      parameters: [walletIdParameter, txidParameter],
+      responses: {
+        200: jsonResponse('Wallet transaction detail', '#/components/schemas/Transaction'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+      },
+    },
+  },
+  '/wallets/{walletId}/transactions/{txid}/raw': {
+    get: {
+      tags: ['Transactions'],
+      summary: 'Get wallet-scoped raw transaction hex',
+      description: 'Get stored or externally resolved raw transaction hex using the authorized wallet network.',
+      security: bearerAuth,
+      parameters: [walletIdParameter, txidParameter],
+      responses: {
         200: jsonResponse('Raw transaction hex', '#/components/schemas/RawTransactionResponse'),
         401: apiErrorResponse,
+        403: apiErrorResponse,
         404: apiErrorResponse,
         500: apiErrorResponse,
       },

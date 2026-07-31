@@ -100,7 +100,8 @@ describe('useUsbSigning', () => {
       [],
       expect.objectContaining({
         a1b2c3d4: expect.stringContaining('xpub'),
-      })
+      }),
+      'wallet-1'
     );
   });
 
@@ -336,7 +337,8 @@ describe('useUsbSigning', () => {
       ["m/48'/0'/0'/2'/0/0"],
       expect.objectContaining({
         a1b2c3d4: expect.stringContaining('xpub'),
-      })
+      }),
+      'wallet-1'
     );
     expect(deps.setUnsignedPsbt).toHaveBeenCalledWith('multisig-signed-psbt');
     expect(deps.setSignedRawTx).not.toHaveBeenCalled();

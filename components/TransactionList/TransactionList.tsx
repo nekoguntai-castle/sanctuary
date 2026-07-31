@@ -15,6 +15,8 @@ const EMPTY_ADDRESSES: string[] = [];
 
 interface TransactionListProps {
   transactions: Transaction[];
+  walletId?: string;
+  selectionTransactions?: Transaction[];
   showWalletBadge?: boolean;
   wallets?: Wallet[];
   walletAddresses?: string[]; // All addresses belonging to this wallet for consolidation detection
@@ -34,6 +36,8 @@ const EMPTY_LABELS: Label[] = [];
 
 export const TransactionList: React.FC<TransactionListProps> = ({
   transactions,
+  walletId,
+  selectionTransactions,
   showWalletBadge = false,
   wallets = EMPTY_WALLETS,
   walletAddresses = EMPTY_ADDRESSES,
@@ -64,6 +68,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     savingLabels,
     fullTxDetails,
     loadingDetails,
+    selectionStatus,
+    selectionError,
+    retrySelection,
     filteredTransactions,
     virtuosoRef,
     txStats,
@@ -77,6 +84,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     getTxTypeInfo,
   } = useTransactionList({
     transactions,
+    walletId,
+    selectionTransactions,
     wallets,
     walletAddresses,
     walletLabels,
@@ -91,13 +100,11 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   const [tableHeight, setTableHeight] = useState(600);
 
   const recalcHeight = useCallback(() => {
-    if (tableContainerRef.current) {
-      const rect = tableContainerRef.current.getBoundingClientRect();
-      const bottomMargin = 32; // breathing room at bottom
-      const available = window.innerHeight - rect.top - bottomMargin;
-      const contentHeight = filteredTransactions.length * 52 + 48;
-      setTableHeight(Math.max(300, Math.min(contentHeight, available)));
-    }
+    const rect = tableContainerRef.current!.getBoundingClientRect();
+    const bottomMargin = 32; // breathing room at bottom
+    const available = window.innerHeight - rect.top - bottomMargin;
+    const contentHeight = filteredTransactions.length * 52 + 48;
+    setTableHeight(Math.max(300, Math.min(contentHeight, available)));
   }, [filteredTransactions.length]);
 
   useEffect(() => {
@@ -105,15 +112,6 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     window.addEventListener('resize', recalcHeight);
     return () => window.removeEventListener('resize', recalcHeight);
   }, [recalcHeight]);
-
-  // Early return AFTER all hooks have been called
-  if (filteredTransactions.length === 0) {
-    return (
-      <div className="text-center py-10">
-        <p className="text-sanctuary-400 dark:text-sanctuary-500">No transactions found.</p>
-      </div>
-    );
-  }
 
   // Shared by the phone modal and the tablet+ split pane — both render the same
   // TransactionDetailsBody, so the detail props are assembled once here.
@@ -152,24 +150,37 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           ref={tableContainerRef}
           className={ownsSelection ? 'tablet:flex-1 tablet:min-w-0' : undefined}
         >
-          <TransactionTable
-            filteredTransactions={filteredTransactions}
-            virtuosoRef={virtuosoRef}
-            tableHeight={tableHeight}
-            showWalletBadge={showWalletBadge}
-            walletBalance={walletBalance}
-            confirmationThreshold={confirmationThreshold}
-            deepConfirmationThreshold={deepConfirmationThreshold}
-            highlightedTxId={highlightedTxId}
-            getWallet={getWallet}
-            getTxTypeInfo={getTxTypeInfo}
-            onWalletClick={onWalletClick}
-            onTxClick={handleTxClick}
-          />
+          {filteredTransactions.length === 0 ? (
+            <div className="flex min-h-[300px] items-center justify-center text-center py-10">
+              <p className="text-sanctuary-400 dark:text-sanctuary-500">No transactions found.</p>
+            </div>
+          ) : (
+            <TransactionTable
+              filteredTransactions={filteredTransactions}
+              virtuosoRef={virtuosoRef}
+              tableHeight={tableHeight}
+              showWalletBadge={showWalletBadge}
+              walletBalance={walletBalance}
+              confirmationThreshold={confirmationThreshold}
+              deepConfirmationThreshold={deepConfirmationThreshold}
+              highlightedTxId={highlightedTxId}
+              getWallet={getWallet}
+              getTxTypeInfo={getTxTypeInfo}
+              onWalletClick={onWalletClick}
+              onTxClick={handleTxClick}
+            />
+          )}
         </div>
 
         {ownsSelection && (
-          <TransactionDetail selectedTx={selectedTx} tableHeight={tableHeight} {...detailProps} />
+          <TransactionDetail
+            selectedTx={selectedTx}
+            tableHeight={tableHeight}
+            selectionStatus={selectionStatus}
+            selectionError={selectionError}
+            onRetrySelection={retrySelection}
+            {...detailProps}
+          />
         )}
       </div>
     </>

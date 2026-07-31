@@ -29,6 +29,8 @@ export function registerOpenApiWalletTests() {
   it('documents transaction helper, UTXO selection, and privacy routes', () => {
     const routes: Array<[OpenApiPathKey, string]> = [
       ['/transactions/{txid}/raw', 'get'],
+      ['/wallets/{walletId}/transactions/{txid}', 'get'],
+      ['/wallets/{walletId}/transactions/{txid}/raw', 'get'],
       ['/transactions/recent', 'get'],
       ['/transactions/balance-history', 'get'],
       ['/utxos/{utxoId}/freeze', 'patch'],
@@ -53,6 +55,28 @@ export function registerOpenApiWalletTests() {
       $ref: '#/components/schemas/RawTransactionResponse',
     });
     expect(openApiSpec.components.schemas.RawTransactionResponse.required).toEqual(['hex']);
+    expect(openApiSpec.paths['/transactions/{txid}'].get).toMatchObject({
+      deprecated: true,
+      responses: {
+        200: { headers: expect.objectContaining({ Deprecation: expect.any(Object), Sunset: expect.any(Object), Link: expect.any(Object) }) },
+        409: expect.any(Object),
+      },
+    });
+    expect(openApiSpec.paths['/transactions/{txid}/raw'].get).toMatchObject({
+      deprecated: true,
+      responses: {
+        200: { headers: expect.objectContaining({ Deprecation: expect.any(Object), Sunset: expect.any(Object), Link: expect.any(Object) }) },
+        409: expect.any(Object),
+      },
+    });
+    expect(openApiSpec.paths['/wallets/{walletId}/transactions/{txid}'].get.responses).toMatchObject({
+      200: expect.any(Object),
+      403: expect.any(Object),
+      404: expect.any(Object),
+    });
+    expect(openApiSpec.paths['/wallets/{walletId}/transactions/{txid}/raw'].get.responses[200].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/RawTransactionResponse',
+    });
 
     expect(openApiSpec.paths['/transactions/recent'].get.parameters).toContainEqual(expect.objectContaining({
       name: 'limit',

@@ -22,12 +22,13 @@ async function broadcastSignedRawTx(actions: UseSendTransactionActionsResult): P
 async function broadcastWithConnectedHardwareWallet({
   actions,
   hardwareWallet,
+  walletId,
 }: SendWizardActionHandlerProps, txData: TransactionData): Promise<boolean> {
   if (!hardwareWallet.isConnected || !hardwareWallet.device) {
     return false;
   }
 
-  const signResult = await hardwareWallet.signPSBT(txData.psbtBase64);
+  const signResult = await hardwareWallet.signPSBT(txData.psbtBase64, [], undefined, walletId);
   if (signResult.psbt || signResult.rawTx) {
     await actions.broadcastTransaction(signResult.psbt, signResult.rawTx);
   }
@@ -86,11 +87,12 @@ async function signMultisigTransaction(actions: UseSendTransactionActionsResult)
 export function useSendWizardActionHandlers({
   actions,
   hardwareWallet,
+  walletId,
 }: SendWizardActionHandlerProps) {
 
   const handleSignAndBroadcast = useCallback(async () => {
-    await signAndBroadcastTransaction({ actions, hardwareWallet });
-  }, [actions, hardwareWallet]);
+    await signAndBroadcastTransaction({ walletId, actions, hardwareWallet });
+  }, [walletId, actions, hardwareWallet]);
 
   const handleSign = useCallback(async () => {
     await signMultisigTransaction(actions);

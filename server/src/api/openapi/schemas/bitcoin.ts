@@ -395,12 +395,9 @@ export const bitcoinSchemas = {
   RbfCheckRequest: {
     type: "object",
     properties: {
-      network: {
-        type: "string",
-        enum: [...BITCOIN_NETWORKS],
-        default: "mainnet",
-      },
+      walletId: { type: "string" },
     },
+    required: ["walletId"],
     additionalProperties: false,
   },
   RbfRequest: {

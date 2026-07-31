@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { TransactionDetailsBody } from './TransactionDetailsBody';
 import { TransactionDetailsHeader } from './TransactionDetailsHeader';
 import type { TransactionDetailProps } from './types';
@@ -15,6 +16,29 @@ import type { TransactionDetailProps } from './types';
  * away entirely (the list is shown instead).
  */
 export function TransactionDetail({ selectedTx, tableHeight, ...rest }: TransactionDetailProps) {
+  if (rest.selectionStatus === 'error') {
+    return (
+      <SelectionStatusView tableHeight={tableHeight} onClose={rest.onClose}>
+        <p className="text-sm text-red-600 dark:text-red-400">
+          {rest.selectionError || 'Failed to load transaction details'}
+        </p>
+        <button type="button" className="btn-secondary" onClick={rest.onRetrySelection}>
+          Retry
+        </button>
+      </SelectionStatusView>
+    );
+  }
+
+  if (!selectedTx && rest.selectionStatus === 'loading') {
+    return (
+      <SelectionStatusView tableHeight={tableHeight} onClose={rest.onClose}>
+        <p className="text-sm text-sanctuary-500 dark:text-sanctuary-400">
+          Loading transaction details…
+        </p>
+      </SelectionStatusView>
+    );
+  }
+
   if (!selectedTx) {
     return (
       <aside
@@ -45,6 +69,34 @@ export function TransactionDetail({ selectedTx, tableHeight, ...rest }: Transact
         <TransactionDetailsHeader selectedTx={selectedTx} onClose={rest.onClose} />
         <TransactionDetailsBody selectedTx={selectedTx} {...rest} />
       </div>
+    </div>
+  );
+}
+
+function SelectionStatusView({
+  children,
+  onClose,
+  tableHeight,
+}: {
+  children: ReactNode;
+  onClose: () => void;
+  tableHeight: number;
+}) {
+  return (
+    <div
+      data-testid="transaction-detail-status"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm tablet:static tablet:z-auto tablet:block tablet:w-80 xl:w-[28rem] tablet:flex-shrink-0 tablet:p-0 tablet:bg-transparent tablet:backdrop-blur-none"
+      onClick={onClose}
+    >
+      <aside
+        className="surface-elevated rounded-xl w-full max-w-md border border-sanctuary-200 dark:border-sanctuary-800 tablet:w-full"
+        style={{ height: tableHeight }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
+          {children}
+        </div>
+      </aside>
     </div>
   );
 }

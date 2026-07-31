@@ -153,7 +153,7 @@ export async function handleAddressUpdate(address: string, _walletId: string): P
 export async function handleTransaction(txid: string, walletId: string, _address: string): Promise<void> {
   try {
     // Check if transaction already exists
-    const existing = await transactionRepository.findByTxidGlobal(txid);
+    const existing = await transactionRepository.findByTxid(txid, walletId);
 
     if (existing) {
       // Check for confirmation updates
@@ -182,7 +182,7 @@ export async function handleTransaction(txid: string, walletId: string, _address
  */
 export async function checkConfirmationUpdate(txid: string, walletId: string): Promise<void> {
   try {
-    const transaction = await transactionRepository.findByTxidGlobal(txid);
+    const transaction = await transactionRepository.findByTxid(txid, walletId);
 
     if (!transaction) return;
 

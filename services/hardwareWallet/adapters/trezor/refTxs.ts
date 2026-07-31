@@ -14,7 +14,7 @@ const log = createLogger('TrezorAdapter');
 /**
  * Fetch reference transactions needed for Trezor signing
  */
-export async function fetchRefTxs(psbt: bitcoin.Psbt): Promise<any[]> {
+export async function fetchRefTxs(psbt: bitcoin.Psbt, walletId: string): Promise<any[]> {
   const refTxs: any[] = [];
   const seenTxids = new Set<string>();
 
@@ -26,7 +26,9 @@ export async function fetchRefTxs(psbt: bitcoin.Psbt): Promise<any[]> {
     seenTxids.add(txid);
 
     try {
-      const response = await apiClient.get<{ hex: string }>(`/transactions/${txid}/raw`);
+      const response = await apiClient.get<{ hex: string }>(
+        `/wallets/${encodeURIComponent(walletId)}/transactions/${txid}/raw`
+      );
       const rawTx = bitcoin.Transaction.fromHex(response.hex);
 
       const refTx = {

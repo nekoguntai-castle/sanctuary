@@ -123,6 +123,7 @@ describe('TransactionList branch coverage', () => {
   const setSelectedTx = vi.fn();
   const clearSelectedTx = vi.fn();
   const setEditingLabels = vi.fn();
+  const retrySelection = vi.fn();
 
   const baseTx: Transaction = {
     id: 'tx-1',
@@ -163,6 +164,9 @@ describe('TransactionList branch coverage', () => {
       savingLabels: false,
       fullTxDetails: null,
       loadingDetails: false,
+      selectionStatus: 'resolved',
+      selectionError: null,
+      retrySelection,
       filteredTransactions: [{ ...baseTx }],
       virtuosoRef: { current: null },
       txStats: {
@@ -200,6 +204,36 @@ describe('TransactionList branch coverage', () => {
 
     render(<TransactionList transactions={[baseTx]} />);
     expect(screen.getByText('No transactions found.')).toBeInTheDocument();
+  });
+
+  it('renders loading and retryable transaction detail states', async () => {
+    const user = userEvent.setup();
+    useTransactionListMock.mockReturnValue(
+      makeHookState({
+        selectionStatus: 'loading',
+      }, null)
+    );
+    const { rerender } = render(<TransactionList transactions={[]} />);
+    expect(screen.getByText('Loading transaction details…')).toBeInTheDocument();
+
+    useTransactionListMock.mockReturnValue(
+      makeHookState({
+        selectionStatus: 'error',
+        selectionError: null,
+      }, null)
+    );
+    rerender(<TransactionList transactions={[]} />);
+    expect(screen.getByText('Failed to load transaction details')).toBeInTheDocument();
+
+    const statusCard = screen.getByTestId('transaction-detail-status').querySelector('aside');
+    if (!statusCard) throw new Error('Missing transaction status card');
+    await user.click(statusCard);
+    expect(clearSelectedTx).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retrySelection).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByTestId('transaction-detail-status'));
+    expect(clearSelectedTx).toHaveBeenCalledTimes(1);
   });
 
   it('renders confirming status branch and pending timestamp/date fallbacks', () => {

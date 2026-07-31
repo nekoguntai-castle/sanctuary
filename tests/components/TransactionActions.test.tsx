@@ -162,6 +162,17 @@ describe('TransactionActions', () => {
   });
 
   describe('RBF (Replace-By-Fee)', () => {
+    it('scopes RBF checks to the selected wallet', async () => {
+      renderComponent();
+
+      await waitFor(() => {
+        expect(bitcoinApi.checkRBF).toHaveBeenCalledWith(
+          'abc123def456',
+          'wallet-1'
+        );
+      });
+    });
+
     it('shows RBF button for replaceable sent transactions', async () => {
       renderComponent();
 
@@ -326,6 +337,10 @@ describe('TransactionActions', () => {
       }
 
       await waitFor(() => {
+        expect(transactionsApi.getTransaction).toHaveBeenCalledWith(
+          'wallet-1',
+          'abc123def456'
+        );
         expect(draftsApi.createDraft).toHaveBeenCalledWith(
           'wallet-1',
           expect.objectContaining({

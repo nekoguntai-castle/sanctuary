@@ -49,6 +49,7 @@ interface DeviceSigningParams {
   psbtToSign: string;
   txData: TransactionData | null;
   wallet: Wallet;
+  walletId: string;
 }
 
 interface ApplyDeviceSignResultParams {
@@ -187,6 +188,7 @@ async function signPsbtWithDevice({
   psbtToSign,
   txData,
   wallet,
+  walletId,
 }: DeviceSigningParams): Promise<UsbSignResult> {
   log.info('Connecting to device for signing', { deviceId: device.id, type: device.type, hwType });
   await hardwareWallet.connect(hwType);
@@ -195,7 +197,7 @@ async function signPsbtWithDevice({
   const multisigXpubs = getMultisigXpubs(wallet);
   logDeviceSigningPreparation(device, wallet, multisigXpubs);
 
-  return hardwareWallet.signPSBT(psbtToSign, inputPaths, multisigXpubs);
+  return hardwareWallet.signPSBT(psbtToSign, inputPaths, multisigXpubs, walletId);
 }
 
 async function applyDeviceSignResult({
@@ -266,7 +268,8 @@ export function useUsbSigning({
       const signResult = await hardwareWallet.signPSBT(
         txData.psbtBase64,
         txData.inputPaths || [],
-        multisigXpubs
+        multisigXpubs,
+        walletId
       );
       return signResult.psbt || signResult.rawTx || null;
     } catch (err) {
@@ -276,7 +279,7 @@ export function useUsbSigning({
     } finally {
       setIsSigning(false);
     }
-  }, [txData, hardwareWallet, wallet, setIsSigning, setError]);
+  }, [txData, hardwareWallet, wallet, walletId, setIsSigning, setError]);
 
   // Sign with a specific device (for multi-sig USB signing)
   const signWithDevice = useCallback(async (device: Device): Promise<boolean> => {
@@ -314,6 +317,7 @@ export function useUsbSigning({
         psbtToSign,
         txData,
         wallet,
+        walletId,
       });
 
       if (!hasSigningResult(signResult)) {

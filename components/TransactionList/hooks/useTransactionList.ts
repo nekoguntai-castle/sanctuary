@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { Transaction, Wallet, Label } from '../../../types';
 import * as bitcoinApi from '../../../src/api/bitcoin';
 import * as labelsApi from '../../../src/api/labels';
-import * as transactionsApi from '../../../src/api/transactions';
 import { createLogger } from '../../../utils/logger';
 import { isConsolidation } from '../../../utils/transaction';
 import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/nodeConfig';
 import type { TransactionStats } from '../../../src/api/transactions';
+import { useTransactionSelection } from './useTransactionSelection';
 
 const log = createLogger('TransactionList');
 
@@ -17,6 +16,8 @@ const EMPTY_ADDRESSES: string[] = [];
 
 interface UseTransactionListParams {
   transactions: Transaction[];
+  walletId?: string;
+  selectionTransactions?: Transaction[];
   wallets?: Wallet[];
   walletAddresses?: string[];
   walletLabels?: Label[];
@@ -30,6 +31,8 @@ const EMPTY_LABELS: Label[] = [];
 
 export function useTransactionList({
   transactions,
+  walletId,
+  selectionTransactions = transactions,
   wallets = EMPTY_WALLETS,
   walletAddresses = EMPTY_ADDRESSES,
   walletLabels = EMPTY_LABELS,
@@ -38,12 +41,10 @@ export function useTransactionList({
   highlightedTxId,
   transactionStats,
 }: UseTransactionListParams) {
-  const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   // This list owns selection (opens the modal / split-view pane and the ?tx URL
   // param) only when the caller doesn't take selection over via onTransactionClick
   // — e.g. the Dashboard recent-tx list and Console results delegate instead.
   const ownsSelection = !onTransactionClick;
-  const [searchParams, setSearchParams] = useSearchParams();
   const [explorerUrl, setExplorerUrl] = useState(getDefaultNodeExternalServiceUrl('mainnet'));
   const [copied, setCopied] = useState(false);
   const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -53,11 +54,18 @@ export function useTransactionList({
   const [availableLabels, setAvailableLabels] = useState<Label[]>([]);
   const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
   const [savingLabels, setSavingLabels] = useState(false);
-
-  // Full transaction details (with inputs/outputs)
-  const [fullTxDetails, setFullTxDetails] = useState<Transaction | null>(null);
-  const [loadingDetails, setLoadingDetails] = useState(false);
-  const detailGenerationRef = useRef(0);
+  const {
+    clearSelectedTx,
+    retrySelection,
+    selection,
+    selectTx,
+    setSelectedTx,
+  } = useTransactionSelection({
+    ownsSelection,
+    selectionTransactions,
+    setEditingLabels,
+    walletId,
+  });
 
   // Load explorer URL from server config
   useEffect(() => {
@@ -71,36 +79,6 @@ export function useTransactionList({
     };
     fetchExplorerUrl();
   }, []);
-
-  // Fetch full transaction details when modal opens
-  useEffect(() => {
-    const generation = ++detailGenerationRef.current;
-    const txid = selectedTx?.txid;
-    setFullTxDetails(null);
-
-    if (txid) {
-      setLoadingDetails(true);
-      transactionsApi.getTransaction(txid)
-        .then((details) => {
-          if (detailGenerationRef.current !== generation) return;
-          setFullTxDetails(details);
-        })
-        .catch((err) => {
-          if (detailGenerationRef.current !== generation) return;
-          log.error('Failed to fetch transaction details', { error: err, txid });
-        })
-        .finally(() => {
-          if (detailGenerationRef.current !== generation) return;
-          setLoadingDetails(false);
-        });
-    } else {
-      setLoadingDetails(false);
-    }
-
-    return () => {
-      detailGenerationRef.current += 1;
-    };
-  }, [selectedTx?.txid]);
 
   // Filter out replaced transactions (rbfStatus === 'replaced')
   const filteredTransactions = useMemo(() => {
@@ -166,57 +144,6 @@ export function useTransactionList({
     }
   };
 
-  // Selection is single-source-of-truth in the ?tx URL param: selectTx/clearTx
-  // only write the URL, and the reconcile effect below derives selectedTx from
-  // it. This one-way flow makes selection deep-linkable + refresh-proof and
-  // avoids a state/URL ping-pong (which otherwise double-fired the details
-  // fetch). all-replace — the split pane is part of the page, not a sub-route.
-  const selectTx = useCallback(
-    (tx: Transaction) => {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.set('tx', tx.txid);
-          return next;
-        },
-        { replace: true },
-      );
-    },
-    [setSearchParams],
-  );
-
-  const clearSelectedTx = useCallback(() => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete('tx');
-        return next;
-      },
-      { replace: true },
-    );
-  }, [setSearchParams]);
-
-  // Reconcile selection FROM the URL: deep links, refresh, and back/forward.
-  // Only when this list owns selection; otherwise a stray ?tx (e.g. on the
-  // Dashboard) must not hijack a delegating list. Keyed on the transactions too
-  // so a param that arrives before the data resolves once the data loads.
-  const txParam = searchParams.get('tx');
-  useEffect(() => {
-    if (!ownsSelection) return;
-    if (txParam) {
-      const found = filteredTransactions.find((tx) => tx.txid === txParam) ?? null;
-      if (!found && selectedTx) {
-        setSelectedTx(null);
-        setEditingLabels(false);
-      } else if (found && selectedTx?.txid !== txParam) {
-        setSelectedTx(found);
-        setEditingLabels(false);
-      }
-    } else if (selectedTx) {
-      setSelectedTx(null);
-    }
-  }, [ownsSelection, txParam, filteredTransactions, selectedTx]);
-
   // Stable reference: TransactionRow is memo'd, so passing a fresh
   // function ref every render would defeat the memo. Dependencies are the
   // external handler (caller-controlled), selectTx, and stable setState refs.
@@ -238,13 +165,13 @@ export function useTransactionList({
   };
 
   const handleSaveLabels = async () => {
-    if (!selectedTx) return;
+    if (!selection.selectedTx) return;
     try {
       setSavingLabels(true);
-      await labelsApi.setTransactionLabels(selectedTx.id, selectedLabelIds);
+      await labelsApi.setTransactionLabels(selection.selectedTx.id, selectedLabelIds);
       // Update the selected transaction's labels locally
       const updatedLabels = availableLabels.filter(l => selectedLabelIds.includes(l.id));
-      setSelectedTx({ ...selectedTx, labels: updatedLabels });
+      setSelectedTx({ ...selection.selectedTx, labels: updatedLabels });
       setEditingLabels(false);
       onLabelsChange?.();
     } catch (err) {
@@ -264,7 +191,7 @@ export function useTransactionList({
 
   // Handle AI label suggestion
   const handleAISuggestion = async (suggestion: string) => {
-    if (!selectedTx) return;
+    if (!selection.selectedTx) return;
 
     try {
       // Check if a label with this name already exists
@@ -273,7 +200,7 @@ export function useTransactionList({
       );
 
       if (!existingLabel) {
-        const newLabel = await labelsApi.createLabel(selectedTx.walletId, {
+        const newLabel = await labelsApi.createLabel(selection.selectedTx.walletId, {
           name: suggestion,
           color: '#6366f1',
         });
@@ -353,7 +280,7 @@ export function useTransactionList({
   }, [filteredTransactions, walletAddresses, transactionStats]);
 
   return {
-    selectedTx,
+    selectedTx: selection.selectedTx,
     setSelectedTx,
     clearSelectedTx,
     ownsSelection,
@@ -364,8 +291,11 @@ export function useTransactionList({
     availableLabels,
     selectedLabelIds,
     savingLabels,
-    fullTxDetails,
-    loadingDetails,
+    fullTxDetails: selection.fullTxDetails,
+    loadingDetails: selection.status === 'loading',
+    selectionStatus: selection.status,
+    selectionError: selection.error,
+    retrySelection,
     filteredTransactions,
     virtuosoRef,
     txStats,

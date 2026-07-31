@@ -1,4 +1,5 @@
 import type { Label, Transaction, Wallet } from '../../../types';
+import type { SelectionStatus } from '../hooks/selectionResolution';
 
 /**
  * Props shared by the transaction-details body and its two hosts:
@@ -44,6 +45,9 @@ export interface TransactionDetailsContentProps {
 export interface TransactionDetailProps
   extends Omit<TransactionDetailsContentProps, 'selectedTx'> {
   selectedTx: Transaction | null;
+  selectionStatus: SelectionStatus;
+  selectionError: string | null;
+  onRetrySelection: () => void;
   /** Pixel height to match the master table column so the pane scrolls independently. */
   tableHeight: number;
 }

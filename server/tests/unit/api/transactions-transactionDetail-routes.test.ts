@@ -58,13 +58,21 @@ describe('Transactions Detail Routes', () => {
   beforeEach(() => {
     resetPrismaMocks();
     vi.clearAllMocks();
+    mockPrismaClient.walletUser.findFirst.mockResolvedValue({
+      id: 'wallet-user-1',
+      walletId: 'wallet-1',
+      userId: 'user-1',
+      role: 'viewer',
+    });
   });
 
   it('returns raw transaction hex directly from database when available', async () => {
-    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+    mockPrismaClient.transaction.findMany.mockResolvedValue([{
+      id: 'tx-raw',
+      walletId: 'wallet-1',
       rawTx: '020000000001deadbeef',
       wallet: { network: 'mainnet' },
-    });
+    }]);
 
     const response = await request(app).get(`/api/v1/transactions/${TXID_WITH_RAW}/raw`);
 
@@ -74,10 +82,12 @@ describe('Transactions Detail Routes', () => {
   });
 
   it('fetches raw tx from mempool testnet endpoint when not stored in db', async () => {
-    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+    mockPrismaClient.transaction.findMany.mockResolvedValue([{
+      id: 'tx-testnet',
+      walletId: 'wallet-1',
       rawTx: null,
       wallet: { network: 'testnet' },
-    });
+    }]);
     mockFetch.mockResolvedValue({
       ok: true,
       text: async () => '020000000001testnethex',
@@ -95,10 +105,12 @@ describe('Transactions Detail Routes', () => {
 
   it('fetches regtest raw tx from the local-compatible mempool endpoint', async () => {
     const txid = '9'.repeat(64);
-    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+    mockPrismaClient.transaction.findMany.mockResolvedValue([{
+      id: 'tx-regtest',
+      walletId: 'wallet-1',
       rawTx: null,
       wallet: { network: 'regtest' },
-    });
+    }]);
     mockFetch.mockResolvedValue({
       ok: true,
       text: async () => '020000000001regtesthex',
@@ -115,7 +127,7 @@ describe('Transactions Detail Routes', () => {
   });
 
   it('defaults to mainnet endpoint and returns 404 when external lookup fails', async () => {
-    mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
+    mockPrismaClient.transaction.findMany.mockResolvedValue([]);
     mockFetch.mockResolvedValue({ ok: false, status: 404 });
 
     const response = await request(app).get(`/api/v1/transactions/${TXID_MISSING}/raw`);
@@ -129,7 +141,7 @@ describe('Transactions Detail Routes', () => {
   });
 
   it('returns 500 when raw transaction lookup throws', async () => {
-    mockPrismaClient.transaction.findFirst.mockRejectedValue(new Error('db offline'));
+    mockPrismaClient.transaction.findMany.mockRejectedValue(new Error('db offline'));
 
     const response = await request(app).get(`/api/v1/transactions/${TXID_ERROR}/raw`);
 
@@ -142,13 +154,14 @@ describe('Transactions Detail Routes', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.code).toBe('INVALID_INPUT');
-    expect(mockPrismaClient.transaction.findFirst).not.toHaveBeenCalled();
+    expect(mockPrismaClient.transaction.findMany).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('returns serialized transaction details with numeric bigint fields and labels', async () => {
-    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+    mockPrismaClient.transaction.findMany.mockResolvedValue([{
       id: 'tx-1',
+      walletId: 'wallet-1',
       txid: TXID_DETAIL,
       amount: BigInt(-12000),
       fee: BigInt(150),
@@ -174,7 +187,7 @@ describe('Transactions Detail Routes', () => {
         { id: 'out-1', outputIndex: 0, amount: BigInt(12000) },
         { id: 'out-2', outputIndex: 1, amount: BigInt(0) },
       ],
-    });
+    }]);
 
     const response = await request(app).get(`/api/v1/transactions/${TXID_DETAIL}`);
 
@@ -196,8 +209,9 @@ describe('Transactions Detail Routes', () => {
   });
 
   it('preserves null fee, balanceAfter, and blockHeight during serialization', async () => {
-    mockPrismaClient.transaction.findFirst.mockResolvedValue({
+    mockPrismaClient.transaction.findMany.mockResolvedValue([{
       id: 'tx-null',
+      walletId: 'wallet-1',
       txid: TXID_NULL_FIELDS,
       amount: BigInt(5000),
       fee: null,
@@ -208,7 +222,7 @@ describe('Transactions Detail Routes', () => {
       transactionLabels: [],
       inputs: [],
       outputs: [],
-    });
+    }]);
 
     const response = await request(app).get(`/api/v1/transactions/${TXID_NULL_FIELDS}`);
 
@@ -220,7 +234,7 @@ describe('Transactions Detail Routes', () => {
   });
 
   it('returns 404 when transaction details are not found', async () => {
-    mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
+    mockPrismaClient.transaction.findMany.mockResolvedValue([]);
 
     const response = await request(app).get(`/api/v1/transactions/${TXID_MISSING}`);
 
@@ -233,15 +247,136 @@ describe('Transactions Detail Routes', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.code).toBe('INVALID_INPUT');
-    expect(mockPrismaClient.transaction.findFirst).not.toHaveBeenCalled();
+    expect(mockPrismaClient.transaction.findMany).not.toHaveBeenCalled();
   });
 
   it('returns 500 when transaction detail lookup fails unexpectedly', async () => {
-    mockPrismaClient.transaction.findFirst.mockRejectedValue(new Error('query failed'));
+    mockPrismaClient.transaction.findMany.mockRejectedValue(new Error('query failed'));
 
     const response = await request(app).get(`/api/v1/transactions/${TXID_ERROR}`);
 
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('returns 409 without fetching bytes when legacy raw lookup is ambiguous', async () => {
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      { id: 'tx-a', walletId: 'wallet-1', rawTx: 'raw-a', wallet: { network: 'mainnet' } },
+      { id: 'tx-b', walletId: 'wallet-2', rawTx: 'raw-b', wallet: { network: 'testnet4' } },
+    ]);
+
+    const response = await request(app).get(`/api/v1/transactions/${TXID_WITH_RAW}/raw`);
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('CONFLICT');
+    expect(response.body).not.toHaveProperty('hex');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 without transaction data when legacy detail lookup is ambiguous', async () => {
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      { id: 'tx-a', walletId: 'wallet-1' },
+      { id: 'tx-b', walletId: 'wallet-2' },
+    ]);
+
+    const response = await request(app).get(`/api/v1/transactions/${TXID_DETAIL}`);
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('CONFLICT');
+    expect(response.body).not.toHaveProperty('txid');
+  });
+
+  it('adds deprecation headers to legacy success responses without changing JSON', async () => {
+    mockPrismaClient.transaction.findMany.mockResolvedValue([{
+      id: 'tx-raw',
+      walletId: 'wallet-1',
+      rawTx: '020000000001deadbeef',
+      wallet: { network: 'mainnet' },
+    }]);
+
+    const response = await request(app).get(`/api/v1/transactions/${TXID_WITH_RAW}/raw`);
+
+    expect(response.body).toEqual({ hex: '020000000001deadbeef' });
+    expect(response.headers.deprecation).toBe('true');
+    expect(response.headers.sunset).toBe('Sat, 31 Jul 2027 00:00:00 GMT');
+    expect(response.headers.link).toContain(`/wallets/wallet-1/transactions/${TXID_WITH_RAW}/raw`);
+  });
+
+  it('returns wallet-scoped transaction detail and constrains the persisted lookup', async () => {
+    mockPrismaClient.transaction.findUnique.mockResolvedValue({
+      id: 'tx-scoped',
+      txid: TXID_DETAIL,
+      walletId: 'wallet-1',
+      amount: BigInt(5000),
+      fee: null,
+      balanceAfter: null,
+      blockHeight: null,
+      wallet: { id: 'wallet-1', name: 'Wallet One', type: 'watch-only' },
+      address: null,
+      transactionLabels: [],
+      inputs: [],
+      outputs: [],
+    });
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/wallet-1/transactions/${TXID_DETAIL}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ id: 'tx-scoped', walletId: 'wallet-1' });
+    expect(mockPrismaClient.transaction.findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      where: { txid_walletId: { txid: TXID_DETAIL, walletId: 'wallet-1' } },
+    }));
+  });
+
+  it('returns 404 when a transaction is absent from the requested wallet', async () => {
+    mockPrismaClient.transaction.findUnique.mockResolvedValue(null);
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/wallet-1/transactions/${TXID_MISSING}`);
+
+    expect(response.status).toBe(404);
+    expect(response.body.code).toBe('NOT_FOUND');
+  });
+
+  it('uses the authorized wallet network for scoped raw external fallback', async () => {
+    mockPrismaClient.transaction.findUnique.mockResolvedValue(null);
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'testnet4' });
+    mockFetch.mockResolvedValue({
+      ok: true,
+      text: async () => '020000000001scoped',
+    });
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/wallet-1/transactions/${TXID_TESTNET}/raw`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ hex: '020000000001scoped' });
+    expect(mockFetch).toHaveBeenCalledWith(
+      `https://mempool.space/testnet4/api/tx/${TXID_TESTNET}/hex`,
+      expect.any(Object),
+    );
+  });
+
+  it('returns 404 when the authorized wallet disappears before scoped raw lookup', async () => {
+    mockPrismaClient.transaction.findUnique.mockResolvedValue(null);
+    mockPrismaClient.wallet.findUnique.mockResolvedValue(null);
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/wallet-1/transactions/${TXID_MISSING}/raw`);
+
+    expect(response.status).toBe(404);
+    expect(response.body.code).toBe('NOT_FOUND');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('denies scoped routes when the user lacks wallet view access', async () => {
+    mockPrismaClient.walletUser.findFirst.mockResolvedValue(null);
+    mockPrismaClient.wallet.findFirst.mockResolvedValue(null);
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/wallet-denied/transactions/${TXID_DETAIL}`);
+
+    expect(response.status).toBe(403);
+    expect(mockPrismaClient.transaction.findUnique).not.toHaveBeenCalled();
   });
 });

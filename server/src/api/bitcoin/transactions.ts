@@ -9,9 +9,13 @@ import { z } from 'zod';
 import { authenticate, requireAuthenticatedUser } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import * as blockchain from '../../services/bitcoin/blockchain';
-import { walletRepository } from '../../repositories';
+import { transactionRepository, walletRepository } from '../../repositories';
 import { asyncHandler } from '../../errors/errorHandler';
-import { ForbiddenError, InvalidInputError } from '../../errors/ApiError';
+import {
+  ForbiddenError,
+  InvalidInputError,
+  TransactionNotFoundError,
+} from '../../errors/ApiError';
 import * as advancedTx from '../../services/bitcoin/advancedTx';
 import { isBitcoinNetwork, type BitcoinNetwork } from '../../services/bitcoin/networks';
 import { resolveBitcoinNetworkParam } from './networkParam';
@@ -24,8 +28,8 @@ const BroadcastBodySchema = z.object({
 });
 
 const RbfCheckBodySchema = z.object({
-  network: z.string().optional(),
-}).default({});
+  walletId: z.string().min(1),
+});
 
 const RbfBodySchema = z.object({
   newFeeRate: z.number().positive(),
@@ -74,12 +78,25 @@ const resolveAdvancedTransactionWalletNetwork = (
   });
 };
 
+const requireWalletTransaction = async (
+  txid: string,
+  walletId: string
+): Promise<void> => {
+  const transaction = await transactionRepository.findByTxid(txid, walletId);
+  if (!transaction) {
+    throw new TransactionNotFoundError(txid);
+  }
+};
+
+const normalizeTransactionLookupId = (txid: string): string =>
+  /^[0-9a-fA-F]{64}$/.test(txid) ? txid.toLowerCase() : txid;
+
 /**
  * GET /api/v1/bitcoin/transaction/:txid
  * Get transaction details from blockchain
  */
 router.get('/transaction/:txid', asyncHandler(async (req, res) => {
-  const { txid } = req.params;
+  const txid = normalizeTransactionLookupId(req.params.txid);
   const network = resolveBitcoinNetworkParam(req.query.network);
 
   const txDetails = await blockchain.getTransactionDetails(txid, network);
@@ -110,9 +127,16 @@ router.post('/broadcast', authenticate, validate(
 router.post('/transaction/:txid/rbf-check', authenticate, validate(
   { body: RbfCheckBodySchema }
 ), asyncHandler(async (req, res) => {
-  const { txid } = req.params;
-  const network = resolveBitcoinNetworkParam(req.body.network ?? req.query.network);
+  const userId = requireAuthenticatedUser(req).userId;
+  const txid = normalizeTransactionLookupId(req.params.txid);
+  const { walletId } = req.body;
+  const wallet = await walletRepository.findByIdWithAccess(walletId, userId);
 
+  if (!wallet) {
+    throw new ForbiddenError('Insufficient permissions for this wallet');
+  }
+  await requireWalletTransaction(txid, walletId);
+  const network = resolveAdvancedTransactionWalletNetwork(wallet);
   const result = await advancedTx.canReplaceTransaction(txid, network);
 
   res.json(result);
@@ -127,7 +151,7 @@ router.post('/transaction/:txid/rbf', authenticate, validate(
   { message: 'newFeeRate and walletId are required' }
 ), asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
-  const { txid } = req.params;
+  const txid = normalizeTransactionLookupId(req.params.txid);
   const { newFeeRate, walletId } = req.body;
 
   // Check user has access to wallet
@@ -136,6 +160,7 @@ router.post('/transaction/:txid/rbf', authenticate, validate(
   if (!wallet) {
     throw new ForbiddenError('Insufficient permissions for this wallet');
   }
+  await requireWalletTransaction(txid, walletId);
   const network = resolveAdvancedTransactionWalletNetwork(wallet);
 
   const result = await advancedTx.createRBFTransaction(

@@ -82,8 +82,8 @@ vi.mock('../../../src/repositories', async () => {
       findById: vi.fn().mockResolvedValue(null),
     },
     transactionRepository: {
-      findByTxidGlobal: (txid: string) =>
-        prisma.transaction.findFirst({ where: { txid } }),
+      findByTxid: (txid: string, walletId: string) =>
+        prisma.transaction.findFirst({ where: { txid, walletId } }),
     },
   };
 });
@@ -326,6 +326,56 @@ describe('NotificationService', () => {
             confirmations: 4,
           }),
         })
+      );
+      expect(prisma.transaction.findFirst).toHaveBeenCalledTimes(2);
+      expect(prisma.transaction.findFirst).toHaveBeenNthCalledWith(1, {
+        where: { txid: 'tx-existing', walletId: 'wallet-123' },
+      });
+      expect(prisma.transaction.findFirst).toHaveBeenNthCalledWith(2, {
+        where: { txid: 'tx-existing', walletId: 'wallet-123' },
+      });
+    });
+
+    it('treats a duplicate txid in another wallet as a new transaction', async () => {
+      (prisma.transaction.findFirst as Mock).mockImplementation(({ where }) => (
+        where.walletId === 'wallet-existing' ? { txid: where.txid } : null
+      ));
+
+      await handleTransaction('tx-shared', 'wallet-new', 'bc1q-new');
+
+      expect(prisma.transaction.findFirst).toHaveBeenCalledWith({
+        where: { txid: 'tx-shared', walletId: 'wallet-new' },
+      });
+      expect(mockBroadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'transaction',
+          walletId: 'wallet-new',
+          data: expect.objectContaining({ txid: 'tx-shared', walletId: 'wallet-new' }),
+        }),
+      );
+    });
+
+    it('loads confirmations from the requested wallet when txids are duplicated', async () => {
+      (prisma.transaction.findFirst as Mock).mockImplementation(({ where }) => ({
+        txid: where.txid,
+        confirmations: where.walletId === 'wallet-target' ? 5 : 1,
+      }));
+
+      await checkConfirmationUpdate('tx-shared', 'wallet-target');
+
+      expect(prisma.transaction.findFirst).toHaveBeenCalledWith({
+        where: { txid: 'tx-shared', walletId: 'wallet-target' },
+      });
+      expect(mockBroadcast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'confirmation',
+          walletId: 'wallet-target',
+          data: expect.objectContaining({
+            txid: 'tx-shared',
+            walletId: 'wallet-target',
+            confirmations: 5,
+          }),
+        }),
       );
     });
 

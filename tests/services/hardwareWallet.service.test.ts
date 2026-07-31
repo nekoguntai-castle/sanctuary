@@ -448,6 +448,7 @@ describe('HardwareWalletService', () => {
       changeAddress: 'bc1qchange',
     });
     expect(adapter.signPSBT).toHaveBeenCalledWith({
+      walletId: 'w1',
       psbt: 'unsigned-psbt',
       inputPaths: ["m/84'/0'/0'/0/0"],
     });

@@ -178,6 +178,7 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
 
     await signPsbtWithTrezor(
       {
+        walletId: 'wallet-primary',
         psbt: psbt.toBase64(),
         inputPaths: [],
 },
@@ -206,6 +207,7 @@ export function registerTrezorSignPsbtMismatchRefContracts() {
 
     await signPsbtWithTrezor(
       {
+        walletId: 'wallet-primary',
         psbt: psbt.toBase64(),
         inputPaths: [],
 },

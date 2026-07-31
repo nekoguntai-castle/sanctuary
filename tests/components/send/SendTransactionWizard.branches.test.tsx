@@ -282,7 +282,7 @@ describe('SendTransactionWizard branch coverage', () => {
     renderWizard();
     await user.click(screen.getByRole('button', { name: 'broadcast' }));
 
-    expect(signPSBT).toHaveBeenCalledWith('unsigned-psbt');
+    expect(signPSBT).toHaveBeenCalledWith('unsigned-psbt', [], undefined, 'wallet-1');
     expect(broadcastTransaction).not.toHaveBeenCalled();
   });
 

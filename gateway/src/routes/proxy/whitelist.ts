@@ -187,7 +187,12 @@ export const GATEWAY_ROUTE_CONTRACTS: GatewayRouteContract[] = [
     expressPath: '/api/v1/wallets/:id/transactions',
     validation: noBody(readOnlyNoBody),
   }),
-  // Transaction detail is canonicalized by txid; backend findByTxidWithAccess enforces per-user wallet access.
+  // Canonical detail lookup requires both wallet and txid; the backend enforces wallet view access.
+  route('GET', `/wallets/${uuidPattern}/transactions/${txidPattern}`, `/wallets/${sampleUuid}/transactions/${sampleTxid}`, '/wallets/{walletId}/transactions/{txid}', {
+    expressPath: '/api/v1/wallets/:walletId/transactions/:txid',
+    validation: noBody(readOnlyNoBody),
+  }),
+  // Retained during the backend deprecation window; ambiguous txids fail with 409.
   route('GET', `/transactions/${txidPattern}`, `/transactions/${sampleTxid}`, '/transactions/{txid}', {
     expressPath: '/api/v1/transactions/:txid',
     validation: noBody(readOnlyNoBody),

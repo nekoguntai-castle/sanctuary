@@ -15,6 +15,7 @@ vi.mock('../../../src/models/prisma', () => ({
       deleteMany: vi.fn(),
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
       count: vi.fn(),
     },
   },
@@ -290,23 +291,121 @@ describe('Transaction Repository', () => {
   });
 
   describe('findByTxid', () => {
-    it('should find transaction by txid and wallet', async () => {
-      (prisma.transaction.findFirst as Mock).mockResolvedValue(mockTransaction);
+    it('should use the compound unique key to scope duplicate txids to a wallet', async () => {
+      (prisma.transaction.findUnique as Mock).mockResolvedValue(mockTransaction);
 
       const result = await transactionRepository.findByTxid('abc123def456', 'wallet-456');
 
       expect(result).toEqual(mockTransaction);
-      expect(prisma.transaction.findFirst).toHaveBeenCalledWith({
-        where: { txid: 'abc123def456', walletId: 'wallet-456' },
+      expect(prisma.transaction.findUnique).toHaveBeenCalledWith({
+        where: {
+          txid_walletId: {
+            txid: 'abc123def456',
+            walletId: 'wallet-456',
+          },
+        },
       });
     });
 
     it('should return null when transaction not found', async () => {
-      (prisma.transaction.findFirst as Mock).mockResolvedValue(null);
+      (prisma.transaction.findUnique as Mock).mockResolvedValue(null);
 
       const result = await transactionRepository.findByTxid('nonexistent', 'wallet-456');
 
       expect(result).toBeNull();
+    });
+
+    it('forwards payload options without weakening the compound wallet scope', async () => {
+      (prisma.transaction.findUnique as Mock).mockResolvedValue({
+        ...mockTransaction,
+        wallet: { id: 'wallet-456' },
+      });
+
+      await transactionRepository.findByTxid('abc123def456', 'wallet-456', {
+        include: { wallet: true },
+      });
+
+      expect(prisma.transaction.findUnique).toHaveBeenCalledWith({
+        where: {
+          txid_walletId: {
+            txid: 'abc123def456',
+            walletId: 'wallet-456',
+          },
+        },
+        include: { wallet: true },
+      });
+    });
+  });
+
+  describe('findAccessibleByTxidMatches', () => {
+    it.each([
+      { matches: [], expectedCount: 0 },
+      { matches: [mockTransaction], expectedCount: 1 },
+      {
+        matches: [mockTransaction, { ...mockTransaction, id: 'tx-789', walletId: 'wallet-789' }],
+        expectedCount: 2,
+      },
+    ])('returns $expectedCount accessible matches', async ({ matches, expectedCount }) => {
+      (prisma.transaction.findMany as Mock).mockResolvedValue(matches);
+
+      const result = await transactionRepository.findAccessibleByTxidMatches(
+        'abc123def456',
+        'user-123',
+      );
+
+      expect(result).toHaveLength(expectedCount);
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith({
+        where: {
+          txid: 'abc123def456',
+          wallet: {
+            OR: [
+              { users: { some: { userId: 'user-123' } } },
+              { group: { members: { some: { userId: 'user-123' } } } },
+            ],
+          },
+        },
+        orderBy: [{ walletId: 'asc' }, { id: 'asc' }],
+        take: 2,
+      });
+    });
+
+    it('forwards select options while retaining the deterministic two-match bound', async () => {
+      (prisma.transaction.findMany as Mock).mockResolvedValue([{ id: 'tx-123' }]);
+
+      const result = await transactionRepository.findAccessibleByTxidMatches(
+        'abc123def456',
+        'user-123',
+        { select: { id: true } },
+      );
+
+      expect(result).toEqual([{ id: 'tx-123' }]);
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: { id: true },
+          orderBy: [{ walletId: 'asc' }, { id: 'asc' }],
+          take: 2,
+        }),
+      );
+    });
+
+    it('forwards include options while retaining the deterministic two-match bound', async () => {
+      (prisma.transaction.findMany as Mock).mockResolvedValue([
+        { ...mockTransaction, wallet: { id: 'wallet-456' } },
+      ]);
+
+      await transactionRepository.findAccessibleByTxidMatches(
+        'abc123def456',
+        'user-123',
+        { include: { wallet: true } },
+      );
+
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: { wallet: true },
+          orderBy: [{ walletId: 'asc' }, { id: 'asc' }],
+          take: 2,
+        }),
+      );
     });
   });
 
@@ -399,24 +498,4 @@ describe('Transaction Repository', () => {
     });
   });
 
-  describe('findByTxidGlobal', () => {
-    it('should find transaction by txid without wallet filter', async () => {
-      (prisma.transaction.findFirst as Mock).mockResolvedValue(mockTransaction);
-
-      const result = await transactionRepository.findByTxidGlobal('abc123def456');
-
-      expect(result).toEqual(mockTransaction);
-      expect(prisma.transaction.findFirst).toHaveBeenCalledWith({
-        where: { txid: 'abc123def456' },
-      });
-    });
-
-    it('should return null when txid not found globally', async () => {
-      (prisma.transaction.findFirst as Mock).mockResolvedValue(null);
-
-      const result = await transactionRepository.findByTxidGlobal('nonexistent');
-
-      expect(result).toBeNull();
-    });
-  });
 });

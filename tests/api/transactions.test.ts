@@ -79,8 +79,16 @@ describe('Transactions API', () => {
     it('should fetch a single transaction by txid', async () => {
       const mockTx = { txid: 'abc123', amount: 50000 };
       mockGet.mockResolvedValue(mockTx);
-      const result = await getTransaction('abc123');
-      expect(mockGet).toHaveBeenCalledWith('/transactions/abc123');
+      const controller = new AbortController();
+      const result = await getTransaction('wallet-1', 'abc123', {
+        signal: controller.signal,
+      });
+      expect(mockGet).toHaveBeenCalledWith(
+        '/wallets/wallet-1/transactions/abc123',
+        undefined,
+        undefined,
+        { signal: controller.signal }
+      );
       expect(result).toEqual(mockTx);
     });
   });

@@ -4,7 +4,7 @@
  * Core transaction operations: list, get, create, broadcast, estimate, export
  */
 
-import apiClient from '../client';
+import apiClient, { type ApiGetRequestOptions } from '../client';
 import type {
   Transaction,
   PendingTransaction,
@@ -45,8 +45,17 @@ export async function getTransactions(
 /**
  * Get a specific transaction by txid
  */
-export async function getTransaction(txid: string): Promise<Transaction> {
-  return apiClient.get<Transaction>(`/transactions/${txid}`);
+export async function getTransaction(
+  walletId: string,
+  txid: string,
+  options: ApiGetRequestOptions = {}
+): Promise<Transaction> {
+  return apiClient.get<Transaction>(
+    `/wallets/${walletId}/transactions/${txid}`,
+    undefined,
+    undefined,
+    options
+  );
 }
 
 /**

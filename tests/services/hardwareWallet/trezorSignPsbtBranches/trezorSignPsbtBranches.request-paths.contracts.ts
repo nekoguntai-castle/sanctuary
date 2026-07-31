@@ -103,6 +103,7 @@ export function registerTrezorSignPsbtRequestPathContracts() {
 
     await signPsbtWithTrezor(
       {
+        walletId: 'wallet-primary',
         psbt: psbt.toBase64(),
         inputPaths: ["m/84'/0'/0'/0/0"],
       },
@@ -113,6 +114,7 @@ export function registerTrezorSignPsbtRequestPathContracts() {
       'Input amount mismatch between PSBT and reference transaction',
       expect.any(Object)
     );
+    expect(h.mockFetchRefTxs).toHaveBeenCalledWith(expect.any(bitcoin.Psbt), 'wallet-primary');
   });
 
   it('continues when multisig signature extraction throws in nested try/catch', async () => {

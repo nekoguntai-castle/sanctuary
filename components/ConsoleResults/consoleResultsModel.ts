@@ -78,8 +78,8 @@ export function useConsoleResultsViewModel(): ConsoleResultsViewModel {
   );
   const onTransactionClick = useCallback(
     (transaction: Transaction) =>
-      navigate(`/wallets/${transaction.walletId}`, {
-        state: { activeTab: "tx", highlightTxId: transaction.id },
+      navigate(`/wallets/${transaction.walletId}?tx=${encodeURIComponent(transaction.txid)}`, {
+        state: { activeTab: "tx" },
       }),
     [navigate],
   );

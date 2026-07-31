@@ -70,7 +70,7 @@ function WizardContent({
     handleSign,
     handleSignAndBroadcast,
     handleSaveDraft,
-  } = useSendWizardActionHandlers({ actions, hardwareWallet });
+  } = useSendWizardActionHandlers({ walletId, actions, hardwareWallet });
 
   const isMultiSig = isMultisigType(wallet.type);
   const effectiveTxData = state.isDraftMode ? draftInitialTxData : actions.txData;

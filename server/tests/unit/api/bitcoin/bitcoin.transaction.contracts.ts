@@ -30,14 +30,14 @@ export const registerBitcoinTransactionRouteTests = () => {
         expect(mockBlockchain.getTransactionDetails).toHaveBeenCalledWith('abc123', 'mainnet');
       });
 
-      it('should pass query network to transaction details', async () => {
+      it('should normalize the legacy testnet query for transaction details', async () => {
         const txDetails = { txid: 'abc123', confirmations: 0 };
         mockBlockchain.getTransactionDetails.mockResolvedValue(txDetails);
 
-        const response = await request(app).get('/bitcoin/transaction/abc123?network=testnet4');
+        const response = await request(app).get('/bitcoin/transaction/abc123?network=testnet');
 
         expect(response.status).toBe(200);
-        expect(mockBlockchain.getTransactionDetails).toHaveBeenCalledWith('abc123', 'testnet4');
+        expect(mockBlockchain.getTransactionDetails).toHaveBeenCalledWith('abc123', 'testnet3');
       });
 
       it('should return 500 when transaction not found', async () => {
@@ -110,48 +110,102 @@ export const registerBitcoinTransactionRouteTests = () => {
 
     describe('POST /bitcoin/transaction/:txid/rbf-check', () => {
       it('should check if transaction can be replaced', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({
+          id: 'wallet-1',
+          network: 'testnet4',
+        });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
         mockAdvancedTx.canReplaceTransaction.mockResolvedValue({
           canReplace: true,
           currentFeeRate: 10,
           minimumNewFeeRate: 11,
         });
 
-        const response = await request(app).post('/bitcoin/transaction/abc123/rbf-check');
+        const response = await request(app)
+          .post('/bitcoin/transaction/abc123/rbf-check')
+          .send({ walletId: 'wallet-1' });
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('canReplace', true);
-        expect(mockAdvancedTx.canReplaceTransaction).toHaveBeenCalledWith('abc123', 'mainnet');
+        expect(mockPrismaClient.transaction.findUnique).toHaveBeenCalledWith({
+          where: {
+            txid_walletId: { txid: 'abc123', walletId: 'wallet-1' },
+          },
+        });
+        expect(mockAdvancedTx.canReplaceTransaction).toHaveBeenCalledWith('abc123', 'testnet4');
       });
 
-      it('should check RBF eligibility on requested network', async () => {
-        mockAdvancedTx.canReplaceTransaction.mockResolvedValue({
-          canReplace: true,
-        });
+      it('should return 400 when walletId is missing', async () => {
+        const response = await request(app)
+          .post('/bitcoin/transaction/abc123/rbf-check');
+
+        expect(response.status).toBe(400);
+        expect(mockAdvancedTx.canReplaceTransaction).not.toHaveBeenCalled();
+      });
+
+      it('should return 403 when user lacks wallet permission', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue(null);
 
         const response = await request(app)
           .post('/bitcoin/transaction/abc123/rbf-check')
-          .send({ network: 'testnet' });
+          .send({ walletId: 'wallet-1' });
 
-        expect(response.status).toBe(200);
-        expect(mockAdvancedTx.canReplaceTransaction).toHaveBeenCalledWith('abc123', 'testnet3');
+        expect(response.status).toBe(403);
+        expect(mockAdvancedTx.canReplaceTransaction).not.toHaveBeenCalled();
       });
 
-      it('should return 500 on error', async () => {
-        mockAdvancedTx.canReplaceTransaction.mockRejectedValue(new Error('Failed'));
+      it('should return 404 when the transaction is not in the wallet', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({
+          id: 'wallet-1',
+          network: 'mainnet',
+        });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue(null);
 
-        const response = await request(app).post('/bitcoin/transaction/abc123/rbf-check');
+        const response = await request(app)
+          .post('/bitcoin/transaction/abc123/rbf-check')
+          .send({ walletId: 'wallet-1' });
 
-        expect(response.status).toBe(500);
+        expect(response.status).toBe(404);
+        expect(mockAdvancedTx.canReplaceTransaction).not.toHaveBeenCalled();
+      });
+
+      it('should normalize uppercase hex transaction ids before scoped lookup', async () => {
+        const uppercaseTxid = 'A'.repeat(64);
+        const normalizedTxid = uppercaseTxid.toLowerCase();
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({
+          id: 'wallet-1',
+          network: 'mainnet',
+        });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
+        mockAdvancedTx.canReplaceTransaction.mockResolvedValue({ canReplace: true });
+
+        const response = await request(app)
+          .post(`/bitcoin/transaction/${uppercaseTxid}/rbf-check`)
+          .send({ walletId: 'wallet-1' });
+
+        expect(response.status).toBe(200);
+        expect(mockPrismaClient.transaction.findUnique).toHaveBeenCalledWith({
+          where: {
+            txid_walletId: { txid: normalizedTxid, walletId: 'wallet-1' },
+          },
+        });
+        expect(mockAdvancedTx.canReplaceTransaction).toHaveBeenCalledWith(
+          normalizedTxid,
+          'mainnet'
+        );
       });
     });
 
     describe('POST /bitcoin/transaction/:txid/rbf', () => {
       it('should create RBF transaction', async () => {
+        const uppercaseTxid = 'B'.repeat(64);
+        const normalizedTxid = uppercaseTxid.toLowerCase();
         mockPrismaClient.wallet.findFirst.mockResolvedValue({
           id: 'wallet-1',
           name: 'Test Wallet',
           network: 'testnet4',
         });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
         mockAdvancedTx.createRBFTransaction.mockResolvedValue({
           psbt: { toBase64: () => 'base64psbt' },
           fee: 6000,
@@ -163,13 +217,13 @@ export const registerBitcoinTransactionRouteTests = () => {
         });
 
         const response = await request(app)
-          .post('/bitcoin/transaction/abc123/rbf')
+          .post(`/bitcoin/transaction/${uppercaseTxid}/rbf`)
           .send({ newFeeRate: 24, walletId: 'wallet-1' });
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('psbtBase64', 'base64psbt');
         expect(mockAdvancedTx.createRBFTransaction).toHaveBeenCalledWith(
-          'abc123',
+          normalizedTxid,
           24,
           'wallet-1',
           'testnet4'
@@ -208,6 +262,7 @@ export const registerBitcoinTransactionRouteTests = () => {
           name: 'Test Wallet',
           network: 'mainnet',
         });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
         mockAdvancedTx.createRBFTransaction.mockRejectedValue(new Error('rbf failed'));
 
         const response = await request(app)
@@ -224,6 +279,7 @@ export const registerBitcoinTransactionRouteTests = () => {
           name: 'Test Wallet',
           network: 'unsupported',
         });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue({ id: 'tx-1' });
 
         const response = await request(app)
           .post('/bitcoin/transaction/abc123/rbf')
@@ -231,6 +287,21 @@ export const registerBitcoinTransactionRouteTests = () => {
 
         expect(response.status).toBe(400);
         expect(response.body.code).toBe('INVALID_INPUT');
+        expect(mockAdvancedTx.createRBFTransaction).not.toHaveBeenCalled();
+      });
+
+      it('should return 404 when the transaction is not in the wallet', async () => {
+        mockPrismaClient.wallet.findFirst.mockResolvedValue({
+          id: 'wallet-1',
+          network: 'mainnet',
+        });
+        mockPrismaClient.transaction.findUnique.mockResolvedValue(null);
+
+        const response = await request(app)
+          .post('/bitcoin/transaction/abc123/rbf')
+          .send({ newFeeRate: 24, walletId: 'wallet-1' });
+
+        expect(response.status).toBe(404);
         expect(mockAdvancedTx.createRBFTransaction).not.toHaveBeenCalled();
       });
     });

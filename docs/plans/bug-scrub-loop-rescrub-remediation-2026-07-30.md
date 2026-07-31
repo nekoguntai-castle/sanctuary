@@ -405,41 +405,41 @@ Delivery: one LLM-egress proxy PR.
 Findings: `transaction-detail-txid-lookup-crosses-wallet-context`,
 `transaction-deep-link-cannot-resolve-beyond-loaded-page`.
 
-- [ ] Add repository/API tests with the same txid in two accessible wallets and
+- [x] Add repository/API tests with the same txid in two accessible wallets and
       distinct wallet-specific labels. Require wallet scope in the canonical
       detail lookup and return 404 for inaccessible/mismatched wallet context.
-- [ ] Make `GET /wallets/:walletId/transactions/:txid` the canonical detail route.
+- [x] Make `GET /wallets/:walletId/transactions/:txid` the canonical detail route.
       Legacy `/transactions/:txid` returns 404 for zero accessible matches, the
       sole row for exactly one, and deterministic 409 without data for multiple
       accessible matches. Preserve its JSON body and carry deprecation through
       HTTP `Deprecation`, `Sunset`, and `Link` headers. Document removal in the
       next major API version and test 0/1/2 accessible matches plus inaccessible
       scope.
-- [ ] Make `GET /wallets/:walletId/transactions/:txid/raw` canonical for signing.
+- [x] Make `GET /wallets/:walletId/transactions/:txid/raw` canonical for signing.
       The legacy raw route preserves external mainnet lookup when there are zero
       accessible stored matches, uses the sole accessible row/network when there
       is one, and returns 409 without bytes when there are multiple matches. Its
       existing success JSON body remains unchanged and uses the same deprecation
       headers. Cover both routes in OpenAPI and 0/1/2-match integration tests.
-- [ ] Migrate and detail-test JSON detail, raw-signing lookup, frontend
+- [x] Migrate and detail-test JSON detail, raw-signing lookup, frontend
       `getTransaction`, RBF status/check, RBF creation and label copying, OpenAPI,
       and all unit/integration callers. Every persisted-transaction lookup on
       those paths receives walletId; test duplicate txids with different labels
       and networks.
-- [ ] Add refresh/share tests for a selected transaction older than the initial
+- [x] Add refresh/share tests for a selected transaction older than the initial
       50-row page, including invalid txid, route changes, rapid URL changes,
       delegated lists, unmount, and stale response completion.
-- [ ] Resolve owned `?tx=` selection through the permission-checked wallet-scoped
+- [x] Resolve owned `?tx=` selection through the permission-checked wallet-scoped
       detail endpoint when absent from the loaded page. Give that fetch the same
       request-generation ownership as ordinary detail loading and avoid duplicate
       requests after the row enters the list.
-- [ ] Define an `idle | loading | resolved | not-found | error` state keyed by
+- [x] Define an `idle | loading | resolved | not-found | error` state keyed by
       normalized `(walletId, txid)`. Pass explicit walletId to owning lists; one
       fetch populates selected summary and detail; only the current generation may
       commit. Clear `?tx` only for current-generation invalid/404/replaced state;
       retain it and show a retryable error for network/5xx. Delegating lists never
       fetch from URL state.
-- [ ] Render a resolved off-page detail even when the visible/filtered list is
+- [x] Render a resolved off-page detail even when the visible/filtered list is
       empty. Test zero rows, filtered rows, 404 vs 500, retry, delegated lists,
       wallet A→B with the same txid, stale A completion, and no duplicate fetch
       when the row later enters the list.

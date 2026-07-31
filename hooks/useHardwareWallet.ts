@@ -28,7 +28,12 @@ export interface UseHardwareWalletReturn {
   connect: (type?: DeviceType) => Promise<void>;
   disconnect: () => void;
   signTransaction: (tx: TransactionForSigning) => Promise<string>;
-  signPSBT: (psbtBase64: string, inputPaths?: string[], multisigXpubs?: Record<string, string>) => Promise<{ psbt: string; rawTx?: string }>;
+  signPSBT: (
+    psbtBase64: string,
+    inputPaths?: string[],
+    multisigXpubs?: Record<string, string>,
+    walletId?: string
+  ) => Promise<{ psbt: string; rawTx?: string }>;
   refreshDevices: () => Promise<void>;
   clearError: () => void;
 }
@@ -137,7 +142,8 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
   const signPSBT = useCallback(async (
     psbtBase64: string,
     inputPaths: string[] = [],
-    multisigXpubs?: Record<string, string>
+    multisigXpubs?: Record<string, string>,
+    walletId?: string
   ): Promise<{ psbt: string; rawTx?: string }> => {
     const { hardwareWalletService } = await loadHardwareWalletRuntime();
 
@@ -151,6 +157,7 @@ export const useHardwareWallet = (): UseHardwareWalletReturn => {
       setError(null);
 
       const result = await hardwareWalletService.signPSBT({
+        ...(walletId ? { walletId } : {}),
         psbt: psbtBase64,
         inputPaths,
         multisigXpubs,

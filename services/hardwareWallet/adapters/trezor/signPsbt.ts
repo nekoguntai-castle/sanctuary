@@ -75,7 +75,10 @@ export const signPsbtWithTrezor = async (
       deviceFingerprint
     );
 
-    const refTxs = await fetchRefTxs(psbt);
+    const refTxs = request.walletId ? await fetchRefTxs(psbt, request.walletId) : [];
+    if (!request.walletId) {
+      log.warn('Skipping reference transaction fetch without wallet scope');
+    }
     logRefTxAmountMismatches(psbt, refTxs);
     const txFromPsbt = getUnsignedTransactionFromPsbt(psbt);
 

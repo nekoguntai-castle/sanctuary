@@ -53,6 +53,7 @@ import {
   type RetryBudget,
   type RetryOptions,
 } from "./retryPolicy";
+import { extractErrorMessage } from "@sanctuary/shared/utils/errors";
 
 const log = createLogger("ApiClient");
 
@@ -69,6 +70,21 @@ const FILE_TRANSFER_TIMEOUT_MS = 120_000;
 const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
 
 interface ApiRequestOptions extends RequestInit {
+  timeoutMs?: number;
+}
+
+const createRequestSignal = (
+  callerSignal: AbortSignal | null | undefined,
+  timeoutMs: number,
+): AbortSignal => {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return callerSignal
+    ? AbortSignal.any([callerSignal, timeoutSignal])
+    : timeoutSignal;
+};
+
+export interface ApiGetRequestOptions {
+  signal?: AbortSignal;
   timeoutMs?: number;
 }
 
@@ -146,7 +162,9 @@ async function withRetry<T>(
         error instanceof ApiError
           ? error
           : new ApiError(
-              error instanceof Error ? error.message : "Unknown error",
+              typeof error === "object"
+                ? extractErrorMessage(error, "Unknown error")
+                : "Unknown error",
               0,
             );
 
@@ -522,9 +540,10 @@ export class ApiClient {
         ...fetchOptions,
         credentials: "include",
         headers,
-        signal:
-          fetchOptions.signal ??
-          AbortSignal.timeout(timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS),
+        signal: createRequestSignal(
+          fetchOptions.signal,
+          timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+        ),
       });
 
       // Every response may carry X-Access-Expires-At (auth responses do,
@@ -568,6 +587,7 @@ export class ApiClient {
       string | number | boolean | string[] | undefined | null
     >,
     retryOptions?: RetryOptions,
+    requestOptions: ApiGetRequestOptions = {},
   ): Promise<T> {
     // Build query string
     let url = endpoint;
@@ -584,7 +604,15 @@ export class ApiClient {
       }
     }
 
-    return this.request<T>(url, { method: "GET" }, retryOptions);
+    return this.request<T>(
+      url,
+      {
+        method: "GET",
+        signal: requestOptions.signal,
+        timeoutMs: requestOptions.timeoutMs,
+      },
+      retryOptions,
+    );
   }
 
   /**

@@ -393,7 +393,7 @@ export class HardwareWalletService {
     const { psbt, inputPaths } = await createPSBTForSigning(tx);
 
     // Sign with connected device
-    const signed = await this.signPSBT({ psbt, inputPaths });
+    const signed = await this.signPSBT({ walletId: tx.walletId, psbt, inputPaths });
 
     // Broadcast - use rawTx if available (Trezor), otherwise use signed PSBT
     const result = await broadcastSignedTransaction(tx.walletId, signed.psbt, signed.rawTx);

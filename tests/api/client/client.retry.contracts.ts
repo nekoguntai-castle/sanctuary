@@ -158,6 +158,98 @@ export const registerApiClientRetryContracts = () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
+    it('should reject an already-aborted GET before fetching', async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        apiClient.get('/transaction', undefined, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: 'AbortError' });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('should abort during GET backoff without another fetch', async () => {
+      const controller = new AbortController();
+      vi.spyOn(controller.signal, 'reason', 'get').mockReturnValue(undefined);
+      const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+      mockFetch.mockReturnValueOnce(
+        Promise.reject(new TypeError('temporary network failure')),
+      );
+
+      const request = apiClient.get(
+        '/transaction',
+        undefined,
+        { initialDelayMs: 1_000 },
+        { signal: controller.signal },
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(timeoutSpy).toHaveBeenCalled();
+      controller.abort();
+
+      await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should compose caller cancellation with the GET request timeout', async () => {
+      const caller = new AbortController();
+      const timeout = new AbortController();
+      vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal);
+      let requestSignal: AbortSignal | null | undefined;
+      mockFetch.mockImplementationOnce((_url, init) => {
+        requestSignal = init?.signal;
+        return new Promise((_resolve, reject) => {
+          requestSignal?.addEventListener('abort', () => {
+            reject(requestSignal?.reason);
+          });
+        });
+      });
+
+      const request = apiClient.get(
+        '/transaction',
+        undefined,
+        { maxRetries: 0 },
+        { signal: caller.signal, timeoutMs: 25 },
+      );
+      await vi.waitFor(() => expect(requestSignal).toBeInstanceOf(AbortSignal));
+      expect(requestSignal).not.toBe(caller.signal);
+      timeout.abort(new DOMException('request timed out', 'TimeoutError'));
+
+      await expect(request).rejects.toThrow('request timed out');
+      expect(requestSignal?.aborted).toBe(true);
+      expect(caller.signal.aborted).toBe(false);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should propagate caller cancellation through the composed fetch signal', async () => {
+      const caller = new AbortController();
+      let requestSignal: AbortSignal | null | undefined;
+      mockFetch.mockImplementationOnce((_url, init) => {
+        requestSignal = init?.signal;
+        return new Promise((_resolve, reject) => {
+          requestSignal?.addEventListener('abort', () => {
+            reject(requestSignal?.reason);
+          });
+        });
+      });
+
+      const request = apiClient.get(
+        '/transaction',
+        undefined,
+        { maxRetries: 0 },
+        { signal: caller.signal },
+      );
+      await vi.waitFor(() => expect(requestSignal).toBeInstanceOf(AbortSignal));
+      caller.abort();
+
+      await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+      expect(requestSignal?.aborted).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
     it('should retry when an ApiError is also a TypeError instance', async () => {
       const originalProtoParent = Object.getPrototypeOf(ApiError.prototype);
       Object.setPrototypeOf(ApiError.prototype, TypeError.prototype);
