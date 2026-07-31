@@ -66,7 +66,7 @@ concurrency:
 
 jobs:
   verify-vectors:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/verify-vectors
@@ -183,7 +183,7 @@ jobs:
   # This job runs only on manual trigger and requires Docker
   regenerate-vectors:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/regenerate-vectors
@@ -245,7 +245,7 @@ jobs:
   # Optional: Regenerate PSBT vectors with Bitcoin Core
   regenerate-psbt-vectors:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.regenerate_psbt == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/regenerate-psbt-vectors
@@ -396,7 +396,7 @@ jobs:
   # Summary job
   summary:
     needs: [verify-vectors]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     if: always()
 

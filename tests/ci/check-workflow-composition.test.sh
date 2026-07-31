@@ -444,15 +444,6 @@ assert_contains_in_order "$IT" \
   'if [ "$SELECTED_UPGRADE_FAILED" = "true" ]; then'
 
 assert_contains_in_order "$IT" \
-  "install-test publish-images DIND telemetry" \
-  "publish-images:" \
-  "Pre-publish DIND diagnostics" \
-  'scripts/ci/write-preflight-diagnostics.sh' \
-  "Post-publish DIND diagnostics" \
-  'scripts/ci/write-preflight-diagnostics.sh' \
-  "Upload publish-images job logs"
-
-assert_contains_in_order "$IT" \
   "install-test cleanup DIND telemetry" \
   "docker-resource-cleanup:" \
   "Verify current-run Docker cleanup" \
@@ -1043,6 +1034,22 @@ assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Docker Build Image Scope"' \
   "Upload image scope diagnostics" \
   "ci-diagnostics-docker-build-detect-image-scope"
+
+assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build frontend endpoint resolution" \
+  "build-frontend:" \
+  "Resolve Docker host" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"' \
+  "scripts/ci/wait-for-docker.sh" \
+  "Set up Docker Buildx"
+
+assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build backend endpoint resolution" \
+  "build-backend:" \
+  "Resolve Docker host" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"' \
+  "scripts/ci/wait-for-docker.sh" \
+  "Set up Docker Buildx"
 
 # --- quality workflow diagnostic coverage -----------------------------------
 QUALITY_WORKFLOW="$REPO_ROOT/.github/workflows/quality.yml"

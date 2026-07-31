@@ -1,11 +1,7 @@
-name: Build Dev Images
+name: Validate Docker Images
 
-# Builds bleeding-edge images from main branch.
-# For versioned release images, see install-test.yml's publish-images job.
-#
-# Images built:
-#   - ghcr.io/nekoguntai-castle/sanctuary-frontend:main
-#   - ghcr.io/nekoguntai-castle/sanctuary-backend:main
+# Builds the selected frontend and backend images without publishing them.
+# Versioned release images are published only by the trusted operator command.
 
 on:
   push:
@@ -37,8 +33,10 @@ on:
       - 'tsconfig*.json'
       - 'vite*.ts'
       - 'scripts/ci/classify-docker-build-images.sh'
+      - 'scripts/ci/docker-endpoint-lib.sh'
       - 'scripts/ci/provider-context.sh'
       - 'scripts/ci/run-with-log.sh'
+      - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/redactor.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
       - 'scripts/ci/publish-failed-logs.sh'
@@ -72,8 +70,10 @@ on:
       - 'tsconfig*.json'
       - 'vite*.ts'
       - 'scripts/ci/classify-docker-build-images.sh'
+      - 'scripts/ci/docker-endpoint-lib.sh'
       - 'scripts/ci/provider-context.sh'
       - 'scripts/ci/run-with-log.sh'
+      - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/redactor.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
       - 'scripts/ci/publish-failed-logs.sh'
@@ -88,8 +88,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository }}
   SANCTUARY_CI_LOG_SINK_URL: ${{ vars.SANCTUARY_CI_LOG_SINK_URL }}
   SANCTUARY_CI_LOG_SINK_TOKEN: ${{ secrets.SANCTUARY_CI_LOG_SINK_TOKEN }}
 
@@ -136,16 +134,14 @@ jobs:
           retention-days: 14
 
   build-frontend:
-    name: Build frontend image
-    if: |
-      github.event_name != 'pull_request' &&
-      github.server_url == 'https://github.com' &&
-      needs.detect-image-scope.outputs.frontend_image == 'true'
-    runs-on: ubuntu-latest
+    name: Validate frontend image
+    if: needs.detect-image-scope.outputs.frontend_image == 'true'
+    runs-on: ubuntu-22.04
     needs: [detect-image-scope]
     permissions:
       contents: read
-      packages: write
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-frontend
 
     steps:
       - name: Checkout repository
@@ -156,50 +152,36 @@ jobs:
           chmod +x scripts/generate-readme.sh
           ./scripts/generate-readme.sh github
 
+      - name: Resolve Docker host
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
+          scripts/ci/wait-for-docker.sh
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
-      - name: Log in to Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix=
-
-      - name: Build and push frontend
+      - name: Build frontend
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           context: .
           file: ./Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: false
+          tags: sanctuary-ci/frontend:${{ github.sha }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
   build-backend:
-    name: Build backend image
+    name: Validate backend image
     if: |
       always() &&
-      github.event_name != 'pull_request' &&
-      github.server_url == 'https://github.com' &&
       needs.detect-image-scope.outputs.backend_image == 'true' &&
       (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: [detect-image-scope, build-frontend]
     permissions:
       contents: read
-      packages: write
+    env:
+      DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-backend
 
     steps:
       - name: Checkout repository
@@ -210,55 +192,36 @@ jobs:
           chmod +x scripts/generate-readme.sh
           ./scripts/generate-readme.sh github
 
+      - name: Resolve Docker host
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"
+          scripts/ci/wait-for-docker.sh
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
-      - name: Log in to Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix=
-
-      - name: Build and push backend
+      - name: Build backend
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
           context: .
           file: ./server/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: false
+          tags: sanctuary-ci/backend:${{ github.sha }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
   summary:
-    runs-on: ubuntu-latest
+    name: Docker image validation summary
+    runs-on: ubuntu-22.04
     needs: [detect-image-scope, build-frontend, build-backend]
-    if: always() && github.event_name != 'pull_request'
+    if: always()
     steps:
       - name: Summary
         run: |
-          echo "## Dev Images Built" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Image Validation" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Reason: ${{ needs.detect-image-scope.outputs.reason }}" >> $GITHUB_STEP_SUMMARY
-          echo "Registry publish runs only on GitHub-hosted pushes." >> $GITHUB_STEP_SUMMARY
+          echo "No image was pushed and no registry credentials were used." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Frontend image: ${{ needs.build-frontend.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Backend image: ${{ needs.build-backend.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Bleeding-edge images from \`main\` branch:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.REGISTRY }}/${{ github.repository }}-frontend:main\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.REGISTRY }}/${{ github.repository }}-backend:main\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> For stable releases, use versioned tags (e.g., \`v0.6.0\`) or \`latest\`" >> $GITHUB_STEP_SUMMARY

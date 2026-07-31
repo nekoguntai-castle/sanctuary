@@ -14,7 +14,7 @@ name: Release Candidate Validation
 on:
   # Fire automatically on RC / pre-release tag pushes so RC validation
   # happens BEFORE the operator promotes to a final tag. Final stable tags
-  # (e.g. v0.8.50) are matched by release.yml's pattern, not this one.
+  # (e.g. v0.8.50) are validated by install-test.yml, not this workflow.
   # Forgejo Actions doesn't honor negative `!` globs, so use positive-only
   # patterns covering the prerelease shapes used in this repo
   # (-rc1, -rc.1, -alpha1, -beta.1, -dev*).
@@ -91,7 +91,7 @@ jobs:
   # ============================================
   validation-info:
     name: Validation Info
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       candidate_ref: ${{ steps.candidate.outputs.candidate_ref }}
     steps:
@@ -155,7 +155,7 @@ jobs:
   # ============================================
   unit-tests:
     name: Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: validation-info
 
     steps:
@@ -181,7 +181,7 @@ jobs:
   # ============================================
   fresh-install-test:
     name: Fresh Install E2E
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: validation-info
     timeout-minutes: 30
     env:
@@ -313,7 +313,7 @@ jobs:
   # ============================================
   container-health-test:
     name: Container Health
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
@@ -476,7 +476,7 @@ jobs:
   # ============================================
   auth-flow-test:
     name: Auth Flow
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     concurrency:
       group: sanctuary-runner-e2e
       cancel-in-progress: false
@@ -651,18 +651,16 @@ jobs:
   # max-parallel or job-level concurrency, so a parallel matrix in
   # this workflow saturated the dind docker daemon every run.
 
-  # Codeberg image publishing happens in install-test.yml's
-  # `publish-images` job (gated on test-summary's release-gate step).
-  # release-candidate.yml only fires on RC/alpha/beta/dev tags
-  # (see this file's `on.push.tags` filter), so a publish-images
-  # job here would be unreachable on stable tags.
+  # Release distribution is intentionally outside Forgejo Actions. After these
+  # validation gates pass, the trusted operator command publishes GitHub/GHCR
+  # artifacts as documented in docs/reference/release-distribution.md.
 
   # ============================================
   # Validation Summary
   # ============================================
   validation-summary:
     name: Validation Summary
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: [validation-info, unit-tests, fresh-install-test, container-health-test, auth-flow-test]
     if: always()
 
@@ -743,8 +741,8 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
             echo "1. Create a release tag on this commit" >> $GITHUB_STEP_SUMMARY
-            echo "2. The release workflow will run additional validation" >> $GITHUB_STEP_SUMMARY
-            echo "3. Docker images will be built and pushed" >> $GITHUB_STEP_SUMMARY
+            echo "2. Wait for stable-tag install-test.yml validation" >> $GITHUB_STEP_SUMMARY
+            echo "3. Run npm run release:publish -- <tag> from a trusted operator checkout" >> $GITHUB_STEP_SUMMARY
           else
             echo "## :stop_sign: Release Candidate REJECTED" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY

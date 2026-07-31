@@ -2,11 +2,9 @@
 #
 # Version Bump Script
 #
-# Updates version across all package.json files. The Umbrel manifest
-# (umbrel-app.yml + docker-compose.yml) lives in nekoguntai-castle/sanctuary-umbrel
-# and updates itself via workflow_dispatch fired by install-test.yml's
-# notify-umbrel job after publish-images pushes the stable tag's images
-# to Codeberg Packages.
+# Updates version across all package.json files. Release distribution is an
+# operator-owned step after Forgejo tag CI succeeds; Forgejo Actions never
+# publishes images, creates releases, or dispatches sanctuary-umbrel.
 #
 # Usage:
 #   ./scripts/bump-version.sh 0.7.20      # Set explicit version
@@ -131,7 +129,7 @@ echo -e "${GREEN}Version updated to $NEW_VERSION${NC}"
 echo ""
 echo "This script only updates package.json files. The full release flow"
 echo "(local validation, upgrade-test audit, PR through Forgejo, tag, CI"
-echo "monitoring on Forgejo Actions, Forgejo+Codeberg Release objects) lives"
+echo "monitoring on Forgejo Actions, then operator-owned GitHub/GHCR distribution) lives"
 echo "in the /release skill at .claude/commands/release.md — invoke that"
 echo "for an end-to-end release rather than driving these steps by hand."
 echo ""
@@ -144,9 +142,7 @@ echo "  5. Open PR via Forgejo API/UI, wait for CI, merge (squash)"
 echo "  6. git checkout main && git pull --ff-only origin main"
 echo "  7. git tag v$NEW_VERSION-rc1 && git push origin v$NEW_VERSION-rc1   # RC smoke"
 echo "  8. After RC CI is green: git tag v$NEW_VERSION && git push origin v$NEW_VERSION"
-echo "  9. ./scripts/create-forge-release.sh v$NEW_VERSION                  # Release object"
+echo "  9. Wait for stable-tag CI, then run: npm run release:publish -- v$NEW_VERSION"
 echo ""
-echo "Forgejo's push-mirror propagates every push to Codeberg."
-echo "On the stable final tag, install-test.yml's publish-images job pushes"
-echo "frontend+backend images to Codeberg Packages and notify-umbrel fires"
-echo "workflow_dispatch on nekoguntai-castle/sanctuary-umbrel for the manifest."
+echo "The trusted operator command publishes GitHub Releases and GHCR images,"
+echo "then dispatches the local sanctuary-umbrel updater after digest verification."

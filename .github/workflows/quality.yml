@@ -673,6 +673,8 @@ jobs:
           bash -n tests/ci/write-empty-diagnostic-breadcrumb.test.sh
           bash -n tests/ci/write-diagnostic-summary.test.sh
           bash -n tests/ci/check-workflow-composition.test.sh
+          bash -n scripts/ci/check-workflows-test-only.sh
+          bash -n tests/ci/workflows-test-only.test.sh
           # Node CI helper tests.
           node tests/ci/check-github-action-runtimes.test.mjs
           node tests/ci/provider-context-node.test.mjs
@@ -722,6 +724,7 @@ jobs:
           bash tests/ci/write-empty-diagnostic-breadcrumb.test.sh
           bash tests/ci/write-diagnostic-summary.test.sh
           bash tests/ci/check-workflow-composition.test.sh
+          bash tests/ci/workflows-test-only.test.sh
           QUALITY_CI_CLASSIFIER_TESTS
 
       - name: Write CI classifier failure breadcrumb

@@ -105,7 +105,7 @@ tests/install/
 │   └── auth-flow.test.sh        # Authentication flow tests
 ├── utils/
 │   ├── helpers.sh         # Shared test utilities
-│   ├── classify-install-scope.sh # GitHub Actions install-test scope classifier
+│   ├── classify-install-scope.sh # Forgejo Actions install-test scope classifier
 │   ├── upgrade-assertions.sh # User-visible post-upgrade assertions
 │   ├── upgrade-fixtures.sh   # Upgrade fixture selection and defaults
 │   ├── upgrade-source-refs.sh # Stable tag/source-ref alias resolution
@@ -261,9 +261,10 @@ Tests authentication and password management:
 
 ## CI/CD Integration
 
-### GitHub Actions Workflows
+### Forgejo Actions Workflows
 
-The test suite is integrated into GitHub Actions via two workflows:
+The test suite is integrated into local Forgejo Actions via two workflows.
+GitHub Actions is disabled and does not execute these mirrored workflow files.
 
 #### 1. Install Tests (`.github/workflows/install-test.yml`)
 
@@ -309,7 +310,9 @@ Use this workflow **before cutting a release** to run the full test suite includ
 2. Wait for all tests to pass, including the upgrade matrix
 3. Create the release tag
 4. The Install Tests workflow will run release-critical tests and the blocking upgrade matrix on the tag
-5. If all tests pass, Docker images will be built and pushed
+5. If all tests pass, run the trusted operator release command documented in
+   `docs/reference/release-distribution.md`; Forgejo Actions does not publish
+   images or create releases
 
 **Manual trigger:**
 ```yaml

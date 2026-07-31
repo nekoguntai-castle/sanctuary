@@ -9,7 +9,7 @@ CI authority: Forgejo Actions, testing only
 ## Execution Ledger
 
 - target_branch: `main`
-- task_branch: `codex/implement-merge/github-release-distribution-20260730`
+- task_branch: `codex/implement-merge/forgejo-ci-test-only-20260730`
 - worktree_path: `/tmp/sanctuary-implement-merge-github-mirror`
 - created_by_loop: branch and isolated worktree
 - converted_to_next_phase: 2026-07-30 HST after PR #562 merged
@@ -23,6 +23,11 @@ CI authority: Forgejo Actions, testing only
   release tags require the trusted operator's explicit GitHub ref creation
 - queued Dependabot dynamic runs: cancellation returns GitHub HTTP 500; repository
   config removal and post-mirror recheck pending
+- release distribution PR: Forgejo PR #564 merged as
+  `b1555054e8e9f021151d4e3ecc0c697e4b59e6bf`
+- post-merge release-distribution evidence: architecture, Docker scope, and full
+  Test Suite passed; install runs 7273 and 7275 failed before Sanctuary code ran
+  because their `ubuntu-latest` job image lacked the Docker CLI
 
 ## Outcome
 
@@ -230,21 +235,21 @@ anonymously, and Umbrel can resolve the new digests while Codeberg remains intac
 
 ### Phase 3 — Make Forgejo Actions test-only
 
-- [ ] In `.github/workflows/install-test.yml`, remove the `publish-images` and
+- [x] In `.github/workflows/install-test.yml`, remove the `publish-images` and
   `notify-umbrel` jobs and all Codeberg secrets/login/logout behavior. Preserve
   stable-tag release-critical testing and its aggregate gate.
-- [ ] In `.github/workflows/docker-build.yml`, remove GitHub-only GHCR push
+- [x] In `.github/workflows/docker-build.yml`, remove GitHub-only GHCR push
   behavior. Retain or convert jobs to build-only validation on Forgejo with no
   registry write credentials.
-- [ ] In `.github/workflows/architecture.yml`, remove the GitHub Pages artifact and
+- [x] In `.github/workflows/architecture.yml`, remove the GitHub Pages artifact and
   deploy job. Preserve graph drift, docs typecheck, and site-build validation.
-- [ ] Preserve the Forgejo required status contexts exactly:
+- [x] Preserve the Forgejo required status contexts exactly:
   `PR Required Checks`, `Full Test Summary`, and
   `Code Quality Required Checks`.
-- [ ] Remove dead GitHub-only `merge_group` assumptions from operational docs, but
+- [x] Remove dead GitHub-only `merge_group` assumptions from operational docs, but
   change workflow triggers only if Forgejo/actionlint compatibility tests show the
   cleanup is safe.
-- [ ] Add a workflow policy test that fails if CI references write credentials,
+- [x] Add a workflow policy test that fails if CI references write credentials,
   `docker login`, image pushes, release creation, Pages deployment, or downstream
   dispatch. Allow diagnostic artifact upload to Forgejo itself.
 

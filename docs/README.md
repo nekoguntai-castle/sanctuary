@@ -34,7 +34,7 @@ Procedural guides for operators and developers.
 
 Lookup tables, checklists, and specs.
 
-- [CI/CD strategy](reference/ci-cd-strategy.md) — branch protection, merge queue, and path-aware validation
+- [CI strategy](reference/ci-cd-strategy.md) — Forgejo branch protection, test-only workflows, and path-aware validation
 - [Frontend architecture](reference/frontend-architecture.md) — React/Vite architecture and frontend packaging
 - [Hardware wallet integration](reference/hardware-wallet-integration.md) — hardware wallet feature specification
 - [Wallet threat model](reference/wallet-threat-model.md) — fund-safety assets, actors, boundaries, non-goals, and limitations

@@ -22,8 +22,8 @@
 #   - First image failure aborts the run; later images are not attempted.
 #     Re-running on the same tag re-pushes the same content (Dockerfiles +
 #     source SHA are immutable for a tag), so partial recovery is idempotent.
-#   - The downstream notify-umbrel job MUST gate on this job's success;
-#     a partial digests file would write nonsense to sanctuary-umbrel.
+#   - The trusted operator release command verifies both image digests before
+#     dispatching sanctuary-umbrel; CI must never invoke this script with PUSH=true.
 #
 # Prebuilt image inventory is intentionally limited to the web core.
 # Gateway and llm-egress-proxy are distributed through source compose

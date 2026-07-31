@@ -1,13 +1,17 @@
-# Sanctuary CI/CD Strategy
+# Sanctuary CI strategy
 
-Date: 2026-04-22 (Pacific/Honolulu)
-Status: Active baseline for PR-first development with protected `main` and merge queue enabled
+Date: 2026-07-30 (Pacific/Honolulu)
+Status: Active Forgejo-authoritative, test-only CI baseline
 
 This document explains which checks should run at each point in development. The goal is not to run fewer tests; it is to run each test at the cheapest point where it gives useful signal.
 
 ## Development Model
 
-Normal development happens on short-lived branches and enters `main` through pull requests. Direct human pushes to `main` are reserved for documented emergencies only.
+Normal development happens on short-lived branches in the local Forgejo
+repository and enters `main` through Forgejo pull requests. Direct human pushes
+to `main` are reserved for documented emergencies only. GitHub is a passive
+public mirror: GitHub Actions is disabled and GitHub pull requests are not an
+authoritative development path.
 
 `main` is protected with:
 
@@ -15,23 +19,17 @@ Normal development happens on short-lived branches and enters `main` through pul
 - Required status checks enabled.
 - Linear history required.
 - Force pushes and branch deletion disabled.
-- Merge queue enabled for the final merge candidate.
+- Stable aggregate status checks produced by Forgejo Actions.
 
 Because this repository currently has a single human collaborator, the branch protection baseline requires a PR but does not require an external approving review. If additional maintainers are added, raise `required_approving_review_count` to `1` and enable stale-review dismissal.
 
-## Merge Queue Status
+## Pull request merge status
 
-Merge queue is the active merge model for protected `main`. The required workflows include `merge_group` triggers, and the full confidence lane validates the queued merge-group SHA before GitHub merges the pull request.
-
-The queue is configured with:
-
-- Merge method: squash.
-- Build concurrency: `3`.
-- Minimum group size: `1`.
-- Maximum group size: `1` until the suite has enough history to batch safely.
-- Required all-green queue entries.
-- Status check timeout: `60` minutes.
-- Required checks: `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+Forgejo pull requests are the active merge model for protected `main`. A PR may
+merge only after the exact required contexts `PR Required Checks`,
+`Full Test Summary`, and `Code Quality Required Checks` succeed. The repository
+may retain compatibility handling for `merge_group` event payloads, but GitHub
+merge queue is not an operational or authoritative path.
 
 ## Required Checks
 
@@ -43,26 +41,29 @@ Required for PRs:
 - `Full Test Summary`, expected to appear as skipped/success on pull requests
 - `Code Quality Required Checks`
 
-Required for merge/main confidence, and for merge queue when available:
+Required for `main` confidence:
 
 - `Full Test Summary`
 - `Code Quality Required Checks`
 
-`PR Required Checks` and `Full Test Summary` live in the same `Test Suite` workflow. On PRs, the quick-lane aggregate is meaningful and the full-lane aggregate is skipped. On merge-queue events, the full-lane aggregate is meaningful, path-aware, and the PR aggregate is skipped. GitHub treats skipped jobs as successful checks, so both names can safely exist in branch protection now and remain valid when merge queue is enabled.
+`PR Required Checks` and `Full Test Summary` live in the same `Test Suite`
+workflow. On Forgejo pull requests, the quick-lane aggregate is meaningful and
+the full-lane aggregate is skipped. Pushes to `main` run the path-aware full
+confidence lane.
 
-Do not globally require `Build Dev Images`, `Install Test Summary`, or `Verify Bitcoin Vectors`. Those workflows are intentionally path-gated or release-gated. They should run when their trigger paths match, including changes to their own workflow files, but requiring them globally would block unrelated PRs where the workflow never starts.
+Do not globally require `Validate Docker Images`, `Install Test Summary`, or
+`Verify Bitcoin Vectors`. Those workflows are intentionally path-gated or
+release-gated. They should run when their trigger paths match, including changes
+to their own workflow files, but requiring them globally would block unrelated
+PRs where the workflow never starts.
 
-`CodeQL Required Checks` is emitted by the repo-owned advanced CodeQL workflow, but it is not a branch-protection requirement yet. GitHub default setup must stay disabled for this repository because GitHub rejects advanced CodeQL uploads while default setup is enabled; keep the aggregate context observed for Actions, JavaScript/TypeScript, Go, and Python path fixtures before deciding whether to promote it to branch protection.
-
-## First PR Validation Checklist
-
-The first PR after enabling this strategy should be treated as a process validation, not only a code change.
+## PR validation checklist
 
 - Confirm `PR Required Checks` runs on the pull request and fails only when a quick-lane child fails.
 - Confirm `Code Quality Required Checks` runs on the pull request and reflects lint, gitleaks, lizard, and jscpd.
 - Confirm `Full Test Summary` is present on the pull request as skipped/success, so branch protection does not wait on the full lane.
 - Confirm docs-only or workflow-only PRs do not wait on absent Docker, install, or vector checks.
-- Confirm merge-queue full-lane jobs run only for the touched package unless the test workflow, schedule, or manual dispatch requires an exhaustive run.
+- Confirm the post-merge `main` full lane runs only for the touched package unless the test workflow, schedule, or manual dispatch requires an exhaustive run.
 - After merge, confirm the push-to-`main` full lane runs as the merge confidence backstop.
 
 ## First PR Validation Result
@@ -75,21 +76,24 @@ Validated on 2026-04-19 HST with PR #8, `ci-pr-flow-aggregates`, merged as `72bd
 - Path-gated workflow checks behaved correctly: Docker build, install tests, and vector verification ran because this PR changed their workflow files; they were not global requirements for unrelated PRs.
 - The post-merge `main` backstop passed: `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install summary, release check, and dev image build completed successfully.
 
-Revalidated after organization migration and protected-main rollout on 2026-04-22 HST:
+Historical GitHub-era merge-queue validation is retained in repository history;
+it is not part of the current Forgejo operating model.
 
-- PR #87, `security/codeql-alert-triage`, passed PR required checks, entered the merge queue, passed merge-group `Code Quality` and `Test Suite`, and merged as `9358e84a`.
-- PR #88, `security/cache-codeql-fixes`, passed PR required checks, entered the merge queue, passed merge-group `Code Quality` and `Test Suite`, and merged as `50d54aad`.
-- On both merge-group runs, quick-lane jobs skipped correctly while `Full Test Summary` represented the full-lane result.
-- After PR #87 merged, the push-to-`main` backstop passed Release, Build Dev Images, Install Tests, and Test Suite.
+## Actions permissions and mutation boundary
 
-## Repository Actions Permissions
+Repository workflow permissions are intentionally read-only:
 
-Repository workflow permissions are intentionally narrow:
-
-- Default `GITHUB_TOKEN` permission: `read`.
-- GitHub Actions pull-request creation/approval setting: disabled.
-- Workflow files request write scopes only for jobs that need them, such as release editing, package publishing, or check inspection.
-- Umbrel automation no longer needs this repository token to create PRs. Stable releases dispatch an `image-published` event to `nekoguntai-castle/sanctuary-umbrel` through `UMBREL_DISPATCH_TOKEN`; that repository owns its own PR/update workflow.
+- Forgejo Actions is the only CI authority and performs validation only.
+- GitHub Actions is disabled at repository level.
+- Workflows must not request write permissions, use distribution credentials,
+  log in to registries, push images, create releases, deploy Pages, or dispatch
+  downstream workflows.
+- Diagnostic log-sink credentials and Forgejo artifact/cache uploads are allowed
+  because they retain test evidence rather than publishing product artifacts.
+- `scripts/ci/check-workflows-test-only.sh` enforces this boundary.
+- After green Forgejo stable-tag gates, a trusted operator runs
+  `npm run release:publish -- <tag>` to publish GitHub/GHCR artifacts and then
+  dispatch the local `sanctuary-umbrel` updater.
 
 ## Lizard Remediation PR Loop
 
@@ -117,14 +121,18 @@ Run focused commands before pushing:
 - Gateway: `cd gateway && npm run test:run` or focused gateway tests.
 - Docker/install: relevant `tests/install/*` scripts when practical.
 
-Before opening or updating a PR, run the full local gate for the touched package so GitHub Actions is a protection layer, not the first place basic package coverage/build failures are discovered:
+Before opening or updating a PR, run the full local gate for the touched package
+so Forgejo Actions is a protection layer, not the first place basic package
+coverage/build failures are discovered:
 
 - Gateway changes: `cd gateway && npm run test:coverage && npm run build`.
 - LLM egress proxy changes: `npm --prefix llm-egress-proxy run build` plus `npx vitest run tests/llm-egress-proxy`.
 - Server security, Bitcoin, auth, access-control, or shared-service changes: focused tests, `npm run typecheck:server:tests`, and the broader changed-server test gate when paths are critical.
 - Frontend changes: strict app/test typechecks plus the relevant coverage command for the changed surface.
 
-Push once per batch after the relevant local gate is green. Let PR checks run once, then enter merge queue once. If CI finds a reproducible local gap, add that command to this Tier 0 checklist before retrying.
+Push once per batch after the relevant local gate is green, then let the Forgejo
+PR checks run once. If CI finds a reproducible local gap, add that command to
+this Tier 0 checklist before retrying.
 
 ### Tier 1 - PR Quick Gate
 
@@ -148,11 +156,13 @@ The PR quick gate is optimized for repeated branch updates.
 
 The CI lizard job currently gates a measured CI-scope baseline of 9 warnings. That prevents new complexity regressions while the broader remediation loop continues ratcheting down the full lizard backlog. Lower `LIZARD_WARNING_BASELINE` whenever the CI-scope warning count is reduced.
 
-### Tier 2 - Merge/Main Confidence Gate
+### Tier 2 - Main Confidence Gate
 
-The merge/main gate exists to prove the final candidate, not every local-sized commit.
+The post-merge `main` gate proves the final merged commit, not every local-sized commit.
 
-`Test Suite` full lane runs on `main`, schedule, manual dispatch, and merge queue. On merge-queue and push events, it first classifies changed paths and runs only the relevant full lanes. Schedule and manual dispatch set `full_scan=true` and remain exhaustive.
+`Test Suite` full lane runs on `main`, schedule, and manual dispatch. On push
+events, it first classifies changed paths and runs only the relevant full lanes.
+Schedule and manual dispatch set `full_scan=true` and remain exhaustive.
 
 Markdown and MDX files are docs-only for the test classifiers, including package-local docs under `server/`, `gateway/`, `llm-egress-proxy/`, and `tests/install/`. A docs-only change may still get required aggregate/no-op checks on PRs, but it must not start source tests, DB-backed tests, E2E lanes, install tests, or image builds.
 
@@ -170,7 +180,8 @@ Markdown and MDX files are docs-only for the test classifiers, including package
 - Full frontend/backend build check for package, build config, Docker/image entrypoint, Prisma, test-workflow, or exhaustive runs. It also starts from path classification instead of waiting behind coverage. Typecheck and coverage remain the primary source-level compile gate for ordinary frontend/backend source changes.
 - `Full Test Summary` aggregate, which fails if any required full-lane child fails.
 
-When merge queue is available, use the merge-queue SHA as the authoritative merge candidate. Push-to-main full-lane runs are a path-aware backstop for the final merged commit; scheduled and manual runs provide the periodic exhaustive proof.
+Push-to-main full-lane runs are the path-aware backstop for the final merged
+commit; scheduled and manual runs provide periodic exhaustive proof.
 
 ### Tier 3 - Scheduled Deep Validation
 
@@ -187,21 +198,29 @@ Promote a scheduled check into the PR quick gate only when escaped defects show 
 
 ### Tier 4 - Release Gate
 
-Release validation intentionally duplicates some install and image-building evidence:
+Release validation intentionally duplicates install and image-build evidence,
+but never publishes:
 
 - `Install Tests` validates fresh install, install script flow, container health, auth flow, and upgrade on release-critical paths.
 - Pull-request and main-branch install tests are scoped by `tests/install/utils/classify-install-scope.sh`: unit-only, installer, compose/docker, auth-flow, upgrade-baseline, upgrade, or release-critical. Container-health and auth-flow reuse one stack when both are relevant. Prisma/migration-only changes run the baseline upgrade matrix, while upgrade harness/fixture changes, release tags, schedules, install workflow edits, and manual release-critical/all/upgrade runs include both baseline and extended upgrade fixtures. Install Markdown/MDX changes are docs-only and should not run install tests.
-- `Build Dev Images` is scoped by `scripts/ci/classify-docker-build-images.sh`. Frontend-only image inputs build only the frontend dev image, backend-only image inputs build only the backend dev image, and shared image inputs such as `.dockerignore`, `shared/`, Compose files, or the Docker workflow build both. Monitoring-only Docker config and docs-only paths should not build either image.
+- `Validate Docker Images` is scoped by
+  `scripts/ci/classify-docker-build-images.sh`. Frontend-only inputs build only
+  the frontend image, backend-only inputs build only the backend image, and
+  shared image inputs build both. Every build uses `push: false`.
 - `Release Candidate Validation` is the deliberate pre-release install validation pass.
-- `Release` builds and publishes multi-arch images, creates manifests, notifies the separate Umbrel repository for stable releases, and updates release notes.
+- Stable-tag `Install Tests` is the final Forgejo release gate.
+- The trusted operator release command owns multi-architecture GHCR publication,
+  GitHub/Forgejo Release objects, digest verification, and Umbrel notification.
 
-Release/tag workflows must not use broad cancellation rules. A superseded PR run can be canceled; a publishing run should not be canceled unless an operator does so intentionally.
+Release/tag validation workflows must not use broad cancellation rules. A
+superseded PR run can be canceled; an immutable tag validation run should not be
+canceled unless an operator does so intentionally.
 
 ## Emergency Hotfix Process
 
 Use this only when production or release infrastructure is blocked and waiting for the normal PR process would cause more risk than bypassing it.
 
-1. Temporarily bypass branch protection as an admin, or use GitHub's explicit bypass mechanism if enabled.
+1. Temporarily bypass Forgejo branch protection as an administrator.
 2. Make the smallest safe fix.
 3. Run the focused local command that covers the failure mode.
 4. Push the hotfix and wait for the full `main` gate.
@@ -241,13 +260,24 @@ This parses the notices emitted by `scripts/ci/time-command.sh` from matching jo
 Use the trend helper before changing a workflow shape:
 
 ```bash
-bash scripts/ci/report-workflow-trends.sh --workflow test.yml --event merge_group --limit 20
+bash scripts/ci/report-workflow-trends.sh --workflow test.yml --event push --limit 20
 bash scripts/ci/report-workflow-trends.sh --workflow install-test.yml --limit 20
 ```
 
-The trend helper fetches recent successful runs, sums job durations as runner time, reports wall-time and runner-time p50/p90, and lists the longest job per run. Keep PR quick gates, merge-group gates, release/install gates, and scheduled/manual runs separate; a combined average hides the cost model. Do not shard or add setup reuse for a lane unless the p90 trend shows it is still a real tail.
+The trend helper fetches recent successful runs, sums job durations as runner
+time, reports wall-time and runner-time p50/p90, and lists the longest job per
+run. Keep PR quick gates, `main` gates, release/install gates, and
+scheduled/manual runs separate; a combined average hides the cost model. Do not
+shard or add setup reuse for a lane unless the p90 trend shows it is still a real
+tail.
 
-The frontend/backend matrix split intentionally trades extra runner minutes for lower merge-queue wall time. Keep coverage artifact names stable (`frontend-coverage`, `backend-coverage`) so `Full Test Summary` remains the branch-protection aggregate. Frontend coverage now shards execution with Vitest blob reports and enforces thresholds only in the merge job; if it becomes the long pole again, increase the shard count only after measuring shard balance and merge overhead from workflow durations.
+The frontend/backend matrix split intentionally trades extra runner minutes for
+lower `main` gate wall time. Keep coverage artifact names stable
+(`frontend-coverage`, `backend-coverage`) so `Full Test Summary` remains the
+branch-protection aggregate. Frontend coverage now shards execution with Vitest
+blob reports and enforces thresholds only in the merge job; if it becomes the
+long pole again, increase the shard count only after measuring shard balance and
+merge overhead from workflow durations.
 
 Backend integration tests now use deterministic groups in `scripts/ci/backend-integration-groups.sh`. Run the group check after adding, removing, or renaming an integration spec:
 
@@ -273,7 +303,9 @@ Install workflow push runs currently tail on `Install Stack Smoke` or baseline u
 
 ### CI Timing Review Checkpoint
 
-After 10-20 successful PR or merge-group runs with the E2E timing notices enabled, review the latest `test.yml` trend sample and the slowest completed runs before making another workflow-shape change.
+After 10-20 successful Forgejo PR or `main` runs with the E2E timing notices
+enabled, review the latest `test.yml` trend sample and the slowest completed runs
+before making another workflow-shape change.
 
 - If dependency install or frontend build dominates E2E wall time, evaluate shared build artifacts, dependency-cache tuning, or moving repeated setup out of the browser matrix.
 - If Playwright browser install dominates, tune browser cache keys, restore behavior, or install scope before changing test grouping.

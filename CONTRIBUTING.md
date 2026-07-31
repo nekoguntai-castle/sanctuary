@@ -127,7 +127,7 @@ Bare `chore: retrigger CI` with no body is no longer acceptable. Diagnostic arti
 
 ### Version management
 
-Versions must stay synchronized across `package.json`, `server/package.json`, `gateway/package.json`, and `llm-egress-proxy/package.json`. Use `./scripts/bump-version.sh` to bump all at once. (The Umbrel manifest in [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) updates itself via `repository_dispatch` from this repo's release workflow.)
+Versions must stay synchronized across `package.json`, `server/package.json`, `gateway/package.json`, and `llm-egress-proxy/package.json`. Use `./scripts/bump-version.sh` to bump all at once. After green Forgejo tag CI, the trusted operator release command publishes GitHub/GHCR artifacts and dispatches the local `sanctuary-umbrel` updater.
 
 Never bump the version to fix a CI failure. Fix on the current version.
 
