@@ -71,6 +71,9 @@ assert_images() {
 main() {
   local temp_dir repo_dir output_file base_sha head_sha
 
+  grep -Fxq '!public/**/*.md' "$ROOT_DIR/.dockerignore" \
+    || fail "public Markdown assets must be included in the frontend Docker context"
+
   temp_dir="$(mktemp -d)"
   trap 'rm -rf "'"$temp_dir"'"' EXIT
   repo_dir="$temp_dir/repo"
@@ -112,16 +115,64 @@ main() {
   commit_file "$repo_dir" "package.json" '{"scripts":{"check:quality":"node scripts/check.js"}}' "root package script"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "false" "false"
+  assert_images "$output_file" "true" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "package-lock.json" '{"lockfileVersion":3}' "root package lock"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "true"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "public/favicon.svg" "<svg />" "public asset"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "false"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "public/help.md" "# Product help" "public markdown asset"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "false"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "public/guide.mdx" "# Product guide" "public mdx asset"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "false"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "types/wallet.ts" "export type Wallet = {};" "root frontend type"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "false"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "global.d.ts" "declare const __BUILD__: string;" "frontend global types"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "true"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "vite.nodePolyfills.ts" "export const polyfills = [];" "vite helper"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "false"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "metadata.json" '{"name":"Sanctuary"}' "frontend metadata"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_images "$output_file" "true" "false"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "server/Dockerfile" "FROM scratch" "backend dockerfile"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "false" "true"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "gateway/package.json" '{"type":"module"}' "gateway package metadata"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_images "$output_file" "false" "true"
@@ -134,6 +185,18 @@ main() {
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "docker/monitoring/prometheus.yml" "global: {}" "monitoring config"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "false" "false"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "CHANGELOG.md" "# Release notes" "root docs"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "false" "false"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "docs/guide.mdx" "# Internal guide" "docs mdx"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_images "$output_file" "false" "false"

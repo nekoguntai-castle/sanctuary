@@ -75,6 +75,10 @@ git rev-parse --verify "$head_sha^{commit}" >/dev/null
 
 is_docs_only_file() {
   case "$1" in
+    public/*)
+      # Markdown under public/ is a shipped asset, not repository documentation.
+      return 1
+      ;;
     *.md|*.mdx)
       return 0
       ;;
@@ -84,7 +88,7 @@ is_docs_only_file() {
 
 is_both_image_file() {
   case "$1" in
-    .github/workflows/docker-build.yml|.dockerignore|shared/*|docker-compose.yml|docker-compose.*.yml)
+    .github/workflows/docker-build.yml|.dockerignore|global.d.ts|package.json|package-lock.json|shared/*|docker-compose.yml|docker-compose.*.yml)
       return 0
       ;;
   esac
@@ -93,7 +97,10 @@ is_both_image_file() {
 
 is_frontend_image_file() {
   case "$1" in
-    App.tsx|index.html|index.tsx|src/*|components/*|contexts/*|hooks/*|providers/*|services/*|themes/*|utils/*|Dockerfile|package-lock.json|tsconfig*.json|vite*.ts)
+    App.tsx|index.html|index.tsx|src/*|components/*|contexts/*|hooks/*|providers/*|public/*|services/*|themes/*|types/*|utils/*)
+      return 0
+      ;;
+    Dockerfile|metadata.json|tsconfig*.json|vite*.ts)
       return 0
       ;;
     docker/nginx/nginx.conf|docker/nginx/default.conf.template|docker/nginx/default-ssl.conf.template|docker/nginx/docker-entrypoint.sh)
@@ -105,7 +112,7 @@ is_frontend_image_file() {
 
 is_backend_image_file() {
   case "$1" in
-    server/Dockerfile|server/package.json|server/package-lock.json|server/prisma/*|server/prisma.config.ts|server/tsconfig*.json|server/scripts/*|server/src/*)
+    gateway/package.json|server/Dockerfile|server/package.json|server/package-lock.json|server/prisma/*|server/prisma.config.ts|server/tsconfig*.json|server/scripts/*|server/src/*)
       return 0
       ;;
   esac

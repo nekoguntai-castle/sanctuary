@@ -94,6 +94,30 @@ assert_not_contains() {
   fi
 }
 
+assert_occurrence_count() {
+  local file="$1"
+  local label="$2"
+  local needle="$3"
+  local expected="$4"
+  local actual
+
+  if [ ! -f "$file" ]; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: file not found: $file")
+    return 1
+  fi
+
+  actual="$(awk -v needle="$needle" 'index($0, needle) { count += 1 } END { print count + 0 }' "$file")"
+  if [ "$actual" -eq "$expected" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: expected $expected occurrences of $needle in $file, found $actual")
+    echo "FAIL: $label" >&2
+  fi
+}
+
 node24_runner_report() {
   awk '
       function finish_job() {
@@ -1022,6 +1046,18 @@ assert_contains_in_order "$VV" \
 
 # --- docker-build diagnostic coverage ----------------------------------------
 DOCKER_BUILD_WORKFLOW="$REPO_ROOT/.github/workflows/docker-build.yml"
+
+for docker_input in \
+  "'public/**'" \
+  "'types/**'" \
+  "'global.d.ts'" \
+  "'metadata.json'" \
+  "'gateway/package.json'"; do
+  assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
+    "docker-build triggers for $docker_input" \
+    "$docker_input" \
+    2
+done
 
 assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build image-scope diagnostics" \

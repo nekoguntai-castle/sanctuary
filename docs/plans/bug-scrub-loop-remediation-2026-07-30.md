@@ -369,17 +369,17 @@ Delivery: one assistant/backend/proxy PR.
 
 Finding: `docker-image-classifier-omits-frontend-build-inputs`.
 
-- [ ] Change the currently incorrect `package.json` regression expectation.
-- [ ] Add `public/*` and representative root build/config inputs to classifier
+- [x] Change the currently incorrect `package.json` regression expectation.
+- [x] Add `public/*` and representative root build/config inputs to classifier
       fixtures, including a production `.md`/`.mdx` asset and negative docs-only
       cases.
-- [ ] Align `is_frontend_image_file` with every non-ignored frontend Docker build
+- [x] Align `is_frontend_image_file` with every non-ignored frontend Docker build
       input. Prefer a maintainable explicit shared predicate or conservative
       frontend fallback over an incomplete allowlist.
-- [ ] Evaluate production build inputs before the docs-only exemption (or scope
+- [x] Evaluate production build inputs before the docs-only exemption (or scope
       that exemption to non-build-input documentation paths), so `public/help.md`
       cannot be skipped.
-- [ ] Run classifier, workflow-composition, shell portability, and a dry image
+- [x] Run classifier, workflow-composition, shell portability, and a dry image
       scope check against representative diffs.
 
 Acceptance:
