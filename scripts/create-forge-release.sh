@@ -163,6 +163,26 @@ report_failure() {
   sed -n '1,3p' "$RESPONSE_FILE" 2>/dev/null | sed 's/^/      /' >&2
 }
 
+release_matches_payload() {
+  jq -e --argjson expected "$PAYLOAD" \
+    '.tag_name == $expected.tag_name
+      and .name == $expected.name
+      and .body == $expected.body
+      and .draft == $expected.draft
+      and .prerelease == $expected.prerelease' \
+    "$RESPONSE_FILE" >/dev/null
+}
+
+accept_existing_release() {
+  local name="$1"
+  if release_matches_payload; then
+    echo -e "  ${YELLOW}~${NC} $name: matching release already exists, skipping"
+    return 0
+  fi
+  echo -e "  ${RED}✗${NC} $name: existing release metadata does not match the canonical payload" >&2
+  return 1
+}
+
 create_release() {
   local name="$1"
   local releases_url="$2"
@@ -178,8 +198,8 @@ create_release() {
   fi
 
   if [[ "$lookup_code" == "200" ]]; then
-    echo -e "  ${YELLOW}~${NC} $name: release already exists, skipping"
-    return 0
+    accept_existing_release "$name"
+    return
   fi
 
   if [[ "$lookup_code" != "404" ]]; then
@@ -204,8 +224,8 @@ create_release() {
   if [[ "$create_code" == "409" || "$create_code" == "422" ]]; then
     if lookup_code="$(request "$auth_header" GET "${releases_url}/tags/${ENCODED_TAG}" "${headers[@]}")" \
       && [[ "$lookup_code" == "200" ]]; then
-      echo -e "  ${YELLOW}~${NC} $name: release already exists, skipping"
-      return 0
+      accept_existing_release "$name"
+      return
     fi
   fi
 

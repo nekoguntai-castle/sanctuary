@@ -22,12 +22,6 @@ The Docker service listens inside the container on `0.0.0.0:3003`, but the host 
 MCP_BIND_ADDRESS=127.0.0.1 MCP_PORT=3003 ./start.sh --with-mcp
 ```
 
-Prebuilt GHCR deployments use the same optional profile:
-
-```bash
-docker compose -f docker-compose.ghcr.yml --profile mcp up -d
-```
-
 Keep `MCP_BIND_ADDRESS=127.0.0.1` for local clients. To expose MCP to another machine on the LAN, bind to the LAN interface only behind a trusted TLS/VPN/reverse-proxy boundary:
 
 ```bash

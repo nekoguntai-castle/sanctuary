@@ -78,7 +78,7 @@
     "check:blocking-io": "node scripts/check-blocking-io.mjs",
     "release:publish": "scripts/release/publish-release.sh",
     "release:verify-artifacts": "scripts/release/verify-release-artifacts.sh",
-    "test:release-distribution": "bash tests/ci/build-and-push-images.test.sh && bash tests/release/create-forge-release.test.sh && bash tests/release/publish-release.test.sh && node tests/release/verify-release-artifacts.test.mjs",
+    "test:release-distribution": "bash tests/release/create-forge-release.test.sh && bash tests/release/publish-release.test.sh && node tests/release/verify-release-artifacts.test.mjs",
     "test:release-artifacts": "node tests/release/verify-release-artifacts.test.mjs",
     "test:mutation": "stryker run",
     "test:mutation:backend": "cd server && npx stryker run",

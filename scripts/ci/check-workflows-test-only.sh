@@ -43,7 +43,7 @@ check_rule "write permission" \
 check_rule "registry login" \
   'uses:[[:space:]]+docker/login-action|(^|[[:space:]])(docker|podman|oras)[[:space:]]+login([[:space:]]|$)|helm[[:space:]]+registry[[:space:]]+login'
 check_rule "image publication" \
-  '^[[:space:]]+push:[[:space:]]*["'\'']?(true|yes|\$\{\{)|(^|[[:space:]])(docker|podman|oras)[[:space:]]+push([[:space:]]|$)|skopeo[[:space:]]+copy|buildx[[:space:]].*(--push|type=registry|imagetools[[:space:]]+create)|docker[[:space:]]+manifest[[:space:]]+push|scripts/ci/build-and-push-images\.sh'
+  '^[[:space:]]+push:[[:space:]]*["'\'']?(true|yes|\$\{\{)|(^|[[:space:]])(docker|podman|oras)[[:space:]]+push([[:space:]]|$)|skopeo[[:space:]]+copy|buildx[[:space:]].*(--push|type=registry|imagetools[[:space:]]+create)|docker[[:space:]]+manifest[[:space:]]+push'
 check_rule "distribution credential" \
   'CODEBERG_(USER|PACKAGE_TOKEN)|UMBREL_DISPATCH_TOKEN|GHCR_(TOKEN|PAT)|GITHUB_RELEASE_TOKEN'
 check_rule "release mutation" \

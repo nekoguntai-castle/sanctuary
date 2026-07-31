@@ -25,6 +25,12 @@ assert_not_contains() {
   fi
 }
 
+trace_line() {
+  local file="$1"
+  local pattern="$2"
+  grep -nF -- "$pattern" "$file" | head -n 1 | cut -d: -f1
+}
+
 write_curl_stub() {
   local path="$1"
   cat > "$path" <<'EOF'
@@ -67,7 +73,8 @@ elif [[ "$url" == *"/actions/runs/42" ]]; then
 elif [[ "$url" == *"forgejo.test"*"/git/commits/"* ]]; then
   body="$(jq -cn --arg sha "$RELEASE_TEST_SHA" '{sha:$sha}')"
 elif [[ "$url" == *"api.github.test"*"/git/ref/tags/"* ]]; then
-  if [[ ! -f "$RELEASE_TEST_STATE/github-tag-created" ]]; then
+  if [[ "${RELEASE_TEST_GITHUB_TAG_EXISTS:-false}" != "true" \
+    && ! -f "$RELEASE_TEST_STATE/github-tag-created" ]]; then
     code=404
   else
     body="$(jq -cn --arg sha "${RELEASE_TEST_GITHUB_SHA:-$RELEASE_TEST_SHA}" \
@@ -78,144 +85,32 @@ elif [[ "$url" == *"api.github.test"*"/commits/"* ]]; then
 elif [[ "$url" == *"api.github.test"*"/git/refs" && "$method" == "POST" ]]; then
   : > "$RELEASE_TEST_STATE/github-tag-created"
   code=201
-elif [[ "$url" == *"/update-on-dispatch.yml/dispatches" && "$method" == "POST" ]]; then
-  code=204
 fi
 [[ -z "$output_file" ]] || printf '%s\n' "$body" > "$output_file"
 printf '%s' "$code"
 EOF
 }
 
-write_docker_stub() {
+write_forbidden_docker_stub() {
   local path="$1"
   cat > "$path" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-for secret_name in FORGEJO_TOKEN GITHUB_RELEASE_TOKEN GHCR_TOKEN UMBREL_DISPATCH_TOKEN; do
-  [[ -z "${!secret_name+x}" ]] || {
-    echo "secret leaked to docker environment: $secret_name" >&2
-    exit 97
-  }
-done
 printf 'docker %s\n' "$*" >> "$TRACE_FILE"
-config_dir="${DOCKER_CONFIG:-$RELEASE_TEST_HOST_DOCKER_CONFIG}"
-printf 'docker-config %s %s\n' "$config_dir" "$*" >> "$TRACE_FILE"
-if [[ "${1:-}" == "login" ]]; then
-  cat >/dev/null
-  mkdir -p "$DOCKER_CONFIG"
-  printf '{"auths":{"ghcr.io":{"auth":"test"}}}\n' > "$DOCKER_CONFIG/config.json"
-elif [[ "${1:-}" == "buildx" && "${2:-}" == "create" ]]; then
-  builder=""
-  while (( $# > 0 )); do
-    if [[ "$1" == "--name" ]]; then
-      builder="$2"
-      break
-    fi
-    shift
-  done
-  [[ -n "$builder" ]] || exit 95
-  mkdir -p "$config_dir/buildx"
-  printf '%s\n' "$builder" > "$config_dir/buildx/selected"
-elif [[ "${1:-}" == "buildx" && "${2:-}" == "inspect" ]]; then
-  [[ -s "$config_dir/buildx/selected" ]] || {
-    echo "buildx builder is not selected in $config_dir" >&2
-    exit 94
-  }
-elif [[ "${1:-}" == "buildx" && "${2:-}" == "rm" ]]; then
-  [[ -s "$config_dir/buildx/selected" ]] || {
-    echo "buildx builder is not available for cleanup in $config_dir" >&2
-    exit 93
-  }
-elif [[ "${1:-}" == "logout" && "${RELEASE_TEST_LOGOUT_FAIL:-false}" == "true" ]]; then
-  exit 1
-elif [[ "$*" == *"Image.Config.Labels"* ]]; then
-  jq -cn \
-    --arg revision "${RELEASE_TEST_IMAGE_REVISION:-$RELEASE_TEST_SHA}" \
-    --arg version "$RELEASE_TEST_TAG" \
-    '{
-      "org.opencontainers.image.revision":$revision,
-      "org.opencontainers.image.version":$version,
-      "org.opencontainers.image.source":"https://github.com/nekoguntai-castle/sanctuary"
-    }'
-elif [[ "$*" == *"imagetools inspect --format"* ]]; then
-  if [[ "$*" == *"frontend"* ]]; then
-    role=frontend
-    digest="sha256:$(printf 'a%.0s' {1..64})"
-  else
-    role=backend
-    digest="sha256:$(printf 'b%.0s' {1..64})"
-  fi
-  if [[ ! -f "$RELEASE_TEST_STATE/${role}-published" ]]; then
-    echo "manifest unknown" >&2
-    exit 1
-  fi
-  if [[ "$role" == "frontend" ]]; then
-    printf '%s\n' "sha256:$(printf 'a%.0s' {1..64})"
-  else
-    printf '%s\n' "sha256:$(printf 'b%.0s' {1..64})"
-  fi
-elif [[ "$*" == *"imagetools inspect --raw"* ]]; then
-  jq -cn '{
-    manifests: [
-      {digest: ("sha256:" + ("c" * 64)), platform: {os:"linux",architecture:"amd64"}},
-      {digest: ("sha256:" + ("d" * 64)), platform: {os:"linux",architecture:"arm64"}}
-    ]
-  }'
-fi
+echo "release operator invoked Docker" >&2
+exit 99
 EOF
 }
 
-write_helper_stubs() {
-  local fixture="$1"
-  cat > "$fixture/scripts/ci/build-and-push-images.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-for secret_name in FORGEJO_TOKEN GITHUB_RELEASE_TOKEN GHCR_TOKEN UMBREL_DISPATCH_TOKEN; do
-  [[ -z "${!secret_name+x}" ]] || {
-    echo "secret leaked to build environment: $secret_name" >&2
-    exit 97
-  }
-done
-[[ -n "${DOCKER_CONFIG:-}" && -s "$DOCKER_CONFIG/buildx/selected" ]] || {
-  echo "buildx builder is not selected in the build Docker config" >&2
-  exit 95
-}
-printf 'build-config %s\n' "$DOCKER_CONFIG" >> "$TRACE_FILE"
-printf 'build PUSH=%s TAG=%s IMAGES=%s\n' "$PUSH" "$IMAGE_TAG" "$IMAGES" >> "$TRACE_FILE"
-mkdir -p "$DIST_DIR"
-printf '{}\n' > "$DIST_DIR/image-digests-${IMAGE_TAG}.json"
-for role in $IMAGES; do
-  if [[ "$role" == "frontend" ]]; then
-    digest="sha256:$(printf 'a%.0s' {1..64})"
-  else
-    digest="sha256:$(printf 'b%.0s' {1..64})"
-  fi
-  jq --arg role "$role" --arg digest "$digest" \
-    '. + {($role): $digest}' "$DIST_DIR/image-digests-${IMAGE_TAG}.json" \
-    > "$DIST_DIR/next.json"
-  mv "$DIST_DIR/next.json" "$DIST_DIR/image-digests-${IMAGE_TAG}.json"
-  : > "$RELEASE_TEST_STATE/${role}-published"
-done
-EOF
-  cat > "$fixture/scripts/release/verify-release-artifacts.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-for secret_name in FORGEJO_TOKEN GITHUB_RELEASE_TOKEN GHCR_TOKEN UMBREL_DISPATCH_TOKEN; do
-  [[ -z "${!secret_name+x}" ]] || {
-    echo "secret leaked to verifier environment: $secret_name" >&2
-    exit 97
-  }
-done
-printf 'verify %s\n' "$*" >> "$TRACE_FILE"
-[[ "$*" == *"--strict-images"* && "$*" == *"--verify-image-digests"* ]]
-EOF
-  cat > "$fixture/scripts/create-forge-release.sh" <<'EOF'
+write_release_stub() {
+  local path="$1"
+  cat > "$path" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ -n "${FORGEJO_TOKEN:-}" && -n "${GITHUB_RELEASE_TOKEN:-}" ]] || exit 96
-[[ -z "${GHCR_TOKEN+x}" \
-  && -z "${UMBREL_DISPATCH_TOKEN+x}" \
-  && -z "${DOCKER_CONFIG+x}" ]] || exit 97
+for retired_name in GHCR_USER GHCR_TOKEN UMBREL_DISPATCH_TOKEN UMBREL_OWNER UMBREL_REPO; do
+  [[ -z "${!retired_name+x}" ]] || exit 97
+done
 [[ "${SANCTUARY_FORGE_TOKENS:-}" == "/dev/null" ]] || exit 98
 printf 'create-release %s\n' "$*" >> "$TRACE_FILE"
 EOF
@@ -225,18 +120,15 @@ new_fixture() {
   local name="$1"
   local tag="$2"
   local fixture="$TEST_ROOT/$name"
-  mkdir -p "$fixture/scripts/release" "$fixture/scripts/ci" "$fixture/bin" \
-    "$fixture/state" "$fixture/tmp"
+  mkdir -p "$fixture/scripts/release" "$fixture/bin" "$fixture/state" "$fixture/tmp"
   cp "$SCRIPT_UNDER_TEST" "$fixture/scripts/release/publish-release.sh"
   cp "$REPO_ROOT/scripts/release/release-operator-api.sh" \
     "$fixture/scripts/release/release-operator-api.sh"
   printf '%s\n' 'trace.log' 'output.log' 'state/' 'tmp/' > "$fixture/.gitignore"
   write_curl_stub "$fixture/bin/curl"
-  write_docker_stub "$fixture/bin/docker"
-  write_helper_stubs "$fixture"
+  write_forbidden_docker_stub "$fixture/bin/docker"
+  write_release_stub "$fixture/scripts/create-forge-release.sh"
   chmod +x "$fixture/scripts/release/publish-release.sh" \
-    "$fixture/scripts/release/verify-release-artifacts.sh" \
-    "$fixture/scripts/ci/build-and-push-images.sh" \
     "$fixture/scripts/create-forge-release.sh" \
     "$fixture/bin/curl" "$fixture/bin/docker"
   git -C "$fixture" init -q
@@ -261,7 +153,6 @@ run_publish() {
     RELEASE_TEST_STATE="$fixture/state" \
     RELEASE_TEST_TAG="$tag" \
     RELEASE_TEST_SHA="$sha" \
-    RELEASE_TEST_HOST_DOCKER_CONFIG="$fixture/host-docker-config" \
     SANCTUARY_RELEASE_CONFIG="$fixture/missing.env" \
     FORGEJO_URL="https://forgejo.test" \
     FORGEJO_OWNER="nekoguntai-castle" \
@@ -271,55 +162,60 @@ run_publish() {
     GITHUB_OWNER="nekoguntai-castle" \
     GITHUB_REPO="sanctuary" \
     GITHUB_RELEASE_TOKEN="github-token" \
-    GHCR_USER="release-user" \
-    GHCR_TOKEN="package-token" \
-    UMBREL_DISPATCH_TOKEN="umbrel-token" \
+    GHCR_USER="retired-user" \
+    GHCR_TOKEN="retired-package-token" \
+    UMBREL_DISPATCH_TOKEN="retired-dispatch-token" \
+    UMBREL_OWNER="retired-owner" \
+    UMBREL_REPO="retired-repo" \
     TMPDIR="$fixture/tmp" \
     "$fixture/scripts/release/publish-release.sh" "$tag" "$@"
   )
 }
 
-test_dry_run_has_no_external_mutations() {
+test_dry_run_verifies_without_mutation() {
   local tag="v1.2.3-rc.1"
   local fixture
   fixture="$(new_fixture dry-run "$tag")"
-  run_publish "$fixture" "$tag" --dry-run > "$fixture/output.log"
-  assert_contains "$fixture/trace.log" "build PUSH=false TAG=$tag IMAGES=frontend backend"
+  RELEASE_TEST_GITHUB_TAG_EXISTS=true run_publish "$fixture" "$tag" --dry-run \
+    > "$fixture/output.log"
+  assert_contains "$fixture/trace.log" "/actions/permissions"
+  assert_contains "$fixture/trace.log" "/git/ref/tags/$tag"
   assert_not_contains "$fixture/trace.log" "curl POST"
-  assert_not_contains "$fixture/trace.log" "docker login"
   assert_not_contains "$fixture/trace.log" "create-release"
-  assert_contains "$fixture/output.log" "no registry or API mutations"
-  [[ ! -e "$fixture/host-docker-config" ]] \
-    || fail "dry run mutated the host Docker config"
+  assert_not_contains "$fixture/trace.log" "docker "
+  assert_contains "$fixture/output.log" "no API mutations"
 }
 
-test_real_publish_orders_verified_distribution() {
+test_real_publish_orders_release_gates() {
   local tag="v1.2.3"
   local fixture
   fixture="$(new_fixture publish "$tag")"
   run_publish "$fixture" "$tag" > "$fixture/output.log"
   assert_contains "$fixture/trace.log" "curl POST https://api.github.test/repos/nekoguntai-castle/sanctuary/git/refs"
-  assert_contains "$fixture/trace.log" "docker login ghcr.io -u release-user --password-stdin"
-  assert_contains "$fixture/trace.log" "build PUSH=true TAG=$tag IMAGES=frontend backend"
-  assert_contains "$fixture/trace.log" "verify --manifest"
   assert_contains "$fixture/trace.log" "create-release $tag"
-  assert_contains "$fixture/trace.log" "curl POST https://forgejo.test/api/v1/repos/nekoguntai-castle/sanctuary-umbrel/actions/workflows/update-on-dispatch.yml/dispatches"
-  assert_not_contains "$fixture/trace.log" "$fixture/host-docker-config"
-  local docker_configs
-  docker_configs="$(grep '^docker-config ' "$fixture/trace.log" | cut -d' ' -f2 | sort -u)"
-  [[ "$(wc -l <<<"$docker_configs")" -eq 1 \
-    && "$docker_configs" == "$fixture/tmp/"*/docker-config ]] \
-    || fail "release Docker commands did not share one isolated Docker config"
-  assert_contains "$fixture/trace.log" "build-config $docker_configs"
-  [[ -z "$(find "$fixture/tmp" -name config.json -print -quit)" ]] \
-    || fail "temporary Docker credentials were not removed"
+  assert_not_contains "$fixture/trace.log" "docker "
+  assert_contains "$fixture/output.log" "published to Forgejo and GitHub"
 
-  local verify_line create_line dispatch_line
-  verify_line="$(grep -n '^verify ' "$fixture/trace.log" | cut -d: -f1)"
-  create_line="$(grep -n '^create-release ' "$fixture/trace.log" | cut -d: -f1)"
-  dispatch_line="$(grep -n '/update-on-dispatch.yml/dispatches$' "$fixture/trace.log" | cut -d: -f1)"
-  (( verify_line < create_line && create_line < dispatch_line )) \
-    || fail "verification, release creation, and dispatch are out of order"
+  local forgejo_tag_line gate_line actions_line github_tag_line create_line
+  forgejo_tag_line="$(trace_line "$fixture/trace.log" "forgejo.test/api/v1/repos/nekoguntai-castle/sanctuary/git/commits/$tag")"
+  gate_line="$(trace_line "$fixture/trace.log" "forgejo.test/api/v1/repos/nekoguntai-castle/sanctuary/actions/runs?")"
+  actions_line="$(trace_line "$fixture/trace.log" "api.github.test/repos/nekoguntai-castle/sanctuary/actions/permissions")"
+  github_tag_line="$(trace_line "$fixture/trace.log" "api.github.test/repos/nekoguntai-castle/sanctuary/git/ref/tags/$tag")"
+  create_line="$(trace_line "$fixture/trace.log" "create-release $tag")"
+  (( forgejo_tag_line < gate_line \
+    && gate_line < actions_line \
+    && actions_line < github_tag_line \
+    && github_tag_line < create_line )) \
+    || fail "release gates and release creation are out of order"
+}
+
+test_existing_github_tag_is_idempotent() {
+  local tag="v1.2.3"
+  local fixture
+  fixture="$(new_fixture existing-tag "$tag")"
+  RELEASE_TEST_GITHUB_TAG_EXISTS=true run_publish "$fixture" "$tag" > "$fixture/output.log"
+  assert_not_contains "$fixture/trace.log" "curl POST"
+  assert_contains "$fixture/trace.log" "create-release $tag"
 }
 
 test_dirty_checkout_fails_before_network() {
@@ -344,17 +240,8 @@ test_failed_gate_blocks_all_publication() {
   fi
   assert_contains "$fixture/output.log" "no successful install-test.yml"
   assert_not_contains "$fixture/trace.log" "curl POST"
+  assert_not_contains "$fixture/trace.log" "create-release"
   assert_not_contains "$fixture/trace.log" "docker "
-}
-
-test_partial_retry_reuses_existing_image() {
-  local tag="v1.2.3"
-  local fixture
-  fixture="$(new_fixture partial-retry "$tag")"
-  : > "$fixture/state/frontend-published"
-  run_publish "$fixture" "$tag" > "$fixture/output.log"
-  assert_contains "$fixture/output.log" "Reusing immutable published image"
-  assert_contains "$fixture/trace.log" "build PUSH=true TAG=$tag IMAGES=backend"
 }
 
 test_github_actions_drift_blocks_tag_creation() {
@@ -367,53 +254,53 @@ test_github_actions_drift_blocks_tag_creation() {
   fi
   assert_contains "$fixture/output.log" "GitHub Actions must be disabled"
   assert_not_contains "$fixture/trace.log" "curl POST"
+  assert_not_contains "$fixture/trace.log" "create-release"
   assert_not_contains "$fixture/trace.log" "docker "
 }
 
-test_wrong_image_revision_blocks_release_and_dispatch() {
+test_mismatched_github_tag_blocks_release() {
   local tag="v1.2.3"
   local fixture
-  fixture="$(new_fixture wrong-revision "$tag")"
-  if RELEASE_TEST_IMAGE_REVISION="$(printf 'f%.0s' {1..40})" \
+  fixture="$(new_fixture mismatched-tag "$tag")"
+  if RELEASE_TEST_GITHUB_TAG_EXISTS=true \
+    RELEASE_TEST_GITHUB_SHA="$(printf 'f%.0s' {1..40})" \
     run_publish "$fixture" "$tag" > "$fixture/output.log" 2>&1; then
-    fail "image with the wrong revision label unexpectedly passed"
+    fail "mismatched GitHub tag unexpectedly passed"
   fi
-  assert_contains "$fixture/output.log" "OCI source/version/revision labels do not match"
+  assert_contains "$fixture/output.log" "expected"
   assert_not_contains "$fixture/trace.log" "create-release"
-  assert_not_contains "$fixture/trace.log" "update-on-dispatch.yml/dispatches"
+  assert_not_contains "$fixture/trace.log" "docker "
+}
+
+test_dry_run_requires_existing_github_tag() {
+  local tag="v1.2.3-rc.1"
+  local fixture
+  fixture="$(new_fixture missing-dry-run-tag "$tag")"
+  if run_publish "$fixture" "$tag" --dry-run > "$fixture/output.log" 2>&1; then
+    fail "dry run unexpectedly repaired a missing GitHub tag"
+  fi
+  assert_contains "$fixture/output.log" "GitHub tag lookup returned HTTP 404"
+  assert_not_contains "$fixture/trace.log" "curl POST"
+  assert_not_contains "$fixture/trace.log" "create-release"
 }
 
 test_exact_tag_lookup_ignores_branch_name_collision() {
   local tag="v1.2.3"
   local fixture
   fixture="$(new_fixture branch-collision "$tag")"
-  RELEASE_TEST_BRANCH_COLLISION=true run_publish "$fixture" "$tag" \
-    > "$fixture/output.log"
+  run_publish "$fixture" "$tag" > "$fixture/output.log"
   assert_contains "$fixture/trace.log" "/git/ref/tags/$tag"
   assert_contains "$fixture/trace.log" "curl POST https://api.github.test/repos/nekoguntai-castle/sanctuary/git/refs"
   assert_not_contains "$fixture/trace.log" "api.github.test/repos/nekoguntai-castle/sanctuary/commits/$tag"
 }
 
-test_cleanup_failure_changes_success_to_failure() {
-  local tag="v1.2.3"
-  local fixture
-  fixture="$(new_fixture cleanup-failure "$tag")"
-  if RELEASE_TEST_LOGOUT_FAIL=true run_publish "$fixture" "$tag" \
-    > "$fixture/output.log" 2>&1; then
-    fail "cleanup failure unexpectedly preserved a successful exit"
-  fi
-  assert_contains "$fixture/output.log" "GHCR logout did not complete"
-  [[ -z "$(find "$fixture/tmp" -name config.json -print -quit)" ]] \
-    || fail "temporary Docker credentials remained after logout failure"
-}
-
-test_dry_run_has_no_external_mutations
-test_real_publish_orders_verified_distribution
+test_dry_run_verifies_without_mutation
+test_real_publish_orders_release_gates
+test_existing_github_tag_is_idempotent
 test_dirty_checkout_fails_before_network
 test_failed_gate_blocks_all_publication
-test_partial_retry_reuses_existing_image
 test_github_actions_drift_blocks_tag_creation
-test_wrong_image_revision_blocks_release_and_dispatch
+test_mismatched_github_tag_blocks_release
+test_dry_run_requires_existing_github_tag
 test_exact_tag_lookup_ignores_branch_name_collision
-test_cleanup_failure_changes_success_to_failure
 echo "publish-release operator tests passed"

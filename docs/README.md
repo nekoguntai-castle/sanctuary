@@ -28,6 +28,7 @@ Procedural guides for operators and developers.
 - [Agent wallet funding](how-to/agent-wallet-funding.md) — operate agent-funded multisig drafts with human review
 - [AI Settings, Sanctuary Console, and MCP access](how-to/ai-mcp-console.md) — configure trusted model providers, use the Console, and manage external MCP keys
 - [MCP server](how-to/mcp-server.md) — direct read-only MCP endpoint setup for loopback and advanced LAN clients
+- [Migrate from retired packaged deployments](how-to/migrate-from-packaged-deployments.md) — move an existing packaged deployment to the supported source or offline path
 - [Runtime secrets](how-to/runtime-secrets.md) — runtime secret management
 
 ## Reference
@@ -36,7 +37,7 @@ Lookup tables, checklists, and specs.
 
 - [CI strategy](reference/ci-cd-strategy.md) — Forgejo branch protection, test-only workflows, and path-aware validation
 - [Repository mirroring](reference/repository-mirroring.md) — Forgejo-to-GitHub branch policy, credentials, verification, and rotation
-- [Release distribution](reference/release-distribution.md) — trusted-operator GitHub Release and GHCR publication
+- [Release distribution](reference/release-distribution.md) — trusted-operator Forgejo/GitHub Release publication
 - [Frontend architecture](reference/frontend-architecture.md) — React/Vite architecture and frontend packaging
 - [Hardware wallet integration](reference/hardware-wallet-integration.md) — hardware wallet feature specification
 - [Wallet threat model](reference/wallet-threat-model.md) — fund-safety assets, actors, boundaries, non-goals, and limitations
@@ -91,7 +92,6 @@ Package-scoped docs live next to their code — not in `docs/`. Start at each pa
 - [gateway](https://github.com/nekoguntai-castle/sanctuary/blob/main/gateway/README.md) — mobile API gateway ([architecture](../gateway/ARCHITECTURE.md))
 - React/Vite frontend — lives at the monorepo root (no subdirectory). See [`docs/reference/frontend-architecture.md`](reference/frontend-architecture.md).
 - [llm-egress-proxy](https://github.com/nekoguntai-castle/sanctuary/blob/main/llm-egress-proxy/README.md) — LLM egress proxy service ([architecture](../llm-egress-proxy/ARCHITECTURE.md))
-- [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) — Umbrel community app store (separate repo; auto-updates from this repo's release pipeline)
 - [themes](https://github.com/nekoguntai-castle/sanctuary/blob/main/themes/README.md) — theme system reference
 
 ## Documentation standards

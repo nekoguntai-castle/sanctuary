@@ -135,6 +135,17 @@ verify_github_tag_response() {
     || fail "GitHub tag $TAG resolves to $actual, expected $RELEASE_COMMIT"
 }
 
+verify_github_tag() {
+  local base="${GITHUB_API_URL%/}/repos/${GITHUB_OWNER}/${GITHUB_REPO}"
+  local response="$TEMP_DIR/github-tag.json"
+  local encoded_tag code
+  encoded_tag="$(jq -rn --arg value "$TAG" '$value | @uri')"
+  code="$(github_api_request GET "$base/git/ref/tags/$encoded_tag" "$response")" \
+    || fail "GitHub tag lookup transport failure"
+  [[ "$code" == "200" ]] || fail "GitHub tag lookup returned HTTP $code"
+  verify_github_tag_response "$base" "$response"
+}
+
 ensure_github_tag() {
   local base="${GITHUB_API_URL%/}/repos/${GITHUB_OWNER}/${GITHUB_REPO}"
   local response="$TEMP_DIR/github-tag.json"
@@ -168,28 +179,4 @@ ensure_github_tag() {
     || fail "GitHub tag verification transport failure"
   [[ "$code" == "200" ]] || fail "GitHub tag verification returned HTTP $code"
   verify_github_tag_response "$base" "$response"
-}
-
-dispatch_umbrel() {
-  local digest_file="$TEMP_DIR/dist/image-digests-${TAG}.json"
-  local frontend_digest backend_digest payload response code
-  frontend_digest="$(jq -er '.frontend' "$digest_file")"
-  backend_digest="$(jq -er '.backend' "$digest_file")"
-  payload="$(jq -cn \
-    --arg version "${TAG#v}" \
-    --arg frontend "$frontend_digest" \
-    --arg backend "$backend_digest" \
-    '{ref: "main", inputs: {
-      version: $version,
-      frontend_digest: $frontend,
-      backend_digest: $backend
-    }}')"
-  response="$TEMP_DIR/umbrel-dispatch.txt"
-  code="$(api_request POST \
-    "${FORGEJO_URL%/}/api/v1/repos/${UMBREL_OWNER}/${UMBREL_REPO}/actions/workflows/update-on-dispatch.yml/dispatches" \
-    "$UMBREL_DISPATCH_TOKEN" "$response" \
-    -H "Content-Type: application/json" -d "$payload")" \
-    || fail "Umbrel dispatch transport failure"
-  [[ "$code" == "200" || "$code" == "204" ]] \
-    || fail "Umbrel dispatch returned HTTP $code"
 }

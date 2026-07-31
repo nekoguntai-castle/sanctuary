@@ -14,7 +14,7 @@ plus all release tags.
 - Tags: Forgejo 16 always mirrors all tags, even when a branch filter is present.
   All Sanctuary tags are public release/RC tags and must pass the pre-cutover
   parity review.
-- Releases and images: published by the trusted operator command, never CI.
+- Release objects: published by the trusted operator command, never CI.
 
 Forgejo 16 branch filters are comma-separated literal branch names or glob
 patterns, not regular expressions. Do not remove the filter: an empty filter
@@ -22,7 +22,7 @@ can expose every private branch.
 
 ## Authentication
 
-Use one credential dedicated to git mirroring. Never reuse the release or GHCR
+Use one credential dedicated to git mirroring. Never reuse the release
 credential.
 
 ### Preferred: write deploy key

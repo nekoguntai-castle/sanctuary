@@ -159,7 +159,9 @@ EOF
 
 teardown_bundle_workspace() {
   if [ -n "${TEST_TMP_DIR:-}" ] && [ -d "$TEST_TMP_DIR" ]; then
-    rm -rf "$TEST_TMP_DIR"
+    find "$TEST_TMP_DIR" -type f -delete
+    find "$TEST_TMP_DIR" -type l -delete
+    find "$TEST_TMP_DIR" -depth -type d -empty -delete
   fi
 }
 
@@ -266,6 +268,53 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
   return "$failures"
 }
 
+test_create_bundle_signs_outer_archive() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+
+  local tag output private_key public_key release_repo failures=0
+  tag="v9.9.9"
+  release_repo="$TEST_TMP_DIR/release-repo"
+  mkdir -p "$release_repo/scripts/offline"
+  cp "$PROJECT_ROOT/package.json" "$release_repo/package.json"
+  cp "$PROJECT_ROOT/scripts/create-upgrade-backup.sh" "$release_repo/scripts/create-upgrade-backup.sh"
+  cp "$PROJECT_ROOT/scripts/offline/create-bundle.sh" "$release_repo/scripts/offline/create-bundle.sh"
+  cp "$PROJECT_ROOT/scripts/offline/apply-bundle.sh" "$release_repo/scripts/offline/apply-bundle.sh"
+  cp "$PROJECT_ROOT/scripts/offline/bundle-common.sh" "$release_repo/scripts/offline/bundle-common.sh"
+  git -C "$release_repo" init -q
+  git -C "$release_repo" config user.name "Sanctuary Tests"
+  git -C "$release_repo" config user.email "tests@sanctuary.local"
+  git -C "$release_repo" add .
+  git -C "$release_repo" commit -qm "test release checkout"
+  git -C "$release_repo" tag "$tag"
+
+  output="$TEST_TMP_DIR/sanctuary-offline-test.tar.gz"
+  private_key="$TEST_TMP_DIR/private.pem"
+  public_key="$TEST_TMP_DIR/public.pem"
+  openssl genrsa -out "$private_key" 2048 >/dev/null 2>&1 || failures=1
+  openssl rsa -in "$private_key" -pubout -out "$public_key" >/dev/null 2>&1 || failures=1
+
+  if [ "$failures" -eq 0 ]; then
+    PATH="$FAKE_BIN:$PATH" \
+      SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+      "$release_repo/scripts/offline/create-bundle.sh" --tag "$tag" --output "$output" --skip-build \
+        --signing-key "$private_key" --public-key "$public_key" >/dev/null \
+      || failures=1
+  fi
+
+  [ -s "${output}.sig" ] || failures=1
+  openssl dgst -sha256 -verify "$public_key" -signature "${output}.sig" "$output" \
+    >/dev/null 2>&1 || failures=1
+  printf 'tampered\n' >> "$output"
+  if openssl dgst -sha256 -verify "$public_key" -signature "${output}.sig" "$output" \
+    >/dev/null 2>&1; then
+    failures=1
+  fi
+
+  teardown_bundle_workspace
+  return "$failures"
+}
+
 test_tar_links_are_rejected() {
   setup_bundle_workspace
   ln -s payload/file.txt "$BUNDLE_DIR/link-to-payload"
@@ -289,6 +338,7 @@ main() {
   run_test "signed bundle verifies" test_signed_bundle_verifies
   run_test "tampered signed bundle fails checksum" test_tampered_signed_bundle_fails_checksum
   run_test "create bundle emits dev archive shape" test_create_bundle_unsigned_core_dev_archive_shape
+  run_test "create bundle signs outer archive" test_create_bundle_signs_outer_archive
   run_test "tar links are rejected" test_tar_links_are_rejected
 
   echo ""

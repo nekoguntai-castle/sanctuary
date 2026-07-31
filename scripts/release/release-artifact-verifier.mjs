@@ -2,7 +2,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { validateStrictImages } from './release-image-evidence.mjs';
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
@@ -27,7 +26,7 @@ const REQUIRED_STABLE_TYPES = [
   'install-script',
   'release-notes',
 ];
-const REQUIRED_PLATFORMS = ['linux/amd64', 'linux/arm64'];
+const REQUIRED_CONTAINER_PLATFORMS = ['linux/amd64', 'linux/arm64'];
 
 export class ReleaseArtifactVerificationError extends Error {
   constructor(errors) {
@@ -60,7 +59,7 @@ export function verifyReleaseArtifacts(inputOptions = {}) {
   validateStrictImages(artifacts, context.strictImages, errors);
 
   if (options.verifyImageDigests) {
-    verifyPublishedImageDigests(artifacts, errors);
+    errors.push('live container-registry digest verification is no longer supported');
   }
 
   if (errors.length > 0) {
@@ -321,8 +320,6 @@ function validateStrictStable(manifest, artifacts, checksumCoverage, context, er
   if (!manifest.builder) {
     errors.push('stable releases require manifest.builder workflow/runId evidence');
   }
-  requireNamedContainer(artifacts, 'frontend', errors);
-  requireNamedContainer(artifacts, 'backend', errors);
   for (const artifact of artifacts) {
     validateStrictStableArtifact(artifact, errors);
   }
@@ -331,7 +328,7 @@ function validateStrictStable(manifest, artifacts, checksumCoverage, context, er
 function validateStrictStableArtifact(artifact, errors) {
   const label = artifactLabel(artifact);
   if (artifact.type === 'container-image') {
-    requireContainerEvidence(artifact, label, errors);
+    requireLegacyContainerEvidence(artifact, label, errors);
   }
   if (artifact.type === 'offline-bundle') {
     requireLocalEvidence(artifact.sbom, `${label}.sbom`, errors);
@@ -339,7 +336,7 @@ function validateStrictStableArtifact(artifact, errors) {
   }
 }
 
-function requireContainerEvidence(artifact, label, errors) {
+function requireLegacyContainerEvidence(artifact, label, errors) {
   requireLocalEvidence(artifact.sbom, `${label}.sbom`, errors);
   if (!artifact.provenance && !artifact.attestation) {
     errors.push(`${label} requires provenance or attestation evidence`);
@@ -350,8 +347,10 @@ function requireContainerEvidence(artifact, label, errors) {
   if (artifact.attestation) {
     requireLocalEvidence(artifact.attestation, `${label}.attestation`, errors);
   }
-  for (const platform of REQUIRED_PLATFORMS) {
-    if (!artifact.platforms?.some((entry) => entry.platform === platform && SHA256_DIGEST_RE.test(entry.digest ?? ''))) {
+  for (const platform of REQUIRED_CONTAINER_PLATFORMS) {
+    const hasPlatform = artifact.platforms?.some((entry) => entry.platform === platform
+      && SHA256_DIGEST_RE.test(entry.digest ?? ''));
+    if (!hasPlatform) {
       errors.push(`${label} requires ${platform} image digest evidence`);
     }
   }
@@ -372,31 +371,6 @@ function requireArtifactType(artifacts, type, errors) {
 function hasVerifiableChecksumSignature(artifacts) {
   return artifacts.some((artifact) => artifact.type === 'checksum-file'
     && artifact.signature?.format === 'openssl-rsa-sha256');
-}
-
-function requireNamedContainer(artifacts, role, errors) {
-  const hasContainer = artifacts.some((artifact) => artifact.type === 'container-image'
-    && [artifact.name, artifact.image].some((value) => typeof value === 'string' && value.includes(role)));
-  if (!hasContainer) {
-    errors.push(`stable releases require a ${role} container-image artifact`);
-  }
-}
-
-function verifyPublishedImageDigests(artifacts, errors) {
-  for (const artifact of artifacts.filter((candidate) => candidate.type === 'container-image')) {
-    const imageRef = `${artifact.image}:${artifact.tag}`;
-    const result = spawnSync('docker', ['buildx', 'imagetools', 'inspect', imageRef, '--format', '{{json .Manifest.Digest}}'], {
-      encoding: 'utf8',
-    });
-    if (result.status !== 0) {
-      errors.push(`could not inspect published image ${imageRef}: ${result.stderr.trim() || result.stdout.trim()}`);
-      continue;
-    }
-    const actual = result.stdout.trim().replace(/^"|"$/g, '');
-    if (actual !== artifact.digest) {
-      errors.push(`${imageRef} digest mismatch: expected ${artifact.digest}, got ${actual}`);
-    }
-  }
 }
 
 function verifyOpenSslSignature(signedPath, signaturePath, publicKeyPath, label, errors) {

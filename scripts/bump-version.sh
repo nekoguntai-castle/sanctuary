@@ -4,7 +4,7 @@
 #
 # Updates version across all package.json files. Release distribution is an
 # operator-owned step after Forgejo tag CI succeeds; Forgejo Actions never
-# publishes images, creates releases, or dispatches sanctuary-umbrel.
+# creates releases or mutates public distribution endpoints.
 #
 # Usage:
 #   ./scripts/bump-version.sh 0.7.20      # Set explicit version
@@ -129,7 +129,7 @@ echo -e "${GREEN}Version updated to $NEW_VERSION${NC}"
 echo ""
 echo "This script only updates package.json files. The full release flow"
 echo "(local validation, upgrade-test audit, PR through Forgejo, tag, CI"
-echo "monitoring on Forgejo Actions, then operator-owned GitHub/GHCR distribution) lives"
+echo "monitoring on Forgejo Actions, then operator-owned Forgejo/GitHub release publication) lives"
 echo "in the /release skill at .claude/commands/release.md — invoke that"
 echo "for an end-to-end release rather than driving these steps by hand."
 echo ""
@@ -144,5 +144,5 @@ echo "  7. git tag v$NEW_VERSION-rc1 && git push origin v$NEW_VERSION-rc1   # RC
 echo "  8. After RC CI is green: git tag v$NEW_VERSION && git push origin v$NEW_VERSION"
 echo "  9. Wait for stable-tag CI, then run: npm run release:publish -- v$NEW_VERSION"
 echo ""
-echo "The trusted operator command publishes GitHub Releases and GHCR images,"
-echo "then dispatches the local sanctuary-umbrel updater after digest verification."
+echo "The trusted operator command verifies tag parity and publishes matching"
+echo "Forgejo and GitHub Release objects."

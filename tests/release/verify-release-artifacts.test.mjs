@@ -195,14 +195,17 @@ function withFixture(testFn) {
   }
 }
 
-function testCompleteStableManifestPasses() {
+function testStableManifestWithoutContainersPasses() {
   withFixture((fixture) => {
+    rewriteManifest(fixture, (manifest) => {
+      manifest.artifacts = manifest.artifacts.filter((artifact) => artifact.type !== 'container-image');
+    });
     const result = verifyReleaseArtifacts({
       manifestPath: fixture.manifestPath,
       publicKeyPath: fixture.publicKeyPath,
       strictStable: true,
     });
-    assert.equal(result.artifactsChecked, 7);
+    assert.equal(result.artifactsChecked, 5);
     assert.equal(result.checksumEntries, 10);
   });
 }
@@ -225,12 +228,30 @@ function testStableOfflineBundleRequiresProvenance() {
   });
 }
 
-function testStableContainerRequiresArm64Digest() {
+function testStableManifestValidatesOptionalLegacyContainerEvidence() {
   withFixture((fixture) => {
     rewriteManifest(fixture, (manifest) => {
       manifest.artifacts[5].platforms = manifest.artifacts[5].platforms.filter((entry) => entry.platform !== 'linux/arm64');
+      delete manifest.artifacts[5].sbom;
+      delete manifest.artifacts[5].provenance;
     });
-    expectVerificationFailure(fixture, /linux\/arm64 image digest evidence/);
+    expectVerificationFailure(
+      fixture,
+      /container.*sbom|container.*provenance|linux\/arm64 image digest evidence/,
+    );
+  });
+}
+
+function testLiveRegistryVerificationIsRetired() {
+  withFixture((fixture) => {
+    assert.throws(
+      () => verifyReleaseArtifacts({
+        manifestPath: fixture.manifestPath,
+        verifyImageDigests: true,
+      }),
+      (error) => error instanceof ReleaseArtifactVerificationError
+        && /live container-registry digest verification is no longer supported/.test(error.message),
+    );
   });
 }
 
@@ -367,10 +388,11 @@ function runTest(name, testFn) {
   console.log(`ok - ${name}`);
 }
 
-runTest('complete stable release manifest passes', testCompleteStableManifestPasses);
+runTest('stable release manifest passes without containers', testStableManifestWithoutContainersPasses);
 runTest('stable release requires signed checksum file', testStableManifestRequiresSignedChecksumFile);
 runTest('stable offline bundle requires provenance', testStableOfflineBundleRequiresProvenance);
-runTest('stable container requires arm64 digest', testStableContainerRequiresArm64Digest);
+runTest('stable release validates optional legacy container evidence', testStableManifestValidatesOptionalLegacyContainerEvidence);
+runTest('live registry digest verification is retired', testLiveRegistryVerificationIsRetired);
 runTest('strict images accepts a complete container-only manifest', testStrictImagesContainerOnlyManifestPasses);
 runTest('strict images rejects null platform evidence', testStrictImagesRejectsNullPlatforms);
 runTest('strict images rejects duplicate platform digests', testStrictImagesRejectsDuplicatePlatformDigest);

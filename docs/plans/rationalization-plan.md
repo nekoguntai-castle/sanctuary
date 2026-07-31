@@ -1677,3 +1677,88 @@ The "is a handler actually implemented" guarantee that `isValidScriptType` provi
 
 - validate-xpub `scriptType` (not a bug — already rejects invalid; cosmetic only).
 - runtime `listType === 'allow'` comparisons (readable idiom, not a contract).
+
+---
+
+## Phase AG — Umbrel and Prebuilt GHCR Distribution Retirement
+
+Source plan: `tasks/umbrel-retirement-plan-2026-07-31.md`
+Date: 2026-07-31
+Status: Proposed
+Scope: distribution, release automation, deployment paths, and external repositories
+
+### Divergence Inventory
+
+| Path | Current role | Disposition |
+| --- | --- | --- |
+| `install.sh` + `docker-compose.yml` | GitHub-tagged source install with local image builds | Keep as canonical online path |
+| Signed offline bundles | Registry-independent per-platform install | Keep and enforce if advertised |
+| `docker-compose.ghcr.yml` | Reduced prebuilt frontend/backend deployment, including MCP | Remove; migrate users to main Compose |
+| GHCR image publisher and release image gate | Builds/pushes/verifies private container packages | Remove from current release contract |
+| `sanctuary-umbrel` updater/repositories | Separate app package and downstream dispatch | Sunset, archive, then optionally delete |
+| Forgejo/GitHub Release objects | Tag metadata, latest-version discovery, source/offline artifacts | Keep |
+| Historical Umbrel/GHCR records | Audits, announcements, closed plans, tags/releases | Preserve as history |
+
+### Canonical Decision
+
+The supported public path is GitHub release discovery plus a tagged source clone
+that builds the main Compose stack locally. Forgejo remains the source and test-only
+CI authority; GitHub remains a passive public mirror with Actions disabled. Signed
+offline bundles are the only supported no-network image distribution. Umbrel,
+prebuilt GHCR Compose, registry publication, and downstream release dispatch are
+retired together.
+
+This supersedes Phase L's earlier choice to retain a reduced GHCR Compose path. The
+new evidence is that canonical online/offline installers do not need GHCR, the
+packages remain private, and retaining the divergent path would require publishing
+packages solely for Umbrel/manual prebuilt consumers.
+
+### Convergence Plan
+
+1. Freeze writes and capture exact external repository/package inventories and
+   recovery bundles.
+2. In the main repository, simplify the trusted operator command to Forgejo/GitHub
+   release publication; remove Umbrel dispatch, GHCR build/push, the reduced Compose
+   file, and their direct tests.
+3. Rewrite current docs and migration guidance; preserve historical records with
+   explicit supersession notes.
+4. Rehearse source install, upgrade, MCP, offline bundles, mirror/tag parity, and a
+   release with registry/Umbrel variables absent.
+5. Disable external updater automation and mirrors, publish a final migration
+   notice, and archive the Umbrel repositories for a 30-day rollback window.
+6. Revoke exact publisher/dispatch credentials after the rehearsal.
+7. Retire Codeberg using the source-install/release-parity gate, not GHCR/Umbrel.
+8. After the window, present an exact read-only manifest and separately request
+   one-off permission to delete the two GHCR packages and Umbrel repositories.
+
+### Edge Cases
+
+- Existing Umbrel or manual GHCR-Compose installations are not automatically
+  migrated; the notice must require backup, same-or-newer source install, restore,
+  and verification before old deployment removal.
+- Current private GHCR packages make anonymous pulls unhealthy; do not publicize
+  them merely to create a sunset path.
+- Legacy release manifests may mention container images. Keep them locally
+  verifiable as optional historical artifacts while removing live registry access
+  and image requirements from the current stable contract.
+- Do not confuse unrelated English “umbrella” UI/animation references with the
+  retired platform.
+- Do not delete Git tags, Forgejo/GitHub releases, or factual audit/history records.
+- Resolve the actual Forgejo Umbrel push-mirror target before claiming a Codeberg
+  repository exists or attempting host cleanup.
+
+### Deferred / Approval-Gated
+
+- Archive versus final repository deletion: default to 30-day archive, then delete
+  only if total removal is still desired.
+- GHCR package and external repository deletion require exact target inventory,
+  verified recovery artifacts, and separate one-off destructive approval.
+- The implementation plan does not authorize credential revocation or external
+  host mutation before the no-secret release rehearsal succeeds.
+
+### Verification Notes
+
+The detailed executable checklist, risks, commands, recovery requirements, and
+acceptance criteria live in `tasks/umbrel-retirement-plan-2026-07-31.md`. Planning
+used current `origin/main` at `ecd16a42877bc8e696c25932d2ad4ec493b05dd2` and
+read-only repository/API evidence; no product code or external state changed.

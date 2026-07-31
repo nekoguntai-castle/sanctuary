@@ -36,6 +36,7 @@ list_group_specs() {
         tests/integration/flows/transfers.integration.test.ts \
         tests/integration/flows/transactions.integration.test.ts \
         tests/integration/flows/transactionsCreationCrossWallet.integration.test.ts \
+        tests/integration/flows/webhookHeaderPatch.integration.test.ts \
         tests/integration/flows/wallet.integration.test.ts
       ;;
     "$GROUP_REPOSITORIES_CORE")
@@ -46,6 +47,7 @@ list_group_specs() {
         tests/integration/repositories/labelRepository.test.ts \
         tests/integration/repositories/policyRepository.audit.test.ts \
         tests/integration/repositories/transactionRepository.test.ts \
+        tests/integration/repositories/transactionSyncReconciliation.test.ts \
         tests/integration/repositories/utxoRepository.test.ts \
         tests/integration/repositories/walletRepository.test.ts
       ;;
@@ -64,6 +66,7 @@ list_group_specs() {
         tests/integration/ops/phase2OperationsProof.integration.test.ts \
         tests/integration/websocket/websocket.integration.test.ts \
         tests/integration/worker/featureFlagToggle.integration.test.ts \
+        tests/integration/worker/deadLetterQueue.integration.test.ts \
         tests/integration/worker/jobProcessorLockLoss.integration.test.ts \
         tests/integration/worker/notificationDispatcherRetention.integration.test.ts \
         tests/integration/worker/recurringSchedules.integration.test.ts \

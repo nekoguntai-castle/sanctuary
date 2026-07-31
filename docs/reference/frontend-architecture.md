@@ -1,10 +1,13 @@
 # Frontend Architecture
 
-This document describes the architecture of the Sanctuary React/Vite single-page application and its packaging as an Umbrel app.
+This document describes the architecture of the Sanctuary React/Vite
+single-page application.
 
 ## Purpose
 
-`sanctuary/` is the Umbrel app package — it contains `umbrel-app.yml`, `docker-compose.yml`, and `images/` for Umbrel marketplace integration. The actual frontend source lives at the monorepo root alongside the server and gateway packages. There is no `src/` subdirectory inside `sanctuary/`; components, hooks, and contexts live directly at root level (`components/`, `contexts/`, `hooks/`, `providers/`, `services/`, `themes/`), with framework and API wiring in `src/`.
+The frontend source lives at the monorepo root alongside the server and gateway
+packages. Components, hooks, contexts, providers, services, and themes live in
+their root-level directories, with framework and API wiring in `src/`.
 
 The SPA communicates with the backend server over HTTP and WebSocket. It is a watch-only Bitcoin wallet coordinator: private keys never leave hardware wallets; the frontend only builds and exports PSBTs.
 
@@ -75,7 +78,7 @@ graph TD
 
 ## Routing
 
-All routes are defined in `src/app/appRoutes.tsx` as `AppRouteDefinition` objects. Every page component is `React.lazy()`-loaded and wrapped in `<ErrorBoundary>` + `<Suspense>` with a typed skeleton fallback. Navigation is `HashRouter`-based (works behind Umbrel's reverse proxy without server-side routing).
+All routes are defined in `src/app/appRoutes.tsx` as `AppRouteDefinition` objects. Every page component is `React.lazy()`-loaded and wrapped in `<ErrorBoundary>` + `<Suspense>` with a typed skeleton fallback. Navigation is `HashRouter`-based so static hosting and reverse proxies do not need server-side route rewriting.
 
 Route sections used by the sidebar:
 
@@ -273,9 +276,5 @@ The `sanctuary-*` palette maps to `--color-bg-*` CSS variables — it is the str
 │   └── websocket.ts        # WebSocketClient singleton
 ├── themes/                 # Theme registry + 14 theme definitions
 ├── types/                  # Shared domain types
-├── utils/                  # logger, errors, safeJson, download helpers
-└── sanctuary/              # Umbrel app package
-    ├── umbrel-app.yml
-    ├── docker-compose.yml
-    └── images/
+└── utils/                  # logger, errors, safeJson, download helpers
 ```

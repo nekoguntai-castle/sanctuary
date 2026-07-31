@@ -1165,9 +1165,7 @@ test_llm_egress_proxy_maps_host_gateway_for_host_providers() {
 
 test_worker_compose_command_matches_backend_dist_layout() {
     if grep -Fq 'command: ["node", "dist/server/src/worker.js"]' "$PROJECT_ROOT/docker-compose.yml" \
-        && grep -Fq 'command: ["node", "dist/server/src/worker.js"]' "$PROJECT_ROOT/docker-compose.ghcr.yml" \
-        && ! grep -Fq 'dist/app/src/worker.js' "$PROJECT_ROOT/docker-compose.yml" \
-        && ! grep -Fq 'dist/app/src/worker.js' "$PROJECT_ROOT/docker-compose.ghcr.yml"; then
+        && ! grep -Fq 'dist/app/src/worker.js' "$PROJECT_ROOT/docker-compose.yml"; then
         return 0
     else
         echo -e "${RED}ASSERTION FAILED:${NC} worker compose command should match backend image dist/server layout"

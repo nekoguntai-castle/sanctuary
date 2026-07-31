@@ -6,6 +6,14 @@ Source of truth: local Forgejo
 Public mirror and distribution endpoint: GitHub
 CI authority: Forgejo Actions, testing only
 
+> **2026-07-31 decision change:** The Umbrel integration and the reduced prebuilt
+> GHCR deployment are now proposed for retirement rather than publication. Their
+> remaining phases and success gates in this document are superseded by
+> `tasks/umbrel-retirement-plan-2026-07-31.md`. The canonical public distribution
+> gate is GitHub source installation plus Forgejo/GitHub Release parity, with
+> signed offline bundles where promised; Codeberg retirement no longer depends on
+> public GHCR packages or an Umbrel update.
+
 ## Execution Ledger
 
 - target_branch: `main`

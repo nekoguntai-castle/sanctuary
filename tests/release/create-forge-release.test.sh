@@ -126,9 +126,18 @@ response='{"message":"Not Found"}'
 if [[ "$method" == "POST" ]]; then
   http_code=201
   response='{"id":1}'
-elif [[ "${STUB_MODE:-success}" == "exists" ]]; then
+elif [[ "${STUB_MODE:-success}" == "exists" || "${STUB_MODE:-success}" == "mismatch" ]]; then
   http_code=200
-  response='{"id":1}'
+  response="$(jq -cn \
+    --arg tag "$STUB_EXPECTED_TAG" \
+    --arg name "$STUB_EXPECTED_TAG" \
+    --arg body "$STUB_EXPECTED_BODY" \
+    --argjson draft false \
+    --argjson prerelease "$STUB_EXPECTED_PRERELEASE" \
+    '{id:1,tag_name:$tag,name:$name,body:$body,draft:$draft,prerelease:$prerelease}')"
+  if [[ "${STUB_MODE:-success}" == "mismatch" ]]; then
+    response="$(jq -c '.name = "stale release"' <<<"$response")"
+  fi
 elif [[ "${STUB_MODE:-success}" == "forgejo_lookup_fail" && "$url" == *"/api/v1/"* ]]; then
   http_code=503
   response='{"message":"unavailable"}'
@@ -157,12 +166,24 @@ run_release() {
   local tag="$2"
   local output_file="$3"
 
+  local prev_tag body prerelease=false
+  prev_tag="$(git -C "$REPO" describe --tags --abbrev=0 "${tag}^" 2>/dev/null || true)"
+  if [[ -n "$prev_tag" ]]; then
+    body="$(git -C "$REPO" log --oneline --no-decorate -n 100 "${prev_tag}..${tag}")"
+  else
+    body="$(git -C "$REPO" log --oneline --no-decorate -n 20 "$tag")"
+  fi
+  [[ "$tag" =~ -(rc|alpha|beta|dev) ]] && prerelease=true
+
   (
     cd "$REPO"
     PATH="$BIN_DIR:$PATH" \
       TMPDIR="$RESPONSE_TMP" \
       CURL_LOG_DIR="$CURL_LOG_DIR" \
       STUB_MODE="$mode" \
+      STUB_EXPECTED_TAG="$tag" \
+      STUB_EXPECTED_BODY="$body" \
+      STUB_EXPECTED_PRERELEASE="$prerelease" \
       SANCTUARY_FORGE_TOKENS="$TEST_ROOT/no-config.env" \
       FORGEJO_URL="https://forgejo.example.invalid/" \
       FORGEJO_OWNER="forge-owner" \
@@ -222,8 +243,21 @@ test_existing_release_is_idempotent() {
   run_release exists v1.0.0 "$output"
 
   assert_call_count 2
-  assert_contains "$output" "Forgejo: release already exists"
-  assert_contains "$output" "GitHub: release already exists"
+  assert_contains "$output" "Forgejo: matching release already exists"
+  assert_contains "$output" "GitHub: matching release already exists"
+}
+
+test_existing_release_mismatch_fails_closed() {
+  reset_run_state
+  local output="$TEST_ROOT/mismatch-output"
+
+  if run_release mismatch v1.0.0 "$output"; then
+    fail "mismatched existing release unexpectedly passed"
+  fi
+
+  assert_call_count 2
+  assert_contains "$output" "existing release metadata does not match"
+  assert_contains "$output" "Release creation failed."
 }
 
 test_prerelease_payload() {
@@ -306,6 +340,7 @@ test_transport_failure_fails_closed() {
 
 test_stable_release_uses_provider_apis_and_bounded_notes
 test_existing_release_is_idempotent
+test_existing_release_mismatch_fails_closed
 test_prerelease_payload
 test_missing_config_fails_before_requests
 test_one_target_failure_fails_overall_after_attempting_both

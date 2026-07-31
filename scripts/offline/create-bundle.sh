@@ -125,7 +125,9 @@ target_commit() {
 
 cleanup_create_tmp() {
   if [ -n "${CREATE_TMP_ROOT:-}" ] && [ -d "$CREATE_TMP_ROOT" ]; then
-    rm -rf "$CREATE_TMP_ROOT"
+    find "$CREATE_TMP_ROOT" -type f -delete
+    find "$CREATE_TMP_ROOT" -type l -delete
+    find "$CREATE_TMP_ROOT" -depth -type d -empty -delete
   fi
 }
 
@@ -413,7 +415,8 @@ Preferred upgrade path from an installed checkout:
 ./install.sh --offline-bundle /path/to/$(basename "$OUTPUT")
 \`\`\`
 
-For a freshly extracted bundle, pass a separately trusted public key:
+For a freshly extracted bundle, first verify the adjacent detached archive
+signature with a separately trusted public key. Only then run:
 
 \`\`\`bash
 ./install-offline.sh --public-key /secure/path/sanctuary-offline-release-public.pem
@@ -445,6 +448,13 @@ create_archive() {
   tar -czf "$OUTPUT" -C "$stage_dir" .
 }
 
+sign_archive() {
+  if [ "$UNSIGNED_FOR_DEV" = "true" ]; then
+    return
+  fi
+  openssl dgst -sha256 -sign "$SIGNING_KEY" -out "${OUTPUT}.sig" "$OUTPUT"
+}
+
 main() {
   parse_args "$@"
   validate_args
@@ -474,8 +484,12 @@ main() {
   copy_bootstrap_tools "$stage_dir"
   sign_checksums "$stage_dir"
   create_archive "$stage_dir"
+  sign_archive
 
   offline_log "Offline bundle written to: $OUTPUT"
+  if [ "$UNSIGNED_FOR_DEV" != "true" ]; then
+    offline_log "Detached archive signature written to: ${OUTPUT}.sig"
+  fi
 }
 
 main "$@"

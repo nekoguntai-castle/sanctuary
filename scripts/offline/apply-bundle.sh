@@ -281,7 +281,7 @@ main() {
   [ -n "$BUNDLE_PATH" ] || offline_fail "--bundle is required"
   if [ -z "$STAGE_DIR" ]; then
     STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-offline-bundle.XXXXXX")"
-    trap 'rm -rf "$STAGE_DIR"' EXIT
+    trap 'find "$STAGE_DIR" -type f -delete; find "$STAGE_DIR" -type l -delete; find "$STAGE_DIR" -depth -type d -empty -delete' EXIT
   fi
 
   prepare_bundle

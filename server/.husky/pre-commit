@@ -560,7 +560,7 @@ fi
 # =============================================
 # Version Sync Check & Auto-Fix
 # =============================================
-# Verify all package.json and umbrel-app.yml versions are in sync
+# Verify all package.json versions are in sync
 # If mismatched, automatically sync to root package.json version
 
 check_version_sync() {

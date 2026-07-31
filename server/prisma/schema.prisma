@@ -678,7 +678,7 @@ model ElectrumServer {
   id           String  @id @default(uuid())
   nodeConfigId String
   network      String  @default("mainnet") // mainnet, testnet3, testnet4, signet, regtest
-  label        String // User-friendly name (e.g., "Blockstream SSL", "My Umbrel")
+  label        String // User-friendly name (e.g., "Blockstream SSL", "Home Electrum")
   host         String
   port         Int
   useSsl       Boolean @default(true)

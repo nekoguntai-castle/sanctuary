@@ -127,7 +127,7 @@ Bare `chore: retrigger CI` with no body is no longer acceptable. Diagnostic arti
 
 ### Version management
 
-Versions must stay synchronized across `package.json`, `server/package.json`, `gateway/package.json`, and `llm-egress-proxy/package.json`. Use `./scripts/bump-version.sh` to bump all at once. After green Forgejo tag CI, the trusted operator release command publishes GitHub/GHCR artifacts and dispatches the local `sanctuary-umbrel` updater.
+Versions must stay synchronized across `package.json`, `server/package.json`, `gateway/package.json`, and `llm-egress-proxy/package.json`. Use `./scripts/bump-version.sh` to bump all at once. After green Forgejo tag CI, the trusted operator release command verifies tag parity and creates matching Forgejo/GitHub Release objects.
 
 Never bump the version to fix a CI failure. Fix on the current version.
 

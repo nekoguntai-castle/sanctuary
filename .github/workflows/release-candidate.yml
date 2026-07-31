@@ -652,8 +652,9 @@ jobs:
   # this workflow saturated the dind docker daemon every run.
 
   # Release distribution is intentionally outside Forgejo Actions. After these
-  # validation gates pass, the trusted operator command publishes GitHub/GHCR
-  # artifacts as documented in docs/reference/release-distribution.md.
+  # validation gates pass, the trusted operator command creates matching
+  # Forgejo/GitHub Release objects as documented in
+  # docs/reference/release-distribution.md.
 
   # ============================================
   # Validation Summary

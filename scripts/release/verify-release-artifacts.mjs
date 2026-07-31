@@ -57,8 +57,8 @@ Options:
   --base-dir DIR              Directory containing local release assets (default: manifest directory)
   --public-key FILE           Public key for openssl-rsa-sha256 signatures
   --strict-stable             Enforce stable-release required artifact classes and evidence
-  --strict-images             Require frontend/backend amd64+arm64 container evidence
-  --verify-image-digests      Compare container digests against published registry metadata
+  --strict-images             Validate legacy frontend/backend container evidence locally
+  --verify-image-digests      Retired compatibility flag; always fails closed
   --help, -h                  Show this help text`);
 }
 

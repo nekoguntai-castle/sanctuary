@@ -67,7 +67,6 @@
 
 - [Quick Install](#quick-install)
 - [First Run](#first-run)
-- [Umbrel](#umbrel)
 - [Overview](#overview)
 - [Screenshots](#screenshots)
 - [Features](#features)
@@ -183,12 +182,6 @@ After installation, follow these steps to set up your Sanctuary:
 - **Can't connect?** Wait 30 seconds after install for services to start, then try again
 - **Certificate warning?** This is expected for self-signed certificates. Click Advanced and Proceed.
 - **API Error?** Run `./start.sh --logs` to check for issues
-
----
-
-## Umbrel
-
-Running [Umbrel](https://umbrel.com/)? Install via the [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) community app store. Note: Umbrel runs apps over HTTP, which limits WebUSB hardware-wallet support and QR camera scanning — see the [sanctuary-umbrel README](https://github.com/nekoguntai-castle/sanctuary-umbrel#limitations-on-umbrel) for the full list of what works and what doesn't, plus the standalone HTTPS install if you need full functionality.
 
 ---
 
@@ -1031,7 +1024,7 @@ cd ~/sanctuary
 
 ### Offline Bundle Upgrade
 
-For airgapped systems or machines that cannot reach GitHub or GHCR, upload a
+For airgapped systems or machines that cannot reach GitHub, upload a
 signed Sanctuary offline bundle to the machine and run:
 
 ```bash

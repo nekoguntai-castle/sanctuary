@@ -92,8 +92,8 @@ Repository workflow permissions are intentionally read-only:
   because they retain test evidence rather than publishing product artifacts.
 - `scripts/ci/check-workflows-test-only.sh` enforces this boundary.
 - After green Forgejo stable-tag gates, a trusted operator runs
-  `npm run release:publish -- <tag>` to publish GitHub/GHCR artifacts and then
-  dispatch the local `sanctuary-umbrel` updater.
+  `npm run release:publish -- <tag>` to verify mirror/tag parity and create
+  matching Forgejo/GitHub Release objects.
 
 ## Lizard Remediation PR Loop
 
@@ -209,8 +209,8 @@ but never publishes:
   shared image inputs build both. Every build uses `push: false`.
 - `Release Candidate Validation` is the deliberate pre-release install validation pass.
 - Stable-tag `Install Tests` is the final Forgejo release gate.
-- The trusted operator release command owns multi-architecture GHCR publication,
-  GitHub/Forgejo Release objects, digest verification, and Umbrel notification.
+- The trusted operator release command owns GitHub tag reconciliation and
+  matching GitHub/Forgejo Release objects.
 
 Release/tag validation workflows must not use broad cancellation rules. A
 superseded PR run can be canceled; an immutable tag validation run should not be
