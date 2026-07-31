@@ -196,7 +196,7 @@ async function startWorker(): Promise<void> {
             subscribedAddresses: electrumMetrics?.totalSubscribedAddresses ?? 0,
             networks: electrumMetrics?.networks ?? {},
           },
-          jobCompletions: jobQueue?.getJobCompletionTimes() ?? {},
+          jobCompletions: scheduleHealth.completionTimes,
           recurringSchedules: scheduleHealth,
         };
       },
@@ -365,14 +365,14 @@ async function getRecurringScheduleHealth(): Promise<RecurringScheduleHealth> {
       unexpected: [],
       inspectionFailures: [],
       reconciliationFailed: true,
+      heartbeatHealthy: false,
+      completionTimes: {},
     };
   }
   const state = recurringScheduleCoordinator.getState();
   return inspectRecurringScheduleHealth(
     jobQueue,
     state.desired,
-    jobQueue.getJobCompletionTimes(),
-    workerStartedAt,
     Date.now(),
     state.forbidden,
     state.reconciliationHealthy,

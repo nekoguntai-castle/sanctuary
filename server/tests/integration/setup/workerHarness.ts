@@ -52,7 +52,10 @@ export const createWorkerTestHarness = async (
     getRegisteredJobs: vi.fn(() => ['test-job']),
     getHealth: vi.fn(async () => ({ queues: {} })),
     isHealthy: vi.fn(() => true),
-    getJobCompletionTimes: vi.fn(() => ({})),
+    getRecurringHeartbeatSnapshot: vi.fn(async () => ({
+      healthy: true,
+      records: {},
+    })),
     onJobCompleted: vi.fn(),
     shutdown: vi.fn(async () => undefined),
   };

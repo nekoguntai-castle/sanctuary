@@ -33,12 +33,16 @@ export interface RegisteredHandler {
   };
 }
 
+export type RecurringScheduleRecurrence =
+  | { every: number }
+  | { pattern: string; tz: 'UTC' };
+
 export interface RecurringScheduleDefinition<T = unknown> {
   schedulerId: string;
   queue: string;
   name: string;
   data: T;
-  cron: string;
+  recurrence: RecurringScheduleRecurrence;
   options?: Omit<JobsOptions, "repeat">;
   freshness?: {
     maxAgeMs: number;

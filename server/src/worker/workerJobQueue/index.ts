@@ -40,10 +40,16 @@ import {
   inspectRecurringScheduleDefinitions,
   reconcileRecurringSchedule,
 } from "./recurringSchedules";
+import {
+  RecurringHeartbeatStore,
+  type RecurringHeartbeatSnapshot,
+} from "./recurringHeartbeatStore";
+import { unwrapRecurringJobData } from "./recurringJobEnvelope";
 
 export type { WorkerJobQueueConfig } from "./types";
 export type {
   RecurringScheduleDefinition,
+  RecurringScheduleRecurrence,
   RecurringScheduleInspection,
   RecurringScheduleResult,
   RecurringRemovalResult,
@@ -57,8 +63,8 @@ interface QueueFactoryOptions {
   prefix: string | undefined;
   concurrency: number;
   defaultJobOptions: JobsOptions | undefined;
-  jobCompletionTimes: Map<string, number>;
   processJob: (queueName: string, job: Job) => Promise<unknown>;
+  onRecurringCompleted: (job: Job) => Promise<void>;
 }
 
 function createBullQueue({
@@ -115,7 +121,7 @@ function createQueueInstance(options: QueueFactoryOptions): QueueInstance {
   setupWorkerEventHandlers(
     options.queueName,
     worker,
-    options.jobCompletionTimes,
+    options.onRecurringCompleted,
   );
   return { queue, worker, events };
 }
@@ -123,7 +129,8 @@ function createQueueInstance(options: QueueFactoryOptions): QueueInstance {
 export class WorkerJobQueue {
   private queues: Map<string, QueueInstance> = new Map();
   private handlers: Map<string, RegisteredHandler> = new Map();
-  private jobCompletionTimes: Map<string, number> = new Map();
+  private heartbeatDefinitions = new Map<string, RecurringScheduleDefinition>();
+  private heartbeatStore: RecurringHeartbeatStore | null = null;
   private config: WorkerJobQueueConfig;
   private connection: ConnectionOptions | null = null;
   private initialized = false;
@@ -166,6 +173,10 @@ export class WorkerJobQueue {
       password: redis.options.password,
       db: redis.options.db,
     };
+    this.heartbeatStore = new RecurringHeartbeatStore(
+      redis,
+      this.config.prefix!,
+    );
 
     // Create queues and workers for each queue name
     for (const queueName of this.config.queues) {
@@ -194,8 +205,9 @@ export class WorkerJobQueue {
       prefix: this.config.prefix,
       defaultJobOptions: this.config.defaultJobOptions,
       concurrency: this.config.concurrency,
-      jobCompletionTimes: this.jobCompletionTimes,
       processJob: (name, job) => this.processJob(name, job),
+      onRecurringCompleted: (job) =>
+        this.recordRecurringCompletion(queueName, job),
     });
 
     this.queues.set(queueName, instance);
@@ -213,9 +225,21 @@ export class WorkerJobQueue {
       throw new Error(`No handler registered for ${handlerKey}`);
     }
 
-    return processJobWithLock(handlerKey, registered, job, {
-      shutdownSignal: this.shutdownController.signal,
-    });
+    const recurringEnvelope = unwrapRecurringJobData(job.data);
+    if (!recurringEnvelope) {
+      return processJobWithLock(handlerKey, registered, job, {
+        shutdownSignal: this.shutdownController.signal,
+      });
+    }
+    const originalData = job.data;
+    job.data = recurringEnvelope.payload;
+    try {
+      return await processJobWithLock(handlerKey, registered, job, {
+        shutdownSignal: this.shutdownController.signal,
+      });
+    } finally {
+      job.data = originalData;
+    }
   }
 
   /**
@@ -302,23 +326,61 @@ export class WorkerJobQueue {
   }
 
   /**
-   * Schedule a recurring job with cron pattern
+   * Reconcile a recurring scheduler and its durable freshness generation.
    */
   async scheduleRecurring<T>(
-    queueName: string,
-    jobName: string,
-    data: T,
-    cron: string,
-    options?: Omit<JobsOptions, "repeat">,
+    definition: RecurringScheduleDefinition<T>,
   ): Promise<RecurringScheduleResult> {
-    return reconcileRecurringSchedule(
-      this.queues.get(queueName),
-      queueName,
-      jobName,
-      data,
-      cron,
-      options,
+    if (!definition.freshness) {
+      return reconcileRecurringSchedule(
+        this.queues.get(definition.queue),
+        definition,
+      );
+    }
+    try {
+      const generationToken =
+        await this.heartbeatStore!.ensureGeneration(definition);
+      this.heartbeatDefinitions.set(definition.schedulerId, definition);
+      return await reconcileRecurringSchedule(
+        this.queues.get(definition.queue),
+        definition,
+        generationToken,
+      );
+    } catch (error) {
+      return { status: "failed", error: getErrorMessage(error) };
+    }
+  }
+
+  private async recordRecurringCompletion(
+    queueName: string,
+    job: Job,
+  ): Promise<void> {
+    const schedulerId = job.repeatJobKey;
+    if (!schedulerId || !this.heartbeatStore) return;
+    const recurringEnvelope = unwrapRecurringJobData(job.data);
+    if (!recurringEnvelope) return;
+    const definition = this.heartbeatDefinitions.get(schedulerId);
+    if (
+      !definition ||
+      definition.queue !== queueName ||
+      definition.name !== job.name ||
+      definition.schedulerId !== `${queueName}:${job.name}`
+    ) {
+      return;
+    }
+    await this.heartbeatStore.recordCompletion(
+      schedulerId,
+      job.opts.repeat,
+      recurringEnvelope.generationToken,
+      definition.freshness,
     );
+  }
+
+  async getRecurringHeartbeatSnapshot(
+    definitions: RecurringScheduleDefinition[],
+  ): Promise<RecurringHeartbeatSnapshot> {
+    if (!this.heartbeatStore) return { healthy: false, records: {} };
+    return this.heartbeatStore.read(definitions);
   }
 
   async inspectRecurringSchedules(
@@ -375,6 +437,8 @@ export class WorkerJobQueue {
           );
         }
       }
+      await this.heartbeatStore?.remove(`${queueName}:${jobName}`);
+      this.heartbeatDefinitions.delete(`${queueName}:${jobName}`);
       return { status: removed ? "removed" : "absent" };
     } catch (error) {
       const errorMessage = getErrorMessage(error);
@@ -517,13 +581,6 @@ export class WorkerJobQueue {
   }
 
   /**
-   * Get the last completion timestamp for each job type
-   */
-  getJobCompletionTimes(): Record<string, number> {
-    return Object.fromEntries(this.jobCompletionTimes);
-  }
-
-  /**
    * Gracefully shutdown the job queue
    */
   async shutdown(): Promise<void> {
@@ -559,7 +616,8 @@ export class WorkerJobQueue {
 
     this.queues.clear();
     this.handlers.clear();
-    this.jobCompletionTimes.clear();
+    this.heartbeatDefinitions.clear();
+    this.heartbeatStore = null;
     this.initialized = false;
 
     log.info("Worker job queue shutdown complete");

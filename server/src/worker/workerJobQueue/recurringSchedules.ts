@@ -1,4 +1,3 @@
-import type { JobsOptions } from 'bullmq';
 import { isDeepStrictEqual } from 'node:util';
 import { getErrorMessage } from '../../utils/errors';
 import { createLogger } from '../../utils/logger';
@@ -8,22 +7,31 @@ import type {
   RecurringScheduleInspection,
   RecurringScheduleResult,
 } from './types';
+import {
+  hasExactRecurrence,
+  validateRecurrence,
+} from './recurringRecurrence';
+import {
+  unwrapRecurringJobData,
+  wrapRecurringJobData,
+} from './recurringJobEnvelope';
 
 const log = createLogger('WORKER:QUEUE');
 
 function hasExactSchedule<T>(
   schedulers: Awaited<ReturnType<QueueInstance['queue']['getJobSchedulers']>>,
-  schedulerId: string,
-  jobName: string,
-  cron: string,
-  data: T,
+  definition: RecurringScheduleDefinition<T>,
+  generationToken?: string,
 ): boolean {
   return schedulers.some(
     (scheduler) =>
-      scheduler.key === schedulerId &&
-      scheduler.name === jobName &&
-      scheduler.pattern === cron &&
-      isDeepStrictEqual(scheduler.template?.data ?? {}, data),
+      scheduler.key === definition.schedulerId &&
+      scheduler.name === definition.name &&
+      hasExactRecurrence(scheduler, definition.recurrence) &&
+      isDeepStrictEqual(
+        scheduler.template?.data ?? {},
+        wrapRecurringJobData(definition.data, generationToken),
+      ),
   );
 }
 
@@ -55,38 +63,33 @@ async function removeObsoleteSchedules(
 
 export async function reconcileRecurringSchedule<T>(
   queueInstance: QueueInstance | undefined,
-  queueName: string,
-  jobName: string,
-  data: T,
-  cron: string,
-  options?: Omit<JobsOptions, 'repeat'>,
+  definition: RecurringScheduleDefinition<T>,
+  generationToken?: string,
 ): Promise<RecurringScheduleResult> {
+  const { queue: queueName, name: jobName } = definition;
   if (!queueInstance) {
     log.warn(`Queue not found: ${queueName}`);
     return { status: 'failed', error: `Queue not found: ${queueName}` };
   }
 
   try {
-    const schedulerId = `${queueName}:${jobName}`;
+    if (definition.schedulerId !== `${queueName}:${jobName}`) {
+      throw new Error('Recurring scheduler ID must match queue:name');
+    }
+    validateRecurrence(definition.recurrence);
     const schedulers = await queueInstance.queue.getJobSchedulers();
     const repeatableJobs = await queueInstance.queue.getRepeatableJobs();
-    const exact = hasExactSchedule(
-      schedulers,
-      schedulerId,
-      jobName,
-      cron,
-      data,
-    );
+    const exact = hasExactSchedule(schedulers, definition, generationToken);
     if (!exact) {
       await queueInstance.queue.upsertJobScheduler(
-        schedulerId,
-        { pattern: cron },
+        definition.schedulerId,
+        definition.recurrence,
         {
           name: jobName,
-          data,
+          data: wrapRecurringJobData(definition.data, generationToken),
           opts: {
-            ...options,
-            removeOnComplete: options?.removeOnComplete ?? 10,
+            ...definition.options,
+            removeOnComplete: definition.options?.removeOnComplete ?? 10,
           },
         },
       );
@@ -95,13 +98,13 @@ export async function reconcileRecurringSchedule<T>(
       queueInstance,
       schedulers,
       repeatableJobs,
-      schedulerId,
+      definition.schedulerId,
       jobName,
     );
 
     const status = exact ? 'unchanged' : 'created';
     log.info(`Reconciled recurring job: ${queueName}:${jobName}`, {
-      cron,
+      recurrence: definition.recurrence,
       status,
     });
     return { status };
@@ -139,8 +142,13 @@ function inspectQueueDefinitions(
     const desired = sameName.filter(
       (scheduler) =>
         scheduler.key === definition.schedulerId &&
-        scheduler.pattern === definition.cron &&
-        isDeepStrictEqual(scheduler.template?.data ?? {}, definition.data),
+        hasExactRecurrence(scheduler, definition.recurrence) &&
+        isDeepStrictEqual(
+          unwrapRecurringJobData(scheduler.template?.data)?.payload ??
+            scheduler.template?.data ??
+            {},
+          definition.data,
+        ),
     );
     if (desired.length === 0) {
       missing.push(definition.schedulerId);

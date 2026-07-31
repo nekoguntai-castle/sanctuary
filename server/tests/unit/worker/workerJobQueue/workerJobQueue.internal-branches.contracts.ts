@@ -31,18 +31,31 @@ export const registerWorkerJobQueueInternalBranchContracts = (
         name: "repeat-job",
         key: "sync:repeat-job",
         pattern: "*/5 * * * *",
+        tz: "UTC",
         template: { data: {} },
       },
     ]);
     await expect(
-      queue.scheduleRecurring("sync", "repeat-job", {}, "*/5 * * * *"),
+      queue.scheduleRecurring({
+        schedulerId: "sync:repeat-job",
+        queue: "sync",
+        name: "repeat-job",
+        data: {},
+        recurrence: { pattern: "*/5 * * * *", tz: "UTC" },
+      }),
     ).resolves.toEqual({ status: "unchanged" });
 
     syncQueue.getRepeatableJobs.mockRejectedValueOnce(
       new Error("repeat failed"),
     );
     await expect(
-      queue.scheduleRecurring("sync", "repeat-job", {}, "*/5 * * * *"),
+      queue.scheduleRecurring({
+        schedulerId: "sync:repeat-job",
+        queue: "sync",
+        name: "repeat-job",
+        data: {},
+        recurrence: { pattern: "*/5 * * * *", tz: "UTC" },
+      }),
     ).resolves.toEqual(
       expect.objectContaining({ status: "failed", error: "repeat failed" }),
     );

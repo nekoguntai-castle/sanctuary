@@ -1,6 +1,7 @@
 import type { CombinedConfig } from '../config';
 import type {
   RecurringScheduleDefinition,
+  RecurringScheduleRecurrence,
   RecurringRemovalResult,
   RecurringScheduleResult,
   WorkerJobQueue,
@@ -18,6 +19,8 @@ export interface RecurringScheduleHealth {
   unexpected: string[];
   inspectionFailures: string[];
   reconciliationFailed: boolean;
+  heartbeatHealthy: boolean;
+  completionTimes: Record<string, number>;
 }
 
 export interface RecurringScheduleReconciliation {
@@ -41,7 +44,7 @@ function defineSchedule<T>(
   queue: string,
   name: string,
   data: T,
-  cron: string,
+  recurrence: RecurringScheduleRecurrence,
   freshness?: RecurringScheduleDefinition['freshness'],
 ): RecurringScheduleDefinition<T> {
   return {
@@ -49,75 +52,120 @@ function defineSchedule<T>(
     queue,
     name,
     data,
-    cron,
+    recurrence,
     ...(freshness ? { freshness } : {}),
   };
+}
+
+function every(milliseconds: number): RecurringScheduleRecurrence {
+  if (!Number.isSafeInteger(milliseconds) || milliseconds < 1_000) {
+    throw new Error(
+      'Recurring interval must be a safe integer of at least 1000ms',
+    );
+  }
+  return { every: milliseconds };
+}
+
+function utcCron(pattern: string): RecurringScheduleRecurrence {
+  return { pattern, tz: 'UTC' };
+}
+
+function syncFreshness(intervalMs: number) {
+  const maxAgeMs = intervalMs * 2;
+  const startupGraceMs = intervalMs + 30_000;
+  if (
+    !Number.isSafeInteger(maxAgeMs) ||
+    !Number.isSafeInteger(startupGraceMs)
+  ) {
+    throw new Error(
+      'Recurring freshness interval exceeds the safe integer range',
+    );
+  }
+  return { maxAgeMs, startupGraceMs };
 }
 
 export function buildBaselineRecurringSchedules(
   config: CombinedConfig,
 ): RecurringScheduleDefinition[] {
-  const syncMinutes = Math.max(
-    1,
-    Math.floor(config.sync.intervalMs / MINUTE_MS),
-  );
-  const confirmationMinutes = Math.max(
-    1,
-    Math.floor(config.sync.confirmationUpdateIntervalMs / MINUTE_MS),
-  );
-
   return [
     defineSchedule(
       'sync',
       'check-stale-wallets',
       {},
-      `*/${syncMinutes} * * * *`,
-      {
-        maxAgeMs: config.sync.intervalMs * 2,
-        startupGraceMs: config.sync.intervalMs + 30_000,
-      },
+      every(config.sync.intervalMs),
+      syncFreshness(config.sync.intervalMs),
     ),
     defineSchedule(
       'confirmations',
       'update-all-confirmations',
       {},
-      `*/${confirmationMinutes} * * * *`,
+      every(config.sync.confirmationUpdateIntervalMs),
     ),
-    defineSchedule('maintenance', 'cleanup:expired-drafts', {}, '0 * * * *'),
-    defineSchedule('maintenance', 'cleanup:expired-transfers', {}, '30 * * * *'),
+    defineSchedule(
+      'maintenance',
+      'cleanup:expired-drafts',
+      {},
+      utcCron('0 * * * *'),
+    ),
+    defineSchedule(
+      'maintenance',
+      'cleanup:expired-transfers',
+      {},
+      utcCron('30 * * * *'),
+    ),
     defineSchedule(
       'maintenance',
       'cleanup:audit-logs',
       { retentionDays: config.maintenance.auditLogRetentionDays },
-      '0 2 * * *',
+      utcCron('0 2 * * *'),
     ),
     defineSchedule(
       'maintenance',
       'cleanup:price-data',
       { retentionDays: config.maintenance.priceDataRetentionDays },
-      '0 3 * * *',
+      utcCron('0 3 * * *'),
     ),
     defineSchedule(
       'maintenance',
       'cleanup:fee-estimates',
       { retentionDays: config.maintenance.feeEstimateRetentionDays },
-      '0 4 * * *',
+      utcCron('0 4 * * *'),
     ),
-    defineSchedule('maintenance', 'persist:price-fees', {}, '* * * * *'),
-    defineSchedule('maintenance', 'cleanup:expired-tokens', {}, '0 5 * * *'),
-    defineSchedule('maintenance', 'maintenance:weekly-vacuum', {}, '0 3 * * 0'),
-    defineSchedule('maintenance', 'maintenance:monthly-cleanup', {}, '0 4 1 * *'),
+    defineSchedule(
+      'maintenance',
+      'persist:price-fees',
+      {},
+      utcCron('* * * * *'),
+    ),
+    defineSchedule(
+      'maintenance',
+      'cleanup:expired-tokens',
+      {},
+      utcCron('0 5 * * *'),
+    ),
+    defineSchedule(
+      'maintenance',
+      'maintenance:weekly-vacuum',
+      {},
+      utcCron('0 3 * * 0'),
+    ),
+    defineSchedule(
+      'maintenance',
+      'maintenance:monthly-cleanup',
+      {},
+      utcCron('0 4 1 * *'),
+    ),
     defineSchedule(
       'maintenance',
       'backup:scheduled',
       { retentionCount: 7 },
-      '0 1 * * *',
+      utcCron('0 1 * * *'),
     ),
     defineSchedule(
       'maintenance',
       WEBHOOK_RECOVERY_JOB_NAME,
       {},
-      '* * * * *',
+      utcCron('* * * * *'),
       {
         maxAgeMs: 2 * MINUTE_MS,
         startupGraceMs: 90_000,
@@ -127,17 +175,32 @@ export function buildBaselineRecurringSchedules(
 }
 
 export const AUTOPILOT_RECURRING_SCHEDULES: RecurringScheduleDefinition[] = [
-  defineSchedule('maintenance', 'autopilot:record-fees', {}, '*/10 * * * *'),
-  defineSchedule('maintenance', 'autopilot:evaluate', {}, '5/10 * * * *'),
+  defineSchedule(
+    'maintenance',
+    'autopilot:record-fees',
+    {},
+    utcCron('*/10 * * * *'),
+  ),
+  defineSchedule(
+    'maintenance',
+    'autopilot:evaluate',
+    {},
+    utcCron('5/10 * * * *'),
+  ),
 ];
 
 export const INTELLIGENCE_RECURRING_SCHEDULES: RecurringScheduleDefinition[] = [
-  defineSchedule('maintenance', 'intelligence:analyze', {}, '*/30 * * * *'),
+  defineSchedule(
+    'maintenance',
+    'intelligence:analyze',
+    {},
+    utcCron('*/30 * * * *'),
+  ),
   defineSchedule(
     'maintenance',
     'intelligence:cleanup',
     {},
-    '0 6 * * *',
+    utcCron('0 6 * * *'),
   ),
 ];
 
@@ -147,20 +210,7 @@ export async function reconcileRecurringSchedules(
 ): Promise<RecurringScheduleReconciliation> {
   const results: Record<string, RecurringScheduleResult> = {};
   for (const definition of definitions) {
-    results[definition.schedulerId] = definition.options
-      ? await queue.scheduleRecurring(
-          definition.queue,
-          definition.name,
-          definition.data,
-          definition.cron,
-          definition.options,
-        )
-      : await queue.scheduleRecurring(
-          definition.queue,
-          definition.name,
-          definition.data,
-          definition.cron,
-        );
+    results[definition.schedulerId] = await queue.scheduleRecurring(definition);
   }
 
   return {
@@ -275,35 +325,54 @@ export class RecurringScheduleCoordinator {
   }
 }
 
+function completionTimesFrom(
+  records: Awaited<
+    ReturnType<WorkerJobQueue['getRecurringHeartbeatSnapshot']>
+  >['records'],
+): Record<string, number> {
+  const completionTimes: Record<string, number> = {};
+  for (const [schedulerId, record] of Object.entries(records)) {
+    if (record.lastCompletedAt !== undefined) {
+      completionTimes[schedulerId] = record.lastCompletedAt;
+    }
+  }
+  return completionTimes;
+}
+
 export async function inspectRecurringScheduleHealth(
   queue: WorkerJobQueue,
   definitions: RecurringScheduleDefinition[],
-  completionTimes: Record<string, number>,
-  workerStartedAt: number,
   now = Date.now(),
   forbiddenDefinitions: RecurringScheduleDefinition[] = [],
   reconciliationHealthy = true,
 ): Promise<RecurringScheduleHealth> {
-  const inspection = await queue.inspectRecurringSchedules(
-    definitions,
-    forbiddenDefinitions,
-  );
+  const [inspection, heartbeat] = await Promise.all([
+    queue.inspectRecurringSchedules(definitions, forbiddenDefinitions),
+    queue.getRecurringHeartbeatSnapshot(definitions),
+  ]);
   const stale = definitions
     .filter(({ freshness, schedulerId }) => {
-      if (!freshness || now - workerStartedAt <= freshness.startupGraceMs) {
+      if (!freshness) return false;
+      const record = heartbeat.records[schedulerId];
+      if (!record) return true;
+      if (
+        record.lastCompletedAt === undefined &&
+        now - record.activatedAt <= freshness.startupGraceMs
+      ) {
         return false;
       }
-      const lastCompletion = completionTimes[schedulerId];
       return (
-        lastCompletion === undefined ||
-        now - lastCompletion > freshness.maxAgeMs
+        record.lastCompletedAt === undefined ||
+        now - record.lastCompletedAt > freshness.maxAgeMs
       );
     })
     .map(({ schedulerId }) => schedulerId);
+  const completionTimes = completionTimesFrom(heartbeat.records);
 
   return {
     healthy:
       inspection.healthy &&
+      heartbeat.healthy &&
       stale.length === 0 &&
       reconciliationHealthy,
     missing: inspection.missing,
@@ -312,5 +381,7 @@ export async function inspectRecurringScheduleHealth(
     unexpected: inspection.unexpected,
     inspectionFailures: inspection.inspectionFailures,
     reconciliationFailed: !reconciliationHealthy,
+    heartbeatHealthy: heartbeat.healthy,
+    completionTimes,
   };
 }

@@ -187,21 +187,26 @@ Implementation verification:
 Findings: `recurring-readiness-process-local-completions`,
 `recurring-interval-cron-conversion-corrupts-cadence`.
 
-- [ ] Replace process-local recurring completion authority with versioned durable
-      Redis heartbeat keys written from successful recurring-job completion and
-      read by every replica. A heartbeat persistence failure makes readiness
-      unhealthy; lifecycle, TTL, restart, and stale scheduler-ID cleanup are
-      tested.
-- [ ] Test two worker instances where either instance consumes a recurring job and
-      both report the same freshness result after propagation and restart.
-- [ ] Extend recurring definitions to use BullMQ's millisecond `every` strategy
+- [x] Replace process-local recurring completion authority with versioned durable
+      Redis scheduler-generation records written only from successful BullMQ
+      scheduler jobs whose `repeatJobKey`, recurrence fingerprint, and
+      unpredictable job-carried generation token match the active generation.
+      Manual same-name jobs cannot refresh readiness.
+      Generation activation time, completion time, TTL, restart, Redis
+      read/write failure, recovery, and stale scheduler-ID cleanup are tested.
+- [x] Test two worker instances where either instance consumes a recurring job and
+      both converge on the same freshness result by their next health read,
+      including restart without a process-local grace reset.
+- [x] Extend recurring definitions to use BullMQ's millisecond `every` strategy
       for configurable intervals while retaining cron only for calendar
-      schedules. Define and test 90 seconds, 90 minutes, exact hours, and default
-      boundaries without flooring.
+      schedules with explicit UTC timezone. Define and test 1 second, 90 seconds,
+      90 minutes, exact hours, defaults, strategy migration, and invalid/overflow
+      boundaries without flooring or duplicate future occurrences.
 
 Acceptance:
 
-- All healthy replicas agree on recurring freshness.
+- All healthy replicas derive recurring freshness from the same durable
+  scheduler generation; Redis failures fail readiness closed.
 - Configured recurrence is either represented exactly or rejected with a clear
   startup validation error.
 - Focused unit tests, real two-process Redis proofs, typechecks, and full backend
@@ -211,6 +216,21 @@ Rollback: preserve queue names and scheduler IDs. Roll back if
 startup/readiness compatibility regresses.
 
 Delivery: one recurring-scheduling PR.
+
+Verification and review:
+
+- Production and test TypeScript pass; 103 focused recurring/queue tests pass,
+  with three committed Redis-gated integration proofs skipped locally because
+  `REDIS_URL` is unset.
+- Full backend coverage passes 471 files and 10,469 tests with 100% statements,
+  branches, functions, and lines. Server lint and safety guards, architecture,
+  blocking-I/O, large-file classification, changed-file `CCN <= 15`, and diff
+  hygiene pass.
+- Two independent adversarial reviews drove fixes for per-scheduler write
+  latching, durable grace identity, malformed-generation repair, completion
+  authenticity, first-job publication ordering, cross-clock comparisons, and
+  same-recurrence remove/re-add races. Both final reviews are clear of P0-P2
+  findings.
 
 ## Phase 4 — BullMQ failure and durable DLQ semantics
 

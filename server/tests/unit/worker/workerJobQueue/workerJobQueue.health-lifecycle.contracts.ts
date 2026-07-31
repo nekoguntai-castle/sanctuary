@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { type WorkerJobQueueAccessor } from './workerJobQueueTestHarness';
+import {
+  mockRedis,
+  type WorkerJobQueueAccessor,
+} from './workerJobQueueTestHarness';
 
 export const registerWorkerJobQueueHealthLifecycleContracts = (getQueue: WorkerJobQueueAccessor) => {
   let queue: ReturnType<WorkerJobQueueAccessor>;
@@ -90,33 +93,79 @@ export const registerWorkerJobQueueHealthLifecycleContracts = (getQueue: WorkerJ
     });
   });
 
-  describe('getJobCompletionTimes', () => {
-    it('returns empty object initially', async () => {
+  describe('getRecurringHeartbeatSnapshot', () => {
+    it('returns an empty healthy snapshot when no freshness definitions exist', async () => {
       await queue.initialize();
-      expect(queue.getJobCompletionTimes()).toEqual({});
+      await expect(queue.getRecurringHeartbeatSnapshot([])).resolves.toEqual({
+        healthy: true,
+        records: {},
+      });
     });
 
-    it('records completion timestamps via event handlers', async () => {
+    it('records only matching BullMQ scheduler completions', async () => {
       await queue.initialize();
-
-      // The setupWorkerEventHandlers was called with the completion map.
-      // Simulate a completed event by calling the handler registered on the worker.
+      await queue.scheduleRecurring({
+        schedulerId: 'sync:check-stale-wallets',
+        queue: 'sync',
+        name: 'check-stale-wallets',
+        data: {},
+        recurrence: { every: 90_000 },
+        freshness: { maxAgeMs: 180_000, startupGraceMs: 120_000 },
+      });
       const syncWorker = (queue as any).queues.get('sync').worker;
-      const completedCalls = syncWorker.on.mock.calls.filter(
-        (call: any) => call[0] === 'completed'
-      );
-      // The first 'completed' listener is from setupWorkerEventHandlers
-      const completedHandler = completedCalls[0][1];
+      const recurringData = (queue as any).queues
+        .get('sync')
+        .queue.upsertJobScheduler.mock.calls[0][2].data;
+      const completedHandler = syncWorker.on.mock.calls.find(
+        (call: any[]) => call[0] === 'completed',
+      )[1];
+      expect(mockRedis.eval).toHaveBeenCalledTimes(1);
 
       completedHandler({
-        id: 'j-1',
-        name: 'sync-wallet',
-        processedOn: 100,
-        finishedOn: 200,
+        id: 'manual',
+        name: 'check-stale-wallets',
+        opts: {},
       });
+      await Promise.resolve();
+      expect(mockRedis.eval).toHaveBeenCalledTimes(1);
 
-      const times = queue.getJobCompletionTimes();
-      expect(times['sync:sync-wallet']).toBeGreaterThan(0);
+      completedHandler({
+        id: 'wrong-name',
+        name: 'sync-wallet',
+        repeatJobKey: 'sync:check-stale-wallets',
+        data: recurringData,
+        timestamp: 2_000,
+        opts: { repeat: { every: 90_000 } },
+      });
+      const notificationsWorker = (queue as any).queues.get(
+        'notifications',
+      ).worker;
+      const notificationsCompleted = notificationsWorker.on.mock.calls.find(
+        (call: any[]) => call[0] === 'completed',
+      )[1];
+      notificationsCompleted({
+        id: 'wrong-queue',
+        name: 'check-stale-wallets',
+        repeatJobKey: 'sync:check-stale-wallets',
+        data: recurringData,
+        timestamp: 2_000,
+        opts: { repeat: { every: 90_000 } },
+      });
+      await Promise.resolve();
+      expect(mockRedis.eval).toHaveBeenCalledTimes(1);
+
+      completedHandler({
+        id: 'recurring',
+        name: 'check-stale-wallets',
+        repeatJobKey: 'sync:check-stale-wallets',
+        data: recurringData,
+        // BullMQ creates the first job before the generation is persisted.
+        timestamp: 500,
+        processedOn: 2_000,
+        opts: { repeat: { every: 90_000 } },
+      });
+      await Promise.resolve();
+      expect(mockRedis.eval).toHaveBeenCalledTimes(2);
     });
   });
 

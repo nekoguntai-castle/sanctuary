@@ -4,7 +4,7 @@
  * Sets up BullMQ worker event handlers for logging and dead letter queue routing.
  */
 
-import type { Worker } from 'bullmq';
+import type { Job, Worker } from 'bullmq';
 import { createLogger } from '../../utils/logger';
 import { deadLetterQueue, type DeadLetterCategory } from '../../services/deadLetterQueue';
 import { jobProcessingDuration } from '../../observability/metrics/infrastructureMetrics';
@@ -48,7 +48,7 @@ export function queueToDlqCategory(queueName: string): DeadLetterCategory {
 export function setupWorkerEventHandlers(
   queueName: string,
   worker: Worker,
-  jobCompletionTimes?: Map<string, number>,
+  onRecurringCompleted?: (job: Job) => Promise<void>,
 ): void {
   worker.on('completed', (job) => {
     log.debug(`Job completed: ${queueName}:${job.name}`, {
@@ -58,8 +58,12 @@ export function setupWorkerEventHandlers(
 
     observeJobDuration(queueName, job.name, 'completed', job.processedOn, job.finishedOn);
 
-    if (jobCompletionTimes) {
-      jobCompletionTimes.set(`${queueName}:${job.name}`, Date.now());
+    if (job.repeatJobKey && onRecurringCompleted) {
+      void onRecurringCompleted(job).catch((error) => {
+        log.error(`Failed to persist recurring completion: ${queueName}:${job.name}`, {
+          error: String(error),
+        });
+      });
     }
   });
 

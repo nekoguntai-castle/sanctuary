@@ -10,22 +10,22 @@ describe('worker integration', () => {
     expect(harness.registerWorkerJobs).toHaveBeenCalled();
 
     expect(harness.jobQueue.scheduleRecurring).toHaveBeenCalledWith(
-      'sync',
-      'check-stale-wallets',
-      {},
-      '*/5 * * * *'
+      expect.objectContaining({
+        schedulerId: 'sync:check-stale-wallets',
+        recurrence: { every: 300_000 },
+      }),
     );
     expect(harness.jobQueue.scheduleRecurring).toHaveBeenCalledWith(
-      'confirmations',
-      'update-all-confirmations',
-      {},
-      '*/2 * * * *'
+      expect.objectContaining({
+        schedulerId: 'confirmations:update-all-confirmations',
+        recurrence: { every: 120_000 },
+      }),
     );
     expect(harness.jobQueue.scheduleRecurring).toHaveBeenCalledWith(
-      'maintenance',
-      'cleanup:expired-drafts',
-      {},
-      '0 * * * *'
+      expect.objectContaining({
+        schedulerId: 'maintenance:cleanup:expired-drafts',
+        recurrence: { pattern: '0 * * * *', tz: 'UTC' },
+      }),
     );
 
     harness.stopProcessExitSpy();

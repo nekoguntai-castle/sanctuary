@@ -71,7 +71,10 @@ describe('feature flag admin + worker integration', () => {
         unexpected: [],
         inspectionFailures: [],
       })),
-      getJobCompletionTimes: vi.fn(() => ({})),
+      getRecurringHeartbeatSnapshot: vi.fn(async () => ({
+        healthy: true,
+        records: {},
+      })),
       removeRecurring: vi.fn(async () => ({ status: 'absent' })),
       shutdown: vi.fn(async () => undefined),
     };
@@ -281,16 +284,16 @@ describe('feature flag admin + worker integration', () => {
       expect(enableResponse.body.enabled).toBe(true);
 
       expect(jobQueueInstance.scheduleRecurring).toHaveBeenCalledWith(
-        'maintenance',
-        'autopilot:record-fees',
-        {},
-        '*/10 * * * *'
+        expect.objectContaining({
+          schedulerId: 'maintenance:autopilot:record-fees',
+          recurrence: { pattern: '*/10 * * * *', tz: 'UTC' },
+        }),
       );
       expect(jobQueueInstance.scheduleRecurring).toHaveBeenCalledWith(
-        'maintenance',
-        'autopilot:evaluate',
-        {},
-        '5/10 * * * *'
+        expect.objectContaining({
+          schedulerId: 'maintenance:autopilot:evaluate',
+          recurrence: { pattern: '5/10 * * * *', tz: 'UTC' },
+        }),
       );
       expect(jobQueueInstance.removeRecurring).not.toHaveBeenCalledWith(
         'maintenance',

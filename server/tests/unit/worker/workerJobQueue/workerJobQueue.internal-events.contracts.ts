@@ -34,6 +34,39 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
       expect(handler).toHaveBeenCalledTimes(1);
     });
 
+    it('hides recurring generation metadata from handlers and restores it for completion', async () => {
+      await queue.initialize();
+      let seenData: unknown;
+      const handler = vi.fn(async (job) => {
+        seenData = job.data;
+        return job.data;
+      });
+      queue.registerHandler('sync', {
+        name: 'from-recurring-worker',
+        queue: 'sync',
+        handler,
+      });
+      const job = {
+        id: 'j-recurring-1',
+        name: 'from-recurring-worker',
+        data: {
+          __sanctuaryRecurring: {
+            version: 1,
+            generationToken: 'generation-token',
+          },
+          payload: { walletId: 'w1' },
+        },
+      };
+
+      await expect(createdWorkers[0].processFn?.(job)).resolves.toEqual({
+        walletId: 'w1',
+      });
+      expect(seenData).toEqual({ walletId: 'w1' });
+      expect(job.data.__sanctuaryRecurring.generationToken).toBe(
+        'generation-token',
+      );
+    });
+
     it('throws when creating queue without a connection', async () => {
       await expect((queue as any).createQueue('sync')).rejects.toThrow('Connection not established');
     });
@@ -111,8 +144,8 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
       expect(mockDlqAdd).not.toHaveBeenCalled();
     });
 
-    it('records completion timestamps when jobCompletionTimes map is provided', () => {
-      const completionTimes = new Map<string, number>();
+    it('persists only scheduler-backed recurring completions', async () => {
+      const persistRecurringCompletion = vi.fn().mockResolvedValue(undefined);
       const handlers: Record<string, (...args: any[]) => void> = {};
       const fakeWorker = {
         on: vi.fn((event: string, handler: (...args: any[]) => void) => {
@@ -120,7 +153,11 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
         }),
       };
 
-      setupWorkerEventHandlers('sync', fakeWorker as any, completionTimes);
+      setupWorkerEventHandlers(
+        'sync',
+        fakeWorker as any,
+        persistRecurringCompletion,
+      );
 
       handlers.completed?.({
         id: 'job-1',
@@ -128,27 +165,45 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
         processedOn: 100,
         finishedOn: 200,
       });
+      expect(persistRecurringCompletion).not.toHaveBeenCalled();
 
-      expect(completionTimes.get('sync:sync-wallet')).toBeGreaterThan(0);
+      handlers.completed?.({
+        id: 'repeat-job-1',
+        name: 'sync-wallet',
+        repeatJobKey: 'sync:sync-wallet',
+        processedOn: 100,
+        finishedOn: 200,
+      });
+      await Promise.resolve();
+
+      expect(persistRecurringCompletion).toHaveBeenCalledTimes(1);
     });
 
-    it('does not record completion timestamps when jobCompletionTimes is omitted', () => {
+    it('contains recurring heartbeat callback failures after job completion', async () => {
+      const persistRecurringCompletion = vi
+        .fn()
+        .mockRejectedValue(new Error('heartbeat unavailable'));
       const handlers: Record<string, (...args: any[]) => void> = {};
       const fakeWorker = {
         on: vi.fn((event: string, handler: (...args: any[]) => void) => {
           handlers[event] = handler;
         }),
       };
+      setupWorkerEventHandlers(
+        'sync',
+        fakeWorker as any,
+        persistRecurringCompletion,
+      );
 
-      setupWorkerEventHandlers('sync', fakeWorker as any);
-
-      // Should not throw when no map is provided
       handlers.completed?.({
-        id: 'job-1',
-        name: 'sync-wallet',
-        processedOn: 100,
-        finishedOn: 200,
+        id: 'recurring',
+        name: 'check-stale-wallets',
+        repeatJobKey: 'sync:check-stale-wallets',
       });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(persistRecurringCompletion).toHaveBeenCalledTimes(1);
     });
 
     it('logs DLQ recording failures for exhausted jobs', async () => {

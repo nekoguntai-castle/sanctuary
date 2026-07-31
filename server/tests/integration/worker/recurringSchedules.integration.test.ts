@@ -1,21 +1,71 @@
+import { fork, type ChildProcess } from 'node:child_process';
+import { resolve } from 'node:path';
 import Redis from 'ioredis';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CombinedConfig } from '../../../src/config';
 import { RecurringScheduleCoordinator } from '../../../src/worker/recurringSchedules';
 
 const describeIfRedis = process.env.REDIS_URL ? describe : describe.skip;
+const HEARTBEAT_FIXTURE = resolve(
+  process.cwd(),
+  'tests/fixtures/recurringHeartbeatWorker.ts',
+);
+
+function spawnHeartbeatWorker(prefix: string): ChildProcess {
+  return fork(HEARTBEAT_FIXTURE, [prefix], {
+    execArgv: ['--import', 'tsx'],
+    env: { ...process.env, NODE_ENV: 'test' },
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+  });
+}
+
+function waitForMessage(
+  child: ChildProcess,
+  expectedType: string,
+): Promise<any> {
+  return new Promise((resolveMessage, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error(`Timed out waiting for ${expectedType}`)),
+      5_000,
+    );
+    const listener = (message: any) => {
+      if (message?.type !== expectedType) return;
+      clearTimeout(timeout);
+      child.off('message', listener);
+      resolveMessage(message);
+    };
+    child.on('message', listener);
+  });
+}
+
+function stopChild(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve();
+  }
+  return new Promise((resolveExit) => {
+    child.once('exit', () => resolveExit());
+    child.send('exit');
+  });
+}
 
 describeIfRedis('recurring schedule Redis integration', () => {
   let workerQueue: { shutdown: () => Promise<void> } | undefined;
   let bullQueue: {
     name: string;
     add: (...args: any[]) => Promise<unknown>;
-    getJobSchedulers: () => Promise<Array<{ key: string; name: string; pattern?: string }>>;
+    getJobSchedulers: () => Promise<Array<{
+      key: string;
+      name: string;
+      pattern?: string;
+      every?: number;
+      tz?: string;
+    }>>;
     obliterate: (options: { force: boolean }) => Promise<void>;
     removeJobScheduler: (id: string) => Promise<boolean>;
   } | undefined;
   let allBullQueues: Array<NonNullable<typeof bullQueue>> = [];
   let redis: Redis | undefined;
+  const children: ChildProcess[] = [];
   const config = {
     sync: {
       intervalMs: 5 * 60_000,
@@ -29,12 +79,87 @@ describeIfRedis('recurring schedule Redis integration', () => {
   } as CombinedConfig;
 
   afterEach(async () => {
+    await Promise.all(children.splice(0).map(stopChild));
     for (const queue of allBullQueues) {
       await queue.obliterate({ force: true });
     }
     await workerQueue?.shutdown();
     await redis?.quit();
     allBullQueues = [];
+  });
+
+  it('shares completion freshness across processes and preserves it on restart', async () => {
+    const prefix = `sanctuary:test:heartbeat:${process.pid}:${Date.now()}`;
+    redis = new Redis(process.env.REDIS_URL!);
+    const generationKey =
+      `${prefix}:recurring-generation:v1:sync%3Acheck-stale-wallets`;
+    const completionKey =
+      `${prefix}:recurring-heartbeat:v1:sync%3Acheck-stale-wallets`;
+    await redis.set(
+      generationKey,
+      JSON.stringify({
+        version: 1,
+        schedulerId: 'sync:check-stale-wallets',
+        recurrenceFingerprint: 'every:90000',
+        generationToken: 'malformed-generation',
+        activatedAt: 1.5,
+      }),
+    );
+    await redis.set(completionKey, 'orphaned-completion');
+    const first = spawnHeartbeatWorker(prefix);
+    const second = spawnHeartbeatWorker(prefix);
+    children.push(first, second);
+    await Promise.all([
+      waitForMessage(first, 'ready'),
+      waitForMessage(second, 'ready'),
+    ]);
+
+    first.send('complete');
+    await waitForMessage(first, 'completed');
+    first.send('read');
+    second.send('read');
+    const [firstRead, secondRead] = await Promise.all([
+      waitForMessage(first, 'snapshot'),
+      waitForMessage(second, 'snapshot'),
+    ]);
+    expect(firstRead.snapshot).toEqual(secondRead.snapshot);
+    expect(
+      firstRead.snapshot.records['sync:check-stale-wallets'].lastCompletedAt,
+    ).toEqual(expect.any(Number));
+    expect(
+      firstRead.snapshot.records['sync:check-stale-wallets'].activatedAt,
+    ).toEqual(expect.any(Number));
+    expect(
+      Number.isInteger(
+        firstRead.snapshot.records['sync:check-stale-wallets'].activatedAt,
+      ),
+    ).toBe(true);
+
+    await stopChild(second);
+    children.splice(children.indexOf(second), 1);
+    const restarted = spawnHeartbeatWorker(prefix);
+    children.push(restarted);
+    await waitForMessage(restarted, 'ready');
+    restarted.send('read');
+    const restartedRead = await waitForMessage(restarted, 'snapshot');
+    expect(restartedRead.snapshot).toEqual(firstRead.snapshot);
+
+    await redis.del(completionKey);
+    await stopChild(restarted);
+    children.splice(children.indexOf(restarted), 1);
+    const afterExpiry = spawnHeartbeatWorker(prefix);
+    children.push(afterExpiry);
+    await waitForMessage(afterExpiry, 'ready');
+    afterExpiry.send('read');
+    const expiredRead = await waitForMessage(afterExpiry, 'snapshot');
+    const expiredRecord =
+      expiredRead.snapshot.records['sync:check-stale-wallets'];
+    expect(expiredRecord.activatedAt).toBe(
+      firstRead.snapshot.records['sync:check-stale-wallets'].activatedAt,
+    );
+    expect(expiredRecord.lastCompletedAt).toBeUndefined();
+
+    await redis.del(generationKey, completionKey);
   });
 
   it('replaces stale definitions without a gap and restores an externally deleted schedule', async () => {
@@ -61,14 +186,22 @@ describeIfRedis('recurring schedule Redis integration', () => {
       repeat: { pattern: '*/10 * * * *' },
     });
 
-    await expect(
-      queue.scheduleRecurring('maintenance', 'cleanup:test', {}, '*/5 * * * *'),
-    ).resolves.toEqual({ status: 'created' });
+    const definition = {
+      schedulerId: 'maintenance:cleanup:test',
+      queue: 'maintenance',
+      name: 'cleanup:test',
+      data: {},
+      recurrence: { every: 90_000 },
+    } as const;
+    await expect(queue.scheduleRecurring(definition)).resolves.toEqual({
+      status: 'created',
+    });
     let schedulers = await activeBullQueue.getJobSchedulers();
     expect(schedulers.filter(({ name }) => name === 'cleanup:test')).toEqual([
       expect.objectContaining({
         key: 'maintenance:cleanup:test',
-        pattern: '*/5 * * * *',
+        every: 90_000,
+        pattern: undefined,
       }),
     ]);
 
@@ -80,7 +213,7 @@ describeIfRedis('recurring schedule Redis integration', () => {
           queue: 'maintenance',
           name: 'cleanup:test',
           data: {},
-          cron: '*/5 * * * *',
+          recurrence: { every: 90_000 },
         },
       ]),
     ).resolves.toEqual({
@@ -91,7 +224,7 @@ describeIfRedis('recurring schedule Redis integration', () => {
       inspectionFailures: [],
     });
 
-    await queue.scheduleRecurring('maintenance', 'cleanup:test', {}, '*/5 * * * *');
+    await queue.scheduleRecurring(definition);
     schedulers = await activeBullQueue.getJobSchedulers();
     expect(schedulers).toEqual([
       expect.objectContaining({ key: 'maintenance:cleanup:test' }),

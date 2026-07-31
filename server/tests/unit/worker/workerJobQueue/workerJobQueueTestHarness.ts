@@ -7,9 +7,30 @@ const hoistedMocks = vi.hoisted(() => ({
   mockHardTerminate: vi.fn((_exitCode: number): never => {
     throw new Error('test hard termination');
   }),
+  mockRedis: {
+    options: {
+      host: 'localhost',
+      port: 6379,
+    },
+    eval: vi.fn().mockImplementation(
+      (script: string, _keyCount: number, ...args: unknown[]) => {
+        if (!script.includes('local replacement')) return Promise.resolve(1);
+        return Promise.resolve(JSON.stringify({
+          version: Number(args[2]),
+          schedulerId: String(args[3]),
+          recurrenceFingerprint: String(args[4]),
+          generationToken: String(args[5]),
+          activatedAt: 1_000,
+        }));
+      },
+    ),
+    mget: vi.fn().mockResolvedValue([]),
+    del: vi.fn().mockResolvedValue(1),
+  },
 }));
 export const mockDlqAdd = hoistedMocks.mockDlqAdd;
 export const mockHardTerminate = hoistedMocks.mockHardTerminate;
+export const mockRedis = hoistedMocks.mockRedis;
 
 // Mock BullMQ with factory that creates instances
 vi.mock('bullmq', () => {
@@ -56,12 +77,7 @@ vi.mock('bullmq', () => {
 
 // Mock Redis
 vi.mock('../../../../src/infrastructure', () => ({
-  getRedisClient: vi.fn(() => ({
-    options: {
-      host: 'localhost',
-      port: 6379,
-    },
-  })),
+  getRedisClient: vi.fn(() => hoistedMocks.mockRedis),
   isRedisConnected: vi.fn(() => true),
 }));
 

@@ -62,6 +62,8 @@ export interface HealthCheckProvider {
       unexpected: string[];
       inspectionFailures: string[];
       reconciliationFailed: boolean;
+      heartbeatHealthy: boolean;
+      completionTimes: Record<string, number>;
     };
   }>;
 }

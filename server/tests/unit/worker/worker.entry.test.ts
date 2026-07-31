@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => {
     getRegisteredJobs: vi.fn(),
     isHealthy: vi.fn(),
     getHealth: vi.fn(),
-    getJobCompletionTimes: vi.fn(),
+    getRecurringHeartbeatSnapshot: vi.fn(),
     inspectRecurringSchedules: vi.fn(),
     addJob: vi.fn(),
     addBulkJobs: vi.fn(),
@@ -194,7 +194,25 @@ describe('worker entrypoint', () => {
     mocks.queueInstance.getRegisteredJobs.mockReturnValue(['check-stale-wallets']);
     mocks.queueInstance.isHealthy.mockReturnValue(true);
     mocks.queueInstance.getHealth.mockResolvedValue({ queues: { sync: { size: 0 } } });
-    mocks.queueInstance.getJobCompletionTimes.mockReturnValue({});
+    mocks.queueInstance.getRecurringHeartbeatSnapshot.mockImplementation(
+      async (definitions: Array<{ schedulerId: string; freshness?: unknown }>) => ({
+        healthy: true,
+        records: Object.fromEntries(
+          definitions
+            .filter(({ freshness }) => freshness)
+            .map(({ schedulerId }) => [
+              schedulerId,
+              {
+                version: 1,
+                schedulerId,
+                recurrenceFingerprint: 'test',
+                activatedAt: Date.now(),
+                lastCompletedAt: Date.now(),
+              },
+            ]),
+        ),
+      }),
+    );
     mocks.queueInstance.addJob.mockResolvedValue(undefined);
     mocks.queueInstance.addBulkJobs.mockResolvedValue([]);
     mocks.queueInstance.scheduleRecurring.mockResolvedValue({ status: 'created' });
@@ -346,10 +364,10 @@ describe('worker entrypoint', () => {
       'redis-required',
     );
     expect(mocks.queueInstance.scheduleRecurring).toHaveBeenCalledWith(
-      'maintenance',
-      'persist:price-fees',
-      {},
-      '* * * * *'
+      expect.objectContaining({
+        schedulerId: 'maintenance:persist:price-fees',
+        recurrence: { pattern: '* * * * *', tz: 'UTC' },
+      }),
     );
   });
 
@@ -367,16 +385,16 @@ describe('worker entrypoint', () => {
     await vi.dynamicImportSettled();
 
     expect(mocks.queueInstance.scheduleRecurring).toHaveBeenCalledWith(
-      'maintenance',
-      'autopilot:record-fees',
-      {},
-      '*/10 * * * *'
+      expect.objectContaining({
+        schedulerId: 'maintenance:autopilot:record-fees',
+        recurrence: { pattern: '*/10 * * * *', tz: 'UTC' },
+      }),
     );
     expect(mocks.queueInstance.scheduleRecurring).toHaveBeenCalledWith(
-      'maintenance',
-      'autopilot:evaluate',
-      {},
-      '5/10 * * * *'
+      expect.objectContaining({
+        schedulerId: 'maintenance:autopilot:evaluate',
+        recurrence: { pattern: '5/10 * * * *', tz: 'UTC' },
+      }),
     );
   });
 
@@ -413,16 +431,14 @@ describe('worker entrypoint', () => {
     await workerListener({ key: 'treasuryAutopilot', enabled: true });
 
     expect(mocks.queueInstance.scheduleRecurring).toHaveBeenCalledWith(
-      'maintenance',
-      'autopilot:record-fees',
-      {},
-      '*/10 * * * *'
+      expect.objectContaining({
+        schedulerId: 'maintenance:autopilot:record-fees',
+      }),
     );
     expect(mocks.queueInstance.scheduleRecurring).toHaveBeenCalledWith(
-      'maintenance',
-      'autopilot:evaluate',
-      {},
-      '5/10 * * * *'
+      expect.objectContaining({
+        schedulerId: 'maintenance:autopilot:evaluate',
+      }),
     );
     expect(mocks.queueInstance.removeRecurring).not.toHaveBeenCalledWith(
       'maintenance',
@@ -626,7 +642,7 @@ describe('worker entrypoint', () => {
         subscribedAddresses: 2,
         networks: { testnet: { connected: true } },
       },
-      jobCompletions: {},
+      jobCompletions: expect.any(Object),
       recurringSchedules: {
         healthy: true,
         missing: [],
@@ -635,6 +651,8 @@ describe('worker entrypoint', () => {
         unexpected: [],
         inspectionFailures: [],
         reconciliationFailed: false,
+        heartbeatHealthy: true,
+        completionTimes: expect.any(Object),
       },
     });
     mocks.queueInstance.getHealth.mockResolvedValueOnce(undefined);
@@ -654,7 +672,7 @@ describe('worker entrypoint', () => {
         subscribedAddresses: 0,
         networks: {},
       },
-      jobCompletions: {},
+      jobCompletions: expect.any(Object),
       recurringSchedules: {
         healthy: true,
         missing: [],
@@ -663,6 +681,8 @@ describe('worker entrypoint', () => {
         unexpected: [],
         inspectionFailures: [],
         reconciliationFailed: false,
+        heartbeatHealthy: true,
+        completionTimes: expect.any(Object),
       },
     });
 
@@ -790,8 +810,24 @@ describe('worker entrypoint', () => {
     // Advance past grace period (syncIntervalMs=300000 + 30000 = 330000)
     // and set last completion to a stale time (>2x interval = 600000ms ago)
     mockNow = startTime + 700_000; // past grace period, and stale
-    mocks.queueInstance.getJobCompletionTimes.mockReturnValue({
-      'sync:check-stale-wallets': startTime + 10_000, // completed early, now 690s ago > 600s threshold
+    mocks.queueInstance.getRecurringHeartbeatSnapshot.mockResolvedValue({
+      healthy: true,
+      records: {
+        'sync:check-stale-wallets': {
+          version: 1,
+          schedulerId: 'sync:check-stale-wallets',
+          recurrenceFingerprint: 'every:300000',
+          activatedAt: startTime,
+          lastCompletedAt: startTime + 10_000,
+        },
+        'maintenance:webhook:recover-due-deliveries': {
+          version: 1,
+          schedulerId: 'maintenance:webhook:recover-due-deliveries',
+          recurrenceFingerprint: 'pattern:* * * * *:tz:UTC',
+          activatedAt: startTime,
+          lastCompletedAt: mockNow,
+        },
+      },
     });
 
     const health = await healthProvider?.getHealth();
