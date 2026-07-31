@@ -47,8 +47,10 @@ describe('NetworkSyncActions branch coverage', () => {
       success: true,
       queued: 2,
       walletIds: ['w1', 'w2'],
-      deletedTransactions: 25,
-      skipped: 0,
+      acceptedWalletIds: ['w1', 'w2'],
+      deduplicatedWalletIds: [],
+      rejectedWallets: [],
+      indeterminateWallets: [],
     });
   });
 
@@ -95,10 +97,12 @@ describe('NetworkSyncActions branch coverage', () => {
     const { onSyncStarted } = renderActions({ walletCount: 1 });
     vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
       success: true,
-      deletedTransactions: 2,
       queued: 1,
       walletIds: ['w1'],
-      skipped: 0,
+      acceptedWalletIds: ['w1'],
+      deduplicatedWalletIds: [],
+      rejectedWallets: [],
+      indeterminateWallets: [],
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
@@ -106,7 +110,7 @@ describe('NetworkSyncActions branch coverage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
     });
 
-    expect(screen.getByText('Cleared 2 transactions. Queued 1 wallet for resync.')).toBeInTheDocument();
+    expect(screen.getByText('Queued 1 wallet for resync.')).toBeInTheDocument();
     expect(onSyncStarted).toHaveBeenCalledTimes(1);
 
     act(() => {
@@ -114,7 +118,7 @@ describe('NetworkSyncActions branch coverage', () => {
     });
 
     expect(
-      screen.queryByText('Cleared 2 transactions. Queued 1 wallet for resync.')
+      screen.queryByText('Queued 1 wallet for resync.')
     ).not.toBeInTheDocument();
   });
 
@@ -128,6 +132,73 @@ describe('NetworkSyncActions branch coverage', () => {
     });
 
     expect(screen.getByText('Failed to resync wallets')).toBeInTheDocument();
+  });
+
+  it('surfaces partial full-resync enqueue results', async () => {
+    renderActions();
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 1,
+      walletIds: ['w1'],
+      acceptedWalletIds: ['w1'],
+      deduplicatedWalletIds: [],
+      rejectedWallets: [{ walletId: 'w2', reason: 'queue_error' }],
+      indeterminateWallets: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    expect(screen.getByText(
+      'Queued 1 wallet for resync; 1 rejected.',
+    )).toBeInTheDocument();
+  });
+
+  it('surfaces deduplicated full-resync intentions', async () => {
+    renderActions();
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 1,
+      walletIds: ['w1', 'w2'],
+      acceptedWalletIds: ['w1'],
+      deduplicatedWalletIds: ['w2'],
+      rejectedWallets: [],
+      indeterminateWallets: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    expect(screen.getByText(
+      'Queued 1 wallet for resync; 1 already queued.',
+    )).toBeInTheDocument();
+  });
+
+  it('surfaces indeterminate full-resync queue state without calling it rejected', async () => {
+    renderActions();
+    vi.mocked(syncApi.resyncNetworkWallets).mockResolvedValueOnce({
+      success: true,
+      queued: 1,
+      walletIds: ['w1'],
+      acceptedWalletIds: ['w1'],
+      deduplicatedWalletIds: [],
+      rejectedWallets: [],
+      indeterminateWallets: [{ walletId: 'w2', reason: 'queue_state_unknown' }],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Resync All Mainnet' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Resync All Wallets' }));
+    });
+
+    expect(screen.getByText(
+      'Queued 1 wallet for resync; 1 queue state unknown.',
+    )).toBeInTheDocument();
+    expect(screen.queryByText(/rejected/)).not.toBeInTheDocument();
   });
 
   it('handles compact dialog close via Cancel and X controls', () => {

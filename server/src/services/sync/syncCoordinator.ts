@@ -1,8 +1,8 @@
-import { walletRepository, transactionRepository, addressRepository } from '../../repositories';
+import { walletRepository } from '../../repositories';
 import { BITCOIN_NON_REGTEST_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import { DEFAULT_SYNC_PRIORITY, type SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { NetworkType } from '../../repositories/types';
-import { NotFoundError, InvalidInputError } from '../../errors/ApiError';
+import { NotFoundError, InvalidInputError, ServiceUnavailableError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
 import * as blockchain from '../bitcoin/blockchain';
 
@@ -39,7 +39,8 @@ export interface ResetWalletSyncResponse {
 export interface ResyncWalletResponse {
   success: true;
   message: string;
-  deletedTransactions: number;
+  status: 'accepted' | 'deduplicated';
+  walletId: string;
 }
 
 export interface QueueNetworkSyncResponse {
@@ -50,8 +51,16 @@ export interface QueueNetworkSyncResponse {
 }
 
 export interface ResyncNetworkResponse extends QueueNetworkSyncResponse {
-  deletedTransactions?: number;
-  clearedStuckFlags?: number;
+  acceptedWalletIds: string[];
+  deduplicatedWalletIds: string[];
+  rejectedWallets: Array<{
+    walletId: string;
+    reason: 'queue_unavailable' | 'queue_error';
+  }>;
+  indeterminateWallets: Array<{
+    walletId: string;
+    reason: 'queue_state_unknown';
+  }>;
 }
 
 export interface NetworkSyncStatusResponse {
@@ -81,6 +90,10 @@ function parseSyncNetwork(network: string): SyncNetwork {
 
   return network as SyncNetwork;
 }
+
+const walletCountLabel = (count: number): string => (
+  `${count} wallet${count === 1 ? '' : 's'}`
+);
 
 async function requireWalletAccess(walletId: string, userId: string): Promise<void> {
   const wallet = await walletRepository.findByIdWithAccess(walletId, userId);
@@ -201,21 +214,32 @@ export class SyncCoordinator {
       throw new NotFoundError('Wallet not found');
     }
 
-    if (wallet.syncInProgress) {
-      log.info(`[SYNC_API] Full resync clearing stuck syncInProgress for wallet ${walletId}`);
+    const { enqueueFullResyncBatch } = await import('../workerSyncQueue');
+    const result = await enqueueFullResyncBatch([walletId], {
+      reason: `manual-wallet-resync:${userId}`,
+    });
+    const status = result.acceptedWalletIds.length > 0
+      ? 'accepted'
+      : result.deduplicatedWalletIds.length > 0
+        ? 'deduplicated'
+        : null;
+    if (!status) {
+      throw new ServiceUnavailableError(
+        result.indeterminateWallets.length > 0
+          ? 'Full resync queue state could not be confirmed'
+          : 'Full resync queue is unavailable',
+        undefined,
+        { outcomes: result.outcomes },
+      );
     }
-
-    const deletedCount = await transactionRepository.deleteByWalletId(walletId);
-
-    await addressRepository.resetUsedFlags(walletId);
-    await walletRepository.resetSyncState(walletId);
-    const syncService = await getSyncServiceInstance();
-    syncService.queueSync(walletId, 'high');
 
     return {
       success: true,
-      message: `Cleared ${deletedCount} transactions. Full resync queued.`,
-      deletedTransactions: deletedCount,
+      message: status === 'accepted'
+        ? 'Full resync queued. Wallet data will be reset after exclusive sync ownership is acquired.'
+        : 'A full resync is already queued for this wallet.',
+      status,
+      walletId,
     };
   }
 
@@ -273,44 +297,52 @@ export class SyncCoordinator {
         success: true,
         queued: 0,
         walletIds: [],
+        acceptedWalletIds: [],
+        deduplicatedWalletIds: [],
+        rejectedWallets: [],
+        indeterminateWallets: [],
         message: `No ${syncNetwork} wallets found`,
       };
     }
 
-    const stuckWallets = wallets.filter(w => w.syncInProgress);
-    if (stuckWallets.length > 0) {
-      log.info(`[SYNC_API] Full network resync clearing ${stuckWallets.length} stuck syncInProgress flags`);
-    }
-
     const walletIds = wallets.map(w => w.id);
-    let totalDeletedTxs = 0;
-
-    for (const walletId of walletIds) {
-      const deletedCount = await transactionRepository.deleteByWalletId(walletId);
-      totalDeletedTxs += deletedCount;
-
-      await addressRepository.resetUsedFlags(walletId);
-      await walletRepository.resetSyncState(walletId);
-    }
-
-    const [{ enqueueWalletSyncBatch }, staggerDelayMs] = await Promise.all([
+    const [{ enqueueFullResyncBatch }, staggerDelayMs] = await Promise.all([
       import('../workerSyncQueue'),
       getSyncStaggerDelayMs(),
     ]);
-
-    const queued = await enqueueWalletSyncBatch(walletIds, {
-      priority: 'high',
+    const result = await enqueueFullResyncBatch(walletIds, {
       reason: `manual-network-resync:${syncNetwork}`,
       staggerDelayMs,
-      jobIdPrefix: `manual-network-resync:${syncNetwork}:${userId}`,
     });
+    const queuedWalletIds = result.outcomes
+      .filter(outcome => outcome.status === 'accepted' || outcome.status === 'deduplicated')
+      .map(outcome => outcome.walletId);
+    if (queuedWalletIds.length === 0) {
+      throw new ServiceUnavailableError(
+        'Full resync queue is unavailable or could not be confirmed',
+        undefined,
+        { outcomes: result.outcomes },
+      );
+    }
 
     return {
       success: true,
-      queued,
-      walletIds,
-      deletedTransactions: totalDeletedTxs,
-      clearedStuckFlags: stuckWallets.length,
+      queued: result.acceptedWalletIds.length,
+      walletIds: queuedWalletIds,
+      acceptedWalletIds: result.acceptedWalletIds,
+      deduplicatedWalletIds: result.deduplicatedWalletIds,
+      rejectedWallets: result.rejectedWallets,
+      indeterminateWallets: result.indeterminateWallets,
+      message: [
+        `Queued ${walletCountLabel(result.acceptedWalletIds.length)}`,
+        `${walletCountLabel(result.deduplicatedWalletIds.length)} already queued`,
+        ...(result.rejectedWallets.length > 0
+          ? [`${walletCountLabel(result.rejectedWallets.length)} rejected`]
+          : []),
+        ...(result.indeterminateWallets.length > 0
+          ? [`${walletCountLabel(result.indeterminateWallets.length)} queue state unknown`]
+          : []),
+      ].join('; ') + '.',
     };
   }
 

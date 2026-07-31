@@ -56,6 +56,17 @@ const legacyApiErrorResponse = {
   headers: legacyDeprecationHeaders,
 } as const;
 
+const exportRateLimitedResponse = {
+  ...apiErrorResponse,
+  description: 'Transaction export concurrency limit reached',
+  headers: {
+    'Retry-After': {
+      description: 'Seconds to wait before retrying the export.',
+      schema: { type: 'integer', minimum: 1, example: 5 },
+    },
+  },
+} as const;
+
 const jsonRequestBody = (schemaRef: string) => ({
   required: true,
   content: {
@@ -642,6 +653,7 @@ export const transactionPaths = {
         },
         401: apiErrorResponse,
         403: apiErrorResponse,
+        429: exportRateLimitedResponse,
         500: apiErrorResponse,
       },
     },

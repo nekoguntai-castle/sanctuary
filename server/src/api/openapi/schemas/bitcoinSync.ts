@@ -76,9 +76,68 @@ export const syncSchemas = {
     properties: {
       success: { type: "boolean", enum: [true] },
       message: { type: "string" },
-      deletedTransactions: { type: "integer", minimum: 0 },
+      status: { type: "string", enum: ["accepted", "deduplicated"] },
+      walletId: { type: "string" },
     },
-    required: ["success", "message", "deletedTransactions"],
+    required: ["success", "message", "status", "walletId"],
+  },
+  FullResyncEnqueueOutcome: {
+    oneOf: [
+      {
+        type: "object",
+        properties: {
+          walletId: { type: "string" },
+          status: { type: "string", enum: ["accepted", "deduplicated"] },
+        },
+        required: ["walletId", "status"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          walletId: { type: "string" },
+          status: { type: "string", enum: ["rejected"] },
+          reason: {
+            type: "string",
+            enum: ["queue_unavailable", "queue_error"],
+          },
+        },
+        required: ["walletId", "status", "reason"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          walletId: { type: "string" },
+          status: { type: "string", enum: ["indeterminate"] },
+          reason: { type: "string", enum: ["queue_state_unknown"] },
+        },
+        required: ["walletId", "status", "reason"],
+        additionalProperties: false,
+      },
+    ],
+  },
+  FullResyncUnavailableResponse: {
+    allOf: [
+      { $ref: "#/components/schemas/ApiError" },
+      {
+        type: "object",
+        properties: {
+          details: {
+            type: "object",
+            properties: {
+              outcomes: {
+                type: "array",
+                items: { $ref: "#/components/schemas/FullResyncEnqueueOutcome" },
+              },
+            },
+            required: ["outcomes"],
+            additionalProperties: false,
+          },
+        },
+        required: ["details"],
+      },
+    ],
   },
   NetworkSyncResponse: {
     type: "object",
@@ -99,9 +158,48 @@ export const syncSchemas = {
       {
         type: "object",
         properties: {
-          deletedTransactions: { type: "integer", minimum: 0 },
-          clearedStuckFlags: { type: "integer", minimum: 0 },
+          acceptedWalletIds: {
+            type: "array",
+            items: { type: "string" },
+          },
+          deduplicatedWalletIds: {
+            type: "array",
+            items: { type: "string" },
+          },
+          rejectedWallets: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                walletId: { type: "string" },
+                reason: {
+                  type: "string",
+                  enum: ["queue_unavailable", "queue_error"],
+                },
+              },
+              required: ["walletId", "reason"],
+              additionalProperties: false,
+            },
+          },
+          indeterminateWallets: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                walletId: { type: "string" },
+                reason: { type: "string", enum: ["queue_state_unknown"] },
+              },
+              required: ["walletId", "reason"],
+              additionalProperties: false,
+            },
+          },
         },
+        required: [
+          "acceptedWalletIds",
+          "deduplicatedWalletIds",
+          "rejectedWallets",
+          "indeterminateWallets",
+        ],
       },
     ],
   },

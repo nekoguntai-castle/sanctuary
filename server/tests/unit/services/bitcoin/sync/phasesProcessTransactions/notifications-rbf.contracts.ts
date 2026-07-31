@@ -75,6 +75,14 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
 
       await processTransactionsPhase(ctx);
 
+      const pendingLookupIndex = mockPrismaClient.transaction.findMany.mock.calls.findIndex(
+        ([args]: [any]) => args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active'
+      );
+      expect(pendingLookupIndex).toBeGreaterThanOrEqual(0);
+      expect(mockPrismaClient.transactionInput.createMany.mock.invocationCallOrder[0]).toBeLessThan(
+        mockPrismaClient.transaction.findMany.mock.invocationCallOrder[pendingLookupIndex]
+      );
+
       expect(updateCalls).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -164,7 +172,7 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
       });
 
       await expect(processTransactionsPhase(ctx)).resolves.toBeDefined();
-      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalled();
     });
 
     it('should handle async push notification failures via catch callback', async () => {
@@ -245,7 +253,7 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
 
       await expect(processTransactionsPhase(ctx)).resolves.toBeDefined();
       expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(txid, true);
-      expect(mockPrismaClient.transaction.createMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.createManyAndReturn).not.toHaveBeenCalled();
     });
 
     it('should recover from prev-tx prefetch failure using per-input cache miss fallback', async () => {
@@ -304,6 +312,6 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
 
       expect(mockElectrumClient.getTransactionsBatch).toHaveBeenCalledTimes(2);
       expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(prevTxid);
-      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalled();
     });
 }

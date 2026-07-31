@@ -68,7 +68,8 @@ export async function queueUserWallets(
 export interface ResyncResult {
   success: boolean;
   message: string;
-  deletedTransactions: number;
+  status: 'accepted' | 'deduplicated';
+  walletId: string;
 }
 
 /**
@@ -93,8 +94,16 @@ export interface NetworkResyncResult {
   success: boolean;
   queued: number;
   walletIds: string[];
-  deletedTransactions: number;
-  skipped: number;
+  acceptedWalletIds: string[];
+  deduplicatedWalletIds: string[];
+  rejectedWallets: Array<{
+    walletId: string;
+    reason: 'queue_unavailable' | 'queue_error';
+  }>;
+  indeterminateWallets: Array<{
+    walletId: string;
+    reason: 'queue_state_unknown';
+  }>;
   message?: string;
 }
 

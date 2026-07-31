@@ -6,7 +6,7 @@
  * arbitrary JavaScript promise cannot be cancelled safely.
  */
 
-import type { Job } from 'bullmq';
+import { DelayedError, type Job } from 'bullmq';
 import {
   acquireLock,
   extendLock,
@@ -123,6 +123,11 @@ export async function processJobWithLock(
   let lock = await lockOperations.acquire(lockKey, { ttlMs: lockTtlMs });
   if (!lock) {
     log.debug(`Skipping job - lock held: ${handlerKey}`, { jobId: job.id, lockKey });
+    const retryDelayMs = registered.lockOptions.retryDelayMsIfUnavailable?.(job.data);
+    if (retryDelayMs !== null && retryDelayMs !== undefined) {
+      await job.moveToDelayed(Date.now() + retryDelayMs, job.token);
+      throw new DelayedError();
+    }
     return { skipped: true, reason: 'lock_held' };
   }
 

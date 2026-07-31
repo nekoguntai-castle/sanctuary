@@ -134,6 +134,8 @@ model Wallet {
   lastSyncStatus        String?   // success, failed, partial
   lastSyncError         String?   // Error message if failed
   syncInProgress        Boolean   @default(false)
+  requestedFullResyncGeneration Int @default(0)
+  processedFullResyncGeneration Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -350,6 +352,10 @@ model Transaction {
   walletId            String
   userId              String?
   type                String // sent, received
+  classificationInputsComplete Boolean @default(false)
+  classificationLastAttemptAt DateTime?
+  ioComplete           Boolean   @default(false)
+  ioLastAttemptAt      DateTime?
   amount              BigInt // Amount in satoshis
   fee                 BigInt? // Fee in satoshis
   balanceAfter        BigInt? // Wallet balance after this transaction (running balance)

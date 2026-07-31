@@ -25,7 +25,7 @@ type CreatedTransactionRecord = Awaited<
 
 type TransactionIoRows = {
   inputs: TxInputCreateData[];
-  outputs: TxOutputCreateData[];
+  outputs: Array<Omit<TxOutputCreateData, 'outputType'>>;
 };
 
 type InputResolution = {
@@ -44,7 +44,7 @@ export async function storeTransactionIO(
   ctx: SyncContext,
   newTransactions: TransactionCreateData[]
 ): Promise<void> {
-  const { walletId, txDetailsCache, walletAddressSet, addressToDerivationPath } = ctx;
+  const { walletId } = ctx;
 
   try {
     const createdTxRecords = await transactionRepository.findByWalletIdAndTxids(
@@ -53,17 +53,85 @@ export async function storeTransactionIO(
       { id: true, txid: true, type: true }
     );
 
-    const { inputs, outputs } = buildTransactionIoRows(
-      ctx,
-      createdTxRecords
-    );
+    const { inputs, outputs } = await persistTransactionIORows(ctx, createdTxRecords);
 
-    await persistTransactionInputs(walletId, createdTxRecords, newTransactions, inputs);
-    await persistTransactionOutputs(outputs);
+    // Keep RBF linking after durable input persistence, using the same captured
+    // rows and candidate set as the prior primary-sync path.
+    if (inputs.length > 0) {
+      const confirmedTxids = new Set(
+        newTransactions
+          .filter(transaction => transaction.confirmations > 0)
+          .map(transaction => transaction.txid)
+      );
+      await detectRBFReplacements(walletId, createdTxRecords, confirmedTxids, inputs);
+    }
   } catch (ioError) {
     log.warn(`[SYNC] Failed to store transaction inputs/outputs: ${ioError}`);
   }
 }
+
+export async function repairTransactionIO(
+  ctx: SyncContext,
+  txids: string[]
+): Promise<void> {
+  if (txids.length === 0) return;
+
+  try {
+    const transactionRecords = await transactionRepository.findByWalletIdAndTxids(
+      ctx.walletId,
+      txids,
+      { id: true, txid: true, type: true, confirmations: true }
+    );
+    const { inputs } = await persistTransactionIORows(ctx, transactionRecords);
+    if (inputs.length > 0) {
+      const confirmedTxids = new Set(
+        transactionRecords
+          .filter(record => record.confirmations > 0)
+          .map(record => record.txid)
+      );
+      await detectRBFReplacements(
+        ctx.walletId,
+        transactionRecords,
+        confirmedTxids,
+        inputs
+      );
+    }
+  } catch (ioError) {
+    log.warn(`[SYNC] Failed to repair transaction inputs/outputs: ${ioError}`);
+    return;
+  }
+}
+
+const persistTransactionIORows = async (
+  ctx: SyncContext,
+  transactionRecords: CreatedTransactionRecord[]
+): Promise<TransactionIoRows> => {
+  const rows = buildTransactionIoRows(ctx, transactionRecords);
+  const completeTransactionIds = transactionRecords
+    .filter(record => hasCompleteInputEvidence(ctx, record.txid))
+    .map(record => record.id);
+
+  await transactionRepository.persistAddressSyncIORows(
+    rows.inputs,
+    rows.outputs,
+    completeTransactionIds
+  );
+  return rows;
+};
+
+const hasCompleteInputEvidence = (
+  ctx: SyncContext,
+  txid: string
+): boolean => {
+  const details = ctx.txDetailsCache.get(txid);
+  if (!details) return false;
+
+  return (details.vin || []).every(input => input.coinbase || (
+    input.txid !== undefined
+    && input.vout !== undefined
+    && resolveInput(input, ctx.txDetailsCache).address !== undefined
+  ));
+};
 
 const buildTransactionIoRows = (
   ctx: SyncContext,
@@ -130,10 +198,13 @@ const resolveInput = (
   txDetailsCache: SyncContext['txDetailsCache']
 ): InputResolution => {
   if (input.prevout && input.prevout.scriptPubKey) {
-    return {
-      address: getScriptAddress(input.prevout.scriptPubKey),
-      amount: getPrevoutAmount(input.prevout.value),
-    };
+    const address = getScriptAddress(input.prevout.scriptPubKey);
+    if (address !== undefined) {
+      return {
+        address,
+        amount: getPrevoutAmount(input.prevout.value),
+      };
+    }
   }
 
   if (input.txid === undefined || input.vout === undefined) {
@@ -165,8 +236,8 @@ const buildOutputRows = (
   ctx: SyncContext,
   txRecord: CreatedTransactionRecord,
   outputs: TransactionOutput[]
-): TxOutputCreateData[] => {
-  const rows: TxOutputCreateData[] = [];
+): Array<Omit<TxOutputCreateData, 'outputType'>> => {
+  const rows: Array<Omit<TxOutputCreateData, 'outputType'>> = [];
 
   for (let outputIdx = 0; outputIdx < outputs.length; outputIdx++) {
     const row = buildOutputRow(ctx, txRecord, outputs[outputIdx], outputIdx);
@@ -183,7 +254,7 @@ const buildOutputRow = (
   txRecord: CreatedTransactionRecord,
   output: TransactionOutput,
   outputIdx: number
-): TxOutputCreateData | null => {
+): Omit<TxOutputCreateData, 'outputType'> | null => {
   const outputAddress = getScriptAddress(output.scriptPubKey);
   if (!outputAddress) {
     return null;
@@ -197,7 +268,6 @@ const buildOutputRow = (
     address: outputAddress,
     amount: BigInt(Math.round((output.value || 0) * 100000000)),
     scriptPubKey: output.scriptPubKey?.hex,
-    outputType: getOutputType(txRecord.type, isOurs),
     isOurs,
   };
 };
@@ -206,50 +276,3 @@ const getScriptAddress = (
   scriptPubKey?: InputScriptPubKey | TransactionOutput['scriptPubKey']
 ): string | undefined =>
   scriptPubKey?.address || (scriptPubKey?.addresses && scriptPubKey.addresses[0]);
-
-const getOutputType = (transactionType: string, isOurs: boolean): string => {
-  if (transactionType === 'sent') {
-    return isOurs ? 'change' : 'recipient';
-  }
-
-  if (transactionType === 'received') {
-    return isOurs ? 'recipient' : 'unknown';
-  }
-
-  if (transactionType === 'consolidation') {
-    return 'consolidation';
-  }
-
-  return 'unknown';
-};
-
-const persistTransactionInputs = async (
-  walletId: string,
-  createdTxRecords: CreatedTransactionRecord[],
-  newTransactions: TransactionCreateData[],
-  inputs: TxInputCreateData[]
-): Promise<void> => {
-  if (inputs.length === 0) {
-    return;
-  }
-
-  await transactionRepository.createManyInputs(
-    inputs as unknown as Array<Record<string, unknown>>,
-    { skipDuplicates: true }
-  );
-
-  await detectRBFReplacements(walletId, createdTxRecords, newTransactions, inputs);
-};
-
-const persistTransactionOutputs = async (
-  outputs: TxOutputCreateData[]
-): Promise<void> => {
-  if (outputs.length === 0) {
-    return;
-  }
-
-  await transactionRepository.createManyOutputs(
-    outputs as unknown as Array<Record<string, unknown>>,
-    { skipDuplicates: true }
-  );
-};

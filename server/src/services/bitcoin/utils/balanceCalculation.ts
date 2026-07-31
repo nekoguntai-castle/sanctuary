@@ -5,7 +5,11 @@
  * and correction of misclassified transactions.
  */
 
-import { transactionRepository, addressRepository } from '../../../repositories';
+import {
+  addressRepository,
+  balanceCorrectionRepository,
+  transactionRepository,
+} from '../../../repositories';
 import { createLogger } from '../../../utils/logger';
 
 const log = createLogger('BITCOIN:SVC_BALANCE');
@@ -39,18 +43,14 @@ export async function correctMisclassifiedConsolidations(walletId: string): Prom
 
     // Check if ALL outputs go to wallet addresses
     let allOutputsToWallet = true;
-    const outputsToFix: string[] = [];
-
+    let hasWalletOutput = false;
     for (const output of tx.outputs) {
       if (!output.address) {
         // Unknown address (e.g., OP_RETURN) - skip this output
         continue;
       }
       if (walletAddressSet.has(output.address)) {
-        // Output is to our wallet
-        if (!output.isOurs) {
-          outputsToFix.push(output.id);
-        }
+        hasWalletOutput = true;
       } else {
         // Output to external address - this is NOT a consolidation
         allOutputsToWallet = false;
@@ -58,26 +58,16 @@ export async function correctMisclassifiedConsolidations(walletId: string): Prom
       }
     }
 
-    if (allOutputsToWallet) {
+    if (allOutputsToWallet && hasWalletOutput) {
       // This is actually a consolidation - fix it
       log.info(`Correcting misclassified consolidation: ${tx.txid}`);
 
-      // Update transaction type and amount
-      await transactionRepository.updateTypeAndAmount(tx.id, {
-        type: 'consolidation',
-        // Amount for consolidation is -fee (only fee is lost)
-        amount: tx.fee !== null ? -tx.fee : BigInt(0),
-      });
-
-      // Fix isOurs flag on outputs
-      if (outputsToFix.length > 0) {
-        await transactionRepository.updateOutputsIsOurs(outputsToFix, {
-          isOurs: true,
-          outputType: 'consolidation',
-        });
-      }
-
-      corrected++;
+      const changed = await balanceCorrectionRepository.correctTransactionToConsolidation(
+        tx.id,
+        tx.fee !== null ? -tx.fee : BigInt(0),
+        walletAddressStrings,
+      );
+      if (changed) corrected++;
     }
   }
 

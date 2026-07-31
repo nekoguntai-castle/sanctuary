@@ -8,6 +8,7 @@ import {
 } from '../../../../../mocks/electrum';
 import {
   createTestContext,
+  checkExistingPhase,
   processTransactionsPhase,
   type SyncContext,
 } from '../../../../../../src/services/bitcoin/sync';
@@ -20,16 +21,25 @@ import { getNotificationService, walletLog } from '../../../../../../src/websock
 import { notifyNewTransactions } from '../../../../../../src/services/notifications/notificationService';
 
 export function registerProcessTransactionStoreIoPrimaryTests(walletId: string): void {
-    it('should skip insert when txid already exists in wallet', async () => {
+    it('should reconcile an existing txid without duplicate creation side effects', async () => {
       const txid = 'existing_txid'.padEnd(64, 'a');
       const walletAddress = 'tb1q_wallet_addr';
 
-      mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, createMockTransaction({
+      const transaction = createMockTransaction({
         txid,
-        inputs: [{ txid: 'prev'.padEnd(64, 'b'), vout: 0, value: 0.001, address: 'external' }],
+        inputs: [
+          { txid: 'prev'.padEnd(64, 'b'), vout: 0, value: 0.001, address: 'external' },
+          { txid: 'unresolved'.padEnd(64, 'c'), vout: 0, value: 0.001, address: 'unknown' },
+        ],
         outputs: [{ value: 0.0009, address: walletAddress }],
-      })]]));
+      });
+      transaction.vin[1].prevout = undefined;
+      mockElectrumClient.getTransactionsBatch
+        .mockResolvedValueOnce(new Map([[txid, transaction]]))
+        .mockResolvedValueOnce(new Map());
+      mockElectrumClient.getTransaction.mockResolvedValue(undefined);
       mockPrismaClient.transaction.findMany.mockResolvedValue([{ txid }]);
+      mockPrismaClient.transaction.createManyAndReturn.mockResolvedValue([]);
 
       const ctx = createTestContext({
         walletId,
@@ -38,13 +48,65 @@ export function registerProcessTransactionStoreIoPrimaryTests(walletId: string):
         historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 800000 }]]]),
         walletAddressSet: new Set([walletAddress]),
         addressMap: new Map([[walletAddress, { id: 'addr-existing', address: walletAddress } as any]]),
-        existingTxMap: new Map(),
+        existingTxMap: new Map([[`${txid}:received`, true]]),
+        existingTxidSet: new Set([txid]),
+        classificationRepairTxids: new Set([txid]),
         txDetailsCache: new Map() as any,
         currentBlockHeight: 800100,
       });
 
+      const result = await processTransactionsPhase(ctx);
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalled();
+      expect(mockPrismaClient.$executeRaw).toHaveBeenCalledTimes(1);
+      expect(mockPrismaClient.transaction.updateMany).not.toHaveBeenCalled();
+      expect(result.stats.newTransactionsCreated).toBe(0);
+      expect(notifyNewTransactions).not.toHaveBeenCalled();
+      expect(recalculateWalletBalances).not.toHaveBeenCalled();
+      expect(mockPrismaClient.transactionLabel.createMany).not.toHaveBeenCalled();
+    });
+
+    it('advances a selected repair before failed raw fetches so the backlog cannot starve', async () => {
+      const txid = 'failed_repair_fetch'.padEnd(64, 'f');
+      mockElectrumClient.getTransactionsBatch.mockRejectedValue(new Error('batch unavailable'));
+      mockElectrumClient.getTransaction.mockRejectedValue(new Error('raw tx unavailable'));
+
+      const ctx = createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        existingTxidSet: new Set([txid]),
+        classificationRepairTxids: new Set([txid]),
+        historyResults: new Map(),
+      });
+
+      const result = await processTransactionsPhase(ctx);
+
+      expect(mockPrismaClient.$executeRaw).toHaveBeenCalledTimes(1);
+      expect(mockPrismaClient.transaction.createManyAndReturn).not.toHaveBeenCalled();
+      expect(notifyNewTransactions).not.toHaveBeenCalled();
+      expect(recalculateWalletBalances).not.toHaveBeenCalled();
+      expect(result.stats.newTransactionsCreated).toBe(0);
+    });
+
+    it('advances only the selected sent I/O repair before a failed raw fetch', async () => {
+      const txid = 'failed_sent_io_fetch'.padEnd(64, 'f');
+      mockElectrumClient.getTransactionsBatch.mockRejectedValue(new Error('batch unavailable'));
+      mockElectrumClient.getTransaction.mockRejectedValue(new Error('raw tx unavailable'));
+      const ctx = createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        existingTxidSet: new Set([txid]),
+        ioRepairTxids: new Set([txid]),
+        historyResults: new Map(),
+      });
+
       await processTransactionsPhase(ctx);
-      expect(mockPrismaClient.transaction.createMany).not.toHaveBeenCalled();
+
+      expect(mockPrismaClient.$executeRaw).toHaveBeenCalledTimes(1);
+      const statement = mockPrismaClient.$executeRaw.mock.calls[0][0] as { strings: string[] };
+      expect(statement.strings.join('')).toContain('"ioLastAttemptAt"');
+      expect(statement.strings.join('')).not.toContain('"classificationLastAttemptAt"');
     });
 
     it('should resolve input address and amount from cached previous tx in storeTransactionIO', async () => {
@@ -242,8 +304,23 @@ export function registerProcessTransactionStoreIoPrimaryTests(walletId: string):
       });
 
       await expect(processTransactionsPhase(ctx)).resolves.toBeDefined();
-      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalled();
       expect(notifyNewTransactions).toHaveBeenCalled();
+
+      mockPrismaClient.transaction.findMany.mockResolvedValueOnce([{
+        txid,
+        type: 'sent',
+        classificationInputsComplete: true,
+        classificationLastAttemptAt: null,
+        ioComplete: false,
+        ioLastAttemptAt: null,
+      }]);
+      const nextSync = await checkExistingPhase(createTestContext({
+        walletId,
+        allTxids: new Set([txid]),
+      }));
+      expect(nextSync.ioRepairTxids.has(txid)).toBe(true);
+      expect(nextSync.newTxids).toContain(txid);
     });
 
     it('should classify received outputs that match via scriptPubKey.addresses[]', async () => {
@@ -284,7 +361,7 @@ export function registerProcessTransactionStoreIoPrimaryTests(walletId: string):
       });
 
       await processTransactionsPhase(ctx);
-      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.arrayContaining([
             expect.objectContaining({

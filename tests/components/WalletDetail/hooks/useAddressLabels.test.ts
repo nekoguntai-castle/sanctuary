@@ -232,10 +232,7 @@ describe('useAddressLabels', () => {
         expect(setAddresses).toHaveBeenCalledTimes(1);
       } else {
         expect(setAddresses).not.toHaveBeenCalled();
-        expect(handleError).toHaveBeenCalledWith(
-          expect.any(Error),
-          expect.stringContaining('bc1-address-a'),
-        );
+        expect(handleError).not.toHaveBeenCalled();
       }
 
       await act(async () => {
@@ -282,13 +279,56 @@ describe('useAddressLabels', () => {
       if (outcome === 'success') {
         expect(setAddresses).toHaveBeenCalledTimes(2);
       } else {
-        expect(handleError).toHaveBeenCalledWith(
-          expect.any(Error),
-          expect.stringContaining('bc1-address-a'),
-        );
+        expect(handleError).not.toHaveBeenCalled();
       }
     },
   );
+
+  it('serializes same-address saves so an older request cannot persist last', async () => {
+    const oldSave = deferred<Label[]>();
+    const newSave = deferred<Label[]>();
+    vi.mocked(labelsApi.setAddressLabels)
+      .mockReturnValueOnce(oldSave.promise)
+      .mockReturnValueOnce(newSave.promise);
+    const { result } = renderAddressLabels();
+    const address = {
+      id: 'addr-a',
+      address: 'bc1-address-a',
+      labels: [mockLabels[0]],
+    } as any;
+
+    await act(async () => result.current.handleEditAddressLabels(address));
+    let oldPromise!: Promise<void>;
+    act(() => { oldPromise = result.current.handleSaveAddressLabels(); });
+    act(() => result.current.handleCancelEditLabels());
+
+    await act(async () => result.current.handleEditAddressLabels(address));
+    act(() => {
+      result.current.handleToggleAddressLabel('label-1');
+      result.current.handleToggleAddressLabel('label-2');
+    });
+    let newPromise!: Promise<void>;
+    act(() => { newPromise = result.current.handleSaveAddressLabels(); });
+
+    expect(labelsApi.setAddressLabels).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      oldSave.resolve([mockLabels[0]]);
+      await oldPromise;
+    });
+    expect(labelsApi.setAddressLabels).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      newSave.resolve([mockLabels[1]]);
+      await newPromise;
+    });
+
+    expect(setAddresses).toHaveBeenCalledTimes(1);
+    const updater = setAddresses.mock.calls[0][0];
+    expect(updater([address])[0].labels).toEqual([mockLabels[1]]);
+    expect(result.current.editingAddressId).toBeNull();
+    expect(result.current.savingAddressLabels).toBe(false);
+    expect(handleError).not.toHaveBeenCalled();
+  });
 
   it('patches only captured A labels and preserves refreshed fields after cancel', async () => {
     const save = deferred<Label[]>();

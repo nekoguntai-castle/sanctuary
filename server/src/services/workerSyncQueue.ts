@@ -2,6 +2,7 @@ import { Queue, type ConnectionOptions } from "bullmq";
 import { getRedisClient, isRedisConnected } from "../infrastructure";
 import { createLogger } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
+import { mapWithConcurrency } from "../utils/async";
 import { toBullMqJobId } from "../jobs/bullMqJobIds";
 import {
   DEFAULT_SYNC_PRIORITY,
@@ -9,6 +10,7 @@ import {
   type SyncPriority,
 } from "@sanctuary/shared/constants/sync";
 import type { SyncWalletJobData } from "../worker/jobs/types";
+import { reserveFullResyncGeneration } from "../repositories/resyncRepository";
 import { SYNC_WALLET_JOB_OPTIONS } from "../worker/jobs/jobOptions";
 import { isSyncWalletEnvelope } from "./deadLetterJobEnvelope";
 import type { DeadLetterJobEnvelope } from "./deadLetterQueueTypes";
@@ -17,6 +19,7 @@ const log = createLogger("WORKER_SYNC_QUEUE");
 
 const WORKER_QUEUE_PREFIX = "sanctuary:worker";
 const SYNC_QUEUE_NAME = "sync";
+const FULL_RESYNC_ENQUEUE_CONCURRENCY = 10;
 
 let syncQueue: Queue<SyncWalletJobData> | null = null;
 let syncQueueConnectionKey: string | null = null;
@@ -159,6 +162,199 @@ export async function enqueueWalletSync(
     });
     return false;
   }
+}
+
+export interface FullResyncEnqueueResult {
+  outcomes: FullResyncWalletEnqueueOutcome[];
+  acceptedWalletIds: string[];
+  deduplicatedWalletIds: string[];
+  rejectedWallets: Array<{
+    walletId: string;
+    reason: FullResyncRejectionReason;
+  }>;
+  indeterminateWallets: Array<{
+    walletId: string;
+    reason: FullResyncIndeterminateReason;
+  }>;
+}
+
+export type FullResyncRejectionReason =
+  | "queue_unavailable"
+  | "queue_error";
+
+export type FullResyncIndeterminateReason = "queue_state_unknown";
+
+export type FullResyncWalletEnqueueOutcome =
+  | { walletId: string; status: "accepted" | "deduplicated" }
+  | {
+      walletId: string;
+      status: "rejected";
+      reason: FullResyncRejectionReason;
+    }
+  | {
+      walletId: string;
+      status: "indeterminate";
+      reason: FullResyncIndeterminateReason;
+    };
+
+const FULL_RESYNC_PRESTART_STATES = new Set([
+  "delayed",
+  "prioritized",
+  "waiting",
+  "waiting-children",
+]);
+
+function indeterminateFullResyncOutcome(
+  walletId: string,
+): FullResyncWalletEnqueueOutcome {
+  return { walletId, status: "indeterminate", reason: "queue_state_unknown" };
+}
+
+async function reconcileFullResyncEnqueue(
+  queue: Queue<SyncWalletJobData>,
+  walletId: string,
+  candidateJobId: string,
+  deduplicationId: string,
+): Promise<FullResyncWalletEnqueueOutcome> {
+  const [candidateLookup, deduplicationLookup] = await Promise.allSettled([
+    queue.getJob(candidateJobId),
+    queue.getDeduplicationJobId(deduplicationId),
+  ]);
+  if (candidateLookup.status === "fulfilled" && candidateLookup.value) {
+    return { walletId, status: "accepted" };
+  }
+  if (candidateLookup.status === "rejected" || deduplicationLookup.status === "rejected") {
+    return indeterminateFullResyncOutcome(walletId);
+  }
+
+  const retainedJobId = deduplicationLookup.value;
+  if (!retainedJobId) {
+    return { walletId, status: "rejected", reason: "queue_error" };
+  }
+  if (retainedJobId === candidateJobId) {
+    return indeterminateFullResyncOutcome(walletId);
+  }
+
+  const retainedJobLookup = await Promise.allSettled([queue.getJob(retainedJobId)]);
+  const retainedJob = retainedJobLookup[0];
+  if (retainedJob.status === "rejected" || !retainedJob.value) {
+    return indeterminateFullResyncOutcome(walletId);
+  }
+
+  const stateLookup = await Promise.allSettled([retainedJob.value.getState()]);
+  const state = stateLookup[0];
+  return state.status === "fulfilled" && FULL_RESYNC_PRESTART_STATES.has(state.value)
+    ? { walletId, status: "deduplicated" }
+    : indeterminateFullResyncOutcome(walletId);
+}
+
+async function enqueueFullResyncWallet(
+  queue: Queue<SyncWalletJobData>,
+  walletId: string,
+  reason: string,
+  delayMs: number,
+): Promise<FullResyncWalletEnqueueOutcome> {
+  let fullResyncGeneration: number;
+  try {
+    fullResyncGeneration = await reserveFullResyncGeneration(walletId);
+  } catch (error) {
+    log.error("Failed to reserve full wallet resync generation", {
+      walletId,
+      error: getErrorMessage(error),
+    });
+    return { walletId, status: "rejected", reason: "queue_error" };
+  }
+  const candidateJobId = toBullMqJobId(
+    `full-resync-attempt:${walletId}:${fullResyncGeneration}`,
+  );
+  const deduplicationId = toBullMqJobId(`full-resync:${walletId}`);
+  try {
+    const job = await queue.add(
+      "sync-wallet",
+      {
+        walletId,
+        priority: "high",
+        reason,
+        fullResync: true,
+        fullResyncGeneration,
+      },
+      {
+        ...SYNC_WALLET_JOB_OPTIONS,
+        priority: toBullPriority("high"),
+        delay: delayMs,
+        jobId: candidateJobId,
+        // Waiting/delayed work deduplicates normally. If the retained job is
+        // already active, BullMQ stores this candidate as the single successor
+        // so a request arriving after reset preparation cannot be lost.
+        deduplication: { id: deduplicationId, keepLastIfActive: true },
+      },
+    );
+    return {
+      walletId,
+      // BullMQ returns the retained job ID when deduplication wins, but the Job
+      // instance still contains this candidate's submitted data.
+      status: job.id === candidateJobId
+        ? "accepted"
+        : "deduplicated",
+    };
+  } catch (error) {
+    log.error("Failed to enqueue full wallet resync", {
+      walletId,
+      error: getErrorMessage(error),
+    });
+    return reconcileFullResyncEnqueue(
+      queue,
+      walletId,
+      candidateJobId,
+      deduplicationId,
+    );
+  }
+}
+
+export async function enqueueFullResyncBatch(
+  walletIds: string[],
+  options: {
+    reason: string;
+    staggerDelayMs?: number;
+  },
+): Promise<FullResyncEnqueueResult> {
+  const queue = getOrCreateSyncQueue();
+  const outcomes = queue
+    ? await mapWithConcurrency(walletIds, (walletId, index) => (
+      enqueueFullResyncWallet(
+        queue,
+        walletId,
+        options.reason,
+        index * (options.staggerDelayMs ?? 0),
+      )
+    ), FULL_RESYNC_ENQUEUE_CONCURRENCY)
+    : walletIds.map(walletId => ({
+      walletId,
+      status: "rejected" as const,
+      reason: "queue_unavailable" as const,
+    }));
+
+  return {
+    outcomes,
+    acceptedWalletIds: outcomes
+      .filter(outcome => outcome.status === "accepted")
+      .map(outcome => outcome.walletId),
+    deduplicatedWalletIds: outcomes
+      .filter(outcome => outcome.status === "deduplicated")
+      .map(outcome => outcome.walletId),
+    rejectedWallets: outcomes
+      .filter((outcome): outcome is Extract<
+        FullResyncWalletEnqueueOutcome,
+        { status: "rejected" }
+      > => outcome.status === "rejected")
+      .map(({ walletId, reason }) => ({ walletId, reason })),
+    indeterminateWallets: outcomes
+      .filter((outcome): outcome is Extract<
+        FullResyncWalletEnqueueOutcome,
+        { status: "indeterminate" }
+      > => outcome.status === "indeterminate")
+      .map(({ walletId, reason }) => ({ walletId, reason })),
+  };
 }
 
 export async function enqueueWalletSyncBatch(

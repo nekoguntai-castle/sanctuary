@@ -276,7 +276,7 @@ describe('Blockchain Service - Transaction Detection', () => {
       await syncWallet('wallet-1');
 
       // Verify consolidation was detected (amount = -fee)
-      expect(mockPrisma.transaction.createMany).toHaveBeenCalled();
+      expect(mockPrisma.transaction.createManyAndReturn).toHaveBeenCalled();
     });
   });
 

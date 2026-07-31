@@ -36,9 +36,13 @@ vi.mock('../../../../src/services/bitcoin/psbtValidation', () => ({
 }));
 
 // Mock the network utils
-vi.mock('../../../../src/services/bitcoin/utils', () => ({
-  getNetwork: vi.fn().mockReturnValue(bitcoin.networks.testnet),
-}));
+vi.mock('../../../../src/services/bitcoin/utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/services/bitcoin/utils')>();
+  return {
+    ...actual,
+    getNetwork: vi.fn().mockReturnValue(bitcoin.networks.testnet),
+  };
+});
 
 vi.mock('node:dns/promises', () => ({
   default: { lookup: mockDnsLookup },

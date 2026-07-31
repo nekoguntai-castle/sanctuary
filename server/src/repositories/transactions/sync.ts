@@ -4,8 +4,14 @@ import { Prisma } from '../../generated/prisma/client';
 export type AddressSyncTransactionType = 'received' | 'consolidation' | 'sent';
 export type AddressSyncReconcileOutcome = 'created' | 'repaired' | 'unchanged';
 
+export type TransactionReconcileResult = {
+  transaction: AddressSyncTransactionInput;
+  outcome: AddressSyncReconcileOutcome;
+};
+
 export type AddressSyncTransactionInput = Prisma.TransactionUncheckedCreateInput & {
   type: AddressSyncTransactionType;
+  rbfStatus: 'active' | 'confirmed';
 };
 
 /** Input shape accepted by the address-sync I/O persistence boundary. */
@@ -35,7 +41,57 @@ const getPromotionData = (data: AddressSyncTransactionInput) => ({
   blockHeight: data.blockHeight,
   blockTime: data.blockTime,
   addressId: data.addressId,
+  rbfStatus: data.rbfStatus,
 });
+
+const persistClassificationAttempt = async (
+  tx: PrismaTxClient,
+  data: AddressSyncTransactionInput
+): Promise<void> => {
+  if (!data.classificationInputsComplete) return;
+  await tx.transaction.updateMany({
+    where: {
+      txid: data.txid,
+      walletId: data.walletId,
+      classificationInputsComplete: false,
+    },
+    data: { classificationInputsComplete: true },
+  });
+};
+
+/**
+ * Advances the private fair-repair cursor before raw transaction fetching.
+ * Raw SQL intentionally bypasses Prisma's automatic Transaction.updatedAt write.
+ */
+export async function markClassificationRepairAttempts(
+  walletId: string,
+  txids: string[]
+): Promise<void> {
+  if (txids.length === 0) return;
+  await prisma.$executeRaw(Prisma.sql`
+    UPDATE "transactions"
+    SET "classificationLastAttemptAt" = CURRENT_TIMESTAMP
+    WHERE "walletId" = ${walletId}
+      AND "txid" IN (${Prisma.join(txids)})
+      AND "type" <> 'sent'
+      AND "classificationInputsComplete" = false
+  `);
+}
+
+/** Advances the private I/O repair cursor without mutating public updatedAt. */
+export async function markIoRepairAttempts(
+  walletId: string,
+  txids: string[]
+): Promise<void> {
+  if (txids.length === 0) return;
+  await prisma.$executeRaw(Prisma.sql`
+    UPDATE "transactions"
+    SET "ioLastAttemptAt" = CURRENT_TIMESTAMP
+    WHERE "walletId" = ${walletId}
+      AND "txid" IN (${Prisma.join(txids)})
+      AND "ioComplete" = false
+  `);
+}
 
 const reconcilePromotedOutputTypes = async (
   tx: PrismaTxClient,
@@ -77,11 +133,13 @@ const getAddressSyncOutputType = (transactionType: string, isOurs: boolean): str
  */
 export async function persistAddressSyncIORows(
   inputs: AddressSyncInputRow[],
-  outputs: AddressSyncOutputRow[]
+  outputs: AddressSyncOutputRow[],
+  completeTransactionIds: string[] = []
 ): Promise<void> {
   const transactionIds = [...new Set([
     ...inputs.map(input => input.transactionId),
     ...outputs.map(output => output.transactionId),
+    ...completeTransactionIds,
   ])].sort();
   if (transactionIds.length === 0) return;
 
@@ -96,7 +154,7 @@ export async function persistAddressSyncIORows(
     `);
     const transactions = await tx.transaction.findMany({
       where: { id: { in: transactionIds } },
-      select: { id: true, type: true },
+      select: { id: true, txid: true, type: true },
     });
     const typesById = new Map(transactions.map(transaction => [
       transaction.id,
@@ -121,6 +179,14 @@ export async function persistAddressSyncIORows(
         skipDuplicates: true,
       });
     }
+    if (completeTransactionIds.length > 0) {
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE "transactions"
+        SET "ioComplete" = true
+        WHERE "id" IN (${Prisma.join(completeTransactionIds)})
+          AND "ioComplete" = false
+      `);
+    }
   });
 }
 
@@ -139,6 +205,8 @@ export async function reconcileAddressSyncTransaction(
     });
     if (inserted.count === 1) return 'created';
 
+    await persistClassificationAttempt(tx, data);
+
     const weakerTypes = promotionSources[data.type];
     if (weakerTypes.length === 0) return 'unchanged';
 
@@ -155,6 +223,34 @@ export async function reconcileAddressSyncTransaction(
     await reconcilePromotedOutputTypes(tx, data);
     return 'repaired';
   });
+}
+
+/**
+ * Batch-inserts genuinely new classifications and monotonically reconciles
+ * txids that already exist. createManyAndReturn preserves exact outcome
+ * ownership under concurrent wallet/address sync without per-row inserts.
+ */
+export async function reconcileTransactionBatch(
+  data: AddressSyncTransactionInput[]
+): Promise<TransactionReconcileResult[]> {
+  if (data.length === 0) return [];
+
+  const inserted = await prisma.transaction.createManyAndReturn({
+    data,
+    skipDuplicates: true,
+    select: { txid: true },
+  });
+  const createdTxids = new Set(inserted.map(transaction => transaction.txid));
+  const results: TransactionReconcileResult[] = [];
+
+  for (const transaction of data) {
+    const outcome = createdTxids.has(transaction.txid)
+      ? 'created'
+      : await reconcileAddressSyncTransaction(transaction);
+    results.push({ transaction, outcome });
+  }
+
+  return results;
 }
 
 export async function findByWalletIdAndTxids<T extends Prisma.TransactionSelect>(
@@ -253,36 +349,6 @@ export async function findUnlinkedReplaced(walletId: string) {
   });
 }
 
-export async function createMany(
-  data: Array<Record<string, unknown>>,
-  options?: { skipDuplicates?: boolean }
-): Promise<{ count: number }> {
-  return prisma.transaction.createMany({
-    data: data as Prisma.TransactionCreateManyInput[],
-    skipDuplicates: options?.skipDuplicates,
-  });
-}
-
-export async function createManyInputs(
-  data: Array<Record<string, unknown>>,
-  options?: { skipDuplicates?: boolean }
-): Promise<{ count: number }> {
-  return prisma.transactionInput.createMany({
-    data: data as Prisma.TransactionInputCreateManyInput[],
-    skipDuplicates: options?.skipDuplicates,
-  });
-}
-
-export async function createManyOutputs(
-  data: Array<Record<string, unknown>>,
-  options?: { skipDuplicates?: boolean }
-): Promise<{ count: number }> {
-  return prisma.transactionOutput.createMany({
-    data: data as Prisma.TransactionOutputCreateManyInput[],
-    skipDuplicates: options?.skipDuplicates,
-  });
-}
-
 export async function createManyTransactionLabels(
   data: Array<{ transactionId: string; labelId: string }>,
   options?: { skipDuplicates?: boolean }
@@ -303,16 +369,13 @@ export async function findWithoutIO(
   walletId: string,
   txids: string[]
 ) {
-  // Either missing side is retryable: an earlier backfill can fail after writing
-  // only inputs or outputs, and both createMany calls are duplicate-safe.
+  // Durable completion, rather than relation shape, distinguishes partial writes
+  // from valid coinbase/no-address transactions with intentionally empty sides.
   return prisma.transaction.findMany({
     where: {
       walletId,
       txid: { in: txids },
-      OR: [
-        { inputs: { none: {} } },
-        { outputs: { none: {} } },
-      ],
+      ioComplete: false,
     },
     select: { id: true, txid: true, type: true },
   });
@@ -341,28 +404,6 @@ export async function findSentWithOutputs(walletId: string) {
         select: { id: true, address: true, isOurs: true },
       },
     },
-  });
-}
-
-export async function updateTypeAndAmount(
-  id: string,
-  data: { type: string; amount: bigint }
-): Promise<void> {
-  await prisma.transaction.update({
-    where: { id },
-    data,
-  });
-}
-
-export async function updateOutputsIsOurs(
-  ids: string[],
-  data: { isOurs: boolean; outputType: string }
-): Promise<void> {
-  /* v8 ignore next -- sync pipeline avoids empty output update batches */
-  if (ids.length === 0) return;
-  await prisma.transactionOutput.updateMany({
-    where: { id: { in: ids } },
-    data,
   });
 }
 

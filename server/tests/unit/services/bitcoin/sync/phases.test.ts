@@ -80,6 +80,10 @@ import {
   fixConsolidationsPhase,
   type SyncContext,
 } from '../../../../../src/services/bitcoin/sync';
+import {
+  CLASSIFICATION_REPAIR_CANDIDATE_LIMIT,
+  IO_REPAIR_CANDIDATE_LIMIT,
+} from '../../../../../src/services/bitcoin/sync/phases/checkExisting';
 
 // Import the mocked balance calculation to control it per test
 import {
@@ -331,23 +335,146 @@ describe('Sync Phases', () => {
   });
 
   describe('checkExistingPhase', () => {
-    it('should identify new transactions', async () => {
-      const existingTxid = 'existing'.padEnd(64, 'a');
+    it('should revisit only incomplete non-terminal classifications', async () => {
+      const incompleteReceivedTxid = 'incomplete'.padEnd(64, 'a');
+      const completeReceivedTxid = 'complete'.padEnd(64, 'e');
+      const consolidationTxid = 'consolidation'.padEnd(64, 'c');
+      const sentTxid = 'sent'.padEnd(64, 'd');
       const newTxid = 'new'.padEnd(64, 'b');
 
       mockPrismaClient.transaction.findMany.mockResolvedValue([
-        { txid: existingTxid, type: 'received' },
+        {
+          txid: incompleteReceivedTxid,
+          type: 'received',
+          classificationInputsComplete: false,
+          classificationLastAttemptAt: new Date('2026-01-03T00:00:00.000Z'),
+          ioComplete: true,
+          ioLastAttemptAt: null,
+        },
+        {
+          txid: completeReceivedTxid,
+          type: 'received',
+          classificationInputsComplete: true,
+          classificationLastAttemptAt: null,
+          ioComplete: true,
+          ioLastAttemptAt: null,
+        },
+        {
+          txid: consolidationTxid,
+          type: 'consolidation',
+          classificationInputsComplete: false,
+          classificationLastAttemptAt: null,
+          ioComplete: true,
+          ioLastAttemptAt: null,
+        },
+        {
+          txid: sentTxid,
+          type: 'sent',
+          classificationInputsComplete: false,
+          classificationLastAttemptAt: null,
+          ioComplete: true,
+          ioLastAttemptAt: null,
+        },
       ]);
 
       const ctx = createTestContext({
-        allTxids: new Set([existingTxid, newTxid]),
+        allTxids: new Set([
+          incompleteReceivedTxid,
+          completeReceivedTxid,
+          consolidationTxid,
+          sentTxid,
+          newTxid,
+        ]),
       });
 
       const result = await checkExistingPhase(ctx);
 
       expect(result.newTxids).toContain(newTxid);
-      expect(result.newTxids).not.toContain(existingTxid);
-      expect(result.existingTxidSet.has(existingTxid)).toBe(true);
+      expect(result.newTxids).toContain(incompleteReceivedTxid);
+      expect(result.newTxids).toContain(consolidationTxid);
+      expect(result.newTxids).not.toContain(completeReceivedTxid);
+      expect(result.newTxids).not.toContain(sentTxid);
+      expect(result.existingTxidSet.has(incompleteReceivedTxid)).toBe(true);
+      expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: {
+            txid: true,
+            type: true,
+            classificationInputsComplete: true,
+            classificationLastAttemptAt: true,
+            ioComplete: true,
+            ioLastAttemptAt: true,
+          },
+        })
+      );
+    });
+
+    it('caps repair work and rotates a permanently unresolved oldest attempt behind the backlog', async () => {
+      const repairRows = Array.from(
+        { length: CLASSIFICATION_REPAIR_CANDIDATE_LIMIT + 1 },
+        (_, index) => ({
+          txid: `repair-${String(index).padStart(3, '0')}`.padEnd(64, 'a'),
+          type: 'received',
+          classificationInputsComplete: false,
+          classificationLastAttemptAt: index < 2
+            ? null
+            : new Date(Date.UTC(2026, 0, 1, 0, 0, Math.max(0, index - 2))),
+          ioComplete: true,
+          ioLastAttemptAt: null,
+        })
+      );
+      const sentTxid = 'terminal-sent'.padEnd(64, 's');
+      mockPrismaClient.transaction.findMany.mockResolvedValue([
+        ...repairRows,
+        {
+          txid: sentTxid,
+          type: 'sent',
+          classificationInputsComplete: false,
+          classificationLastAttemptAt: null,
+          ioComplete: true,
+          ioLastAttemptAt: null,
+        },
+      ]);
+      const ctx = createTestContext({
+        allTxids: new Set([...repairRows.map(row => row.txid), sentTxid]),
+      });
+
+      const first = await checkExistingPhase(ctx);
+      expect(first.newTxids).toHaveLength(CLASSIFICATION_REPAIR_CANDIDATE_LIMIT);
+      expect(first.newTxids).toContain(repairRows[0].txid);
+      expect(first.newTxids).not.toContain(repairRows.at(-1)!.txid);
+      expect(first.newTxids).not.toContain(sentTxid);
+
+      repairRows[0].classificationLastAttemptAt = new Date('2027-01-01T00:00:00.000Z');
+      const second = await checkExistingPhase(ctx);
+      expect(second.newTxids).toHaveLength(CLASSIFICATION_REPAIR_CANDIDATE_LIMIT);
+      expect(second.newTxids).not.toContain(repairRows[0].txid);
+      expect(second.newTxids).toContain(repairRows.at(-1)!.txid);
+
+      repairRows[1].classificationInputsComplete = true;
+      const third = await checkExistingPhase(ctx);
+      expect(third.newTxids).not.toContain(repairRows[1].txid);
+      expect(third.newTxids).not.toContain(sentTxid);
+    });
+
+    it('selects incomplete I/O fairly across sent and other transaction types', async () => {
+      const rows = Array.from({ length: IO_REPAIR_CANDIDATE_LIMIT + 1 }, (_, index) => ({
+        txid: `io-${String(index).padStart(3, '0')}`.padEnd(64, 'i'),
+        type: index === 0 ? 'sent' : 'received',
+        classificationInputsComplete: true,
+        classificationLastAttemptAt: null,
+        ioComplete: false,
+        ioLastAttemptAt: index === 0 ? null : new Date(1_000 + index),
+      }));
+      mockPrismaClient.transaction.findMany.mockResolvedValue(rows);
+      const ctx = createTestContext({ allTxids: new Set(rows.map(row => row.txid)) });
+
+      const result = await checkExistingPhase(ctx);
+
+      expect(result.ioRepairTxids.size).toBe(IO_REPAIR_CANDIDATE_LIMIT);
+      expect(result.ioRepairTxids.has(rows[0].txid)).toBe(true);
+      expect(result.ioRepairTxids.has(rows.at(-1)!.txid)).toBe(false);
+      expect(result.classificationRepairTxids.size).toBe(0);
     });
 
     it('should handle empty transaction set', async () => {

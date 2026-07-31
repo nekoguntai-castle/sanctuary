@@ -30,6 +30,20 @@
       "reason": "Checked-in compact fixture copy of verified address vectors for deterministic server tests.",
       "reviewWhenTouched": false,
       "lastReviewed": "2026-04-27"
+    },
+    "server/tests/unit/api/payjoin.test.ts": {
+      "category": "proof-harness",
+      "owner": "payjoin-api",
+      "reason": "Security-critical end-to-end route harness sharing one Express application and mock boundary; keep cohesive while it remains readable and below production complexity limits.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-07-30"
+    },
+    "server/tests/unit/services/bitcoin/blockchain.syncAddress.test.ts": {
+      "category": "proof-harness",
+      "owner": "bitcoin-sync",
+      "reason": "Stateful address-sync proof harness sharing one complete Electrum and repository mock boundary across classification, reconciliation, and I/O repair behavior.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-07-30"
     }
   }
 }

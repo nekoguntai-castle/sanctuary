@@ -577,7 +577,32 @@ export function registerOpenApiCoreTests() {
     ).toEqual(["logs"]);
     expect(
       openApiSpec.components.schemas.ResyncWalletResponse.required,
-    ).toEqual(["success", "message", "deletedTransactions"]);
+    ).toEqual(["success", "message", "status", "walletId"]);
+    expect(
+      openApiSpec.paths["/sync/resync/{walletId}"].post.responses[503].content[
+        "application/json"
+      ].schema,
+    ).toEqual({ $ref: "#/components/schemas/FullResyncUnavailableResponse" });
+    expect(
+      openApiSpec.paths["/sync/network/{network}/resync"].post.responses[503].content[
+        "application/json"
+      ].schema,
+    ).toEqual({ $ref: "#/components/schemas/FullResyncUnavailableResponse" });
+    expect(
+      openApiSpec.components.schemas.FullResyncUnavailableResponse.allOf[1]
+        .properties.details.properties.outcomes.items,
+    ).toEqual({ $ref: "#/components/schemas/FullResyncEnqueueOutcome" });
+    expect(
+      openApiSpec.components.schemas.FullResyncEnqueueOutcome.oneOf,
+    ).toContainEqual(expect.objectContaining({
+      properties: expect.objectContaining({
+        status: { type: "string", enum: ["indeterminate"] },
+        reason: { type: "string", enum: ["queue_state_unknown"] },
+      }),
+    }));
+    expect(
+      openApiSpec.paths["/sync/resync/{walletId}"].post.description,
+    ).toContain("after exclusive sync ownership");
     expect(openApiSpec.components.schemas.NetworkSyncResponse.required).toEqual(
       ["success", "queued", "walletIds"],
     );
@@ -586,6 +611,9 @@ export function registerOpenApiCoreTests() {
     ).toContainEqual({
       $ref: "#/components/schemas/NetworkSyncResponse",
     });
+    expect(
+      openApiSpec.components.schemas.NetworkResyncResponse.allOf[1].required,
+    ).toContain("indeterminateWallets");
     expect(
       openApiSpec.components.schemas.NetworkSyncStatusResponse.properties
         .network.enum,

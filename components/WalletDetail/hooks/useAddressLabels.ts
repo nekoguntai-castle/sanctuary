@@ -78,6 +78,24 @@ function labelsForSnapshot(labelIds: string[], labels: Label[]): Label[] {
   });
 }
 
+async function enqueueAddressLabelWrite(
+  queue: Map<string, Promise<void>>,
+  addressId: string,
+  labelIds: string[],
+): Promise<void> {
+  const priorWrite = queue.get(addressId) ?? Promise.resolve();
+  const write = priorWrite.then(async () => {
+    await labelsApi.setAddressLabels(addressId, labelIds);
+  });
+  const settledWrite = write.catch(() => undefined);
+  queue.set(addressId, settledWrite);
+  try {
+    await write;
+  } finally {
+    if (queue.get(addressId) === settledWrite) queue.delete(addressId);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -98,6 +116,8 @@ export function useAddressLabels({
   const walletGenerationRef = useRef(0);
   const editorGenerationRef = useRef(0);
   const operationOwnerRef = useRef(0);
+  const addressOperationRef = useRef(new Map<string, number>());
+  const addressWriteQueueRef = useRef(new Map<string, Promise<void>>());
   const editorTargetRef = useRef<AddressEditorTarget | null>(null);
   const savingRef = useRef(false);
 
@@ -117,6 +137,7 @@ export function useAddressLabels({
     if (priorWalletIdRef.current === walletId) return;
     priorWalletIdRef.current = walletId;
     walletGenerationRef.current += 1;
+    addressOperationRef.current.clear();
     resetEditor();
   }, [resetEditor, walletId]);
 
@@ -127,6 +148,7 @@ export function useAddressLabels({
       walletGenerationRef.current += 1;
       editorGenerationRef.current += 1;
       operationOwnerRef.current += 1;
+      addressOperationRef.current.clear();
     };
   }, []);
 
@@ -159,19 +181,26 @@ export function useAddressLabels({
       walletGeneration: walletGenerationRef.current,
       walletId: activeWalletId,
     };
+    addressOperationRef.current.set(token.addressId, token.operation);
     savingRef.current = true;
     setSavingAddressLabels(true);
     try {
-      await labelsApi.setAddressLabels(token.addressId, requestedLabelIds);
-      if (!ownsWalletScope(token)) return;
+      await enqueueAddressLabelWrite(
+        addressWriteQueueRef.current,
+        token.addressId,
+        requestedLabelIds,
+      );
+      if (!ownsAddressOperation(token)) return;
       setAddresses((current) => current.map((address) => (
         address.id === token.addressId ? { ...address, labels: token.labels } : address
       )));
+      addressOperationRef.current.delete(token.addressId);
       if (ownsEditor(token)) resetEditor();
     } catch (err) {
-      if (!ownsWalletScope(token)) return;
-      handleError(err, `Failed to Save Labels for ${token.display}`);
+      if (!ownsAddressOperation(token)) return;
+      addressOperationRef.current.delete(token.addressId);
       if (!ownsEditor(token)) return;
+      handleError(err, `Failed to Save Labels for ${token.display}`);
       savingRef.current = false;
       setSavingAddressLabels(false);
     }
@@ -202,6 +231,11 @@ export function useAddressLabels({
       && token.editorGeneration === editorGenerationRef.current
       && token.operation === operationOwnerRef.current
       && token.addressId === editorTargetRef.current?.id;
+  }
+
+  function ownsAddressOperation(token: AddressSaveToken): boolean {
+    return ownsWalletScope(token)
+      && addressOperationRef.current.get(token.addressId) === token.operation;
   }
 
   return {

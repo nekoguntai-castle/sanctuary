@@ -169,7 +169,14 @@ export function registerBlockchainSyncAddressTests(): void {
             txHash,
             {
               txid: txHash,
-              vin: [{ txid: prevTxid, vout: 0 }],
+              vin: [{
+                txid: prevTxid,
+                vout: 0,
+                prevout: {
+                  value: 0.001,
+                  scriptPubKey: { hex: '0014-addressless' },
+                },
+              }],
               vout: [{ value: 0.0015, scriptPubKey: { hex: '0014...', address: externalAddress } }],
             },
           ]]);
@@ -375,8 +382,7 @@ export function registerBlockchainSyncAddressTests(): void {
         return new Map();
       });
       mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-        if (args?.where?.walletId && args?.where?.txid?.in && !args?.where?.OR) return [];
-        if (args?.where?.OR) {
+        if (args?.where?.ioComplete === false) {
           return [{ id: 'tx-io-record', txid: txHash, type: 'received' }];
         }
         return [];

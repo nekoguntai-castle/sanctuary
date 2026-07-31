@@ -18,7 +18,7 @@ import type {
   UpdateConfirmationsJobData,
   UpdateConfirmationsResult,
 } from './types';
-import { walletRepository, transactionRepository } from '../../repositories';
+import { resyncRepository, walletRepository, transactionRepository } from '../../repositories';
 import { syncWallet } from '../../services/bitcoin/blockchain';
 import {
   updateTransactionConfirmations,
@@ -30,12 +30,37 @@ import { normalizeLegacyBitcoinNetwork } from '../../services/bitcoin/networks';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { SYNC_WALLET_JOB_OPTIONS } from './jobOptions';
+import { isFullResyncGeneration } from '../../constants/fullResync';
 
 const log = createLogger('JOB:SYNC');
 const appConfig = getConfig();
 
 // Keep lock alive beyond expected sync duration to avoid concurrent sync overlap.
 const SYNC_LOCK_TTL_MS = appConfig.sync.maxSyncDurationMs + 60_000;
+const FULL_RESYNC_LOCK_RETRY_DELAY_MS = 5_000;
+
+function isFinalAttempt(job: Job<SyncWalletJobData>): boolean {
+  const attempts = typeof job.opts.attempts === 'number' ? job.opts.attempts : 1;
+  return job.attemptsMade + 1 >= attempts;
+}
+
+async function prepareFullResync(job: Job<SyncWalletJobData>): Promise<void> {
+  if (!job.data.fullResync) return;
+  const generation = job.data.fullResyncGeneration;
+  if (!isFullResyncGeneration(generation)) {
+    throw new Error('Full resync job is missing its durable generation');
+  }
+
+  const reset = await resyncRepository.resetWalletForFullResync(
+    job.data.walletId,
+    generation,
+  );
+  log.info(`Prepared full resync for wallet ${job.data.walletId}`, {
+    deletedTransactions: reset.deletedTransactions,
+    resetPerformed: reset.resetPerformed,
+    jobId: job.id,
+  });
+}
 
 class ConfirmationUpdateAggregateError extends Error {
   readonly errors: unknown[];
@@ -72,6 +97,12 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
   lockOptions: {
     lockKey: (data) => `sync:wallet:${data.walletId}`,
     lockTtlMs: SYNC_LOCK_TTL_MS,
+    retryDelayMsIfUnavailable: data => (
+      // Keep the rebuild retained after preparation too. The stable generation
+      // makes reset preparation idempotent, while fullResync remains the durable signal
+      // that this job must not complete as a lock-contention no-op.
+      data.fullResync === true ? FULL_RESYNC_LOCK_RETRY_DELAY_MS : null
+    ),
   },
   handler: async (job: Job<SyncWalletJobData>, execution): Promise<SyncWalletJobResult> => {
     const { walletId, reason } = job.data;
@@ -91,7 +122,19 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
 
     let syncFlagSet = false;
     let flagCleared = false;
+    let preparingFullResync = job.data.fullResync === true;
+    let fullResyncPrepared = false;
     try {
+      await prepareFullResync(job);
+      if (job.data.fullResync === true) {
+        // Reset preparation commits syncInProgress=true. Arm cleanup before the
+        // first abort checkpoint so shutdown cannot strand that durable state.
+        fullResyncPrepared = true;
+        syncFlagSet = true;
+      }
+      preparingFullResync = false;
+      execution?.throwIfAborted();
+
       // Keep the mark and the abort checkpoint inside the cleanup guard. If
       // cooperative shutdown arrives while the write is in flight, the flag is
       // reset before the handler settles and its lock is released.
@@ -144,11 +187,47 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
         utxosUpdated: result.utxos,
       };
     } catch (error) {
-      execution?.throwIfAborted();
+      try {
+        execution?.throwIfAborted();
+      } catch (abortError) {
+        if (fullResyncPrepared && !flagCleared && isFinalAttempt(job)) {
+          const abortMessage = getErrorMessage(abortError);
+          try {
+            await walletRepository.update(walletId, {
+              syncInProgress: false,
+              lastSyncStatus: 'failed',
+              lastSyncError: abortMessage,
+            });
+            flagCleared = true;
+          } catch (updateError) {
+            log.error(`Failed to record final full resync abort for wallet ${walletId}`, {
+              error: getErrorMessage(updateError),
+              originalError: abortMessage,
+            });
+          }
+        }
+        throw abortError;
+      }
       const duration = Date.now() - startTime;
       const errorMsg = getErrorMessage(error);
 
       try {
+        if (preparingFullResync) {
+          if (isFinalAttempt(job)) {
+            await walletRepository.update(walletId, {
+              syncInProgress: false,
+              lastSyncStatus: 'failed',
+              lastSyncError: errorMsg,
+            });
+            flagCleared = true;
+          }
+          log.warn(`Full resync preparation will retry for wallet ${walletId}`, {
+            error: errorMsg,
+            jobId: job.id,
+            finalAttempt: isFinalAttempt(job),
+          });
+          throw error;
+        }
         // Update wallet with error status
         await walletRepository.update(walletId, {
           syncInProgress: false,
@@ -157,6 +236,15 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
         });
         flagCleared = true;
       } catch (updateError) {
+        if (preparingFullResync) {
+          if (updateError !== error) {
+            log.error(`Failed to record full resync preparation failure for wallet ${walletId}`, {
+              error: getErrorMessage(updateError),
+              originalError: errorMsg,
+            });
+          }
+          throw error;
+        }
         log.error(`Failed to update wallet ${walletId} error status`, {
           error: getErrorMessage(updateError),
           originalError: errorMsg,

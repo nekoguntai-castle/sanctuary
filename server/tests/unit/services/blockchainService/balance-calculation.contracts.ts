@@ -34,21 +34,24 @@ describe('Blockchain Service - Balance Calculation', () => {
 
       mockPrisma.address.findMany.mockResolvedValue(walletAddresses);
       mockPrisma.transaction.findMany.mockResolvedValue([misclassifiedTx]);
-      mockPrisma.transaction.update.mockResolvedValue({});
+      mockPrisma.transaction.updateMany.mockResolvedValue({ count: 1 });
       mockPrisma.transactionOutput.updateMany.mockResolvedValue({ count: 1 });
 
       const corrected = await correctMisclassifiedConsolidations('wallet-1');
 
       expect(corrected).toBe(1);
-      expect(mockPrisma.transaction.update).toHaveBeenCalledWith({
-        where: { id: 'tx-1' },
+      expect(mockPrisma.transaction.updateMany).toHaveBeenCalledWith({
+        where: { id: 'tx-1', type: 'sent' },
         data: {
           type: 'consolidation',
           amount: BigInt(-1000), // -fee
         },
       });
       expect(mockPrisma.transactionOutput.updateMany).toHaveBeenCalledWith({
-        where: { id: { in: ['out-1'] } },
+        where: {
+          transactionId: 'tx-1',
+          address: { in: ['bc1qwallet1', 'bc1qwallet2'] },
+        },
         data: { isOurs: true, outputType: 'consolidation' },
       });
     });
@@ -104,6 +107,56 @@ describe('Blockchain Service - Balance Calculation', () => {
       expect(mockPrisma.transactionOutput.updateMany).not.toHaveBeenCalled();
     });
 
+    it('should not classify an OP_RETURN-only send as a consolidation', async () => {
+      const { correctMisclassifiedConsolidations } = await import(
+        '../../../../src/services/bitcoin/utils/balanceCalculation'
+      );
+
+      mockPrisma.address.findMany.mockResolvedValue([{ address: 'bc1qwallet1' }]);
+      mockPrisma.transaction.findMany.mockResolvedValue([
+        {
+          id: 'tx-op-return',
+          txid: 'tx-op-return',
+          type: 'sent',
+          fee: BigInt(500),
+          outputs: [
+            { id: 'out-op-return', address: null, isOurs: false },
+          ],
+        },
+      ]);
+
+      const corrected = await correctMisclassifiedConsolidations('wallet-1');
+
+      expect(corrected).toBe(0);
+      expect(mockPrisma.transaction.updateMany).not.toHaveBeenCalled();
+      expect(mockPrisma.transactionOutput.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should not count a transaction changed concurrently by another correction', async () => {
+      const { correctMisclassifiedConsolidations } = await import(
+        '../../../../src/services/bitcoin/utils/balanceCalculation'
+      );
+
+      mockPrisma.address.findMany.mockResolvedValue([{ address: 'bc1qwallet1' }]);
+      mockPrisma.transaction.findMany.mockResolvedValue([
+        {
+          id: 'tx-raced',
+          txid: 'tx-raced',
+          type: 'sent',
+          fee: BigInt(500),
+          outputs: [
+            { id: 'out-wallet', address: 'bc1qwallet1', isOurs: false },
+          ],
+        },
+      ]);
+      mockPrisma.transaction.updateMany.mockResolvedValue({ count: 0 });
+
+      const corrected = await correctMisclassifiedConsolidations('wallet-1');
+
+      expect(corrected).toBe(0);
+      expect(mockPrisma.transactionOutput.updateMany).not.toHaveBeenCalled();
+    });
+
     it('should handle consolidation correction when fee is null and outputs are already marked ours', async () => {
       const { correctMisclassifiedConsolidations } = await import(
         '../../../../src/services/bitcoin/utils/balanceCalculation'
@@ -122,19 +175,26 @@ describe('Blockchain Service - Balance Calculation', () => {
           ],
         },
       ]);
-      mockPrisma.transaction.update.mockResolvedValue({});
+      mockPrisma.transaction.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.transactionOutput.updateMany.mockResolvedValue({ count: 1 });
 
       const corrected = await correctMisclassifiedConsolidations('wallet-1');
 
       expect(corrected).toBe(1);
-      expect(mockPrisma.transaction.update).toHaveBeenCalledWith({
-        where: { id: 'tx-null-fee' },
+      expect(mockPrisma.transaction.updateMany).toHaveBeenCalledWith({
+        where: { id: 'tx-null-fee', type: 'sent' },
         data: {
           type: 'consolidation',
           amount: BigInt(0),
         },
       });
-      expect(mockPrisma.transactionOutput.updateMany).not.toHaveBeenCalled();
+      expect(mockPrisma.transactionOutput.updateMany).toHaveBeenCalledWith({
+        where: {
+          transactionId: 'tx-null-fee',
+          address: { in: ['bc1qwallet1'] },
+        },
+        data: { isOurs: true, outputType: 'consolidation' },
+      });
     });
   });
 

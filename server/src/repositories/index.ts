@@ -44,6 +44,11 @@ export { mcpReadRepository, default as mcpReadRepo } from './mcpReadRepository';
 export { agentRepository, default as agentRepo } from './agentRepository';
 export { consoleRepository, default as consoleRepo } from './consoleRepository';
 export { webhookRepository, default as webhookRepo } from './webhookRepository';
+export { resyncRepository, default as resyncRepo } from './resyncRepository';
+export {
+  balanceCorrectionRepository,
+  default as balanceCorrectionRepo,
+} from './balanceCorrectionRepository';
 
 // Access control helpers
 export { buildWalletAccessWhere, buildDeviceAccessWhere } from './accessControl';

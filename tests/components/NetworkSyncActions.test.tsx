@@ -26,7 +26,10 @@ describe('NetworkSyncActions', () => {
     (syncApi.syncNetworkWallets as ReturnType<typeof vi.fn>).mockResolvedValue({ queued: 3 });
     (syncApi.resyncNetworkWallets as ReturnType<typeof vi.fn>).mockResolvedValue({
       queued: 3,
-      deletedTransactions: 150,
+      acceptedWalletIds: ['w1', 'w2', 'w3'],
+      deduplicatedWalletIds: [],
+      rejectedWallets: [],
+      indeterminateWallets: [],
     });
   });
 
@@ -211,7 +214,7 @@ describe('NetworkSyncActions', () => {
         fireEvent.click(confirmButton);
       });
 
-      expect(screen.getByText(/Cleared 150 transactions/)).toBeInTheDocument();
+      expect(screen.getByText('Queued 3 wallets for resync.')).toBeInTheDocument();
     });
 
     it('should call onSyncStarted callback on successful resync', async () => {

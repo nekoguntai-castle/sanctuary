@@ -21,7 +21,11 @@ const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
 type InputAddressResolution = {
   address?: string;
-  hasVerboseInput: boolean;
+};
+
+type InputClassification = {
+  isSent: boolean;
+  classificationInputsComplete: boolean;
 };
 
 type OutputTotals = {
@@ -32,7 +36,14 @@ type OutputTotals = {
 
 type TransactionBase = Pick<
   TransactionCreateData,
-  'txid' | 'walletId' | 'addressId' | 'confirmations' | 'blockHeight' | 'blockTime' | 'rbfStatus'
+  | 'txid'
+  | 'walletId'
+  | 'addressId'
+  | 'classificationInputsComplete'
+  | 'confirmations'
+  | 'blockHeight'
+  | 'blockTime'
+  | 'rbfStatus'
 >;
 
 type InputScriptPubKey = NonNullable<
@@ -59,11 +70,13 @@ export async function classifyTransactions(
   batchTxidSet: Set<string>
 ): Promise<TransactionCreateData[]> {
   const transactionsToCreate: TransactionCreateData[] = [];
+  const classifiedTxids = new Set<string>();
 
   for (const [addressStr, history] of ctx.historyResults) {
     const addressRecord = ctx.addressMap.get(addressStr)!;
 
     for (const item of history) {
+      if (classifiedTxids.has(item.tx_hash)) continue;
       const transaction = await classifyHistoryItem(
         ctx,
         batchTxidSet,
@@ -74,6 +87,7 @@ export async function classifyTransactions(
 
       if (transaction) {
         transactionsToCreate.push(transaction);
+        classifiedTxids.add(transaction.txid);
       }
     }
   }
@@ -99,10 +113,10 @@ const classifyHistoryItem = async (
 
   const outputs = txDetails.vout || [];
   const inputs = txDetails.vin || [];
-  const isSent = await hasWalletInput(ctx, inputs);
+  const inputClassification = await classifyInputs(ctx, inputs);
   const outputTotals = calculateOutputTotals(outputs, ctx.walletAddressSet);
-  const totalInputs = calculateTotalInputs(isSent, inputs, ctx.txDetailsCache);
-  const fee = calculateFee(isSent, totalInputs, outputTotals.totalOutputs);
+  const totalInputs = calculateTotalInputs(inputClassification.isSent, inputs, ctx.txDetailsCache);
+  const fee = calculateFee(inputClassification.isSent, totalInputs, outputTotals.totalOutputs);
 
   return createClassifiedTransaction({
     ctx,
@@ -111,36 +125,35 @@ const classifyHistoryItem = async (
     outputs,
     outputTotals,
     fee,
-    isSent,
+    isSent: inputClassification.isSent,
+    classificationInputsComplete: inputClassification.classificationInputsComplete,
     isReceived: outputs.some((out) => outputMatchesAddress(out, addressStr)),
     blockTime: await getTransactionBlockTime(txDetails, item.height),
   });
 };
 
-const hasWalletInput = async (
+const classifyInputs = async (
   ctx: SyncContext,
   inputs: TransactionInput[]
-): Promise<boolean> => {
+): Promise<InputClassification> => {
   let isSent = false;
-  let hasVerboseInputs = false;
+  let classificationInputsComplete = true;
 
   for (const input of inputs) {
     if (input.coinbase) continue;
 
     const resolution = await resolveInputAddress(ctx, input);
-    if (resolution.hasVerboseInput) {
-      hasVerboseInputs = true;
+    if (!resolution.address) {
+      classificationInputsComplete = false;
+      continue;
     }
 
-    if (resolution.address && ctx.walletAddressSet.has(resolution.address)) {
+    if (ctx.walletAddressSet.has(resolution.address)) {
       isSent = true;
-      if (hasVerboseInputs) {
-        return true;
-      }
     }
   }
 
-  return isSent;
+  return { isSent, classificationInputsComplete };
 };
 
 const resolveInputAddress = async (
@@ -148,28 +161,24 @@ const resolveInputAddress = async (
   input: TransactionInput
 ): Promise<InputAddressResolution> => {
   if (input.prevout && input.prevout.scriptPubKey) {
-    return {
-      address: getScriptAddress(input.prevout.scriptPubKey),
-      hasVerboseInput: true,
-    };
+    const address = getScriptAddress(input.prevout.scriptPubKey);
+    if (address !== undefined) return { address };
   }
 
   if (!input.txid || input.vout === undefined) {
-    return { hasVerboseInput: false };
+    return {};
   }
 
   const cachedOutput = getCachedPreviousOutput(ctx.txDetailsCache, input.txid, input.vout);
   if (cachedOutput) {
     return {
       address: getScriptAddress(cachedOutput.scriptPubKey),
-      hasVerboseInput: false,
     };
   }
 
   const fetchedOutput = await fetchPreviousOutput(ctx, input.txid, input.vout);
   return {
     address: fetchedOutput ? getScriptAddress(fetchedOutput.scriptPubKey) : undefined,
-    hasVerboseInput: false,
   };
 };
 
@@ -261,7 +270,11 @@ const getInputValue = (
     return 0;
   }
 
-  if (input.prevout && input.prevout.value !== undefined) {
+  if (
+    input.prevout?.scriptPubKey
+    && getScriptAddress(input.prevout.scriptPubKey) !== undefined
+    && input.prevout.value !== undefined
+  ) {
     // Electrum verbose prevouts may arrive as satoshis; cached tx outputs use BTC.
     return input.prevout.value >= 1000000
       ? input.prevout.value
@@ -293,23 +306,21 @@ const createClassifiedTransaction = (args: {
   outputTotals: OutputTotals;
   fee: number | null;
   isSent: boolean;
+  classificationInputsComplete: boolean;
   isReceived: boolean;
   blockTime: Date | null;
 }): TransactionCreateData | null => {
   const base = createTransactionBase(args);
 
   if (shouldCreateConsolidation(args)) {
-    markExisting(args.ctx, args.item.tx_hash, 'consolidation');
     return createConsolidationTransaction(base, args.fee);
   }
 
   if (shouldCreateSent(args)) {
-    markExisting(args.ctx, args.item.tx_hash, 'sent');
     return createSentTransaction(base, args.outputTotals.totalToExternal, args.fee);
   }
 
   if (shouldCreateReceived(args)) {
-    markExisting(args.ctx, args.item.tx_hash, 'received');
     return createReceivedTransaction(base, args.outputs, args.ctx.walletAddressSet);
   }
 
@@ -321,6 +332,7 @@ const createTransactionBase = (args: {
   item: TxHistoryEntry;
   addressId: string;
   blockTime: Date | null;
+  classificationInputsComplete: boolean;
 }): TransactionBase => {
   const confirmations = getConfirmations(args.item.height, args.ctx.currentBlockHeight);
 
@@ -328,6 +340,7 @@ const createTransactionBase = (args: {
     txid: args.item.tx_hash,
     walletId: args.ctx.walletId,
     addressId: args.addressId,
+    classificationInputsComplete: args.classificationInputsComplete,
     confirmations,
     blockHeight: args.item.height > 0 ? args.item.height : null,
     blockTime: args.blockTime,
@@ -336,43 +349,26 @@ const createTransactionBase = (args: {
 };
 
 const shouldCreateConsolidation = (args: {
-  ctx: SyncContext;
-  item: TxHistoryEntry;
   outputTotals: OutputTotals;
   isSent: boolean;
 }): boolean =>
   args.isSent &&
   args.outputTotals.totalToExternal === 0 &&
-  args.outputTotals.totalToWallet > 0 &&
-  !args.ctx.existingTxMap.has(`${args.item.tx_hash}:consolidation`);
+  args.outputTotals.totalToWallet > 0;
 
 const shouldCreateSent = (args: {
-  ctx: SyncContext;
-  item: TxHistoryEntry;
   outputTotals: OutputTotals;
   isSent: boolean;
 }): boolean =>
   args.isSent &&
-  args.outputTotals.totalToExternal > 0 &&
-  !args.ctx.existingTxMap.has(`${args.item.tx_hash}:sent`);
+  args.outputTotals.totalToExternal > 0;
 
 const shouldCreateReceived = (args: {
-  ctx: SyncContext;
-  item: TxHistoryEntry;
   isSent: boolean;
   isReceived: boolean;
 }): boolean =>
   !args.isSent &&
-  args.isReceived &&
-  !args.ctx.existingTxMap.has(`${args.item.tx_hash}:received`);
-
-const markExisting = (
-  ctx: SyncContext,
-  txid: string,
-  type: TransactionCreateData['type']
-): void => {
-  ctx.existingTxMap.set(`${txid}:${type}`, true);
-};
+  args.isReceived;
 
 const createConsolidationTransaction = (
   base: TransactionBase,

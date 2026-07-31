@@ -8,7 +8,7 @@
 
 import { transactionRepository } from '../../../../../repositories';
 import { walletLog } from '../../../../../websocket/notifications';
-import type { TransactionCreateData, TxInputCreateData } from '../../types';
+import type { TxInputCreateData } from '../../types';
 
 /**
  * Detect and link RBF (Replace-By-Fee) replacements
@@ -16,13 +16,10 @@ import type { TransactionCreateData, TxInputCreateData } from '../../types';
 export async function detectRBFReplacements(
   walletId: string,
   createdTxRecords: Array<{ id: string; txid: string; type: string }>,
-  newTransactions: TransactionCreateData[],
+  confirmedTxids: ReadonlySet<string>,
   txInputsToCreate: TxInputCreateData[]
 ): Promise<void> {
-  const confirmedTxRecords = createdTxRecords.filter(tx => {
-    const txData = newTransactions.find(t => t.txid === tx.txid);
-    return txData && txData.confirmations > 0;
-  });
+  const confirmedTxRecords = createdTxRecords.filter(tx => confirmedTxids.has(tx.txid));
 
   if (confirmedTxRecords.length === 0) return;
 

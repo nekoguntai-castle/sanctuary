@@ -16,6 +16,7 @@ import { storeTransactionIO } from './transactionIO';
 import { processHistoryTransactions } from './historyTransactions';
 
 const log = createLogger('BITCOIN:SVC_SYNC_ADDRESS');
+const TRANSACTION_FETCH_BATCH_SIZE = 100;
 
 type AddressHistoryItem = { tx_hash: string; height: number };
 type AddressRecord = NonNullable<Awaited<ReturnType<typeof addressRepository.findByIdWithWallet>>>;
@@ -56,17 +57,34 @@ async function fetchHistoryTransactionDetails(
   client: NodeClientInterface,
   history: AddressHistoryItem[]
 ): Promise<TransactionDetailsMap> {
-  const historyTxIds = history.map(h => h.tx_hash);
-  const txDetailsMap: TransactionDetailsMap = await client.getTransactionsBatch(historyTxIds, true);
+  const historyTxIds = [...new Set(history.map(h => h.tx_hash))];
+  const txDetailsMap = await fetchTransactionsInBatches(client, historyTxIds);
   const prevTxIdsNeeded = collectPreviousTxIds(history, txDetailsMap);
 
   if (prevTxIdsNeeded.size > 0) {
-    const prevTxDetails: TransactionDetailsMap = await client.getTransactionsBatch([...prevTxIdsNeeded], true);
+    const prevTxDetails = await fetchTransactionsInBatches(client, [...prevTxIdsNeeded]);
     mergeTransactionDetails(txDetailsMap, prevTxDetails);
     log.debug(`[BLOCKCHAIN] Batch fetched ${prevTxIdsNeeded.size} previous transactions for input lookups`);
   }
 
   return txDetailsMap;
+}
+
+async function fetchTransactionsInBatches(
+  client: NodeClientInterface,
+  txids: string[]
+): Promise<TransactionDetailsMap> {
+  const details: TransactionDetailsMap = new Map();
+
+  for (let offset = 0; offset < txids.length; offset += TRANSACTION_FETCH_BATCH_SIZE) {
+    const batch = await client.getTransactionsBatch(
+      txids.slice(offset, offset + TRANSACTION_FETCH_BATCH_SIZE),
+      true
+    );
+    mergeTransactionDetails(details, batch);
+  }
+
+  return details;
 }
 
 function collectPreviousTxIds(
@@ -89,7 +107,9 @@ function collectPreviousTxIds(
 }
 
 function getPreviousTxIdNeeded(input: TransactionInput, txDetailsMap: TransactionDetailsMap): string | null {
-  if (input.coinbase || input.prevout || !input.txid || txDetailsMap.has(input.txid)) {
+  const inlineAddress = input.prevout?.scriptPubKey?.address
+    || input.prevout?.scriptPubKey?.addresses?.[0];
+  if (input.coinbase || inlineAddress || !input.txid || txDetailsMap.has(input.txid)) {
     return null;
   }
 
@@ -187,12 +207,19 @@ async function storeTransactionIOForHistory(context: {
   addressRecord: AddressRecord;
   history: AddressHistoryItem[];
   walletAddressSet: Set<string>;
+  txDetailsMap: TransactionDetailsMap;
 }): Promise<void> {
   try {
     // The repository query selects only incomplete rows. Running this after an
     // unchanged scalar reconcile retries partial/failed backfills without
     // re-fetching I/O for already-complete history.
-    await storeTransactionIO(context.client, context.addressRecord.walletId, context.history, context.walletAddressSet);
+    await storeTransactionIO(
+      context.client,
+      context.addressRecord.walletId,
+      context.history,
+      context.walletAddressSet,
+      context.txDetailsMap
+    );
   } catch (ioError) {
     log.warn(`[BLOCKCHAIN] Failed to store transaction I/O in address sync: ${ioError}`);
   }
@@ -234,6 +261,7 @@ export async function syncAddress(addressId: string): Promise<SyncAddressResult>
       addressRecord,
       history,
       walletAddressSet,
+      txDetailsMap,
     });
 
     return {

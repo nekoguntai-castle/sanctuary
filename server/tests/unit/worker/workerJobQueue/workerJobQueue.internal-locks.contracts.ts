@@ -60,6 +60,32 @@ export const registerWorkerJobQueueInternalLockContracts = (getQueue: WorkerJobQ
       expect(result).toEqual({ skipped: true, reason: 'lock_held' });
     });
 
+    it('rejects retry-owned jobs when their distributed lock is held', async () => {
+      vi.mocked(acquireLock).mockResolvedValueOnce(null);
+      const handler = vi.fn(async () => ({ ok: true }));
+
+      queue.registerHandler('sync', {
+        name: 'retry-locked',
+        queue: 'sync',
+        handler,
+        lockOptions: {
+          lockKey: (data) => `lock:${(data as any).walletId}`,
+          retryDelayMsIfUnavailable: (data) => (data as any).fullResync === true ? 5000 : null,
+        },
+      });
+
+      const moveToDelayed = vi.fn().mockResolvedValue(undefined);
+      await expect((queue as any).processJob('sync', {
+        id: 'retry-locked-job',
+        name: 'retry-locked',
+        data: { walletId: 'wallet-1', fullResync: true },
+        token: 'worker-token',
+        moveToDelayed,
+      })).rejects.toHaveProperty('name', 'DelayedError');
+      expect(moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'worker-token');
+      expect(handler).not.toHaveBeenCalled();
+    });
+
     it('rejects without running the handler when lock authority is unavailable', async () => {
       const authorityError = new Error('lock authority unavailable');
       const handler = vi.fn(async () => ({ ok: true }));

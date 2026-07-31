@@ -29,6 +29,7 @@ type InputSource = { address?: string; value?: number };
 type TransactionIORows = {
   inputs: AddressSyncInputRow[];
   outputs: AddressSyncOutputRow[];
+  completeTransactionIds: string[];
 };
 
 const getScriptPubKeyAddress = (source: ScriptPubKeySource): string | undefined => {
@@ -47,20 +48,34 @@ const normalizeInputAmount = (value: number | undefined): number => {
   return value >= 1000000 ? value : toSats(value);
 };
 
-const getDirectInputSource = (input: TransactionInput): InputSource => {
-  if (!input.prevout?.scriptPubKey) {
-    return {};
+const getInputSource = (
+  input: TransactionInput,
+  txDetailsMap: TransactionDetailsMap
+): InputSource => {
+  if (input.prevout?.scriptPubKey) {
+    const address = getScriptPubKeyAddress(input.prevout);
+    if (address !== undefined) {
+      return { address, value: input.prevout.value };
+    }
   }
 
-  return {
-    address: getScriptPubKeyAddress(input.prevout),
-    value: input.prevout.value,
-  };
+  if (input.txid !== undefined && input.vout !== undefined) {
+    const previousOutput = txDetailsMap.get(input.txid)?.vout?.[input.vout];
+    if (previousOutput) {
+      return {
+        address: getScriptPubKeyAddress(previousOutput),
+        value: previousOutput.value,
+      };
+    }
+  }
+
+  return {};
 };
 
 const collectTransactionInputRows = (
   transactionId: string,
-  inputs: TransactionInput[]
+  inputs: TransactionInput[],
+  txDetailsMap: TransactionDetailsMap
 ): AddressSyncInputRow[] => {
   const rows: AddressSyncInputRow[] = [];
 
@@ -68,7 +83,7 @@ const collectTransactionInputRows = (
     const input = inputs[inputIdx];
     if (input.coinbase) continue;
 
-    const inputSource = getDirectInputSource(input);
+    const inputSource = getInputSource(input, txDetailsMap);
     if (inputSource.address && input.txid !== undefined && input.vout !== undefined) {
       rows.push({
         transactionId,
@@ -116,28 +131,98 @@ const collectTransactionIORows = (
   txDetailsMap: TransactionDetailsMap,
   walletAddressSet: Set<string>
 ): TransactionIORows => {
-  const ioRows: TransactionIORows = { inputs: [], outputs: [] };
+  const ioRows: TransactionIORows = { inputs: [], outputs: [], completeTransactionIds: [] };
 
   for (const txRecord of txsWithoutIO) {
     const txDetails = txDetailsMap.get(txRecord.txid);
     if (!txDetails) continue;
 
-    ioRows.inputs.push(...collectTransactionInputRows(txRecord.id, txDetails.vin || []));
+    ioRows.inputs.push(...collectTransactionInputRows(
+      txRecord.id,
+      txDetails.vin || [],
+      txDetailsMap
+    ));
     ioRows.outputs.push(...collectTransactionOutputRows(txRecord, txDetails.vout || [], walletAddressSet));
+    const inputs = txDetails.vin || [];
+    const inputEvidenceComplete = inputs.every(input => input.coinbase || (
+      input.txid !== undefined
+      && input.vout !== undefined
+      && getInputSource(input, txDetailsMap).address !== undefined
+    ));
+    if (inputEvidenceComplete) ioRows.completeTransactionIds.push(txRecord.id);
   }
 
   return ioRows;
 };
 
+const collectMissingPreviousTxids = (
+  transactionTxids: string[],
+  txDetailsMap: TransactionDetailsMap
+): string[] => {
+  const missingTxids = new Set<string>();
+
+  for (const txid of transactionTxids) {
+    for (const input of txDetailsMap.get(txid)?.vin || []) {
+      if (
+        !input.coinbase
+        && input.txid !== undefined
+        && input.vout !== undefined
+        && getInputSource(input, txDetailsMap).address === undefined
+        && !txDetailsMap.has(input.txid)
+      ) {
+        missingTxids.add(input.txid);
+      }
+    }
+  }
+
+  return [...missingTxids];
+};
+
+const fetchTransactionDetails = async (
+  client: NodeClientInterface,
+  transactionTxids: string[],
+  existingDetails?: TransactionDetailsMap
+): Promise<TransactionDetailsMap> => {
+  const txDetailsMap: TransactionDetailsMap = new Map(existingDetails);
+  const missingTransactionTxids = transactionTxids.filter(txid => !txDetailsMap.has(txid));
+  if (missingTransactionTxids.length > 0) {
+    const fetchedDetails: TransactionDetailsMap = await client.getTransactionsBatch(
+      missingTransactionTxids,
+      true
+    );
+    for (const [txid, details] of fetchedDetails) {
+      txDetailsMap.set(txid, details);
+    }
+  }
+  const missingPreviousTxids = collectMissingPreviousTxids(transactionTxids, txDetailsMap);
+
+  for (let offset = 0; offset < missingPreviousTxids.length; offset += IO_BACKFILL_BATCH_SIZE) {
+    const previousDetails: TransactionDetailsMap = await client.getTransactionsBatch(
+      missingPreviousTxids.slice(offset, offset + IO_BACKFILL_BATCH_SIZE),
+      true
+    );
+    for (const [txid, details] of previousDetails) {
+      txDetailsMap.set(txid, details);
+    }
+  }
+
+  return txDetailsMap;
+};
+
 const persistTransactionIORows = async (ioRows: TransactionIORows): Promise<void> => {
-  await transactionRepository.persistAddressSyncIORows(ioRows.inputs, ioRows.outputs);
+  await transactionRepository.persistAddressSyncIORows(
+    ioRows.inputs,
+    ioRows.outputs,
+    ioRows.completeTransactionIds
+  );
 };
 
 export async function storeTransactionIO(
   client: NodeClientInterface,
   walletId: string,
   history: AddressHistoryItem[],
-  walletAddressSet: Set<string>
+  walletAddressSet: Set<string>,
+  existingDetails?: TransactionDetailsMap
 ): Promise<void> {
   const historyTxids = [...new Set(history.map(item => item.tx_hash))];
   for (let offset = 0; offset < historyTxids.length; offset += IO_BACKFILL_BATCH_SIZE) {
@@ -148,7 +233,7 @@ export async function storeTransactionIO(
     if (txsWithoutIO.length === 0) continue;
 
     const txidsToFetch = txsWithoutIO.map(tx => tx.txid);
-    const txDetailsMap: TransactionDetailsMap = await client.getTransactionsBatch(txidsToFetch, true);
+    const txDetailsMap = await fetchTransactionDetails(client, txidsToFetch, existingDetails);
     const ioRows = collectTransactionIORows(txsWithoutIO, txDetailsMap, walletAddressSet);
 
     await persistTransactionIORows(ioRows);

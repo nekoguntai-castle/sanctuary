@@ -17,6 +17,7 @@ const {
   mockSyncService,
   mockWalletLogBufferGet,
   mockEnqueueWalletSyncBatch,
+  mockEnqueueFullResyncBatch,
 } = vi.hoisted(() => ({
   mockWalletRepository: {
     findByIdWithAccess: vi.fn(),
@@ -39,6 +40,7 @@ const {
   },
   mockWalletLogBufferGet: vi.fn(() => []),
   mockEnqueueWalletSyncBatch: vi.fn(),
+  mockEnqueueFullResyncBatch: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -62,6 +64,7 @@ vi.mock('../../../src/services/bitcoin/blockchain', () => ({
 
 vi.mock('../../../src/services/workerSyncQueue', () => ({
   enqueueWalletSyncBatch: mockEnqueueWalletSyncBatch,
+  enqueueFullResyncBatch: mockEnqueueFullResyncBatch,
 }));
 
 vi.mock('../../../src/config', () => ({
@@ -136,6 +139,13 @@ describe('Sync API - Network Endpoints', () => {
     vi.clearAllMocks();
     mockSyncService.getSyncStatus.mockResolvedValue({ queuePosition: 1, syncInProgress: false });
     mockEnqueueWalletSyncBatch.mockImplementation(async (walletIds: string[]) => walletIds.length);
+    mockEnqueueFullResyncBatch.mockImplementation(async (walletIds: string[]) => ({
+      outcomes: walletIds.map(walletId => ({ walletId, status: 'accepted' })),
+      acceptedWalletIds: walletIds,
+      deduplicatedWalletIds: [],
+      rejectedWallets: [],
+      indeterminateWallets: [],
+    }));
   });
 
   describe('wallet-level endpoints', () => {
@@ -390,11 +400,8 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.body.code).toBe('INTERNAL_ERROR');
     });
 
-    it('POST /sync/resync/:walletId performs full resync and queues high priority', async () => {
+    it('POST /sync/resync/:walletId defers reset to an exclusively owned worker job', async () => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1', syncInProgress: true });
-      mockTransactionRepository.deleteByWalletId.mockResolvedValue(12);
-      mockAddressRepository.resetUsedFlags.mockResolvedValue({ count: 8 });
-      mockWalletRepository.resetSyncState.mockResolvedValue({});
 
       const response = await request(app)
         .post('/sync/resync/wallet-1')
@@ -403,10 +410,15 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
         success: true,
-        message: 'Cleared 12 transactions. Full resync queued.',
-        deletedTransactions: 12,
+        message: 'Full resync queued. Wallet data will be reset after exclusive sync ownership is acquired.',
+        status: 'accepted',
+        walletId: 'wallet-1',
       });
-      expect(mockSyncService.queueSync).toHaveBeenCalledWith('wallet-1', 'high');
+      expect(mockEnqueueFullResyncBatch).toHaveBeenCalledWith(
+        ['wallet-1'],
+        { reason: 'manual-wallet-resync:test-user-id' },
+      );
+      expect(mockTransactionRepository.deleteByWalletId).not.toHaveBeenCalled();
     });
 
     it('POST /sync/resync/:walletId returns 404 when wallet missing', async () => {
@@ -420,16 +432,86 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.body.message).toBe('Wallet not found');
     });
 
-    it('POST /sync/resync/:walletId returns 500 on deletion errors', async () => {
+    it('POST /sync/resync/:walletId returns 503 when the durable queue rejects it', async () => {
       mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1', syncInProgress: false });
-      mockTransactionRepository.deleteByWalletId.mockRejectedValue(new Error('delete failed'));
+      mockEnqueueFullResyncBatch.mockResolvedValue({
+        outcomes: [{
+          walletId: 'wallet-1',
+          status: 'rejected',
+          reason: 'queue_unavailable',
+        }],
+        acceptedWalletIds: [],
+        deduplicatedWalletIds: [],
+        rejectedWallets: [{
+          walletId: 'wallet-1',
+          reason: 'queue_unavailable',
+        }],
+        indeterminateWallets: [],
+      });
 
       const response = await request(app)
         .post('/sync/resync/wallet-1')
         .send({});
 
-      expect(response.status).toBe(500);
-      expect(response.body.code).toBe('INTERNAL_ERROR');
+      expect(response.status).toBe(503);
+      expect(response.body.code).toBe('SERVICE_UNAVAILABLE');
+      expect(response.body.details.outcomes).toEqual([{
+        walletId: 'wallet-1',
+        status: 'rejected',
+        reason: 'queue_unavailable',
+      }]);
+    });
+
+    it('POST /sync/resync/:walletId returns indeterminate state without calling it rejected', async () => {
+      mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
+      mockEnqueueFullResyncBatch.mockResolvedValue({
+        outcomes: [{
+          walletId: 'wallet-1',
+          status: 'indeterminate',
+          reason: 'queue_state_unknown',
+        }],
+        acceptedWalletIds: [],
+        deduplicatedWalletIds: [],
+        rejectedWallets: [],
+        indeterminateWallets: [{
+          walletId: 'wallet-1',
+          reason: 'queue_state_unknown',
+        }],
+      });
+
+      const response = await request(app)
+        .post('/sync/resync/wallet-1')
+        .send({});
+
+      expect(response.status).toBe(503);
+      expect(response.body.message).toBe('Full resync queue state could not be confirmed');
+      expect(response.body.details.outcomes).toEqual([{
+        walletId: 'wallet-1',
+        status: 'indeterminate',
+        reason: 'queue_state_unknown',
+      }]);
+      expect(JSON.stringify(response.body)).not.toContain('rejected');
+    });
+
+    it('POST /sync/resync/:walletId reports an already retained intention', async () => {
+      mockWalletRepository.findByIdWithAccess.mockResolvedValue({ id: 'wallet-1' });
+      mockEnqueueFullResyncBatch.mockResolvedValue({
+        outcomes: [{ walletId: 'wallet-1', status: 'deduplicated' }],
+        acceptedWalletIds: [],
+        deduplicatedWalletIds: ['wallet-1'],
+        rejectedWallets: [],
+        indeterminateWallets: [],
+      });
+
+      const response = await request(app)
+        .post('/sync/resync/wallet-1')
+        .send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        status: 'deduplicated',
+        message: 'A full resync is already queued for this wallet.',
+      });
     });
   });
 
@@ -558,9 +640,40 @@ describe('Sync API - Network Endpoints', () => {
         success: true,
         queued: 2,
         walletIds: ['wallet-1', 'wallet-2'],
-        deletedTransactions: 100, // 50 per wallet
-        clearedStuckFlags: 0,
+        acceptedWalletIds: ['wallet-1', 'wallet-2'],
+        deduplicatedWalletIds: [],
+        rejectedWallets: [],
+        indeterminateWallets: [],
+        message: 'Queued 2 wallets; 0 wallets already queued.',
       });
+    });
+
+    it('preserves input order across accepted and deduplicated outcomes', async () => {
+      mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([
+        { id: 'wallet-1', syncInProgress: false },
+        { id: 'wallet-2', syncInProgress: false },
+        { id: 'wallet-3', syncInProgress: false },
+      ]);
+      mockEnqueueFullResyncBatch.mockResolvedValue({
+        outcomes: [
+          { walletId: 'wallet-1', status: 'deduplicated' },
+          { walletId: 'wallet-2', status: 'accepted' },
+          { walletId: 'wallet-3', status: 'deduplicated' },
+        ],
+        acceptedWalletIds: ['wallet-2'],
+        deduplicatedWalletIds: ['wallet-1', 'wallet-3'],
+        rejectedWallets: [],
+        indeterminateWallets: [],
+      });
+
+      const response = await request(app)
+        .post('/sync/network/mainnet/resync')
+        .set('X-Confirm-Resync', 'true')
+        .send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body.walletIds).toEqual(['wallet-1', 'wallet-2', 'wallet-3']);
+      expect(response.body.queued).toBe(1);
     });
 
     it('should require confirmation header', async () => {
@@ -572,7 +685,7 @@ describe('Sync API - Network Endpoints', () => {
       expect(response.body.message).toContain('X-Confirm-Resync');
     });
 
-    it('should clear stuck sync flags and resync all wallets', async () => {
+    it('should defer active and idle wallets through the same full-resync queue', async () => {
       mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([
         { id: 'wallet-1', syncInProgress: true },
         { id: 'wallet-2', syncInProgress: false },
@@ -587,9 +700,96 @@ describe('Sync API - Network Endpoints', () => {
         .send({});
 
       expect(response.status).toBe(200);
-      // Full resync processes ALL wallets, including stuck ones
       expect(response.body.queued).toBe(2);
-      expect(response.body.clearedStuckFlags).toBe(1);
+      expect(mockTransactionRepository.deleteByWalletId).not.toHaveBeenCalled();
+    });
+
+    it('should report partial full-resync enqueue acceptance', async () => {
+      mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([
+        { id: 'wallet-1', syncInProgress: true },
+        { id: 'wallet-2', syncInProgress: false },
+      ]);
+      mockEnqueueFullResyncBatch.mockResolvedValue({
+        outcomes: [
+          { walletId: 'wallet-1', status: 'accepted' },
+          {
+            walletId: 'wallet-2',
+            status: 'rejected',
+            reason: 'queue_error',
+          },
+        ],
+        acceptedWalletIds: ['wallet-1'],
+        deduplicatedWalletIds: [],
+        rejectedWallets: [{
+          walletId: 'wallet-2',
+          reason: 'queue_error',
+        }],
+        indeterminateWallets: [],
+      });
+
+      const response = await request(app)
+        .post('/sync/network/mainnet/resync')
+        .set('X-Confirm-Resync', 'true')
+        .send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        success: true,
+        queued: 1,
+        walletIds: ['wallet-1'],
+        acceptedWalletIds: ['wallet-1'],
+        deduplicatedWalletIds: [],
+        rejectedWallets: [{
+          walletId: 'wallet-2',
+          reason: 'queue_error',
+        }],
+        indeterminateWallets: [],
+        message: 'Queued 1 wallet; 0 wallets already queued; 1 wallet rejected.',
+      });
+    });
+
+    it('reports partial indeterminate queue state separately from rejection', async () => {
+      mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([
+        { id: 'wallet-1', syncInProgress: false },
+        { id: 'wallet-2', syncInProgress: false },
+      ]);
+      mockEnqueueFullResyncBatch.mockResolvedValue({
+        outcomes: [
+          { walletId: 'wallet-1', status: 'accepted' },
+          {
+            walletId: 'wallet-2',
+            status: 'indeterminate',
+            reason: 'queue_state_unknown',
+          },
+        ],
+        acceptedWalletIds: ['wallet-1'],
+        deduplicatedWalletIds: [],
+        rejectedWallets: [],
+        indeterminateWallets: [{
+          walletId: 'wallet-2',
+          reason: 'queue_state_unknown',
+        }],
+      });
+
+      const response = await request(app)
+        .post('/sync/network/mainnet/resync')
+        .set('X-Confirm-Resync', 'true')
+        .send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        success: true,
+        queued: 1,
+        walletIds: ['wallet-1'],
+        acceptedWalletIds: ['wallet-1'],
+        deduplicatedWalletIds: [],
+        rejectedWallets: [],
+        indeterminateWallets: [{
+          walletId: 'wallet-2',
+          reason: 'queue_state_unknown',
+        }],
+        message: 'Queued 1 wallet; 0 wallets already queued; 1 wallet queue state unknown.',
+      });
     });
 
     it('should reject invalid network', async () => {
@@ -615,42 +815,49 @@ describe('Sync API - Network Endpoints', () => {
         success: true,
         queued: 0,
         walletIds: [],
+        acceptedWalletIds: [],
+        deduplicatedWalletIds: [],
+        rejectedWallets: [],
+        indeterminateWallets: [],
         message: 'No signet wallets found',
       });
     });
 
-    it('should delete transactions and reset wallet state', async () => {
+    it('should report partial network enqueue outcomes without eager deletion', async () => {
       mockWalletRepository.findByNetworkWithSyncStatus.mockResolvedValue([
         { id: 'wallet-1', syncInProgress: false },
       ]);
-      mockTransactionRepository.deleteByWalletId.mockResolvedValue(75);
-      mockAddressRepository.resetUsedFlags.mockResolvedValue({ count: 20 });
-      mockWalletRepository.resetSyncState.mockResolvedValue({});
+      mockEnqueueFullResyncBatch.mockResolvedValue({
+        outcomes: [{
+          walletId: 'wallet-1',
+          status: 'rejected',
+          reason: 'queue_unavailable',
+        }],
+        acceptedWalletIds: [],
+        deduplicatedWalletIds: [],
+        rejectedWallets: [{
+          walletId: 'wallet-1',
+          reason: 'queue_unavailable',
+        }],
+        indeterminateWallets: [],
+      });
 
-      await request(app)
+      const response = await request(app)
         .post('/sync/network/mainnet/resync')
         .set('X-Confirm-Resync', 'true')
         .send({});
 
-      // Verify transactions deleted
-      expect(mockTransactionRepository.deleteByWalletId).toHaveBeenCalledWith('wallet-1');
-
-      // Verify address flags reset
-      expect(mockAddressRepository.resetUsedFlags).toHaveBeenCalledWith('wallet-1');
-
-      // Verify wallet state reset
-      expect(mockWalletRepository.resetSyncState).toHaveBeenCalledWith('wallet-1');
-
-      // Verify queued for high priority sync
-      expect(mockEnqueueWalletSyncBatch).toHaveBeenCalledWith(
-        ['wallet-1'],
-        expect.objectContaining({
-          priority: 'high',
-          reason: 'manual-network-resync:mainnet',
-          staggerDelayMs: 2000,
-          jobIdPrefix: 'manual-network-resync:mainnet:test-user-id',
-        })
-      );
+      expect(response.status).toBe(503);
+      expect(response.body.details.outcomes).toEqual([{
+        walletId: 'wallet-1',
+        status: 'rejected',
+        reason: 'queue_unavailable',
+      }]);
+      expect(mockTransactionRepository.deleteByWalletId).not.toHaveBeenCalled();
+      expect(mockEnqueueFullResyncBatch).toHaveBeenCalledWith(['wallet-1'], {
+        reason: 'manual-network-resync:mainnet',
+        staggerDelayMs: 2000,
+      });
     });
 
     it('should return 500 when network resync fails', async () => {

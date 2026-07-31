@@ -674,6 +674,23 @@ export function registerOpenApiGatewayTests() {
     ]);
 
     const receiverPath = openApiSpec.paths['/payjoin/{addressId}'].post;
+    const uriAmountParameter = openApiSpec.paths['/payjoin/address/{addressId}/uri']
+      .get.parameters.find(parameter => parameter.name === 'amount');
+    const minFeeRateParameter = receiverPath.parameters.find(
+      parameter => parameter.name === 'minfeerate',
+    );
+    expect(uriAmountParameter?.schema).toMatchObject({
+      type: 'integer',
+      minimum: 0,
+      maximum: Number.MAX_SAFE_INTEGER,
+    });
+    expect(minFeeRateParameter?.schema).toEqual({
+      type: 'string',
+      pattern: '^(?:(?:0|[1-9]\\d{0,5})(?:\\.\\d+)?|1000000(?:\\.0+)?)$',
+    });
+    expect(receiverPath.parameters.map(parameter => parameter.name)).not.toContain(
+      'maxadditionalfeecontribution',
+    );
     expect(receiverPath).not.toHaveProperty('security');
     expect(receiverPath.requestBody.content['text/plain'].schema).toMatchObject({
       type: 'string',
@@ -690,6 +707,8 @@ export function registerOpenApiGatewayTests() {
     expect(receiverPath.responses[413].content['text/plain'].schema).toEqual({
       $ref: '#/components/schemas/PayjoinReceiverError',
     });
+    expect(openApiSpec.paths['/payjoin/address/{addressId}/uri'].get.responses[400])
+      .toBeDefined();
   });
 
   it('documents ownership transfer routes', () => {

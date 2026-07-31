@@ -27,6 +27,7 @@ import {
   generateBip21Uri,
   attemptPayjoinSend,
 } from '../services/payjoinService';
+import { parsePayjoinMinFeeRate } from '../services/payjoin/validation';
 import { getNetwork } from '../services/bitcoin/utils';
 import { normalizeLegacyBitcoinNetwork } from '../services/bitcoin/networks';
 
@@ -37,6 +38,19 @@ export const PAYJOIN_RECEIVER_BODY_LIMIT_BYTES = 100 * 1024;
 
 const ParseUriBodySchema = z.object({
   uri: z.string().min(1),
+});
+
+const NonnegativeSafeIntegerStringSchema = z.string()
+  .refine(
+    value => /^(0|[1-9]\d*)$/.test(value)
+      && BigInt(value) <= BigInt(Number.MAX_SAFE_INTEGER),
+  )
+  .transform(value => Number(value));
+
+const PayjoinUriQuerySchema = z.object({
+  amount: NonnegativeSafeIntegerStringSchema.optional(),
+  label: z.string().optional(),
+  message: z.string().optional(),
 });
 
 const AttemptPayjoinBodySchema = z.object({
@@ -179,7 +193,10 @@ router.get('/eligibility/:walletId', authenticate, requireFeature('payjoinSuppor
  * GET /api/v1/payjoin/address/:addressId/uri
  * Generate a BIP21 URI with Payjoin endpoint for an address
  */
-router.get('/address/:addressId/uri', authenticate, requireFeature('payjoinSupport'), asyncHandler(async (req, res) => {
+router.get('/address/:addressId/uri', authenticate, requireFeature('payjoinSupport'), validate(
+  { query: PayjoinUriQuerySchema },
+  { message: 'Invalid Payjoin URI query', code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const { addressId } = req.params;
   const { amount, label, message } = req.query;
   const userId = requireAuthenticatedUser(req).userId;
@@ -197,7 +214,7 @@ router.get('/address/:addressId/uri', authenticate, requireFeature('payjoinSuppo
   const payjoinUrl = `${baseUrl}/api/v1/payjoin/${addressId}`;
 
   const uri = generateBip21Uri(address.address, {
-    amount: amount ? parseInt(amount as string, 10) : undefined,
+    amount: amount as number | undefined,
     label: label as string,
     message: message as string,
     payjoinUrl,
@@ -294,12 +311,21 @@ router.post('/:addressId', async (req, res, next) => {
   next();
 }, payjoinRateLimiter, parsePayjoinTextBody, async (req, res) => {
   const addressId = req.params.addressId as string;
-  const { v, minfeerate } = req.query;
+  const { v, minfeerate, maxadditionalfeecontribution } = req.query;
 
   // BIP78 requires v=1
   if (v !== '1') {
     log.warn('Unsupported Payjoin protocol version', { version: v });
     return res.status(400).type('text/plain').send(PayjoinErrors.VERSION_UNSUPPORTED);
+  }
+
+  const minFeeRate = parsePayjoinMinFeeRate(minfeerate);
+  // The receiver cannot yet enforce a sender-provided fee-contribution cap
+  // through proposal construction, so fail closed instead of silently ignoring
+  // that optional BIP78 parameter and violating the sender's expectation.
+  if (minFeeRate === null || maxadditionalfeecontribution !== undefined) {
+    log.warn('Invalid or unsupported Payjoin receiver query');
+    return res.status(400).type('text/plain').send(PayjoinErrors.ORIGINAL_PSBT_REJECTED);
   }
 
   // Get the PSBT from the route-local text parser. Wrong or missing content
@@ -315,7 +341,7 @@ router.post('/:addressId', async (req, res, next) => {
     const result = await processPayjoinRequest(
       addressId,
       originalPsbt,
-      parseFloat(minfeerate as string) || 1
+      minFeeRate
     );
 
     if (!result.success) {

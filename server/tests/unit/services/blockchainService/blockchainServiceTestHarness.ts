@@ -18,6 +18,12 @@ export const mockPrisma = {
     findMany: vi.fn<any>(),
     create: vi.fn<any>(),
     createMany: vi.fn<any>().mockResolvedValue({ count: 1 }),
+    createManyAndReturn: vi.fn<any>().mockImplementation(({ data }) => (
+      Promise.resolve(data.map((row: object, index: number) => ({
+        ...row,
+        id: `transaction-${index}`,
+      })))
+    )),
     update: vi.fn<any>(),
     updateMany: vi.fn<any>(),
     delete: vi.fn<any>(),

@@ -20,12 +20,22 @@ const createSyncSuccessResult = (queued: number): NetworkSyncResult => ({
 });
 
 const createResyncSuccessResult = (
-  deletedTransactions: number,
-  queued: number
-): NetworkSyncResult => ({
-  type: 'success',
-  message: `Cleared ${deletedTransactions} transactions. Queued ${queued} wallet${queued !== 1 ? 's' : ''} for resync.`,
-});
+  accepted: number,
+  deduplicated: number,
+  rejected: number,
+  indeterminate: number,
+): NetworkSyncResult => {
+  const details = [
+    ...(deduplicated > 0 ? [`${deduplicated} already queued`] : []),
+    ...(rejected > 0 ? [`${rejected} rejected`] : []),
+    ...(indeterminate > 0 ? [`${indeterminate} queue state unknown`] : []),
+  ];
+  const suffix = details.length > 0 ? `; ${details.join('; ')}.` : '.';
+  return {
+    type: 'success',
+    message: `Queued ${accepted} wallet${accepted !== 1 ? 's' : ''} for resync${suffix}`,
+  };
+};
 
 const createErrorResult = (error: unknown, fallback: string): NetworkSyncResult => ({
   type: 'error',
@@ -65,7 +75,12 @@ export const useNetworkSyncActions = ({
 
     try {
       const response = await syncApi.resyncNetworkWallets(network);
-      setResult(createResyncSuccessResult(response.deletedTransactions, response.queued));
+      setResult(createResyncSuccessResult(
+        response.acceptedWalletIds.length,
+        response.deduplicatedWalletIds.length,
+        response.rejectedWallets.length,
+        response.indeterminateWallets.length,
+      ));
       onSyncStarted?.();
     } catch (error) {
       setResult(createErrorResult(error, 'Failed to resync wallets'));

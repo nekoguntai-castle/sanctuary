@@ -20,7 +20,13 @@ export const RESTORE_DATE_FIELDS: Record<string, readonly string[]> = {
   deviceUser: ['createdAt'],
   walletDevice: ['createdAt'],
   address: ['createdAt'],
-  transaction: ['blockTime', 'createdAt', 'updatedAt'],
+  transaction: [
+    'classificationLastAttemptAt',
+    'ioLastAttemptAt',
+    'blockTime',
+    'createdAt',
+    'updatedAt',
+  ],
   uTXO: ['createdAt', 'updatedAt'],
   draftTransaction: ['createdAt', 'updatedAt', 'expiresAt', 'approvedAt'],
   draftUtxoLock: ['createdAt'],
@@ -95,8 +101,7 @@ const ARRAY_FIELDS: Record<string, readonly string[]> = {
   webhookEndpoint: ['eventTypes'],
 };
 
-export function deserializeRecordForTable(table: string, record: BackupRecord): BackupRecord {
-  const result = { ...record };
+const deserializeArrayFields = (table: string, result: BackupRecord): void => {
   for (const field of ARRAY_FIELDS[table] ?? []) {
     const value = result[field];
     if (isLegacyArrayObject(value)) {
@@ -106,22 +111,35 @@ export function deserializeRecordForTable(table: string, record: BackupRecord): 
         .map(index => value[index]);
     }
   }
+};
+
+const deserializeDateFields = (table: string, result: BackupRecord): void => {
   for (const field of RESTORE_DATE_FIELDS[table] ?? []) {
     if (typeof result[field] === 'string') {
       result[field] = new Date(result[field]);
     }
   }
+};
+
+const deserializeBigIntFields = (table: string, result: BackupRecord): void => {
   for (const field of RESTORE_BIGINT_FIELDS[table] ?? []) {
     const value = result[field];
     if (typeof value === 'string' && value.startsWith('__bigint__')) {
       result[field] = BigInt(value.slice('__bigint__'.length));
     }
   }
-  return result;
-}
+};
 
-function isLegacyArrayObject(value: unknown): value is Record<number, unknown> {
+const isLegacyArrayObject = (value: unknown): value is Record<number, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const keys = Object.keys(value);
   return keys.length > 0 && keys.every(key => /^\d+$/.test(key));
+};
+
+export function deserializeRecordForTable(table: string, record: BackupRecord): BackupRecord {
+  const result = { ...record };
+  deserializeArrayFields(table, result);
+  deserializeDateFields(table, result);
+  deserializeBigIntFields(table, result);
+  return result;
 }

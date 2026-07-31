@@ -131,7 +131,7 @@ export const syncPaths = {
       tags: ["Sync"],
       summary: "Full wallet resync",
       description:
-        "Clear transactions and queue a high-priority full resync for a wallet.",
+        "Queue a high-priority full resync. Wallet data is cleared only after exclusive sync ownership is acquired.",
       security: bearerAuth,
       parameters: [walletIdParameter],
       responses: {
@@ -141,6 +141,10 @@ export const syncPaths = {
         ),
         401: apiErrorResponse,
         404: apiErrorResponse,
+        503: jsonResponse(
+          "Full resync queue unavailable or state indeterminate",
+          "#/components/schemas/FullResyncUnavailableResponse",
+        ),
         500: apiErrorResponse,
       },
     },
@@ -172,7 +176,7 @@ export const syncPaths = {
       tags: ["Sync"],
       summary: "Full network resync",
       description:
-        "Clear transactions and queue high-priority resync for all authenticated-user wallets on a network.",
+        "Queue high-priority full resyncs for authenticated-user wallets. Each wallet is cleared only after exclusive sync ownership is acquired.",
       security: bearerAuth,
       parameters: [
         syncNetworkParameter,
@@ -190,6 +194,10 @@ export const syncPaths = {
         ),
         400: apiErrorResponse,
         401: apiErrorResponse,
+        503: jsonResponse(
+          "No full resync intention could be confirmed retained",
+          "#/components/schemas/FullResyncUnavailableResponse",
+        ),
         500: apiErrorResponse,
       },
     },

@@ -102,6 +102,10 @@ import {
   generateBip21Uri,
   attemptPayjoinSend,
 } from '../../../src/services/payjoinService';
+import {
+  generateBip21Uri as realGenerateBip21Uri,
+  parseBip21Uri as realParseBip21Uri,
+} from '../../../src/services/payjoin/bip21';
 import { registerPayjoinBip78ErrorContracts } from './payjoin.bip78-errors.contracts';
 import { registerPayjoinSecurityContracts } from './payjoin.security.contracts';
 
@@ -138,6 +142,8 @@ describe('Payjoin API Routes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockParseBip21Uri.mockImplementation(realParseBip21Uri);
+    mockGenerateBip21Uri.mockImplementation(realGenerateBip21Uri);
   });
 
   describe('POST /:addressId (BIP78 Receiver Endpoint)', () => {
@@ -248,6 +254,51 @@ describe('Payjoin API Routes', () => {
         .send(VALID_PSBT_BASE64);
 
       expect(mockProcessPayjoinRequest).toHaveBeenCalledWith(TEST_ADDRESS_ID, VALID_PSBT_BASE64, 1);
+    });
+
+    it.each([
+      ['0', 0],
+      ['0.00000001', 0.00000001],
+      ['5.25', 5.25],
+    ])('should preserve valid minfeerate %s', async (value, expected) => {
+      mockProcessPayjoinRequest.mockResolvedValue({
+        success: true,
+        proposalPsbt: PROPOSAL_PSBT_BASE64,
+      });
+
+      const res = await request(app)
+        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1&minfeerate=${value}`)
+        .set('Content-Type', 'text/plain')
+        .send(VALID_PSBT_BASE64);
+
+      expect(res.status).toBe(200);
+      expect(mockProcessPayjoinRequest).toHaveBeenCalledWith(
+        TEST_ADDRESS_ID,
+        VALID_PSBT_BASE64,
+        expected,
+      );
+    });
+
+    it.each(['-1', 'Infinity', '', '1abc', '1000000.1', '9'.repeat(400)])('should reject invalid minfeerate %s', async (value) => {
+      const res = await request(app)
+        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1&minfeerate=${value}`)
+        .set('Content-Type', 'text/plain')
+        .send(VALID_PSBT_BASE64);
+
+      expect(res.status).toBe(400);
+      expect(res.type).toBe('text/plain');
+      expect(mockProcessPayjoinRequest).not.toHaveBeenCalled();
+    });
+
+    it.each(['0', '1'])('should reject unsupported maxadditionalfeecontribution %s', async (value) => {
+      const res = await request(app)
+        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1&maxadditionalfeecontribution=${value}`)
+        .set('Content-Type', 'text/plain')
+        .send(VALID_PSBT_BASE64);
+
+      expect(res.status).toBe(400);
+      expect(res.type).toBe('text/plain');
+      expect(mockProcessPayjoinRequest).not.toHaveBeenCalled();
     });
 
     it('should reject missing content type without calling the service', async () => {
@@ -568,6 +619,46 @@ describe('Payjoin API Routes', () => {
       );
     });
 
+    it.each([
+      ['0', 0],
+      ['1', 1],
+      [String(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER],
+    ])('should preserve valid integer amount %s', async (amount, expected) => {
+      mockPrisma.address.findFirst.mockResolvedValue({
+        id: TEST_ADDRESS_ID,
+        address: TEST_ADDRESS,
+        walletId: TEST_WALLET_ID,
+      });
+
+      const res = await request(app)
+        .get(`/api/v1/payjoin/address/${TEST_ADDRESS_ID}/uri?amount=${amount}`)
+        .set('Authorization', 'Bearer test-token');
+
+      expect(res.status).toBe(200);
+      expect(mockGenerateBip21Uri).toHaveBeenCalledWith(
+        TEST_ADDRESS,
+        expect.objectContaining({ amount: expected }),
+      );
+    });
+
+    it.each(['-1', 'Infinity', '', '1abc', '1.5', '9007199254740992'])(
+      'should reject invalid integer amount %s',
+      async (amount) => {
+        mockPrisma.address.findFirst.mockResolvedValue({
+          id: TEST_ADDRESS_ID,
+          address: TEST_ADDRESS,
+          walletId: TEST_WALLET_ID,
+        });
+
+        const res = await request(app)
+          .get(`/api/v1/payjoin/address/${TEST_ADDRESS_ID}/uri?amount=${amount}`)
+          .set('Authorization', 'Bearer test-token');
+
+        expect(res.status).toBe(400);
+        expect(mockGenerateBip21Uri).not.toHaveBeenCalled();
+      },
+    );
+
     it('should include label and message when provided', async () => {
       mockPrisma.address.findFirst.mockResolvedValue({
         id: TEST_ADDRESS_ID,
@@ -667,10 +758,6 @@ describe('Payjoin API Routes', () => {
     });
 
     it('should return 400 for invalid URI format', async () => {
-      mockParseBip21Uri.mockImplementation(() => {
-        throw new Error('Invalid URI format');
-      });
-
       const res = await request(app)
         .post('/api/v1/payjoin/parse-uri')
         .set('Authorization', 'Bearer test-token')

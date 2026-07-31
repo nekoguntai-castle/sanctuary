@@ -79,7 +79,7 @@ describe('BIP-21 Official Test Vectors', () => {
   describe('BTC to satoshi conversion precision', () => {
     BIP21_AMOUNT_VECTORS.forEach((vector) => {
       it(`should correctly convert ${vector.btc} BTC to ${vector.expectedSatoshis} satoshis`, () => {
-        const uri = `bitcoin:175tWpb8K1S7NmH4Zx6rewF9WQrcZv245W?amount=${vector.btc}`;
+        const uri = `bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4?amount=${vector.btc}`;
         const result = parseBip21Uri(uri);
         expect(Math.round(result.amount!)).toBe(vector.expectedSatoshis);
       });
@@ -88,7 +88,7 @@ describe('BIP-21 Official Test Vectors', () => {
 
   describe('URI generation round-trip', () => {
     it('should generate valid URI with all parameters', () => {
-      const uri = generateBip21Uri('175tWpb8K1S7NmH4Zx6rewF9WQrcZv245W', {
+      const uri = generateBip21Uri('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', {
         amount: 2030000000, // 20.3 BTC in satoshis
         label: 'Luke-Jr',
         message: 'Donation for project xyz',
@@ -96,7 +96,7 @@ describe('BIP-21 Official Test Vectors', () => {
 
       // Parse the generated URI back
       const parsed = parseBip21Uri(uri);
-      expect(parsed.address).toBe('175tWpb8K1S7NmH4Zx6rewF9WQrcZv245W');
+      expect(parsed.address).toBe('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
       expect(parsed.label).toBe('Luke-Jr');
       expect(parsed.message).toBe('Donation for project xyz');
       // Amount should round-trip through BTC conversion

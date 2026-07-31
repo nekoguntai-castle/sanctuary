@@ -49,7 +49,7 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
 
       await processTransactionsPhase(ctx);
 
-      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.arrayContaining([
             expect.objectContaining({
@@ -63,7 +63,7 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
       );
 
       // Verify it was NOT classified as sent (coinbase inputs should be ignored)
-      const createManyCall = mockPrismaClient.transaction.createMany.mock.calls[0][0];
+      const createManyCall = mockPrismaClient.transaction.createManyAndReturn.mock.calls[0][0];
       const txData = createManyCall.data[0];
       expect(txData.type).toBe('received');
       expect(txData.fee).toBeUndefined(); // No fee for received transactions
@@ -108,7 +108,7 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
       await processTransactionsPhase(ctx);
 
       // Sent amount = -(totalToExternal + fee) = -(60,000,000 + 1,000,000) = -61,000,000
-      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.arrayContaining([
             expect.objectContaining({
@@ -175,6 +175,13 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
 
       await processTransactionsPhase(ctx);
 
+      expect(storeIOCalled).toBe(true);
+      expect(mockPrismaClient.$transaction).toHaveBeenCalled();
+      const lockStatement = mockPrismaClient.$queryRaw.mock.calls.find(call =>
+        (call[0] as { strings?: string[] }).strings?.join('').includes('address-sync-io-lock')
+      );
+      expect(lockStatement).toBeDefined();
+
       // Verify inputs were stored
       expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -232,14 +239,25 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
         confirmations: 100,
         time: Date.now() / 1000,
         vin: [
-          { txid: prevTxid1, vout: 0 }, // No prevout - needs lookup
+          {
+            txid: prevTxid1,
+            vout: 0,
+            prevout: { value: 0.001, scriptPubKey: { hex: '0014-addressless' } },
+          },
           { txid: prevTxid2, vout: 1 }, // No prevout - needs lookup
         ],
-        vout: [{
-          value: 0.009,
-          n: 0,
-          scriptPubKey: { hex: '0014...', address: walletAddress },
-        }],
+        vout: [
+          {
+            value: 0.008,
+            n: 0,
+            scriptPubKey: { hex: '0014...', address: 'external-recipient' },
+          },
+          {
+            value: 0.001,
+            n: 1,
+            scriptPubKey: { hex: '0014...', address: walletAddress },
+          },
+        ],
       };
 
       // Previous transactions to be batch prefetched
@@ -249,7 +267,7 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
         vout: [{
           value: 0.005,
           n: 0,
-          scriptPubKey: { hex: '0014...', address: 'external_sender1' },
+          scriptPubKey: { hex: '0014...', address: walletAddress },
         }],
       };
 
@@ -278,6 +296,12 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
         }
         return result;
       });
+      mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
+        if (args?.select?.id && args?.where?.txid?.in?.includes(txid)) {
+          return [{ id: 'addressless-inline-row', txid, type: 'sent' }];
+        }
+        return [];
+      });
 
       const ctx = createTestContext({
         walletId,
@@ -299,9 +323,184 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
       // Second batch should contain both prev txids for batch prefetch
       expect(batchCalls[1]).toContain(prevTxid1);
       expect(batchCalls[1]).toContain(prevTxid2);
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [expect.objectContaining({
+            txid,
+            type: 'sent',
+            classificationInputsComplete: true,
+            amount: BigInt(-900000),
+            fee: BigInt(100000),
+          })],
+        })
+      );
+      expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalledWith({
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            txid: prevTxid1,
+            address: walletAddress,
+          }),
+        ]),
+        skipDuplicates: true,
+      });
 
       // Should NOT have made individual getTransaction calls (all prefetched in batch)
       expect(mockElectrumClient.getTransaction).not.toHaveBeenCalled();
+    });
+
+    it('repairs selected I/O even when scalar classification returns null', async () => {
+      const walletAddress = 'tb1q_io_only_wallet';
+      const txid = 'io_only_op_return'.padEnd(64, 'a');
+      const previousTxid = 'io_only_previous'.padEnd(64, 'b');
+      const transaction = {
+        txid,
+        vin: [{
+          txid: previousTxid,
+          vout: 0,
+          prevout: {
+            value: 0.001,
+            scriptPubKey: { address: walletAddress },
+          },
+        }],
+        vout: [{
+          value: 0,
+          scriptPubKey: { hex: '6a01ff' },
+        }],
+      };
+      mockElectrumClient.getTransactionsBatch.mockResolvedValue(
+        new Map([[txid, transaction]])
+      );
+      mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
+        if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') {
+          return [{
+            id: 'pending-op-return-row',
+            txid: 'pending_op_return'.padEnd(64, 'c'),
+            inputs: [{ txid: previousTxid, vout: 0 }],
+          }];
+        }
+        if (args?.select?.id && args?.where?.txid?.in?.includes(txid)) {
+          return [{ id: 'io-only-row', txid, type: 'sent', confirmations: 1 }];
+        }
+        return [];
+      });
+
+      const ctx = createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 0 }]]]),
+        walletAddressSet: new Set([walletAddress]),
+        addressMap: new Map([[walletAddress, {
+          id: 'io-only-address',
+          address: walletAddress,
+        } as any]]),
+        existingTxMap: new Map(),
+        txDetailsCache: new Map() as any,
+        currentBlockHeight: 800100,
+      });
+      ctx.ioRepairTxids = new Set([txid]);
+
+      await processTransactionsPhase(ctx);
+
+      expect(mockPrismaClient.transaction.createManyAndReturn).not.toHaveBeenCalled();
+      expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({
+          transactionId: 'io-only-row',
+          txid: previousTxid,
+          address: walletAddress,
+        })],
+        skipDuplicates: true,
+      });
+      const completion = mockPrismaClient.$executeRaw.mock.calls
+        .map(([statement]) => statement as { strings: string[] })
+        .find(statement => statement.strings.join('').includes('SET "ioComplete" = true'));
+      expect(completion).toBeDefined();
+      expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
+        where: { id: 'pending-op-return-row' },
+        data: {
+          rbfStatus: 'replaced',
+          replacedByTxid: txid,
+        },
+      });
+    });
+
+    it('completes classification-null I/O repair when no input rows exist', async () => {
+      const walletAddress = 'tb1q_io_only_coinbase';
+      const txid = 'io_only_coinbase_op_return'.padEnd(64, 'a');
+      mockElectrumClient.getTransactionsBatch.mockResolvedValue(
+        new Map([[txid, {
+          txid,
+          vin: [{ coinbase: '03abcdef' }],
+          vout: [{ value: 0, scriptPubKey: { hex: '6a01ff' } }],
+        }]])
+      );
+      mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
+        if (args?.select?.id && args?.where?.txid?.in?.includes(txid)) {
+          return [{ id: 'io-only-coinbase-row', txid, type: 'received', confirmations: 1 }];
+        }
+        return [];
+      });
+
+      const ctx = createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 800000 }]]]),
+        walletAddressSet: new Set([walletAddress]),
+        addressMap: new Map([[walletAddress, {
+          id: 'io-only-coinbase-address',
+          address: walletAddress,
+        } as any]]),
+        existingTxMap: new Map(),
+        txDetailsCache: new Map() as any,
+        currentBlockHeight: 800100,
+      });
+      ctx.ioRepairTxids = new Set([txid]);
+
+      await processTransactionsPhase(ctx);
+
+      expect(mockPrismaClient.transaction.createManyAndReturn).not.toHaveBeenCalled();
+      expect(mockPrismaClient.transactionInput.createMany).not.toHaveBeenCalled();
+      const completion = mockPrismaClient.$executeRaw.mock.calls
+        .map(([statement]) => statement as { strings: string[] })
+        .find(statement => statement.strings.join('').includes('SET "ioComplete" = true'));
+      expect(completion).toBeDefined();
+      expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps sync alive when classification-null I/O repair persistence fails', async () => {
+      const walletAddress = 'tb1q_io_repair_failure';
+      const txid = 'io_repair_failure'.padEnd(64, 'a');
+      mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, {
+        txid,
+        vin: [{
+          txid: 'failed_repair_prev'.padEnd(64, 'b'),
+          vout: 0,
+          prevout: { value: 0.001, scriptPubKey: { address: walletAddress } },
+        }],
+        vout: [{ value: 0, scriptPubKey: { hex: '6a' } }],
+      }]]));
+      mockPrismaClient.transaction.findMany.mockRejectedValue(
+        new Error('I/O repair persistence unavailable')
+      );
+      const ctx = createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 0 }]]]),
+        walletAddressSet: new Set([walletAddress]),
+        addressMap: new Map([[walletAddress, {
+          id: 'failed-io-repair-address',
+          address: walletAddress,
+        } as any]]),
+        existingTxMap: new Map(),
+        txDetailsCache: new Map() as any,
+        currentBlockHeight: 800100,
+      });
+      ctx.ioRepairTxids = new Set([txid]);
+
+      await expect(processTransactionsPhase(ctx)).resolves.toBe(ctx);
+      expect(mockPrismaClient.transactionInput.createMany).not.toHaveBeenCalled();
     });
 
     it('should process large batch of transactions (50+ txs)', async () => {
@@ -468,6 +667,6 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
       expect(mockElectrumClient.getTransaction).toHaveBeenCalledWith(failBatchTxid, true);
 
       // Should have created transactions for both successful batch and fallback
-      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalled();
     });
 }

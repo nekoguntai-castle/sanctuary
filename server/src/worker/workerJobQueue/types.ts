@@ -31,6 +31,7 @@ export interface RegisteredHandler {
   lockOptions?: {
     lockKey: (data: unknown) => string;
     lockTtlMs?: number;
+    retryDelayMsIfUnavailable?: (data: unknown) => number | null;
   };
 }
 

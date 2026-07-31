@@ -29,9 +29,15 @@ type SentInputClassification = {
   isSent: boolean;
   totalSentFromWallet: number;
   hasCompleteInputData: boolean;
+  classificationInputsComplete: boolean;
 };
 type OutputTotals = { totalToExternal: number; totalToWallet: number };
-type ChainFields = { confirmations: number; blockHeight: number | null; blockTime: Date | null };
+type ChainFields = {
+  confirmations: number;
+  blockHeight: number | null;
+  blockTime: Date | null;
+  rbfStatus: 'active' | 'confirmed';
+};
 type ConfirmationsLoader = (height: number, network: BitcoinNetwork) => Promise<number>;
 
 interface HistoryTransactionContext {
@@ -61,10 +67,10 @@ const getInputSource = (
   txDetailsMap: TransactionDetailsMap
 ): InputSource => {
   if (input.prevout?.scriptPubKey) {
-    return {
-      address: getScriptPubKeyAddress(input.prevout),
-      value: input.prevout.value,
-    };
+    const address = getScriptPubKeyAddress(input.prevout);
+    if (address !== undefined) {
+      return { address, value: input.prevout.value };
+    }
   }
 
   if (input.txid && input.vout !== undefined) {
@@ -88,12 +94,18 @@ const classifySentInputs = (
   let isSent = false;
   let totalSentFromWallet = 0;
   let hasCompleteInputData = true;
+  let classificationInputsComplete = true;
 
   for (const input of inputs) {
     if (input.coinbase) continue;
 
     const inputSource = getInputSource(input, txDetailsMap);
-    if (inputSource.address && walletAddressSet.has(inputSource.address)) {
+    if (!inputSource.address) {
+      classificationInputsComplete = false;
+      hasCompleteInputData = false;
+      continue;
+    }
+    if (walletAddressSet.has(inputSource.address)) {
       isSent = true;
       if (inputSource.value !== undefined && inputSource.value > 0) {
         totalSentFromWallet += toSats(inputSource.value);
@@ -103,7 +115,12 @@ const classifySentInputs = (
     }
   }
 
-  return { isSent, totalSentFromWallet, hasCompleteInputData };
+  return {
+    isSent,
+    totalSentFromWallet,
+    hasCompleteInputData,
+    classificationInputsComplete,
+  };
 };
 
 const getBlockTime = async (
@@ -127,19 +144,26 @@ const getChainFields = async (
   blockTime: Date | null,
   getConfirmations: ConfirmationsLoader
 ): Promise<ChainFields> => {
+  const confirmations = item.height > 0 ? await getConfirmations(item.height, network) : 0;
   return {
-    confirmations: item.height > 0 ? await getConfirmations(item.height, network) : 0,
+    confirmations,
     blockHeight: item.height > 0 ? item.height : null,
     blockTime,
+    // Once mined, a transaction is no longer replaceable even if its earlier
+    // wallet observation carried an active RBF state.
+    rbfStatus: confirmations > 0 ? 'confirmed' : 'active',
   };
 };
 
 const getReceivedAmount = (
   outputs: TransactionOutput[],
-  address: string
+  walletAddressSet: Set<string>
 ): bigint => {
   const amount = outputs
-    .filter(out => outputMatchesAddress(out, address))
+    .filter(out => {
+      const outputAddress = getScriptPubKeyAddress(out);
+      return outputAddress !== undefined && walletAddressSet.has(outputAddress);
+    })
     .reduce((sum, out) => sum + toSats(out.value), 0);
   return BigInt(amount);
 };
@@ -213,7 +237,7 @@ const classifyHistoryTransaction = (
   if (outputs.some(out => outputMatchesAddress(out, context.addressRecord.address))) {
     return {
       type: 'received',
-      amount: getReceivedAmount(outputs, context.addressRecord.address),
+      amount: getReceivedAmount(outputs, context.walletAddressSet),
     };
   }
   return null;
@@ -241,6 +265,7 @@ const processHistoryTransaction = async (
     txid: item.tx_hash,
     walletId: context.addressRecord.walletId,
     addressId: context.addressRecord.id,
+    classificationInputsComplete: sentInputs.classificationInputsComplete,
     ...classification,
     ...chainFields,
   };

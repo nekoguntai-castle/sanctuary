@@ -68,10 +68,18 @@ vi.mock('bullmq', () => {
     close = vi.fn().mockResolvedValue(undefined);
   }
 
+  class DelayedError extends Error {
+    constructor() {
+      super('bullmq:delayed');
+      this.name = 'DelayedError';
+    }
+  }
+
   return {
     Queue: MockQueue,
     Worker: MockWorker,
     QueueEvents: MockQueueEvents,
+    DelayedError,
   };
 });
 

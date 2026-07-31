@@ -17,7 +17,7 @@ import { walletLog } from '../../../../../websocket/notifications';
 import { recalculateWalletBalances } from '../../../utils/balanceCalculation';
 import type { SyncContext, TransactionCreateData } from '../../types';
 import { classifyTransactions } from './classification';
-import { storeTransactionIO } from './transactionIO';
+import { repairTransactionIO, storeTransactionIO } from './transactionIO';
 import { applyAddressLabels } from './addressLabels';
 import { sendNotifications } from './notifications';
 
@@ -25,6 +25,18 @@ const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
 /** Number of transactions to process per batch (optimized for Electrum server limits) */
 const TX_BATCH_SIZE = 25;
+
+type BatchPersistenceResult = {
+  created: TransactionCreateData[];
+  repaired: TransactionCreateData[];
+};
+
+const getInlineInputAddress = (input: {
+  prevout?: { scriptPubKey?: { address?: string; addresses?: string[] } };
+}): string | undefined => {
+  return input.prevout?.scriptPubKey?.address
+    || input.prevout?.scriptPubKey?.addresses?.[0];
+};
 
 /**
  * Execute process transactions phase
@@ -44,14 +56,24 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
     return ctx;
   }
 
-  walletLog(walletId, 'info', 'SYNC', `Processing ${newTxids.length} new transactions...`);
+  walletLog(walletId, 'info', 'SYNC', `Processing ${newTxids.length} transaction candidates...`);
 
   let totalTransactions = 0;
+  let repairedTransactions = 0;
   const allNewTransactions: TransactionCreateData[] = [];
 
   // Process transactions in batches
   for (let batchIndex = 0; batchIndex < newTxids.length; batchIndex += TX_BATCH_SIZE) {
     const batchTxids = newTxids.slice(batchIndex, batchIndex + TX_BATCH_SIZE);
+    const classificationRepairTxids = batchTxids.filter(
+      txid => ctx.classificationRepairTxids.has(txid)
+    );
+    const ioRepairTxids = batchTxids.filter(txid => ctx.ioRepairTxids.has(txid));
+
+    // Advance selected repairs before network I/O so missing/null/failed raw
+    // fetches rotate behind the durable backlog instead of starving it.
+    await transactionRepository.markClassificationRepairAttempts(walletId, classificationRepairTxids);
+    await transactionRepository.markIoRepairAttempts(walletId, ioRepairTxids);
 
     walletLog(
       walletId,
@@ -88,7 +110,9 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
 
     // Step 3: Insert batch to DB
     if (transactionsToCreate.length > 0) {
-      const newTransactions = await insertTransactionBatch(walletId, transactionsToCreate);
+      const persisted = await persistTransactionBatch(ctx, transactionsToCreate);
+      const newTransactions = persisted.created;
+      repairedTransactions += persisted.repaired.length;
 
       if (newTransactions.length > 0) {
         totalTransactions += newTransactions.length;
@@ -96,17 +120,13 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
 
         // Log batch results
         logBatchResults(walletId, newTransactions);
-
-        // Store transaction inputs/outputs
-        await storeTransactionIO(ctx, newTransactions);
-
-        // Auto-apply address labels
-        await applyAddressLabels(walletId, newTransactions);
-
-        // Send notifications
-        await sendNotifications(walletId, newTransactions);
       }
     }
+    const classifiedTxids = new Set(transactionsToCreate.map(transaction => transaction.txid));
+    const unclassifiedIoRepairTxids = ioRepairTxids.filter(
+      txid => batchTxidSet.has(txid) && !classifiedTxids.has(txid)
+    );
+    await repairTransactionIO(ctx, unclassifiedIoRepairTxids);
 
     // Small delay between batches
     if (batchIndex + TX_BATCH_SIZE < newTxids.length) {
@@ -115,7 +135,7 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
   }
 
   // Recalculate running balances
-  if (allNewTransactions.length > 0) {
+  if (allNewTransactions.length > 0 || repairedTransactions > 0) {
     await recalculateWalletBalances(walletId);
 
     const received = allNewTransactions.filter(t => t.type === 'received').length;
@@ -151,7 +171,7 @@ async function prefetchPreviousTransactions(
     if (!txDetails?.vin) continue;
     for (const input of txDetails.vin) {
       if (input.coinbase) continue;
-      if (!input.prevout?.scriptPubKey && input.txid && !txDetailsCache.has(input.txid)) {
+      if (!getInlineInputAddress(input) && input.txid && !txDetailsCache.has(input.txid)) {
         prevTxidsNeeded.add(input.txid);
       }
     }
@@ -172,38 +192,33 @@ async function prefetchPreviousTransactions(
 }
 
 /**
- * Insert a batch of transactions to the database, deduplicating and checking for existing
+ * Persist a classified batch while retaining exact created/repaired ownership.
  */
-async function insertTransactionBatch(
-  walletId: string,
+async function persistTransactionBatch(
+  ctx: SyncContext,
   transactionsToCreate: TransactionCreateData[]
-): Promise<TransactionCreateData[]> {
-  // Deduplicate by txid:type
-  const uniqueTxs = new Map<string, TransactionCreateData>();
-  for (const tx of transactionsToCreate) {
-    const key = `${tx.txid}:${tx.type}`;
-    if (!uniqueTxs.has(key)) {
-      uniqueTxs.set(key, tx);
-    }
+): Promise<BatchPersistenceResult> {
+  const results = await transactionRepository.reconcileTransactionBatch(transactionsToCreate);
+  const created = results
+    .filter(result => result.outcome === 'created')
+    .map(result => result.transaction as TransactionCreateData);
+  const repaired = results
+    .filter(result => result.outcome === 'repaired')
+    .map(result => result.transaction as TransactionCreateData);
+  const changed = [...created, ...repaired];
+
+  // I/O persistence is duplicate-safe and repairs incomplete prior attempts for
+  // created, repaired, and unchanged classifications alike.
+  await storeTransactionIO(ctx, results.map(result => result.transaction as TransactionCreateData));
+
+  if (changed.length > 0) {
+    await applyAddressLabels(ctx.walletId, changed);
+  }
+  if (created.length > 0) {
+    await sendNotifications(ctx.walletId, created);
   }
 
-  const uniqueTxArray = Array.from(uniqueTxs.values());
-
-  // Check for existing
-  const existingTxRecords = await transactionRepository.findByWalletIdAndTxids(
-    walletId,
-    uniqueTxArray.map(tx => tx.txid),
-    { txid: true }
-  );
-  const existingTxids = new Set(existingTxRecords.map(tx => tx.txid));
-
-  const newTransactions = uniqueTxArray.filter(tx => !existingTxids.has(tx.txid));
-
-  if (newTransactions.length > 0) {
-    await transactionRepository.createMany(uniqueTxArray as unknown as Array<Record<string, unknown>>, { skipDuplicates: true });
-  }
-
-  return newTransactions;
+  return { created, repaired };
 }
 
 /**

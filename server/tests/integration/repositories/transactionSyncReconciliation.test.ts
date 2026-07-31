@@ -1,7 +1,8 @@
 import prisma from '../../../src/models/prisma';
 import type { PrismaClient } from '../../../src/generated/prisma/client';
 import { transactionRepository } from '../../../src/repositories';
-import { persistAddressSyncIORows } from '../../../src/repositories/transactions/sync';
+import { storeTransactionIO } from '../../../src/services/bitcoin/sync/phases/processTransactions/transactionIO';
+import type { SyncContext } from '../../../src/services/bitcoin/sync/types';
 import {
   createTestAddress,
   createTestUser,
@@ -65,6 +66,7 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     fee: type === 'received' ? undefined : BigInt(1_000),
     confirmations: type === 'sent' ? 2 : 0,
     blockHeight: type === 'sent' ? 100 : null,
+    rbfStatus: type === 'sent' ? 'confirmed' as const : 'active' as const,
   });
 
   it('converges concurrent candidates on the strongest classification', async () => {
@@ -90,6 +92,31 @@ describeWithDatabase('address sync transaction reconciliation', () => {
       fee: BigInt(1_000),
       confirmations: 2,
       blockHeight: 100,
+      rbfStatus: 'confirmed',
+    });
+  });
+
+  it('converges a primary batch insert racing an address-sync promotion', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+
+    const [batchResults] = await Promise.all([
+      transactionRepository.reconcileTransactionBatch([
+        candidate(wallet.id, address.id, txid, 'received'),
+      ]),
+      transactionRepository.reconcileAddressSyncTransaction(
+        candidate(wallet.id, address.id, txid, 'sent')
+      ),
+    ]);
+
+    expect(batchResults).toHaveLength(1);
+    expect(await prisma.transaction.findUniqueOrThrow({
+      where: { txid_walletId: { txid, walletId: wallet.id } },
+      select: { type: true, amount: true, rbfStatus: true },
+    })).toEqual({
+      type: 'sent',
+      amount: BigInt(-9_000),
+      rbfStatus: 'confirmed',
     });
   });
 
@@ -165,76 +192,130 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     ]);
   });
 
-  it('selects both inputs-only and outputs-only rows for duplicate-safe I/O repair', async () => {
+  it('persists classification input completeness monotonically without changing same-type outcome', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationInputsComplete: false,
+    })).toBe('created');
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationInputsComplete: true,
+    })).toBe('unchanged');
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationInputsComplete: false,
+    })).toBe('unchanged');
+
+    expect(await prisma.transaction.findUniqueOrThrow({
+      where: { txid_walletId: { txid, walletId: wallet.id } },
+      select: { type: true, classificationInputsComplete: true },
+    })).toEqual({ type: 'received', classificationInputsComplete: true });
+  });
+
+  it('advances the private classification cursor without changing public updatedAt', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+    const incomplete = {
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationInputsComplete: false,
+    };
+
+    expect(await transactionRepository.reconcileAddressSyncTransaction(incomplete)).toBe('created');
+    const before = await prisma.transaction.findUniqueOrThrow({
+      where: { txid_walletId: { txid, walletId: wallet.id } },
+      select: {
+        id: true,
+        updatedAt: true,
+        classificationLastAttemptAt: true,
+        ioLastAttemptAt: true,
+      },
+    });
+    expect(before.classificationLastAttemptAt).toBeNull();
+    expect(before.ioLastAttemptAt).toBeNull();
+
+    await transactionRepository.markClassificationRepairAttempts(wallet.id, [txid]);
+    await transactionRepository.markIoRepairAttempts(wallet.id, [txid]);
+    const after = await prisma.transaction.findUniqueOrThrow({
+      where: { txid_walletId: { txid, walletId: wallet.id } },
+      select: {
+        updatedAt: true,
+        classificationLastAttemptAt: true,
+        ioLastAttemptAt: true,
+        ioComplete: true,
+      },
+    });
+
+    expect(after.classificationLastAttemptAt).toBeInstanceOf(Date);
+    expect(after.ioLastAttemptAt).toBeInstanceOf(Date);
+    expect(after.ioComplete).toBe(false);
+    expect(after.updatedAt.toISOString()).toBe(before.updatedAt.toISOString());
+
+    await transactionRepository.persistAddressSyncIORows([], [], [before.id]);
+    const completed = await prisma.transaction.findUniqueOrThrow({
+      where: { txid_walletId: { txid, walletId: wallet.id } },
+      select: { updatedAt: true, ioComplete: true },
+    });
+    expect(completed.ioComplete).toBe(true);
+    expect(completed.updatedAt.toISOString()).toBe(before.updatedAt.toISOString());
+  });
+
+  it('selects durable incomplete I/O regardless of relation shape', async () => {
     const { wallet } = await createWalletFixture();
-    const inputsOnlyTxid = generateTxid();
-    const outputsOnlyTxid = generateTxid();
-    const [inputsOnly, outputsOnly] = await Promise.all([
+    const incompleteTxid = generateTxid();
+    const completeEmptyTxid = generateTxid();
+    const [incomplete] = await Promise.all([
       prisma.transaction.create({
-        data: { walletId: wallet.id, txid: inputsOnlyTxid, type: 'sent', amount: BigInt(-1) },
+        data: {
+          walletId: wallet.id,
+          txid: incompleteTxid,
+          type: 'sent',
+          amount: BigInt(-1),
+          ioComplete: false,
+        },
       }),
       prisma.transaction.create({
-        data: { walletId: wallet.id, txid: outputsOnlyTxid, type: 'received', amount: BigInt(1) },
+        data: {
+          walletId: wallet.id,
+          txid: completeEmptyTxid,
+          type: 'received',
+          amount: BigInt(1),
+          ioComplete: true,
+        },
       }),
     ]);
-    const existingInput = {
-      transactionId: inputsOnly.id,
-      inputIndex: 0,
-      txid: generateTxid(),
-      vout: 0,
-      address: 'input-address',
-      amount: BigInt(2),
-    };
-    const existingOutput = {
-      transactionId: outputsOnly.id,
-      outputIndex: 0,
-      address: 'output-address',
-      amount: BigInt(2),
-    };
-    await transactionRepository.createManyInputs([existingInput], { skipDuplicates: true });
-    await transactionRepository.createManyOutputs([existingOutput], { skipDuplicates: true });
+    await prisma.transactionInput.createMany({
+      data: [{
+        transactionId: incomplete.id,
+        inputIndex: 0,
+        txid: generateTxid(),
+        vout: 0,
+        address: 'input-address',
+        amount: BigInt(2),
+      }],
+      skipDuplicates: true,
+    });
+    await prisma.transactionOutput.createMany({
+      data: [{
+        transactionId: incomplete.id,
+        outputIndex: 0,
+        address: 'output-address',
+        amount: BigInt(2),
+      }],
+      skipDuplicates: true,
+    });
 
     const repairable = await transactionRepository.findWithoutIO(
       wallet.id,
-      [inputsOnlyTxid, outputsOnlyTxid]
+      [incompleteTxid, completeEmptyTxid]
     );
 
-    expect(repairable.map(row => row.txid).sort()).toEqual(
-      [inputsOnlyTxid, outputsOnlyTxid].sort()
-    );
-
-    const inputRepair = await transactionRepository.createManyInputs([
-      existingInput,
-      {
-        transactionId: outputsOnly.id,
-        inputIndex: 0,
-        txid: generateTxid(),
-        vout: 1,
-        address: 'recovered-input',
-        amount: BigInt(3),
-      },
-    ], { skipDuplicates: true });
-    const outputRepair = await transactionRepository.createManyOutputs([
-      existingOutput,
-      {
-        transactionId: inputsOnly.id,
-        outputIndex: 0,
-        address: 'recovered-output',
-        amount: BigInt(3),
-      },
-    ], { skipDuplicates: true });
-
-    expect(inputRepair.count).toBe(1);
-    expect(outputRepair.count).toBe(1);
-    expect(await prisma.transactionInput.count({
-      where: { transactionId: { in: [inputsOnly.id, outputsOnly.id] } },
-    })).toBe(2);
-    expect(await prisma.transactionOutput.count({
-      where: { transactionId: { in: [inputsOnly.id, outputsOnly.id] } },
-    })).toBe(2);
+    expect(repairable.map(row => row.txid)).toEqual([incompleteTxid]);
   });
 
-  it('classifies deferred I/O from the committed type after a concurrent promotion', async () => {
+  it('classifies primary-sync I/O from the committed type after a concurrent promotion', async () => {
     const { wallet, address } = await createWalletFixture();
     const txid = generateTxid();
     await transactionRepository.reconcileAddressSyncTransaction(
@@ -244,7 +325,33 @@ describeWithDatabase('address sync transaction reconciliation', () => {
       where: { txid_walletId: { txid, walletId: wallet.id } },
     });
 
-    let persistPromise!: ReturnType<typeof persistAddressSyncIORows>;
+    const primaryCandidate = {
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationInputsComplete: false,
+    };
+    const context = {
+      walletId: wallet.id,
+      walletAddressSet: new Set(['wallet-output']),
+      addressToDerivationPath: new Map(),
+      txDetailsCache: new Map([[txid, {
+        txid,
+        vin: [],
+        vout: [
+          {
+            n: 0,
+            value: 0.00008,
+            scriptPubKey: { address: 'wallet-output' },
+          },
+          {
+            n: 1,
+            value: 0.00001,
+            scriptPubKey: { address: 'external-output' },
+          },
+        ],
+      }]]),
+    } as unknown as SyncContext;
+
+    let persistPromise!: ReturnType<typeof storeTransactionIO>;
     await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT "id" FROM "transactions" WHERE "id" = ${transaction.id} FOR UPDATE`;
       await tx.transaction.update({
@@ -255,22 +362,7 @@ describeWithDatabase('address sync transaction reconciliation', () => {
           fee: BigInt(1_000),
         },
       });
-      persistPromise = persistAddressSyncIORows([], [
-        {
-          transactionId: transaction.id,
-          outputIndex: 0,
-          address: 'wallet-output',
-          amount: BigInt(8_000),
-          isOurs: true,
-        },
-        {
-          transactionId: transaction.id,
-          outputIndex: 1,
-          address: 'external-output',
-          amount: BigInt(1_000),
-          isOurs: false,
-        },
-      ]);
+      persistPromise = storeTransactionIO(context, [primaryCandidate]);
       await waitForAddressSyncIOLock();
     });
     await persistPromise;

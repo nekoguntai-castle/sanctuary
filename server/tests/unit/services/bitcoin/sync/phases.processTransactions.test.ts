@@ -27,7 +27,7 @@ describe('Sync Phases', () => {
     beforeEach(() => {
       vi.clearAllMocks();
       mockPrismaClient.transaction.findMany.mockResolvedValue([]);
-      mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 0 });
+      mockPrismaClient.transaction.createManyAndReturn.mockImplementation(async (args: any) => args.data);
       mockPrismaClient.transactionInput.createMany.mockResolvedValue({ count: 0 });
       mockPrismaClient.transactionOutput.createMany.mockResolvedValue({ count: 0 });
       mockPrismaClient.addressLabel.findMany.mockResolvedValue([]);

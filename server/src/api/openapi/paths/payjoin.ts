@@ -5,6 +5,10 @@
  */
 
 import { browserOrBearerAuth as bearerAuth } from '../security';
+import {
+  MAX_PAYJOIN_MIN_FEE_RATE,
+  PAYJOIN_MIN_FEE_RATE_PATTERN,
+} from '../../../services/payjoin/validation';
 
 const walletIdParameter = {
   name: 'walletId',
@@ -96,7 +100,12 @@ export const payjoinPaths = {
           name: 'amount',
           in: 'query',
           required: false,
-          schema: { type: 'integer', minimum: 0, description: 'Amount in satoshis' },
+          schema: {
+            type: 'integer',
+            minimum: 0,
+            maximum: Number.MAX_SAFE_INTEGER,
+            description: 'Amount in satoshis',
+          },
         },
         {
           name: 'label',
@@ -113,6 +122,7 @@ export const payjoinPaths = {
       ],
       responses: {
         200: jsonResponse('Payjoin BIP21 URI', '#/components/schemas/PayjoinUriResponse'),
+        400: apiErrorResponse,
         401: apiErrorResponse,
         403: apiErrorResponse,
         404: apiErrorResponse,
@@ -168,15 +178,11 @@ export const payjoinPaths = {
           name: 'minfeerate',
           in: 'query',
           required: false,
-          schema: { type: 'number', minimum: 0 },
-          description: 'Minimum fee rate in sat/vB.',
-        },
-        {
-          name: 'maxadditionalfeecontribution',
-          in: 'query',
-          required: false,
-          schema: { type: 'integer', minimum: 0 },
-          description: 'Maximum additional fee contribution in satoshis.',
+          schema: {
+            type: 'string',
+            pattern: PAYJOIN_MIN_FEE_RATE_PATTERN,
+          },
+          description: `Minimum fee rate in sat/vB (maximum ${MAX_PAYJOIN_MIN_FEE_RATE.toLocaleString('en-US')}).`,
         },
       ],
       requestBody: {

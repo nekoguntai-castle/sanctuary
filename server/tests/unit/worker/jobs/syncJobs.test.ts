@@ -9,17 +9,29 @@ import type { Job } from 'bullmq';
 
 // Mock prisma
 vi.mock('../../../../src/models/prisma', () => ({
-  default: {
+  default: (() => {
+    const client: any = {
     wallet: {
       findMany: vi.fn(),
       findUnique: vi.fn().mockResolvedValue({ network: 'mainnet' }),
       update: vi.fn().mockResolvedValue({}),
     },
+    address: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
     transaction: {
       findMany: vi.fn(),
       updateMany: vi.fn(),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
-  },
+    $queryRaw: vi.fn().mockResolvedValue([{
+      requestedFullResyncGeneration: 1,
+      processedFullResyncGeneration: 0,
+    }]),
+    };
+    client.$transaction = vi.fn(async (callback: any) => callback(client));
+    return client;
+  })(),
 }));
 
 // Mock config
@@ -60,6 +72,7 @@ import {
   updateConfirmationsJob,
   updateAllConfirmationsJob,
 } from '../../../../src/worker/jobs/syncJobs';
+import { FULL_RESYNC_GENERATION_MAX } from '../../../../src/constants/fullResync';
 
 describe('Sync Jobs', () => {
   beforeEach(() => {
@@ -72,6 +85,278 @@ describe('Sync Jobs', () => {
       expect(syncWalletJob.queue).toBe('sync');
       expect(syncWalletJob.options?.attempts).toBe(3);
       expect(syncWalletJob.lockOptions?.lockKey({ walletId: 'test' })).toBe('sync:wallet:test');
+      expect(syncWalletJob.lockOptions?.retryDelayMsIfUnavailable?.({
+        walletId: 'test',
+        fullResync: true,
+      })).toBe(5000);
+      expect(syncWalletJob.lockOptions?.retryDelayMsIfUnavailable?.({
+        walletId: 'test',
+      })).toBeNull();
+    });
+
+    it('resets full-resync state while retaining durable rebuild job data', async () => {
+      vi.mocked(prisma.wallet.findUnique)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any);
+      vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{
+        requestedFullResyncGeneration: FULL_RESYNC_GENERATION_MAX,
+        processedFullResyncGeneration: FULL_RESYNC_GENERATION_MAX - 1,
+      }] as any);
+      vi.mocked(prisma.transaction.deleteMany).mockResolvedValueOnce({ count: 7 } as any);
+      vi.mocked(syncWallet).mockResolvedValueOnce({ transactions: 5, utxos: 10 });
+      const updateData = vi.fn().mockResolvedValue(undefined);
+      const job = {
+        id: 'full-resync-job',
+        data: {
+          walletId: 'wallet-1',
+          priority: 'high',
+          reason: 'manual',
+          fullResync: true,
+          fullResyncGeneration: FULL_RESYNC_GENERATION_MAX,
+        },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+        updateData,
+      } as unknown as Job;
+
+      await syncWalletJob.handler(job);
+
+      expect(prisma.transaction.deleteMany).toHaveBeenCalledWith({
+        where: { walletId: 'wallet-1' },
+      });
+      expect(updateData).not.toHaveBeenCalled();
+      expect(syncWalletJob.lockOptions?.retryDelayMsIfUnavailable?.(job.data as any)).toBe(5000);
+    });
+
+    it('does not depend on mutable queue data after persisting the reset generation', async () => {
+      vi.mocked(prisma.wallet.findUnique)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any);
+      vi.mocked(syncWallet).mockResolvedValueOnce({ transactions: 1, utxos: 2 });
+      const updateData = vi.fn().mockRejectedValue(new Error('redis update failed'));
+      const job = {
+        id: 'full-resync-job',
+        data: {
+          walletId: 'wallet-1',
+          fullResync: true,
+          fullResyncGeneration: 1,
+        },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+        updateData,
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job)).resolves.toMatchObject({ success: true });
+      expect(prisma.wallet.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ lastSyncStatus: 'resyncing' }),
+      }));
+      expect(prisma.wallet.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          processedFullResyncGeneration: 1,
+        }),
+      }));
+      expect(prisma.wallet.update).not.toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ lastSyncStatus: 'failed' }),
+      }));
+      expect(syncWallet).toHaveBeenCalledWith('wallet-1');
+      expect(updateData).not.toHaveBeenCalled();
+    });
+
+    it('retains rebuild intent and does not repeat deletion across a sync retry', async () => {
+      vi.mocked(prisma.wallet.findUnique)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any);
+      vi.mocked(prisma.$queryRaw)
+        .mockResolvedValueOnce([{
+          requestedFullResyncGeneration: 1,
+          processedFullResyncGeneration: 0,
+        }] as any)
+        .mockResolvedValueOnce([{
+          requestedFullResyncGeneration: 1,
+          processedFullResyncGeneration: 1,
+        }] as any);
+      vi.mocked(syncWallet)
+        .mockRejectedValueOnce(new Error('sync interrupted'))
+        .mockResolvedValueOnce({ transactions: 1, utxos: 2 });
+      const updateData = vi.fn();
+      const job = {
+        id: 'full-resync-job',
+        data: {
+          walletId: 'wallet-1',
+          fullResync: true,
+          fullResyncGeneration: 1,
+        },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+        updateData,
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job)).rejects.toThrow('sync interrupted');
+      await expect(syncWalletJob.handler(job)).resolves.toMatchObject({ success: true });
+
+      expect(prisma.transaction.deleteMany).toHaveBeenCalledTimes(1);
+      expect(updateData).not.toHaveBeenCalled();
+      expect(job.data.fullResync).toBe(true);
+      expect(syncWalletJob.lockOptions?.retryDelayMsIfUnavailable?.(job.data as any)).toBe(5000);
+    });
+
+    it('executes the retained successor generation after active reset A completes', async () => {
+      vi.mocked(prisma.wallet.findUnique)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any);
+      vi.mocked(prisma.$queryRaw)
+        .mockResolvedValueOnce([{
+          requestedFullResyncGeneration: 2,
+          processedFullResyncGeneration: 0,
+        }] as any)
+        .mockResolvedValueOnce([{
+          requestedFullResyncGeneration: 2,
+          processedFullResyncGeneration: 1,
+        }] as any);
+      let signalActiveReset!: () => void;
+      let finishActiveReset!: () => void;
+      const activeResetStarted = new Promise<void>(resolve => { signalActiveReset = resolve; });
+      const activeResetMayFinish = new Promise<void>(resolve => { finishActiveReset = resolve; });
+      vi.mocked(syncWallet)
+        .mockImplementationOnce(async () => {
+          signalActiveReset();
+          await activeResetMayFinish;
+          return { transactions: 1, utxos: 1 };
+        })
+        .mockResolvedValueOnce({ transactions: 2, utxos: 2 });
+      const activeJob = {
+        id: 'full-resync-generation-1',
+        data: {
+          walletId: 'wallet-1',
+          fullResync: true,
+          fullResyncGeneration: 1,
+        },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+      } as unknown as Job;
+      const successorJob = {
+        id: 'full-resync-generation-2',
+        data: {
+          walletId: 'wallet-1',
+          fullResync: true,
+          fullResyncGeneration: 2,
+        },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+      } as unknown as Job;
+
+      const activeProcessing = syncWalletJob.handler(activeJob);
+      await activeResetStarted;
+      expect(prisma.transaction.deleteMany).toHaveBeenCalledTimes(1);
+      finishActiveReset();
+      await expect(activeProcessing).resolves.toMatchObject({ success: true });
+      await expect(syncWalletJob.handler(successorJob)).resolves.toMatchObject({ success: true });
+
+      expect(prisma.transaction.deleteMany).toHaveBeenCalledTimes(2);
+      expect(prisma.wallet.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ processedFullResyncGeneration: 2 }),
+      }));
+    });
+
+    it.each([
+      undefined,
+      0,
+      -1,
+      1.5,
+      FULL_RESYNC_GENERATION_MAX + 1,
+    ])('rejects a full-resync job with invalid generation %s', async fullResyncGeneration => {
+      const job = {
+        id: 'invalid-full-resync-job',
+        data: { walletId: 'wallet-1', fullResync: true, fullResyncGeneration },
+        attemptsMade: 0,
+        opts: {},
+        updateData: vi.fn(),
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job)).rejects.toThrow(
+        'Full resync job is missing its durable generation',
+      );
+      expect(prisma.transaction.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('records truthful metadata when full-resync preparation exhausts retries', async () => {
+      vi.mocked(prisma.wallet.findUnique)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any);
+      vi.mocked(prisma.transaction.deleteMany).mockRejectedValueOnce(
+        new Error('reset failed'),
+      );
+      const job = {
+        id: 'exhausted-full-resync-job',
+        data: {
+          walletId: 'wallet-1',
+          fullResync: true,
+          fullResyncGeneration: 1,
+        },
+        attemptsMade: 2,
+        opts: { attempts: 3 },
+        updateData: vi.fn(),
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job)).rejects.toThrow('reset failed');
+      expect(prisma.wallet.update).toHaveBeenCalledWith({
+        where: { id: 'wallet-1' },
+        data: {
+          syncInProgress: false,
+          lastSyncStatus: 'failed',
+          lastSyncError: 'reset failed',
+        },
+      });
+      expect(syncWallet).not.toHaveBeenCalled();
+    });
+
+    it('retains retry state without publishing failure metadata before the final attempt', async () => {
+      vi.mocked(prisma.wallet.findUnique)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any);
+      vi.mocked(prisma.transaction.deleteMany).mockRejectedValueOnce(
+        new Error('reset failed'),
+      );
+      const job = {
+        id: 'retryable-full-resync-job',
+        data: {
+          walletId: 'wallet-1',
+          fullResync: true,
+          fullResyncGeneration: 1,
+        },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+        updateData: vi.fn(),
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job)).rejects.toThrow('reset failed');
+      expect(prisma.wallet.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ lastSyncStatus: 'failed' }),
+        }),
+      );
+      expect(syncWallet).not.toHaveBeenCalled();
+    });
+
+    it('preserves the preparation error when final metadata recording also fails', async () => {
+      vi.mocked(prisma.wallet.findUnique)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any);
+      vi.mocked(prisma.transaction.deleteMany).mockRejectedValueOnce(
+        new Error('reset failed'),
+      );
+      vi.mocked(prisma.wallet.update).mockRejectedValueOnce(
+        new Error('metadata failed'),
+      );
+      const job = {
+        id: 'exhausted-full-resync-job',
+        data: {
+          walletId: 'wallet-1',
+          fullResync: true,
+          fullResyncGeneration: 1,
+        },
+        attemptsMade: 2,
+        opts: { attempts: 3 },
+        updateData: vi.fn(),
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job)).rejects.toThrow('reset failed');
+      expect(syncWallet).not.toHaveBeenCalled();
     });
 
     it('should sync wallet and update metadata on success', async () => {
@@ -174,6 +459,83 @@ describe('Sync Jobs', () => {
       await expect(processing).rejects.toMatchObject({ name: 'AbortError' });
       expect(prisma.wallet.update).toHaveBeenNthCalledWith(2, {
         where: { id: 'wallet-abort-mark' },
+        data: { syncInProgress: false },
+      });
+      expect(syncWallet).not.toHaveBeenCalled();
+    });
+
+    it('records final failure when shutdown aborts immediately after reset commits', async () => {
+      const controller = new AbortController();
+      vi.mocked(prisma.wallet.findUnique)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any);
+      vi.mocked(prisma.wallet.update)
+        .mockImplementationOnce(async () => {
+          controller.abort();
+          return {} as any;
+        })
+        .mockResolvedValueOnce({} as any);
+      const execution = {
+        signal: controller.signal,
+        throwIfAborted: () => controller.signal.throwIfAborted(),
+      };
+      const job = {
+        id: 'full-resync-final-abort',
+        data: {
+          walletId: 'wallet-final-abort',
+          fullResync: true,
+          fullResyncGeneration: 1,
+        },
+        attemptsMade: 2,
+        opts: { attempts: 3 },
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job, execution)).rejects.toMatchObject({
+        name: 'AbortError',
+      });
+
+      expect(prisma.wallet.update).toHaveBeenNthCalledWith(2, {
+        where: { id: 'wallet-final-abort' },
+        data: {
+          syncInProgress: false,
+          lastSyncStatus: 'failed',
+          lastSyncError: 'This operation was aborted',
+        },
+      });
+      expect(syncWallet).not.toHaveBeenCalled();
+    });
+
+    it('preserves the abort and safety-net cleanup when final abort metadata fails', async () => {
+      const controller = new AbortController();
+      vi.mocked(prisma.wallet.findUnique)
+        .mockResolvedValueOnce({ network: 'mainnet' } as any);
+      vi.mocked(prisma.wallet.update)
+        .mockImplementationOnce(async () => {
+          controller.abort();
+          return {} as any;
+        })
+        .mockRejectedValueOnce(new Error('metadata failed'))
+        .mockResolvedValueOnce({} as any);
+      const execution = {
+        signal: controller.signal,
+        throwIfAborted: () => controller.signal.throwIfAborted(),
+      };
+      const job = {
+        id: 'full-resync-final-abort-metadata-failure',
+        data: {
+          walletId: 'wallet-final-abort',
+          fullResync: true,
+          fullResyncGeneration: 1,
+        },
+        attemptsMade: 2,
+        opts: { attempts: 3 },
+      } as unknown as Job;
+
+      await expect(syncWalletJob.handler(job, execution)).rejects.toMatchObject({
+        name: 'AbortError',
+      });
+
+      expect(prisma.wallet.update).toHaveBeenNthCalledWith(3, {
+        where: { id: 'wallet-final-abort' },
         data: { syncInProgress: false },
       });
       expect(syncWallet).not.toHaveBeenCalled();

@@ -360,7 +360,13 @@ export function registerBlockchainTransactionsReconciliationTests(): void {
           return [];
         }
         // Transaction already exists in database (existing txids query)
-        return [{ id: 'tx-1', txid: txHash, type: 'received' }];
+        return [{
+          id: 'tx-1',
+          txid: txHash,
+          type: 'received',
+          inputs: [{ id: 'input-1' }],
+          outputs: [{ id: 'output-1' }],
+        }];
       });
 
       mockElectrumClient.getTransaction.mockResolvedValue(

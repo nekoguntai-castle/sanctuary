@@ -108,6 +108,8 @@ export interface SyncContext {
   allTxids: Set<string>;
   existingTxMap: Map<string, boolean>;
   existingTxidSet: Set<string>;
+  classificationRepairTxids: Set<string>;
+  ioRepairTxids: Set<string>;
   newTxids: string[];
   txDetailsCache: Map<string, RawTransaction>;
   txHeightMap: Map<string, number>;
@@ -139,12 +141,13 @@ export interface TransactionCreateData {
   walletId: string;
   addressId: string;
   type: 'received' | 'sent' | 'consolidation';
+  classificationInputsComplete: boolean;
   amount: bigint;
   fee?: bigint | null;
   confirmations: number;
   blockHeight: number | null;
   blockTime: Date | null;
-  rbfStatus: RbfStatus;
+  rbfStatus: Exclude<RbfStatus, 'replaced'>;
 }
 
 /** Data for creating a transaction input record */

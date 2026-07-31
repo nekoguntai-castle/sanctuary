@@ -233,7 +233,7 @@ export function registerProcessTransactionLabelsDedupeEdgeTests(walletId: string
 
       await processTransactionsPhase(ctx);
 
-      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.arrayContaining([
             expect.objectContaining({
@@ -333,7 +333,7 @@ export function registerProcessTransactionLabelsDedupeEdgeTests(walletId: string
 
       await processTransactionsPhase(ctx);
 
-      const createArgs = mockPrismaClient.transaction.createMany.mock.calls.at(-1)?.[0];
+      const createArgs = mockPrismaClient.transaction.createManyAndReturn.mock.calls.at(-1)?.[0];
       expect(createArgs).toBeDefined();
       expect(createArgs.data).toHaveLength(1);
       expect(createArgs.data[0]).toEqual(expect.objectContaining({ txid, type: 'received' }));
@@ -378,7 +378,7 @@ export function registerProcessTransactionLabelsDedupeEdgeTests(walletId: string
 
       expect(mockElectrumClient.getTransactionsBatch).toHaveBeenCalledTimes(2);
       expect(mockElectrumClient.getTransaction).not.toHaveBeenCalled();
-      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalled();
     });
 
     it('should handle mixed store IO edge paths for missing tx details and absent vin/vout arrays', async () => {

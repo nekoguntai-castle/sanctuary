@@ -153,6 +153,7 @@ describe("Remaining API Modules", () => {
         label: "Invoice",
         message: "Order #1",
       });
+      await payjoinApi.getPayjoinUri("addr-id", { amount: 0 });
       await payjoinApi.parsePayjoinUri("bitcoin:bc1q...");
       await payjoinApi.attemptPayjoin("psbt1", "https://pj.example", "mainnet");
       await payjoinApi.checkPayjoinEligibility("w1");
@@ -163,6 +164,9 @@ describe("Remaining API Modules", () => {
         amount: "1000",
         label: "Invoice",
         message: "Order #1",
+      });
+      expect(mockGet).toHaveBeenCalledWith("/payjoin/address/addr-id/uri", {
+        amount: "0",
       });
       expect(mockPost).toHaveBeenCalledWith("/payjoin/parse-uri", {
         uri: "bitcoin:bc1q...",

@@ -120,7 +120,7 @@ export function registerProcessTransactionStoreIoEdgeTests(walletId: string): vo
       });
 
       await processTransactionsPhase(ctx);
-      expect(mockPrismaClient.transaction.createMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.createManyAndReturn).not.toHaveBeenCalled();
     });
 
     it('should treat large prevout values as satoshis for fee and input IO calculations', async () => {
@@ -173,7 +173,7 @@ export function registerProcessTransactionStoreIoEdgeTests(walletId: string): vo
 
       await processTransactionsPhase(ctx);
 
-      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.arrayContaining([
             expect.objectContaining({
@@ -235,7 +235,7 @@ export function registerProcessTransactionStoreIoEdgeTests(walletId: string): vo
 
       await processTransactionsPhase(ctx);
 
-      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.arrayContaining([
             expect.objectContaining({
@@ -291,7 +291,7 @@ export function registerProcessTransactionStoreIoEdgeTests(walletId: string): vo
       });
 
       await processTransactionsPhase(ctx);
-      expect(mockPrismaClient.$transaction).not.toHaveBeenCalled();
+      expect(mockPrismaClient.$transaction).toHaveBeenCalled();
       expect(mockPrismaClient.transaction.update).not.toHaveBeenCalled();
     });
 }

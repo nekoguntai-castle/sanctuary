@@ -28,6 +28,8 @@ export interface WorkerJobHandler<T = unknown, R = void> {
     lockKey: (data: T) => string;
     /** Lock TTL in milliseconds */
     lockTtlMs?: number;
+    /** Delay without consuming an attempt when lock contention must retain work. */
+    retryDelayMsIfUnavailable?: (data: T) => number | null;
   };
 }
 
@@ -38,6 +40,10 @@ export interface SyncWalletJobData {
   walletId: string;
   priority?: SyncPriority;
   reason?: string;
+  /** Reset sync-derived wallet state once after exclusive lock acquisition. */
+  fullResync?: boolean;
+  /** Durable monotonic generation for exactly-once reset preparation across retries. */
+  fullResyncGeneration?: number;
 }
 
 export interface CheckStaleWalletsJobData {

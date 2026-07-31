@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as bitcoin from 'bitcoinjs-lib';
 
 import {
   generateBip21Uri,
@@ -76,12 +77,9 @@ export const registerPayjoinBip21Contracts = () => {
       expect(result.payjoinUrl).toBe(TEST_PAYJOIN_URL);
     });
 
-    it('should handle URI without bitcoin: prefix', () => {
+    it('should reject URI without bitcoin: prefix', () => {
       const uri = `${TEST_ADDRESS_TESTNET}?amount=0.1`;
-      const result = parseBip21Uri(uri);
-
-      expect(result.address).toBe(TEST_ADDRESS_TESTNET);
-      expect(result.amount).toBe(10_000_000);
+      expect(() => parseBip21Uri(uri)).toThrow('bitcoin:');
     });
 
     it('should handle uppercase BITCOIN: prefix', () => {
@@ -123,10 +121,23 @@ export const registerPayjoinBip21Contracts = () => {
     });
 
     it('should parse address-only URI (no params)', () => {
-      const uri = TEST_ADDRESS_TESTNET;
+      const uri = `bitcoin:${TEST_ADDRESS_TESTNET}`;
       const result = parseBip21Uri(uri);
 
       expect(result.address).toBe(TEST_ADDRESS_TESTNET);
+    });
+
+    it('should accept addresses for each supported network family', () => {
+      const hash = Buffer.alloc(20, 1);
+      const addresses = [
+        bitcoin.payments.p2wpkh({ hash, network: bitcoin.networks.bitcoin }).address,
+        bitcoin.payments.p2wpkh({ hash, network: bitcoin.networks.testnet }).address,
+        bitcoin.payments.p2wpkh({ hash, network: bitcoin.networks.regtest }).address,
+      ];
+
+      for (const address of addresses) {
+        expect(parseBip21Uri(`bitcoin:${address}`).address).toBe(address);
+      }
     });
 
     it('should handle zero amount', () => {
@@ -142,9 +153,50 @@ export const registerPayjoinBip21Contracts = () => {
 
       expect(result.amount).toBe(1); // 1 satoshi
     });
+
+    it.each([
+      'bitcoin:',
+      'bitcoin:not-a-valid-address',
+      `bitcoin:${TEST_ADDRESS_TESTNET}?amount=garbage`,
+      `bitcoin:${TEST_ADDRESS_TESTNET}?amount=-1`,
+      `bitcoin:${TEST_ADDRESS_TESTNET}?amount=Infinity`,
+      `bitcoin:${TEST_ADDRESS_TESTNET}?amount=0.000000001`,
+      `bitcoin:${TEST_ADDRESS_TESTNET}?amount=90071992.54740992`,
+      `bitcoin:${TEST_ADDRESS_TESTNET}?amount=1&amount=2`,
+      `bitcoin:${TEST_ADDRESS_TESTNET}?pj=https%3A%2F%2Fone.example&pj=https%3A%2F%2Ftwo.example`,
+      `bitcoin:${TEST_ADDRESS_TESTNET}?req-unknown=value`,
+    ])('should reject malformed or unsupported URI %s', (uri) => {
+      expect(() => parseBip21Uri(uri)).toThrow();
+    });
+
+    it.each([
+      ['0.29', 29_000_000],
+      ['0.00000003', 3],
+      ['90071992.54740991', Number.MAX_SAFE_INTEGER],
+    ])('should convert %s BTC to exact safe satoshis', (amount, expected) => {
+      const result = parseBip21Uri(`bitcoin:${TEST_ADDRESS_TESTNET}?amount=${amount}`);
+      expect(result.amount).toBe(expected);
+    });
+
+    it('should accept valid encoded metadata while rejecting duplicate metadata keys', () => {
+      const uri = `bitcoin:${TEST_ADDRESS_TESTNET}?label=${encodeURIComponent('Invoice & one')}&message=${encodeURIComponent('Order #1')}`;
+      expect(parseBip21Uri(uri)).toMatchObject({
+        label: 'Invoice & one',
+        message: 'Order #1',
+      });
+      expect(() => parseBip21Uri(`${uri}&label=duplicate`)).toThrow('Duplicate');
+    });
   });
 
   describe('generateBip21Uri', () => {
+    it.each([-1, Number.POSITIVE_INFINITY, 1.5])(
+      'rejects invalid satoshi amount %s',
+      amount => {
+        expect(() => generateBip21Uri(TEST_ADDRESS_TESTNET, { amount }))
+          .toThrow('Invalid satoshi amount');
+      },
+    );
+
     it('should generate simple URI with address only', () => {
       const uri = generateBip21Uri(TEST_ADDRESS_TESTNET);
 
@@ -161,6 +213,11 @@ export const registerPayjoinBip21Contracts = () => {
       const uri = generateBip21Uri(TEST_ADDRESS_TESTNET, { amount: 1 });
 
       expect(uri).toContain('amount=0.00000001');
+    });
+
+    it('should preserve an exact zero amount', () => {
+      expect(generateBip21Uri(TEST_ADDRESS_TESTNET, { amount: 0 }))
+        .toContain('amount=0.00000000');
     });
 
     it('should include label with URL encoding', () => {

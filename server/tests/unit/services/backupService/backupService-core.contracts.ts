@@ -837,6 +837,16 @@ describe('BackupService', () => {
       expect(deserializeRecordForTable('unknown', { value: null })).toEqual({ value: null });
     });
 
+    it('should restore both private transaction repair cursors as dates', () => {
+      const record = deserializeRecordForTable('transaction', {
+        classificationLastAttemptAt: '2026-07-30T12:34:56.000Z',
+        ioLastAttemptAt: '2026-07-31T12:34:56.000Z',
+      });
+
+      expect(record.classificationLastAttemptAt).toBeInstanceOf(Date);
+      expect(record.ioLastAttemptAt).toBeInstanceOf(Date);
+    });
+
     it('should disable zero, one, or multiple restored node proxy configurations', () => {
       const noCredentialWarnings: string[] = [];
       expect(processNodeConfigRecords(

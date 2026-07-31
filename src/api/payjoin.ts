@@ -69,7 +69,7 @@ export async function getPayjoinUri(
   }
 ): Promise<PayjoinUriResponse> {
   const params: Record<string, string> = {};
-  if (options?.amount) params.amount = String(options.amount);
+  if (options?.amount !== undefined) params.amount = String(options.amount);
   if (options?.label) params.label = options.label;
   if (options?.message) params.message = options.message;
 

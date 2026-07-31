@@ -10,8 +10,19 @@ import { registerService } from './serviceRegistry';
 import { initializeRevocationService, shutdownRevocationService } from './tokenRevocation';
 import { getSyncService } from './syncService';
 import { startWorkerHealthMonitor, stopWorkerHealthMonitor } from './workerHealth';
+import { cleanupOrphanedExportSnapshots } from './transactionExport/exportSnapshot';
 
 export function registerServerBackgroundServices(): void {
+  registerService({
+    name: 'transaction-export-cleanup',
+    start: async () => {
+      await cleanupOrphanedExportSnapshots();
+    },
+    critical: false,
+    maxRetries: 1,
+    backoffMs: [1000],
+  });
+
   registerService({
     name: 'token-revocation',
     start: async () => {

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   stopWorkerHealthMonitor: vi.fn(),
   startSync: vi.fn(),
   stopSync: vi.fn(),
+  cleanupExportSnapshots: vi.fn(),
 }));
 
 vi.mock('../../../src/services/serviceRegistry', () => ({
@@ -40,6 +41,10 @@ vi.mock('../../../src/services/syncService', () => ({
   }),
 }));
 
+vi.mock('../../../src/services/transactionExport/exportSnapshot', () => ({
+  cleanupOrphanedExportSnapshots: mocks.cleanupExportSnapshots,
+}));
+
 const loadServerBackgroundServices = async () => {
   vi.resetModules();
   return import('../../../src/services/serverBackgroundServices');
@@ -59,6 +64,7 @@ describe('serverBackgroundServices', () => {
 
     const registered = mocks.registerService.mock.calls.map(([service]) => service);
     expect(registered.map(service => service.name)).toEqual([
+      'transaction-export-cleanup',
       'token-revocation',
       'notifications',
     ]);
@@ -71,6 +77,7 @@ describe('serverBackgroundServices', () => {
 
     const registered = mocks.registerService.mock.calls.map(([service]) => service);
     expect(registered.map(service => service.name)).toEqual([
+      'transaction-export-cleanup',
       'token-revocation',
       'notifications',
       'worker-heartbeat',
@@ -101,6 +108,7 @@ describe('serverBackgroundServices', () => {
     const registered = mocks.registerService.mock.calls.map(([service]) => service);
     const byName = new Map(registered.map(service => [service.name, service]));
 
+    await byName.get('transaction-export-cleanup')?.start();
     await byName.get('token-revocation')?.start();
     await byName.get('token-revocation')?.stop();
     await byName.get('notifications')?.start();
@@ -111,6 +119,7 @@ describe('serverBackgroundServices', () => {
     await byName.get('sync')?.stop();
 
     expect(mocks.initializeRevocationService).toHaveBeenCalledTimes(1);
+    expect(mocks.cleanupExportSnapshots).toHaveBeenCalledTimes(1);
     expect(mocks.shutdownRevocationService).toHaveBeenCalledTimes(1);
     expect(mocks.startNotifications).toHaveBeenCalledTimes(1);
     expect(mocks.stopNotifications).toHaveBeenCalledTimes(1);

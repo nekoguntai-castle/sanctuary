@@ -25,7 +25,10 @@ vi.mock('../../../../src/websocket/notifications', () => ({
 import { syncAddress, checkAddress } from '../../../../src/services/bitcoin/blockchain';
 import {
   persistAddressSyncIORows,
+  markClassificationRepairAttempts,
+  markIoRepairAttempts,
   reconcileAddressSyncTransaction,
+  reconcileTransactionBatch,
 } from '../../../../src/repositories/transactions/sync';
 import { storeTransactionIO } from '../../../../src/services/bitcoin/blockchain/transactionIO';
 import { validateAddress } from '../../../../src/services/bitcoin/utils';
@@ -199,6 +202,61 @@ describe('Blockchain syncAddress branch coverage', () => {
     );
     expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalled();
     expect(mockPrismaClient.transactionOutput.createMany).toHaveBeenCalled();
+  });
+
+  it('caps history and previous-transaction fetches at 100 txids', async () => {
+    const addressId = 'address-bounded-fetch';
+    const walletId = 'wallet-bounded-fetch';
+    const mainAddress = testnetAddresses.nativeSegwit[0];
+    const currentTxids = Array.from(
+      { length: 101 },
+      (_, index) => index.toString(16).padStart(64, '0')
+    );
+    const previousTxids = Array.from(
+      { length: 101 },
+      (_, index) => (1000 + index).toString(16).padStart(64, '0')
+    );
+    const currentTxidSet = new Set(currentTxids);
+
+    mockPrismaClient.address.findUnique.mockResolvedValue({
+      id: addressId,
+      address: mainAddress,
+      walletId,
+      wallet: { id: walletId, network: 'testnet' },
+      used: false,
+    });
+    mockPrismaClient.address.findMany.mockResolvedValue([{ address: mainAddress }]);
+    mockElectrumClient.getAddressHistory.mockResolvedValue(
+      currentTxids.map(tx_hash => ({ tx_hash, height: 0 }))
+    );
+    mockElectrumClient.getAddressUTXOs.mockResolvedValue([]);
+    mockElectrumClient.getTransactionsBatch.mockImplementation(async (txids: string[]) => {
+      return new Map(txids.map(txid => {
+        const currentIndex = currentTxids.indexOf(txid);
+        if (currentTxidSet.has(txid)) {
+          return [txid, {
+            txid,
+            vin: [{ txid: previousTxids[currentIndex], vout: 0 }],
+            vout: [],
+          }];
+        }
+        return [txid, {
+          txid,
+          vin: [],
+          vout: [{ value: 1, scriptPubKey: { address: mainAddress } }],
+        }];
+      }));
+    });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([]);
+    mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
+
+    await syncAddress(addressId);
+
+    const requestedBatches = mockElectrumClient.getTransactionsBatch.mock.calls
+      .map(([txids]) => txids as string[]);
+    expect(requestedBatches).toHaveLength(4);
+    expect(requestedBatches.every(txids => txids.length <= 100)).toBe(true);
+    expect(requestedBatches.flat()).toEqual([...currentTxids, ...previousTxids]);
   });
 
   it('swallows I/O persistence errors and still returns sync result', async () => {
@@ -660,7 +718,15 @@ describe('Blockchain syncAddress branch coverage', () => {
               vout: [{ value: 0.00059, n: 0 }],
             },
           ],
-          [unknownTypeTx, { txid: unknownTypeTx, hex: '00', vin: [], vout: [] }],
+          [
+            unknownTypeTx,
+            {
+              txid: unknownTypeTx,
+              hex: '00',
+              vin: [],
+              vout: [{ value: 0.00011, n: 0, scriptPubKey: { hex: '0014' + '43'.repeat(20), address: externalAddress } }],
+            },
+          ],
         ]);
       }
 
@@ -814,6 +880,62 @@ describe('Blockchain syncAddress branch coverage', () => {
     );
   });
 
+  it('sums every wallet-owned output for a receive discovered by one address', async () => {
+    const addressId = 'addr-wallet-wide-receive';
+    const walletId = 'wallet-wide-receive';
+    const triggeringAddress = testnetAddresses.nativeSegwit[0];
+    const secondWalletAddress = testnetAddresses.nativeSegwit[1];
+    const txid = '4'.repeat(64);
+
+    mockPrismaClient.address.findUnique.mockResolvedValue({
+      id: addressId,
+      address: triggeringAddress,
+      walletId,
+      wallet: { id: walletId, network: 'testnet' },
+      used: true,
+    });
+    mockPrismaClient.address.findMany.mockResolvedValue([
+      { address: triggeringAddress },
+      { address: secondWalletAddress },
+    ]);
+    mockElectrumClient.getAddressHistory.mockResolvedValue([{ tx_hash: txid, height: 0 }]);
+    mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([
+      [txid, {
+        txid,
+        hex: '00',
+        vin: [],
+        vout: [
+          {
+            value: 0.0001,
+            n: 0,
+            scriptPubKey: { hex: '0014' + '41'.repeat(20), address: triggeringAddress },
+          },
+          {
+            value: 0.0002,
+            n: 1,
+            scriptPubKey: { hex: '0014' + '42'.repeat(20), address: secondWalletAddress },
+          },
+        ],
+      }],
+    ]));
+    mockElectrumClient.getAddressUTXOs.mockResolvedValue([]);
+    mockPrismaClient.uTXO.findMany.mockResolvedValue([]);
+
+    await syncAddress(addressId);
+
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({
+          txid,
+          addressId,
+          type: 'received',
+          amount: BigInt(30_000),
+          rbfStatus: 'active',
+        })],
+      })
+    );
+  });
+
   it('repairs all output roles when promoting a received transaction to consolidation', async () => {
     mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 0 });
     mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 1 });
@@ -825,6 +947,7 @@ describe('Blockchain syncAddress branch coverage', () => {
       amount: BigInt(-100),
       fee: BigInt(100),
       confirmations: 1,
+      rbfStatus: 'confirmed',
     });
 
     expect(outcome).toBe('repaired');
@@ -838,6 +961,108 @@ describe('Blockchain syncAddress branch coverage', () => {
     });
   });
 
+  it('returns exact created and repaired outcomes from batch reconciliation', async () => {
+    const createdTxid = 'a'.repeat(64);
+    const repairedTxid = 'b'.repeat(64);
+    mockPrismaClient.transaction.createManyAndReturn.mockResolvedValue([{ txid: createdTxid }]);
+    mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 0 });
+    mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 1 });
+
+    const results = await reconcileTransactionBatch([
+      {
+        txid: createdTxid,
+        walletId: 'wallet-batch',
+        type: 'received',
+        amount: BigInt(1),
+        confirmations: 0,
+        rbfStatus: 'active',
+      },
+      {
+        txid: repairedTxid,
+        walletId: 'wallet-batch',
+        type: 'sent',
+        amount: BigInt(-2),
+        fee: BigInt(1),
+        confirmations: 1,
+        rbfStatus: 'confirmed',
+      },
+    ]);
+
+    expect(results.map(result => result.outcome)).toEqual(['created', 'repaired']);
+  });
+
+  it('does no persistence work for an empty reconciliation batch', async () => {
+    await expect(reconcileTransactionBatch([])).resolves.toEqual([]);
+    expect(mockPrismaClient.transaction.createManyAndReturn).not.toHaveBeenCalled();
+  });
+
+  it('persists completeness monotonically for a same-type reconciliation', async () => {
+    const txid = 'c'.repeat(64);
+    mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 0 });
+    mockPrismaClient.transaction.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const outcome = await reconcileAddressSyncTransaction({
+      txid,
+      walletId: 'wallet-completeness',
+      type: 'received',
+      amount: BigInt(1),
+      confirmations: 1,
+      rbfStatus: 'confirmed',
+      classificationInputsComplete: true,
+    });
+
+    expect(outcome).toBe('unchanged');
+    expect(mockPrismaClient.transaction.updateMany).toHaveBeenCalledWith({
+      where: {
+        txid,
+        walletId: 'wallet-completeness',
+        classificationInputsComplete: false,
+      },
+      data: { classificationInputsComplete: true },
+    });
+  });
+
+  it('marks selected repair attempts with parameterized SQL without touching updatedAt', async () => {
+    const txid = 'd'.repeat(64);
+    await markClassificationRepairAttempts('wallet-incomplete-attempt', [txid]);
+    const statement = mockPrismaClient.$executeRaw.mock.calls[0][0] as {
+      strings: string[];
+      values: unknown[];
+    };
+    expect(statement.strings.join('?')).toContain('SET "classificationLastAttemptAt" = CURRENT_TIMESTAMP');
+    expect(statement.strings.join('?')).not.toContain('"updatedAt"');
+    expect(statement.values).toEqual(['wallet-incomplete-attempt', txid]);
+  });
+
+  it('marks selected I/O attempts without touching public updatedAt', async () => {
+    const txid = 'f'.repeat(64);
+    await markIoRepairAttempts('wallet-io-attempt', [txid]);
+    const statement = mockPrismaClient.$executeRaw.mock.calls[0][0] as {
+      strings: string[];
+      values: unknown[];
+    };
+    expect(statement.strings.join('?')).toContain('SET "ioLastAttemptAt" = CURRENT_TIMESTAMP');
+    expect(statement.strings.join('?')).not.toContain('"updatedAt"');
+    expect(statement.values).toEqual(['wallet-io-attempt', txid]);
+  });
+
+  it('skips an empty repair-attempt batch and avoids a reconciliation double-touch', async () => {
+    await markClassificationRepairAttempts('wallet-incomplete-attempt', []);
+    expect(mockPrismaClient.$executeRaw).not.toHaveBeenCalled();
+
+    mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 0 });
+    await expect(reconcileAddressSyncTransaction({
+      txid: 'e'.repeat(64),
+      walletId: 'wallet-incomplete-attempt',
+      type: 'received',
+      amount: BigInt(1),
+      confirmations: 1,
+      rbfStatus: 'confirmed',
+      classificationInputsComplete: false,
+    })).resolves.toBe('unchanged');
+    expect(mockPrismaClient.$executeRaw).not.toHaveBeenCalled();
+  });
+
   it('repairs owned and external output roles when promoting a transaction to sent', async () => {
     mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 0 });
     mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 1 });
@@ -849,9 +1074,18 @@ describe('Blockchain syncAddress branch coverage', () => {
       amount: BigInt(-200),
       fee: BigInt(100),
       confirmations: 1,
+      rbfStatus: 'confirmed',
     });
 
     expect(outcome).toBe('repaired');
+    expect(mockPrismaClient.transaction.updateMany).toHaveBeenCalledWith({
+      where: {
+        txid: '7'.repeat(64),
+        walletId: 'wallet-sent',
+        type: { in: ['received', 'consolidation'] },
+      },
+      data: expect.objectContaining({ rbfStatus: 'confirmed' }),
+    });
     expect(mockPrismaClient.transactionOutput.updateMany).toHaveBeenNthCalledWith(1, {
       where: {
         transaction: {
@@ -891,6 +1125,22 @@ describe('Blockchain syncAddress branch coverage', () => {
     expect(mockPrismaClient.transactionOutput.createMany).not.toHaveBeenCalled();
   });
 
+  it('completes coinbase/no-input I/O atomically without changing updatedAt', async () => {
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      { id: 'coinbase-row', txid: 'a'.repeat(64), type: 'received' },
+    ]);
+
+    await persistAddressSyncIORows([], [], ['coinbase-row']);
+
+    const statement = mockPrismaClient.$executeRaw.mock.calls[0][0] as {
+      strings: string[];
+      values: unknown[];
+    };
+    expect(statement.strings.join('?')).toContain('SET "ioComplete" = true');
+    expect(statement.strings.join('?')).not.toContain('"updatedAt"');
+    expect(statement.values).toEqual(['coinbase-row']);
+  });
+
   it('skips the I/O transaction when there are no rows to persist', async () => {
     await persistAddressSyncIORows([], []);
 
@@ -913,8 +1163,155 @@ describe('Blockchain syncAddress branch coverage', () => {
 
     expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(2);
     expect(mockPrismaClient.transaction.findMany.mock.calls[0][0].where.txid.in).toHaveLength(100);
+    expect(mockPrismaClient.transaction.findMany.mock.calls[0][0].where.ioComplete).toBe(false);
     expect(mockPrismaClient.transaction.findMany.mock.calls[1][0].where.txid.in).toHaveLength(1);
     expect(mockElectrumClient.getTransactionsBatch).not.toHaveBeenCalled();
+  });
+
+  it('marks a live coinbase/no-input backfill complete and stops relation-based retries', async () => {
+    const txid = 'b'.repeat(64);
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      { id: 'coinbase-live-row', txid, type: 'received' },
+    ]);
+    mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, {
+      txid,
+      vin: [{ coinbase: 'block-reward' }],
+      vout: [{ value: 1, n: 0, scriptPubKey: { hex: '6a' } }],
+    }]]));
+
+    await storeTransactionIO(
+      mockElectrumClient,
+      'wallet-live-coinbase',
+      [{ tx_hash: txid, height: 1 }],
+      new Set()
+    );
+
+    expect(mockPrismaClient.transaction.findMany.mock.calls[0][0].where).toEqual({
+      walletId: 'wallet-live-coinbase',
+      txid: { in: [txid] },
+      ioComplete: false,
+    });
+    const completion = mockPrismaClient.$executeRaw.mock.calls[0][0] as { strings: string[] };
+    expect(completion.strings.join('')).toContain('SET "ioComplete" = true');
+  });
+
+  it('keeps a live unresolved-input backfill incomplete', async () => {
+    const txid = 'c'.repeat(64);
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      { id: 'partial-live-row', txid, type: 'received' },
+    ]);
+    mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, {
+      txid,
+      vin: [{ txid: 'd'.repeat(64) }],
+      vout: [{ value: 1, n: 0, scriptPubKey: { address: 'wallet-output' } }],
+    }]]));
+
+    await storeTransactionIO(
+      mockElectrumClient,
+      'wallet-live-partial',
+      [{ tx_hash: txid, height: 1 }],
+      new Set(['wallet-output'])
+    );
+
+    expect(mockPrismaClient.transactionOutput.createMany).toHaveBeenCalled();
+    expect(mockPrismaClient.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: 'resolves a live txid/vout-only input from its previous transaction',
+      prevout: undefined,
+    },
+    {
+      name: 'falls through from an addressless inline script to its previous transaction',
+      prevout: { value: 0.1, scriptPubKey: { hex: '0014-addressless' } },
+    },
+  ])('$name and completes the backfill', async ({ prevout }) => {
+    const txid = 'e'.repeat(64);
+    const previousTxid = 'f'.repeat(64);
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      { id: 'resolved-live-row', txid, type: 'sent' },
+    ]);
+    mockElectrumClient.getTransactionsBatch
+      .mockResolvedValueOnce(new Map([[txid, {
+        txid,
+        vin: [{ txid: previousTxid, vout: 1, ...(prevout ? { prevout } : {}) }],
+        vout: [{ value: 0.9, n: 0, scriptPubKey: { address: 'recipient-output' } }],
+      }]]))
+      .mockResolvedValueOnce(new Map([[previousTxid, {
+        txid: previousTxid,
+        vin: [],
+        vout: [
+          { value: 0.25, n: 0, scriptPubKey: { address: 'unrelated-output' } },
+          { value: 1, n: 1, scriptPubKey: { address: 'wallet-input' } },
+        ],
+      }]]));
+
+    await storeTransactionIO(
+      mockElectrumClient,
+      'wallet-live-resolved',
+      [{ tx_hash: txid, height: 1 }],
+      new Set(['wallet-input'])
+    );
+
+    expect(mockElectrumClient.getTransactionsBatch).toHaveBeenNthCalledWith(
+      2,
+      [previousTxid],
+      true
+    );
+    expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalledWith({
+      data: [{
+        transactionId: 'resolved-live-row',
+        inputIndex: 0,
+        txid: previousTxid,
+        vout: 1,
+        address: 'wallet-input',
+        amount: BigInt(100000000),
+      }],
+      skipDuplicates: true,
+    });
+    const completion = mockPrismaClient.$executeRaw.mock.calls[0][0] as { strings: string[] };
+    expect(completion.strings.join('')).toContain('SET "ioComplete" = true');
+  });
+
+  it('reuses address-sync previous-output evidence without refetching it', async () => {
+    const txid = '1'.repeat(64);
+    const previousTxid = '2'.repeat(64);
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      { id: 'cached-live-row', txid, type: 'sent' },
+    ]);
+    const existingDetails = new Map([
+      [txid, {
+        txid,
+        vin: [{ txid: previousTxid, vout: 0 }],
+        vout: [],
+      }],
+      [previousTxid, {
+        txid: previousTxid,
+        vin: [],
+        vout: [{ value: 0.5, n: 0, scriptPubKey: { address: 'cached-wallet-input' } }],
+      }],
+    ]);
+
+    await storeTransactionIO(
+      mockElectrumClient,
+      'wallet-live-cached',
+      [{ tx_hash: txid, height: 1 }],
+      new Set(['cached-wallet-input']),
+      existingDetails
+    );
+
+    expect(mockElectrumClient.getTransactionsBatch).not.toHaveBeenCalled();
+    expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        transactionId: 'cached-live-row',
+        txid: previousTxid,
+        address: 'cached-wallet-input',
+        amount: BigInt(50000000),
+      })],
+      skipDuplicates: true,
+    });
+    expect(mockPrismaClient.$executeRaw).toHaveBeenCalledOnce();
   });
 
   it('rethrows syncAddress errors after logging', async () => {
