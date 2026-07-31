@@ -37,6 +37,15 @@ const convertPriceTool = {
   inputFields: ["sats", "fiatAmount", "currency"],
 };
 
+const walletOverviewTool = {
+  name: "get_wallet_overview",
+  title: "Get Wallet Overview",
+  description: "Comprehensive read-only summary for one wallet",
+  sensitivity: "wallet",
+  requiredScope: "wallet",
+  inputFields: ["walletId"],
+};
+
 const publicToolPlanInput = {
   prompt: "what is the BTC price?",
   scope: { kind: "general" },
@@ -248,4 +257,148 @@ describe("console planner public tool protocol", () => {
       "fallback_plan_applied",
     ]);
   });
+
+  it("combines selected-wallet and market data for wallet-worth fallback", () => {
+    const result = parseConsolePlanResponse(
+      "I should calculate this from current data.",
+      2,
+      {
+        ...publicToolPlanInput,
+        prompt: "what is my wallet worth?",
+        scope: { kind: "wallet", walletId: "wallet-1" },
+        tools: [walletOverviewTool, marketStatusTool],
+      },
+    );
+
+    expect(result.toolCalls).toEqual([
+      {
+        name: "get_wallet_overview",
+        input: { walletId: "wallet-1" },
+        reason: "Fallback plan for wallet worth balance data.",
+      },
+      {
+        name: "get_market_status",
+        input: {},
+        reason: "Fallback plan for wallet worth market data.",
+      },
+    ]);
+    expect(result.warnings).toEqual([
+      "model_response_not_json",
+      "fallback_plan_applied",
+    ]);
+  });
+
+  it("keeps Bitcoin-worth fallback market-only", () => {
+    const result = parseConsolePlanResponse(
+      "I should answer from current data.",
+      2,
+      {
+        ...publicToolPlanInput,
+        prompt: "what is bitcoin worth?",
+        scope: { kind: "wallet", walletId: "wallet-1" },
+        tools: [walletOverviewTool, marketStatusTool],
+      },
+    );
+
+    expect(result.toolCalls).toEqual([
+      {
+        name: "get_market_status",
+        input: {},
+        reason: "Fallback plan for market status request.",
+      },
+    ]);
+    expect(result.warnings).toEqual([
+      "model_response_not_json",
+      "fallback_plan_applied",
+    ]);
+  });
+
+  it("prioritizes selected-wallet data and warns at the one-call boundary", () => {
+    const result = parseConsolePlanResponse(
+      "I should calculate this from current data.",
+      1,
+      {
+        ...publicToolPlanInput,
+        prompt: "what is my wallet worth?",
+        scope: { kind: "wallet", walletId: "wallet-1" },
+        tools: [walletOverviewTool, marketStatusTool],
+      },
+    );
+
+    expect(result.toolCalls).toEqual([
+      {
+        name: "get_wallet_overview",
+        input: { walletId: "wallet-1" },
+        reason: "Fallback plan for wallet worth balance data.",
+      },
+    ]);
+    expect(result.warnings).toEqual([
+      "model_response_not_json",
+      "fallback_plan_applied",
+      "tool_call_limit_applied",
+      "wallet_worth_plan_partial",
+    ]);
+  });
+
+  it("warns when a zero-call budget prevents the wallet-worth plan", () => {
+    const result = parseConsolePlanResponse(
+      "I should calculate this from current data.",
+      0,
+      {
+        ...publicToolPlanInput,
+        prompt: "what is my wallet worth?",
+        scope: { kind: "wallet", walletId: "wallet-1" },
+        tools: [walletOverviewTool, marketStatusTool],
+      },
+    );
+
+    expect(result).toEqual({
+      toolCalls: [],
+      warnings: [
+        "model_response_not_json",
+        "tool_call_limit_applied",
+        "wallet_worth_plan_partial",
+      ],
+    });
+  });
+
+  it.each([
+    {
+      availableTool: marketStatusTool,
+      expectedCall: {
+        name: "get_market_status",
+        input: {},
+        reason: "Fallback plan for wallet worth market data.",
+      },
+    },
+    {
+      availableTool: walletOverviewTool,
+      expectedCall: {
+        name: "get_wallet_overview",
+        input: { walletId: "wallet-1" },
+        reason: "Fallback plan for wallet worth balance data.",
+      },
+    },
+  ])(
+    "warns when tool availability leaves wallet-worth fallback incomplete",
+    ({ availableTool, expectedCall }) => {
+      const result = parseConsolePlanResponse(
+        "I should calculate this from current data.",
+        2,
+        {
+          ...publicToolPlanInput,
+          prompt: "what is my wallet worth?",
+          scope: { kind: "wallet", walletId: "wallet-1" },
+          tools: [availableTool],
+        },
+      );
+
+      expect(result.toolCalls).toEqual([expectedCall]);
+      expect(result.warnings).toEqual([
+        "model_response_not_json",
+        "fallback_plan_applied",
+        "wallet_worth_plan_partial",
+      ]);
+    },
+  );
 });

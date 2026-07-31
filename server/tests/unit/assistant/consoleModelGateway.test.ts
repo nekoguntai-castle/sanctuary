@@ -179,6 +179,7 @@ describe("console model gateway", () => {
     const result = await synthesizeConsoleAnswer({
       prompt: "summarize",
       scope: { kind: "general" },
+      planningWarnings: ["wallet_worth_plan_partial"],
       toolResults: [
         {
           toolName: "get_fee_estimates",
@@ -196,6 +197,7 @@ describe("console model gateway", () => {
     });
     expect(JSON.parse(mocks.fetch.mock.calls[0][1].body)).toMatchObject({
       prompt: "summarize",
+      planningWarnings: ["wallet_worth_plan_partial"],
       toolResults: [{ facts: { summary: "Fee estimates available." } }],
     });
   });

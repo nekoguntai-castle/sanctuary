@@ -162,6 +162,11 @@ export const ConsoleSynthesisBodySchema = z
     prompt: NonEmptyStringSchema.max(12000),
     scope: z.unknown().optional(),
     context: z.unknown().optional(),
+    planningWarnings: z
+      .array(z.string().trim().min(1).max(100))
+      .max(20)
+      .optional()
+      .default([]),
     toolResults: z.array(ConsoleToolResultSchema).max(8),
   })
   .strict();

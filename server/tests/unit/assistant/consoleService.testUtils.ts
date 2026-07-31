@@ -222,7 +222,7 @@ export function resetHappyPath() {
   mocks.assistantReadToolRegistry.get.mockReturnValue(toolDefinition());
   mocks.assistantReadToolRegistry.execute.mockResolvedValue({
     data: { walletId },
-    facts: { summary: "Wallet has activity." },
+    facts: { summary: "Wallet has activity.", items: [] },
     provenance: { source: "sanctuary" },
     redactions: ["device_fingerprints"],
     truncation: { truncated: false },

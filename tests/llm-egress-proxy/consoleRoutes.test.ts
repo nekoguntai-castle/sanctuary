@@ -119,7 +119,12 @@ describe("LLM egress proxy console routes", () => {
 
     expect(mocks.callExternalAIWithMessagesResult).toHaveBeenCalledWith(
       enabledConfig,
-      expect.any(Array),
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: expect.stringContaining('"planningWarnings": []'),
+        }),
+      ]),
       {
         timeoutMs: AI_ANALYSIS_TIMEOUT_MS,
         temperature: 0.3,
@@ -161,6 +166,7 @@ describe("LLM egress proxy console routes", () => {
       {
         body: {
           prompt: "Summarize",
+          planningWarnings: [],
           toolResults: [],
         },
       },

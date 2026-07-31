@@ -211,12 +211,16 @@ export async function synthesizeConsoleAnswer(input: {
   prompt: string;
   scope: ConsoleScope;
   context?: ConsoleGatewayContext;
+  planningWarnings?: string[];
   toolResults: ConsoleGatewayToolResult[];
 }): Promise<{ response: string } & ConsoleGatewayProviderState> {
   const provider = await ensureConfiguredProvider();
   const result = await fetchConsoleGateway<{ response?: string }>(
     "/console/synthesize",
-    input,
+    {
+      ...input,
+      planningWarnings: input.planningWarnings ?? [],
+    },
   );
   return {
     ...provider,

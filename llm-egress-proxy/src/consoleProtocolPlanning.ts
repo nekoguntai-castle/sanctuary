@@ -93,6 +93,7 @@ const OVERVIEW_PROMPT_TERMS = new Set([
   "overview",
   "summary",
 ]);
+const WALLET_WORTH_PARTIAL_WARNING = "wallet_worth_plan_partial";
 
 const containsAnyTerm = (text: string, terms: PromptTermSet): boolean =>
   Array.from(terms).some((term) => text.includes(term));
@@ -129,7 +130,11 @@ export function buildFallbackToolPlan(
   input: ConsolePlanInput | undefined,
   maxToolCalls: number,
 ): FallbackToolPlan {
-  if (!input || maxToolCalls <= 0) return emptyFallbackPlan();
+  if (!input) return emptyFallbackPlan();
+
+  const walletWorthPlan = buildWalletWorthFallbackPlan(input, maxToolCalls);
+  if (walletWorthPlan) return withFallbackApplied(walletWorthPlan);
+  if (maxToolCalls <= 0) return emptyFallbackPlan();
 
   const candidates = [
     buildPublicToolFallbackPlan(input, maxToolCalls),
@@ -144,6 +149,56 @@ export function buildFallbackToolPlan(
   return {
     toolCalls: [],
     warnings: uniqueWarnings(candidates.flatMap((plan) => plan.warnings)),
+  };
+}
+
+function asksForWalletWorth(prompt: string): boolean {
+  const text = prompt.toLowerCase();
+  return /\bwallet(?:'s)?\b/.test(text) && /\bworth\b/.test(text);
+}
+
+function walletWorthOverviewCall(walletId: string): ConsolePlannedToolCall {
+  return {
+    name: "get_wallet_overview",
+    input: { walletId },
+    reason: "Fallback plan for wallet worth balance data.",
+  };
+}
+
+function walletWorthMarketCall(): ConsolePlannedToolCall {
+  return {
+    name: "get_market_status",
+    input: {},
+    reason: "Fallback plan for wallet worth market data.",
+  };
+}
+
+function buildWalletWorthFallbackPlan(
+  input: ConsolePlanInput,
+  maxToolCalls: number,
+): FallbackToolPlan | null {
+  if (!asksForWalletWorth(input.prompt)) return null;
+
+  const selection = fallbackWalletSelection(input);
+  const walletId =
+    selection.walletIds.length === 1 ? selection.walletIds[0] : null;
+  const availableCalls = [
+    ...(walletId && hasTool(input, "get_wallet_overview")
+      ? [walletWorthOverviewCall(walletId)]
+      : []),
+    ...(hasTool(input, "get_market_status") ? [walletWorthMarketCall()] : []),
+  ];
+  const toolCalls =
+    maxToolCalls > 0 ? availableCalls.slice(0, maxToolCalls) : [];
+  const completePlan = availableCalls.length === 2 && toolCalls.length === 2;
+
+  return {
+    toolCalls,
+    warnings: uniqueWarnings([
+      ...selection.warnings,
+      ...toolCallLimitWarnings(availableCalls.length, toolCalls.length),
+      ...(completePlan ? [] : [WALLET_WORTH_PARTIAL_WARNING]),
+    ]),
   };
 }
 
@@ -429,6 +484,19 @@ function asksForOverviewFallback(prompt: string): boolean {
   );
 }
 
+function publicFallbackCall(
+  input: ConsolePlanInput,
+  toolName: ConsolePlannedToolCall["name"],
+  reason: string,
+): FallbackToolPlan {
+  return hasTool(input, toolName)
+    ? {
+        toolCalls: [{ name: toolName, input: {}, reason }],
+        warnings: [],
+      }
+    : emptyFallbackPlan();
+}
+
 function buildPublicToolFallbackPlan(
   input: ConsolePlanInput,
   maxToolCalls: number,
@@ -437,48 +505,27 @@ function buildPublicToolFallbackPlan(
 
   const text = input.prompt.toLowerCase();
   if (/\b(fees?|fee estimates?|sat\/vbytes?|sat\/vbs?)\b/.test(text)) {
-    return hasTool(input, "get_fee_estimates")
-      ? {
-          toolCalls: [
-            {
-              name: "get_fee_estimates",
-              input: {},
-              reason: "Fallback plan for fee estimate request.",
-            },
-          ],
-          warnings: [],
-        }
-      : emptyFallbackPlan();
+    return publicFallbackCall(
+      input,
+      "get_fee_estimates",
+      "Fallback plan for fee estimate request.",
+    );
   }
 
   if (/\b(network|mempool|block height|height|blocks?)\b/.test(text)) {
-    return hasTool(input, "get_bitcoin_network_status")
-      ? {
-          toolCalls: [
-            {
-              name: "get_bitcoin_network_status",
-              input: {},
-              reason: "Fallback plan for Bitcoin network status request.",
-            },
-          ],
-          warnings: [],
-        }
-      : emptyFallbackPlan();
+    return publicFallbackCall(
+      input,
+      "get_bitcoin_network_status",
+      "Fallback plan for Bitcoin network status request.",
+    );
   }
 
   if (/\b(price|worth|rate|market)\b/.test(text)) {
-    return hasTool(input, "get_market_status")
-      ? {
-          toolCalls: [
-            {
-              name: "get_market_status",
-              input: {},
-              reason: "Fallback plan for market status request.",
-            },
-          ],
-          warnings: [],
-        }
-      : emptyFallbackPlan();
+    return publicFallbackCall(
+      input,
+      "get_market_status",
+      "Fallback plan for market status request.",
+    );
   }
 
   return emptyFallbackPlan();

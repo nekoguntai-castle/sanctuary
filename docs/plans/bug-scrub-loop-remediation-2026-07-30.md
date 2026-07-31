@@ -337,21 +337,21 @@ Delivery: one persistence-consistency PR.
 Findings: `console-wallet-set-tools-ignore-selected-scope` and
 `console-fallback-wallet-worth-plans-market-only`.
 
-- [ ] Add Console execution tests proving device and pending-approval results are
+- [x] Add Console execution tests proving device and pending-approval results are
       intersected with a one-wallet or subset wallet scope.
-- [ ] Filter before redaction/projection so counts and audit wallet counts also
+- [x] Filter before redaction/projection so counts and audit wallet counts also
       reflect the selected scope; retain unrestricted caller-accessible behavior
       only when the adapter supplies no wallet scope.
-- [ ] Add planner regressions for “what is my wallet worth?”, “what is bitcoin
+- [x] Add planner regressions for “what is my wallet worth?”, “what is bitcoin
       worth?”, and maximum-tool-call limits.
-- [ ] Make wallet-worth fallback include selected wallet data and market data when
+- [x] Make wallet-worth fallback include selected wallet data and market data when
       both tools and budget are available; otherwise emit an explicit partial-plan
       warning instead of silently answering a different question.
-- [ ] Extend the safe Console result projection so synthesis receives numeric
+- [x] Extend the safe Console result projection so synthesis receives numeric
       currency price and as-of metadata from market results alongside
       `balance_total_sats`. Keep raw `envelope.data` and redacted associations out
       of stored/exposed facts.
-- [ ] Verify synthesis receives both projected inputs and can calculate wallet
+- [x] Verify synthesis receives both projected inputs and can calculate wallet
       worth without exposing redacted wallet associations.
 
 Acceptance:

@@ -102,7 +102,9 @@ describe("console service", () => {
           expect.objectContaining({
             toolName: "get_wallet_overview",
             input: { walletId },
-            facts: { summary: "Wallet has activity." },
+            facts: expect.objectContaining({
+              summary: "Wallet has activity.",
+            }),
           }),
         ],
       }),
@@ -717,6 +719,49 @@ describe("console service", () => {
         success: true,
         details: expect.objectContaining({
           planningWarnings: ["synthesis_fallback_applied"],
+        }),
+      }),
+    );
+  });
+
+  it("passes partial wallet-worth limitations to synthesis and its fallback", async () => {
+    mocks.planConsoleTools.mockResolvedValue({
+      toolCalls: [
+        {
+          name: "get_wallet_overview",
+          input: { walletId },
+          reason: "Need the available wallet input",
+        },
+      ],
+      warnings: ["wallet_worth_plan_partial"],
+      providerProfileId: "profile-1",
+      model: "llama3.2",
+    });
+    mocks.synthesizeConsoleAnswer.mockRejectedValue(
+      new ServiceUnavailableError("synthesis unavailable"),
+    );
+
+    await runConsoleTurn(actor(), {
+      prompt: "what is my wallet worth?",
+      scope: { kind: "wallet", walletId },
+      maxSensitivity: "wallet",
+    });
+
+    expect(mocks.synthesizeConsoleAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planningWarnings: ["wallet_worth_plan_partial"],
+      }),
+    );
+    expect(mocks.consoleRepository.completeTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response: expect.stringContaining(
+          "Wallet worth could not be fully calculated",
+        ),
+        plannedTools: expect.objectContaining({
+          warnings: [
+            "wallet_worth_plan_partial",
+            "synthesis_fallback_applied",
+          ],
         }),
       }),
     );

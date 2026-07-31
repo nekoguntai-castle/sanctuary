@@ -411,6 +411,103 @@ describe("console tool execution", () => {
     );
   });
 
+  it("projects numeric market prices and as-of metadata without storing raw result data", async () => {
+    mocks.assistantReadToolRegistry.get.mockReturnValueOnce(
+      definition({
+        name: "get_market_status",
+        sensitivity: "public",
+        requiredScope: {
+          kind: "authenticated",
+          description: "authenticated scope",
+        },
+        inputSchema: {},
+      }),
+    );
+    mocks.assistantReadToolRegistry.execute.mockResolvedValueOnce({
+      data: {
+        prices: [
+          {
+            available: true,
+            currency: "USD",
+            price: 123_456.78,
+            source: "private-provider-name",
+            asOf: "2026-04-26T11:59:00.000Z",
+            stale: false,
+            walletAssociations: [walletId],
+          },
+          {
+            available: false,
+            currency: "EUR",
+            price: null,
+            asOf: null,
+          },
+          null,
+          { currency: 123, price: 1 },
+          { currency: "$", price: 1 },
+          { available: false, currency: "GBP", price: 1 },
+          { currency: "CAD", price: "1" },
+          { currency: "JPY", price: Number.POSITIVE_INFINITY },
+          { currency: "AUD", price: 0 },
+          { currency: "NZD", price: 1, asOf: 42 },
+          { currency: "CHF", price: 2, asOf: "not-a-date" },
+          { currency: "SEK", price: 3 },
+        ],
+        raw: "must-not-be-stored",
+      },
+      facts: {
+        summary: "Market status",
+        items: [
+          { label: "balance_total_sats", value: 100_000, unit: "sats" },
+          { label: "btc_price_sek", value: 3, unit: "SEK" },
+        ],
+      },
+      provenance: {
+        sources: [{ type: "sanctuary_cache", label: "btc_price" }],
+        computedAt: "2026-04-26T12:00:00.000Z",
+      },
+      sensitivity: "public",
+      redactions: [],
+      truncation: { truncated: false },
+      warnings: [],
+      audit: {
+        operation: "get_market_status",
+        source: "console",
+        sensitivity: "public",
+        scope: "authenticated",
+        rowCount: 2,
+      },
+    });
+
+    const storedTrace = await executePlannedTool({
+      call: { name: "get_market_status", input: {} },
+      turnId,
+      scope: { kind: "authenticated" },
+      maxSensitivity: "public",
+      actor: actor(),
+    });
+    const synthesisTrace = traceForSynthesis(storedTrace);
+
+    expect(synthesisTrace.facts).toEqual({
+      summary: "Market status",
+      items: [
+        { label: "balance_total_sats", value: 100_000, unit: "sats" },
+        { label: "btc_price_sek", value: 3, unit: "SEK" },
+        { label: "btc_price_usd", value: 123_456.78, unit: "USD" },
+        {
+          label: "btc_price_as_of_usd",
+          value: "2026-04-26T11:59:00.000Z",
+        },
+        { label: "btc_price_nzd", value: 1, unit: "NZD" },
+        { label: "btc_price_chf", value: 2, unit: "CHF" },
+      ],
+    });
+    const serialized = JSON.stringify(storedTrace);
+    expect(serialized).not.toContain("must-not-be-stored");
+    expect(serialized).not.toContain("private-provider-name");
+    expect(serialized).not.toContain(walletId);
+    expect(serialized).not.toContain("btc_price_eur");
+  });
+
   it("lets authenticated public tools run without wallet scope", async () => {
     mocks.assistantReadToolRegistry.execute.mockResolvedValueOnce({
       data: {},

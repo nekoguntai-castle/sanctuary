@@ -4,6 +4,7 @@ import type {
   AssistantToolEnvelope,
   AssistantToolSensitivity,
 } from "../tools";
+import type { AssistantToolFact } from "../tools/types";
 
 export const CONSOLE_SCOPE_KIND_VALUES = [
   "general",
@@ -246,9 +247,76 @@ export function describeToolForPlanning(
   };
 }
 
+function normalizeMarketCurrency(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const currency = value.trim().toUpperCase();
+  return /^[A-Z0-9]{3,8}$/.test(currency) ? currency : null;
+}
+
+function normalizeAsOf(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : new Date(timestamp).toISOString();
+}
+
+function projectMarketFacts(
+  envelope: AssistantToolEnvelope,
+): AssistantToolFact[] {
+  const prices = envelope.data.prices;
+  if (!Array.isArray(prices)) {
+    return [];
+  }
+
+  return prices.flatMap((price): AssistantToolFact[] => {
+    if (typeof price !== "object" || price === null) {
+      return [];
+    }
+    const record = price as Record<string, unknown>;
+    const currency = normalizeMarketCurrency(record.currency);
+    if (
+      currency === null ||
+      record.available === false ||
+      typeof record.price !== "number" ||
+      !Number.isFinite(record.price) ||
+      record.price <= 0
+    ) {
+      return [];
+    }
+
+    const labelSuffix = currency.toLowerCase();
+    const facts: AssistantToolFact[] = [{
+      label: `btc_price_${labelSuffix}`,
+      value: record.price,
+      unit: currency,
+    }];
+    const asOf = normalizeAsOf(record.asOf);
+    if (asOf !== null) {
+      facts.push({
+        label: `btc_price_as_of_${labelSuffix}`,
+        value: asOf,
+      });
+    }
+    return facts;
+  });
+}
+
 export function compactToolEnvelope(envelope: AssistantToolEnvelope) {
+  const existingLabels = new Set(
+    envelope.facts.items.map((fact) => fact.label)
+  );
+  const projectedFacts = projectMarketFacts(envelope).filter(
+    (fact) => !existingLabels.has(fact.label)
+  );
+
   return {
-    facts: envelope.facts,
+    facts: {
+      ...envelope.facts,
+      items: [...envelope.facts.items, ...projectedFacts],
+    },
     provenance: envelope.provenance,
     sensitivity: envelope.sensitivity,
     redactions: envelope.redactions,

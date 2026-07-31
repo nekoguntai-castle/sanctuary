@@ -54,6 +54,34 @@ function toDeviceSummary(device: DeviceWithAccess) {
   };
 }
 
+function scopeDevicesToWallets(
+  devices: DeviceWithAccess[],
+  walletScopeIds: string[] | undefined
+): DeviceWithAccess[] {
+  if (walletScopeIds == null) {
+    return devices;
+  }
+
+  const walletScope = new Set(walletScopeIds);
+  return devices.flatMap((device) => {
+    const wallets = device.wallets.filter(({ wallet }) => walletScope.has(wallet.id));
+    if (wallets.length === 0) {
+      return [];
+    }
+    return [{
+      ...device,
+      wallets,
+      walletCount: wallets.length,
+    }];
+  });
+}
+
+function countDeviceWallets(devices: DeviceWithAccess[]): number {
+  return new Set(
+    devices.flatMap((device) => device.wallets.map(({ wallet }) => wallet.id))
+  ).size;
+}
+
 export const supportedDeviceModelsTool: AssistantReadToolDefinition<typeof supportedDeviceModelsInputSchema> = {
   name: 'list_supported_device_models',
   title: 'List Supported Device Models',
@@ -102,7 +130,12 @@ export const listDevicesTool: AssistantReadToolDefinition<typeof listDevicesInpu
   },
   budgets: userDeviceBudget,
   async execute(_input, context) {
-    const devices = (await getUserAccessibleDevices(context.actor.userId)).map(toDeviceSummary);
+    const scopedDevices = scopeDevicesToWallets(
+      await getUserAccessibleDevices(context.actor.userId),
+      context.walletScopeIds
+    );
+    const devices = scopedDevices.map(toDeviceSummary);
+    const walletCount = countDeviceWallets(scopedDevices);
 
     return createToolEnvelope({
       tool: listDevicesTool,
@@ -124,7 +157,7 @@ export const listDevicesTool: AssistantReadToolDefinition<typeof listDevicesInpu
         'device_wallet_associations',
         'device_account_details',
       ],
-      audit: { rowCount: devices.length },
+      audit: { walletCount, rowCount: devices.length },
     });
   },
 };

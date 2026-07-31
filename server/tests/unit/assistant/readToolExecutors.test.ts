@@ -104,6 +104,7 @@ vi.mock('../../../src/services/bitcoin/networkStatusService', () => ({
 
 import { assistantReadToolRegistry, type AssistantToolContext } from '../../../src/assistant/tools';
 import { resetMempoolStatusCacheForTests } from '../../../src/assistant/tools/networkReadTools';
+import { registerReadToolScopeTests } from './readToolExecutors.scope.contracts';
 
 const walletId = '11111111-1111-4111-8111-111111111111';
 const secondWalletId = '22222222-2222-4222-8222-222222222222';
@@ -948,5 +949,12 @@ describe('assistant read-tool executors', () => {
       'device_wallet_associations',
       'device_account_details',
     ]));
+  });
+
+  registerReadToolScopeTests({
+    mocks,
+    createContext,
+    walletId,
+    secondWalletId,
   });
 });

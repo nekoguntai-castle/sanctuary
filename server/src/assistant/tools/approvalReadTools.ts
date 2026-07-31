@@ -24,6 +24,19 @@ function toPendingApprovalDto(approval: Awaited<ReturnType<typeof approvalServic
   };
 }
 
+function intersectWalletScope(
+  walletIds: string[],
+  walletScopeIds: string[] | undefined
+): string[] {
+  const uniqueWalletIds = [...new Set(walletIds)];
+  if (walletScopeIds == null) {
+    return uniqueWalletIds;
+  }
+
+  const walletScope = new Set(walletScopeIds);
+  return uniqueWalletIds.filter((walletId) => walletScope.has(walletId));
+}
+
 export const pendingApprovalsTool: AssistantReadToolDefinition<typeof pendingApprovalsInputSchema> = {
   name: 'get_pending_approvals',
   title: 'Get Pending Approvals',
@@ -37,12 +50,20 @@ export const pendingApprovalsTool: AssistantReadToolDefinition<typeof pendingApp
   },
   budgets: approvalBudget,
   async execute(_input, context) {
-    const approveWalletIds = await walletSharingRepository.findWalletIdsByUserRole(
-      context.actor.userId,
-      [...WALLET_APPROVE_ROLE_VALUES]
+    const approveWalletIds = intersectWalletScope(
+      await walletSharingRepository.findWalletIdsByUserRole(
+        context.actor.userId,
+        [...WALLET_APPROVE_ROLE_VALUES]
+      ),
+      context.walletScopeIds
     );
-    const pending = await approvalService.getPendingApprovalsForUser(approveWalletIds);
-    const approvals = pending.map(toPendingApprovalDto);
+    const approveWalletSet = new Set(approveWalletIds);
+    const pending = approveWalletIds.length === 0
+      ? []
+      : await approvalService.getPendingApprovalsForUser(approveWalletIds);
+    const approvals = pending
+      .filter((approval) => approveWalletSet.has(approval.draftTransaction.walletId))
+      .map(toPendingApprovalDto);
 
     return createToolEnvelope({
       tool: pendingApprovalsTool,

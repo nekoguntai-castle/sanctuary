@@ -131,6 +131,7 @@ describe("console planner protocol", () => {
   it("instructs synthesis to surface elevated access denials", () => {
     const messages = buildConsoleSynthesisMessages({
       prompt: "show high sensitivity wallet data",
+      planningWarnings: ["wallet_worth_plan_partial"],
       toolResults: [
         {
           toolName: "get_wallet_overview",
@@ -143,6 +144,10 @@ describe("console planner protocol", () => {
     expect(messages[0]?.content).toContain("elevated access is required");
     expect(messages[1]?.content).toContain(
       '"errorCode": "sensitivity_ceiling_exceeded"',
+    );
+    expect(messages[0]?.content).toContain("could not be fully calculated");
+    expect(messages[1]?.content).toContain(
+      '"planningWarnings": [\n    "wallet_worth_plan_partial"',
     );
   });
 

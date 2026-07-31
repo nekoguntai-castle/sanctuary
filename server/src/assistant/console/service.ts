@@ -101,10 +101,14 @@ function toolTraceSummary(trace: ExecutedConsoleToolTrace): string {
 
 function buildSynthesisFallbackResponse(
   traces: ExecutedConsoleToolTrace[],
+  planningWarnings: string[],
 ): string {
   const summaries = traces.slice(0, 8).map(toolTraceSummary);
   return [
     "The Console tools completed, but the configured AI provider did not return synthesis text.",
+    ...(planningWarnings.includes("wallet_worth_plan_partial")
+      ? ["Wallet worth could not be fully calculated because either wallet balance or current market-price data was unavailable."]
+      : []),
     ...summaries.map((summary) => `- ${summary}`),
   ].join("\n");
 }
@@ -405,12 +409,13 @@ export async function runConsoleTurn(
       prompt: input.prompt,
       scope,
       ...(planningContext ? { context: planningContext } : {}),
+      planningWarnings: plan.warnings,
       toolResults: traces.map(traceForSynthesis),
     }).catch((error) => {
       if (traces.length === 0) throw error;
       synthesisFallbackApplied = true;
       return {
-        response: buildSynthesisFallbackResponse(traces),
+        response: buildSynthesisFallbackResponse(traces, plan.warnings),
         providerProfileId: plan.providerProfileId,
         model: plan.model,
       };

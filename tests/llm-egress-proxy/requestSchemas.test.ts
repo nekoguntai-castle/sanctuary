@@ -261,6 +261,7 @@ describe("LLM egress proxy request schemas", () => {
       ConsoleSynthesisBodySchema.parse({
         prompt: "summarize",
         context: { mode: "auto" },
+        planningWarnings: ["wallet_worth_plan_partial"],
         toolResults: [
           {
             toolName: "get_fee_estimates",
@@ -273,6 +274,7 @@ describe("LLM egress proxy request schemas", () => {
     ).toEqual({
       prompt: "summarize",
       context: { mode: "auto" },
+      planningWarnings: ["wallet_worth_plan_partial"],
       toolResults: [
         {
           toolName: "get_fee_estimates",
@@ -281,6 +283,17 @@ describe("LLM egress proxy request schemas", () => {
           errorCode: "sensitivity_ceiling_exceeded",
         },
       ],
+    });
+
+    expect(
+      ConsoleSynthesisBodySchema.parse({
+        prompt: "summarize",
+        toolResults: [],
+      }),
+    ).toEqual({
+      prompt: "summarize",
+      planningWarnings: [],
+      toolResults: [],
     });
 
     expect(() =>
