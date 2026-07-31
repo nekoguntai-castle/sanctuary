@@ -1,6 +1,6 @@
 {
   "name": "sanctuary-llm-egress-proxy",
-  "version": "0.8.57",
+  "version": "0.8.58",
   "description": "Isolated LLM egress proxy for Sanctuary - validates endpoints are local only",
   "main": "dist/index.js",
   "engines": {

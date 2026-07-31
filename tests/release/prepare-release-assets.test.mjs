@@ -25,7 +25,7 @@ try {
   writeFileSync(path.join(repo, 'package.json'), '{"version":"1.2.3"}\n');
   run('git', ['-C', repo, 'add', '.']);
   run('git', ['-C', repo, 'commit', '-qm', 'fixture release']);
-  run('git', ['-C', repo, 'tag', '-a', 'v1.2.3', '-m', 'fixture release']);
+  run('git', ['-C', repo, 'tag', '-a', 'v1.2.3-rc.1', '-m', 'fixture release candidate']);
 
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const privateKeyPath = path.join(root, 'private.pem');
@@ -40,8 +40,8 @@ try {
   mkdirSync(path.join(bundleStage, 'images/tor'), { recursive: true });
   writeFileSync(path.join(bundleStage, 'payload.txt'), 'signed bundle fixture\n');
   const commit = spawnSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
-  writeFileSync(path.join(bundleStage, 'manifest.env'), `SANCTUARY_OFFLINE_BUNDLE_SCHEMA=1\nSANCTUARY_VERSION=1.2.3\nSANCTUARY_GIT_TAG=v1.2.3\nSANCTUARY_GIT_COMMIT=${commit}\nSANCTUARY_PLATFORM=linux/amd64\nSANCTUARY_BUNDLE_FLAVOR=full\nSANCTUARY_INCLUDED_PROFILES=core,monitoring,tor\n`);
-  writeFileSync(path.join(bundleStage, 'manifest.json'), `${JSON.stringify({ schema: 1, version: '1.2.3', gitTag: 'v1.2.3', gitCommit: commit, platform: 'linux/amd64', flavor: 'full', includedProfiles: 'core,monitoring,tor' })}\n`);
+  writeFileSync(path.join(bundleStage, 'manifest.env'), `SANCTUARY_OFFLINE_BUNDLE_SCHEMA=1\nSANCTUARY_VERSION=1.2.3\nSANCTUARY_GIT_TAG=v1.2.3-rc.1\nSANCTUARY_GIT_COMMIT=${commit}\nSANCTUARY_PLATFORM=linux/amd64\nSANCTUARY_BUNDLE_FLAVOR=full\nSANCTUARY_INCLUDED_PROFILES=core,monitoring,tor\n`);
+  writeFileSync(path.join(bundleStage, 'manifest.json'), `${JSON.stringify({ schema: 1, version: '1.2.3', gitTag: 'v1.2.3-rc.1', gitCommit: commit, platform: 'linux/amd64', flavor: 'full', includedProfiles: 'core,monitoring,tor' })}\n`);
   const expectedImages = spawnSync('bash', ['-c', 'source "$1"; offline_all_release_images', '_', path.join(repo, 'scripts/offline/bundle-common.sh')], { encoding: 'utf8' }).stdout.trim().split('\n');
   const imageInventory = expectedImages.map((image) => ({
     image,
@@ -55,7 +55,7 @@ try {
     writeFileSync(path.join(bundleStage, 'images', bucket, `${image.replace(/[^A-Za-z0-9._-]/g, '-')}.tar`), `image ${image}\n`);
   }
   writeFileSync(path.join(bundleStage, 'image-inventory.json'), `${JSON.stringify({ schema: 1, platform: 'linux/amd64', images: imageInventory })}\n`);
-  run('git', ['-C', repo, 'bundle', 'create', path.join(bundleStage, 'repo/sanctuary.git.bundle'), 'refs/tags/v1.2.3']);
+  run('git', ['-C', repo, 'bundle', 'create', path.join(bundleStage, 'repo/sanctuary.git.bundle'), 'refs/tags/v1.2.3-rc.1']);
   const imageFiles = expectedImages.map((image) => {
     const bucket = /^(jaegertracing|grafana|prom)\//.test(image) ? 'monitoring' : image.startsWith('dperson/torproxy:') ? 'tor' : 'core';
     return `images/${bucket}/${image.replace(/[^A-Za-z0-9._-]/g, '-')}.tar`;
@@ -71,7 +71,7 @@ try {
   run('openssl', ['dgst', '-sha256', '-sign', privateKeyPath, '-out', `${bundle}.sig`, bundle]);
 
   const result = prepareReleaseAssets({
-    tag: 'v1.2.3',
+    tag: 'v1.2.3-rc.1',
     outputDir: output,
     signingKey: privateKeyPath,
     publicKey: publicKeyPath,
@@ -80,7 +80,7 @@ try {
     runId: 'test-run-1',
   });
   const manifest = JSON.parse(readFileSync(result.manifestPath, 'utf8'));
-  assert.equal(manifest.release.tag, 'v1.2.3');
+  assert.equal(manifest.release.tag, 'v1.2.3-rc.1');
   assert.equal(manifest.artifacts.find((item) => item.type === 'offline-bundle').platform, 'linux/amd64');
   assert.equal(manifest.artifacts.some((item) => item.type === 'container-image'), false);
   assert.match(readFileSync(path.join(output, `${path.basename(result.bundlePath)}.spdx.json`), 'utf8'), /SPDX-2.3/);
@@ -93,11 +93,11 @@ try {
   run('tar', ['-czf', bundle, '-C', bundleStage, '.']);
   run('openssl', ['dgst', '-sha256', '-sign', privateKeyPath, '-out', `${bundle}.sig`, bundle]);
   assert.throws(() => prepareReleaseAssets({
-    tag: 'v1.2.3', outputDir: path.join(root, 'wrong-identity'), signingKey: privateKeyPath,
+    tag: 'v1.2.3-rc.1', outputDir: path.join(root, 'wrong-identity'), signingKey: privateKeyPath,
     publicKey: publicKeyPath, repoRoot: repo, bundlePath: bundle,
   }), /bundle identity does not match/);
   assert.throws(() => prepareReleaseAssets({
-    tag: 'v1.2.3', outputDir: path.join(root, 'arm'), signingKey: privateKeyPath,
+    tag: 'v1.2.3-rc.1', outputDir: path.join(root, 'arm'), signingKey: privateKeyPath,
     publicKey: publicKeyPath, repoRoot: repo, bundlePath: bundle, platform: 'linux/arm64',
   }), /only linux\/amd64 is release-verified/);
   const sparse = path.join(root, 'large-sparse.bin');

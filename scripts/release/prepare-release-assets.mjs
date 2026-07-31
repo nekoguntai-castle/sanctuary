@@ -104,7 +104,9 @@ function validateCheckout(tag, repoRoot) {
     throw new Error('release asset preparation requires a clean worktree');
   }
   const packageVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version;
-  if (packageVersion !== tag.slice(1)) {
+  const tagVersion = tag.slice(1);
+  const expectedPackageVersion = tagVersion.split('-')[0];
+  if (packageVersion !== tagVersion && packageVersion !== expectedPackageVersion) {
     throw new Error(`package version ${packageVersion} does not match release tag ${tag}`);
   }
   return commit;
