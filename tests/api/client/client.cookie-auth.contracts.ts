@@ -166,7 +166,7 @@ export const registerApiClientCookieAuthContracts = () => {
         mockFetch.mockResolvedValue(errorResponse(401, { message: 'Unauthorized' }));
 
         await expect(
-          apiClient.post(endpoint, {}, { retry: { enabled: false } }),
+          apiClient.post(endpoint, {}),
         ).rejects.toMatchObject({ status: 401 });
 
         expect(mockRefreshAccessToken).not.toHaveBeenCalled();
@@ -200,7 +200,7 @@ export const registerApiClientCookieAuthContracts = () => {
         .mockResolvedValueOnce(okResponse({ success: true }));
       mockRefreshAccessToken.mockResolvedValue(undefined);
 
-      const result = await apiClient.post<{ success: boolean }>('/auth/logout', {}, { retry: { enabled: false } });
+      const result = await apiClient.post<{ success: boolean }>('/auth/logout', {});
 
       expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -235,7 +235,7 @@ export const registerApiClientCookieAuthContracts = () => {
       // refresh again (infinite loop) even when query params are present.
       mockFetch.mockResolvedValue(errorResponse(401));
 
-      await expect(apiClient.post('/auth/refresh?foo=bar', {}, { retry: { enabled: false } }))
+      await expect(apiClient.post('/auth/refresh?foo=bar', {}))
         .rejects.toMatchObject({ status: 401 });
 
       expect(mockRefreshAccessToken).not.toHaveBeenCalled();

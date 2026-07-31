@@ -27,8 +27,8 @@
  * and logout intentionally remain refresh-eligible.
  *
  * Features:
- * - Automatic retry with exponential backoff for network errors and 5xx responses
- * - Configurable retry behavior per request
+ * - Automatic bounded backoff for safe-read network errors and 5xx responses
+ * - Configurable transport retry behavior for safe reads
  * - Cookie-based authentication (no token in JavaScript memory)
  */
 
@@ -45,11 +45,18 @@ import {
   attachCsrfHeader,
   shouldAttemptRefreshAfterUnauthorized,
 } from "./authPolicy";
+import {
+  createRetryBudget,
+  NO_RETRY,
+  resolveRetryOptions,
+  sleepWithJitter,
+  type RetryBudget,
+  type RetryOptions,
+} from "./retryPolicy";
 
 const log = createLogger("ApiClient");
 
 // Retry configuration
-const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_INITIAL_DELAY_MS = 1000;
 const DEFAULT_MAX_DELAY_MS = 10000;
 const DEFAULT_BACKOFF_MULTIPLIER = 2;
@@ -60,15 +67,6 @@ const FILE_TRANSFER_TIMEOUT_MS = 120_000;
 
 // Retryable HTTP status codes (server errors)
 const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
-
-interface RetryOptions {
-  maxRetries?: number;
-  initialDelayMs?: number;
-  maxDelayMs?: number;
-  backoffMultiplier?: number;
-  // Set to false to disable retry for specific requests
-  enabled?: boolean;
-}
 
 interface ApiRequestOptions extends RequestInit {
   timeoutMs?: number;
@@ -90,17 +88,12 @@ interface RefreshableOperation<T> {
   operation: () => Promise<T>;
   retryContext?: string;
   retryOptions: RetryOptions;
+  // Reused after refresh so authentication replay cannot reset retry capacity.
+  retryBudget?: RetryBudget;
+  // Cancels retry backoff as well as the underlying caller-owned fetch signal.
+  signal?: AbortSignal;
   isRefreshRetry?: boolean;
 }
-
-/**
- * Sleep for specified milliseconds with jitter
- */
-const sleep = (ms: number): Promise<void> => {
-  // Add ±20% jitter to prevent thundering herd
-  const jitter = ms * 0.2 * (Math.random() - 0.5);
-  return new Promise((resolve) => setTimeout(resolve, ms + jitter));
-};
 
 /**
  * Check if an error is retryable
@@ -130,9 +123,10 @@ async function withRetry<T>(
   operation: () => Promise<T>,
   options: RetryOptions,
   context: string,
+  budget: RetryBudget,
+  signal?: AbortSignal,
 ): Promise<T> {
   const {
-    maxRetries = DEFAULT_MAX_RETRIES,
     initialDelayMs = DEFAULT_INITIAL_DELAY_MS,
     maxDelayMs = DEFAULT_MAX_DELAY_MS,
     backoffMultiplier = DEFAULT_BACKOFF_MULTIPLIER,
@@ -140,12 +134,14 @@ async function withRetry<T>(
   } = options;
 
   let lastError: ApiError | null = null;
-  let attempt = 0;
 
-  while (attempt <= maxRetries) {
+  while (budget.retriesUsed <= budget.maxRetries) {
+    signal?.throwIfAborted();
     try {
       return await operation();
     } catch (error) {
+      signal?.throwIfAborted();
+
       const apiError =
         error instanceof ApiError
           ? error
@@ -160,22 +156,22 @@ async function withRetry<T>(
       if (
         retryEnabled &&
         isRetryableError(error, status) &&
-        attempt < maxRetries
+        budget.retriesUsed < budget.maxRetries
       ) {
         lastError = apiError;
         const delay = Math.min(
-          initialDelayMs * Math.pow(backoffMultiplier, attempt),
+          initialDelayMs * Math.pow(backoffMultiplier, budget.retriesUsed),
           maxDelayMs,
         );
         log.warn(
-          `Request failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms`,
+          `Request failed (attempt ${budget.retriesUsed + 1}/${budget.maxRetries + 1}), retrying in ${delay}ms`,
           {
             context,
             status,
           },
         );
-        await sleep(delay);
-        attempt++;
+        await sleepWithJitter(delay, signal);
+        budget.retriesUsed++;
         continue;
       }
 
@@ -192,8 +188,6 @@ const apiBaseUrl = getApiBaseUrl();
 function buildApiUrl(endpoint: string): string {
   return joinApiBaseUrl(apiBaseUrl, endpoint);
 }
-
-const NO_RETRY: RetryOptions = { enabled: false };
 
 function headersInitToRecord(headersInit: HeadersInit | undefined): Record<string, string> {
   if (!headersInit) return {};
@@ -464,9 +458,16 @@ export class ApiClient {
   ): Promise<T> {
     const retryOptions = input.retryOptions;
     const retryContext = input.retryContext ?? input.endpoint;
+    const retryBudget = input.retryBudget ?? createRetryBudget(retryOptions);
 
     try {
-      return await withRetry(input.operation, retryOptions, retryContext);
+      return await withRetry(
+        input.operation,
+        retryOptions,
+        retryContext,
+        retryBudget,
+        input.signal,
+      );
     } catch (error) {
       if (
         error instanceof ApiError &&
@@ -489,6 +490,7 @@ export class ApiClient {
           ...input,
           retryOptions,
           retryContext,
+          retryBudget,
           isRefreshRetry: true,
         });
       }
@@ -498,8 +500,8 @@ export class ApiClient {
   }
 
   /**
-   * Make HTTP request with automatic retry for transient failures and
-   * a refresh-on-401 interceptor for non-exempt endpoints.
+   * Make an HTTP request with transport retries for safe reads and a separate
+   * one-time refresh-on-401 replay for non-exempt endpoints.
    */
   private async request<T>(
     endpoint: string,
@@ -511,6 +513,7 @@ export class ApiClient {
     // All public methods (get/post/put/patch/delete) set options.method
     // explicitly before calling request, so we trust it is defined here.
     const method = (options.method as string).toUpperCase();
+    const resolvedRetryOptions = resolveRetryOptions(method, retryOptions);
 
     const performRequest = async (): Promise<T> => {
       const { timeoutMs, ...fetchOptions } = options;
@@ -546,7 +549,8 @@ export class ApiClient {
     return this.executeApiOperation<T>({
       endpoint,
       operation: performRequest,
-      retryOptions,
+      retryOptions: resolvedRetryOptions,
+      signal: options.signal ?? undefined,
       isRefreshRetry,
     });
   }
@@ -584,17 +588,16 @@ export class ApiClient {
   }
 
   /**
-   * POST request
+   * POST request. Mutation transport failures are never retried automatically.
    * @param endpoint API endpoint
    * @param data Request body
-   * @param options Additional options (headers, retry config)
+   * @param options Additional options
    */
   async post<T>(
     endpoint: string,
     data?: unknown,
     options?: {
       headers?: Record<string, string>;
-      retry?: RetryOptions;
       timeoutMs?: number;
     },
   ): Promise<T> {
@@ -606,17 +609,15 @@ export class ApiClient {
         headers: options?.headers,
         timeoutMs: options?.timeoutMs,
       },
-      options?.retry,
     );
   }
 
   /**
-   * PUT request
+   * PUT request. Mutation transport failures are never retried automatically.
    */
   async put<T>(
     endpoint: string,
     data?: unknown,
-    retryOptions?: RetryOptions,
   ): Promise<T> {
     return this.request<T>(
       endpoint,
@@ -624,17 +625,15 @@ export class ApiClient {
         method: "PUT",
         body: data ? JSON.stringify(data) : undefined,
       },
-      retryOptions,
     );
   }
 
   /**
-   * PATCH request
+   * PATCH request. Mutation transport failures are never retried automatically.
    */
   async patch<T>(
     endpoint: string,
     data?: unknown,
-    retryOptions?: RetryOptions,
   ): Promise<T> {
     return this.request<T>(
       endpoint,
@@ -642,17 +641,15 @@ export class ApiClient {
         method: "PATCH",
         body: data ? JSON.stringify(data) : undefined,
       },
-      retryOptions,
     );
   }
 
   /**
-   * DELETE request
+   * DELETE request. Mutation transport failures are never retried automatically.
    */
   async delete<T>(
     endpoint: string,
     data?: unknown,
-    retryOptions?: RetryOptions,
   ): Promise<T> {
     const requestOptions: ApiRequestOptions = {
       method: "DELETE",
@@ -661,7 +658,7 @@ export class ApiClient {
       requestOptions.body = JSON.stringify(data);
     }
 
-    return this.request<T>(endpoint, requestOptions, retryOptions);
+    return this.request<T>(endpoint, requestOptions);
   }
 
   /**
@@ -699,7 +696,8 @@ export class ApiClient {
       endpoint: requestEndpoint,
       operation: performFetchBlob,
       retryContext: `blob:${requestEndpoint}`,
-      retryOptions: NO_RETRY,
+      retryOptions: resolveRetryOptions(method),
+      signal: options.signal,
     });
   }
 
@@ -716,7 +714,10 @@ export class ApiClient {
     const url = buildApiUrl(requestEndpoint);
     const method = (options.method ?? "GET").toUpperCase();
 
-    const performDownload = async (): Promise<void> => {
+    const performDownload = async (): Promise<{
+      blob: Blob;
+      resolvedFilename: string;
+    }> => {
       const headers = buildTransferHeaders(undefined, method);
       const response = await fetch(url, {
         method: options.method || "GET",
@@ -731,24 +732,27 @@ export class ApiClient {
 
       const resolvedFilename = this.resolveDownloadFilename(response, filename);
       const blob = await response.blob();
-      downloadBlob(blob, resolvedFilename);
+      return { blob, resolvedFilename };
     };
 
-    await this.executeApiOperation<void>({
+    const download = await this.executeApiOperation<{
+      blob: Blob;
+      resolvedFilename: string;
+    }>({
       endpoint: requestEndpoint,
       operation: performDownload,
       retryContext: `download:${requestEndpoint}`,
-      retryOptions: NO_RETRY,
+      retryOptions: resolveRetryOptions(method),
     });
+    downloadBlob(download.blob, download.resolvedFilename);
   }
 
   /**
-   * Upload file (multipart/form-data) with retry support
+   * Upload a file with a single transport attempt and one optional auth replay.
    */
   async upload<T>(
     endpoint: string,
     formData: FormData,
-    retryOptions: RetryOptions = {},
   ): Promise<T> {
     this.assertFormDataUploadBody(formData);
     const url = buildApiUrl(endpoint);
@@ -777,12 +781,12 @@ export class ApiClient {
       endpoint,
       operation: performUpload,
       retryContext: `upload:${endpoint}`,
-      retryOptions,
+      retryOptions: NO_RETRY,
     });
   }
 }
 
-// Export RetryOptions for use by other modules
+// Safe-read callers may customize their bounded transport retry policy.
 export type { RetryOptions };
 
 // Singleton instance

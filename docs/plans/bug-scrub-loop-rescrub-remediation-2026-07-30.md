@@ -1,6 +1,6 @@
 # Bug Scrub Loop Remediation Plan — Iteration 2
 
-Status: Implementing (Phase 1 complete locally; delivery pending)
+Status: Implementing (Phase 1 delivered; Phase 2 complete locally, delivery pending)
 
 Run: `bug-scrub-loop-20260730t000000z-361d68a`
 
@@ -101,19 +101,19 @@ Delivery: one backend backup PR.
 
 Finding: `api-client-retries-non-idempotent-mutations`.
 
-- [ ] Add deferred-fetch tests for GET and every state-changing method where the
+- [x] Add deferred-fetch tests for GET and every state-changing method where the
       server may have committed before the client sees a network error or 5xx.
-- [ ] Make automatic transport retries default only for safe/idempotent reads.
+- [x] Make automatic transport retries default only for safe/idempotent reads.
       Preserve the single authentication-refresh replay policy separately from
       transport retries.
-- [ ] Do not add a generic mutation-retry opt-in in this phase. A future retryable
+- [x] Do not add a generic mutation-retry opt-in in this phase. A future retryable
       mutation must have an endpoint-enforced stable idempotency key, a separately
       typed client contract, and reuse the same key across transport attempts and
       authentication refresh.
-- [ ] Audit all client wrappers and file-transfer helpers so method inference,
+- [x] Audit all client wrappers and file-transfer helpers so method inference,
       custom methods, omitted methods, and `upload` use the same policy. Add an
       inventory test proving no current mutation opts into transport retries.
-- [ ] Lock an exact request-count matrix: GET network/503 retains bounded backoff;
+- [x] Lock an exact request-count matrix: GET network/503 retains bounded backoff;
       POST/PUT/PATCH/DELETE/upload network or 5xx sends once; mutation
       401→refresh→200 sends exactly two operation requests; mutation
       401→refresh→network/503 still sends exactly two and surfaces the replay

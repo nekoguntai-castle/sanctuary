@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   apiClient,
@@ -73,10 +73,26 @@ export const registerApiClientTransferContracts = () => {
       formData.append("file", new Blob(["test"]), "test.txt");
 
       await expect(
-        apiClient.upload("/upload", formData, { enabled: false }),
+        apiClient.upload("/upload", formData),
       ).rejects.toMatchObject({
         status: 500,
       });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should send an upload only once after an ambiguous network failure", async () => {
+      mockFetch.mockRejectedValue(new TypeError("connection closed after commit"));
+      const formData = new FormData();
+      formData.append("file", new Blob(["test"]), "test.txt");
+
+      await expect(
+        apiClient.upload("/upload", formData),
+      ).rejects.toMatchObject({
+        status: 0,
+        message: "connection closed after commit",
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it("should refresh and retry uploads once after a 401", async () => {
@@ -90,7 +106,6 @@ export const registerApiClientTransferContracts = () => {
       const result = await apiClient.upload<{ uploaded: boolean }>(
         "/upload",
         formData,
-        { enabled: false },
       );
 
       expect(result).toEqual({ uploaded: true });
@@ -113,7 +128,7 @@ export const registerApiClientTransferContracts = () => {
         return Promise.resolve();
       });
 
-      await apiClient.upload("/upload", formData, { enabled: false });
+      await apiClient.upload("/upload", formData);
 
       expect(mockFetch.mock.calls[0][1].headers["X-CSRF-Token"]).toBe(
         "old-csrf",
@@ -128,7 +143,6 @@ export const registerApiClientTransferContracts = () => {
         apiClient.upload(
           "/upload",
           { stream: true } as unknown as FormData,
-          { enabled: false },
         ),
       ).rejects.toMatchObject({
         status: 0,
@@ -145,6 +159,70 @@ export const registerApiClientTransferContracts = () => {
   // ========================================
 
   describe("Blob / Download", () => {
+    it("should retry default GET blob transport failures", async () => {
+      const blob = new Blob(["retried-bytes"]);
+      const controller = new AbortController();
+      mockFetch
+        .mockRejectedValueOnce(new TypeError("temporary network failure"))
+        .mockResolvedValueOnce(okBlobResponse(blob));
+
+      await expect(
+        apiClient.fetchBlob("/exports/archive", {
+          signal: controller.signal,
+        }),
+      ).resolves.toBe(blob);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should not retry custom POST blob transport failures", async () => {
+      mockFetch.mockRejectedValue(new TypeError("ambiguous completion"));
+
+      await expect(
+        apiClient.fetchBlob("/exports/archive", { method: "POST" }),
+      ).rejects.toMatchObject({
+        status: 0,
+        message: "ambiguous completion",
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should reject an already-aborted blob request before fetching", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        apiClient.fetchBlob("/exports/archive", {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({
+        name: "AbortError",
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("should abort during GET blob backoff without another fetch", async () => {
+      const controller = new AbortController();
+      vi.spyOn(controller.signal, "reason", "get").mockReturnValue(undefined);
+      const firstAttempt = Promise.reject(
+        new TypeError("temporary network failure"),
+      );
+      const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
+      mockFetch.mockReturnValueOnce(firstAttempt);
+
+      const request = apiClient.fetchBlob("/exports/archive", {
+        signal: controller.signal,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(timeoutSpy).toHaveBeenCalled();
+      controller.abort();
+
+      await expect(request).rejects.toMatchObject({ name: "AbortError" });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
     it("should fetch blob with params, method, and credentials:include", async () => {
       const blob = new Blob(["file-bytes"], {
         type: "application/octet-stream",
@@ -266,7 +344,7 @@ export const registerApiClientTransferContracts = () => {
       mockRefreshAccessToken.mockRejectedValueOnce(new Error("refresh failed"));
 
       await expect(
-        apiClient.fetchBlob("/exports/archive"),
+        apiClient.fetchBlob("/exports/archive", { method: "POST" }),
       ).rejects.toMatchObject({
         status: 401,
         message: "Unauthorized",
@@ -283,7 +361,7 @@ export const registerApiClientTransferContracts = () => {
       mockRefreshAccessToken.mockResolvedValue(undefined);
 
       await expect(
-        apiClient.fetchBlob("/exports/archive"),
+        apiClient.fetchBlob("/exports/archive", { method: "POST" }),
       ).rejects.toMatchObject({
         status: 401,
         message: "Still unauthorized",
@@ -356,7 +434,7 @@ export const registerApiClientTransferContracts = () => {
       });
 
       await expect(
-        apiClient.fetchBlob("/exports/archive"),
+        apiClient.fetchBlob("/exports/archive", { method: "POST" }),
       ).rejects.toMatchObject({
         status: 502,
         message: "HTTP 502: Bad Gateway",
@@ -372,7 +450,7 @@ export const registerApiClientTransferContracts = () => {
       });
 
       await expect(
-        apiClient.fetchBlob("/exports/archive"),
+        apiClient.fetchBlob("/exports/archive", { method: "POST" }),
       ).rejects.toMatchObject({
         status: 500,
         message: "HTTP 500: Internal Server Error",
@@ -402,6 +480,48 @@ export const registerApiClientTransferContracts = () => {
       // Cookie-based auth uses credentials:'include'.
       expect(mockFetch.mock.calls[0][1].credentials).toBe("include");
       expect(mockDownloadBlob).toHaveBeenCalledWith(blob, "backup-2026.tar.gz");
+    });
+
+    it("should retry default GET download transport failures", async () => {
+      const blob = new Blob(["retried-download"]);
+      mockFetch
+        .mockRejectedValueOnce(new TypeError("temporary network failure"))
+        .mockResolvedValueOnce(okBlobResponse(blob));
+
+      await apiClient.download("/admin/backup", "backup.tar.gz");
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockDownloadBlob).toHaveBeenCalledWith(blob, "backup.tar.gz");
+    });
+
+    it("should not retry custom POST download transport failures", async () => {
+      mockFetch.mockRejectedValue(new TypeError("ambiguous completion"));
+
+      await expect(
+        apiClient.download("/admin/backup", "backup.tar.gz", {
+          method: "POST",
+        }),
+      ).rejects.toMatchObject({
+        status: 0,
+        message: "ambiguous completion",
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should not retry after a local download side effect throws", async () => {
+      const blob = new Blob(["downloaded-once"]);
+      mockFetch.mockResolvedValue(okBlobResponse(blob));
+      mockDownloadBlob.mockImplementationOnce(() => {
+        throw new Error("local download cleanup failed");
+      });
+
+      await expect(
+        apiClient.download("/admin/backup", "backup.tar.gz"),
+      ).rejects.toThrow("local download cleanup failed");
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockDownloadBlob).toHaveBeenCalledTimes(1);
     });
 
     it("should refresh and retry downloads once while preserving retry filename", async () => {
@@ -468,7 +588,9 @@ export const registerApiClientTransferContracts = () => {
       });
 
       await expect(
-        apiClient.download("/admin/backup/missing"),
+        apiClient.download("/admin/backup/missing", undefined, {
+          method: "POST",
+        }),
       ).rejects.toMatchObject({
         status: 404,
         message: "File not found",
@@ -484,7 +606,9 @@ export const registerApiClientTransferContracts = () => {
       });
 
       await expect(
-        apiClient.download("/admin/backup/missing"),
+        apiClient.download("/admin/backup/missing", undefined, {
+          method: "POST",
+        }),
       ).rejects.toMatchObject({
         status: 503,
         message: "HTTP 503: Service Unavailable",

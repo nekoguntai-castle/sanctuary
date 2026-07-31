@@ -91,7 +91,7 @@ describe("Console API", () => {
     });
   });
 
-  it("calls session and turn mutation endpoints without retrying model-backed writes", async () => {
+  it("calls session and turn endpoints through the mutation-safe client contract", async () => {
     mockPost.mockResolvedValue({});
 
     await createConsoleSession();
@@ -117,7 +117,6 @@ describe("Console API", () => {
     expect(mockPost).toHaveBeenCalledWith(
       "/console/sessions",
       {},
-      { retry: { enabled: false } },
     );
     expect(mockPost).toHaveBeenCalledWith(
       "/console/sessions",
@@ -127,7 +126,6 @@ describe("Console API", () => {
         maxSensitivity: "high",
         expiresAt: "2026-05-26T00:00:00.000Z",
       },
-      { retry: { enabled: false } },
     );
     expect(mockPost).toHaveBeenCalledWith(
       "/console/turns",
@@ -135,7 +133,7 @@ describe("Console API", () => {
         maxSensitivity: "wallet",
         prompt: "How old is block 800000?",
       },
-      { retry: { enabled: false }, timeoutMs: 300000 },
+      { timeoutMs: 300000 },
     );
     expect(mockPost).toHaveBeenCalledWith(
       "/console/turns",
@@ -146,7 +144,7 @@ describe("Console API", () => {
         scope: { kind: "wallet", walletId: "wallet-1" },
         expiresAt: "2026-05-26T00:00:00.000Z",
       },
-      { retry: { enabled: false }, timeoutMs: 300000 },
+      { timeoutMs: 300000 },
     );
     expect(mockPost).toHaveBeenCalledWith(
       "/console/turns",
@@ -155,7 +153,7 @@ describe("Console API", () => {
         prompt: "Show this wallet activity",
         clientContext: { mode: "auto", routeWalletId: "wallet-1" },
       },
-      { retry: { enabled: false }, timeoutMs: 300000 },
+      { timeoutMs: 300000 },
     );
   });
 
@@ -189,25 +187,18 @@ describe("Console API", () => {
         title: "Good block prompt",
         expiresAt: null,
       },
-      { enabled: false },
     );
     expect(mockDelete).toHaveBeenCalledWith(
       "/console/sessions/session%2F1",
-      undefined,
-      { enabled: false },
     );
     expect(mockDelete).toHaveBeenCalledWith(
       "/console/prompts/prompt%2F1",
-      undefined,
-      { enabled: false },
     );
-    expect(mockDelete).toHaveBeenCalledWith("/console/prompts", undefined, {
-      enabled: false,
-    });
+    expect(mockDelete).toHaveBeenCalledWith("/console/prompts");
     expect(mockPost).toHaveBeenCalledWith(
       "/console/prompts/prompt%2F1/replay",
       {},
-      { retry: { enabled: false }, timeoutMs: 300000 },
+      { timeoutMs: 300000 },
     );
     expect(mockPost).toHaveBeenCalledWith(
       "/console/prompts/prompt%2F1/replay",
@@ -216,14 +207,14 @@ describe("Console API", () => {
         scope: { kind: "general" },
         maxSensitivity: "wallet",
       },
-      { retry: { enabled: false }, timeoutMs: 300000 },
+      { timeoutMs: 300000 },
     );
     expect(mockPost).toHaveBeenCalledWith(
       "/console/prompts/prompt%2F1/replay",
       {
         clientContext: { mode: "auto", routeWalletId: "wallet-1" },
       },
-      { retry: { enabled: false }, timeoutMs: 300000 },
+      { timeoutMs: 300000 },
     );
   });
 

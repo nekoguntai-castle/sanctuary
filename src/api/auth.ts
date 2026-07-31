@@ -72,8 +72,9 @@ export async function register(data: RegisterRequest): Promise<RegisterResponse>
  * Cookie-auth path: no token persistence on the browser side.
  */
 export async function login(data: LoginRequest): Promise<LoginResponse> {
-  // Disable retries — auto-retrying failed logins worsens server-side rate limiting
-  return apiClient.post<LoginResponse>('/auth/login', data, { retry: { enabled: false } });
+  // Mutations are transport-single-shot; this also avoids amplifying login
+  // attempts against the server-side rate limiter.
+  return apiClient.post<LoginResponse>('/auth/login', data);
 }
 
 /**
@@ -87,7 +88,7 @@ export async function login(data: LoginRequest): Promise<LoginResponse> {
  */
 export async function logout(): Promise<void> {
   try {
-    await apiClient.post('/auth/logout', {}, { retry: { enabled: false } });
+    await apiClient.post('/auth/logout', {});
   } catch (error) {
     log.debug('Logout request failed before local cleanup', { error });
     // Swallow: local cleanup (UserContext + refresh.triggerLogout) runs

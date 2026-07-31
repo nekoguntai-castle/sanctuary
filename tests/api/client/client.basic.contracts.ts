@@ -398,9 +398,6 @@ export const registerApiClientBasicContracts = () => {
         await apiClient.post(
           "/console/prompts/prompt-1/replay",
           {},
-          {
-            retry: { enabled: false },
-          },
         );
         throw new Error("expected request to fail");
       } catch (error) {

@@ -1,6 +1,32 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { ApiError, apiClient, mockFetch, mockRefreshAccessToken } from './clientTestHarness';
+
+const errorResponse = (status: number, message = 'request failed') => ({
+  ok: false,
+  status,
+  statusText: message,
+  json: () => Promise.resolve({ message }),
+});
+
+const successResponse = (body: unknown = { success: true }) => ({
+  ok: true,
+  status: 200,
+  json: () => Promise.resolve(body),
+});
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
 
 export const registerApiClientRetryContracts = () => {
   describe('Retry Behavior', () => {
@@ -216,6 +242,133 @@ export const registerApiClientRetryContracts = () => {
       });
 
       expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('should retry a GET whose deferred transport result becomes ambiguous', async () => {
+      const firstAttempt = createDeferred<Response>();
+      mockFetch
+        .mockReturnValueOnce(firstAttempt.promise)
+        .mockResolvedValueOnce(successResponse({ recovered: true }));
+
+      const request = apiClient.get<{ recovered: boolean }>(
+        '/deferred-read',
+        undefined,
+        { maxRetries: 1, initialDelayMs: 1 },
+      );
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      firstAttempt.reject(new TypeError('connection closed after response'));
+
+      await expect(request).resolves.toEqual({ recovered: true });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      ['POST', () => apiClient.post('/mutation', { value: 1 })],
+      ['PUT', () => apiClient.put('/mutation', { value: 1 })],
+      ['PATCH', () => apiClient.patch('/mutation', { value: 1 })],
+      ['DELETE', () => apiClient.delete('/mutation', { value: 1 })],
+    ])('should send %s only once after an ambiguous network failure', async (_method, request) => {
+      const firstAttempt = createDeferred<Response>();
+      mockFetch.mockReturnValue(firstAttempt.promise);
+      const result = request();
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      firstAttempt.reject(new TypeError('connection closed after commit'));
+
+      await expect(result).rejects.toMatchObject({
+        status: 0,
+        message: 'connection closed after commit',
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ['POST', () => apiClient.post('/mutation', { value: 1 })],
+      ['PUT', () => apiClient.put('/mutation', { value: 1 })],
+      ['PATCH', () => apiClient.patch('/mutation', { value: 1 })],
+      ['DELETE', () => apiClient.delete('/mutation', { value: 1 })],
+    ])('should send %s only once after a retryable HTTP failure', async (_method, request) => {
+      mockFetch.mockResolvedValue(errorResponse(503, 'committed but response lost'));
+
+      await expect(request()).rejects.toMatchObject({
+        status: 503,
+        message: 'committed but response lost',
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should share the GET transport retry budget across auth refresh', async () => {
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(503))
+        .mockResolvedValueOnce(errorResponse(401, 'Unauthorized'))
+        .mockResolvedValueOnce(errorResponse(503))
+        .mockResolvedValueOnce(successResponse({ recovered: true }));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      const result = await apiClient.get<{ recovered: boolean }>(
+        '/budgeted-read',
+        undefined,
+        { maxRetries: 3, initialDelayMs: 1 },
+      );
+
+      expect(result).toEqual({ recovered: true });
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(4);
+    });
+
+    it('should not reset an exhausted GET retry budget after auth refresh', async () => {
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(503))
+        .mockResolvedValueOnce(errorResponse(503))
+        .mockResolvedValueOnce(errorResponse(503))
+        .mockResolvedValueOnce(errorResponse(401, 'Unauthorized'))
+        .mockResolvedValueOnce(errorResponse(503, 'replay unavailable'));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      await expect(
+        apiClient.get('/budget-boundary', undefined, {
+          maxRetries: 3,
+          initialDelayMs: 1,
+        }),
+      ).rejects.toMatchObject({
+        status: 503,
+        message: 'replay unavailable',
+      });
+
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(5);
+    });
+
+    it('should keep mutation auth replay separate from transport retry', async () => {
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(401, 'Unauthorized'))
+        .mockResolvedValueOnce(errorResponse(503, 'replay unavailable'));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      await expect(
+        apiClient.post('/mutation', { value: 1 }),
+      ).rejects.toMatchObject({
+        status: 503,
+        message: 'replay unavailable',
+      });
+
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should have no API wrapper using the retired mutation retry option', () => {
+      const apiDirectory = join(process.cwd(), 'src/api');
+      const apiSource = readdirSync(apiDirectory, { recursive: true })
+        .filter((entry): entry is string =>
+          typeof entry === 'string' && entry.endsWith('.ts')
+        )
+        .map((entry) => readFileSync(join(apiDirectory, entry), 'utf8'))
+        .join('\n');
+
+      expect(apiSource).not.toMatch(/\bretry\s*:/);
     });
   });
 

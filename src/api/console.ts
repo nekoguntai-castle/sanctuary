@@ -195,7 +195,6 @@ export interface ConsolePromptUpdateInput {
   expiresAt?: string | null;
 }
 
-const noRetry = { enabled: false };
 const CONSOLE_TURN_TIMEOUT_MS = 300_000;
 
 export async function listConsoleTools(): Promise<{ tools: ConsoleTool[] }> {
@@ -223,9 +222,6 @@ export async function createConsoleSession(
   return apiClient.post<{ session: ConsoleSession }>(
     "/console/sessions",
     input,
-    {
-      retry: noRetry,
-    },
   );
 }
 
@@ -242,8 +238,6 @@ export async function deleteConsoleSession(
 ): Promise<{ success: boolean }> {
   return apiClient.delete<{ success: boolean }>(
     `/console/sessions/${encodeURIComponent(sessionId)}`,
-    undefined,
-    noRetry,
   );
 }
 
@@ -256,7 +250,7 @@ export async function runConsoleTurn(
       maxSensitivity: "wallet",
       ...input,
     },
-    { retry: noRetry, timeoutMs: CONSOLE_TURN_TIMEOUT_MS },
+    { timeoutMs: CONSOLE_TURN_TIMEOUT_MS },
   );
 }
 
@@ -284,7 +278,6 @@ export async function updatePromptHistory(
   return apiClient.patch<{ prompt: ConsolePromptHistory }>(
     `/console/prompts/${encodeURIComponent(promptId)}`,
     input,
-    noRetry,
   );
 }
 
@@ -293,8 +286,6 @@ export async function deletePromptHistory(
 ): Promise<{ success: boolean }> {
   return apiClient.delete<{ success: boolean }>(
     `/console/prompts/${encodeURIComponent(promptId)}`,
-    undefined,
-    noRetry,
   );
 }
 
@@ -304,8 +295,6 @@ export async function clearPromptHistory(): Promise<{
 }> {
   return apiClient.delete<{ success: boolean; deleted: number }>(
     "/console/prompts",
-    undefined,
-    noRetry,
   );
 }
 
@@ -316,6 +305,6 @@ export async function replayPromptHistory(
   return apiClient.post<ConsoleTurnResult>(
     `/console/prompts/${encodeURIComponent(promptId)}/replay`,
     input,
-    { retry: noRetry, timeoutMs: CONSOLE_TURN_TIMEOUT_MS },
+    { timeoutMs: CONSOLE_TURN_TIMEOUT_MS },
   );
 }

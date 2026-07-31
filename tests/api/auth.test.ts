@@ -156,7 +156,7 @@ describe('Auth API', () => {
       expect(mockPost).toHaveBeenCalledWith('/auth/login', {
         username: 'testuser',
         password: 'pass',
-      }, { retry: { enabled: false } });
+      });
       expect(requires2FA(result)).toBe(false);
     });
 
@@ -178,10 +178,10 @@ describe('Auth API', () => {
   // logout
   // ========================================
   describe('logout', () => {
-    it('should POST /auth/logout with retries disabled', async () => {
+    it('should POST /auth/logout through the mutation-safe client contract', async () => {
       mockPost.mockResolvedValue({ success: true });
       await logout();
-      expect(mockPost).toHaveBeenCalledWith('/auth/logout', {}, { retry: { enabled: false } });
+      expect(mockPost).toHaveBeenCalledWith('/auth/logout', {});
     });
 
     it('should swallow backend errors so local cleanup still runs', async () => {
