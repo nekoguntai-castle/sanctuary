@@ -5,6 +5,15 @@ import https from 'node:https';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WebhookDelivery, WebhookEndpoint } from '../../../../src/generated/prisma/client';
 import type { WalletWebhookEvent } from '../../../../src/services/webhooks/types';
+import type {
+  PinnedRequestOptions,
+  PinnedResponse,
+} from '../../../../src/services/outboundNetwork/nativeRequest';
+
+const outboundTransport = vi.hoisted(() => ({
+  actual: null as ((options: PinnedRequestOptions) => Promise<PinnedResponse>) | null,
+  request: vi.fn<(options: PinnedRequestOptions) => Promise<PinnedResponse>>(),
+}));
 
 const mockCreateDelivery = vi.fn();
 const mockDnsLookup = vi.fn();
@@ -43,6 +52,15 @@ vi.mock('node:dns/promises', () => ({
   lookup: mockDnsLookup,
 }));
 
+vi.mock('../../../../src/services/outboundNetwork/nativeRequest', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/services/outboundNetwork/nativeRequest')>();
+  outboundTransport.actual = actual.requestPinnedAddress;
+  return {
+    ...actual,
+    requestPinnedAddress: outboundTransport.request,
+  };
+});
+
 describe('webhook delivery service', () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -51,6 +69,23 @@ describe('webhook delivery service', () => {
     delete process.env.WEBHOOK_ALLOW_HTTP;
     delete process.env.WEBHOOK_ALLOWED_CIDRS;
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network timeout')));
+    outboundTransport.request.mockImplementation(async (options) => {
+      if (options.url.hostname === 'webhook.test' || globalThis.fetch === realFetch) {
+        return outboundTransport.actual!(options);
+      }
+      const response = await globalThis.fetch(options.url.toString(), {
+        body: options.body,
+        headers: options.headers,
+        method: options.method,
+      });
+      const bodyText = await response.text().catch(() => '');
+      const captureLimit = options.responseCaptureByteLimit ?? Number.POSITIVE_INFINITY;
+      return {
+        body: Buffer.from(bodyText).subarray(0, captureLimit),
+        ok: response.ok,
+        status: response.status,
+      };
+    });
   });
 
   it('returns cleanly when a delivery is missing or already terminal', async () => {
@@ -132,6 +167,11 @@ describe('webhook delivery service', () => {
       deliveryId: delivery.id,
       attemptCount: 1,
       requestBodyHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    }));
+    expect(outboundTransport.request).toHaveBeenCalledWith(expect.objectContaining({
+      resolvedAddress: '93.184.216.34',
+      responseCaptureByteLimit: 4096,
+      timeoutMessage: 'Webhook request timeout',
     }));
     expect(mockWalletLog).not.toHaveBeenCalled();
   });
@@ -533,6 +573,12 @@ describe('webhook delivery service', () => {
     mockMarkDeliveryFailed.mockImplementationOnce(async input => ({
       ...delivery,
       status: 'failed',
+      attemptCount: input.attemptCount,
+      lastError: input.error,
+    }));
+    mockMarkDeliveryDead.mockImplementationOnce(async input => ({
+      ...delivery,
+      status: 'dead',
       attemptCount: input.attemptCount,
       lastError: input.error,
     }));

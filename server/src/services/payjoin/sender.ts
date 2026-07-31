@@ -9,9 +9,17 @@ import * as bitcoin from 'bitcoinjs-lib';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { validatePayjoinProposal } from '../bitcoin/psbtValidation';
+import {
+  OutboundResponseTooLargeError,
+  requestPinnedAddress,
+} from '../outboundNetwork/nativeRequest';
 import { validatePayjoinUrl } from './ssrf';
+import { PayjoinErrors } from './types';
 
 const log = createLogger('PAYJOIN:SVC_SEND');
+const PAYJOIN_RESPONSE_LIMIT_BYTES = 102_400;
+const PAYJOIN_TIMEOUT_MS = 30_000;
+const KNOWN_BIP78_ERRORS = new Set<string>(Object.values(PayjoinErrors));
 
 /**
  * Attempt to send a Payjoin transaction
@@ -34,12 +42,12 @@ export async function attemptPayjoinSend(
   error?: string;
 }> {
   try {
-    log.info('Attempting Payjoin send', { payjoinUrl });
+    log.info('Attempting Payjoin send');
 
     // Validate the Payjoin URL (SSRF protection)
     const urlValidation = await validatePayjoinUrl(payjoinUrl);
     if (!urlValidation.valid) {
-      log.warn('Payjoin URL validation failed', { payjoinUrl, error: urlValidation.error });
+      log.warn('Payjoin URL validation failed', { error: urlValidation.error });
       return {
         success: false,
         isPayjoin: false,
@@ -50,28 +58,31 @@ export async function attemptPayjoinSend(
     const requestUrl = new URL(urlValidation.url.toString());
     requestUrl.searchParams.set('v', '1');
 
-    // POST original PSBT to receiver
-    // BIP78 requires a receiver-provided HTTPS endpoint; validatePayjoinUrl enforces SSRF controls before this request.
-    const response = await fetch(requestUrl.toString(), { // lgtm[js/request-forgery]
+    const resolvedAddress = urlValidation.resolvedAddresses[0];
+    const response = await requestPinnedAddress({
+      url: requestUrl,
+      resolvedAddress: resolvedAddress!.address,
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain',
       },
       body: originalPsbtBase64,
-      signal: AbortSignal.timeout(30_000),
+      responseByteLimit: PAYJOIN_RESPONSE_LIMIT_BYTES,
+      timeoutMs: PAYJOIN_TIMEOUT_MS,
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      log.warn('Payjoin endpoint returned error', { status: response.status, error: errorText });
-      return {
-        success: false,
-        isPayjoin: false,
-        error: `Payjoin endpoint error: ${errorText}`,
-      };
+      const errorCode = getKnownBip78Error(response.body);
+      log.warn('Payjoin endpoint returned error', {
+        status: response.status,
+        errorCode: errorCode ?? 'unknown',
+      });
+      return payjoinFailure(errorCode
+        ? `Payjoin endpoint error: ${errorCode}`
+        : `Payjoin endpoint returned HTTP ${response.status}`);
     }
 
-    const proposalBase64 = await response.text();
+    const proposalBase64 = response.body.toString('utf8');
 
     // Validate the proposal
     const validation = validatePayjoinProposal(
@@ -102,11 +113,34 @@ export async function attemptPayjoinSend(
       isPayjoin: true,
     };
   } catch (error) {
-    log.error('Payjoin send attempt failed', { error: getErrorMessage(error) });
-    return {
-      success: false,
-      isPayjoin: false,
-      error: getErrorMessage(error, 'Payjoin failed'),
-    };
+    const safeError = getSafePayjoinRequestError(error);
+    log.error('Payjoin send attempt failed', {
+      errorName: error instanceof Error ? error.name : 'UnknownError',
+      reason: safeError,
+    });
+    return payjoinFailure(safeError);
   }
+}
+
+function getKnownBip78Error(body: Buffer): string | null {
+  const value = body.toString('utf8').trim();
+  return KNOWN_BIP78_ERRORS.has(value) ? value : null;
+}
+
+function getSafePayjoinRequestError(error: unknown): string {
+  if (error instanceof OutboundResponseTooLargeError) {
+    return 'Payjoin response exceeded the allowed size';
+  }
+  const message = getErrorMessage(error).toLowerCase();
+  return message.includes('timeout')
+    ? 'Payjoin request timeout'
+    : 'Payjoin request failed';
+}
+
+function payjoinFailure(error: string) {
+  return {
+    success: false as const,
+    isPayjoin: false as const,
+    error,
+  };
 }

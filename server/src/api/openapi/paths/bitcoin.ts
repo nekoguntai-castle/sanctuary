@@ -661,7 +661,7 @@ export const bitcoinPaths = {
       tags: ["Node"],
       summary: "Test Electrum server connection",
       description:
-        "Test connectivity to an Electrum server with tcp or ssl protocol.",
+        "Admin-only connectivity test for an Electrum server using tcp or ssl protocol.",
       security: bearerAuth,
       requestBody: jsonRequestBody(
         "#/components/schemas/NodeConnectionTestRequest",
@@ -673,6 +673,7 @@ export const bitcoinPaths = {
         ),
         400: apiErrorResponse,
         401: apiErrorResponse,
+        403: apiErrorResponse,
         500: apiErrorResponse,
       },
     },

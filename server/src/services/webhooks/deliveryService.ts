@@ -1,6 +1,3 @@
-import http from 'node:http';
-import https from 'node:https';
-import net from 'node:net';
 import { queueWebhookDeliveryNotification } from '../../infrastructure';
 import { webhookRepository } from '../../repositories';
 import type { Prisma, WebhookEndpoint } from '../../generated/prisma/client';
@@ -8,6 +5,7 @@ import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { walletLog } from '../../websocket/notifications';
 import { getRetryConfig } from './config';
+import { requestPinnedAddress } from '../outboundNetwork/nativeRequest';
 import { validateWebhookEndpointUrl, type EndpointPolicyResult } from './endpointPolicy';
 import { hashWebhookRawBody, serializeWebhookBody } from './json';
 import { buildWebhookRequest } from './payloadProfiles';
@@ -201,6 +199,7 @@ function isRetryableWebhookError(error: unknown): boolean {
   }
   const message = getErrorMessage(error).toLowerCase();
   return message.includes('fetch failed') ||
+    message.includes('did not resolve') ||
     message.includes('timeout') ||
     message.includes('aborted') ||
     message.includes('network');
@@ -270,82 +269,22 @@ async function postWebhookRequest(
   headers: Record<string, string>,
   body: string,
 ): Promise<WebhookHttpResponse> {
-  if (net.isIP(policy.url.hostname)) {
-    return postWebhookRequestWithFetch(policy.url, headers, body);
-  }
-  return postWebhookRequestPinnedToResolvedAddress(policy, headers, body);
-}
-
-async function postWebhookRequestWithFetch(
-  url: URL,
-  headers: Record<string, string>,
-  body: string,
-): Promise<WebhookHttpResponse> {
-  const response = await fetch(url.toString(), {
+  const resolvedAddress = policy.resolvedAddresses[0]!;
+  const response = await requestPinnedAddress({
+    url: policy.url,
+    resolvedAddress,
     method: 'POST',
     headers,
     body,
-    redirect: 'manual',
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    responseCaptureByteLimit: RESPONSE_CAPTURE_LIMIT,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    timeoutMessage: 'Webhook request timeout',
   });
-  const bodyText = await response.text().catch(() => '');
-  return { ok: response.ok, status: response.status, bodyText };
-}
-
-// DNS hosts are sent to the address that passed endpoint policy validation so a
-// second resolver pass cannot swap the target to a private network.
-function postWebhookRequestPinnedToResolvedAddress(
-  policy: EndpointPolicyResult,
-  headers: Record<string, string>,
-  body: string,
-): Promise<WebhookHttpResponse> {
-  const resolvedAddress = policy.resolvedAddresses[0];
-  if (!resolvedAddress) {
-    throw new WebhookRetryableError('Webhook URL did not resolve to an address');
-  }
-
-  return new Promise((resolve, reject) => {
-    const isHttps = policy.url.protocol === 'https:';
-    const client = isHttps ? https : http;
-    const request = client.request({
-      protocol: policy.url.protocol,
-      hostname: resolvedAddress,
-      port: policy.url.port || (isHttps ? 443 : 80),
-      method: 'POST',
-      path: `${policy.url.pathname}${policy.url.search}`,
-      headers: {
-        ...headers,
-        host: policy.url.host,
-      },
-      ...(isHttps ? { servername: policy.url.hostname } : {}),
-    }, response => {
-      response.setEncoding('utf8');
-      let bodyText = '';
-      response.on('data', (chunk: string) => {
-        if (bodyText.length < RESPONSE_CAPTURE_LIMIT) {
-          bodyText += chunk.slice(0, RESPONSE_CAPTURE_LIMIT - bodyText.length);
-        }
-      });
-      response.on('end', () => {
-        clearTimeout(deadline);
-        const status = response.statusCode ?? 0;
-        resolve({ ok: status >= 200 && status < 300, status, bodyText });
-      });
-      response.on('error', error => {
-        clearTimeout(deadline);
-        reject(error);
-      });
-    });
-    const deadline = setTimeout(() => {
-      request.destroy(new WebhookRetryableError('Webhook request timeout'));
-    }, REQUEST_TIMEOUT_MS);
-
-    request.on('error', error => {
-      clearTimeout(deadline);
-      reject(error);
-    });
-    request.end(body);
-  });
+  return {
+    ok: response.ok,
+    status: response.status,
+    bodyText: response.body.toString('utf8'),
+  };
 }
 
 function getNodeErrorCode(error: unknown): string {

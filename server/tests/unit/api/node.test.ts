@@ -80,10 +80,23 @@ vi.mock('../../../src/middleware/auth', () => ({
     if (!auth) {
       return res.status(401).json({ error: 'Unauthorized', message: 'No authentication token provided' });
     }
-    if (auth !== 'Bearer valid-token') {
+    if (auth !== 'Bearer valid-token' && auth !== 'Bearer user-token') {
       return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired token' });
     }
-    (req as any).user = { userId: 'user-1', username: 'test-user', isAdmin: false };
+    (req as any).user = {
+      userId: auth === 'Bearer valid-token' ? 'admin-1' : 'user-1',
+      username: auth === 'Bearer valid-token' ? 'admin' : 'test-user',
+      isAdmin: auth === 'Bearer valid-token',
+    };
+    return next();
+  },
+  requireAdmin: (req: Request, res: Response, next: NextFunction) => {
+    if (!(req as any).user) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'Authentication required' });
+    }
+    if (!(req as any).user.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden', message: 'Admin access required' });
+    }
     return next();
   },
 }));
@@ -247,6 +260,8 @@ describe('Node API Routes', () => {
           .send({ host: 'electrum.example.com', port: 50002, protocol: 'ssl' });
 
         expect(response.status).toBe(401);
+        expect(mockNetConnect).not.toHaveBeenCalled();
+        expect(mockTlsConnect).not.toHaveBeenCalled();
       });
 
       it('should reject invalid token', async () => {
@@ -256,6 +271,73 @@ describe('Node API Routes', () => {
           .send({ host: 'electrum.example.com', port: 50002, protocol: 'ssl' });
 
         expect(response.status).toBe(401);
+        expect(mockNetConnect).not.toHaveBeenCalled();
+        expect(mockTlsConnect).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['loopback TCP', '127.0.0.1', 50001, 'tcp'],
+        ['private network TCP', '10.0.0.8', 1, 'tcp'],
+        ['link-local metadata TLS', '169.254.169.254', 443, 'ssl'],
+        ['public host arbitrary port', 'electrum.example.com', 65535, 'ssl'],
+      ] as const)('should deny non-admin %s probes before socket activity', async (
+        _caseName,
+        host,
+        port,
+        protocol,
+      ) => {
+        const response = await request(app)
+          .post('/api/v1/node/test')
+          .set('Authorization', 'Bearer user-token')
+          .send({ host, port, protocol });
+
+        expect(response.status).toBe(403);
+        expect(response.body).toEqual({
+          error: 'Forbidden',
+          message: 'Admin access required',
+        });
+        expect(mockNetConnect).not.toHaveBeenCalled();
+        expect(mockTlsConnect).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['loopback TCP', '127.0.0.1', 50001, 'tcp'],
+        ['private network TLS', '10.0.0.8', 50002, 'ssl'],
+        ['public host arbitrary port', 'electrum.example.com', 65535, 'tcp'],
+      ] as const)('should allow admin %s probes to create the expected socket', async (
+        _caseName,
+        host,
+        port,
+        protocol,
+      ) => {
+        const responsePromise = startAuthedRequest(app, { host, port, protocol });
+        const connectMock = protocol === 'ssl' ? mockTlsConnect : mockNetConnect;
+        const socket = await getLastSocket(connectMock);
+
+        expect(connectMock).toHaveBeenCalledWith({
+          host,
+          port,
+          timeout: 10000,
+          ...(protocol === 'ssl' ? { rejectUnauthorized: true } : {}),
+        });
+
+        await waitForListener(() => socket, 'error');
+        socket.emit('error', new Error('Connection refused'));
+
+        const response = await responsePromise;
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(false);
+      });
+
+      it('should enforce admin access before validating probe details', async () => {
+        const response = await request(app)
+          .post('/api/v1/node/test')
+          .set('Authorization', 'Bearer user-token')
+          .send({ host: '127.0.0.1' });
+
+        expect(response.status).toBe(403);
+        expect(mockNetConnect).not.toHaveBeenCalled();
+        expect(mockTlsConnect).not.toHaveBeenCalled();
       });
     });
 

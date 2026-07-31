@@ -543,6 +543,7 @@ export const bitcoinSchemas = {
         ],
       },
       protocol: { type: "string", enum: ["tcp", "ssl"] },
+      allowSelfSignedCertificate: { type: "boolean", default: false },
     },
     required: ["host", "port", "protocol"],
     additionalProperties: false,

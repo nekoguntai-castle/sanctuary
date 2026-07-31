@@ -1,10 +1,13 @@
 import { describe, expect, it, type Mock } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
+import { OutboundResponseTooLargeError } from '../../../../src/services/outboundNetwork/nativeRequest';
 
 import {
   attemptPayjoinSend,
+  dnsLookupMock,
   isPrivateIP,
   PayjoinErrors,
+  requestPinnedAddressMock,
   TEST_PAYJOIN_URL,
   validatePayjoinProposal,
 } from './payjoinServiceTestHarness';
@@ -85,6 +88,132 @@ export const registerPayjoinSendAndSsrfContracts = () => {
       );
     });
 
+    it('resolves once, validates every answer, and pins the first validated address', async () => {
+      dnsLookupMock.mockResolvedValueOnce([
+        { address: '93.184.216.34', family: 4 },
+        { address: '2606:4700:4700::1111', family: 6 },
+      ]).mockResolvedValueOnce([
+        { address: '127.0.0.1', family: 4 },
+      ]);
+      (validatePayjoinProposal as Mock).mockReturnValue({
+        valid: true,
+        errors: [],
+        warnings: [],
+      });
+      requestPinnedAddressMock.mockResolvedValueOnce({
+        body: Buffer.from(proposalPsbt),
+        ok: true,
+        status: 200,
+      });
+
+      await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, [0]);
+
+      expect(dnsLookupMock).toHaveBeenCalledOnce();
+      expect(dnsLookupMock).toHaveBeenCalledWith('example.com', {
+        all: true,
+        verbatim: true,
+      });
+      expect(requestPinnedAddressMock).toHaveBeenCalledWith(expect.objectContaining({
+        resolvedAddress: '93.184.216.34',
+        responseByteLimit: 102_400,
+        timeoutMs: 30_000,
+        url: expect.objectContaining({
+          hostname: 'example.com',
+        }),
+      }));
+    });
+
+    it('rejects a mixed DNS answer set before any network request', async () => {
+      dnsLookupMock.mockResolvedValueOnce([
+        { address: '93.184.216.34', family: 4 },
+        { address: '10.0.0.8', family: 4 },
+      ]);
+
+      const result = await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, [0]);
+
+      expect(result).toMatchObject({ success: false, isPayjoin: false });
+      expect(result.error).toContain('private IP');
+      expect(requestPinnedAddressMock).not.toHaveBeenCalled();
+    });
+
+    it('treats redirects as endpoint failures without following another hop', async () => {
+      requestPinnedAddressMock.mockResolvedValueOnce({
+        body: Buffer.from('https://127.0.0.1/internal'),
+        ok: false,
+        status: 302,
+      });
+
+      const result = await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, [0]);
+
+      expect(result.error).toBe('Payjoin endpoint returned HTTP 302');
+      expect(requestPinnedAddressMock).toHaveBeenCalledOnce();
+    });
+
+    it('preserves known BIP78 errors but sanitizes unknown endpoint bodies', async () => {
+      requestPinnedAddressMock
+        .mockResolvedValueOnce({
+          body: Buffer.from(PayjoinErrors.ORIGINAL_PSBT_REJECTED),
+          ok: false,
+          status: 400,
+        })
+        .mockResolvedValueOnce({
+          body: Buffer.from('secret backend stack at 10.0.0.4'),
+          ok: false,
+          status: 500,
+        });
+
+      const known = await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, [0]);
+      const unknown = await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, [0]);
+
+      expect(known.error).toContain(PayjoinErrors.ORIGINAL_PSBT_REJECTED);
+      expect(unknown.error).toBe('Payjoin endpoint returned HTTP 500');
+      expect(unknown.error).not.toContain('secret');
+      expect(unknown.error).not.toContain('10.0.0.4');
+    });
+
+    it('accepts a response at the exact raw-byte limit', async () => {
+      const exactBody = 'a'.repeat(102_400);
+      requestPinnedAddressMock.mockResolvedValueOnce({
+        body: Buffer.from(exactBody),
+        ok: true,
+        status: 200,
+      });
+      (validatePayjoinProposal as Mock).mockReturnValueOnce({
+        valid: true,
+        errors: [],
+        warnings: [],
+      });
+
+      const result = await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, [0]);
+
+      expect(result).toMatchObject({
+        success: true,
+        proposalPsbt: exactBody,
+      });
+    });
+
+    it('returns one sanitized failure for oversized success and error responses', async () => {
+      requestPinnedAddressMock
+        .mockRejectedValueOnce(new OutboundResponseTooLargeError())
+        .mockRejectedValueOnce(new OutboundResponseTooLargeError());
+
+      const successBody = await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, [0]);
+      const errorBody = await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, [0]);
+
+      expect(successBody.error).toBe('Payjoin response exceeded the allowed size');
+      expect(errorBody.error).toBe('Payjoin response exceeded the allowed size');
+      expect(validatePayjoinProposal).not.toHaveBeenCalled();
+    });
+
+    it('sanitizes non-Error transport failures', async () => {
+      requestPinnedAddressMock.mockRejectedValueOnce('sensitive failure payload');
+
+      const result = await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, [0]);
+
+      expect(result.error).toBe('Payjoin request failed');
+      expect(result.error).not.toContain('sensitive');
+    });
+
     it('should return error for HTTP error response', async () => {
       (global.fetch as Mock).mockResolvedValue({
         ok: false,
@@ -137,7 +266,7 @@ export const registerPayjoinSendAndSsrfContracts = () => {
 
       expect(result.success).toBe(false);
       expect(result.isPayjoin).toBe(false);
-      expect(result.error).toContain('Network error');
+      expect(result.error).toBe('Payjoin request failed');
     });
 
     it('should reject invalid Payjoin URL protocol', async () => {

@@ -1,15 +1,13 @@
-import dns from 'node:dns/promises';
-import net from 'node:net';
+import {
+  isGloballyRoutableAddress,
+  normalizeIpAddress,
+  resolveAllAddresses,
+} from '../outboundNetwork/addressPolicy';
 
 const BLOCKED_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '::', '0.0.0.0']);
 
 type StringList = string[];
 type NumberList = number[];
-
-export interface EndpointPolicyResult {
-  url: URL;
-  resolvedAddresses: StringList;
-}
 
 interface Ipv4Parts {
   first: number;
@@ -18,24 +16,29 @@ interface Ipv4Parts {
   fourth: number;
 }
 
+export interface EndpointPolicyResult {
+  url: URL;
+  resolvedAddresses: StringList;
+}
+
 // Webhook URLs are externally configured, so endpoint validation treats them as
 // an SSRF boundary. Private, loopback, link-local, carrier-grade NAT, and
 // non-global IPv6 ranges are rejected unless explicitly allowlisted. Delivery
 // code pins DNS names to one of these validated addresses before connecting.
 export async function validateWebhookEndpointUrl(urlValue: string): Promise<EndpointPolicyResult> {
   const url = new URL(urlValue);
-  const hostname = normalizeHostname(url.hostname);
+  const hostname = normalizeIpAddress(url.hostname);
   if (BLOCKED_HOSTS.has(hostname) && !isHostAllowed(hostname)) {
     throw new Error('Webhook URL host is blocked');
   }
 
-  const resolvedAddresses = await resolveWebhookHost(hostname);
+  const resolvedAddresses = await resolveWebhookAddresses(hostname);
   if (url.protocol !== 'https:' && !isHttpAllowed(url, resolvedAddresses)) {
     throw new Error('Webhook URL must use HTTPS unless explicitly allowlisted');
   }
 
   for (const address of resolvedAddresses) {
-    if (isBlockedAddress(address) && !isAddressAllowed(address, hostname)) {
+    if (!isGloballyRoutableAddress(address) && !isAddressAllowed(address, hostname)) {
       throw new Error('Webhook URL resolves to a blocked network');
     }
   }
@@ -43,26 +46,24 @@ export async function validateWebhookEndpointUrl(urlValue: string): Promise<Endp
   return { url, resolvedAddresses };
 }
 
+async function resolveWebhookAddresses(hostname: string): Promise<StringList> {
+  try {
+    return (await resolveAllAddresses(hostname)).map(result => result.address);
+  } catch {
+    throw new Error('Webhook URL did not resolve to an address');
+  }
+}
+
 function isHttpAllowed(url: URL, resolvedAddresses: StringList): boolean {
   if (url.protocol !== 'http:') return false;
-  const hostname = normalizeHostname(url.hostname);
+  const hostname = normalizeIpAddress(url.hostname);
   return process.env.WEBHOOK_ALLOW_HTTP === 'true' ||
     isHostAllowed(hostname) ||
     isAnyAddressInAllowedCidrs(resolvedAddresses);
 }
 
-async function resolveWebhookHost(hostname: string) {
-  if (net.isIP(hostname)) return [hostname];
-  const results = await dns.lookup(hostname, { all: true, verbatim: true });
-  const addresses: StringList = [];
-  for (const result of results) {
-    addresses.push(result.address);
-  }
-  return addresses;
-}
-
 function isHostAllowed(hostname: string): boolean {
-  return getEnvList('WEBHOOK_ALLOWED_HOSTS').includes(normalizeHostname(hostname));
+  return getEnvList('WEBHOOK_ALLOWED_HOSTS').includes(normalizeIpAddress(hostname));
 }
 
 function getAllowedCidrs() {
@@ -92,31 +93,13 @@ const isAddressInAllowedCidrs = (address: string): boolean => {
   return false;
 };
 
-const isBlockedAddress = (address: string): boolean => {
-  const normalized = normalizeHostname(address);
-  if (net.isIPv6(normalized)) return isBlockedIpv6Address(normalized);
-
-  const parts = parseIpv4(normalized);
-  if (!parts) return true;
-  const { first, second } = parts;
-  return (
-    first === 10 ||
-    first === 127 ||
-    (first === 169 && second === 254) ||
-    (first === 172 && second >= 16 && second <= 31) ||
-    (first === 192 && second === 168) ||
-    (first === 100 && second >= 64 && second <= 127) ||
-    first === 0
-  );
-};
-
 const addressMatchesCidr = (address: string, cidr: string): boolean => {
   const [network, prefixValue] = cidr.split('/');
   const prefix = Number(prefixValue);
   if (!Number.isInteger(prefix)) return false;
 
-  const normalizedAddress = normalizeHostname(address);
-  const normalizedNetwork = normalizeHostname(network);
+  const normalizedAddress = normalizeIpAddress(address);
+  const normalizedNetwork = normalizeIpAddress(network);
   return ipv4MatchesCidr(normalizedAddress, normalizedNetwork, prefix);
 };
 
@@ -151,13 +134,6 @@ const parseIpv4 = (address: string): Ipv4Parts | null => {
   return { first, second, third, fourth };
 };
 
-const normalizeHostname = (hostname: string): string => {
-  const trimmed = hostname.trim().toLowerCase();
-  return trimmed.startsWith('[') && trimmed.endsWith(']')
-    ? trimmed.slice(1, -1)
-    : trimmed;
-};
-
 const ipv4MatchesCidr = (address: string, network: string, prefix: number): boolean => {
   const addressInt = ipv4ToInt(address);
   const networkInt = ipv4ToInt(network);
@@ -168,34 +144,6 @@ const ipv4MatchesCidr = (address: string, network: string, prefix: number): bool
   return (addressInt & mask) === (networkInt & mask);
 };
 
-const isBlockedIpv6Address = (address: string): boolean => {
-  const groups = getIpv6LeadingGroups(address, 2);
-  const [first, second] = groups;
-  const isGlobalUnicast = first >= 0x2000 && first <= 0x3fff;
-  return !isGlobalUnicast ||
-    (first === 0x2001 && second === 0x0002) ||
-    (first === 0x2001 && second >= 0x0010 && second <= 0x001f) ||
-    (first === 0x2001 && second === 0x0db8);
-};
-
 const isAddressAllowed = (address: string, hostname: string): boolean => {
   return isHostAllowed(hostname) || isAddressInAllowedCidrs(address);
-};
-
-// Called only after net.isIPv6(address) succeeds; valid IPv6 text can still be
-// compressed, so missing leading groups are expanded as zeroes for range checks.
-const getIpv6LeadingGroups = (address: string, count: number): NumberList => {
-  const [head] = normalizeHostname(address).split('%')[0].split('::');
-  const pieces = head ? head.split(':') : [];
-  const groups: NumberList = [];
-
-  for (const piece of pieces) {
-    if (groups.length >= count) break;
-    groups.push(Number.parseInt(piece, 16));
-  }
-
-  while (groups.length < count) {
-    groups.push(0);
-  }
-  return groups;
 };

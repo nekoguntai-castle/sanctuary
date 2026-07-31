@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAdmin } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import net from 'net';
 import tls from 'tls';
@@ -189,7 +189,7 @@ async function testElectrumConnection(config: ElectrumTestConfig): Promise<{ suc
  * POST /api/v1/node/test
  * Test connection to an Electrum server
  */
-router.post('/test', validate(
+router.post('/test', requireAdmin, validate(
   { body: NodeTestBodySchema },
   { message: nodeTestValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {

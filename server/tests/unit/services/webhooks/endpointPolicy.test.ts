@@ -79,13 +79,20 @@ describe('webhook endpoint policy', () => {
       .rejects.toThrow('blocked network');
   });
 
+  it('allows a blocked address through a matching non-zero CIDR', async () => {
+    process.env.WEBHOOK_ALLOWED_CIDRS = '192.168.0.0/16';
+
+    await expect(validateWebhookEndpointUrl('http://192.168.5.10/hook'))
+      .resolves.toMatchObject({ resolvedAddresses: ['192.168.5.10'] });
+  });
+
   it('blocks non-global and malformed IPv6 ranges', async () => {
     const blockedAddresses = [
       'fd00::10',
       '2001:db8::1',
       '2001:2::1',
       '2001:10::1',
-      '::ffff:5db8:d822',
+      '::ffff:7f00:1',
       '::',
     ];
 

@@ -3,6 +3,11 @@ import * as bitcoin from 'bitcoinjs-lib';
 
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 
+const { mockDnsLookup, mockPinnedRequest } = vi.hoisted(() => ({
+  mockDnsLookup: vi.fn(),
+  mockPinnedRequest: vi.fn(),
+}));
+
 // Mock Prisma
 vi.mock('../../../../src/models/prisma', () => ({
   __esModule: true,
@@ -35,6 +40,19 @@ vi.mock('../../../../src/services/bitcoin/utils', () => ({
   getNetwork: vi.fn().mockReturnValue(bitcoin.networks.testnet),
 }));
 
+vi.mock('node:dns/promises', () => ({
+  default: { lookup: mockDnsLookup },
+  lookup: mockDnsLookup,
+}));
+
+vi.mock('../../../../src/services/outboundNetwork/nativeRequest', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/services/outboundNetwork/nativeRequest')>();
+  return {
+    ...actual,
+    requestPinnedAddress: mockPinnedRequest,
+  };
+});
+
 // Mock global fetch
 global.fetch = vi.fn();
 
@@ -48,6 +66,8 @@ export const processPayjoinRequest = payjoinService.processPayjoinRequest;
 export const attemptPayjoinSend = payjoinService.attemptPayjoinSend;
 export const PayjoinErrors = payjoinService.PayjoinErrors;
 export const isPrivateIP = payjoinService.isPrivateIP;
+export const requestPinnedAddressMock = mockPinnedRequest;
+export const dnsLookupMock = mockDnsLookup;
 
 export const parsePsbt = psbtValidation.parsePsbt;
 export const validatePsbtStructure = psbtValidation.validatePsbtStructure;
@@ -65,4 +85,20 @@ export const setupPayjoinServiceTest = () => {
   resetPrismaMocks();
   vi.clearAllMocks();
   (global.fetch as Mock).mockReset();
+  mockDnsLookup.mockReset();
+  mockPinnedRequest.mockReset();
+  mockDnsLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+  mockPinnedRequest.mockImplementation(async (options) => {
+    const response = await global.fetch(options.url.toString(), {
+      method: options.method,
+      headers: options.headers,
+      body: options.body,
+      signal: AbortSignal.timeout(options.timeoutMs),
+    });
+    return {
+      body: Buffer.from(await response.text()),
+      ok: response.ok,
+      status: response.status ?? (response.ok ? 200 : 500),
+    };
+  });
 };

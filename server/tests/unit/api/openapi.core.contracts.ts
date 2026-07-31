@@ -476,6 +476,10 @@ export function registerOpenApiCoreTests() {
     expect(openApiSpec.paths["/node/test"].post.security).toEqual(
       browserOrBearerAuthSecurity,
     );
+    expect(openApiSpec.paths["/node/test"].post.description).toContain(
+      "Admin-only",
+    );
+    expect(openApiSpec.paths["/node/test"].post.responses).toHaveProperty("403");
     expect(
       openApiSpec.components.schemas.NodeConnectionTestRequest.required,
     ).toEqual(["host", "port", "protocol"]);
@@ -490,6 +494,13 @@ export function registerOpenApiCoreTests() {
       openApiSpec.components.schemas.NodeConnectionTestRequest.properties
         .protocol.enum,
     ).toEqual(["tcp", "ssl"]);
+    expect(
+      openApiSpec.components.schemas.NodeConnectionTestRequest.properties
+        .allowSelfSignedCertificate,
+    ).toMatchObject({
+      type: "boolean",
+      default: false,
+    });
     expect(
       openApiSpec.components.schemas.NodeConnectionTestRequest.properties.port
         .oneOf,

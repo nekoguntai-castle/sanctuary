@@ -5,7 +5,7 @@ const { dnsLookupMock, validatePayjoinProposalMock } = vi.hoisted(() => ({
   validatePayjoinProposalMock: vi.fn(),
 }));
 
-vi.mock('dns', () => ({
+vi.mock('node:dns/promises', () => ({
   default: { lookup: dnsLookupMock },
   lookup: dnsLookupMock,
 }));
@@ -45,9 +45,7 @@ describe('Payjoin Service SSRF Edge Coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    dnsLookupMock.mockImplementation((_hostname: string, callback: (err: null, result: { address: string; family: number }) => void) => {
-      callback(null, { address: '93.184.216.34', family: 4 });
-    });
+    dnsLookupMock.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
 
     validatePayjoinProposalMock.mockReturnValue({
       valid: true,
@@ -70,10 +68,17 @@ describe('Payjoin Service SSRF Edge Coverage', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+  it('sanitizes non-Error DNS failures', async () => {
+    dnsLookupMock.mockRejectedValueOnce('resolver internals');
+
+    const result = await attemptPayjoinSend(originalPsbt, 'https://merchant.example/payjoin', [0]);
+
+    expect(result.error).toContain('could not be resolved');
+    expect(result.error).not.toContain('resolver internals');
+  });
+
   it('rejects private IPv4 addresses resolved by DNS', async () => {
-    dnsLookupMock.mockImplementation((_hostname: string, callback: (err: null, result: { address: string; family: number }) => void) => {
-      callback(null, { address: '10.10.10.10', family: 4 });
-    });
+    dnsLookupMock.mockResolvedValue([{ address: '10.10.10.10', family: 4 }]);
 
     const result = await attemptPayjoinSend(originalPsbt, 'https://merchant.example/payjoin', [0]);
 
@@ -83,9 +88,7 @@ describe('Payjoin Service SSRF Edge Coverage', () => {
   });
 
   it('rejects IPv4-mapped IPv6 private addresses', async () => {
-    dnsLookupMock.mockImplementation((_hostname: string, callback: (err: null, result: { address: string; family: number }) => void) => {
-      callback(null, { address: '::ffff:10.0.0.8', family: 6 });
-    });
+    dnsLookupMock.mockResolvedValue([{ address: '::ffff:10.0.0.8', family: 6 }]);
 
     const result = await attemptPayjoinSend(originalPsbt, 'https://merchant.example/payjoin', [0]);
 
@@ -95,9 +98,7 @@ describe('Payjoin Service SSRF Edge Coverage', () => {
   });
 
   it('rejects non-IPv4 DNS answers conservatively', async () => {
-    dnsLookupMock.mockImplementation((_hostname: string, callback: (err: null, result: { address: string; family: number }) => void) => {
-      callback(null, { address: '2001:db8::1', family: 6 });
-    });
+    dnsLookupMock.mockResolvedValue([{ address: '2001:db8::1', family: 6 }]);
 
     const result = await attemptPayjoinSend(originalPsbt, 'https://merchant.example/payjoin', [0]);
 
@@ -107,9 +108,7 @@ describe('Payjoin Service SSRF Edge Coverage', () => {
   });
 
   it('rejects IPv6 localhost address', async () => {
-    dnsLookupMock.mockImplementation((_hostname: string, callback: (err: null, result: { address: string; family: number }) => void) => {
-      callback(null, { address: '::1', family: 6 });
-    });
+    dnsLookupMock.mockResolvedValue([{ address: '::1', family: 6 }]);
 
     const result = await attemptPayjoinSend(originalPsbt, 'https://merchant.example/payjoin', [0]);
 
@@ -119,9 +118,7 @@ describe('Payjoin Service SSRF Edge Coverage', () => {
   });
 
   it('rejects IPv4 loopback DNS answers', async () => {
-    dnsLookupMock.mockImplementation((_hostname: string, callback: (err: null, result: { address: string; family: number }) => void) => {
-      callback(null, { address: '127.0.0.2', family: 4 });
-    });
+    dnsLookupMock.mockResolvedValue([{ address: '127.0.0.2', family: 4 }]);
 
     const result = await attemptPayjoinSend(originalPsbt, 'https://merchant.example/payjoin', [0]);
 
@@ -137,9 +134,7 @@ describe('Payjoin Service SSRF Edge Coverage', () => {
     '0.0.0.0',
     '255.255.255.255',
   ])('rejects additional private/reserved IPv4 range: %s', async (ip) => {
-    dnsLookupMock.mockImplementation((_hostname: string, callback: (err: null, result: { address: string; family: number }) => void) => {
-      callback(null, { address: ip, family: 4 });
-    });
+    dnsLookupMock.mockResolvedValue([{ address: ip, family: 4 }]);
 
     const result = await attemptPayjoinSend(originalPsbt, 'https://merchant.example/payjoin', [0]);
 
