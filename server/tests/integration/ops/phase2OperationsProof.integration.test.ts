@@ -8,7 +8,9 @@
 
 import type { AddressInfo } from 'net';
 import type { Server } from 'http';
+import { randomUUID } from 'node:crypto';
 import express, { type Express } from 'express';
+import { Client } from 'pg';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { backupService as BackupServiceInstance } from '../../../src/services/backupService';
@@ -54,6 +56,7 @@ describeIfDb('Phase 2 operations proof', () => {
   let app: Express;
   let server: Server;
   let backupService: typeof BackupServiceInstance;
+  let appPrisma: typeof import('../../../src/models/prisma');
   let disconnectAppPrisma: () => Promise<void>;
   let logSecurityEvent: (event: string, details: Record<string, unknown>) => void;
 
@@ -71,7 +74,7 @@ describeIfDb('Phase 2 operations proof', () => {
     backupService = backupModule.backupService;
 
     const pushRouter = (await import('../../../src/api/push')).default;
-    const appPrisma = await import('../../../src/models/prisma');
+    appPrisma = await import('../../../src/models/prisma');
     disconnectAppPrisma = appPrisma.disconnect;
 
     app = express();
@@ -733,6 +736,145 @@ describeIfDb('Phase 2 operations proof', () => {
     await expect(prisma.feeEstimate.count()).resolves.toBe(0);
   });
 
+  it('exports one repeatable-read snapshot across related tables', async () => {
+    const username = createUniqueId('snapshot-user');
+    const user = await prisma.user.create({
+      data: {
+        username,
+        password: 'hashed-password-placeholder',
+        email: `${username}@example.test`,
+      },
+    });
+    const walletId = randomUUID();
+    const walletUserId = randomUUID();
+    const databaseUrl = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+    if (!databaseUrl) throw new Error('Integration database URL is unavailable');
+
+    const locker = new Client({ connectionString: databaseUrl });
+    await locker.connect();
+    await locker.query('BEGIN');
+
+    try {
+      await locker.query('LOCK TABLE "wallet_users" IN ACCESS EXCLUSIVE MODE');
+      const backupPromise = backupService.createBackup('snapshot-proof');
+      await waitForBackupWalletUserRead(prisma);
+
+      await locker.query(
+        `INSERT INTO "wallets"
+          ("id", "name", "type", "scriptType", "network", "groupRole",
+           "syncInProgress", "createdAt", "updatedAt")
+         VALUES ($1, $2, 'single_sig', 'native_segwit', 'regtest', 'viewer',
+                 false, NOW(), NOW())`,
+        [walletId, createUniqueId('snapshot-wallet')],
+      );
+      await locker.query(
+        `INSERT INTO "wallet_users" ("id", "walletId", "userId", "role", "createdAt")
+         VALUES ($1, $2, $3, 'owner', NOW())`,
+        [walletUserId, walletId, user.id],
+      );
+      await locker.query('COMMIT');
+
+      const backup = await backupPromise;
+      expect(backup.data.wallet).not.toContainEqual(expect.objectContaining({ id: walletId }));
+      expect(backup.data.walletUser).not.toContainEqual(
+        expect.objectContaining({ id: walletUserId }),
+      );
+      await expect(prisma.walletUser.findUnique({
+        where: { id: walletUserId },
+      })).resolves.toMatchObject({ walletId, userId: user.id });
+    } finally {
+      await locker.query('ROLLBACK').catch(() => undefined);
+      await locker.end();
+    }
+  }, 30_000);
+
+  it('keeps paginated table reads inside the original snapshot', async () => {
+    const username = createUniqueId('pagination-user');
+    const user = await prisma.user.create({
+      data: {
+        username,
+        password: 'hashed-password-placeholder',
+        email: `${username}@example.test`,
+      },
+    });
+    const wallet = await prisma.wallet.create({
+      data: {
+        name: createUniqueId('pagination-wallet'),
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: 'regtest',
+      },
+    });
+    await prisma.transaction.createMany({
+      data: Array.from({ length: 1000 }, (_, index) => ({
+        id: `pagination-${index.toString().padStart(4, '0')}`,
+        walletId: wallet.id,
+        userId: user.id,
+        txid: `pagination-tx-${index.toString().padStart(4, '0')}`,
+        type: 'received',
+        amount: 1n,
+        confirmations: 0,
+      })),
+    });
+    const insertedId = 'zzzz-pagination-concurrent';
+    const { createBackupSnapshot } = await import(
+      '../../../src/services/backupService/creation'
+    );
+    let firstTransactionPage = true;
+
+    const backup = await appPrisma.default.$transaction(async (tx) => {
+      const transactionDelegate = new Proxy(tx.transaction, {
+        get(target, property, receiver) {
+          if (property !== 'findMany') return Reflect.get(target, property, receiver);
+          return async (args: Parameters<typeof target.findMany>[0]) => {
+            const page = await target.findMany(args);
+            if (firstTransactionPage) {
+              firstTransactionPage = false;
+              await prisma.transaction.create({
+                data: {
+                  id: insertedId,
+                  walletId: wallet.id,
+                  userId: user.id,
+                  txid: 'pagination-concurrent-tx',
+                  type: 'received',
+                  amount: 2n,
+                  confirmations: 0,
+                },
+              });
+            }
+            return page;
+          };
+        },
+      });
+      const snapshotClient = new Proxy(tx, {
+        get(target, property, receiver) {
+          return property === 'transaction'
+            ? transactionDelegate
+            : Reflect.get(target, property, receiver);
+        },
+      });
+      return createBackupSnapshot(
+        snapshotClient,
+        'pagination-proof',
+        false,
+        undefined,
+        undefined,
+      );
+    }, {
+      isolationLevel: 'RepeatableRead',
+      maxWait: 10_000,
+      timeout: 30_000,
+    });
+
+    expect(firstTransactionPage).toBe(false);
+    expect(backup.data.transaction).toHaveLength(1000);
+    expect(backup.data.transaction).not.toContainEqual(
+      expect.objectContaining({ id: insertedId }),
+    );
+    await expect(prisma.transaction.findUnique({ where: { id: insertedId } }))
+      .resolves.toMatchObject({ walletId: wallet.id });
+  }, 30_000);
+
   it('persists gateway audit events sent through the gateway HMAC path', async () => {
     const username = createUniqueId('phase2-gateway');
 
@@ -816,3 +958,23 @@ describeIfDb('Phase 2 operations proof', () => {
     })).resolves.toBeNull();
   });
 });
+
+async function waitForBackupWalletUserRead(prisma: PrismaClient): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const [waiter] = await prisma.$queryRaw<Array<{ present: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM pg_stat_activity
+        WHERE pid <> pg_backend_pid()
+          AND datname = current_database()
+          AND wait_event_type = 'Lock'
+          AND query ILIKE '%wallet_users%'
+          AND query ILIKE '%SELECT%'
+      ) AS present
+    `;
+    if (waiter?.present) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error('Timed out waiting for backup to reach the wallet-user export');
+}

@@ -108,6 +108,29 @@ describe('migrationService', () => {
     ]);
   });
 
+  it('reads schema version through an injected transaction client', async () => {
+    const transactionClient = {
+      $queryRaw: vi.fn().mockResolvedValue([
+        migration('20260101000000_first'),
+        migration('20260102000000_second'),
+      ]),
+    };
+
+    await expect(migrationService.getSchemaVersion(transactionClient)).resolves.toBe(2);
+    expect(transactionClient.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(mockDb.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when an injected snapshot client cannot read migrations', async () => {
+    const transactionClient = {
+      $queryRaw: vi.fn().mockRejectedValue(new Error('snapshot query failed')),
+    };
+
+    await expect(migrationService.getSchemaVersion(transactionClient))
+      .rejects.toThrow('snapshot query failed');
+    expect(mockLog.warn).not.toHaveBeenCalled();
+  });
+
   it('fails closed for missing, invalid, or empty packaged manifests', () => {
     const missing = join(tmpdir(), `missing-migrations-${Date.now()}`);
     const invalid = makeMigrationManifest([]);

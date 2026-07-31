@@ -388,19 +388,35 @@ describe('Maintenance job definitions behavior', () => {
 
   it('scheduledBackupJob creates backup, writes file, and enforces retention', async () => {
     const mockMkdir = vi.fn().mockResolvedValue(undefined);
-    const mockWriteFile = vi.fn().mockResolvedValue(undefined);
+    const mockFileWrite = vi.fn().mockResolvedValue(undefined);
+    const mockFileSync = vi.fn().mockResolvedValue(undefined);
+    const mockFileClose = vi.fn().mockResolvedValue(undefined);
+    const mockOpen = vi.fn().mockResolvedValue({
+      writeFile: mockFileWrite,
+      sync: mockFileSync,
+      close: mockFileClose,
+    });
+    const mockRename = vi.fn().mockResolvedValue(undefined);
+    const mockReadFile = vi.fn().mockResolvedValue(JSON.stringify({
+      meta: { version: '1.1.0' },
+      data: {},
+    }));
     const mockReaddir = vi.fn().mockResolvedValue([
       'sanctuary-backup-2026-04-01.json',
       'sanctuary-backup-2026-04-02.json',
       'sanctuary-backup-2026-04-03.json',
     ]);
     const mockUnlink = vi.fn().mockResolvedValue(undefined);
+    const mockStat = vi.fn();
 
     vi.doMock('fs/promises', () => ({
       mkdir: mockMkdir,
-      writeFile: mockWriteFile,
+      open: mockOpen,
+      rename: mockRename,
+      readFile: mockReadFile,
       readdir: mockReaddir,
       unlink: mockUnlink,
+      stat: mockStat,
     }));
 
     vi.doMock('path', async () => {
@@ -415,6 +431,7 @@ describe('Maintenance job definitions behavior', () => {
     vi.doMock('../../../src/services/backupService/backupService', () => ({
       BackupService: class {
         async createBackup() { return mockBackup; }
+        async validateBackupForRestore() { return { valid: true }; }
       },
     }));
 
@@ -427,10 +444,19 @@ describe('Maintenance job definitions behavior', () => {
 
     expect(result).toMatch(/^sanctuary-backup-/);
     expect(mockMkdir).toHaveBeenCalledWith('/data/backups', { recursive: true });
-    expect(mockWriteFile).toHaveBeenCalledWith(
-      expect.stringContaining('sanctuary-backup-'),
+    expect(mockOpen).toHaveBeenCalledWith(
+      expect.stringMatching(/\/\.sanctuary-backup-.*\.tmp$/),
+      'wx',
+      0o600,
+    );
+    expect(mockFileWrite).toHaveBeenCalledWith(
       expect.any(String),
-      'utf-8',
+      'utf8',
+    );
+    expect(mockFileSync).toHaveBeenCalled();
+    expect(mockRename).toHaveBeenCalledWith(
+      expect.stringMatching(/\/\.sanctuary-backup-.*\.tmp$/),
+      expect.stringMatching(/\/sanctuary-backup-.*\.json$/),
     );
     // 3 files, retention 2 → 1 file deleted (oldest)
     expect(mockUnlink).toHaveBeenCalledTimes(1);

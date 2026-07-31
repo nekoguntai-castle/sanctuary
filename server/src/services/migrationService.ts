@@ -10,7 +10,7 @@
  *   const isValid = await migrationService.verifyMigrations();
  */
 
-import prisma from '../models/prisma';
+import prisma, { type PrismaTxClient } from '../models/prisma';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { execSync } from 'child_process';
@@ -103,6 +103,16 @@ function findMissingMigrations(
   return expectedMigrations.filter((migration) => !appliedNames.has(migration));
 }
 
+async function queryAppliedMigrations(
+  client: Pick<PrismaTxClient, '$queryRaw'> | typeof prisma
+): Promise<PrismaMigration[]> {
+  const migrations = await client.$queryRaw<PrismaMigration[]>`
+    SELECT * FROM "_prisma_migrations"
+    ORDER BY started_at ASC
+  `;
+  return migrations.filter(isSuccessfulMigration);
+}
+
 /**
  * Migration Service
  */
@@ -110,13 +120,11 @@ class MigrationService {
   /**
    * Get all applied migrations from Prisma's tracking table
    */
-  async getAppliedMigrations(): Promise<PrismaMigration[]> {
+  async getAppliedMigrations(
+    client: Pick<PrismaTxClient, '$queryRaw'> | typeof prisma = prisma
+  ): Promise<PrismaMigration[]> {
     try {
-      const migrations = await prisma.$queryRaw<PrismaMigration[]>`
-        SELECT * FROM "_prisma_migrations"
-        ORDER BY started_at ASC
-      `;
-      return migrations.filter(isSuccessfulMigration);
+      return await queryAppliedMigrations(client);
     } catch (error) {
       // Table might not exist if no migrations have run
       log.warn('Could not query migrations table', { error: getErrorMessage(error) });
@@ -127,8 +135,12 @@ class MigrationService {
   /**
    * Get the current schema version (count of successfully applied migrations)
    */
-  async getSchemaVersion(): Promise<number> {
-    const migrations = await this.getAppliedMigrations();
+  async getSchemaVersion(
+    client?: Pick<PrismaTxClient, '$queryRaw'> | typeof prisma
+  ): Promise<number> {
+    const migrations = client
+      ? await queryAppliedMigrations(client)
+      : await this.getAppliedMigrations();
     return migrations.length;
   }
 

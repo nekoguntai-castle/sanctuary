@@ -4,7 +4,8 @@
  * Handles creating database backups with cursor-based pagination for large tables.
  */
 
-import prisma from '../../models/prisma';
+import prisma, { type PrismaTxClient } from '../../models/prisma';
+import { Prisma } from '../../generated/prisma/client';
 import { createLogger } from '../../utils/logger';
 import { version as appVersion } from '../../../package.json';
 import { migrationService } from '../migrationService';
@@ -21,6 +22,8 @@ import {
 import type { BackupRecord, SanctuaryBackup, BackupOptions } from './types';
 
 const log = createLogger('BACKUP:SVC');
+export const BACKUP_TRANSACTION_MAX_WAIT_MS = 10_000;
+export const BACKUP_TRANSACTION_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * Create a complete database backup
@@ -33,6 +36,23 @@ export async function createBackup(adminUser: string, options: BackupOptions = {
 
   log.info('[BACKUP] Creating backup', { adminUser, includeCache });
 
+  return prisma.$transaction(
+    (tx) => createBackupSnapshot(tx, adminUser, includeCache, description, signal),
+    {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      maxWait: BACKUP_TRANSACTION_MAX_WAIT_MS,
+      timeout: BACKUP_TRANSACTION_TIMEOUT_MS,
+    },
+  );
+}
+
+export async function createBackupSnapshot(
+  client: PrismaTxClient,
+  adminUser: string,
+  includeCache: boolean,
+  description: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<SanctuaryBackup> {
   const data: Record<string, BackupRecord[]> = {};
   const recordCounts: Record<string, number> = {};
 
@@ -45,11 +65,11 @@ export async function createBackup(adminUser: string, options: BackupOptions = {
     signal?.throwIfAborted();
     if (LARGE_TABLES.has(table)) {
       // Cursor-based pagination for large tables to reduce peak memory
-      data[table] = await exportTablePaginated(table);
+      data[table] = await exportTablePaginated(client, table, signal);
     } else {
       // Small tables: single query is fine
       // @ts-expect-error - Dynamic Prisma table access; table name validated by the canonical policy
-      const records = await prisma[table].findMany();
+      const records = await client[table].findMany();
       data[table] = records.map((record: BackupRecord) => serializeRecord(record));
     }
     recordCounts[table] = data[table].length;
@@ -58,7 +78,9 @@ export async function createBackup(adminUser: string, options: BackupOptions = {
   }
 
   // Get current schema version from applied migrations
-  const schemaVersion = await migrationService.getSchemaVersion();
+  signal?.throwIfAborted();
+  const schemaVersion = await migrationService.getSchemaVersion(client);
+  signal?.throwIfAborted();
 
   const backup: SanctuaryBackup = {
     meta: {
@@ -88,14 +110,19 @@ export async function createBackup(adminUser: string, options: BackupOptions = {
  * Export a table using cursor-based pagination to reduce peak memory.
  * Fetches BACKUP_PAGE_SIZE rows at a time instead of loading everything at once.
  */
-async function exportTablePaginated(table: string): Promise<BackupRecord[]> {
+async function exportTablePaginated(
+  client: PrismaTxClient,
+  table: string,
+  signal?: AbortSignal,
+): Promise<BackupRecord[]> {
   const allRecords: BackupRecord[] = [];
   let cursor: string | undefined;
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    signal?.throwIfAborted();
     // @ts-expect-error - Dynamic Prisma table access; table name validated against LARGE_TABLES set
-    const page: BackupRecord[] = await prisma[table].findMany({
+    const page: BackupRecord[] = await client[table].findMany({
       take: BACKUP_PAGE_SIZE,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
       orderBy: { id: 'asc' },
@@ -104,6 +131,7 @@ async function exportTablePaginated(table: string): Promise<BackupRecord[]> {
     for (const record of page) {
       allRecords.push(serializeRecord(record));
     }
+    signal?.throwIfAborted();
 
     if (page.length < BACKUP_PAGE_SIZE) {
       break; // Last page
