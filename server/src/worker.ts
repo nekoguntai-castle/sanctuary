@@ -112,10 +112,10 @@ async function startWorker(): Promise<void> {
     concurrency: workerConcurrency,
     queues: ['sync', 'notifications', 'confirmations', 'maintenance'],
   });
-  await jobQueue.initialize();
 
-  // Register job handlers
+  // Register handlers before BullMQ workers start consuming retained jobs.
   registerWorkerJobs(jobQueue);
+  await jobQueue.initialize();
   log.info('Job handlers registered', {
     jobs: jobQueue.getRegisteredJobs(),
   });

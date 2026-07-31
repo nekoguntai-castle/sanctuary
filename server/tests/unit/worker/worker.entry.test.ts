@@ -363,6 +363,9 @@ describe('worker entrypoint', () => {
     expect(mocks.initializeDistributedLock).toHaveBeenCalledWith(
       'redis-required',
     );
+    expect(mocks.registerWorkerJobs.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.queueInstance.initialize.mock.invocationCallOrder[0],
+    );
     expect(mocks.queueInstance.scheduleRecurring).toHaveBeenCalledWith(
       expect.objectContaining({
         schedulerId: 'maintenance:persist:price-fees',

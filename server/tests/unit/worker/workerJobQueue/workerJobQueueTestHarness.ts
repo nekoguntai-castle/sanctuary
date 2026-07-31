@@ -95,6 +95,7 @@ vi.mock('../../../../src/worker/workerJobQueue/hardTermination', () => ({
 vi.mock('../../../../src/services/deadLetterQueue', () => ({
   deadLetterQueue: {
     add: hoistedMocks.mockDlqAdd,
+    addExhaustedJob: hoistedMocks.mockDlqAdd,
   },
 }));
 

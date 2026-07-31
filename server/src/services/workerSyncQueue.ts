@@ -9,6 +9,9 @@ import {
   type SyncPriority,
 } from "@sanctuary/shared/constants/sync";
 import type { SyncWalletJobData } from "../worker/jobs/types";
+import { SYNC_WALLET_JOB_OPTIONS } from "../worker/jobs/jobOptions";
+import { isSyncWalletEnvelope } from "./deadLetterJobEnvelope";
+import type { DeadLetterJobEnvelope } from "./deadLetterQueueTypes";
 
 const log = createLogger("WORKER_SYNC_QUEUE");
 
@@ -64,6 +67,58 @@ function getOrCreateSyncQueue(): Queue<SyncWalletJobData> | null {
   return syncQueue;
 }
 
+/**
+ * Accept a durable retry or its already-retained stable BullMQ identity.
+ * False means the caller must release its DLQ claim.
+ */
+export async function enqueueDeadLetterJob(
+  envelope: DeadLetterJobEnvelope,
+  retryEntryId: string,
+): Promise<boolean> {
+  if (!retryEntryId || !isSyncWalletEnvelope(envelope)) {
+    log.warn("Unsupported dead-letter job envelope", {
+      retryEntryId,
+      version: envelope.version,
+      queue: envelope.queue,
+      name: envelope.name,
+    });
+    return false;
+  }
+  const queue = getOrCreateSyncQueue();
+  if (!queue) {
+    log.warn("Worker sync queue unavailable, dead-letter job not added", {
+      retryEntryId,
+    });
+    return false;
+  }
+
+  try {
+    const {
+      attempts,
+      backoff,
+      priority,
+      removeOnComplete,
+      removeOnFail,
+    } = envelope.options;
+    await queue.add(envelope.name, envelope.data, {
+      ...SYNC_WALLET_JOB_OPTIONS,
+      attempts: attempts ?? SYNC_WALLET_JOB_OPTIONS.attempts,
+      backoff: backoff ?? SYNC_WALLET_JOB_OPTIONS.backoff,
+      ...(priority !== undefined ? { priority } : {}),
+      ...(removeOnComplete !== undefined ? { removeOnComplete } : {}),
+      ...(removeOnFail !== undefined ? { removeOnFail } : {}),
+      jobId: toBullMqJobId(`dead-letter-retry:${retryEntryId}`),
+    });
+    return true;
+  } catch (error) {
+    log.error("Failed to enqueue dead-letter sync job", {
+      retryEntryId,
+      error: getErrorMessage(error),
+    });
+    return false;
+  }
+}
+
 export async function enqueueWalletSync(
   walletId: string,
   options: {
@@ -90,6 +145,7 @@ export async function enqueueWalletSync(
         reason: options.reason,
       },
       {
+        ...SYNC_WALLET_JOB_OPTIONS,
         priority: toBullPriority(priority),
         delay: options.delayMs,
         jobId: options.jobId ? toBullMqJobId(options.jobId) : undefined,
@@ -140,6 +196,7 @@ export async function enqueueWalletSyncBatch(
           reason: options.reason,
         },
         opts: {
+          ...SYNC_WALLET_JOB_OPTIONS,
           priority: toBullPriority(priority),
           delay: index * staggerDelayMs,
           jobId: toBullMqJobId(`${batchId}:${walletId}`),

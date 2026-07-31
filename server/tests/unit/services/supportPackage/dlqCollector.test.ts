@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockGetStats, mockGetAll, collectorMap } = vi.hoisted(() => ({
+const { mockGetSnapshot, mockGetStats, mockGetAll, collectorMap } = vi.hoisted(() => ({
+  mockGetSnapshot: vi.fn(),
   mockGetStats: vi.fn(),
   mockGetAll: vi.fn(),
   collectorMap: new Map<string, (ctx: any) => Promise<Record<string, unknown>>>(),
@@ -8,8 +9,7 @@ const { mockGetStats, mockGetAll, collectorMap } = vi.hoisted(() => ({
 
 vi.mock('../../../../src/services/deadLetterQueue', () => ({
   deadLetterQueue: {
-    getStats: () => mockGetStats(),
-    getAll: (limit?: number) => mockGetAll(limit),
+    getSnapshot: (options: unknown) => mockGetSnapshot(options),
   },
 }));
 
@@ -29,8 +29,13 @@ function makeContext(): CollectorContext {
 
 describe('deadLetterQueue collector', () => {
   beforeEach(() => {
+    mockGetSnapshot.mockReset();
     mockGetStats.mockReturnValue({ total: 0, byCategory: {} });
     mockGetAll.mockReturnValue([]);
+    mockGetSnapshot.mockImplementation((options: { limit?: number }) => ({
+      stats: mockGetStats(),
+      entries: mockGetAll(options.limit),
+    }));
   });
 
   const getCollector = () => {
@@ -47,16 +52,19 @@ describe('deadLetterQueue collector', () => {
     const realWalletId = 'real-wallet-id-abc';
     const realUserId = 'real-user-id-xyz';
 
-    mockGetAll.mockReturnValue([{
-      id: 'dlq-1',
-      category: 'telegram',
-      operation: 'send_notification',
-      payload: { walletId: realWalletId, userId: realUserId, txid: 'abc123' },
-      error: 'Timeout',
-      attempts: 3,
-      firstFailedAt: new Date('2026-04-01'),
-      lastFailedAt: new Date('2026-04-02'),
-    }]);
+    mockGetSnapshot.mockResolvedValue({
+      stats: { total: 1, byCategory: { telegram: 1 } },
+      entries: [{
+        id: 'dlq-1',
+        category: 'telegram',
+        operation: 'send_notification',
+        payload: { walletId: realWalletId, userId: realUserId, txid: 'abc123' },
+        error: 'Timeout',
+        attempts: 3,
+        firstFailedAt: new Date('2026-04-01'),
+        lastFailedAt: new Date('2026-04-02'),
+      }],
+    });
 
     const result = await getCollector()(makeContext());
     const entries = result.recentEntries as any[];

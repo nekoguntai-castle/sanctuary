@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   mockRedis,
@@ -10,6 +10,10 @@ export const registerWorkerJobQueueHealthLifecycleContracts = (getQueue: WorkerJ
 
   beforeEach(() => {
     queue = getQueue();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('getHealth', () => {
@@ -61,6 +65,47 @@ export const registerWorkerJobQueueHealthLifecycleContracts = (getQueue: WorkerJ
       await queue.shutdown(); // Second call should be no-op
 
       // No errors means it handled gracefully
+      expect(queue.isHealthy()).toBe(false);
+    });
+
+    it('runs periodic DLQ reconciliation until shutdown clears the timer', async () => {
+      vi.useFakeTimers();
+      const reconcile = vi.spyOn(queue, 'reconcileDeadLetters');
+      await queue.initialize();
+      reconcile.mockClear();
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(reconcile).toHaveBeenCalledTimes(1);
+
+      await queue.shutdown();
+      reconcile.mockClear();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(reconcile).not.toHaveBeenCalled();
+    });
+
+    it('awaits and contains a rejecting in-flight DLQ reconciliation', async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get('sync').queue;
+      let rejectReconciliation!: (error: Error) => void;
+      syncQueue.getJobs.mockReturnValueOnce(new Promise((_, reject) => {
+        rejectReconciliation = reject;
+      }));
+
+      const reconciliation = queue.reconcileDeadLetters();
+      const rejection = expect(reconciliation).rejects.toThrow(
+        'Failed to reconcile exhausted jobs',
+      );
+      let shutdownSettled = false;
+      const shutdown = queue.shutdown().then(() => {
+        shutdownSettled = true;
+      });
+      await Promise.resolve();
+      expect(shutdownSettled).toBe(false);
+
+      rejectReconciliation(new Error('Redis unavailable'));
+      await rejection;
+      await shutdown;
+      expect(shutdownSettled).toBe(true);
       expect(queue.isHealthy()).toBe(false);
     });
   });

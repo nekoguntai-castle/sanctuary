@@ -10,8 +10,7 @@ import { registerCollector } from './registry';
 import type { CollectorContext } from '../types';
 
 registerCollector('deadLetterQueue', async (context: CollectorContext) => {
-  const stats = deadLetterQueue.getStats();
-  const entries = deadLetterQueue.getAll(50);
+  const { stats, entries } = await deadLetterQueue.getSnapshot({ limit: 50 });
 
   // Anonymize IDs in entry payloads
   const anonymizedEntries = entries.map(entry => {

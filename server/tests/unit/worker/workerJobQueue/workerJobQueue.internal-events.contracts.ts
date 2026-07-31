@@ -116,11 +116,13 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
       expect(mockDlqAdd).toHaveBeenCalledTimes(1);
       expect(mockDlqAdd).toHaveBeenCalledWith(
         'sync',
-        'sync:sync-wallet',
-        expect.objectContaining({ queue: 'sync', jobId: 'job-2' }),
-        expect.any(Error),
-        3,
-        expect.objectContaining({ queueName: 'sync', jobId: 'job-2' })
+        'sync',
+        expect.objectContaining({
+          id: 'job-2',
+          name: 'sync-wallet',
+          attemptsMade: 3,
+        }),
+        expect.any(Error)
       );
     });
 

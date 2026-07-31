@@ -10,7 +10,6 @@ import {
   DEAD_LETTER_CATEGORY_VALUES,
   ELECTRUM_NETWORK_VALUES,
   jsonArrayResponse,
-  jsonOneOfResponse,
   jsonRequestBody,
   jsonResponse,
 } from './shared';
@@ -268,18 +267,18 @@ export const adminOperationsPaths = {
     post: {
       tags: ['Admin'],
       summary: 'Retry dead letter entry',
-      description: 'Remove a dead letter queue entry for retry and dispatch it to the matching subsystem when implemented.',
+      description: 'Atomically claim a retriable worker failure, enqueue a stable retry job, and acknowledge the dead letter entry after dispatch.',
       security: bearerAuth,
       parameters: [adminDeadLetterIdParameter],
       responses: {
         200: jsonResponse('Dead letter retry result', '#/components/schemas/AdminDeadLetterRetryResponse'),
+        400: apiErrorResponse,
         401: apiErrorResponse,
         403: apiErrorResponse,
         404: apiErrorResponse,
-        500: jsonOneOfResponse('Dead letter retry dispatch failed or unexpected error', [
-          '#/components/schemas/AdminSimpleErrorResponse',
-          '#/components/schemas/ApiError',
-        ]),
+        409: apiErrorResponse,
+        500: apiErrorResponse,
+        503: apiErrorResponse,
       },
     },
   },

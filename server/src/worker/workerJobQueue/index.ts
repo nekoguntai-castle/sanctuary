@@ -45,6 +45,10 @@ import {
   type RecurringHeartbeatSnapshot,
 } from "./recurringHeartbeatStore";
 import { unwrapRecurringJobData } from "./recurringJobEnvelope";
+import {
+  DEAD_LETTER_RECONCILIATION_INTERVAL_MS,
+  reconcileExhaustedJobs,
+} from "./deadLetterReconciler";
 
 export type { WorkerJobQueueConfig } from "./types";
 export type {
@@ -56,6 +60,26 @@ export type {
 } from "./types";
 
 const log = createLogger("WORKER:QUEUE");
+
+function definedJobOptions(options?: JobsOptions): JobsOptions | undefined {
+  if (!options) return undefined;
+  const entries = Object.entries(options).filter(
+    ([, value]) => value !== undefined,
+  );
+  return entries.length > 0
+    ? (Object.fromEntries(entries) as JobsOptions)
+    : undefined;
+}
+
+function mergeJobOptions(
+  defaults?: JobsOptions,
+  overrides?: JobsOptions,
+): JobsOptions | undefined {
+  return definedJobOptions({
+    ...definedJobOptions(defaults),
+    ...definedJobOptions(overrides),
+  });
+}
 
 interface QueueFactoryOptions {
   queueName: string;
@@ -136,6 +160,8 @@ export class WorkerJobQueue {
   private initialized = false;
   private shutdownPromise: Promise<void> | null = null;
   private shutdownController = new AbortController();
+  private deadLetterTimer: NodeJS.Timeout | null = null;
+  private deadLetterReconciliation: Promise<void> | null = null;
 
   constructor(config: WorkerJobQueueConfig) {
     this.config = {
@@ -183,12 +209,45 @@ export class WorkerJobQueue {
       await this.createQueue(queueName);
     }
 
+    await this.reconcileDeadLetters();
+    this.startDeadLetterReconciliation();
     this.initialized = true;
     log.info("Worker job queue initialized", {
       queues: this.config.queues,
       concurrency: this.config.concurrency,
       prefix: this.config.prefix,
     });
+  }
+
+  private startDeadLetterReconciliation(): void {
+    if (this.deadLetterTimer) return;
+    this.deadLetterTimer = setInterval(() => {
+      void this.reconcileDeadLetters().catch((error) => {
+        log.error("Failed to reconcile exhausted jobs into the DLQ", {
+          error: getErrorMessage(error),
+        });
+      });
+    }, DEAD_LETTER_RECONCILIATION_INTERVAL_MS);
+    this.deadLetterTimer.unref();
+  }
+
+  async reconcileDeadLetters(): Promise<void> {
+    if (this.deadLetterReconciliation) return this.deadLetterReconciliation;
+    const reconciliation = reconcileExhaustedJobs(this.queues).then(
+      (count) => {
+        if (count > 0) {
+          log.info("Reconciled exhausted jobs into the DLQ", { count });
+        }
+      },
+    );
+    this.deadLetterReconciliation = reconciliation;
+    try {
+      await reconciliation;
+    } finally {
+      if (this.deadLetterReconciliation === reconciliation) {
+        this.deadLetterReconciliation = null;
+      }
+    }
   }
 
   /**
@@ -257,6 +316,7 @@ export class WorkerJobQueue {
 
     this.handlers.set(handlerKey, {
       handler: handler.handler as RegisteredHandler["handler"],
+      options: handler.options,
       lockOptions: handler.lockOptions as RegisteredHandler["lockOptions"],
     });
 
@@ -279,10 +339,13 @@ export class WorkerJobQueue {
     }
 
     try {
+      const handlerOptions = this.handlers.get(
+        `${queueName}:${jobName}`,
+      )?.options;
       const job = await queueInstance.queue.add(
         jobName,
         data,
-        withBullMqSafeJobId(options),
+        withBullMqSafeJobId(mergeJobOptions(handlerOptions, options)),
       );
       log.debug(`Job added: ${queueName}:${jobName}`, { jobId: job.id });
       return job;
@@ -312,7 +375,12 @@ export class WorkerJobQueue {
         jobs.map((job) => ({
           name: job.name,
           data: job.data,
-          opts: withBullMqSafeJobId(job.options),
+          opts: withBullMqSafeJobId(
+            mergeJobOptions(
+              this.handlers.get(`${queueName}:${job.name}`)?.options,
+              job.options,
+            ),
+          ),
         })),
       );
       log.debug(`Bulk jobs added to ${queueName}`, { count: result.length });
@@ -331,19 +399,29 @@ export class WorkerJobQueue {
   async scheduleRecurring<T>(
     definition: RecurringScheduleDefinition<T>,
   ): Promise<RecurringScheduleResult> {
-    if (!definition.freshness) {
+    const registeredOptions = this.handlers.get(
+      `${definition.queue}:${definition.name}`,
+    )?.options;
+    const effectiveDefinition = {
+      ...definition,
+      options: mergeJobOptions(registeredOptions, definition.options),
+    };
+    if (!effectiveDefinition.freshness) {
       return reconcileRecurringSchedule(
-        this.queues.get(definition.queue),
-        definition,
+        this.queues.get(effectiveDefinition.queue),
+        effectiveDefinition,
       );
     }
     try {
       const generationToken =
-        await this.heartbeatStore!.ensureGeneration(definition);
-      this.heartbeatDefinitions.set(definition.schedulerId, definition);
+        await this.heartbeatStore!.ensureGeneration(effectiveDefinition);
+      this.heartbeatDefinitions.set(
+        effectiveDefinition.schedulerId,
+        effectiveDefinition,
+      );
       return await reconcileRecurringSchedule(
-        this.queues.get(definition.queue),
-        definition,
+        this.queues.get(effectiveDefinition.queue),
+        effectiveDefinition,
         generationToken,
       );
     } catch (error) {
@@ -387,10 +465,19 @@ export class WorkerJobQueue {
     definitions: RecurringScheduleDefinition[],
     forbiddenDefinitions: RecurringScheduleDefinition[] = [],
   ): Promise<RecurringScheduleInspection> {
+    const withRegisteredOptions = (
+      definition: RecurringScheduleDefinition,
+    ): RecurringScheduleDefinition => ({
+      ...definition,
+      options: mergeJobOptions(
+        this.handlers.get(`${definition.queue}:${definition.name}`)?.options,
+        definition.options,
+      ),
+    });
     return inspectRecurringScheduleDefinitions(
       this.queues,
-      definitions,
-      forbiddenDefinitions,
+      definitions.map(withRegisteredOptions),
+      forbiddenDefinitions.map(withRegisteredOptions),
     );
   }
 
@@ -595,6 +682,15 @@ export class WorkerJobQueue {
   private async doShutdown(): Promise<void> {
     log.info("Shutting down worker job queue...");
     this.shutdownController.abort(new Error('Worker job queue is shutting down'));
+    if (this.deadLetterTimer) {
+      clearInterval(this.deadLetterTimer);
+      this.deadLetterTimer = null;
+    }
+    await this.deadLetterReconciliation?.catch((error) => {
+      log.warn("DLQ reconciliation did not settle cleanly during shutdown", {
+        error: getErrorMessage(error),
+      });
+    });
 
     // Close all workers first (stop processing new jobs)
     const workerClosePromises = Array.from(this.queues.values()).map(

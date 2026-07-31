@@ -18,6 +18,15 @@ import {
 
 const log = createLogger('WORKER:QUEUE');
 
+function hasDesiredJobOptions(
+  actual: Record<string, unknown> | undefined,
+  desired: RecurringScheduleDefinition['options'],
+): boolean {
+  return Object.entries(desired ?? {}).every(([key, value]) =>
+    isDeepStrictEqual(actual?.[key], value),
+  );
+}
+
 function hasExactSchedule<T>(
   schedulers: Awaited<ReturnType<QueueInstance['queue']['getJobSchedulers']>>,
   definition: RecurringScheduleDefinition<T>,
@@ -25,12 +34,24 @@ function hasExactSchedule<T>(
 ): boolean {
   return schedulers.some(
     (scheduler) =>
-      scheduler.key === definition.schedulerId &&
-      scheduler.name === definition.name &&
-      hasExactRecurrence(scheduler, definition.recurrence) &&
       isDeepStrictEqual(
-        scheduler.template?.data ?? {},
-        wrapRecurringJobData(definition.data, generationToken),
+        [
+          scheduler.key,
+          scheduler.name,
+          hasExactRecurrence(scheduler, definition.recurrence),
+          scheduler.template?.data ?? {},
+          hasDesiredJobOptions(
+            scheduler.template?.opts as Record<string, unknown> | undefined,
+            definition.options,
+          ),
+        ],
+        [
+          definition.schedulerId,
+          definition.name,
+          true,
+          wrapRecurringJobData(definition.data, generationToken),
+          true,
+        ],
       ),
   );
 }
@@ -148,6 +169,10 @@ function inspectQueueDefinitions(
             scheduler.template?.data ??
             {},
           definition.data,
+        ) &&
+        hasDesiredJobOptions(
+          scheduler.template?.opts as Record<string, unknown> | undefined,
+          definition.options,
         ),
     );
     if (desired.length === 0) {

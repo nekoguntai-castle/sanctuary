@@ -64,7 +64,7 @@ const Redis = require("ioredis");
 read_notification_dlq_entries() {
     compose_exec redis sh -c '
 set -eu
-for key in $(redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern "sanctuary:dlq:*"); do
+for key in $(redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern "sanctuary:dlq:{v1}:entry:*"); do
   redis-cli -a "$REDIS_PASSWORD" --no-auth-warning GET "$key"
   printf "\n"
 done

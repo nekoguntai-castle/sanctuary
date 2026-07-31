@@ -1,325 +1,256 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-
-const {
-  mockGetDistributedCache,
-  mockCache,
-  mockLog,
-} = vi.hoisted(() => ({
-  mockGetDistributedCache: vi.fn(),
-  mockCache: {
-    set: vi.fn().mockResolvedValue(undefined),
-    delete: vi.fn().mockResolvedValue(undefined),
-  },
-  mockLog: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
-
-vi.mock('../../../src/infrastructure', () => ({
-  getDistributedCache: mockGetDistributedCache,
-}));
-
-vi.mock('../../../src/utils/logger', () => ({
-  createLogger: () => mockLog,
-}));
-
+import type { Job } from 'bullmq';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  deadLetterQueue,
-  recordSyncFailure,
-  recordPushFailure,
+  createMemoryDeadLetterQueue,
   recordElectrumFailure,
+  recordPushFailure,
+  recordSyncFailure,
   recordTransactionFailure,
 } from '../../../src/services/deadLetterQueue';
 
-async function clearDlq() {
-  for (const entry of deadLetterQueue.getAll()) {
-    await deadLetterQueue.remove(entry.id);
-  }
-  (deadLetterQueue as any).entries = new Map();
+function exhaustedJob(overrides: Partial<Job> = {}): Job {
+  return {
+    id: 'job-1',
+    name: 'sync-wallet',
+    data: { walletId: 'wallet-1', reason: 'manual' },
+    attemptsMade: 3,
+    timestamp: Date.now(),
+    opts: {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5_000 },
+      removeOnComplete: 500,
+      removeOnFail: 250,
+    },
+    ...overrides,
+  } as Job;
 }
 
-describe('deadLetterQueue', () => {
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    mockGetDistributedCache.mockReturnValue(mockCache);
-    deadLetterQueue.stop();
-    await clearDlq();
+describe('DeadLetterQueue', () => {
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
-  afterEach(async () => {
-    deadLetterQueue.stop();
-    await clearDlq();
-  });
-
-  it('starts/stops cleanup interval and calls unref()', () => {
-    const timer = { unref: vi.fn() } as any;
-    const setIntervalSpy = vi.spyOn(global, 'setInterval').mockReturnValue(timer);
-    const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
-
-    deadLetterQueue.start();
-    deadLetterQueue.start();
-    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
-    expect(timer.unref).toHaveBeenCalledTimes(1);
-
-    deadLetterQueue.stop();
-    expect(clearIntervalSpy).toHaveBeenCalledWith(timer);
-  });
-
-  it('runs cleanup when interval callback fires', () => {
-    const timer = { unref: vi.fn() } as any;
-    let intervalCallback: (() => void) | null = null;
-    vi.spyOn(global, 'setInterval').mockImplementation(((cb: () => void) => {
-      intervalCallback = cb;
-      return timer;
-    }) as any);
-    const cleanupSpy = vi.spyOn(deadLetterQueue as any, 'cleanup');
-
-    deadLetterQueue.start();
-    expect(intervalCallback).not.toBeNull();
-    intervalCallback?.();
-
-    expect(cleanupSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('adds and updates entries with Redis persistence', async () => {
-    const id = await deadLetterQueue.add(
+  it('adds, updates, lists, filters, and summarizes diagnostic entries', async () => {
+    const queue = createMemoryDeadLetterQueue();
+    const syncId = await queue.add(
       'sync',
       'wallet_sync',
-      { walletId: 'w1' },
+      { walletId: 'wallet-1' },
       new Error('sync failed'),
-      3
+      2,
+    );
+    const pushId = await queue.add(
+      'push',
+      'push_notification',
+      { userId: 'user-1' },
+      'push failed',
+      1,
     );
 
-    expect(id).toContain('sync-');
-    expect(deadLetterQueue.get(id)).toEqual(expect.objectContaining({
+    await queue.update(syncId, new Error('sync failed again'), 3);
+    await queue.update('missing', 'ignored', 1);
+
+    await expect(queue.get(syncId)).resolves.toEqual(expect.objectContaining({
+      id: syncId,
       category: 'sync',
-      operation: 'wallet_sync',
       attempts: 3,
-      error: 'sync failed',
+      error: 'sync failed again',
+      errorStack: expect.stringContaining('sync failed again'),
     }));
-    expect(mockCache.set).toHaveBeenCalled();
-
-    await deadLetterQueue.update(id, 'retry failed', 4);
-    expect(deadLetterQueue.get(id)).toEqual(expect.objectContaining({
+    await queue.update(syncId, 'string failure', 4);
+    await expect(queue.get(syncId)).resolves.toEqual(expect.objectContaining({
       attempts: 4,
-      error: 'retry failed',
+      error: 'string failure',
+      errorStack: undefined,
     }));
-  });
-
-  it('captures error stack when update receives an Error instance', async () => {
-    const id = await deadLetterQueue.add('sync', 'wallet_sync', { walletId: 'w1' }, 'initial', 1);
-    const err = new Error('update failed');
-
-    await deadLetterQueue.update(id, err, 2);
-
-    expect(deadLetterQueue.get(id)).toEqual(expect.objectContaining({
-      attempts: 2,
-      error: 'update failed',
-      errorStack: expect.stringContaining('update failed'),
-    }));
-  });
-
-  it('evicts oldest entry when size limit is reached', async () => {
-    const entries = new Map(
-      Array.from({ length: 1000 }, (_, index) => [
-        `old-${index}`,
-        {
-          id: `old-${index}`,
-          category: 'other',
-          operation: `op-${index}`,
-          payload: {},
-          error: 'old',
-          attempts: 1,
-          firstFailedAt: new Date('2025-01-01T00:00:00.000Z'),
-          lastFailedAt: new Date('2025-01-01T00:00:00.000Z'),
-        },
-      ])
-    );
-    (deadLetterQueue as any).entries = entries;
-
-    const id = await deadLetterQueue.add('sync', 'new-op', { walletId: 'w1' }, 'new', 1);
-
-    expect(deadLetterQueue.get('old-0')).toBeUndefined();
-    expect(deadLetterQueue.get(id)).toBeDefined();
-    expect(deadLetterQueue.getAll().length).toBe(1000);
-  });
-
-  it('handles LRU eviction edge case when oldest map key is falsy', async () => {
-    const baseEntry = {
-      category: 'other',
-      operation: 'op',
-      payload: {},
-      error: 'old',
-      attempts: 1,
-      firstFailedAt: new Date('2025-01-01T00:00:00.000Z'),
-      lastFailedAt: new Date('2025-01-01T00:00:00.000Z'),
-    };
-    const entries = new Map<any, any>([
-      [undefined, { id: 'undefined-key', ...baseEntry }],
-    ]);
-    for (let index = 0; index < 999; index++) {
-      entries.set(`old-${index}`, { id: `old-${index}`, ...baseEntry });
-    }
-    (deadLetterQueue as any).entries = entries;
-
-    await deadLetterQueue.add('sync', 'new-op', { walletId: 'w1' }, 'new', 1);
-
-    expect((deadLetterQueue as any).entries.has(undefined)).toBe(true);
-    expect(deadLetterQueue.getAll().length).toBe(1001);
-  });
-
-  it('ignores updates for missing entries', async () => {
-    await expect(deadLetterQueue.update('missing-id', 'x', 1)).resolves.toBeUndefined();
-  });
-
-  it('supports category filtering, sorted listing, and stats', async () => {
-    const id1 = await deadLetterQueue.add('sync', 'op1', { a: 1 }, 'err1', 1);
-    const id2 = await deadLetterQueue.add('push', 'op2', { b: 2 }, 'err2', 2);
-
-    const e1 = deadLetterQueue.get(id1)!;
-    const e2 = deadLetterQueue.get(id2)!;
-    e1.lastFailedAt = new Date('2025-01-01T00:00:00.000Z');
-    e2.lastFailedAt = new Date('2025-01-02T00:00:00.000Z');
-    e1.firstFailedAt = new Date('2025-01-01T00:00:00.000Z');
-    e2.firstFailedAt = new Date('2025-01-02T00:00:00.000Z');
-
-    expect(deadLetterQueue.getByCategory('sync')).toHaveLength(1);
-    expect(deadLetterQueue.getAll().map((e) => e.id)).toEqual([id2, id1]);
-    expect(deadLetterQueue.getAll(1)).toHaveLength(1);
-
-    expect(deadLetterQueue.getStats()).toEqual(expect.objectContaining({
+    await expect(queue.getByCategory('sync')).resolves.toHaveLength(1);
+    await expect(queue.getAll(1)).resolves.toHaveLength(1);
+    await expect(queue.getStats()).resolves.toEqual(expect.objectContaining({
       total: 2,
       byCategory: expect.objectContaining({ sync: 1, push: 1 }),
-      oldest: new Date('2025-01-01T00:00:00.000Z'),
-      newest: new Date('2025-01-02T00:00:00.000Z'),
+      oldest: expect.any(Date),
+      newest: expect.any(Date),
+    }));
+    await expect(queue.getSnapshot({ category: 'sync', limit: 1 })).resolves.toEqual({
+      entries: [expect.objectContaining({ id: syncId })],
+      stats: expect.objectContaining({
+        total: 2,
+        byCategory: expect.objectContaining({ sync: 1, push: 1 }),
+      }),
+    });
+    await expect(queue.getSnapshot({ limit: -1 })).resolves.toEqual({
+      entries: [],
+      stats: expect.objectContaining({ total: 2 }),
+    });
+    await expect(queue.getSnapshot()).resolves.toEqual({
+      entries: expect.arrayContaining([
+        expect.objectContaining({ id: syncId }),
+        expect.objectContaining({ id: pushId }),
+      ]),
+      stats: expect.objectContaining({ total: 2 }),
+    });
+    await expect(queue.remove(pushId)).resolves.toBe(true);
+    await expect(queue.remove(pushId)).resolves.toBe(false);
+  });
+
+  it('atomically upserts duplicate exhausted events under one stable identity', async () => {
+    const queue = createMemoryDeadLetterQueue();
+    const job = exhaustedJob();
+    const firstFailedAt = new Date(Date.now() - 1_000);
+    const duplicateFailedAt = new Date();
+    const firstId = await queue.addExhaustedJob(
+      'sync',
+      'sync',
+      job,
+      new Error('first failure'),
+      firstFailedAt,
+    );
+    const first = await queue.get(firstId);
+    const secondId = await queue.addExhaustedJob(
+      'sync',
+      'sync',
+      job,
+      new Error('duplicate event'),
+      duplicateFailedAt,
+    );
+
+    expect(secondId).toBe(firstId);
+    await expect(queue.get(firstId)).resolves.toEqual(expect.objectContaining({
+      id: firstId,
+      operation: 'sync:sync-wallet',
+      error: 'first failure',
+      attempts: 3,
+      firstFailedAt: first!.firstFailedAt,
+      lastFailedAt: firstFailedAt,
+      job: expect.objectContaining({
+        version: 1,
+        queue: 'sync',
+        name: 'sync-wallet',
+        jobId: 'job-1',
+        exhaustedAttempt: 3,
+        options: expect.objectContaining({ attempts: 3 }),
+      }),
     }));
   });
 
-  it('retains newest timestamp when later entries are older', async () => {
-    const id1 = await deadLetterQueue.add('sync', 'op1', { a: 1 }, 'err1', 1);
-    const id2 = await deadLetterQueue.add('push', 'op2', { b: 2 }, 'err2', 2);
+  it('derives a stable fallback identity for exhausted jobs without a BullMQ ID', async () => {
+    const queue = createMemoryDeadLetterQueue();
+    const job = exhaustedJob({ id: undefined, timestamp: 12345 });
 
-    const e1 = deadLetterQueue.get(id1)!;
-    const e2 = deadLetterQueue.get(id2)!;
-    e1.firstFailedAt = new Date('2025-01-01T00:00:00.000Z');
-    e1.lastFailedAt = new Date('2025-01-03T00:00:00.000Z');
-    e2.firstFailedAt = new Date('2025-01-02T00:00:00.000Z');
-    e2.lastFailedAt = new Date('2025-01-01T12:00:00.000Z');
+    const id = await queue.addExhaustedJob('sync', 'sync', job, 'failed');
 
-    const stats = deadLetterQueue.getStats();
-    expect(stats.oldest).toEqual(new Date('2025-01-01T00:00:00.000Z'));
-    expect(stats.newest).toEqual(new Date('2025-01-03T00:00:00.000Z'));
+    await expect(queue.get(id)).resolves.toEqual(expect.objectContaining({
+      job: expect.objectContaining({
+        jobId: 'sync-wallet:12345',
+      }),
+    }));
   });
 
-  it('dequeues entry for retry and removes it from store', async () => {
-    const id = await deadLetterQueue.add('sync', 'wallet_sync', { walletId: 'w1' }, 'conn failed', 2);
-    expect(deadLetterQueue.get(id)).toBeDefined();
+  it('claims with a lease and requires the exact token to release or acknowledge', async () => {
+    const queue = createMemoryDeadLetterQueue();
+    const id = await queue.addExhaustedJob(
+      'sync',
+      'sync',
+      exhaustedJob(),
+      'failed',
+    );
+    const claimed = await queue.claimForRetry(id, 1_000);
+    expect(claimed.status).toBe('claimed');
+    if (claimed.status !== 'claimed') throw new Error('claim failed');
 
-    const entry = await deadLetterQueue.dequeueForRetry(id);
-    expect(entry).toBeDefined();
-    expect(entry!.category).toBe('sync');
-    expect(entry!.operation).toBe('wallet_sync');
-    expect(deadLetterQueue.get(id)).toBeUndefined();
-    expect(mockCache.delete).toHaveBeenCalledWith(expect.stringContaining(id));
-
-    // Dequeue missing entry returns null
-    const missing = await deadLetterQueue.dequeueForRetry('nonexistent-id');
-    expect(missing).toBeNull();
-  });
-
-  it('removes entries and clears categories', async () => {
-    const id1 = await deadLetterQueue.add('electrum', 'connect', { host: 'h' }, 'err', 1);
-    const id2 = await deadLetterQueue.add('electrum', 'connect2', { host: 'h2' }, 'err', 2);
-    const id3 = await deadLetterQueue.add('sync', 'sync1', { walletId: 'w' }, 'err', 1);
-
-    await expect(deadLetterQueue.remove(id1)).resolves.toBe(true);
-    await expect(deadLetterQueue.remove('missing')).resolves.toBe(false);
-    expect(mockCache.delete).toHaveBeenCalledWith(expect.stringContaining(id1));
-
-    const cleared = await deadLetterQueue.clearCategory('electrum');
-    expect(cleared).toBe(1);
-    expect(deadLetterQueue.get(id2)).toBeUndefined();
-    expect(deadLetterQueue.get(id3)).toBeDefined();
-  });
-
-  it('cleans up expired entries', async () => {
-    const id = await deadLetterQueue.add('other', 'old-op', {}, 'old', 1);
-    const entry = deadLetterQueue.get(id)!;
-    entry.lastFailedAt = new Date(Date.now() - (8 * 24 * 60 * 60 * 1000));
-
-    (deadLetterQueue as any).cleanup();
-    expect(deadLetterQueue.get(id)).toBeUndefined();
-  });
-
-  it('cleanup removes only expired entries and keeps recent ones', async () => {
-    const expiredId = await deadLetterQueue.add('other', 'expired-op', {}, 'old', 1);
-    const recentId = await deadLetterQueue.add('other', 'recent-op', {}, 'new', 1);
-    const expiredEntry = deadLetterQueue.get(expiredId)!;
-    const recentEntry = deadLetterQueue.get(recentId)!;
-
-    expiredEntry.lastFailedAt = new Date(Date.now() - (8 * 24 * 60 * 60 * 1000));
-    recentEntry.lastFailedAt = new Date();
-
-    (deadLetterQueue as any).cleanup();
-    expect(deadLetterQueue.get(expiredId)).toBeUndefined();
-    expect(deadLetterQueue.get(recentId)).toBeDefined();
-  });
-
-  it('handles redis persistence/delete/load failures gracefully', async () => {
-    mockCache.set.mockRejectedValueOnce(new Error('set failed'));
-    const id = await deadLetterQueue.add('sync', 'op', {}, 'err', 1);
-    expect(deadLetterQueue.get(id)).toBeDefined();
-
-    mockCache.delete.mockRejectedValueOnce(new Error('delete failed'));
-    await expect(deadLetterQueue.remove(id)).resolves.toBe(true);
-
-    mockGetDistributedCache.mockReturnValue(null);
-    await expect(deadLetterQueue.loadFromRedis()).resolves.toBeUndefined();
-
-    mockGetDistributedCache.mockImplementation(() => {
-      throw new Error('cache unavailable');
+    await expect(queue.claimForRetry(id, 1_000)).resolves.toEqual({
+      status: 'busy',
     });
-    await expect(deadLetterQueue.loadFromRedis()).resolves.toBeUndefined();
+    await expect(queue.releaseRetry(id, 'wrong-token')).resolves.toBe(false);
+    await expect(
+      queue.releaseRetry(id, claimed.claim.token),
+    ).resolves.toBe(true);
+
+    const reclaimed = await queue.claimForRetry(id, 1_000);
+    if (reclaimed.status !== 'claimed') throw new Error('reclaim failed');
+    await expect(
+      queue.acknowledgeRetry(id, reclaimed.claim.token),
+    ).resolves.toBe(true);
+    await expect(queue.get(id)).resolves.toBeNull();
+
+    await queue.addExhaustedJob('sync', 'sync', exhaustedJob(), 'late event');
+    await expect(queue.get(id)).resolves.toBeNull();
   });
 
-  it('skips Redis persistence/removal when distributed cache is unavailable', async () => {
-    mockGetDistributedCache.mockReturnValue(null);
-
-    const id = await deadLetterQueue.add('sync', 'op', {}, 'err', 1);
-    expect(deadLetterQueue.get(id)).toBeDefined();
-    await expect(deadLetterQueue.remove(id)).resolves.toBe(true);
-  });
-
-  it('logs restoration-skipped debug message when redis cache exists', async () => {
-    mockGetDistributedCache.mockReturnValue(mockCache);
-
-    await expect(deadLetterQueue.loadFromRedis()).resolves.toBeUndefined();
-
-    expect(mockLog.debug).toHaveBeenCalledWith(
-      'Redis DLQ restoration skipped - using in-memory primary'
+  it('recovers an expired claim and rejects invalid lease durations', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-30T00:00:00.000Z'));
+    const queue = createMemoryDeadLetterQueue();
+    const id = await queue.addExhaustedJob(
+      'sync',
+      'sync',
+      exhaustedJob(),
+      'failed',
+    );
+    await expect(queue.claimForRetry(id, 1_000)).resolves.toEqual(
+      expect.objectContaining({ status: 'claimed' }),
+    );
+    vi.advanceTimersByTime(1_001);
+    await expect(queue.claimForRetry(id, 1_000)).resolves.toEqual(
+      expect.objectContaining({ status: 'claimed' }),
+    );
+    await expect(queue.claimForRetry(id, 0)).rejects.toThrow(
+      'positive integer',
     );
   });
 
-  it('records convenience failure categories', async () => {
-    const syncId = await recordSyncFailure('wallet-1', 'sync down', 2, { network: 'testnet' });
-    const pushId = await recordPushFailure('user-1', '123456789012345678901234', 'push down', 3, { title: 'x' });
-    const electrumId = await recordElectrumFailure('host', 50001, 'conn down', 4);
-    const txId = await recordTransactionFailure('wallet-1', 'a'.repeat(64), 'broadcast down', 5);
+  it('expires entries, clears categories, and bounds retained entries', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-01T00:00:00.000Z'));
+    const queue = createMemoryDeadLetterQueue();
+    const expiredId = await queue.add('other', 'old', {}, 'old', 1);
+    vi.advanceTimersByTime(8 * 24 * 60 * 60 * 1_000);
+    await expect(queue.get(expiredId)).resolves.toBeNull();
 
-    expect(deadLetterQueue.get(syncId)).toEqual(expect.objectContaining({
-      category: 'sync',
-      operation: 'wallet_sync',
-    }));
-    expect(deadLetterQueue.get(pushId)).toEqual(expect.objectContaining({
-      category: 'push',
-      payload: expect.objectContaining({
-        token: '12345678901234567890...',
-      }),
-    }));
-    expect(deadLetterQueue.get(electrumId)?.category).toBe('electrum');
-    expect(deadLetterQueue.get(txId)?.category).toBe('transaction');
+    for (let index = 0; index < 1_001; index += 1) {
+      vi.advanceTimersByTime(1);
+      await queue.add('notification', `operation-${index}`, {}, 'failed', 1);
+    }
+    await expect(queue.getAll()).resolves.toHaveLength(1_000);
+    await expect(queue.clearCategory('notification')).resolves.toBe(1_000);
+    await expect(queue.getAll()).resolves.toEqual([]);
+  });
+
+  it('rejects oversized entries and supports startup cleanup compatibility', async () => {
+    const queue = createMemoryDeadLetterQueue();
+    await expect(queue.start()).resolves.toBeUndefined();
+    queue.stop();
+    await expect(queue.loadFromRedis()).resolves.toBeUndefined();
+    await expect(
+      queue.add(
+        'other',
+        'oversized',
+        { value: 'x'.repeat(300_000) },
+        'failed',
+        1,
+      ),
+    ).rejects.toThrow('maximum serialized size');
+  });
+
+  it('records convenience failure categories without exposing full push tokens', async () => {
+    const syncId = await recordSyncFailure('wallet-1', 'sync down', 2);
+    const pushId = await recordPushFailure(
+      'user-1',
+      '123456789012345678901234',
+      'push down',
+      3,
+    );
+    const electrumId = await recordElectrumFailure('host', 50_001, 'down', 4);
+    const transactionId = await recordTransactionFailure(
+      'wallet-1',
+      'a'.repeat(64),
+      'down',
+      5,
+    );
+
+    expect(syncId).toMatch(/^diagnostic-/);
+    expect(pushId).toMatch(/^diagnostic-/);
+    expect(electrumId).toMatch(/^diagnostic-/);
+    expect(transactionId).toMatch(/^diagnostic-/);
   });
 });

@@ -9,32 +9,30 @@ const {
   mockStartTor,
   mockStopTor,
   mockCacheGetStats,
-  mockDlqGetStats,
-  mockDlqGetByCategory,
-  mockDlqGetAll,
+  mockDlqGetSnapshot,
   mockDlqRemove,
   mockDlqClearCategory,
-  mockDlqDequeueForRetry,
-  mockDlqAdd,
+  mockDlqClaimForRetry,
+  mockDlqReleaseRetry,
+  mockDlqAcknowledgeRetry,
+  mockEnqueueDeadLetterJob,
   mockGetWebSocketServer,
   mockGetRateLimitEvents,
-  mockQueueSync,
 } = vi.hoisted(() => ({
   mockIsDockerProxyAvailable: vi.fn(),
   mockGetTorStatus: vi.fn(),
   mockStartTor: vi.fn(),
   mockStopTor: vi.fn(),
   mockCacheGetStats: vi.fn(),
-  mockDlqGetStats: vi.fn(),
-  mockDlqGetByCategory: vi.fn(),
-  mockDlqGetAll: vi.fn(),
+  mockDlqGetSnapshot: vi.fn(),
   mockDlqRemove: vi.fn(),
   mockDlqClearCategory: vi.fn(),
-  mockDlqDequeueForRetry: vi.fn(),
-  mockDlqAdd: vi.fn(),
+  mockDlqClaimForRetry: vi.fn(),
+  mockDlqReleaseRetry: vi.fn(),
+  mockDlqAcknowledgeRetry: vi.fn(),
+  mockEnqueueDeadLetterJob: vi.fn(),
   mockGetWebSocketServer: vi.fn(),
   mockGetRateLimitEvents: vi.fn(),
-  mockQueueSync: vi.fn(),
 }));
 
 vi.mock('../../../src/middleware/auth', () => ({
@@ -54,20 +52,17 @@ vi.mock('../../../src/services/cache', () => ({
 
 vi.mock('../../../src/services/deadLetterQueue', () => ({
   deadLetterQueue: {
-    getStats: mockDlqGetStats,
-    getByCategory: mockDlqGetByCategory,
-    getAll: mockDlqGetAll,
+    getSnapshot: mockDlqGetSnapshot,
     remove: mockDlqRemove,
     clearCategory: mockDlqClearCategory,
-    dequeueForRetry: mockDlqDequeueForRetry,
-    add: mockDlqAdd,
+    claimForRetry: mockDlqClaimForRetry,
+    releaseRetry: mockDlqReleaseRetry,
+    acknowledgeRetry: mockDlqAcknowledgeRetry,
   },
 }));
 
-vi.mock('../../../src/services/syncService', () => ({
-  getSyncService: () => ({
-    queueSync: mockQueueSync,
-  }),
+vi.mock('../../../src/services/workerSyncQueue', () => ({
+  enqueueDeadLetterJob: mockEnqueueDeadLetterJob,
 }));
 
 vi.mock('../../../src/websocket/server', () => ({
@@ -113,16 +108,39 @@ describe('Admin Infrastructure Routes', () => {
 
     mockCacheGetStats.mockReturnValue({ hits: 9, misses: 1, sets: 3, evictions: 0 });
 
-    mockDlqGetStats.mockReturnValue({ total: 2, byCategory: { sync: 1, push: 1 } });
-    mockDlqGetByCategory.mockReturnValue([
-      { id: 'dlq-sync-1', category: 'sync', errorStack: 'sync-error'.repeat(80) },
-    ]);
-    mockDlqGetAll.mockReturnValue([
-      { id: 'dlq-1', category: 'sync', errorStack: 'sync-stack' },
-      { id: 'dlq-2', category: 'push', errorStack: 'push-stack' },
-    ]);
+    mockDlqGetSnapshot.mockResolvedValue({
+      stats: { total: 2, byCategory: { sync: 1, push: 1 } },
+      entries: [
+        { id: 'dlq-1', category: 'sync', errorStack: 'sync-error'.repeat(80) },
+        { id: 'dlq-2', category: 'push', errorStack: 'push-stack' },
+      ],
+    });
     mockDlqRemove.mockResolvedValue(true);
     mockDlqClearCategory.mockResolvedValue(3);
+    mockDlqClaimForRetry.mockResolvedValue({
+      status: 'claimed',
+      claim: {
+        token: 'claim-token',
+        expiresAt: new Date(),
+        entry: {
+          id: 'sync-123',
+          category: 'sync',
+          operation: 'sync:sync-wallet',
+          job: {
+            version: 1,
+            queue: 'sync',
+            name: 'sync-wallet',
+            jobId: 'job-1',
+            data: { walletId: 'wallet-1' },
+            options: { attempts: 3 },
+            exhaustedAttempt: 3,
+          },
+        },
+      },
+    });
+    mockDlqReleaseRetry.mockResolvedValue(true);
+    mockDlqAcknowledgeRetry.mockResolvedValue(true);
+    mockEnqueueDeadLetterJob.mockResolvedValue(true);
 
     mockGetWebSocketServer.mockReturnValue({
       getStats: () => ({
@@ -282,8 +300,10 @@ describe('Admin Infrastructure Routes', () => {
       .query({ limit: '50' });
 
     expect(response.status).toBe(200);
-    expect(mockDlqGetAll).toHaveBeenCalledWith(50);
-    expect(mockDlqGetByCategory).not.toHaveBeenCalled();
+    expect(mockDlqGetSnapshot).toHaveBeenCalledWith({
+      category: undefined,
+      limit: 50,
+    });
     expect(response.body.stats).toEqual({ total: 2, byCategory: { sync: 1, push: 1 } });
     expect(response.body.entries[0].errorStack.length).toBeLessThanOrEqual(500);
   });
@@ -294,11 +314,12 @@ describe('Admin Infrastructure Routes', () => {
       .query({ category: 'sync', limit: '10' });
 
     expect(categoryResponse.status).toBe(200);
-    expect(mockDlqGetByCategory).toHaveBeenCalledWith('sync');
-
-    mockDlqGetStats.mockImplementation(() => {
-      throw new Error('dlq stats failed');
+    expect(mockDlqGetSnapshot).toHaveBeenCalledWith({
+      category: 'sync',
+      limit: 10,
     });
+
+    mockDlqGetSnapshot.mockRejectedValueOnce(new Error('dlq read failed'));
     const errorResponse = await request(app).get('/api/v1/admin/dlq');
 
     expect(errorResponse.status).toBe(500);
@@ -321,35 +342,31 @@ describe('Admin Infrastructure Routes', () => {
     expect(errored.body.code).toBe('INTERNAL_ERROR');
   });
 
-  it('retries a sync DLQ entry and queues wallet sync', async () => {
-    mockDlqDequeueForRetry.mockResolvedValue({
-      id: 'sync-123',
-      category: 'sync',
-      operation: 'wallet_sync',
-      payload: { walletId: 'wallet-1' },
-      error: 'timeout',
-      attempts: 3,
-      firstFailedAt: new Date(),
-      lastFailedAt: new Date(),
-    });
-
+  it('claims, dispatches, and acknowledges a worker retry', async () => {
     const response = await request(app).post('/api/v1/admin/dlq/sync-123/retry');
 
     expect(response.status).toBe(200);
     expect(response.body.entry).toEqual({
       id: 'sync-123',
       category: 'sync',
-      operation: 'wallet_sync',
+      operation: 'sync:sync-wallet',
     });
     expect(response.body.retry).toEqual({
       success: true,
-      message: 'Queued wallet sync for wallet-1',
+      message: 'Worker retry accepted',
     });
-    expect(mockQueueSync).toHaveBeenCalledWith('wallet-1', 'normal');
+    expect(mockEnqueueDeadLetterJob).toHaveBeenCalledWith(
+      expect.objectContaining({ queue: 'sync', name: 'sync-wallet' }),
+      'sync-123',
+    );
+    expect(mockDlqAcknowledgeRetry).toHaveBeenCalledWith(
+      'sync-123',
+      'claim-token',
+    );
   });
 
   it('returns 404 when retrying a non-existent DLQ entry', async () => {
-    mockDlqDequeueForRetry.mockResolvedValue(null);
+    mockDlqClaimForRetry.mockResolvedValue({ status: 'missing' });
 
     const response = await request(app).post('/api/v1/admin/dlq/missing/retry');
 
@@ -357,79 +374,69 @@ describe('Admin Infrastructure Routes', () => {
     expect(response.body.message).toBe('Dead letter entry not found');
   });
 
-  it('returns not-implemented message for unsupported DLQ categories', async () => {
-    mockDlqDequeueForRetry.mockResolvedValue({
-      id: 'push-456',
-      category: 'push',
-      operation: 'push_notification',
-      payload: { userId: 'u1' },
-      error: 'timeout',
-      attempts: 1,
-      firstFailedAt: new Date(),
-      lastFailedAt: new Date(),
-    });
+  it('returns 409 when another caller holds the retry lease', async () => {
+    mockDlqClaimForRetry.mockResolvedValue({ status: 'busy' });
+    const response = await request(app).post('/api/v1/admin/dlq/busy/retry');
+    expect(response.status).toBe(409);
+    expect(response.body.message).toContain('already being retried');
+  });
 
+  it('releases unsupported diagnostic entries without deleting them', async () => {
+    mockDlqClaimForRetry.mockResolvedValue({
+      status: 'claimed',
+      claim: {
+        token: 'claim-token',
+        expiresAt: new Date(),
+        entry: {
+          id: 'push-456',
+          category: 'push',
+          operation: 'push_notification',
+        },
+      },
+    });
     const response = await request(app).post('/api/v1/admin/dlq/push-456/retry');
 
-    expect(response.status).toBe(200);
-    expect(response.body.retry).toEqual({
-      success: false,
-      message: 'Retry not implemented for category: push',
-    });
-  });
-
-  it('returns failure for sync entry missing walletId', async () => {
-    mockDlqDequeueForRetry.mockResolvedValue({
-      id: 'sync-789',
-      category: 'sync',
-      operation: 'wallet_sync',
-      payload: {},
-      error: 'timeout',
-      attempts: 1,
-      firstFailedAt: new Date(),
-      lastFailedAt: new Date(),
-    });
-
-    const response = await request(app).post('/api/v1/admin/dlq/sync-789/retry');
-
-    expect(response.status).toBe(200);
-    expect(response.body.retry.success).toBe(false);
-    expect(response.body.retry.message).toBe('Missing walletId in payload');
-  });
-
-  it('re-adds entry to DLQ when retry dispatch throws', async () => {
-    mockDlqDequeueForRetry.mockResolvedValue({
-      id: 'sync-err',
-      category: 'sync',
-      operation: 'wallet_sync',
-      payload: { walletId: 'wallet-2' },
-      error: 'original error',
-      attempts: 2,
-      firstFailedAt: new Date(),
-      lastFailedAt: new Date(),
-      metadata: { walletId: 'wallet-2' },
-    });
-    mockQueueSync.mockImplementation(() => {
-      throw new Error('queue full');
-    });
-    mockDlqAdd.mockResolvedValue('sync-err-re');
-
-    const response = await request(app).post('/api/v1/admin/dlq/sync-err/retry');
-
-    expect(response.status).toBe(500);
-    expect(response.body.message).toBe('Retry dispatch failed — entry re-added to DLQ');
-    expect(mockDlqAdd).toHaveBeenCalledWith(
-      'sync',
-      'wallet_sync',
-      { walletId: 'wallet-2' },
-      expect.any(Error),
-      3,
-      { walletId: 'wallet-2' },
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('not a retriable worker job');
+    expect(mockDlqReleaseRetry).toHaveBeenCalledWith(
+      'push-456',
+      'claim-token',
     );
   });
 
-  it('returns 500 when dequeueForRetry throws unexpectedly', async () => {
-    mockDlqDequeueForRetry.mockRejectedValue(new Error('database connection lost'));
+  it('releases the lease when the worker queue rejects dispatch', async () => {
+    mockEnqueueDeadLetterJob.mockResolvedValue(false);
+    const response = await request(app).post('/api/v1/admin/dlq/sync-123/retry');
+    expect(response.status).toBe(503);
+    expect(mockDlqReleaseRetry).toHaveBeenCalledWith(
+      'sync-123',
+      'claim-token',
+    );
+    expect(mockDlqAcknowledgeRetry).not.toHaveBeenCalled();
+  });
+
+  it('releases the lease when retry dispatch throws', async () => {
+    mockEnqueueDeadLetterJob.mockRejectedValue(new Error('queue full'));
+    const response = await request(app).post('/api/v1/admin/dlq/sync-123/retry');
+
+    expect(response.status).toBe(500);
+    expect(mockDlqReleaseRetry).toHaveBeenCalledWith(
+      'sync-123',
+      'claim-token',
+    );
+  });
+
+  it('reports acknowledgement loss after an accepted retry', async () => {
+    mockDlqAcknowledgeRetry.mockResolvedValue(false);
+    const response = await request(app).post('/api/v1/admin/dlq/sync-123/retry');
+    expect(response.status).toBe(503);
+    expect(mockDlqReleaseRetry).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when claiming throws unexpectedly', async () => {
+    mockDlqClaimForRetry.mockRejectedValue(
+      new Error('database connection lost'),
+    );
 
     const response = await request(app).post('/api/v1/admin/dlq/some-id/retry');
 

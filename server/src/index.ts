@@ -258,7 +258,7 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
       initializeRedisBridge(),
       (async () => { initializeCacheInvalidation(); })(),
       (async () => { rateLimitService.initialize(); })(),
-      (async () => { deadLetterQueue.start(); })(),
+      deadLetterQueue.start(),
     ];
 
     log.info('Worker-owned architecture: skipping local job queue initialization');

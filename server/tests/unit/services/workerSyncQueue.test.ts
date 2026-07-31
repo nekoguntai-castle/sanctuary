@@ -36,11 +36,26 @@ vi.mock("../../../src/utils/logger", () => ({
 
 import {
   closeWorkerSyncQueue,
+  enqueueDeadLetterJob,
   enqueueWalletSync,
   enqueueWalletSyncBatch,
 } from "../../../src/services/workerSyncQueue";
 import { toBullMqJobId } from "../../../src/jobs/bullMqJobIds";
 import { SYNC_PRIORITY_BULLMQ_PRIORITY } from "@sanctuary/shared/constants/sync";
+import { SYNC_WALLET_JOB_OPTIONS } from "../../../src/worker/jobs/jobOptions";
+import type { DeadLetterJobEnvelope } from "../../../src/services/deadLetterQueueTypes";
+
+function syncDeadLetterEnvelope(): DeadLetterJobEnvelope {
+  return {
+    version: 1,
+    queue: "sync",
+    name: "sync-wallet",
+    jobId: "original-job",
+    data: { walletId: "wallet-1", reason: "retry" },
+    options: {},
+    exhaustedAttempt: 3,
+  };
+}
 
 describe("workerSyncQueue", () => {
   beforeEach(async () => {
@@ -65,6 +80,7 @@ describe("workerSyncQueue", () => {
       "sync-wallet",
       { walletId: "wallet-1", priority: "high", reason: "manual" },
       {
+        ...SYNC_WALLET_JOB_OPTIONS,
         priority: SYNC_PRIORITY_BULLMQ_PRIORITY.high,
         delay: 250,
         jobId: toBullMqJobId("manual-sync:wallet-1"),
@@ -92,6 +108,7 @@ describe("workerSyncQueue", () => {
           reason: "manual-network-sync",
         },
         opts: {
+          ...SYNC_WALLET_JOB_OPTIONS,
           priority: SYNC_PRIORITY_BULLMQ_PRIORITY.low,
           delay: 0,
           jobId: toBullMqJobId(
@@ -107,6 +124,7 @@ describe("workerSyncQueue", () => {
           reason: "manual-network-sync",
         },
         opts: {
+          ...SYNC_WALLET_JOB_OPTIONS,
           priority: SYNC_PRIORITY_BULLMQ_PRIORITY.low,
           delay: 100,
           jobId: toBullMqJobId(
@@ -122,6 +140,9 @@ describe("workerSyncQueue", () => {
 
     await expect(enqueueWalletSync("wallet-1")).resolves.toBe(false);
     await expect(enqueueWalletSyncBatch(["wallet-1"])).resolves.toBe(0);
+    await expect(
+      enqueueDeadLetterJob(syncDeadLetterEnvelope(), "entry-1"),
+    ).resolves.toBe(false);
     expect(mocks.mockQueueAdd).not.toHaveBeenCalled();
     expect(mocks.mockQueueAddBulk).not.toHaveBeenCalled();
   });
@@ -134,10 +155,131 @@ describe("workerSyncQueue", () => {
       "sync-wallet",
       { walletId: "wallet-1", priority: "normal", reason: undefined },
       {
+        ...SYNC_WALLET_JOB_OPTIONS,
         priority: SYNC_PRIORITY_BULLMQ_PRIORITY.normal,
         delay: undefined,
         jobId: undefined,
       },
     );
+  });
+
+  it("awaits a validated dead-letter sync retry with stable producer overrides", async () => {
+    const queued = await enqueueDeadLetterJob(
+      {
+        ...syncDeadLetterEnvelope(),
+        options: {
+          attempts: 5,
+          backoff: { type: "fixed", delay: 250 },
+          priority: 2,
+          removeOnComplete: 20,
+        },
+        exhaustedAttempt: 3,
+      },
+      "dlq-entry-1",
+    );
+
+    expect(queued).toBe(true);
+    expect(mocks.mockQueueAdd).toHaveBeenCalledWith(
+      "sync-wallet",
+      { walletId: "wallet-1", reason: "retry" },
+      {
+        attempts: 5,
+        backoff: { type: "fixed", delay: 250 },
+        priority: 2,
+        removeOnComplete: 20,
+        jobId: toBullMqJobId("dead-letter-retry:dlq-entry-1"),
+      },
+    );
+  });
+
+  it("uses canonical retry defaults and contains dead-letter enqueue errors", async () => {
+    await expect(
+      enqueueDeadLetterJob(syncDeadLetterEnvelope(), "entry-defaults"),
+    ).resolves.toBe(true);
+    expect(mocks.mockQueueAdd).toHaveBeenLastCalledWith(
+      "sync-wallet",
+      { walletId: "wallet-1", reason: "retry" },
+      {
+        ...SYNC_WALLET_JOB_OPTIONS,
+        jobId: toBullMqJobId("dead-letter-retry:entry-defaults"),
+      },
+    );
+
+    mocks.mockQueueAdd.mockRejectedValueOnce(new Error("Redis write failed"));
+    await expect(
+      enqueueDeadLetterJob(syncDeadLetterEnvelope(), "entry-failure"),
+    ).resolves.toBe(false);
+  });
+
+  it("rejects unsupported dead-letter envelopes before enqueueing", async () => {
+    const invalidEnvelopes = [
+      {
+        version: 2,
+        queue: "sync",
+        name: "sync-wallet",
+        data: { walletId: "wallet-1" },
+      },
+      {
+        version: 1,
+        queue: "notifications",
+        name: "sync-wallet",
+        data: { walletId: "wallet-1" },
+      },
+      {
+        version: 1,
+        queue: "sync",
+        name: "other-job",
+        data: { walletId: "wallet-1" },
+      },
+      {
+        version: 1,
+        queue: "sync",
+        name: "sync-wallet",
+        data: { walletId: "" },
+      },
+      {
+        version: 1,
+        queue: "sync",
+        name: "sync-wallet",
+        data: { walletId: "wallet-1", priority: "urgent" },
+      },
+      {
+        version: 1,
+        queue: "sync",
+        name: "sync-wallet",
+        data: { walletId: "wallet-1", reason: 123 },
+      },
+      {
+        version: 1,
+        queue: "sync",
+        name: "sync-wallet",
+        data: null,
+      },
+      {
+        version: 1,
+        queue: "sync",
+        name: "sync-wallet",
+        data: { walletId: "wallet-1" },
+        options: null,
+      },
+    ];
+
+    for (const envelope of invalidEnvelopes) {
+      await expect(
+        enqueueDeadLetterJob(
+          {
+            jobId: "original",
+            options: {},
+            exhaustedAttempt: 1,
+            ...envelope,
+          } as unknown as DeadLetterJobEnvelope,
+          "entry-1",
+        ),
+      ).resolves.toBe(false);
+    }
+    await expect(
+      enqueueDeadLetterJob(syncDeadLetterEnvelope(), ""),
+    ).resolves.toBe(false);
+    expect(mocks.mockQueueAdd).not.toHaveBeenCalled();
   });
 });

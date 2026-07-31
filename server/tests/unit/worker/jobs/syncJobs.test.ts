@@ -199,8 +199,9 @@ describe('Sync Jobs', () => {
       expect(prisma.wallet.update).not.toHaveBeenCalled();
     });
 
-    it('should handle sync failure and record error', async () => {
-      vi.mocked(syncWallet).mockRejectedValueOnce(new Error('Sync failed'));
+    it('should record and rethrow the original sync failure for BullMQ retry', async () => {
+      const syncError = new Error('Sync failed');
+      vi.mocked(syncWallet).mockRejectedValueOnce(syncError);
 
       const mockJob = {
         id: 'job-1',
@@ -209,10 +210,7 @@ describe('Sync Jobs', () => {
         opts: { attempts: 3 },
       } as unknown as Job;
 
-      const result = await syncWalletJob.handler(mockJob);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('Sync failed');
+      await expect(syncWalletJob.handler(mockJob)).rejects.toBe(syncError);
 
       // Should update wallet with error status
       expect(prisma.wallet.update).toHaveBeenCalledWith({
@@ -242,9 +240,7 @@ describe('Sync Jobs', () => {
         opts: { attempts: 3 },
       } as unknown as Job;
 
-      const result = await syncWalletJob.handler(mockJob);
-
-      expect(result.success).toBe(false);
+      await expect(syncWalletJob.handler(mockJob)).rejects.toThrow('Sync failed');
 
       // Verify the finally block's safety-net reset was called
       expect(prisma.wallet.update).toHaveBeenCalledTimes(3);
@@ -268,10 +264,8 @@ describe('Sync Jobs', () => {
         opts: { attempts: 3 },
       } as unknown as Job;
 
-      // Should not throw — the finally block catches its own errors
-      const result = await syncWalletJob.handler(mockJob);
-
-      expect(result.success).toBe(false);
+      // Cleanup errors are contained without masking the original failure.
+      await expect(syncWalletJob.handler(mockJob)).rejects.toThrow('Sync failed');
       expect(prisma.wallet.update).toHaveBeenCalledTimes(3);
     });
 
@@ -285,7 +279,7 @@ describe('Sync Jobs', () => {
         opts: { attempts: 3 },
       } as unknown as Job;
 
-      await syncWalletJob.handler(mockJob);
+      await expect(syncWalletJob.handler(mockJob)).rejects.toThrow('Sync failed');
 
       // Only 2 calls: set true + catch block set false. No finally safety-net call.
       expect(prisma.wallet.update).toHaveBeenCalledTimes(2);
@@ -570,7 +564,7 @@ describe('Sync Jobs', () => {
       expect(result).toEqual({ updated: 0, notified: 0 });
     });
 
-    it('should continue when one wallet confirmation update fails', async () => {
+    it('should process successful wallets then reject an aggregated wallet failure', async () => {
       vi.mocked(prisma.transaction.findMany).mockResolvedValueOnce([
         { walletId: 'w-fail' },
         { walletId: 'w-ok' },
@@ -581,15 +575,48 @@ describe('Sync Jobs', () => {
           { txid: 'tx-ok', oldConfirmations: 0, newConfirmations: 1 },
         ]);
 
-      const result = await updateConfirmationsJob.handler({
+      const processing = updateConfirmationsJob.handler({
         id: 'job-partial-failure',
         data: {},
         attemptsMade: 0,
         opts: { attempts: 2 },
       } as unknown as Job);
 
-      expect(result).toEqual({ updated: 1, notified: 1 });
+      await expect(processing).rejects.toThrow(
+        'Failed to update confirmations for wallets: w-fail',
+      );
       expect(updateTransactionConfirmations).toHaveBeenCalledTimes(2);
+    });
+
+    it('sorts and deduplicates wallets before deterministic failure aggregation', async () => {
+      vi.mocked(prisma.transaction.findMany).mockResolvedValueOnce([
+        { walletId: 'wallet-z' },
+        { walletId: 'wallet-a' },
+        { walletId: 'wallet-z' },
+        { walletId: 'wallet-m' },
+      ]);
+      vi.mocked(updateTransactionConfirmations)
+        .mockRejectedValueOnce(new Error('a failed'))
+        .mockResolvedValueOnce([])
+        .mockRejectedValueOnce(new Error('z failed'));
+
+      const processing = updateConfirmationsJob.handler({
+        id: 'job-multiple-failures',
+        data: {},
+        attemptsMade: 0,
+        opts: { attempts: 2 },
+      } as unknown as Job);
+
+      await expect(processing).rejects.toMatchObject({
+        name: 'AggregateError',
+        message:
+          'Failed to update confirmations for wallets: wallet-a, wallet-z',
+      });
+      expect(vi.mocked(updateTransactionConfirmations).mock.calls).toEqual([
+        ['wallet-a'],
+        ['wallet-m'],
+        ['wallet-z'],
+      ]);
     });
   });
 

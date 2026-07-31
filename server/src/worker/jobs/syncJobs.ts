@@ -29,12 +29,27 @@ import { getConfig } from '../../config';
 import { normalizeLegacyBitcoinNetwork } from '../../services/bitcoin/networks';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { SYNC_WALLET_JOB_OPTIONS } from './jobOptions';
 
 const log = createLogger('JOB:SYNC');
 const appConfig = getConfig();
 
 // Keep lock alive beyond expected sync duration to avoid concurrent sync overlap.
 const SYNC_LOCK_TTL_MS = appConfig.sync.maxSyncDurationMs + 60_000;
+
+class ConfirmationUpdateAggregateError extends Error {
+  readonly errors: unknown[];
+
+  constructor(failures: Array<{ walletId: string; error: unknown }>) {
+    super(
+      `Failed to update confirmations for wallets: ${failures
+        .map(({ walletId }) => walletId)
+        .join(', ')}`,
+    );
+    this.name = 'AggregateError';
+    this.errors = failures.map(({ error }) => error);
+  }
+}
 
 // =============================================================================
 // Sync Wallet Job
@@ -53,10 +68,7 @@ const SYNC_LOCK_TTL_MS = appConfig.sync.maxSyncDurationMs + 60_000;
 export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobResult> = {
   name: 'sync-wallet',
   queue: 'sync',
-  options: {
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 5000 },
-  },
+  options: SYNC_WALLET_JOB_OPTIONS,
   lockOptions: {
     lockKey: (data) => `sync:wallet:${data.walletId}`,
     lockTtlMs: SYNC_LOCK_TTL_MS,
@@ -158,11 +170,7 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
         attemptsMade: job.attemptsMade,
       });
 
-      return {
-        success: false,
-        duration,
-        error: errorMsg,
-      };
+      throw error;
     } finally {
       // Safety net: if neither try nor catch managed to clear the flag,
       // force-reset it so the wallet doesn't stay stuck forever.
@@ -305,7 +313,7 @@ export const updateConfirmationsJob: WorkerJobHandler<UpdateConfirmationsJobData
 
     // Find all wallets with pending transactions (< 6 confirmations)
     const walletIds = await transactionRepository.findWalletIdsWithPendingConfirmations(6);
-    const walletsWithPending = walletIds.map(walletId => ({ walletId }));
+    const walletsWithPending = [...new Set(walletIds)].sort();
 
     if (walletsWithPending.length === 0) {
       log.debug('No wallets with pending transactions');
@@ -317,7 +325,8 @@ export const updateConfirmationsJob: WorkerJobHandler<UpdateConfirmationsJobData
     let totalUpdated = 0;
     let totalNotified = 0;
 
-    for (const { walletId } of walletsWithPending) {
+    const failures: Array<{ walletId: string; error: unknown }> = [];
+    for (const walletId of walletsWithPending) {
       try {
         const updates = await updateTransactionConfirmations(walletId);
         totalUpdated += updates.length;
@@ -332,6 +341,7 @@ export const updateConfirmationsJob: WorkerJobHandler<UpdateConfirmationsJobData
           }
         }
       } catch (error) {
+        failures.push({ walletId, error });
         log.error(`Failed to update confirmations for wallet ${walletId}`, {
           error: getErrorMessage(error),
         });
@@ -342,6 +352,10 @@ export const updateConfirmationsJob: WorkerJobHandler<UpdateConfirmationsJobData
       log.info(`Updated ${totalUpdated} transaction confirmations`, {
         wallets: walletsWithPending.length,
       });
+    }
+
+    if (failures.length > 0) {
+      throw new ConfirmationUpdateAggregateError(failures);
     }
 
     return { updated: totalUpdated, notified: totalNotified };

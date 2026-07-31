@@ -27,6 +27,7 @@ export interface RegisteredHandler {
     job: import('bullmq').Job,
     execution?: JobExecutionContext
   ) => Promise<unknown>;
+  options?: JobsOptions;
   lockOptions?: {
     lockKey: (data: unknown) => string;
     lockTtlMs?: number;

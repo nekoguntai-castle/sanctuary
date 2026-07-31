@@ -184,14 +184,16 @@ registerCollector("telegram", async (context: CollectorContext) => {
   }
 
   // 7. DLQ telegram entries
-  const telegramDlqEntries = deadLetterQueue.getByCategory("telegram");
+  const [telegramDlqEntries, notificationDlqEntries] = await Promise.all([
+    deadLetterQueue.getByCategory("telegram"),
+    deadLetterQueue.getByCategory("notification"),
+  ]);
   if (telegramDlqEntries.length > 0) {
     commonIssues.push(
       `${telegramDlqEntries.length} telegram entries in dead letter queue`,
     );
   }
 
-  const notificationDlqEntries = deadLetterQueue.getByCategory("notification");
   const transactionNotificationDlqEntries = notificationDlqEntries.filter(
     isTransactionNotificationDlqEntry,
   );

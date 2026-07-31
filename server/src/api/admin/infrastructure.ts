@@ -7,11 +7,16 @@
 import { Router } from 'express';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
-import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
+import {
+  ConflictError,
+  InvalidInputError,
+  NotFoundError,
+  ServiceUnavailableError,
+} from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
 import { cache } from '../../services/cache';
 import { deadLetterQueue, type DeadLetterCategory } from '../../services/deadLetterQueue';
-import { getSyncService } from '../../services/syncService';
+import { enqueueDeadLetterJob } from '../../services/workerSyncQueue';
 import { getWebSocketServer, getRateLimitEvents } from '../../websocket/server';
 import { getErrorMessage } from '../../utils/errors';
 import * as docker from '../../utils/docker';
@@ -143,10 +148,10 @@ router.get('/dlq', authenticate, requireAdmin, asyncHandler(async (req, res) => 
   const category = req.query.category as DeadLetterCategory | undefined;
   const limit = Math.min(Number(req.query.limit) || 100, 500);
 
-  const stats = deadLetterQueue.getStats();
-  const entries = category
-    ? deadLetterQueue.getByCategory(category)
-    : deadLetterQueue.getAll(limit);
+  const { stats, entries } = await deadLetterQueue.getSnapshot({
+    category,
+    limit,
+  });
 
   res.json({
     stats,
@@ -179,58 +184,47 @@ router.delete('/dlq/:id', authenticate, requireAdmin, asyncHandler(async (req, r
  * Re-attempt a dead letter entry by dispatching it to the appropriate subsystem
  */
 router.post('/dlq/:id/retry', authenticate, requireAdmin, asyncHandler(async (req, res) => {
-  const entry = await deadLetterQueue.dequeueForRetry(req.params.id);
-  if (!entry) {
+  const claimResult = await deadLetterQueue.claimForRetry(req.params.id);
+  if (claimResult.status === 'missing') {
     throw new NotFoundError('Dead letter entry not found');
   }
-
-  let retryResult: { success: boolean; message: string };
+  if (claimResult.status === 'busy') {
+    throw new ConflictError('Dead letter entry is already being retried');
+  }
+  const { entry, token } = claimResult.claim;
+  if (!entry.job) {
+    await deadLetterQueue.releaseRetry(entry.id, token);
+    throw new InvalidInputError('Dead letter entry is not a retriable worker job');
+  }
+  let accepted = false;
   try {
-    switch (entry.category) {
-      case 'sync': {
-        const walletId = entry.payload.walletId as string | undefined;
-        if (walletId) {
-          getSyncService().queueSync(walletId, 'normal');
-          retryResult = { success: true, message: `Queued wallet sync for ${walletId}` };
-        } else {
-          retryResult = { success: false, message: 'Missing walletId in payload' };
-        }
-        break;
-      }
-      default:
-        retryResult = { success: false, message: `Retry not implemented for category: ${entry.category}` };
-    }
+    accepted = await enqueueDeadLetterJob(entry.job, entry.id);
   } catch (error) {
-    // Re-add to DLQ on dispatch failure with incremented attempt count
-    await deadLetterQueue.add(
-      entry.category,
-      entry.operation,
-      entry.payload,
-      /* v8 ignore next -- caught errors are Error instances in current dispatchers */
-      error instanceof Error ? error : String(error),
-      entry.attempts + 1,
-      entry.metadata,
-    );
-    log.error('DLQ retry dispatch failed, re-added to queue', {
+    await deadLetterQueue.releaseRetry(entry.id, token);
+    log.error('DLQ retry dispatch failed', {
       id: entry.id,
       category: entry.category,
       error: getErrorMessage(error),
     });
-    return res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Retry dispatch failed — entry re-added to DLQ',
-    });
+    throw error;
   }
-
-  log.info('DLQ retry attempted', {
+  if (!accepted) {
+    await deadLetterQueue.releaseRetry(entry.id, token);
+    throw new ServiceUnavailableError('Worker queue rejected the retry job');
+  }
+  if (!await deadLetterQueue.acknowledgeRetry(entry.id, token)) {
+    throw new ServiceUnavailableError(
+      'Retry was accepted but dead letter acknowledgement was not recorded',
+    );
+  }
+  log.info('DLQ retry accepted', {
     id: entry.id,
     category: entry.category,
-    ...retryResult,
     admin: req.user?.username,
   });
   res.json({
     entry: { id: entry.id, category: entry.category, operation: entry.operation },
-    retry: retryResult,
+    retry: { success: true, message: 'Worker retry accepted' },
   });
 }));
 

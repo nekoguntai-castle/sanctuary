@@ -172,6 +172,38 @@ export const registerWorkerJobQueueCoreContracts = (
         { jobId: toBullMqJobId("sync:wallet-1:startup") },
       );
     });
+
+    it("merges registered handler defaults with explicit caller precedence", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      queue.registerHandler("sync", {
+        name: "test-job",
+        queue: "sync",
+        options: {
+          attempts: 3,
+          backoff: { type: "exponential", delay: 5000 },
+          priority: 10,
+        },
+        handler: vi.fn(),
+      });
+
+      await queue.addJob("sync", "test-job", { id: "123" }, {
+        attempts: 2,
+        priority: 1,
+        delay: 1000,
+      });
+
+      expect(syncQueue.add).toHaveBeenCalledWith(
+        "test-job",
+        { id: "123" },
+        {
+          attempts: 2,
+          backoff: { type: "exponential", delay: 5000 },
+          priority: 1,
+          delay: 1000,
+        },
+      );
+    });
   });
 
   describe("addBulkJobs", () => {
@@ -189,12 +221,25 @@ export const registerWorkerJobQueueCoreContracts = (
     it("passes BullMQ bulk options under opts with safe job IDs", async () => {
       await queue.initialize();
       const syncQueue = (queue as any).queues.get("sync").queue;
+      queue.registerHandler("sync", {
+        name: "sync-wallet",
+        queue: "sync",
+        options: {
+          attempts: 3,
+          backoff: { type: "exponential", delay: 5000 },
+        },
+        handler: vi.fn(),
+      });
 
       await queue.addBulkJobs("sync", [
         {
           name: "sync-wallet",
           data: { walletId: "wallet-1" },
-          options: { delay: 100, jobId: "sync:stale:wallet-1" },
+          options: {
+            attempts: 4,
+            delay: 100,
+            jobId: "sync:stale:wallet-1",
+          },
         },
       ]);
 
@@ -202,7 +247,12 @@ export const registerWorkerJobQueueCoreContracts = (
         {
           name: "sync-wallet",
           data: { walletId: "wallet-1" },
-          opts: { delay: 100, jobId: toBullMqJobId("sync:stale:wallet-1") },
+          opts: {
+            attempts: 4,
+            backoff: { type: "exponential", delay: 5000 },
+            delay: 100,
+            jobId: toBullMqJobId("sync:stale:wallet-1"),
+          },
         },
       ]);
     });

@@ -39,6 +39,58 @@ export const registerWorkerJobQueueRecurringContracts = (
       expect(result.status).toBe("created");
     });
 
+    it("applies registered defaults and reconciles retry-option drift", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      queue.registerHandler("sync", {
+        name: "check-stale",
+        queue: "sync",
+        options: {
+          attempts: 2,
+          backoff: { type: "fixed", delay: 5000 },
+        },
+        handler: vi.fn(),
+      });
+      syncQueue.getJobSchedulers.mockResolvedValueOnce([
+        {
+          name: "check-stale",
+          key: "sync:check-stale",
+          pattern: "*/5 * * * *",
+          tz: "UTC",
+          template: {
+            data: {},
+            opts: {
+              attempts: 3,
+              backoff: { type: "exponential", delay: 5000 },
+              removeOnComplete: 10,
+            },
+          },
+        },
+      ]);
+
+      await expect(
+        queue.scheduleRecurring(
+          {
+            ...cronDefinition("sync", "check-stale", {}, "*/5 * * * *"),
+            options: { attempts: 4 },
+          },
+        ),
+      ).resolves.toEqual({ status: "created" });
+      expect(syncQueue.upsertJobScheduler).toHaveBeenCalledWith(
+        "sync:check-stale",
+        { pattern: "*/5 * * * *", tz: "UTC" },
+        {
+          name: "check-stale",
+          data: {},
+          opts: {
+            attempts: 4,
+            backoff: { type: "fixed", delay: 5000 },
+            removeOnComplete: 10,
+          },
+        },
+      );
+    });
+
     it("establishes generation identity before publishing a freshness scheduler", async () => {
       await queue.initialize();
       const syncQueue = (queue as any).queues.get("sync").queue;
@@ -537,6 +589,7 @@ export const registerWorkerJobQueueRecurringContracts = (
     it("should not purge queued jobs when purgeQueued is not set", async () => {
       await queue.initialize();
       const syncQueue = (queue as any).queues.get("sync").queue;
+      syncQueue.getJobs.mockClear();
 
       syncQueue.getRepeatableJobs.mockResolvedValue([]);
 

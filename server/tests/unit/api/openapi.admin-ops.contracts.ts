@@ -143,14 +143,13 @@ export function registerOpenApiAdminOpsTests() {
       .toEqual({
         $ref: '#/components/schemas/AdminDeadLetterRetryResponse',
       });
-    expect(openApiSpec.paths['/admin/dlq/{dlqId}/retry'].post.responses[500].content['application/json'].schema.oneOf)
-      .toContainEqual({
-        $ref: '#/components/schemas/AdminSimpleErrorResponse',
-      });
-    expect(openApiSpec.paths['/admin/dlq/{dlqId}/retry'].post.responses[500].content['application/json'].schema.oneOf)
-      .toContainEqual({
-        $ref: '#/components/schemas/ApiError',
-      });
+    expect(
+      Object.keys(openApiSpec.paths['/admin/dlq/{dlqId}/retry'].post.responses)
+        .map(Number),
+    ).toEqual([200, 400, 401, 403, 404, 409, 500, 503]);
+    expect(openApiSpec.paths['/admin/dlq/{dlqId}/retry'].post.responses[503]
+      .content['application/json'].schema)
+      .toEqual({ $ref: '#/components/schemas/ApiError' });
     expect(openApiSpec.components.schemas.AdminDeadLetterRetryResponse.required).toEqual([
       'entry',
       'retry',

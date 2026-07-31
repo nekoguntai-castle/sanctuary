@@ -49,6 +49,12 @@ export function setupWorkerEventHandlers(
   queueName: string,
   worker: Worker,
   onRecurringCompleted?: (job: Job) => Promise<void>,
+  recordExhaustedJob = (
+    category: DeadLetterCategory,
+    sourceQueue: string,
+    job: Job,
+    error: Error,
+  ) => deadLetterQueue.addExhaustedJob(category, sourceQueue, job, error),
 ): void {
   worker.on('completed', (job) => {
     log.debug(`Job completed: ${queueName}:${job.name}`, {
@@ -87,13 +93,11 @@ export function setupWorkerEventHandlers(
     // Route exhausted jobs to dead letter queue for visibility and manual retry
     if (isExhausted && job) {
       const dlqCategory = queueToDlqCategory(queueName);
-      deadLetterQueue.add(
+      recordExhaustedJob(
         dlqCategory,
-        `${queueName}:${job.name}`,
-        { jobId: job.id, jobName: job.name, queue: queueName, data: job.data },
+        queueName,
+        job,
         error,
-        attemptsMade,
-        { queueName, jobId: job.id },
       ).catch(dlqError => {
         log.debug('Failed to record exhausted job in DLQ', { error: String(dlqError) });
       });

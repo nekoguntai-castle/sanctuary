@@ -237,38 +237,38 @@ Verification and review:
 Findings: `worker-handler-failures-bypass-retry-and-dlq`,
 `dead-letter-queue-is-process-local`.
 
-- [ ] Add queue-backed tests proving transient wallet sync and confirmation errors
+- [x] Add queue-backed tests proving transient wallet sync and confirmation errors
       consume configured attempts and exhausted jobs create one retriable DLQ
       entry.
-- [ ] Keep best-effort status cleanup/logging, then rethrow operational failures.
+- [x] Keep best-effort status cleanup/logging, then rethrow operational failures.
       For multi-wallet confirmation updates, process the batch deterministically,
       collect failures, and reject the job after successful wallets are handled.
-- [ ] Make Redis the canonical DLQ store when configured, with indexed/listable
+- [x] Make Redis the canonical DLQ store when configured, with indexed/listable
       entries, atomic add/update/claim/ack behavior, TTL, bounded retention,
       and startup-independent reads.
-- [ ] Use a direct Redis repository with propagated errors and Lua/MULTI atomicity;
+- [x] Use a direct Redis repository with propagated errors and Lua/MULTI atomicity;
       the best-effort cache abstraction is not an authority. Give each exhausted
       job a stable identity such as `(queue, jobId, exhaustedAttempt)` and
       atomically upsert duplicate failure events.
-- [ ] Persist a versioned job envelope containing queue, job name, original data,
+- [x] Persist a versioned job envelope containing queue, job name, original data,
       and retry-relevant options. Add startup/periodic reconciliation from
       BullMQ's exhausted failed jobs so a fire-and-forget event callback is not
       the sole durability boundary.
-- [ ] Make every consumer—including admin list/stats/retry and support-package
+- [x] Make every consumer—including admin list/stats/retry and support-package
       collectors—query the async canonical store. Preserve an in-memory
       implementation only for explicit test/single-process mode.
-- [ ] Replace destructive retry dequeue with claim/lease/ack: atomically claim
+- [x] Replace destructive retry dequeue with claim/lease/ack: atomically claim
       using a token and expiry, await the canonical BullMQ dispatcher, acknowledge
       deletion only after accepted enqueue, and release or recover failed/expired
       claims.
-- [ ] Decode the versioned operation envelope and route wallet sync through the
+- [x] Decode the versioned operation envelope and route wallet sync through the
       awaited worker sync queue; never report retry success from a void in-process
       emitter or an incompatible top-level payload.
-- [ ] Add worker-process/API-process and restart tests proving visibility,
+- [x] Add worker-process/API-process and restart tests proving visibility,
       expiration, Redis-error behavior, duplicate failed events, interrupted
       callbacks, reconciliation, concurrent admin claims, enqueue false/error,
       process death at each claim/enqueue/ack boundary, and lease recovery.
-- [ ] Add an end-to-end exhausted `sync-wallet` → API retry → accepted BullMQ job
+- [x] Add an end-to-end exhausted `sync-wallet` → API retry → accepted BullMQ job
       test and API-process support-package tests against worker-produced entries.
 
 Acceptance:
