@@ -297,5 +297,42 @@ describe('Request Logger Middleware', () => {
         process.env.LOG_REQUEST_BODY = original;
       }
     });
+
+    it('redacts arbitrary webhook static header values before body logging', async () => {
+      const original = process.env.LOG_REQUEST_BODY;
+      process.env.LOG_REQUEST_BODY = 'true';
+      vi.resetModules();
+
+      const { requestLogger: requestLoggerWithBody } = await import('../../../src/middleware/requestLogger');
+      req.body = {
+        headerConfig: {
+          headers: {
+            Authorization: 'Bearer secret',
+            'X-API-Key': 'api-key',
+            'X-Arbitrary': 'arbitrary-secret',
+          },
+          hmac: { signatureHeader: 'X-Proof' },
+        },
+      };
+
+      requestLoggerWithBody(req, res, next);
+
+      expect(mockRedactObject).toHaveBeenCalledWith({
+        headerConfig: {
+          headers: {
+            Authorization: '[REDACTED]',
+            'X-API-Key': '[REDACTED]',
+            'X-Arbitrary': '[REDACTED]',
+          },
+          hmac: { signatureHeader: 'X-Proof' },
+        },
+      });
+
+      if (original === undefined) {
+        delete process.env.LOG_REQUEST_BODY;
+      } else {
+        process.env.LOG_REQUEST_BODY = original;
+      }
+    });
   });
 });

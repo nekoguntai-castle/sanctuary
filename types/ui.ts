@@ -82,7 +82,8 @@ export interface WalletWebhookEndpoint {
   payloadProfile: string;
   authType: string;
   hasSecret: boolean;
-  headerConfig: Record<string, unknown> | null;
+  headerConfig: WalletWebhookHeaderConfigView | null;
+  configuredHeaderNames: string[];
   profileConfig: Record<string, unknown> | null;
   retryConfig: Record<string, unknown> | null;
   maxAttempts: number;
@@ -110,10 +111,26 @@ export interface WalletWebhookDelivery {
   lastStatusCode: number | null;
   lastError: string | null;
   requestBodyHash: string | null;
-  requestHeadersRedacted: Record<string, unknown> | null;
+  requestHeadersRedacted: Record<string, '[REDACTED]'> | null;
   responseBodyHash: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Safe response view. Stored static header values are never returned. */
+export interface WalletWebhookHeaderConfigView {
+  [key: string]: unknown;
+  headers?: never;
+}
+
+export interface WalletWebhookHeaderConfigInput {
+  [key: string]: unknown;
+  headers?: Record<string, string>;
+}
+
+export interface WalletWebhookHeaderConfigUpdate {
+  [key: string]: unknown;
+  headers?: Record<string, string | null>;
 }
 
 export interface WalletWebhookInput {
@@ -125,12 +142,16 @@ export interface WalletWebhookInput {
   payloadProfile?: string;
   authType?: string;
   secret?: string;
-  headerConfig?: Record<string, unknown>;
+  headerConfig?: WalletWebhookHeaderConfigInput;
   profileConfig?: Record<string, unknown>;
   retryConfig?: Record<string, unknown>;
   maxAttempts?: number;
   failureNotificationEnabled?: boolean;
 }
+
+export type WalletWebhookUpdateInput = Partial<Omit<WalletWebhookInput, 'headerConfig'>> & {
+  headerConfig?: WalletWebhookHeaderConfigUpdate;
+};
 
 export interface WalletWebhookReplayResult {
   success: boolean;

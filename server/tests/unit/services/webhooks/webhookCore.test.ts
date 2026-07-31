@@ -437,6 +437,11 @@ describe('webhook core', () => {
     });
     expect(bearer.headers).not.toHaveProperty('x-ignored');
     expect(bearer.redactedHeaders.authorization).toBe('[REDACTED]');
+    expect(bearer.redactedHeaders['x-static']).toBe('[REDACTED]');
+    expect(Object.values(bearer.redactedHeaders)).toEqual(
+      expect.arrayContaining(['[REDACTED]']),
+    );
+    expect(new Set(Object.values(bearer.redactedHeaders))).toEqual(new Set(['[REDACTED]']));
 
     const generic = signWebhookRequest(makeEndpoint({
       authType: WEBHOOK_AUTH_HMAC_SHA256,

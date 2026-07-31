@@ -46,6 +46,9 @@ export const WEBHOOK_DEFAULT_WALLET_TRANSACTION_EVENTS = [
   WEBHOOK_EVENT_TRANSACTION_CONFIRMED,
 ] as const;
 
+/** Stable wire/storage marker for webhook header diagnostics. */
+export const WEBHOOK_REDACTED_VALUE = '[REDACTED]';
+
 export type WebhookBuiltInEventType = typeof WEBHOOK_BUILT_IN_EVENT_TYPES[number];
 export type WebhookPayloadProfile = typeof WEBHOOK_BUILT_IN_PAYLOAD_PROFILES[number];
 export type WebhookAuthType = typeof WEBHOOK_BUILT_IN_AUTH_TYPES[number];

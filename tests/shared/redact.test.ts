@@ -7,6 +7,7 @@ import {
   isSensitiveField,
   redact,
   redactDeep,
+  redactWebhookHeaderConfigValues,
   stringifyRedacted,
 } from '@sanctuary/shared/utils/redact';
 
@@ -133,6 +134,78 @@ describe('shared redaction utilities', () => {
 
       const deep = redactDeep({ a: { b: { c: { d: 'too deep' } } } }, 2);
       expect(deep.a.b.c).toBe(MAX_DEPTH);
+    });
+  });
+
+  describe('redactWebhookHeaderConfigValues', () => {
+    it('redacts every configured header value while preserving safe HMAC config', () => {
+      const result = redactWebhookHeaderConfigValues({
+        headerConfig: {
+          headers: {
+            Authorization: 'Bearer secret',
+            'X-API-Key': 'api-key',
+            'X-Arbitrary': 'not-name-detectable',
+            'X-Null': null,
+          },
+          hmac: { signatureHeader: 'X-Signature' },
+        },
+        headers: { 'X-Unrelated': 'visible' },
+      });
+
+      expect(result).toEqual({
+        headerConfig: {
+          headers: {
+            Authorization: REDACTED,
+            'X-API-Key': REDACTED,
+            'X-Arbitrary': REDACTED,
+            'X-Null': REDACTED,
+          },
+          hmac: { signatureHeader: 'X-Signature' },
+        },
+        headers: { 'X-Unrelated': 'visible' },
+      });
+    });
+
+    it('redacts nested array payloads and fails closed on circular or malformed config', () => {
+      const circular: Record<string, unknown> = {};
+      circular.self = circular;
+      const result = redactWebhookHeaderConfigValues({
+        rows: [
+          {
+            headerConfig: {
+              headers: { 'X-Arbitrary': 'secret' },
+            },
+          },
+        ],
+        circular,
+        malformedConfig: {
+          headerConfig: 'not-an-object',
+        },
+        malformedHeaders: {
+          headerConfig: { headers: ['not-an-object'] },
+        },
+      });
+
+      expect(result).toEqual({
+        rows: [
+          {
+            headerConfig: {
+              headers: { 'X-Arbitrary': '[REDACTED]' },
+            },
+          },
+        ],
+        circular: { self: CIRCULAR },
+        malformedConfig: { headerConfig: '[REDACTED]' },
+        malformedHeaders: { headerConfig: { headers: '[REDACTED]' } },
+      });
+    });
+
+    it('fails closed for malformed header config and headers shapes', () => {
+      expect(redactWebhookHeaderConfigValues({ headerConfig: ['secret'] }))
+        .toEqual({ headerConfig: REDACTED });
+      expect(redactWebhookHeaderConfigValues({
+        headerConfig: { headers: ['first-secret', 'second-secret'] },
+      })).toEqual({ headerConfig: { headers: REDACTED } });
     });
   });
 

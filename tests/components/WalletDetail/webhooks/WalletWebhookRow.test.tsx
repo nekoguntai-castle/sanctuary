@@ -13,6 +13,7 @@ describe('WalletWebhookRow', () => {
     expect(screen.getByText('Accounting')).toBeInTheDocument();
     expect(screen.getByText('Disabled')).toBeInTheDocument();
     expect(screen.getByText(/attempts 5/)).toBeInTheDocument();
+    expect(screen.getByText('Configured headers: X-API-Key')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Test'));
     fireEvent.click(screen.getByText('History'));
@@ -23,6 +24,19 @@ describe('WalletWebhookRow', () => {
     expect(props.onLoadDeliveries).toHaveBeenCalledTimes(1);
     expect(props.onToggle).toHaveBeenCalledTimes(1);
     expect(props.onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides mutations for read-only roles and allows signer diagnostics only', () => {
+    const props = rowProps({ canManage: false, canInspectDeliveries: true });
+    const { rerender } = render(<WalletWebhookRow {...props} />);
+
+    expect(screen.getByText('History')).toBeInTheDocument();
+    expect(screen.queryByText('Test')).not.toBeInTheDocument();
+    expect(screen.queryByText('Update headers')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Rotate signing secret')).not.toBeInTheDocument();
+
+    rerender(<WalletWebhookRow {...props} canInspectDeliveries={false} />);
+    expect(screen.queryByText('History')).not.toBeInTheDocument();
   });
 
   it('renders errors, deliveries, and secret rotation controls', () => {
@@ -108,8 +122,11 @@ describe('WalletWebhookRow', () => {
 function rowProps(overrides: Partial<Parameters<typeof WalletWebhookRow>[0]> = {}) {
   return {
     webhook: makeWebhook(),
+    canManage: true,
+    canInspectDeliveries: true,
     deliveries: undefined,
     secretValue: '',
+    headerUpdateValue: '',
     busyAction: null,
     onToggle: vi.fn(),
     onTest: vi.fn(),
@@ -117,6 +134,8 @@ function rowProps(overrides: Partial<Parameters<typeof WalletWebhookRow>[0]> = {
     onReplay: vi.fn(),
     onSecretChange: vi.fn(),
     onRotateSecret: vi.fn(),
+    onHeaderUpdateChange: vi.fn(),
+    onUpdateHeaders: vi.fn(),
     onDelete: vi.fn(),
     ...overrides,
   };
@@ -135,6 +154,7 @@ function makeWebhook(overrides: Partial<WalletWebhookEndpoint> = {}): WalletWebh
     authType: 'hmac_sha256',
     hasSecret: true,
     headerConfig: null,
+    configuredHeaderNames: ['X-API-Key'],
     profileConfig: null,
     retryConfig: null,
     maxAttempts: 5,

@@ -877,13 +877,27 @@ describe('BackupService', () => {
       ]);
       expect(warnings[0]).toContain('2 webhook endpoints restored disabled');
 
-      const delivered = { id: 'delivery-1', status: 'delivered' };
-      const dead = { id: 'delivery-2', status: 'dead' };
-      const pending = { id: 'delivery-3', status: 'pending', nextAttemptAt: 'later' };
+      const delivered = {
+        id: 'delivery-1',
+        status: 'delivered',
+        requestHeadersRedacted: { 'X-Arbitrary': 'legacy-secret' },
+      };
+      const dead = { id: 'delivery-2', status: 'dead', requestHeadersRedacted: ['malformed'] };
+      const pending = {
+        id: 'delivery-3',
+        status: 'pending',
+        nextAttemptAt: 'later',
+        requestHeadersRedacted: { Authorization: 'Bearer legacy' },
+      };
       expect(processWebhookDeliveryRecords([delivered, dead, pending])).toEqual([
-        delivered,
-        dead,
-        expect.objectContaining({ id: 'delivery-3', status: 'dead', nextAttemptAt: null }),
+        { ...delivered, requestHeadersRedacted: { 'X-Arbitrary': '[REDACTED]' } },
+        { ...dead, requestHeadersRedacted: null },
+        expect.objectContaining({
+          id: 'delivery-3',
+          status: 'dead',
+          nextAttemptAt: null,
+          requestHeadersRedacted: { Authorization: '[REDACTED]' },
+        }),
       ]);
     });
 

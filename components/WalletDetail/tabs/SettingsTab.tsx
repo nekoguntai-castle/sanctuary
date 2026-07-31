@@ -82,7 +82,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     )}
 
     {settingsSubTab === 'webhooks' && (
-      <WalletWebhooks walletId={wallet.id} />
+      <WalletWebhooks walletId={wallet.id} userRole={wallet.userRole} />
     )}
 
     {settingsSubTab === 'advanced' && (

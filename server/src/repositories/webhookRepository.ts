@@ -1,4 +1,5 @@
 import prisma from '../models/prisma';
+import type { PrismaTxClient } from '../models/prisma';
 import { Prisma, type WebhookDelivery, type WebhookEndpoint } from '../generated/prisma/client';
 import {
   WEBHOOK_AUTH_TYPE_NONE,
@@ -27,6 +28,10 @@ export type UpdateWebhookEndpointInput = Partial<Omit<
   CreateWebhookEndpointInput,
   'walletId' | 'createdByUserId'
 >>;
+
+export type BuildWebhookEndpointUpdate = (
+  currentEndpoint: WebhookEndpoint,
+) => UpdateWebhookEndpointInput;
 
 export interface CreateWebhookDeliveryInput {
   endpointId: string;
@@ -138,12 +143,30 @@ export async function createEndpoint(
 export async function updateEndpoint(
   walletId: string,
   endpointId: string,
-  input: UpdateWebhookEndpointInput,
+  buildUpdate: BuildWebhookEndpointUpdate,
 ): Promise<WebhookEndpoint | null> {
-  const existing = await findEndpointForWallet(walletId, endpointId);
-  if (!existing) return null;
+  // Lock before reading so concurrent hidden-header deltas merge from the latest
+  // committed config instead of losing rotations or reviving deleted credentials.
+  return prisma.$transaction(async tx => {
+    const lockedRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "webhook_endpoints"
+      WHERE "id" = ${endpointId} AND "walletId" = ${walletId}
+      FOR NO KEY UPDATE
+    `);
+    if (lockedRows.length === 0) return null;
 
-  return prisma.webhookEndpoint.update({
+    const existing = await tx.webhookEndpoint.findUniqueOrThrow({ where: { id: endpointId } });
+    return updateEndpointRow(tx, endpointId, buildUpdate(existing));
+  });
+}
+
+function updateEndpointRow(
+  tx: PrismaTxClient,
+  endpointId: string,
+  input: UpdateWebhookEndpointInput,
+): Promise<WebhookEndpoint> {
+  return tx.webhookEndpoint.update({
     where: { id: endpointId },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),

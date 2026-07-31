@@ -549,5 +549,32 @@ describe('Core API Modules', () => {
       expect(mockGet).toHaveBeenCalledWith('/wallets/w1/webhooks/webhook-1/deliveries', { limit: 25 });
       expect(mockPost).toHaveBeenCalledWith('/wallets/w1/webhooks/webhook-1/deliveries/delivery-1/replay');
     });
+
+    it('rejects webhook response redaction markers before create or update requests', async () => {
+      const createInput = {
+        name: 'Accounting',
+        url: 'https://example.com/hook',
+        eventTypes: ['wallet.transaction.received'],
+        headerConfig: { headers: { Authorization: '[REDACTED]' } },
+      };
+
+      await expect(walletsApi.createWalletWebhook('w1', createInput))
+        .rejects.toThrow('Header Authorization must be replaced with its real value or removed');
+      await expect(walletsApi.updateWalletWebhook('w1', 'webhook-1', {
+        headerConfig: { headers: { 'X-API-Key': '[REDACTED]' } },
+      })).rejects.toThrow('Header X-API-Key must be replaced with its real value or removed');
+      expect(mockPost).not.toHaveBeenCalled();
+      expect(mockPatch).not.toHaveBeenCalled();
+    });
+
+    it('allows explicit webhook header removals through the update client', async () => {
+      const webhook = { id: 'webhook-1', walletId: 'w1' };
+      const input = { headerConfig: { headers: { 'X-Old': null } } };
+      mockPatch.mockResolvedValueOnce({ webhook });
+
+      await expect(walletsApi.updateWalletWebhook('w1', 'webhook-1', input))
+        .resolves.toEqual(webhook);
+      expect(mockPatch).toHaveBeenCalledWith('/wallets/w1/webhooks/webhook-1', input);
+    });
   });
 });

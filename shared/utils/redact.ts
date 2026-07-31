@@ -5,6 +5,8 @@
  * use the same field rules without pulling in framework-specific code.
  */
 
+import { WEBHOOK_REDACTED_VALUE } from '../constants/webhooks';
+
 export const REDACTED = '[REDACTED]';
 export const NOT_SET = '[NOT SET]';
 export const CIRCULAR = '[CIRCULAR]';
@@ -137,6 +139,50 @@ export function redactDeep<T>(input: T, maxDepth = 6): T {
   }
 
   return recurse(input, 0) as T;
+}
+
+/**
+ * Clone request metadata while replacing every configured webhook header value.
+ * Header names are retained for diagnostics, but values are secret regardless
+ * of whether their names look credential-like.
+ */
+export function redactWebhookHeaderConfigValues<T>(input: T): T {
+  const seen = new WeakSet<object>();
+
+  function recurse(value: unknown): unknown {
+    if (value === null || typeof value !== 'object') return value;
+    if (seen.has(value)) return CIRCULAR;
+    seen.add(value);
+
+    if (Array.isArray(value)) return value.map(recurse);
+
+    return Object.fromEntries(Object.entries(value).map(([key, nestedValue]) => {
+      if (key !== 'headerConfig') {
+        return [key, recurse(nestedValue)];
+      }
+      if (!isRecord(nestedValue)) return [key, WEBHOOK_REDACTED_VALUE];
+
+      const headerConfig = Object.fromEntries(Object.entries(nestedValue).map(
+        ([configKey, configValue]) => configKey === 'headers'
+          ? [configKey, redactConfiguredHeaderMap(configValue)]
+          : [configKey, recurse(configValue)],
+      ));
+      return [key, headerConfig];
+    }));
+  }
+
+  return recurse(input) as T;
+}
+
+function redactConfiguredHeaderMap(value: unknown): unknown {
+  if (!isRecord(value)) return WEBHOOK_REDACTED_VALUE;
+  return Object.fromEntries(
+    Object.keys(value).map(key => [key, WEBHOOK_REDACTED_VALUE]),
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**

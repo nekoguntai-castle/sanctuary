@@ -70,7 +70,7 @@ export const walletWebhookPaths = {
       summary: 'Create wallet webhook',
       security: bearerAuth,
       parameters: [walletIdParameter],
-      requestBody: jsonRequestBody('#/components/schemas/WalletWebhookEndpointRequest'),
+      requestBody: jsonRequestBody('#/components/schemas/WalletWebhookEndpointCreateRequest'),
       responses: {
         201: jsonResponse('Created wallet webhook', '#/components/schemas/WalletWebhookEndpointResponse'),
         400: apiErrorResponse,
@@ -97,7 +97,7 @@ export const walletWebhookPaths = {
       summary: 'Update wallet webhook',
       security: bearerAuth,
       parameters: [walletIdParameter, webhookIdParameter],
-      requestBody: jsonRequestBody('#/components/schemas/WalletWebhookEndpointRequest'),
+      requestBody: jsonRequestBody('#/components/schemas/WalletWebhookEndpointUpdateRequest'),
       responses: {
         200: jsonResponse('Updated wallet webhook', '#/components/schemas/WalletWebhookEndpointResponse'),
         400: apiErrorResponse,

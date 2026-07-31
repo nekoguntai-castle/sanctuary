@@ -13,6 +13,7 @@ import { Request, Response, NextFunction } from 'express';
 import { requestContext } from '../utils/requestContext';
 import { createLogger } from '../utils/logger';
 import { redactObject } from '../utils/redact';
+import { redactWebhookHeaderConfigValues } from '@sanctuary/shared/utils/redact';
 
 const log = createLogger('MW:HTTP');
 
@@ -69,7 +70,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
 
       // Optionally log request body for debugging (always redacted)
       if (LOG_REQUEST_BODY && req.body && Object.keys(req.body).length > 0) {
-        logData.body = redactObject(req.body);
+        logData.body = redactObject(redactWebhookHeaderConfigValues(req.body));
       }
 
       log.info(`${req.method} ${req.path}`, logData);

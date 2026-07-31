@@ -3,6 +3,7 @@ import type { WebhookEndpoint } from '../../generated/prisma/client';
 import { decryptIfEncrypted } from '../../utils/encryption';
 import { getHeaderConfig, type JsonRecord } from './config';
 import { serializeWebhookBody } from './json';
+import { redactWebhookDiagnosticHeaders } from './diagnostics';
 import {
   WEBHOOK_AUTH_BEARER,
   WEBHOOK_AUTH_CONFIGURED_HMAC_SHA256,
@@ -185,13 +186,8 @@ function getEndpointSecret(endpoint: WebhookEndpoint): string {
 }
 
 function redactHeaders(headers: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(headers).map(([key, value]) => {
-    const lowerKey = key.toLowerCase();
-    if (lowerKey.includes('authorization') || lowerKey.includes('signature')) {
-      return [key, '[REDACTED]'];
-    }
-    return [key, value];
-  }));
+  // Every configured value is credential material regardless of its header name.
+  return redactWebhookDiagnosticHeaders(headers) as Record<string, string>;
 }
 
 function resolveStringPath(event: WalletWebhookEvent, path: string): string | undefined {

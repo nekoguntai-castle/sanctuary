@@ -5,6 +5,7 @@ import { errorHandler } from '../../../src/errors/errorHandler';
 
 const {
   accessCalls,
+  accessState,
   deniedAccessLevels,
   mockCreateWalletWebhook,
   mockDeleteWalletWebhook,
@@ -16,6 +17,7 @@ const {
   mockValidateWebhookEndpointUrl,
 } = vi.hoisted(() => ({
   accessCalls: [] as string[],
+  accessState: { walletRole: 'owner' },
   deniedAccessLevels: new Set<string>(),
   mockCreateWalletWebhook: vi.fn(),
   mockDeleteWalletWebhook: vi.fn(),
@@ -34,13 +36,17 @@ vi.mock('../../../src/middleware/auth', () => ({
 vi.mock('../../../src/middleware/walletAccess', () => ({
   requireWalletAccess: (level: string) => (req: any, res: any, next: () => void) => {
     accessCalls.push(level);
-    if (deniedAccessLevels.has(level)) {
+    const role = accessState.walletRole;
+    const allowed = level === 'view'
+      || (level === 'edit' && (role === 'owner' || role === 'signer'))
+      || (level === 'owner' && role === 'owner');
+    if (deniedAccessLevels.has(level) || !allowed) {
       res.status(403).json({ message: 'forbidden' });
       return;
     }
     req.user = { userId: 'user-1', username: 'alice', isAdmin: false };
     req.walletId = req.params.walletId || req.params.id;
-    req.walletRole = level === 'owner' ? 'owner' : 'signer';
+    req.walletRole = role;
     next();
   },
 }));
@@ -71,6 +77,7 @@ describe('wallet webhook routes', () => {
     app.use(errorHandler);
 
     accessCalls.length = 0;
+    accessState.walletRole = 'owner';
     deniedAccessLevels.clear();
     vi.clearAllMocks();
 
@@ -109,6 +116,7 @@ describe('wallet webhook routes', () => {
       'wallet-1',
       'user-1',
       expect.objectContaining({ secret: 'raw-secret' }),
+      'owner',
     );
     expect(response.body.webhook.hasSecret).toBe(true);
     expect(response.body.webhook).not.toHaveProperty('secret');
@@ -176,6 +184,7 @@ describe('wallet webhook routes', () => {
       'wallet-1',
       'webhook-1',
       { secret: 'new-secret' },
+      'owner',
     );
     expect(response.body.webhook.hasSecret).toBe(true);
     expect(JSON.stringify(response.body)).not.toContain('new-secret');
@@ -197,7 +206,8 @@ describe('wallet webhook routes', () => {
       .expect(200);
 
     expect(accessCalls).toEqual(['edit']);
-    expect(mockListWalletWebhookDeliveries).toHaveBeenCalledWith('wallet-1', 'webhook-1', 20);
+    expect(mockListWalletWebhookDeliveries)
+      .toHaveBeenCalledWith('wallet-1', 'webhook-1', 20, 'owner');
   });
 
   it('uses the default delivery diagnostics limit when none is provided', async () => {
@@ -205,7 +215,8 @@ describe('wallet webhook routes', () => {
       .get('/api/v1/wallets/wallet-1/webhooks/webhook-1/deliveries')
       .expect(200);
 
-    expect(mockListWalletWebhookDeliveries).toHaveBeenCalledWith('wallet-1', 'webhook-1', 50);
+    expect(mockListWalletWebhookDeliveries)
+      .toHaveBeenCalledWith('wallet-1', 'webhook-1', 50, 'owner');
   });
 
   it('blocks delivery diagnostics before handlers when edit access is denied', async () => {
@@ -225,7 +236,8 @@ describe('wallet webhook routes', () => {
       .expect(200);
 
     expect(accessCalls).toEqual(['edit']);
-    expect(mockReplayWalletWebhookDelivery).toHaveBeenCalledWith('wallet-1', 'webhook-1', 'delivery-1');
+    expect(mockReplayWalletWebhookDelivery)
+      .toHaveBeenCalledWith('wallet-1', 'webhook-1', 'delivery-1', 'owner');
     expect(response.body).toMatchObject({
       success: true,
       queued: true,
@@ -242,6 +254,96 @@ describe('wallet webhook routes', () => {
 
     expect(mockReplayWalletWebhookDelivery).not.toHaveBeenCalled();
   });
+
+  it.each(['owner', 'approver', 'signer', 'viewer'])(
+    'forwards %s role through credential-free list and detail responses',
+    async role => {
+      accessState.walletRole = role;
+
+      const list = await request(app)
+        .get('/api/v1/wallets/wallet-1/webhooks')
+        .expect(200);
+      const detail = await request(app)
+        .get('/api/v1/wallets/wallet-1/webhooks/webhook-1')
+        .expect(200);
+
+      expect(mockListWalletWebhooks).toHaveBeenCalledWith('wallet-1', role);
+      expect(mockGetWalletWebhook).toHaveBeenCalledWith('wallet-1', 'webhook-1', role);
+      expect(JSON.stringify([list.body, detail.body])).not.toContain('credential-value');
+    },
+  );
+
+  it.each([
+    ['owner', 200],
+    ['signer', 200],
+    ['approver', 403],
+    ['viewer', 403],
+  ] as const)('applies delivery history and replay access for %s', async (role, status) => {
+    accessState.walletRole = role;
+
+    await request(app)
+      .get('/api/v1/wallets/wallet-1/webhooks/webhook-1/deliveries')
+      .expect(status);
+    await request(app)
+      .post('/api/v1/wallets/wallet-1/webhooks/webhook-1/deliveries/delivery-1/replay')
+      .expect(status);
+
+    if (status === 200) {
+      expect(mockListWalletWebhookDeliveries)
+        .toHaveBeenCalledWith('wallet-1', 'webhook-1', 50, role);
+      expect(mockReplayWalletWebhookDelivery)
+        .toHaveBeenCalledWith('wallet-1', 'webhook-1', 'delivery-1', role);
+    }
+  });
+
+  it.each([
+    ['owner', 201, 200],
+    ['approver', 403, 403],
+    ['signer', 403, 403],
+    ['viewer', 403, 403],
+  ] as const)('applies create and update access for %s', async (role, createStatus, updateStatus) => {
+    accessState.walletRole = role;
+
+    await request(app)
+      .post('/api/v1/wallets/wallet-1/webhooks')
+      .send({
+        name: 'Accounting',
+        url: 'https://example.com/hook',
+        eventTypes: ['wallet.transaction.received'],
+      })
+      .expect(createStatus);
+    await request(app)
+      .patch('/api/v1/wallets/wallet-1/webhooks/webhook-1')
+      .send({ name: 'Updated' })
+      .expect(updateStatus);
+
+    if (role === 'owner') {
+      expect(mockCreateWalletWebhook).toHaveBeenCalledWith(
+        'wallet-1',
+        'user-1',
+        expect.any(Object),
+        'owner',
+      );
+      expect(mockUpdateWalletWebhook).toHaveBeenCalledWith(
+        'wallet-1',
+        'webhook-1',
+        { name: 'Updated' },
+        'owner',
+      );
+    }
+  });
+
+  it.each([
+    { headers: { Authorization: '[REDACTED]' } },
+    { headers: { 'X-API-Key': 42 } },
+  ])('rejects invalid static header mutations before the service', async headers => {
+    await request(app)
+      .patch('/api/v1/wallets/wallet-1/webhooks/webhook-1')
+      .send({ headerConfig: headers })
+      .expect(400);
+
+    expect(mockUpdateWalletWebhook).not.toHaveBeenCalled();
+  });
 });
 
 function makeWebhook(overrides: Record<string, unknown> = {}) {
@@ -257,6 +359,7 @@ function makeWebhook(overrides: Record<string, unknown> = {}) {
     authType: 'hmac_sha256',
     hasSecret: true,
     headerConfig: null,
+    configuredHeaderNames: [],
     profileConfig: null,
     retryConfig: null,
     maxAttempts: 5,

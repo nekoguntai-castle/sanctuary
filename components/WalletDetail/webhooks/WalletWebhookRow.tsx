@@ -11,8 +11,11 @@ export interface DeliveryState {
 
 type WalletWebhookRowProps = {
   webhook: WalletWebhookEndpoint;
+  canManage: boolean;
+  canInspectDeliveries: boolean;
   deliveries?: DeliveryState;
   secretValue: string;
+  headerUpdateValue: string;
   busyAction: string | null;
   onToggle: () => void;
   onTest: () => void;
@@ -20,11 +23,15 @@ type WalletWebhookRowProps = {
   onReplay: (delivery: WalletWebhookDelivery) => void;
   onSecretChange: (value: string) => void;
   onRotateSecret: () => void;
+  onHeaderUpdateChange: (value: string) => void;
+  onUpdateHeaders: () => void;
   onDelete: () => void;
 };
 
 type WebhookHeaderProps = {
   webhook: WalletWebhookEndpoint;
+  canManage: boolean;
+  canInspectDeliveries: boolean;
   deliveries?: DeliveryState;
   busyAction: string | null;
   onToggle: () => void;
@@ -72,6 +79,8 @@ const getDeliveryAttemptTimestamp = (delivery: WalletWebhookDelivery) => (
 
 const WebhookHeader = ({
   webhook,
+  canManage,
+  canInspectDeliveries,
   deliveries,
   busyAction,
   onToggle,
@@ -84,35 +93,46 @@ const WebhookHeader = ({
       <div className="font-medium text-sanctuary-900 dark:text-sanctuary-100">{webhook.name}</div>
       <div className="text-sm text-sanctuary-500 truncate">{webhook.url}</div>
     </div>
-    <IconTextButton onClick={onTest} busy={busyAction === `test:${webhook.id}`} icon={<Play className="w-4 h-4" />}>
-      Test
-    </IconTextButton>
-    <IconTextButton onClick={onLoadDeliveries} busy={isDeliveryHistoryBusy(deliveries)} icon={<Clock3 className="w-4 h-4" />}>
-      History
-    </IconTextButton>
-    <button
-      type="button"
-      onClick={onToggle}
-      disabled={busyAction === `toggle:${webhook.id}`}
-      className="px-3 py-1.5 rounded-md border border-sanctuary-200 dark:border-sanctuary-700 text-sm text-sanctuary-700 dark:text-sanctuary-300 disabled:opacity-50"
-    >
-      {getToggleLabel(webhook.enabled)}
-    </button>
-    <button
-      type="button"
-      onClick={onDelete}
-      disabled={busyAction === `delete:${webhook.id}`}
-      className="p-2 text-sanctuary-500 hover:text-error-600 disabled:opacity-50"
-      aria-label={`Delete ${webhook.name}`}
-    >
-      <Trash2 className="w-4 h-4" />
-    </button>
+    {canManage && (
+      <IconTextButton onClick={onTest} busy={busyAction === `test:${webhook.id}`} icon={<Play className="w-4 h-4" />}>
+        Test
+      </IconTextButton>
+    )}
+    {canInspectDeliveries && (
+      <IconTextButton onClick={onLoadDeliveries} busy={isDeliveryHistoryBusy(deliveries)} icon={<Clock3 className="w-4 h-4" />}>
+        History
+      </IconTextButton>
+    )}
+    {canManage && (
+      <>
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={busyAction === `toggle:${webhook.id}`}
+          className="px-3 py-1.5 rounded-md border border-sanctuary-200 dark:border-sanctuary-700 text-sm text-sanctuary-700 dark:text-sanctuary-300 disabled:opacity-50"
+        >
+          {getToggleLabel(webhook.enabled)}
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={busyAction === `delete:${webhook.id}`}
+          className="p-2 text-sanctuary-500 hover:text-error-600 disabled:opacity-50"
+          aria-label={`Delete ${webhook.name}`}
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </>
+    )}
   </div>
 );
 
 const WebhookMetadata = ({ webhook }: { webhook: WalletWebhookEndpoint }) => (
-  <div className="text-xs text-sanctuary-500">
-    {getWebhookMetadata(webhook)}
+  <div className="space-y-1 text-xs text-sanctuary-500">
+    <div>{getWebhookMetadata(webhook)}</div>
+    {webhook.configuredHeaderNames.length > 0 && (
+      <div>Configured headers: {webhook.configuredHeaderNames.join(', ')}</div>
+    )}
   </div>
 );
 
@@ -147,6 +167,43 @@ const SecretRotation = ({
     >
       Rotate
     </IconTextButton>
+  </div>
+);
+
+const HeaderUpdate = ({
+  webhook,
+  value,
+  busyAction,
+  onChange,
+  onUpdate,
+}: {
+  webhook: WalletWebhookEndpoint;
+  value: string;
+  busyAction: string | null;
+  onChange: (value: string) => void;
+  onUpdate: () => void;
+}) => (
+  <div className="grid gap-2">
+    <label className="grid gap-1 text-xs font-medium text-sanctuary-600 dark:text-sanctuary-400">
+      Header changes for {webhook.name}
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={'{"X-API-Key":"new value","X-Old":null}'}
+        rows={2}
+        className={inputClassName}
+      />
+    </label>
+    <div>
+      <IconTextButton
+        onClick={onUpdate}
+        busy={busyAction === `headers:${webhook.id}`}
+        disabled={!value.trim()}
+        icon={<KeyRound className="w-4 h-4" />}
+      >
+        Update headers
+      </IconTextButton>
+    </div>
   </div>
 );
 
@@ -267,8 +324,11 @@ const DeliveryTableRow = ({
 
 export function WalletWebhookRow({
   webhook,
+  canManage,
+  canInspectDeliveries,
   deliveries,
   secretValue,
+  headerUpdateValue,
   busyAction,
   onToggle,
   onTest,
@@ -276,12 +336,16 @@ export function WalletWebhookRow({
   onReplay,
   onSecretChange,
   onRotateSecret,
+  onHeaderUpdateChange,
+  onUpdateHeaders,
   onDelete,
 }: WalletWebhookRowProps) {
   return (
     <div className="border border-sanctuary-200 dark:border-sanctuary-800 rounded-lg p-4 space-y-3">
       <WebhookHeader
         webhook={webhook}
+        canManage={canManage}
+        canInspectDeliveries={canInspectDeliveries}
         deliveries={deliveries}
         busyAction={busyAction}
         onToggle={onToggle}
@@ -291,14 +355,27 @@ export function WalletWebhookRow({
       />
       <WebhookMetadata webhook={webhook} />
       <WebhookLastError error={webhook.lastError} />
-      <SecretRotation
-        webhook={webhook}
-        secretValue={secretValue}
-        busyAction={busyAction}
-        onSecretChange={onSecretChange}
-        onRotateSecret={onRotateSecret}
-      />
-      <DeliveryPanel deliveries={deliveries} busyAction={busyAction} onReplay={onReplay} />
+      {canManage && (
+        <>
+          <SecretRotation
+            webhook={webhook}
+            secretValue={secretValue}
+            busyAction={busyAction}
+            onSecretChange={onSecretChange}
+            onRotateSecret={onRotateSecret}
+          />
+          <HeaderUpdate
+            webhook={webhook}
+            value={headerUpdateValue}
+            busyAction={busyAction}
+            onChange={onHeaderUpdateChange}
+            onUpdate={onUpdateHeaders}
+          />
+        </>
+      )}
+      {canInspectDeliveries && (
+        <DeliveryPanel deliveries={deliveries} busyAction={busyAction} onReplay={onReplay} />
+      )}
     </div>
   );
 }

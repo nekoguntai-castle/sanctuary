@@ -41,7 +41,7 @@ describe('WalletWebhooks guard callbacks', () => {
   });
 
   it('keeps create and rotate handlers as no-ops when child controls call them without required values', async () => {
-    render(<WalletWebhooks walletId="wallet-1" />);
+    render(<WalletWebhooks walletId="wallet-1" userRole="owner" />);
 
     expect(await screen.findByText('Force create')).toBeInTheDocument();
     await waitFor(() => {
@@ -69,6 +69,7 @@ function makeWebhook(overrides: Record<string, unknown> = {}) {
     authType: 'hmac_sha256',
     hasSecret: true,
     headerConfig: null,
+    configuredHeaderNames: [],
     profileConfig: null,
     retryConfig: null,
     maxAttempts: 5,

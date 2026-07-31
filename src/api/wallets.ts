@@ -11,6 +11,7 @@ import type {
   WalletType,
 } from '@sanctuary/shared/constants/walletIdentity';
 import type { WalletShareRole } from '@sanctuary/shared/constants/walletRoles';
+import { WEBHOOK_REDACTED_VALUE } from '@sanctuary/shared/constants/webhooks';
 export type { ValidateXpubRequest, ValidateXpubResponse, XpubScriptType, XpubValidationNetwork } from './walletXpub';
 export { validateXpub } from './walletXpub';
 
@@ -345,6 +346,7 @@ import type {
   WalletWebhookEndpoint,
   WalletWebhookInput,
   WalletWebhookReplayResult,
+  WalletWebhookUpdateInput,
   WalletTelegramSettings,
   AutopilotStatus,
 } from '../../types';
@@ -388,6 +390,7 @@ export async function createWalletWebhook(
   walletId: string,
   input: WalletWebhookInput
 ): Promise<WalletWebhookEndpoint> {
+  assertNoWebhookRedactionMarkers(input.headerConfig);
   const response = await apiClient.post<{ webhook: WalletWebhookEndpoint }>(`/wallets/${walletId}/webhooks`, input);
   return response.webhook;
 }
@@ -395,10 +398,24 @@ export async function createWalletWebhook(
 export async function updateWalletWebhook(
   walletId: string,
   webhookId: string,
-  input: Partial<WalletWebhookInput>
+  input: WalletWebhookUpdateInput
 ): Promise<WalletWebhookEndpoint> {
+  assertNoWebhookRedactionMarkers(input.headerConfig);
   const response = await apiClient.patch<{ webhook: WalletWebhookEndpoint }>(`/wallets/${walletId}/webhooks/${webhookId}`, input);
   return response.webhook;
+}
+
+function assertNoWebhookRedactionMarkers(headerConfig: unknown): void {
+  /* v8 ignore next -- typed callers cannot provide malformed config; server validation remains authoritative */
+  if (!headerConfig || typeof headerConfig !== 'object' || Array.isArray(headerConfig)) return;
+  const headers = (headerConfig as Record<string, unknown>).headers;
+  /* v8 ignore next -- typed callers cannot provide malformed headers; server validation remains authoritative */
+  if (!headers || typeof headers !== 'object' || Array.isArray(headers)) return;
+  for (const [name, value] of Object.entries(headers)) {
+    if (value === WEBHOOK_REDACTED_VALUE) {
+      throw new Error(`Header ${name} must be replaced with its real value or removed`);
+    }
+  }
 }
 
 export async function deleteWalletWebhook(walletId: string, webhookId: string): Promise<void> {

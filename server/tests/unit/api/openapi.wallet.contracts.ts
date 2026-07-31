@@ -221,8 +221,35 @@ export function registerOpenApiWalletTests() {
       expectDocumentedMethod(path, method);
     }
 
-    expect(openApiSpec.components.schemas.WalletWebhookEndpoint.properties).not.toHaveProperty('secret');
-    expect(openApiSpec.components.schemas.WalletWebhookEndpointRequest.properties.secret.writeOnly).toBe(true);
+    const endpointSchema = openApiSpec.components.schemas.WalletWebhookEndpoint;
+    const createSchema = openApiSpec.components.schemas.WalletWebhookEndpointCreateRequest;
+    const updateSchema = openApiSpec.components.schemas.WalletWebhookEndpointUpdateRequest;
+    const deliverySchema = openApiSpec.components.schemas.WalletWebhookDelivery;
+    expect(endpointSchema.properties).not.toHaveProperty('secret');
+    expect(endpointSchema.required).toEqual(expect.arrayContaining([
+      'headerConfig',
+      'configuredHeaderNames',
+    ]));
+    expect(createSchema.properties.secret.writeOnly).toBe(true);
+    expect(createSchema.properties.headerConfig.properties.headers.additionalProperties)
+      .toMatchObject({ type: 'string', not: { enum: ['[REDACTED]'] } });
+    expect(updateSchema.required).toBeUndefined();
+    expect(updateSchema.properties.headerConfig.properties.headers.additionalProperties)
+      .toMatchObject({
+        type: 'string',
+        nullable: true,
+        not: { enum: ['[REDACTED]'] },
+      });
+    expect(deliverySchema.properties.requestHeadersRedacted.additionalProperties)
+      .toEqual({ type: 'string', enum: ['[REDACTED]'] });
+    expect(
+      openApiSpec.paths['/wallets/{walletId}/webhooks'].post
+        .requestBody.content['application/json'].schema,
+    ).toEqual({ $ref: '#/components/schemas/WalletWebhookEndpointCreateRequest' });
+    expect(
+      openApiSpec.paths['/wallets/{walletId}/webhooks/{webhookId}'].patch
+        .requestBody.content['application/json'].schema,
+    ).toEqual({ $ref: '#/components/schemas/WalletWebhookEndpointUpdateRequest' });
     expect(openApiSpec.components.schemas.WalletWebhookReplayResponse.required).toEqual([
       'success',
       'queued',

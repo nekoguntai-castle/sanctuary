@@ -12,6 +12,7 @@ import {
   disableAIProviderCredentialsForRestore,
 } from '../ai/providerCredentials';
 import type { BackupRecord } from './types';
+import { redactWebhookDiagnosticHeaders } from '../webhooks/diagnostics';
 
 export function processNodeConfigRecords(
   records: BackupRecord[],
@@ -119,9 +120,13 @@ export function processWebhookEndpointRecords(
 
 export function processWebhookDeliveryRecords(records: BackupRecord[]): BackupRecord[] {
   return records.map(record => {
-    if (record.status === 'delivered' || record.status === 'dead') return record;
-    return {
+    const sanitizedRecord = {
       ...record,
+      requestHeadersRedacted: redactWebhookDiagnosticHeaders(record.requestHeadersRedacted),
+    };
+    if (record.status === 'delivered' || record.status === 'dead') return sanitizedRecord;
+    return {
+      ...sanitizedRecord,
       status: 'dead',
       nextAttemptAt: null,
       lastError: 'Delivery disabled after backup restore; replay manually after reviewing the endpoint.',

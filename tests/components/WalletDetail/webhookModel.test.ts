@@ -14,6 +14,7 @@ import {
   DEFAULT_EVENTS,
   defaultForm,
   formatTimestamp,
+  parseHeaderConfigUpdate,
   parseEventTypes,
   parseJsonObject,
   type WebhookFormState,
@@ -112,6 +113,36 @@ describe('wallet webhook form model', () => {
     expect(() => parseJsonObject('Filters JSON', 'null')).toThrow('Filters JSON must be a JSON object');
     expect(() => parseJsonObject('Filters JSON', '[]')).toThrow('Filters JSON must be a JSON object');
     expect(() => parseJsonObject('Filters JSON', '"value"')).toThrow('Filters JSON must be a JSON object');
+  });
+
+  it('builds header deltas and rejects output-only redaction markers', () => {
+    expect(parseHeaderConfigUpdate('')).toBeUndefined();
+    expect(parseHeaderConfigUpdate('{"X-API-Key":"replacement","X-Old":null}')).toEqual({
+      headers: { 'X-API-Key': 'replacement', 'X-Old': null },
+    });
+    expect(() => parseHeaderConfigUpdate('{"Authorization":"[REDACTED]"}'))
+      .toThrow('Header Authorization must be replaced with its real value or removed');
+    expect(() => parseHeaderConfigUpdate('{"X-API-Key":42}'))
+      .toThrow('Header X-API-Key must be a string or null');
+
+    expect(() => buildWebhookInput({
+      ...defaultForm(),
+      name: 'Endpoint',
+      url: 'https://example.com/webhook',
+      headerConfigJson: '{"headers":{"X-API-Key":null}}',
+    })).toThrow('Header X-API-Key must be a string');
+    expect(() => buildWebhookInput({
+      ...defaultForm(),
+      name: 'Endpoint',
+      url: 'https://example.com/webhook',
+      headerConfigJson: '{"headers":{"X-API-Key":"[REDACTED]"}}',
+    })).toThrow('Header X-API-Key must be replaced with its real value or removed');
+    expect(() => buildWebhookInput({
+      ...defaultForm(),
+      name: 'Endpoint',
+      url: 'https://example.com/webhook',
+      headerConfigJson: '{"headers":[]}',
+    })).toThrow('Headers and HMAC JSON headers must be a JSON object');
   });
 
   it('clamps numeric form input and formats timestamps', () => {

@@ -1,10 +1,15 @@
-import type { WalletWebhookInput } from '../../../types';
+import type {
+  WalletWebhookHeaderConfigInput,
+  WalletWebhookHeaderConfigUpdate,
+  WalletWebhookInput,
+} from '../../../types';
 import {
   WEBHOOK_AUTH_TYPE_NONE,
   WEBHOOK_DEFAULT_WALLET_TRANSACTION_EVENTS,
   WEBHOOK_PAYLOAD_PROFILE_GENERIC,
   WEBHOOK_PAYLOAD_PROFILE_MAPPED_JSON,
   WEBHOOK_VALUATION_MODE_DISABLED,
+  WEBHOOK_REDACTED_VALUE,
   type WebhookAuthType,
   type WebhookPayloadProfile,
   type WebhookValuationMode,
@@ -80,7 +85,7 @@ export const defaultForm = (): WebhookFormState => ({
 
 export function buildWebhookInput(form: WebhookFormState): WalletWebhookInput {
   const filters = parseJsonObject('Filters JSON', form.filtersJson);
-  const headerConfig = parseJsonObject('Headers and HMAC JSON', form.headerConfigJson);
+  const headerConfig = parseCreateHeaderConfig(form.headerConfigJson);
   return {
     name: form.name.trim(),
     url: form.url.trim(),
@@ -99,6 +104,41 @@ export function buildWebhookInput(form: WebhookFormState): WalletWebhookInput {
     ...(headerConfig ? { headerConfig } : {}),
     ...(form.payloadProfile === WEBHOOK_PAYLOAD_PROFILE_MAPPED_JSON ? { profileConfig: buildMappedJsonConfig(form) } : {}),
   };
+}
+
+export function parseHeaderConfigUpdate(value: string): WalletWebhookHeaderConfigUpdate | undefined {
+  const headers = parseJsonObject('Header changes JSON', value);
+  if (!headers) return undefined;
+  validateHeaderValues(headers, true);
+  return { headers: headers as Record<string, string | null> };
+}
+
+function parseCreateHeaderConfig(value: string): WalletWebhookHeaderConfigInput | undefined {
+  const config = parseJsonObject('Headers and HMAC JSON', value);
+  if (!config) return undefined;
+  if (config.headers !== undefined) {
+    const headers = requireJsonObject('Headers and HMAC JSON headers', config.headers);
+    validateHeaderValues(headers, false);
+  }
+  return config as WalletWebhookHeaderConfigInput;
+}
+
+function validateHeaderValues(headers: Record<string, unknown>, allowNull: boolean): void {
+  for (const [name, value] of Object.entries(headers)) {
+    if (value === WEBHOOK_REDACTED_VALUE) {
+      throw new Error(`Header ${name} must be replaced with its real value or removed`);
+    }
+    if (typeof value !== 'string' && !(allowNull && value === null)) {
+      throw new Error(`Header ${name} must be ${allowNull ? 'a string or null' : 'a string'}`);
+    }
+  }
+}
+
+function requireJsonObject(label: string, value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  return value as Record<string, unknown>;
 }
 
 function buildMappedJsonConfig(form: WebhookFormState): Record<string, unknown> {

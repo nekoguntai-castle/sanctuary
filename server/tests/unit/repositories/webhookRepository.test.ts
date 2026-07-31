@@ -3,12 +3,14 @@ import { Prisma } from '../../../src/generated/prisma/client';
 
 const { mockTx } = vi.hoisted(() => ({
   mockTx: {
+    $queryRaw: vi.fn(),
     webhookDelivery: {
       findUniqueOrThrow: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
     },
     webhookEndpoint: {
+      findUniqueOrThrow: vi.fn(),
       update: vi.fn(),
     },
   },
@@ -148,22 +150,26 @@ describe('webhookRepository', () => {
   });
 
   it('updates endpoints only after wallet ownership is confirmed', async () => {
-    (prisma.webhookEndpoint.findFirst as Mock).mockResolvedValueOnce(null);
-    await expect(webhookRepository.updateEndpoint('wallet-1', 'missing', { name: 'Nope' }))
+    mockTx.$queryRaw.mockResolvedValueOnce([]);
+    await expect(webhookRepository.updateEndpoint('wallet-1', 'missing', () => ({ name: 'Nope' })))
       .resolves.toBeNull();
-    expect(prisma.webhookEndpoint.update).not.toHaveBeenCalled();
+    expect(mockTx.webhookEndpoint.update).not.toHaveBeenCalled();
 
-    (prisma.webhookEndpoint.findFirst as Mock)
+    mockTx.$queryRaw
+      .mockResolvedValueOnce([{ id: 'endpoint-1' }])
+      .mockResolvedValueOnce([{ id: 'endpoint-1' }])
+      .mockResolvedValueOnce([{ id: 'endpoint-1' }]);
+    mockTx.webhookEndpoint.findUniqueOrThrow
       .mockResolvedValueOnce(makeEndpoint())
       .mockResolvedValueOnce(makeEndpoint())
       .mockResolvedValueOnce(makeEndpoint());
-    (prisma.webhookEndpoint.update as Mock)
+    mockTx.webhookEndpoint.update
       .mockResolvedValueOnce(makeEndpoint({ name: 'Existing' }))
       .mockResolvedValueOnce(makeEndpoint({ name: 'Updated' }))
       .mockResolvedValueOnce(makeEndpoint({ name: 'Json Updated' }));
 
-    await webhookRepository.updateEndpoint('wallet-1', 'endpoint-1', {});
-    await webhookRepository.updateEndpoint('wallet-1', 'endpoint-1', {
+    await webhookRepository.updateEndpoint('wallet-1', 'endpoint-1', () => ({}));
+    await webhookRepository.updateEndpoint('wallet-1', 'endpoint-1', () => ({
       name: 'Updated',
       enabled: false,
       url: 'https://receiver.example/hook',
@@ -177,19 +183,19 @@ describe('webhookRepository', () => {
       retryConfig: null,
       maxAttempts: 2,
       failureNotificationEnabled: false,
-    });
-    await webhookRepository.updateEndpoint('wallet-1', 'endpoint-1', {
+    }));
+    await webhookRepository.updateEndpoint('wallet-1', 'endpoint-1', () => ({
       filters: { minAmountSats: '1000' },
       headerConfig: { headers: { 'x-static': 'value' } },
       profileConfig: { body: { id: { path: 'eventId' } } },
       retryConfig: { maxDelayMs: 1000 },
-    });
+    }));
 
-    expect(prisma.webhookEndpoint.update).toHaveBeenNthCalledWith(1, {
+    expect(mockTx.webhookEndpoint.update).toHaveBeenNthCalledWith(1, {
       where: { id: 'endpoint-1' },
       data: {},
     });
-    expect(prisma.webhookEndpoint.update).toHaveBeenNthCalledWith(2, {
+    expect(mockTx.webhookEndpoint.update).toHaveBeenNthCalledWith(2, {
       where: { id: 'endpoint-1' },
       data: expect.objectContaining({
         name: 'Updated',
@@ -199,13 +205,31 @@ describe('webhookRepository', () => {
         failureNotificationEnabled: false,
       }),
     });
-    expect(prisma.webhookEndpoint.update).toHaveBeenNthCalledWith(3, {
+    expect(mockTx.webhookEndpoint.update).toHaveBeenNthCalledWith(3, {
       where: { id: 'endpoint-1' },
       data: expect.objectContaining({
         filters: { minAmountSats: '1000' },
         headerConfig: { headers: { 'x-static': 'value' } },
         profileConfig: { body: { id: { path: 'eventId' } } },
         retryConfig: { maxDelayMs: 1000 },
+      }),
+    });
+  });
+
+  it('merges header config only after locking and re-reading the endpoint', async () => {
+    const endpoint = makeEndpoint({ headerConfig: { headers: { A: 'old' } } });
+    mockTx.$queryRaw.mockResolvedValueOnce([{ id: endpoint.id }]);
+    mockTx.webhookEndpoint.findUniqueOrThrow.mockResolvedValueOnce(endpoint);
+    mockTx.webhookEndpoint.update.mockResolvedValueOnce(endpoint);
+    const buildUpdate = vi.fn(() => ({ headerConfig: { headers: { A: 'new' } } }));
+
+    await webhookRepository.updateEndpoint('wallet-1', endpoint.id, buildUpdate);
+
+    expect(buildUpdate).toHaveBeenCalledWith(endpoint);
+    expect(mockTx.webhookEndpoint.update).toHaveBeenCalledWith({
+      where: { id: endpoint.id },
+      data: expect.objectContaining({
+        headerConfig: { headers: { A: 'new' } },
       }),
     });
   });

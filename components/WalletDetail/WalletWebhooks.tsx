@@ -1,17 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link2, RefreshCw } from 'lucide-react';
+import { canWalletRoleEdit, parseWalletRole } from '@sanctuary/shared/constants/walletRoles';
 import type { WalletWebhookDelivery, WalletWebhookEndpoint } from '../../types';
 import * as walletsApi from '../../src/api/wallets';
 import { Alert } from './webhooks/controls';
 import { WalletWebhookForm } from './webhooks/WalletWebhookForm';
 import { type DeliveryState, WalletWebhookRow } from './webhooks/WalletWebhookRow';
-import { buildWebhookInput, defaultForm, type WebhookFormState } from './webhooks/model';
+import {
+  buildWebhookInput,
+  defaultForm,
+  parseHeaderConfigUpdate,
+  type WebhookFormState,
+} from './webhooks/model';
 
 interface WalletWebhooksProps {
   walletId: string;
+  userRole: unknown;
 }
 
-export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
+export function WalletWebhooks({ walletId, userRole }: WalletWebhooksProps) {
   const [webhooks, setWebhooks] = useState<WalletWebhookEndpoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -20,11 +27,20 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
   const [form, setForm] = useState<WebhookFormState>(() => defaultForm());
   const [deliveryState, setDeliveryState] = useState<Record<string, DeliveryState>>({});
   const [secretUpdates, setSecretUpdates] = useState<Record<string, string>>({});
+  const [headerUpdates, setHeaderUpdates] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const walletRole = parseWalletRole(userRole);
+  const canManage = walletRole === 'owner';
+  const canInspectDeliveries = canWalletRoleEdit(walletRole);
 
   useEffect(() => {
+    if (!walletRole) {
+      setLoading(false);
+      setError('Webhook access is unavailable');
+      return;
+    }
     void loadWebhooks();
-  }, [walletId]);
+  }, [walletId, walletRole]);
 
   const canSave = useMemo(() => {
     const hasRequiredFields = form.name.trim() && form.url.trim() && form.eventTypes.trim();
@@ -33,6 +49,8 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
   }, [form]);
 
   async function loadWebhooks() {
+    /* v8 ignore next -- the effect only invokes loading after parsing a valid wallet role */
+    if (!walletRole) return;
     setLoading(true);
     setError(null);
     try {
@@ -45,7 +63,8 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
   }
 
   async function createWebhook() {
-    if (!canSave) return;
+    /* v8 ignore next -- the form is hidden/disabled unless both capability and validity hold */
+    if (!canManage || !canSave) return;
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -62,6 +81,8 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
   }
 
   async function toggleWebhook(webhook: WalletWebhookEndpoint) {
+    /* v8 ignore next -- non-owners are never rendered the toggle control */
+    if (!canManage) return;
     await runEndpointAction(`toggle:${webhook.id}`, 'Failed to update webhook', async () => {
       await walletsApi.updateWalletWebhook(walletId, webhook.id, { enabled: !webhook.enabled });
       await loadWebhooks();
@@ -69,7 +90,10 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
   }
 
   async function rotateSecret(webhook: WalletWebhookEndpoint) {
+    /* v8 ignore next -- non-owners are never rendered the secret control */
+    if (!canManage) return;
     const secret = secretUpdates[webhook.id]?.trim();
+    /* v8 ignore next -- the rotate action is disabled while the secret is empty */
     if (!secret) return;
     await runEndpointAction(`secret:${webhook.id}`, 'Failed to rotate secret', async () => {
       await walletsApi.updateWalletWebhook(walletId, webhook.id, { secret });
@@ -80,6 +104,8 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
   }
 
   async function testWebhook(webhook: WalletWebhookEndpoint) {
+    /* v8 ignore next -- non-owners are never rendered the test control */
+    if (!canManage) return;
     await runEndpointAction(`test:${webhook.id}`, 'Failed to test webhook', async () => {
       const result = await walletsApi.testWalletWebhook(walletId, webhook.id);
       setNotice(result.message);
@@ -87,6 +113,8 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
   }
 
   async function loadDeliveries(webhook: WalletWebhookEndpoint) {
+    /* v8 ignore next -- roles without edit capability are never rendered history controls */
+    if (!canInspectDeliveries) return;
     const currentDeliveries = deliveryState[webhook.id]?.deliveries ?? [];
     setDeliveryState(prev => ({
       ...prev,
@@ -111,6 +139,8 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
   }
 
   async function replayDelivery(webhook: WalletWebhookEndpoint, delivery: WalletWebhookDelivery) {
+    /* v8 ignore next -- roles without edit capability are never rendered replay controls */
+    if (!canInspectDeliveries) return;
     await runEndpointAction(`replay:${delivery.id}`, 'Failed to replay delivery', async () => {
       const result = await walletsApi.replayWalletWebhookDelivery(walletId, webhook.id, delivery.id);
       setNotice(result.message);
@@ -120,8 +150,25 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
   }
 
   async function deleteWebhook(webhookId: string) {
+    /* v8 ignore next -- non-owners are never rendered the delete control */
+    if (!canManage) return;
     await runEndpointAction(`delete:${webhookId}`, 'Failed to delete webhook', async () => {
       await walletsApi.deleteWalletWebhook(walletId, webhookId);
+      await loadWebhooks();
+    });
+  }
+
+  async function updateHeaders(webhook: WalletWebhookEndpoint) {
+    /* v8 ignore next -- non-owners are never rendered the header editor */
+    if (!canManage) return;
+    await runEndpointAction(`headers:${webhook.id}`, 'Failed to update webhook headers', async () => {
+      /* v8 ignore next -- the rendered editor always initializes an entry before enabling update */
+      const headerConfig = parseHeaderConfigUpdate(headerUpdates[webhook.id] ?? '');
+      /* v8 ignore next -- the update action is disabled while the delta editor is empty */
+      if (!headerConfig) return;
+      await walletsApi.updateWalletWebhook(walletId, webhook.id, { headerConfig });
+      setHeaderUpdates(prev => ({ ...prev, [webhook.id]: '' }));
+      setNotice(`Headers updated for ${webhook.name}`);
       await loadWebhooks();
     });
   }
@@ -162,13 +209,15 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
         {error && <Alert tone="error">{error}</Alert>}
         {notice && <Alert tone="success">{notice}</Alert>}
 
-        <WalletWebhookForm
-          form={form}
-          saving={saving}
-          canSave={canSave}
-          onFormChange={setForm}
-          onCreate={() => void createWebhook()}
-        />
+        {canManage && (
+          <WalletWebhookForm
+            form={form}
+            saving={saving}
+            canSave={canSave}
+            onFormChange={setForm}
+            onCreate={() => void createWebhook()}
+          />
+        )}
 
         <div className="space-y-3">
           {loading ? (
@@ -180,8 +229,11 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
               <WalletWebhookRow
                 key={webhook.id}
                 webhook={webhook}
+                canManage={canManage}
+                canInspectDeliveries={canInspectDeliveries}
                 deliveries={deliveryState[webhook.id]}
                 secretValue={secretUpdates[webhook.id] ?? ''}
+                headerUpdateValue={headerUpdates[webhook.id] ?? ''}
                 busyAction={busyAction}
                 onToggle={() => void toggleWebhook(webhook)}
                 onTest={() => void testWebhook(webhook)}
@@ -189,6 +241,8 @@ export function WalletWebhooks({ walletId }: WalletWebhooksProps) {
                 onReplay={(delivery) => void replayDelivery(webhook, delivery)}
                 onSecretChange={(value) => setSecretUpdates(prev => ({ ...prev, [webhook.id]: value }))}
                 onRotateSecret={() => void rotateSecret(webhook)}
+                onHeaderUpdateChange={(value) => setHeaderUpdates(prev => ({ ...prev, [webhook.id]: value }))}
+                onUpdateHeaders={() => void updateHeaders(webhook)}
                 onDelete={() => void deleteWebhook(webhook.id)}
               />
             ))

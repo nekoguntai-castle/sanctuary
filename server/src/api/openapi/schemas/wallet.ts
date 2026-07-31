@@ -8,6 +8,7 @@ import {
   WALLET_ROLE_VALUES,
   WALLET_SHARE_ROLE_VALUES,
 } from '@sanctuary/shared/constants/walletRoles';
+import { WEBHOOK_REDACTED_VALUE } from '@sanctuary/shared/constants/webhooks';
 import { BITCOIN_NETWORKS } from '@sanctuary/shared/constants/bitcoin';
 import {
   WALLET_SCRIPT_TYPE_VALUES,
@@ -450,7 +451,17 @@ export const walletSchemas = {
       payloadProfile: { type: 'string' },
       authType: { type: 'string' },
       hasSecret: { type: 'boolean' },
-      headerConfig: { type: 'object', nullable: true, additionalProperties: true },
+      headerConfig: {
+        type: 'object',
+        nullable: true,
+        additionalProperties: true,
+        description: 'Non-secret webhook header configuration. Static header values are omitted.',
+      },
+      configuredHeaderNames: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Names of configured static headers. Values are never returned.',
+      },
       profileConfig: { type: 'object', nullable: true, additionalProperties: true },
       retryConfig: { type: 'object', nullable: true, additionalProperties: true },
       maxAttempts: { type: 'integer', minimum: 1 },
@@ -472,6 +483,8 @@ export const walletSchemas = {
       'payloadProfile',
       'authType',
       'hasSecret',
+      'headerConfig',
+      'configuredHeaderNames',
       'maxAttempts',
       'failureNotificationEnabled',
       'createdAt',
@@ -479,7 +492,7 @@ export const walletSchemas = {
     ],
     additionalProperties: false,
   },
-  WalletWebhookEndpointRequest: {
+  WalletWebhookEndpointCreateRequest: {
     type: 'object',
     properties: {
       name: { type: 'string', minLength: 1, maxLength: 120 },
@@ -490,13 +503,58 @@ export const walletSchemas = {
       payloadProfile: { type: 'string' },
       authType: { type: 'string' },
       secret: { type: 'string', writeOnly: true },
-      headerConfig: { type: 'object', additionalProperties: true },
+      headerConfig: {
+        type: 'object',
+        properties: {
+          headers: {
+            type: 'object',
+            additionalProperties: {
+              type: 'string',
+              not: { enum: [WEBHOOK_REDACTED_VALUE] },
+            },
+          },
+        },
+        additionalProperties: true,
+      },
       profileConfig: { type: 'object', additionalProperties: true },
       retryConfig: { type: 'object', additionalProperties: true },
       maxAttempts: { type: 'integer', minimum: 1, maximum: 25 },
       failureNotificationEnabled: { type: 'boolean' },
     },
     required: ['name', 'url', 'eventTypes'],
+    additionalProperties: false,
+  },
+  WalletWebhookEndpointUpdateRequest: {
+    type: 'object',
+    minProperties: 1,
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 120 },
+      enabled: { type: 'boolean' },
+      url: { type: 'string', format: 'uri', maxLength: 2048 },
+      eventTypes: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'string' } },
+      filters: { type: 'object', additionalProperties: true },
+      payloadProfile: { type: 'string' },
+      authType: { type: 'string' },
+      secret: { type: 'string', writeOnly: true },
+      headerConfig: {
+        type: 'object',
+        properties: {
+          headers: {
+            type: 'object',
+            additionalProperties: {
+              type: 'string',
+              nullable: true,
+              not: { enum: [WEBHOOK_REDACTED_VALUE] },
+            },
+          },
+        },
+        additionalProperties: true,
+      },
+      profileConfig: { type: 'object', additionalProperties: true },
+      retryConfig: { type: 'object', additionalProperties: true },
+      maxAttempts: { type: 'integer', minimum: 1, maximum: 25 },
+      failureNotificationEnabled: { type: 'boolean' },
+    },
     additionalProperties: false,
   },
   WalletWebhookEndpointResponse: {
@@ -535,7 +593,11 @@ export const walletSchemas = {
       lastStatusCode: { type: 'integer', nullable: true },
       lastError: { type: 'string', nullable: true },
       requestBodyHash: { type: 'string', nullable: true },
-      requestHeadersRedacted: { type: 'object', nullable: true, additionalProperties: true },
+      requestHeadersRedacted: {
+        type: 'object',
+        nullable: true,
+        additionalProperties: { type: 'string', enum: [WEBHOOK_REDACTED_VALUE] },
+      },
       responseBodyHash: { type: 'string', nullable: true },
       createdAt: { type: 'string', format: 'date-time' },
       updatedAt: { type: 'string', format: 'date-time' },

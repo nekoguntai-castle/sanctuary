@@ -432,7 +432,12 @@ describe('webhook delivery service', () => {
     mockMarkDeliveryPendingForReplay.mockResolvedValue(pendingDelivery);
     mockQueueWebhookDeliveryNotification.mockResolvedValue(true);
 
-    const result = await replayWalletWebhookDelivery('wallet-1', 'endpoint-1', delivery.id);
+    const result = await replayWalletWebhookDelivery(
+      'wallet-1',
+      'endpoint-1',
+      delivery.id,
+      'owner',
+    );
 
     expect(result).toMatchObject({
       success: true,
@@ -534,6 +539,7 @@ describe('webhook delivery service', () => {
         secretEncrypted: 'shared-secret',
         url: `http://127.0.0.1:${address.port}/hook`,
         headerConfig: {
+          headers: { 'x-arbitrary-credential': 'static-secret' },
           hmac: {
             timestampHeader: 'x-webhook-timestamp',
             nonceHeader: 'x-webhook-nonce',
@@ -576,6 +582,8 @@ describe('webhook delivery service', () => {
         statusCode: 202,
         requestHeadersRedacted: expect.objectContaining({
           'x-webhook-signature': '[REDACTED]',
+          'x-arbitrary-credential': '[REDACTED]',
+          'content-type': '[REDACTED]',
         }),
       }));
     } finally {

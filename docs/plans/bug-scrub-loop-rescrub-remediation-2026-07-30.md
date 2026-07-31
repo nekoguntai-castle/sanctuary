@@ -318,14 +318,14 @@ Delivery: one transfer-service PR.
 
 Finding: `webhook-static-header-credentials-exposed-to-viewers`.
 
-- [ ] Add owner/approver/signer/viewer authorization-matrix tests across list,
+- [x] Add owner/approver/signer/viewer authorization-matrix tests across list,
       detail, delivery history, replay, create, and update responses using
       `Authorization`, `X-API-Key`, and arbitrary header names. Treat every
       configured static header value as secret, independent of its name.
-- [ ] Pass the authorized wallet role into response projection and omit/redact all
+- [x] Pass the authorized wallet role into response projection and omit/redact all
       static header values for every caller, preserving safe HMAC configuration
       and configured header names/presence. Missing or unknown role fails closed.
-- [ ] Never re-disclose stored static header values, including to owners. Define
+- [x] Never re-disclose stored static header values, including to owners. Define
       one wire contract: responses omit `headerConfig.headers` values and expose
       an additive `configuredHeaderNames` list while retaining non-secret HMAC
       configuration. In PATCH input, an omitted `headers` map preserves all
@@ -333,15 +333,17 @@ Finding: `webhook-static-header-credentials-exposed-to-viewers`.
       entries delete individual names. Reject output-only redaction markers as
       input; test retain, partial replacement, removal, literal marker rejection,
       and auth-type changes in service, OpenAPI, client, and UI layers.
-- [ ] Redact every configured static header value before persisting delivery
+- [x] Serialize endpoint PATCH read/merge/write under a scoped database row lock
+      so concurrent deletion and replacement cannot lose or revive credentials.
+- [x] Redact every configured static header value before persisting delivery
       diagnostics; name-based `authorization`/`signature` matching is
       insufficient.
-- [ ] Add an idempotent legacy-data scrub for existing
+- [x] Add an idempotent legacy-data scrub for existing
       `WebhookDelivery.requestHeadersRedacted`, defense-in-depth response
       projection for unsanitized rows, and restore-time sanitization so old
       backups cannot reintroduce values. Seed legacy arbitrary-header credentials
       and prove list, replay, restore, and subsequent reads remain redacted.
-- [ ] Ensure logs, audit records, OpenAPI examples, delivery diagnostics, and
+- [x] Ensure logs, audit records, OpenAPI examples, delivery diagnostics, and
       create/update responses follow the same redaction contract.
 
 Acceptance:

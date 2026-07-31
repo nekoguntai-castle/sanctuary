@@ -48,7 +48,7 @@ describe('WalletWebhooks', () => {
   });
 
   it('tests, rotates, loads history, and replays an existing webhook', async () => {
-    render(<WalletWebhooks walletId="wallet-1" />);
+    render(<WalletWebhooks walletId="wallet-1" userRole="owner" />);
 
     expect(await screen.findByText('Accounting')).toBeInTheDocument();
 
@@ -75,7 +75,7 @@ describe('WalletWebhooks', () => {
 
   it('creates mapped JSON webhooks with configured HMAC and required valuation', async () => {
     mockListWalletWebhooks.mockResolvedValue([]);
-    render(<WalletWebhooks walletId="wallet-1" />);
+    render(<WalletWebhooks walletId="wallet-1" userRole="owner" />);
 
     fireEvent.change(screen.getByPlaceholderText('Endpoint name'), {
       target: { value: 'External receiver' },
@@ -125,7 +125,7 @@ describe('WalletWebhooks', () => {
     mockListWalletWebhooks
       .mockRejectedValueOnce(new Error('Cannot load webhooks'))
       .mockRejectedValueOnce('offline');
-    render(<WalletWebhooks walletId="wallet-1" />);
+    render(<WalletWebhooks walletId="wallet-1" userRole="owner" />);
 
     expect(await screen.findByText('Cannot load webhooks')).toBeInTheDocument();
 
@@ -136,7 +136,7 @@ describe('WalletWebhooks', () => {
 
   it('reports create errors from validation and API failures', async () => {
     mockListWalletWebhooks.mockResolvedValue([]);
-    render(<WalletWebhooks walletId="wallet-1" />);
+    render(<WalletWebhooks walletId="wallet-1" userRole="owner" />);
 
     fillRequiredFields();
     fireEvent.click(screen.getByText('Advanced'));
@@ -162,7 +162,7 @@ describe('WalletWebhooks', () => {
       .mockResolvedValueOnce([makeWebhook()])
       .mockResolvedValueOnce([makeWebhook({ enabled: false })])
       .mockResolvedValueOnce([]);
-    render(<WalletWebhooks walletId="wallet-1" />);
+    render(<WalletWebhooks walletId="wallet-1" userRole="owner" />);
 
     expect(await screen.findByText('Accounting')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Enabled'));
@@ -185,7 +185,7 @@ describe('WalletWebhooks', () => {
     mockGetWalletWebhookDeliveries
       .mockRejectedValueOnce(new Error('History failed'))
       .mockRejectedValueOnce('offline');
-    render(<WalletWebhooks walletId="wallet-1" />);
+    render(<WalletWebhooks walletId="wallet-1" userRole="owner" />);
 
     expect(await screen.findByText('Accounting')).toBeInTheDocument();
 
@@ -206,7 +206,7 @@ describe('WalletWebhooks', () => {
     mockGetWalletWebhookDeliveries
       .mockResolvedValueOnce([makeDelivery()])
       .mockRejectedValueOnce('offline');
-    render(<WalletWebhooks walletId="wallet-1" />);
+    render(<WalletWebhooks walletId="wallet-1" userRole="owner" />);
 
     expect(await screen.findByText('Accounting')).toBeInTheDocument();
 
@@ -216,6 +216,50 @@ describe('WalletWebhooks', () => {
     fireEvent.click(screen.getByText('History'));
     expect(await screen.findByText('Failed to load deliveries')).toBeInTheDocument();
     expect(screen.getByText('event-1')).toBeInTheDocument();
+  });
+
+  it('updates individual hidden headers without prefilling values and rejects redaction markers', async () => {
+    mockListWalletWebhooks.mockResolvedValue([
+      makeWebhook({ configuredHeaderNames: ['Authorization', 'X-API-Key'] }),
+    ]);
+    render(<WalletWebhooks walletId="wallet-1" userRole="owner" />);
+
+    expect(await screen.findByText('Configured headers: Authorization, X-API-Key')).toBeInTheDocument();
+    const input = screen.getByLabelText('Header changes for Accounting');
+    expect(input).toHaveValue('');
+
+    fireEvent.change(input, { target: { value: '{"X-API-Key":"replacement","X-Old":null}' } });
+    fireEvent.click(screen.getByText('Update headers'));
+    await waitFor(() => {
+      expect(mockUpdateWalletWebhook).toHaveBeenCalledWith('wallet-1', 'webhook-1', {
+        headerConfig: { headers: { 'X-API-Key': 'replacement', 'X-Old': null } },
+      });
+    });
+
+    fireEvent.change(input, { target: { value: '{"Authorization":"[REDACTED]"}' } });
+    fireEvent.click(screen.getByText('Update headers'));
+    expect(await screen.findByText('Header Authorization must be replaced with its real value or removed')).toBeInTheDocument();
+    expect(mockUpdateWalletWebhook).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['signer', true],
+    ['approver', false],
+    ['viewer', false],
+  ])('renders %s controls according to webhook capabilities', async (role, canInspect) => {
+    render(<WalletWebhooks walletId="wallet-1" userRole={role} />);
+    expect(await screen.findByText('Accounting')).toBeInTheDocument();
+    expect(screen.queryByText('Add webhook')).not.toBeInTheDocument();
+    expect(screen.queryByText('Test')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Rotate signing secret')).not.toBeInTheDocument();
+    expect(screen.queryByText('Update headers')).not.toBeInTheDocument();
+    expect(screen.queryByText('History') !== null).toBe(canInspect);
+  });
+
+  it.each([undefined, null, 'unknown'])('fails closed for invalid role %s', async (role) => {
+    render(<WalletWebhooks walletId="wallet-1" userRole={role} />);
+    expect(await screen.findByText('Webhook access is unavailable')).toBeInTheDocument();
+    expect(mockListWalletWebhooks).not.toHaveBeenCalled();
   });
 });
 
@@ -241,6 +285,7 @@ function makeWebhook(overrides: Record<string, unknown> = {}) {
     authType: 'hmac_sha256',
     hasSecret: true,
     headerConfig: null,
+    configuredHeaderNames: [],
     profileConfig: null,
     retryConfig: null,
     maxAttempts: 5,
