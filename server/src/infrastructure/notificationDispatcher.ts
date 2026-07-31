@@ -7,7 +7,7 @@
  * Falls back to inline delivery when Redis is unavailable.
  */
 
-import { Queue, type ConnectionOptions } from "bullmq";
+import { Queue, type ConnectionOptions, type Job, type JobsOptions } from "bullmq";
 import { getRedisClient, isRedisConnected } from "./redis";
 import { createLogger } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
@@ -98,6 +98,8 @@ export interface WebhookDeliveryNotificationPayload {
   deliveryId: string;
   attempt?: number;
 }
+
+type WebhookQueueJob = Job<WebhookDeliveryNotificationPayload>;
 
 /**
  * Queue a transaction notification for retry-capable delivery.
@@ -214,17 +216,20 @@ export async function queueWebhookDeliveryNotification(
   if (!queue) return false;
 
   try {
-    await queue.add("webhook-delivery", payload, {
+    const jobOptions: JobsOptions = {
       jobId: toBullMqJobId(`webhook-delivery:${payload.deliveryId}:${payload.attempt ?? 0}`),
       delay: options.delayMs,
-    });
+      removeOnComplete: true,
+      removeOnFail: true,
+    };
+    await addOrReviveWebhookJob(queue, payload, jobOptions);
     log.debug("Webhook delivery queued", {
       deliveryId: payload.deliveryId,
     });
     return true;
   } catch (error) {
     log.warn(
-      "Failed to queue webhook delivery notification, caller should fall back to inline",
+      "Failed to queue webhook delivery notification; persisted delivery remains recoverable",
       {
         error: getErrorMessage(error),
         deliveryId: payload.deliveryId,
@@ -232,6 +237,32 @@ export async function queueWebhookDeliveryNotification(
     );
     return false;
   }
+}
+
+async function addOrReviveWebhookJob(
+  queue: Queue,
+  payload: WebhookDeliveryNotificationPayload,
+  options: JobsOptions,
+): Promise<void> {
+  const job = await queue.add("webhook-delivery", payload, options);
+  if (!await webhookJobNeedsRevival(job)) return;
+
+  try {
+    await job.remove();
+  } catch (error) {
+    const currentJob = await queue.getJob(
+      String(options.jobId),
+    ) as WebhookQueueJob | undefined;
+    if (currentJob && !await webhookJobNeedsRevival(currentJob)) return;
+    if (currentJob) throw error;
+  }
+
+  await queue.add("webhook-delivery", payload, options);
+}
+
+async function webhookJobNeedsRevival(job: WebhookQueueJob): Promise<boolean> {
+  const state = await job.getState();
+  return state === "completed" || state === "failed" || state === "unknown";
 }
 
 /**

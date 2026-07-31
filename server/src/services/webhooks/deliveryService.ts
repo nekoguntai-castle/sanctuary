@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { queueWebhookDeliveryNotification } from '../../infrastructure';
 import { webhookRepository } from '../../repositories';
 import type { Prisma, WebhookEndpoint } from '../../generated/prisma/client';
@@ -23,10 +24,19 @@ import {
 const log = createLogger('WEBHOOK:SVC_DELIVERY');
 const RESPONSE_CAPTURE_LIMIT = 4096;
 const REQUEST_TIMEOUT_MS = 10_000;
+const ATTEMPT_LEASE_MS = 2 * 60_000;
+const DEFAULT_RECOVERY_BATCH_SIZE = 100;
+const MAX_RECOVERY_BATCH_SIZE = 500;
 
 export interface QueueWebhookEventResult {
   queued: number;
   errors: string[];
+}
+
+export interface RecoverDueWebhookDeliveriesResult {
+  selected: number;
+  queued: number;
+  failed: number;
 }
 
 interface PreparedWebhookRequest {
@@ -78,7 +88,7 @@ export async function queueWebhookEventsDeliveries(
           attempt: delivery.attemptCount + 1,
         });
         if (!queuedInWorker) {
-          await sendWebhookDelivery(delivery.id);
+          await sendWebhookDelivery(delivery.id, delivery.attemptCount + 1);
         }
       } catch (error) {
         errors.push(getErrorMessage(error));
@@ -89,16 +99,30 @@ export async function queueWebhookEventsDeliveries(
   return { queued, errors };
 }
 
-export async function sendWebhookDelivery(deliveryId: string): Promise<WebhookSendResult> {
-  const delivery = await webhookRepository.findDeliveryById(deliveryId);
-  if (!delivery) {
+export async function sendWebhookDelivery(
+  deliveryId: string,
+  expectedAttempt?: number,
+): Promise<WebhookSendResult> {
+  const existing = await webhookRepository.findDeliveryById(deliveryId);
+  if (!existing) {
     return { success: false, error: 'Webhook delivery not found' };
   }
-  if (delivery.status === 'delivered' || delivery.status === 'dead') {
+  if (existing.status === 'delivered' || existing.status === 'dead') {
     return { success: true };
   }
 
-  const attemptCount = delivery.attemptCount + 1;
+  const attemptCount = expectedAttempt ?? existing.attemptCount + 1;
+  const leaseToken = randomUUID();
+  const now = new Date();
+  const delivery = await webhookRepository.claimDeliveryAttempt({
+    deliveryId,
+    expectedAttempt: attemptCount,
+    leaseToken,
+    now,
+    leaseExpiresAt: new Date(now.getTime() + ATTEMPT_LEASE_MS),
+  });
+  if (!delivery) return { success: true };
+
   let preparedRequest: PreparedWebhookRequest | null = null;
   try {
     const policy = await validateWebhookEndpointUrl(delivery.endpoint.url);
@@ -106,7 +130,8 @@ export async function sendWebhookDelivery(deliveryId: string): Promise<WebhookSe
     const result = await attemptWebhookDelivery(policy, preparedRequest);
     if (result.success && result.statusCode) {
       await webhookRepository.markDeliveryDelivered(delivery.id, {
-        attemptCount,
+        expectedAttempt: attemptCount,
+        leaseToken,
         statusCode: result.statusCode,
         requestBody: preparedRequest.request.body as Prisma.InputJsonValue,
         requestBodyHash: preparedRequest.request.bodyHash,
@@ -116,8 +141,44 @@ export async function sendWebhookDelivery(deliveryId: string): Promise<WebhookSe
     }
     return result;
   } catch (error) {
-    return handleWebhookDeliveryFailure(delivery, attemptCount, error, preparedRequest);
+    return handleWebhookDeliveryFailure(
+      delivery,
+      attemptCount,
+      leaseToken,
+      error,
+      preparedRequest,
+    );
   }
+}
+
+export async function recoverDueWebhookDeliveries(
+  batchSize = DEFAULT_RECOVERY_BATCH_SIZE,
+): Promise<RecoverDueWebhookDeliveriesResult> {
+  const boundedBatchSize = normalizeRecoveryBatchSize(batchSize);
+  const deliveries = await webhookRepository.listDueDeliveries(new Date(), boundedBatchSize);
+  let queued = 0;
+
+  for (const delivery of deliveries) {
+    const accepted = await queueWebhookDeliveryNotification({
+      deliveryId: delivery.id,
+      attempt: delivery.attemptCount + 1,
+    });
+    if (accepted) queued += 1;
+  }
+
+  return {
+    selected: deliveries.length,
+    queued,
+    failed: deliveries.length - queued,
+  };
+}
+
+function normalizeRecoveryBatchSize(batchSize: number): number {
+  if (!Number.isFinite(batchSize)) return DEFAULT_RECOVERY_BATCH_SIZE;
+  return Math.min(
+    MAX_RECOVERY_BATCH_SIZE,
+    Math.max(1, Math.floor(batchSize)),
+  );
 }
 
 async function attemptWebhookDelivery(
@@ -147,6 +208,7 @@ async function attemptWebhookDelivery(
 async function handleWebhookDeliveryFailure(
   delivery: WebhookDeliveryWithEndpoint,
   attemptCount: number,
+  leaseToken: string,
   error: unknown,
   preparedRequest: PreparedWebhookRequest | null,
 ): Promise<WebhookSendResult> {
@@ -163,23 +225,27 @@ async function handleWebhookDeliveryFailure(
   if (!retryable || attemptCount >= maxAttempts) {
     const deadDelivery = await webhookRepository.markDeliveryDead({
       deliveryId: delivery.id,
+      expectedAttempt: attemptCount,
+      leaseToken,
       error: errorMessage,
-      attemptCount,
       ...requestDiagnostics,
     });
-    notifyWebhookDeliveryDead(deadDelivery);
+    if (deadDelivery) notifyWebhookDeliveryDead(deadDelivery);
     return { success: false, error: errorMessage };
   }
 
   const delayMs = calculateRetryDelay(delivery.endpoint, attemptCount);
   const nextAttemptAt = new Date(Date.now() + delayMs);
-  await webhookRepository.markDeliveryFailed({
+  const failedDelivery = await webhookRepository.markDeliveryFailed({
     deliveryId: delivery.id,
+    expectedAttempt: attemptCount,
+    leaseToken,
     error: errorMessage,
     nextAttemptAt,
-    attemptCount,
     ...requestDiagnostics,
   });
+  if (!failedDelivery) return { success: false, error: errorMessage };
+
   await queueWebhookDeliveryNotification(
     { deliveryId: delivery.id, attempt: attemptCount + 1 },
     { delayMs },

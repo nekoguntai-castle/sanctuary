@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
     isHealthy: vi.fn(),
     getHealth: vi.fn(),
     getJobCompletionTimes: vi.fn(),
+    inspectRecurringSchedules: vi.fn(),
     addJob: vi.fn(),
     addBulkJobs: vi.fn(),
     scheduleRecurring: vi.fn(),
@@ -194,8 +195,15 @@ describe('worker entrypoint', () => {
     mocks.queueInstance.getJobCompletionTimes.mockReturnValue({});
     mocks.queueInstance.addJob.mockResolvedValue(undefined);
     mocks.queueInstance.addBulkJobs.mockResolvedValue([]);
-    mocks.queueInstance.scheduleRecurring.mockResolvedValue(undefined);
-    mocks.queueInstance.removeRecurring.mockResolvedValue(undefined);
+    mocks.queueInstance.scheduleRecurring.mockResolvedValue({ status: 'created' });
+    mocks.queueInstance.inspectRecurringSchedules.mockResolvedValue({
+      healthy: true,
+      missing: [],
+      mismatched: [],
+      unexpected: [],
+      inspectionFailures: [],
+    });
+    mocks.queueInstance.removeRecurring.mockResolvedValue({ status: 'absent' });
     mocks.queueInstance.onJobCompleted.mockReturnValue(undefined);
     mocks.queueInstance.shutdown.mockResolvedValue(undefined);
 
@@ -274,6 +282,33 @@ describe('worker entrypoint', () => {
     expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 
+  it('fails startup when a required recurring schedule cannot be reconciled', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    const processExitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as any);
+    mocks.queueInstance.scheduleRecurring.mockResolvedValueOnce({
+      status: 'failed',
+      error: 'Redis unavailable',
+    });
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Worker startup failed',
+      expect.objectContaining({
+        error: expect.stringContaining('Required recurring schedule reconciliation failed'),
+      }),
+    );
+    expect(mocks.startHealthServer).not.toHaveBeenCalled();
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+
   it('returns early when recurring scheduling is invoked before queue initialization', async () => {
     vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
       void event;
@@ -347,6 +382,11 @@ describe('worker entrypoint', () => {
     }) as any);
     vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
 
+    let autopilotEnabled = false;
+    mocks.mockFeatureFlagService.isEnabled.mockImplementation(
+      async (key: string) => key === 'treasuryAutopilot' && autopilotEnabled,
+    );
+
     await import('../../../src/worker.ts');
     await vi.dynamicImportSettled();
 
@@ -363,6 +403,7 @@ describe('worker entrypoint', () => {
     expect(mocks.queueInstance.scheduleRecurring).not.toHaveBeenCalled();
     expect(mocks.queueInstance.removeRecurring).not.toHaveBeenCalled();
 
+    autopilotEnabled = true;
     await workerListener({ key: 'treasuryAutopilot', enabled: true });
 
     expect(mocks.queueInstance.scheduleRecurring).toHaveBeenCalledWith(
@@ -377,8 +418,14 @@ describe('worker entrypoint', () => {
       {},
       '5/10 * * * *'
     );
-    expect(mocks.queueInstance.removeRecurring).not.toHaveBeenCalled();
+    expect(mocks.queueInstance.removeRecurring).not.toHaveBeenCalledWith(
+      'maintenance',
+      'autopilot:record-fees',
+      expect.anything(),
+    );
 
+    mocks.queueInstance.removeRecurring.mockClear();
+    autopilotEnabled = false;
     await workerListener({ key: 'treasuryAutopilot', enabled: false });
 
     expect(mocks.queueInstance.removeRecurring).toHaveBeenCalledWith(
@@ -506,7 +553,7 @@ describe('worker entrypoint', () => {
 
   it('covers timer, queue-error handlers, process handlers, and graceful shutdown branches', async () => {
     const handlers: Record<string, Array<(...args: any[]) => any>> = {};
-    let intervalCallback: (() => Promise<void> | void) | undefined;
+    const intervalCallbacks: Array<() => Promise<void> | void> = [];
     const intervalHandle = { id: 'timer-1' } as any;
 
     vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
@@ -520,7 +567,7 @@ describe('worker entrypoint', () => {
       .mockImplementation((() => undefined) as any);
 
     vi.spyOn(global, 'setInterval').mockImplementation((((cb: () => Promise<void> | void) => {
-      intervalCallback = cb;
+      intervalCallbacks.push(cb);
       return intervalHandle;
     }) as any));
     const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
@@ -532,11 +579,11 @@ describe('worker entrypoint', () => {
 
     await import('../../../src/worker.ts');
     await vi.dynamicImportSettled();
-    for (let i = 0; i < 200 && !intervalCallback; i += 1) {
+    for (let i = 0; i < 200 && intervalCallbacks.length < 3; i += 1) {
       await Promise.resolve();
     }
 
-    expect(intervalCallback).toBeDefined();
+    expect(intervalCallbacks).toHaveLength(3);
     expect(mocks.WorkerJobQueue).toHaveBeenCalledWith({
       concurrency: 5,
       queues: ['sync', 'notifications', 'confirmations', 'maintenance'],
@@ -548,6 +595,7 @@ describe('worker entrypoint', () => {
       redis: true,
       electrum: true,
       jobQueue: true,
+      recurringSchedules: true,
     });
     mocks.electrumInstance.isConnected.mockReturnValueOnce(undefined as any);
     mocks.queueInstance.isHealthy.mockReturnValueOnce(undefined as any);
@@ -555,6 +603,7 @@ describe('worker entrypoint', () => {
       redis: true,
       electrum: false,
       jobQueue: false,
+      recurringSchedules: true,
     });
     await expect(healthProvider?.getMetrics()).resolves.toEqual({
       worker: expect.objectContaining({
@@ -572,6 +621,15 @@ describe('worker entrypoint', () => {
         networks: { testnet: { connected: true } },
       },
       jobCompletions: {},
+      recurringSchedules: {
+        healthy: true,
+        missing: [],
+        mismatched: [],
+        stale: [],
+        unexpected: [],
+        inspectionFailures: [],
+        reconciliationFailed: false,
+      },
     });
     mocks.queueInstance.getHealth.mockResolvedValueOnce(undefined);
     mocks.electrumInstance.getHealthMetrics.mockReturnValueOnce(undefined);
@@ -591,13 +649,22 @@ describe('worker entrypoint', () => {
         networks: {},
       },
       jobCompletions: {},
+      recurringSchedules: {
+        healthy: true,
+        missing: [],
+        mismatched: [],
+        stale: [],
+        unexpected: [],
+        inspectionFailures: [],
+        reconciliationFailed: false,
+      },
     });
 
-    await intervalCallback?.();
+    await Promise.all(intervalCallbacks.map(async (callback) => callback()));
     expect(mocks.electrumInstance.reconcileSubscriptions).toHaveBeenCalledTimes(1);
 
     mocks.electrumInstance.reconcileSubscriptions.mockRejectedValueOnce(new Error('reconcile failed'));
-    await intervalCallback?.();
+    await Promise.all(intervalCallbacks.map(async (callback) => callback()));
     expect(mocks.logger.error).toHaveBeenCalledWith(
       'Subscription reconciliation failed',
       { error: 'reconcile failed' }
@@ -631,7 +698,7 @@ describe('worker entrypoint', () => {
     await handlers.SIGTERM?.[0]();
     await handlers.SIGTERM?.[0]();
     await handlers.SIGINT?.[0]();
-    await intervalCallback?.();
+    await Promise.all(intervalCallbacks.map(async (callback) => callback()));
 
     expect(clearIntervalSpy).toHaveBeenCalledWith(intervalHandle);
     expect(mocks.electrumInstance.reconcileSubscriptions).toHaveBeenCalledTimes(2);
@@ -711,6 +778,7 @@ describe('worker entrypoint', () => {
       redis: true,
       electrum: true,
       jobQueue: true,
+      recurringSchedules: true,
     });
 
     // Advance past grace period (syncIntervalMs=300000 + 30000 = 330000)
@@ -725,12 +793,88 @@ describe('worker entrypoint', () => {
       redis: true,
       electrum: true,
       jobQueue: false,
+      recurringSchedules: false,
     });
-    expect(mocks.logger.warn).toHaveBeenCalledWith(
-      'check-stale-wallets job is stale',
-      expect.objectContaining({ threshold: expect.any(String) })
-    );
 
     Date.now = realDateNow;
+  });
+
+  it('reports unhealthy when webhook recovery is absent even while stale-wallet is fresh', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    mocks.queueInstance.inspectRecurringSchedules.mockResolvedValueOnce({
+      healthy: false,
+      missing: ['maintenance:webhook:recover-due-deliveries'],
+      mismatched: [],
+      unexpected: [],
+      inspectionFailures: [],
+    });
+    const health = await mocks.getHealthProvider()?.getHealth();
+
+    expect(health).toEqual({
+      redis: true,
+      electrum: true,
+      jobQueue: false,
+      recurringSchedules: false,
+    });
+  });
+
+  it('restores readiness after periodic schedule reconciliation', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+    const intervals: Array<{ callback: () => Promise<void> | void; delay: number }> = [];
+    vi.spyOn(global, 'setInterval').mockImplementation(((
+      callback: () => Promise<void> | void,
+      delay: number,
+    ) => {
+      intervals.push({ callback, delay });
+      return { delay } as any;
+    }) as any);
+    let schedulesPresent = true;
+    mocks.queueInstance.scheduleRecurring.mockImplementation(async () => {
+      schedulesPresent = true;
+      return { status: 'created' };
+    });
+    mocks.queueInstance.inspectRecurringSchedules.mockImplementation(async () => ({
+      healthy: schedulesPresent,
+      missing: schedulesPresent ? [] : ['maintenance:webhook:recover-due-deliveries'],
+      mismatched: [],
+      unexpected: [],
+      inspectionFailures: [],
+    }));
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+    schedulesPresent = false;
+
+    await expect(mocks.getHealthProvider()?.getHealth()).resolves.toEqual(
+      expect.objectContaining({ jobQueue: false, recurringSchedules: false }),
+    );
+
+    const reconciliation = intervals.find(({ delay }) => delay === 60_000);
+    expect(reconciliation).toBeDefined();
+    reconciliation?.callback();
+    let recovered = false;
+    for (let index = 0; index < 100 && !recovered; index += 1) {
+      await Promise.resolve();
+      recovered = Boolean(
+        (await mocks.getHealthProvider()?.getHealth() as {
+          recurringSchedules?: boolean;
+        } | undefined)?.recurringSchedules,
+      );
+    }
+    expect(recovered).toBe(true);
   });
 });

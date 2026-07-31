@@ -301,6 +301,8 @@ function makeDelivery(overrides: Partial<WebhookDelivery> = {}): WebhookDelivery
     status: 'failed',
     attemptCount: 2,
     nextAttemptAt: null,
+    attemptLeaseToken: null,
+    attemptLeaseExpiresAt: null,
     lastAttemptAt: new Date('2026-05-22T01:00:00.000Z'),
     deliveredAt: null,
     lastStatusCode: null,

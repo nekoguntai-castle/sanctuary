@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockQueueAdd = vi.fn().mockResolvedValue({ id: "job-1" });
+const mockJobGetState = vi.fn().mockResolvedValue("waiting");
+const mockJobRemove = vi.fn().mockResolvedValue(undefined);
+const mockQueueGetJob = vi.fn();
+const mockQueueAdd = vi.fn().mockResolvedValue({
+  id: "job-1",
+  getState: mockJobGetState,
+  remove: mockJobRemove,
+});
 const mockQueueClose = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("bullmq", () => ({
@@ -8,6 +15,7 @@ vi.mock("bullmq", () => ({
     return {
       add: mockQueueAdd,
       close: mockQueueClose,
+      getJob: mockQueueGetJob,
     };
   }),
 }));
@@ -67,6 +75,13 @@ function createConsolidationSuggestionPayload() {
 describe("notificationDispatcher", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockJobGetState.mockResolvedValue("waiting");
+    mockJobRemove.mockResolvedValue(undefined);
+    mockQueueAdd.mockResolvedValue({
+      id: "job-1",
+      getState: mockJobGetState,
+      remove: mockJobRemove,
+    });
     // Reset the module-level queue by shutting down between tests
     return shutdownNotificationDispatcher();
   });
@@ -153,6 +168,8 @@ describe("notificationDispatcher", () => {
       {
         jobId: toBullMqJobId("webhook-delivery:delivery-1:2"),
         delay: 5000,
+        removeOnComplete: true,
+        removeOnFail: true,
       },
     );
   });
@@ -167,8 +184,96 @@ describe("notificationDispatcher", () => {
       {
         jobId: toBullMqJobId("webhook-delivery:delivery-2:0"),
         delay: undefined,
+        removeOnComplete: true,
+        removeOnFail: true,
       },
     );
+  });
+
+  it.each(["completed", "failed", "unknown"])(
+    "revives a retained %s webhook attempt with the same deterministic id",
+    async (state) => {
+      mockJobGetState.mockResolvedValueOnce(state);
+
+      const result = await queueWebhookDeliveryNotification({
+        deliveryId: "retained-delivery",
+        attempt: 1,
+      });
+
+      expect(result).toBe(true);
+      expect(mockJobRemove).toHaveBeenCalledTimes(1);
+      expect(mockQueueAdd).toHaveBeenCalledTimes(2);
+      expect(mockQueueAdd.mock.calls[1]?.[2]).toEqual(expect.objectContaining({
+        jobId: toBullMqJobId("webhook-delivery:retained-delivery:1"),
+      }));
+    },
+  );
+
+  it.each(["waiting", "delayed", "active"])(
+    "accepts an existing %s webhook attempt without duplicating it",
+    async (state) => {
+      mockJobGetState.mockResolvedValueOnce(state);
+
+      await expect(queueWebhookDeliveryNotification({
+        deliveryId: "live-delivery",
+        attempt: 2,
+      })).resolves.toBe(true);
+
+      expect(mockJobRemove).not.toHaveBeenCalled();
+      expect(mockQueueAdd).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("accepts a replacement queued concurrently after retained-job removal loses the race", async () => {
+    const replacement = {
+      id: "replacement",
+      getState: vi.fn().mockResolvedValue("waiting"),
+      remove: vi.fn(),
+    };
+    mockJobGetState.mockResolvedValueOnce("completed");
+    mockJobRemove.mockRejectedValueOnce(new Error("job no longer exists"));
+    mockQueueGetJob.mockResolvedValueOnce(replacement);
+
+    await expect(queueWebhookDeliveryNotification({
+      deliveryId: "raced-delivery",
+      attempt: 1,
+    })).resolves.toBe(true);
+
+    expect(mockQueueGetJob).toHaveBeenCalledWith(
+      toBullMqJobId("webhook-delivery:raced-delivery:1"),
+    );
+    expect(mockQueueAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it("requeues when a retained job disappears during removal", async () => {
+    mockJobGetState.mockResolvedValueOnce("completed");
+    mockJobRemove.mockRejectedValueOnce(new Error("job no longer exists"));
+    mockQueueGetJob.mockResolvedValueOnce(undefined);
+
+    await expect(queueWebhookDeliveryNotification({
+      deliveryId: "removed-delivery",
+      attempt: 1,
+    })).resolves.toBe(true);
+
+    expect(mockQueueAdd).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns false when a retained terminal job cannot be removed", async () => {
+    const retained = {
+      id: "retained",
+      getState: vi.fn().mockResolvedValue("failed"),
+      remove: vi.fn(),
+    };
+    mockJobGetState.mockResolvedValueOnce("failed");
+    mockJobRemove.mockRejectedValueOnce(new Error("Redis removal failed"));
+    mockQueueGetJob.mockResolvedValueOnce(retained);
+
+    await expect(queueWebhookDeliveryNotification({
+      deliveryId: "stuck-delivery",
+      attempt: 1,
+    })).resolves.toBe(false);
+
+    expect(mockQueueAdd).toHaveBeenCalledTimes(1);
   });
 
   it("returns false for webhook delivery notifications when Redis is not connected", async () => {

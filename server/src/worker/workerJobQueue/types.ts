@@ -32,3 +32,32 @@ export interface RegisteredHandler {
     lockTtlMs?: number;
   };
 }
+
+export interface RecurringScheduleDefinition<T = unknown> {
+  schedulerId: string;
+  queue: string;
+  name: string;
+  data: T;
+  cron: string;
+  options?: Omit<JobsOptions, "repeat">;
+  freshness?: {
+    maxAgeMs: number;
+    startupGraceMs: number;
+  };
+}
+
+export type RecurringScheduleResult =
+  | { status: "created" | "unchanged" }
+  | { status: "failed"; error: string };
+
+export type RecurringRemovalResult =
+  | { status: "removed" | "absent" }
+  | { status: "failed"; error: string };
+
+export interface RecurringScheduleInspection {
+  healthy: boolean;
+  missing: string[];
+  mismatched: string[];
+  unexpected: string[];
+  inspectionFailures: string[];
+}

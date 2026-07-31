@@ -63,8 +63,16 @@ describe('feature flag admin + worker integration', () => {
       isHealthy: vi.fn(() => true),
       getHealth: vi.fn(async () => ({ queues: {} })),
       addJob: vi.fn(async () => undefined),
-      scheduleRecurring: vi.fn(async () => undefined),
-      removeRecurring: vi.fn(async () => undefined),
+      scheduleRecurring: vi.fn(async () => ({ status: 'created' })),
+      inspectRecurringSchedules: vi.fn(async () => ({
+        healthy: true,
+        missing: [],
+        mismatched: [],
+        unexpected: [],
+        inspectionFailures: [],
+      })),
+      getJobCompletionTimes: vi.fn(() => ({})),
+      removeRecurring: vi.fn(async () => ({ status: 'absent' })),
       shutdown: vi.fn(async () => undefined),
     };
 
@@ -283,7 +291,11 @@ describe('feature flag admin + worker integration', () => {
         {},
         '5/10 * * * *'
       );
-      expect(jobQueueInstance.removeRecurring).not.toHaveBeenCalled();
+      expect(jobQueueInstance.removeRecurring).not.toHaveBeenCalledWith(
+        'maintenance',
+        'autopilot:record-fees',
+        expect.anything()
+      );
 
       jobQueueInstance.scheduleRecurring.mockClear();
       jobQueueInstance.removeRecurring.mockClear();

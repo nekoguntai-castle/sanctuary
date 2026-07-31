@@ -232,14 +232,14 @@ Delivery: one security-boundary PR.
 Findings: `webhook-retry-enqueue-failure-strands-delivery` and
 `recurring-schedule-failure-leaves-worker-falsely-healthy`.
 
-- [ ] First make required schedule replacement failure-safe: add/upsert the new
+- [x] First make required schedule replacement failure-safe: add/upsert the new
       repeatable definition before removing the stale key, or restore the old
       definition if add fails. Test remove-success/add-failure and prove a
       stale-but-running required schedule never becomes no schedule.
-- [ ] Make recurring schedule results explicit (`created`/`unchanged`/`failed`)
+- [x] Make recurring schedule results explicit (`created`/`unchanged`/`failed`)
       rather than overloading `null`.
-- [ ] Add a failing webhook retry test for queue result `false`.
-- [ ] Add a required recurring due-delivery recovery job. It claims persisted
+- [x] Add a failing webhook retry test for queue result `false`.
+- [x] Add a required recurring due-delivery recovery job. It claims persisted
       deliveries whose `nextAttemptAt <= now` without first making them ineligible,
       then enqueues the existing deterministic attempt job ID. Only the executing
       job conditionally transitions the expected due attempt before HTTP, so
@@ -247,22 +247,22 @@ Findings: `webhook-retry-enqueue-failure-strands-delivery` and
       the row due; a crash after enqueue is recovered by the same deterministic ID
       and delivery-state guard. Do not use immediate inline fallback for delayed
       retries.
-- [ ] Add a focused recovery integration test proving queue failure causes no HTTP
+- [x] Add a focused recovery integration test proving queue failure causes no HTTP
       attempt before `nextAttemptAt`, then recovers after worker restart. Include a
       failpoint after due-row selection but before enqueue and prove the same
       attempt becomes eligible again without an early or duplicate HTTP send.
-- [ ] Fail or degrade startup when a required recurring job cannot be reconciled,
+- [x] Fail or degrade startup when a required recurring job cannot be reconciled,
       and periodically reconcile the required schedule set.
-- [ ] Define one canonical baseline required-schedule set:
+- [x] Define one canonical baseline required-schedule set:
       `sync:check-stale-wallets`, `confirmations:update-all-confirmations`,
       every existing non-feature maintenance job, and the new webhook due-recovery
       job. Keep autopilot/intelligence schedules explicitly conditional on their
       feature flags. Make reconciliation and readiness inspect every applicable
       definition; freshness windows apply to stale-wallet and webhook recovery,
       while long-period jobs require schedule presence until their first due run.
-- [ ] Test readiness is 503 when stale-wallet is present/fresh but webhook recovery
+- [x] Test readiness is 503 when stale-wallet is present/fresh but webhook recovery
       or any other baseline definition is absent.
-- [ ] Test initial Redis failure, stale cron replacement, already-correct schedule,
+- [x] Test initial Redis failure, stale cron replacement, already-correct schedule,
       reconciliation recovery, and health transitions.
 
 Acceptance:

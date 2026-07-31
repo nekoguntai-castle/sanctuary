@@ -42,10 +42,11 @@ export interface CreateWebhookDeliveryInput {
 
 export interface MarkDeliveryFailedInput {
   deliveryId: string;
+  expectedAttempt: number;
+  leaseToken: string;
   statusCode?: number | null;
   error: string;
   nextAttemptAt: Date;
-  attemptCount: number;
   requestBody?: Prisma.InputJsonValue | null;
   requestBodyHash?: string | null;
   requestHeadersRedacted?: Prisma.InputJsonValue | null;
@@ -54,13 +55,22 @@ export interface MarkDeliveryFailedInput {
 
 export interface MarkDeliveryDeadInput {
   deliveryId: string;
+  expectedAttempt: number;
+  leaseToken: string;
   statusCode?: number | null;
   error: string;
-  attemptCount: number;
   requestBody?: Prisma.InputJsonValue | null;
   requestBodyHash?: string | null;
   requestHeadersRedacted?: Prisma.InputJsonValue | null;
   responseBodyHash?: string | null;
+}
+
+export interface ClaimDeliveryAttemptInput {
+  deliveryId: string;
+  expectedAttempt: number;
+  leaseToken: string;
+  now: Date;
+  leaseExpiresAt: Date;
 }
 
 export async function listEndpoints(walletId: string): Promise<WebhookEndpoint[]> {
@@ -244,6 +254,53 @@ export async function findDeliveryById(deliveryId: string): Promise<
   });
 }
 
+export async function listDueDeliveries(
+  now: Date,
+  limit = 100,
+): Promise<WebhookDelivery[]> {
+  return prisma.webhookDelivery.findMany({
+    where: {
+      status: { in: ['pending', 'failed'] },
+      nextAttemptAt: { lte: now },
+      OR: [
+        { attemptLeaseExpiresAt: null },
+        { attemptLeaseExpiresAt: { lte: now } },
+      ],
+    },
+    orderBy: [{ nextAttemptAt: 'asc' }, { id: 'asc' }],
+    take: limit,
+  });
+}
+
+export async function claimDeliveryAttempt(
+  input: ClaimDeliveryAttemptInput,
+): Promise<(WebhookDelivery & { endpoint: WebhookEndpoint }) | null> {
+  return prisma.$transaction(async (tx) => {
+    const result = await tx.webhookDelivery.updateMany({
+      where: {
+        id: input.deliveryId,
+        status: { in: ['pending', 'failed'] },
+        attemptCount: input.expectedAttempt - 1,
+        nextAttemptAt: { lte: input.now },
+        OR: [
+          { attemptLeaseExpiresAt: null },
+          { attemptLeaseExpiresAt: { lte: input.now } },
+        ],
+      },
+      data: {
+        attemptLeaseToken: input.leaseToken,
+        attemptLeaseExpiresAt: input.leaseExpiresAt,
+      },
+    });
+    if (result.count !== 1) return null;
+
+    return tx.webhookDelivery.findUniqueOrThrow({
+      where: { id: input.deliveryId },
+      include: { endpoint: true },
+    });
+  });
+}
+
 export async function markDeliveryPendingForReplay(deliveryId: string): Promise<WebhookDelivery> {
   return prisma.webhookDelivery.update({
     where: { id: deliveryId },
@@ -251,6 +308,8 @@ export async function markDeliveryPendingForReplay(deliveryId: string): Promise<
       status: 'pending',
       attemptCount: 0,
       nextAttemptAt: new Date(),
+      attemptLeaseToken: null,
+      attemptLeaseExpiresAt: null,
       lastAttemptAt: null,
       deliveredAt: null,
       lastStatusCode: null,
@@ -263,31 +322,40 @@ export async function markDeliveryPendingForReplay(deliveryId: string): Promise<
 export async function markDeliveryDelivered(
   deliveryId: string,
   input: {
-    attemptCount: number;
+    expectedAttempt: number;
+    leaseToken: string;
     statusCode: number;
     requestBody: Prisma.InputJsonValue;
     requestBodyHash: string;
     requestHeadersRedacted?: Prisma.InputJsonValue | null;
     responseBodyHash?: string | null;
   },
-): Promise<WebhookDelivery> {
+): Promise<WebhookDelivery | null> {
   return prisma.$transaction(async (tx) => {
-    const delivery = await tx.webhookDelivery.update({
-      where: { id: deliveryId },
+    const result = await tx.webhookDelivery.updateMany({
+      where: {
+        id: deliveryId,
+        attemptCount: input.expectedAttempt - 1,
+        attemptLeaseToken: input.leaseToken,
+      },
       data: {
         status: 'delivered',
-        attemptCount: input.attemptCount,
+        attemptCount: input.expectedAttempt,
         lastAttemptAt: new Date(),
         deliveredAt: new Date(),
         lastStatusCode: input.statusCode,
         lastError: null,
         nextAttemptAt: null,
+        attemptLeaseToken: null,
+        attemptLeaseExpiresAt: null,
         requestBody: input.requestBody,
         requestBodyHash: input.requestBodyHash,
         requestHeadersRedacted: input.requestHeadersRedacted ?? undefined,
         responseBodyHash: input.responseBodyHash ?? null,
       },
     });
+    if (result.count !== 1) return null;
+    const delivery = await tx.webhookDelivery.findUniqueOrThrow({ where: { id: deliveryId } });
 
     await tx.webhookEndpoint.update({
       where: { id: delivery.endpointId },
@@ -304,23 +372,31 @@ export async function markDeliveryDelivered(
 
 export async function markDeliveryFailed(
   input: MarkDeliveryFailedInput,
-): Promise<WebhookDelivery> {
+): Promise<WebhookDelivery | null> {
   return prisma.$transaction(async (tx) => {
-    const delivery = await tx.webhookDelivery.update({
-      where: { id: input.deliveryId },
+    const result = await tx.webhookDelivery.updateMany({
+      where: {
+        id: input.deliveryId,
+        attemptCount: input.expectedAttempt - 1,
+        attemptLeaseToken: input.leaseToken,
+      },
       data: {
         status: 'failed',
-        attemptCount: input.attemptCount,
+        attemptCount: input.expectedAttempt,
         lastAttemptAt: new Date(),
         lastStatusCode: input.statusCode ?? null,
         lastError: input.error,
         nextAttemptAt: input.nextAttemptAt,
+        attemptLeaseToken: null,
+        attemptLeaseExpiresAt: null,
         requestBody: input.requestBody ?? undefined,
         requestBodyHash: input.requestBodyHash ?? undefined,
         requestHeadersRedacted: input.requestHeadersRedacted ?? undefined,
         responseBodyHash: input.responseBodyHash ?? null,
       },
     });
+    if (result.count !== 1) return null;
+    const delivery = await tx.webhookDelivery.findUniqueOrThrow({ where: { id: input.deliveryId } });
 
     await tx.webhookEndpoint.update({
       where: { id: delivery.endpointId },
@@ -336,25 +412,34 @@ export async function markDeliveryFailed(
 
 export async function markDeliveryDead(
   input: MarkDeliveryDeadInput,
-): Promise<WebhookDelivery & { endpoint: WebhookEndpoint }> {
+): Promise<(WebhookDelivery & { endpoint: WebhookEndpoint }) | null> {
   return prisma.$transaction(async (tx) => {
-    const delivery = await tx.webhookDelivery.update({
-      where: { id: input.deliveryId },
+    const result = await tx.webhookDelivery.updateMany({
+      where: {
+        id: input.deliveryId,
+        attemptCount: input.expectedAttempt - 1,
+        attemptLeaseToken: input.leaseToken,
+      },
       data: {
         status: 'dead',
-        attemptCount: input.attemptCount,
+        attemptCount: input.expectedAttempt,
         lastAttemptAt: new Date(),
         lastStatusCode: input.statusCode ?? null,
         lastError: input.error,
         nextAttemptAt: null,
+        attemptLeaseToken: null,
+        attemptLeaseExpiresAt: null,
         requestBody: input.requestBody ?? undefined,
         requestBodyHash: input.requestBodyHash ?? undefined,
         requestHeadersRedacted: input.requestHeadersRedacted ?? undefined,
         responseBodyHash: input.responseBodyHash ?? null,
       },
+    });
+    if (result.count !== 1) return null;
+    const delivery = await tx.webhookDelivery.findUniqueOrThrow({
+      where: { id: input.deliveryId },
       include: { endpoint: true },
     });
-
     await tx.webhookEndpoint.update({
       where: { id: delivery.endpointId },
       data: {
@@ -392,6 +477,8 @@ export const webhookRepository = {
   listSupportPackageEndpoints,
   createDelivery,
   findDeliveryById,
+  listDueDeliveries,
+  claimDeliveryAttempt,
   markDeliveryPendingForReplay,
   markDeliveryDelivered,
   markDeliveryFailed,

@@ -2,9 +2,14 @@ import type { Job } from 'bullmq';
 import type {
   NotifyJobResult,
   WebhookDeliveryJobData,
+  WebhookRecoveryJobData,
   WorkerJobHandler,
 } from './types';
-import { sendWebhookDelivery } from '../../services/webhooks/deliveryService';
+import {
+  recoverDueWebhookDeliveries,
+  sendWebhookDelivery,
+  type RecoverDueWebhookDeliveriesResult,
+} from '../../services/webhooks/deliveryService';
 import { createLogger } from '../../utils/logger';
 import { recordNotificationJobResult } from './notificationJobHelpers';
 
@@ -23,14 +28,14 @@ export const webhookDeliveryJob: WorkerJobHandler<WebhookDeliveryJobData, Notify
     attempts: 1,
   },
   handler: async (job: Job<WebhookDeliveryJobData>): Promise<NotifyJobResult> => {
-    const { deliveryId } = job.data;
+    const { attempt, deliveryId } = job.data;
 
     log.debug('Sending webhook delivery', {
       deliveryId,
       jobId: job.id,
     });
 
-    const result = await sendWebhookDelivery(deliveryId);
+    const result = await sendWebhookDelivery(deliveryId, attempt);
     if (result.success) {
       recordNotificationJobResult(webhookDeliveryJob.name, 'success');
       return { success: true, channelsNotified: 1 };
@@ -45,6 +50,21 @@ export const webhookDeliveryJob: WorkerJobHandler<WebhookDeliveryJobData, Notify
   },
 };
 
+export const webhookRecoveryJob: WorkerJobHandler<
+  WebhookRecoveryJobData,
+  RecoverDueWebhookDeliveriesResult
+> = {
+  name: 'webhook:recover-due-deliveries',
+  queue: 'maintenance',
+  options: {
+    attempts: 1,
+  },
+  handler: async (job: Job<WebhookRecoveryJobData>) => {
+    return recoverDueWebhookDeliveries(job.data.batchSize);
+  },
+};
+
 export const webhookDeliveryJobs: WorkerJobHandler<unknown, unknown>[] = [
   webhookDeliveryJob as WorkerJobHandler<unknown, unknown>,
+  webhookRecoveryJob as WorkerJobHandler<unknown, unknown>,
 ];

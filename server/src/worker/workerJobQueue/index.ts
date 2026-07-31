@@ -29,11 +29,25 @@ import type {
   WorkerJobQueueConfig,
   QueueInstance,
   RegisteredHandler,
+  RecurringScheduleDefinition,
+  RecurringScheduleInspection,
+  RecurringScheduleResult,
+  RecurringRemovalResult,
 } from "./types";
 import { setupWorkerEventHandlers } from "./eventHandlers";
 import { processJobWithLock } from "./jobProcessor";
+import {
+  inspectRecurringScheduleDefinitions,
+  reconcileRecurringSchedule,
+} from "./recurringSchedules";
 
 export type { WorkerJobQueueConfig } from "./types";
+export type {
+  RecurringScheduleDefinition,
+  RecurringScheduleInspection,
+  RecurringScheduleResult,
+  RecurringRemovalResult,
+} from "./types";
 
 const log = createLogger("WORKER:QUEUE");
 
@@ -296,55 +310,26 @@ export class WorkerJobQueue {
     data: T,
     cron: string,
     options?: Omit<JobsOptions, "repeat">,
-  ): Promise<Job<T> | null> {
-    const queueInstance = this.queues.get(queueName);
-    if (!queueInstance) {
-      log.warn(`Queue not found: ${queueName}`);
-      return null;
-    }
+  ): Promise<RecurringScheduleResult> {
+    return reconcileRecurringSchedule(
+      this.queues.get(queueName),
+      queueName,
+      jobName,
+      data,
+      cron,
+      options,
+    );
+  }
 
-    try {
-      const logicalJobId =
-        options?.jobId ?? `repeat:${queueName}:${jobName}:${cron}`;
-      const jobId = toBullMqJobId(logicalJobId);
-      const repeatableJobs = await queueInstance.queue.getRepeatableJobs();
-
-      // Check all existing repeatables for this jobName
-      for (const existing of repeatableJobs) {
-        if (existing.name !== jobName) continue;
-
-        if (existing.id === jobId) {
-          // Exact same schedule already exists — idempotent no-op
-          log.info(
-            `Repeatable job already scheduled: ${queueName}:${jobName}`,
-            { cron },
-          );
-          return null;
-        }
-
-        // Stale repeatable with a different cron — remove before re-scheduling
-        log.info(`Removing stale repeatable job: ${queueName}:${jobName}`, {
-          oldKey: existing.key,
-          newJobId: jobId,
-        });
-        await queueInstance.queue.removeRepeatableByKey(existing.key);
-      }
-
-      const job = await queueInstance.queue.add(jobName, data, {
-        ...options,
-        jobId,
-        repeat: { pattern: cron },
-        removeOnComplete: options?.removeOnComplete ?? 10,
-      });
-
-      log.info(`Scheduled recurring job: ${queueName}:${jobName}`, { cron });
-      return job;
-    } catch (error) {
-      log.error(`Failed to schedule recurring job: ${queueName}:${jobName}`, {
-        error: getErrorMessage(error),
-      });
-      return null;
-    }
+  async inspectRecurringSchedules(
+    definitions: RecurringScheduleDefinition[],
+    forbiddenDefinitions: RecurringScheduleDefinition[] = [],
+  ): Promise<RecurringScheduleInspection> {
+    return inspectRecurringScheduleDefinitions(
+      this.queues,
+      definitions,
+      forbiddenDefinitions,
+    );
   }
 
   /**
@@ -354,19 +339,23 @@ export class WorkerJobQueue {
     queueName: string,
     jobName: string,
     options?: { purgeQueued?: boolean },
-  ): Promise<void> {
+  ): Promise<RecurringRemovalResult> {
     const queueInstance = this.queues.get(queueName);
     if (!queueInstance) {
       log.warn(`Queue not found: ${queueName}`);
-      return;
+      return { status: "failed", error: `Queue not found: ${queueName}` };
     }
 
     try {
       // Remove repeatable job definitions
+      let removed = await queueInstance.queue.removeJobScheduler(
+        `${queueName}:${jobName}`,
+      );
       const repeatableJobs = await queueInstance.queue.getRepeatableJobs();
       for (const existing of repeatableJobs) {
         if (existing.name === jobName) {
           await queueInstance.queue.removeRepeatableByKey(existing.key);
+          removed = true;
           log.info(`Removed repeatable job: ${queueName}:${jobName}`, {
             key: existing.key,
           });
@@ -380,15 +369,19 @@ export class WorkerJobQueue {
         await Promise.all(toRemove.map((job) => job.remove()));
 
         if (toRemove.length > 0) {
+          removed = true;
           log.info(
             `Purged ${toRemove.length} queued jobs: ${queueName}:${jobName}`,
           );
         }
       }
+      return { status: removed ? "removed" : "absent" };
     } catch (error) {
+      const errorMessage = getErrorMessage(error);
       log.error(`Failed to remove recurring job: ${queueName}:${jobName}`, {
-        error: getErrorMessage(error),
+        error: errorMessage,
       });
+      return { status: "failed", error: errorMessage };
     }
   }
 

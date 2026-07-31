@@ -3,12 +3,11 @@ import { EventEmitter } from 'node:events';
 import http from 'node:http';
 import https from 'node:https';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { WebhookDelivery, WebhookEndpoint } from '../../../../src/generated/prisma/client';
-import type { WalletWebhookEvent } from '../../../../src/services/webhooks/types';
 import type {
   PinnedRequestOptions,
   PinnedResponse,
 } from '../../../../src/services/outboundNetwork/nativeRequest';
+import { makeDelivery, makeEndpoint, makeEvent } from './deliveryService.fixtures';
 
 const outboundTransport = vi.hoisted(() => ({
   actual: null as ((options: PinnedRequestOptions) => Promise<PinnedResponse>) | null,
@@ -16,8 +15,10 @@ const outboundTransport = vi.hoisted(() => ({
 }));
 
 const mockCreateDelivery = vi.fn();
+const mockClaimDeliveryAttempt = vi.fn();
 const mockDnsLookup = vi.fn();
 const mockFindDeliveryById = vi.fn();
+const mockListDueDeliveries = vi.fn();
 const mockListEndpoints = vi.fn();
 const mockMarkDeliveryDead = vi.fn();
 const mockMarkDeliveryFailed = vi.fn();
@@ -29,8 +30,10 @@ const realFetch = globalThis.fetch;
 
 vi.mock('../../../../src/repositories', () => ({
   webhookRepository: {
+    claimDeliveryAttempt: mockClaimDeliveryAttempt,
     createDelivery: mockCreateDelivery,
     findDeliveryById: mockFindDeliveryById,
+    listDueDeliveries: mockListDueDeliveries,
     listEndpoints: mockListEndpoints,
     markDeliveryDead: mockMarkDeliveryDead,
     markDeliveryFailed: mockMarkDeliveryFailed,
@@ -65,6 +68,9 @@ describe('webhook delivery service', () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    mockClaimDeliveryAttempt.mockImplementation(
+      async () => mockFindDeliveryById.mock.results.at(-1)?.value,
+    );
     delete process.env.WEBHOOK_ALLOWED_HOSTS;
     delete process.env.WEBHOOK_ALLOW_HTTP;
     delete process.env.WEBHOOK_ALLOWED_CIDRS;
@@ -105,6 +111,23 @@ describe('webhook delivery service', () => {
     await expect(sendWebhookDelivery('dead')).resolves.toEqual({ success: true });
   });
 
+  it('does not send when another worker owns the expected attempt', async () => {
+    const { sendWebhookDelivery } = await import('../../../../src/services/webhooks/deliveryService');
+    mockFindDeliveryById.mockResolvedValueOnce(makeDelivery({
+      attemptCount: 1,
+      nextAttemptAt: new Date('2026-05-22T00:00:00.000Z'),
+      endpoint: makeEndpoint(),
+    }));
+    mockClaimDeliveryAttempt.mockResolvedValueOnce(null);
+
+    await expect(sendWebhookDelivery('delivery-1', 2)).resolves.toEqual({
+      success: true,
+    });
+
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(mockMarkDeliveryDelivered).not.toHaveBeenCalled();
+  });
+
   it('marks exhausted retry deliveries dead and wallet-logs the failure', async () => {
     const { sendWebhookDelivery } = await import('../../../../src/services/webhooks/deliveryService');
     const delivery = makeDelivery({ attemptCount: 1, endpoint: makeEndpoint({ maxAttempts: 2 }) });
@@ -112,7 +135,7 @@ describe('webhook delivery service', () => {
     mockMarkDeliveryDead.mockImplementationOnce(async input => ({
       ...delivery,
       status: 'dead',
-      attemptCount: input.attemptCount,
+      attemptCount: input.expectedAttempt,
       lastError: input.error,
     }));
 
@@ -121,7 +144,7 @@ describe('webhook delivery service', () => {
     expect(result.success).toBe(false);
     expect(mockMarkDeliveryDead).toHaveBeenCalledWith(expect.objectContaining({
       deliveryId: delivery.id,
-      attemptCount: 2,
+      expectedAttempt: 2,
       error: 'network timeout',
     }));
     expect(mockWalletLog).toHaveBeenCalledWith(
@@ -153,7 +176,7 @@ describe('webhook delivery service', () => {
     mockMarkDeliveryDead.mockImplementationOnce(async input => ({
       ...delivery,
       status: 'dead',
-      attemptCount: input.attemptCount,
+      attemptCount: input.expectedAttempt,
       lastError: input.error,
     }));
 
@@ -165,7 +188,7 @@ describe('webhook delivery service', () => {
     });
     expect(mockMarkDeliveryDead).toHaveBeenCalledWith(expect.objectContaining({
       deliveryId: delivery.id,
-      attemptCount: 1,
+      expectedAttempt: 1,
       requestBodyHash: expect.stringMatching(/^[a-f0-9]{64}$/),
     }));
     expect(outboundTransport.request).toHaveBeenCalledWith(expect.objectContaining({
@@ -208,7 +231,7 @@ describe('webhook delivery service', () => {
     mockMarkDeliveryDead.mockImplementationOnce(async input => ({
       ...delivery,
       status: 'dead',
-      attemptCount: input.attemptCount,
+      attemptCount: input.expectedAttempt,
       lastError: input.error,
     }));
 
@@ -219,7 +242,8 @@ describe('webhook delivery service', () => {
     expect(mockMarkDeliveryDead).toHaveBeenCalledWith({
       deliveryId: delivery.id,
       error: 'Webhook URL must use HTTPS unless explicitly allowlisted',
-      attemptCount: 1,
+      expectedAttempt: 1,
+      leaseToken: expect.any(String),
     });
   });
 
@@ -234,7 +258,7 @@ describe('webhook delivery service', () => {
     mockMarkDeliveryDead.mockImplementationOnce(async input => ({
       ...delivery,
       status: 'dead',
-      attemptCount: input.attemptCount,
+      attemptCount: input.expectedAttempt,
       lastError: input.error,
     }));
 
@@ -267,7 +291,7 @@ describe('webhook delivery service', () => {
       mockMarkDeliveryFailed.mockImplementationOnce(async input => ({
         ...delivery,
         status: 'failed',
-        attemptCount: input.attemptCount,
+        attemptCount: input.expectedAttempt,
         lastError: input.error,
       }));
       mockQueueWebhookDeliveryNotification.mockResolvedValueOnce(true);
@@ -280,6 +304,119 @@ describe('webhook delivery service', () => {
 
     expect(mockMarkDeliveryFailed).toHaveBeenCalledTimes(statuses.length);
     expect(mockQueueWebhookDeliveryNotification).toHaveBeenCalledTimes(statuses.length);
+  });
+
+  it('keeps a retry durably due when delayed enqueue returns false', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-22T00:00:00.000Z'));
+    const { sendWebhookDelivery } = await import('../../../../src/services/webhooks/deliveryService');
+    const delivery = makeDelivery({
+      attemptCount: 0,
+      nextAttemptAt: new Date('2026-05-22T00:00:00.000Z'),
+      endpoint: makeEndpoint({
+        maxAttempts: 3,
+        retryConfig: { initialDelayMs: 10_000, maxDelayMs: 10_000, backoffMultiplier: 2 },
+        url: 'https://93.184.216.34/webhook',
+      }),
+    });
+    mockFindDeliveryById.mockResolvedValueOnce(delivery);
+    mockClaimDeliveryAttempt.mockResolvedValueOnce(delivery);
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('network timeout'));
+    mockMarkDeliveryFailed.mockResolvedValueOnce(delivery);
+    mockQueueWebhookDeliveryNotification.mockResolvedValueOnce(false);
+
+    await expect(sendWebhookDelivery(delivery.id, 1)).resolves.toEqual({
+      success: false,
+      error: 'network timeout',
+    });
+
+    expect(mockMarkDeliveryFailed).toHaveBeenCalledWith(expect.objectContaining({
+      deliveryId: delivery.id,
+      expectedAttempt: 1,
+      nextAttemptAt: new Date('2026-05-22T00:00:10.000Z'),
+      leaseToken: expect.any(String),
+    }));
+    expect(mockQueueWebhookDeliveryNotification).toHaveBeenCalledWith(
+      { deliveryId: delivery.id, attempt: 2 },
+      { delayMs: 10_000 },
+    );
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-enqueues due rows without changing their eligibility first', async () => {
+    const { recoverDueWebhookDeliveries } = await import('../../../../src/services/webhooks/deliveryService');
+    mockListDueDeliveries.mockResolvedValueOnce([
+      makeDelivery({ id: 'due-1', attemptCount: 1, endpoint: makeEndpoint() }),
+      makeDelivery({ id: 'due-2', attemptCount: 3, endpoint: makeEndpoint() }),
+    ]);
+    mockQueueWebhookDeliveryNotification
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
+    await expect(recoverDueWebhookDeliveries(20)).resolves.toEqual({
+      selected: 2,
+      queued: 1,
+      failed: 1,
+    });
+
+    expect(mockListDueDeliveries).toHaveBeenCalledWith(expect.any(Date), 20);
+    expect(mockQueueWebhookDeliveryNotification).toHaveBeenNthCalledWith(1, {
+      deliveryId: 'due-1',
+      attempt: 2,
+    });
+    expect(mockQueueWebhookDeliveryNotification).toHaveBeenNthCalledWith(2, {
+      deliveryId: 'due-2',
+      attempt: 4,
+    });
+    expect(mockClaimDeliveryAttempt).not.toHaveBeenCalled();
+  });
+
+  it('bounds invalid webhook recovery batch sizes', async () => {
+    const { recoverDueWebhookDeliveries } = await import('../../../../src/services/webhooks/deliveryService');
+    mockListDueDeliveries.mockResolvedValue([]);
+
+    await recoverDueWebhookDeliveries(0);
+    await recoverDueWebhookDeliveries(900);
+    await recoverDueWebhookDeliveries(Number.NaN);
+
+    expect(mockListDueDeliveries).toHaveBeenNthCalledWith(1, expect.any(Date), 1);
+    expect(mockListDueDeliveries).toHaveBeenNthCalledWith(2, expect.any(Date), 500);
+    expect(mockListDueDeliveries).toHaveBeenNthCalledWith(3, expect.any(Date), 100);
+  });
+
+  it('does not enqueue a retry after stale ownership loses the failure transition', async () => {
+    const { sendWebhookDelivery } = await import('../../../../src/services/webhooks/deliveryService');
+    const delivery = makeDelivery({
+      nextAttemptAt: new Date('2026-05-22T00:00:00.000Z'),
+      endpoint: makeEndpoint({ maxAttempts: 3, url: 'https://93.184.216.34/webhook' }),
+    });
+    mockFindDeliveryById.mockResolvedValueOnce(delivery);
+    mockClaimDeliveryAttempt.mockResolvedValueOnce(delivery);
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('network timeout'));
+    mockMarkDeliveryFailed.mockResolvedValueOnce(null);
+
+    await expect(sendWebhookDelivery(delivery.id, 1)).resolves.toEqual({
+      success: false,
+      error: 'network timeout',
+    });
+    expect(mockQueueWebhookDeliveryNotification).not.toHaveBeenCalled();
+  });
+
+  it('does not publish terminal failure state after stale ownership loses the dead transition', async () => {
+    const { sendWebhookDelivery } = await import('../../../../src/services/webhooks/deliveryService');
+    const delivery = makeDelivery({
+      nextAttemptAt: new Date('2026-05-22T00:00:00.000Z'),
+      endpoint: makeEndpoint({ maxAttempts: 1 }),
+    });
+    mockFindDeliveryById.mockResolvedValueOnce(delivery);
+    mockClaimDeliveryAttempt.mockResolvedValueOnce(delivery);
+    mockMarkDeliveryDead.mockResolvedValueOnce(null);
+
+    await expect(sendWebhookDelivery(delivery.id, 1)).resolves.toEqual({
+      success: false,
+      error: 'network timeout',
+    });
+    expect(mockWalletLog).not.toHaveBeenCalled();
   });
 
   it('replays an existing delivery row without minting a new event id', async () => {
@@ -339,7 +476,7 @@ describe('webhook delivery service', () => {
     mockMarkDeliveryDelivered.mockImplementationOnce(async (_deliveryId, input) => ({
       ...makeDelivery({ id: 'delivery-inline', endpoint: matchingEndpoint }),
       status: 'delivered',
-      attemptCount: input.attemptCount,
+      attemptCount: input.expectedAttempt,
       lastStatusCode: input.statusCode,
     }));
 
@@ -412,7 +549,7 @@ describe('webhook delivery service', () => {
       mockMarkDeliveryDelivered.mockImplementationOnce(async (_deliveryId, input) => ({
         ...delivery,
         status: 'delivered',
-        attemptCount: input.attemptCount,
+        attemptCount: input.expectedAttempt,
         lastStatusCode: input.statusCode,
         requestBodyHash: input.requestBodyHash,
         requestHeadersRedacted: input.requestHeadersRedacted,
@@ -435,7 +572,7 @@ describe('webhook delivery service', () => {
       expect(request.body).toContain('"eventId":"event-1"');
       expect(request.body).not.toContain('shared-secret');
       expect(mockMarkDeliveryDelivered).toHaveBeenCalledWith(delivery.id, expect.objectContaining({
-        attemptCount: 1,
+        expectedAttempt: 1,
         statusCode: 202,
         requestHeadersRedacted: expect.objectContaining({
           'x-webhook-signature': '[REDACTED]',
@@ -476,7 +613,7 @@ describe('webhook delivery service', () => {
       mockMarkDeliveryDelivered.mockImplementationOnce(async (_deliveryId, input) => ({
         ...delivery,
         status: 'delivered',
-        attemptCount: input.attemptCount,
+        attemptCount: input.expectedAttempt,
         lastStatusCode: input.statusCode,
       }));
 
@@ -509,10 +646,10 @@ describe('webhook delivery service', () => {
     });
     const delivery = makeDelivery({ endpoint });
     mockFindDeliveryById.mockResolvedValueOnce(delivery);
-    mockMarkDeliveryDead.mockImplementationOnce(async input => ({
+    mockMarkDeliveryFailed.mockImplementationOnce(async input => ({
       ...delivery,
       status: 'dead',
-      attemptCount: input.attemptCount,
+      attemptCount: input.expectedAttempt,
       lastError: input.error,
     }));
 
@@ -522,7 +659,7 @@ describe('webhook delivery service', () => {
     expect(result.success).toBe(false);
     expect(mockMarkDeliveryFailed).toHaveBeenCalledWith(expect.objectContaining({
       deliveryId: delivery.id,
-      attemptCount: 1,
+      expectedAttempt: 1,
     }));
     expect(mockQueueWebhookDeliveryNotification).toHaveBeenCalledWith(
       { deliveryId: delivery.id, attempt: 2 },
@@ -543,7 +680,7 @@ describe('webhook delivery service', () => {
     mockMarkDeliveryFailed.mockImplementationOnce(async input => ({
       ...delivery,
       status: 'failed',
-      attemptCount: input.attemptCount,
+      attemptCount: input.expectedAttempt,
       lastError: input.error,
     }));
     mockQueueWebhookDeliveryNotification.mockResolvedValue(true);
@@ -573,13 +710,13 @@ describe('webhook delivery service', () => {
     mockMarkDeliveryFailed.mockImplementationOnce(async input => ({
       ...delivery,
       status: 'failed',
-      attemptCount: input.attemptCount,
+      attemptCount: input.expectedAttempt,
       lastError: input.error,
     }));
     mockMarkDeliveryDead.mockImplementationOnce(async input => ({
       ...delivery,
       status: 'dead',
-      attemptCount: input.attemptCount,
+      attemptCount: input.expectedAttempt,
       lastError: input.error,
     }));
     mockQueueWebhookDeliveryNotification.mockResolvedValue(true);
@@ -624,7 +761,7 @@ describe('webhook delivery service', () => {
     mockMarkDeliveryDead.mockImplementationOnce(async input => ({
       ...delivery,
       status: 'dead',
-      attemptCount: input.attemptCount,
+      attemptCount: input.expectedAttempt,
       lastError: input.error,
     }));
 
@@ -692,7 +829,7 @@ describe('webhook delivery service', () => {
       mockMarkDeliveryFailed.mockImplementationOnce(async input => ({
         ...delivery,
         status: 'failed',
-        attemptCount: input.attemptCount,
+        attemptCount: input.expectedAttempt,
         lastError: input.error,
       }));
       mockQueueWebhookDeliveryNotification.mockResolvedValue(true);
@@ -709,7 +846,7 @@ describe('webhook delivery service', () => {
       });
       expect(mockMarkDeliveryFailed).toHaveBeenCalledWith(expect.objectContaining({
         deliveryId: delivery.id,
-        attemptCount: 1,
+        expectedAttempt: 1,
         error: 'Webhook request timeout',
       }));
     } finally {
@@ -761,94 +898,6 @@ describe('webhook delivery service', () => {
     expect(mockQueueWebhookDeliveryNotification).toHaveBeenCalledTimes(3);
   });
 });
-
-function makeEndpoint(overrides: Partial<WebhookEndpoint> = {}): WebhookEndpoint {
-  return {
-    id: 'endpoint-1',
-    walletId: 'wallet-1',
-    name: 'Endpoint',
-    enabled: true,
-    url: 'https://93.184.216.34/webhook',
-    eventTypes: ['wallet.transaction.received'],
-    filters: null,
-    payloadProfile: 'sanctuary_wallet_event_v1',
-    authType: 'none',
-    secretEncrypted: null,
-    headerConfig: null,
-    profileConfig: null,
-    retryConfig: null,
-    maxAttempts: 5,
-    failureNotificationEnabled: true,
-    createdByUserId: 'user-1',
-    lastDeliveryStatus: null,
-    lastDeliveredAt: null,
-    lastError: null,
-    createdAt: new Date('2026-05-22T00:00:00Z'),
-    updatedAt: new Date('2026-05-22T00:00:00Z'),
-    ...overrides,
-  };
-}
-
-function makeDelivery(
-  overrides: Partial<WebhookDelivery> & { endpoint: WebhookEndpoint },
-): WebhookDelivery & { endpoint: WebhookEndpoint } {
-  return {
-    id: 'delivery-1',
-    endpointId: overrides.endpoint.id,
-    walletId: 'wallet-1',
-    eventId: 'event-1',
-    eventType: 'wallet.transaction.received',
-    payloadProfile: 'sanctuary_wallet_event_v1',
-    targetUrl: overrides.endpoint.url,
-    eventPayload: {
-      schemaVersion: 'v1',
-      eventId: 'event-1',
-      eventType: 'wallet.transaction.received',
-      occurredAt: '2026-05-22T10:00:00.000Z',
-      wallet: { id: 'wallet-1', name: 'Treasury', network: 'mainnet' },
-      transaction: { txid: 'tx-1', type: 'received', amountSats: '1' },
-      source: { service: 'sanctuary', dispatchPath: 'test' },
-    },
-    requestBody: null,
-    requestBodyHash: null,
-    requestHeadersRedacted: null,
-    status: 'failed',
-    attemptCount: 0,
-    nextAttemptAt: null,
-    lastAttemptAt: null,
-    deliveredAt: null,
-    lastStatusCode: null,
-    lastError: null,
-    responseBodyHash: null,
-    createdAt: new Date('2026-05-22T00:00:00Z'),
-    updatedAt: new Date('2026-05-22T00:00:00Z'),
-    ...overrides,
-  };
-}
-
-function makeEvent(overrides: Partial<WalletWebhookEvent> = {}): WalletWebhookEvent {
-  return {
-    schemaVersion: 'v1',
-    eventId: 'event-1',
-    eventType: 'wallet.transaction.received',
-    occurredAt: '2026-05-22T10:00:00.000Z',
-    wallet: { id: 'wallet-1', name: 'Treasury', network: 'mainnet' },
-    transaction: {
-      txid: 'tx-1',
-      type: 'received',
-      amountSats: '1',
-      feeSats: null,
-      confirmations: 1,
-      blockHeight: null,
-      blockTime: null,
-      memo: null,
-      label: null,
-      counterpartyAddress: null,
-    },
-    source: { service: 'sanctuary', dispatchPath: 'test' },
-    ...overrides,
-  };
-}
 
 async function allocateClosedPort(): Promise<number> {
   const server = http.createServer();

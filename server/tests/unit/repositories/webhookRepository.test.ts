@@ -4,7 +4,9 @@ import { Prisma } from '../../../src/generated/prisma/client';
 const { mockTx } = vi.hoisted(() => ({
   mockTx: {
     webhookDelivery: {
+      findUniqueOrThrow: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     webhookEndpoint: {
       update: vi.fn(),
@@ -20,6 +22,7 @@ vi.mock('../../../src/models/prisma', () => ({
       findMany: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       upsert: vi.fn(),
     },
     webhookEndpoint: {
@@ -297,13 +300,79 @@ describe('webhookRepository', () => {
       data: expect.objectContaining({
         status: 'pending',
         attemptCount: 0,
+        attemptLeaseToken: null,
+        attemptLeaseExpiresAt: null,
         lastAttemptAt: null,
       }),
     });
   });
 
+  it('lists only due unleased or expired-lease deliveries in stable batches', async () => {
+    const now = new Date('2026-05-22T02:00:00.000Z');
+    (prisma.webhookDelivery.findMany as Mock).mockResolvedValueOnce([makeDelivery()]);
+
+    await webhookRepository.listDueDeliveries(now, 25);
+
+    expect(prisma.webhookDelivery.findMany).toHaveBeenCalledWith({
+      where: {
+        status: { in: ['pending', 'failed'] },
+        nextAttemptAt: { lte: now },
+        OR: [
+          { attemptLeaseExpiresAt: null },
+          { attemptLeaseExpiresAt: { lte: now } },
+        ],
+      },
+      orderBy: [{ nextAttemptAt: 'asc' }, { id: 'asc' }],
+      take: 25,
+    });
+  });
+
+  it('atomically claims only the expected due attempt and returns its endpoint', async () => {
+    const now = new Date('2026-05-22T02:00:00.000Z');
+    const leaseExpiresAt = new Date('2026-05-22T02:02:00.000Z');
+    const claimed = { ...makeDelivery(), endpoint: makeEndpoint() };
+    mockTx.webhookDelivery.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    mockTx.webhookDelivery.findUniqueOrThrow.mockResolvedValueOnce(claimed);
+
+    await expect(webhookRepository.claimDeliveryAttempt({
+      deliveryId: 'delivery-1',
+      expectedAttempt: 2,
+      leaseToken: 'lease-1',
+      now,
+      leaseExpiresAt,
+    })).resolves.toEqual(claimed);
+    await expect(webhookRepository.claimDeliveryAttempt({
+      deliveryId: 'delivery-1',
+      expectedAttempt: 2,
+      leaseToken: 'lease-2',
+      now,
+      leaseExpiresAt,
+    })).resolves.toBeNull();
+
+    expect(mockTx.webhookDelivery.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: 'delivery-1',
+        status: { in: ['pending', 'failed'] },
+        attemptCount: 1,
+        nextAttemptAt: { lte: now },
+        OR: [
+          { attemptLeaseExpiresAt: null },
+          { attemptLeaseExpiresAt: { lte: now } },
+        ],
+      },
+      data: {
+        attemptLeaseToken: 'lease-1',
+        attemptLeaseExpiresAt: leaseExpiresAt,
+      },
+    });
+    expect(mockTx.webhookDelivery.findUniqueOrThrow).toHaveBeenCalledTimes(1);
+  });
+
   it('marks deliveries delivered, failed, and dead while updating endpoint health', async () => {
-    mockTx.webhookDelivery.update
+    mockTx.webhookDelivery.updateMany.mockResolvedValue({ count: 1 });
+    mockTx.webhookDelivery.findUniqueOrThrow
       .mockResolvedValueOnce(makeDelivery({ status: 'delivered' }))
       .mockResolvedValueOnce(makeDelivery({ status: 'delivered' }))
       .mockResolvedValueOnce(makeDelivery({ status: 'failed' }))
@@ -312,7 +381,8 @@ describe('webhookRepository', () => {
     mockTx.webhookEndpoint.update.mockResolvedValue(makeEndpoint());
 
     await webhookRepository.markDeliveryDelivered('delivery-1', {
-      attemptCount: 1,
+      expectedAttempt: 1,
+      leaseToken: 'lease-1',
       statusCode: 204,
       requestBody: { id: 'event-1' },
       requestBodyHash: 'a'.repeat(64),
@@ -320,21 +390,24 @@ describe('webhookRepository', () => {
       responseBodyHash: null,
     });
     await webhookRepository.markDeliveryDelivered('delivery-2', {
-      attemptCount: 1,
+      expectedAttempt: 1,
+      leaseToken: 'lease-2',
       statusCode: 200,
       requestBody: { id: 'event-2' },
       requestBodyHash: 'd'.repeat(64),
     });
     await webhookRepository.markDeliveryFailed({
       deliveryId: 'delivery-1',
-      attemptCount: 2,
+      expectedAttempt: 2,
+      leaseToken: 'lease-3',
       statusCode: null,
       error: 'network timeout',
       nextAttemptAt: new Date('2026-05-22T03:00:00.000Z'),
     });
     await webhookRepository.markDeliveryDead({
       deliveryId: 'delivery-1',
-      attemptCount: 5,
+      expectedAttempt: 5,
+      leaseToken: 'lease-4',
       statusCode: 503,
       error: 'Webhook endpoint returned HTTP 503',
       requestBody: { id: 'event-1' },
@@ -344,40 +417,42 @@ describe('webhookRepository', () => {
     });
     await webhookRepository.markDeliveryDead({
       deliveryId: 'delivery-2',
-      attemptCount: 1,
+      expectedAttempt: 1,
+      leaseToken: 'lease-5',
       error: 'policy blocked',
     });
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(5);
-    expect(mockTx.webhookDelivery.update).toHaveBeenNthCalledWith(1, expect.objectContaining({
+    expect(mockTx.webhookDelivery.updateMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: expect.objectContaining({ attemptCount: 0, attemptLeaseToken: 'lease-1' }),
       data: expect.objectContaining({
         status: 'delivered',
         nextAttemptAt: null,
+        attemptLeaseToken: null,
         responseBodyHash: null,
       }),
     }));
-    expect(mockTx.webhookDelivery.update).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    expect(mockTx.webhookDelivery.updateMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
       data: expect.objectContaining({
         status: 'delivered',
         requestHeadersRedacted: undefined,
       }),
     }));
-    expect(mockTx.webhookDelivery.update).toHaveBeenNthCalledWith(3, expect.objectContaining({
+    expect(mockTx.webhookDelivery.updateMany).toHaveBeenNthCalledWith(3, expect.objectContaining({
       data: expect.objectContaining({
         status: 'failed',
         lastStatusCode: null,
         requestBody: undefined,
       }),
     }));
-    expect(mockTx.webhookDelivery.update).toHaveBeenNthCalledWith(4, expect.objectContaining({
-      include: { endpoint: true },
+    expect(mockTx.webhookDelivery.updateMany).toHaveBeenNthCalledWith(4, expect.objectContaining({
       data: expect.objectContaining({
         status: 'dead',
         lastStatusCode: 503,
         requestHeadersRedacted: undefined,
       }),
     }));
-    expect(mockTx.webhookDelivery.update).toHaveBeenNthCalledWith(5, expect.objectContaining({
+    expect(mockTx.webhookDelivery.updateMany).toHaveBeenNthCalledWith(5, expect.objectContaining({
       data: expect.objectContaining({
         status: 'dead',
         lastStatusCode: null,
@@ -389,6 +464,34 @@ describe('webhookRepository', () => {
     expect(mockTx.webhookEndpoint.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ lastDeliveryStatus: 'dead' }),
     }));
+  });
+
+  it('rejects stale lease tokens without changing delivery or endpoint state', async () => {
+    mockTx.webhookDelivery.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(webhookRepository.markDeliveryDelivered('delivery-1', {
+      expectedAttempt: 2,
+      leaseToken: 'stale-1',
+      statusCode: 204,
+      requestBody: { id: 'event-1' },
+      requestBodyHash: 'a'.repeat(64),
+    })).resolves.toBeNull();
+    await expect(webhookRepository.markDeliveryFailed({
+      deliveryId: 'delivery-1',
+      expectedAttempt: 2,
+      leaseToken: 'stale-2',
+      error: 'network timeout',
+      nextAttemptAt: new Date('2026-05-22T03:00:00.000Z'),
+    })).resolves.toBeNull();
+    await expect(webhookRepository.markDeliveryDead({
+      deliveryId: 'delivery-1',
+      expectedAttempt: 2,
+      leaseToken: 'stale-3',
+      error: 'policy blocked',
+    })).resolves.toBeNull();
+
+    expect(mockTx.webhookDelivery.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(mockTx.webhookEndpoint.update).not.toHaveBeenCalled();
   });
 });
 
@@ -434,6 +537,8 @@ function makeDelivery(overrides: Record<string, unknown> = {}) {
     requestHeadersRedacted: null,
     status: 'pending',
     attemptCount: 0,
+    attemptLeaseToken: null,
+    attemptLeaseExpiresAt: null,
     nextAttemptAt: null,
     lastAttemptAt: null,
     deliveredAt: null,

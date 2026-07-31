@@ -124,6 +124,10 @@ export interface WebhookDeliveryJobData {
   attempt?: number;
 }
 
+export interface WebhookRecoveryJobData {
+  batchSize?: number;
+}
+
 /**
  * Sync job results
  */

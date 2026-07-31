@@ -4,7 +4,6 @@ import {
   WorkerJobQueue,
   type WorkerJobQueueAccessor,
 } from "./workerJobQueueTestHarness";
-import { toBullMqJobId } from "../../../../src/jobs/bullMqJobIds";
 
 export const registerWorkerJobQueueRecurringContracts = (
   getQueue: WorkerJobQueueAccessor,
@@ -19,51 +18,93 @@ export const registerWorkerJobQueueRecurringContracts = (
     it("should schedule a recurring job", async () => {
       await queue.initialize();
 
-      const job = await queue.scheduleRecurring(
+      const result = await queue.scheduleRecurring(
         "sync",
         "check-stale",
         {},
         "*/5 * * * *",
       );
 
-      expect(job).toBeDefined();
+      expect(result.status).toBe("created");
     });
 
     it("returns null when scheduling on missing queue", async () => {
       await queue.initialize();
 
-      const job = await queue.scheduleRecurring(
+      const result = await queue.scheduleRecurring(
         "missing",
         "check-stale",
         {},
         "*/5 * * * *",
       );
 
-      expect(job).toBeNull();
+      expect(result).toEqual(
+        expect.objectContaining({ status: "failed", error: expect.any(String) }),
+      );
     });
 
     it("should return early (idempotent) when exact jobId already exists", async () => {
       await queue.initialize();
       const syncQueue = (queue as any).queues.get("sync").queue;
 
-      syncQueue.getRepeatableJobs.mockResolvedValueOnce([
+      syncQueue.getJobSchedulers.mockResolvedValueOnce([
         {
           name: "check-stale",
-          id: toBullMqJobId("repeat:sync:check-stale:*/5 * * * *"),
-          key: "key-1",
+          key: "sync:check-stale",
+          pattern: "*/5 * * * *",
+          template: { data: {} },
         },
       ]);
 
-      const job = await queue.scheduleRecurring(
+      const result = await queue.scheduleRecurring(
         "sync",
         "check-stale",
         {},
         "*/5 * * * *",
       );
 
-      expect(job).toBeNull();
+      expect(result.status).toBe("unchanged");
       expect(syncQueue.removeRepeatableByKey).not.toHaveBeenCalled();
-      expect(syncQueue.add).not.toHaveBeenCalled();
+      expect(syncQueue.upsertJobScheduler).not.toHaveBeenCalled();
+    });
+
+    it("treats an exact scheduler without template data as empty data", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      syncQueue.getJobSchedulers.mockResolvedValueOnce([
+        {
+          name: "check-stale",
+          key: "sync:check-stale",
+          pattern: "*/5 * * * *",
+        },
+      ]);
+
+      await expect(
+        queue.scheduleRecurring("sync", "check-stale", {}, "*/5 * * * *"),
+      ).resolves.toEqual({ status: "unchanged" });
+      expect(syncQueue.upsertJobScheduler).not.toHaveBeenCalled();
+    });
+
+    it("removes an obsolete scheduler without double-removing its represented repeatable", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      syncQueue.getJobSchedulers.mockResolvedValueOnce([
+        {
+          name: "check-stale",
+          key: "legacy-key",
+          pattern: "*/10 * * * *",
+          template: { data: {} },
+        },
+      ]);
+      syncQueue.getRepeatableJobs.mockResolvedValueOnce([
+        { name: "check-stale", key: "legacy-key" },
+      ]);
+
+      await expect(
+        queue.scheduleRecurring("sync", "check-stale", {}, "*/5 * * * *"),
+      ).resolves.toEqual({ status: "created" });
+      expect(syncQueue.removeJobScheduler).toHaveBeenCalledWith("legacy-key");
+      expect(syncQueue.removeRepeatableByKey).not.toHaveBeenCalled();
     });
 
     it("removes legacy repeatables that used unsafe custom job IDs", async () => {
@@ -78,7 +119,7 @@ export const registerWorkerJobQueueRecurringContracts = (
         },
       ]);
 
-      const job = await queue.scheduleRecurring(
+      const result = await queue.scheduleRecurring(
         "sync",
         "check-stale",
         {},
@@ -88,13 +129,11 @@ export const registerWorkerJobQueueRecurringContracts = (
       expect(syncQueue.removeRepeatableByKey).toHaveBeenCalledWith(
         "legacy-key",
       );
-      expect(job).toBeDefined();
-      expect(syncQueue.add).toHaveBeenCalledWith(
-        "check-stale",
-        {},
-        expect.objectContaining({
-          jobId: toBullMqJobId("repeat:sync:check-stale:*/5 * * * *"),
-        }),
+      expect(result.status).toBe("created");
+      expect(syncQueue.upsertJobScheduler).toHaveBeenCalledWith(
+        "sync:check-stale",
+        { pattern: "*/5 * * * *" },
+        expect.objectContaining({ name: "check-stale", data: {} }),
       );
     });
 
@@ -111,7 +150,7 @@ export const registerWorkerJobQueueRecurringContracts = (
         },
       ]);
 
-      const job = await queue.scheduleRecurring(
+      const result = await queue.scheduleRecurring(
         "sync",
         "check-stale",
         {},
@@ -119,8 +158,8 @@ export const registerWorkerJobQueueRecurringContracts = (
       );
 
       expect(syncQueue.removeRepeatableByKey).toHaveBeenCalledWith("old-key");
-      expect(job).toBeDefined();
-      expect(syncQueue.add).toHaveBeenCalled();
+      expect(result.status).toBe("created");
+      expect(syncQueue.upsertJobScheduler).toHaveBeenCalled();
     });
 
     it("should not remove repeatables belonging to a different job name", async () => {
@@ -135,7 +174,7 @@ export const registerWorkerJobQueueRecurringContracts = (
         },
       ]);
 
-      const job = await queue.scheduleRecurring(
+      const result = await queue.scheduleRecurring(
         "sync",
         "check-stale",
         {},
@@ -143,7 +182,7 @@ export const registerWorkerJobQueueRecurringContracts = (
       );
 
       expect(syncQueue.removeRepeatableByKey).not.toHaveBeenCalled();
-      expect(job).toBeDefined();
+      expect(result.status).toBe("created");
     });
 
     it("should remove multiple stale repeatables for the same job name", async () => {
@@ -163,7 +202,7 @@ export const registerWorkerJobQueueRecurringContracts = (
         },
       ]);
 
-      const job = await queue.scheduleRecurring(
+      const result = await queue.scheduleRecurring(
         "sync",
         "check-stale",
         {},
@@ -173,7 +212,151 @@ export const registerWorkerJobQueueRecurringContracts = (
       expect(syncQueue.removeRepeatableByKey).toHaveBeenCalledTimes(2);
       expect(syncQueue.removeRepeatableByKey).toHaveBeenCalledWith("stale-1");
       expect(syncQueue.removeRepeatableByKey).toHaveBeenCalledWith("stale-2");
-      expect(job).toBeDefined();
+      expect(result.status).toBe("created");
+    });
+
+    it("keeps a stale schedule when replacement creation fails", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      syncQueue.getRepeatableJobs.mockResolvedValueOnce([
+        { name: "check-stale", key: "old-key", pattern: "*/10 * * * *" },
+      ]);
+      syncQueue.upsertJobScheduler.mockRejectedValueOnce(new Error("Redis error"));
+
+      const result = await queue.scheduleRecurring(
+        "sync",
+        "check-stale",
+        {},
+        "*/5 * * * *",
+      );
+
+      expect(result.status).toBe("failed");
+      expect(syncQueue.removeRepeatableByKey).not.toHaveBeenCalled();
+    });
+
+    it("inspects required schedules and reports missing or duplicate definitions", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      syncQueue.getJobSchedulers.mockResolvedValueOnce([
+        { name: "check-stale", key: "sync:check-stale", pattern: "*/5 * * * *" },
+        { name: "check-stale", key: "legacy-key", pattern: "*/10 * * * *" },
+      ]);
+
+      const health = await queue.inspectRecurringSchedules([
+        {
+          schedulerId: "sync:check-stale",
+          queue: "sync",
+          name: "check-stale",
+          data: {},
+          cron: "*/5 * * * *",
+        },
+        {
+          schedulerId: "sync:missing",
+          queue: "sync",
+          name: "missing",
+          data: {},
+          cron: "* * * * *",
+        },
+      ]);
+
+      expect(health).toEqual({
+        healthy: false,
+        missing: ["sync:missing"],
+        mismatched: ["sync:check-stale"],
+        unexpected: [],
+        inspectionFailures: [],
+      });
+    });
+
+    it("reports missing queues and inspection failures, then recognizes an exact healthy set", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      const syncDefinition = {
+        schedulerId: "sync:check-stale",
+        queue: "sync",
+        name: "check-stale",
+        data: {},
+        cron: "*/5 * * * *",
+      };
+      const missingDefinition = {
+        schedulerId: "missing:check-stale",
+        queue: "missing",
+        name: "check-stale",
+        data: {},
+        cron: "*/5 * * * *",
+      };
+      syncQueue.getJobSchedulers.mockRejectedValueOnce(
+        new Error("Redis unavailable"),
+      );
+
+      await expect(
+        queue.inspectRecurringSchedules([syncDefinition, missingDefinition]),
+      ).resolves.toEqual({
+        healthy: false,
+        missing: ["sync:check-stale", "missing:check-stale"],
+        mismatched: [],
+        unexpected: [],
+        inspectionFailures: ["sync"],
+      });
+
+      syncQueue.getJobSchedulers.mockResolvedValueOnce([
+        {
+          name: "check-stale",
+          key: "sync:check-stale",
+          pattern: "*/5 * * * *",
+          template: { data: {} },
+        },
+      ]);
+      await expect(
+        queue.inspectRecurringSchedules([syncDefinition]),
+      ).resolves.toEqual({
+        healthy: true,
+        missing: [],
+        mismatched: [],
+        unexpected: [],
+        inspectionFailures: [],
+      });
+    });
+
+    it("reports forbidden conditional schedules as unexpected", async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get("sync").queue;
+      const forbidden = {
+        schedulerId: "sync:conditional",
+        queue: "sync",
+        name: "conditional",
+        data: {},
+        cron: "*/5 * * * *",
+      };
+      syncQueue.getJobSchedulers.mockResolvedValueOnce([
+        {
+          name: "conditional",
+          key: "sync:conditional",
+          pattern: "*/5 * * * *",
+          template: { data: {} },
+        },
+      ]);
+
+      await expect(
+        queue.inspectRecurringSchedules([], [forbidden]),
+      ).resolves.toEqual({
+        healthy: false,
+        missing: [],
+        mismatched: [],
+        unexpected: ["sync:conditional"],
+        inspectionFailures: [],
+      });
+
+      syncQueue.getJobSchedulers.mockResolvedValueOnce([]);
+      await expect(
+        queue.inspectRecurringSchedules([], [forbidden]),
+      ).resolves.toEqual({
+        healthy: true,
+        missing: [],
+        mismatched: [],
+        unexpected: [],
+        inspectionFailures: [],
+      });
     });
   });
 
@@ -206,7 +389,11 @@ export const registerWorkerJobQueueRecurringContracts = (
       await queue.initialize();
 
       // Should not throw
-      await queue.removeRecurring("nonexistent", "some-job");
+      await expect(
+        queue.removeRecurring("nonexistent", "some-job"),
+      ).resolves.toEqual(
+        expect.objectContaining({ status: "failed" }),
+      );
     });
 
     it("should purge waiting and delayed jobs when purgeQueued is true", async () => {
@@ -248,8 +435,12 @@ export const registerWorkerJobQueueRecurringContracts = (
 
       syncQueue.getRepeatableJobs.mockRejectedValue(new Error("Redis error"));
 
-      // Should not throw
-      await queue.removeRecurring("sync", "check-stale");
+      await expect(
+        queue.removeRecurring("sync", "check-stale"),
+      ).resolves.toEqual({
+        status: "failed",
+        error: "Redis error",
+      });
     });
   });
 };

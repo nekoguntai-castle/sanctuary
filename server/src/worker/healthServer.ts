@@ -27,6 +27,7 @@ export interface HealthCheckProvider {
     redis: boolean;
     electrum: boolean;
     jobQueue: boolean;
+    recurringSchedules?: boolean;
     database?: boolean;
   }>;
   getMetrics?(): Promise<{
@@ -53,6 +54,15 @@ export interface HealthCheckProvider {
       networks: Record<string, { connected: boolean; lastBlockHeight: number }>;
     };
     jobCompletions?: Record<string, number>;
+    recurringSchedules?: {
+      healthy: boolean;
+      missing: string[];
+      mismatched: string[];
+      stale: string[];
+      unexpected: string[];
+      inspectionFailures: string[];
+      reconciliationFailed: boolean;
+    };
   }>;
 }
 
@@ -97,7 +107,11 @@ async function writeHealthResponse(
   healthProvider: HealthCheckProvider,
 ): Promise<void> {
   const health = await healthProvider.getHealth();
-  const isHealthy = health.redis && health.electrum && health.jobQueue;
+  const isHealthy =
+    health.redis &&
+    health.electrum &&
+    health.jobQueue &&
+    health.recurringSchedules !== false;
 
   writeJson(res, isHealthy ? 200 : 503, {
     status: isHealthy ? "healthy" : "degraded",
@@ -111,7 +125,10 @@ async function writeReadyResponse(
   healthProvider: HealthCheckProvider,
 ): Promise<void> {
   const health = await healthProvider.getHealth();
-  const isReady = health.redis && health.jobQueue;
+  const isReady =
+    health.redis &&
+    health.jobQueue &&
+    health.recurringSchedules !== false;
   writeText(res, isReady ? 200 : 503, isReady ? "ready" : "not ready");
 }
 

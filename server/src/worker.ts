@@ -40,6 +40,12 @@ import { ElectrumSubscriptionManager, type BitcoinNetwork } from './worker/elect
 import { startHealthServer, type HealthServerHandle } from './worker/healthServer';
 import { registerWorkerJobs } from './worker/jobs';
 import { featureFlagService } from './services/featureFlagService';
+import {
+  RECURRING_SCHEDULE_RECONCILIATION_INTERVAL_MS,
+  RecurringScheduleCoordinator,
+  inspectRecurringScheduleHealth,
+  type RecurringScheduleHealth,
+} from './worker/recurringSchedules';
 
 const log = createLogger('WORKER');
 
@@ -51,9 +57,12 @@ let jobQueue: WorkerJobQueue | null = null;
 let electrumManager: ElectrumSubscriptionManager | null = null;
 let healthServer: HealthServerHandle | null = null;
 let reconciliationTimer: NodeJS.Timeout | null = null;
+let scheduleReconciliationTimer: NodeJS.Timeout | null = null;
 let metricsTimer: NodeJS.Timeout | null = null;
 let isShuttingDown = false;
 let shutdownExitCode: 0 | 1 = 0;
+let recurringScheduleCoordinator: RecurringScheduleCoordinator | null = null;
+let workerStartedAt = 0;
 
 // Reconciliation interval - clean up stale subscriptions every 15 minutes
 const RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
@@ -104,26 +113,27 @@ async function startWorker(): Promise<void> {
 
   // Initialize feature flag service (requires Redis + Prisma, both ready at this point)
   await featureFlagService.initialize();
+  recurringScheduleCoordinator = new RecurringScheduleCoordinator(
+    jobQueue,
+    config,
+    async () => ({
+      autopilotEnabled: await featureFlagService.isEnabled('treasuryAutopilot'),
+      intelligenceEnabled: await featureFlagService.isEnabled(
+        'treasuryIntelligence',
+      ),
+    }),
+  );
 
   // Subscribe to feature flag changes for dynamic job scheduling
   const bus = getDistributedEventBus();
-  bus.on('system:featureFlag.changed', async ({ key, enabled }) => {
+  bus.on('system:featureFlag.changed', async ({ key }) => {
     if (!jobQueue) return;
 
-    if (key === 'treasuryAutopilot') {
-      if (enabled) {
-        await scheduleAutopilotJobs();
-      } else {
-        await removeAutopilotJobs();
-      }
-    }
-
-    if (key === 'treasuryIntelligence') {
-      if (enabled) {
-        await scheduleIntelligenceJobs();
-      } else {
-        await removeIntelligenceJobs();
-      }
+    if (
+      key === 'treasuryAutopilot' ||
+      key === 'treasuryIntelligence'
+    ) {
+      await reconcileApplicableRecurringSchedules(false);
     }
   });
 
@@ -135,43 +145,32 @@ async function startWorker(): Promise<void> {
   });
   await electrumManager.start();
 
-  // Start health server
+  workerStartedAt = Date.now();
+  setupStaleWalletHandler();
+  await reconcileApplicableRecurringSchedules(true);
+
+  // Start health server only after required schedules are present.
   const healthPort = parseInt(process.env.WORKER_HEALTH_PORT || '3002', 10);
-  const workerStartedAt = Date.now();
   const workerHostname = os.hostname();
   healthServer = startHealthServer({
     port: healthPort,
     healthProvider: {
       getHealth: async () => {
-        const syncIntervalMs = config.sync.intervalMs;
-        const staleThresholdMs = syncIntervalMs * 2;
-        const startupGraceMs = syncIntervalMs + 30_000; // Allow for startup delay + first run
-
-        let jobQueueHealthy = jobQueue?.isHealthy() ?? false;
-
-        // After the startup grace period, check that check-stale-wallets
-        // has completed within 2x its expected interval
-        if (jobQueueHealthy && Date.now() - workerStartedAt > startupGraceMs) {
-          const completions = jobQueue?.getJobCompletionTimes() ?? {};
-          const lastStaleCheck = completions['sync:check-stale-wallets'];
-          if (lastStaleCheck !== undefined && Date.now() - lastStaleCheck > staleThresholdMs) {
-            log.warn('check-stale-wallets job is stale', {
-              lastCompletedAgo: `${Math.round((Date.now() - lastStaleCheck) / 1000)}s`,
-              threshold: `${Math.round(staleThresholdMs / 1000)}s`,
-            });
-            jobQueueHealthy = false;
-          }
-        }
+        const scheduleHealth = await getRecurringScheduleHealth();
+        const jobQueueHealthy =
+          (jobQueue?.isHealthy() ?? false) && scheduleHealth.healthy;
 
         return {
           redis: isRedisConnected(),
           electrum: electrumManager?.isConnected() ?? false,
           jobQueue: jobQueueHealthy,
+          recurringSchedules: scheduleHealth.healthy,
         };
       },
       getMetrics: async () => {
         const queueHealth = await jobQueue?.getHealth();
         const electrumMetrics = electrumManager?.getHealthMetrics();
+        const scheduleHealth = await getRecurringScheduleHealth();
 
         return {
           worker: {
@@ -189,6 +188,7 @@ async function startWorker(): Promise<void> {
             networks: electrumMetrics?.networks ?? {},
           },
           jobCompletions: jobQueue?.getJobCompletionTimes() ?? {},
+          recurringSchedules: scheduleHealth,
         };
       },
     },
@@ -210,8 +210,7 @@ async function startWorker(): Promise<void> {
     }
   }, 15_000);
 
-  // Schedule recurring jobs
-  await scheduleRecurringJobs();
+  startScheduleReconciliationTimer();
 
   // Start periodic reconciliation of subscriptions
   // This cleans up addresses from deleted wallets and subscribes to new ones
@@ -314,130 +313,7 @@ function handleAddressActivity(network: BitcoinNetwork, walletId: string, addres
 // =============================================================================
 
 async function scheduleRecurringJobs(): Promise<void> {
-  if (!jobQueue) return;
-
-  const config = getConfig();
-
-  // Check for stale wallets every 5 minutes
-  // Use config sync interval converted to cron
-  const syncIntervalMs = config.sync.intervalMs;
-  const syncIntervalMinutes = Math.max(1, Math.floor(syncIntervalMs / 60000));
-
-  await jobQueue.scheduleRecurring(
-    'sync',
-    'check-stale-wallets',
-    {},
-    `*/${syncIntervalMinutes} * * * *` // Every N minutes
-  );
-
-  // Update confirmations every 2 minutes
-  const confirmationIntervalMs = config.sync.confirmationUpdateIntervalMs;
-  const confirmationIntervalMinutes = Math.max(1, Math.floor(confirmationIntervalMs / 60000));
-
-  await jobQueue.scheduleRecurring(
-    'confirmations',
-    'update-all-confirmations',
-    {},
-    `*/${confirmationIntervalMinutes} * * * *` // Every N minutes
-  );
-
-  log.info('Recurring jobs scheduled', {
-    staleCheckInterval: `${syncIntervalMinutes}m`,
-    confirmationUpdateInterval: `${confirmationIntervalMinutes}m`,
-  });
-
-  // Maintenance jobs (cron-based)
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'cleanup:expired-drafts',
-    {},
-    '0 * * * *' // Hourly
-  );
-
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'cleanup:expired-transfers',
-    {},
-    '30 * * * *' // Hourly, 30 minutes past
-  );
-
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'cleanup:audit-logs',
-    { retentionDays: config.maintenance.auditLogRetentionDays },
-    '0 2 * * *' // Daily 2 AM
-  );
-
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'cleanup:price-data',
-    { retentionDays: config.maintenance.priceDataRetentionDays },
-    '0 3 * * *' // Daily 3 AM
-  );
-
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'cleanup:fee-estimates',
-    { retentionDays: config.maintenance.feeEstimateRetentionDays },
-    '0 4 * * *' // Daily 4 AM
-  );
-
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'persist:price-fees',
-    {},
-    '* * * * *' // Every minute
-  );
-
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'cleanup:expired-tokens',
-    {},
-    '0 5 * * *' // Daily 5 AM
-  );
-
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'maintenance:weekly-vacuum',
-    {},
-    '0 3 * * 0' // Sunday 3 AM
-  );
-
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'maintenance:monthly-cleanup',
-    {},
-    '0 4 1 * *' // 1st of month 4 AM
-  );
-
-  // Scheduled backup - daily at 1 AM (before cleanup jobs)
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'backup:scheduled',
-    { retentionCount: 7 },
-    '0 1 * * *' // Daily 1 AM
-  );
-
-  // Treasury Autopilot jobs (behind feature flag — uses DB-backed service for runtime toggling)
-  const autopilotEnabled = await featureFlagService.isEnabled('treasuryAutopilot');
-  if (autopilotEnabled) {
-    await scheduleAutopilotJobs();
-  } else {
-    // Ensure no stale autopilot jobs remain from a previous run where the flag was enabled
-    await removeAutopilotJobs();
-  }
-
-  // Treasury Intelligence jobs (behind feature flag)
-  const intelligenceEnabled = await featureFlagService.isEnabled('treasuryIntelligence');
-  if (intelligenceEnabled) {
-    await scheduleIntelligenceJobs();
-  } else {
-    await removeIntelligenceJobs();
-  }
-
-  // Set up job result handler for stale wallet check
-  // This queues individual sync jobs for each stale wallet
-  setupStaleWalletHandler();
+  await reconcileApplicableRecurringSchedules(false);
 }
 
 // Test-only hook to exercise recurring job scheduling guard branches.
@@ -445,74 +321,64 @@ export async function __testOnlyScheduleRecurringJobs(): Promise<void> {
   await scheduleRecurringJobs();
 }
 
-/**
- * Schedule Treasury Autopilot recurring jobs
- */
-async function scheduleAutopilotJobs(): Promise<void> {
-  if (!jobQueue) return;
+async function reconcileApplicableRecurringSchedules(
+  failStartup: boolean,
+): Promise<void> {
+  if (!recurringScheduleCoordinator) return;
+  const result = await recurringScheduleCoordinator.reconcile();
+  if (result.healthy) return;
 
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'autopilot:record-fees',
-    {},
-    '*/10 * * * *' // Every 10 minutes
-  );
-
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'autopilot:evaluate',
-    {},
-    '5/10 * * * *' // Every 10 minutes, offset by 5
-  );
-
-  log.info('Treasury Autopilot jobs scheduled');
+  const failed = [
+    ...failedScheduleIds(result.results),
+    ...failedScheduleIds(result.removals),
+  ];
+  if (failStartup) {
+    throw new Error(`Required recurring schedule reconciliation failed: ${failed.join(', ')}`);
+  }
+  log.error('Recurring schedule reconciliation failed', { failed });
 }
 
-/**
- * Remove Treasury Autopilot recurring jobs and purge queued instances
- */
-async function removeAutopilotJobs(): Promise<void> {
-  if (!jobQueue) return;
-
-  await jobQueue.removeRecurring('maintenance', 'autopilot:record-fees', { purgeQueued: true });
-  await jobQueue.removeRecurring('maintenance', 'autopilot:evaluate', { purgeQueued: true });
-
-  log.info('Treasury Autopilot jobs removed');
+function failedScheduleIds(
+  results: Record<string, { status: string }>,
+): string[] {
+  return Object.entries(results)
+    .filter(([, result]) => result.status === 'failed')
+    .map(([schedulerId]) => schedulerId);
 }
 
-/**
- * Schedule Treasury Intelligence recurring jobs
- */
-async function scheduleIntelligenceJobs(): Promise<void> {
-  if (!jobQueue) return;
-
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'intelligence:analyze',
-    {},
-    '*/30 * * * *' // Every 30 minutes
+async function getRecurringScheduleHealth(): Promise<RecurringScheduleHealth> {
+  if (!jobQueue || !recurringScheduleCoordinator) {
+    return {
+      healthy: false,
+      missing: [],
+      mismatched: [],
+      stale: [],
+      unexpected: [],
+      inspectionFailures: [],
+      reconciliationFailed: true,
+    };
+  }
+  const state = recurringScheduleCoordinator.getState();
+  return inspectRecurringScheduleHealth(
+    jobQueue,
+    state.desired,
+    jobQueue.getJobCompletionTimes(),
+    workerStartedAt,
+    Date.now(),
+    state.forbidden,
+    state.reconciliationHealthy,
   );
-
-  await jobQueue.scheduleRecurring(
-    'maintenance',
-    'intelligence:cleanup',
-    {},
-    '0 6 * * *' // Daily at 6 AM
-  );
-
-  log.info('Treasury Intelligence jobs scheduled');
 }
 
-/**
- * Remove Treasury Intelligence recurring jobs and purge queued instances
- */
-async function removeIntelligenceJobs(): Promise<void> {
-  if (!jobQueue) return;
-
-  await jobQueue.removeRecurring('maintenance', 'intelligence:analyze', { purgeQueued: true });
-  await jobQueue.removeRecurring('maintenance', 'intelligence:cleanup', { purgeQueued: true });
-
-  log.info('Treasury Intelligence jobs removed');
+function startScheduleReconciliationTimer(): void {
+  scheduleReconciliationTimer = setInterval(() => {
+    if (isShuttingDown) return;
+    void reconcileApplicableRecurringSchedules(false).catch((error) => {
+      log.error('Recurring schedule reconciliation failed', {
+        error: getErrorMessage(error),
+      });
+    });
+  }, RECURRING_SCHEDULE_RECONCILIATION_INTERVAL_MS);
 }
 
 /**
@@ -574,6 +440,10 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
   if (reconciliationTimer) {
     clearInterval(reconciliationTimer);
     reconciliationTimer = null;
+  }
+  if (scheduleReconciliationTimer) {
+    clearInterval(scheduleReconciliationTimer);
+    scheduleReconciliationTimer = null;
   }
   if (metricsTimer) {
     clearInterval(metricsTimer);

@@ -4,7 +4,6 @@ import {
   queueToDlqCategory,
   type WorkerJobQueueAccessor,
 } from "./workerJobQueueTestHarness";
-import { toBullMqJobId } from "../../../../src/jobs/bullMqJobIds";
 
 export const registerWorkerJobQueueInternalBranchContracts = (
   getQueue: WorkerJobQueueAccessor,
@@ -27,22 +26,26 @@ export const registerWorkerJobQueueInternalBranchContracts = (
       queue.addBulkJobs("sync", [{ name: "bulk", data: {} }]),
     ).resolves.toEqual([]);
 
-    syncQueue.getRepeatableJobs.mockResolvedValueOnce([
+    syncQueue.getJobSchedulers.mockResolvedValueOnce([
       {
         name: "repeat-job",
-        id: toBullMqJobId("repeat:sync:repeat-job:*/5 * * * *"),
+        key: "sync:repeat-job",
+        pattern: "*/5 * * * *",
+        template: { data: {} },
       },
     ]);
     await expect(
       queue.scheduleRecurring("sync", "repeat-job", {}, "*/5 * * * *"),
-    ).resolves.toBeNull();
+    ).resolves.toEqual({ status: "unchanged" });
 
     syncQueue.getRepeatableJobs.mockRejectedValueOnce(
       new Error("repeat failed"),
     );
     await expect(
       queue.scheduleRecurring("sync", "repeat-job", {}, "*/5 * * * *"),
-    ).resolves.toBeNull();
+    ).resolves.toEqual(
+      expect.objectContaining({ status: "failed", error: "repeat failed" }),
+    );
   });
 
   it("reports unhealthy queue metrics when queue stats fail", async () => {

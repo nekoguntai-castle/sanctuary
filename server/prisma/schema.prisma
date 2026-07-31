@@ -912,6 +912,8 @@ model WebhookDelivery {
   status        String    @default("pending") // pending, delivered, failed, dead
   attemptCount  Int       @default(0)
   nextAttemptAt DateTime?
+  attemptLeaseToken String?
+  attemptLeaseExpiresAt DateTime?
   lastAttemptAt DateTime?
   deliveredAt   DateTime?
 

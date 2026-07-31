@@ -147,6 +147,28 @@ describe('Worker Health Server', () => {
     expect(res.body).toBe('not ready');
   });
 
+  it('degrades health and readiness when required recurring schedules are absent', async () => {
+    startHealthServer({
+      port: 3018,
+      healthProvider: {
+        getHealth: async () => ({
+          redis: true,
+          electrum: true,
+          jobQueue: true,
+          recurringSchedules: false,
+        }),
+      },
+    });
+
+    const healthRes = makeRes();
+    await capturedHandler?.({ url: '/health' }, healthRes);
+    expect(healthRes.statusCode).toBe(503);
+
+    const readyRes = makeRes();
+    await capturedHandler?.({ url: '/ready' }, readyRes);
+    expect(readyRes.statusCode).toBe(503);
+  });
+
   it('responds with readiness success', async () => {
     startHealthServer({
       port: 3008,

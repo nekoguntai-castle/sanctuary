@@ -40,8 +40,15 @@ export const createWorkerTestHarness = async (
     initialize: vi.fn(async () => undefined),
     addJob: vi.fn(async () => undefined),
     addBulkJobs: vi.fn(async () => []),
-    scheduleRecurring: vi.fn(async () => undefined),
-    removeRecurring: vi.fn(async () => undefined),
+    scheduleRecurring: vi.fn(async () => ({ status: 'created' })),
+    inspectRecurringSchedules: vi.fn(async () => ({
+      healthy: true,
+      missing: [],
+      mismatched: [],
+      unexpected: [],
+      inspectionFailures: [],
+    })),
+    removeRecurring: vi.fn(async () => ({ status: 'absent' })),
     getRegisteredJobs: vi.fn(() => ['test-job']),
     getHealth: vi.fn(async () => ({ queues: {} })),
     isHealthy: vi.fn(() => true),
@@ -182,7 +189,10 @@ export const createWorkerTestHarness = async (
 
   const waitForInit = async () => {
     for (let i = 0; i < 50; i += 1) {
-      if (jobQueueInstance.initialize.mock.calls.length > 0) {
+      if (
+        jobQueueInstance.initialize.mock.calls.length > 0 &&
+        jobQueueInstance.addJob.mock.calls.length > 0
+      ) {
         return;
       }
       await new Promise((resolve) => setImmediate(resolve));
@@ -190,7 +200,10 @@ export const createWorkerTestHarness = async (
   };
 
   await waitForInit();
-  if (jobQueueInstance.initialize.mock.calls.length === 0) {
+  if (
+    jobQueueInstance.initialize.mock.calls.length === 0 ||
+    jobQueueInstance.addJob.mock.calls.length === 0
+  ) {
     const exitCalls = exitSpy.mock.calls.map((call) => call[0]);
     const logInfo = errorLogs.length ? ` logs: ${errorLogs.join(' | ')}` : '';
     throw new Error(
