@@ -130,6 +130,12 @@ case "$1" in
     ;;
   image)
     if [ "${2:-}" = "inspect" ]; then
+      image="${@: -1}"
+      case "$image" in
+        sanctuary-*) repo_digests='[]' ;;
+        *) repo_digests='["example.invalid/test@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]' ;;
+      esac
+      printf '[{"Id":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Os":"linux","Architecture":"amd64","RepoDigests":%s}]\n' "$repo_digests"
       exit 0
     fi
     ;;
@@ -255,6 +261,7 @@ test_create_bundle_unsigned_core_dev_archive_shape() {
   if [ "$failures" -eq 0 ]; then
     list="$(tar -tzf "$output")" || failures=1
     assert_contains "$list" "./manifest.env" "bundle should include manifest.env" || failures=1
+    assert_contains "$list" "./image-inventory.json" "bundle should include immutable image inventory" || failures=1
     assert_contains "$list" "./install-offline.sh" "bundle should include bootstrap installer" || failures=1
     assert_contains "$list" "./tools/create-upgrade-backup.sh" "bundle should include backup helper" || failures=1
     assert_contains "$list" "./images/core/sanctuary-backend-local.tar" "bundle should include backend image" || failures=1

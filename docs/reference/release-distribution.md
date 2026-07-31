@@ -37,6 +37,9 @@ GITHUB_RELEASE_TOKEN=...
 
 Use separate credentials:
 
+- `FORGEJO_TOKEN` is repository-scoped with `write:repository`; it needs Release
+  attachment access but no package, Actions, organization, or administrator
+  scope.
 - `GITHUB_RELEASE_TOKEN` is repository-scoped with Contents write and
   Administration read. Administration read is used only to fail closed unless
   GitHub Actions is still disabled.
@@ -57,10 +60,36 @@ matching tag or Release object when reconciliation is needed.
    npm run release:publish -- v0.8.57 --dry-run
    ```
 
-5. Publish the stable release:
+5. Prepare the complete signed release asset set outside the checkout. The
+   output directory must be new and empty:
+
+   ```bash
+   npm run release:prepare-assets -- \
+     --tag v0.8.57 \
+     --output-dir /secure/release-assets/v0.8.57 \
+     --signing-key /secure/sanctuary-offline-release-private.pem \
+     --public-key scripts/offline/keys/sanctuary-offline-release-public.pem \
+     --run-id operator-20260731-01
+   ```
+
+6. Publish the stable Release objects:
 
    ```bash
    npm run release:publish -- v0.8.57
+   ```
+
+7. Attach and byte-verify the exact signed asset inventory on both providers:
+
+   ```bash
+   COMMIT="$(git rev-parse 'v0.8.57^{commit}')"
+   npm run release:publish-assets -- \
+     --tag v0.8.57 \
+     --commit "$COMMIT" \
+     --asset-dir /secure/release-assets/v0.8.57 \
+     --manifest /secure/release-assets/v0.8.57/release-manifest.json \
+     --public-key scripts/offline/keys/sanctuary-offline-release-public.pem \
+     --config ~/.config/sanctuary/forge-tokens.env \
+     --receipt /secure/release-receipts/v0.8.57.json
    ```
 
 The command fails closed unless the local tag, Forgejo tag commit, and exact
@@ -75,9 +104,16 @@ A failed or partial run is safe to repeat: tags are immutable, an existing
 matching tag is reused, and release creation is idempotent. Stop rather than
 rewriting a tag or silently accepting a mismatched Release object.
 
-Signed offline bundles are a separate distribution artifact. Build, sign,
-attach, and verify them using the offline-bundle runbook; their images are local
-bundle contents, not registry dependencies.
+The asset publisher requires both matching Release objects to exist. It refuses
+unlisted local files, unexpected or duplicate remote assets, symlinks, nested
+paths, tag/commit drift, and same-name content conflicts. It never deletes or
+overwrites an asset. A failed run is convergent: rerun it after investigating;
+already-published bytes are downloaded and hashed before reuse. Signed checksums
+are uploaded after payload evidence, and `release-manifest.json` is uploaded last
+as the completion marker.
+
+Use `--dry-run` on `release:publish-assets` only after matching Release objects
+exist. It performs the complete local and remote preflight with no asset uploads.
 
 ## Publication gates
 
@@ -88,8 +124,8 @@ Before calling a release complete, confirm:
 - Forgejo and GitHub expose the matching Release object.
 - The GitHub source installer resolves the published stable tag and builds the
   main Compose stack locally.
-- Signed/checksummed offline assets pass the offline verification contract when
-  they are included in the release.
+- The signed/checksummed offline asset set is present on both providers, every
+  byte matches, and the publication receipt identifies both provider releases.
 
 Never rewrite an already published stable tag. Stop and investigate any ref or
 digest mismatch.

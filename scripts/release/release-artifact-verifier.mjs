@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { validateStrictImages } from './release-image-evidence.mjs';
@@ -46,7 +47,7 @@ export function verifyReleaseArtifacts(inputOptions = {}) {
 
   validateManifestIdentity(manifest, errors);
   const artifacts = validateArtifactList(manifest, errors);
-  const context = { ...options, releaseTag: manifest.release?.tag ?? '' };
+  const context = { ...options, releaseTag: manifest.release?.tag ?? '', release: manifest.release };
   const checksumCoverage = collectChecksumCoverage(artifacts, context, errors);
   const localRefs = [];
 
@@ -147,6 +148,8 @@ function validateArtifact(artifact, context, errors, localRefs) {
   }
   if (artifact.type === 'offline-bundle') {
     requireString(artifact.platform, `${label}.platform`, errors, /^linux\/(?:amd64|arm64)$/);
+    if (artifact.sbom) validateOfflineSbom(artifact, context, errors);
+    if (artifact.provenance) validateOfflineProvenance(artifact, context.release, context, errors);
   }
 }
 
@@ -333,6 +336,52 @@ function validateStrictStableArtifact(artifact, errors) {
   if (artifact.type === 'offline-bundle') {
     requireLocalEvidence(artifact.sbom, `${label}.sbom`, errors);
     requireLocalEvidence(artifact.provenance, `${label}.provenance`, errors);
+  }
+}
+
+function validateOfflineSbom(artifact, context, errors) {
+  const evidence = readEvidenceJson(artifact.sbom, `${artifactLabel(artifact)}.sbom`, context, errors);
+  if (!evidence) return;
+  if (evidence.spdxVersion !== 'SPDX-2.3' || evidence.SPDXID !== 'SPDXRef-DOCUMENT') {
+    errors.push(`${artifactLabel(artifact)}.sbom must be an SPDX 2.3 document`);
+  }
+  const matchesSubject = evidence.packages?.some((entry) => entry.name === artifact.path
+    && entry.checksums?.some((checksum) => checksum.algorithm === 'SHA256' && checksum.checksumValue === artifact.sha256));
+  if (!matchesSubject) {
+    errors.push(`${artifactLabel(artifact)}.sbom must bind the offline bundle name and sha256`);
+  }
+  if (!evidence.packages?.some((entry) => entry.name === artifact.path && entry.filesAnalyzed === true)
+    || !Array.isArray(evidence.files) || evidence.files.length === 0
+    || evidence.files.some((entry) => !entry.fileName
+      || !entry.checksums?.some((checksum) => checksum.algorithm === 'SHA256' && SHA256_RE.test(checksum.checksumValue ?? '')))) {
+    errors.push(`${artifactLabel(artifact)}.sbom must inventory bundle payload files with SHA256 checksums`);
+  }
+}
+
+function validateOfflineProvenance(artifact, release, context, errors) {
+  const evidence = readEvidenceJson(artifact.provenance, `${artifactLabel(artifact)}.provenance`, context, errors);
+  if (!evidence) return;
+  const subjectMatches = evidence._type === 'https://in-toto.io/Statement/v1'
+    && evidence.predicateType === 'https://slsa.dev/provenance/v1'
+    && evidence.subject?.some((entry) => entry.name === artifact.path && entry.digest?.sha256 === artifact.sha256);
+  const parameters = evidence.predicate?.buildDefinition?.externalParameters;
+  if (!subjectMatches) {
+    errors.push(`${artifactLabel(artifact)}.provenance must bind the offline bundle name and sha256`);
+  }
+  if (parameters?.tag !== release?.tag || parameters?.commit !== release?.commit || parameters?.platform !== artifact.platform) {
+    errors.push(`${artifactLabel(artifact)}.provenance must bind the release tag, commit, and platform`);
+  }
+}
+
+function readEvidenceJson(reference, label, context, errors) {
+  if (!reference?.path) return null;
+  const resolved = resolveLocalPath(reference.path, label, context, errors);
+  if (!resolved || !existsSync(resolved.resolved)) return null;
+  try {
+    return JSON.parse(readFileSync(resolved.resolved, 'utf8'));
+  } catch (error) {
+    errors.push(`${label} is not valid JSON: ${error.message}`);
+    return null;
   }
 }
 

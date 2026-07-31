@@ -52,8 +52,8 @@ function createCompleteFixture() {
 
   const localArtifacts = {
     bundle: writeFixtureFile(dir, 'sanctuary-offline-v1.2.3-linux-amd64.tar.gz', 'offline bundle\n'),
-    bundleSbom: writeFixtureFile(dir, 'sanctuary-offline-v1.2.3-linux-amd64.spdx.json', '{"sbom":"bundle"}\n'),
-    bundleProvenance: writeFixtureFile(dir, 'sanctuary-offline-v1.2.3-linux-amd64.provenance.json', '{"builder":"offline"}\n'),
+    bundleSbom: null,
+    bundleProvenance: null,
     source: writeFixtureFile(dir, 'sanctuary-v1.2.3-source.tar.gz', 'source archive\n'),
     installScript: writeFixtureFile(dir, 'install.sh', '#!/usr/bin/env bash\n'),
     releaseNotes: writeFixtureFile(dir, 'release-notes.md', '# v1.2.3\n'),
@@ -62,6 +62,23 @@ function createCompleteFixture() {
     backendSbom: writeFixtureFile(dir, 'backend.spdx.json', '{"sbom":"backend"}\n'),
     backendProvenance: writeFixtureFile(dir, 'backend.provenance.json', '{"builder":"backend"}\n'),
   };
+
+  localArtifacts.bundleSbom = writeFixtureFile(dir, 'sanctuary-offline-v1.2.3-linux-amd64.spdx.json', `${JSON.stringify({
+    spdxVersion: 'SPDX-2.3',
+    SPDXID: 'SPDXRef-DOCUMENT',
+    packages: [{
+      name: localArtifacts.bundle.path,
+      filesAnalyzed: true,
+      checksums: [{ algorithm: 'SHA256', checksumValue: localArtifacts.bundle.sha256 }],
+    }],
+    files: [{ fileName: 'manifest.json', checksums: [{ algorithm: 'SHA256', checksumValue: '1'.repeat(64) }] }],
+  })}\n`);
+  localArtifacts.bundleProvenance = writeFixtureFile(dir, 'sanctuary-offline-v1.2.3-linux-amd64.provenance.json', `${JSON.stringify({
+    _type: 'https://in-toto.io/Statement/v1',
+    subject: [{ name: localArtifacts.bundle.path, digest: { sha256: localArtifacts.bundle.sha256 } }],
+    predicateType: 'https://slsa.dev/provenance/v1',
+    predicate: { buildDefinition: { externalParameters: { tag: 'v1.2.3', commit: GOOD_COMMIT, platform: 'linux/amd64' } } },
+  })}\n`);
 
   const checksum = writeChecksums(dir, Object.values(localArtifacts));
   signFile(path.join(dir, checksum.path), path.join(dir, 'SHA256SUMS.sig'), privateKey);

@@ -68,7 +68,7 @@ instead of turned into a promise.
 | Import file, QR, descriptor, and hardware-account inputs | Malformed or wrong-network wallet state is accepted | Shared descriptor/xpub domain validation rejects private keys, wrong networks, malformed multisig data, unsupported branches, and duplicates |
 | Backup export and restore | Sensitive data leaks or restore destroys current state | Backup docs warn that backups are sensitive; restore validates and requires explicit destructive confirmation; restored MCP keys are forced revoked and provider credentials are disabled |
 | LLM egress proxy, model provider, Console, and MCP | LLM sees secrets or performs wallet-changing actions | AI/MCP tools are read-only, scoped at execution time, and exclude private keys, descriptors, xpubs, PSBTs, bearer tokens, and provider API keys |
-| Release pipeline to operator install | Operator installs compromised or unverifiable artifacts | Stable releases require manifest, signed checksums, local checksums, SBOM/provenance references, offline metadata, and image digests |
+| Release pipeline to operator install | Operator installs compromised or unverifiable artifacts | Stable releases require manifest, signed checksums, local checksums, subject-bound SBOM/provenance references, and offline metadata; registry image digests remain historical evidence only |
 | CI and quality gates | Safety regressions merge unnoticed | Required typecheck, coverage, lizard, mutation, audit, secret, SAST, release, and safety-catch gates; legacy catch debt is allowlisted and ratchetable |
 
 ## Fund-Moving Invariants

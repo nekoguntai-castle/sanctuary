@@ -98,7 +98,8 @@ git diff --check
 - Can a backup restore silently preserve bearer tokens, provider credentials, or
   MCP keys on a different instance?
 - Can an operator install a stable release without a manifest, signed checksum
-  file, checksum coverage, SBOM/provenance references, or image digests?
+  file, checksum coverage, subject-bound SBOM/provenance references, or offline
+  platform metadata?
 - Can physical hardware evidence contain secrets or mainnet funds?
 - Does any public claim exceed the evidence in [Release Gates](release-gates.md)?
 

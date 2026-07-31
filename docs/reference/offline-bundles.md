@@ -65,11 +65,24 @@ manifest is the operator-verifiable inventory for release trust: tag, commit,
 builder workflow, signed `SHA256SUMS`, local artifact hashes, SBOM/provenance
 references, and offline bundle metadata.
 
+The trusted operator assembles that set with `npm run release:prepare-assets`.
+The assembler accepts only the currently verified `linux/amd64` target, builds a
+full signed bundle, creates the source archive, installer, release notes, SPDX
+2.3 SBOM, subject-bound SLSA provenance, signed release-level checksums, and a
+detached signature for the release manifest, then runs strict local
+verification. Release signing keys remain operator-held and are never placed in
+Forgejo or GitHub CI.
+
 After downloading the manifest, `SHA256SUMS`, `SHA256SUMS.sig`, and the listed
 release assets into one directory, verify the local artifact set from a trusted
 checkout:
 
 ```bash
+openssl dgst -sha256 \
+  -verify scripts/offline/keys/sanctuary-offline-release-public.pem \
+  -signature /path/to/release-assets/release-manifest.json.sig \
+  /path/to/release-assets/release-manifest.json
+
 npm run release:verify-artifacts -- \
   --manifest /path/to/release-assets/release-manifest.json \
   --strict-stable \
@@ -88,6 +101,8 @@ Minimum manifest contract:
 - `builder.workflow` and `builder.runId`.
 - A `checksum-file` artifact for `SHA256SUMS` with an
   `openssl-rsa-sha256` detached signature.
+- A detached `release-manifest.json.sig` verified against the separately trusted
+  offline release key before trusting the manifest inventory.
 - Stable-release artifacts for the offline bundle, source archive, install
   script, and release notes.
 - Local artifact paths are relative to the manifest directory, must stay inside
@@ -167,6 +182,8 @@ newer signed offline bundle instead.
 
 ## Platform Scope
 
-The first target platform is `linux/amd64`. The bundle scripts accept
-`--platform linux/arm64`, but treat arm64 as verified only after release CI or a
-trusted operator has run the full create/apply path for that platform.
+The only release-verified target is currently `linux/amd64`. Low-level bundle
+scripts accept `--platform linux/arm64`, but the release assembler rejects it.
+Enable ARM64 release assembly only after a trusted operator has completed the
+full create, transfer, apply, startup, health, and upgrade path on a native ARM64
+host. Cross-building on AMD64 is not acceptance evidence.

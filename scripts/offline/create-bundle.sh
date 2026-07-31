@@ -213,6 +213,41 @@ save_images() {
   done < <(bundle_images)
 }
 
+write_image_inventory() {
+  local stage_dir="$1"
+  local expected_arch image inspection actual_platform
+  local inventory_lines="$CREATE_TMP_ROOT/image-inventory.jsonl"
+
+  case "$PLATFORM" in
+    linux/amd64) expected_arch="amd64" ;;
+    linux/arm64) expected_arch="arm64" ;;
+    *) offline_fail "unsupported image inventory platform: $PLATFORM" ;;
+  esac
+
+  : > "$inventory_lines"
+  while IFS= read -r image; do
+    [ -n "$image" ] || continue
+    inspection="$(docker image inspect "$image")" \
+      || offline_fail "could not inspect bundled image: $image"
+    actual_platform="$(printf '%s' "$inspection" | jq -r '.[0] | "\(.Os)/\(.Architecture)"')"
+    [ "$actual_platform" = "linux/$expected_arch" ] \
+      || offline_fail "bundled image $image has platform $actual_platform, expected $PLATFORM"
+
+    if [[ "$image" != sanctuary-* ]] \
+      && ! printf '%s' "$inspection" | jq -e '.[0].RepoDigests | type == "array" and length > 0' >/dev/null; then
+      offline_fail "external bundled image lacks immutable RepoDigests: $image"
+    fi
+
+    printf '%s' "$inspection" | jq -c --arg image "$image" \
+      '.[0] | {image: $image, id: .Id, os: .Os, architecture: .Architecture, repoDigests: (.RepoDigests // [])}' \
+      >> "$inventory_lines"
+  done < <(bundle_images)
+
+  jq -s --arg platform "$PLATFORM" \
+    '{schema: 1, platform: $platform, images: .}' "$inventory_lines" \
+    > "$stage_dir/image-inventory.json"
+}
+
 write_manifests() {
   local stage_dir="$1"
   local commit="$2"
@@ -463,6 +498,7 @@ main() {
   offline_require_tool docker
   offline_require_tool tar
   offline_require_tool sha256sum
+  offline_require_tool jq
 
   local commit version stage_dir
   commit="$(target_commit)"
@@ -479,6 +515,7 @@ main() {
   build_sanctuary_images
   pull_external_images
   save_images "$stage_dir"
+  write_image_inventory "$stage_dir"
   write_manifests "$stage_dir" "$commit" "$version"
   write_git_bundle "$stage_dir"
   copy_bootstrap_tools "$stage_dir"
