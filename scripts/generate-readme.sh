@@ -1,6 +1,6 @@
 #!/bin/bash
-# Generate platform-specific README from template
-# Usage: ./scripts/generate-readme.sh [github|gitlab]
+# Generate the canonical GitHub README from the template.
+# Usage: ./scripts/generate-readme.sh [github]
 
 set -e
 
@@ -16,31 +16,18 @@ if [[ ! -f "$TEMPLATE" ]]; then
     exit 1
 fi
 
-case "$PLATFORM" in
-    github)
-        REPO_URL="https://github.com/nekoguntai-castle/sanctuary"
-        CLONE_URL="https://github.com/nekoguntai-castle/sanctuary.git"
-        RAW_URL="https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main"
-        PLATFORM_NAME="GitHub"
-        ;;
-    gitlab)
-        REPO_URL="https://gitlab.com/narusegawa-nekoworks/sanctuary"
-        CLONE_URL="https://gitlab.com/narusegawa-nekoworks/sanctuary.git"
-        RAW_URL="https://gitlab.com/narusegawa-nekoworks/sanctuary/-/raw/main"
-        PLATFORM_NAME="GitLab"
-        ;;
-    *)
-        echo "Error: Unknown platform '$PLATFORM'. Use 'github' or 'gitlab'."
-        exit 1
-        ;;
-esac
+if [[ "$PLATFORM" != "github" ]]; then
+    echo "Error: Unknown platform '$PLATFORM'. GitHub is the only supported public distribution source." >&2
+    exit 1
+fi
 
-echo "Generating README for $PLATFORM_NAME..."
+CLONE_URL="https://github.com/nekoguntai-castle/sanctuary.git"
+RAW_URL="https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main"
 
-sed -e "s|{{REPO_URL}}|$REPO_URL|g" \
-    -e "s|{{CLONE_URL}}|$CLONE_URL|g" \
+echo "Generating README for GitHub..."
+
+sed -e "s|{{CLONE_URL}}|$CLONE_URL|g" \
     -e "s|{{RAW_URL}}|$RAW_URL|g" \
-    -e "s|{{PLATFORM}}|$PLATFORM_NAME|g" \
     "$TEMPLATE" > "$OUTPUT"
 
 echo "Generated: $OUTPUT"

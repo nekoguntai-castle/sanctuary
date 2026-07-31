@@ -30,6 +30,10 @@
   <a href="https://nekoguntai.dev/sanctuary/faq.html">FAQ</a>
 </p>
 
+> **Repository notice:** GitHub is a read-only public mirror. Development,
+> pull requests, code review, and CI run on the project's private local Forgejo
+> instance; GitHub Actions are intentionally disabled.
+
 ---
 
 > **🚧 EXPERIMENTAL SOFTWARE**
@@ -110,14 +114,14 @@
 **Option 1: One-liner** (downloads, clones, and installs automatically)
 
 ```bash
-curl -fsSL https://codeberg.org/nekoguntai-castle/sanctuary/raw/branch/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/install.sh | bash
 ```
 
 This installs the **latest release** to `~/sanctuary` by default. Set `SANCTUARY_DIR` to customize the location.
 
 **Option 2: Clone first** (if you want to choose the directory)
 ```bash
-git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
+git clone https://github.com/nekoguntai-castle/sanctuary.git
 cd sanctuary
 ./install.sh
 ```
@@ -130,7 +134,7 @@ Open **https://localhost:8443** and accept the certificate warning.
 <summary><strong>What the install script does</strong></summary>
 
 1. Checks for Docker and Git
-2. Fetches the latest release tag from Codeberg (override with `--source` if needed)
+2. Fetches the latest stable release tag from GitHub
 3. Clones the repository and checks out the release
 4. Delegates to `scripts/setup.sh` for configuration and startup
 5. Generates self-signed SSL certificates (for hardware wallet support)
@@ -184,7 +188,7 @@ After installation, follow these steps to set up your Sanctuary:
 
 ## Umbrel
 
-Running [Umbrel](https://umbrel.com/)? Install via the [`nekoguntai-castle/sanctuary-umbrel`](https://codeberg.org/nekoguntai-castle/sanctuary-umbrel) community app store. Note: Umbrel runs apps over HTTP, which limits WebUSB hardware-wallet support and QR camera scanning — see the [sanctuary-umbrel README](https://codeberg.org/nekoguntai-castle/sanctuary-umbrel#limitations-on-umbrel) for the full list of what works and what doesn't, plus the standalone HTTPS install if you need full functionality.
+Running [Umbrel](https://umbrel.com/)? Install via the [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) community app store. Note: Umbrel runs apps over HTTP, which limits WebUSB hardware-wallet support and QR camera scanning — see the [sanctuary-umbrel README](https://github.com/nekoguntai-castle/sanctuary-umbrel#limitations-on-umbrel) for the full list of what works and what doesn't, plus the standalone HTTPS install if you need full functionality.
 
 ---
 
@@ -404,7 +408,7 @@ If you prefer to run the commands yourself:
 
 ```bash
 # 1. Clone the repository
-git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
+git clone https://github.com/nekoguntai-castle/sanctuary.git
 cd sanctuary
 
 # 2. Run setup script (generates secrets, SSL certs, builds and starts services)
@@ -440,7 +444,7 @@ The setup script automatically:
 
 3. **Clone and run**
    ```powershell
-   git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
+   git clone https://github.com/nekoguntai-castle/sanctuary.git
    cd sanctuary
    wsl ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -464,7 +468,7 @@ For users who prefer not to use Docker Desktop:
 
 3. **Clone and run** (still in the Ubuntu/Linux terminal)
    ```bash
-   git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
+   git clone https://github.com/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -484,7 +488,7 @@ For users who prefer not to use Docker Desktop:
 
 2. **Clone and run**
    ```bash
-   git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
+   git clone https://github.com/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -505,7 +509,7 @@ For users who prefer a lighter-weight solution:
 
 3. **Clone and run**
    ```bash
-   git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
+   git clone https://github.com/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -540,7 +544,7 @@ For users who prefer a lighter-weight solution:
 
 2. **Clone and run**
    ```bash
-   git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
+   git clone https://github.com/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -560,7 +564,7 @@ For systems where you can't or don't want to run Docker:
 
 2. **Clone and run**
    ```bash
-   git clone https://codeberg.org/nekoguntai-castle/sanctuary.git
+   git clone https://github.com/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh --no-start  # Generates secrets and SSL certs (but don't start with docker)
    podman-compose up -d           # Use podman-compose instead
@@ -1016,18 +1020,18 @@ Each event can have its own sound from 20 built-in presets (chime, bell, coin, z
 
 ## Upgrading
 
-The easiest way to upgrade is to re-run the install script. It detects which forge your existing clone uses, fetches the latest release from there, and installs it:
+The easiest way to upgrade is to re-run the install script. It updates an
+existing clone to the canonical GitHub remote, fetches the latest stable release,
+and installs it:
 
 ```bash
 cd ~/sanctuary
-./install.sh                       # uses whichever source the clone came from
-./install.sh --source codeberg     # explicitly switch to Codeberg
-./install.sh --source github       # or to GitHub
+./install.sh
 ```
 
 ### Offline Bundle Upgrade
 
-For airgapped systems or machines that cannot reach Codeberg / GitHub / GHCR, upload a
+For airgapped systems or machines that cannot reach GitHub or GHCR, upload a
 signed Sanctuary offline bundle to the machine and run:
 
 ```bash

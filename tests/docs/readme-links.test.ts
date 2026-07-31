@@ -6,6 +6,7 @@
  */
 
 import { readFileSync } from 'fs';
+import { spawnSync } from 'child_process';
 import { join } from 'path';
 
 describe('README.md Links', () => {
@@ -138,5 +139,16 @@ describe('README.md Links', () => {
     for (const section of essentialSections) {
       expect(readmeContent).toContain(`## ${section}`);
     }
+  });
+
+  it('rejects obsolete alternate public forge generation', () => {
+    const scriptPath = join(__dirname, '../../scripts/generate-readme.sh');
+    const result = spawnSync('bash', [scriptPath, 'gitlab'], {
+      cwd: join(__dirname, '../..'),
+      encoding: 'utf-8',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('GitHub is the only supported public distribution source');
   });
 });

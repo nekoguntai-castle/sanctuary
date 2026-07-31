@@ -9,7 +9,7 @@ CI authority: Forgejo Actions, testing only
 ## Execution Ledger
 
 - target_branch: `main`
-- task_branch: `codex/implement-merge/github-distribution-defaults-20260730`
+- task_branch: `codex/implement-merge/github-docs-references-20260730`
 - worktree_path: `/tmp/sanctuary-implement-merge-github-mirror`
 - created_by_loop: branch and isolated worktree
 - converted_to_next_phase: 2026-07-30 HST after PR #562 merged
@@ -38,6 +38,15 @@ CI authority: Forgejo Actions, testing only
   Forgejo mirror; Issues, Projects, Wiki, and Discussions are disabled. Actions
   remains disabled and Pages remains absent. GitHub still returns HTTP 500 when
   asked to cancel its 67 stale queued Dependabot dynamic runs.
+- Phase 4 README source was synchronized from the current generated README before
+  host changes, preserving newer product and architecture documentation. The
+  template now carries one raw-content placeholder and eight clone placeholders,
+  regeneration for GitHub is deterministic, active install/Umbrel guidance is
+  GitHub-only, the obsolete GitLab generator mode is rejected, and the
+  superseded Codeberg image-hosting plan was removed.
+  Focused verification passed: deterministic regeneration hash
+  `c92e1f0db5f5ae500efeb3e38949d3f0d9d607b8`, README link tests 6/6, and the
+  Docusaurus production build.
 
 ## Outcome
 
@@ -280,21 +289,23 @@ their exact names, and repository tests enforce the no-publish policy.
   malformed response, cache, and fallback behavior.
 - [x] Update `components/Layout/AboutModal.tsx` and its tests to use GitHub
   repository and release links.
-- [ ] Treat `README.template.md` as canonical, update it first, then regenerate
+- [x] Treat `README.template.md` as canonical, update it first, then regenerate
   `README.md` with `scripts/generate-readme.sh github`. Replace every Codeberg
   clone/install/Umbrel link and remove obsolete source-selection guidance.
-- [ ] Update `CONTRIBUTING.md`, `CLAUDE.md`,
+- [x] Update `CONTRIBUTING.md`, `CLAUDE.md`,
   `docs/reference/ci-cd-strategy.md`, architecture docs, release docs, and operator
   scripts to describe Forgejo-authoritative CI plus GitHub mirroring/distribution.
-- [ ] Update `scripts/bump-version.sh` instructions to use the operator release
+  (`CLAUDE.md` is not present on the target branch; all existing active files
+  were audited.)
+- [x] Update `scripts/bump-version.sh` instructions to use the operator release
   command and GitHub/Forgejo release objects.
 - [x] Update `scripts/ci/measure-wallclock.sh` provider classification and any
   remaining active Codeberg labels/comments.
-- [ ] Remove the superseded
+- [x] Remove the superseded
   `docs/plans/codeberg-image-hosting-migration.md` from the active plan set.
   Historical task archives may retain factual history, but must not be linked as
   current operational guidance.
-- [ ] Update all affected behavioral tests, including:
+- [x] Update all affected behavioral tests, including:
   - `tests/install/unit/install-script.test.sh`
   - `server/tests/unit/api/admin-version-routes.test.ts`
   - `server/tests/unit/api/admin/admin.audit-version-electrum.contracts.ts`

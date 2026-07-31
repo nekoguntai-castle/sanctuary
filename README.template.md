@@ -18,6 +18,22 @@
   <em>Don't trust. Verify.</em>
 </p>
 
+<p align="center">
+  <a href="https://nekoguntai.dev/sanctuary/"><strong>Website</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://nekoguntai.dev/sanctuary/features.html">Features</a>
+  &nbsp;·&nbsp;
+  <a href="https://nekoguntai.dev/sanctuary/install.html">Install</a>
+  &nbsp;·&nbsp;
+  <a href="https://nekoguntai.dev/sanctuary/security.html">Security</a>
+  &nbsp;·&nbsp;
+  <a href="https://nekoguntai.dev/sanctuary/faq.html">FAQ</a>
+</p>
+
+> **Repository notice:** GitHub is a read-only public mirror. Development,
+> pull requests, code review, and CI run on the project's private local Forgejo
+> instance; GitHub Actions are intentionally disabled.
+
 ---
 
 > **🚧 EXPERIMENTAL SOFTWARE**
@@ -82,7 +98,7 @@
 - [Security Considerations](#security-considerations)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
-- [AI Assistant (Optional)](#ai-assistant-optional)
+- [AI Settings, Console, and MCP (Optional)](#ai-settings-console-and-mcp-optional)
 - [Support the Project](#support-the-project)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
@@ -96,9 +112,11 @@
 > **New to the command line?** See the [detailed installation guides](#installation) for step-by-step instructions for your operating system.
 
 **Option 1: One-liner** (downloads, clones, and installs automatically)
+
 ```bash
 curl -fsSL {{RAW_URL}}/install.sh | bash
 ```
+
 This installs the **latest release** to `~/sanctuary` by default. Set `SANCTUARY_DIR` to customize the location.
 
 **Option 2: Clone first** (if you want to choose the directory)
@@ -116,7 +134,7 @@ Open **https://localhost:8443** and accept the certificate warning.
 <summary><strong>What the install script does</strong></summary>
 
 1. Checks for Docker and Git
-2. Fetches the latest release tag from GitHub
+2. Fetches the latest stable release tag from GitHub
 3. Clones the repository and checks out the release
 4. Delegates to `scripts/setup.sh` for configuration and startup
 5. Generates self-signed SSL certificates (for hardware wallet support)
@@ -242,66 +260,56 @@ Sanctuary is a **watch-only wallet coordinator** that helps you manage Bitcoin w
 - **Audit logging** — Track security-relevant events and user actions (including gateway/mobile API events)
 - **Monitoring & diagnostics** — Optional Grafana/Prometheus/Jaeger dashboards plus downloadable anonymized support packages
 - **Mobile API gateway** — Secure API for iOS/Android apps with push notifications
-- **AI Assistant** — Optional AI-powered transaction labeling and natural language queries (see [AI Assistant](#ai-assistant-optional) below)
+- **AI Settings, Console, and MCP** — Optional trusted model-provider configuration, in-app read-only wallet Q&A, and scoped external MCP access (see [AI Settings, Console, and MCP](#ai-settings-console-and-mcp-optional) below)
 - **Treasury Intelligence** — Optional wallet-specific insights and chat when AI feature flags are enabled
 - **Treasury Autopilot** — Optional UTXO-health and consolidation controls when treasury features are enabled
 - **Backup & restore** — Export/import all data via the web UI
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                             Your Browser                                     │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                        Sanctuary Web UI                                │  │
-│  │                  (WebUSB → Hardware Wallet)                            │  │
-│  └────────────────────────────────┬──────────────────────────────────────┘  │
-└───────────────────────────────────┼─────────────────────────────────────────┘
-                                    │ HTTPS (:8443)
-                                    │
-┌───────────────────────────────────▼─────────────────────────────────────────┐
-│                          Docker Compose Stack                                │
-│                                                                              │
-│  ┌─────────────┐      ┌─────────────┐      ┌───────────────┐                │
-│  │  Frontend   │      │   Backend   │◄────►│   PostgreSQL  │                │
-│  │   (nginx)   │─────►│  (Node.js)  │      │   (Database)  │                │
-│  │   :8443     │      │    :3001    │      │     :5432     │                │
-│  └─────────────┘      └──────┬──────┘      └───────────────┘                │
-│                              │ ▲                                             │
-│                              │ │ WebSocket                                   │
-│                              │ │                                             │
-│  ┌─────────────┐             │ │                                             │
-│  │   Gateway   │─────────────┘ │                                             │
-│  │  (Node.js)  │◄──────────────┘                                             │
-│  │    :4000    │                                                             │
-│  └──────┬──────┘                                                             │
-│         │                                                                    │
-└─────────┼────────────────────────────────────────────────────────────────────┘
-          │ HTTPS (:4000)                       │
-          │                                     │
-          ▼                                     ▼
-┌───────────────────┐              ┌─────────────────────────────┐
-│   Mobile Apps     │              │   Bitcoin Network Access     │
-│  (iOS / Android)  │              │      (Electrum Server)       │
-│                   │              └─────────────────────────────┘
-│  ┌─────┐ ┌─────┐  │
-│  │ iOS │ │ And │  │
-│  └─────┘ └─────┘  │
-└───────────────────┘
-```
+<p align="center">
+  <img src="assets/architecture.png" alt="Sanctuary Architecture Diagram" width="900" />
+</p>
+
+> The diagram source file is available at [`assets/architecture.drawio`](assets/architecture.drawio) and can be edited with [draw.io](https://app.diagrams.net/).
+
+> **Living architecture docs:** the [C4-model diagrams in `docs/architecture/`](docs/architecture/) (Context, Container, Component) plus auto-generated `dependency-cruiser` module graphs render natively on GitHub (every node is a clickable Mermaid link to source). Forgejo CI validates the diagrams and builds the Docusaurus site without publishing it. When adding a new subsystem or cross-service entry point, update the relevant diagram in the same PR — see [`CONTRIBUTING.md`](CONTRIBUTING.md#architecture-diagrams).
 
 **Components:**
-- **Frontend** — React-based web interface served via nginx (HTTPS for WebUSB)
-- **Backend** — Node.js API server handling wallet logic and blockchain queries
-- **Database** — PostgreSQL for storing wallet metadata, addresses, and transaction history
-- **Gateway** — API gateway for mobile apps with JWT auth, rate limiting, and push notifications
-- **WebUSB** — Direct browser-to-hardware-wallet communication (Ledger, Trezor)
+
+| Component | Port | Description |
+|-----------|------|-------------|
+| **Frontend** | :8443 | React-based web interface served via nginx (HTTPS for WebUSB) |
+| **Backend** | :3001 | Node.js API server handling wallet logic and user requests |
+| **Worker** | :3002 | Background job processor for syncing, notifications, and confirmations |
+| **Gateway** | :4000 | HTTPS API gateway for mobile apps with JWT auth and rate limiting |
+| **Redis** | :6379 | Job queue (BullMQ) and distributed cache |
+| **PostgreSQL** | :5432 | Primary database for wallets, transactions, and user data |
+
+### Worker Process (Background Jobs)
+
+The worker runs as a dedicated container, separate from the API server, handling all background operations:
+
+| Job Type | Description |
+|----------|-------------|
+| **Electrum Manager** | Maintains persistent connections to Electrum servers with automatic reconnection. Subscribes to new blocks and address activity for real-time transaction detection. |
+| **Sync Jobs** | Wallet synchronization with the blockchain. Uses distributed locks to prevent duplicate syncs. Records block height for consistency tracking. |
+| **Notification Jobs** | Sends Telegram, push, AI insight, and wallet webhook notifications with retry logic. Webhooks use a durable per-endpoint outbox. |
+| **Confirmation Jobs** | Updates transaction confirmations when new blocks are mined. Triggers milestone notifications (1, 3, 6 confirmations). |
+
+**Why a separate worker?**
+- Runs 24/7 regardless of user sessions
+- Survives API server restarts without losing job state
+- Dedicated Electrum connections for real-time updates
+- Reliable notification delivery with persistent queue
+- Better resource isolation and monitoring
 
 ### Mobile API Gateway
 
 The gateway container provides a secure API for iOS and Android mobile apps:
 
 **Features:**
+- **Native TLS/HTTPS** — Handles TLS directly for secure mobile connections (enabled by default)
 - **JWT Authentication** — Same tokens as web app (shared secret)
 - **Route Whitelisting** — Only safe read/write endpoints exposed
 - **Rate Limiting** — 60 requests/min default, 5 login attempts/15min
@@ -337,6 +345,7 @@ Sanctuary uses HTTPS by default for hardware wallet compatibility:
 **Default ports:**
 - `HTTPS_PORT=8443` — Main application (https://localhost:8443)
 - `HTTP_PORT=8080` — Redirect to HTTPS
+- `GATEWAY_PORT=4000` — Mobile API gateway (https://your-server:4000)
 
 **Port requirements:**
 
@@ -344,20 +353,48 @@ Sanctuary uses HTTPS by default for hardware wallet compatibility:
 |---------|---------------|--------|
 | **USB wallets** (Ledger, Trezor, etc.) | HTTPS (8443) | WebUSB requires a secure context |
 | **QR Camera** | HTTPS (8443) | Camera access requires a secure context |
+| **Mobile API** | HTTPS (4000) | Gateway handles TLS directly for secure mobile connections |
 | **File import / SD card** | Any | No special browser API required |
 
-**Note:** Always use HTTPS (port 8443) for full hardware wallet support. HTTP access is limited to file-based workflows only.
+**Note:** Always use HTTPS (port 8443) for full hardware wallet support. HTTP access is limited to file-based workflows only. The setup script writes `GATEWAY_TLS_ENABLED=true`; if you maintain `.env` manually, set it explicitly for HTTPS on the mobile gateway.
 
 ## Requirements
 
-- **Docker** and **Docker Compose** (v2.0+)
-- A modern web browser (Chrome, Firefox, Edge, Brave)
-- 4GB RAM minimum, 6GB recommended (8GB+ if using local AI)
-- ~500MB disk space (plus blockchain index cache)
+### System Requirements
 
-Optional:
-- Hardware wallet (Ledger, Trezor, Coldcard, etc.)
-- Electrum server for self-sovereign blockchain access (Fulcrum, electrs, ElectrumX)
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| **RAM** | 4 GB | 6 GB (8 GB+ with local AI) |
+| **Disk** | 500 MB | 1 GB+ (includes logs and cache) |
+| **CPU** | 2 cores | 4 cores |
+
+### Software Requirements
+
+- **Docker** and **Docker Compose** v2.0+
+- A modern web browser:
+  - Chrome, Edge, or Brave (recommended for hardware wallets)
+  - Firefox or Safari (limited hardware wallet support)
+
+### Optional
+
+- **Hardware wallet** — Ledger, Trezor, BitBox02, Jade, Coldcard, Keystone, Passport
+- **Electrum server** — For self-sovereign blockchain access (Fulcrum, electrs, ElectrumX)
+- **Telegram bot** — For transaction notifications
+
+### Container Overview
+
+Sanctuary runs 6 containers by default:
+
+| Container | Purpose | Always Running |
+|-----------|---------|----------------|
+| `frontend` | Web UI (nginx) | Yes |
+| `backend` | API server | Yes |
+| `worker` | Background jobs | Yes |
+| `gateway` | Mobile API | Yes |
+| `redis` | Job queue & cache | Yes |
+| `postgres` | Database | Yes |
+
+Optional containers are enabled by startup flags such as `--with-tor`, `--with-monitoring`, and `--with-mcp`.
 
 ## Installation
 
@@ -374,19 +411,16 @@ If you prefer to run the commands yourself:
 git clone {{CLONE_URL}}
 cd sanctuary
 
-# 2. Run setup script (generates all required secrets)
+# 2. Run setup script (generates secrets, SSL certs, builds and starts services)
 ./scripts/setup.sh
 
-# 3. Generate SSL certificates
-cd docker/nginx/ssl && chmod +x generate-certs.sh && ./generate-certs.sh localhost && cd ../../..
-
-# 4. Start Sanctuary
-docker compose up -d
-
-# 5. Open https://localhost:8443
+# 3. Open https://localhost:8443
 ```
 
-The setup script automatically generates secure random values for:
+The setup script automatically:
+- Generates SSL certificates for HTTPS
+- Builds and starts all Docker containers
+- Creates secure random values for:
 - `JWT_SECRET` - Authentication tokens
 - `ENCRYPTION_KEY` - Encrypts sensitive data (node passwords, 2FA secrets)
 - `ENCRYPTION_SALT` - Salt for key derivation (required in production)
@@ -412,8 +446,7 @@ The setup script automatically generates secure random values for:
    ```powershell
    git clone {{CLONE_URL}}
    cd sanctuary
-   wsl ./scripts/setup.sh  # Generates secure secrets
-   docker compose up -d
+   wsl ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
 
 #### Option 2: WSL 2 + Docker (No Docker Desktop)
@@ -437,8 +470,7 @@ For users who prefer not to use Docker Desktop:
    ```bash
    git clone {{CLONE_URL}}
    cd sanctuary
-   ./scripts/setup.sh  # Generates secure secrets
-   docker compose up -d
+   ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
 
 > **Note:** All commands after step 1 must be run in the Ubuntu/Linux terminal (WSL), not in PowerShell or Command Prompt.
@@ -458,8 +490,7 @@ For users who prefer not to use Docker Desktop:
    ```bash
    git clone {{CLONE_URL}}
    cd sanctuary
-   ./scripts/setup.sh  # Generates secure secrets
-   docker compose up -d
+   ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
 
 #### Option 2: Colima (Lightweight Alternative)
@@ -480,8 +511,7 @@ For users who prefer a lighter-weight solution:
    ```bash
    git clone {{CLONE_URL}}
    cd sanctuary
-   ./scripts/setup.sh  # Generates secure secrets
-   docker compose up -d
+   ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
 
 ---
@@ -516,8 +546,7 @@ For users who prefer a lighter-weight solution:
    ```bash
    git clone {{CLONE_URL}}
    cd sanctuary
-   ./scripts/setup.sh  # Generates secure secrets
-   docker compose up -d
+   ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
 
 #### Option 2: Podman (Rootless Alternative)
@@ -537,8 +566,8 @@ For systems where you can't or don't want to run Docker:
    ```bash
    git clone {{CLONE_URL}}
    cd sanctuary
-   ./scripts/setup.sh  # Generates secure secrets
-   podman-compose up -d
+   ./scripts/setup.sh --no-start  # Generates secrets and SSL certs (but don't start with docker)
+   podman-compose up -d           # Use podman-compose instead
    ```
 
 ---
@@ -558,6 +587,9 @@ HTTP_PORT=8080
 
 # Gateway port for mobile apps (default: 4000)
 GATEWAY_PORT=4000
+
+# Gateway TLS - enabled by default for secure mobile connections
+GATEWAY_TLS_ENABLED=true
 
 # JWT secret for session tokens (generate a random string, min 32 chars)
 JWT_SECRET=your-secret-key-here
@@ -623,14 +655,23 @@ LOG_LEVEL=error docker compose up
 ```
 
 **Module prefixes:**
+
+*Backend API:*
 - `[WS]` — WebSocket server events
-- `[SYNC]` — Background sync service
 - `[BLOCKCHAIN]` — Blockchain/Electrum operations
 - `[WALLETS]` — Wallet API operations
-- `[NOTIFY]` — Real-time notification service
 - `[ADMIN]` — Admin API operations
 - `[BITCOIN]` — Bitcoin RPC/network operations
 - `[PRICE]` — Price feed service
+
+*Worker:*
+- `[Worker]` — Worker process lifecycle
+- `[ElectrumMgr]` — Electrum subscription manager
+- `[SyncJobs]` — Wallet sync job handlers
+- `[NotifyJobs]` — Notification job handlers
+- `[JobQueue]` — BullMQ job queue operations
+
+*Gateway:*
 - `[GATEWAY]` — Mobile API gateway operations
 - `[REQUEST]` — Gateway request logging
 - `[AUTH]` — Gateway authentication
@@ -691,6 +732,13 @@ HTTPS_PORT=8443 HTTP_PORT=8080 docker compose up -d --build
 For production deployments with a domain name, replace the certificates in `docker/nginx/ssl/` with your Let's Encrypt certificates:
 - `fullchain.pem` — Your certificate chain
 - `privkey.pem` — Your private key
+
+The frontend and gateway containers run as UID/GID `1001`. Do not bind-mount a live Let's Encrypt `privkey.pem` that is `0600 root:root`; copy the certificate pair into `SANCTUARY_SSL_DIR` and make the copies readable by UID/GID `1001`, for example:
+
+```bash
+sudo install -m 0640 -o 1001 -g 1001 /etc/letsencrypt/live/yourdomain/fullchain.pem "$SANCTUARY_SSL_DIR/fullchain.pem"
+sudo install -m 0640 -o 1001 -g 1001 /etc/letsencrypt/live/yourdomain/privkey.pem "$SANCTUARY_SSL_DIR/privkey.pem"
+```
 
 ### Connecting to Your Own Electrum Server
 
@@ -788,7 +836,7 @@ Once connected, you can:
 - Sign transactions (PSBT)
 - Verify addresses on the device display
 
-#### Troubleshooting
+#### Hardware Wallet Troubleshooting
 
 **Ledger: "WebUSB not supported"**
 - Ensure you're using Chrome, Edge, or Brave (Firefox/Safari don't support WebUSB)
@@ -887,7 +935,7 @@ Administrators can configure system-wide settings under **Administration → Sys
 
 - **Public Registration** — Enable/disable self-service account creation. When disabled (default), only administrators can create new user accounts.
 - **Users & Groups** — Manage shared access for families and teams.
-- **Feature Flags** — Enable optional modules like AI Assistant, Treasury Intelligence, Payjoin, and Autopilot.
+- **Feature Flags** — Enable optional modules like AI Settings, Sanctuary Console, Treasury Intelligence, Payjoin, and Autopilot.
 - **Monitoring** — Open Grafana, Prometheus, and Jaeger when the monitoring stack is enabled.
 - **Support Package** — Download an anonymized diagnostic bundle for troubleshooting.
 
@@ -935,6 +983,28 @@ Receive transaction alerts via Telegram using your own bot:
    - Enable Telegram notifications for that wallet
    - Choose which events to receive: received, sent, consolidation
 
+#### Wallet Webhooks
+
+Wallet owners can configure outbound webhooks from a wallet's **Settings → Webhooks** tab. Webhooks are wallet-scoped integration resources, so one wallet event queues one delivery per matching endpoint instead of one delivery per user.
+
+Supported endpoint options:
+- Event filters for transaction events such as received, sent, and confirmed.
+- Payload profiles: the default Sanctuary wallet event envelope or a generic mapped JSON profile.
+- Authentication: none, bearer token, Sanctuary HMAC, or configured HMAC with endpoint-defined header names and canonical fields.
+- Optional, required, or disabled fiat valuation enrichment for mapped JSON payloads.
+- Per-endpoint retry limits and exponential backoff.
+- URL validation, delivery history, manual replay, and max-retry wallet log alerts.
+
+Webhook safety defaults are strict: public HTTPS endpoints are allowed by default, while HTTP, LAN, private IP, and loopback targets require explicit deployment allowlists. Operators can use:
+
+```env
+WEBHOOK_ALLOW_HTTP=true
+WEBHOOK_ALLOWED_HOSTS=receiver.example.local
+WEBHOOK_ALLOWED_CIDRS=192.168.5.0/24
+```
+
+Support packages include only redacted webhook health metadata. They do not include endpoint secrets, full URLs, signed headers, request bodies, receiver-specific mapped field names, or raw failure messages. Private receiver contracts should live in deployment-local configuration, not in tracked Sanctuary code or docs.
+
 #### Notification Sounds
 
 Configure audio alerts for different transaction events:
@@ -950,12 +1020,33 @@ Each event can have its own sound from 20 built-in presets (chime, bell, coin, z
 
 ## Upgrading
 
-The easiest way to upgrade is to re-run the install script, which automatically fetches and installs the latest release:
+The easiest way to upgrade is to re-run the install script. It updates an
+existing clone to the canonical GitHub remote, fetches the latest stable release,
+and installs it:
 
 ```bash
 cd ~/sanctuary
 ./install.sh
 ```
+
+### Offline Bundle Upgrade
+
+For airgapped systems or machines that cannot reach GitHub or GHCR, upload a
+signed Sanctuary offline bundle to the machine and run:
+
+```bash
+cd ~/sanctuary
+./install.sh --offline-bundle /path/to/sanctuary-offline-vX.Y.Z-linux-amd64.tar.gz
+```
+
+Offline upgrades verify the bundle signature/checksums, offer to create a
+single local pre-upgrade backup archive, load bundled Docker images, check out
+the bundled release tag, and start without network pulls or builds.
+If the installed checkout does not already contain the pinned offline-release
+public key, pass `--offline-public-key /secure/path/sanctuary-offline-release-public.pem`.
+
+See [Offline Bundles](docs/reference/offline-bundles.md) for bundle creation,
+trust-anchor verification, backup behavior, and troubleshooting.
 
 ### Manual Upgrade
 
@@ -974,6 +1065,10 @@ docker compose down
 docker compose build
 docker compose up -d
 ```
+
+> **Note:** Both `./install.sh` and the manual upgrade check out a release **tag**, which puts Git in "detached HEAD" state. This is normal — it pins you to a specific release. However, it means `git pull` will not work afterward. Always use `./install.sh` or the manual steps above to upgrade, not `git pull`.
+
+> **If a previous upgrade already failed with PostgreSQL auth errors:** See [Upgrade PostgreSQL auth drift findings](docs/reference/upgrade-postgres-auth-drift-findings.md) for the `P1000` / `password authentication failed for user "sanctuary"` recovery path and the root cause.
 
 ### Checking Your Current Version
 
@@ -1072,6 +1167,7 @@ Sanctuary **never** stores:
 - **Backup your hardware wallet seed** — Sanctuary cannot recover funds
 - **Keep Docker updated** for security patches
 - **Use strong passwords** for your Sanctuary account
+- **Verify Sanctuary's trust boundaries** before using larger balances: read the [wallet threat model](docs/reference/wallet-threat-model.md) and [trust and verification guide](docs/reference/trust-and-verification.md)
 
 ### First-Login Security
 
@@ -1106,6 +1202,29 @@ services:
 - Consider VPN access for remote administration
 
 ## Troubleshooting
+
+### "You are not currently on a branch" when upgrading
+
+This happens because the installer checks out a release tag, which puts Git in detached HEAD state. **Do not use `git pull` to upgrade.** Instead:
+
+```bash
+cd ~/sanctuary
+./install.sh
+```
+
+If you need to get back on the `main` branch (e.g., for development):
+```bash
+git checkout main
+git pull
+```
+
+### Upgrade fails with PostgreSQL `P1000` or `password authentication failed`
+
+This usually means the runtime `POSTGRES_PASSWORD` in `~/.config/sanctuary/sanctuary.env` drifted from the password stored for the persisted PostgreSQL role during an older upgrade path.
+
+- Symptoms: `migrate` exits with `P1000`, `worker` restarts, or `backend` logs repeated Prisma authentication failures.
+- Detailed diagnosis and the manual recovery commands live in [Upgrade PostgreSQL auth drift findings](docs/reference/upgrade-postgres-auth-drift-findings.md).
+- New releases after the hotfix validate PostgreSQL credentials over the same Compose-network path the app actually uses, instead of relying on a misleading localhost-only check.
 
 ### Container won't start
 ```bash
@@ -1164,6 +1283,15 @@ npm install
 npm run dev
 ```
 
+### Running Integration Tests
+
+```bash
+# From repository root
+npm run test:integration
+```
+
+This command starts the dedicated test database container, runs Prisma migrations, executes backend integration tests, and then cleans up.
+
 ### Project Structure
 
 ```
@@ -1179,8 +1307,13 @@ sanctuary/
 │   ├── src/
 │   │   ├── api/       # REST API routes
 │   │   ├── services/  # Business logic
-│   │   └── models/    # Prisma database models
-│   └── prisma/        # Database schema and migrations
+│   │   ├── models/    # Prisma database models
+│   │   └── worker/    # Background job definitions
+│   │       ├── jobs/  # Job handlers (sync, notifications, confirmations)
+│   │       ├── electrumManager.ts    # Electrum subscription manager
+│   │       └── workerJobQueue.ts     # BullMQ job queue wrapper
+│   ├── prisma/        # Database schema and migrations
+│   └── worker.ts      # Worker process entry point
 ├── gateway/           # Mobile API gateway
 │   └── src/
 │       ├── middleware/ # Auth, rate limiting, logging
@@ -1190,15 +1323,18 @@ sanctuary/
 │   └── api/           # Frontend API client
 ├── services/          # Frontend services (hardware wallet, etc.)
 ├── themes/            # Color theme definitions
+├── assets/            # Logo, screenshots, architecture diagram
 ├── docker/            # Docker configuration files
 └── docker-compose.yml
 ```
 
-## AI Assistant (Optional)
+## AI Settings, Console, and MCP (Optional)
 
-Sanctuary includes an optional AI assistant that can help with:
-- **Transaction labeling** — AI suggests labels based on amount, direction, and your existing patterns
-- **Natural language queries** — Ask questions like "Show my largest receives this month"
+Sanctuary includes optional AI surfaces for:
+
+- **AI Settings** — Configure trusted local, LAN, or explicitly allowlisted OpenAI-compatible model providers.
+- **Sanctuary Console** — Ask read-only questions about wallets, transactions, UTXOs, addresses, fees, prices, drafts, policies, insights, and node/app state from inside the authenticated web app.
+- **Direct MCP** — Let a trusted local or LAN MCP client call the same read-only tool surface with scoped, revocable bearer keys.
 
 ### Setting Up AI
 
@@ -1214,7 +1350,8 @@ Sanctuary includes an optional AI assistant that can help with:
    - Set the endpoint to `http://host.docker.internal:11434` when Sanctuary runs in Docker
 
    **Option B: LAN or desktop OpenAI-compatible provider**
-   - LM Studio: use a `/v1` endpoint such as `http://192.168.1.20:1234/v1`
+   - Same Docker host LM Studio: use `http://host.docker.internal:1234/v1`
+   - LAN LM Studio: use a `/v1` endpoint such as `http://192.168.1.20:1234/v1`
    - llama.cpp, vLLM, or another trusted provider: enter its OpenAI-compatible base URL
    - Add numeric LAN ranges to `LLM_EGRESS_PROXY_ALLOWED_CIDRS` before using LAN IP endpoints
 
@@ -1224,24 +1361,32 @@ Sanctuary includes an optional AI assistant that can help with:
 
 2. **Enable the feature flags you want**
    - Go to **Administration → Feature Flags**
-   - Enable `aiAssistant` for AI label suggestions and admin AI configuration
-   - Enable `treasuryIntelligence` as well if you want the **Intelligence** page with wallet insights and chat
+   - Enable `aiAssistant` for AI Settings and provider configuration
+   - Enable `sanctuaryConsole` if you want the in-app Console drawer
+   - Enable `treasuryIntelligence` as well if you want the **Intelligence** page with wallet insights
 
 3. **Configure the provider in Sanctuary**
    - Go to **Administration → AI Settings**
    - Toggle **Enable AI Features**
-   - Use **Detect** after entering a reachable Ollama endpoint, or enter an OpenAI-compatible endpoint manually
+   - Use **Detect** after entering a reachable Ollama endpoint, or create a provider profile for an OpenAI-compatible endpoint
    - Pick a model and save the settings
+
+4. **Use the Console or direct MCP**
+   - Open Sanctuary Console from the small brain icon below **Dashboard** in the sidebar, or use `Ctrl+Shift+.` / `Cmd+Shift+.`.
+   - Manage external MCP keys from **Administration → AI Settings → MCP Access**.
+   - Start the MCP service with `./start.sh --with-mcp` when you need direct MCP clients.
 
 ### Security
 
-AI requests run through Sanctuary's **security-isolated LLM egress proxy container**:
-- Cannot access private keys or signing operations
-- Only receives sanitized metadata (amounts, dates — **no addresses or txids**)
-- Connects only to configured trusted provider endpoints
-- All AI suggestions require user confirmation before applying
+The AI path is designed around backend-owned read tools:
 
-See [llm-egress-proxy/README.md](llm-egress-proxy/README.md) for technical details.
+- No private keys, signing operations, shell access, arbitrary SQL, descriptors, xpubs, PSBTs, provider API keys, browser JWTs, or MCP tokens are sent to the model.
+- Console and MCP tools are read-only in this release.
+- Provider API keys are write-only in AI Settings and stored as encrypted credentials.
+- Direct MCP should stay loopback-only unless protected by TLS, VPN, or a trusted reverse proxy.
+- Restored AI provider credentials must be re-entered, and restored MCP keys are revoked.
+
+See [AI Settings, Sanctuary Console, and MCP access](docs/how-to/ai-mcp-console.md), [MCP Server](docs/how-to/mcp-server.md), and [llm-egress-proxy/README.md](llm-egress-proxy/README.md) for technical details.
 
 ## Support the Project
 
