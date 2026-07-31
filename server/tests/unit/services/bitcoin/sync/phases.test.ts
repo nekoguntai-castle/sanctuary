@@ -335,7 +335,7 @@ describe('Sync Phases', () => {
   });
 
   describe('checkExistingPhase', () => {
-    it('should revisit only incomplete non-terminal classifications', async () => {
+    it('revisits stale or incomplete classifications across every type', async () => {
       const incompleteReceivedTxid = 'incomplete'.padEnd(64, 'a');
       const completeReceivedTxid = 'complete'.padEnd(64, 'e');
       const consolidationTxid = 'consolidation'.padEnd(64, 'c');
@@ -347,6 +347,8 @@ describe('Sync Phases', () => {
           txid: incompleteReceivedTxid,
           type: 'received',
           classificationInputsComplete: false,
+          classificationVersion: 2,
+          classificationAddressCount: 0,
           classificationLastAttemptAt: new Date('2026-01-03T00:00:00.000Z'),
           ioComplete: true,
           ioLastAttemptAt: null,
@@ -355,6 +357,8 @@ describe('Sync Phases', () => {
           txid: completeReceivedTxid,
           type: 'received',
           classificationInputsComplete: true,
+          classificationVersion: 2,
+          classificationAddressCount: 0,
           classificationLastAttemptAt: null,
           ioComplete: true,
           ioLastAttemptAt: null,
@@ -363,6 +367,8 @@ describe('Sync Phases', () => {
           txid: consolidationTxid,
           type: 'consolidation',
           classificationInputsComplete: false,
+          classificationVersion: 2,
+          classificationAddressCount: 0,
           classificationLastAttemptAt: null,
           ioComplete: true,
           ioLastAttemptAt: null,
@@ -370,7 +376,9 @@ describe('Sync Phases', () => {
         {
           txid: sentTxid,
           type: 'sent',
-          classificationInputsComplete: false,
+          classificationInputsComplete: true,
+          classificationVersion: 1,
+          classificationAddressCount: 0,
           classificationLastAttemptAt: null,
           ioComplete: true,
           ioLastAttemptAt: null,
@@ -393,7 +401,7 @@ describe('Sync Phases', () => {
       expect(result.newTxids).toContain(incompleteReceivedTxid);
       expect(result.newTxids).toContain(consolidationTxid);
       expect(result.newTxids).not.toContain(completeReceivedTxid);
-      expect(result.newTxids).not.toContain(sentTxid);
+      expect(result.newTxids).toContain(sentTxid);
       expect(result.existingTxidSet.has(incompleteReceivedTxid)).toBe(true);
       expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -401,12 +409,39 @@ describe('Sync Phases', () => {
             txid: true,
             type: true,
             classificationInputsComplete: true,
+            classificationVersion: true,
+            classificationAddressCount: true,
             classificationLastAttemptAt: true,
             ioComplete: true,
             ioLastAttemptAt: true,
           },
         })
       );
+    });
+
+    it('revisits a current classification targeted by new-address history', async () => {
+      const txid = 'ownership-growth'.padEnd(64, 'a');
+      mockPrismaClient.transaction.findMany.mockResolvedValue([{
+        txid,
+        type: 'received',
+        classificationInputsComplete: true,
+        classificationVersion: 2,
+        classificationAddressCount: 1,
+        classificationLastAttemptAt: null,
+        ioComplete: true,
+        ioLastAttemptAt: null,
+      }]);
+      mockPrismaClient.transactionOwnershipRepair.findMany.mockResolvedValue([{
+        txid,
+        targetAddressCount: 2,
+      }]);
+
+      const result = await checkExistingPhase(createTestContext({
+        allTxids: new Set([txid]),
+      }));
+
+      expect(result.classificationRepairTxids).toEqual(new Set([txid]));
+      expect(result.newTxids).toEqual([txid]);
     });
 
     it('caps repair work and rotates a permanently unresolved oldest attempt behind the backlog', async () => {
@@ -416,6 +451,7 @@ describe('Sync Phases', () => {
           txid: `repair-${String(index).padStart(3, '0')}`.padEnd(64, 'a'),
           type: 'received',
           classificationInputsComplete: false,
+          classificationVersion: 2,
           classificationLastAttemptAt: index < 2
             ? null
             : new Date(Date.UTC(2026, 0, 1, 0, 0, Math.max(0, index - 2))),
@@ -423,13 +459,14 @@ describe('Sync Phases', () => {
           ioLastAttemptAt: null,
         })
       );
-      const sentTxid = 'terminal-sent'.padEnd(64, 's');
+      const sentTxid = 'aaa-terminal-sent'.padEnd(64, 's');
       mockPrismaClient.transaction.findMany.mockResolvedValue([
         ...repairRows,
         {
           txid: sentTxid,
           type: 'sent',
           classificationInputsComplete: false,
+          classificationVersion: 2,
           classificationLastAttemptAt: null,
           ioComplete: true,
           ioLastAttemptAt: null,
@@ -443,18 +480,20 @@ describe('Sync Phases', () => {
       expect(first.newTxids).toHaveLength(CLASSIFICATION_REPAIR_CANDIDATE_LIMIT);
       expect(first.newTxids).toContain(repairRows[0].txid);
       expect(first.newTxids).not.toContain(repairRows.at(-1)!.txid);
-      expect(first.newTxids).not.toContain(sentTxid);
+      expect(first.newTxids).toContain(sentTxid);
 
       repairRows[0].classificationLastAttemptAt = new Date('2027-01-01T00:00:00.000Z');
       const second = await checkExistingPhase(ctx);
       expect(second.newTxids).toHaveLength(CLASSIFICATION_REPAIR_CANDIDATE_LIMIT);
       expect(second.newTxids).not.toContain(repairRows[0].txid);
-      expect(second.newTxids).toContain(repairRows.at(-1)!.txid);
+      expect(second.newTxids).toContain(repairRows.at(-2)!.txid);
+      expect(second.newTxids).not.toContain(repairRows.at(-1)!.txid);
 
       repairRows[1].classificationInputsComplete = true;
       const third = await checkExistingPhase(ctx);
       expect(third.newTxids).not.toContain(repairRows[1].txid);
-      expect(third.newTxids).not.toContain(sentTxid);
+      expect(third.newTxids).toContain(sentTxid);
+      expect(third.newTxids).toContain(repairRows.at(-1)!.txid);
     });
 
     it('selects incomplete I/O fairly across sent and other transaction types', async () => {
@@ -462,6 +501,7 @@ describe('Sync Phases', () => {
         txid: `io-${String(index).padStart(3, '0')}`.padEnd(64, 'i'),
         type: index === 0 ? 'sent' : 'received',
         classificationInputsComplete: true,
+        classificationVersion: 2,
         classificationLastAttemptAt: null,
         ioComplete: false,
         ioLastAttemptAt: index === 0 ? null : new Date(1_000 + index),

@@ -329,7 +329,7 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
             txid,
             type: 'sent',
             classificationInputsComplete: true,
-            amount: BigInt(-900000),
+            amount: BigInt(-400000),
             fee: BigInt(100000),
           })],
         })
@@ -348,7 +348,7 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
       expect(mockElectrumClient.getTransaction).not.toHaveBeenCalled();
     });
 
-    it('repairs selected I/O even when scalar classification returns null', async () => {
+    it('creates scalar history and repairs I/O for an OP_RETURN-only spend', async () => {
       const walletAddress = 'tb1q_io_only_wallet';
       const txid = 'io_only_op_return'.padEnd(64, 'a');
       const previousTxid = 'io_only_previous'.padEnd(64, 'b');
@@ -402,7 +402,16 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
 
       await processTransactionsPhase(ctx);
 
-      expect(mockPrismaClient.transaction.createManyAndReturn).not.toHaveBeenCalled();
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [expect.objectContaining({
+            txid,
+            type: 'sent',
+            amount: BigInt(-100_000),
+            fee: BigInt(100_000),
+          })],
+        })
+      );
       expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalledWith({
         data: [expect.objectContaining({
           transactionId: 'io-only-row',
@@ -415,12 +424,9 @@ export function registerProcessTransactionBatchIoTests(walletId: string): void {
         .map(([statement]) => statement as { strings: string[] })
         .find(statement => statement.strings.join('').includes('SET "ioComplete" = true'));
       expect(completion).toBeDefined();
-      expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
+      expect(mockPrismaClient.transaction.update).not.toHaveBeenCalledWith({
         where: { id: 'pending-op-return-row' },
-        data: {
-          rbfStatus: 'replaced',
-          replacedByTxid: txid,
-        },
+        data: expect.objectContaining({ rbfStatus: 'replaced' }),
       });
     });
 

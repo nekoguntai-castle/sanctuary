@@ -7,10 +7,11 @@
 
 import { getNodeClient, type NodeClientInterface } from '../nodeClient';
 import type { TransactionOutput, TransactionInput, BitcoinNetwork } from '../electrum';
-import { addressRepository, utxoRepository } from '../../../repositories';
+import { addressRepository, transactionRepository, utxoRepository } from '../../../repositories';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import { getBlockHeight } from '../utils/blockHeight';
+import { recalculateWalletBalances } from '../utils/balanceCalculation';
 import type { SyncAddressResult } from './types';
 import { storeTransactionIO } from './transactionIO';
 import { processHistoryTransactions } from './historyTransactions';
@@ -109,7 +110,13 @@ function collectPreviousTxIds(
 function getPreviousTxIdNeeded(input: TransactionInput, txDetailsMap: TransactionDetailsMap): string | null {
   const inlineAddress = input.prevout?.scriptPubKey?.address
     || input.prevout?.scriptPubKey?.addresses?.[0];
-  if (input.coinbase || inlineAddress || !input.txid || txDetailsMap.has(input.txid)) {
+  const inlineValue = input.prevout?.value;
+  if (
+    input.coinbase
+    || (inlineAddress && inlineValue !== undefined)
+    || !input.txid
+    || txDetailsMap.has(input.txid)
+  ) {
     return null;
   }
 
@@ -263,6 +270,12 @@ export async function syncAddress(addressId: string): Promise<SyncAddressResult>
       walletAddressSet,
       txDetailsMap,
     });
+    if (
+      transactionCount > 0
+      || await transactionRepository.hasPendingBalanceRecalculation(addressRecord.walletId)
+    ) {
+      await recalculateWalletBalances(addressRecord.walletId);
+    }
 
     return {
       transactions: transactionCount,

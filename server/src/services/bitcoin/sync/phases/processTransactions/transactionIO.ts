@@ -30,7 +30,7 @@ type TransactionIoRows = {
 
 type InputResolution = {
   address?: string;
-  amount: number;
+  amount?: number;
 };
 
 type InputScriptPubKey = NonNullable<
@@ -114,7 +114,8 @@ const persistTransactionIORows = async (
   await transactionRepository.persistAddressSyncIORows(
     rows.inputs,
     rows.outputs,
-    completeTransactionIds
+    completeTransactionIds,
+    ctx.walletAddressSet.size
   );
   return rows;
 };
@@ -130,6 +131,7 @@ const hasCompleteInputEvidence = (
     input.txid !== undefined
     && input.vout !== undefined
     && resolveInput(input, ctx.txDetailsCache).address !== undefined
+    && resolveInput(input, ctx.txDetailsCache).amount !== undefined
   ));
 };
 
@@ -178,7 +180,12 @@ const buildInputRow = (
   }
 
   const resolved = resolveInput(input, ctx.txDetailsCache);
-  if (!resolved.address || input.txid === undefined || input.vout === undefined) {
+  if (
+    !resolved.address
+    || resolved.amount === undefined
+    || input.txid === undefined
+    || input.vout === undefined
+  ) {
     return null;
   }
 
@@ -197,35 +204,26 @@ const resolveInput = (
   input: TransactionInput,
   txDetailsCache: SyncContext['txDetailsCache']
 ): InputResolution => {
-  if (input.prevout && input.prevout.scriptPubKey) {
-    const address = getScriptAddress(input.prevout.scriptPubKey);
-    if (address !== undefined) {
-      return {
-        address,
-        amount: getPrevoutAmount(input.prevout.value),
-      };
-    }
-  }
-
-  if (input.txid === undefined || input.vout === undefined) {
-    return { amount: 0 };
-  }
-
-  const prevTx = txDetailsCache.get(input.txid);
-  const prevOutput = prevTx?.vout?.[input.vout];
-  if (!prevOutput) {
-    return { amount: 0 };
-  }
-
+  const inlineAddress = input.prevout?.scriptPubKey
+    ? getScriptAddress(input.prevout.scriptPubKey)
+    : undefined;
+  const inlineAmount = getPrevoutAmount(input.prevout?.value);
+  const prevOutput = input.txid !== undefined && input.vout !== undefined
+    ? txDetailsCache.get(input.txid)?.vout?.[input.vout]
+    : undefined;
   return {
-    address: getScriptAddress(prevOutput.scriptPubKey),
-    amount: prevOutput.value !== undefined ? Math.round(prevOutput.value * 100000000) : 0,
+    address: inlineAddress || (prevOutput
+      ? getScriptAddress(prevOutput.scriptPubKey)
+      : undefined),
+    amount: inlineAmount ?? (prevOutput?.value !== undefined
+      ? Math.round(prevOutput.value * 100000000)
+      : undefined),
   };
 };
 
-const getPrevoutAmount = (value: number | undefined): number => {
+const getPrevoutAmount = (value: number | undefined): number | undefined => {
   if (value === undefined) {
-    return 0;
+    return undefined;
   }
 
   // Verbose prevout values may arrive as satoshis from Electrum or BTC from fixture/raw-tx paths.

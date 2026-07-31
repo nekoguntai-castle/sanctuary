@@ -20,7 +20,7 @@ import { getNotificationService, walletLog } from '../../../../../../src/websock
 import { notifyNewTransactions } from '../../../../../../src/services/notifications/notificationService';
 
 export function registerProcessTransactionClassificationTests(walletId: string): void {
-    it('should return early when no new txids to process', async () => {
+    it('skips balance work when no transaction candidates or durable repair remain', async () => {
       const ctx = createTestContext({
         walletId,
         newTxids: [],
@@ -31,6 +31,25 @@ export function registerProcessTransactionClassificationTests(walletId: string):
 
       expect(result.stats.newTransactionsCreated).toBe(0);
       expect(mockPrismaClient.transaction.createManyAndReturn).not.toHaveBeenCalled();
+      expect(recalculateWalletBalances).not.toHaveBeenCalled();
+    });
+
+    it('retries balance recalculation after a post-commit failure', async () => {
+      const ctx = createTestContext({
+        walletId,
+        newTxids: [],
+        historyResults: new Map(),
+      });
+      mockPrismaClient.$queryRaw.mockResolvedValue([{ pending: true }]);
+      (recalculateWalletBalances as Mock)
+        .mockRejectedValueOnce(new Error('balance update failed'))
+        .mockResolvedValueOnce(undefined);
+
+      await expect(processTransactionsPhase(ctx)).rejects.toThrow('balance update failed');
+      await expect(processTransactionsPhase(ctx)).resolves.toBe(ctx);
+
+      expect(recalculateWalletBalances).toHaveBeenCalledTimes(2);
+      expect(recalculateWalletBalances).toHaveBeenNthCalledWith(2, walletId);
     });
 
     it('should classify transaction as received when external inputs only', async () => {
@@ -118,7 +137,94 @@ export function registerProcessTransactionClassificationTests(walletId: string):
       );
     });
 
-    it('marks the later classification complete once every raw input resolves', async () => {
+    it('keeps value-known ownership-missing input evidence in the repair rotation', async () => {
+      const txid = 'missing_input_owner'.padEnd(64, 'a');
+      const walletAddress = 'tb1q_missing_owner_wallet';
+      const transaction = createMockTransaction({
+        txid,
+        inputs: [{
+          txid: 'missing_owner_prev'.padEnd(64, 'b'),
+          vout: 0,
+          value: 0.001,
+          address: 'placeholder',
+        }],
+        outputs: [{ value: 0.0009, address: walletAddress }],
+      });
+      transaction.vin[0].prevout!.scriptPubKey = { hex: '0014-addressless' };
+      mockElectrumClient.getTransactionsBatch
+        .mockResolvedValueOnce(new Map([[txid, transaction]]))
+        .mockResolvedValueOnce(new Map());
+      mockElectrumClient.getTransaction.mockResolvedValue(undefined);
+
+      await processTransactionsPhase(createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 0 }]]]),
+        walletAddressSet: new Set([walletAddress]),
+        addressMap: new Map([[walletAddress, { id: 'missing-owner-address' } as any]]),
+        txDetailsCache: new Map() as any,
+      }));
+
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [expect.objectContaining({
+            txid,
+            type: 'received',
+            amount: BigInt(90_000),
+            classificationInputsComplete: false,
+            classificationVersion: 2,
+          })],
+        })
+      );
+    });
+
+    it('fills an inline-address missing value from its referenced output', async () => {
+      const txid = 'missing_inline_value'.padEnd(64, 'a');
+      const previousTxid = 'inline_value_prev'.padEnd(64, 'b');
+      const walletAddress = 'tb1q_inline_value_wallet';
+      const externalAddress = 'tb1q_inline_value_external';
+      const transaction = createMockTransaction({
+        txid,
+        inputs: [{ txid: previousTxid, vout: 0, value: 0.001, address: walletAddress }],
+        outputs: [{ value: 0.0009, address: externalAddress }],
+      });
+      delete transaction.vin[0].prevout!.value;
+      mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, transaction]]));
+      mockElectrumClient.getTransaction.mockResolvedValue({
+        txid: previousTxid,
+        vin: [],
+        vout: [{
+          value: 0.001,
+          n: 0,
+          scriptPubKey: { address: walletAddress },
+        }],
+      });
+
+      await processTransactionsPhase(createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 0 }]]]),
+        walletAddressSet: new Set([walletAddress]),
+        addressMap: new Map([[walletAddress, { id: 'inline-value-address' } as any]]),
+        txDetailsCache: new Map() as any,
+      }));
+
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [expect.objectContaining({
+            txid,
+            type: 'sent',
+            amount: BigInt(-100_000),
+            fee: BigInt(10_000),
+            classificationInputsComplete: true,
+          })],
+        })
+      );
+    });
+
+    it('uses wallet delta for a complete mixed-owner Payjoin receive', async () => {
       const txid = 'complete_multi_input'.padEnd(64, 'a');
       const walletAddress = 'tb1q_complete_wallet';
       const externalAddress = 'tb1q_complete_external';
@@ -154,7 +260,178 @@ export function registerProcessTransactionClassificationTests(walletId: string):
         expect.objectContaining({
           data: [expect.objectContaining({
             txid,
+            type: 'received',
+            amount: BigInt(40_000),
+            classificationInputsComplete: true,
+            classificationVersion: 2,
+          })],
+        })
+      );
+    });
+
+    it('uses wallet delta and whole fee metadata for a mixed-owner Payjoin send', async () => {
+      const txid = 'payjoin_sender'.padEnd(64, 'a');
+      const walletAddress = 'tb1q_payjoin_sender_wallet';
+      const externalAddress = 'tb1q_payjoin_sender_external';
+      const transaction = createMockTransaction({
+        txid,
+        inputs: [
+          { txid: 'wallet_prev'.padEnd(64, 'b'), vout: 0, value: 0.002, address: walletAddress },
+          { txid: 'external_prev'.padEnd(64, 'c'), vout: 0, value: 0.003, address: externalAddress },
+        ],
+        outputs: [
+          { value: 0.0035, address: externalAddress },
+          { value: 0.0014, address: walletAddress },
+        ],
+      });
+      mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, transaction]]));
+
+      await processTransactionsPhase(createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 800000 }]]]),
+        walletAddressSet: new Set([walletAddress]),
+        addressMap: new Map([[walletAddress, { id: 'payjoin-sender-address' } as any]]),
+        txDetailsCache: new Map() as any,
+        currentBlockHeight: 800100,
+      }));
+
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [expect.objectContaining({
+            txid,
             type: 'sent',
+            amount: BigInt(-60_000),
+            fee: BigInt(10_000),
+            classificationInputsComplete: true,
+            classificationVersion: 2,
+          })],
+        })
+      );
+    });
+
+    it('records an OP_RETURN-only wallet spend as sent with its exact fee delta', async () => {
+      const txid = 'op_return_only'.padEnd(64, 'a');
+      const walletAddress = 'tb1q_op_return_wallet';
+      const transaction = createMockTransaction({
+        txid,
+        inputs: [{
+          txid: 'op_return_prev'.padEnd(64, 'b'),
+          vout: 0,
+          value: 0.001,
+          address: walletAddress,
+        }],
+        outputs: [{ value: 0, address: 'placeholder' }],
+      });
+      transaction.vout[0].scriptPubKey = { hex: '6a026869' };
+      mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, transaction]]));
+
+      await processTransactionsPhase(createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 0 }]]]),
+        walletAddressSet: new Set([walletAddress]),
+        addressMap: new Map([[walletAddress, { id: 'op-return-address' } as any]]),
+        txDetailsCache: new Map() as any,
+      }));
+
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [expect.objectContaining({
+            txid,
+            type: 'sent',
+            amount: BigInt(-100_000),
+            fee: BigInt(100_000),
+          })],
+        })
+      );
+    });
+
+    it('classifies a zero wallet delta with addressless external evidence as sent', async () => {
+      const txid = 'zero_delta_external'.padEnd(64, 'a');
+      const walletAddress = 'tb1q_zero_delta_wallet';
+      const externalAddress = 'tb1q_zero_delta_external';
+      const transaction = createMockTransaction({
+        txid,
+        inputs: [
+          {
+            txid: 'zero_delta_wallet_prev'.padEnd(64, 'b'),
+            vout: 0,
+            value: 0.001,
+            address: walletAddress,
+          },
+          {
+            txid: 'zero_delta_external_prev'.padEnd(64, 'c'),
+            vout: 0,
+            value: 0.002,
+            address: externalAddress,
+          },
+        ],
+        outputs: [
+          { value: 0.001, address: walletAddress },
+          { value: 0.0019, address: 'placeholder' },
+        ],
+      });
+      transaction.vout[1].scriptPubKey = { hex: '6a026869' };
+      mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, transaction]]));
+
+      await processTransactionsPhase(createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 0 }]]]),
+        walletAddressSet: new Set([walletAddress]),
+        addressMap: new Map([[walletAddress, { id: 'zero-delta-external-address' } as any]]),
+        txDetailsCache: new Map() as any,
+      }));
+
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [expect.objectContaining({
+            txid,
+            type: 'sent',
+            amount: BigInt(0),
+            fee: BigInt(10_000),
+            classificationInputsComplete: true,
+          })],
+        })
+      );
+    });
+
+    it('classifies a zero wallet delta without external evidence as consolidation', async () => {
+      const txid = 'zero_delta_consolidation'.padEnd(64, 'a');
+      const walletAddress = 'tb1q_zero_delta_consolidation';
+      const transaction = createMockTransaction({
+        txid,
+        inputs: [{
+          txid: 'zero_delta_consolidation_prev'.padEnd(64, 'b'),
+          vout: 0,
+          value: 0.001,
+          address: walletAddress,
+        }],
+        outputs: [{ value: 0.001, address: walletAddress }],
+      });
+      mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, transaction]]));
+
+      await processTransactionsPhase(createTestContext({
+        walletId,
+        client: mockElectrumClient as any,
+        newTxids: [txid],
+        historyResults: new Map([[walletAddress, [{ tx_hash: txid, height: 0 }]]]),
+        walletAddressSet: new Set([walletAddress]),
+        addressMap: new Map([[walletAddress, { id: 'zero-delta-consolidation-address' } as any]]),
+        txDetailsCache: new Map() as any,
+      }));
+
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [expect.objectContaining({
+            txid,
+            type: 'consolidation',
+            amount: BigInt(0),
+            fee: BigInt(0),
             classificationInputsComplete: true,
           })],
         })
@@ -309,7 +586,11 @@ export function registerProcessTransactionClassificationTests(walletId: string):
       });
       mockElectrumClient.getTransactionsBatch.mockResolvedValue(new Map([[txid, transaction]]));
       mockPrismaClient.transaction.createManyAndReturn.mockResolvedValue([]);
-      mockPrismaClient.transaction.updateMany.mockResolvedValue({ count: 1 });
+      mockPrismaClient.$queryRaw.mockResolvedValue([{
+        id: 'repair-row-id',
+        classificationInputsComplete: false,
+        classificationVersion: 1,
+      }]);
       mockPrismaClient.addressLabel.findMany.mockResolvedValue([
         { addressId: 'addr-repair', labelId: 'label-repair' },
       ]);
@@ -338,13 +619,13 @@ export function registerProcessTransactionClassificationTests(walletId: string):
 
       const result = await processTransactionsPhase(ctx);
 
-      expect(mockPrismaClient.transaction.updateMany).toHaveBeenCalledWith({
-        where: {
-          txid,
-          walletId,
-          type: { in: ['received', 'consolidation'] },
-        },
-        data: expect.objectContaining({ type: 'sent', rbfStatus: 'confirmed' }),
+      expect(mockPrismaClient.transaction.update).toHaveBeenCalledWith({
+        where: { id: 'repair-row-id' },
+        data: expect.objectContaining({
+          type: 'sent',
+          rbfStatus: 'confirmed',
+          classificationVersion: 2,
+        }),
       });
       expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalled();
       expect(mockPrismaClient.transactionOutput.createMany).toHaveBeenCalled();

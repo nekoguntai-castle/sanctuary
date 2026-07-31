@@ -8,7 +8,7 @@ import {
 } from '../../../src/services/transactionExport/exportPermit';
 import {
   cleanupOrphanedExportSnapshots,
-  createExportIdSnapshot,
+  createExportRowSnapshot,
   EXPORT_SNAPSHOT_PREFIX,
   EXPORT_SNAPSHOT_SUFFIX,
 } from '../../../src/services/transactionExport/exportSnapshot';
@@ -19,9 +19,28 @@ import {
   raceExportAbort,
   writeExportChunk,
 } from '../../../src/services/transactionExport/streamLifecycle';
-import { toCsvRow } from '../../../src/services/transactionExport/serialization';
+import { toCsvRow, type ExportRow } from '../../../src/services/transactionExport/serialization';
 
 const cleanupPaths: string[] = [];
+
+function exportRow(txid: string, overrides: Partial<ExportRow> = {}): ExportRow {
+  return {
+    date: '2026-01-01T00:00:00.000Z',
+    txid,
+    type: 'received',
+    amountBtc: 0.00000001,
+    amountSats: 1,
+    balanceAfterBtc: 0.00000001,
+    balanceAfterSats: 1,
+    feeSats: null,
+    confirmations: 1,
+    label: '',
+    memo: '',
+    counterpartyAddress: '',
+    blockHeight: 1,
+    ...overrides,
+  };
+}
 
 afterEach(async () => {
   await Promise.all(cleanupPaths.splice(0).map(async path => {
@@ -51,10 +70,10 @@ describe('transaction export permits', () => {
 
 describe('transaction export snapshots', () => {
   it('validates configuration and snapshot read state', async () => {
-    await expect(createExportIdSnapshot({ memoryThreshold: -1 })).rejects.toThrow(
+    await expect(createExportRowSnapshot({ memoryThresholdBytes: -1 })).rejects.toThrow(
       'nonnegative integer',
     );
-    const snapshot = await createExportIdSnapshot({ memoryThreshold: 2 });
+    const snapshot = await createExportRowSnapshot({ memoryThresholdBytes: 256 });
     await expect(async () => {
       for await (const _page of snapshot.pages(1)) void _page;
     }).rejects.toThrow('must be sealed');
@@ -66,56 +85,102 @@ describe('transaction export snapshots', () => {
   });
 
   it('keeps small captures in memory and refuses appends after sealing', async () => {
-    const snapshot = await createExportIdSnapshot({ memoryThreshold: 3 });
+    const snapshot = await createExportRowSnapshot({ memoryThresholdBytes: 10_000 });
     await snapshot.append([]);
-    await snapshot.append(['id-1', 'id-2', 'id-3']);
+    const rows = [exportRow('id-1'), exportRow('id-2'), exportRow('id-3')];
+    await snapshot.append(rows);
     await snapshot.seal();
 
     expect(snapshot.filepath).toBeNull();
-    const pages: string[][] = [];
+    const pages: ExportRow[][] = [];
     for await (const page of snapshot.pages(2)) pages.push(page);
-    expect(pages).toEqual([['id-1', 'id-2'], ['id-3']]);
-    await expect(snapshot.append(['id-4'])).rejects.toThrow('sealed');
+    expect(pages).toEqual([rows.slice(0, 2), rows.slice(2)]);
+    await expect(snapshot.append([exportRow('id-4')])).rejects.toThrow('sealed');
     await snapshot.cleanup();
   });
 
   it('refuses snapshot writes after capture cancellation', async () => {
-    const snapshot = await createExportIdSnapshot({ memoryThreshold: 0 });
+    const snapshot = await createExportRowSnapshot({ memoryThresholdBytes: 0 });
     const controller = new AbortController();
     controller.abort(new Error('capture timed out'));
-    await expect(snapshot.append(['id-1'], controller.signal)).rejects.toThrow('capture timed out');
+    await expect(snapshot.append([exportRow('id-1')], controller.signal)).rejects.toThrow('capture timed out');
     expect(snapshot.filepath).toBeNull();
   });
 
   it('spills past the memory threshold to an owner-only file and preserves pages', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'export-snapshot-test-'));
     cleanupPaths.push(directory);
-    const snapshot = await createExportIdSnapshot({ directory, memoryThreshold: 2 });
+    const snapshot = await createExportRowSnapshot({ directory, memoryThresholdBytes: 1 });
 
-    await snapshot.append(['id-1', 'id-2']);
-    await snapshot.append(['id-3']);
-    await snapshot.append(['id-4']);
+    const rows = [exportRow('id-1'), exportRow('id-2'), exportRow('id-3'), exportRow('id-4')];
+    await snapshot.append(rows.slice(0, 2));
+    await snapshot.append(rows.slice(2, 3));
+    await snapshot.append(rows.slice(3));
     await snapshot.seal();
-    await appendFile(snapshot.filepath!, '\n');
 
     expect(snapshot.filepath).toBeTypeOf('string');
     expect((await stat(snapshot.filepath!)).mode & 0o777).toBe(0o600);
-    const pages: string[][] = [];
+    const pages: ExportRow[][] = [];
     for await (const page of snapshot.pages(2)) pages.push(page);
-    expect(pages).toEqual([['id-1', 'id-2'], ['id-3', 'id-4']]);
+    expect(pages).toEqual([rows.slice(0, 2), rows.slice(2)]);
     await snapshot.cleanup();
     await expect(stat(snapshot.filepath!)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('spills a single row larger than the serialized byte budget and round-trips unicode', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'export-snapshot-large-row-'));
+    cleanupPaths.push(directory);
+    const snapshot = await createExportRowSnapshot({ directory, memoryThresholdBytes: 32 });
+    const row = exportRow('large-row', { memo: '猫'.repeat(128) });
+
+    await snapshot.append([row]);
+    await snapshot.seal();
+
+    expect(snapshot.filepath).toBeTypeOf('string');
+    const pages: ExportRow[][] = [];
+    for await (const page of snapshot.pages(1)) pages.push(page);
+    expect(pages).toEqual([[row]]);
+    await snapshot.cleanup();
+  });
+
+  it('fails closed when a spilled NDJSON row is malformed or truncated', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'export-snapshot-invalid-'));
+    cleanupPaths.push(directory);
+    const snapshot = await createExportRowSnapshot({ directory, memoryThresholdBytes: 0 });
+    await snapshot.append([exportRow('valid-row')]);
+    await snapshot.seal();
+    await appendFile(snapshot.filepath!, '{"txid":"truncated"');
+
+    await expect(async () => {
+      for await (const _page of snapshot.pages(10)) void _page;
+    }).rejects.toThrow('invalid row');
+    await snapshot.cleanup();
+  });
+
+  it('cleans up a partial spill after a file write failure', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'export-snapshot-write-failure-'));
+    cleanupPaths.push(directory);
+    const snapshot = await createExportRowSnapshot({ directory, memoryThresholdBytes: 0 });
+    await snapshot.append([exportRow('first-row')]);
+    const filepath = snapshot.filepath!;
+    const file = Reflect.get(snapshot, 'file') as import('node:fs/promises').FileHandle;
+    vi.spyOn(file, 'writeFile').mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(snapshot.append([exportRow('failed-row')])).rejects.toThrow('disk full');
+    await snapshot.cleanup();
+
+    await expect(stat(filepath)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('closes a spilled snapshot reader before early iterator return settles', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'export-snapshot-reader-'));
     cleanupPaths.push(directory);
-    const snapshot = await createExportIdSnapshot({ directory, memoryThreshold: 0 });
-    await snapshot.append(Array.from({ length: 100 }, (_, index) => `id-${index}`));
+    const snapshot = await createExportRowSnapshot({ directory, memoryThresholdBytes: 0 });
+    await snapshot.append(Array.from({ length: 100 }, (_, index) => exportRow(`id-${index}`)));
     await snapshot.seal();
 
     const pages = snapshot.pages(1);
-    await expect(pages.next()).resolves.toEqual({ value: ['id-0'], done: false });
+    await expect(pages.next()).resolves.toEqual({ value: [exportRow('id-0')], done: false });
     const reader = Reflect.get(snapshot, 'reader') as import('node:fs').ReadStream;
     expect(reader.closed).toBe(false);
 
@@ -172,8 +237,8 @@ describe('transaction export snapshots', () => {
   it('cleans up an unsealed spill file and tolerates repeated cleanup', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'export-snapshot-cleanup-'));
     cleanupPaths.push(directory);
-    const snapshot = await createExportIdSnapshot({ directory, memoryThreshold: 0 });
-    await snapshot.append(['id-1']);
+    const snapshot = await createExportRowSnapshot({ directory, memoryThresholdBytes: 0 });
+    await snapshot.append([exportRow('id-1')]);
     const filepath = snapshot.filepath!;
     await snapshot.cleanup();
     await snapshot.cleanup();
@@ -181,7 +246,7 @@ describe('transaction export snapshots', () => {
   });
 
   it('ends a timed-out seal promptly but defers cleanup until close settles', async () => {
-    const snapshot = await createExportIdSnapshot({ memoryThreshold: 0 });
+    const snapshot = await createExportRowSnapshot({ memoryThresholdBytes: 0 });
     let finishClose!: () => void;
     const close = vi.fn(() => new Promise<void>(resolve => {
       finishClose = resolve;

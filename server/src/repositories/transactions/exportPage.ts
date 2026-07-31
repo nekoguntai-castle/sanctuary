@@ -17,39 +17,18 @@ export interface ExportTransactionRow {
   createdAt: Date;
 }
 
-export interface ExportTransactionIdRow {
-  id: string;
-}
-
-export async function findExportIdPage(
+export async function findExportRowPage(
   walletId: string,
   dateFilter: { gte?: Date; lte?: Date } | undefined,
   skip: number,
   take: number,
   client: PrismaTxClient | typeof prisma = prisma,
-): Promise<ExportTransactionIdRow[]> {
+): Promise<ExportTransactionRow[]> {
   return client.transaction.findMany({
     where: {
       walletId,
       ...(dateFilter && Object.keys(dateFilter).length > 0 ? { blockTime: dateFilter } : {}),
     },
-    select: {
-      id: true,
-    },
-    orderBy: [{ blockTime: 'asc' }, { id: 'asc' }],
-    skip,
-    take,
-  });
-}
-
-export async function findExportRowsByIds(
-  walletId: string,
-  ids: string[],
-): Promise<ExportTransactionRow[]> {
-  /* v8 ignore next -- snapshot pages are nonempty by construction; keep the repository safe for other callers */
-  if (ids.length === 0) return [];
-  return prisma.transaction.findMany({
-    where: { walletId, id: { in: ids } },
     select: {
       id: true,
       txid: true,
@@ -65,6 +44,9 @@ export async function findExportRowsByIds(
       blockTime: true,
       createdAt: true,
     },
+    orderBy: [{ blockTime: 'asc' }, { id: 'asc' }],
+    skip,
+    take,
   });
 }
 

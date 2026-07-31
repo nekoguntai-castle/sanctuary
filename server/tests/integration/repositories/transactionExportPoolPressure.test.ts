@@ -75,7 +75,7 @@ describeWithDatabase('transaction export pool pressure', () => {
         withExportCaptureTransaction: (fn: (tx: any) => Promise<unknown>, options: any) => (
           prisma.$transaction(fn, { ...options, isolationLevel: 'RepeatableRead' })
         ),
-        findExportIdPage: async (
+        findExportRowPage: async (
           _walletId: string,
           _dateFilter: unknown,
           skip: number,
@@ -83,12 +83,7 @@ describeWithDatabase('transaction export pool pressure', () => {
           tx: any,
         ) => {
           await tx.$queryRaw`SELECT 1`;
-          return ids.slice(skip, skip + take).map(id => ({ id }));
-        },
-        findExportRowsByIds: async (_walletId: string, requestedIds: string[]) => {
-          await prisma.$queryRaw`SELECT 1`;
-          const requested = new Set(requestedIds);
-          return rows.filter(row => requested.has(row.id));
+          return rows.slice(skip, skip + take);
         },
       },
     }));

@@ -237,6 +237,13 @@ describeIfDb('Phase 2 operations proof', () => {
         memo: '2026-07-30T12:34:56.000Z',
       },
     });
+    await prisma.transactionOwnershipRepair.create({
+      data: {
+        walletId: wallet.id,
+        txid: transaction.txid,
+        targetAddressCount: 2,
+      },
+    });
     const transactionInput = await prisma.transactionInput.create({
       data: {
         transactionId: transaction.id,

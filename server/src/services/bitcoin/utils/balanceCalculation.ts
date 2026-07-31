@@ -84,24 +84,8 @@ export async function correctMisclassifiedConsolidations(walletId: string): Prom
  * OPTIMIZED: Uses batched updates instead of N+1 individual queries
  */
 export async function recalculateWalletBalances(walletId: string): Promise<void> {
-  // Get all transactions sorted by block time (oldest first)
-  const transactions = await transactionRepository.findForBalanceRecalculation(walletId);
-
-  if (transactions.length === 0) {
-    return;
+  const transactionCount = await transactionRepository.recalculateBalancesAtomically(walletId);
+  if (transactionCount > 0) {
+    log.debug(`Recalculated balances for ${transactionCount} transactions in wallet ${walletId}`);
   }
-
-  // Calculate all running balances first
-  let runningBalance = BigInt(0);
-  const updates: { id: string; balanceAfter: bigint }[] = [];
-
-  for (const tx of transactions) {
-    runningBalance += tx.amount;
-    updates.push({ id: tx.id, balanceAfter: runningBalance });
-  }
-
-  // Batch update in chunks of 500 to avoid overwhelming the database
-  await transactionRepository.batchUpdateBalances(updates);
-
-  log.debug(`Recalculated balances for ${transactions.length} transactions in wallet ${walletId}`);
 }

@@ -15,13 +15,7 @@ import { transactionExportPermits } from '../../../../src/services/transactionEx
 function mockExportRows(rows: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
   const normalized = rows.map((row, index) => ({ id: row.id ?? `export-${index}`, ...row }));
   mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-    if (Object.keys(args.select ?? {}).length === 1 && args.select?.id) {
-      return normalized
-        .slice(args.skip, args.skip + args.take)
-        .map(({ id }) => ({ id }));
-    }
-    const requested = new Set(args.where?.id?.in ?? []);
-    return normalized.filter(row => requested.has(row.id));
+    return normalized.slice(args.skip, args.skip + args.take);
   });
   return normalized;
 }
@@ -279,7 +273,7 @@ export function registerTransactionHttpExportTests(): void {
     expect(response.status).toBe(200);
     expect(Array.isArray(response.body)).toBe(true);
     expect(response.body.length).toBe(503);
-    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(4);
+    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(2);
     // Second call should page past the first 500 rows.
     expect(mockPrismaClient.transaction.findMany.mock.calls[1][0].skip).toBe(
       500,
@@ -316,13 +310,13 @@ export function registerTransactionHttpExportTests(): void {
 
     expect(response.status).toBe(200);
     expect(response.text.split("\n").filter(Boolean).length).toBe(502);
-    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(4);
+    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(2);
     expect(mockPrismaClient.transaction.findMany.mock.calls[1][0].skip).toBe(
       500,
     );
   });
 
-  it("destroys the response when export fails after streaming starts", async () => {
+  it("fails before sending export headers when a later capture page fails", async () => {
     const rows = Array.from({ length: 501 }, (_, i) => ({
       id: `broken-${i}`,
       txid: String(i + 1).padStart(64, "2"),
@@ -341,28 +335,18 @@ export function registerTransactionHttpExportTests(): void {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({
       name: "Broken Stream Wallet",
     });
-    let fullPageCalls = 0;
     mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-      if (Object.keys(args.select ?? {}).length === 1) {
-        return rows.slice(args.skip, args.skip + args.take).map(({ id }) => ({ id }));
-      }
-      fullPageCalls += 1;
-      if (fullPageCalls === 2) throw new Error('page two failed');
-      const requested = new Set(args.where.id.in);
-      return rows.filter(row => requested.has(row.id));
+      if (args.skip === 500) throw new Error('page two failed');
+      return rows.slice(args.skip, args.skip + args.take);
     });
 
-    let requestError: unknown;
-    try {
-      await request(app)
-        .get(`/api/v1/wallets/${walletId}/transactions/export`)
-        .query({ format: "json" });
-    } catch (error) {
-      requestError = error;
-    }
+    const response = await request(app)
+      .get(`/api/v1/wallets/${walletId}/transactions/export`)
+      .query({ format: "json" });
 
-    expect(requestError).toBeDefined();
-    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(4);
+    expect(response.status).toBe(500);
+    expect(response.body.code).toBe('INTERNAL_ERROR');
+    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(2);
     expect(transactionExportPermits.active).toBe(0);
   });
 
@@ -395,7 +379,7 @@ export function registerTransactionHttpExportTests(): void {
 
     expect(response.status).toBe(200);
     expect(response.body.length).toBe(1);
-    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(2);
+    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(1);
     // Ensure paginated query shape: deterministic orderBy + skip/take.
     const call = mockPrismaClient.transaction.findMany.mock.calls[0][0];
     expect(call.orderBy).toEqual([{ blockTime: "asc" }, { id: "asc" }]);
@@ -435,7 +419,7 @@ export function registerTransactionHttpExportTests(): void {
     expect(lines[0]).toContain("Transaction ID");
   });
 
-  it("wraps only ID capture in a short REPEATABLE READ transaction", async () => {
+  it("wraps the complete row capture in a short REPEATABLE READ transaction", async () => {
     // Snapshot isolation is what makes the paginated read safe under
     // concurrent wallet sync writes: without it, skip-based pagination
     // between pages would shift offsets and either duplicate or miss
@@ -512,7 +496,7 @@ export function registerTransactionHttpExportTests(): void {
     expect(csv.text).toContain(',-5,');
   });
 
-  it('keeps captured membership/order across concurrent insert, delete, and update', async () => {
+  it('keeps captured membership, order, and values across concurrent insert, delete, and update', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: 'Concurrent changes' });
     const rows = mockExportRows([
       {
@@ -534,20 +518,14 @@ export function registerTransactionHttpExportTests(): void {
         createdAt: new Date('2026-01-03T00:00:00.000Z'),
       },
     ]);
-    let captured = false;
-    mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-      if (Object.keys(args.select ?? {}).length === 1) {
-        captured = true;
-        return rows.map(({ id }) => ({ id }));
-      }
-      expect(captured).toBe(true);
-      return [
-        { ...rows[2], amount: BigInt(99) },
-        {
-          ...rows[0], id: 'inserted', txid: 'd'.repeat(64), amount: BigInt(4),
-        },
-        rows[0],
-      ];
+    mockPrismaClient.$transaction.mockImplementationOnce(async (callback: any) => {
+      const result = await callback(mockPrismaClient);
+      rows[0].amount = BigInt(99);
+      rows.splice(1, 1);
+      rows.push({
+        ...rows[0], id: 'inserted', txid: 'd'.repeat(64), amount: BigInt(4),
+      });
+      return result;
     });
 
     const response = await request(app)
@@ -557,39 +535,36 @@ export function registerTransactionHttpExportTests(): void {
     expect(response.status).toBe(200);
     expect(response.body.map((row: { txid: string }) => row.txid)).toEqual([
       'a'.repeat(64),
+      'b'.repeat(64),
       'c'.repeat(64),
     ]);
-    expect(response.body[1].amountSats).toBe(99);
+    expect(response.body.map((row: { amountSats: number }) => row.amountSats)).toEqual([1, 2, 3]);
+    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(1);
   });
 
-  it('releases its permit promptly when the client closes during a pending row fetch', async () => {
+  it('retains its permit when the client closes during a pending row capture', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: 'Closed response' });
+    let markQueryStarted!: () => void;
+    const queryStarted = new Promise<void>(resolve => {
+      markQueryStarted = resolve;
+    });
     let settleRows!: (rows: unknown[]) => void;
     const pendingRows = new Promise<unknown[]>(resolve => {
       settleRows = resolve;
     });
-    mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-      if (Object.keys(args.select ?? {}).length === 1) return [{ id: 'pending' }];
+    mockPrismaClient.transaction.findMany.mockImplementation(async () => {
+      markQueryStarted();
       return pendingRows;
     });
     const server = app.listen(0);
     const { port } = server.address() as AddressInfo;
     try {
-      await new Promise<void>((resolve, reject) => {
-        const client = httpGet(
-          `http://127.0.0.1:${port}/api/v1/wallets/${walletId}/transactions/export?format=json`,
-          response => {
-            response.once('data', () => {
-              client.destroy();
-              resolve();
-            });
-          },
-        );
-        client.once('error', error => {
-          if ((error as NodeJS.ErrnoException).code !== 'ECONNRESET') reject(error);
-        });
-      });
-
+      const client = httpGet(
+        `http://127.0.0.1:${port}/api/v1/wallets/${walletId}/transactions/export?format=json`,
+      );
+      client.on('error', () => undefined);
+      await queryStarted;
+      client.destroy();
       await new Promise(resolve => setTimeout(resolve, 25));
       expect(transactionExportPermits.active).toBe(1);
       settleRows([]);
@@ -599,7 +574,7 @@ export function registerTransactionHttpExportTests(): void {
     }
   });
 
-  it('retains its permit when capture is aborted until the pending ID query settles', async () => {
+  it('retains its permit when capture is aborted until the pending row query settles', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: 'Aborted capture' });
     let markQueryStarted!: () => void;
     const queryStarted = new Promise<void>(resolve => {

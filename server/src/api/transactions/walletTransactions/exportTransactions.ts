@@ -3,14 +3,13 @@
 import { Router, type Request, type Response } from 'express';
 import { requireWalletAccess } from '../../../middleware/walletAccess';
 import { walletRepository, transactionRepository } from '../../../repositories';
-import type { ExportTransactionRow } from '../../../repositories/transactionRepository';
 import { asyncHandler } from '../../../errors/errorHandler';
 import { RateLimitError } from '../../../errors/ApiError';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import {
-  createExportIdSnapshot,
-  type ExportIdSnapshot,
+  createExportRowSnapshot,
+  type ExportRowSnapshot,
 } from '../../../services/transactionExport/exportSnapshot';
 import { transactionExportPermits } from '../../../services/transactionExport/exportPermit';
 import {
@@ -45,21 +44,13 @@ function getDateFilter(query: Request['query']): DateFilter | undefined {
   return Object.keys(dateFilter).length > 0 ? dateFilter : undefined;
 }
 
-function orderCapturedRows(ids: string[], rows: ExportTransactionRow[]): ExportTransactionRow[] {
-  const rowsById = new Map(rows.map(row => [row.id, row]));
-  return ids.flatMap(id => {
-    const row = rowsById.get(id);
-    return row ? [row] : [];
-  });
-}
-
-async function captureExportIds(
+async function captureExportRows(
   walletId: string,
   dateFilter: DateFilter | undefined,
   requestSignal: AbortSignal,
   ownership: ExportOperationOwnership,
-): Promise<ExportIdSnapshot> {
-  const snapshot = await createExportIdSnapshot();
+): Promise<ExportRowSnapshot> {
+  const snapshot = await createExportRowSnapshot();
   const timeoutSignal = AbortSignal.timeout(EXPORT_CAPTURE_TIMEOUT_MS);
   const signal = AbortSignal.any([requestSignal, timeoutSignal]);
 
@@ -68,7 +59,7 @@ async function captureExportIds(
       let offset = 0;
       while (true) {
         signal.throwIfAborted();
-        const page = await raceExportAbort(signal, ownership.hold(transactionRepository.findExportIdPage(
+        const page = await raceExportAbort(signal, ownership.hold(transactionRepository.findExportRowPage(
           walletId,
           dateFilter,
           offset,
@@ -77,7 +68,7 @@ async function captureExportIds(
         )));
         signal.throwIfAborted();
         await raceExportAbort(signal, ownership.hold(
-          snapshot.append(page.map(row => row.id), signal),
+          snapshot.append(page.map(toExportRow), signal),
         ));
         if (page.length < EXPORT_PAGE_SIZE) break;
         offset += page.length;
@@ -99,21 +90,16 @@ async function captureExportIds(
 async function streamJson(
   req: Request,
   res: Response,
-  snapshot: ExportIdSnapshot,
+  snapshot: ExportRowSnapshot,
   signal: AbortSignal,
-  ownership: ExportOperationOwnership,
 ): Promise<void> {
   await writeExportChunk(req, res, '[', signal);
   let first = true;
-  for await (const ids of snapshot.pages(EXPORT_PAGE_SIZE)) {
+  for await (const rows of snapshot.pages(EXPORT_PAGE_SIZE)) {
     signal.throwIfAborted();
-    const rows = orderCapturedRows(ids, await raceExportAbort(
-      signal,
-      ownership.hold(transactionRepository.findExportRowsByIds(req.walletId!, ids)),
-    ));
     for (const row of rows) {
       const prefix = first ? '' : ',';
-      await writeExportChunk(req, res, prefix + JSON.stringify(toExportRow(row)), signal);
+      await writeExportChunk(req, res, prefix + JSON.stringify(row), signal);
       first = false;
     }
   }
@@ -123,19 +109,14 @@ async function streamJson(
 async function streamCsv(
   req: Request,
   res: Response,
-  snapshot: ExportIdSnapshot,
+  snapshot: ExportRowSnapshot,
   signal: AbortSignal,
-  ownership: ExportOperationOwnership,
 ): Promise<void> {
   await writeExportChunk(req, res, `${CSV_HEADERS.join(',')}\n`, signal);
-  for await (const ids of snapshot.pages(EXPORT_PAGE_SIZE)) {
+  for await (const rows of snapshot.pages(EXPORT_PAGE_SIZE)) {
     signal.throwIfAborted();
-    const rows = orderCapturedRows(ids, await raceExportAbort(
-      signal,
-      ownership.hold(transactionRepository.findExportRowsByIds(req.walletId!, ids)),
-    ));
     for (const row of rows) {
-      await writeExportChunk(req, res, `${toCsvRow(toExportRow(row))}\n`, signal);
+      await writeExportChunk(req, res, `${toCsvRow(row)}\n`, signal);
     }
   }
 }
@@ -171,15 +152,15 @@ export function createExportRouter(): Router {
 
     const lifecycle = observeExportStream(req, res);
     const ownership = new ExportOperationOwnership();
-    let snapshot: ExportIdSnapshot | null = null;
+    let snapshot: ExportRowSnapshot | null = null;
     try {
       const walletId = req.walletId!;
       const wallet = await walletRepository.findByIdWithSelect(walletId, { name: true });
-      snapshot = await captureExportIds(walletId, getDateFilter(req.query), lifecycle.signal, ownership);
+      snapshot = await captureExportRows(walletId, getDateFilter(req.query), lifecycle.signal, ownership);
       const isJson = req.query.format === 'json';
       setExportHeaders(res, wallet?.name, isJson);
-      if (isJson) await streamJson(req, res, snapshot, lifecycle.signal, ownership);
-      else await streamCsv(req, res, snapshot, lifecycle.signal, ownership);
+      if (isJson) await streamJson(req, res, snapshot, lifecycle.signal);
+      else await streamCsv(req, res, snapshot, lifecycle.signal);
       res.end();
     } catch (error) {
       /* v8 ignore next -- socket-close timing is covered deterministically by streamLifecycle tests */

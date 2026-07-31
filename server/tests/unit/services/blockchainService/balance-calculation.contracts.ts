@@ -199,65 +199,36 @@ describe('Blockchain Service - Balance Calculation', () => {
   });
 
   describe('recalculateWalletBalances', () => {
-    it('should calculate running balance for all transactions', async () => {
+    it('calculates running balances entirely inside one locked SQL transaction', async () => {
       const { recalculateWalletBalances } = await import(
         '../../../../src/services/bitcoin/utils/balanceCalculation'
       );
-
-      const transactions = [
-        { id: 'tx-1', amount: BigInt(100000000) }, // +1 BTC
-        { id: 'tx-2', amount: BigInt(-50000000) }, // -0.5 BTC
-        { id: 'tx-3', amount: BigInt(25000000) }, // +0.25 BTC
-      ];
-
-      mockPrisma.transaction.findMany.mockResolvedValue(transactions);
-      mockPrisma.transaction.update.mockResolvedValue({});
-      mockPrisma.$transaction.mockResolvedValue([]);
+      mockPrisma.$executeRaw
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(3);
 
       await recalculateWalletBalances('wallet-1');
 
-      expect(mockPrisma.$transaction).toHaveBeenCalled();
-
-      // Verify the balance calculations
-      // After tx-1: 1 BTC
-      // After tx-2: 0.5 BTC
-      // After tx-3: 0.75 BTC
-      const calls = mockPrisma.$transaction.mock.calls;
-      expect(calls.length).toBeGreaterThan(0);
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.$transaction).toHaveBeenCalledWith(
+        expect.any(Function),
+        { timeout: 60_000 },
+      );
+      expect(mockPrisma.$executeRaw).toHaveBeenCalledTimes(3);
+      expect(mockPrisma.transaction.findMany).not.toHaveBeenCalled();
+      expect(mockPrisma.transaction.update).not.toHaveBeenCalled();
     });
 
-    it('should handle empty transaction list', async () => {
+    it('handles a wallet whose balances are already current', async () => {
       const { recalculateWalletBalances } = await import(
         '../../../../src/services/bitcoin/utils/balanceCalculation'
       );
 
-      mockPrisma.transaction.findMany.mockResolvedValue([]);
-
       await recalculateWalletBalances('wallet-1');
 
-      // Should not call $transaction for empty list
-      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
-    });
-
-    it('should batch updates in chunks of 500', async () => {
-      const { recalculateWalletBalances } = await import(
-        '../../../../src/services/bitcoin/utils/balanceCalculation'
-      );
-
-      // Create 600 transactions
-      const transactions = Array.from({ length: 600 }, (_, i) => ({
-        id: `tx-${i}`,
-        amount: BigInt(1000),
-      }));
-
-      mockPrisma.transaction.findMany.mockResolvedValue(transactions);
-      mockPrisma.transaction.update.mockResolvedValue({});
-      mockPrisma.$transaction.mockResolvedValue([]);
-
-      await recalculateWalletBalances('wallet-1');
-
-      // Should call $transaction twice (500 + 100)
-      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(2);
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.$executeRaw).toHaveBeenCalledTimes(3);
     });
   });
 });

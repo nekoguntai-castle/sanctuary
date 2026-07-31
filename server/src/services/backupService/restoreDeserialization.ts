@@ -27,6 +27,7 @@ export const RESTORE_DATE_FIELDS: Record<string, readonly string[]> = {
     'createdAt',
     'updatedAt',
   ],
+  transactionOwnershipRepair: ['createdAt', 'updatedAt'],
   uTXO: ['createdAt', 'updatedAt'],
   draftTransaction: ['createdAt', 'updatedAt', 'expiresAt', 'approvedAt'],
   draftUtxoLock: ['createdAt'],

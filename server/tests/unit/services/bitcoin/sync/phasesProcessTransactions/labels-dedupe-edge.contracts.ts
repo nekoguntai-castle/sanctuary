@@ -250,7 +250,7 @@ export function registerProcessTransactionLabelsDedupeEdgeTests(walletId: string
 
       const inputRows = mockPrismaClient.transactionInput.createMany.mock.calls.at(-1)?.[0]?.data || [];
       expect(inputRows.some((row: any) => row.txid === prevBatchTxid)).toBe(true);
-      expect(inputRows.some((row: any) => row.txid === prevFetchAddrTxid)).toBe(true);
+      expect(inputRows.some((row: any) => row.txid === prevFetchAddrTxid)).toBe(false);
       expect(inputRows.some((row: any) => row.txid === prevFetchNullTxid)).toBe(false);
       expect(inputRows.some((row: any) => row.txid === prevNoVoutTxid)).toBe(false);
     });
@@ -442,11 +442,6 @@ export function registerProcessTransactionLabelsDedupeEdgeTests(walletId: string
       await processTransactionsPhase(ctx);
 
       const createdInputs = mockPrismaClient.transactionInput.createMany.mock.calls.at(-1)?.[0]?.data || [];
-      expect(createdInputs).toHaveLength(1);
-      expect(createdInputs[0]).toEqual(expect.objectContaining({
-        transactionId: 'tx-main-edge',
-        txid: prevTxid,
-        amount: BigInt(0),
-      }));
+      expect(createdInputs).toHaveLength(0);
     });
 }

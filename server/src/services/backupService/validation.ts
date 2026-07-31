@@ -12,6 +12,7 @@ import {
   COMPLETE_TABLE_POLICY_VERSION,
   getRequiredRestoreTables,
   LEGACY_BACKUP_FORMAT_VERSION,
+  PREVIOUS_COMPLETE_TABLE_POLICY_HASH,
   TABLE_ORDER,
 } from './constants';
 import type { BackupRecord, BackupMeta, ValidationResult } from './types';
@@ -184,7 +185,9 @@ const validateTablePolicy = (meta: BackupMeta, issues: string[]): void => {
   }
 
   const { version, hash } = meta.tablePolicy;
-  if (version !== COMPLETE_TABLE_POLICY_VERSION || hash !== COMPLETE_TABLE_POLICY_HASH) {
+  const recognizedHash = hash === COMPLETE_TABLE_POLICY_HASH
+    || hash === PREVIOUS_COMPLETE_TABLE_POLICY_HASH;
+  if (version !== COMPLETE_TABLE_POLICY_VERSION || !recognizedHash) {
     issues.push(`Unknown table policy: ${version}/${hash}`);
   }
 };

@@ -2,6 +2,7 @@ import prisma from '../../../src/models/prisma';
 import type { PrismaClient } from '../../../src/generated/prisma/client';
 import { transactionRepository } from '../../../src/repositories';
 import { storeTransactionIO } from '../../../src/services/bitcoin/sync/phases/processTransactions/transactionIO';
+import { recalculateWalletBalances } from '../../../src/services/bitcoin/utils/balanceCalculation';
 import type { SyncContext } from '../../../src/services/bitcoin/sync/types';
 import {
   createTestAddress,
@@ -17,6 +18,24 @@ describeWithDatabase('address sync transaction reconciliation', () => {
   const factoryClient = prisma as unknown as PrismaClient;
 
   afterEach(async () => {
+    await prisma.$executeRawUnsafe(
+      'DROP TRIGGER IF EXISTS test_fail_classification_role_trigger ON "transaction_outputs"',
+    );
+    await prisma.$executeRawUnsafe(
+      'DROP FUNCTION IF EXISTS test_fail_classification_role_update()',
+    );
+    await prisma.$executeRawUnsafe(
+      'DROP TRIGGER IF EXISTS test_pause_ownership_target_trigger ON "transaction_ownership_repairs"',
+    );
+    await prisma.$executeRawUnsafe(
+      'DROP FUNCTION IF EXISTS test_pause_ownership_target()',
+    );
+    await prisma.$executeRawUnsafe(
+      'DROP TRIGGER IF EXISTS test_pause_balance_update_trigger ON "transactions"',
+    );
+    await prisma.$executeRawUnsafe(
+      'DROP FUNCTION IF EXISTS test_pause_balance_update()',
+    );
     if (userIds.length > 0) {
       await prisma.user.deleteMany({ where: { id: { in: userIds.splice(0) } } });
     }
@@ -52,6 +71,40 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     throw new Error('Timed out waiting for address-sync I/O row lock');
   }
 
+  async function waitForBalanceAdvisoryLock(): Promise<void> {
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      const waiting = await prisma.$queryRaw<Array<{ waiting: boolean }>>`
+        SELECT true AS "waiting"
+        FROM pg_stat_activity
+        WHERE "pid" <> pg_backend_pid()
+          AND "datname" = current_database()
+          AND "query" LIKE '%pg_advisory_xact_lock(hashtextextended%'
+          AND "wait_event_type" = 'Lock'
+        LIMIT 1
+      `;
+      if (waiting.length > 0) return;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    throw new Error('Timed out waiting for wallet balance advisory lock');
+  }
+
+  async function waitForAdvisoryLockQuery(fragment: string): Promise<void> {
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      const waiting = await prisma.$queryRaw<Array<{ query: string }>>`
+        SELECT "query"
+        FROM pg_stat_activity
+        WHERE "pid" <> pg_backend_pid()
+          AND "datname" = current_database()
+          AND "wait_event_type" = 'Lock'
+      `;
+      if (waiting.some(row => row.query.includes(fragment))) return;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    throw new Error(`Timed out waiting for advisory lock query: ${fragment}`);
+  }
+
   const candidate = (
     walletId: string,
     addressId: string,
@@ -62,6 +115,9 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     addressId,
     txid,
     type,
+    classificationInputsComplete: true,
+    classificationVersion: 2,
+    classificationAddressCount: 1,
     amount: type === 'sent' ? BigInt(-9_000) : BigInt(10_000),
     fee: type === 'received' ? undefined : BigInt(1_000),
     confirmations: type === 'sent' ? 2 : 0,
@@ -69,7 +125,47 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     rbfStatus: type === 'sent' ? 'confirmed' as const : 'active' as const,
   });
 
-  it('converges concurrent candidates on the strongest classification', async () => {
+  it('durably marks every balance-affecting mutation until recalculation succeeds', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const transaction = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    });
+
+    await expect(transactionRepository.hasPendingBalanceRecalculation(wallet.id))
+      .resolves.toBe(true);
+
+    await prisma.transaction.update({
+      where: { id: transaction.id },
+      data: { amount: BigInt(21_000) },
+    });
+    const [{ markerCount }] = await prisma.$queryRaw<Array<{ markerCount: bigint }>>`
+      SELECT COUNT(*) AS "markerCount"
+      FROM "wallet_balance_repairs"
+      WHERE "walletId" = ${wallet.id}
+    `;
+    expect(markerCount).toBe(BigInt(1));
+
+    await recalculateWalletBalances(wallet.id);
+    await expect(transactionRepository.hasPendingBalanceRecalculation(wallet.id))
+      .resolves.toBe(false);
+
+    await prisma.transaction.update({
+      where: { id: transaction.id },
+      data: {
+        amount: BigInt(20_000),
+        blockTime: new Date('2026-07-31T12:00:00.000Z'),
+      },
+    });
+    await expect(transactionRepository.hasPendingBalanceRecalculation(wallet.id))
+      .resolves.toBe(true);
+
+    await recalculateWalletBalances(wallet.id);
+    await prisma.transaction.delete({ where: { id: transaction.id } });
+    await expect(transactionRepository.hasPendingBalanceRecalculation(wallet.id))
+      .resolves.toBe(true);
+  });
+
+  it('keeps the first complete current-version classification under concurrency', async () => {
     const { wallet, address } = await createWalletFixture();
     const txid = generateTxid();
 
@@ -86,14 +182,38 @@ describeWithDatabase('address sync transaction reconciliation', () => {
       where: { txid_walletId: { txid, walletId: wallet.id } },
     });
     expect(outcomes).toContain('created');
-    expect(stored).toMatchObject({
-      type: 'sent',
-      amount: BigInt(-9_000),
-      fee: BigInt(1_000),
-      confirmations: 2,
-      blockHeight: 100,
-      rbfStatus: 'confirmed',
-    });
+    expect(outcomes.sort()).toEqual(['created', 'unchanged']);
+    expect(['received', 'sent']).toContain(stored.type);
+  });
+
+  it('retains an absent-row ownership target until a new-enough candidate arrives', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+    await transactionRepository.markOwnershipRepairNeeded(
+      wallet.id,
+      [txid],
+      2
+    );
+
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationAddressCount: 1,
+    })).toBe('unchanged');
+    await expect(prisma.transaction.findUnique({
+      where: { txid_walletId: { txid, walletId: wallet.id } },
+    })).resolves.toBeNull();
+    await expect(prisma.transactionOwnershipRepair.findUnique({
+      where: { walletId_txid: { walletId: wallet.id, txid } },
+      select: { targetAddressCount: true },
+    })).resolves.toEqual({ targetAddressCount: 2 });
+
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationAddressCount: 2,
+    })).toBe('created');
+    await expect(prisma.transactionOwnershipRepair.findUnique({
+      where: { walletId_txid: { walletId: wallet.id, txid } },
+    })).resolves.toBeNull();
   });
 
   it('converges a primary batch insert racing an address-sync promotion', async () => {
@@ -110,13 +230,106 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     ]);
 
     expect(batchResults).toHaveLength(1);
-    expect(await prisma.transaction.findUniqueOrThrow({
+    expect(['received', 'sent']).toContain((await prisma.transaction.findUniqueOrThrow({
       where: { txid_walletId: { txid, walletId: wallet.id } },
-      select: { type: true, amount: true, rbfStatus: true },
-    })).toEqual({
-      type: 'sent',
-      amount: BigInt(-9_000),
-      rbfStatus: 'confirmed',
+      select: { type: true },
+    })).type);
+  });
+
+  it('converges classification, balance, and output ownership after address discovery grows', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+    expect(await transactionRepository.reconcileAddressSyncTransaction(
+      candidate(wallet.id, address.id, txid, 'received')
+    )).toBe('created');
+    const transaction = await prisma.transaction.findUniqueOrThrow({
+      where: { txid_walletId: { txid, walletId: wallet.id } },
+    });
+    await prisma.transactionOutput.create({
+      data: {
+        transactionId: transaction.id,
+        outputIndex: 0,
+        address: 'newly-discovered-wallet-output',
+        amount: BigInt(9_000),
+        isOurs: false,
+        outputType: 'unknown',
+      },
+    });
+
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'consolidation'),
+      classificationAddressCount: 2,
+      amount: BigInt(-1_000),
+    })).toBe('repaired');
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationAddressCount: 1,
+      amount: BigInt(99_000),
+    })).toBe('unchanged');
+    await prisma.$executeRawUnsafe(`
+      CREATE FUNCTION test_fail_classification_role_update() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        RAISE EXCEPTION 'forced ownership repair failure';
+      END;
+      $$
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER test_fail_classification_role_trigger
+      BEFORE UPDATE ON "transaction_outputs"
+      FOR EACH ROW EXECUTE FUNCTION test_fail_classification_role_update()
+    `);
+    await expect(transactionRepository.persistAddressSyncIORows([], [{
+      transactionId: transaction.id,
+      outputIndex: 0,
+      address: 'newly-discovered-wallet-output',
+      amount: BigInt(9_000),
+      isOurs: true,
+    }], [transaction.id], 2)).rejects.toThrow('forced ownership repair failure');
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { ioComplete: true },
+    })).resolves.toEqual({ ioComplete: false });
+    await prisma.$executeRawUnsafe(
+      'DROP TRIGGER test_fail_classification_role_trigger ON "transaction_outputs"',
+    );
+    await prisma.$executeRawUnsafe(
+      'DROP FUNCTION test_fail_classification_role_update()',
+    );
+    await transactionRepository.persistAddressSyncIORows([], [{
+      transactionId: transaction.id,
+      outputIndex: 0,
+      address: 'newly-discovered-wallet-output',
+      amount: BigInt(9_000),
+      isOurs: true,
+    }], [transaction.id], 2);
+    await recalculateWalletBalances(wallet.id);
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: {
+        type: true,
+        amount: true,
+        balanceAfter: true,
+        classificationAddressCount: true,
+      },
+    })).resolves.toEqual({
+      type: 'consolidation',
+      amount: BigInt(-1_000),
+      balanceAfter: BigInt(-1_000),
+      classificationAddressCount: 2,
+    });
+    await expect(prisma.transactionOutput.findUniqueOrThrow({
+      where: {
+        transactionId_outputIndex: {
+          transactionId: transaction.id,
+          outputIndex: 0,
+        },
+      },
+      select: { isOurs: true, outputType: true },
+    })).resolves.toEqual({
+      isOurs: true,
+      outputType: 'consolidation',
     });
   });
 
@@ -125,7 +338,10 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     const txid = generateTxid();
 
     expect(await transactionRepository.reconcileAddressSyncTransaction(
-      candidate(wallet.id, address.id, txid, 'received')
+      {
+        ...candidate(wallet.id, address.id, txid, 'received'),
+        classificationVersion: 1,
+      }
     )).toBe('created');
     const receivedRow = await prisma.transaction.findUniqueOrThrow({
       where: { txid_walletId: { txid, walletId: wallet.id } },
@@ -192,7 +408,7 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     ]);
   });
 
-  it('persists classification input completeness monotonically without changing same-type outcome', async () => {
+  it('authoritatively repairs incomplete same-type scalar data once', async () => {
     const { wallet, address } = await createWalletFixture();
     const txid = generateTxid();
 
@@ -203,7 +419,8 @@ describeWithDatabase('address sync transaction reconciliation', () => {
     expect(await transactionRepository.reconcileAddressSyncTransaction({
       ...candidate(wallet.id, address.id, txid, 'received'),
       classificationInputsComplete: true,
-    })).toBe('unchanged');
+      amount: BigInt(30_000),
+    })).toBe('repaired');
     expect(await transactionRepository.reconcileAddressSyncTransaction({
       ...candidate(wallet.id, address.id, txid, 'received'),
       classificationInputsComplete: false,
@@ -211,8 +428,383 @@ describeWithDatabase('address sync transaction reconciliation', () => {
 
     expect(await prisma.transaction.findUniqueOrThrow({
       where: { txid_walletId: { txid, walletId: wallet.id } },
-      select: { type: true, classificationInputsComplete: true },
-    })).toEqual({ type: 'received', classificationInputsComplete: true });
+      select: {
+        type: true,
+        amount: true,
+        classificationInputsComplete: true,
+        classificationVersion: true,
+      },
+    })).toEqual({
+      type: 'received',
+      amount: BigInt(30_000),
+      classificationInputsComplete: true,
+      classificationVersion: 2,
+    });
+  });
+
+  it('never consumes ownership targets or downgrades address evidence', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationInputsComplete: false,
+      classificationAddressCount: 2,
+    })).toBe('created');
+    await transactionRepository.markOwnershipRepairNeeded(wallet.id, [txid], 3);
+
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationInputsComplete: false,
+      classificationAddressCount: 3,
+    })).toBe('unchanged');
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationAddressCount: 2,
+    })).toBe('unchanged');
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationAddressCount: 3,
+    })).toBe('repaired');
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationAddressCount: 2,
+      amount: BigInt(99_000),
+    })).toBe('unchanged');
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { txid_walletId: { txid, walletId: wallet.id } },
+      select: { classificationAddressCount: true, classificationInputsComplete: true },
+    })).resolves.toEqual({
+      classificationAddressCount: 3,
+      classificationInputsComplete: true,
+    });
+    await expect(prisma.transactionOwnershipRepair.count({
+      where: { walletId: wallet.id, txid },
+    })).resolves.toBe(0);
+  });
+
+  it('fences absent-row batch insertion with the durable ownership target', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+    await transactionRepository.markOwnershipRepairNeeded(wallet.id, [txid], 2);
+
+    await expect(transactionRepository.reconcileTransactionBatch([{
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationAddressCount: 1,
+    }])).resolves.toEqual([expect.objectContaining({ outcome: 'unchanged' })]);
+    await expect(prisma.transaction.count({
+      where: { walletId: wallet.id, txid },
+    })).resolves.toBe(0);
+
+    await expect(transactionRepository.reconcileTransactionBatch([{
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationAddressCount: 2,
+    }])).resolves.toEqual([expect.objectContaining({ outcome: 'created' })]);
+    await expect(prisma.transaction.count({
+      where: { walletId: wallet.id, txid },
+    })).resolves.toBe(1);
+    await expect(prisma.transactionOwnershipRepair.count({
+      where: { walletId: wallet.id, txid },
+    })).resolves.toBe(0);
+  });
+
+  it('serializes concurrent target creation ahead of absent-row batch insertion', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+    const pauseKey = 72_310_001;
+    await prisma.$executeRawUnsafe(`
+      CREATE FUNCTION test_pause_ownership_target() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        PERFORM pg_advisory_xact_lock(${pauseKey});
+        RETURN NEW;
+      END;
+      $$
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER test_pause_ownership_target_trigger
+      AFTER INSERT ON "transaction_ownership_repairs"
+      FOR EACH ROW EXECUTE FUNCTION test_pause_ownership_target()
+    `);
+    let releasePause = (): void => {};
+    let signalPauseHeld = (): void => {};
+    const pauseReleased = new Promise<void>(resolve => {
+      releasePause = resolve;
+    });
+    const pauseHeld = new Promise<void>(resolve => {
+      signalPauseHeld = resolve;
+    });
+    const blocker = prisma.$transaction(async tx => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${pauseKey})`);
+      signalPauseHeld();
+      await pauseReleased;
+    }, { timeout: 30_000 });
+    await pauseHeld;
+
+    const targetCreation = transactionRepository.markOwnershipRepairNeeded(
+      wallet.id,
+      [txid],
+      2
+    );
+    await waitForAdvisoryLockQuery('transaction_ownership_repairs');
+    let insertionFinished = false;
+    const insertion = transactionRepository.reconcileTransactionBatch([{
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationAddressCount: 1,
+    }]).then(result => {
+      insertionFinished = true;
+      return result;
+    });
+    await waitForAdvisoryLockQuery('hashtextextended');
+    expect(insertionFinished).toBe(false);
+
+    releasePause();
+    await blocker;
+    await targetCreation;
+    await expect(insertion).resolves.toEqual([
+      expect.objectContaining({ outcome: 'unchanged' }),
+    ]);
+    await expect(prisma.transaction.count({
+      where: { walletId: wallet.id, txid },
+    })).resolves.toBe(0);
+  });
+
+  it('uses canonical lock order for reversed concurrent batches', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const firstTxid = generateTxid();
+    const secondTxid = generateTxid();
+    const first = candidate(wallet.id, address.id, firstTxid, 'received');
+    const second = candidate(wallet.id, address.id, secondTxid, 'received');
+
+    await Promise.all([
+      transactionRepository.reconcileTransactionBatch([first, second]),
+      transactionRepository.reconcileTransactionBatch([second, first]),
+    ]);
+
+    await expect(prisma.transaction.count({
+      where: { walletId: wallet.id, txid: { in: [firstTxid, secondTxid] } },
+    })).resolves.toBe(2);
+  });
+
+  it('cascades durable ownership targets when their wallet is deleted', async () => {
+    const { wallet } = await createWalletFixture();
+    const txid = generateTxid();
+    await transactionRepository.markOwnershipRepairNeeded(wallet.id, [txid], 2);
+
+    await prisma.wallet.delete({ where: { id: wallet.id } });
+
+    await expect(prisma.transactionOwnershipRepair.count({
+      where: { walletId: wallet.id },
+    })).resolves.toBe(0);
+  });
+
+  it('reads and writes balances only after acquiring the wallet advisory lock', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const transaction = await prisma.transaction.create({
+      data: candidate(wallet.id, address.id, generateTxid(), 'received'),
+    });
+    let releaseLock = (): void => {};
+    let signalAcquired = (): void => {};
+    const lockReleased = new Promise<void>(resolve => {
+      releaseLock = resolve;
+    });
+    const lockAcquired = new Promise<void>(resolve => {
+      signalAcquired = resolve;
+    });
+    const blocker = prisma.$transaction(async tx => {
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(hashtextextended(${wallet.id}, 0))
+      `;
+      signalAcquired();
+      await lockReleased;
+    }, { timeout: 30_000 });
+    await lockAcquired;
+
+    let recalculationFinished = false;
+    const recalculation = recalculateWalletBalances(wallet.id).then(() => {
+      recalculationFinished = true;
+    });
+    await waitForBalanceAdvisoryLock();
+    expect(recalculationFinished).toBe(false);
+    await prisma.transaction.update({
+      where: { id: transaction.id },
+      data: { amount: BigInt(20_000) },
+    });
+    releaseLock();
+    await blocker;
+    await recalculation;
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { amount: true, balanceAfter: true },
+    })).resolves.toEqual({
+      amount: BigInt(20_000),
+      balanceAfter: BigInt(20_000),
+    });
+  });
+
+  it('lets the repaired recalculation win after a stale reader resumes', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const first = await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, generateTxid(), 'received'),
+        id: 'balance-race-a',
+      },
+    });
+    const second = await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, generateTxid(), 'received'),
+        id: 'balance-race-b',
+      },
+    });
+    const pauseKey = 72_310_002;
+    await prisma.$executeRawUnsafe(`
+      CREATE FUNCTION test_pause_balance_update() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW."id" = '${first.id}' THEN
+          PERFORM pg_advisory_xact_lock(${pauseKey});
+        END IF;
+        RETURN NEW;
+      END;
+      $$
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER test_pause_balance_update_trigger
+      BEFORE UPDATE OF "balanceAfter" ON "transactions"
+      FOR EACH ROW EXECUTE FUNCTION test_pause_balance_update()
+    `);
+    let releasePause = (): void => {};
+    let signalPauseHeld = (): void => {};
+    const pauseReleased = new Promise<void>(resolve => {
+      releasePause = resolve;
+    });
+    const pauseHeld = new Promise<void>(resolve => {
+      signalPauseHeld = resolve;
+    });
+    const blocker = prisma.$transaction(async tx => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${pauseKey})`);
+      signalPauseHeld();
+      await pauseReleased;
+    }, { timeout: 30_000 });
+    await pauseHeld;
+
+    const staleRecalculation = recalculateWalletBalances(wallet.id);
+    await waitForAdvisoryLockQuery('balanceAfter');
+    await prisma.transaction.update({
+      where: { id: second.id },
+      data: { amount: BigInt(20_000) },
+    });
+    const repairedRecalculation = recalculateWalletBalances(wallet.id);
+    await waitForBalanceAdvisoryLock();
+    releasePause();
+    await blocker;
+    await staleRecalculation;
+    await repairedRecalculation;
+
+    await expect(prisma.transaction.findMany({
+      where: { walletId: wallet.id },
+      orderBy: [{ blockTime: 'asc' }, { createdAt: 'asc' }],
+      select: { amount: true, balanceAfter: true },
+    })).resolves.toEqual([
+      { amount: BigInt(10_000), balanceAfter: BigInt(10_000) },
+      { amount: BigInt(20_000), balanceAfter: BigInt(30_000) },
+    ]);
+  });
+
+  it('fences stale I/O ownership writes below the committed address watermark', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+    expect(await transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'received'),
+      classificationAddressCount: 2,
+    })).toBe('created');
+    const transaction = await prisma.transaction.findUniqueOrThrow({
+      where: { txid_walletId: { txid, walletId: wallet.id } },
+    });
+    await prisma.transactionOutput.create({
+      data: {
+        transactionId: transaction.id,
+        outputIndex: 0,
+        address: address.address,
+        amount: BigInt(10_000),
+        isOurs: true,
+        outputType: 'recipient',
+      },
+    });
+
+    await transactionRepository.persistAddressSyncIORows([], [{
+      transactionId: transaction.id,
+      outputIndex: 0,
+      address: address.address,
+      amount: BigInt(10_000),
+      isOurs: false,
+    }], [transaction.id], 1);
+
+    await expect(prisma.transactionOutput.findFirstOrThrow({
+      where: { transactionId: transaction.id, outputIndex: 0 },
+      select: { isOurs: true, outputType: true },
+    })).resolves.toEqual({ isOurs: true, outputType: 'recipient' });
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { ioComplete: true },
+    })).resolves.toEqual({ ioComplete: false });
+  });
+
+  it('rolls back authoritative scalar repair when output-role correction fails', async () => {
+    const { wallet, address } = await createWalletFixture();
+    const txid = generateTxid();
+    await prisma.transaction.create({
+      data: {
+        ...candidate(wallet.id, address.id, txid, 'received'),
+        classificationVersion: 1,
+        amount: BigInt(10_000),
+      },
+    });
+    const transaction = await prisma.transaction.findUniqueOrThrow({
+      where: { txid_walletId: { txid, walletId: wallet.id } },
+    });
+    await prisma.transactionOutput.create({
+      data: {
+        transactionId: transaction.id,
+        outputIndex: 0,
+        address: address.address,
+        amount: BigInt(10_000),
+        isOurs: true,
+        outputType: 'recipient',
+      },
+    });
+    await prisma.$executeRawUnsafe(`
+      CREATE FUNCTION test_fail_classification_role_update() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        RAISE EXCEPTION 'forced classification role failure';
+      END;
+      $$
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TRIGGER test_fail_classification_role_trigger
+      BEFORE UPDATE ON "transaction_outputs"
+      FOR EACH ROW EXECUTE FUNCTION test_fail_classification_role_update()
+    `);
+
+    await expect(transactionRepository.reconcileAddressSyncTransaction({
+      ...candidate(wallet.id, address.id, txid, 'sent'),
+      amount: BigInt(-9_000),
+    })).rejects.toThrow('forced classification role failure');
+
+    await expect(prisma.transaction.findUniqueOrThrow({
+      where: { id: transaction.id },
+      select: { type: true, amount: true, classificationVersion: true },
+    })).resolves.toEqual({
+      type: 'received',
+      amount: BigInt(10_000),
+      classificationVersion: 1,
+    });
+    await expect(prisma.transactionOutput.findFirstOrThrow({
+      where: { transactionId: transaction.id },
+      select: { outputType: true },
+    })).resolves.toEqual({ outputType: 'recipient' });
   });
 
   it('advances the private classification cursor without changing public updatedAt', async () => {

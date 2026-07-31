@@ -1,4 +1,5 @@
 import { transactionRepository } from '../../../repositories';
+import { CURRENT_TRANSACTION_CLASSIFICATION_VERSION } from '../../../constants/transactionClassification';
 import type {
   AddressSyncTransactionInput,
   AddressSyncTransactionType,
@@ -27,11 +28,16 @@ type ScriptPubKeySource = {
 type InputSource = { address?: string; value?: number };
 type SentInputClassification = {
   isSent: boolean;
+  totalInputs: number;
   totalSentFromWallet: number;
-  hasCompleteInputData: boolean;
   classificationInputsComplete: boolean;
 };
-type OutputTotals = { totalToExternal: number; totalToWallet: number };
+type OutputTotals = {
+  hasExternalEvidence: boolean;
+  totalOutputs: number;
+  totalToExternal: number;
+  totalToWallet: number;
+};
 type ChainFields = {
   confirmations: number;
   blockHeight: number | null;
@@ -66,24 +72,23 @@ const getInputSource = (
   input: TransactionInput,
   txDetailsMap: TransactionDetailsMap
 ): InputSource => {
-  if (input.prevout?.scriptPubKey) {
-    const address = getScriptPubKeyAddress(input.prevout);
-    if (address !== undefined) {
-      return { address, value: input.prevout.value };
-    }
+  const inlineAddress = input.prevout?.scriptPubKey
+    ? getScriptPubKeyAddress(input.prevout)
+    : undefined;
+  const inlineValue = input.prevout?.value;
+  if (inlineAddress !== undefined && inlineValue !== undefined) {
+    return { address: inlineAddress, value: inlineValue };
   }
 
-  if (input.txid && input.vout !== undefined) {
-    const prevOutput = txDetailsMap.get(input.txid)?.vout?.[input.vout];
-    if (prevOutput) {
-      return {
-        address: getScriptPubKeyAddress(prevOutput),
-        value: prevOutput.value,
-      };
-    }
-  }
-
-  return {};
+  const prevOutput = input.txid && input.vout !== undefined
+    ? txDetailsMap.get(input.txid)?.vout?.[input.vout]
+    : undefined;
+  return {
+    address: inlineAddress ?? (prevOutput ? getScriptPubKeyAddress(prevOutput) : undefined),
+    value: inlineAddress === undefined && prevOutput
+      ? prevOutput.value
+      : inlineValue ?? prevOutput?.value,
+  };
 };
 
 const classifySentInputs = (
@@ -92,33 +97,32 @@ const classifySentInputs = (
   txDetailsMap: TransactionDetailsMap
 ): SentInputClassification => {
   let isSent = false;
+  let totalInputs = 0;
   let totalSentFromWallet = 0;
-  let hasCompleteInputData = true;
   let classificationInputsComplete = true;
 
   for (const input of inputs) {
     if (input.coinbase) continue;
 
     const inputSource = getInputSource(input, txDetailsMap);
-    if (!inputSource.address) {
+    if (!inputSource.address || inputSource.value === undefined) {
       classificationInputsComplete = false;
-      hasCompleteInputData = false;
-      continue;
     }
-    if (walletAddressSet.has(inputSource.address)) {
+    if (inputSource.value !== undefined) {
+      totalInputs += toSats(inputSource.value);
+    }
+    if (inputSource.address && walletAddressSet.has(inputSource.address)) {
       isSent = true;
-      if (inputSource.value !== undefined && inputSource.value > 0) {
+      if (inputSource.value !== undefined) {
         totalSentFromWallet += toSats(inputSource.value);
-      } else {
-        hasCompleteInputData = false;
       }
     }
   }
 
   return {
     isSent,
+    totalInputs,
     totalSentFromWallet,
-    hasCompleteInputData,
     classificationInputsComplete,
   };
 };
@@ -155,48 +159,42 @@ const getChainFields = async (
   };
 };
 
-const getReceivedAmount = (
-  outputs: TransactionOutput[],
-  walletAddressSet: Set<string>
-): bigint => {
-  const amount = outputs
-    .filter(out => {
-      const outputAddress = getScriptPubKeyAddress(out);
-      return outputAddress !== undefined && walletAddressSet.has(outputAddress);
-    })
-    .reduce((sum, out) => sum + toSats(out.value), 0);
-  return BigInt(amount);
-};
-
 const sumSentOutputs = (
   outputs: TransactionOutput[],
   walletAddressSet: Set<string>
 ): OutputTotals => {
   let totalToExternal = 0;
   let totalToWallet = 0;
+  let totalOutputs = 0;
+  let hasExternalEvidence = false;
 
   for (const out of outputs) {
     const outAddr = getScriptPubKeyAddress(out);
     const outValue = toSats(out.value);
+    totalOutputs += outValue;
     if (outAddr && !walletAddressSet.has(outAddr)) {
+      hasExternalEvidence = true;
       totalToExternal += outValue;
     } else if (outAddr) {
       totalToWallet += outValue;
+    } else {
+      hasExternalEvidence = true;
     }
   }
 
-  return { totalToExternal, totalToWallet };
+  return {
+    hasExternalEvidence,
+    totalOutputs,
+    totalToExternal,
+    totalToWallet,
+  };
 };
 
 const getValidFee = (
   sentInputs: SentInputClassification,
   outputTotals: OutputTotals
 ): number | null => {
-  if (!sentInputs.hasCompleteInputData) {
-    return null;
-  }
-
-  const fee = sentInputs.totalSentFromWallet - outputTotals.totalToExternal - outputTotals.totalToWallet;
+  const fee = sentInputs.totalInputs - outputTotals.totalOutputs;
   /* v8 ignore next -- negative fee indicates malformed upstream data and is defensively nulled */
   return fee >= 0 ? fee : null;
 };
@@ -212,36 +210,44 @@ const classifyHistoryTransaction = (
   sentInputs: SentInputClassification,
   context: HistoryTransactionContext
 ): ClassifiedTransaction | null => {
-  // Wallet-owned inputs take precedence. Sent amounts include the fee, while a
-  // wallet-only spend is a consolidation; output-only evidence is received.
   const outputTotals = sumSentOutputs(outputs, context.walletAddressSet);
   if (sentInputs.isSent) {
-    const validFee = getValidFee(sentInputs, outputTotals);
-    const fee = validFee === null ? null : BigInt(validFee);
-    if (outputTotals.totalToExternal > 0) {
-      return {
-        type: 'sent',
-        amount: BigInt(-(outputTotals.totalToExternal + (validFee ?? 0))),
-        fee,
-      };
-    }
-    if (outputTotals.totalToWallet > 0) {
-      return {
-        type: 'consolidation',
-        amount: validFee === null ? BigInt(0) : BigInt(-validFee),
-        fee,
-      };
-    }
+    return sentInputs.classificationInputsComplete
+      ? classifyCompleteWalletInput(sentInputs, outputTotals)
+      : classifyIncompleteWalletInput(outputTotals);
   }
 
   if (outputs.some(out => outputMatchesAddress(out, context.addressRecord.address))) {
     return {
       type: 'received',
-      amount: getReceivedAmount(outputs, context.walletAddressSet),
+      amount: BigInt(outputTotals.totalToWallet),
     };
   }
   return null;
 };
+
+const classifyCompleteWalletInput = (
+  sentInputs: SentInputClassification,
+  outputTotals: OutputTotals
+): ClassifiedTransaction => {
+  const walletDelta = outputTotals.totalToWallet - sentInputs.totalSentFromWallet;
+  if (walletDelta > 0) {
+    return { type: 'received', amount: BigInt(walletDelta) };
+  }
+  const validFee = getValidFee(sentInputs, outputTotals);
+  const fee = validFee === null ? null : BigInt(validFee);
+  return outputTotals.hasExternalEvidence
+    ? { type: 'sent', amount: BigInt(walletDelta), fee }
+    : { type: 'consolidation', amount: BigInt(walletDelta), fee };
+};
+
+const classifyIncompleteWalletInput = (
+  outputTotals: OutputTotals
+): ClassifiedTransaction => (
+  outputTotals.hasExternalEvidence
+    ? { type: 'sent', amount: BigInt(-outputTotals.totalToExternal), fee: null }
+    : { type: 'consolidation', amount: BigInt(0), fee: null }
+);
 
 const processHistoryTransaction = async (
   item: AddressHistoryItem,
@@ -266,6 +272,8 @@ const processHistoryTransaction = async (
     walletId: context.addressRecord.walletId,
     addressId: context.addressRecord.id,
     classificationInputsComplete: sentInputs.classificationInputsComplete,
+    classificationVersion: CURRENT_TRANSACTION_CLASSIFICATION_VERSION,
+    classificationAddressCount: context.walletAddressSet.size,
     ...classification,
     ...chainFields,
   };

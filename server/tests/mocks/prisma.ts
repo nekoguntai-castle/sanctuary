@@ -44,6 +44,7 @@ export const mockPrismaClient = {
   transactionLabel: createModelMock(),
   transactionInput: createModelMock(),
   transactionOutput: createModelMock(),
+  transactionOwnershipRepair: createModelMock(),
   addressLabel: createModelMock(),
   nodeConfig: createModelMock(),
   systemSetting: createModelMock(),

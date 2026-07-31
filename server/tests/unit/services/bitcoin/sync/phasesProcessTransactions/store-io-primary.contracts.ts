@@ -19,8 +19,79 @@ import {
 import { getBlockTimestamp } from '../../../../../../src/services/bitcoin/utils/blockHeight';
 import { getNotificationService, walletLog } from '../../../../../../src/websocket/notifications';
 import { notifyNewTransactions } from '../../../../../../src/services/notifications/notificationService';
+import { repairTransactionIO } from '../../../../../../src/services/bitcoin/sync/phases/processTransactions/transactionIO';
 
 export function registerProcessTransactionStoreIoPrimaryTests(walletId: string): void {
+    it('skips an empty I/O repair batch', async () => {
+      await repairTransactionIO(createTestContext({ walletId }), []);
+
+      expect(mockPrismaClient.transaction.findMany).not.toHaveBeenCalled();
+    });
+
+    it('repairs confirmed transaction I/O and runs replacement detection', async () => {
+      const txid = 'confirmed_io_repair'.padEnd(64, 'a');
+      const previousTxid = 'confirmed_io_previous'.padEnd(64, 'b');
+      const walletAddress = 'tb1q_confirmed_io_wallet';
+      mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
+        if (args?.select?.confirmations) {
+          return [{
+            id: 'confirmed-io-row',
+            txid,
+            type: 'sent',
+            confirmations: 3,
+          }];
+        }
+        if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') {
+          return [];
+        }
+        return [];
+      });
+      const transaction = createMockTransaction({
+        txid,
+        inputs: [{
+          txid: previousTxid,
+          vout: 0,
+          value: 0.001,
+          address: walletAddress,
+        }],
+        outputs: [{ value: 0.0009, address: 'tb1q_confirmed_io_recipient' }],
+      });
+      const ctx = createTestContext({
+        walletId,
+        walletAddressSet: new Set([walletAddress]),
+        addressMap: new Map([[walletAddress, { id: 'confirmed-io-address' } as any]]),
+        txDetailsCache: new Map([[txid, transaction]]) as any,
+      });
+
+      await repairTransactionIO(ctx, [txid]);
+
+      expect(mockPrismaClient.transactionInput.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({
+          transactionId: 'confirmed-io-row',
+          txid: previousTxid,
+        })],
+        skipDuplicates: true,
+      });
+      expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            confirmations: 0,
+            rbfStatus: 'active',
+          }),
+        })
+      );
+    });
+
+    it('contains I/O repair persistence failures', async () => {
+      const txid = 'failed_io_repair'.padEnd(64, 'a');
+      mockPrismaClient.transaction.findMany.mockRejectedValueOnce(new Error('lookup unavailable'));
+
+      await expect(repairTransactionIO(
+        createTestContext({ walletId }),
+        [txid]
+      )).resolves.toBeUndefined();
+    });
+
     it('should reconcile an existing txid without duplicate creation side effects', async () => {
       const txid = 'existing_txid'.padEnd(64, 'a');
       const walletAddress = 'tb1q_wallet_addr';
@@ -57,7 +128,7 @@ export function registerProcessTransactionStoreIoPrimaryTests(walletId: string):
 
       const result = await processTransactionsPhase(ctx);
       expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalled();
-      expect(mockPrismaClient.$executeRaw).toHaveBeenCalledTimes(1);
+      expect(mockPrismaClient.$executeRaw).toHaveBeenCalledTimes(2);
       expect(mockPrismaClient.transaction.updateMany).not.toHaveBeenCalled();
       expect(result.stats.newTransactionsCreated).toBe(0);
       expect(notifyNewTransactions).not.toHaveBeenCalled();

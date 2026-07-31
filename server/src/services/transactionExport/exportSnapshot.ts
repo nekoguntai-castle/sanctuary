@@ -10,17 +10,20 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { z } from 'zod';
 import { createLogger } from '../../utils/logger';
+import { safeJsonParse } from '../../utils/safeJson';
+import type { ExportRow } from './serialization';
 
 const log = createLogger('TX:EXPORT_SNAPSHOT');
 export const EXPORT_SNAPSHOT_PREFIX = '.sanctuary-transaction-export-';
 export const EXPORT_SNAPSHOT_SUFFIX = '.ids.tmp';
-const DEFAULT_MEMORY_THRESHOLD = 2_000;
+const DEFAULT_MEMORY_THRESHOLD_BYTES = 1024 * 1024;
 const STALE_SNAPSHOT_AGE_MS = 24 * 60 * 60 * 1000;
 
-interface ExportIdSnapshotOptions {
+interface ExportRowSnapshotOptions {
   directory?: string;
-  memoryThreshold?: number;
+  memoryThresholdBytes?: number;
 }
 
 export interface OrphanCleanupOptions {
@@ -30,12 +33,30 @@ export interface OrphanCleanupOptions {
 }
 
 /**
- * Immutable export-membership snapshot with lifecycle:
- * append IDs, seal, iterate pages, then cleanup. Small snapshots stay in memory;
- * larger ones spill to an owner-only temporary file.
+ * Immutable normalized export-row snapshot with lifecycle: append, seal, iterate,
+ * then cleanup. Small snapshots stay in memory; larger ones spill to an owner-only
+ * temporary file. The legacy suffix remains so startup cleanup also finds older spills.
  */
-export class ExportIdSnapshot {
-  private readonly memoryIds: string[] = [];
+const ExportRowSchema = z.object({
+  date: z.string(),
+  txid: z.string(),
+  type: z.string(),
+  amountBtc: z.number(),
+  amountSats: z.number(),
+  balanceAfterBtc: z.number().nullable(),
+  balanceAfterSats: z.number().nullable(),
+  feeSats: z.number().nullable(),
+  confirmations: z.number(),
+  label: z.string(),
+  memo: z.string(),
+  counterpartyAddress: z.string(),
+  blockHeight: z.number().nullable(),
+}).strict();
+
+/** A byte-bounded immutable snapshot of normalized export rows. */
+export class ExportRowSnapshot {
+  private readonly memoryLines: string[] = [];
+  private memoryBytes = 0;
   private file: FileHandle | null = null;
   private reader: ReadStream | null = null;
   private sealed = false;
@@ -44,27 +65,36 @@ export class ExportIdSnapshot {
 
   constructor(
     private readonly directory: string,
-    private readonly memoryThreshold: number,
+    private readonly memoryThresholdBytes: number,
   ) {}
 
-  append(ids: string[], signal?: AbortSignal): Promise<void> {
-    return this.trackMutation(this.appendIds(ids, signal));
+  append(rows: ExportRow[], signal?: AbortSignal): Promise<void> {
+    return this.trackMutation(this.appendRows(rows, signal));
   }
 
-  private async appendIds(ids: string[], signal?: AbortSignal): Promise<void> {
+  private async appendRows(rows: ExportRow[], signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
-    if (this.sealed) throw new Error('Export ID snapshot is sealed');
-    if (ids.length === 0) return;
+    if (this.sealed) throw new Error('Export row snapshot is sealed');
 
-    if (!this.file && this.memoryIds.length + ids.length <= this.memoryThreshold) {
-      this.memoryIds.push(...ids);
-      return;
+    const lines = rows.map(row => JSON.stringify(row));
+    let spillOffset = lines.length;
+    for (let offset = 0; offset < lines.length; offset += 1) {
+      signal?.throwIfAborted();
+      const line = lines[offset];
+      const lineBytes = Buffer.byteLength(`${line}\n`, 'utf8');
+      if (!this.file && this.memoryBytes + lineBytes <= this.memoryThresholdBytes) {
+        this.memoryLines.push(line);
+        this.memoryBytes += lineBytes;
+        continue;
+      }
+      spillOffset = offset;
+      break;
     }
-
-    await this.ensureFile(signal);
-    signal?.throwIfAborted();
-    await this.writeIds(ids, signal);
-    signal?.throwIfAborted();
+    if (spillOffset < lines.length) {
+      await this.ensureFile(signal);
+      signal?.throwIfAborted();
+      await this.writeLines(lines.slice(spillOffset), signal);
+    }
   }
 
   seal(signal?: AbortSignal): Promise<void> {
@@ -81,13 +111,13 @@ export class ExportIdSnapshot {
     signal?.throwIfAborted();
   }
 
-  async *pages(pageSize: number): AsyncGenerator<string[]> {
+  async *pages(pageSize: number): AsyncGenerator<ExportRow[]> {
     if (!this.sealed) throw new Error('Export ID snapshot must be sealed before reading');
     if (!Number.isInteger(pageSize) || pageSize < 1) throw new Error('Page size must be positive');
 
     if (!this.filepath) {
-      for (let offset = 0; offset < this.memoryIds.length; offset += pageSize) {
-        yield this.memoryIds.slice(offset, offset + pageSize);
+      for (let offset = 0; offset < this.memoryLines.length; offset += pageSize) {
+        yield this.memoryLines.slice(offset, offset + pageSize).map(parseExportRow);
       }
       return;
     }
@@ -99,10 +129,9 @@ export class ExportIdSnapshot {
       crlfDelay: Infinity,
     });
     try {
-      let page: string[] = [];
+      let page: ExportRow[] = [];
       for await (const line of lines) {
-        if (!line) continue;
-        page.push(line);
+        page.push(parseExportRow(line));
         if (page.length === pageSize) {
           yield page;
           page = [];
@@ -132,8 +161,9 @@ export class ExportIdSnapshot {
     );
     this.file = await open(this.filepath, 'wx', 0o600);
     signal?.throwIfAborted();
-    await this.writeIds(this.memoryIds, signal);
-    this.memoryIds.length = 0;
+    await this.writeLines(this.memoryLines, signal);
+    this.memoryLines.length = 0;
+    this.memoryBytes = 0;
   }
 
   private trackMutation(operation: Promise<void>): Promise<void> {
@@ -151,9 +181,9 @@ export class ExportIdSnapshot {
     }
   }
 
-  private async writeIds(ids: string[], signal?: AbortSignal): Promise<void> {
-    if (!this.file || ids.length === 0) return;
-    await this.file.writeFile(`${ids.join('\n')}\n`, { encoding: 'utf8', signal });
+  private async writeLines(lines: string[], signal?: AbortSignal): Promise<void> {
+    if (!this.file || lines.length === 0) return;
+    await this.file.writeFile(`${lines.join('\n')}\n`, { encoding: 'utf8', signal });
   }
 
   private async closeReader(reader: ReadStream | null): Promise<void> {
@@ -167,14 +197,25 @@ export class ExportIdSnapshot {
   }
 }
 
-export async function createExportIdSnapshot(
-  options: ExportIdSnapshotOptions = {},
-): Promise<ExportIdSnapshot> {
-  const threshold = options.memoryThreshold ?? DEFAULT_MEMORY_THRESHOLD;
+function parseExportRow(line: string): ExportRow {
+  const row = safeJsonParse<ExportRow | null>(
+    line,
+    ExportRowSchema.nullable(),
+    null,
+    'transaction export snapshot row',
+  );
+  if (row === null) throw new Error('Transaction export snapshot contains an invalid row');
+  return row;
+}
+
+export async function createExportRowSnapshot(
+  options: ExportRowSnapshotOptions = {},
+): Promise<ExportRowSnapshot> {
+  const threshold = options.memoryThresholdBytes ?? DEFAULT_MEMORY_THRESHOLD_BYTES;
   if (!Number.isInteger(threshold) || threshold < 0) {
-    throw new Error('Export snapshot memory threshold must be a nonnegative integer');
+    throw new Error('Export snapshot memory byte threshold must be a nonnegative integer');
   }
-  return new ExportIdSnapshot(options.directory ?? tmpdir(), threshold);
+  return new ExportRowSnapshot(options.directory ?? tmpdir(), threshold);
 }
 
 function isSnapshotFilename(filename: string): boolean {

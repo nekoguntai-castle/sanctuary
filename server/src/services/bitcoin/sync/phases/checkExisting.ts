@@ -6,6 +6,7 @@
  */
 
 import { transactionRepository } from '../../../../repositories';
+import { CURRENT_TRANSACTION_CLASSIFICATION_VERSION } from '../../../../constants/transactionClassification';
 import { createLogger } from '../../../../utils/logger';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
@@ -14,6 +15,8 @@ type ExistingTransaction = {
   txid: string;
   type: string;
   classificationInputsComplete: boolean;
+  classificationVersion: number;
+  classificationAddressCount: number;
   classificationLastAttemptAt: Date | null;
   ioComplete: boolean;
   ioLastAttemptAt: Date | null;
@@ -22,8 +25,13 @@ type ExistingTransaction = {
 export const CLASSIFICATION_REPAIR_CANDIDATE_LIMIT = 100;
 export const IO_REPAIR_CANDIDATE_LIMIT = 100;
 
-const needsClassificationRecheck = (transaction: ExistingTransaction): boolean =>
-  transaction.type !== 'sent' && !transaction.classificationInputsComplete;
+const needsClassificationRecheck = (
+  transaction: ExistingTransaction,
+  ownershipRepairTxids: ReadonlySet<string>
+): boolean =>
+  transaction.classificationVersion < CURRENT_TRANSACTION_CLASSIFICATION_VERSION
+  || !transaction.classificationInputsComplete
+  || ownershipRepairTxids.has(transaction.txid);
 
 const compareAttemptTimes = (
   leftAttemptAt: Date | null,
@@ -39,9 +47,12 @@ const compareAttemptTimes = (
     || leftTxid.localeCompare(rightTxid);
 };
 
-const getClassificationRepairTxids = (existingTxs: ExistingTransaction[]): Set<string> => new Set(
+const getClassificationRepairTxids = (
+  existingTxs: ExistingTransaction[],
+  ownershipRepairTxids: ReadonlySet<string>
+): Set<string> => new Set(
   existingTxs
-    .filter(needsClassificationRecheck)
+    .filter(transaction => needsClassificationRecheck(transaction, ownershipRepairTxids))
     .sort((left, right) => compareAttemptTimes(
       left.classificationLastAttemptAt,
       right.classificationLastAttemptAt,
@@ -86,10 +97,19 @@ export async function checkExistingPhase(ctx: SyncContext): Promise<SyncContext>
       txid: true,
       type: true,
       classificationInputsComplete: true,
+      classificationVersion: true,
+      classificationAddressCount: true,
       classificationLastAttemptAt: true,
       ioComplete: true,
       ioLastAttemptAt: true,
     }
+  );
+  const ownershipRepairTargets = await transactionRepository.findOwnershipRepairTargets(
+    walletId,
+    Array.from(allTxids)
+  );
+  const ownershipRepairTxids = new Set(
+    ownershipRepairTargets.map(target => target.txid)
   );
 
   // Build lookup maps
@@ -98,7 +118,10 @@ export async function checkExistingPhase(ctx: SyncContext): Promise<SyncContext>
 
   // Historical and partially resolved rows remain repairable until a raw-tx
   // classification proves every non-coinbase input had address evidence.
-  ctx.classificationRepairTxids = getClassificationRepairTxids(existingTxs);
+  ctx.classificationRepairTxids = getClassificationRepairTxids(
+    existingTxs,
+    ownershipRepairTxids
+  );
   ctx.ioRepairTxids = getIoRepairTxids(existingTxs);
   ctx.newTxids = Array.from(allTxids).filter(
     txid => !ctx.existingTxidSet.has(txid)

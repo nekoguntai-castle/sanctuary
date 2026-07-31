@@ -142,6 +142,8 @@ export interface TransactionCreateData {
   addressId: string;
   type: 'received' | 'sent' | 'consolidation';
   classificationInputsComplete: boolean;
+  classificationVersion: number;
+  classificationAddressCount: number;
   amount: bigint;
   fee?: bigint | null;
   confirmations: number;

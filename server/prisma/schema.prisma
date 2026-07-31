@@ -145,6 +145,7 @@ model Wallet {
   devices           WalletDevice[]
   addresses         Address[]
   transactions      Transaction[]
+  transactionOwnershipRepairs TransactionOwnershipRepair[]
   utxos             UTXO[]
   labels            Label[]
   group             Group?             @relation(fields: [groupId], references: [id])
@@ -353,6 +354,8 @@ model Transaction {
   userId              String?
   type                String // sent, received
   classificationInputsComplete Boolean @default(false)
+  classificationVersion Int      @default(1)
+  classificationAddressCount Int @default(0)
   classificationLastAttemptAt DateTime?
   ioComplete           Boolean   @default(false)
   ioLastAttemptAt      DateTime?
@@ -401,6 +404,21 @@ model Transaction {
   @@index([rbfStatus, createdAt]) // For RBF cleanup queries
   @@index([walletId, rbfStatus, createdAt]) // For wallet-specific RBF cleanup
   @@map("transactions")
+}
+
+model TransactionOwnershipRepair {
+  id                 String   @id @default(uuid())
+  walletId           String
+  txid               String
+  targetAddressCount Int
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@unique([walletId, txid])
+  @@index([walletId, createdAt])
+  @@map("transaction_ownership_repairs")
 }
 
 // Transaction inputs - stores which UTXOs were spent

@@ -68,6 +68,16 @@ describe('Blockchain syncWallet recursion', () => {
 
     expect(mockExecuteSyncPipeline).toHaveBeenCalledTimes(2);
     expect(mockElectrumClient.subscribeAddressBatch).toHaveBeenCalledWith([scanAddress]);
+    const ownershipRepair = mockPrismaClient.$executeRaw.mock.calls
+      .map(([statement]) => statement as { strings: string[]; values: unknown[] })
+      .find(statement => statement.strings.join('').includes(
+        'INSERT INTO "transaction_ownership_repairs"'
+      ));
+    expect(ownershipRepair).toBeDefined();
+    expect(ownershipRepair!.strings.join('')).toContain(
+      'INSERT INTO "transaction_ownership_repairs"'
+    );
+    expect(ownershipRepair!.values).toEqual([walletId, 1, 'a'.repeat(64)]);
     expect(walletLog).toHaveBeenCalledWith(
       walletId,
       'info',
@@ -79,6 +89,33 @@ describe('Blockchain syncWallet recursion', () => {
       transactions: 3,
       utxos: 4,
     });
+  });
+
+  it('fails the sync when ownership repair targets cannot be persisted', async () => {
+    const walletId = 'wallet-target-failure';
+    const scanAddress = 'tb1qtargetfailure';
+    mockExecuteSyncPipeline.mockResolvedValue({
+      addresses: 1,
+      transactions: 0,
+      utxos: 0,
+      stats: { newAddressesGenerated: 1 },
+    });
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      id: walletId,
+      network: 'testnet',
+    });
+    mockPrismaClient.address.findMany.mockResolvedValue([
+      { id: 'addr-target-failure', address: scanAddress, used: false },
+    ]);
+    mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(
+      new Map([[scanAddress, [{ tx_hash: 'b'.repeat(64), height: 200 }]]])
+    );
+    mockPrismaClient.$executeRaw.mockRejectedValueOnce(new Error('target database unavailable'));
+
+    await expect(syncWallet(walletId)).rejects.toThrow(
+      'Failed to persist ownership repair targets'
+    );
+    expect(mockExecuteSyncPipeline).toHaveBeenCalledOnce();
   });
 
   it('propagates the cancellation signal into a recursive gap-limit sync', async () => {

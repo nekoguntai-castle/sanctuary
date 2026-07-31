@@ -381,6 +381,35 @@ export function registerAuthCookieExpiryTests(): void {
       assertAuthCookiesCleared(response.headers['set-cookie']);
     });
 
+    it.each(['Bearer  malformed', 'Bearer'])(
+      'logout revokes the access cookie token when the bearer header is malformed: %s',
+      async authorization => {
+        const { revokeToken } = await import('../../../../src/services/tokenRevocation');
+        const { decodeToken } = await import('../../../../src/utils/jwt');
+        const mockRevokeToken = vi.mocked(revokeToken);
+        const mockDecodeToken = vi.mocked(decodeToken);
+        const accessToken = 'cookie-access-token';
+        const csrfToken = await createCsrfTokenForAccessCookie(accessToken);
+        mockRevokeToken.mockClear();
+        mockDecodeToken.mockClear();
+
+        const response = await request(app)
+          .post('/api/v1/auth/logout')
+          .set('Authorization', authorization)
+          .set('X-CSRF-Token', csrfToken)
+          .set('Cookie', [
+            `sanctuary_access=${accessToken}`,
+            `sanctuary_csrf=${csrfToken}`,
+          ])
+          .send({});
+
+        expect(response.status).toBe(200);
+        expect(mockDecodeToken).toHaveBeenCalledWith(accessToken);
+        expect(mockRevokeToken).toHaveBeenCalled();
+        assertAuthCookiesCleared(response.headers['set-cookie']);
+      }
+    );
+
     it('logout-all clears the browser cookies on the calling tab', async () => {
       const response = await request(app)
         .post('/api/v1/auth/logout-all')

@@ -35,6 +35,10 @@ export const mockPrisma = {
     createMany: vi.fn<any>(),
     updateMany: vi.fn<any>(),
   },
+  transactionOwnershipRepair: {
+    findMany: vi.fn<any>().mockResolvedValue([]),
+    delete: vi.fn<any>(),
+  },
   uTXO: {
     findUnique: vi.fn<any>(),
     findMany: vi.fn<any>(),
@@ -61,6 +65,8 @@ export const mockPrisma = {
       ? operation(mockPrisma)
       : Promise.all(operation)
   )),
+  $queryRaw: vi.fn<any>().mockResolvedValue([]),
+  $executeRaw: vi.fn<any>().mockResolvedValue(0),
 };
 
 vi.mock('../../../../src/models/prisma', () => ({

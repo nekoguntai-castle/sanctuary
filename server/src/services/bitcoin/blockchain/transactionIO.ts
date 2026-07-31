@@ -40,11 +40,7 @@ const toSats = (value: number): number => {
   return Math.round(value * 100000000);
 };
 
-const normalizeInputAmount = (value: number | undefined): number => {
-  if (value === undefined) {
-    return 0;
-  }
-
+const normalizeInputAmount = (value: number): number => {
   return value >= 1000000 ? value : toSats(value);
 };
 
@@ -52,24 +48,18 @@ const getInputSource = (
   input: TransactionInput,
   txDetailsMap: TransactionDetailsMap
 ): InputSource => {
-  if (input.prevout?.scriptPubKey) {
-    const address = getScriptPubKeyAddress(input.prevout);
-    if (address !== undefined) {
-      return { address, value: input.prevout.value };
-    }
-  }
-
-  if (input.txid !== undefined && input.vout !== undefined) {
-    const previousOutput = txDetailsMap.get(input.txid)?.vout?.[input.vout];
-    if (previousOutput) {
-      return {
-        address: getScriptPubKeyAddress(previousOutput),
-        value: previousOutput.value,
-      };
-    }
-  }
-
-  return {};
+  const inlineAddress = input.prevout?.scriptPubKey
+    ? getScriptPubKeyAddress(input.prevout)
+    : undefined;
+  const previousOutput = input.txid !== undefined && input.vout !== undefined
+    ? txDetailsMap.get(input.txid)?.vout?.[input.vout]
+    : undefined;
+  return {
+    address: inlineAddress || (previousOutput
+      ? getScriptPubKeyAddress(previousOutput)
+      : undefined),
+    value: input.prevout?.value ?? previousOutput?.value,
+  };
 };
 
 const collectTransactionInputRows = (
@@ -84,7 +74,12 @@ const collectTransactionInputRows = (
     if (input.coinbase) continue;
 
     const inputSource = getInputSource(input, txDetailsMap);
-    if (inputSource.address && input.txid !== undefined && input.vout !== undefined) {
+    if (
+      inputSource.address
+      && inputSource.value !== undefined
+      && input.txid !== undefined
+      && input.vout !== undefined
+    ) {
       rows.push({
         transactionId,
         inputIndex: inputIdx,
@@ -148,6 +143,7 @@ const collectTransactionIORows = (
       input.txid !== undefined
       && input.vout !== undefined
       && getInputSource(input, txDetailsMap).address !== undefined
+      && getInputSource(input, txDetailsMap).value !== undefined
     ));
     if (inputEvidenceComplete) ioRows.completeTransactionIds.push(txRecord.id);
   }
@@ -167,7 +163,10 @@ const collectMissingPreviousTxids = (
         !input.coinbase
         && input.txid !== undefined
         && input.vout !== undefined
-        && getInputSource(input, txDetailsMap).address === undefined
+        && (
+          getInputSource(input, txDetailsMap).address === undefined
+          || getInputSource(input, txDetailsMap).value === undefined
+        )
         && !txDetailsMap.has(input.txid)
       ) {
         missingTxids.add(input.txid);
@@ -209,11 +208,15 @@ const fetchTransactionDetails = async (
   return txDetailsMap;
 };
 
-const persistTransactionIORows = async (ioRows: TransactionIORows): Promise<void> => {
+const persistTransactionIORows = async (
+  ioRows: TransactionIORows,
+  classificationAddressCount: number
+): Promise<void> => {
   await transactionRepository.persistAddressSyncIORows(
     ioRows.inputs,
     ioRows.outputs,
-    ioRows.completeTransactionIds
+    ioRows.completeTransactionIds,
+    classificationAddressCount
   );
 };
 
@@ -226,17 +229,22 @@ export async function storeTransactionIO(
 ): Promise<void> {
   const historyTxids = [...new Set(history.map(item => item.tx_hash))];
   for (let offset = 0; offset < historyTxids.length; offset += IO_BACKFILL_BATCH_SIZE) {
-    const txsWithoutIO = await transactionRepository.findWithoutIO(
+    const batchTxids = historyTxids.slice(offset, offset + IO_BACKFILL_BATCH_SIZE);
+    const transactionsToPersist = await transactionRepository.findWithoutIO(
       walletId,
-      historyTxids.slice(offset, offset + IO_BACKFILL_BATCH_SIZE)
+      batchTxids
     );
-    if (txsWithoutIO.length === 0) continue;
+    if (transactionsToPersist.length === 0) continue;
 
-    const txidsToFetch = txsWithoutIO.map(tx => tx.txid);
+    const txidsToFetch = transactionsToPersist.map(tx => tx.txid);
     const txDetailsMap = await fetchTransactionDetails(client, txidsToFetch, existingDetails);
-    const ioRows = collectTransactionIORows(txsWithoutIO, txDetailsMap, walletAddressSet);
+    const ioRows = collectTransactionIORows(
+      transactionsToPersist,
+      txDetailsMap,
+      walletAddressSet
+    );
 
-    await persistTransactionIORows(ioRows);
-    log.debug(`[BLOCKCHAIN] Stored I/O for ${txsWithoutIO.length} transactions (${ioRows.inputs.length} inputs, ${ioRows.outputs.length} outputs)`);
+    await persistTransactionIORows(ioRows, walletAddressSet.size);
+    log.debug(`[BLOCKCHAIN] Stored I/O for ${transactionsToPersist.length} transactions (${ioRows.inputs.length} inputs, ${ioRows.outputs.length} outputs)`);
   }
 }

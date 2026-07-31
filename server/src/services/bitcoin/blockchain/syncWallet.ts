@@ -6,7 +6,11 @@
  */
 
 import { getNodeClient } from '../nodeClient';
-import { walletRepository, addressRepository } from '../../../repositories';
+import {
+  walletRepository,
+  addressRepository,
+  transactionRepository,
+} from '../../../repositories';
 import { createLogger } from '../../../utils/logger';
 import { walletLog } from '../../../websocket/notifications';
 import { executeSyncPipeline, defaultSyncPhases } from '../sync';
@@ -14,6 +18,16 @@ import { normalizeLegacyBitcoinNetwork } from '../networks';
 import type { SyncWalletResult } from './types';
 
 const log = createLogger('BITCOIN:SVC_SYNC_WALLET');
+
+class OwnershipRepairPersistenceError extends Error {
+  readonly cause: unknown;
+
+  constructor(cause: unknown) {
+    super('Failed to persist ownership repair targets');
+    this.name = 'OwnershipRepairPersistenceError';
+    this.cause = cause;
+  }
+}
 
 async function subscribeGeneratedAddresses(
   walletId: string,
@@ -117,6 +131,23 @@ export async function syncWallet(
           }
 
           if (foundTransactions) {
+            const ownershipRepairTxids = [...new Set(
+              [...newHistoryResults.values()].flatMap(history =>
+                history.map(item => item.tx_hash)
+              )
+            )];
+            const targetAddressCount = (
+              await addressRepository.findAddressStrings(walletId)
+            ).length;
+            try {
+              await transactionRepository.markOwnershipRepairNeeded(
+                walletId,
+                ownershipRepairTxids,
+                targetAddressCount
+              );
+            } catch (error) {
+              throw new OwnershipRepairPersistenceError(error);
+            }
             walletLog(walletId, 'info', 'BLOCKCHAIN', `Found transactions on new addresses, re-syncing (depth ${depth + 1})...`);
             const recursiveResult = await syncWallet(walletId, depth + 1, signal);
             return {
@@ -127,6 +158,7 @@ export async function syncWallet(
           }
         } catch (error) {
           signal?.throwIfAborted();
+          if (error instanceof OwnershipRepairPersistenceError) throw error;
           log.warn(`[BLOCKCHAIN] Failed to scan new addresses: ${error}`);
         }
       }

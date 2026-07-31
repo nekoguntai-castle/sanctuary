@@ -53,6 +53,11 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
   } = ctx;
 
   if (newTxids.length === 0) {
+    // Creates and authoritative repairs leave balanceAfter null until the
+    // serialized balance pass succeeds, so unchanged polling remains cheap.
+    if (await transactionRepository.hasPendingBalanceRecalculation(walletId)) {
+      await recalculateWalletBalances(walletId);
+    }
     return ctx;
   }
 
@@ -134,10 +139,15 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
     }
   }
 
-  // Recalculate running balances
-  if (allNewTransactions.length > 0 || repairedTransactions > 0) {
+  if (
+    totalTransactions > 0
+    || repairedTransactions > 0
+    || await transactionRepository.hasPendingBalanceRecalculation(walletId)
+  ) {
     await recalculateWalletBalances(walletId);
+  }
 
+  if (allNewTransactions.length > 0 || repairedTransactions > 0) {
     const received = allNewTransactions.filter(t => t.type === 'received').length;
     const sent = allNewTransactions.filter(t => t.type === 'sent').length;
     const consolidation = allNewTransactions.filter(t => t.type === 'consolidation').length;

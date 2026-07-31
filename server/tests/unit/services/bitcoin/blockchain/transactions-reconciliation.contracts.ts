@@ -351,6 +351,9 @@ export function registerBlockchainTransactionsReconciliationTests(): void {
 
       // Handle different transaction.findMany queries
       mockPrismaClient.transaction.findMany.mockImplementation(async (args) => {
+        if (args?.select?.amount) {
+          return [];
+        }
         // RBF cleanup: pending transactions with active status
         if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') {
           return [];

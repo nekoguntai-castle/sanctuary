@@ -15,10 +15,9 @@ import { revokeToken, revokeAllUserTokens } from '../../services/tokenRevocation
 import { isEmailVerificationBlockingAuth } from '../../services/accessTokenSessionService';
 import * as refreshTokenService from '../../services/refreshTokenService';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../services/auditService';
-import { authenticate, requireAuthenticatedUser } from '../../middleware/auth';
+import { authenticate, extractAccessToken, requireAuthenticatedUser } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import {
-  SANCTUARY_ACCESS_COOKIE_NAME,
   SANCTUARY_REFRESH_COOKIE_NAME,
   clearAuthCookies,
   setAuthCookies,
@@ -188,13 +187,7 @@ router.post('/logout', authenticate, validate({ body: LogoutSchema }), asyncHand
   // Authorization header first, then sanctuary_access cookie. Both paths
   // yield the same JTI, so revocation works regardless of which the client
   // uses to authenticate the logout request itself.
-  const authHeader = req.headers.authorization;
-  let accessToken: string | null = null;
-  if (authHeader?.startsWith('Bearer ')) {
-    accessToken = authHeader.substring(7);
-  } else if (typeof req.cookies?.[SANCTUARY_ACCESS_COOKIE_NAME] === 'string') {
-    accessToken = req.cookies[SANCTUARY_ACCESS_COOKIE_NAME];
-  }
+  const accessToken = extractAccessToken(req);
 
   if (accessToken) {
     const decoded = decodeToken(accessToken);

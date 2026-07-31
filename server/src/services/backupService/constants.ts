@@ -58,6 +58,7 @@ export const COMPLETE_TABLE_POLICY: readonly BackupTablePolicyEntry[] = [
   { model: 'ConsoleSession', table: 'consoleSession', classification: 'durable-restored' },
   { model: 'FeatureFlagAudit', table: 'featureFlagAudit', classification: 'durable-restored' },
   { model: 'Transaction', table: 'transaction', classification: 'durable-restored' },
+  { model: 'TransactionOwnershipRepair', table: 'transactionOwnershipRepair', classification: 'durable-restored' },
   { model: 'UTXO', table: 'uTXO', classification: 'durable-restored' },
   { model: 'WebhookDelivery', table: 'webhookDelivery', classification: 'durable-restored' },
   { model: 'AgentApiKey', table: 'agentApiKey', classification: 'durable-restored' },
@@ -99,7 +100,22 @@ export const EPHEMERAL_TABLES = getTablesByClassification('security-ephemeral');
  * contract test recomputes this value so policy edits cannot retain a stale ID.
  */
 export const COMPLETE_TABLE_POLICY_HASH =
+  '4bb054ec3a6201df824f6fc717dbbab5939983a63028218e06a20fc0bca8cffe';
+/** Policy hash emitted by 1.1.0 before the ownership-repair queue existed. */
+export const PREVIOUS_COMPLETE_TABLE_POLICY_HASH =
   'b68866b707d3835f156c5152686290862f0ccc83e6c165ca5798c8a877ce00aa';
+
+const PREVIOUS_COMPLETE_TABLE_ORDER = TABLE_ORDER.filter(
+  table => table !== 'transactionOwnershipRepair'
+);
+
+const usesPreviousCompletePolicy = (
+  meta: Pick<BackupMeta, 'version' | 'tablePolicy'>
+): boolean => (
+  meta.version === BACKUP_FORMAT_VERSION
+  && meta.tablePolicy?.version === COMPLETE_TABLE_POLICY_VERSION
+  && meta.tablePolicy.hash === PREVIOUS_COMPLETE_TABLE_POLICY_HASH
+);
 
 /**
  * The immutable table manifest used by pre-fix 1.0.0 backups.
@@ -185,17 +201,20 @@ export const LEGACY_RESTORE_TABLE_MIN_SCHEMA_VERSION: Record<string, number> = {
 };
 
 export function getRequiredRestoreTables(
-  meta: Pick<BackupMeta, 'version' | 'schemaVersion' | 'includesCache'>
+  meta: Pick<BackupMeta, 'version' | 'schemaVersion' | 'includesCache' | 'tablePolicy'>
 ): string[] {
-  const requiredTables = meta.version === LEGACY_BACKUP_FORMAT_VERSION
-    ? LEGACY_TABLE_ORDER.filter(
+  let requiredTables: readonly string[] = TABLE_ORDER;
+  if (meta.version === LEGACY_BACKUP_FORMAT_VERSION) {
+    requiredTables = LEGACY_TABLE_ORDER.filter(
       (table) => meta.schemaVersion >= LEGACY_RESTORE_TABLE_MIN_SCHEMA_VERSION[table]
-    )
-    : TABLE_ORDER;
+    );
+  } else if (usesPreviousCompletePolicy(meta)) {
+    requiredTables = PREVIOUS_COMPLETE_TABLE_ORDER;
+  }
 
   return meta.includesCache
     ? [...requiredTables, ...CACHE_TABLES]
-    : requiredTables;
+    : [...requiredTables];
 }
 
 /**
@@ -204,15 +223,18 @@ export function getRequiredRestoreTables(
  * is used after completeness validation has succeeded.
  */
 export function getRestoreTables(
-  meta: Pick<BackupMeta, 'version' | 'includesCache'>
+  meta: Pick<BackupMeta, 'version' | 'includesCache' | 'tablePolicy'>
 ): string[] {
-  const durableTables = meta.version === LEGACY_BACKUP_FORMAT_VERSION
-    ? LEGACY_TABLE_ORDER.filter((table) => !EPHEMERAL_TABLES.includes(table))
-    : TABLE_ORDER;
+  let durableTables: readonly string[] = TABLE_ORDER;
+  if (meta.version === LEGACY_BACKUP_FORMAT_VERSION) {
+    durableTables = LEGACY_TABLE_ORDER.filter((table) => !EPHEMERAL_TABLES.includes(table));
+  } else if (usesPreviousCompletePolicy(meta)) {
+    durableTables = PREVIOUS_COMPLETE_TABLE_ORDER;
+  }
 
   return meta.includesCache
     ? [...durableTables, ...CACHE_TABLES]
-    : durableTables;
+    : [...durableTables];
 }
 
 // Tables that can grow large and should use cursor-based pagination for export

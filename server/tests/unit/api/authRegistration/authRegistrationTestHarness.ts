@@ -100,6 +100,13 @@ vi.mock('../../../../src/middleware/rateLimit', () => ({
 // Mock auth middleware for route tests
 vi.mock('../../../../src/middleware/auth', () => ({
   requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
+  extractAccessToken: (req: any) => {
+    const parts = req.headers.authorization?.split(' ');
+    const headerToken = parts?.length === 2 && parts[0] === 'Bearer' ? parts[1] : null;
+    if (headerToken) return headerToken;
+    const cookieToken = req.cookies?.sanctuary_access;
+    return typeof cookieToken === 'string' && cookieToken.length > 0 ? cookieToken : null;
+  },
   authenticate: (req: any, _res: any, next: any) => {
     const omitUsername = req.headers['x-test-no-username'] === '1';
     req.user = omitUsername
