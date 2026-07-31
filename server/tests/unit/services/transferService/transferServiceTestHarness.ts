@@ -4,6 +4,7 @@ import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 const transferServiceMocks = vi.hoisted(() => ({
   mockCheckWalletOwnerAccess: vi.fn(),
   mockCheckDeviceOwnerAccess: vi.fn(),
+  mockLoggerDebug: vi.fn(),
 }));
 
 vi.mock('../../../../src/models/prisma', async () => {
@@ -19,7 +20,7 @@ vi.mock('../../../../src/utils/logger', () => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
-    debug: vi.fn(),
+    debug: transferServiceMocks.mockLoggerDebug,
   }),
 }));
 
@@ -39,6 +40,7 @@ export const transferId = 'transfer-xyz';
 
 export const mockCheckWalletOwnerAccess = transferServiceMocks.mockCheckWalletOwnerAccess;
 export const mockCheckDeviceOwnerAccess = transferServiceMocks.mockCheckDeviceOwnerAccess;
+export const mockLoggerDebug = transferServiceMocks.mockLoggerDebug;
 
 export const setupTransferServiceMocks = () => {
   resetPrismaMocks();

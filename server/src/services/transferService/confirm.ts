@@ -11,6 +11,7 @@ import type { OwnershipTransfer } from '../../generated/prisma/client';
 import { createLogger } from '../../utils/logger';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../errors';
 import { isExpired, formatTransfer } from './helpers';
+import { withSerializableRetry } from './serializableRetry';
 import type { PrismaTx, Transfer } from './types';
 
 const log = createLogger('TRANSFER:SVC');
@@ -37,7 +38,10 @@ export async function confirmTransfer(
 
   // Execute everything in a serializable transaction to prevent race conditions
   // This ensures status check and execution are atomic
-  const result = await transferRepository.withSerializableTransaction(async (tx) => {
+  const result = await withSerializableRetry({
+    operation: 'confirmation',
+    exhaustedMessage: 'Transfer confirmation conflicted with another update. Please retry.',
+  }, async (tx) => {
     // Re-fetch and validate inside transaction
     const current = await tx.ownershipTransfer.findUnique({
       where: { id: transferId },

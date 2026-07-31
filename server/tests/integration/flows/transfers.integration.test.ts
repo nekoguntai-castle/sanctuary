@@ -3,7 +3,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '../../../src/generated/prisma/client';
 import { ConflictError, ForbiddenError, InvalidInputError } from '../../../src/errors';
 import { transferRepository } from '../../../src/repositories';
-import { confirmTransfer, initiateTransfer } from '../../../src/services/transferService';
+import {
+  cancelTransfer,
+  confirmTransfer,
+  expireOldTransfers,
+  initiateTransfer,
+} from '../../../src/services/transferService';
 import {
   canRunIntegrationTests,
   cleanupTestData,
@@ -83,6 +88,109 @@ describeIntegration('ownership transfer consistency', () => {
     })).resolves.toBe(1);
   });
 
+  it('allows exactly one of two concurrent confirmations to transfer ownership', async () => {
+    const { owner, recipient, wallet } = await createTransferFixture(prisma);
+    const transfer = await createAcceptedTransfer(prisma, owner.id, recipient.id, wallet.id);
+    const holder = await holdWalletRow(prisma, wallet.id);
+    let confirmations: PromiseSettledResult<Awaited<ReturnType<typeof confirmTransfer>>>[] = [];
+    let pendingConfirmations:
+      | Promise<PromiseSettledResult<Awaited<ReturnType<typeof confirmTransfer>>>[]>
+      | undefined;
+
+    try {
+      pendingConfirmations = Promise.allSettled([
+        confirmTransfer(owner.id, transfer.id),
+        confirmTransfer(owner.id, transfer.id),
+      ]);
+      await waitForOwnershipFenceWaiters(prisma, 2);
+      await holder.release();
+      confirmations = await pendingConfirmations;
+    } finally {
+      await holder.release();
+      await pendingConfirmations;
+    }
+
+    expect(confirmations.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(confirmations.find(result => result.status === 'rejected')).toMatchObject({
+      status: 'rejected',
+      reason: expect.objectContaining({
+        message: 'Transfer has already been completed',
+      }),
+    });
+    await expect(prisma.ownershipTransfer.findUniqueOrThrow({
+      where: { id: transfer.id },
+      select: { status: true },
+    })).resolves.toEqual({ status: 'confirmed' });
+    await expect(prisma.walletUser.findMany({
+      where: { walletId: wallet.id },
+      orderBy: { userId: 'asc' },
+      select: { userId: true, role: true },
+    })).resolves.toEqual([
+      { userId: owner.id, role: 'viewer' },
+      { userId: recipient.id, role: 'owner' },
+    ].sort((left, right) => left.userId.localeCompare(right.userId)));
+  });
+
+  it('rolls back blocked confirmation ownership writes when cancellation wins', async () => {
+    const { owner, recipient, wallet } = await createTransferFixture(prisma);
+    const transfer = await createAcceptedTransfer(prisma, owner.id, recipient.id, wallet.id);
+    const holder = await holdWalletRow(prisma, wallet.id);
+    let confirmation: Promise<Awaited<ReturnType<typeof confirmTransfer>>> | undefined;
+
+    try {
+      confirmation = confirmTransfer(owner.id, transfer.id);
+      await waitForOwnershipFenceWaiters(prisma, 1);
+      await expect(cancelTransfer(owner.id, transfer.id)).resolves.toMatchObject({
+        status: 'cancelled',
+      });
+      await holder.release();
+      await expect(confirmation).rejects.toBeInstanceOf(InvalidInputError);
+    } finally {
+      await holder.release();
+      await confirmation?.catch(() => undefined);
+    }
+
+    await expect(prisma.ownershipTransfer.findUniqueOrThrow({
+      where: { id: transfer.id },
+      select: { status: true },
+    })).resolves.toEqual({ status: 'cancelled' });
+    await expect(prisma.walletUser.findMany({
+      where: { walletId: wallet.id },
+      select: { userId: true, role: true },
+    })).resolves.toEqual([{ userId: owner.id, role: 'owner' }]);
+  });
+
+  it('rolls back blocked confirmation ownership writes when expiry cleanup wins', async () => {
+    const { owner, recipient, wallet } = await createTransferFixture(prisma);
+    const transfer = await createAcceptedTransfer(prisma, owner.id, recipient.id, wallet.id);
+    const holder = await holdWalletRow(prisma, wallet.id);
+    let confirmation: Promise<Awaited<ReturnType<typeof confirmTransfer>>> | undefined;
+
+    try {
+      confirmation = confirmTransfer(owner.id, transfer.id);
+      await waitForOwnershipFenceWaiters(prisma, 1);
+      await prisma.ownershipTransfer.update({
+        where: { id: transfer.id },
+        data: { expiresAt: new Date(Date.now() - 1_000) },
+      });
+      await expect(expireOldTransfers()).resolves.toBe(1);
+      await holder.release();
+      await expect(confirmation).rejects.toBeInstanceOf(InvalidInputError);
+    } finally {
+      await holder.release();
+      await confirmation?.catch(() => undefined);
+    }
+
+    await expect(prisma.ownershipTransfer.findUniqueOrThrow({
+      where: { id: transfer.id },
+      select: { status: true },
+    })).resolves.toEqual({ status: 'expired' });
+    await expect(prisma.walletUser.findMany({
+      where: { walletId: wallet.id },
+      select: { userId: true, role: true },
+    })).resolves.toEqual([{ userId: owner.id, role: 'owner' }]);
+  });
+
   it('rejects stale initiation after a locked ownership handoff commits', async () => {
     const { owner, recipient, wallet } = await createTransferFixture(prisma);
     const newOwner = await createUser(prisma, 'new-owner');
@@ -127,7 +235,7 @@ describeIntegration('ownership transfer consistency', () => {
         },
       );
 
-      await waitForOwnershipFenceWaiter(prisma);
+      await waitForOwnershipFenceWaiters(prisma, 1);
       expect(initiationSettled).toBe(false);
 
       releaseHandoff.resolve();
@@ -161,22 +269,61 @@ function createDeferred<T>() {
   return { promise, resolve };
 }
 
-async function waitForOwnershipFenceWaiter(prisma: PrismaClient): Promise<void> {
+async function waitForOwnershipFenceWaiters(
+  prisma: PrismaClient,
+  expectedCount: number,
+): Promise<void> {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
-    const [waiter] = await prisma.$queryRaw<Array<{ present: boolean }>>`
-      SELECT EXISTS (
-        SELECT 1
-        FROM pg_stat_activity
-        WHERE pid <> pg_backend_pid()
-          AND wait_event_type = 'Lock'
-          AND query LIKE '%UPDATE "wallets" SET "updatedAt" = "updatedAt"%'
-      ) AS present
+    const [waiters] = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) AS count
+      FROM pg_stat_activity
+      WHERE pid <> pg_backend_pid()
+        AND wait_event_type = 'Lock'
+        AND query LIKE '%UPDATE "wallets" SET "updatedAt" = "updatedAt"%'
     `;
-    if (waiter?.present) return;
+    if (Number(waiters?.count ?? 0) >= expectedCount) return;
     await new Promise(resolve => setTimeout(resolve, 10));
   }
-  throw new Error('Timed out waiting for initiation to block on the ownership fence');
+  throw new Error(`Timed out waiting for ${expectedCount} ownership fence waiter(s)`);
+}
+
+async function holdWalletRow(prisma: PrismaClient, walletId: string) {
+  const ready = createDeferred<void>();
+  const release = createDeferred<void>();
+  const transaction = prisma.$transaction(async tx => {
+    await tx.$queryRaw`
+      SELECT "id" FROM "wallets" WHERE "id" = ${walletId} FOR UPDATE
+    `;
+    ready.resolve();
+    await release.promise;
+  });
+  await ready.promise;
+  return {
+    release: async () => {
+      release.resolve();
+      await transaction;
+    },
+  };
+}
+
+async function createAcceptedTransfer(
+  prisma: PrismaClient,
+  ownerId: string,
+  recipientId: string,
+  walletId: string,
+) {
+  return prisma.ownershipTransfer.create({
+    data: {
+      resourceType: 'wallet',
+      resourceId: walletId,
+      fromUserId: ownerId,
+      toUserId: recipientId,
+      status: 'accepted',
+      acceptedAt: new Date(),
+      expiresAt: new Date(Date.now() + 60_000),
+    },
+  });
 }
 
 async function createTransferFixture(prisma: PrismaClient) {

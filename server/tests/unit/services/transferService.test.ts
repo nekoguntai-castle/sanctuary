@@ -1,5 +1,6 @@
 import { beforeEach, describe } from 'vitest';
 import { registerTransferConfirmContracts } from './transferService/transferService.confirm.contracts';
+import { registerTransferConfirmRetryContracts } from './transferService/transferService.confirm-retry.contracts';
 import { registerTransferInitiateContracts } from './transferService/transferService.initiate.contracts';
 import { registerTransferQueriesExpiryContracts } from './transferService/transferService.queries-expiry.contracts';
 import { registerTransferStateChangeContracts } from './transferService/transferService.state-changes.contracts';
@@ -11,5 +12,6 @@ describe('Transfer Service', () => {
   registerTransferInitiateContracts();
   registerTransferStateChangeContracts();
   registerTransferConfirmContracts();
+  registerTransferConfirmRetryContracts();
   registerTransferQueriesExpiryContracts();
 });

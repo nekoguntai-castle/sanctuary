@@ -290,16 +290,16 @@ Delivery: one worker/DLQ PR.
 
 Finding: `transfer-confirm-serialization-conflict-http-500`.
 
-- [ ] Add a real-PostgreSQL barrier test for two confirmations of the same accepted
+- [x] Add a real-PostgreSQL barrier test for two confirmations of the same accepted
       transfer and adapter-level tests for Prisma serialization error variants.
-- [ ] Extract and reuse the bounded full-transaction serialization-conflict
+- [x] Extract and reuse the bounded full-transaction serialization-conflict
       classifier/retry policy already used by transfer initiation.
-- [ ] On retry, re-read state inside the new serializable snapshot. Return one
+- [x] On retry, re-read state inside the new serializable snapshot. Return one
       success and map the losing confirmation to the existing conflict envelope;
       never replay only a fragment of the ownership mutation.
-- [ ] Test retry exhaustion, expiration, owner changes, wallet and device paths,
+- [x] Test retry exhaustion, expiration, owner changes, wallet and device paths,
       and logging without leaking internal database errors.
-- [ ] Race confirm against cancellation and expiry cleanup. Assert one legal
+- [x] Race confirm against cancellation and expiry cleanup. Assert one legal
       terminal state, no ownership mutation when cancellation/expiry wins, and no
       raw P2034/P2010/internal error on either path.
 
