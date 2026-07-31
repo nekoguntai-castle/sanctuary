@@ -81,6 +81,11 @@ CI authority: Forgejo Actions, testing only
 - The disposable tag `mirror-rehearsal-20260730-1903` propagated at the exact
   Forgejo commit and disappeared from GitHub after normal Forgejo deletion.
   Anonymous raw-content, archive, and releases endpoints all returned HTTP 200.
+- Harmless Forgejo PR #574 merged as
+  `122171fe434d4564936912da40fcd92ac3e4b4fa`. Forgejo's PR and post-merge
+  checks passed, GitHub received the exact squash commit immediately, GitHub
+  Actions remained disabled with zero runs for that commit, and no new
+  Dependabot PR appeared.
 
 ## Outcome
 
@@ -375,7 +380,7 @@ GitHub/GHCR; no supported user flow depends on Codeberg.
 - [x] Confirm existing Forgejo non-`main` branches do *not* appear on GitHub.
   Push a disposable tag, verify it appears, then remove it through normal Forgejo
   operations and verify deletion propagation.
-- [ ] Merge a harmless Forgejo PR and verify:
+- [x] Merge a harmless Forgejo PR and verify:
   - GitHub receives the exact commit;
   - no GitHub Actions run is created;
   - no GitHub Dependabot PR/run is created;
