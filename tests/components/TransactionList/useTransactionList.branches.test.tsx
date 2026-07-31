@@ -309,19 +309,20 @@ describe('useTransactionList branches', () => {
       result.current.handleToggleLabel('lbl-b');
     });
     expect(result.current.selectedLabelIds).toEqual(['lbl-existing-on-tx', 'lbl-b']);
+    vi.mocked(labelsApi.setTransactionLabels).mockResolvedValueOnce([labelB]);
 
     await act(async () => {
       await result.current.handleSaveLabels();
     });
 
     expect(labelsApi.setTransactionLabels).toHaveBeenCalledWith('tx-edit', ['lbl-existing-on-tx', 'lbl-b']);
-    expect(result.current.selectedTx?.labels?.map(l => l.id)).toEqual(['lbl-b']);
+    expect(result.current.selectedTx?.labels?.map(l => l.id)).toEqual(['lbl-existing-on-tx', 'lbl-b']);
     expect(onLabelsChange).toHaveBeenCalledTimes(1);
   });
 
   it('covers save/AI suggestion error handlers', async () => {
     const tx = makeTx({ id: 'tx-errors', txid: 'txid-errors', walletId: 'wallet-errors', labels: [] });
-    vi.mocked(labelsApi.setTransactionLabels).mockRejectedValueOnce(new Error('save failed'));
+    vi.mocked(labelsApi.setTransactionLabels).mockRejectedValueOnce('save failed');
     vi.mocked(labelsApi.createLabel).mockRejectedValueOnce(new Error('create failed'));
 
     const { result } = renderTxHook(() =>
@@ -353,7 +354,14 @@ describe('useTransactionList branches', () => {
 
     expect(labelsApi.setTransactionLabels).toHaveBeenCalled();
     expect(labelsApi.createLabel).toHaveBeenCalled();
+    expect(result.current.labelMutationError).toBe('create failed');
+
+    await act(async () => {
+      await result.current.handleEditLabels(tx);
+    });
+    expect(result.current.labelMutationError).toBeNull();
   });
+
 
   it('applies AI suggestions for existing labels, avoids duplicate selection, and creates missing labels', async () => {
     const tx = makeTx({ id: 'tx-ai', txid: 'txid-ai', walletId: 'wallet-ai', labels: [] });

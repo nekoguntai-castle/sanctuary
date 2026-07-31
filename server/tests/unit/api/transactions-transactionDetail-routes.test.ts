@@ -33,6 +33,7 @@ const TXID_MISSING = 'c'.repeat(64);
 const TXID_ERROR = 'd'.repeat(64);
 const TXID_DETAIL = 'e'.repeat(64);
 const TXID_NULL_FIELDS = 'f'.repeat(64);
+const TXID_ZERO_FIELDS = '8'.repeat(64);
 
 describe('Transactions Detail Routes', () => {
   let app: Express;
@@ -233,6 +234,33 @@ describe('Transactions Detail Routes', () => {
     expect(response.body.labels).toEqual([]);
   });
 
+  it('preserves zero fee, balanceAfter, and blockHeight on legacy detail lookup', async () => {
+    mockPrismaClient.transaction.findMany.mockResolvedValue([{
+      id: 'tx-zero-legacy',
+      walletId: 'wallet-1',
+      txid: TXID_ZERO_FIELDS,
+      amount: BigInt(0),
+      fee: BigInt(0),
+      balanceAfter: BigInt(0),
+      blockHeight: BigInt(0),
+      wallet: { id: 'wallet-1', name: 'Main Wallet', type: 'watch-only' },
+      address: null,
+      transactionLabels: [],
+      inputs: [],
+      outputs: [],
+    }]);
+
+    const response = await request(app).get(`/api/v1/transactions/${TXID_ZERO_FIELDS}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      amount: 0,
+      fee: 0,
+      balanceAfter: 0,
+      blockHeight: 0,
+    });
+  });
+
   it('returns 404 when transaction details are not found', async () => {
     mockPrismaClient.transaction.findMany.mockResolvedValue([]);
 
@@ -326,6 +354,34 @@ describe('Transactions Detail Routes', () => {
     expect(mockPrismaClient.transaction.findUnique).toHaveBeenCalledWith(expect.objectContaining({
       where: { txid_walletId: { txid: TXID_DETAIL, walletId: 'wallet-1' } },
     }));
+  });
+
+  it('preserves zero fee, balanceAfter, and blockHeight on wallet-scoped detail lookup', async () => {
+    mockPrismaClient.transaction.findUnique.mockResolvedValue({
+      id: 'tx-zero-scoped',
+      txid: TXID_ZERO_FIELDS,
+      walletId: 'wallet-1',
+      amount: BigInt(0),
+      fee: BigInt(0),
+      balanceAfter: BigInt(0),
+      blockHeight: BigInt(0),
+      wallet: { id: 'wallet-1', name: 'Wallet One', type: 'watch-only' },
+      address: null,
+      transactionLabels: [],
+      inputs: [],
+      outputs: [],
+    });
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/wallet-1/transactions/${TXID_ZERO_FIELDS}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      amount: 0,
+      fee: 0,
+      balanceAfter: 0,
+      blockHeight: 0,
+    });
   });
 
   it('returns 404 when a transaction is absent from the requested wallet', async () => {

@@ -24,6 +24,7 @@ export function TransactionDetailsBody({
   availableLabels,
   selectedLabelIds,
   savingLabels,
+  labelMutationError,
   canEdit,
   aiEnabled,
   confirmationThreshold,
@@ -71,6 +72,7 @@ export function TransactionDetailsBody({
           availableLabels={availableLabels}
           selectedLabelIds={selectedLabelIds}
           savingLabels={savingLabels}
+          mutationError={labelMutationError}
           canEdit={canEdit}
           aiEnabled={aiEnabled}
           onEditLabels={onEditLabels}

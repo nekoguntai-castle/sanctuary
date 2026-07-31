@@ -6,6 +6,7 @@ export type LabelEditorProps = {
   availableLabels: Label[];
   selectedLabelIds: string[];
   savingLabels: boolean;
+  mutationError?: string | null;
   canEdit: boolean;
   aiEnabled: boolean;
   onEditLabels: (tx: Transaction) => void;

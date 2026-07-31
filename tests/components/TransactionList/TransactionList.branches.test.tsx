@@ -122,7 +122,7 @@ vi.mock('../../../components/TransactionList/LabelEditor', () => ({
 describe('TransactionList branch coverage', () => {
   const setSelectedTx = vi.fn();
   const clearSelectedTx = vi.fn();
-  const setEditingLabels = vi.fn();
+  const handleCancelEdit = vi.fn();
   const retrySelection = vi.fn();
 
   const baseTx: Transaction = {
@@ -158,7 +158,6 @@ describe('TransactionList branch coverage', () => {
       explorerUrl: 'https://mempool.space',
       copied: false,
       editingLabels: false,
-      setEditingLabels,
       availableLabels: [],
       selectedLabelIds: [],
       savingLabels: false,
@@ -183,6 +182,7 @@ describe('TransactionList branch coverage', () => {
       handleTxClick: vi.fn(),
       handleEditLabels: vi.fn(),
       handleSaveLabels: vi.fn(),
+      handleCancelEdit,
       handleToggleLabel: vi.fn(),
       handleAISuggestion: vi.fn(),
       getTxTypeInfo: vi.fn().mockReturnValue({ isReceive: true, isConsolidation: false }),
@@ -368,6 +368,6 @@ describe('TransactionList branch coverage', () => {
     await user.click(screen.getByTestId('cancel-edit'));
 
     expect(clearSelectedTx).toHaveBeenCalled();
-    expect(setEditingLabels).toHaveBeenCalledWith(false);
+    expect(handleCancelEdit).toHaveBeenCalledTimes(1);
   });
 });

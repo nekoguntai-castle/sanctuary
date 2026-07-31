@@ -51,6 +51,7 @@ export async function storeTransactionInputs(
 
   const utxoRecords = await tx.uTXO.findMany({
     where: {
+      walletId,
       OR: utxoKeys.map(k => ({ txid: k.txid, vout: k.vout })),
     },
   });

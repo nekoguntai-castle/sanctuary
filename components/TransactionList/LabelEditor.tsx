@@ -10,6 +10,7 @@ export const LabelEditor: React.FC<LabelEditorProps> = ({
   availableLabels,
   selectedLabelIds,
   savingLabels,
+  mutationError,
   canEdit,
   aiEnabled,
   onEditLabels,
@@ -30,14 +31,21 @@ export const LabelEditor: React.FC<LabelEditorProps> = ({
         onCancelEdit={onCancelEdit}
       />
       {editingLabels ? (
-        <EditingLabelsPanel
-          selectedTx={selectedTx}
-          availableLabels={availableLabels}
-          selectedLabelIds={selectedLabelIds}
-          aiEnabled={aiEnabled}
-          onToggleLabel={onToggleLabel}
-          onAISuggestion={onAISuggestion}
-        />
+        <>
+          {mutationError && (
+            <p role="alert" className="mb-3 text-sm text-rose-600 dark:text-rose-400">
+              {mutationError}
+            </p>
+          )}
+          <EditingLabelsPanel
+            selectedTx={selectedTx}
+            availableLabels={availableLabels}
+            selectedLabelIds={selectedLabelIds}
+            aiEnabled={aiEnabled}
+            onToggleLabel={onToggleLabel}
+            onAISuggestion={onAISuggestion}
+          />
+        </>
       ) : (
         <ReadOnlyLabelsPanel selectedTx={selectedTx} />
       )}

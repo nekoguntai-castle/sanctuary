@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Transaction, Wallet, Label } from '../../../types';
 import * as bitcoinApi from '../../../src/api/bitcoin';
-import * as labelsApi from '../../../src/api/labels';
 import { createLogger } from '../../../utils/logger';
 import { isConsolidation } from '../../../utils/transaction';
 import { getDefaultNodeExternalServiceUrl } from '@sanctuary/shared/constants/nodeConfig';
 import type { TransactionStats } from '../../../src/api/transactions';
 import { useTransactionSelection } from './useTransactionSelection';
+import { useTransactionLabelMutations } from './useTransactionLabelMutations';
 
 const log = createLogger('TransactionList');
 
@@ -49,22 +49,24 @@ export function useTransactionList({
   const [copied, setCopied] = useState(false);
   const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Label editing state
-  const [editingLabels, setEditingLabels] = useState(false);
-  const [availableLabels, setAvailableLabels] = useState<Label[]>([]);
-  const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
-  const [savingLabels, setSavingLabels] = useState(false);
+  // Selection owns transaction identity; label mutations bind their async work
+  // to that identity so late completions cannot modify a newer detail view.
   const {
     clearSelectedTx,
+    patchSelectedTxLabels,
     retrySelection,
     selection,
     selectTx,
-    setSelectedTx,
   } = useTransactionSelection({
     ownsSelection,
     selectionTransactions,
-    setEditingLabels,
     walletId,
+  });
+  const labelMutations = useTransactionLabelMutations({
+    selection,
+    walletLabels,
+    onLabelsChange,
+    patchSelectedTxLabels,
   });
 
   // Load explorer URL from server config
@@ -152,71 +154,17 @@ export function useTransactionList({
       if (onTransactionClick) {
         onTransactionClick(tx);
       } else {
+        labelMutations.invalidateForSelectionChange();
         selectTx(tx);
       }
     },
-    [onTransactionClick, selectTx],
+    [labelMutations.invalidateForSelectionChange, onTransactionClick, selectTx],
   );
 
-  const handleEditLabels = async (tx: Transaction) => {
-    setEditingLabels(true);
-    setSelectedLabelIds(tx.labels?.map(l => l.id) || []);
-    setAvailableLabels(walletLabels);
-  };
-
-  const handleSaveLabels = async () => {
-    if (!selection.selectedTx) return;
-    try {
-      setSavingLabels(true);
-      await labelsApi.setTransactionLabels(selection.selectedTx.id, selectedLabelIds);
-      // Update the selected transaction's labels locally
-      const updatedLabels = availableLabels.filter(l => selectedLabelIds.includes(l.id));
-      setSelectedTx({ ...selection.selectedTx, labels: updatedLabels });
-      setEditingLabels(false);
-      onLabelsChange?.();
-    } catch (err) {
-      log.error('Failed to save labels', { error: err });
-    } finally {
-      setSavingLabels(false);
-    }
-  };
-
-  const handleToggleLabel = (labelId: string) => {
-    setSelectedLabelIds(prev =>
-      prev.includes(labelId)
-        ? prev.filter(id => id !== labelId)
-        : [...prev, labelId]
-    );
-  };
-
-  // Handle AI label suggestion
-  const handleAISuggestion = async (suggestion: string) => {
-    if (!selection.selectedTx) return;
-
-    try {
-      // Check if a label with this name already exists
-      let existingLabel = availableLabels.find(
-        l => l.name.toLowerCase() === suggestion.toLowerCase()
-      );
-
-      if (!existingLabel) {
-        const newLabel = await labelsApi.createLabel(selection.selectedTx.walletId, {
-          name: suggestion,
-          color: '#6366f1',
-        });
-        existingLabel = newLabel;
-        setAvailableLabels(prev => [...prev, newLabel]);
-        onLabelsChange?.(); // Triggers React Query cache invalidation upstream
-      }
-
-      // Toggle the label on
-      if (!selectedLabelIds.includes(existingLabel.id)) {
-        setSelectedLabelIds(prev => [...prev, existingLabel!.id]);
-      }
-    } catch (err) {
-      log.error('Failed to apply AI suggestion', { error: err });
-    }
-  };
+  const handleClearSelectedTx = useCallback(() => {
+    labelMutations.invalidateForSelectionChange();
+    clearSelectedTx();
+  }, [clearSelectedTx, labelMutations.invalidateForSelectionChange]);
 
   // Helper to get transaction type info
   const getTxTypeInfo = (tx: Transaction) => ({
@@ -281,16 +229,15 @@ export function useTransactionList({
 
   return {
     selectedTx: selection.selectedTx,
-    setSelectedTx,
-    clearSelectedTx,
+    clearSelectedTx: handleClearSelectedTx,
     ownsSelection,
     explorerUrl,
     copied,
-    editingLabels,
-    setEditingLabels,
-    availableLabels,
-    selectedLabelIds,
-    savingLabels,
+    editingLabels: labelMutations.editingLabels,
+    availableLabels: labelMutations.availableLabels,
+    selectedLabelIds: labelMutations.selectedLabelIds,
+    savingLabels: labelMutations.savingLabels,
+    labelMutationError: labelMutations.labelMutationError,
     fullTxDetails: selection.fullTxDetails,
     loadingDetails: selection.status === 'loading',
     selectionStatus: selection.status,
@@ -302,10 +249,11 @@ export function useTransactionList({
     getWallet,
     copyToClipboard,
     handleTxClick,
-    handleEditLabels,
-    handleSaveLabels,
-    handleToggleLabel,
-    handleAISuggestion,
+    handleEditLabels: labelMutations.handleEditLabels,
+    handleSaveLabels: labelMutations.handleSaveLabels,
+    handleCancelEdit: labelMutations.handleCancelEdit,
+    handleToggleLabel: labelMutations.handleToggleLabel,
+    handleAISuggestion: labelMutations.handleAISuggestion,
     getTxTypeInfo,
   };
 }

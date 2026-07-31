@@ -87,9 +87,9 @@ function serializeTransaction(transaction: TransactionDetail) {
   return {
     ...transaction,
     amount: Number(transaction.amount),
-    fee: transaction.fee ? Number(transaction.fee) : null,
-    balanceAfter: transaction.balanceAfter ? Number(transaction.balanceAfter) : null,
-    blockHeight: transaction.blockHeight ? Number(transaction.blockHeight) : null,
+    fee: transaction.fee == null ? null : Number(transaction.fee),
+    balanceAfter: transaction.balanceAfter == null ? null : Number(transaction.balanceAfter),
+    blockHeight: transaction.blockHeight == null ? null : Number(transaction.blockHeight),
     labels: transaction.transactionLabels.map((tl) => tl.label),
     transactionLabels: undefined,
     inputs: transaction.inputs.map((input) => ({

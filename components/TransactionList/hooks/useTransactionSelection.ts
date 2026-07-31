@@ -3,9 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
-  type Dispatch,
   type MutableRefObject,
-  type SetStateAction,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Transaction } from '../../../types';
@@ -28,14 +26,12 @@ const log = createLogger('TransactionList');
 interface UseTransactionSelectionParams {
   ownsSelection: boolean;
   selectionTransactions: Transaction[];
-  setEditingLabels: Dispatch<SetStateAction<boolean>>;
   walletId?: string;
 }
 
 export function useTransactionSelection({
   ownsSelection,
   selectionTransactions,
-  setEditingLabels,
   walletId,
 }: UseTransactionSelectionParams) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -91,7 +87,6 @@ export function useTransactionSelection({
       retryGeneration,
       selectionRef,
       selectionTransactions,
-      setEditingLabels,
       txParam,
       updateSelection,
       walletId,
@@ -101,7 +96,6 @@ export function useTransactionSelection({
     ownsSelection,
     retryGeneration,
     selectionTransactions,
-    setEditingLabels,
     updateSelection,
     txParam,
     walletId,
@@ -119,11 +113,20 @@ export function useTransactionSelection({
     }
   }, []);
 
-  const setSelectedTx = useCallback((tx: Transaction | null) => {
-    updateSelection({ ...selectionRef.current, selectedTx: tx });
+  const patchSelectedTxLabels = useCallback((
+    expectedKey: string,
+    expectedTransactionId: string,
+    labels: Transaction['labels'],
+  ) => {
+    const current = selectionRef.current;
+    if (current.key !== expectedKey || current.selectedTx?.id !== expectedTransactionId) return;
+    updateSelection({
+      ...current,
+      selectedTx: { ...current.selectedTx, labels },
+    });
   }, [updateSelection]);
 
-  return { clearSelectedTx, retrySelection, selection, selectTx, setSelectedTx };
+  return { clearSelectedTx, patchSelectedTxLabels, retrySelection, selection, selectTx };
 }
 
 type ActiveRequestRef = MutableRefObject<{
@@ -145,7 +148,6 @@ interface ReconcileSelectionParams {
   retryGeneration: number;
   selectionRef: MutableRefObject<SelectionResolution>;
   selectionTransactions: Transaction[];
-  setEditingLabels: Dispatch<SetStateAction<boolean>>;
   txParam: string | null;
   updateSelection: UpdateSelection;
   walletId?: string;
@@ -170,7 +172,6 @@ function handleUnresolvableSelection(
       params.requestGenerationRef,
       params.selectionRef,
       params.updateSelection,
-      params.setEditingLabels,
     );
     params.lastStartedRetryRef.current = null;
     params.lastObservedLocalRef.current = null;
@@ -183,7 +184,6 @@ function handleUnresolvableSelection(
       params.activeRequestRef,
       params.requestGenerationRef,
       params.updateSelection,
-      params.setEditingLabels,
     );
   }
   params.clearCurrentTxParam(normalizedTxid);
@@ -228,7 +228,6 @@ function reconcileResolvableSelection(
     resolvedWalletId,
     retryGeneration: params.retryGeneration,
     selectionRef: params.selectionRef,
-    setEditingLabels: params.setEditingLabels,
     updateSelection: params.updateSelection,
   });
 }
@@ -260,7 +259,6 @@ function resetIdleSelection(
   generationRef: GenerationRef,
   selectionRef: MutableRefObject<SelectionResolution>,
   update: UpdateSelection,
-  setEditingLabels: Dispatch<SetStateAction<boolean>>,
 ) {
   const hadActiveRequest = activeRef.current !== null;
   activeRef.current?.controller.abort();
@@ -268,7 +266,6 @@ function resetIdleSelection(
   if (hadActiveRequest) generationRef.current += 1;
   if (selectionRef.current.status !== 'idle' || selectionRef.current.key !== null) {
     update(IDLE_SELECTION);
-    setEditingLabels(false);
   }
 }
 
@@ -276,13 +273,11 @@ function markNotFound(
   activeRef: ActiveRequestRef,
   generationRef: GenerationRef,
   update: UpdateSelection,
-  setEditingLabels: Dispatch<SetStateAction<boolean>>,
 ) {
   activeRef.current?.controller.abort();
   activeRef.current = null;
   generationRef.current += 1;
   update({ ...IDLE_SELECTION, status: 'not-found' });
-  setEditingLabels(false);
 }
 
 function setMissingWalletError(localTx: Transaction | null, update: UpdateSelection) {
@@ -333,14 +328,13 @@ interface StartRequestParams {
   resolvedWalletId: string;
   retryGeneration: number;
   selectionRef: MutableRefObject<SelectionResolution>;
-  setEditingLabels: Dispatch<SetStateAction<boolean>>;
   updateSelection: UpdateSelection;
 }
 
 function startSelectionRequest(params: StartRequestParams) {
   const {
     activeRequestRef, key, lastStartedRetryRef, localTx, normalizedTxid,
-    requestGenerationRef, resolvedWalletId, retryGeneration, setEditingLabels,
+    requestGenerationRef, resolvedWalletId, retryGeneration,
     updateSelection,
   } = params;
   activeRequestRef.current?.controller.abort();
@@ -348,7 +342,6 @@ function startSelectionRequest(params: StartRequestParams) {
   const generation = ++requestGenerationRef.current;
   activeRequestRef.current = { controller, generation, key };
   lastStartedRetryRef.current = { key, retryGeneration };
-  setEditingLabels(false);
   updateSelection({ key, status: 'loading', selectedTx: localTx, fullTxDetails: null, error: null });
 
   transactionsApi.getTransaction(resolvedWalletId, normalizedTxid, { signal: controller.signal })

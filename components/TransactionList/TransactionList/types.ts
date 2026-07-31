@@ -22,6 +22,7 @@ export interface TransactionDetailsContentProps {
   availableLabels: Label[];
   selectedLabelIds: string[];
   savingLabels: boolean;
+  labelMutationError: string | null;
   canEdit: boolean;
   aiEnabled: boolean;
   confirmationThreshold: number;

@@ -33,6 +33,28 @@ const labels: Label[] = [
 ];
 
 describe('TransactionList LabelEditor', () => {
+  it('announces label mutation failures inline', () => {
+    render(
+      <LabelEditor
+        selectedTx={selectedTx}
+        editingLabels={true}
+        availableLabels={labels}
+        selectedLabelIds={[]}
+        savingLabels={false}
+        mutationError="Could not save labels"
+        canEdit={true}
+        aiEnabled={false}
+        onEditLabels={vi.fn()}
+        onSaveLabels={vi.fn()}
+        onCancelEdit={vi.fn()}
+        onToggleLabel={vi.fn()}
+        onAISuggestion={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not save labels');
+  });
+
   it('opens edit mode from read-only view when editing is allowed', async () => {
     const user = userEvent.setup();
     const onEditLabels = vi.fn();
