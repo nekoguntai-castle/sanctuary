@@ -35,6 +35,8 @@ Procedural guides for operators and developers.
 Lookup tables, checklists, and specs.
 
 - [CI strategy](reference/ci-cd-strategy.md) — Forgejo branch protection, test-only workflows, and path-aware validation
+- [Repository mirroring](reference/repository-mirroring.md) — Forgejo-to-GitHub branch policy, credentials, verification, and rotation
+- [Release distribution](reference/release-distribution.md) — trusted-operator GitHub Release and GHCR publication
 - [Frontend architecture](reference/frontend-architecture.md) — React/Vite architecture and frontend packaging
 - [Hardware wallet integration](reference/hardware-wallet-integration.md) — hardware wallet feature specification
 - [Wallet threat model](reference/wallet-threat-model.md) — fund-safety assets, actors, boundaries, non-goals, and limitations

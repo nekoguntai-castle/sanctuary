@@ -3,6 +3,8 @@
 Forgejo is Sanctuary's source of truth and CI authority. GitHub is a passive
 public mirror and distribution endpoint. GitHub Actions must remain disabled;
 neither GitHub Actions nor Forgejo Actions publishes releases or images.
+The branch mirror's credentials and tag boundary are documented separately in
+[Repository mirroring](repository-mirroring.md).
 
 ## Operator credentials
 
@@ -62,7 +64,8 @@ The command fails closed unless the local tag, Forgejo tag commit, and exact
 successful Forgejo tag run agree. It also rechecks that GitHub Actions is
 disabled immediately before any GitHub mutation. For a real release it then:
 
-- creates the missing lightweight GitHub tag only after its commit is mirrored;
+- verifies the automatically mirrored GitHub tag, or idempotently creates it
+  after its commit is mirrored if reconciliation lag left it missing;
 - logs in to GHCR through an isolated temporary Docker configuration;
 - publishes amd64/arm64 frontend and backend images;
 - verifies manifest and per-platform digest evidence against GHCR, including

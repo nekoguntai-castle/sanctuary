@@ -9,18 +9,19 @@ CI authority: Forgejo Actions, testing only
 ## Execution Ledger
 
 - target_branch: `main`
-- task_branch: `codex/implement-merge/github-docs-references-20260730`
-- worktree_path: `/tmp/sanctuary-implement-merge-github-mirror`
+- task_branch: `codex/implement-merge/mirror-auth-runbook-20260730`
+- worktree_path: isolated local temporary worktree (path intentionally omitted)
 - created_by_loop: branch and isolated worktree
 - converted_to_next_phase: 2026-07-30 HST after PR #562 merged
 - cleanup_status: pending
-- recovery_path:
-  `/home/nekoguntai/sanctuary-recovery/github-mirror-cutover-20260730`
+- recovery_path: operator-owned external backup directory (path intentionally
+  omitted)
 - GitHub Actions disabled: 2026-07-30 HST
 - GitHub Dependabot security updates disabled: 2026-07-30 HST
 - approved public branch allowlist: `main` only; unfiltered mirroring is forbidden
-- Forgejo v16.0.1 branch filters propagate only matching branches, not tags;
-  release tags require the trusted operator's explicit GitHub ref creation
+- Forgejo v16.0.1 branch filters are comma-separated literal/glob branch names,
+  not regexes. A `main` filter propagates only that branch plus all tags; tag
+  additions and deletions are mirrored.
 - queued Dependabot dynamic runs: cancellation returns GitHub HTTP 500; repository
   config removal and post-mirror recheck pending
 - release distribution PR: Forgejo PR #564 merged as
@@ -47,6 +48,25 @@ CI authority: Forgejo Actions, testing only
   Focused verification passed: deterministic regeneration hash
   `c92e1f0db5f5ae500efeb3e38949d3f0d9d607b8`, README link tests 6/6, and the
   Docusaurus production build.
+  Forgejo PR #568 merged as
+  `1d816231539300ffb4ac33f62a1ad830e6ce68a6`; its exact PR tree matched the
+  squash result, and post-merge architecture and full test runs passed.
+- Phase 5 preflight verified the GitHub recovery bundle, approved Forgejo `main`
+  as the replacement for the unrelated GitHub `main`, and found that all 150
+  normalized GitHub tags are an exact subset of Forgejo's 165 tags with no
+  shared-tag commit mismatch. GitHub Actions remains disabled, Pages remains
+  absent, and automated security updates remain disabled.
+- The preferred SSH mirror could not be installed because the GitHub organization
+  has `deploy_keys_enabled_for_repositories: false`; GitHub rejected the
+  repository deploy key without changing any ref. The incomplete Forgejo mirror
+  was rolled back. The approved repository-scoped fallback is a dedicated
+  fine-grained HTTPS token with Contents and Workflows write, pending credential
+  provisioning.
+- Forgejo 16.0.1's push-mirror DELETE API removed that trial mirror's database
+  row but left its Git remote/refspec in the repository and wiki bare configs.
+  PR creation now fails closed on that invalid orphaned refspec. Exact
+  server-side removal of the one orphaned remote is pending; do not use this API
+  deletion path for GitHub rotation or Codeberg retirement.
 
 ## Outcome
 
@@ -65,8 +85,8 @@ destructive-action checkpoint.
 
 ## Confirmed Current State
 
-- Local `origin` is the authoritative, private Forgejo repository at
-  `http://10.14.23.20:3000/nekoguntai-castle/sanctuary.git`.
+- Local `origin` is the authoritative private Forgejo repository; its internal
+  URL is intentionally omitted from public documentation.
 - The checkout has no GitHub or Codeberg git remote.
 - GitHub `nekoguntai-castle/sanctuary` exists and is public, but is stale:
   - Forgejo `main`: `82a5e59a43555ef30b489fb22e4701e79d1c8aa0`
@@ -130,13 +150,16 @@ that Forgejo is authoritative and that direct GitHub contributions are not merge
    tests and composite actions tied to that path. Moving them to `.forgejo` adds
    unrelated migration risk. Disable Actions at the GitHub repository level
    instead.
-2. Use an SSH write deploy key for the Forgejo push mirror.
+2. Prefer an SSH write deploy key for the Forgejo push mirror.
    This scopes git write authority to one GitHub repository and avoids sharing the
    release/package token with the mirror. Because Forgejo is private and GitHub is
    public, default to an allowlist containing `main` and only explicitly public
-   branch patterns. Before configuring it, verify whether the installed Forgejo
-   version mirrors tags when a branch filter is present. If it does not, add an
-   explicit stable/RC tag sync to the trusted release command. An unfiltered
+   branch patterns. If organization policy disables deploy keys, use a dedicated
+   fine-grained token scoped only to this repository with Contents and Workflows
+   write over HTTPS. Do not weaken organization-wide policy implicitly or reuse
+   a release/package credential. The installed Forgejo version always mirrors
+   tags; the trusted release command verifies tag parity and can idempotently
+   repair a missing GitHub tag after the commit is mirrored. An unfiltered
    `git push --mirror` is allowed only after an explicit review approves exposing
    every current and future Forgejo branch.
 3. Use separate release credentials.
@@ -202,7 +225,7 @@ documented, and no release is in flight.
   cannot open divergent GitHub PRs later.
 - [x] Disable GitHub Pages deployment in the repository after replacing its
   documentation links. Disable the live Pages setting after this PR merges.
-- [ ] Set the GitHub description/README notice to identify it as a read-only mirror
+- [x] Set the GitHub description/README notice to identify it as a read-only mirror
   and direct development to Forgejo. Disable GitHub Issues, Discussions, Projects,
   and Wiki if none are intentionally retained.
 
@@ -213,7 +236,8 @@ queued; GitHub is clearly marked non-authoritative.
 
 - [ ] Create the dedicated mirror SSH key in Forgejo and register its public key as
   a write-enabled deploy key on only `nekoguntai-castle/sanctuary`.
-- [x] In a disposable repository, verify the installed Forgejo version's branch
+- [x] In a disposable repository and against the exact v16.0.1 source, verify
+  the installed Forgejo version's branch
   filter and tag behavior. Record whether `main` filtering still propagates
   annotated/lightweight tags and tag deletions.
 - [ ] Create the separate GitHub Release and GHCR credentials described above.
@@ -322,20 +346,21 @@ GitHub/GHCR; no supported user flow depends on Codeberg.
 
 ### Phase 5 — Enable and verify the Forgejo-to-GitHub mirror
 
-- [ ] Before the first force sync, compare every conflicting GitHub branch/tag
+- [x] Before the first force sync, compare every conflicting GitHub branch/tag
   with Forgejo and explicitly approve Forgejo as winner. Preserve unique GitHub
   content in the recovery backup if any exists.
-- [ ] Add the Forgejo push mirror using the GitHub SSH URL and dedicated deploy
-  key. Apply the approved public branch allowlist, enable sync-on-push, and retain
-  an eight-hour periodic reconciliation backstop.
+- [ ] Add the Forgejo push mirror using either the preferred GitHub SSH deploy key
+  or the approved repository-scoped HTTPS mirror token. Apply the exact `main`
+  allowlist, enable sync-on-push, and retain an eight-hour periodic
+  reconciliation backstop.
 - [ ] Force the initial synchronization.
 - [ ] Compare sorted `git ls-remote --heads` output against the approved public
-  branch set and compare all intended `--tags` output between Forgejo and GitHub.
-  Dereference annotated tags consistently before comparison.
-- [ ] Push a disposable branch that matches the approved public filter and a
-  disposable tag, verify they appear on GitHub, then remove them through normal
-  Forgejo operations and verify deletion propagation. Also confirm that a
-  disposable non-public branch does *not* appear.
+  branch set and all `--tags` between Forgejo and GitHub, dereferencing annotated
+  tags consistently.
+- [ ] Push a disposable non-public branch and confirm it does *not* appear.
+  Verify `main` update behavior through a harmless Forgejo PR. Push a disposable
+  tag, verify it appears, then remove it through normal Forgejo operations and
+  verify deletion propagation.
 - [ ] Merge a harmless Forgejo PR and verify:
   - GitHub receives the exact commit;
   - no GitHub Actions run is created;
@@ -345,7 +370,7 @@ GitHub/GHCR; no supported user flow depends on Codeberg.
   anonymously.
 
 Exit gate: public-branch/tag parity is exact, private branches remain absent,
-on-push and periodic sync work, deletions propagate as intended, and GitHub
+on-push and periodic sync work, tag deletions propagate as intended, and GitHub
 executes no automation.
 
 ### Phase 6 — End-to-end release rehearsal
@@ -368,7 +393,9 @@ Exit gate: one stable release completes without GitHub Actions or Codeberg.
 
 This phase is destructive and requires exact, one-off approval at execution time.
 
-- [ ] Disable and remove the Forgejo-to-Codeberg push mirror.
+- [ ] Disable and remove the Forgejo-to-Codeberg push mirror through the
+  repository-settings UI (which removes both the database row and Git remote),
+  not Forgejo 16.0.1's incomplete DELETE API.
 - [ ] Delete Codeberg secret entries from Forgejo and the operator secret store:
   `CODEBERG_URL`, `CODEBERG_OWNER`, `CODEBERG_REPO`, `CODEBERG_TOKEN`,
   `CODEBERG_USER`, and `CODEBERG_PACKAGE_TOKEN`.
