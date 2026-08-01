@@ -20,12 +20,20 @@ export interface PriceChartPoint {
   sats: number;
 }
 
+/** Unconfirmed sats per direction, both positive. Never netted. */
+export interface PendingTotals {
+  incoming: number;
+  outgoing: number;
+}
+
 export interface PriceChartProps {
   totalBalance: number;
   chartReady: boolean;
   timeframe: Timeframe;
   setTimeframe: (timeframe: Timeframe) => void;
   chartData: PriceChartPoint[];
+  pendingTotals: PendingTotals;
+  walletCount: number;
 }
 
 export type PriceDirection = 'up' | 'down' | 'none';

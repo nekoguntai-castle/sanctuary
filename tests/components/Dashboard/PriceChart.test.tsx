@@ -47,6 +47,8 @@ describe('PriceChart', () => {
         timeframe="1W"
         setTimeframe={setTimeframe}
         chartData={[{ name: 'Jan', sats: 1000 }]}
+        pendingTotals={{ incoming: 0, outgoing: 0 }}
+        walletCount={1}
       />
     );
 
@@ -66,6 +68,8 @@ describe('PriceChart', () => {
         timeframe="1D"
         setTimeframe={vi.fn()}
         chartData={[{ name: 'Jan', sats: 1000 }]}
+        pendingTotals={{ incoming: 0, outgoing: 0 }}
+        walletCount={1}
       />
     );
 
@@ -84,11 +88,64 @@ describe('PriceChart', () => {
         timeframe="1D"
         setTimeframe={vi.fn()}
         chartData={[{ name: 'Now', sats: 1 }]}
+        pendingTotals={{ incoming: 0, outgoing: 0 }}
+        walletCount={1}
       />
     );
 
     expect(screen.queryByTestId('responsive-container')).not.toBeInTheDocument();
   });
+
+  const renderChart = (props: Record<string, unknown> = {}) =>
+    render(
+      <PriceChart
+        totalBalance={123456}
+        chartReady={true}
+        timeframe="1W"
+        setTimeframe={vi.fn()}
+        chartData={[{ name: 'Jan', sats: 1000 }]}
+        pendingTotals={{ incoming: 0, outgoing: 0 }}
+        walletCount={1}
+        {...props}
+      />
+    );
+
+  it('shows an incoming pending total', () => {
+    renderChart({ pendingTotals: { incoming: 50000, outgoing: 0 }, walletCount: 3 });
+
+    expect(screen.getByText('pending')).toBeInTheDocument();
+    expect(screen.getAllByTestId('amount').map((n) => n.textContent)).toContain('50000');
+    expect(screen.getByText('across 3 wallets')).toBeInTheDocument();
+  });
+
+  it('shows an outgoing pending total as a positive figure', () => {
+    renderChart({ pendingTotals: { incoming: 0, outgoing: 25000 } });
+
+    expect(screen.getAllByTestId('amount').map((n) => n.textContent)).toContain('25000');
+  });
+
+  it('shows both directions rather than netting them to nothing', () => {
+    // The whole point of tracking directions separately: this would render as
+    // "no pending activity" under a single signed total.
+    renderChart({ pendingTotals: { incoming: 100000, outgoing: 100000 } });
+
+    const amounts = screen.getAllByTestId('amount').map((n) => n.textContent);
+    expect(amounts).toContain('100000');
+    expect(amounts.filter((a) => a === '100000')).toHaveLength(2);
+    expect(screen.getByText('pending')).toBeInTheDocument();
+  });
+
+  it('hides the pending row entirely when nothing is unconfirmed', () => {
+    renderChart({ pendingTotals: { incoming: 0, outgoing: 0 } });
+
+    expect(screen.queryByText('pending')).not.toBeInTheDocument();
+  });
+
+  it('uses the singular wallet label for a single wallet', () => {
+    renderChart({ walletCount: 1 });
+    expect(screen.getByText('across 1 wallet')).toBeInTheDocument();
+  });
+
 });
 
 describe('AnimatedPrice', () => {

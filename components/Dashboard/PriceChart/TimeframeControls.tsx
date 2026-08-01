@@ -16,19 +16,20 @@ function getTimeframeButtonClass(isSelected: boolean) {
 }
 
 export function TimeframeControls({ timeframe, setTimeframe }: TimeframeControlsProps) {
+  // No outer wrapper: this is a flex item of the card header now, so the old
+  // `justify-end` had no free space to distribute and the `mb-2` inflated the
+  // header's cross-size, pushing the pills ~4px above the eyebrow's baseline.
   return (
-    <div className="flex justify-end mb-2">
-      <div className="flex space-x-1 surface-secondary p-1 rounded-lg">
-        {TIMEFRAMES.map((timeframeOption) => (
-          <button
-            key={timeframeOption}
-            onClick={() => setTimeframe(timeframeOption)}
-            className={getTimeframeButtonClass(timeframe === timeframeOption)}
-          >
-            {timeframeOption}
-          </button>
-        ))}
-      </div>
+    <div className="flex space-x-1 surface-secondary p-1 rounded-lg">
+      {TIMEFRAMES.map((timeframeOption) => (
+        <button
+          key={timeframeOption}
+          onClick={() => setTimeframe(timeframeOption)}
+          className={getTimeframeButtonClass(timeframe === timeframeOption)}
+        >
+          {timeframeOption}
+        </button>
+      ))}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, memo } from 'react';
-import type { KeyboardEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import type { MouseEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Wallet, isMultisigType } from '../../types';
 import { Wallet as WalletIcon, ChevronRight, RefreshCw, Check, AlertTriangle, Clock } from 'lucide-react';
 import { Amount } from '../Amount';
@@ -271,18 +271,23 @@ function WalletSyncStatus({ wallet }: { wallet: Wallet }) {
   );
 }
 
-function handleWalletRowKeyDown(
-  event: KeyboardEvent<HTMLTableRowElement>,
-  walletId: string,
-  onNavigate: (walletId: string) => void
-) {
-  if (event.currentTarget !== event.target) {
-    return;
+/**
+ * Should the row's convenience click handler stay out of the way?
+ *
+ * Yes when the click already landed on the wallet-name <Link>, which navigates
+ * on its own — without this the name would navigate twice.
+ *
+ * Yes also under any modifier or non-primary button. `navigate()` has no
+ * modifier awareness, so a Cmd/Ctrl-click on the row would silently discard the
+ * current page instead of opening a tab. Bowing out leaves the link as the one
+ * modifier-aware target, rather than having "open in new tab" work over the
+ * name and do something different two pixels to its right.
+ */
+function shouldRowIgnoreClick(event: MouseEvent<HTMLTableRowElement>) {
+  if ((event.target as HTMLElement).closest('a') !== null) {
+    return true;
   }
-  if (event.key === 'Enter' || event.key === ' ') {
-    event.preventDefault();
-    onNavigate(walletId);
-  }
+  return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0;
 }
 
 function WalletSummaryRow({
@@ -305,15 +310,22 @@ function WalletSummaryRow({
   const badgeClass = getWalletTypeBadgeClass(isMultisig);
 
   return (
+    // onFocus/onBlur stay on the row: React maps them to focusin/focusout, which
+    // bubble, so focusing the inner link still drives the distribution-bar
+    // cross-highlight. No tabIndex/onKeyDown — the link is the real control and
+    // supplies keyboard access; a focusable row on top of it would be a second,
+    // role-less tab stop for the same destination.
     <tr
-      onClick={() => onNavigate(wallet.id)}
-      onKeyDown={(event) => handleWalletRowKeyDown(event, wallet.id, onNavigate)}
+      onClick={(event) => {
+        if (!shouldRowIgnoreClick(event)) {
+          onNavigate(wallet.id);
+        }
+      }}
       onMouseEnter={() => onHover(wallet.id)}
       onMouseLeave={onLeave}
       onFocus={() => onHover(wallet.id)}
       onBlur={onLeave}
-      tabIndex={0}
-      className={`group cursor-pointer transition-all duration-200 hover:shadow-sm active:bg-sanctuary-100 dark:active:bg-sanctuary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 ${
+      className={`group cursor-pointer transition-all duration-200 hover:shadow-sm active:bg-sanctuary-100 dark:active:bg-sanctuary-700 ${
         isHighlighted
           ? 'bg-sanctuary-50 dark:bg-sanctuary-800'
           : 'hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800'
@@ -324,14 +336,29 @@ function WalletSummaryRow({
         <div className={`w-2.5 h-2.5 rounded-full ${dotColorClass}`}></div>
       </td>
       <td className="px-4 py-2.5 whitespace-nowrap">
-        <div className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">{wallet.name}</div>
+        <div className="flex items-center gap-2">
+          <Link
+            to={`/wallets/${wallet.id}`}
+            className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          >
+            {wallet.name}
+          </Link>
+          {/* The Sync column is hidden below sm; keep the state visible here.
+              Icon only — its tooltip is hover-driven and useless on touch. */}
+          {/* role="img" because ARIA prohibits naming a bare generic element;
+              without it axe flags aria-prohibited-attr and AT may drop the
+              label, which is the only sync signal mobile users get. */}
+          <span className="sm:hidden" role="img" aria-label={getSyncTooltipText(wallet)}>
+            <WalletSyncIcon wallet={wallet} />
+          </span>
+        </div>
       </td>
-      <td className="px-4 py-2.5 whitespace-nowrap">
+      <td className="hidden sm:table-cell px-4 py-2.5 whitespace-nowrap">
         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${badgeClass}`}>
           {isMultisig ? 'Multisig' : 'Single Sig'}
         </span>
       </td>
-      <td className="px-4 py-2.5 whitespace-nowrap text-center">
+      <td className="hidden sm:table-cell px-4 py-2.5 whitespace-nowrap text-center">
         <WalletSyncStatus wallet={wallet} />
       </td>
       <td className="px-4 py-2.5 whitespace-nowrap text-right">
@@ -350,8 +377,8 @@ function WalletTableHeader() {
       <tr>
         <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider w-8"></th>
         <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">Wallet Name</th>
-        <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">Type</th>
-        <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">Sync</th>
+        <th scope="col" className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">Type</th>
+        <th scope="col" className="hidden sm:table-cell px-4 py-3 text-center text-xs font-medium text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">Sync</th>
         <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">Balance</th>
         <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider w-10"></th>
       </tr>

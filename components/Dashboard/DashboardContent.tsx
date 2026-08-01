@@ -35,6 +35,7 @@ export function DashboardContent({ data }: DashboardContentProps) {
     filteredWallets,
     recentTx,
     pendingTxs,
+    pendingTotals,
     fees,
     formatFeeRate,
     nodeStatus,
@@ -82,6 +83,8 @@ export function DashboardContent({ data }: DashboardContentProps) {
               timeframe={timeframe}
               setTimeframe={setTimeframe}
               chartData={chartData}
+              pendingTotals={pendingTotals}
+              walletCount={filteredWallets.length}
             />
           </div>
 

@@ -400,6 +400,20 @@ describe('useDashboardData', () => {
     );
   });
 
+  it('splits pending totals by direction instead of netting them', () => {
+    // Server sends `amount` already negative for sends. A single signed total
+    // would report this pair as "nothing pending".
+    pendingTxData = [
+      { txid: 'p-in', amount: 100000 },
+      { txid: 'p-out', amount: -100000 },
+      { txid: 'p-out-2', amount: -25000 },
+    ];
+
+    const { result } = renderHook(() => useDashboardData());
+
+    expect(result.current.pendingTotals).toEqual({ incoming: 100000, outgoing: 125000 });
+  });
+
   it('uses the active network preference for dashboard data', async () => {
     activeNetworkState = 'testnet3';
 

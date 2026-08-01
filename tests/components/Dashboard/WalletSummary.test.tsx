@@ -103,8 +103,16 @@ describe('WalletSummary', () => {
     expect(screen.getByText(/Last synced:/)).toBeInTheDocument();
     expect(screen.getByText(/Cached from/)).toBeInTheDocument();
 
-    await user.click(screen.getByText('Alpha'));
-    expect(mockNavigate).toHaveBeenCalledWith('/wallets/w1');
+    // The name is a real link, so a click on it navigates via the router
+    // rather than the row's convenience handler.
+    const alphaLink = screen.getByRole('link', { name: 'Alpha' });
+    expect(alphaLink).toHaveAttribute('href', '/wallets/w1');
+    await user.click(alphaLink);
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    // Clicking elsewhere in the row still navigates.
+    await user.click(screen.getByText('Multisig'));
+    expect(mockNavigate).toHaveBeenCalledWith('/wallets/w2');
   });
 
   it('uses zero-percent distribution fallback and success title fallback when totals/sync timestamp are missing', () => {
@@ -204,7 +212,7 @@ describe('WalletSummary', () => {
     expect(screen.queryByText('50.0% of total')).not.toBeInTheDocument();
   });
 
-  it('navigates to wallet detail when a row is activated by keyboard', async () => {
+  it('exposes each wallet as a real link rather than a focusable row', async () => {
     const user = userEvent.setup();
     const wallets = [
       { id: 'w1', name: 'Alpha', type: 'single_sig', balance: 5000, lastSyncStatus: 'success' },
@@ -215,21 +223,23 @@ describe('WalletSummary', () => {
     );
 
     const row = screen.getByText('Alpha').closest('tr') as HTMLTableRowElement;
-    expect(row.tabIndex).toBe(0);
+    // The row is no longer a tab stop: the link is the real control, and a
+    // focusable row on top of it would be a second, role-less stop for the
+    // same destination.
+    expect(row.hasAttribute('tabindex')).toBe(false);
 
-    row.focus();
+    const link = screen.getByRole('link', { name: 'Alpha' });
+    expect(link).toHaveAttribute('href', '/wallets/w1');
+
+    // Enter on the focused link activates it natively; the row handler is
+    // never involved.
+    link.focus();
+    expect(link).toHaveFocus();
     await user.keyboard('{Enter}');
-    expect(mockNavigate).toHaveBeenCalledTimes(1);
-    expect(mockNavigate).toHaveBeenLastCalledWith('/wallets/w1');
-
-    mockNavigate.mockClear();
-    row.focus();
-    await user.keyboard(' ');
-    expect(mockNavigate).toHaveBeenCalledTimes(1);
-    expect(mockNavigate).toHaveBeenLastCalledWith('/wallets/w1');
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('does not navigate when an unrelated key is pressed on a focused row', async () => {
+  it('leaves modified clicks to the browser instead of navigating in place', async () => {
     const user = userEvent.setup();
     const wallets = [
       { id: 'w1', name: 'Alpha', type: 'single_sig', balance: 5000, lastSyncStatus: 'success' },
@@ -239,10 +249,17 @@ describe('WalletSummary', () => {
       <WalletSummary selectedNetwork="mainnet" filteredWallets={wallets} totalBalance={5000} />
     );
 
-    const row = screen.getByText('Alpha').closest('tr') as HTMLTableRowElement;
-    row.focus();
-    await user.keyboard('{Escape}');
+    // navigate() has no modifier awareness, so a Cmd/Ctrl-click on the row must
+    // be a no-op rather than silently discarding the current page.
+    const balanceCell = screen.getAllByTestId('amount')[0];
+    await user.keyboard('{Meta>}');
+    await user.click(balanceCell);
+    await user.keyboard('{/Meta}');
     expect(mockNavigate).not.toHaveBeenCalled();
+
+    // An unmodified click on the same cell still navigates.
+    await user.click(balanceCell);
+    expect(mockNavigate).toHaveBeenCalledWith('/wallets/w1');
   });
 
   const makeWallets = (count: number) =>
@@ -312,20 +329,4 @@ describe('WalletSummary', () => {
     expect(screen.getByRole('button', { name: /Show less/ })).toBeInTheDocument();
   });
 
-  it('ignores key events that originate inside a cell', () => {
-    const wallets = [
-      { id: 'w1', name: 'Alpha', type: 'single_sig', balance: 5000, lastSyncStatus: 'success' },
-    ] as any[];
-
-    renderWalletSummary(
-      <WalletSummary selectedNetwork="mainnet" filteredWallets={wallets} totalBalance={5000} />
-    );
-
-    const row = screen.getByText('Alpha').closest('tr') as HTMLTableRowElement;
-    const cell = row.querySelector('td') as HTMLTableCellElement;
-    cell.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
-    );
-    expect(mockNavigate).not.toHaveBeenCalled();
-  });
 });

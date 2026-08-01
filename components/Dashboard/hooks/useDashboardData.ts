@@ -102,6 +102,26 @@ export function useDashboardData() {
   const { data: pendingTxsData } = usePendingTransactions(filteredWalletIds);
   const pendingTxs = pendingTxsData ?? EMPTY_PENDING;
 
+  // Unconfirmed sats, tracked per direction rather than netted. A single signed
+  // total would render +100k in / -100k out as "nothing pending", and
+  // +100k / -99k as "1,000 incoming" — both hide real mempool exposure.
+  // `amount` is already negative for sends
+  // (server/src/api/transactions/walletTransactions/pending.ts). Fees are a
+  // sibling field and are NOT included here; this is an indicator, not an
+  // accounting figure.
+  const pendingTotals = useMemo(() => {
+    let incoming = 0;
+    let outgoing = 0;
+    for (const tx of pendingTxs) {
+      if (tx.amount >= 0) {
+        incoming += tx.amount;
+      } else {
+        outgoing += -tx.amount;
+      }
+    }
+    return { incoming, outgoing };
+  }, [pendingTxs]);
+
   const isMainnet = selectedNetwork === 'mainnet';
 
   // Convert API transactions to component format
@@ -290,6 +310,7 @@ export function useDashboardData() {
     walletCounts,
     recentTx,
     pendingTxs,
+    pendingTotals,
     fees,
     formatFeeRate,
     nodeStatus,
