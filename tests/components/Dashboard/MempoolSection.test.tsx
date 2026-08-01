@@ -17,11 +17,35 @@ vi.mock('lucide-react', () => ({
   RefreshCw: ({ className }: { className?: string }) => <span data-testid="refresh-icon" className={className} />,
   Wifi: () => <span data-testid="wifi-icon" />,
   WifiOff: () => <span data-testid="wifi-off-icon" />,
+  ChevronDown: () => <span data-testid="chevron-down-icon" />,
+  ChevronUp: () => <span data-testid="chevron-up-icon" />,
 }));
+
+const mockPreferences = new Map<string, unknown>();
+
+// Stateful so collapse/expand actually re-renders, matching the real hook.
+vi.mock('../../../hooks/useUserPreference', async () => {
+  const { useState } = await import('react');
+  return {
+    useUserPreference: (key: string, defaultValue: unknown) => {
+      const [value, setValue] = useState(
+        mockPreferences.has(key) ? mockPreferences.get(key) : defaultValue
+      );
+      return [
+        value,
+        (newValue: unknown) => {
+          mockPreferences.set(key, newValue);
+          setValue(newValue);
+        },
+      ];
+    },
+  };
+});
 
 describe('MempoolSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPreferences.clear();
   });
 
   const baseProps = {
@@ -132,5 +156,54 @@ describe('MempoolSection', () => {
 
     await user.click(screen.getByRole('button', { name: /open node config/i }));
     expect(mockConfigureNode).toHaveBeenCalled();
+  });
+
+  describe('collapsed summary', () => {
+    const collapse = (user: ReturnType<typeof userEvent.setup>) =>
+      user.click(screen.getByRole('button', { name: /Network Status/ }));
+
+    it('hides the visualizer and summarises fee, queued blocks, and pending count', async () => {
+      const user = userEvent.setup();
+      render(
+        <MempoolSection
+          {...baseProps}
+          queuedBlocksSummary={
+            { blockCount: 13, totalTransactions: 900, averageFee: 2, totalFees: 1800 } as any
+          }
+          pendingTxs={[{ txid: 'a' } as any, { txid: 'b' } as any]}
+        />
+      );
+
+      expect(screen.queryByText(/sat\/vB/)).not.toBeInTheDocument();
+
+      await collapse(user);
+
+      expect(screen.getByText('~2 sat/vB · 13 blocks queued · 2 pending')).toBeInTheDocument();
+      expect(screen.getByTestId('block-visualizer').closest('[hidden]')).not.toBeNull();
+    });
+
+    it('uses the singular block label for a single queued block', async () => {
+      const user = userEvent.setup();
+      render(
+        <MempoolSection
+          {...baseProps}
+          queuedBlocksSummary={
+            { blockCount: 1, totalTransactions: 10, averageFee: 5, totalFees: 50 } as any
+          }
+        />
+      );
+
+      await collapse(user);
+      expect(screen.getByText('~5 sat/vB · 1 block queued')).toBeInTheDocument();
+    });
+
+    it('renders no summary when there is nothing to report', async () => {
+      const user = userEvent.setup();
+      render(<MempoolSection {...baseProps} queuedBlocksSummary={null} pendingTxs={[]} />);
+
+      await collapse(user);
+      expect(screen.queryByText(/sat\/vB/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/pending/)).not.toBeInTheDocument();
+    });
   });
 });

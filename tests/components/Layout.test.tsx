@@ -577,7 +577,9 @@ describe('Layout', () => {
 
   describe('Content width (#53 per-page max-width)', () => {
     it('caps standard routes at the default max-w-7xl', () => {
-      renderLayout('/');
+      // /wallets/create declares no contentWidth override; the dashboard and
+      // wallet detail both opt into "wide" and are covered below.
+      renderLayout('/wallets/create');
       const wrapper = screen.getByTestId('page-content').parentElement;
       expect(wrapper?.className).toContain('max-w-7xl');
       expect(wrapper?.className).not.toContain('2xl:max-w-[96rem]');
@@ -585,6 +587,12 @@ describe('Layout', () => {
 
     it('widens content at 2xl for routes that opt into "wide" (wallet detail)', () => {
       renderLayout('/wallets/abc123');
+      const wrapper = screen.getByTestId('page-content').parentElement;
+      expect(wrapper?.className).toContain('2xl:max-w-[96rem]');
+    });
+
+    it('widens content at 2xl for the dashboard (wallets sit beside recent activity)', () => {
+      renderLayout('/');
       const wrapper = screen.getByTestId('page-content').parentElement;
       expect(wrapper?.className).toContain('2xl:max-w-[96rem]');
     });

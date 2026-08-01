@@ -66,6 +66,9 @@ export const appRouteDefinitions: AppRouteDefinition[] = [
     path: "/",
     component: Dashboard,
     fallback: <DashboardSkeleton />,
+    // Wallets and Recent Activity sit side by side at 2xl; the default
+    // max-w-7xl cap would starve both columns on a wide monitor.
+    contentWidth: "wide",
     nav: {
       label: "Dashboard",
       icon: LayoutDashboard,

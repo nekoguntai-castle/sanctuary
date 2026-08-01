@@ -19,9 +19,33 @@ vi.mock('../../../components/Amount', () => ({
   Amount: ({ sats }: { sats: number }) => <span data-testid="amount">{sats}</span>,
 }));
 
+const mockPreferences = new Map<string, unknown>();
+
+// Stateful mock: the real hook re-renders on write, and the expand/collapse
+// assertions depend on that. A plain map-backed stub would never re-render.
+vi.mock('../../../hooks/useUserPreference', async () => {
+  const { useState } = await import('react');
+  return {
+    useUserPreference: (key: string, defaultValue: unknown) => {
+      const [value, setValue] = useState(
+        mockPreferences.has(key) ? mockPreferences.get(key) : defaultValue
+      );
+      return [
+        value,
+        (newValue: unknown) => {
+          mockPreferences.set(key, newValue);
+          setValue(newValue);
+        },
+      ];
+    },
+  };
+});
+
 vi.mock('lucide-react', () => ({
   Wallet: () => <span data-testid="wallet-icon" />,
   ChevronRight: () => <span data-testid="chevron-right-icon" />,
+  ChevronDown: () => <span data-testid="chevron-down-icon" />,
+  ChevronUp: () => <span data-testid="chevron-up-icon" />,
   RefreshCw: () => <span data-testid="refresh-icon" />,
   Check: () => <span data-testid="check-icon" />,
   AlertTriangle: () => <span data-testid="alert-icon" />,
@@ -37,6 +61,7 @@ const renderWalletSummary = (ui: ReactElement) =>
 describe('WalletSummary', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPreferences.clear();
   });
 
   it('renders empty-state row when no wallets exist', () => {
@@ -218,6 +243,73 @@ describe('WalletSummary', () => {
     row.focus();
     await user.keyboard('{Escape}');
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  const makeWallets = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `w${i}`,
+      name: `Wallet ${i}`,
+      type: 'single_sig',
+      balance: 1000,
+      lastSyncStatus: 'success',
+    })) as any[];
+
+  it('renders every wallet without a toggle at or below the row cap', () => {
+    renderWalletSummary(
+      <WalletSummary
+        selectedNetwork="mainnet"
+        filteredWallets={makeWallets(6)}
+        totalBalance={6000}
+      />
+    );
+
+    expect(screen.getByText('Wallet 5')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Show all/ })).not.toBeInTheDocument();
+  });
+
+  it('truncates to the row cap and reveals the rest on toggle', async () => {
+    const user = userEvent.setup();
+
+    renderWalletSummary(
+      <WalletSummary
+        selectedNetwork="mainnet"
+        filteredWallets={makeWallets(9)}
+        totalBalance={9000}
+      />
+    );
+
+    expect(screen.getByText('Wallet 5')).toBeInTheDocument();
+    expect(screen.queryByText('Wallet 6')).not.toBeInTheDocument();
+
+    // The distribution bar keeps every wallet even while the table is truncated.
+    expect(document.querySelectorAll('.relative[style*="width"]')).toHaveLength(9);
+
+    const toggle = screen.getByRole('button', { name: /Show all 9 wallets/ });
+    expect(screen.getByTestId('chevron-down-icon')).toBeInTheDocument();
+
+    await user.click(toggle);
+
+    expect(screen.getByText('Wallet 8')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Show less/ })).toBeInTheDocument();
+    expect(screen.getByTestId('chevron-up-icon')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Show less/ }));
+    expect(screen.queryByText('Wallet 8')).not.toBeInTheDocument();
+  });
+
+  it('honours a previously persisted expanded preference on mount', () => {
+    mockPreferences.set('viewSettings.dashboard.walletsExpanded', true);
+
+    renderWalletSummary(
+      <WalletSummary
+        selectedNetwork="mainnet"
+        filteredWallets={makeWallets(9)}
+        totalBalance={9000}
+      />
+    );
+
+    expect(screen.getByText('Wallet 8')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Show less/ })).toBeInTheDocument();
   });
 
   it('ignores key events that originate inside a cell', () => {

@@ -30,6 +30,7 @@ export interface PageViewSettings {
   walletFilter?: string;             // 'all' | 'unassigned' | wallet-id
   visibleColumns?: string[];  // Column IDs that are visible
   columnOrder?: string[];     // Column IDs in display order
+  walletsExpanded?: boolean;  // Dashboard: show all wallets vs. truncate to the row cap
 }
 
 // View settings keyed by page name (wallets, devices, transactions, etc.)

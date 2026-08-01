@@ -7,7 +7,8 @@
  */
 
 import React, { useState } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, ShieldX, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, ShieldX, AlertTriangle } from 'lucide-react';
+import { ShowMoreToggle } from './ui/ShowMoreToggle';
 import type { SpendPrivacyAnalysis } from '../src/api/transactions';
 import {
   normalizePrivacyGrade,
@@ -145,23 +146,12 @@ const SpendPrivacyCard: React.FC<SpendPrivacyCardProps> = ({
 
         {/* Expand/Collapse Button */}
         {warnings.length > 3 && (
-          <button
-            type="button"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-1 text-xs font-medium text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300 transition-colors"
-          >
-            {isExpanded ? (
-              <>
-                <ChevronUp className="w-3.5 h-3.5" />
-                Show Less
-              </>
-            ) : (
-              <>
-                <ChevronDown className="w-3.5 h-3.5" />
-                Show {warnings.length - 3} More
-              </>
-            )}
-          </button>
+          <ShowMoreToggle
+            expanded={isExpanded}
+            onToggle={() => setIsExpanded(!isExpanded)}
+            collapsedLabel={`Show ${warnings.length - 3} More`}
+            expandedLabel="Show Less"
+          />
         )}
       </div>
     </div>

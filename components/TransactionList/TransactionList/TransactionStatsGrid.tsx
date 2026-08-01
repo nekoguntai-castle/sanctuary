@@ -14,7 +14,19 @@ export type TransactionListStats = {
 
 export function TransactionStatsGrid({ txStats }: { txStats: TransactionListStats }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+    // auto-fit rather than viewport breakpoints: this grid renders both full
+    // width (wallet detail) and inside a half-width dashboard column, and
+    // viewport-keyed columns can't tell those apart. 9rem is the widest tile
+    // minimum — "Consolidations" at text-xs uppercase plus its icon and px-3.
+    //
+    // Inline style, not a `grid-cols-[...]` arbitrary utility: Tailwind here is
+    // the CDN build (index.html), whose JIT emits arbitrary utilities
+    // asynchronously after paint. A core utility would be in the initial sheet;
+    // this one would not, so the first paint could land with no column template.
+    <div
+      className="grid gap-3 mb-6"
+      style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(9rem, 1fr))' }}
+    >
       <StatTile label="Total" value={txStats.total} />
       <StatTile label="Received" value={txStats.received} icon={<ArrowDownLeft className="w-3 h-3 text-success-500" />} valueClassName="text-success-600 dark:text-success-400" />
       <StatTile label="Sent" value={txStats.sent} icon={<ArrowUpRight className="w-3 h-3 text-sanctuary-500" />} />

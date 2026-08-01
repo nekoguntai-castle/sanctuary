@@ -7,8 +7,8 @@ describe('resolvePageContentWidth', () => {
     expect(resolvePageContentWidth('/wallets/abc123')).toBe('wide');
   });
 
-  it('returns "default" for a matched route without a contentWidth override', () => {
-    expect(resolvePageContentWidth('/')).toBe('default');
+  it('returns the declared width for the dashboard (opts into "wide" for its 2xl two-column row)', () => {
+    expect(resolvePageContentWidth('/')).toBe('wide');
   });
 
   it('resolves by specificity, not array order — /wallets/create is the static route, not /wallets/:id', () => {

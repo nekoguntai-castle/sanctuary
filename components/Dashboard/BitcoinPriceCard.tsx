@@ -23,7 +23,9 @@ export const BitcoinPriceCard: React.FC<BitcoinPriceCardProps> = ({
   priceChangePositive,
   lastPriceUpdate,
 }) => (
-  <div className="surface-elevated rounded-xl p-5 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive animate-fade-in-up-1">
+  // No stagger class: the telemetry row's `stagger-enter` parent owns the
+  // per-child delay via nth-child, which outranks any animate-fade-in-up-*.
+  <div className="surface-elevated rounded-xl p-5 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive">
     <div className="flex items-center justify-between mb-4">
       <h3 className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">Bitcoin Price</h3>
       <div className="p-2 bg-warning-100 dark:bg-warning-900/30 rounded-lg">

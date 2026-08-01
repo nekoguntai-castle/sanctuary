@@ -22,9 +22,11 @@ const FEE_TIERS = [
 const TYPICAL_VB = 140;
 
 export const FeeEstimationCard: React.FC<FeeEstimationCardProps> = ({ fees, formatFeeRate }) => (
-  <div className="surface-elevated rounded-xl p-5 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive animate-fade-in-up-2">
+  // No stagger class: the telemetry row's `stagger-enter` parent owns the
+  // per-child delay via nth-child, which outranks any animate-fade-in-up-*.
+  <div className="surface-elevated rounded-xl p-5 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive">
     <div className="flex items-center justify-between mb-4">
-      <h4 className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">Fee Estimation</h4>
+      <h3 className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">Fee Estimation</h3>
       <Zap className="w-4 h-4 text-warning-500" />
     </div>
     <div className="space-y-2">

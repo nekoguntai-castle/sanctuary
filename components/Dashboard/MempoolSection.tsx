@@ -4,6 +4,8 @@ import { BlockVisualizer } from '../BlockVisualizer';
 import type { BitcoinStatus, BlockData, QueuedBlocksSummary } from '../../src/api/bitcoin';
 import { formatNetworkTitle, getNetworkColorClass } from '../../src/app/networks';
 import { Bitcoin, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { CollapsibleSection } from '../ui/CollapsibleSection';
+import { formatAverageFee } from '../BlockVisualizer/QueuedSummaryBlock/queuedSummaryHelpers';
 import type { PendingTransaction } from '../../types';
 
 type NodeStatusValue = 'unknown' | 'checking' | 'connected' | 'error';
@@ -46,24 +48,29 @@ function getNetworkIconBackgroundClass(selectedNetwork: TabNetwork) {
   return getNetworkColorClass(selectedNetwork, 'iconBackground');
 }
 
-function NetworkTitle({
+function getNetworkTitleText(selectedNetwork: TabNetwork, isMainnet: boolean) {
+  return `${isMainnet ? 'Bitcoin' : getNetworkLabel(selectedNetwork)} Network Status`;
+}
+
+/**
+ * Rendered outside the collapse button so it stays out of the button's
+ * accessible name — otherwise it reads as "Testnet3 Network Status TESTNET3".
+ */
+function NetworkBadge({
   selectedNetwork,
   isMainnet,
 }: {
   selectedNetwork: TabNetwork;
   isMainnet: boolean;
 }) {
+  if (isMainnet) {
+    return null;
+  }
+
   return (
-    <div className="flex items-center space-x-2">
-      <h4 className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">
-        {isMainnet ? 'Bitcoin' : getNetworkLabel(selectedNetwork)} Network Status
-      </h4>
-      {!isMainnet && (
-        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${getNetworkBadgeClass(selectedNetwork)}`}>
-          {selectedNetwork.toUpperCase()}
-        </span>
-      )}
-    </div>
+    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${getNetworkBadgeClass(selectedNetwork)}`}>
+      {selectedNetwork.toUpperCase()}
+    </span>
   );
 }
 
@@ -152,8 +159,7 @@ function MainnetStatusControls({
   );
 }
 
-function MempoolSectionHeader({
-  selectedNetwork,
+function MempoolSectionActions({
   isMainnet,
   refreshMempoolData,
   mempoolRefreshing,
@@ -163,7 +169,6 @@ function MempoolSectionHeader({
   nodeStatus,
 }: Pick<
   MempoolSectionProps,
-  | 'selectedNetwork'
   | 'isMainnet'
   | 'refreshMempoolData'
   | 'mempoolRefreshing'
@@ -172,26 +177,66 @@ function MempoolSectionHeader({
   | 'wsState'
   | 'nodeStatus'
 >) {
+  if (isMainnet) {
+    return (
+      <MainnetStatusControls
+        refreshMempoolData={refreshMempoolData}
+        mempoolRefreshing={mempoolRefreshing}
+        lastMempoolUpdate={lastMempoolUpdate}
+        wsConnected={wsConnected}
+        wsState={wsState}
+      />
+    );
+  }
+
+  if (nodeStatus === 'connected') {
+    return (
+      <MempoolRefreshButton
+        onRefresh={refreshMempoolData}
+        refreshing={mempoolRefreshing}
+        lastUpdate={lastMempoolUpdate}
+      />
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Headline numbers shown in the header while the visualiser is collapsed, so a
+ * collapsed block explorer still answers "what is the chain doing right now".
+ */
+function MempoolCollapsedSummary({
+  queuedBlocksSummary,
+  pendingTxs,
+}: Pick<MempoolSectionProps, 'queuedBlocksSummary' | 'pendingTxs'>) {
+  const parts: string[] = [];
+
+  if (queuedBlocksSummary && queuedBlocksSummary.blockCount > 0) {
+    // Same formatter as the expanded visualiser, so collapsing doesn't change
+    // the rendered fee.
+    parts.push(`~${formatAverageFee(queuedBlocksSummary.averageFee)} sat/vB`);
+    parts.push(
+      `${queuedBlocksSummary.blockCount.toLocaleString()} ${
+        queuedBlocksSummary.blockCount === 1 ? 'block' : 'blocks'
+      } queued`
+    );
+  }
+
+  if (pendingTxs.length > 0) {
+    parts.push(`${pendingTxs.length.toLocaleString()} pending`);
+  }
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  // min-w-0 on the span itself: as a flex item its default min-width:auto would
+  // block shrinking and `truncate` would never engage.
   return (
-    <div className="flex items-center justify-between px-2 mb-2">
-      <NetworkTitle selectedNetwork={selectedNetwork} isMainnet={isMainnet} />
-      {isMainnet && (
-        <MainnetStatusControls
-          refreshMempoolData={refreshMempoolData}
-          mempoolRefreshing={mempoolRefreshing}
-          lastMempoolUpdate={lastMempoolUpdate}
-          wsConnected={wsConnected}
-          wsState={wsState}
-        />
-      )}
-      {!isMainnet && nodeStatus === 'connected' && (
-        <MempoolRefreshButton
-          onRefresh={refreshMempoolData}
-          refreshing={mempoolRefreshing}
-          lastUpdate={lastMempoolUpdate}
-        />
-      )}
-    </div>
+    <span className="text-xs text-sanctuary-500 dark:text-sanctuary-400 tabular-nums truncate min-w-0">
+      {parts.join(' · ')}
+    </span>
   );
 }
 
@@ -273,17 +318,29 @@ export const MempoolSection: React.FC<MempoolSectionProps> = ({
   const showBlockVisualizer = isMainnet || nodeStatus === 'connected';
 
   return (
-    <div className="surface-elevated rounded-xl p-4 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive">
-      <MempoolSectionHeader
-        selectedNetwork={selectedNetwork}
-        isMainnet={isMainnet}
-        refreshMempoolData={refreshMempoolData}
-        mempoolRefreshing={mempoolRefreshing}
-        lastMempoolUpdate={lastMempoolUpdate}
-        wsConnected={wsConnected}
-        wsState={wsState}
-        nodeStatus={nodeStatus}
-      />
+    <CollapsibleSection
+      preferenceKey="viewSettings.dashboard.mempoolCollapsed"
+      title={getNetworkTitleText(selectedNetwork, isMainnet)}
+      headingClassName="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]"
+      titleAdornment={<NetworkBadge selectedNetwork={selectedNetwork} isMainnet={isMainnet} />}
+      summary={
+        <MempoolCollapsedSummary
+          queuedBlocksSummary={queuedBlocksSummary}
+          pendingTxs={pendingTxs}
+        />
+      }
+      actions={
+        <MempoolSectionActions
+          isMainnet={isMainnet}
+          refreshMempoolData={refreshMempoolData}
+          mempoolRefreshing={mempoolRefreshing}
+          lastMempoolUpdate={lastMempoolUpdate}
+          wsConnected={wsConnected}
+          wsState={wsState}
+          nodeStatus={nodeStatus}
+        />
+      }
+    >
       {showBlockVisualizer ? (
         <BlockVisualizerContent
           mempoolBlocks={mempoolBlocks}
@@ -300,6 +357,6 @@ export const MempoolSection: React.FC<MempoolSectionProps> = ({
           onConfigureNode={onConfigureNode}
         />
       )}
-    </div>
+    </CollapsibleSection>
   );
 };

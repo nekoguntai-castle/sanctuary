@@ -3,8 +3,16 @@ import { Link } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { SanctuaryLogo } from '../ui/CustomIcons';
 
-export const WelcomeState: React.FC = () => (
-  <div className="animate-fade-in-up-5 surface-elevated rounded-xl p-12 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 text-center relative overflow-hidden">
+interface WelcomeStateProps {
+  /**
+   * Entrance-stagger class. Owned by the layout that decides section order,
+   * not baked in here — hardcoding it is what made this component unusable.
+   */
+  className?: string;
+}
+
+export const WelcomeState: React.FC<WelcomeStateProps> = ({ className = '' }) => (
+  <div className={`${className} surface-elevated rounded-xl p-12 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 text-center relative overflow-hidden`}>
     {/* Ambient glow */}
     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full bg-primary-100/40 dark:bg-primary-900/15 blur-3xl pointer-events-none" />
     <div className="relative z-10">

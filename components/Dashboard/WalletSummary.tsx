@@ -6,6 +6,8 @@ import { Wallet as WalletIcon, ChevronRight, RefreshCw, Check, AlertTriangle, Cl
 import { Amount } from '../Amount';
 import { WalletEmptyState } from '../ui/EmptyState';
 import { TabNetwork } from '../NetworkTabs';
+import { useUserPreference } from '../../hooks/useUserPreference';
+import { ShowMoreToggle } from '../ui/ShowMoreToggle';
 
 const distributionColors = [
     'bg-primary-500',
@@ -15,6 +17,24 @@ const distributionColors = [
     'bg-sanctuary-600',
     'bg-sanctuary-500'
 ];
+
+/**
+ * Rows rendered before the table collapses behind a "show all" toggle. Keeps the
+ * vertical position of everything below the wallet card (notably Recent
+ * Activity) independent of how many wallets exist.
+ *
+ * Tied to the palette length on purpose: the row dot column reads as a legend
+ * for the distribution bar, and `getDistributionColor` wraps modulo the palette.
+ * Showing more rows than there are colours would repeat dots and break that
+ * reading.
+ *
+ * Deliberately a truncation rather than a `max-h` + `overflow-y-auto` scroll
+ * region: the per-row sync tooltips are `position: absolute`, and a vertical
+ * scroll container would clip them on the first visible row. (The existing
+ * `overflow-x-auto` wrapper only becomes a clipping context if the table
+ * actually overflows horizontally, which the column widths avoid.)
+ */
+const VISIBLE_ROW_CAP = distributionColors.length;
 
 interface WalletSummaryProps {
   selectedNetwork: TabNetwork;
@@ -172,14 +192,14 @@ function WalletDistributionBar({
 }) {
   if (wallets.length === 0) {
     return (
-      <div className="h-4 w-full surface-secondary rounded-full overflow-visible flex mb-8 relative">
+      <div className="h-4 w-full surface-secondary rounded-full overflow-visible flex mb-5 relative">
         <div className="w-full h-full bg-sanctuary-200 dark:bg-sanctuary-700 rounded-full"></div>
       </div>
     );
   }
 
   return (
-    <div className="h-4 w-full surface-secondary rounded-full overflow-visible flex mb-8 relative">
+    <div className="h-4 w-full surface-secondary rounded-full overflow-visible flex mb-5 relative">
       {wallets.map((wallet, index) => (
         <WalletDistributionSegment
           key={wallet.id}
@@ -300,25 +320,24 @@ function WalletSummaryRow({
       }`}
       style={{ backgroundColor: isHighlighted ? undefined : 'transparent' }}
     >
-      <td className="px-4 py-4 whitespace-nowrap">
+      <td className="px-4 py-2.5 whitespace-nowrap">
         <div className={`w-2.5 h-2.5 rounded-full ${dotColorClass}`}></div>
       </td>
-      <td className="px-4 py-4 whitespace-nowrap">
+      <td className="px-4 py-2.5 whitespace-nowrap">
         <div className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">{wallet.name}</div>
-        <div className="text-xs text-sanctuary-500 hidden sm:block">{wallet.id}</div>
       </td>
-      <td className="px-4 py-4 whitespace-nowrap">
+      <td className="px-4 py-2.5 whitespace-nowrap">
         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${badgeClass}`}>
           {isMultisig ? 'Multisig' : 'Single Sig'}
         </span>
       </td>
-      <td className="px-4 py-4 whitespace-nowrap text-center">
+      <td className="px-4 py-2.5 whitespace-nowrap text-center">
         <WalletSyncStatus wallet={wallet} />
       </td>
-      <td className="px-4 py-4 whitespace-nowrap text-right">
+      <td className="px-4 py-2.5 whitespace-nowrap text-right">
         <Amount sats={wallet.balance} size="sm" className="font-bold text-sanctuary-900 dark:text-sanctuary-100 items-end" />
       </td>
-      <td className="px-4 py-4 whitespace-nowrap text-right">
+      <td className="px-4 py-2.5 whitespace-nowrap text-right">
         <ChevronRight className="w-4 h-4 text-sanctuary-300 group-hover:text-sanctuary-500 transition-colors" />
       </td>
     </tr>
@@ -391,6 +410,10 @@ const WalletSummaryImpl: React.FC<WalletSummaryProps> = ({
 }) => {
   const [hoveredWalletId, setHoveredWalletId] = useState<string | null>(null);
   const [barAnimated, setBarAnimated] = useState(false);
+  const [expanded, setExpanded] = useUserPreference(
+    'viewSettings.dashboard.walletsExpanded',
+    false
+  );
 
   // Trigger bar animation after mount
   useEffect(() => {
@@ -398,9 +421,15 @@ const WalletSummaryImpl: React.FC<WalletSummaryProps> = ({
     return () => clearTimeout(timer);
   }, []);
 
+  const exceedsCap = filteredWallets.length > VISIBLE_ROW_CAP;
+  const visibleWallets = exceedsCap && !expanded
+    ? filteredWallets.slice(0, VISIBLE_ROW_CAP)
+    : filteredWallets;
+  const clearHover = () => setHoveredWalletId(null);
+
   return (
     <div className="surface-elevated rounded-xl p-5 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive">
-       <div className="flex items-center justify-between mb-6">
+       <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100 flex items-center">
              <WalletIcon className="w-5 h-5 mr-2 text-sanctuary-400" />
              {getNetworkLabel(selectedNetwork)} Wallets
@@ -413,15 +442,23 @@ const WalletSummaryImpl: React.FC<WalletSummaryProps> = ({
          barAnimated={barAnimated}
          hoveredWalletId={hoveredWalletId}
          onHover={setHoveredWalletId}
-         onLeave={() => setHoveredWalletId(null)}
+         onLeave={clearHover}
        />
        <WalletSummaryTable
          selectedNetwork={selectedNetwork}
-         wallets={filteredWallets}
+         wallets={visibleWallets}
          hoveredWalletId={hoveredWalletId}
          onHover={setHoveredWalletId}
-         onLeave={() => setHoveredWalletId(null)}
+         onLeave={clearHover}
        />
+       {exceedsCap && (
+         <ShowMoreToggle
+           expanded={expanded}
+           onToggle={() => setExpanded(!expanded)}
+           collapsedLabel={`Show all ${filteredWallets.length} wallets`}
+           className="mt-3 w-full"
+         />
+       )}
     </div>
   );
 };
@@ -431,4 +468,10 @@ WalletSummaryImpl.displayName = 'WalletSummary';
 // unrelated card (price feed, fees, node status) updates. Default shallow
 // equality assumes Dashboard passes a stable `filteredWallets` array
 // reference (useMemo'd in useDashboardData).
+//
+// Note this blocks *parent-driven* renders only. `useUserPreference` subscribes
+// to UserContext, which memo cannot gate, so this component also re-renders on
+// any preference write anywhere in the app (theme, unit, network switch). Those
+// are user-driven and infrequent; isolating them would mean splitting
+// UserContext, not changing anything here.
 export const WalletSummary = memo(WalletSummaryImpl);

@@ -30,7 +30,12 @@ export const getQueuedSummaryViewModel = (
   };
 };
 
-const formatAverageFee = (averageFee: number) => {
+/**
+ * Exported so the collapsed dashboard summary renders the same figure as the
+ * expanded visualiser. One backend path (simpleEstimator) returns an unrounded
+ * float, so interpolating averageFee raw yields e.g. "1.7333333333333334".
+ */
+export const formatAverageFee = (averageFee: number) => {
   return averageFee < 1 ? averageFee.toFixed(1) : Math.round(averageFee);
 };
 

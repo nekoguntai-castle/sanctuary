@@ -176,10 +176,12 @@ export const NodeStatusCard: React.FC<NodeStatusCardProps> = ({
   nodeStatus,
   bitcoinStatus,
 }) => (
-  <div className="surface-elevated rounded-xl p-5 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive animate-fade-in-up-3">
+  // No stagger class: the telemetry row's `stagger-enter` parent owns the
+  // per-child delay via nth-child, which outranks any animate-fade-in-up-*.
+  <div className="surface-elevated rounded-xl p-5 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive">
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center space-x-2">
-        <h4 className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">Node Status</h4>
+        <h3 className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">Node Status</h3>
         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${getNetworkBadgeClass(selectedNetwork)}`}>
           {selectedNetwork.toUpperCase()}
         </span>
