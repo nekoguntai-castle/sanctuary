@@ -82,17 +82,29 @@ export async function batchProcess<T, R>(
  * @param promise - The promise to execute
  * @param timeoutMs - Timeout in milliseconds
  * @param errorMessage - Optional custom error message
+ * @param onLateRejection - Optional observer for source-promise rejections after timeout
  * @throws Error if the promise doesn't resolve within the timeout
  */
 export async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
-  errorMessage = 'Operation timed out'
+  errorMessage = 'Operation timed out',
+  onLateRejection?: (error: unknown) => void
 ): Promise<T> {
   let timeoutId: NodeJS.Timeout;
+  let timedOut = false;
+
+  void promise.catch((error) => {
+    if (timedOut) {
+      onLateRejection?.(error);
+    }
+  });
 
   const timeoutPromise = new Promise<T>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      reject(new Error(errorMessage));
+    }, timeoutMs);
   });
 
   return Promise.race([promise, timeoutPromise]).finally(() => {

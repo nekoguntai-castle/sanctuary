@@ -197,8 +197,10 @@ export const adminCoreSettingsBackupSchemas = {
         type: 'array',
         items: { type: 'string' },
       },
+      committed: { type: 'boolean' },
+      cacheInvalidated: { type: 'boolean' },
     },
-    required: ['error', 'message', 'warnings'],
+    required: ['error', 'message', 'warnings', 'committed', 'cacheInvalidated'],
   },
   AdminSupportPackage: {
     type: 'object',

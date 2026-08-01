@@ -53,6 +53,7 @@ vi.mock('../../../src/utils/logger', () => ({
 }));
 
 import prisma from '../../../src/models/prisma';
+import { clearAccessCacheStrict } from '../../../src/infrastructure/accessCache';
 import {
   getUserWalletRole,
   hasWalletAccess,
@@ -622,6 +623,20 @@ describe('Access Control Service', () => {
         mockCache.clear.mockRejectedValueOnce(new Error('cache down'));
 
         await expect(clearAccessCache()).resolves.toBeUndefined();
+      });
+    });
+
+    describe('clearAccessCacheStrict', () => {
+      it('should clear entire cache', async () => {
+        await clearAccessCacheStrict();
+
+        expect(mockCache.clear).toHaveBeenCalled();
+      });
+
+      it('should propagate cache errors when clearing cache', async () => {
+        mockCache.clear.mockRejectedValueOnce(new Error('cache down'));
+
+        await expect(clearAccessCacheStrict()).rejects.toThrow('cache down');
       });
     });
 

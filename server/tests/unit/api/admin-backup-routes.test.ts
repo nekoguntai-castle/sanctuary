@@ -381,6 +381,8 @@ describe('Admin Backup Routes', () => {
       tablesRestored: 1,
       recordsRestored: 2,
       warnings: ['Some records skipped'],
+      committed: false,
+      cacheInvalidated: false,
       error: 'constraint violation',
     });
 
@@ -393,6 +395,8 @@ describe('Admin Backup Routes', () => {
       error: 'Restore Failed',
       message: 'constraint violation',
       warnings: ['Some records skipped'],
+      committed: false,
+      cacheInvalidated: false,
     });
     expect(mockAuditLogFromRequest).not.toHaveBeenCalledWith(
       expect.any(Object),
@@ -400,6 +404,31 @@ describe('Admin Backup Routes', () => {
       'backup',
       expect.any(Object)
     );
+  });
+
+  it('reports committed restore cache invalidation failures distinctly', async () => {
+    mockRestoreFromBackup.mockResolvedValue({
+      success: false,
+      tablesRestored: 5,
+      recordsRestored: 100,
+      warnings: [],
+      committed: true,
+      cacheInvalidated: false,
+      error: 'Restore committed but access cache invalidation failed: cache down',
+    });
+
+    const response = await request(app)
+      .post('/api/v1/admin/restore')
+      .send({ backup: makeBackup(), confirmationCode: 'CONFIRM_RESTORE' });
+
+    expect(response.status).toBe(500);
+    expect(response.body).toMatchObject({
+      error: 'Restore Failed',
+      message: 'Restore committed but access cache invalidation failed: cache down',
+      warnings: [],
+      committed: true,
+      cacheInvalidated: false,
+    });
   });
 
   it('restores backup successfully and audits completion', async () => {

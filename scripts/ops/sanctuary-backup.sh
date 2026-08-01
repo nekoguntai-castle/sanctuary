@@ -14,6 +14,7 @@
 # rotation runs, so a corrupted dump can never push a good one out.
 
 set -euo pipefail
+umask 077
 
 usage() {
   cat >&2 <<'EOF'
@@ -57,6 +58,7 @@ keep_daily=7
 keep_weekly=4
 weekly_day=7
 dry_run=false
+tmp_path=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -123,6 +125,7 @@ timestamp="$(date -u '+%Y%m%d-%H%M%S')"
 filename="sanctuary-${timestamp}.sql.gz"
 daily_path="$daily_dir/$filename"
 weekly_path="$weekly_dir/$filename"
+lock_path="$output_dir/.sanctuary-backup.lock"
 
 # %u is 1..7 in GNU date (Mon..Sun). BSD/macOS users will need GNU date.
 today_dow="$(date '+%u')"
@@ -137,12 +140,39 @@ run() {
   "$@"
 }
 
+cleanup_temp() {
+  if [ -n "$tmp_path" ] && [ -e "$tmp_path" ]; then
+    rm -f -- "$tmp_path"
+  fi
+}
+
+require_flock() {
+  if ! command -v flock >/dev/null 2>&1; then
+    fail "flock is required for safe backup serialization"
+  fi
+}
+
 ensure_dirs() {
   if [ "$dry_run" = true ]; then
     log "would mkdir -p $daily_dir $weekly_dir"
     return
   fi
-  mkdir -p "$daily_dir" "$weekly_dir"
+  mkdir -p "$output_dir" "$daily_dir" "$weekly_dir"
+  chmod 700 "$output_dir" "$daily_dir" "$weekly_dir"
+}
+
+acquire_lock() {
+  if [ "$dry_run" = true ]; then
+    log "would acquire non-blocking lock $lock_path"
+    return
+  fi
+  require_flock
+  touch "$lock_path"
+  chmod 600 "$lock_path"
+  exec 9<>"$lock_path"
+  if ! flock -n 9; then
+    fail "another backup is already running (lock: $lock_path)"
+  fi
 }
 
 verify_postgres_running() {
@@ -158,19 +188,24 @@ dump_database() {
     log "would write $daily_path"
     return
   fi
+  tmp_path="$(mktemp "$daily_dir/.${filename}.tmp.XXXXXX")"
   # pg_dump streamed through gzip; both tools' exit codes are checked via
   # PIPESTATUS so a partial dump doesn't quietly produce a small valid gz.
   docker exec "$postgres_container" pg_dump -U "$db_user" "$db_name" \
-    | gzip -9 > "$daily_path"
+    | gzip -9 > "$tmp_path"
   local statuses=("${PIPESTATUS[@]}")
   if [ "${statuses[0]}" -ne 0 ] || [ "${statuses[1]}" -ne 0 ]; then
-    rm -f "$daily_path"
     fail "pg_dump failed (exit ${statuses[0]}/${statuses[1]})"
   fi
-  if ! gzip -t "$daily_path" 2>/dev/null; then
-    rm -f "$daily_path"
-    fail "gzip integrity check failed for $daily_path"
+  if ! gzip -t "$tmp_path" 2>/dev/null; then
+    fail "gzip integrity check failed for temporary dump"
   fi
+  chmod 600 "$tmp_path"
+  if ! ln "$tmp_path" "$daily_path" 2>/dev/null; then
+    fail "backup already exists for timestamp: $daily_path"
+  fi
+  rm -f -- "$tmp_path"
+  tmp_path=""
   local size_bytes
   size_bytes=$(stat -c %s "$daily_path" 2>/dev/null || stat -f %z "$daily_path")
   log "wrote $daily_path (${size_bytes} bytes)"
@@ -185,7 +220,14 @@ copy_to_weekly_if_due() {
     log "would copy $daily_path -> $weekly_path"
     return
   fi
-  cp -p "$daily_path" "$weekly_path"
+  tmp_path="$(mktemp "$weekly_dir/.${filename}.weekly.tmp.XXXXXX")"
+  cp -p "$daily_path" "$tmp_path"
+  chmod 600 "$tmp_path"
+  if ! ln "$tmp_path" "$weekly_path" 2>/dev/null; then
+    fail "weekly backup already exists for timestamp: $weekly_path"
+  fi
+  rm -f -- "$tmp_path"
+  tmp_path=""
   log "copied to $weekly_path"
 }
 
@@ -219,7 +261,10 @@ rotate_dir() {
   done
 }
 
+trap cleanup_temp EXIT
+
 ensure_dirs
+acquire_lock
 verify_postgres_running
 dump_database
 copy_to_weekly_if_due

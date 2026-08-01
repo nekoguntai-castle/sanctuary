@@ -52,6 +52,39 @@ validate_name() {
   fi
 }
 
+reject_control_chars() {
+  local value="$1"
+  local label="$2"
+  if [[ "$value" =~ [[:cntrl:]] ]]; then
+    fail "$label contains control characters that cannot be represented safely"
+  fi
+}
+
+quote_systemd_exec_arg() {
+  local value="$1"
+  reject_control_chars "$value" "ExecStart argument"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//%/%%}"
+  printf '"%s"' "$value"
+}
+
+build_exec_start_line() {
+  local exec_start='ExecStart='
+  local arg quoted
+
+  for arg in "$@"; do
+    quoted="$(quote_systemd_exec_arg "$arg")"
+    if [ "$exec_start" = 'ExecStart=' ]; then
+      exec_start+="$quoted"
+    else
+      exec_start+=" $quoted"
+    fi
+  done
+
+  printf '%s' "$exec_start"
+}
+
 service_name="sanctuary-backup"
 output_dir="${HOME}/sanctuary-backups"
 postgres_container="sanctuary-postgres-1"
@@ -95,6 +128,11 @@ if ! is_positive_integer "$weekly_day" || [ "$weekly_day" -gt 7 ]; then
 fi
 [ -n "$on_calendar" ] || fail "--on-calendar must not be empty"
 [ -n "$systemd_user_dir" ] || fail "--systemd-user-dir must not be empty"
+reject_control_chars "$output_dir" "--output-dir"
+reject_control_chars "$postgres_container" "--postgres-container"
+reject_control_chars "$db_name" "--db-name"
+reject_control_chars "$db_user" "--db-user"
+reject_control_chars "$systemd_user_dir" "--systemd-user-dir"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 backup_script="$repo_root/scripts/ops/sanctuary-backup.sh"
@@ -104,6 +142,17 @@ mkdir -p "$systemd_user_dir"
 
 service_unit="$systemd_user_dir/${service_name}.service"
 timer_unit="$systemd_user_dir/${service_name}.timer"
+exec_start_line="$(
+  build_exec_start_line \
+    "$backup_script" \
+    --output-dir "$output_dir" \
+    --postgres-container "$postgres_container" \
+    --db-name "$db_name" \
+    --db-user "$db_user" \
+    --keep-daily "$keep_daily" \
+    --keep-weekly "$keep_weekly" \
+    --weekly-day "$weekly_day"
+)"
 
 cat > "$service_unit" <<UNIT
 [Unit]
@@ -117,14 +166,7 @@ Type=oneshot
 # diagnosing a missing backup later.
 StandardOutput=journal
 StandardError=journal
-ExecStart=$backup_script \\
-  --output-dir $output_dir \\
-  --postgres-container $postgres_container \\
-  --db-name $db_name \\
-  --db-user $db_user \\
-  --keep-daily $keep_daily \\
-  --keep-weekly $keep_weekly \\
-  --weekly-day $weekly_day
+$exec_start_line
 UNIT
 
 cat > "$timer_unit" <<UNIT

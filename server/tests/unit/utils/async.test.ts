@@ -252,6 +252,50 @@ describe('Async Utilities', () => {
       ).rejects.toThrow('Promise error');
     });
 
+    it('should observe source promise rejections after timeout', async () => {
+      let rejectLate!: (error: Error) => void;
+      const onLateRejection = vi.fn();
+      const latePromise = new Promise<string>((_, reject) => {
+        rejectLate = reject;
+      });
+      const promise = withTimeout(latePromise, 10, 'Timed out', onLateRejection);
+
+      vi.advanceTimersByTime(11);
+      await expect(promise).rejects.toThrow('Timed out');
+      rejectLate(new Error('late failure'));
+      await Promise.resolve();
+
+      expect(onLateRejection).toHaveBeenCalledWith(expect.any(Error));
+      expect(onLateRejection.mock.calls[0][0].message).toBe('late failure');
+    });
+
+    it('should tolerate late source rejection without an observer', async () => {
+      let rejectLate!: (error: Error) => void;
+      const latePromise = new Promise<string>((_, reject) => {
+        rejectLate = reject;
+      });
+      const promise = withTimeout(latePromise, 10, 'Timed out');
+
+      vi.advanceTimersByTime(11);
+      await expect(promise).rejects.toThrow('Timed out');
+      rejectLate(new Error('late failure without observer'));
+      await Promise.resolve();
+    });
+
+    it('should not report a normal rejection as late before timeout', async () => {
+      const onLateRejection = vi.fn();
+      const promise = withTimeout(
+        Promise.reject(new Error('early failure')),
+        100,
+        'Timed out',
+        onLateRejection
+      );
+
+      await expect(promise).rejects.toThrow('early failure');
+
+      expect(onLateRejection).not.toHaveBeenCalled();
+    });
+
     it('should handle zero timeout', async () => {
       const promise = withTimeout(sleep(10), 0);
 

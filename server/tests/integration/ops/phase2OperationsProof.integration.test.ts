@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import express, { type Express } from 'express';
 import { Client } from 'pg';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { backupService as BackupServiceInstance } from '../../../src/services/backupService';
 import { TABLE_ORDER } from '../../../src/services/backupService/constants';
 import type { PrismaClient } from '../../../src/generated/prisma/client';
@@ -30,6 +30,20 @@ const JWT_SECRET = 'phase2-ops-proof-jwt-secret-32-characters';
 const ENCRYPTION_KEY = 'phase2-ops-proof-encryption-key-32-chars';
 const ENCRYPTION_SALT = 'phase2-ops-proof-encryption-salt';
 const GATEWAY_SECRET = 'phase2-ops-proof-gateway-secret-32-characters';
+const PROOF_SMTP_SETTINGS = [
+  { key: 'smtp.host', value: JSON.stringify('smtp.example.test') },
+  { key: 'smtp.user', value: JSON.stringify('mailer') },
+  { key: 'smtp.password', value: JSON.stringify('backup-drill-smtp-password') },
+  { key: 'smtp.fromAddress', value: JSON.stringify('mail@example.test') },
+] as const;
+const PROOF_SMTP_SETTING_KEYS = PROOF_SMTP_SETTINGS.map(setting => setting.key);
+const PROOF_ADMIN_USER = {
+  username: 'phase2-ops-proof-admin',
+  password: 'hashed-password-placeholder',
+  email: 'phase2-ops-proof-admin@example.test',
+  emailVerified: true,
+  isAdmin: true,
+} as const;
 
 async function waitForAuditLog(
   prisma: PrismaClient,
@@ -59,6 +73,7 @@ describeIfDb('Phase 2 operations proof', () => {
   let appPrisma: typeof import('../../../src/models/prisma');
   let disconnectAppPrisma: () => Promise<void>;
   let logSecurityEvent: (event: string, details: Record<string, unknown>) => void;
+  let getUserWalletRole: typeof import('../../../src/services/accessControl').getUserWalletRole;
 
   beforeAll(async () => {
     vi.stubEnv('JWT_SECRET', process.env.JWT_SECRET || JWT_SECRET);
@@ -76,6 +91,7 @@ describeIfDb('Phase 2 operations proof', () => {
     const pushRouter = (await import('../../../src/api/push')).default;
     appPrisma = await import('../../../src/models/prisma');
     disconnectAppPrisma = appPrisma.disconnect;
+    ({ getUserWalletRole } = await import('../../../src/services/accessControl'));
 
     app = express();
     app.use(express.json({ limit: '50mb' }));
@@ -115,6 +131,30 @@ describeIfDb('Phase 2 operations proof', () => {
 
   beforeEach(async () => {
     await cleanupTestData();
+    await cleanupProofSmtpSettings(prisma);
+  });
+
+  afterEach(async () => {
+    await cleanupProofSmtpSettings(prisma);
+  });
+
+  it('can rerun the SMTP-owning backup restore drill without fixed-key collisions', async () => {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await seedProofAdminUser(prisma);
+      await seedProofSmtpSettings(prisma);
+
+      const backup = await backupService.createBackup(`phase2-ops-proof-rerun-${attempt}`, {
+        description: 'Phase 2 SMTP fixture retry isolation proof',
+      });
+      const validation = await backupService.validateBackup(backup);
+      const restore = await backupService.restoreFromBackup(backup);
+
+      expect(validation.valid, validation.issues.join('; ')).toBe(true);
+      expect(restore.success, restore.error).toBe(true);
+      await expect(prisma.systemSetting.count({
+        where: { key: { in: PROOF_SMTP_SETTING_KEYS } },
+      })).resolves.toBe(PROOF_SMTP_SETTINGS.length);
+    }
   });
 
   it('runs a backup validation and restore drill against the non-production database', async () => {
@@ -157,7 +197,7 @@ describeIfDb('Phase 2 operations proof', () => {
       },
     });
 
-    await prisma.walletUser.create({
+    const walletUser = await prisma.walletUser.create({
       data: {
         userId: user.id,
         walletId: wallet.id,
@@ -359,14 +399,7 @@ describeIfDb('Phase 2 operations proof', () => {
         label: 'Backup drill electrum',
       },
     });
-    await prisma.systemSetting.createMany({
-      data: [
-        { key: 'smtp.host', value: JSON.stringify('smtp.example.test') },
-        { key: 'smtp.user', value: JSON.stringify('mailer') },
-        { key: 'smtp.password', value: JSON.stringify('backup-drill-smtp-password') },
-        { key: 'smtp.fromAddress', value: JSON.stringify('mail@example.test') },
-      ],
-    });
+    await seedProofSmtpSettings(prisma);
     const mcpApiKey = await prisma.mcpApiKey.create({
       data: {
         userId: user.id,
@@ -596,6 +629,11 @@ describeIfDb('Phase 2 operations proof', () => {
       where: { id: user.id },
       data: { sessionVersion: 7 },
     });
+    await prisma.walletUser.update({
+      where: { id: walletUser.id },
+      data: { role: 'viewer' },
+    });
+    await expect(getUserWalletRole(wallet.id, user.id)).resolves.toBe('viewer');
     await prisma.pushDevice.create({
       data: {
         userId: user.id,
@@ -643,6 +681,7 @@ describeIfDb('Phase 2 operations proof', () => {
       .resolves.toEqual(expect.objectContaining({ name: walletName }));
     await expect(prisma.walletUser.findFirst({ where: { userId: user.id, walletId: wallet.id } }))
       .resolves.toEqual(expect.objectContaining({ role: 'owner' }));
+    await expect(getUserWalletRole(wallet.id, user.id)).resolves.toBe('owner');
     await expect(prisma.auditLog.findFirst({ where: { action: 'ops.backup_restore_drill.seed' } }))
       .resolves.toEqual(expect.objectContaining({ username }));
     await expect(prisma.deviceAccount.findUnique({ where: { id: deviceAccount.id } }))
@@ -965,6 +1004,30 @@ describeIfDb('Phase 2 operations proof', () => {
     })).resolves.toBeNull();
   });
 });
+
+async function cleanupProofSmtpSettings(prisma: PrismaClient): Promise<void> {
+  await prisma.systemSetting.deleteMany({
+    where: { key: { in: PROOF_SMTP_SETTING_KEYS } },
+  });
+}
+
+async function seedProofAdminUser(prisma: PrismaClient): Promise<void> {
+  await prisma.user.upsert({
+    where: { username: PROOF_ADMIN_USER.username },
+    update: PROOF_ADMIN_USER,
+    create: PROOF_ADMIN_USER,
+  });
+}
+
+async function seedProofSmtpSettings(prisma: PrismaClient): Promise<void> {
+  for (const setting of PROOF_SMTP_SETTINGS) {
+    await prisma.systemSetting.upsert({
+      where: { key: setting.key },
+      update: { value: setting.value },
+      create: setting,
+    });
+  }
+}
 
 async function waitForBackupWalletUserRead(prisma: PrismaClient): Promise<void> {
   const deadline = Date.now() + 5_000;

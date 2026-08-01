@@ -44,6 +44,13 @@
       "reason": "Stateful address-sync proof harness sharing one complete Electrum and repository mock boundary across classification, reconciliation, and I/O repair behavior.",
       "reviewWhenTouched": true,
       "lastReviewed": "2026-07-30"
+    },
+    "server/tests/integration/ops/phase2OperationsProof.integration.test.ts": {
+      "category": "proof-harness",
+      "owner": "ops-backup-restore",
+      "reason": "End-to-end destructive operations proof harness sharing one migrated database, backup archive, restore, SMTP, and cache boundary across the operational drill.",
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-07-31"
     }
   }
 }

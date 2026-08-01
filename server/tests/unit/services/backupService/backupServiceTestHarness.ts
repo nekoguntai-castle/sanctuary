@@ -7,6 +7,35 @@ import {
 } from '../../../../src/services/backupService/constants';
 import { camelToSnakeCase } from '../../../../src/services/backupService/serialization';
 
+const accessCacheMocks = vi.hoisted(() => ({
+  mockAccessCache: {
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
+    deletePattern: vi.fn().mockResolvedValue(0),
+    clear: vi.fn().mockResolvedValue(undefined),
+  },
+  mockClearAccessCache: vi.fn().mockResolvedValue(undefined),
+  mockClearAccessCacheStrict: vi.fn().mockResolvedValue(undefined),
+}));
+
+const loggerMocks = vi.hoisted(() => ({
+  mockLogger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+export function getMockClearAccessCacheStrict() {
+  return accessCacheMocks.mockClearAccessCacheStrict;
+}
+
+export function getMockBackupLogger() {
+  return loggerMocks.mockLogger;
+}
+
 const createBackupModelMock = () => ({
   findMany: vi.fn().mockResolvedValue([]),
   createMany: vi.fn().mockResolvedValue({ count: 0 }),
@@ -53,13 +82,16 @@ vi.mock('../../../../src/models/prisma', () => ({
   default: mockPrismaClient,
 }));
 
+vi.mock('../../../../src/infrastructure/accessCache', () => ({
+  clearAccessCache: accessCacheMocks.mockClearAccessCache,
+  clearAccessCacheStrict: accessCacheMocks.mockClearAccessCacheStrict,
+  getAccessCache: () => accessCacheMocks.mockAccessCache,
+  invalidateUserAccessCache: vi.fn().mockResolvedValue(undefined),
+  invalidateWalletAccessCache: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../../../src/utils/logger', () => ({
-  createLogger: () => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  }),
+  createLogger: () => loggerMocks.mockLogger,
 }));
 
 vi.mock('../../../../src/services/migrationService', () => ({

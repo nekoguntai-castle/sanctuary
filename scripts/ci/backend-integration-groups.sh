@@ -8,6 +8,7 @@ readonly GROUP_FLOWS='flows'
 readonly GROUP_REPOSITORIES_CORE='repositories-core'
 readonly GROUP_REPOSITORIES_SHARING='repositories-sharing'
 readonly GROUP_OPS_WORKERS='ops-workers'
+readonly GROUP_OPS_DESTRUCTIVE='ops-destructive'
 
 list_groups() {
   printf '%s\n' \
@@ -15,7 +16,8 @@ list_groups() {
     "$GROUP_FLOWS" \
     "$GROUP_REPOSITORIES_CORE" \
     "$GROUP_REPOSITORIES_SHARING" \
-    "$GROUP_OPS_WORKERS"
+    "$GROUP_OPS_WORKERS" \
+    "$GROUP_OPS_DESTRUCTIVE"
 }
 
 list_group_specs() {
@@ -65,7 +67,6 @@ list_group_specs() {
       ;;
     "$GROUP_OPS_WORKERS")
       printf '%s\n' \
-        tests/integration/ops/phase2OperationsProof.integration.test.ts \
         tests/integration/websocket/websocket.integration.test.ts \
         tests/integration/worker/featureFlagToggle.integration.test.ts \
         tests/integration/worker/deadLetterQueue.integration.test.ts \
@@ -75,6 +76,10 @@ list_group_specs() {
         tests/integration/worker/webhookRetryRecovery.integration.test.ts \
         tests/integration/worker/worker.integration.test.ts \
         tests/integration/worker/workerJobQueueLock.integration.test.ts
+      ;;
+    "$GROUP_OPS_DESTRUCTIVE")
+      printf '%s\n' \
+        tests/integration/ops/phase2OperationsProof.integration.test.ts
       ;;
     *)
       echo "Unknown backend integration group: ${1:-}" >&2

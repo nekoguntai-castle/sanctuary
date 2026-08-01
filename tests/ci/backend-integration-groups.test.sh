@@ -23,6 +23,15 @@ assert_contains() {
   grep -Fxq "$expected" "$file" || fail "expected ${file} to contain ${expected}"
 }
 
+assert_not_contains() {
+  local file="$1"
+  local unexpected="$2"
+
+  if grep -Fxq "$unexpected" "$file"; then
+    fail "expected ${file} not to contain ${unexpected}"
+  fi
+}
+
 main() {
   local groups_file specs_file repo_specs_file repo_count assigned_count
 
@@ -36,6 +45,11 @@ main() {
   assert_contains "$TEST_TEMP_DIR/groups" 'repositories-core'
   assert_contains "$TEST_TEMP_DIR/groups" 'repositories-sharing'
   assert_contains "$TEST_TEMP_DIR/groups" 'ops-workers'
+  assert_contains "$TEST_TEMP_DIR/groups" 'ops-destructive'
+  "$GROUP_SCRIPT" ops-destructive > "$TEST_TEMP_DIR/ops-destructive"
+  "$GROUP_SCRIPT" ops-workers > "$TEST_TEMP_DIR/ops-workers"
+  assert_contains "$TEST_TEMP_DIR/ops-destructive" 'tests/integration/ops/phase2OperationsProof.integration.test.ts'
+  assert_not_contains "$TEST_TEMP_DIR/ops-workers" 'tests/integration/ops/phase2OperationsProof.integration.test.ts'
 
   groups_file="$TEST_TEMP_DIR/groups"
   specs_file="$TEST_TEMP_DIR/specs"

@@ -178,6 +178,8 @@ router.post('/restore', largeBodyParser, authenticate, requireAdmin, asyncHandle
       error: 'Restore Failed',
       message: result.error,
       warnings: result.warnings,
+      committed: result.committed,
+      cacheInvalidated: result.cacheInvalidated,
     });
   }
 

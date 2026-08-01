@@ -8,6 +8,8 @@
 import prisma from '../../models/prisma';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { withTimeout } from '../../utils/async';
+import { clearAccessCacheStrict } from '../../infrastructure/accessCache';
 import { migrationService } from '../migrationService';
 import { camelToSnakeCase } from './serialization';
 import { migrateBackup } from './migration';
@@ -31,6 +33,7 @@ import {
 import type { SanctuaryBackup, RestoreResult } from './types';
 
 const log = createLogger('BACKUP:SVC');
+const RESTORE_ACCESS_CACHE_CLEAR_TIMEOUT_MS = 5_000;
 
 /**
  * Restore database from backup
@@ -48,6 +51,8 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
       tablesRestored: 0,
       recordsRestored: 0,
       warnings: validation.warnings,
+      committed: false,
+      cacheInvalidated: false,
       error: `Backup validation failed: ${validation.issues.join('; ')}`,
     };
   }
@@ -86,12 +91,13 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
       tablesRestored: 0,
       recordsRestored: 0,
       warnings,
+      committed: false,
+      cacheInvalidated: false,
       error: `Restore preflight failed: missing live database tables: ${missingTables.join(', ')}`,
     };
   }
 
   try {
-    // Use Prisma transaction for atomicity
     await prisma.$transaction(async (tx) => {
       const currentSessionVersions = await getCurrentSessionVersions(tx);
       // Delete all tables in REVERSE order (to handle foreign key constraints)
@@ -178,14 +184,6 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
       timeout: 120000, // 2 minute timeout for large restores
     });
 
-    log.info('[BACKUP] Restore completed', { tablesRestored, recordsRestored });
-
-    return {
-      success: true,
-      tablesRestored,
-      recordsRestored,
-      warnings,
-    };
   } catch (error) {
     log.error('[BACKUP] Restore failed, transaction rolled back', { error: getErrorMessage(error) });
     return {
@@ -193,8 +191,54 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
       tablesRestored: 0,
       recordsRestored: 0,
       warnings,
+      committed: false,
+      cacheInvalidated: false,
       error: getErrorMessage(error),
     };
+  }
+
+  const cacheError = await clearAccessCacheAfterCommittedRestore();
+  if (cacheError) {
+    return {
+      success: false,
+      tablesRestored,
+      recordsRestored,
+      warnings,
+      committed: true,
+      cacheInvalidated: false,
+      error: cacheError,
+    };
+  }
+
+  log.info('[BACKUP] Restore completed', { tablesRestored, recordsRestored });
+
+  return {
+    success: true,
+    tablesRestored,
+    recordsRestored,
+    warnings,
+    committed: true,
+    cacheInvalidated: true,
+  };
+}
+
+async function clearAccessCacheAfterCommittedRestore(): Promise<string | null> {
+  try {
+    await withTimeout(
+      clearAccessCacheStrict(),
+      RESTORE_ACCESS_CACHE_CLEAR_TIMEOUT_MS,
+      `Access cache invalidation timed out after ${RESTORE_ACCESS_CACHE_CLEAR_TIMEOUT_MS}ms`,
+      (lateError) => {
+        log.warn('[BACKUP] Access cache invalidation failed after restore timeout', {
+          error: getErrorMessage(lateError),
+        });
+      }
+    );
+    return null;
+  } catch (error) {
+    const errorMessage = `Restore committed but access cache invalidation failed: ${getErrorMessage(error)}`;
+    log.error('[BACKUP] ' + errorMessage);
+    return errorMessage;
   }
 }
 

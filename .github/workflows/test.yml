@@ -1465,24 +1465,39 @@ jobs:
               exit 1
             fi
 
-            # Collect every group from backend-integration-groups.sh --groups and
-            # run them in ONE vitest process against the single Postgres. Running
-            # groups as separate vitest invocations against a shared Postgres let
-            # one group leak DB state into the next (the old matrix gave each group
-            # a fresh Postgres). A single vitest run keeps the tests own per-test
-            # isolation authoritative (withTestTransaction rollback +
-            # cleanupTestData) — exactly the local integration harness.
+            # Collect every non-destructive group from
+            # backend-integration-groups.sh --groups and run them in one Vitest
+            # process against the single Postgres. The destructive operations
+            # proof runs last in a separate process because it intentionally
+            # drills full database restore behavior.
             specs=()
+            destructive_specs=()
+            destructive_group="ops-destructive"
             for group in "${groups[@]}"; do
               mapfile -t group_specs < <("$groups_script" "$group")
               if [ "${#group_specs[@]}" -eq 0 ]; then
                 echo "::error::No backend integration specs found for group ${group}"
                 exit 1
               fi
-              specs+=("${group_specs[@]}")
+              if [ "$group" = "$destructive_group" ]; then
+                destructive_specs+=("${group_specs[@]}")
+              else
+                specs+=("${group_specs[@]}")
+              fi
             done
-            printf "Running %s backend integration spec(s) in one vitest:\n" "${#specs[@]}"
+            if [ "${#specs[@]}" -eq 0 ]; then
+              echo "::error::No non-destructive backend integration specs found"
+              exit 1
+            fi
+            if [ "${#destructive_specs[@]}" -eq 0 ]; then
+              echo "::error::No destructive backend integration specs found"
+              exit 1
+            fi
+
+            printf "Running %s backend integration spec(s) in the main vitest:\n" "${#specs[@]}"
             printf "  %s\n" "${specs[@]}"
+            printf "Running %s destructive backend integration spec(s) in a final vitest:\n" "${#destructive_specs[@]}"
+            printf "  %s\n" "${destructive_specs[@]}"
 
             # Self-heal a mid-run Postgres wipe (service container OOM-killed and
             # recreated empty under shared-runner load): each attempt re-establishes
@@ -1498,7 +1513,14 @@ jobs:
                       "backend integration" \
                       "${{ github.workspace }}/scripts/ci/time-command.sh" \
                       "backend integration" \
-                      npm run test:run:ci -- "${specs[@]}"; then
+                      npm run test:run:ci -- "${specs[@]}" \
+                 && "${{ github.workspace }}/scripts/ci/prepare-integration-db.sh" \
+                 && "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
+                      "${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh" \
+                      "backend integration destructive" \
+                      "${{ github.workspace }}/scripts/ci/time-command.sh" \
+                      "backend integration destructive" \
+                      npm run test:run:ci -- "${destructive_specs[@]}"; then
                 printf "::endgroup::\n"
                 exit 0
               fi

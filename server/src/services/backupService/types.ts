@@ -69,6 +69,10 @@ export interface RestoreResult {
   tablesRestored: number;
   recordsRestored: number;
   warnings: string[];
+  /** Required on every return path; true only after the destructive restore transaction has committed. */
+  committed: boolean;
+  /** Required on every return path; true only when post-commit access-cache invalidation completed. */
+  cacheInvalidated: boolean;
   error?: string;
 }
 

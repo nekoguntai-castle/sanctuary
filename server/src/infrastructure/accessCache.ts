@@ -47,13 +47,23 @@ export async function invalidateUserAccessCache(userId: string): Promise<void> {
 }
 
 /**
+ * Clear the entire access cache and propagate cache-layer failures.
+ *
+ * Restore uses this strict variant after a committed membership replacement so
+ * callers do not continue under a stale access-control decision.
+ */
+export async function clearAccessCacheStrict(): Promise<void> {
+  const cache = getAccessCache();
+  await cache.clear();
+  log.info('Cleared entire access cache');
+}
+
+/**
  * Clear the entire access cache.
  */
 export async function clearAccessCache(): Promise<void> {
   try {
-    const cache = getAccessCache();
-    await cache.clear();
-    log.info('Cleared entire access cache');
+    await clearAccessCacheStrict();
   } catch (error) {
     log.warn('Failed to clear access cache', { error: getErrorMessage(error) });
   }
