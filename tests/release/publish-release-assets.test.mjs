@@ -35,6 +35,39 @@ try {
   assert.equal(state.uploads.length, 0, 'both providers must preflight before Forgejo mutation');
   state.github.length = 0;
 
+  state.forgejo.push({
+    id: 8, name: 'install.sh', size: readFileSync(path.join(fixture.dir, 'install.sh')).length,
+    bytes: readFileSync(path.join(fixture.dir, 'install.sh')), state: 'uploaded',
+    browser_download_url: 'https://example.com/install.sh',
+  });
+  await assert.rejects(() => publishReleaseAssets({ ...options, dryRun: true }), /unexpected Forgejo asset download origin/);
+  state.forgejo.length = 0;
+
+  state.forgejo.push({
+    id: 8, name: 'install.sh', size: readFileSync(path.join(fixture.dir, 'install.sh')).length,
+    bytes: readFileSync(path.join(fixture.dir, 'install.sh')), state: 'uploaded',
+    browser_download_url: `${base}/forgejo-redirect`,
+  });
+  await assert.rejects(() => publishReleaseAssets({ ...options, dryRun: true }), /unexpected Forgejo asset redirect origin/);
+  state.forgejo.length = 0;
+
+  state.forgejo.push({
+    id: 8, name: 'install.sh', size: readFileSync(path.join(fixture.dir, 'install.sh')).length,
+    bytes: readFileSync(path.join(fixture.dir, 'install.sh')), state: 'uploaded',
+    browser_download_url: `${base}/forgejo-relative`,
+  });
+  const relative = await publishReleaseAssets({ ...options, dryRun: true });
+  assert.equal(relative.providers.forgejo.assets.find((asset) => asset.name === 'install.sh').status, 'verified');
+  state.forgejo.length = 0;
+
+  state.forgejo.push({
+    id: 8, name: 'install.sh', size: readFileSync(path.join(fixture.dir, 'install.sh')).length,
+    bytes: readFileSync(path.join(fixture.dir, 'install.sh')), state: 'uploaded',
+    browser_download_url: `${base}/forgejo-second-hop`,
+  });
+  await assert.rejects(() => publishReleaseAssets({ ...options, dryRun: true }), /unexpected Forgejo asset redirect origin/);
+  state.forgejo.length = 0;
+
   const dry = await publishReleaseAssets({ ...options, dryRun: true });
   assert.equal(state.uploads.length, 0);
   assert(dry.providers.forgejo.assets.every((item) => item.status === 'missing-dry-run'));
@@ -116,23 +149,54 @@ async function handle(request, response) {
     return json(response, 200, { ref: `refs/tags/${TAG}`, object });
   }
   if (url.pathname.includes(`/git/tags/${'b'.repeat(40)}`)) return json(response, 200, { object: { type: 'commit', sha: COMMIT } });
-  if (request.method === 'GET' && /\/releases\/\d+\/assets$/.test(url.pathname)) return json(response, 200, assets.map(publicAsset));
+  if (request.method === 'GET' && /\/releases\/\d+\/assets$/.test(url.pathname)) {
+    return json(response, 200, assets.map((asset) => publicAsset(asset, provider)));
+  }
   if (request.method === 'POST' && /\/releases\/\d+\/assets$/.test(url.pathname)) {
     await consume(request);
     const name = url.searchParams.get('name');
     const bytes = readFileSync(path.join(fixture.dir, name));
     const asset = { id: state.nextId++, name, size: bytes.length, bytes, state: 'uploaded' };
     assets.push(asset); state.uploads.push({ provider, name });
-    return json(response, 201, publicAsset(asset));
+    return json(response, 201, publicAsset(asset, provider));
+  }
+  if (request.method === 'GET' && url.pathname === '/forgejo-redirect') {
+    response.writeHead(302, { Location: 'https://example.com/install.sh' });
+    return response.end();
+  }
+  if (request.method === 'GET' && url.pathname === '/forgejo-relative') {
+    response.writeHead(302, { Location: `/o/r/releases/download/${TAG}/install.sh` });
+    return response.end();
+  }
+  if (request.method === 'GET' && url.pathname === '/forgejo-second-hop') {
+    response.writeHead(302, { Location: '/forgejo-escape' });
+    return response.end();
+  }
+  if (request.method === 'GET' && url.pathname === '/forgejo-escape') {
+    response.writeHead(302, { Location: 'https://example.com/install.sh' });
+    return response.end();
+  }
+  const forgeDownload = url.pathname.match(new RegExp(`^/o/r/releases/download/${TAG}/(.+)$`));
+  if (request.method === 'GET' && forgeDownload) {
+    const name = decodeURIComponent(forgeDownload[1]);
+    const asset = state.forgejo.find((item) => item.name === name);
+    response.writeHead(asset ? 200 : 404, { 'Content-Type': 'application/octet-stream' });
+    return response.end(asset?.bytes ?? 'missing');
   }
   const match = url.pathname.match(/\/releases\/(?:\d+\/assets|assets)\/(\d+)$/);
   if (request.method === 'GET' && match) {
     const asset = assets.find((item) => item.id === Number(match[1]));
+    if (provider === 'forgejo') return json(response, asset ? 200 : 404, asset ? publicAsset(asset, provider) : { error: 'missing' });
     response.writeHead(asset ? 200 : 404, { 'Content-Type': 'application/octet-stream' });
     return response.end(asset?.bytes ?? 'missing');
   }
   return json(response, 404, { error: url.pathname });
 }
-function publicAsset(asset) { return { id: asset.id, name: asset.name, size: asset.size, state: asset.state }; }
+function publicAsset(asset, provider) {
+  return {
+    id: asset.id, name: asset.name, size: asset.size, state: asset.state,
+    ...(provider === 'forgejo' ? { browser_download_url: asset.browser_download_url ?? `${base}/o/r/releases/download/${TAG}/${encodeURIComponent(asset.name)}` } : {}),
+  };
+}
 function json(response, status, body) { response.writeHead(status, { 'Content-Type': 'application/json' }); response.end(JSON.stringify(body)); }
 function consume(request) { return new Promise((resolve) => { request.on('data', () => {}); request.on('end', resolve); }); }

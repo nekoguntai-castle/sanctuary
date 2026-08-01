@@ -265,19 +265,52 @@ async function uploadWithReconciliation(provider, local) {
 }
 
 async function downloadSha256(provider, remote) {
-  const url = provider.name === 'github' ? `${provider.apiBase}/releases/assets/${remote.id}` : `${provider.apiBase}/releases/${provider.release.id}/assets/${remote.id}`;
-  let response = await fetch(url, { headers: authHeaders(provider.token, { Accept: 'application/octet-stream' }), redirect: 'manual', signal: AbortSignal.timeout(30 * 60 * 1000) });
-  if (response.status >= 300 && response.status < 400) {
-    const location = response.headers.get('location');
-    if (!location) throw new Error(`${provider.name} asset redirect lacked a location`);
-    const host = new URL(location).hostname;
-    if (provider.name === 'github' && !/(^|\.)githubusercontent\.com$|(^|\.)github\.com$/.test(host)) throw new Error(`refusing unexpected GitHub asset redirect host: ${host}`);
-    response = await fetch(location, { signal: AbortSignal.timeout(30 * 60 * 1000) });
-  }
+  const url = provider.name === 'github'
+    ? `${provider.apiBase}/releases/assets/${remote.id}`
+    : forgejoDownloadUrl(provider, remote);
+  const response = await fetchAssetDownload(provider, url);
   if (!response.ok) throw new Error(`${provider.name} asset download failed with HTTP ${response.status}`);
   const hash = createHash('sha256');
   for await (const chunk of response.body) hash.update(chunk);
   return hash.digest('hex');
+}
+
+async function fetchAssetDownload(provider, initialUrl) {
+  const trustedOrigin = new URL(provider.apiBase).origin;
+  let current = new URL(initialUrl);
+  for (let redirects = 0; redirects <= 5; redirects += 1) {
+    const trusted = current.origin === trustedOrigin;
+    const headers = trusted ? authHeaders(provider.token, { Accept: 'application/octet-stream' }) : { Accept: 'application/octet-stream' };
+    const response = await fetch(current, { headers, redirect: 'manual', signal: AbortSignal.timeout(30 * 60 * 1000) });
+    if (response.status < 300 || response.status >= 400) return response;
+    const location = response.headers.get('location');
+    if (!location) throw new Error(`${provider.name} asset redirect lacked a location`);
+    if (redirects === 5) throw new Error(`${provider.name} asset download exceeded redirect limit`);
+    current = validateAssetRedirect(provider, new URL(location, current));
+  }
+  throw new Error(`${provider.name} asset download exceeded redirect limit`);
+}
+
+function validateAssetRedirect(provider, redirect) {
+  if (provider.name === 'github' && !/(^|\.)githubusercontent\.com$|(^|\.)github\.com$/.test(redirect.hostname)) {
+    throw new Error(`refusing unexpected GitHub asset redirect host: ${redirect.hostname}`);
+  }
+  if (provider.name === 'forgejo' && redirect.origin !== new URL(provider.apiBase).origin) {
+    throw new Error(`refusing unexpected Forgejo asset redirect origin: ${redirect.origin}`);
+  }
+  return redirect;
+}
+
+function forgejoDownloadUrl(provider, remote) {
+  if (typeof remote.browser_download_url !== 'string' || !remote.browser_download_url) {
+    throw new Error(`forgejo asset ${remote.name} lacked a download URL`);
+  }
+  const download = new URL(remote.browser_download_url);
+  const expected = new URL(provider.apiBase);
+  if (download.origin !== expected.origin) {
+    throw new Error(`refusing unexpected Forgejo asset download origin: ${download.origin}`);
+  }
+  return download.href;
 }
 
 async function apiJson(url, token, provider) {
