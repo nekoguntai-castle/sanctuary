@@ -148,6 +148,23 @@ case "$1" in
       exit 0
     fi
     ;;
+  volume)
+    if [ "${2:-}" = "ls" ]; then
+      case "$*" in
+        *"label=com.docker.compose.project=${SANCTUARY_FAKE_DATABASE_PROJECT:-__none__}"*"label=com.docker.compose.volume=postgres_data"*)
+          printf '%s\n' "${SANCTUARY_FAKE_DATABASE_PROJECT}_postgres_data"
+          exit 0
+          ;;
+        *"label=com.docker.compose.project=${SANCTUARY_EXPECTED_COMPOSE_PROJECT:-}"*"label=com.docker.compose.volume=postgres_data"*)
+          exit 0
+          ;;
+        *)
+          printf '%s\n' sanctuary-unrelated_postgres_data
+          exit 0
+          ;;
+      esac
+    fi
+    ;;
   save)
     output=""
     while [ "$#" -gt 0 ]; do
@@ -335,6 +352,151 @@ test_create_bundle_signs_outer_archive() {
   return "$failures"
 }
 
+test_fresh_bootstrap_ignores_unrelated_database_volume() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+
+  local tag output extracted install_dir failures=0
+  tag="$(git -C "$PROJECT_ROOT" tag --list 'v*' | LC_ALL=C sort -V | tail -n 1)"
+  if [ -z "$tag" ]; then
+    teardown_bundle_workspace
+    return 0
+  fi
+
+  output="$TEST_TMP_DIR/sanctuary-offline-test.tar.gz"
+  extracted="$TEST_TMP_DIR/extracted"
+  install_dir="$TEST_TMP_DIR/fresh-install"
+  mkdir -p "$extracted"
+
+  PATH="$FAKE_BIN:$PATH" \
+    SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only >/dev/null \
+    || failures=1
+  [ "$failures" -eq 0 ] && tar -xzf "$output" -C "$extracted" || failures=1
+
+  if [ "$failures" -eq 0 ]; then
+    cat > "$extracted/tools/apply-bundle.sh" <<'EOF'
+#!/bin/bash
+set -e
+install_dir=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--install-dir" ]; then
+    install_dir="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+if [ -n "$install_dir" ]; then
+  mkdir -p "$install_dir"
+  printf '#!/bin/bash\nexit 0\n' > "$install_dir/install.sh"
+  chmod +x "$install_dir/install.sh"
+fi
+EOF
+    cat > "$extracted/tools/create-upgrade-backup.sh" <<'EOF'
+#!/bin/bash
+echo "unexpected backup" >> "$SANCTUARY_FAKE_BACKUP_LOG"
+exit 99
+EOF
+    chmod +x "$extracted/tools/apply-bundle.sh" "$extracted/tools/create-upgrade-backup.sh"
+
+    PATH="$FAKE_BIN:$PATH" \
+      SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+      SANCTUARY_FAKE_BACKUP_LOG="$TEST_TMP_DIR/backup.log" \
+      SANCTUARY_EXPECTED_COMPOSE_PROJECT=fresh-install \
+      "$extracted/install-offline.sh" --install-dir "$install_dir" --allow-unsigned-dev-bundle --yes >/dev/null \
+      || failures=1
+    assert_contains "$(cat "$DOCKER_LOG")" \
+      "volume ls -q --filter label=com.docker.compose.project=fresh-install --filter label=com.docker.compose.volume=postgres_data" \
+      "fresh bootstrap should scope database detection to its Compose project" || failures=1
+    [ ! -e "$TEST_TMP_DIR/backup.log" ] || failures=1
+  fi
+
+  teardown_bundle_workspace
+  return "$failures"
+}
+
+test_upgrade_bootstrap_resolves_current_and_legacy_project_names() {
+  TEST_TMP_DIR="$(mktemp -d)"
+  setup_fake_docker
+
+  local tag output extracted current_install legacy_install backup_log failures=0
+  tag="$(git -C "$PROJECT_ROOT" tag --list 'v*' | LC_ALL=C sort -V | tail -n 1)"
+  if [ -z "$tag" ]; then
+    teardown_bundle_workspace
+    return 0
+  fi
+
+  output="$TEST_TMP_DIR/sanctuary-offline-test.tar.gz"
+  extracted="$TEST_TMP_DIR/extracted"
+  current_install="$TEST_TMP_DIR/custom-current-install"
+  legacy_install="$TEST_TMP_DIR/custom-legacy-install"
+  backup_log="$TEST_TMP_DIR/backup.log"
+  mkdir -p "$extracted" "$current_install" "$legacy_install"
+  printf 'name: sanctuary\n' > "$current_install/docker-compose.yml"
+  printf 'services: {}\n' > "$legacy_install/docker-compose.yml"
+
+  PATH="$FAKE_BIN:$PATH" \
+    SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+    "$CREATE_SCRIPT" --tag "$tag" --output "$output" --unsigned-for-dev --core-only >/dev/null \
+    || failures=1
+  [ "$failures" -eq 0 ] && tar -xzf "$output" -C "$extracted" || failures=1
+
+  if [ "$failures" -eq 0 ]; then
+    cat > "$extracted/tools/apply-bundle.sh" <<'EOF'
+#!/bin/bash
+set -e
+install_dir=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--install-dir" ]; then
+    install_dir="$2"
+    shift 2
+  else
+    shift
+  fi
+done
+if [ -n "$install_dir" ]; then
+  printf '#!/bin/bash\nexit 0\n' > "$install_dir/install.sh"
+  chmod +x "$install_dir/install.sh"
+fi
+EOF
+    cat > "$extracted/tools/create-upgrade-backup.sh" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >> "$SANCTUARY_FAKE_BACKUP_LOG"
+EOF
+    chmod +x "$extracted/tools/apply-bundle.sh" "$extracted/tools/create-upgrade-backup.sh"
+
+    PATH="$FAKE_BIN:$PATH" \
+      SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+      SANCTUARY_FAKE_BACKUP_LOG="$backup_log" \
+      SANCTUARY_FAKE_DATABASE_PROJECT=sanctuary \
+      "$extracted/install-offline.sh" --install-dir "$current_install" --allow-unsigned-dev-bundle --yes >/dev/null \
+      || failures=1
+    assert_contains "$(cat "$DOCKER_LOG")" \
+      "label=com.docker.compose.project=sanctuary" \
+      "current Compose name should override a custom install-directory basename" || failures=1
+    assert_contains "$(cat "$backup_log")" "$current_install" \
+      "current custom-directory upgrade should invoke backup" || failures=1
+
+    : > "$DOCKER_LOG"
+    : > "$backup_log"
+    PATH="$FAKE_BIN:$PATH" \
+      SANCTUARY_FAKE_DOCKER_LOG="$DOCKER_LOG" \
+      SANCTUARY_FAKE_BACKUP_LOG="$backup_log" \
+      SANCTUARY_FAKE_DATABASE_PROJECT=custom-legacy-install \
+      "$extracted/install-offline.sh" --install-dir "$legacy_install" --allow-unsigned-dev-bundle --yes >/dev/null \
+      || failures=1
+    assert_contains "$(cat "$DOCKER_LOG")" \
+      "label=com.docker.compose.project=custom-legacy-install" \
+      "legacy Compose should fall back to the install-directory basename" || failures=1
+    assert_contains "$(cat "$backup_log")" "$legacy_install" \
+      "legacy custom-directory upgrade should invoke backup" || failures=1
+  fi
+
+  teardown_bundle_workspace
+  return "$failures"
+}
+
 test_tar_links_are_rejected() {
   setup_bundle_workspace
   ln -s payload/file.txt "$BUNDLE_DIR/link-to-payload"
@@ -359,6 +521,8 @@ main() {
   run_test "tampered signed bundle fails checksum" test_tampered_signed_bundle_fails_checksum
   run_test "create bundle emits dev archive shape" test_create_bundle_unsigned_core_dev_archive_shape
   run_test "create bundle signs outer archive" test_create_bundle_signs_outer_archive
+  run_test "fresh bootstrap ignores unrelated database volume" test_fresh_bootstrap_ignores_unrelated_database_volume
+  run_test "upgrade bootstrap resolves current and legacy project names" test_upgrade_bootstrap_resolves_current_and_legacy_project_names
   run_test "tar links are rejected" test_tar_links_are_rejected
 
   echo ""

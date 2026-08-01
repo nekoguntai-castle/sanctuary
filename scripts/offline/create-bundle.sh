@@ -384,9 +384,42 @@ if [ -s "$BUNDLE_DIR/manifest.env" ]; then
   source "$BUNDLE_DIR/manifest.env"
 fi
 
+resolve_compose_project_name() {
+  local compose_file project_name
+
+  if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
+    printf '%s\n' "$COMPOSE_PROJECT_NAME"
+    return
+  fi
+
+  compose_file="$INSTALL_DIR/docker-compose.yml"
+  if [ -f "$compose_file" ]; then
+    project_name="$(awk '
+      /^name:[[:space:]]*/ {
+        sub(/^name:[[:space:]]*/, "")
+        sub(/[[:space:]]+#.*$/, "")
+        gsub(/^[[:space:]\"]+|[[:space:]\"]+$/, "")
+        print
+        exit
+      }
+    ' "$compose_file")"
+    if [ -n "$project_name" ]; then
+      printf '%s\n' "$project_name"
+      return
+    fi
+  fi
+
+  basename "$INSTALL_DIR"
+}
+
 has_existing_database() {
+  local project_name
   command -v docker >/dev/null 2>&1 || return 1
-  docker volume ls -q 2>/dev/null | grep -q "sanctuary.*postgres_data\|postgres_data"
+  project_name="$(resolve_compose_project_name)"
+  docker volume ls -q \
+    --filter "label=com.docker.compose.project=$project_name" \
+    --filter "label=com.docker.compose.volume=postgres_data" \
+    2>/dev/null | grep -q .
 }
 
 create_upgrade_backup_or_prompt() {
