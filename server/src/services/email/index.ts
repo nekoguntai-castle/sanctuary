@@ -17,6 +17,7 @@ export {
 export {
   isVerificationRequired,
   createVerificationToken,
+  updateEmailWithVerification,
   verifyEmail,
   resendVerification,
   isEmailVerified,

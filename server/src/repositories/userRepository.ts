@@ -264,6 +264,31 @@ export async function update2FA(
 }
 
 /**
+ * Consume a 2FA backup-code JSON update only if it still matches the value that
+ * was verified. This prevents concurrent requests from reusing the same
+ * one-time backup code after both pass bcrypt comparison against the same
+ * pre-update JSON.
+ */
+export async function consumeBackupCodesIfUnchanged(
+  id: string,
+  expectedBackupCodesJson: string,
+  updatedBackupCodesJson: string
+): Promise<boolean> {
+  const result = await prisma.user.updateMany({
+    where: {
+      id,
+      twoFactorEnabled: true,
+      twoFactorSecret: { not: null },
+      twoFactorBackupCodes: expectedBackupCodesJson,
+    },
+    data: {
+      twoFactorBackupCodes: updatedBackupCodesJson,
+    },
+  });
+  return result.count === 1;
+}
+
+/**
  * Check if email is already in use
  */
 export async function emailExists(email: string): Promise<boolean> {
@@ -390,6 +415,7 @@ export const userRepository = {
   updatePreferences,
   searchByUsername,
   update2FA,
+  consumeBackupCodesIfUnchanged,
   emailExists,
   findByWalletAccess,
   findAllWithWalletAssociations,

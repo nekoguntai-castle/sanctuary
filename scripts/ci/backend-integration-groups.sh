@@ -30,6 +30,7 @@ list_group_specs() {
     "$GROUP_FLOWS")
       printf '%s\n' \
         tests/integration/flows/admin.integration.test.ts \
+        tests/integration/flows/authIntentConcurrency.integration.test.ts \
         tests/integration/flows/auth.integration.test.ts \
         tests/integration/flows/coinControl.integration.test.ts \
         tests/integration/flows/labels.integration.test.ts \

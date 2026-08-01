@@ -133,7 +133,7 @@ export function registerTwoFactorVerifyContracts() {
       twoFactorBackupCodes: '[{"hash":"h1"}]',
       preferences: { darkMode: true },
     });
-    mockPrismaClient.user.update.mockResolvedValue({});
+    mockPrismaClient.user.updateMany.mockResolvedValue({ count: 1 });
 
     // Reset and configure mocks for backup code path
     const twoFactorService = await import('../../../../src/services/twoFactorService');
@@ -149,9 +149,20 @@ export function registerTwoFactorVerifyContracts() {
     expect(response.body.token).toBeUndefined();
     const setCookie = response.headers['set-cookie'];
     expect(setCookie).toBeDefined();
+    expect(mockPrismaClient.user.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'test-user-id',
+        twoFactorEnabled: true,
+        twoFactorSecret: { not: null },
+        twoFactorBackupCodes: '[{"hash":"h1"}]',
+      },
+      data: {
+        twoFactorBackupCodes: '[]',
+      },
+    });
   });
 
-  it('should skip backup code persistence when verifyBackupCode does not return updates', async () => {
+  it('should reject a backup code result that lacks durable updated JSON', async () => {
     mockPrismaClient.user.findUnique.mockResolvedValue({
       id: 'test-user-id',
       username: 'testuser',
@@ -173,10 +184,40 @@ export function registerTwoFactorVerifyContracts() {
       .post('/api/v1/auth/2fa/verify')
       .send({ tempToken: 'valid-token', code: 'BACKUP-CODE' });
 
-    expect(response.status).toBe(200);
-    // Phase 6: tokens are delivered via Set-Cookie, not body.
-    expect(response.body.token).toBeUndefined();
+    expect(response.status).toBe(401);
     expect(mockPrismaClient.user.update).not.toHaveBeenCalled();
+    expect(mockPrismaClient.user.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('should reject a concurrently reused backup code when compare-and-swap loses', async () => {
+    mockPrismaClient.user.findUnique.mockResolvedValue({
+      id: 'test-user-id',
+      username: 'testuser',
+      email: 'test@example.com',
+      emailVerified: true,
+      isAdmin: false,
+      sessionVersion: 0,
+      twoFactorEnabled: true,
+      twoFactorSecret: 'some-secret',
+      twoFactorBackupCodes: '[{"hash":"h1"}]',
+      preferences: { darkMode: true },
+    });
+    mockPrismaClient.user.updateMany.mockResolvedValue({ count: 0 });
+
+    const twoFactorService = await import('../../../../src/services/twoFactorService');
+    vi.mocked(twoFactorService.isBackupCode).mockReset().mockReturnValue(true);
+    vi.mocked(twoFactorService.verifyBackupCode).mockReset().mockResolvedValue({ valid: true, updatedCodesJson: '[]' });
+    const { createRefreshToken } = await import('../../../../src/services/refreshTokenService');
+    vi.mocked(createRefreshToken).mockClear();
+
+    const response = await request(app)
+      .post('/api/v1/auth/2fa/verify')
+      .send({ tempToken: 'valid-token', code: 'BACKUP-CODE' });
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toContain('Invalid verification code');
+    expect(response.headers['set-cookie']).toBeUndefined();
+    expect(createRefreshToken).not.toHaveBeenCalled();
   });
 
   it('should reject invalid backup code', async () => {

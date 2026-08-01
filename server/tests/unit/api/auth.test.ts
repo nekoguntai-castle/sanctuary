@@ -94,11 +94,15 @@ vi.mock('../../../src/services/auditService', () => ({
 const mockIsVerificationRequired = vi.fn().mockResolvedValue(true);
 const mockIsSmtpConfigured = vi.fn().mockResolvedValue(false);
 const mockCreateVerificationToken = vi.fn().mockResolvedValue({ success: false });
+const mockUpdateEmailWithVerification = vi.fn().mockResolvedValue({
+  verification: { success: false, error: 'SMTP not configured' },
+});
 
 vi.mock('../../../src/services/email', () => ({
   isVerificationRequired: () => mockIsVerificationRequired(),
   isSmtpConfigured: () => mockIsSmtpConfigured(),
   createVerificationToken: (...args: unknown[]) => mockCreateVerificationToken(...args),
+  updateEmailWithVerification: (...args: unknown[]) => mockUpdateEmailWithVerification(...args),
 }));
 
 // Mock rate limiting middleware to allow requests through in tests
@@ -124,6 +128,9 @@ describe('Authentication', () => {
     mockIsVerificationRequired.mockResolvedValue(true); // Default to required
     mockIsSmtpConfigured.mockResolvedValue(false);
     mockCreateVerificationToken.mockResolvedValue({ success: false });
+    mockUpdateEmailWithVerification.mockResolvedValue({
+      verification: { success: false, error: 'SMTP not configured' },
+    });
     mockResolveCurrentAccessTokenPayload.mockImplementation(async (payload) => payload);
   });
 

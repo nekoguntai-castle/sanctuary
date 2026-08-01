@@ -88,7 +88,6 @@ export async function createVerificationToken(
   error?: string;
 }> {
   try {
-    // Check if SMTP is configured
     const smtpConfigured = await isSmtpConfigured();
     if (!smtpConfigured) {
       log.warn('SMTP not configured, skipping verification email', { userId, email });
@@ -98,24 +97,18 @@ export async function createVerificationToken(
       };
     }
 
-    // Delete any existing unused tokens for this user
-    await emailVerificationRepository.deleteUnusedByUserId(userId);
-
-    // Generate new token
     const token = generateToken();
     const tokenHash = hashToken(token);
     const expiryHours = await getTokenExpiryHours();
     const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
 
-    // Store token in database
-    const verificationToken = await emailVerificationRepository.create({
+    const { token: verificationToken } = await emailVerificationRepository.replaceUnusedAndCreate({
       userId,
       email,
       tokenHash,
       expiresAt,
     });
 
-    // Generate and send verification email
     const serverName = await getServerName();
     const verificationUrl = getVerificationUrl(token);
 
@@ -167,6 +160,102 @@ export async function createVerificationToken(
 }
 
 /**
+ * Update a user's email and create the replacement verification intent in the
+ * same transaction that invalidates older unused intents. SMTP delivery happens
+ * only after that transaction commits, so stale old-address tokens cannot
+ * survive when mail delivery is unavailable.
+ */
+export async function updateEmailWithVerification(
+  userId: string,
+  email: string,
+  username: string
+): Promise<{
+  user: Awaited<ReturnType<typeof userRepository.updateEmail>>;
+  verification: {
+    success: boolean;
+    tokenId?: string;
+    expiresAt?: Date;
+    error?: string;
+  };
+}> {
+  try {
+    const smtpConfigured = await isSmtpConfigured();
+    const token = smtpConfigured ? generateToken() : null;
+    const tokenHash = token ? hashToken(token) : undefined;
+    const expiryHours = smtpConfigured ? await getTokenExpiryHours() : DEFAULT_EXPIRY_HOURS;
+    const expiresAt = tokenHash
+      ? new Date(Date.now() + expiryHours * 60 * 60 * 1000)
+      : undefined;
+    const { token: verificationToken, user } = await emailVerificationRepository.replaceUnusedForEmailUpdate({
+      userId,
+      email,
+      tokenHash,
+      expiresAt,
+    });
+
+    if (!smtpConfigured || !token || !verificationToken || !expiresAt) {
+      log.warn('SMTP not configured after email update', {
+        userId,
+        email: user.email,
+      });
+      return {
+        user,
+        verification: {
+          success: false,
+          error: 'SMTP not configured',
+        },
+      };
+    }
+
+    const serverName = await getServerName();
+    const verificationUrl = getVerificationUrl(token);
+    const emailContent = generateVerificationEmail({
+      username,
+      email,
+      verificationUrl,
+      expiresInHours: expiryHours,
+      serverName,
+    });
+    const sendResult = await sendEmail({
+      to: email,
+      subject: emailContent.subject,
+      text: emailContent.text,
+      html: emailContent.html,
+    });
+
+    if (!sendResult.success) {
+      log.error('Failed to send verification email after email update', {
+        userId,
+        email,
+        error: sendResult.error,
+      });
+      return {
+        user,
+        verification: {
+          success: false,
+          tokenId: verificationToken.id,
+          expiresAt,
+          error: sendResult.error,
+        },
+      };
+    }
+
+    return {
+      user,
+      verification: {
+        success: true,
+        tokenId: verificationToken.id,
+        expiresAt,
+      },
+    };
+  } catch (error) {
+    const errorMessage = getErrorMessage(error, 'Unknown error');
+    log.error('Failed to update email verification intent', { userId, email, error: errorMessage });
+    throw error;
+  }
+}
+
+/**
  * Verify an email using a token
  */
 export async function verifyEmail(token: string): Promise<{
@@ -178,80 +267,29 @@ export async function verifyEmail(token: string): Promise<{
   try {
     const tokenHash = hashToken(token);
 
-    // Find the token
-    const verificationToken = await emailVerificationRepository.findByTokenHash(tokenHash);
+    const verificationResult = await emailVerificationRepository.consumeForCurrentEmail(tokenHash);
 
-    if (!verificationToken) {
+    if (!verificationResult.success) {
+      const publicError = verificationResult.error === 'EMAIL_MISMATCH'
+        ? 'INVALID_TOKEN'
+        : verificationResult.error;
       log.warn('Invalid verification token attempted');
       return {
         success: false,
-        error: 'INVALID_TOKEN',
+        userId: verificationResult.userId,
+        error: publicError,
       };
     }
 
-    // Check if already used
-    if (verificationToken.usedAt) {
-      log.warn('Already used verification token attempted', {
-        tokenId: verificationToken.id,
-        userId: verificationToken.userId,
-      });
-      return {
-        success: false,
-        error: 'ALREADY_USED',
-      };
-    }
-
-    // Check if expired
-    if (new Date() > verificationToken.expiresAt) {
-      log.warn('Expired verification token attempted', {
-        tokenId: verificationToken.id,
-        userId: verificationToken.userId,
-      });
-      return {
-        success: false,
-        error: 'EXPIRED_TOKEN',
-      };
-    }
-
-    // Get the user
-    const user = await userRepository.findById(verificationToken.userId);
-    if (!user) {
-      log.error('User not found for verification token', {
-        tokenId: verificationToken.id,
-        userId: verificationToken.userId,
-      });
-      return {
-        success: false,
-        error: 'USER_NOT_FOUND',
-      };
-    }
-
-    // Mark token as used
-    await emailVerificationRepository.markUsed(verificationToken.id);
-
-    // Update user email verification status
-    // Only verify if the email matches (in case user changed email)
-    if (user.email === verificationToken.email) {
-      await userRepository.updateEmailVerification(user.id, true);
-      log.info('Email verified successfully', {
-        userId: user.id,
-        email: verificationToken.email,
-      });
-    } else {
-      // Email was changed after token was created - update to the verified email
-      await userRepository.updateEmail(user.id, verificationToken.email);
-      await userRepository.updateEmailVerification(user.id, true);
-      log.info('Email verified and updated', {
-        userId: user.id,
-        oldEmail: user.email,
-        newEmail: verificationToken.email,
-      });
-    }
+    log.info('Email verified successfully', {
+      userId: verificationResult.userId,
+      email: verificationResult.email,
+    });
 
     return {
       success: true,
-      userId: user.id,
-      email: verificationToken.email,
+      userId: verificationResult.userId,
+      email: verificationResult.email,
     };
   } catch (error) {
     const errorMessage = getErrorMessage(error, 'Unknown error');
@@ -348,6 +386,7 @@ export async function cleanupExpiredTokens(): Promise<number> {
 export default {
   isVerificationRequired,
   createVerificationToken,
+  updateEmailWithVerification,
   verifyEmail,
   resendVerification,
   isEmailVerified,

@@ -11,6 +11,7 @@ import { faker } from '@faker-js/faker';
 const { mockSessionRepository } = vi.hoisted(() => {
   const mockSessionRepository = {
     createRefreshToken: vi.fn(),
+    consumeAndReplaceRefreshToken: vi.fn(),
     findRefreshToken: vi.fn(),
     findRefreshTokenById: vi.fn(),
     findRefreshTokenByHash: vi.fn(),
@@ -192,46 +193,53 @@ describe('Refresh Token Service', () => {
       expect(mockSessionRepository.revokeRefreshToken).toHaveBeenCalledWith(testToken);
     });
 
-    it('should return false on error', async () => {
+    it('should throw on repository lookup error', async () => {
       mockSessionRepository.findRefreshToken.mockRejectedValue(new Error('DB error'));
 
-      const result = await verifyRefreshTokenExists(testToken);
+      await expect(verifyRefreshTokenExists(testToken)).rejects.toThrow('DB error');
+    });
 
-      expect(result).toBe(false);
+    it('should throw when last-used persistence fails', async () => {
+      mockSessionRepository.findRefreshToken.mockResolvedValue({
+        id: testSessionId,
+        userId: testUserId,
+        expiresAt: new Date(Date.now() + 3600000),
+      });
+      mockSessionRepository.updateLastUsed.mockRejectedValue(new Error('last-used failed'));
+
+      await expect(verifyRefreshTokenExists(testToken)).rejects.toThrow('last-used failed');
     });
   });
 
   describe('rotateRefreshToken', () => {
     it('should rotate token and return new token', async () => {
       const oldToken = 'old-refresh-token';
-      mockSessionRepository.findRefreshToken.mockResolvedValue({
-        id: testSessionId,
-        userId: testUserId,
-        deviceId: testDeviceInfo.deviceId,
-        deviceName: testDeviceInfo.deviceName,
-      });
-      mockSessionRepository.revokeRefreshToken.mockResolvedValue(undefined);
-      mockSessionRepository.createRefreshToken.mockResolvedValue({
+      const rotatedToken = 'refresh-token-for-test-user';
+      mockSessionRepository.consumeAndReplaceRefreshToken.mockResolvedValue({
         id: faker.string.uuid(),
         userId: testUserId,
       });
 
       const newToken = await rotateRefreshToken(oldToken, testDeviceInfo);
 
-      expect(newToken).toBe(testToken);
-      expect(mockSessionRepository.revokeRefreshToken).toHaveBeenCalledWith(oldToken);
+      expect(newToken).toBe(rotatedToken);
+      expect(mockSessionRepository.consumeAndReplaceRefreshToken).toHaveBeenCalledWith({
+        oldToken,
+        expectedUserId: 'test-user',
+        newToken: rotatedToken,
+        expiresAt: expect.any(Date),
+        deviceId: testDeviceInfo.deviceId,
+        deviceName: testDeviceInfo.deviceName,
+        userAgent: testDeviceInfo.userAgent,
+        ipAddress: testDeviceInfo.ipAddress,
+      });
+      expect(mockSessionRepository.revokeRefreshToken).not.toHaveBeenCalled();
+      expect(mockSessionRepository.createRefreshToken).not.toHaveBeenCalled();
     });
 
     it('should carry the current session version into rotated refresh tokens', async () => {
       const oldToken = 'old-refresh-token-versioned';
-      mockSessionRepository.findRefreshToken.mockResolvedValue({
-        id: testSessionId,
-        userId: testUserId,
-        deviceId: null,
-        deviceName: null,
-      });
-      mockSessionRepository.revokeRefreshToken.mockResolvedValue(undefined);
-      mockSessionRepository.createRefreshToken.mockResolvedValue({
+      mockSessionRepository.consumeAndReplaceRefreshToken.mockResolvedValue({
         id: faker.string.uuid(),
         userId: testUserId,
       });
@@ -239,65 +247,59 @@ describe('Refresh Token Service', () => {
       await rotateRefreshToken(oldToken, undefined, 12);
 
       const jwt = await import('../../../src/utils/jwt');
-      expect(jwt.generateRefreshToken).toHaveBeenLastCalledWith(testUserId, 12);
+      expect(jwt.generateRefreshToken).toHaveBeenLastCalledWith('test-user', 12);
     });
 
     it('should return null for non-existent token', async () => {
-      mockSessionRepository.findRefreshToken.mockResolvedValue(null);
+      mockSessionRepository.consumeAndReplaceRefreshToken.mockResolvedValue(null);
 
       const result = await rotateRefreshToken('non-existent-token');
 
       expect(result).toBeNull();
     });
 
-    it('should return null on error', async () => {
-      mockSessionRepository.findRefreshToken.mockRejectedValue(new Error('DB error'));
+    it('should return null without touching storage when the old token has no user id', async () => {
+      const jwt = await import('../../../src/utils/jwt');
+      vi.mocked(jwt.decodeToken).mockReturnValueOnce(null);
 
-      const result = await rotateRefreshToken(testToken);
+      const result = await rotateRefreshToken('malformed-refresh-token');
 
       expect(result).toBeNull();
+      expect(mockSessionRepository.consumeAndReplaceRefreshToken).not.toHaveBeenCalled();
     });
 
-    it('should reuse stored device metadata when no new device info is provided', async () => {
+    it('should throw on repository error', async () => {
+      mockSessionRepository.consumeAndReplaceRefreshToken.mockRejectedValue(new Error('DB error'));
+
+      await expect(rotateRefreshToken(testToken)).rejects.toThrow('DB error');
+    });
+
+    it('should pass no device override so the repository can reuse stored metadata', async () => {
       const oldToken = 'old-refresh-token-no-device-override';
-      mockSessionRepository.findRefreshToken.mockResolvedValue({
-        id: testSessionId,
-        userId: testUserId,
-        deviceId: 'stored-device-id',
-        deviceName: 'Stored Device',
-      });
-      mockSessionRepository.revokeRefreshToken.mockResolvedValue(undefined);
-      mockSessionRepository.createRefreshToken.mockResolvedValue({
+      mockSessionRepository.consumeAndReplaceRefreshToken.mockResolvedValue({
         id: faker.string.uuid(),
         userId: testUserId,
       });
 
       const newToken = await rotateRefreshToken(oldToken);
 
-      expect(newToken).toBe(testToken);
-      const call = mockSessionRepository.createRefreshToken.mock.calls.at(-1)?.[0];
-      expect(call.deviceId).toBe('stored-device-id');
-      expect(call.deviceName).toBe('Stored Device');
+      expect(newToken).toBe('refresh-token-for-test-user');
+      const call = mockSessionRepository.consumeAndReplaceRefreshToken.mock.calls.at(-1)?.[0];
+      expect(call.deviceId).toBeUndefined();
+      expect(call.deviceName).toBeUndefined();
     });
 
     it('should set device metadata to undefined when no source has values', async () => {
       const oldToken = 'old-refresh-token-empty-device';
-      mockSessionRepository.findRefreshToken.mockResolvedValue({
-        id: testSessionId,
-        userId: testUserId,
-        deviceId: null,
-        deviceName: null,
-      });
-      mockSessionRepository.revokeRefreshToken.mockResolvedValue(undefined);
-      mockSessionRepository.createRefreshToken.mockResolvedValue({
+      mockSessionRepository.consumeAndReplaceRefreshToken.mockResolvedValue({
         id: faker.string.uuid(),
         userId: testUserId,
       });
 
       const newToken = await rotateRefreshToken(oldToken);
 
-      expect(newToken).toBe(testToken);
-      const call = mockSessionRepository.createRefreshToken.mock.calls.at(-1)?.[0];
+      expect(newToken).toBe('refresh-token-for-test-user');
+      const call = mockSessionRepository.consumeAndReplaceRefreshToken.mock.calls.at(-1)?.[0];
       expect(call.deviceId).toBeUndefined();
       expect(call.deviceName).toBeUndefined();
     });

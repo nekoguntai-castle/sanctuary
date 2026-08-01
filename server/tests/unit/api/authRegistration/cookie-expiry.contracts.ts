@@ -87,6 +87,13 @@ export function registerAuthCookieExpiryTests(): void {
       expect(cookies.sanctuary_refresh.attrs.Path).toBe('/api/v1/auth/refresh');
     }
 
+    function assertNoAuthCookieClears(setCookieHeader: unknown): void {
+      const cookies = parseSetCookieHeaders(setCookieHeader);
+      expect(cookies.sanctuary_access?.value).not.toBe('');
+      expect(cookies.sanctuary_refresh?.value).not.toBe('');
+      expect(cookies.sanctuary_csrf?.value).not.toBe('');
+    }
+
     // -- Login ------------------------------------------------------------
     it('login sets sanctuary_access/refresh/csrf cookies and X-Access-Expires-At header', async () => {
       const correctPassword = 'CorrectPassword123!';
@@ -251,10 +258,12 @@ export function registerAuthCookieExpiryTests(): void {
         'cookie-refresh-token',
         expect.any(Object),
         0,
+        'test-user-id',
       );
       expect(rotateMock).not.toHaveBeenCalledWith(
         'body-refresh-token',
         expect.any(Object),
+        expect.anything(),
         expect.anything(),
       );
     });
@@ -282,7 +291,7 @@ export function registerAuthCookieExpiryTests(): void {
       assertAuthCookiesCleared(response.headers['set-cookie']);
     });
 
-    it('refresh clears browser auth cookies when the refresh token has been revoked', async () => {
+    it('refresh does not clear browser auth cookies when the refresh token row is missing', async () => {
       const { verifyRefreshTokenExists } = await import('../../../../src/services/refreshTokenService');
       vi.mocked(verifyRefreshTokenExists).mockResolvedValueOnce(false);
 
@@ -293,7 +302,7 @@ export function registerAuthCookieExpiryTests(): void {
 
       expect(response.status).toBe(401);
       expect(response.body.message).toContain('Refresh token has been revoked');
-      assertAuthCookiesCleared(response.headers['set-cookie']);
+      assertNoAuthCookieClears(response.headers['set-cookie']);
     });
 
     it('refresh clears browser auth cookies when the user no longer exists', async () => {

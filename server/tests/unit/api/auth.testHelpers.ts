@@ -21,6 +21,9 @@ export { mockPrismaClient, resetPrismaMocks };
 export const mockIsVerificationRequired = vi.fn().mockResolvedValue(true);
 export const mockIsSmtpConfigured = vi.fn().mockResolvedValue(false);
 export const mockCreateVerificationToken = vi.fn().mockResolvedValue({ success: false });
+export const mockUpdateEmailWithVerification = vi.fn().mockResolvedValue({
+  verification: { success: false, error: 'SMTP not configured' },
+});
 
 export async function createCsrfTokenForAccessCookie(accessToken: string): Promise<string> {
   const { generateCsrfToken } = await import('../../../src/middleware/csrf');

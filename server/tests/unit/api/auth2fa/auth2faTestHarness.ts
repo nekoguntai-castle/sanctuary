@@ -7,6 +7,7 @@ import {
   mockIsVerificationRequired,
   mockIsSmtpConfigured,
   mockCreateVerificationToken,
+  mockUpdateEmailWithVerification,
   createAuthTestApp,
 } from '../auth.testHelpers';
 
@@ -73,6 +74,7 @@ vi.mock('../../../../src/services/email', () => ({
   isVerificationRequired: () => mockIsVerificationRequired(),
   isSmtpConfigured: () => mockIsSmtpConfigured(),
   createVerificationToken: (...args: unknown[]) => mockCreateVerificationToken(...args),
+  updateEmailWithVerification: (...args: unknown[]) => mockUpdateEmailWithVerification(...args),
 }));
 
 vi.mock('../../../../src/middleware/rateLimit', () => ({
@@ -189,5 +191,8 @@ export function registerAuth2faTestHarness() {
     mockIsVerificationRequired.mockResolvedValue(true);
     mockIsSmtpConfigured.mockResolvedValue(false);
     mockCreateVerificationToken.mockResolvedValue({ success: false });
+    mockUpdateEmailWithVerification.mockResolvedValue({
+      verification: { success: false, error: 'SMTP not configured' },
+    });
   });
 }

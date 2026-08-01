@@ -8,6 +8,10 @@ import prisma from '../models/prisma';
 import crypto from 'crypto';
 import { Prisma, type RefreshToken, type RevokedToken } from '../generated/prisma/client';
 import { createLogger } from '../utils/logger';
+import {
+  consumeAndReplaceRefreshTokenWithClient,
+  type RotateRefreshTokenInput,
+} from './sessionRefreshTokenRotation';
 
 const log = createLogger('SESSION:REPO');
 
@@ -138,6 +142,31 @@ export async function createRefreshToken(
 }
 
 /**
+ * Atomically consume one unexpired refresh token and replace it.
+ *
+ * Returns null when the old token is absent, expired, or already consumed by a
+ * concurrent request. Database errors, including replacement insert failures,
+ * are propagated so the caller does not misclassify storage failures as invalid
+ * credentials. Because the delete and create run in the same transaction, an
+ * insert failure rolls back the consume step.
+ */
+export async function consumeAndReplaceRefreshToken(
+  input: RotateRefreshTokenInput
+): Promise<RefreshToken | null> {
+  const oldTokenHash = hashToken(input.oldToken);
+  const newTokenHash = hashToken(input.newToken);
+  const now = new Date();
+
+  return prisma.$transaction((tx) =>
+    consumeAndReplaceRefreshTokenWithClient(tx, input, {
+      oldTokenHash,
+      newTokenHash,
+      now,
+    })
+  );
+}
+
+/**
  * Delete a refresh token (revoke)
  */
 export async function revokeRefreshToken(token: string): Promise<void> {
@@ -193,12 +222,18 @@ export async function deleteExpiredRefreshTokens(): Promise<number> {
  */
 export async function updateLastUsed(token: string): Promise<void> {
   const tokenHash = hashToken(token);
-  await prisma.refreshToken.update({
-    where: { tokenHash },
-    data: { lastUsedAt: new Date() },
-  }).catch((err) => {
-    log.debug('Token may not exist for lastUsed update', { error: String(err) });
-  });
+  try {
+    await prisma.refreshToken.update({
+      where: { tokenHash },
+      data: { lastUsedAt: new Date() },
+    });
+  } catch (error) {
+    if (isRecordNotFoundError(error)) {
+      log.debug('Token may not exist for lastUsed update', { error: String(error) });
+      return;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -353,6 +388,7 @@ export const sessionRepository = {
   findActiveRefreshTokens,
   countActiveSessions,
   createRefreshToken,
+  consumeAndReplaceRefreshToken,
   revokeRefreshToken,
   revokeAllUserTokens,
   deleteRefreshTokenById,

@@ -15,6 +15,7 @@ vi.mock('../../../src/models/prisma', () => ({
       findMany: vi.fn(),
       count: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }));
@@ -405,6 +406,41 @@ describe('User Repository', () => {
         where: { isAdmin: true },
         select: { id: true },
       });
+    });
+  });
+
+  describe('consumeBackupCodesIfUnchanged', () => {
+    it('should update backup codes only when the previous JSON and enabled state match', async () => {
+      (prisma.user.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      const result = await userRepository.consumeBackupCodesIfUnchanged(
+        'user-123',
+        '[{"hash":"old","used":false}]',
+        '[{"hash":"old","used":true}]',
+      );
+
+      expect(result).toBe(true);
+      expect(prisma.user.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'user-123',
+          twoFactorEnabled: true,
+          twoFactorSecret: { not: null },
+          twoFactorBackupCodes: '[{"hash":"old","used":false}]',
+        },
+        data: {
+          twoFactorBackupCodes: '[{"hash":"old","used":true}]',
+        },
+      });
+    });
+
+    it('should return false when a concurrent request already changed the backup codes', async () => {
+      (prisma.user.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+      await expect(userRepository.consumeBackupCodesIfUnchanged(
+        'user-123',
+        '[{"hash":"old","used":false}]',
+        '[{"hash":"old","used":true}]',
+      )).resolves.toBe(false);
     });
   });
 });

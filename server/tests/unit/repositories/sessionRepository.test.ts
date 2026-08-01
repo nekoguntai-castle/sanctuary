@@ -27,6 +27,7 @@ vi.mock('../../../src/models/prisma', () => ({
       create: vi.fn(),
       deleteMany: vi.fn(),
     },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -54,6 +55,7 @@ describe('Session Repository', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    (prisma.$transaction as Mock).mockImplementation(async (callback: (tx: typeof prisma) => unknown) => callback(prisma));
   });
 
   describe('findRefreshToken', () => {
@@ -202,6 +204,134 @@ describe('Session Repository', () => {
     });
   });
 
+  describe('consumeAndReplaceRefreshToken', () => {
+    it('should consume one unexpired token and create the replacement in a transaction', async () => {
+      const replacement = { ...mockRefreshToken, id: 'token-replacement', tokenHash: hashToken('new-token') };
+      (prisma.refreshToken.findUnique as Mock).mockResolvedValue(mockRefreshToken);
+      (prisma.refreshToken.deleteMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.refreshToken.create as Mock).mockResolvedValue(replacement);
+
+      const result = await sessionRepository.consumeAndReplaceRefreshToken({
+        oldToken: 'raw-token-value',
+        expectedUserId: mockRefreshToken.userId,
+        newToken: 'new-token',
+        expiresAt: replacement.expiresAt,
+        userAgent: 'New UA',
+        ipAddress: '203.0.113.5',
+      });
+
+      expect(result).toEqual(replacement);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.refreshToken.findUnique).toHaveBeenCalledWith({
+        where: { tokenHash: hashToken('raw-token-value') },
+      });
+      expect(prisma.refreshToken.deleteMany).toHaveBeenCalledWith({
+        where: {
+          id: mockRefreshToken.id,
+          userId: mockRefreshToken.userId,
+          tokenHash: hashToken('raw-token-value'),
+          expiresAt: { gt: expect.any(Date) },
+        },
+      });
+      expect(prisma.refreshToken.create).toHaveBeenCalledWith({
+        data: {
+          userId: mockRefreshToken.userId,
+          tokenHash: hashToken('new-token'),
+          expiresAt: replacement.expiresAt,
+          userAgent: 'New UA',
+          ipAddress: '203.0.113.5',
+          deviceId: mockRefreshToken.deviceId,
+          deviceName: mockRefreshToken.deviceName,
+        },
+      });
+    });
+
+    it('should return null without creating when another transaction already consumed the token', async () => {
+      (prisma.refreshToken.findUnique as Mock).mockResolvedValue(mockRefreshToken);
+      (prisma.refreshToken.deleteMany as Mock).mockResolvedValue({ count: 0 });
+
+      const result = await sessionRepository.consumeAndReplaceRefreshToken({
+        oldToken: 'raw-token-value',
+        expectedUserId: mockRefreshToken.userId,
+        newToken: 'new-token',
+        expiresAt: new Date(Date.now() + 86400000),
+      });
+
+      expect(result).toBeNull();
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+    });
+
+    it('should return null when the old token is absent or expired', async () => {
+      (prisma.refreshToken.findUnique as Mock).mockResolvedValueOnce(null);
+
+      await expect(sessionRepository.consumeAndReplaceRefreshToken({
+        oldToken: 'missing-token',
+        expectedUserId: mockRefreshToken.userId,
+        newToken: 'new-token',
+        expiresAt: new Date(Date.now() + 86400000),
+      })).resolves.toBeNull();
+
+      (prisma.refreshToken.findUnique as Mock).mockResolvedValueOnce({
+        ...mockRefreshToken,
+        expiresAt: new Date(Date.now() - 1000),
+      });
+
+      await expect(sessionRepository.consumeAndReplaceRefreshToken({
+        oldToken: 'expired-token',
+        expectedUserId: mockRefreshToken.userId,
+        newToken: 'new-token',
+        expiresAt: new Date(Date.now() + 86400000),
+      })).resolves.toBeNull();
+
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+    });
+
+    it('should omit replacement device metadata when neither request nor stored token has it', async () => {
+      const tokenWithoutMetadata = {
+        ...mockRefreshToken,
+        userAgent: null,
+        ipAddress: null,
+        deviceId: null,
+        deviceName: null,
+      };
+      (prisma.refreshToken.findUnique as Mock).mockResolvedValue(tokenWithoutMetadata);
+      (prisma.refreshToken.deleteMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.refreshToken.create as Mock).mockResolvedValue({
+        ...tokenWithoutMetadata,
+        id: 'replacement-without-metadata',
+      });
+
+      await sessionRepository.consumeAndReplaceRefreshToken({
+        oldToken: 'raw-token-value',
+        expectedUserId: mockRefreshToken.userId,
+        newToken: 'new-token',
+        expiresAt: new Date(Date.now() + 86400000),
+      });
+
+      expect(prisma.refreshToken.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userAgent: undefined,
+          ipAddress: undefined,
+          deviceId: undefined,
+          deviceName: undefined,
+        }),
+      });
+    });
+
+    it('should propagate replacement insert failures so the transaction rolls back consumption', async () => {
+      (prisma.refreshToken.findUnique as Mock).mockResolvedValue(mockRefreshToken);
+      (prisma.refreshToken.deleteMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.refreshToken.create as Mock).mockRejectedValue(new Error('unique collision'));
+
+      await expect(sessionRepository.consumeAndReplaceRefreshToken({
+        oldToken: 'raw-token-value',
+        expectedUserId: mockRefreshToken.userId,
+        newToken: 'new-token',
+        expiresAt: new Date(Date.now() + 86400000),
+      })).rejects.toThrow('unique collision');
+    });
+  });
+
   describe('revokeRefreshToken', () => {
     it('should delete token by hash', async () => {
       (prisma.refreshToken.delete as Mock).mockResolvedValue(mockRefreshToken);
@@ -291,9 +421,20 @@ describe('Session Repository', () => {
     });
 
     it('should not throw if token not found', async () => {
-      (prisma.refreshToken.update as Mock).mockRejectedValue(new Error('Not found'));
+      (prisma.refreshToken.update as Mock).mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Record not found', {
+          code: 'P2025',
+          clientVersion: 'test',
+        })
+      );
 
       await expect(sessionRepository.updateLastUsed('unknown')).resolves.not.toThrow();
+    });
+
+    it('should surface database errors during last-used persistence', async () => {
+      (prisma.refreshToken.update as Mock).mockRejectedValue(new Error('database unavailable'));
+
+      await expect(sessionRepository.updateLastUsed('raw-token')).rejects.toThrow('database unavailable');
     });
   });
 

@@ -19,6 +19,7 @@ const {
     verifyEmail: vi.fn(),
     resendVerification: vi.fn(),
     createVerificationToken: vi.fn(),
+    updateEmailWithVerification: vi.fn(),
     isVerificationRequired: vi.fn(),
     isSmtpConfigured: vi.fn(),
   };
@@ -91,6 +92,7 @@ vi.mock('../../../src/utils/logger', () => ({
 
 vi.mock('../../../src/utils/errors', () => ({
   getErrorMessage: (e: unknown) => e instanceof Error ? e.message : 'Unknown error',
+  isUniqueConstraintError: (e: unknown) => String(e).includes('Unique constraint'),
 }));
 
 // Import after mocks
@@ -463,13 +465,13 @@ describe('Email Verification API', () => {
     it('should update email with valid password', async () => {
       (verifyPassword as any).mockResolvedValue(true);
       mockUserRepository.emailExists.mockResolvedValue(false);
-      mockUserRepository.updateEmail.mockResolvedValue({
-        id: testUserId,
-        email: newEmail,
-        emailVerified: false,
-      });
-      mockEmailVerificationService.createVerificationToken.mockResolvedValue({
-        success: true,
+      mockEmailVerificationService.updateEmailWithVerification.mockResolvedValue({
+        user: {
+          id: testUserId,
+          email: newEmail,
+          emailVerified: false,
+        },
+        verification: { success: true },
       });
 
       const response = await request(app)
@@ -494,13 +496,13 @@ describe('Email Verification API', () => {
         password: 'hashed-password',
       });
       mockUserRepository.emailExists.mockResolvedValue(false);
-      mockUserRepository.updateEmail.mockResolvedValue({
-        id: testUserId,
-        email: canonicalEmail,
-        emailVerified: false,
-      });
-      mockEmailVerificationService.createVerificationToken.mockResolvedValue({
-        success: true,
+      mockEmailVerificationService.updateEmailWithVerification.mockResolvedValue({
+        user: {
+          id: testUserId,
+          email: canonicalEmail,
+          emailVerified: false,
+        },
+        verification: { success: true },
       });
 
       const response = await request(app)
@@ -510,8 +512,7 @@ describe('Email Verification API', () => {
       expect(response.status).toBe(200);
       expect(response.body.email).toBe(canonicalEmail);
       expect(mockUserRepository.emailExists).toHaveBeenCalledWith(canonicalEmail);
-      expect(mockUserRepository.updateEmail).toHaveBeenCalledWith(testUserId, canonicalEmail);
-      expect(mockEmailVerificationService.createVerificationToken).toHaveBeenCalledWith(
+      expect(mockEmailVerificationService.updateEmailWithVerification).toHaveBeenCalledWith(
         testUserId,
         canonicalEmail,
         testUsername
@@ -570,16 +571,32 @@ describe('Email Verification API', () => {
       expect(mockUserRepository.emailExists).toHaveBeenCalledWith(newEmail);
     });
 
+    it('should reject duplicate email when a concurrent update wins after the pre-check', async () => {
+      (verifyPassword as any).mockResolvedValue(true);
+      mockUserRepository.emailExists.mockResolvedValue(false);
+      mockEmailVerificationService.updateEmailWithVerification.mockRejectedValue(
+        new Error('Unique constraint failed on the fields: (`email`)')
+      );
+
+      const response = await request(app)
+        .put('/api/v1/auth/me/email')
+        .send({ email: newEmail, password: currentPassword });
+
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('CONFLICT');
+      expect(response.body.message).toContain('already in use');
+    });
+
     it('should send verification email to new address', async () => {
       (verifyPassword as any).mockResolvedValue(true);
       mockUserRepository.emailExists.mockResolvedValue(false);
-      mockUserRepository.updateEmail.mockResolvedValue({
-        id: testUserId,
-        email: newEmail,
-        emailVerified: false,
-      });
-      mockEmailVerificationService.createVerificationToken.mockResolvedValue({
-        success: true,
+      mockEmailVerificationService.updateEmailWithVerification.mockResolvedValue({
+        user: {
+          id: testUserId,
+          email: newEmail,
+          emailVerified: false,
+        },
+        verification: { success: true },
       });
 
       const response = await request(app)
@@ -588,7 +605,7 @@ describe('Email Verification API', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.verificationSent).toBe(true);
-      expect(mockEmailVerificationService.createVerificationToken).toHaveBeenCalledWith(
+      expect(mockEmailVerificationService.updateEmailWithVerification).toHaveBeenCalledWith(
         testUserId,
         newEmail.toLowerCase(),
         testUsername
@@ -598,13 +615,13 @@ describe('Email Verification API', () => {
     it('should create audit log for email update', async () => {
       (verifyPassword as any).mockResolvedValue(true);
       mockUserRepository.emailExists.mockResolvedValue(false);
-      mockUserRepository.updateEmail.mockResolvedValue({
-        id: testUserId,
-        email: newEmail,
-        emailVerified: false,
-      });
-      mockEmailVerificationService.createVerificationToken.mockResolvedValue({
-        success: true,
+      mockEmailVerificationService.updateEmailWithVerification.mockResolvedValue({
+        user: {
+          id: testUserId,
+          email: newEmail,
+          emailVerified: false,
+        },
+        verification: { success: true },
       });
 
       await request(app)
@@ -633,13 +650,13 @@ describe('Email Verification API', () => {
 
     it('should skip duplicate check when new email only changes case', async () => {
       (verifyPassword as any).mockResolvedValue(true);
-      mockUserRepository.updateEmail.mockResolvedValue({
-        id: testUserId,
-        email: testEmail,
-        emailVerified: false,
-      });
-      mockEmailVerificationService.createVerificationToken.mockResolvedValue({
-        success: true,
+      mockEmailVerificationService.updateEmailWithVerification.mockResolvedValue({
+        user: {
+          id: testUserId,
+          email: testEmail,
+          emailVerified: false,
+        },
+        verification: { success: true },
       });
 
       const response = await request(app)
@@ -648,13 +665,17 @@ describe('Email Verification API', () => {
 
       expect(response.status).toBe(200);
       expect(mockUserRepository.emailExists).not.toHaveBeenCalled();
-      expect(mockUserRepository.updateEmail).toHaveBeenCalledWith(testUserId, testEmail);
+      expect(mockEmailVerificationService.updateEmailWithVerification).toHaveBeenCalledWith(
+        testUserId,
+        testEmail,
+        testUsername
+      );
     });
 
     it('should return 500 when updating email throws unexpectedly', async () => {
       (verifyPassword as any).mockResolvedValue(true);
       mockUserRepository.emailExists.mockResolvedValue(false);
-      mockUserRepository.updateEmail.mockRejectedValue(new Error('Database failure'));
+      mockEmailVerificationService.updateEmailWithVerification.mockRejectedValue(new Error('Database failure'));
 
       const response = await request(app)
         .put('/api/v1/auth/me/email')

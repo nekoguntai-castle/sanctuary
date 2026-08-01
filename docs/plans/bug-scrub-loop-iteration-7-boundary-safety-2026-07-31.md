@@ -83,7 +83,7 @@
 
 ## Phase 2 — Atomic authentication intent consumption
 
-- [ ] Replace refresh rotation's read/delete/create sequence with one repository
+- [x] Replace refresh rotation's read/delete/create sequence with one repository
   transaction. The old unexpired token hash must be conditionally consumed once;
   only the transaction that deletes one row may create and return a replacement,
   and a replacement insert failure must roll the deletion back. Preserve device
@@ -92,27 +92,27 @@
   pre-rotation existence/last-used check or the rotation transaction into
   invalid-token nulls; the API must return an internal failure without clearing
   valid cookies, and mint its access token only after rotation commits.
-- [ ] Add real-PostgreSQL concurrency coverage that releases two rotations of the
+- [x] Add real-PostgreSQL concurrency coverage that releases two rotations of the
   same token together and proves exactly one replacement exists and succeeds.
   Retain sequential invalid/expired/logout/session tests.
-- [ ] Add a compare-and-swap repository operation for the string-backed backup-code
+- [x] Add a compare-and-swap repository operation for the string-backed backup-code
   JSON using the exact previously read value plus enabled user state. Perform the
   expensive bcrypt verification before the CAS; a losing concurrent update is an
   invalid/reused code and must not reach `prepareAuthSession` or success auditing.
-- [ ] Add route-unit and real-PostgreSQL concurrency regressions proving one
+- [x] Add route-unit and real-PostgreSQL concurrency regressions proving one
   backup code yields exactly one session while TOTP behavior remains unchanged.
-- [ ] Add one atomic verification-token consumption primitive: conditionally claim
+- [x] Add one atomic verification-token consumption primitive: conditionally claim
   an unused/unexpired token, then conditionally mark verified only when the user's
   current normalized email still equals the token email. Roll back on mismatch,
   never write `users.email` from token data, and map the stale-intent result to the
   existing invalid-token contract.
-- [ ] Invalidate prior unused verification intents and update/reset the user's
+- [x] Invalidate prior unused verification intents and update/reset the user's
   email in one transaction before attempting SMTP delivery. Use the same
   token-before-user lock order as verification to avoid inversion, and retain
   truthful `verificationSent` behavior when no replacement mail can be sent.
-- [ ] Add stale-token, SMTP-disabled, resend, expiry, already-used, and concurrent
+- [x] Add stale-token, SMTP-disabled, resend, expiry, already-used, and concurrent
   verification regressions, including the old-A/new-B takeover sequence.
-- [ ] Run auth unit coverage, full test typecheck, security integration tests, and
+- [x] Run auth unit coverage, full test typecheck, security integration tests, and
   repository boundary/complexity gates before delivery.
 
 ## Phase 3 — Complete Payjoin sender-side integrity validation

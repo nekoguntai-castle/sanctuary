@@ -6,7 +6,7 @@
 
 import { Router, Response } from 'express';
 import type { RequestHandler } from 'express';
-import { verifyEmail, resendVerification, createVerificationToken } from '../../services/email';
+import { verifyEmail, resendVerification, updateEmailWithVerification } from '../../services/email';
 import { userRepository } from '../../repositories';
 import { normalizeEmail } from '../../utils/email';
 import { verifyPassword } from '../../utils/password';
@@ -17,6 +17,7 @@ import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError, ValidationError, UnauthorizedError, ConflictError } from '../../errors/ApiError';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../services/auditService';
+import { isUniqueConstraintError } from '../../utils/errors';
 
 const log = createLogger('AUTH_EMAIL:ROUTE');
 
@@ -172,20 +173,28 @@ export function createEmailRouter(
         throw new UnauthorizedError('Invalid password');
       }
 
+      const normalizedEmail = normalizeEmail(email);
       const currentEmail = user.email ? normalizeEmail(user.email) : null;
 
       // Check if email is already in use
-      if (email !== currentEmail) {
-        const emailExists = await userRepository.emailExists(email);
+      if (normalizedEmail !== currentEmail) {
+        const emailExists = await userRepository.emailExists(normalizedEmail);
         if (emailExists) {
           throw new ConflictError('This email address is already in use');
         }
       }
 
-      // Update email (this resets verification status)
-      const updatedUser = await userRepository.updateEmail(userId, email);
+      let updateResult: Awaited<ReturnType<typeof updateEmailWithVerification>>;
+      try {
+        updateResult = await updateEmailWithVerification(userId, normalizedEmail, user.username);
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          throw new ConflictError('This email address is already in use');
+        }
+        throw error;
+      }
+      const verificationResult = updateResult.verification;
 
-      // Audit email update
       const { ipAddress, userAgent } = getClientInfo(req);
       await auditService.log({
         userId,
@@ -195,27 +204,24 @@ export function createEmailRouter(
         success: true,
         details: {
           oldEmail: user.email,
-          newEmail: email,
+          newEmail: normalizedEmail,
         },
         ipAddress,
         userAgent,
       });
 
-      // Send verification email to new address
-      const verificationResult = await createVerificationToken(userId, email, user.username);
-
       log.info('Email updated', {
         userId,
         oldEmail: user.email,
-        newEmail: email,
+        newEmail: normalizedEmail,
         verificationSent: verificationResult.success,
       });
 
       return res.json({
         success: true,
         message: 'Email updated. Please check your inbox for verification.',
-        email: updatedUser.email,
-        emailVerified: updatedUser.emailVerified,
+        email: updateResult.user.email,
+        emailVerified: updateResult.user.emailVerified,
         verificationSent: verificationResult.success,
       });
     })

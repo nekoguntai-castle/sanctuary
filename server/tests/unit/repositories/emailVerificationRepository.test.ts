@@ -18,9 +18,16 @@ vi.mock('../../../src/models/prisma', () => ({
       findFirst: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       deleteMany: vi.fn(),
       count: vi.fn(),
     },
+    user: {
+      update: vi.fn(),
+      updateMany: vi.fn(),
+      findUnique: vi.fn(),
+    },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -47,6 +54,7 @@ describe('Email Verification Repository', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    (prisma.$transaction as Mock).mockImplementation(async (callback: (tx: typeof prisma) => unknown) => callback(prisma));
   });
 
   describe('create', () => {
@@ -84,6 +92,116 @@ describe('Email Verification Repository', () => {
           expiresAt: futureDate,
         })
       ).rejects.toThrow('Unique constraint violation');
+    });
+  });
+
+  describe('replaceUnusedAndCreate', () => {
+    it('should delete old unused intents and create the replacement in one transaction', async () => {
+      (prisma.emailVerificationToken.deleteMany as Mock).mockResolvedValue({ count: 2 });
+      (prisma.emailVerificationToken.create as Mock).mockResolvedValue(mockToken);
+
+      const result = await emailVerificationRepository.replaceUnusedAndCreate({
+        userId: testUserId,
+        email: testEmail.toUpperCase(),
+        tokenHash: testTokenHash,
+        expiresAt: futureDate,
+      });
+
+      expect(result).toEqual({ token: mockToken });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.emailVerificationToken.deleteMany).toHaveBeenCalledWith({
+        where: {
+          userId: testUserId,
+          usedAt: null,
+        },
+      });
+      expect(prisma.emailVerificationToken.create).toHaveBeenCalledWith({
+        data: {
+          userId: testUserId,
+          email: testEmail,
+          tokenHash: testTokenHash,
+          expiresAt: futureDate,
+        },
+      });
+    });
+  });
+
+  describe('replaceUnusedForEmailUpdate', () => {
+    it('should create the new intent before resetting the user email in the same transaction', async () => {
+      const updatedUser = {
+        id: testUserId,
+        email: testEmail,
+        emailVerified: false,
+        emailVerifiedAt: null,
+      };
+      (prisma.emailVerificationToken.deleteMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.emailVerificationToken.create as Mock).mockResolvedValue(mockToken);
+      (prisma.user.update as Mock).mockResolvedValue(updatedUser);
+
+      const result = await emailVerificationRepository.replaceUnusedForEmailUpdate({
+        userId: testUserId,
+        email: testEmail.toUpperCase(),
+        tokenHash: testTokenHash,
+        expiresAt: futureDate,
+      });
+
+      expect(result).toEqual({ token: mockToken, user: updatedUser });
+      expect(prisma.emailVerificationToken.deleteMany).toHaveBeenCalledWith({
+        where: {
+          userId: testUserId,
+          usedAt: null,
+        },
+      });
+      expect(prisma.emailVerificationToken.create).toHaveBeenCalledWith({
+        data: {
+          userId: testUserId,
+          email: testEmail,
+          tokenHash: testTokenHash,
+          expiresAt: futureDate,
+        },
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: testUserId },
+        data: {
+          email: testEmail,
+          emailVerified: false,
+          emailVerifiedAt: null,
+        },
+      });
+      expect(prisma.emailVerificationToken.create).toHaveBeenCalledBefore(prisma.user.update as Mock);
+    });
+
+    it('should update the email without creating an unsent token when token data is omitted', async () => {
+      const updatedUser = {
+        id: testUserId,
+        email: testEmail,
+        emailVerified: false,
+        emailVerifiedAt: null,
+      };
+      (prisma.emailVerificationToken.deleteMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.user.update as Mock).mockResolvedValue(updatedUser);
+
+      const result = await emailVerificationRepository.replaceUnusedForEmailUpdate({
+        userId: testUserId,
+        email: testEmail.toUpperCase(),
+      });
+
+      expect(result).toEqual({ token: undefined, user: updatedUser });
+      expect(prisma.emailVerificationToken.deleteMany).toHaveBeenCalledWith({
+        where: {
+          userId: testUserId,
+          usedAt: null,
+        },
+      });
+      expect(prisma.emailVerificationToken.create).not.toHaveBeenCalled();
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: testUserId },
+        data: {
+          email: testEmail,
+          emailVerified: false,
+          emailVerifiedAt: null,
+        },
+      });
     });
   });
 
@@ -181,6 +299,155 @@ describe('Email Verification Repository', () => {
       await expect(emailVerificationRepository.markUsed('non-existent-id')).rejects.toThrow(
         'Record not found'
       );
+    });
+  });
+
+  describe('consumeForCurrentEmail', () => {
+    it('should reject a missing token', async () => {
+      (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue(null);
+
+      await expect(
+        emailVerificationRepository.consumeForCurrentEmail(testTokenHash)
+      ).resolves.toEqual({
+        success: false,
+        error: 'INVALID_TOKEN',
+      });
+      expect(prisma.emailVerificationToken.updateMany).not.toHaveBeenCalled();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should reject an already-used token', async () => {
+      (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue({
+        ...mockToken,
+        usedAt: new Date(),
+      });
+
+      await expect(
+        emailVerificationRepository.consumeForCurrentEmail(testTokenHash)
+      ).resolves.toEqual({
+        success: false,
+        error: 'ALREADY_USED',
+        userId: testUserId,
+      });
+      expect(prisma.emailVerificationToken.updateMany).not.toHaveBeenCalled();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should reject an expired token', async () => {
+      (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue({
+        ...mockToken,
+        expiresAt: pastDate,
+      });
+
+      await expect(
+        emailVerificationRepository.consumeForCurrentEmail(testTokenHash)
+      ).resolves.toEqual({
+        success: false,
+        error: 'EXPIRED_TOKEN',
+        userId: testUserId,
+      });
+      expect(prisma.emailVerificationToken.updateMany).not.toHaveBeenCalled();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should reject when another transaction already claimed the token', async () => {
+      (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue(mockToken);
+      (prisma.emailVerificationToken.updateMany as Mock).mockResolvedValue({ count: 0 });
+
+      await expect(
+        emailVerificationRepository.consumeForCurrentEmail(testTokenHash)
+      ).resolves.toEqual({
+        success: false,
+        error: 'ALREADY_USED',
+        userId: testUserId,
+      });
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should claim an unused token and verify only the current matching user email', async () => {
+      (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue(mockToken);
+      (prisma.emailVerificationToken.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.user.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+      const result = await emailVerificationRepository.consumeForCurrentEmail(testTokenHash);
+
+      expect(result).toEqual({
+        success: true,
+        userId: testUserId,
+        email: testEmail,
+      });
+      expect(prisma.emailVerificationToken.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: testTokenId,
+          tokenHash: testTokenHash,
+          usedAt: null,
+          expiresAt: { gt: expect.any(Date) },
+        },
+        data: { usedAt: expect.any(Date) },
+      });
+      expect(prisma.user.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: testUserId,
+          email: testEmail,
+        },
+        data: {
+          emailVerified: true,
+          emailVerifiedAt: expect.any(Date),
+        },
+      });
+    });
+
+    it('should report stale email intent without writing user.email from token data', async () => {
+      (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue({
+        ...mockToken,
+        email: 'old@example.com',
+      });
+      (prisma.emailVerificationToken.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.user.updateMany as Mock).mockResolvedValue({ count: 0 });
+      (prisma.user.findUnique as Mock).mockResolvedValue({ id: testUserId });
+
+      const result = await emailVerificationRepository.consumeForCurrentEmail(testTokenHash);
+
+      expect(result).toEqual({
+        success: false,
+        error: 'EMAIL_MISMATCH',
+        userId: testUserId,
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.user.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: testUserId,
+          email: 'old@example.com',
+        },
+        data: {
+          emailVerified: true,
+          emailVerifiedAt: expect.any(Date),
+        },
+      });
+    });
+
+    it('should report missing users distinctly from stale email mismatch', async () => {
+      (prisma.emailVerificationToken.findUnique as Mock).mockResolvedValue(mockToken);
+      (prisma.emailVerificationToken.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.user.updateMany as Mock).mockResolvedValue({ count: 0 });
+      (prisma.user.findUnique as Mock).mockResolvedValue(null);
+
+      await expect(
+        emailVerificationRepository.consumeForCurrentEmail(testTokenHash)
+      ).resolves.toEqual({
+        success: false,
+        error: 'USER_NOT_FOUND',
+        userId: testUserId,
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should propagate unexpected transaction failures', async () => {
+      (prisma.$transaction as Mock).mockRejectedValueOnce(new Error('transaction failed'));
+
+      await expect(
+        emailVerificationRepository.consumeForCurrentEmail(testTokenHash)
+      ).rejects.toThrow('transaction failed');
     });
   });
 

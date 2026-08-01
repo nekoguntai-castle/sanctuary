@@ -61,12 +61,17 @@ export function createVerifyRouter(twoFactorLimiter: RequestHandler): Router {
       // Try backup code
       const backupResult = await twoFactorService.verifyBackupCode(user.twoFactorBackupCodes, code);
       if (backupResult.valid) {
-        codeValid = true;
-        usedBackupCode = true;
-        // Update backup codes (mark as used)
-        if (backupResult.updatedCodesJson) {
-          await userRepository.update(user.id, { twoFactorBackupCodes: backupResult.updatedCodesJson });
-        }
+        // Bcrypt verification is intentionally before the write; the exact JSON
+        // compare-and-swap below is the one-time-use boundary. Missing updated
+        // JSON or a lost CAS race fails closed before session issuance/auditing.
+        codeValid = backupResult.updatedCodesJson && user.twoFactorBackupCodes
+          ? await userRepository.consumeBackupCodesIfUnchanged(
+            user.id,
+            user.twoFactorBackupCodes,
+            backupResult.updatedCodesJson,
+          )
+          : false;
+        usedBackupCode = codeValid;
       }
     } else {
       // Try TOTP code

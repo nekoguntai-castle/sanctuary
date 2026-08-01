@@ -11,6 +11,7 @@ import {
   mockIsVerificationRequired,
   mockIsSmtpConfigured,
   mockCreateVerificationToken,
+  mockUpdateEmailWithVerification,
   createAuthTestApp,
 } from '../auth.testHelpers';
 
@@ -82,6 +83,7 @@ vi.mock('../../../../src/services/email', () => ({
   isVerificationRequired: () => mockIsVerificationRequired(),
   isSmtpConfigured: () => mockIsSmtpConfigured(),
   createVerificationToken: (...args: unknown[]) => mockCreateVerificationToken(...args),
+  updateEmailWithVerification: (...args: unknown[]) => mockUpdateEmailWithVerification(...args),
 }));
 
 // Mock rate limiting middleware to allow requests through in tests
@@ -212,5 +214,8 @@ export function setupAuthRegistrationTestHooks(): void {
     mockIsVerificationRequired.mockResolvedValue(true);
     mockIsSmtpConfigured.mockResolvedValue(false);
     mockCreateVerificationToken.mockResolvedValue({ success: false });
+    mockUpdateEmailWithVerification.mockResolvedValue({
+      verification: { success: false, error: 'SMTP not configured' },
+    });
   });
 }

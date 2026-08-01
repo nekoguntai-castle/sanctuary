@@ -57,13 +57,11 @@ const RefreshBodySchema = z.preprocess(
  * cookie ensures a cleanly-rolled-forward browser uses the rotated cookie
  * it already has rather than a stale sessionStorage copy.
  *
- * On terminal failure (invalid/expired/revoked refresh token) the three
- * browser auth cookies are cleared before the 401 response is sent, so a
- * browser that hit this endpoint with a stale cookie does not keep sending
- * the same stale credentials on every subsequent request. This matches
- * ADR 0002's required test "refresh clears cookies on failure (revoked
- * refresh token)" and is the backend half of the Phase 4 terminal-logout
- * flow.
+ * Invalid/expired refresh JWTs and user/session terminal failures clear the
+ * browser auth cookies before the 401 response is sent. A database miss after
+ * a valid JWT does not clear cookies, because it is indistinguishable from the
+ * losing response in a same-client concurrent rotation; clearing there can
+ * delete a newer valid cookie from the winning response.
  *
  * The gateway's own request validation still requires body.refreshToken on
  * mobile routes, so the precedence change does not affect the mobile path
@@ -102,7 +100,6 @@ router.post('/refresh', validate({ body: RefreshBodySchema }), asyncHandler(asyn
   const tokenExists = await refreshTokenService.verifyRefreshTokenExists(refreshTokenStr);
   if (!tokenExists) {
     log.warn('Refresh token not found in database', { userId: decoded.userId });
-    clearAuthCookies(res);
     throw new UnauthorizedError('Refresh token has been revoked');
   }
 
@@ -126,33 +123,35 @@ router.post('/refresh', validate({ body: RefreshBodySchema }), asyncHandler(asyn
     throw new UnauthorizedError('Email verification required');
   }
 
-  // Generate new access token
+  // Get device info for rotation
+  const { ipAddress, userAgent } = getClientInfo(req);
+  const deviceInfo = { userAgent, ipAddress };
+
+  // Always rotate refresh token (security: limits window of stolen tokens)
+  const newRefreshToken = await refreshTokenService.rotateRefreshToken(
+    refreshTokenStr,
+    deviceInfo,
+    user.sessionVersion,
+    decoded.userId,
+  );
+
+  if (!newRefreshToken) {
+    // The token was valid when checked but was consumed before rotation
+    // committed here. That is usually a same-client concurrent refresh loser:
+    // do not clear browser cookies because a winning response may have already
+    // installed a valid rotated token. If the client truly only has this stale
+    // token, the next refresh attempt is still rejected without deleting a
+    // potentially newer cookie set by another in-flight response.
+    log.warn('Refresh token could not be consumed during rotation', { userId: user.id });
+    throw new UnauthorizedError('Refresh token has been revoked');
+  }
+
   const newAccessToken = generateToken({
     userId: user.id,
     username: user.username,
     isAdmin: user.isAdmin,
     sessionVersion: user.sessionVersion,
   });
-
-  // Get device info for rotation
-  const { ipAddress, userAgent } = getClientInfo(req);
-  const deviceInfo = { userAgent, ipAddress };
-
-  // Always rotate refresh token (security: limits window of stolen tokens)
-  const newRefreshToken = await refreshTokenService.rotateRefreshToken(refreshTokenStr, deviceInfo, user.sessionVersion);
-
-  if (!newRefreshToken) {
-    // Transient server error, NOT a terminal auth failure. The refresh
-    // token has already been verified as valid (JWT signature OK, not
-    // revoked, user exists), so clearing the cookies here would punish
-    // the client for a server-side rotation bug — they would have no
-    // credentials left to retry with, even though their session is
-    // actually fine. ADR 0002's clear-on-failure rule specifically
-    // names "revoked refresh token" (terminal auth), not "any 500".
-    // Leave the cookies alone and let the client retry.
-    log.error('Token rotation failed', { userId: user.id });
-    throw new Error('Failed to rotate refresh token');
-  }
 
   log.debug('Token refreshed with rotation', { userId: user.id });
 

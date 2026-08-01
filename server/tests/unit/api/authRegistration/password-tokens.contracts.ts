@@ -254,6 +254,36 @@ export function registerAuthPasswordTokenTests(): void {
       expect(response.body.message).toContain('Refresh token has been revoked');
     });
 
+    it('should return 500 without clearing cookies when refresh-token existence storage fails', async () => {
+      const { verifyRefreshTokenExists } = await import('../../../../src/services/refreshTokenService');
+      vi.mocked(verifyRefreshTokenExists).mockRejectedValueOnce(new Error('last-used write failed'));
+      const csrfToken = await createCsrfTokenForAccessCookie('live-access-cookie');
+
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('X-CSRF-Token', csrfToken)
+        .set('Cookie', [
+          'sanctuary_access=live-access-cookie',
+          'sanctuary_refresh=live-refresh-cookie',
+          `sanctuary_csrf=${csrfToken}`,
+        ])
+        .send({ refreshToken: 'valid-token' });
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toBe('Internal');
+
+      const setCookie = response.headers['set-cookie'];
+      const cookieStrings: string[] = Array.isArray(setCookie)
+        ? (setCookie as string[])
+        : typeof setCookie === 'string'
+          ? [setCookie as string]
+          : [];
+      for (const name of ['sanctuary_access', 'sanctuary_refresh', 'sanctuary_csrf']) {
+        const clearing = cookieStrings.find((cookie) => cookie.startsWith(`${name}=;`));
+        expect(clearing).toBeUndefined();
+      }
+    });
+
     it('should reject when user not found', async () => {
       mockPrismaClient.user.findUnique.mockResolvedValue(null);
 
@@ -312,13 +342,7 @@ export function registerAuthPasswordTokenTests(): void {
       expect(cookieHeader).toContain('sanctuary_refresh=new-refresh-token');
     });
 
-    it('should return 500 when mandatory token rotation fails and must NOT clear the browser auth cookies', async () => {
-      // Regression test for ADR 0002 conformance. Rotation failure is a
-      // transient server error — the refresh token was already verified
-      // as valid, so clearing cookies would punish the client for a
-      // server bug. The client must be able to retry with the same
-      // credentials. Only the three terminal auth-failure paths
-      // (invalid/revoked token, missing user) clear cookies.
+    it('should not clear browser auth cookies when refresh rotation reports a consumed token', async () => {
       mockPrismaClient.user.findUnique.mockResolvedValue({
         id: 'test-user-id',
         username: 'testuser',
@@ -328,6 +352,45 @@ export function registerAuthPasswordTokenTests(): void {
 
       const { rotateRefreshToken } = await import('../../../../src/services/refreshTokenService');
       vi.mocked(rotateRefreshToken).mockResolvedValueOnce(null);
+      const csrfToken = await createCsrfTokenForAccessCookie('live-access-cookie');
+
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('X-CSRF-Token', csrfToken)
+        .set('Cookie', [
+          'sanctuary_access=live-access-cookie',
+          'sanctuary_refresh=live-refresh-cookie',
+          `sanctuary_csrf=${csrfToken}`,
+        ])
+        .send({ refreshToken: 'valid-token' });
+
+      expect(response.status).toBe(401);
+      expect(response.body.message).toContain('Refresh token has been revoked');
+      const setCookie = response.headers['set-cookie'];
+      const cookieStrings: string[] = Array.isArray(setCookie)
+        ? (setCookie as string[])
+        : typeof setCookie === 'string'
+          ? [setCookie as string]
+          : [];
+      for (const name of ['sanctuary_access', 'sanctuary_refresh', 'sanctuary_csrf']) {
+        const clearing = cookieStrings.find((cookie) => cookie.startsWith(`${name}=;`));
+        expect(clearing).toBeUndefined();
+      }
+    });
+
+    it('should return 500 when mandatory token rotation storage fails and must NOT clear browser auth cookies', async () => {
+      // Rotation storage failure is a transient server error. The client
+      // must be able to retry with the same credentials. A null result is
+      // reserved for terminal consumed/replayed-token failures.
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: 'test-user-id',
+        username: 'testuser',
+        isAdmin: false,
+        sessionVersion: 0,
+      });
+
+      const { rotateRefreshToken } = await import('../../../../src/services/refreshTokenService');
+      vi.mocked(rotateRefreshToken).mockRejectedValueOnce(new Error('database unavailable'));
       const csrfToken = await createCsrfTokenForAccessCookie('live-access-cookie');
 
       const response = await request(app)

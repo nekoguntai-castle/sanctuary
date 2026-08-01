@@ -37,6 +37,13 @@ export interface Session {
   isCurrent: boolean;
 }
 
+function getRefreshTokenExpiry(refreshToken: string): Date {
+  const decoded = decodeToken(refreshToken);
+  return decoded?.exp
+    ? new Date(decoded.exp * 1000)
+    : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+}
+
 /**
  * Create a new refresh token and store its hash in the database
  */
@@ -47,12 +54,7 @@ export async function createRefreshToken(
 ): Promise<string> {
   // Generate the actual refresh token
   const refreshToken = generateRefreshToken(userId, sessionVersion);
-
-  // Decode to get expiration
-  const decoded = decodeToken(refreshToken);
-  const expiresAt = decoded?.exp
-    ? new Date(decoded.exp * 1000)
-    : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days default
+  const expiresAt = getRefreshTokenExpiry(refreshToken);
 
   try {
     await sessionRepository.createRefreshToken({
@@ -74,7 +76,11 @@ export async function createRefreshToken(
 }
 
 /**
- * Verify a refresh token exists in the database and update lastUsedAt
+ * Verify a refresh token exists in the database and update lastUsedAt.
+ *
+ * Returns false only for absent or expired tokens. Storage/last-used persistence
+ * errors are rethrown so callers return a server error instead of treating an
+ * infrastructure failure as revoked credentials.
  */
 export async function verifyRefreshTokenExists(token: string): Promise<boolean> {
   try {
@@ -97,48 +103,53 @@ export async function verifyRefreshTokenExists(token: string): Promise<boolean> 
     return true;
   } catch (error) {
     log.error('Failed to verify refresh token', { error: getErrorMessage(error) });
-    return false;
+    throw error;
   }
 }
 
 /**
- * Rotate refresh token - delete old token and create new one
- * This provides enhanced security by limiting token reuse
+ * Rotate refresh token by atomically consuming the old row and creating one
+ * replacement. A null result means the token was missing, expired, owned by the
+ * wrong user, or already consumed by a concurrent request.
  */
 export async function rotateRefreshToken(
   oldToken: string,
   deviceInfo?: DeviceInfo,
-  sessionVersion?: number
+  sessionVersion?: number,
+  expectedUserId?: string
 ): Promise<string | null> {
   try {
-    // Find the old token
-    const oldTokenRecord = await sessionRepository.findRefreshToken(oldToken);
-
-    if (!oldTokenRecord) {
-      log.warn('Attempted to rotate non-existent refresh token');
+    const decodedOldToken = decodeToken(oldToken);
+    const userId = expectedUserId ?? decodedOldToken?.userId;
+    if (!userId) {
+      log.warn('Attempted to rotate refresh token without a user id');
       return null;
     }
 
-    // Delete old token
-    await sessionRepository.revokeRefreshToken(oldToken);
-
-    // Create new token with same device info (or updated info if provided)
-    const newDeviceInfo: DeviceInfo = {
-      deviceId: deviceInfo?.deviceId || oldTokenRecord.deviceId || undefined,
-      deviceName: deviceInfo?.deviceName || oldTokenRecord.deviceName || undefined,
+    const newSessionVersion = sessionVersion ?? decodedOldToken?.sessionVersion ?? 0;
+    const newToken = generateRefreshToken(userId, newSessionVersion);
+    const replacement = await sessionRepository.consumeAndReplaceRefreshToken({
+      oldToken,
+      expectedUserId: userId,
+      newToken,
+      expiresAt: getRefreshTokenExpiry(newToken),
+      deviceId: deviceInfo?.deviceId,
+      deviceName: deviceInfo?.deviceName,
       userAgent: deviceInfo?.userAgent,
       ipAddress: deviceInfo?.ipAddress,
-    };
+    });
 
-    const decodedOldToken = decodeToken(oldToken);
-    const newSessionVersion = sessionVersion ?? decodedOldToken?.sessionVersion ?? 0;
-    const newToken = await createRefreshToken(oldTokenRecord.userId, newDeviceInfo, newSessionVersion);
-    log.debug('Refresh token rotated', { userId: oldTokenRecord.userId });
+    if (!replacement) {
+      log.warn('Attempted to rotate missing, expired, or consumed refresh token');
+      return null;
+    }
+
+    log.debug('Refresh token rotated', { userId: replacement.userId });
 
     return newToken;
   } catch (error) {
     log.error('Failed to rotate refresh token', { error: getErrorMessage(error) });
-    return null;
+    throw error;
   }
 }
 

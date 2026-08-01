@@ -17,6 +17,9 @@ const {
 } = vi.hoisted(() => {
   const mockEmailVerificationRepository = {
     create: vi.fn(),
+    consumeForCurrentEmail: vi.fn(),
+    replaceUnusedAndCreate: vi.fn(),
+    replaceUnusedForEmailUpdate: vi.fn(),
     findByTokenHash: vi.fn(),
     findPendingByUserId: vi.fn(),
     markUsed: vi.fn(),
@@ -88,6 +91,7 @@ vi.mock('../../../../src/utils/logger', () => ({
 // Import after mocks
 import {
   createVerificationToken,
+  updateEmailWithVerification,
   verifyEmail,
   resendVerification,
   isVerificationRequired,
@@ -107,6 +111,43 @@ describe('Email Verification Service', () => {
     mockSystemSettingRepository.getNumber.mockResolvedValue(24);
     mockSystemSettingRepository.getBoolean.mockResolvedValue(true);
     mockSystemSettingRepository.getValue.mockResolvedValue(null);
+    mockEmailVerificationRepository.create.mockResolvedValue({
+      id: testTokenId,
+      userId: testUserId,
+      email: testEmail,
+      tokenHash: 'hashed-token',
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      createdAt: new Date(),
+      usedAt: null,
+    });
+    mockEmailVerificationRepository.replaceUnusedAndCreate.mockResolvedValue({
+      token: {
+        id: testTokenId,
+        userId: testUserId,
+        email: testEmail,
+        tokenHash: 'hashed-token',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        createdAt: new Date(),
+        usedAt: null,
+      },
+    });
+    mockEmailVerificationRepository.replaceUnusedForEmailUpdate.mockResolvedValue({
+      token: {
+        id: testTokenId,
+        userId: testUserId,
+        email: testEmail,
+        tokenHash: 'hashed-token',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        createdAt: new Date(),
+        usedAt: null,
+      },
+      user: {
+        id: testUserId,
+        username: testUsername,
+        email: testEmail,
+        emailVerified: false,
+      },
+    });
   });
 
   describe('createVerificationToken', () => {
@@ -119,21 +160,22 @@ describe('Email Verification Service', () => {
         success: false,
         error: 'SMTP not configured',
       });
+      expect(mockEmailVerificationRepository.replaceUnusedAndCreate).not.toHaveBeenCalled();
       expect(mockEmailVerificationRepository.create).not.toHaveBeenCalled();
+      expect(mockEmailService.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('should preserve existing pending tokens when SMTP is not configured', async () => {
+      mockEmailService.isSmtpConfigured.mockResolvedValue(false);
+
+      await createVerificationToken(testUserId, testEmail, testUsername);
+
+      expect(mockEmailVerificationRepository.replaceUnusedAndCreate).not.toHaveBeenCalled();
+      expect(mockEmailVerificationRepository.deleteUnusedByUserId).not.toHaveBeenCalled();
     });
 
     it('should create token when SMTP is configured', async () => {
       mockEmailService.isSmtpConfigured.mockResolvedValue(true);
-      mockEmailVerificationRepository.deleteUnusedByUserId.mockResolvedValue(undefined);
-      mockEmailVerificationRepository.create.mockResolvedValue({
-        id: testTokenId,
-        userId: testUserId,
-        email: testEmail,
-        tokenHash: 'hashed-token',
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        createdAt: new Date(),
-        usedAt: null,
-      });
       mockEmailService.sendEmail.mockResolvedValue({ success: true, messageId: 'msg-123' });
 
       const result = await createVerificationToken(testUserId, testEmail, testUsername);
@@ -141,46 +183,25 @@ describe('Email Verification Service', () => {
       expect(result.success).toBe(true);
       expect(result.tokenId).toBe(testTokenId);
       expect(result.expiresAt).toBeDefined();
-      expect(mockEmailVerificationRepository.deleteUnusedByUserId).toHaveBeenCalledWith(testUserId);
-      expect(mockEmailVerificationRepository.create).toHaveBeenCalled();
+      expect(mockEmailVerificationRepository.replaceUnusedAndCreate).toHaveBeenCalled();
+      expect(mockEmailVerificationRepository.create).not.toHaveBeenCalled();
       expect(mockEmailService.sendEmail).toHaveBeenCalled();
     });
 
-    it('should delete existing unused tokens before creating new one', async () => {
+    it('should replace existing unused tokens before sending the email', async () => {
       mockEmailService.isSmtpConfigured.mockResolvedValue(true);
-      mockEmailVerificationRepository.deleteUnusedByUserId.mockResolvedValue(undefined);
-      mockEmailVerificationRepository.create.mockResolvedValue({
-        id: testTokenId,
-        userId: testUserId,
-        email: testEmail,
-        tokenHash: 'hashed-token',
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        createdAt: new Date(),
-        usedAt: null,
-      });
       mockEmailService.sendEmail.mockResolvedValue({ success: true });
 
       await createVerificationToken(testUserId, testEmail, testUsername);
 
-      expect(mockEmailVerificationRepository.deleteUnusedByUserId).toHaveBeenCalledWith(testUserId);
-      expect(mockEmailVerificationRepository.deleteUnusedByUserId).toHaveBeenCalledBefore(
-        mockEmailVerificationRepository.create
+      expect(mockEmailVerificationRepository.replaceUnusedAndCreate).toHaveBeenCalledBefore(
+        mockEmailService.sendEmail
       );
     });
 
     it('should use custom expiry hours from settings', async () => {
       mockEmailService.isSmtpConfigured.mockResolvedValue(true);
       mockSystemSettingRepository.getNumber.mockResolvedValue(48); // 48 hours
-      mockEmailVerificationRepository.deleteUnusedByUserId.mockResolvedValue(undefined);
-      mockEmailVerificationRepository.create.mockResolvedValue({
-        id: testTokenId,
-        userId: testUserId,
-        email: testEmail,
-        tokenHash: 'hashed-token',
-        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
-        createdAt: new Date(),
-        usedAt: null,
-      });
       mockEmailService.sendEmail.mockResolvedValue({ success: true });
 
       const result = await createVerificationToken(testUserId, testEmail, testUsername);
@@ -194,16 +215,6 @@ describe('Email Verification Service', () => {
 
     it('should handle email sending failure gracefully', async () => {
       mockEmailService.isSmtpConfigured.mockResolvedValue(true);
-      mockEmailVerificationRepository.deleteUnusedByUserId.mockResolvedValue(undefined);
-      mockEmailVerificationRepository.create.mockResolvedValue({
-        id: testTokenId,
-        userId: testUserId,
-        email: testEmail,
-        tokenHash: 'hashed-token',
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        createdAt: new Date(),
-        usedAt: null,
-      });
       mockEmailService.sendEmail.mockResolvedValue({ success: false, error: 'SMTP error' });
 
       const result = await createVerificationToken(testUserId, testEmail, testUsername);
@@ -217,16 +228,6 @@ describe('Email Verification Service', () => {
       const originalClientUrl = mockConfig.server.clientUrl;
       mockConfig.server.clientUrl = '';
       mockEmailService.isSmtpConfigured.mockResolvedValue(true);
-      mockEmailVerificationRepository.deleteUnusedByUserId.mockResolvedValue(undefined);
-      mockEmailVerificationRepository.create.mockResolvedValue({
-        id: testTokenId,
-        userId: testUserId,
-        email: testEmail,
-        tokenHash: 'hashed-token',
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        createdAt: new Date(),
-        usedAt: null,
-      });
       mockEmailService.sendEmail.mockResolvedValue({ success: true });
 
       await createVerificationToken(testUserId, testEmail, testUsername);
@@ -241,58 +242,151 @@ describe('Email Verification Service', () => {
 
     it('should hash the token before storing', async () => {
       mockEmailService.isSmtpConfigured.mockResolvedValue(true);
-      mockEmailVerificationRepository.deleteUnusedByUserId.mockResolvedValue(undefined);
-      mockEmailVerificationRepository.create.mockResolvedValue({
-        id: testTokenId,
-        userId: testUserId,
-        email: testEmail,
-        tokenHash: 'hashed-token',
-        expiresAt: new Date(),
-        createdAt: new Date(),
-        usedAt: null,
-      });
       mockEmailService.sendEmail.mockResolvedValue({ success: true });
 
       await createVerificationToken(testUserId, testEmail, testUsername);
 
-      const createCall = mockEmailVerificationRepository.create.mock.calls[0][0];
+      const createCall = mockEmailVerificationRepository.replaceUnusedAndCreate.mock.calls[0][0];
       // Token hash should be a 64-character hex string (SHA256)
       expect(createCall.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     });
 
     it('should return service error when token creation flow throws', async () => {
       mockEmailService.isSmtpConfigured.mockResolvedValue(true);
-      mockEmailVerificationRepository.deleteUnusedByUserId.mockRejectedValue(new Error('delete failed'));
+      mockEmailVerificationRepository.replaceUnusedAndCreate.mockRejectedValue(new Error('replace failed'));
 
       const result = await createVerificationToken(testUserId, testEmail, testUsername);
 
       expect(result).toEqual({
         success: false,
-        error: 'delete failed',
+        error: 'replace failed',
       });
     });
   });
 
+  describe('updateEmailWithVerification', () => {
+    it('should invalidate old intents, update email, and truthfully report unsent mail when SMTP is disabled', async () => {
+      const updatedUser = {
+        id: testUserId,
+        username: testUsername,
+        email: testEmail,
+        emailVerified: false,
+      };
+      mockEmailService.isSmtpConfigured.mockResolvedValue(false);
+      mockEmailVerificationRepository.replaceUnusedForEmailUpdate.mockResolvedValue({
+        token: {
+          id: testTokenId,
+          userId: testUserId,
+          email: testEmail,
+          tokenHash: 'hashed-token',
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          createdAt: new Date(),
+          usedAt: null,
+        },
+        user: updatedUser,
+      });
+
+      const result = await updateEmailWithVerification(testUserId, testEmail, testUsername);
+
+      expect(result).toEqual({
+        user: updatedUser,
+        verification: {
+          success: false,
+          error: 'SMTP not configured',
+        },
+      });
+      expect(mockEmailVerificationRepository.replaceUnusedForEmailUpdate).toHaveBeenCalledWith({
+        userId: testUserId,
+        email: testEmail,
+        tokenHash: undefined,
+        expiresAt: undefined,
+      });
+      expect(mockEmailService.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('should send the replacement verification email after the update transaction commits', async () => {
+      const updatedUser = {
+        id: testUserId,
+        username: testUsername,
+        email: testEmail,
+        emailVerified: false,
+      };
+      mockEmailService.isSmtpConfigured.mockResolvedValue(true);
+      mockEmailService.sendEmail.mockResolvedValue({ success: true });
+      mockEmailVerificationRepository.replaceUnusedForEmailUpdate.mockResolvedValue({
+        token: {
+          id: testTokenId,
+          userId: testUserId,
+          email: testEmail,
+          tokenHash: 'hashed-token',
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          createdAt: new Date(),
+          usedAt: null,
+        },
+        user: updatedUser,
+      });
+
+      const result = await updateEmailWithVerification(testUserId, testEmail, testUsername);
+
+      expect(result.verification.success).toBe(true);
+      expect(mockEmailVerificationRepository.replaceUnusedForEmailUpdate).toHaveBeenCalledBefore(
+        mockEmailService.sendEmail,
+      );
+    });
+
+    it('should report send failure after committing the email update intent', async () => {
+      const updatedUser = {
+        id: testUserId,
+        username: testUsername,
+        email: testEmail,
+        emailVerified: false,
+      };
+      mockEmailService.isSmtpConfigured.mockResolvedValue(true);
+      mockEmailService.sendEmail.mockResolvedValue({ success: false, error: 'SMTP timeout' });
+      mockEmailVerificationRepository.replaceUnusedForEmailUpdate.mockResolvedValue({
+        token: {
+          id: testTokenId,
+          userId: testUserId,
+          email: testEmail,
+          tokenHash: 'hashed-token',
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          createdAt: new Date(),
+          usedAt: null,
+        },
+        user: updatedUser,
+      });
+
+      const result = await updateEmailWithVerification(testUserId, testEmail, testUsername);
+
+      expect(result).toEqual({
+        user: updatedUser,
+        verification: {
+          success: false,
+          tokenId: testTokenId,
+          expiresAt: expect.any(Date),
+          error: 'SMTP timeout',
+        },
+      });
+    });
+
+    it('should rethrow unexpected transaction failures', async () => {
+      mockEmailService.isSmtpConfigured.mockResolvedValue(true);
+      mockEmailVerificationRepository.replaceUnusedForEmailUpdate.mockRejectedValue(
+        new Error('unique conflict')
+      );
+
+      await expect(
+        updateEmailWithVerification(testUserId, testEmail, testUsername)
+      ).rejects.toThrow('unique conflict');
+    });
+  });
+
   describe('verifyEmail', () => {
-    const mockToken = {
-      id: testTokenId,
-      userId: testUserId,
-      email: testEmail,
-      tokenHash: 'hashed-token',
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      createdAt: new Date(),
-      usedAt: null,
-    };
-
-    const mockUser = {
-      id: testUserId,
-      username: testUsername,
-      email: testEmail,
-      emailVerified: false,
-    };
-
     it('should reject invalid token', async () => {
-      mockEmailVerificationRepository.findByTokenHash.mockResolvedValue(null);
+      mockEmailVerificationRepository.consumeForCurrentEmail.mockResolvedValue({
+        success: false,
+        error: 'INVALID_TOKEN',
+      });
 
       const result = await verifyEmail('invalid-token');
 
@@ -303,52 +397,59 @@ describe('Email Verification Service', () => {
     });
 
     it('should reject expired token', async () => {
-      const expiredToken = {
-        ...mockToken,
-        expiresAt: new Date(Date.now() - 1000), // Expired 1 second ago
-      };
-      mockEmailVerificationRepository.findByTokenHash.mockResolvedValue(expiredToken);
+      mockEmailVerificationRepository.consumeForCurrentEmail.mockResolvedValue({
+        success: false,
+        error: 'EXPIRED_TOKEN',
+        userId: testUserId,
+      });
 
       const result = await verifyEmail('some-token');
 
       expect(result).toEqual({
         success: false,
+        userId: testUserId,
         error: 'EXPIRED_TOKEN',
       });
     });
 
     it('should reject already-used token', async () => {
-      const usedToken = {
-        ...mockToken,
-        usedAt: new Date(),
-      };
-      mockEmailVerificationRepository.findByTokenHash.mockResolvedValue(usedToken);
+      mockEmailVerificationRepository.consumeForCurrentEmail.mockResolvedValue({
+        success: false,
+        error: 'ALREADY_USED',
+        userId: testUserId,
+      });
 
       const result = await verifyEmail('some-token');
 
       expect(result).toEqual({
         success: false,
+        userId: testUserId,
         error: 'ALREADY_USED',
       });
     });
 
     it('should reject when user not found', async () => {
-      mockEmailVerificationRepository.findByTokenHash.mockResolvedValue(mockToken);
-      mockUserRepository.findById.mockResolvedValue(null);
+      mockEmailVerificationRepository.consumeForCurrentEmail.mockResolvedValue({
+        success: false,
+        error: 'USER_NOT_FOUND',
+        userId: testUserId,
+      });
 
       const result = await verifyEmail('valid-token');
 
       expect(result).toEqual({
         success: false,
+        userId: testUserId,
         error: 'USER_NOT_FOUND',
       });
     });
 
     it('should verify valid token and update user', async () => {
-      mockEmailVerificationRepository.findByTokenHash.mockResolvedValue(mockToken);
-      mockUserRepository.findById.mockResolvedValue(mockUser);
-      mockEmailVerificationRepository.markUsed.mockResolvedValue(undefined);
-      mockUserRepository.updateEmailVerification.mockResolvedValue(undefined);
+      mockEmailVerificationRepository.consumeForCurrentEmail.mockResolvedValue({
+        success: true,
+        userId: testUserId,
+        email: testEmail,
+      });
 
       const result = await verifyEmail('valid-token');
 
@@ -357,34 +458,31 @@ describe('Email Verification Service', () => {
         userId: testUserId,
         email: testEmail,
       });
-      expect(mockEmailVerificationRepository.markUsed).toHaveBeenCalledWith(testTokenId);
-      expect(mockUserRepository.updateEmailVerification).toHaveBeenCalledWith(testUserId, true);
+      expect(mockEmailVerificationRepository.consumeForCurrentEmail).toHaveBeenCalled();
+      expect(mockEmailVerificationRepository.markUsed).not.toHaveBeenCalled();
+      expect(mockUserRepository.updateEmailVerification).not.toHaveBeenCalled();
     });
 
-    it('should handle email change after token creation', async () => {
-      const tokenWithDifferentEmail = {
-        ...mockToken,
-        email: 'old@example.com',
-      };
-      const userWithNewEmail = {
-        ...mockUser,
-        email: 'new@example.com',
-      };
-      mockEmailVerificationRepository.findByTokenHash.mockResolvedValue(tokenWithDifferentEmail);
-      mockUserRepository.findById.mockResolvedValue(userWithNewEmail);
-      mockEmailVerificationRepository.markUsed.mockResolvedValue(undefined);
-      mockUserRepository.updateEmail.mockResolvedValue(undefined);
-      mockUserRepository.updateEmailVerification.mockResolvedValue(undefined);
+    it('should reject stale email-change intents without overwriting the current email', async () => {
+      mockEmailVerificationRepository.consumeForCurrentEmail.mockResolvedValue({
+        success: false,
+        error: 'EMAIL_MISMATCH',
+        userId: testUserId,
+      });
 
       const result = await verifyEmail('valid-token');
 
-      expect(result.success).toBe(true);
-      expect(result.email).toBe('old@example.com'); // Returns the verified email
-      expect(mockUserRepository.updateEmail).toHaveBeenCalledWith(testUserId, 'old@example.com');
+      expect(result).toEqual({
+        success: false,
+        userId: testUserId,
+        error: 'INVALID_TOKEN',
+      });
+      expect(mockUserRepository.updateEmail).not.toHaveBeenCalled();
+      expect(mockUserRepository.updateEmailVerification).not.toHaveBeenCalled();
     });
 
     it('should return UNKNOWN_ERROR when verification throws unexpectedly', async () => {
-      mockEmailVerificationRepository.findByTokenHash.mockRejectedValue(new Error('db timeout'));
+      mockEmailVerificationRepository.consumeForCurrentEmail.mockRejectedValue(new Error('db timeout'));
 
       const result = await verifyEmail('broken-token');
 
@@ -452,22 +550,18 @@ describe('Email Verification Service', () => {
       mockUserRepository.findById.mockResolvedValue(mockUser);
       mockEmailVerificationRepository.countCreatedSince.mockResolvedValue(4);
       mockEmailService.isSmtpConfigured.mockResolvedValue(true);
-      mockEmailVerificationRepository.deleteUnusedByUserId.mockResolvedValue(undefined);
-      mockEmailVerificationRepository.create.mockResolvedValue({
-        id: testTokenId,
-        userId: testUserId,
-        email: testEmail,
-        tokenHash: 'hashed',
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        createdAt: new Date(),
-        usedAt: null,
-      });
       mockEmailService.sendEmail.mockResolvedValue({ success: true });
 
       const result = await resendVerification(testUserId);
 
       expect(result.success).toBe(true);
       expect(result.expiresAt).toBeDefined();
+      expect(mockEmailVerificationRepository.replaceUnusedAndCreate).toHaveBeenCalledWith({
+        userId: testUserId,
+        email: testEmail,
+        tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        expiresAt: expect.any(Date),
+      });
     });
 
     it('should return service error message when resend flow throws', async () => {
@@ -479,6 +573,26 @@ describe('Email Verification Service', () => {
         success: false,
         error: 'lookup failed',
       });
+    });
+
+    it('should not invalidate a pending verification link when SMTP is unavailable during resend', async () => {
+      mockUserRepository.findById.mockResolvedValue({
+        id: testUserId,
+        email: testEmail,
+        emailVerified: false,
+        username: testUsername,
+      });
+      mockEmailVerificationRepository.countCreatedSince.mockResolvedValue(1);
+      mockEmailService.isSmtpConfigured.mockResolvedValue(false);
+
+      const result = await resendVerification(testUserId);
+
+      expect(result).toEqual({
+        success: false,
+        error: 'SMTP not configured',
+      });
+      expect(mockEmailVerificationRepository.replaceUnusedAndCreate).not.toHaveBeenCalled();
+      expect(mockEmailVerificationRepository.deleteUnusedByUserId).not.toHaveBeenCalled();
     });
   });
 
