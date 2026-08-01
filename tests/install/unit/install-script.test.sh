@@ -1173,6 +1173,16 @@ test_worker_compose_command_matches_backend_dist_layout() {
     fi
 }
 
+test_mcp_compose_command_matches_backend_dist_layout() {
+    if grep -Fq 'command: ["node", "dist/server/src/mcp-entry.js"]' "$PROJECT_ROOT/docker-compose.yml" \
+        && ! grep -Fq 'dist/app/src/mcp-entry.js' "$PROJECT_ROOT/docker-compose.yml"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} MCP compose command should match backend image dist/server layout"
+        return 1
+    fi
+}
+
 # ============================================
 # Unit Tests: Pre-flight checks (new functions)
 # ============================================
@@ -1983,6 +1993,7 @@ main() {
     run_test "backend compose exposes auth rate-limit overrides" test_backend_compose_exposes_auth_rate_limit_overrides
     run_test "llm egress proxy maps host gateway for host providers" test_llm_egress_proxy_maps_host_gateway_for_host_providers
     run_test "worker compose command matches backend dist layout" test_worker_compose_command_matches_backend_dist_layout
+    run_test "MCP compose command matches backend dist layout" test_mcp_compose_command_matches_backend_dist_layout
     echo ""
 
     echo -e "${YELLOW}Test Suite: Pre-flight Checks${NC}"

@@ -423,7 +423,7 @@ services:
       MCP_DEFAULT_PAGE_SIZE: ${MCP_DEFAULT_PAGE_SIZE:-100}
       MCP_MAX_PAGE_SIZE: ${MCP_MAX_PAGE_SIZE:-500}
       MCP_MAX_DATE_RANGE_DAYS: ${MCP_MAX_DATE_RANGE_DAYS:-365}
-    command: ["node", "dist/app/src/mcp-entry.js"]
+    command: ["node", "dist/server/src/mcp-entry.js"]
     ports:
       - "${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}:3003"
     healthcheck:
