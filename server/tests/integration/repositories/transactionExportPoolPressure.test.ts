@@ -5,6 +5,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaClient } from '../../../src/generated/prisma/client';
 import { errorHandler } from '../../../src/errors/errorHandler';
+import { resolvePrismaTransactionTimeoutOptions } from '../../../src/models/prismaTransactionOptions';
 import { transactionExportPermits } from '../../../src/services/transactionExport/exportPermit';
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -56,8 +57,10 @@ describeWithDatabase('transaction export pool pressure', () => {
   const rows = exportRows(ids);
 
   beforeAll(async () => {
+    const transactionOptions = resolvePrismaTransactionTimeoutOptions(process.env);
     prisma = new PrismaClient({
       adapter: new PrismaPg({ connectionString: databaseUrl!, max: 1 }),
+      ...(transactionOptions === undefined ? {} : { transactionOptions }),
     });
     await prisma.$connect();
 

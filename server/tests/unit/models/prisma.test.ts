@@ -8,6 +8,7 @@ import {
   parseSlowQueryThresholdMs,
   summarizeDatabaseUrlParams,
 } from '../../../src/models/prisma';
+import { resolvePrismaTransactionTimeoutOptions } from '../../../src/models/prismaTransactionOptions';
 
 describe('getOperationType', () => {
   describe('select operations', () => {
@@ -91,6 +92,47 @@ describe('parseSlowQueryThresholdMs', () => {
 
   it('falls back to 50 on negative input', () => {
     expect(parseSlowQueryThresholdMs('-1')).toBe(50);
+  });
+});
+
+describe('resolvePrismaTransactionTimeoutOptions', () => {
+  it('leaves Prisma defaults untouched when env values are absent', () => {
+    expect(resolvePrismaTransactionTimeoutOptions({})).toBeUndefined();
+  });
+
+  it('parses configured transaction timeout values', () => {
+    expect(resolvePrismaTransactionTimeoutOptions({
+      PRISMA_TRANSACTION_MAX_WAIT_MS: '10000',
+      PRISMA_TRANSACTION_TIMEOUT_MS: '30000',
+    })).toEqual({
+      maxWait: 10000,
+      timeout: 30000,
+    });
+  });
+
+  it('ignores invalid timeout values independently', () => {
+    expect(resolvePrismaTransactionTimeoutOptions({
+      PRISMA_TRANSACTION_MAX_WAIT_MS: '0',
+      PRISMA_TRANSACTION_TIMEOUT_MS: '45000',
+    })).toEqual({
+      timeout: 45000,
+    });
+  });
+
+  it('keeps valid maxWait when timeout is invalid', () => {
+    expect(resolvePrismaTransactionTimeoutOptions({
+      PRISMA_TRANSACTION_MAX_WAIT_MS: '10000',
+      PRISMA_TRANSACTION_TIMEOUT_MS: '0',
+    })).toEqual({
+      maxWait: 10000,
+    });
+  });
+
+  it('returns undefined when all configured values are invalid', () => {
+    expect(resolvePrismaTransactionTimeoutOptions({
+      PRISMA_TRANSACTION_MAX_WAIT_MS: '-1',
+      PRISMA_TRANSACTION_TIMEOUT_MS: 'not-a-number',
+    })).toBeUndefined();
   });
 });
 

@@ -15,6 +15,13 @@ type LoadedPrismaModule = {
   transactionMock: Mock;
   observeMock: Mock;
   adapterOptions: Array<{ connectionString: string }>;
+  prismaClientOptions: Array<{
+    adapter: unknown;
+    transactionOptions?: {
+      maxWait?: number;
+      timeout?: number;
+    };
+  }>;
   logger: {
     info: Mock;
     warn: Mock;
@@ -36,6 +43,7 @@ async function loadPrismaModule(): Promise<LoadedPrismaModule> {
   const transactionMock = vi.fn((fn: (tx: unknown) => Promise<unknown>) => fn({ user: { findMany: vi.fn() } }));
   const observeMock = vi.fn();
   const adapterOptions: Array<{ connectionString: string }> = [];
+  const prismaClientOptions: LoadedPrismaModule['prismaClientOptions'] = [];
   const logger = {
     info: vi.fn(),
     warn: vi.fn(),
@@ -46,6 +54,10 @@ async function loadPrismaModule(): Promise<LoadedPrismaModule> {
 
   vi.doMock('../../../src/generated/prisma/client', () => ({
     PrismaClient: class MockPrismaClient {
+      constructor(options: LoadedPrismaModule['prismaClientOptions'][number]) {
+        prismaClientOptions.push(options);
+      }
+
       $extends(config: { query?: { $allModels?: { $allOperations?: QueryExtension } } }) {
         if (config.query?.$allModels?.$allOperations) {
           queryExtension = config.query.$allModels.$allOperations;
@@ -101,6 +113,7 @@ async function loadPrismaModule(): Promise<LoadedPrismaModule> {
     transactionMock,
     observeMock,
     adapterOptions,
+    prismaClientOptions,
     logger,
     queryExtension,
     onHandlers,
@@ -110,6 +123,9 @@ async function loadPrismaModule(): Promise<LoadedPrismaModule> {
 
 describe('models/prisma behavior', () => {
   const originalDatabaseUrl = process.env.DATABASE_URL;
+  const originalTransactionMaxWaitMs = process.env.PRISMA_TRANSACTION_MAX_WAIT_MS;
+  const originalTransactionTimeoutMs = process.env.PRISMA_TRANSACTION_TIMEOUT_MS;
+
   const restoreDatabaseUrl = () => {
     if (originalDatabaseUrl === undefined) {
       delete process.env.DATABASE_URL;
@@ -118,14 +134,30 @@ describe('models/prisma behavior', () => {
     process.env.DATABASE_URL = originalDatabaseUrl;
   };
 
+  const restoreTransactionTimeoutEnv = () => {
+    if (originalTransactionMaxWaitMs === undefined) {
+      delete process.env.PRISMA_TRANSACTION_MAX_WAIT_MS;
+    } else {
+      process.env.PRISMA_TRANSACTION_MAX_WAIT_MS = originalTransactionMaxWaitMs;
+    }
+
+    if (originalTransactionTimeoutMs === undefined) {
+      delete process.env.PRISMA_TRANSACTION_TIMEOUT_MS;
+    } else {
+      process.env.PRISMA_TRANSACTION_TIMEOUT_MS = originalTransactionTimeoutMs;
+    }
+  };
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     restoreDatabaseUrl();
+    restoreTransactionTimeoutEnv();
   });
 
   afterEach(() => {
     restoreDatabaseUrl();
+    restoreTransactionTimeoutEnv();
     vi.useRealTimers();
   });
 
@@ -146,6 +178,20 @@ describe('models/prisma behavior', () => {
     const { adapterOptions, processOnSpy } = await loadPrismaModule();
 
     expect(adapterOptions).toEqual([{ connectionString: '' }]);
+    processOnSpy.mockRestore();
+  });
+
+  it('passes configured transaction timeout options to Prisma client', async () => {
+    process.env.PRISMA_TRANSACTION_MAX_WAIT_MS = '10000';
+    process.env.PRISMA_TRANSACTION_TIMEOUT_MS = '30000';
+
+    const { prismaClientOptions, processOnSpy } = await loadPrismaModule();
+
+    expect(prismaClientOptions).toHaveLength(1);
+    expect(prismaClientOptions[0]?.transactionOptions).toEqual({
+      maxWait: 10000,
+      timeout: 30000,
+    });
     processOnSpy.mockRestore();
   });
 

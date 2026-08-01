@@ -9,6 +9,15 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import { getErrorMessage } from '../../utils/errors';
+import {
+  resolveLegacySenderInputIndices,
+  resolvePayjoinNetwork,
+  validateFeePolicy,
+  validateLegacySenderInputIndices,
+  validateSenderInputs,
+  validateSenderOutputs,
+  validateTransactionFields,
+} from './payjoinProposalValidation';
 
 export interface ValidationResult {
   valid: boolean;
@@ -19,6 +28,7 @@ export interface ValidationResult {
 export interface PsbtOutput {
   address: string;
   value: number;
+  scriptHex: string;
 }
 
 export interface PsbtInput {
@@ -71,6 +81,7 @@ export function getPsbtOutputs(
     return {
       address,
       value: Number(output.value),
+      scriptHex: Buffer.from(output.script).toString('hex'),
     };
   });
 }
@@ -115,18 +126,24 @@ export function validatePsbtStructure(psbtBase64: string): ValidationResult {
 
 /**
  * Validate a Payjoin proposal against the original PSBT
- * Implements BIP78 validation rules
+ * Implements BIP78 validation rules.
+ *
+ * The third parameter accepts a bitcoin.Network. Passing sender input indices is
+ * a deprecated compatibility form; indices are used only for legacy diagnostics
+ * and cannot weaken the sender-input invariant derived from the original PSBT.
  */
 export function validatePayjoinProposal(
   originalBase64: string,
   proposalBase64: string,
-  senderInputIndices: number[],
-  network: bitcoin.Network = bitcoin.networks.bitcoin
+  networkOrSenderInputIndices: bitcoin.Network | number[] = bitcoin.networks.bitcoin,
+  legacyNetwork: bitcoin.Network = bitcoin.networks.bitcoin
 ): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
   try {
+    const network = resolvePayjoinNetwork(networkOrSenderInputIndices, legacyNetwork);
+    const legacySenderInputIndices = resolveLegacySenderInputIndices(networkOrSenderInputIndices);
     const original = parsePsbt(originalBase64, network);
     const proposal = parsePsbt(proposalBase64, network);
 
@@ -135,9 +152,11 @@ export function validatePayjoinProposal(
     const originalInputs = getPsbtInputs(original);
     const proposalInputs = getPsbtInputs(proposal);
 
+    validateTransactionFields(original, proposal, { errors, warnings });
     validateSenderOutputs(originalOutputs, proposalOutputs, { errors, warnings });
-    validateSenderInputs(senderInputIndices, originalInputs, proposalInputs, { errors, warnings });
-    validateFeeIncrease(original, proposal, { errors, warnings });
+    validateLegacySenderInputIndices(legacySenderInputIndices, originalInputs, errors);
+    validateSenderInputs(originalInputs, proposalInputs, { errors, warnings });
+    validateFeePolicy(calculatePsbtFee(original), calculatePsbtFee(proposal), { errors, warnings });
     validateProposalInputCount(originalInputs, proposalInputs, { errors, warnings });
     validateReceiverContribution(originalInputs, proposalInputs, { errors, warnings });
 
@@ -151,101 +170,6 @@ export function validatePayjoinProposal(
     warnings,
   };
 }
-
-const validateSenderOutputs = (
-  originalOutputs: PsbtOutput[],
-  proposalOutputs: PsbtOutput[],
-  messages: ValidationMessages
-): void => {
-  for (const origOutput of originalOutputs) {
-    if (origOutput.address === 'unknown') continue;
-
-    const matchingOutput = proposalOutputs.find(
-      output => output.address === origOutput.address
-    );
-
-    validateSenderOutput(origOutput, matchingOutput, messages);
-  }
-};
-
-const validateSenderOutput = (
-  origOutput: PsbtOutput,
-  matchingOutput: PsbtOutput | undefined,
-  { errors, warnings }: ValidationMessages
-): void => {
-  if (!matchingOutput) {
-    errors.push(`Original output to ${origOutput.address} was removed`);
-  } else if (matchingOutput.value < origOutput.value) {
-    errors.push(
-      `Output to ${origOutput.address} decreased from ${origOutput.value} to ${matchingOutput.value}`
-    );
-  } else if (matchingOutput.value > origOutput.value) {
-    // This is allowed - receiver can contribute more
-    warnings.push(
-      `Output to ${origOutput.address} increased from ${origOutput.value} to ${matchingOutput.value}`
-    );
-  }
-};
-
-const validateSenderInputs = (
-  senderInputIndices: number[],
-  originalInputs: PsbtInput[],
-  proposalInputs: PsbtInput[],
-  { errors }: ValidationMessages
-): void => {
-  for (const idx of senderInputIndices) {
-    if (!hasOriginalSenderInput(idx, originalInputs, errors)) continue;
-    if (!hasProposalSenderInput(idx, proposalInputs, errors)) continue;
-
-    validateSenderInputUnchanged(idx, originalInputs[idx], proposalInputs[idx], errors);
-  }
-};
-
-const hasOriginalSenderInput = (idx: number, originalInputs: PsbtInput[], errors: string[]): boolean => {
-  if (idx < originalInputs.length) return true;
-
-  errors.push(`Sender input index ${idx} out of range`);
-  return false;
-};
-
-const hasProposalSenderInput = (idx: number, proposalInputs: PsbtInput[], errors: string[]): boolean => {
-  if (idx < proposalInputs.length) return true;
-
-  errors.push(`Sender input ${idx} was removed from proposal`);
-  return false;
-};
-
-const validateSenderInputUnchanged = (
-  idx: number,
-  origInput: PsbtInput,
-  propInput: PsbtInput,
-  errors: string[]
-): void => {
-  if (origInput.txid === propInput.txid && origInput.vout === propInput.vout) return;
-
-  errors.push(
-    `Sender input ${idx} was modified: ${origInput.txid}:${origInput.vout} -> ${propInput.txid}:${propInput.vout}`
-  );
-};
-
-const validateFeeIncrease = (
-  original: bitcoin.Psbt,
-  proposal: bitcoin.Psbt,
-  { errors, warnings }: ValidationMessages
-): void => {
-  const originalFee = calculatePsbtFee(original);
-  const proposalFee = calculatePsbtFee(proposal);
-
-  if (proposalFee > originalFee * 1.5) {
-    errors.push(
-      `Fee increased by more than 50%: ${originalFee} -> ${proposalFee} (${((proposalFee / originalFee - 1) * 100).toFixed(1)}%)`
-    );
-  } else if (proposalFee > originalFee * 1.2) {
-    warnings.push(
-      `Fee increased significantly: ${originalFee} -> ${proposalFee} (${((proposalFee / originalFee - 1) * 100).toFixed(1)}%)`
-    );
-  }
-};
 
 const validateProposalInputCount = (
   originalInputs: PsbtInput[],

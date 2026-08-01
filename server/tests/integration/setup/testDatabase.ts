@@ -8,6 +8,7 @@
 
 import { PrismaClient } from '../../../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { resolvePrismaTransactionTimeoutOptions } from '../../../src/models/prismaTransactionOptions';
 
 let prisma: PrismaClient | null = null;
 let isSetup = false;
@@ -37,7 +38,10 @@ export async function setupTestDatabase(): Promise<PrismaClient> {
 
   // Create Prisma client for test database
   const adapter = new PrismaPg({ connectionString: databaseUrl });
-  prisma = new PrismaClient({ adapter,
+  const transactionOptions = resolvePrismaTransactionTimeoutOptions(process.env);
+  prisma = new PrismaClient({
+    adapter,
+    ...(transactionOptions === undefined ? {} : { transactionOptions }),
   });
 
   try {

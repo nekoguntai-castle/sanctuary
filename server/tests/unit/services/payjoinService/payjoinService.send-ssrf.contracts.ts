@@ -328,17 +328,41 @@ export const registerPayjoinSendAndSsrfContracts = () => {
         warnings: [],
       });
 
-      await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL, [0]);
+      await attemptPayjoinSend(originalPsbt, TEST_PAYJOIN_URL);
 
       expect(validatePayjoinProposal).toHaveBeenCalledWith(
         originalPsbt,
         proposalPsbt,
-        [0],
         bitcoin.networks.bitcoin
       );
     });
 
     it('should use specified network', async () => {
+      (global.fetch as Mock).mockResolvedValue({
+        ok: true,
+        text: async () => proposalPsbt,
+      });
+
+      (validatePayjoinProposal as Mock).mockReturnValue({
+        valid: true,
+        errors: [],
+        warnings: [],
+      });
+
+      await attemptPayjoinSend(
+        originalPsbt,
+        TEST_PAYJOIN_URL,
+        bitcoin.networks.testnet
+      );
+
+      expect(validatePayjoinProposal).toHaveBeenCalledWith(
+        originalPsbt,
+        proposalPsbt,
+        bitcoin.networks.testnet
+      );
+    });
+
+    it('should use the legacy fourth-argument network when sender indices are supplied', async () => {
       (global.fetch as Mock).mockResolvedValue({
         ok: true,
         text: async () => proposalPsbt,
@@ -360,8 +384,33 @@ export const registerPayjoinSendAndSsrfContracts = () => {
       expect(validatePayjoinProposal).toHaveBeenCalledWith(
         originalPsbt,
         proposalPsbt,
-        [0],
         bitcoin.networks.testnet
+      );
+    });
+
+    it('should keep the default network when the compatibility argument is explicitly undefined', async () => {
+      (global.fetch as Mock).mockResolvedValue({
+        ok: true,
+        text: async () => proposalPsbt,
+      });
+
+      (validatePayjoinProposal as Mock).mockReturnValue({
+        valid: true,
+        errors: [],
+        warnings: [],
+      });
+
+      await attemptPayjoinSend(
+        originalPsbt,
+        TEST_PAYJOIN_URL,
+        undefined,
+        bitcoin.networks.testnet
+      );
+
+      expect(validatePayjoinProposal).toHaveBeenCalledWith(
+        originalPsbt,
+        proposalPsbt,
+        bitcoin.networks.bitcoin
       );
     });
   });

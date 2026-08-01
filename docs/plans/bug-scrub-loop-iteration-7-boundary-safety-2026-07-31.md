@@ -117,25 +117,25 @@
 
 ## Phase 3 — Complete Payjoin sender-side integrity validation
 
-- [ ] Make the validator derive the sender-input set from every original input;
+- [x] Make the validator derive the sender-input set from every original input;
   remove the route's `[0]` assumption and do not allow a caller to weaken the
   invariant. Match all original outpoints exactly once in proposal order and
   require each sender sequence number to remain unchanged.
-- [ ] Compare transaction version and locktime and reject mutations before a
+- [x] Compare transaction version and locktime and reject mutations before a
   proposal can be returned for signing.
-- [ ] Represent outputs by exact script bytes as well as display address. Match
+- [x] Represent outputs by exact script bytes as well as display address. Match
   original outputs one-to-one as an ordered multiset so duplicate scripts cannot
   alias one proposal output and non-address scripts cannot be skipped. Under the
   current fail-closed no-substitution contract, every original output must remain
   and may not decrease.
-- [ ] Reject proposal absolute fees below the original, non-finite/negative fee
+- [x] Reject proposal absolute fees below the original, non-finite/negative fee
   calculations, and retain the existing bounded-increase policy until explicit
   additional-fee contribution parameters are implemented.
-- [ ] Add failing-first regressions for non-first input replacement, input
+- [x] Add failing-first regressions for non-first input replacement, input
   insertion without reordering, sequence/version/locktime mutation, duplicate
   output removal, OP_RETURN/non-address script mutation, lower fee, and ordinary
   valid receiver contribution.
-- [ ] Run the focused Payjoin unit/integration suites, Bitcoin boundary tests,
+- [x] Run the focused Payjoin unit/integration suites, Bitcoin boundary tests,
   server typechecks, and exact backend coverage before delivery.
 
 ## Phase 4 — Route-owned device detail state and mutations
@@ -188,6 +188,21 @@
   when mutations are guarded by route ownership and are not transport-retried.
 - Verification: source reads for the listed phase owners and `git diff --check`
   on this plan file.
+
+- Iteration 7 Phase 3 local implementation:
+  - Payjoin sender validation now derives the sender input set from every
+    original input, preserves original outpoint order and sequence numbers, and
+    keeps legacy sender-index arguments as diagnostics only.
+  - Proposal validation now rejects transaction version/locktime mutations,
+    output script/order/value loss including duplicate and non-address scripts,
+    non-finite or negative fee calculations, and absolute fee decreases while
+    retaining the existing bounded fee-increase policy.
+  - Verification passed: focused Payjoin unit/integration suites, server test
+    typecheck, server build, Bitcoin boundary scripts/tests, Prisma import
+    boundary, API body validation, changed-file CCN <= 15, large-file
+    classification, exact backend coverage at 100%, diff hygiene, and
+    independent read-only implementation review with no confirmed P0-P2
+    findings.
 
 ## Rollback
 

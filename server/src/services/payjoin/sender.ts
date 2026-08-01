@@ -9,6 +9,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { validatePayjoinProposal } from '../bitcoin/psbtValidation';
+import { resolvePayjoinNetwork } from '../bitcoin/payjoinProposalValidation';
 import {
   OutboundResponseTooLargeError,
   requestPinnedAddress,
@@ -22,7 +23,11 @@ const PAYJOIN_TIMEOUT_MS = 30_000;
 const KNOWN_BIP78_ERRORS = new Set<string>(Object.values(PayjoinErrors));
 
 /**
- * Attempt to send a Payjoin transaction
+ * Attempt to send a Payjoin transaction.
+ *
+ * The third parameter should be a bitcoin.Network. The number[] form is a
+ * deprecated compatibility shim for callers that previously supplied
+ * senderInputIndices; those indices no longer control validation.
  *
  * Steps:
  * 1. Build original PSBT
@@ -33,8 +38,8 @@ const KNOWN_BIP78_ERRORS = new Set<string>(Object.values(PayjoinErrors));
 export async function attemptPayjoinSend(
   originalPsbtBase64: string,
   payjoinUrl: string,
-  senderInputIndices: number[],
-  network: bitcoin.Network = bitcoin.networks.bitcoin
+  networkOrSenderInputIndices: bitcoin.Network | number[] = bitcoin.networks.bitcoin,
+  legacyNetwork: bitcoin.Network = bitcoin.networks.bitcoin
 ): Promise<{
   success: boolean;
   proposalPsbt?: string;
@@ -42,6 +47,8 @@ export async function attemptPayjoinSend(
   error?: string;
 }> {
   try {
+    const network = resolvePayjoinNetwork(networkOrSenderInputIndices, legacyNetwork);
+
     log.info('Attempting Payjoin send');
 
     // Validate the Payjoin URL (SSRF protection)
@@ -88,7 +95,6 @@ export async function attemptPayjoinSend(
     const validation = validatePayjoinProposal(
       originalPsbtBase64,
       proposalBase64,
-      senderInputIndices,
       network
     );
 

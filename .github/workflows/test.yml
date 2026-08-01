@@ -1454,6 +1454,12 @@ jobs:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
+          # Shared Forgejo runners can starve the Postgres service long enough
+          # for Prisma's 5s interactive-transaction default to expire during
+          # lock-heavy integration proofs. Raise only this CI job's default; the
+          # application keeps Prisma defaults unless deployment env sets these.
+          PRISMA_TRANSACTION_MAX_WAIT_MS: '10000'
+          PRISMA_TRANSACTION_TIMEOUT_MS: '30000'
           SANCTUARY_VITEST_INFRA_ATTEMPTS: '5'
         run: |
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/integration-tests.log" bash -c '

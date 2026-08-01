@@ -940,7 +940,6 @@ describe('Payjoin API Routes', () => {
       expect(mockAttemptPayjoinSend).toHaveBeenCalledWith(
         VALID_PSBT_BASE64,
         'https://example.com/pj',
-        [0],
         expect.anything()
       );
     });

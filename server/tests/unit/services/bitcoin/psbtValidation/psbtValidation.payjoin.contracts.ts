@@ -1,7 +1,78 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
 import { validatePayjoinProposal } from '../../../../../src/services/bitcoin/psbtValidation';
+import {
+  resolveLegacySenderInputIndices,
+  resolvePayjoinNetwork,
+  validateFeePolicy,
+  validateLegacySenderInputIndices,
+  validateSenderInputs,
+} from '../../../../../src/services/bitcoin/payjoinProposalValidation';
 import { createNonWitnessPsbt, createOpReturnPsbt, createTestPsbt, TESTNET } from './psbtValidationTestHarness';
+
+type PayjoinInputSpec = {
+  txidSeed: number;
+  value: number;
+  vout?: number;
+  sequence?: number;
+};
+
+type PayjoinOutputSpec = {
+  script: Buffer;
+  value: number;
+};
+
+const testTxid = (seed: number) => Buffer.alloc(32, seed);
+
+const p2wpkhScript = (seed: number) => bitcoin.payments.p2wpkh({
+  hash: Buffer.alloc(20, seed),
+  network: TESTNET,
+}).output!;
+
+const opReturnScript = (seed: number) => Buffer.from([0x6a, 0x01, seed]);
+
+const createPayjoinIntegrityPsbt = ({
+  inputs,
+  outputs,
+  version = 2,
+  locktime = 0,
+}: {
+  inputs: PayjoinInputSpec[];
+  outputs: PayjoinOutputSpec[];
+  version?: number;
+  locktime?: number;
+}) => {
+  const psbt = new bitcoin.Psbt({ network: TESTNET });
+  psbt.setVersion(version);
+  psbt.setLocktime(locktime);
+
+  inputs.forEach((input, index) => {
+    psbt.addInput({
+      hash: testTxid(input.txidSeed),
+      index: input.vout ?? 0,
+      sequence: input.sequence ?? 0xfffffffd,
+    });
+    psbt.updateInput(index, {
+      witnessUtxo: {
+        script: p2wpkhScript(input.txidSeed),
+        value: BigInt(input.value),
+      },
+    });
+  });
+
+  outputs.forEach(output => {
+    psbt.addOutput({
+      script: output.script,
+      value: BigInt(output.value),
+    });
+  });
+
+  return psbt;
+};
+
+const validateIntegrityProposal = (original: bitcoin.Psbt, proposal: bitcoin.Psbt) => (
+  validatePayjoinProposal(original.toBase64(), proposal.toBase64(), [0], TESTNET)
+);
 
 export const registerPsbtPayjoinContracts = () => {
   describe('validatePayjoinProposal - BIP78 Rules', () => {
@@ -289,6 +360,163 @@ export const registerPsbtPayjoinContracts = () => {
         expect(result.valid).toBe(false);
         expect(result.errors.some(e => e.includes('out of range'))).toBe(true);
       });
+
+      it('rejects replacement of a non-first original sender input even when caller supplies only index 0', () => {
+        const receiverScript = p2wpkhScript(0x50);
+        const changeScript = p2wpkhScript(0x51);
+        const original = createPayjoinIntegrityPsbt({
+          inputs: [
+            { txidSeed: 0xaa, value: 500000 },
+            { txidSeed: 0xbb, value: 250000, vout: 1 },
+          ],
+          outputs: [
+            { script: receiverScript, value: 300000 },
+            { script: changeScript, value: 430000 },
+          ],
+        });
+        const proposal = createPayjoinIntegrityPsbt({
+          inputs: [
+            { txidSeed: 0xaa, value: 500000 },
+            { txidSeed: 0xcc, value: 420000 },
+          ],
+          outputs: [
+            { script: receiverScript, value: 300000 },
+            { script: changeScript, value: 600000 },
+          ],
+        });
+
+        const result = validateIntegrityProposal(original, proposal);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.includes('was not preserved'))).toBe(true);
+      });
+
+      it('accepts receiver input insertion without reordering original sender inputs', () => {
+        const receiverScript = p2wpkhScript(0x52);
+        const changeScript = p2wpkhScript(0x53);
+        const original = createPayjoinIntegrityPsbt({
+          inputs: [
+            { txidSeed: 0xa1, value: 120000 },
+            { txidSeed: 0xb1, value: 80000 },
+          ],
+          outputs: [
+            { script: receiverScript, value: 100000 },
+            { script: changeScript, value: 80000 },
+          ],
+        });
+        const proposal = createPayjoinIntegrityPsbt({
+          inputs: [
+            { txidSeed: 0xa1, value: 120000 },
+            { txidSeed: 0xc1, value: 50000 },
+            { txidSeed: 0xb1, value: 80000 },
+          ],
+          outputs: [
+            { script: receiverScript, value: 100000 },
+            { script: changeScript, value: 130000 },
+          ],
+        });
+
+        const result = validateIntegrityProposal(original, proposal);
+
+        expect(result.valid).toBe(true);
+      });
+
+      it('rejects sender input sequence mutation', () => {
+        const outputScript = p2wpkhScript(0x54);
+        const original = createPayjoinIntegrityPsbt({
+          inputs: [{ txidSeed: 0xa2, value: 100000, sequence: 0xfffffffd }],
+          outputs: [{ script: outputScript, value: 90000 }],
+        });
+        const proposal = createPayjoinIntegrityPsbt({
+          inputs: [
+            { txidSeed: 0xa2, value: 100000, sequence: 0xffffffff },
+            { txidSeed: 0xc2, value: 20000 },
+          ],
+          outputs: [{ script: outputScript, value: 110000 }],
+        });
+
+        const result = validateIntegrityProposal(original, proposal);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.includes('sequence changed'))).toBe(true);
+      });
+
+      it('rejects proposals that duplicate an original sender input', () => {
+        const messages = { errors: [] as string[], warnings: [] as string[] };
+        const input = { txid: 'a'.repeat(64), vout: 0, sequence: 0xfffffffd };
+
+        validateSenderInputs([input], [input, input], messages);
+
+        expect(messages.errors.some(e => e.includes('appears more than once'))).toBe(true);
+      });
+    });
+
+    describe('Legacy sender-index compatibility', () => {
+      it('derives the validation network while preserving only diagnostic legacy indices', () => {
+        expect(resolvePayjoinNetwork(undefined, TESTNET)).toBe(bitcoin.networks.bitcoin);
+        expect(resolvePayjoinNetwork([0], TESTNET)).toBe(TESTNET);
+        expect(resolvePayjoinNetwork(TESTNET, bitcoin.networks.bitcoin)).toBe(TESTNET);
+        expect(resolveLegacySenderInputIndices([0])).toEqual([0]);
+        expect(resolveLegacySenderInputIndices(TESTNET)).toBeNull();
+      });
+
+      it('ignores absent legacy sender indices', () => {
+        const errors: string[] = [];
+
+        validateLegacySenderInputIndices(
+          null,
+          [{ txid: 'a'.repeat(64), vout: 0, sequence: 0xfffffffd }],
+          errors,
+        );
+
+        expect(errors).toHaveLength(0);
+      });
+    });
+
+    describe('Rule 2b: Transaction-level fields unchanged', () => {
+      it('rejects proposal transaction version mutation', () => {
+        const outputScript = p2wpkhScript(0x55);
+        const original = createPayjoinIntegrityPsbt({
+          version: 2,
+          inputs: [{ txidSeed: 0xa3, value: 100000 }],
+          outputs: [{ script: outputScript, value: 90000 }],
+        });
+        const proposal = createPayjoinIntegrityPsbt({
+          version: 1,
+          inputs: [
+            { txidSeed: 0xa3, value: 100000 },
+            { txidSeed: 0xc3, value: 20000 },
+          ],
+          outputs: [{ script: outputScript, value: 110000 }],
+        });
+
+        const result = validateIntegrityProposal(original, proposal);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.includes('version changed'))).toBe(true);
+      });
+
+      it('rejects proposal transaction locktime mutation', () => {
+        const outputScript = p2wpkhScript(0x56);
+        const original = createPayjoinIntegrityPsbt({
+          locktime: 42,
+          inputs: [{ txidSeed: 0xa4, value: 100000 }],
+          outputs: [{ script: outputScript, value: 90000 }],
+        });
+        const proposal = createPayjoinIntegrityPsbt({
+          locktime: 43,
+          inputs: [
+            { txidSeed: 0xa4, value: 100000 },
+            { txidSeed: 0xc4, value: 20000 },
+          ],
+          outputs: [{ script: outputScript, value: 110000 }],
+        });
+
+        const result = validateIntegrityProposal(original, proposal);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.includes('locktime changed'))).toBe(true);
+      });
     });
 
     /**
@@ -424,7 +652,107 @@ export const registerPsbtPayjoinContracts = () => {
         );
 
         expect(result.valid).toBe(false);
-        expect(result.errors.some(e => e.includes('Fee increased by more than 50%'))).toBe(true);
+        expect(result.errors.some(e => e.includes('Invalid negative Payjoin fee'))).toBe(true);
+      });
+
+      it('rejects proposal absolute fees below the original transaction fee', () => {
+        const receiverScript = p2wpkhScript(0x57);
+        const changeScript = p2wpkhScript(0x58);
+        const original = createPayjoinIntegrityPsbt({
+          inputs: [{ txidSeed: 0xa5, value: 100000 }],
+          outputs: [
+            { script: receiverScript, value: 60000 },
+            { script: changeScript, value: 30000 },
+          ],
+        });
+        const proposal = createPayjoinIntegrityPsbt({
+          inputs: [
+            { txidSeed: 0xa5, value: 100000 },
+            { txidSeed: 0xc5, value: 50000 },
+          ],
+          outputs: [
+            { script: receiverScript, value: 60000 },
+            { script: changeScript, value: 85000 },
+          ],
+        });
+
+        const result = validateIntegrityProposal(original, proposal);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.includes('Fee decreased'))).toBe(true);
+      });
+
+      it('rejects non-finite fee calculations before comparing fee policy', () => {
+        const messages = { errors: [] as string[], warnings: [] as string[] };
+
+        validateFeePolicy(Number.POSITIVE_INFINITY, 1000, messages);
+
+        expect(messages.errors).toContain('Non-finite Payjoin fee calculation: Infinity -> 1000');
+        expect(messages.warnings).toHaveLength(0);
+      });
+
+      it('rejects positive proposal fees when the original transaction has zero fee', () => {
+        const messages = { errors: [] as string[], warnings: [] as string[] };
+
+        validateFeePolicy(0, 1000, messages);
+
+        expect(messages.errors).toContain('Fee increased from zero original fee to 1000');
+        expect(messages.warnings).toHaveLength(0);
+      });
+    });
+
+    describe('Rule 3b: Sender output scripts preserved as an ordered multiset', () => {
+      it('rejects duplicate output aliasing when one same-script sender output is removed', () => {
+        const duplicateScript = p2wpkhScript(0x59);
+        const attackerScript = p2wpkhScript(0x5a);
+        const original = createPayjoinIntegrityPsbt({
+          inputs: [{ txidSeed: 0xa6, value: 120000 }],
+          outputs: [
+            { script: duplicateScript, value: 50000 },
+            { script: duplicateScript, value: 50000 },
+          ],
+        });
+        const proposal = createPayjoinIntegrityPsbt({
+          inputs: [
+            { txidSeed: 0xa6, value: 120000 },
+            { txidSeed: 0xc6, value: 50000 },
+          ],
+          outputs: [
+            { script: duplicateScript, value: 50000 },
+            { script: attackerScript, value: 100000 },
+          ],
+        });
+
+        const result = validateIntegrityProposal(original, proposal);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.includes('was removed'))).toBe(true);
+      });
+
+      it('rejects mutation of a non-address sender output script', () => {
+        const receiverScript = p2wpkhScript(0x5b);
+        const original = createPayjoinIntegrityPsbt({
+          inputs: [{ txidSeed: 0xa7, value: 100000 }],
+          outputs: [
+            { script: opReturnScript(1), value: 0 },
+            { script: receiverScript, value: 90000 },
+          ],
+        });
+        const proposal = createPayjoinIntegrityPsbt({
+          inputs: [
+            { txidSeed: 0xa7, value: 100000 },
+            { txidSeed: 0xc7, value: 50000 },
+          ],
+          outputs: [
+            { script: opReturnScript(2), value: 0 },
+            { script: receiverScript, value: 140000 },
+          ],
+        });
+
+        const result = validateIntegrityProposal(original, proposal);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.includes('was removed'))).toBe(true);
       });
     });
 

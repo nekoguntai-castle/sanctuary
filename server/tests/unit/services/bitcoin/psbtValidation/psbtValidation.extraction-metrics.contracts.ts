@@ -255,6 +255,17 @@ export const registerPsbtExtractionMetricsContracts = () => {
   });
 
   describe('calculateVSize', () => {
+    it('should use extracted transaction virtual size when available', () => {
+      const fakePsbt = {
+        extractTransaction: vi.fn().mockReturnValue({
+          virtualSize: () => 123,
+        }),
+      } as unknown as bitcoin.Psbt;
+
+      expect(calculateVSize(fakePsbt)).toBe(123);
+      expect(fakePsbt.extractTransaction).toHaveBeenCalledWith(true);
+    });
+
     it('should return reasonable vsize for P2WPKH transaction', () => {
       const psbt = createTestPsbt({
         inputCount: 1,

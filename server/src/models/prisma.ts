@@ -19,6 +19,12 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { dbQueryDuration } from '../observability/metrics';
+import { resolvePrismaTransactionTimeoutOptions } from './prismaTransactionOptions';
+export {
+  resolvePrismaTransactionTimeoutOptions,
+  type PrismaTransactionTimeoutEnv,
+  type PrismaTransactionTimeoutOptions,
+} from './prismaTransactionOptions';
 
 const log = createLogger('INFRA:DB');
 
@@ -37,6 +43,7 @@ export function parseSlowQueryThresholdMs(raw: string | undefined): number {
 // Default of 50ms surfaces regressions in the 50-100ms band that the previous
 // 100ms default silently dropped.
 const SLOW_QUERY_THRESHOLD_MS = parseSlowQueryThresholdMs(process.env.SLOW_QUERY_THRESHOLD_MS);
+const PRISMA_TRANSACTION_TIMEOUT_OPTIONS = resolvePrismaTransactionTimeoutOptions(process.env);
 
 // Connection retry configuration
 const MAX_RETRIES = 5;
@@ -76,7 +83,12 @@ const latencyWindow: number[] = [];
 let activeQueries = 0;
 
 // Create Prisma client with query extension for metrics and slow query detection
-const prisma = new PrismaClient({ adapter }).$extends({
+const prisma = new PrismaClient({
+  adapter,
+  ...(PRISMA_TRANSACTION_TIMEOUT_OPTIONS === undefined
+    ? {}
+    : { transactionOptions: PRISMA_TRANSACTION_TIMEOUT_OPTIONS }),
+}).$extends({
   query: {
     $allModels: {
       async $allOperations({ operation, model, args, query }) {
@@ -145,6 +157,8 @@ export async function connectWithRetry(): Promise<void> {
   const poolParams = summarizeDatabaseUrlParams(process.env.DATABASE_URL);
   log.info('Database connection pool configuration', {
     slowQueryThresholdMs: SLOW_QUERY_THRESHOLD_MS,
+    transactionMaxWaitMs: PRISMA_TRANSACTION_TIMEOUT_OPTIONS?.maxWait,
+    transactionTimeoutMs: PRISMA_TRANSACTION_TIMEOUT_OPTIONS?.timeout,
     ...poolParams,
   });
 

@@ -271,7 +271,6 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
   const result = await attemptPayjoinSend(
     psbt,
     payjoinUrl,
-    [0], // Assume first input is sender's
     networkObj
   );
 
