@@ -359,6 +359,7 @@ test_docker_compose_build() {
     local encryption_key=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
     local encryption_salt=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
     local gateway_secret=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
+    local worker_diagnostics_secret=$(openssl rand -hex 32)
     local postgres_password=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
     local llm_egress_proxy_secret=$(openssl rand -hex 32)
     local redis_password=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
@@ -367,7 +368,8 @@ test_docker_compose_build() {
     log_info "Building Docker images (this may take a few minutes)..."
     if ! JWT_SECRET="$jwt_secret" ENCRYPTION_KEY="$encryption_key" \
          ENCRYPTION_SALT="$encryption_salt" \
-         GATEWAY_SECRET="$gateway_secret" POSTGRES_PASSWORD="$postgres_password" \
+         GATEWAY_SECRET="$gateway_secret" WORKER_DIAGNOSTICS_SECRET="$worker_diagnostics_secret" \
+         POSTGRES_PASSWORD="$postgres_password" \
          LLM_EGRESS_PROXY_SECRET="$llm_egress_proxy_secret" REDIS_PASSWORD="$redis_password" \
          HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
          docker compose build 2>&1; then
@@ -393,6 +395,7 @@ test_docker_compose_up() {
     local encryption_key=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
     local encryption_salt=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
     local gateway_secret=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
+    local worker_diagnostics_secret=$(openssl rand -hex 32)
     local postgres_password=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
     local llm_egress_proxy_secret=$(openssl rand -hex 32)
     local redis_password=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
@@ -401,7 +404,8 @@ test_docker_compose_up() {
     log_info "Starting containers..."
     if ! JWT_SECRET="$jwt_secret" ENCRYPTION_KEY="$encryption_key" \
          ENCRYPTION_SALT="$encryption_salt" \
-         GATEWAY_SECRET="$gateway_secret" POSTGRES_PASSWORD="$postgres_password" \
+         GATEWAY_SECRET="$gateway_secret" WORKER_DIAGNOSTICS_SECRET="$worker_diagnostics_secret" \
+         POSTGRES_PASSWORD="$postgres_password" \
          LLM_EGRESS_PROXY_SECRET="$llm_egress_proxy_secret" REDIS_PASSWORD="$redis_password" \
          HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
          docker compose up -d 2>&1; then

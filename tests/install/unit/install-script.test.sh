@@ -1836,6 +1836,7 @@ test_setup_script_persists_llm_egress_policy_env() {
 # ============================================
 
 ENV_EXAMPLE="$PROJECT_ROOT/.env.example"
+FRESH_INSTALL_TEST="$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh"
 
 test_env_example_exists() {
     assert_file_exists "$ENV_EXAMPLE" ".env.example should exist in project root"
@@ -1846,6 +1847,8 @@ test_env_example_has_all_required_secrets() {
     grep -q "JWT_SECRET" "$ENV_EXAMPLE" || missing="$missing JWT_SECRET"
     grep -q "ENCRYPTION_KEY" "$ENV_EXAMPLE" || missing="$missing ENCRYPTION_KEY"
     grep -q "GATEWAY_SECRET" "$ENV_EXAMPLE" || missing="$missing GATEWAY_SECRET"
+    grep -q "WORKER_DIAGNOSTICS_SECRET" "$ENV_EXAMPLE" \
+        || missing="$missing WORKER_DIAGNOSTICS_SECRET"
     grep -q "POSTGRES_PASSWORD" "$ENV_EXAMPLE" || missing="$missing POSTGRES_PASSWORD"
 
     if [ -z "$missing" ]; then
@@ -1854,6 +1857,19 @@ test_env_example_has_all_required_secrets() {
         echo -e "${RED}ASSERTION FAILED:${NC} .env.example missing:$missing"
         return 1
     fi
+}
+
+test_fresh_install_supplies_worker_diagnostics_secret() {
+    local generation_count compose_count
+    generation_count=$(grep -Fc 'local worker_diagnostics_secret=$(openssl rand -hex 32)' \
+        "$FRESH_INSTALL_TEST")
+    compose_count=$(grep -Fc 'WORKER_DIAGNOSTICS_SECRET="$worker_diagnostics_secret"' \
+        "$FRESH_INSTALL_TEST")
+
+    assert_equals "2" "$generation_count" \
+        "fresh-install build and up should each generate a worker diagnostics secret"
+    assert_equals "2" "$compose_count" \
+        "fresh-install build and up should each supply the worker diagnostics secret"
 }
 
 test_env_example_has_setup_instructions() {
@@ -1956,6 +1972,7 @@ main() {
     run_test "install script generates POSTGRES_PASSWORD" test_install_script_generates_postgres_password
     run_test "install script uses docker compose" test_install_script_uses_docker_compose
     run_test "install script creates .env file" test_install_script_creates_env_file
+    run_test "fresh install supplies WORKER_DIAGNOSTICS_SECRET" test_fresh_install_supplies_worker_diagnostics_secret
     run_test "install script loads runtime env for upgrades" test_install_script_loads_runtime_env_for_upgrades
     run_test "install script detects skip-checkout upgrade mode" test_install_script_detects_skip_checkout_upgrade_mode
     run_test "install script has silent openssl check" test_install_script_has_silent_openssl_check
