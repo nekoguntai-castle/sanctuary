@@ -138,15 +138,13 @@ export const adminCorePaths = {
   '/admin/support-package': {
     post: {
       tags: ['Admin'],
-      summary: 'Generate support package',
-      description: 'Generate and download a diagnostic support package JSON document.',
+      summary: 'Support package availability',
+      description: 'Support package downloads are disabled until the privacy-safe diagnostic profile is available.',
       security: bearerAuth,
       responses: {
-        200: jsonDownloadResponse('Support package JSON document', '#/components/schemas/AdminSupportPackage'),
         401: apiErrorResponse,
         403: apiErrorResponse,
-        429: jsonResponse('Support package generation already in progress', '#/components/schemas/AdminSimpleErrorResponse'),
-        500: apiErrorResponse,
+        503: jsonResponse('Support package downloads are temporarily unavailable', '#/components/schemas/AdminSupportPackageUnavailableResponse'),
       },
     },
   },

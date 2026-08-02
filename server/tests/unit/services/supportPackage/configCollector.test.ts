@@ -1,9 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { collectorMap, mockGetConfig, mockGetAllFlags } = vi.hoisted(() => ({
+const { collectorMap, mockGetConfig } = vi.hoisted(() => ({
   collectorMap: new Map<string, (ctx: any) => Promise<Record<string, unknown>>>(),
   mockGetConfig: vi.fn(),
-  mockGetAllFlags: vi.fn(),
 }));
 
 vi.mock('../../../../src/config', () => ({
@@ -19,145 +18,199 @@ vi.mock('../../../../src/utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../../src/services/featureFlagService', () => ({
-  featureFlagService: {
-    getAllFlags: (...args: unknown[]) => mockGetAllFlags(...args),
-  },
-}));
-
 vi.mock('../../../../src/services/supportPackage/collectors/registry', () => ({
-  registerCollector: (name: string, fn: (ctx: any) => Promise<Record<string, unknown>>) => {
-    collectorMap.set(name, fn);
+  registerShareableCollector: (
+    name: string,
+    definition: { collect: (ctx: any) => Promise<Record<string, unknown>> },
+  ) => {
+    collectorMap.set(name, definition.collect);
   },
 }));
 
 import '../../../../src/services/supportPackage/collectors/config';
 import { createAnonymizer } from '../../../../src/services/supportPackage/anonymizer';
+import { safeConfigProfileSchema } from '../../../../src/services/supportPackage/collectors/configSafeSchema';
 import type { CollectorContext } from '../../../../src/services/supportPackage/types';
 
 function makeContext(): CollectorContext {
-  return { anonymize: createAnonymizer('test-salt'), generatedAt: new Date() };
+  return {
+    anonymize: createAnonymizer('test-salt'),
+    generatedAt: new Date(),
+    signal: new AbortController().signal,
+    deadlineMs: Date.now() + 1000,
+  };
+}
+
+function makeConfig() {
+  return {
+    server: {
+      nodeEnv: 'production',
+      port: 3001,
+      apiUrl: 'https://api.internal.invalid',
+      clientUrl: 'https://client.invalid',
+    },
+    bitcoin: {
+      network: 'mainnet',
+      rpc: { host: 'bitcoin', port: 8332, user: 'rpc-user', password: 'rpc-password' },
+      electrum: { host: 'electrum', port: 50002, protocol: 'ssl' },
+    },
+    database: { url: 'postgresql://user:password@database:5432/sanctuary' },
+    redis: { url: 'redis://:password@redis:6379', enabled: true },
+    worker: {
+      healthUrl: 'http://worker:3002/ready',
+      healthPort: 3002,
+      healthTimeoutMs: 5000,
+      healthCheckIntervalMs: 30000,
+      concurrency: 5,
+    },
+    sync: { electrumSubscriptionsEnabled: true },
+    features: { telegramNotifications: false },
+  };
 }
 
 describe('config collector', () => {
   const getCollector = () => {
-    const c = collectorMap.get('config');
-    if (!c) throw new Error('config collector not registered');
-    return c;
+    const collector = collectorMap.get('config');
+    if (!collector) throw new Error('config collector not registered');
+    return collector;
   };
+
+  beforeEach(() => {
+    mockGetConfig.mockReset();
+    mockGetConfig.mockReturnValue(makeConfig());
+  });
 
   it('registers itself as config', () => {
     expect(collectorMap.has('config')).toBe(true);
   });
 
-  it('redacts database.url and redis.url', async () => {
-    mockGetConfig.mockReturnValue({
-      server: { port: 3001, nodeEnv: 'production' },
-      database: { url: 'postgresql://user:secret@db:5432/sanctuary' },
-      redis: { url: 'redis://:password@redis:6379' },
-      security: { jwt: { secret: 'super-secret-jwt-key', expiresIn: '1h' } },
-    });
-
-    const result = await getCollector()(makeContext());
-    const db = result.database as Record<string, unknown>;
-    const redis = result.redis as Record<string, unknown>;
-    expect(db.url).toBe('[REDACTED]');
-    expect(redis.url).toBe('[REDACTED]');
-  });
-
-  it('redacts jwt field via redactDeep', async () => {
-    mockGetConfig.mockReturnValue({
-      server: { port: 3001, nodeEnv: 'production' },
-      database: { url: 'postgresql://user:secret@db:5432/sanctuary' },
-      redis: { url: 'redis://:password@redis:6379' },
-      security: { jwt: { secret: 'super-secret-jwt-key', expiresIn: '1h' } },
-    });
-
-    const result = await getCollector()(makeContext());
-    const security = result.security as Record<string, unknown>;
-    // 'jwt' is in SENSITIVE_FIELDS, so the entire field is redacted
-    expect(security.jwt).toBe('[REDACTED]');
-  });
-
-  it('preserves non-sensitive values', async () => {
-    mockGetConfig.mockReturnValue({
-      server: { port: 3001, nodeEnv: 'production' },
-      database: { url: 'postgresql://user:secret@db:5432/sanctuary' },
-      redis: { url: 'redis://:password@redis:6379' },
-      security: { jwt: { secret: 'super-secret-jwt-key', expiresIn: '1h' } },
-    });
-
-    const result = await getCollector()(makeContext());
-    const server = result.server as Record<string, unknown>;
-    expect(server.port).toBe(3001);
-    expect(server.nodeEnv).toBe('production');
-  });
-
-  it('skips database url redaction when config has no database key', async () => {
-    mockGetConfig.mockReturnValue({
-      server: { port: 3001, nodeEnv: 'production' },
-      security: { jwt: { secret: 'super-secret-jwt-key', expiresIn: '1h' } },
-    });
-
+  it('returns only the reviewed notification-support profile', async () => {
     const result = await getCollector()(makeContext());
 
-    // database and redis keys should not exist in output
-    expect(result.database).toBeUndefined();
-    expect(result.redis).toBeUndefined();
-    // non-sensitive values still preserved
-    expect((result.server as Record<string, unknown>).port).toBe(3001);
-  });
-
-  it('skips redis url redaction when config has no redis key', async () => {
-    mockGetConfig.mockReturnValue({
-      server: { port: 3001, nodeEnv: 'production' },
-      database: { url: 'postgresql://user:secret@db:5432/sanctuary' },
-      security: { jwt: { secret: 'super-secret-jwt-key', expiresIn: '1h' } },
-    });
-
-    const result = await getCollector()(makeContext());
-
-    // database should be redacted, redis should not exist
-    expect((result.database as Record<string, unknown>).url).toBe('[REDACTED]');
-    expect(result.redis).toBeUndefined();
-  });
-
-  it('overlays runtime feature flags from database over static config defaults', async () => {
-    mockGetConfig.mockReturnValue({
-      server: { port: 3001 },
-      features: {
-        telegramNotifications: false,
-        aiAssistant: false,
-        experimental: { taprootAddresses: false },
+    expect(result).toEqual({
+      environment: 'production',
+      bitcoinNetwork: 'mainnet',
+      notificationPipeline: {
+        databaseConfigured: true,
+        redisConfigured: true,
+        workerHealthConfigured: true,
+        electrumSubscriptionsEnabled: true,
+        telegramFeatureDefaultEnabled: false,
       },
     });
-    mockGetAllFlags.mockResolvedValue([
-      { key: 'telegramNotifications', enabled: true },
-      { key: 'aiAssistant', enabled: true },
-      { key: 'experimental.taprootAddresses', enabled: true },
-    ]);
-
-    const result = await getCollector()(makeContext());
-    const features = result.features as Record<string, unknown>;
-
-    expect(features.telegramNotifications).toBe(true);
-    expect(features.aiAssistant).toBe(true);
-    expect((features.experimental as Record<string, unknown>).taprootAddresses).toBe(true);
   });
 
-  it('falls back to static config when featureFlagService throws', async () => {
-    mockGetConfig.mockReturnValue({
-      server: { port: 3001 },
-      features: {
-        telegramNotifications: false,
-        experimental: { taprootAddresses: false },
+  it('rejects unreviewed fields at every schema boundary', () => {
+    const profile = {
+      environment: 'production',
+      bitcoinNetwork: 'mainnet',
+      notificationPipeline: {
+        databaseConfigured: true,
+        redisConfigured: true,
+        workerHealthConfigured: true,
+        electrumSubscriptionsEnabled: true,
+        telegramFeatureDefaultEnabled: true,
       },
+    };
+
+    expect(safeConfigProfileSchema.safeParse({ ...profile, databaseUrl: 'poison' }).success).toBe(
+      false,
+    );
+    expect(
+      safeConfigProfileSchema.safeParse({
+        ...profile,
+        notificationPipeline: { ...profile.notificationPipeline, workerUrl: 'poison' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('reports only the static Telegram default and does not claim effective state', async () => {
+    mockGetConfig.mockReturnValue({
+      ...makeConfig(),
+      features: { telegramNotifications: true },
     });
-    mockGetAllFlags.mockRejectedValue(new Error('service not initialized'));
 
     const result = await getCollector()(makeContext());
-    const features = result.features as Record<string, unknown>;
 
-    expect(features.telegramNotifications).toBe(false);
+    expect(result.notificationPipeline).toMatchObject({
+      telegramFeatureDefaultEnabled: true,
+    });
+    expect(JSON.stringify(result)).not.toContain('effective');
+  });
+
+  it('omits flat and nested aliases plus raw and encoded sentinel URIs', async () => {
+    const rawSentinelUri = 'postgresql://support:phase1-secret@private-db:5432/sanctuary?sslmode=require';
+    const encodedSentinelUri = encodeURIComponent(rawSentinelUri);
+    const config = makeConfig();
+
+    mockGetConfig.mockReturnValue({
+      ...config,
+      databaseUrl: rawSentinelUri,
+      redisUrl: encodedSentinelUri,
+      jwtSecret: 'phase1-secret',
+      gatewaySecret: 'phase1-gateway-secret',
+      database: {
+        url: rawSentinelUri,
+        databaseUrl: encodedSentinelUri,
+        credentials: { username: 'support', password: 'phase1-secret' },
+      },
+      redis: {
+        enabled: true,
+        url: `redis://:${encodedSentinelUri}@private-redis:6379`,
+        connectionString: rawSentinelUri,
+      },
+      worker: {
+        ...config.worker,
+        healthUrl: `https://worker.invalid/ready?dsn=${encodedSentinelUri}`,
+      },
+      unexpectedAliases: {
+        database_url: rawSentinelUri,
+        nested: { dsn: encodedSentinelUri },
+      },
+    });
+
+    const result = await getCollector()(makeContext());
+    const serialized = JSON.stringify(result);
+
+    expect(result).toEqual({
+      environment: 'production',
+      bitcoinNetwork: 'mainnet',
+      notificationPipeline: {
+        databaseConfigured: true,
+        redisConfigured: true,
+        workerHealthConfigured: true,
+        electrumSubscriptionsEnabled: true,
+        telegramFeatureDefaultEnabled: false,
+      },
+    });
+    expect(serialized).not.toContain(rawSentinelUri);
+    expect(serialized).not.toContain(encodedSentinelUri);
+    expect(serialized).not.toContain('phase1-secret');
+    expect(serialized).not.toContain('private-db');
+    expect(serialized).not.toContain('private-redis');
+    expect(serialized).not.toContain('databaseUrl');
+    expect(serialized).not.toContain('connectionString');
+    expect(serialized).not.toContain('unexpectedAliases');
+  });
+
+  it('derives false configuration-presence facts without emitting source values', async () => {
+    const config = makeConfig();
+    mockGetConfig.mockReturnValue({
+      ...config,
+      database: { url: '' },
+      redis: { url: '', enabled: false },
+      worker: { ...config.worker, healthUrl: '' },
+      sync: { electrumSubscriptionsEnabled: false },
+    });
+
+    const result = await getCollector()(makeContext());
+
+    expect(result.notificationPipeline).toEqual({
+      databaseConfigured: false,
+      redisConfigured: false,
+      workerHealthConfigured: false,
+      electrumSubscriptionsEnabled: false,
+      telegramFeatureDefaultEnabled: false,
+    });
   });
 });

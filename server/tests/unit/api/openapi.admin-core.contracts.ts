@@ -181,24 +181,26 @@ export function registerOpenApiAdminCoreTests() {
         $ref: '#/components/schemas/AdminRestoreFailedResponse',
       });
 
-    expect(openApiSpec.paths['/admin/support-package'].post.responses[200].headers).toHaveProperty(
-      'Content-Disposition',
-    );
-    expect(openApiSpec.paths['/admin/support-package'].post.responses[200].content['application/json'].schema)
+    expect(openApiSpec.paths['/admin/support-package'].post.responses).not.toHaveProperty('200');
+    expect(openApiSpec.paths['/admin/support-package'].post.responses).not.toHaveProperty('429');
+    expect(openApiSpec.paths['/admin/support-package'].post.responses[503].content['application/json'].schema)
       .toEqual({
-        $ref: '#/components/schemas/AdminSupportPackage',
+        $ref: '#/components/schemas/AdminSupportPackageUnavailableResponse',
       });
-    expect(openApiSpec.paths['/admin/support-package'].post.responses[429].content['application/json'].schema)
-      .toEqual({
-        $ref: '#/components/schemas/AdminSimpleErrorResponse',
-      });
-    expect(openApiSpec.components.schemas.AdminSupportPackage.required).toEqual([
-      'version',
-      'generatedAt',
-      'serverVersion',
-      'collectors',
-      'meta',
-    ]);
+    expect(openApiSpec.components.schemas.AdminSupportPackageUnavailableResponse).toEqual({
+      type: 'object',
+      properties: {
+        error: { type: 'string', enum: ['support_package_unavailable'] },
+        message: {
+          type: 'string',
+          enum: [
+            'Support package downloads are temporarily unavailable while privacy-safe diagnostics are being implemented.',
+          ],
+        },
+      },
+      required: ['error', 'message'],
+      additionalProperties: false,
+    });
   });
 
   it('documents admin node config and proxy test routes', () => {

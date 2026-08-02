@@ -6,7 +6,12 @@
  */
 
 // Re-export registry functions
-export { registerCollector, getCollectors } from './registry';
+export {
+  registerCollector,
+  registerShareableCollector,
+  getCollectors,
+  getShareableCollectors,
+} from './registry';
 
 // Import collectors to trigger registration
 import './system';

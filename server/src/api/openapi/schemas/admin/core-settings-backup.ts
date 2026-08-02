@@ -202,32 +202,18 @@ export const adminCoreSettingsBackupSchemas = {
     },
     required: ['error', 'message', 'warnings', 'committed', 'cacheInvalidated'],
   },
-  AdminSupportPackage: {
+  AdminSupportPackageUnavailableResponse: {
     type: 'object',
     properties: {
-      version: { type: 'string' },
-      generatedAt: { type: 'string', format: 'date-time' },
-      serverVersion: { type: 'string' },
-      collectors: {
-        type: 'object',
-        additionalProperties: { type: 'object', additionalProperties: true },
-      },
-      meta: {
-        type: 'object',
-        properties: {
-          totalDurationMs: { type: 'integer', minimum: 0 },
-          succeeded: {
-            type: 'array',
-            items: { type: 'string' },
-          },
-          failed: {
-            type: 'array',
-            items: { type: 'string' },
-          },
-        },
-        required: ['totalDurationMs', 'succeeded', 'failed'],
+      error: { type: 'string', enum: ['support_package_unavailable'] },
+      message: {
+        type: 'string',
+        enum: [
+          'Support package downloads are temporarily unavailable while privacy-safe diagnostics are being implemented.',
+        ],
       },
     },
-    required: ['version', 'generatedAt', 'serverVersion', 'collectors', 'meta'],
+    required: ['error', 'message'],
+    additionalProperties: false,
   },
 } as const;
