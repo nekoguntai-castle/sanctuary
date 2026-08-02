@@ -11,8 +11,18 @@ import { initializeRevocationService, shutdownRevocationService } from './tokenR
 import { getSyncService } from './syncService';
 import { startWorkerHealthMonitor, stopWorkerHealthMonitor } from './workerHealth';
 import { cleanupOrphanedExportSnapshots } from './transactionExport/exportSnapshot';
+import { startCaptureParticipant, stopCaptureParticipant } from './supportPackage/captureRuntime';
 
 export function registerServerBackgroundServices(): void {
+  registerService({
+    name: 'support-capture-participant',
+    start: () => startCaptureParticipant('api'),
+    stop: () => stopCaptureParticipant(),
+    critical: false,
+    maxRetries: 1,
+    backoffMs: [1000],
+  });
+
   registerService({
     name: 'transaction-export-cleanup',
     start: async () => {

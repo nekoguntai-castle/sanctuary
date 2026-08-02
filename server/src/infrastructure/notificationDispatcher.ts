@@ -19,6 +19,7 @@ import { getErrorMessage } from "../utils/errors";
 import { toBullMqJobId } from "../jobs/bullMqJobIds";
 import type { NotificationFailureClass } from "../services/notifications/outcomes";
 import { recordNotificationTelemetry } from "../services/notifications/telemetry";
+import { controlledCaptureObservations } from "../services/supportPackage/capture";
 import {
   DEFAULT_NOTIFICATION_RETENTION_JOB_OPTIONS,
   notificationRetentionJobOptions,
@@ -132,6 +133,13 @@ export async function queueTransactionNotification(
   const queue = getQueue();
   if (!queue) {
     recordEnqueueTelemetry("enqueue_failed", "redis_unavailable");
+    controlledCaptureObservations.recordProducer({
+      walletId: payload.walletId,
+      txid: payload.txid,
+      outcome: 'rejected',
+      failureClass: 'redis_unavailable',
+      path: 'queued',
+    });
     return {
       outcome: "failed",
       failureClass: "redis_unavailable",
@@ -148,6 +156,13 @@ export async function queueTransactionNotification(
       txid: payload.txid,
     });
     recordEnqueueTelemetry("enqueue_resolved", "none");
+    controlledCaptureObservations.recordProducer({
+      walletId: payload.walletId,
+      txid: payload.txid,
+      outcome: 'accepted',
+      failureClass: 'none',
+      path: 'queued',
+    });
     return {
       outcome: "resolved",
       failureClass: "none",
@@ -162,6 +177,13 @@ export async function queueTransactionNotification(
       },
     );
     recordEnqueueTelemetry("enqueue_failed", "queue_add_failed");
+    controlledCaptureObservations.recordProducer({
+      walletId: payload.walletId,
+      txid: payload.txid,
+      outcome: 'rejected',
+      failureClass: 'queue_add_failed',
+      path: 'queued',
+    });
     return {
       outcome: "failed",
       failureClass: "queue_add_failed",

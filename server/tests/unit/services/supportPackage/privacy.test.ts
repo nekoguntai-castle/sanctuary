@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   buildSupportPackageSchema,
   MAX_SUPPORT_PACKAGE_BYTES,
+  serializePrivacySafeArtifact,
   serializeShareablePackage,
 } from '../../../../src/services/supportPackage/privacy';
 import type { SupportPackage } from '../../../../src/services/supportPackage/types';
@@ -96,5 +97,12 @@ describe('support package privacy boundary', () => {
       if (original === undefined) delete process.env.WORKER_DIAGNOSTICS_SECRET;
       else process.env.WORKER_DIAGNOSTICS_SECRET = original;
     }
+  });
+
+  it('ignores empty transient selectors while scanning non-empty selector encodings', () => {
+    const selector = 'selector-private-value';
+    expect(() => serializePrivacySafeArtifact({ safe: true }, ['', selector])).not.toThrow();
+    expect(() => serializePrivacySafeArtifact({ value: selector }, ['', selector]))
+      .toThrow('support_package_privacy_policy_violation');
   });
 });

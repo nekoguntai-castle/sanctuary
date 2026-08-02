@@ -35,6 +35,7 @@ import {
   type SafeNotificationOutcome,
 } from './outcomes';
 import { recordNotificationTelemetry } from './telemetry';
+import { controlledCaptureObservations } from '../supportPackage/capture';
 
 const log = createLogger('NOTIFY:DISPATCH');
 
@@ -126,14 +127,39 @@ async function deliverInlineTransactionNotifications(
     const results = await notifyNewTransactions(walletId, transactions);
     const summary = summarizeSafeNotificationOutcome(results);
     recordInlineTerminalOutcome(summary);
+    recordInlineCapture(walletId, transactions, summary);
     return summary;
   } catch (error) {
-    recordInlineTerminalOutcome({
+    const summary: SafeNotificationOutcome = {
       outcome: 'ambiguous',
       failureClass: 'internal',
       channels: [],
-    });
+    };
+    recordInlineTerminalOutcome(summary);
+    recordInlineCapture(walletId, transactions, summary);
     throw error;
+  }
+}
+
+function recordInlineCapture(
+  walletId: string,
+  transactions: TransactionData[],
+  summary: SafeNotificationOutcome,
+): void {
+  const telegram = summary.channels.find(channel => channel.channel === 'telegram');
+  for (const transaction of transactions) {
+    controlledCaptureObservations.recordTerminal({
+      walletId,
+      txid: transaction.txid,
+      outcome: summary.outcome,
+      failureClass: summary.failureClass,
+      telegramOutcome: telegram?.outcome ?? 'not_registered',
+      telegramFailureClass: telegram?.failureClass ?? 'none',
+      terminalState: summary.outcome === 'rejected' || summary.outcome === 'ambiguous'
+        ? 'failed'
+        : 'completed',
+      path: 'inline',
+    });
   }
 }
 

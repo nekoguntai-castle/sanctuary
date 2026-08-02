@@ -1,9 +1,11 @@
 # Privacy-safe support package reference
 
-Sanctuary's support package version `2.0.0` is a locally generated,
-administrator-only diagnostic artifact. Its only profile is
-`shareable_aggregate`. The server does not upload the file or contact a
-notification provider while generating it.
+Sanctuary's support packages are locally generated, administrator-only
+diagnostic artifacts. The default profile is `shareable_aggregate`. A separate,
+explicitly confirmed `single_incident` profile can locally correlate
+privacy-minimized evidence for one selected notification incident. The server
+does not upload either file or contact a notification provider while generating
+it.
 
 Generation requires an explicit acknowledgement because aggregate counts and
 coarse activity windows can still reveal operational activity on a small
@@ -30,6 +32,49 @@ The package does include its own generation time and operational sample times.
 Those timestamps describe the diagnostic observation, not an individual user's
 activity. A complete package is limited to 256 KiB and each collector's data is
 limited to 16 KiB.
+
+### Single-incident boundary
+
+Incident mode is a separate action and endpoint; adding selector fields to the
+default request is rejected. Its request contains one transaction ID, a sender
+wallet selector, a receiver wallet selector, and an approximate incident time so
+the local server can resolve the minimum retained evidence. Request selectors
+are never serialized into the artifact, audit details, errors, or capture state.
+
+The incident artifact contains two categorical role records (`sender` and
+`receiver`) and may describe record presence, expected direction,
+ownership/network match, timing relation, evidence source and coverage, queue
+state, attempt bucket, lifecycle outcome, Telegram outcome, safe failure class,
+and coarse activity ages. It excludes recipient counts, wallet or transaction
+attributes, identifiers, exact event times, amounts, addresses, payloads,
+provider responses, and raw errors. `not_observed`, `not_retained`,
+`not_applicable`, and `observed_false` are distinct; missing evidence is never
+presented as a negative fact.
+
+A controlled capture may be explicitly armed for one future manual reproduction
+for at most 15 minutes. Arming does not send a transaction, retry a job, contact
+Telegram, change logging level, or mutate wallet/provider state. Its visible
+state may be `arming`, `ready`, `partial`, `invalid`, or `tearing_down`; only
+`ready` means every currently required participant acknowledged the same fenced
+session. Selectors remain in bounded process memory and are erased on teardown
+or expiry. A restart, membership change, partial barrier, or expiry invalidates
+the capture rather than producing an authoritative claim.
+
+Controlled capture is intentionally a single-host deployment feature. The API
+and the one notification worker run as UID `1001`, mount the same
+`support_capture_runtime` volume at `/run/sanctuary-support-capture`, and expose
+only the fixed `api,notification-worker` participant roster. The socket
+directory is mode `0700` and participant sockets are mode `0600`; there is no
+TCP or HTTP fallback. `SUPPORT_CAPTURE_MEMBERSHIP_GENERATION` is currently `1`
+and must be incremented whenever that roster changes. Deployments with multiple
+API or worker replicas must leave controlled capture unavailable until they
+provide an explicitly reviewed same-host roster and socket topology; partial
+membership must never be reported as complete evidence.
+
+The browser preview is parsed from the exact server-validated Blob retained in
+memory. Download uses that same Blob without a second request or JSON
+reserialization, so the previewed and downloaded bytes are identical. Editing a
+selector or revoking confirmation discards the corresponding local preview.
 
 ## Envelope and section contract
 
@@ -298,6 +343,19 @@ Failure to acquire the coordination store, collect, validate, serialize, or pass
 the final privacy check returns the fixed `503 support_package_unavailable`
 response without echoing rejected data. Successful downloads include
 `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`.
+
+The Support settings UI fetches those canonical bytes once for local preview and
+downloads the retained Blob only after the administrator chooses **Download
+Previewed File**. The separate incident action uses
+`POST /api/v1/admin/support-package/incident` with the exact selector fields and
+`confirmIncidentProfile: true`; the default endpoint never accepts them.
+
+Controlled-capture state and lifecycle use the separate
+`/api/v1/admin/support-package/incident-capture` resource: `GET` reads only the
+fixed state, `POST` arms with incident selectors plus
+`confirmIncidentCapture: true`, and `DELETE` performs confirmed idempotent
+teardown. These endpoints return fixed categorical state/errors and never return
+the selector values or internal session/generation identifiers.
 
 The worker's legacy `GET /metrics` and `GET /metrics/prometheus` endpoints remain
 unauthenticated on the internal-only worker listener for monitoring

@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import {
   defaultJsonParser,
   defaultUrlencodedParser,
+  incidentDiagnosticsJsonParser,
   usesRouteSpecificLargeJsonParser,
+  usesRouteSpecificJsonParser,
 } from '../../../src/middleware/bodyParsing';
 
 function createTestApp() {
@@ -20,6 +22,12 @@ function createTestApp() {
   app.post('/api/v1/ordinary', (req, res) => {
     res.json({ size: req.body.payload.length });
   });
+
+  app.post(
+    '/api/v1/admin/support-package/incident',
+    incidentDiagnosticsJsonParser(),
+    (req, res) => res.json({ size: req.body.txid.length }),
+  );
 
   const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     res.status(err.status || 500).json({ message: err.message });
@@ -43,6 +51,32 @@ describe('body parsing middleware', () => {
       method: 'POST',
       path: '/api/v1/ordinary',
     })).toBe(false);
+  });
+
+  it('routes selector-bearing diagnostics only through their bounded JSON parser', () => {
+    expect(usesRouteSpecificJsonParser({
+      method: 'POST',
+      path: '/api/v1/admin/support-package/incident',
+    })).toBe(true);
+    expect(usesRouteSpecificJsonParser({
+      method: 'POST',
+      path: '/api/v1/admin/support-package/incident-capture',
+    })).toBe(true);
+    expect(usesRouteSpecificJsonParser({
+      method: 'DELETE',
+      path: '/api/v1/admin/support-package/incident-capture',
+    })).toBe(true);
+    expect(usesRouteSpecificLargeJsonParser({
+      method: 'POST',
+      path: '/api/v1/admin/support-package/incident',
+    })).toBe(false);
+  });
+
+  it('rejects selector-bearing diagnostics above the 4KB route limit', async () => {
+    await request(createTestApp())
+      .post('/api/v1/admin/support-package/incident')
+      .send({ txid: 'x'.repeat(4 * 1024 + 1) })
+      .expect(413);
   });
 
   it('lets backup validation payloads above the default 10MB limit reach the route parser', async () => {

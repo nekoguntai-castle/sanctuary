@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   startSync: vi.fn(),
   stopSync: vi.fn(),
   cleanupExportSnapshots: vi.fn(),
+  startCaptureParticipant: vi.fn(),
+  stopCaptureParticipant: vi.fn(),
 }));
 
 vi.mock('../../../src/services/serviceRegistry', () => ({
@@ -45,6 +47,11 @@ vi.mock('../../../src/services/transactionExport/exportSnapshot', () => ({
   cleanupOrphanedExportSnapshots: mocks.cleanupExportSnapshots,
 }));
 
+vi.mock('../../../src/services/supportPackage/captureRuntime', () => ({
+  startCaptureParticipant: mocks.startCaptureParticipant,
+  stopCaptureParticipant: mocks.stopCaptureParticipant,
+}));
+
 const loadServerBackgroundServices = async () => {
   vi.resetModules();
   return import('../../../src/services/serverBackgroundServices');
@@ -64,6 +71,7 @@ describe('serverBackgroundServices', () => {
 
     const registered = mocks.registerService.mock.calls.map(([service]) => service);
     expect(registered.map(service => service.name)).toEqual([
+      'support-capture-participant',
       'transaction-export-cleanup',
       'token-revocation',
       'notifications',
@@ -77,6 +85,7 @@ describe('serverBackgroundServices', () => {
 
     const registered = mocks.registerService.mock.calls.map(([service]) => service);
     expect(registered.map(service => service.name)).toEqual([
+      'support-capture-participant',
       'transaction-export-cleanup',
       'token-revocation',
       'notifications',
@@ -85,6 +94,11 @@ describe('serverBackgroundServices', () => {
     ]);
 
     expect(registered.find(service => service.name === 'token-revocation')).toMatchObject({
+      critical: false,
+      maxRetries: 1,
+      backoffMs: [1000],
+    });
+    expect(registered.find(service => service.name === 'support-capture-participant')).toMatchObject({
       critical: false,
       maxRetries: 1,
       backoffMs: [1000],
@@ -109,6 +123,8 @@ describe('serverBackgroundServices', () => {
     const byName = new Map(registered.map(service => [service.name, service]));
 
     await byName.get('transaction-export-cleanup')?.start();
+    await byName.get('support-capture-participant')?.start();
+    await byName.get('support-capture-participant')?.stop();
     await byName.get('token-revocation')?.start();
     await byName.get('token-revocation')?.stop();
     await byName.get('notifications')?.start();
@@ -119,6 +135,8 @@ describe('serverBackgroundServices', () => {
     await byName.get('sync')?.stop();
 
     expect(mocks.initializeRevocationService).toHaveBeenCalledTimes(1);
+    expect(mocks.startCaptureParticipant).toHaveBeenCalledWith('api');
+    expect(mocks.stopCaptureParticipant).toHaveBeenCalledTimes(1);
     expect(mocks.cleanupExportSnapshots).toHaveBeenCalledTimes(1);
     expect(mocks.shutdownRevocationService).toHaveBeenCalledTimes(1);
     expect(mocks.startNotifications).toHaveBeenCalledTimes(1);

@@ -334,5 +334,35 @@ describe('Request Logger Middleware', () => {
         process.env.LOG_REQUEST_BODY = original;
       }
     });
+
+    it.each([
+      '/api/v1/admin/support-package/incident',
+      '/api/v1/admin/support-package/incident-capture',
+      '/api/v1/admin/support-package/incident-capture/status',
+    ])('never logs selector-bearing diagnostics bodies for %s', async (path) => {
+      const original = process.env.LOG_REQUEST_BODY;
+      process.env.LOG_REQUEST_BODY = 'true';
+      vi.resetModules();
+
+      const { requestLogger: requestLoggerWithBody } = await import('../../../src/middleware/requestLogger');
+      req.method = 'POST';
+      req.path = path;
+      req.body = {
+        txid: 'a'.repeat(64),
+        senderWalletId: 'sender-wallet-selector',
+        receiverWalletId: 'receiver-wallet-selector',
+      };
+
+      requestLoggerWithBody(req, res, next);
+
+      expect(mockRedactObject).not.toHaveBeenCalled();
+      expect(mockLogger.info).not.toHaveBeenCalled();
+
+      if (original === undefined) {
+        delete process.env.LOG_REQUEST_BODY;
+      } else {
+        process.env.LOG_REQUEST_BODY = original;
+      }
+    });
   });
 });

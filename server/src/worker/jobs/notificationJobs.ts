@@ -36,6 +36,7 @@ import {
   shouldFailBullMqNotificationJob,
   summarizeNotificationResults,
 } from './notificationJobHelpers';
+import { controlledCaptureObservations } from '../../services/supportPackage/capture';
 
 const log = createLogger('JOB:NOTIFY');
 
@@ -67,6 +68,7 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
       outcome: 'none',
       failureClass: 'none',
     });
+    controlledCaptureObservations.recordHandlerStarted({ walletId, txid });
 
     log.debug(`Sending transaction notification: ${txid}`, {
       walletId,

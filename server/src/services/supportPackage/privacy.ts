@@ -6,6 +6,7 @@
  * exact bytes that would be returned to an administrator.
  */
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
 import {
   SUPPORT_PACKAGE_FAILURE_CODES,
   SUPPORT_PACKAGE_AUTHORITIES,
@@ -128,11 +129,27 @@ function knownSensitiveEncodings(): string[] {
 /** Fixed-code failure raised when export cannot be proven privacy-safe. */
 export class SupportPackagePrivacyError extends Error {}
 
-/** Validate and serialize the exact bytes safe to send to the requester. */
-export function serializeShareablePackage(pkg: SupportPackage): Buffer {
+function forbiddenValueEncodings(values: readonly string[]): string[] {
+  const encoded = new Set<string>();
+  for (const value of values) {
+    if (!value) continue;
+    encoded.add(value);
+    encoded.add(encodeURIComponent(value));
+    encoded.add(Buffer.from(value, 'utf8').toString('base64'));
+    encoded.add(JSON.stringify(value).slice(1, -1));
+    encoded.add(createHash('sha256').update(value, 'utf8').digest('hex'));
+  }
+  return [...encoded];
+}
+
+/** Canonicalize and scan any strict support artifact before HTTP headers exist. */
+export function serializePrivacySafeArtifact(
+  artifact: unknown,
+  forbiddenValues: readonly string[] = [],
+): Buffer {
   let json: string;
   try {
-    json = JSON.stringify(canonicalize(pkg));
+    json = JSON.stringify(canonicalize(artifact));
   } catch {
     throw new SupportPackagePrivacyError('support_package_serialization_failed');
   }
@@ -142,8 +159,16 @@ export function serializeShareablePackage(pkg: SupportPackage): Buffer {
   }
   const containsForbiddenPattern = FORBIDDEN_BYTE_PATTERNS.some((pattern) => pattern.test(json));
   const containsKnownSecret = knownSensitiveEncodings().some((value) => json.includes(value));
-  if (containsForbiddenPattern || containsKnownSecret) {
+  const containsSelector = forbiddenValueEncodings(forbiddenValues).some(
+    (value) => json.includes(value),
+  );
+  if (containsForbiddenPattern || containsKnownSecret || containsSelector) {
     throw new SupportPackagePrivacyError('support_package_privacy_policy_violation');
   }
   return bytes;
+}
+
+/** Validate and serialize the exact bytes safe to send to the requester. */
+export function serializeShareablePackage(pkg: SupportPackage): Buffer {
+  return serializePrivacySafeArtifact(pkg);
 }

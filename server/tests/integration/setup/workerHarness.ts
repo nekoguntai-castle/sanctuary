@@ -203,6 +203,11 @@ export const createWorkerTestHarness = async (
     updateJobQueueMetrics: vi.fn(),
   }));
 
+  vi.doMock('../../../src/services/supportPackage/captureRuntime', () => ({
+    startCaptureParticipant: vi.fn(async () => undefined),
+    stopCaptureParticipant: vi.fn(async () => undefined),
+  }));
+
   const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
 
   await import('../../../src/worker');

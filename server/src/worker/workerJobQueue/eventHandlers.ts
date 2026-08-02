@@ -15,6 +15,7 @@ import {
   type NotificationOutcome,
 } from '../../services/notifications/outcomes';
 import { recordNotificationTelemetry } from '../../services/notifications/telemetry';
+import { controlledCaptureObservations } from '../../services/supportPackage/capture';
 
 const log = createLogger('WORKER:QUEUE_EVENTS');
 
@@ -145,6 +146,43 @@ function recordTransactionTerminalOutcome(
     outcome: state.outcome,
     failureClass: state.failureClass,
   });
+  if (stage === 'terminal_completed' || stage === 'terminal_failure') {
+    const data = job.data as { walletId?: unknown; txid?: unknown } | undefined;
+    if (data && typeof data.walletId === 'string' && typeof data.txid === 'string') {
+      const telegram = readTelegramState(job, stage === 'terminal_completed');
+      controlledCaptureObservations.recordTerminal({
+        walletId: data.walletId,
+        txid: data.txid,
+        outcome: state.outcome,
+        failureClass: state.failureClass,
+        telegramOutcome: telegram.outcome,
+        telegramFailureClass: telegram.failureClass,
+        terminalState: stage === 'terminal_completed' ? 'completed' : 'failed',
+        path: 'queued',
+      });
+    }
+  }
+}
+
+function readTelegramState(job: Job, completed: boolean): RecordedNotificationState {
+  const candidate = completed
+    ? job.returnvalue
+    : getCurrentAttemptProgressNotification(job.progress, job.attemptsMade);
+  if (!candidate || typeof candidate !== 'object') {
+    return { outcome: 'ambiguous', failureClass: 'unknown' };
+  }
+  const channels = (candidate as Record<string, unknown>)[completed ? 'channelOutcomes' : 'channels'];
+  if (!Array.isArray(channels)) return { outcome: 'not_registered', failureClass: 'none' };
+  const telegram = channels.find(channel => channel && typeof channel === 'object'
+    && (channel as Record<string, unknown>).channel === 'telegram');
+  if (!telegram || typeof telegram !== 'object') {
+    return { outcome: 'not_registered', failureClass: 'none' };
+  }
+  const record = telegram as Record<string, unknown>;
+  return {
+    outcome: normalizeNotificationOutcome(record.outcome, 'ambiguous'),
+    failureClass: normalizeNotificationFailureClass(record.failureClass, 'unknown'),
+  };
 }
 
 function readRecordedNotificationState(

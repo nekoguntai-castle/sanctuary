@@ -4,9 +4,11 @@ import {
   baseSettingsProperties,
 } from './shared';
 import { adminSupportPackageSchemas } from './support-package';
+import { adminSupportPackageIncidentSchemas } from './support-package-incident';
 
 export const adminCoreSettingsBackupSchemas = {
   ...adminSupportPackageSchemas,
+  ...adminSupportPackageIncidentSchemas,
   AdminVersionResponse: {
     type: 'object',
     properties: {

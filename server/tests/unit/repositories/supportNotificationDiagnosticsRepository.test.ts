@@ -11,6 +11,7 @@ vi.mock('../../../src/models/prisma', () => ({
 }));
 
 import {
+  getIncidentTelegramEligibilityCoverage,
   getNotificationEligibilityCounts,
 } from '../../../src/repositories/supportNotificationDiagnosticsRepository';
 
@@ -89,5 +90,42 @@ describe('support notification diagnostics repository', () => {
 
     await expect(getNotificationEligibilityCounts())
       .rejects.toThrow('notification_eligibility_unavailable');
+  });
+
+  it.each([
+    [{ walletPresent: false, accessibleUsers: 0, eligibleUsers: 0 }, 'unknown'],
+    [{ walletPresent: true, accessibleUsers: 0, eligibleUsers: 0 }, 'none'],
+    [{ walletPresent: true, accessibleUsers: 3, eligibleUsers: 0 }, 'none'],
+    [{ walletPresent: true, accessibleUsers: 3, eligibleUsers: 1 }, 'some'],
+    [{ walletPresent: true, accessibleUsers: 3, eligibleUsers: 3 }, 'all'],
+  ] as const)('reduces exact incident eligibility to %s without returning counts', async (row, expected) => {
+    mockQueryRaw.mockResolvedValue([row]);
+
+    await expect(getIncidentTelegramEligibilityCoverage('wallet-selector', 'sent'))
+      .resolves.toBe(expected);
+
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(1);
+    expect(mockQueryRaw).toHaveBeenCalledTimes(1);
+    expect(mockTransaction).toHaveBeenCalledWith(expect.any(Function), { timeout: 2_000 });
+  });
+
+  it('uses only the selected direction and keeps selectors as bound SQL values', async () => {
+    mockQueryRaw.mockResolvedValue([{
+      walletPresent: true,
+      accessibleUsers: 1,
+      eligibleUsers: 1,
+    }]);
+
+    await getIncidentTelegramEligibilityCoverage('wallet-selector-poison', 'received');
+
+    const query = mockQueryRaw.mock.calls[0]?.[0] as {
+      strings: string[];
+      values: unknown[];
+    };
+    const sqlText = query.strings.join('?');
+    expect(sqlText).toContain('notifyReceived');
+    expect(sqlText).not.toContain('notifySent');
+    expect(sqlText).not.toContain('wallet-selector-poison');
+    expect(query.values).toContain('wallet-selector-poison');
   });
 });

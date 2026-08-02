@@ -13,6 +13,32 @@ const supportPackageDownloadResponse = jsonDownloadResponse(
   '#/components/schemas/AdminSupportPackageV2',
 );
 
+const incidentSupportPackageResponse = {
+  description: 'Canonical privacy-validated single-incident support package bytes',
+  headers: {
+    'Content-Disposition': {
+      schema: {
+        type: 'string',
+        pattern: '^attachment; filename="sanctuary-support-incident-[0-9-]+\\.json"$',
+      },
+      description: 'Distinct incident-profile JSON attachment filename.',
+    },
+    'Cache-Control': {
+      schema: { type: 'string', enum: ['no-store'] },
+      description: 'Prevents storage of generated diagnostic bytes.',
+    },
+    'X-Content-Type-Options': {
+      schema: { type: 'string', enum: ['nosniff'] },
+      description: 'Prevents MIME type sniffing of the JSON artifact.',
+    },
+  },
+  content: {
+    'application/vnd.sanctuary.support-incident.v1+json': {
+      schema: { $ref: '#/components/schemas/AdminIncidentSupportPackageV1' },
+    },
+  },
+} as const;
+
 export const adminCorePaths = {
   '/admin/version': {
     get: {
@@ -167,6 +193,65 @@ export const adminCorePaths = {
         403: apiErrorResponse,
         429: jsonResponse('A deployment-wide generation is already active', '#/components/schemas/AdminSupportPackageBusyResponse'),
         503: jsonResponse('The privacy-safe package could not be generated', '#/components/schemas/AdminSupportPackageUnavailableResponse'),
+      },
+    },
+  },
+  '/admin/support-package/incident': {
+    post: {
+      tags: ['Admin'],
+      summary: 'Preview a privacy-safe single-incident support package',
+      description: 'Locally correlates one explicitly confirmed incident. Selectors are request-only and never appear in the returned artifact.',
+      security: bearerAuth,
+      requestBody: jsonRequestBody('#/components/schemas/AdminIncidentSupportPackageRequest'),
+      responses: {
+        200: incidentSupportPackageResponse,
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        429: jsonResponse('A deployment-wide generation is already active', '#/components/schemas/AdminSupportPackageBusyResponse'),
+        503: jsonResponse('The privacy-safe incident profile could not be generated', '#/components/schemas/AdminIncidentProfileUnavailableResponse'),
+      },
+    },
+  },
+  '/admin/support-package/incident-capture': {
+    get: {
+      tags: ['Admin'],
+      summary: 'Read controlled incident-capture state',
+      description: 'Returns only fixed categorical capture state; selectors and internal session identifiers are never returned.',
+      security: bearerAuth,
+      responses: {
+        200: jsonResponse('Controlled capture state', '#/components/schemas/AdminIncidentCaptureStatus'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        503: jsonResponse('Capture coordination is unavailable', '#/components/schemas/AdminIncidentCaptureUnavailableResponse'),
+      },
+    },
+    post: {
+      tags: ['Admin'],
+      summary: 'Arm a controlled incident capture',
+      description: 'Arms one explicitly confirmed, short-lived local capture. This action does not send or retry a transaction or contact a notification provider.',
+      security: bearerAuth,
+      requestBody: jsonRequestBody('#/components/schemas/AdminIncidentCaptureArmRequest'),
+      responses: {
+        201: jsonResponse('Controlled capture armed', '#/components/schemas/AdminIncidentCaptureStatus'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        503: jsonResponse('Capture coordination is unavailable', '#/components/schemas/AdminIncidentCaptureUnavailableResponse'),
+      },
+    },
+    delete: {
+      tags: ['Admin'],
+      summary: 'Tear down a controlled incident capture',
+      description: 'Performs confirmed idempotent teardown and returns only fixed categorical state.',
+      security: bearerAuth,
+      requestBody: jsonRequestBody('#/components/schemas/AdminIncidentCaptureTeardownRequest'),
+      responses: {
+        200: jsonResponse('Controlled capture state', '#/components/schemas/AdminIncidentCaptureStatus'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        503: jsonResponse('Capture coordination is unavailable', '#/components/schemas/AdminIncidentCaptureUnavailableResponse'),
       },
     },
   },

@@ -109,7 +109,10 @@ RUN rm -rf /app/node_modules/@sanctuary/shared && \
 COPY --from=builder /repo/shared/package.json /app/node_modules/@sanctuary/shared/package.json
 COPY --from=builder /repo/shared/dist /app/node_modules/@sanctuary/shared/dist
 
-RUN chown -R sanctuary:nodejs /app
+RUN mkdir -p /run/sanctuary-support-capture && \
+    chown sanctuary:nodejs /run/sanctuary-support-capture && \
+    chmod 0700 /run/sanctuary-support-capture && \
+    chown -R sanctuary:nodejs /app
 
 USER sanctuary
 EXPOSE 3001

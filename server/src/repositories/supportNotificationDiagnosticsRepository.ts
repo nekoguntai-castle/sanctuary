@@ -24,6 +24,14 @@ export interface NotificationEligibilityCounts {
   orphanedWalletSettings: number;
 }
 
+export type IncidentEligibilityCoverage = 'none' | 'some' | 'all' | 'unknown';
+
+interface IncidentEligibilityCounts {
+  walletPresent: boolean;
+  accessibleUsers: number;
+  eligibleUsers: number;
+}
+
 const QUERY_TIMEOUT_MS = 2_000;
 
 /** Return only aggregate counts derived from current database-backed settings. */
@@ -142,4 +150,65 @@ export async function getNotificationEligibilityCounts(): Promise<NotificationEl
 
   if (!row) throw new Error('notification_eligibility_unavailable');
   return row;
+}
+
+/**
+ * Reduce one exact wallet/direction lookup to categorical current-state
+ * coverage. User rows, preferences, credentials, and counts do not leave the
+ * repository boundary.
+ */
+export async function getIncidentTelegramEligibilityCoverage(
+  walletId: string,
+  direction: 'sent' | 'received',
+): Promise<IncidentEligibilityCoverage> {
+  const directionSetting = direction === 'sent'
+    ? Prisma.sql`settings.setting->>'notifySent'`
+    : Prisma.sql`settings.setting->>'notifyReceived'`;
+  const rows = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw(
+      Prisma.sql`SELECT set_config('statement_timeout', ${String(QUERY_TIMEOUT_MS)}, true)`,
+    );
+    return tx.$queryRaw<IncidentEligibilityCounts[]>(Prisma.sql`
+      WITH target_wallet AS (
+        SELECT "id", "groupId" FROM "wallets" WHERE "id" = ${walletId}
+      ), accessible_users AS (
+        SELECT direct_access."userId" AS user_id
+        FROM target_wallet target
+        JOIN "wallet_users" direct_access ON direct_access."walletId" = target."id"
+        UNION
+        SELECT group_access."userId" AS user_id
+        FROM target_wallet target
+        JOIN "group_members" group_access ON group_access."groupId" = target."groupId"
+      ), settings AS (
+        SELECT
+          users.user_id,
+          COALESCE(u."preferences"->'telegram'->>'enabled', 'false') = 'true'
+            AS global_enabled,
+          NULLIF(u."preferences"->'telegram'->>'botToken', '') IS NOT NULL AS has_token,
+          NULLIF(u."preferences"->'telegram'->>'chatId', '') IS NOT NULL AS has_chat,
+          CASE
+            WHEN jsonb_typeof(u."preferences"->'telegram'->'wallets') = 'object'
+            THEN u."preferences"->'telegram'->'wallets'->${walletId}
+            ELSE NULL
+          END AS setting
+        FROM accessible_users users
+        JOIN "users" u ON u."id" = users.user_id
+      )
+      SELECT
+        EXISTS(SELECT 1 FROM target_wallet) AS "walletPresent",
+        COUNT(*)::int AS "accessibleUsers",
+        COUNT(*) FILTER (
+          WHERE settings.global_enabled
+            AND settings.has_token
+            AND settings.has_chat
+            AND COALESCE(settings.setting->>'enabled', 'false') = 'true'
+            AND COALESCE(${directionSetting}, 'false') = 'true'
+        )::int AS "eligibleUsers"
+      FROM settings
+    `);
+  }, { timeout: QUERY_TIMEOUT_MS });
+  const row = rows[0];
+  if (!row?.walletPresent) return 'unknown';
+  if (row.accessibleUsers <= 0 || row.eligibleUsers <= 0) return 'none';
+  return row.eligibleUsers >= row.accessibleUsers ? 'all' : 'some';
 }

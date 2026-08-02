@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createdWorkers,
   mockDlqAdd,
+  mockRecordCaptureTerminal,
   mockRecordNotificationTelemetry,
   setupWorkerEventHandlers,
   type WorkerJobQueueAccessor,
@@ -88,7 +89,6 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
         processedOn: 10,
         finishedOn: 25,
       });
-
       handlers.failed?.(
         {
           id: 'job-2',
@@ -138,14 +138,24 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
       setupWorkerEventHandlers('notifications', fakeWorker as any);
       handlers.completed?.({
         name: 'transaction-notify',
-        returnvalue: { outcome: 'accepted', failureClass: 'none' },
+        data: { walletId: 'wallet-1', txid: 'a'.repeat(64) },
+        returnvalue: {
+          outcome: 'accepted',
+          failureClass: 'none',
+          channelOutcomes: [{ channel: 'telegram', outcome: 'accepted', failureClass: 'none' }],
+        },
       });
       handlers.failed?.({
         name: 'transaction-notify',
+        data: { walletId: 'wallet-1', txid: 'a'.repeat(64) },
         progress: {
           version: 1,
           attemptOrdinal: 5,
-          notification: { outcome: 'rejected', failureClass: 'authentication' },
+          notification: {
+            outcome: 'rejected',
+            failureClass: 'authentication',
+            channels: [{ channel: 'telegram', outcome: 'rejected', failureClass: 'authentication' }],
+          },
         },
         attemptsMade: 5,
         opts: { attempts: 5 },
@@ -158,6 +168,11 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
           failureClass: 'none',
         }),
       );
+      expect(mockRecordCaptureTerminal).toHaveBeenCalledWith(expect.objectContaining({
+        terminalState: 'failed',
+        telegramOutcome: 'rejected',
+        telegramFailureClass: 'authentication',
+      }));
       expect(mockRecordNotificationTelemetry).toHaveBeenCalledWith(
         expect.objectContaining({
           stage: 'attempt_failed',
@@ -175,6 +190,58 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
       expect(JSON.stringify(mockRecordNotificationTelemetry.mock.calls)).not.toContain(
         'provider poison',
       );
+    });
+
+    it('records bounded capture fallbacks for malformed or absent channel results', () => {
+      const handlers: Record<string, (...args: any[]) => void> = {};
+      const fakeWorker = {
+        on: vi.fn((event: string, handler: (...args: any[]) => void) => {
+          handlers[event] = handler;
+        }),
+      };
+      setupWorkerEventHandlers('notifications', fakeWorker as any);
+
+      handlers.completed?.({ name: 'transaction-notify' });
+      handlers.completed?.({
+        name: 'transaction-notify',
+        data: { walletId: 1, txid: 'f'.repeat(64) },
+      });
+      handlers.completed?.({
+        name: 'transaction-notify',
+        data: { walletId: 'wallet-1', txid: 1 },
+      });
+
+      handlers.completed?.({
+        name: 'transaction-notify',
+        data: { walletId: 'wallet-1', txid: 'b'.repeat(64) },
+        returnvalue: null,
+      });
+      handlers.completed?.({
+        name: 'transaction-notify',
+        data: { walletId: 'wallet-1', txid: 'c'.repeat(64) },
+        returnvalue: { outcome: 'accepted', failureClass: 'none' },
+      });
+      handlers.completed?.({
+        name: 'transaction-notify',
+        data: { walletId: 'wallet-1', txid: 'd'.repeat(64) },
+        returnvalue: { channelOutcomes: [null, 'invalid'] },
+      });
+      handlers.completed?.({
+        name: 'transaction-notify',
+        data: { walletId: 'wallet-1', txid: 'e'.repeat(64) },
+        returnvalue: {
+          channelOutcomes: [{ channel: 'telegram', outcome: 'private', failureClass: 'private' }],
+        },
+      });
+
+      expect(mockRecordCaptureTerminal).toHaveBeenCalledWith(expect.objectContaining({
+        telegramOutcome: 'ambiguous',
+        telegramFailureClass: 'unknown',
+      }));
+      expect(mockRecordCaptureTerminal).toHaveBeenCalledWith(expect.objectContaining({
+        telegramOutcome: 'not_registered',
+        telegramFailureClass: 'none',
+      }));
     });
 
     it('does not attribute stale prior-attempt progress to a later crash', () => {

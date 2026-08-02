@@ -1,6 +1,7 @@
 import { describe } from 'vitest';
 
 import { registerOpenApiAdminCoreTests } from './openapi.admin-core.contracts';
+import { registerOpenApiSupportIncidentTests } from './openapi.support-incident.contracts';
 import { registerOpenApiAdminOpsTests } from './openapi.admin-ops.contracts';
 import { registerOpenApiCoreTests, registerOpenApiHealthTests } from './openapi.core.contracts';
 import { registerOpenApiGatewayTests } from './openapi.gateway.contracts';
@@ -12,6 +13,7 @@ describe('OpenAPI Docs', () => {
   registerOpenApiHealthTests();
   registerOpenApiWalletPolicyTests();
   registerOpenApiAdminCoreTests();
+  registerOpenApiSupportIncidentTests();
   registerOpenApiAdminOpsTests();
   registerOpenApiGatewayTests();
 });

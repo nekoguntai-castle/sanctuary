@@ -135,6 +135,8 @@ const mocks = vi.hoisted(() => {
     getElectrumCallbacks: () => electrumCallbacks,
     getHealthProvider: () => healthProvider,
     getDiagnosticsProvider: () => diagnosticsProvider,
+    startCaptureParticipant: vi.fn(),
+    stopCaptureParticipant: vi.fn(),
   };
 });
 
@@ -218,6 +220,10 @@ vi.mock('../../../src/observability/metrics/helpers', () => ({
   updateJobQueueMetrics: vi.fn(),
 }));
 
+vi.mock('../../../src/services/supportPackage/captureRuntime', () => ({
+  startCaptureParticipant: mocks.startCaptureParticipant, stopCaptureParticipant: mocks.stopCaptureParticipant,
+}));
+
 describe('worker entrypoint', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -232,6 +238,7 @@ describe('worker entrypoint', () => {
     mocks.isRedisConnected.mockReturnValue(true);
     mocks.shutdownDistributedLock.mockReturnValue(undefined);
     mocks.shutdownNotificationDispatcher.mockResolvedValue(undefined);
+    mocks.startCaptureParticipant.mockResolvedValue(undefined); mocks.stopCaptureParticipant.mockResolvedValue(undefined);
 
     mocks.queueInstance.initialize.mockResolvedValue(undefined);
     mocks.queueInstance.getRegisteredJobs.mockReturnValue(['check-stale-wallets']);

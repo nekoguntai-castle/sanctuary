@@ -256,6 +256,11 @@ describe('feature flag admin + worker integration', () => {
       registerWorkerJobs: vi.fn(),
     }));
 
+    vi.doMock('../../../src/services/supportPackage/captureRuntime', () => ({
+      startCaptureParticipant: vi.fn(async () => undefined),
+      stopCaptureParticipant: vi.fn(async () => undefined),
+    }));
+
     vi.doMock('../../../src/middleware/auth', () => ({
   requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
       authenticate: (req: any, _res: any, next: () => void) => {

@@ -16,7 +16,13 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockDispatcher, mockNotificationService, mockLogger, mockRecordTelemetry } = vi.hoisted(() => ({
+const {
+  mockDispatcher,
+  mockNotificationService,
+  mockLogger,
+  mockRecordTelemetry,
+  mockRecordCaptureTerminal,
+} = vi.hoisted(() => ({
   mockDispatcher: {
     queueTransactionNotification: vi.fn(),
     queueDraftNotification: vi.fn(),
@@ -32,6 +38,7 @@ const { mockDispatcher, mockNotificationService, mockLogger, mockRecordTelemetry
     error: vi.fn(),
   },
   mockRecordTelemetry: vi.fn(),
+  mockRecordCaptureTerminal: vi.fn(),
 }));
 
 vi.mock('../../../../src/infrastructure', () => mockDispatcher);
@@ -41,6 +48,9 @@ vi.mock('../../../../src/services/notifications/telemetry', () => ({
 }));
 vi.mock('../../../../src/utils/logger', () => ({
   createLogger: vi.fn(() => mockLogger),
+}));
+vi.mock('../../../../src/services/supportPackage/capture', () => ({
+  controlledCaptureObservations: { recordTerminal: mockRecordCaptureTerminal },
 }));
 
 import {
@@ -133,6 +143,28 @@ describe('dispatchTransactionNotifications', () => {
       'wallet-1',
       [expect.objectContaining({ txid: 'tx-2' })],
     );
+  });
+
+  it('records the matched Telegram category for each inline transaction', async () => {
+    mockDispatcher.queueTransactionNotification.mockResolvedValue(false);
+    mockNotificationService.notifyNewTransactions.mockResolvedValueOnce([{
+      channelId: 'telegram',
+      success: true,
+      usersNotified: 1,
+      outcome: 'accepted',
+      failureClass: 'none',
+    }]);
+    await dispatchTransactionNotifications('wallet-1', [transactionFixture]);
+    expect(mockRecordCaptureTerminal).toHaveBeenCalledWith({
+      walletId: 'wallet-1',
+      txid: 'tx-1',
+      outcome: 'accepted',
+      failureClass: 'none',
+      telegramOutcome: 'accepted',
+      telegramFailureClass: 'none',
+      terminalState: 'completed',
+      path: 'inline',
+    });
   });
 
   it('records and contains a later inline fallback failure', async () => {

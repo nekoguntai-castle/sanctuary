@@ -140,6 +140,9 @@ export enum AuditAction {
 
   // Support package
   SUPPORT_PACKAGE_GENERATE = 'admin.support_package_generate',
+  SUPPORT_INCIDENT_PROFILE_GENERATE = 'admin.support_incident_profile_generate',
+  SUPPORT_INCIDENT_CAPTURE_ARM = 'admin.support_incident_capture_arm',
+  SUPPORT_INCIDENT_CAPTURE_TEARDOWN = 'admin.support_incident_capture_teardown',
 
   // MCP
   MCP_KEY_CREATE = 'mcp.key_create',

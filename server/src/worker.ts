@@ -71,6 +71,7 @@ import { shutdownNotificationDeadLetterAggregateWriter } from './services/notifi
 import { getTelegramTransportDiagnostics } from './services/telegram/api';
 import { WorkerHeartbeatWriter } from './services/workerHeartbeatRegistry';
 import type { WorkerDiagnosticsResponse } from './internal/workerDiagnostics/protocol';
+import { startCaptureParticipant, stopCaptureParticipant } from './services/supportPackage/captureRuntime';
 
 const log = createLogger('WORKER');
 
@@ -158,6 +159,9 @@ async function startWorker(): Promise<void> {
   initializeDistributedLock('redis-required');
   initializeNotificationTelemetry('worker');
   log.info('Redis connected');
+
+  // Observe capture arms before BullMQ can consume any retained notification jobs.
+  await startCaptureParticipant('notification-worker');
 
   // Initialize job queue
   log.info('Initializing job queue...');
@@ -528,6 +532,12 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
   }
 
   // Stop health server first
+  try {
+    await stopCaptureParticipant();
+  } catch (err) {
+    log.error('Error closing support capture participant', { error: getErrorMessage(err) });
+  }
+
   if (healthServer) {
     try {
       await healthServer.close();

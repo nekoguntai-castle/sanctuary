@@ -26,7 +26,25 @@ const LOG_REQUEST_BODY = process.env.LOG_REQUEST_BODY === 'true';
 /**
  * Paths to exclude from detailed logging (health checks, etc.)
  */
-const EXCLUDED_PATHS = ['/health', '/api/v1/health', '/favicon.ico'];
+const EXCLUDED_PATHS = [
+  '/health',
+  '/api/v1/health',
+  '/favicon.ico',
+  '/api/v1/admin/support-package/incident',
+  '/api/v1/admin/support-package/incident-capture',
+];
+
+/** Selector-bearing incident diagnostics must never enter request logs. */
+const BODY_LOG_EXCLUDED_PATHS = [
+  '/api/v1/admin/support-package/incident',
+  '/api/v1/admin/support-package/incident-capture',
+];
+
+function permitsBodyLogging(path: string): boolean {
+  return !BODY_LOG_EXCLUDED_PATHS.some(
+    (sensitivePath) => path === sensitivePath || path.startsWith(`${sensitivePath}/`),
+  );
+}
 
 /**
  * Request logger middleware
@@ -69,7 +87,12 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
       };
 
       // Optionally log request body for debugging (always redacted)
-      if (LOG_REQUEST_BODY && req.body && Object.keys(req.body).length > 0) {
+      if (
+        LOG_REQUEST_BODY
+        && permitsBodyLogging(req.path)
+        && req.body
+        && Object.keys(req.body).length > 0
+      ) {
         logData.body = redactObject(redactWebhookHeaderConfigValues(req.body));
       }
 

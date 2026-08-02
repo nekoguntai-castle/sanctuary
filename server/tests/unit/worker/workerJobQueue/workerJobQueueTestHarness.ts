@@ -5,6 +5,7 @@ export const createdWorkers: Array<{ processFn?: (job: any) => Promise<any> }> =
 const hoistedMocks = vi.hoisted(() => ({
   mockDlqAdd: vi.fn().mockResolvedValue(undefined),
   mockRecordNotificationTelemetry: vi.fn(),
+  mockRecordCaptureTerminal: vi.fn(),
   mockHardTerminate: vi.fn((_exitCode: number): never => {
     throw new Error('test hard termination');
   }),
@@ -31,6 +32,7 @@ const hoistedMocks = vi.hoisted(() => ({
 }));
 export const mockDlqAdd = hoistedMocks.mockDlqAdd;
 export const mockRecordNotificationTelemetry = hoistedMocks.mockRecordNotificationTelemetry;
+export const mockRecordCaptureTerminal = hoistedMocks.mockRecordCaptureTerminal;
 export const mockHardTerminate = hoistedMocks.mockHardTerminate;
 export const mockRedis = hoistedMocks.mockRedis;
 
@@ -111,6 +113,12 @@ vi.mock('../../../../src/services/deadLetterQueue', () => ({
 
 vi.mock('../../../../src/services/notifications/telemetry', () => ({
   recordNotificationTelemetry: hoistedMocks.mockRecordNotificationTelemetry,
+}));
+
+vi.mock('../../../../src/services/supportPackage/capture', () => ({
+  controlledCaptureObservations: {
+    recordTerminal: hoistedMocks.mockRecordCaptureTerminal,
+  },
 }));
 
 import * as workerJobQueueModule from '../../../../src/worker/workerJobQueue';
