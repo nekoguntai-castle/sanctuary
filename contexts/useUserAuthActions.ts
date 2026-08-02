@@ -14,6 +14,7 @@ import { toContextUser } from './userModel';
 
 interface UserAuthActionsArgs {
   resetPreferenceTracking: () => void;
+  flushPreferenceWrites: () => Promise<void>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setNotice: React.Dispatch<React.SetStateAction<string | null>>;
@@ -36,6 +37,7 @@ function getApiMessage(err: unknown, fallback: string): string {
 
 export function useUserAuthActions({
   resetPreferenceTracking,
+  flushPreferenceWrites,
   setError,
   setIsLoading,
   setNotice,
@@ -145,6 +147,15 @@ export function useUserAuthActions({
   }, [resetPreferenceTracking, setError, setIsLoading, setNotice, setUser]);
 
   const logout = useCallback(async () => {
+    // Dispatch a preference toggled within the debounce window BEFORE the
+    // session cookie is torn down — resetPreferenceTracking below drops
+    // whatever is still buffered, and after logout the write is unrecoverable.
+    //
+    // Deliberately NOT awaited: the flush resolves only when the PATCH settles,
+    // so awaiting it would let a slow or hanging request block logout
+    // indefinitely. Calling it runs synchronously up to its own await, which is
+    // enough to put the request on the wire while the cookie is still valid.
+    void flushPreferenceWrites();
     await authApi.logout();
     triggerLogout();
     resetPreferenceTracking();
@@ -152,7 +163,7 @@ export function useUserAuthActions({
     setTwoFactorPending(null);
     setError(null);
     setNotice(null);
-  }, [resetPreferenceTracking, setError, setNotice, setTwoFactorPending, setUser]);
+  }, [flushPreferenceWrites, resetPreferenceTracking, setError, setNotice, setTwoFactorPending, setUser]);
 
   return {
     login,

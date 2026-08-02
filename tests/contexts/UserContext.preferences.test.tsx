@@ -58,6 +58,12 @@ function deferred<T>() {
 describe('UserContext preferences', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks clears recorded calls but NOT queued mockReturnValueOnce
+    // implementations. Preference writes are coalesced, so a test that queues
+    // two responses may legitimately issue one request and leak the unconsumed
+    // queue entry into the next test, where it silently outranks that test's
+    // own mock. Reset the queue explicitly.
+    vi.mocked(authApi.updatePreferences).mockReset();
     document.documentElement.classList.remove('dark');
   });
 
@@ -215,9 +221,19 @@ describe('UserContext preferences', () => {
       expect(screen.getByTestId('dark-value')).toHaveTextContent('false');
     });
 
+    // Coalescing: writes inside the debounce window merge into one request. Wait
+    // until the first is actually in flight so the second opens its own batch —
+    // two independent requests is precisely the invariant under test.
+    await waitFor(() => {
+      expect(authApi.updatePreferences).toHaveBeenCalledTimes(1);
+    });
+
     await user.click(screen.getByTestId('fiat'));
     await waitFor(() => {
       expect(screen.getByTestId('fiat-value')).toHaveTextContent('EUR');
+    });
+    await waitFor(() => {
+      expect(authApi.updatePreferences).toHaveBeenCalledTimes(2);
     });
 
     firstUpdate.reject(new ApiError('Preference save failed', 500));
@@ -270,6 +286,14 @@ describe('UserContext preferences', () => {
     });
 
     await user.click(screen.getByTestId('dark'));
+    // Coalescing: writes inside the debounce window merge into one request.
+    // Wait until the first is in flight so the second opens its own batch —
+    // two independent requests is the invariant under test, and leaving a
+    // queued mockReturnValueOnce unconsumed leaks it into the next test.
+    await waitFor(() => {
+      expect(authApi.updatePreferences).toHaveBeenCalledTimes(1);
+    });
+
     await user.click(screen.getByTestId('fiat'));
 
     firstUpdate.resolve({
@@ -430,6 +454,14 @@ describe('UserContext preferences', () => {
     });
 
     await user.click(screen.getByTestId('dark'));
+    // Coalescing: writes inside the debounce window merge into one request.
+    // Wait until the first is in flight so the second opens its own batch —
+    // two independent requests is the invariant under test, and leaving a
+    // queued mockReturnValueOnce unconsumed leaks it into the next test.
+    await waitFor(() => {
+      expect(authApi.updatePreferences).toHaveBeenCalledTimes(1);
+    });
+
     await user.click(screen.getByTestId('fiat'));
 
     secondUpdate.resolve({
@@ -484,9 +516,20 @@ describe('UserContext preferences', () => {
     });
 
     await user.click(screen.getByTestId('fiat'));
+
+    // Coalescing: writes inside the debounce window merge into one request. Wait
+    // until the first is actually in flight so the second opens its own batch —
+    // two independent requests is precisely the invariant under test.
+    await waitFor(() => {
+      expect(authApi.updatePreferences).toHaveBeenCalledTimes(1);
+    });
+
     await user.click(screen.getByTestId('theme'));
     await waitFor(() => {
       expect(screen.getByTestId('theme-value')).toHaveTextContent('forest');
+    });
+    await waitFor(() => {
+      expect(authApi.updatePreferences).toHaveBeenCalledTimes(2);
     });
 
     const preferencesWithoutFiat: Record<string, unknown> = { ...mockUser.preferences };

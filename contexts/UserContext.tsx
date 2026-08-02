@@ -18,7 +18,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [twoFactorPending, setTwoFactorPending] = useState<TwoFactorPending | null>(null);
-  const { resetPreferenceTracking, updatePreferences } = useUserPreferenceMutation({
+  const { resetPreferenceTracking, updatePreferences, flushPreferenceWrites } = useUserPreferenceMutation({
     setError,
     setUser,
     user,
@@ -45,6 +45,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logout,
   } = useUserAuthActions({
     resetPreferenceTracking,
+    flushPreferenceWrites,
     setError,
     setIsLoading,
     setNotice,
