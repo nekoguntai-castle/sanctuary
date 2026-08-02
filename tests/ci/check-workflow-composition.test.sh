@@ -607,6 +607,8 @@ assert_contains_in_order "$TEST_WORKFLOW" \
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full backend integration diagnostics" \
   "full-backend-integration-tests:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log"' \
+  "scripts/ci/resolve-postgres-service.sh" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/integration-tests.log"' \
   "scripts/ci/backend-integration-groups.sh" \
   "scripts/ci/prepare-integration-db.sh" \
@@ -619,6 +621,15 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Backend Integration"' \
   "Upload backend integration diagnostics" \
   "ci-diagnostics-backend-integration"
+
+assert_occurrence_count "$TEST_WORKFLOW" \
+  "all Postgres-backed lanes use the verified service resolver" \
+  "scripts/ci/resolve-postgres-service.sh" \
+  3
+
+assert_not_contains "$TEST_WORKFLOW" \
+  "Postgres-backed lanes must not prefer the shared service alias" \
+  "if getent hosts postgres"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
   "full gateway diagnostics" \
@@ -745,11 +756,15 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "Upload quick backend typecheck diagnostics" \
   "ci-diagnostics-quick-backend-typecheck"
 
+# The retry here MUST be signature-filtered. retry-command.sh retries any
+# non-zero exit up to 3 times; it was harmless while this lane selected zero
+# tests, but on a REQUIRED check that now runs real tests it would let a genuine
+# assertion failure pass on a later attempt.
 assert_contains_in_order "$TEST_WORKFLOW" \
   "quick backend test diagnostics" \
   "quick-backend-tests:" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/related-backend-tests.log"' \
-  'scripts/ci/retry-command.sh "quick backend related tests"' \
+  'scripts/ci/retry-vitest-infrastructure-failure.sh "quick backend related tests"' \
   "npx vitest related --run --passWithNoTests" \
   "Write quick backend test diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Backend Tests"' \
@@ -802,11 +817,18 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "Upload quick gateway diagnostics" \
   "ci-diagnostics-quick-gateway"
 
+# Changed filenames must reach vitest as array data, never interpolated into
+# the command string. They additionally go through related-test-args.sh, which
+# re-roots the repo-relative paths for the lane's working-directory — without
+# it vitest resolves server/server/... and silently selects nothing. See
+# tests/ci/related-test-args.test.sh.
 assert_contains_in_order "$TEST_WORKFLOW" \
   "quick backend changed files passed as data" \
   "Run related backend tests" \
   'BACKEND_FILES: ${{ needs.detect-changes.outputs.backend_files }}' \
-  'read -r -a related_files <<< "${BACKEND_FILES:-}"' \
+  'RELATED_FILES="${BACKEND_FILES:-}"' \
+  'scripts/ci/related-test-args.sh" server' \
+  'mapfile -t related_files < "$args_file"' \
   'npx vitest related --run --passWithNoTests' \
   '"${related_files[@]}"'
 
@@ -814,8 +836,19 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "quick gateway changed files passed as data" \
   "Run related gateway tests" \
   'GATEWAY_FILES: ${{ needs.detect-changes.outputs.gateway_files }}' \
-  'read -r -a related_files <<< "${GATEWAY_FILES:-}"' \
+  'RELATED_FILES="${GATEWAY_FILES:-}"' \
+  'scripts/ci/related-test-args.sh" gateway' \
+  'mapfile -t related_files < "$args_file"' \
   'npx vitest related --run --passWithNoTests "${related_files[@]}"'
+
+assert_not_contains "$TEST_WORKFLOW" \
+  "quick backend changed files must not interpolate into command" \
+  'npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.backend_files }}'
+
+# A blanket retry on this lane would mask real regressions; see above.
+assert_not_contains "$TEST_WORKFLOW" \
+  "quick backend related tests must not use the blanket retry wrapper" \
+  'scripts/ci/retry-command.sh "quick backend related tests"'
 
 assert_not_contains "$TEST_WORKFLOW" \
   "quick gateway changed files must not interpolate into command" \

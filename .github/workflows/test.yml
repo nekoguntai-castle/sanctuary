@@ -309,37 +309,21 @@ jobs:
       run:
         working-directory: server
 
-    services:
-      # Bounded so concurrent runs cannot compound into host memory pressure.
-      # Five Postgres containers exist per run (quick-backend-tests,
-      # quick-backend-integration-smoke, unit-coverage-shards x2,
-      # full-backend-integration-tests, full-browser-e2e-tests), and `needs:`
-      # only orders jobs WITHIN a run — service containers of other in-flight
-      # runs are live regardless, which is how the integration lane's Postgres
-      # gets OOM-killed and recreated empty mid-run (schema survives, seeded
-      # rows do not, surfacing as bulk 401s). See #606.
-      #
-      # 1g is ~2.5x observed peak (shared_buffers 128M + ~20 backends +
-      # maintenance_work_mem 64M), so it bounds the worst case without making a
-      # cgroup kill likely. shm-size lifts Docker's 64M default, which Postgres
-      # parallel workers can otherwise exhaust.
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: sanctuary_test
-        ports:
-          - 5432/tcp
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-          --memory 1g
-          --memory-reservation 256m
-          --shm-size 256m
-
+    # No `services: postgres`. This lane runs `vitest related` with
+    # `--exclude tests/integration/**`, so only unit and contract tests can be
+    # selected, and none of those open a database connection — they mock Prisma
+    # or manipulate DATABASE_URL purely as a config-parsing input. Verified by
+    # running the whole selectable superset with DATABASE_URL unset —
+    # `vitest run --exclude tests/integration/**` — which passes 474 files /
+    # 10757 tests. Probed specifically with src/utils/jwt.ts, which an
+    # integration spec imports, to confirm the exclusion actually drops it.
+    #
+    # Removing the service is a #606 mitigation, not just tidiness. Idle
+    # Postgres containers are live for the whole job across ALL in-flight runs
+    # — `needs:` orders jobs only within one run — and that cross-run pressure
+    # is what OOM-kills the integration lane's Postgres, which Docker then
+    # recreates empty mid-run (schema survives, seeded rows do not, surfacing
+    # as bulk 401s).
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -350,28 +334,6 @@ jobs:
       - name: Setup server dependencies
         uses: ./.github/actions/setup-server-deps
 
-      - name: Resolve Postgres service host
-        env:
-          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log" bash -c '
-            if getent hosts postgres >/dev/null 2>&1; then
-              database_host=postgres
-              database_port=5432
-            else
-              database_host=localhost
-              database_port="${POSTGRES_PORT:-5432}"
-            fi
-            echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
-          '
-
-      - name: Run database migrations
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/prisma-migrate.log"
-          ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend prisma migrate"
-          ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend prisma migrate"
-          npx prisma migrate deploy
-
       - name: Run related backend tests
         env:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
@@ -379,17 +341,49 @@ jobs:
           NODE_ENV: test
           BACKEND_FILES: ${{ needs.detect-changes.outputs.backend_files }}
         run: |
+          # BACKEND_FILES is repo-root-relative, but this step's cwd is
+          # server/. Passing it through raw made vitest look for
+          # server/server/src/... and exit 0 via --passWithNoTests, so this
+          # REQUIRED check ran no tests at all. See tests/ci/related-test-args.test.sh.
+          #
+          # Redirect to a file rather than a process substitution: under
+          # `bash -e` a failing process substitution would leave related_files
+          # empty and the step would pass having run nothing, which is the very
+          # failure mode being fixed. A plain redirect propagates the exit code.
+          args_file="$(mktemp)"
+          trap 'rm -f "$args_file"' EXIT
+          RELATED_FILES="${BACKEND_FILES:-}" \
+            "${{ github.workspace }}/scripts/ci/related-test-args.sh" server > "$args_file"
+
           related_files=()
-          if [ -n "${BACKEND_FILES:-}" ]; then
-            read -r -a related_files <<< "${BACKEND_FILES:-}"
+          mapfile -t related_files < "$args_file"
+
+          if [ "${#related_files[@]}" -eq 0 ]; then
+            # This job only runs when backend_changed == 'true', and the same
+            # classifier loop sets that flag and appends the file, so an empty
+            # list means the classifier is broken, not that nothing changed.
+            # Fail rather than warn: the point of this whole step is that a
+            # required check must never report success having run no tests.
+            echo "::error::backend_changed was true but no backend files were classified; refusing to report success without running tests."
+            exit 1
           fi
 
+          echo "Running related tests for ${#related_files[@]} changed backend file(s):"
+          printf '  %s\n' "${related_files[@]}"
+
+          # Signature-filtered retry, NOT retry-command.sh. retry-command.sh
+          # retries any non-zero exit up to 3 times, which was inert while this
+          # lane selected zero tests and always exited 0. Now that it runs real
+          # tests on a REQUIRED check, a blanket retry would let a genuine
+          # failure pass on attempt 2. This wrapper retries only native/worker
+          # crashes (exit 139, EPIPE, closed IPC, segfault) and never an
+          # assertion failure.
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/related-backend-tests.log" \
-            ${{ github.workspace }}/scripts/ci/retry-command.sh "quick backend related tests" \
+            ${{ github.workspace }}/scripts/ci/retry-vitest-infrastructure-failure.sh "quick backend related tests" \
             ${{ github.workspace }}/scripts/ci/time-command.sh "quick backend related tests" \
             npx vitest related --run --passWithNoTests \
             --pool threads --maxWorkers=2 --no-file-parallelism \
-            --exclude "tests/integration/**" \
+            --exclude "tests/integration/**" --exclude "**/*.integration.test.*" \
             "${related_files[@]}"
 
       - name: Write quick backend test diagnostic summary
@@ -455,17 +449,9 @@ jobs:
       - name: Resolve Postgres service host
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log" bash -c '
-            if getent hosts postgres >/dev/null 2>&1; then
-              database_host=postgres
-              database_port=5432
-            else
-              database_host=localhost
-              database_port="${POSTGRES_PORT:-5432}"
-            fi
-            echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
-          '
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log"
+          ${{ github.workspace }}/scripts/ci/resolve-postgres-service.sh
 
       - name: Run database migrations
         # See prepare-integration-db.sh — real readiness gate + post-migrate
@@ -687,10 +673,27 @@ jobs:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           GATEWAY_FILES: ${{ needs.detect-changes.outputs.gateway_files }}
         run: |
+          # GATEWAY_FILES is repo-root-relative, but this step's cwd is
+          # gateway/. Passing it through raw made vitest look for
+          # gateway/gateway/src/... and exit 0 via --passWithNoTests, so this
+          # check ran no tests at all. See tests/ci/related-test-args.test.sh.
+          args_file="$(mktemp)"
+          trap 'rm -f "$args_file"' EXIT
+          RELATED_FILES="${GATEWAY_FILES:-}" \
+            "${{ github.workspace }}/scripts/ci/related-test-args.sh" gateway > "$args_file"
+
           related_files=()
-          if [ -n "${GATEWAY_FILES:-}" ]; then
-            read -r -a related_files <<< "${GATEWAY_FILES:-}"
+          mapfile -t related_files < "$args_file"
+
+          if [ "${#related_files[@]}" -eq 0 ]; then
+            # See the backend lane: an empty list here means the classifier is
+            # broken, and a required check must not go green having run nothing.
+            echo "::error::gateway_changed was true but no gateway files were classified; refusing to report success without running tests."
+            exit 1
           fi
+
+          echo "Running related tests for ${#related_files[@]} changed gateway file(s):"
+          printf '  %s\n' "${related_files[@]}"
 
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/related-gateway-tests.log" \
             npx vitest related --run --passWithNoTests "${related_files[@]}"
@@ -1215,24 +1218,12 @@ jobs:
       run:
         working-directory: server
 
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: sanctuary_test
-        ports:
-          - 5432/tcp
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-          --memory 1g
-          --memory-reservation 256m
-          --shm-size 256m
-
+    # No `services: postgres`. backend-coverage-shard.sh passes `tests/unit` as
+    # a positional filter, so integration tests cannot be selected, and no unit
+    # test opens a database connection. The matrix meant this job alone
+    # accounted for two of the six Postgres containers per run. See the
+    # quick-backend-tests comment for why idle service containers matter to
+    # #606.
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -1242,28 +1233,6 @@ jobs:
 
       - name: Setup server dependencies
         uses: ./.github/actions/setup-server-deps
-
-      - name: Resolve Postgres service host
-        env:
-          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log" bash -c '
-            if getent hosts postgres >/dev/null 2>&1; then
-              database_host=postgres
-              database_port=5432
-            else
-              database_host=localhost
-              database_port="${POSTGRES_PORT:-5432}"
-            fi
-            echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
-          '
-
-      - name: Run database migrations
-        run: >
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/prisma-migrate.log"
-          ${{ github.workspace }}/scripts/ci/retry-command.sh "backend unit prisma migrate"
-          ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit prisma migrate"
-          npx prisma migrate deploy
 
       - name: Run backend unit coverage shard ${{ matrix.shard }}
         env:
@@ -1412,18 +1381,23 @@ jobs:
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 75
-    # Serialized to run ALONE among the Postgres-heavy full lanes. Root cause of
-    # the recurring "table public.users does not exist": the Forgejo runner
+    # Serialized to run ALONE among the Postgres-holding full lanes. Root cause
+    # of the recurring "table public.users does not exist": the Forgejo runner
     # v12.10.1 ignores job/matrix concurrency (only runner.capacity caps it), so
-    # full-backend-unit-coverage-shards (2 Postgres), full-browser-e2e-tests
-    # (1 Postgres) and this lane (1 Postgres) all started together at
-    # full-lane-ready and the resulting memory pressure OOM-killed this lane's
-    # `services: postgres`, which is recreated empty mid-run (schema verified by
-    # prepare-integration-db.sh, then gone). Depending on those lanes makes this
-    # one start only after they finish, so no other Postgres lane is live during
-    # the integration run. These needs add ORDERING ONLY — the always()-guarded
-    # `if:` above is unchanged, so a skipped/failed upstream lane never skips or
-    # blocks this one.
+    # every full lane starts together at full-lane-ready, and the resulting
+    # memory pressure OOM-killed this lane's `services: postgres`, which is
+    # recreated empty mid-run (schema verified by prepare-integration-db.sh,
+    # then gone).
+    #
+    # full-backend-unit-coverage-shards no longer holds a Postgres at all (its
+    # tests never opened one), so of the full lanes only this one and
+    # full-browser-e2e-tests still do. The dependency on the shards is retained
+    # purely as ORDERING to keep the two heavy Node lanes off the runner
+    # concurrently; it is no longer about Postgres.
+    #
+    # These needs add ORDERING ONLY — the always()-guarded `if:` above is
+    # unchanged, so a skipped/failed upstream lane never skips or blocks this
+    # one.
     needs: [detect-changes, full-lane-ready, full-backend-unit-coverage-shards, full-browser-e2e-tests]
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/backend-integration
@@ -1462,17 +1436,9 @@ jobs:
       - name: Resolve Postgres service host
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
-        run: |
-          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log" bash -c '
-            if getent hosts postgres >/dev/null 2>&1; then
-              database_host=postgres
-              database_port=5432
-            else
-              database_host=localhost
-              database_port="${POSTGRES_PORT:-5432}"
-            fi
-            echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
-          '
+        run: >
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log"
+          ${{ github.workspace }}/scripts/ci/resolve-postgres-service.sh
 
       - name: Run integration tests
         env:
@@ -2290,9 +2256,12 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true')
     runs-on: ubuntu-22.04
     timeout-minutes: 90
-    # Serialized after full-backend-unit-coverage-shards so the Postgres-heavy
-    # full lanes do not co-reside on the shared DIND daemon (see the
+    # Serialized after full-backend-unit-coverage-shards so the two heavy full
+    # lanes do not co-reside on the shared DIND daemon (see the
     # full-backend-integration-tests needs: comment for the OOM root cause).
+    # The shards no longer hold a Postgres, so this is now about general runner
+    # load rather than database memory, but the ordering still earns its keep:
+    # this lane boots the real backend and a browser.
     # Ordering only; the always()-guarded `if:` above is unchanged.
     needs: [detect-changes, full-lane-ready, full-backend-unit-coverage-shards]
     env:
@@ -2390,15 +2359,9 @@ jobs:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
           REDIS_PORT: ${{ job.services.redis.ports['6379'] }}
         run: |
-          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-service-endpoints.log" bash -c '
-            if getent hosts postgres >/dev/null 2>&1; then
-              database_host=postgres
-              database_port=5432
-            else
-              database_host=localhost
-              database_port="${POSTGRES_PORT:-5432}"
-            fi
-
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log" \
+            scripts/ci/resolve-postgres-service.sh
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-redis.log" bash -c '
             if getent hosts redis >/dev/null 2>&1; then
               redis_host=redis
               redis_port=6379
@@ -2407,7 +2370,6 @@ jobs:
               redis_port="${REDIS_PORT:-6379}"
             fi
 
-            echo "DATABASE_URL=postgresql://test:test@${database_host}:${database_port}/sanctuary_test?schema=public" >> "$GITHUB_ENV"
             echo "REDIS_URL=redis://${redis_host}:${redis_port}" >> "$GITHUB_ENV"
           '
 
