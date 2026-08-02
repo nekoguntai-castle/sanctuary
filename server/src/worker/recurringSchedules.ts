@@ -345,6 +345,19 @@ export async function inspectRecurringScheduleHealth(
   now = Date.now(),
   forbiddenDefinitions: RecurringScheduleDefinition[] = [],
   reconciliationHealthy = true,
+  /**
+   * When this worker process booted. The startup grace below is measured from
+   * whichever is later, this or the schedule's `activatedAt`.
+   *
+   * `activatedAt` lives in Redis and deliberately survives worker restarts, so
+   * on its own it grants no grace to a worker returning after an outage longer
+   * than the grace window — the schedule is reported stale purely because its
+   * (long) interval has not elapsed since boot. Because /ready 503s on
+   * staleness and the backend blocks startup on it, that took the whole stack
+   * down for one full interval on any cold start. Defaults to 0, which
+   * reproduces the previous activatedAt-only behaviour.
+   */
+  workerStartedAt = 0,
 ): Promise<RecurringScheduleHealth> {
   const [inspection, heartbeat] = await Promise.all([
     queue.inspectRecurringSchedules(definitions, forbiddenDefinitions),
@@ -355,9 +368,14 @@ export async function inspectRecurringScheduleHealth(
       if (!freshness) return false;
       const record = heartbeat.records[schedulerId];
       if (!record) return true;
+      // Anti-masking is preserved: for a worker that has been up longer than the
+      // grace window, workerStartedAt is already older than the window, so this
+      // only ever forgives a schedule that has genuinely never completed on a
+      // freshly booted process.
+      const graceStartedAt = Math.max(record.activatedAt, workerStartedAt);
       if (
         record.lastCompletedAt === undefined &&
-        now - record.activatedAt <= freshness.startupGraceMs
+        now - graceStartedAt <= freshness.startupGraceMs
       ) {
         return false;
       }

@@ -42,6 +42,35 @@ function freshHeartbeatRecords(
 }
 
 describe('recurring schedule contracts', () => {
+  const buildNeverCompletedQueue = (activatedAt: number) =>
+    ({
+      inspectRecurringSchedules: vi.fn().mockResolvedValue({
+        healthy: true,
+        missing: [],
+        mismatched: [],
+        unexpected: [],
+        inspectionFailures: [],
+      }),
+      getRecurringHeartbeatSnapshot: vi.fn().mockResolvedValue({
+        healthy: true,
+        records: {
+          'sync:check-stale-wallets': {
+            version: 1,
+            schedulerId: 'sync:check-stale-wallets',
+            recurrenceFingerprint: 'every:300000',
+            activatedAt,
+          },
+          'maintenance:webhook:recover-due-deliveries': {
+            version: 1,
+            schedulerId: 'maintenance:webhook:recover-due-deliveries',
+            recurrenceFingerprint: 'pattern:* * * * *:tz:UTC',
+            activatedAt,
+          },
+        },
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test double for WorkerJobQueue
+    }) as any;
+
   it('defines the complete baseline and explicit conditional sets', () => {
     const baseline = buildBaselineRecurringSchedules(config);
 
@@ -219,6 +248,56 @@ describe('recurring schedule contracts', () => {
         'maintenance:webhook:recover-due-deliveries',
       ],
     }));
+  });
+
+  it('grants a freshly booted worker its startup grace despite a stale durable activation', async () => {
+    // The cold-start bug: activatedAt lives in Redis and survives restarts, so a
+    // worker returning after a long outage had a grace window that expired while
+    // it was down. /ready 503s on staleness and the backend blocks startup on
+    // /ready, so this took the whole stack down for a full interval.
+    const definitions = buildBaselineRecurringSchedules(config);
+    const activatedAt = 1_000_000;
+    const bootedAt = activatedAt + 86_400_000; // a day of downtime
+    const queue = buildNeverCompletedQueue(activatedAt);
+
+    await expect(
+      inspectRecurringScheduleHealth(
+        queue,
+        definitions,
+        bootedAt + 30_000,
+        [],
+        true,
+        bootedAt,
+      ),
+    ).resolves.toEqual(expect.objectContaining({ healthy: true, stale: [] }));
+  });
+
+  it('still reports staleness once a long-running worker outlives the grace window', async () => {
+    // Anti-masking: boot anchoring must not hide a schedule that never completes
+    // on a worker that has been up comfortably longer than its grace window.
+    const definitions = buildBaselineRecurringSchedules(config);
+    const activatedAt = 1_000_000;
+    const bootedAt = activatedAt + 86_400_000;
+    const queue = buildNeverCompletedQueue(activatedAt);
+
+    await expect(
+      inspectRecurringScheduleHealth(
+        queue,
+        definitions,
+        bootedAt + 400_000,
+        [],
+        true,
+        bootedAt,
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        healthy: false,
+        stale: [
+          'sync:check-stale-wallets',
+          'maintenance:webhook:recover-due-deliveries',
+        ],
+      }),
+    );
   });
 
   it('fails readiness closed when durable heartbeat reads are unhealthy', async () => {

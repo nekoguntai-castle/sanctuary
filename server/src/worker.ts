@@ -376,6 +376,7 @@ async function getRecurringScheduleHealth(): Promise<RecurringScheduleHealth> {
     Date.now(),
     state.forbidden,
     state.reconciliationHealthy,
+    workerStartedAt,
   );
 }
 
