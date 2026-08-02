@@ -19,4 +19,13 @@ describe('NoticeAlert', () => {
     expect(alert).toHaveClass('text-center');
     expect(alert).toHaveClass('bg-emerald-50');
   });
+
+  it('renders warning notices with the shared warning palette', () => {
+    render(<NoticeAlert message="Share carefully" tone="warning" />);
+
+    const alert = screen.getByText('Share carefully');
+    expect(alert).toHaveClass('bg-amber-50');
+    expect(alert).toHaveClass('text-amber-700');
+    expect(alert).not.toHaveClass('bg-emerald-50');
+  });
 });

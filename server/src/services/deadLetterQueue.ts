@@ -20,6 +20,11 @@ import {
 } from './deadLetterQueueTypes';
 import { MemoryDeadLetterStore } from './memoryDeadLetterStore';
 import { RedisDeadLetterStore } from './redisDeadLetterStore';
+import {
+  classifyNotificationDeadLetter,
+  recordNotificationDeadLetterAggregate,
+  type NotificationDeadLetterClassification,
+} from './notifications/deadLetterAggregates';
 
 const log = createLogger('DLQ:SVC');
 const RETRY_LEASE_MS = 30_000;
@@ -35,6 +40,9 @@ export type {
 } from './deadLetterQueueTypes';
 
 type StoreProvider = () => DeadLetterStore;
+type NotificationAggregateRecorder = (
+  classification: NotificationDeadLetterClassification,
+) => Promise<void>;
 
 function createDefaultStoreProvider(): StoreProvider {
   let redisStore: RedisDeadLetterStore | null = null;
@@ -96,7 +104,10 @@ function retryOptions(job: Job): DeadLetterJobEnvelope['options'] {
 }
 
 export class DeadLetterQueue {
-  constructor(private readonly storeProvider: StoreProvider) {}
+  constructor(
+    private readonly storeProvider: StoreProvider,
+    private readonly notificationAggregateRecorder?: NotificationAggregateRecorder,
+  ) {}
 
   async start(): Promise<void> {
     await this.storeProvider().cleanup();
@@ -147,7 +158,7 @@ export class DeadLetterQueue {
       options: retryOptions(job),
       exhaustedAttempt,
     };
-    return this.upsert({
+    const id = await this.upsert({
       version: DEAD_LETTER_VERSION,
       id: exhaustedJobId(envelope),
       category,
@@ -166,6 +177,20 @@ export class DeadLetterQueue {
       lastFailedAt: failedAt,
       metadata: { queueName, jobId: envelope.jobId },
     });
+    if (
+      category === 'notification'
+      && queueName === 'notifications'
+      && this.notificationAggregateRecorder
+    ) {
+      try {
+        await this.notificationAggregateRecorder(classifyNotificationDeadLetter(job));
+      } catch {
+        log.debug('Notification dead-letter aggregate unavailable', {
+          code: 'notification_dlq_aggregate_unavailable',
+        });
+      }
+    }
+    return id;
   }
 
   async update(
@@ -264,6 +289,7 @@ export function createMemoryDeadLetterQueue(): DeadLetterQueue {
 
 export const deadLetterQueue = new DeadLetterQueue(
   createDefaultStoreProvider(),
+  recordNotificationDeadLetterAggregate,
 );
 
 export async function recordSyncFailure(

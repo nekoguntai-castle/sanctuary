@@ -5,6 +5,8 @@
  * Channels can be added for Telegram, Push, Webhook, Slack, Discord, Email, etc.
  */
 
+import type { NotificationFailureClass, NotificationOutcome } from '../outcomes';
+
 /**
  * Transaction notification data
  */
@@ -62,6 +64,14 @@ export interface NotificationResult {
   channelId: string;
   usersNotified: number;
   errors?: string[];
+  /** Privacy-safe category used by retained results and diagnostics. */
+  outcome?: NotificationOutcome;
+  /** Closed failure class; never derived from `errors`. */
+  failureClass?: NotificationFailureClass;
+}
+
+export interface NotificationDispatchContext {
+  executionPath: 'queued' | 'inline';
 }
 
 /**

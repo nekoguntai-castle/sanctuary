@@ -3,8 +3,10 @@ import {
   adminSuccessResponseSchema,
   baseSettingsProperties,
 } from './shared';
+import { adminSupportPackageSchemas } from './support-package';
 
 export const adminCoreSettingsBackupSchemas = {
+  ...adminSupportPackageSchemas,
   AdminVersionResponse: {
     type: 'object',
     properties: {
@@ -201,19 +203,5 @@ export const adminCoreSettingsBackupSchemas = {
       cacheInvalidated: { type: 'boolean' },
     },
     required: ['error', 'message', 'warnings', 'committed', 'cacheInvalidated'],
-  },
-  AdminSupportPackageUnavailableResponse: {
-    type: 'object',
-    properties: {
-      error: { type: 'string', enum: ['support_package_unavailable'] },
-      message: {
-        type: 'string',
-        enum: [
-          'Support package downloads are temporarily unavailable while privacy-safe diagnostics are being implemented.',
-        ],
-      },
-    },
-    required: ['error', 'message'],
-    additionalProperties: false,
   },
 } as const;

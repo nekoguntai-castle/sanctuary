@@ -89,6 +89,20 @@ export const registerWorkerJobQueueCoreContracts = (
   });
 
   describe("registerHandler", () => {
+    it("reports handler registration only for the exact queue and job name", () => {
+      expect(queue.hasRegisteredHandler("sync", "test-job")).toBe(false);
+
+      queue.registerHandler("sync", {
+        name: "test-job",
+        queue: "sync",
+        handler: vi.fn(),
+      });
+
+      expect(queue.hasRegisteredHandler("sync", "test-job")).toBe(true);
+      expect(queue.hasRegisteredHandler("notifications", "test-job")).toBe(false);
+      expect(queue.hasRegisteredHandler("sync", "other-job")).toBe(false);
+    });
+
     it("should register a job handler", async () => {
       await queue.initialize();
 
@@ -117,6 +131,21 @@ export const registerWorkerJobQueueCoreContracts = (
 
       // Should still work, just logs a warning
       expect(queue.getRegisteredJobs()).toContain("sync:test-job");
+    });
+  });
+
+  describe("queue worker state", () => {
+    it("reports only initialized, running queue workers", async () => {
+      expect(queue.isQueueWorkerRunning("sync")).toBe(false);
+
+      await queue.initialize();
+
+      expect(queue.isQueueWorkerRunning("sync")).toBe(true);
+      expect(queue.isQueueWorkerRunning("missing")).toBe(false);
+
+      const syncWorker = (queue as any).queues.get("sync").worker;
+      syncWorker.isRunning.mockReturnValue(false);
+      expect(queue.isQueueWorkerRunning("sync")).toBe(false);
     });
   });
 

@@ -39,6 +39,10 @@ export type SupportPackageSourceProcess = typeof SUPPORT_PACKAGE_SOURCE_PROCESSE
 export const SUPPORT_PACKAGE_SOURCE_KINDS = [
   'static_configuration',
   'effective_configuration',
+  'aggregate_query',
+  'direct_worker_probe',
+  'queue_getters',
+  'rolling_aggregate',
 ] as const;
 export type SupportPackageSourceKind = typeof SUPPORT_PACKAGE_SOURCE_KINDS[number];
 
@@ -50,6 +54,9 @@ export type SupportPackageSourceKind = typeof SUPPORT_PACKAGE_SOURCE_KINDS[numbe
 export const SUPPORT_PACKAGE_AUTHORITIES = [
   'static_notification_configuration',
   'effective_notification_configuration',
+  'notification_queue',
+  'worker_notification_capability',
+  'worker_delivery_aggregates',
   'worker_delivery',
 ] as const;
 export type SupportPackageAuthority = typeof SUPPORT_PACKAGE_AUTHORITIES[number];

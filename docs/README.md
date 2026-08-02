@@ -44,6 +44,7 @@ Lookup tables, checklists, and specs.
 - [Trust and verification](reference/trust-and-verification.md) — operator-facing safety claims, pending gaps, and verification commands
 - [External review package](reference/external-review-package.md) — reviewer map for fund-safety evidence and known blockers
 - [Release gates](reference/release-gates.md) — release criteria and verification checklist
+- [Privacy-safe support package](reference/privacy-safe-support-package.md) — schema, provenance, retention, telemetry counting, and version compatibility
 - [Upgrade PostgreSQL auth drift findings](reference/upgrade-postgres-auth-drift-findings.md) — incident notes, reliable checks, and manual recovery
 
 ## Architecture Decision Records

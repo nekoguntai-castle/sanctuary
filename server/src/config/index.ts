@@ -184,6 +184,16 @@ const validateProductionConfig = (config: CombinedConfig): void => {
     requireDatabaseUrl(config);
     requireEncryptionSalt(config);
     requireGatewaySecret(config);
+    requireWorkerDiagnosticsSecret(config);
+  }
+};
+
+const requireWorkerDiagnosticsSecret = (config: CombinedConfig): void => {
+  if (Buffer.byteLength(config.worker.diagnosticsSecret, 'utf8') < 32) {
+    throw new Error(
+      'WORKER_DIAGNOSTICS_SECRET must be at least 32 bytes in production. ' +
+      'Generate one with: openssl rand -base64 32'
+    );
   }
 };
 
@@ -222,6 +232,9 @@ const requireGatewaySecret = (config: CombinedConfig): void => {
 const validateWorkerConfig = (config: CombinedConfig): void => {
   if (!config.worker.healthUrl) {
     throw new Error('WORKER_HEALTH_URL is required');
+  }
+  if (!config.worker.diagnosticsUrl) {
+    throw new Error('WORKER_DIAGNOSTICS_URL is required');
   }
 };
 

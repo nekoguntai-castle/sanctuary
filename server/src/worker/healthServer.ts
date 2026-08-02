@@ -15,6 +15,14 @@ import http from "http";
 import { createLogger } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 import { registry } from "../observability/metrics/registry";
+import {
+  WORKER_DIAGNOSTICS_PATH,
+} from "../internal/workerDiagnostics/protocol";
+import {
+  createWorkerDiagnosticsRequestHandler,
+  type WorkerDiagnosticsHandlerOptions,
+  type WorkerDiagnosticsRequestHandler,
+} from "./diagnostics/requestHandler";
 
 const log = createLogger("WORKER:HEALTH");
 
@@ -73,6 +81,7 @@ export interface HealthServerOptions {
   port: number;
   /** Health check provider */
   healthProvider: HealthCheckProvider;
+  diagnostics?: WorkerDiagnosticsHandlerOptions;
 }
 
 export interface HealthServerHandle {
@@ -155,11 +164,17 @@ async function writeMetricsResponse(
 }
 
 async function routeHealthRequest(
-  url: string,
+  method: string,
+  path: string,
   res: http.ServerResponse,
   healthProvider: HealthCheckProvider,
 ): Promise<void> {
-  switch (url) {
+  if (method !== "GET") {
+    writeText(res, 405, "Method Not Allowed");
+    return;
+  }
+
+  switch (path) {
     case "/":
     case "/health":
       await writeHealthResponse(res, healthProvider);
@@ -186,10 +201,25 @@ async function handleHealthRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   healthProvider: HealthCheckProvider,
+  diagnosticsHandler: WorkerDiagnosticsRequestHandler | undefined,
 ): Promise<void> {
   try {
-    // Internal-only server, no CORS needed.
-    await routeHealthRequest(req.url || "/", res, healthProvider);
+    const path = new URL(req.url || "/", "http://worker.local").pathname;
+    const method = req.method || "GET";
+    if (path === WORKER_DIAGNOSTICS_PATH) {
+      if (method !== "POST") {
+        writeText(res, 405, "Method Not Allowed");
+        return;
+      }
+      if (!diagnosticsHandler) {
+        req.resume();
+        writeJson(res, 503, { error: "diagnostics_unavailable" });
+        return;
+      }
+      await diagnosticsHandler.handle(req, res);
+      return;
+    }
+    await routeHealthRequest(method, path, res, healthProvider);
   } catch (error) {
     log.error("Health check error", { error: getErrorMessage(error) });
     // Keep detailed failure information in logs; health responses are probe-visible.
@@ -206,10 +236,18 @@ async function handleHealthRequest(
 export function startHealthServer(
   options: HealthServerOptions,
 ): HealthServerHandle {
-  const { port, healthProvider } = options;
+  const { port, healthProvider, diagnostics } = options;
+  const diagnosticsHandler = diagnostics
+    ? createWorkerDiagnosticsRequestHandler(diagnostics)
+    : undefined;
 
   const server = http.createServer(async (req, res) => {
-    await handleHealthRequest(req, res, healthProvider);
+    await handleHealthRequest(
+      req,
+      res,
+      healthProvider,
+      diagnosticsHandler,
+    );
   });
 
   // Handle server errors
@@ -225,6 +263,7 @@ export function startHealthServer(
   return {
     close: () =>
       new Promise<void>((resolve, reject) => {
+        diagnosticsHandler?.clear();
         server.close((err) => {
           if (err) {
             log.error("Health server close error", { error: err.message });

@@ -82,4 +82,19 @@ describe('support package privacy boundary', () => {
       else process.env.BITCOIN_RPC_USER = original;
     }
   });
+
+  it('rejects the dedicated worker diagnostics credential', () => {
+    const original = process.env.WORKER_DIAGNOSTICS_SECRET;
+    const secret = 'worker-diagnostics-credential-sentinel';
+    process.env.WORKER_DIAGNOSTICS_SECRET = secret;
+    try {
+      expect(() => serializeShareablePackage({
+        ...emptyPackage,
+        serverVersion: secret,
+      })).toThrow('support_package_privacy_policy_violation');
+    } finally {
+      if (original === undefined) delete process.env.WORKER_DIAGNOSTICS_SECRET;
+      else process.env.WORKER_DIAGNOSTICS_SECRET = original;
+    }
+  });
 });

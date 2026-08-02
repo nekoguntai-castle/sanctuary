@@ -5,6 +5,7 @@ const mockAgentRepository = vi.hoisted(() => ({
   updateAgent: vi.fn(),
 }));
 const mockEvaluateOperationalTransactionAlerts = vi.hoisted(() => vi.fn());
+const mockRecordNotificationTelemetry = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../../../src/repositories', () => ({
   agentRepository: mockAgentRepository,
@@ -12,6 +13,10 @@ vi.mock('../../../../../src/repositories', () => ({
 
 vi.mock('../../../../../src/services/agentMonitoringService', () => ({
   evaluateOperationalTransactionAlerts: mockEvaluateOperationalTransactionAlerts,
+}));
+
+vi.mock('../../../../../src/services/notifications/telemetry', () => ({
+  recordNotificationTelemetry: mockRecordNotificationTelemetry,
 }));
 
 import { NotificationChannelRegistry } from '../../../../../src/services/notifications/channels/registry';
@@ -172,6 +177,41 @@ describe('NotificationChannelRegistry', () => {
     expect(handler.isEnabled).not.toHaveBeenCalled();
   });
 
+  it('records only closed categorical transport outcomes when execution context is supplied', async () => {
+    const handler = createHandler({
+      id: 'telegram',
+      notifyTransactions: vi.fn().mockResolvedValue({
+        success: true,
+        channelId: 'telegram',
+        usersNotified: 1,
+        outcome: 'accepted',
+        failureClass: 'none',
+      }),
+    });
+    registry.register(handler);
+
+    await registry.notifyTransactions('wallet-1', txNotifications, {
+      executionPath: 'queued',
+    });
+
+    expect(mockRecordNotificationTelemetry).toHaveBeenNthCalledWith(1, {
+      family: 'transaction',
+      stage: 'transport_attempted',
+      path: 'queued',
+      channel: 'telegram',
+      outcome: 'accepted',
+      failureClass: 'none',
+    });
+    expect(mockRecordNotificationTelemetry).toHaveBeenNthCalledWith(2, {
+      family: 'transaction',
+      stage: 'transport_accepted',
+      path: 'queued',
+      channel: 'telegram',
+      outcome: 'accepted',
+      failureClass: 'none',
+    });
+  });
+
   it('notifies transaction channels and handles disabled and thrown errors', async () => {
     const enabled = createHandler({
       id: 'enabled',
@@ -196,12 +236,20 @@ describe('NotificationChannelRegistry', () => {
 
     expect(results).toHaveLength(3);
     expect(results).toContainEqual({ success: true, channelId: 'enabled', usersNotified: 3 });
-    expect(results).toContainEqual({ success: true, channelId: 'disabled', usersNotified: 0 });
+    expect(results).toContainEqual({
+      success: true,
+      channelId: 'disabled',
+      usersNotified: 0,
+      outcome: 'no_recipients',
+      failureClass: 'none',
+    });
     expect(results).toContainEqual({
       success: false,
       channelId: 'failing',
       usersNotified: 0,
       errors: ['transaction boom'],
+      outcome: 'ambiguous',
+      failureClass: 'internal',
     });
   });
 
@@ -312,6 +360,8 @@ describe('NotificationChannelRegistry', () => {
         channelId: 'unknown',
         usersNotified: 0,
         errors: ['settled tx failure'],
+        outcome: 'ambiguous',
+        failureClass: 'internal',
       },
     ]);
 
@@ -336,6 +386,8 @@ describe('NotificationChannelRegistry', () => {
         channelId: 'unknown',
         usersNotified: 0,
         errors: ['Unknown error'],
+        outcome: 'ambiguous',
+        failureClass: 'internal',
       },
     ]);
 

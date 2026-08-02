@@ -18,6 +18,7 @@ import type {
   TransactionData,
   DraftData,
 } from './types';
+import type { NotificationFailureClass, NotificationOutcome } from '../notifications/outcomes';
 
 const log = createLogger('TELEGRAM:SVC_NOTIFY');
 
@@ -128,6 +129,7 @@ async function sendTransactionNotification(
 
   if (result.success) {
     summary.usersNotified += 1;
+    mergeSummaryOutcome(summary, result.outcome, result.failureClass);
     log.debug(`Sent Telegram notification to ${user.username} for tx ${tx.txid.slice(0, 8)}...`);
     walletLog(walletId, 'info', 'TELEGRAM', `Sent ${tx.type} notification to ${user.username}`, {
       txid: tx.txid.slice(0, 12),
@@ -135,6 +137,7 @@ async function sendTransactionNotification(
     return;
   }
 
+  mergeSummaryOutcome(summary, result.outcome, result.failureClass);
   summary.errors.push(result.error ?? 'Unknown Telegram send failure');
   log.warn(`Failed to send Telegram to ${user.username}: ${result.error}`);
   walletLog(walletId, 'warn', 'TELEGRAM', `Failed to send ${tx.type} notification to ${user.username}: ${result.error}`, {
@@ -147,7 +150,32 @@ function createNotificationSummary(): TelegramNotificationSummary {
     usersNotified: 0,
     attempted: 0,
     errors: [],
+    outcome: 'no_recipients',
+    failureClass: 'none',
   };
+}
+
+function mergeSummaryOutcome(
+  summary: TelegramNotificationSummary,
+  outcome: Extract<NotificationOutcome, 'accepted' | 'rejected' | 'ambiguous'> | undefined,
+  failureClass: NotificationFailureClass | undefined,
+): void {
+  const nextOutcome = outcome ?? 'ambiguous';
+  if (summary.outcome === 'no_recipients') {
+    summary.outcome = nextOutcome;
+  } else if (summary.outcome !== 'partial' && summary.outcome !== nextOutcome) {
+    summary.outcome = summary.outcome === 'accepted' || nextOutcome === 'accepted'
+      ? 'partial'
+      : 'ambiguous';
+  }
+
+  const nextFailureClass = failureClass ?? 'unknown';
+  if (nextFailureClass === 'none') return;
+  if (summary.failureClass === 'none') {
+    summary.failureClass = nextFailureClass;
+  } else if (summary.failureClass !== nextFailureClass) {
+    summary.failureClass = 'other';
+  }
 }
 
 async function sendDraftNotification(
@@ -215,6 +243,7 @@ export async function notifyNewTransactions(
       }
     }
   } catch (err) {
+    mergeSummaryOutcome(summary, 'ambiguous', 'internal');
     summary.errors.push(getErrorMessage(err));
     log.error(`Error sending Telegram notifications: ${err}`);
     walletLog(walletId, 'error', 'TELEGRAM', `Error sending notifications: ${err}`);

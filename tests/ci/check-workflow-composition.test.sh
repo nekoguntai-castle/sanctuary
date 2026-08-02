@@ -627,6 +627,16 @@ assert_occurrence_count "$TEST_WORKFLOW" \
   "scripts/ci/resolve-postgres-service.sh" \
   3
 
+for postgres_password in \
+  'sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-quick-smoke' \
+  'sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration' \
+  'sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-browser-e2e'; do
+  assert_occurrence_count "$TEST_WORKFLOW" \
+    "Postgres service and resolver share one job-unique credential" \
+    "$postgres_password" \
+    2
+done
+
 assert_not_contains "$TEST_WORKFLOW" \
   "Postgres-backed lanes must not prefer the shared service alias" \
   "if getent hosts postgres"

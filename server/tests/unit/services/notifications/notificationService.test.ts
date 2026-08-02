@@ -51,7 +51,7 @@ describe('notificationService', () => {
 
     expect(mockRegistry.notifyTransactions).toHaveBeenCalledWith('wallet-1', [
       { txid: 'a'.repeat(64), type: 'received', amount: 5_000n },
-    ]);
+    ], { executionPath: 'inline' });
     expect(mockLogger.error).toHaveBeenCalledWith('telegram notification failed: boom');
     expect(mockLogger.error).toHaveBeenCalledTimes(1);
   });

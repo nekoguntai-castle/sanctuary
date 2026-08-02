@@ -423,7 +423,7 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
+          POSTGRES_PASSWORD: sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-quick-smoke
           POSTGRES_DB: sanctuary_test
         ports:
           - 5432/tcp
@@ -449,6 +449,7 @@ jobs:
       - name: Resolve Postgres service host
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+          POSTGRES_PASSWORD: sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-quick-smoke
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log"
           ${{ github.workspace }}/scripts/ci/resolve-postgres-service.sh
@@ -1410,7 +1411,7 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
+          POSTGRES_PASSWORD: sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration
           POSTGRES_DB: sanctuary_test
         ports:
           - 5432/tcp
@@ -1436,6 +1437,7 @@ jobs:
       - name: Resolve Postgres service host
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+          POSTGRES_PASSWORD: sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-full-integration
         run: >
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log"
           ${{ github.workspace }}/scripts/ci/resolve-postgres-service.sh
@@ -2272,7 +2274,7 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
+          POSTGRES_PASSWORD: sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-browser-e2e
           POSTGRES_DB: sanctuary_test
         ports:
           - 5432/tcp
@@ -2357,6 +2359,7 @@ jobs:
       - name: Resolve service endpoints
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+          POSTGRES_PASSWORD: sanctuary-ci-${{ github.run_id }}-${{ github.run_attempt }}-browser-e2e
           REDIS_PORT: ${{ job.services.redis.ports['6379'] }}
         run: |
           scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/resolve-postgres.log" \

@@ -14,6 +14,7 @@ describe('production config validation', () => {
       GATEWAY_SECRET: 'test-gateway-secret-32-chars-long',
       JWT_SECRET: 'test-jwt-secret-for-config-32-chars',
       WORKER_HEALTH_URL: 'http://worker:3002/ready',
+      WORKER_DIAGNOSTICS_SECRET: 'test-worker-diagnostics-secret-32-chars-long',
     };
   });
 
@@ -38,5 +39,41 @@ describe('production config validation', () => {
     const { getConfig } = await import('../../src/config');
 
     expect(getConfig().security.encryptionSalt).toBe('unique-production-salt');
+  });
+
+  it('rejects a missing worker diagnostics secret in production', async () => {
+    delete process.env.WORKER_DIAGNOSTICS_SECRET;
+
+    await expect(import('../../src/config')).rejects.toThrow(
+      'WORKER_DIAGNOSTICS_SECRET must be at least 32 bytes in production',
+    );
+  });
+
+  it('rejects a missing worker diagnostics URL at worker validation', async () => {
+    vi.doMock('../../src/config/schema', () => ({
+      assertValidConfig: vi.fn(),
+    }));
+    vi.doMock('../../src/config/envSections', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../../src/config/envSections')>();
+      return {
+        ...actual,
+        buildWorkerHealthConfig: (
+          nodeEnv: 'development' | 'production' | 'test',
+          workerHealthPort: number,
+        ) => ({
+          ...actual.buildWorkerHealthConfig(nodeEnv, workerHealthPort),
+          diagnosticsUrl: '',
+        }),
+      };
+    });
+
+    try {
+      await expect(import('../../src/config')).rejects.toThrow(
+        'WORKER_DIAGNOSTICS_URL is required',
+      );
+    } finally {
+      vi.doUnmock('../../src/config/schema');
+      vi.doUnmock('../../src/config/envSections');
+    }
   });
 });

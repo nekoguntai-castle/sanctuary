@@ -48,6 +48,9 @@ export const pushChannelHandler: NotificationChannelHandler = {
         success: true,
         channelId: 'push',
         usersNotified: 1, // Push service handles user lookup internally
+        // The legacy push service does not return recipient/provider acceptance.
+        outcome: 'ambiguous',
+        failureClass: 'unknown',
       };
     } catch (err) {
       return {
@@ -55,6 +58,8 @@ export const pushChannelHandler: NotificationChannelHandler = {
         channelId: 'push',
         usersNotified: 0,
         errors: [getErrorMessage(err)],
+        outcome: 'ambiguous',
+        failureClass: 'internal',
       };
     }
   },

@@ -7,6 +7,11 @@
 import type { Job, JobsOptions } from 'bullmq';
 import type { SyncPriority } from '@sanctuary/shared/constants/sync';
 import type { JobExecutionContext } from '../../jobs/types';
+import type {
+  NotificationFailureClass,
+  NotificationOutcome,
+  SafeChannelOutcome,
+} from '../../services/notifications/outcomes';
 
 export type { JobExecutionContext } from '../../jobs/types';
 
@@ -163,7 +168,11 @@ export interface UpdateConfirmationsResult {
  * Notification job results
  */
 export interface NotifyJobResult {
+  version?: 1;
   success: boolean;
   channelsNotified: number;
   errors?: string[];
+  outcome?: NotificationOutcome;
+  failureClass?: NotificationFailureClass;
+  channelOutcomes?: SafeChannelOutcome[];
 }

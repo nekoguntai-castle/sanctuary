@@ -209,6 +209,18 @@ export interface WorkerConfig {
   healthTimeoutMs: number;
   /** Worker health monitor interval in milliseconds */
   healthCheckIntervalMs: number;
+  /** Authenticated worker diagnostics endpoint URL */
+  diagnosticsUrl: string;
+  /** Dedicated HMAC secret for API-to-worker diagnostics */
+  diagnosticsSecret: string;
+  /** End-to-end diagnostics request timeout */
+  diagnosticsTimeoutMs: number;
+  /** Maximum accepted diagnostics request body size */
+  diagnosticsMaxBodyBytes: number;
+  /** Maximum simultaneous diagnostics snapshot requests */
+  diagnosticsMaxConcurrentRequests: number;
+  /** Maximum accepted clock skew and replay-cache lifetime */
+  diagnosticsAuthWindowMs: number;
   /** Job processing concurrency (default: 5) */
   concurrency: number;
 }

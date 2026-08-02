@@ -7,11 +7,22 @@
  * Falls back to inline delivery when Redis is unavailable.
  */
 
-import { Queue, type ConnectionOptions, type Job, type JobsOptions } from "bullmq";
+import {
+  Queue,
+  type ConnectionOptions,
+  type Job,
+  type JobsOptions,
+} from "bullmq";
 import { getRedisClient, isRedisConnected } from "./redis";
 import { createLogger } from "../utils/logger";
 import { getErrorMessage } from "../utils/errors";
 import { toBullMqJobId } from "../jobs/bullMqJobIds";
+import type { NotificationFailureClass } from "../services/notifications/outcomes";
+import { recordNotificationTelemetry } from "../services/notifications/telemetry";
+import {
+  DEFAULT_NOTIFICATION_RETENTION_JOB_OPTIONS,
+  notificationRetentionJobOptions,
+} from "../internal/notificationRetention";
 
 const log = createLogger("INFRA:NOTIFY_DISPATCH");
 
@@ -43,8 +54,7 @@ function getQueue(): Queue | null {
     defaultJobOptions: {
       attempts: 5,
       backoff: { type: "exponential", delay: 3000 },
-      removeOnComplete: 500,
-      removeOnFail: 250,
+      ...DEFAULT_NOTIFICATION_RETENTION_JOB_OPTIONS,
     },
   });
 
@@ -58,6 +68,16 @@ export interface TransactionNotificationPayload {
   type: "received" | "sent" | "consolidation";
   amount: string;
   feeSats?: string | null;
+}
+
+export interface TransactionEnqueueResult {
+  outcome: "resolved" | "failed";
+  failureClass: Extract<
+    NotificationFailureClass,
+    "none" | "redis_unavailable" | "queue_add_failed"
+  >;
+  /** BullMQ does not authoritatively distinguish creation from stable-ID reuse here. */
+  deduplication: "unknown";
 }
 
 export interface DraftNotificationPayload {
@@ -103,13 +123,21 @@ type WebhookQueueJob = Job<WebhookDeliveryNotificationPayload>;
 
 /**
  * Queue a transaction notification for retry-capable delivery.
- * Returns true if the job was queued, false if Redis was unavailable.
+ * Reports queue resolution without claiming whether BullMQ created or reused
+ * the stable-ID job.
  */
 export async function queueTransactionNotification(
   payload: TransactionNotificationPayload,
-): Promise<boolean> {
+): Promise<TransactionEnqueueResult> {
   const queue = getQueue();
-  if (!queue) return false;
+  if (!queue) {
+    recordEnqueueTelemetry("enqueue_failed", "redis_unavailable");
+    return {
+      outcome: "failed",
+      failureClass: "redis_unavailable",
+      deduplication: "unknown",
+    };
+  }
 
   try {
     await queue.add("transaction-notify", payload, {
@@ -119,7 +147,12 @@ export async function queueTransactionNotification(
       walletId: payload.walletId,
       txid: payload.txid,
     });
-    return true;
+    recordEnqueueTelemetry("enqueue_resolved", "none");
+    return {
+      outcome: "resolved",
+      failureClass: "none",
+      deduplication: "unknown",
+    };
   } catch (error) {
     log.warn(
       "Failed to queue transaction notification, caller should fall back to inline",
@@ -128,8 +161,27 @@ export async function queueTransactionNotification(
         txid: payload.txid,
       },
     );
-    return false;
+    recordEnqueueTelemetry("enqueue_failed", "queue_add_failed");
+    return {
+      outcome: "failed",
+      failureClass: "queue_add_failed",
+      deduplication: "unknown",
+    };
   }
+}
+
+function recordEnqueueTelemetry(
+  stage: "enqueue_resolved" | "enqueue_failed",
+  failureClass: TransactionEnqueueResult["failureClass"],
+): void {
+  recordNotificationTelemetry({
+    family: "transaction",
+    stage,
+    path: "queued",
+    channel: "none",
+    outcome: "none",
+    failureClass,
+  });
 }
 
 /**
@@ -217,10 +269,11 @@ export async function queueWebhookDeliveryNotification(
 
   try {
     const jobOptions: JobsOptions = {
-      jobId: toBullMqJobId(`webhook-delivery:${payload.deliveryId}:${payload.attempt ?? 0}`),
+      jobId: toBullMqJobId(
+        `webhook-delivery:${payload.deliveryId}:${payload.attempt ?? 0}`,
+      ),
       delay: options.delayMs,
-      removeOnComplete: true,
-      removeOnFail: true,
+      ...notificationRetentionJobOptions("webhook"),
     };
     await addOrReviveWebhookJob(queue, payload, jobOptions);
     log.debug("Webhook delivery queued", {
@@ -245,15 +298,14 @@ async function addOrReviveWebhookJob(
   options: JobsOptions,
 ): Promise<void> {
   const job = await queue.add("webhook-delivery", payload, options);
-  if (!await webhookJobNeedsRevival(job)) return;
+  if (!(await webhookJobNeedsRevival(job))) return;
 
   try {
     await job.remove();
   } catch (error) {
-    const currentJob = await queue.getJob(
-      String(options.jobId),
-    ) as WebhookQueueJob | undefined;
-    if (currentJob && !await webhookJobNeedsRevival(currentJob)) return;
+    const currentJob = (await queue.getJob(String(options.jobId))) as
+      WebhookQueueJob | undefined;
+    if (currentJob && !(await webhookJobNeedsRevival(currentJob))) return;
     if (currentJob) throw error;
   }
 

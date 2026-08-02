@@ -51,9 +51,10 @@ database_url() {
 
 probe() {
   local candidate_url="$1"
+  local timeout_override="${2:-}"
   local check timeout
   check="$SCRIPT_DIR/check-integration-db.mjs"
-  timeout="${SANCTUARY_POSTGRES_PROBE_TIMEOUT_SECONDS:-10}"
+  timeout="${timeout_override:-${SANCTUARY_POSTGRES_PROBE_TIMEOUT_SECONDS:-10}}"
 
   (
     export DATABASE_URL="$candidate_url"
@@ -66,11 +67,12 @@ select_candidate() {
   local label="$1"
   local host="$2"
   local port="$3"
+  local timeout_override="${4:-}"
   local candidate_url
   candidate_url="$(database_url "$host" "$port")"
 
   echo "resolve-postgres-service: probing ${label} endpoint ${host}:${port}"
-  if probe "$candidate_url"; then
+  if probe "$candidate_url" "$timeout_override"; then
     ci_emit_env "DATABASE_URL=$candidate_url"
     echo "resolve-postgres-service: selected ${label} endpoint ${host}:${port}"
     return 0
@@ -78,6 +80,64 @@ select_candidate() {
 
   echo "::warning::resolve-postgres-service: ${label} endpoint ${host}:${port} was not usable"
   return 1
+}
+
+service_alias_ips() {
+  getent ahostsv4 postgres 2>/dev/null \
+    | awk '$2 == "STREAM" && !seen[$1]++ { print $1 }'
+}
+
+is_ipv4() {
+  local address="$1"
+  local octet
+  local -a octets
+
+  [[ "$address" =~ ^[0-9]+(\.[0-9]+){3}$ ]] || return 1
+  IFS=. read -r -a octets <<< "$address"
+  for octet in "${octets[@]}"; do
+    [ "$octet" -le 255 ] || return 1
+  done
+}
+
+select_service_container() {
+  local attempt ip
+  local candidate_timeout="${SANCTUARY_POSTGRES_ALIAS_PROBE_TIMEOUT_SECONDS:-2}"
+  local resolution_attempts="${SANCTUARY_POSTGRES_ALIAS_RESOLUTION_ATTEMPTS:-3}"
+  local candidate_cap="${SANCTUARY_POSTGRES_ALIAS_CANDIDATE_CAP:-32}"
+  local -a candidates=()
+  local -a matches=()
+  local -A seen=()
+
+  for attempt in $(seq 1 "$resolution_attempts"); do
+    while IFS= read -r ip; do
+      [ -n "$ip" ] || continue
+      is_ipv4 "$ip" || continue
+      if [ -z "${seen[$ip]:-}" ]; then
+        seen[$ip]=1
+        candidates+=("$ip")
+        if [ "${#candidates[@]}" -gt "$candidate_cap" ]; then
+          fail 'Postgres service alias resolved beyond the candidate safety cap'
+        fi
+      fi
+    done < <(service_alias_ips)
+
+    [ "$attempt" -eq "$resolution_attempts" ] || sleep 1
+  done
+
+  for ip in "${candidates[@]}"; do
+    echo "resolve-postgres-service: authenticating service candidate ${ip}:5432"
+    if probe "$(database_url "$ip" 5432)" "$candidate_timeout"; then
+      matches+=("$ip")
+    fi
+  done
+
+  if [ "${#matches[@]}" -ne 1 ]; then
+    echo "::warning::resolve-postgres-service: expected one authenticated service candidate; found ${#matches[@]}"
+    return 1
+  fi
+
+  ci_emit_env "DATABASE_URL=$(database_url "${matches[0]}" 5432)"
+  echo "resolve-postgres-service: selected authenticated service endpoint ${matches[0]}:5432"
 }
 
 main() {
@@ -92,8 +152,16 @@ main() {
     fi
   fi
 
-  if getent hosts postgres >/dev/null 2>&1 \
-    && select_candidate service-alias postgres 5432; then
+  # Shared Forgejo DinD runners may attach several jobs' services to one
+  # bridge. Docker DNS then returns several containers for the same `postgres`
+  # alias and may rotate between them on separate connections. Probe each
+  # concrete address with this job's unique service credentials, then pin the
+  # selected IP in DATABASE_URL so migrations and tests cannot switch targets.
+  if is_containerized_runner; then
+    select_service_container \
+      || fail 'no unique authenticated Postgres service endpoint was found'
+    return
+  elif select_service_container; then
     return
   fi
 

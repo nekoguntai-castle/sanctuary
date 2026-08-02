@@ -20,6 +20,7 @@
 import {
   queueDraftNotification,
   queueTransactionNotification,
+  type TransactionEnqueueResult,
 } from '../../infrastructure';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
@@ -29,6 +30,11 @@ import {
   type DraftData,
   type TransactionData,
 } from './notificationService';
+import {
+  summarizeSafeNotificationOutcome,
+  type SafeNotificationOutcome,
+} from './outcomes';
+import { recordNotificationTelemetry } from './telemetry';
 
 const log = createLogger('NOTIFY:DISPATCH');
 
@@ -50,13 +56,13 @@ export async function dispatchTransactionNotifications(
     feeSats: first.feeSats?.toString() ?? null,
   });
 
-  if (!queued) {
+  if (!isEnqueueResolved(queued)) {
     log.debug('Falling back to inline transaction notification delivery', {
       walletId,
       count: transactions.length,
     });
     try {
-      await notifyNewTransactions(walletId, transactions);
+      await deliverInlineTransactionNotifications(walletId, transactions);
     } catch (err) {
       log.warn('Inline transaction notification failed', { error: getErrorMessage(err), walletId });
     }
@@ -65,17 +71,81 @@ export async function dispatchTransactionNotifications(
 
   if (rest.length === 0) return;
 
-  await Promise.all(
-    rest.map((tx) =>
-      queueTransactionNotification({
+  const restResults = await Promise.all(
+    rest.map(async (tx) => ({
+      tx,
+      enqueue: await queueTransactionNotification({
         walletId,
         txid: tx.txid,
         type: tx.type as 'received' | 'sent' | 'consolidation',
         amount: tx.amount.toString(),
         feeSats: tx.feeSats?.toString() ?? null,
       }),
-    ),
+    })),
   );
+
+  const failedTransactions = restResults
+    .filter(({ enqueue }) => !isEnqueueResolved(enqueue))
+    .map(({ tx }) => tx);
+  if (failedTransactions.length === 0) return;
+
+  log.debug('Falling back to inline delivery for transaction queue failures', {
+    walletId,
+    count: failedTransactions.length,
+  });
+  try {
+    await deliverInlineTransactionNotifications(walletId, failedTransactions);
+  } catch (err) {
+    log.warn('Inline transaction notification failed', {
+      error: getErrorMessage(err),
+      walletId,
+    });
+  }
+}
+
+type EnqueueResult = TransactionEnqueueResult | boolean;
+
+function isEnqueueResolved(result: EnqueueResult): boolean {
+  return typeof result === 'boolean' ? result : result.outcome === 'resolved';
+}
+
+async function deliverInlineTransactionNotifications(
+  walletId: string,
+  transactions: TransactionData[],
+): Promise<SafeNotificationOutcome> {
+  recordNotificationTelemetry({
+    family: 'transaction',
+    stage: 'inline_fallback_attempted',
+    path: 'inline',
+    channel: 'none',
+    outcome: 'none',
+    failureClass: 'none',
+  });
+
+  try {
+    const results = await notifyNewTransactions(walletId, transactions);
+    const summary = summarizeSafeNotificationOutcome(results);
+    recordInlineTerminalOutcome(summary);
+    return summary;
+  } catch (error) {
+    recordInlineTerminalOutcome({
+      outcome: 'ambiguous',
+      failureClass: 'internal',
+      channels: [],
+    });
+    throw error;
+  }
+}
+
+function recordInlineTerminalOutcome(summary: SafeNotificationOutcome): void {
+  recordNotificationTelemetry({
+    family: 'transaction',
+    stage: 'inline_terminal_outcome',
+    path: 'inline',
+    channel: 'none',
+    outcome: summary.outcome,
+    failureClass: summary.failureClass,
+  });
 }
 
 export async function dispatchDraftNotification(

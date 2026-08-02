@@ -39,5 +39,6 @@ export {
   type ConsolidationSuggestionNotificationPayload,
   type DraftNotificationPayload,
   type TransactionNotificationPayload,
+  type TransactionEnqueueResult,
   type WebhookDeliveryNotificationPayload,
 } from './notificationDispatcher';

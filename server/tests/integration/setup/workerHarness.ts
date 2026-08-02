@@ -97,6 +97,13 @@ export const createWorkerTestHarness = async (
         priceDataRetentionDays: 14,
         feeEstimateRetentionDays: 7,
       },
+      worker: {
+        diagnosticsSecret: 'integration-worker-diagnostics-secret',
+        diagnosticsTimeoutMs: 3000,
+        diagnosticsMaxBodyBytes: 1024,
+        diagnosticsMaxConcurrentRequests: 2,
+        diagnosticsAuthWindowMs: 60_000,
+      },
       gatewaySecret: options.gatewaySecret ?? 'test-secret',
       ...options.configOverrides,
     }),
@@ -127,6 +134,9 @@ export const createWorkerTestHarness = async (
   vi.doMock('../../../src/models/prisma', () => ({
     connectWithRetry: vi.fn(async () => undefined),
     disconnect: vi.fn(async () => undefined),
+    getLastDatabaseHealth: vi.fn(() => true),
+    startDatabaseHealthCheck: vi.fn(),
+    stopDatabaseHealthCheck: vi.fn(),
   }));
 
   vi.doMock('../../../src/infrastructure', () => ({
@@ -143,6 +153,13 @@ export const createWorkerTestHarness = async (
     featureFlagService: {
       initialize: vi.fn(async () => undefined),
       isEnabled: vi.fn(async () => false),
+    },
+  }));
+
+  vi.doMock('../../../src/services/workerHeartbeatRegistry', () => ({
+    WorkerHeartbeatWriter: class {
+      start = vi.fn();
+      stop = vi.fn(async () => undefined);
     },
   }));
 

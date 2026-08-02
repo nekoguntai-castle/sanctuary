@@ -8,6 +8,13 @@ import type { Job, Worker } from 'bullmq';
 import { createLogger } from '../../utils/logger';
 import { deadLetterQueue, type DeadLetterCategory } from '../../services/deadLetterQueue';
 import { jobProcessingDuration } from '../../observability/metrics/infrastructureMetrics';
+import {
+  normalizeNotificationFailureClass,
+  normalizeNotificationOutcome,
+  type NotificationFailureClass,
+  type NotificationOutcome,
+} from '../../services/notifications/outcomes';
+import { recordNotificationTelemetry } from '../../services/notifications/telemetry';
 
 const log = createLogger('WORKER:QUEUE_EVENTS');
 
@@ -63,6 +70,7 @@ export function setupWorkerEventHandlers(
     });
 
     observeJobDuration(queueName, job.name, 'completed', job.processedOn, job.finishedOn);
+    recordTransactionTerminalOutcome(queueName, job, 'terminal_completed');
 
     if (job.repeatJobKey && onRecurringCompleted) {
       void onRecurringCompleted(job).catch((error) => {
@@ -88,6 +96,10 @@ export function setupWorkerEventHandlers(
 
     if (job) {
       observeJobDuration(queueName, job.name, 'failed', job.processedOn, job.finishedOn);
+      recordTransactionTerminalOutcome(queueName, job, 'attempt_failed');
+      if (isExhausted) {
+        recordTransactionTerminalOutcome(queueName, job, 'terminal_failure');
+      }
     }
 
     // Route exhausted jobs to dead letter queue for visibility and manual retry
@@ -111,4 +123,58 @@ export function setupWorkerEventHandlers(
   worker.on('stalled', (jobId) => {
     log.warn(`Job stalled: ${queueName}:${jobId}`);
   });
+}
+
+type RecordedNotificationState = {
+  outcome: NotificationOutcome;
+  failureClass: NotificationFailureClass;
+};
+
+function recordTransactionTerminalOutcome(
+  queueName: string,
+  job: Job,
+  stage: 'attempt_failed' | 'terminal_completed' | 'terminal_failure',
+): void {
+  if (queueName !== 'notifications' || job.name !== 'transaction-notify') return;
+  const state = readRecordedNotificationState(job, stage === 'terminal_completed');
+  recordNotificationTelemetry({
+    family: 'transaction',
+    stage,
+    path: 'queued',
+    channel: 'none',
+    outcome: state.outcome,
+    failureClass: state.failureClass,
+  });
+}
+
+function readRecordedNotificationState(
+  job: Job,
+  completed: boolean,
+): RecordedNotificationState {
+  const candidate = completed
+    ? job.returnvalue
+    : getCurrentAttemptProgressNotification(job.progress, job.attemptsMade);
+  if (!candidate || typeof candidate !== 'object') {
+    return { outcome: 'ambiguous', failureClass: 'unknown' };
+  }
+  const record = candidate as Record<string, unknown>;
+  return {
+    outcome: normalizeNotificationOutcome(record.outcome, 'ambiguous'),
+    failureClass: normalizeNotificationFailureClass(record.failureClass, 'unknown'),
+  };
+}
+
+function getCurrentAttemptProgressNotification(
+  progress: unknown,
+  failedAttemptOrdinal: number,
+): unknown {
+  if (!progress || typeof progress !== 'object') return undefined;
+  const record = progress as Record<string, unknown>;
+  if (
+    record.version !== 1
+    || typeof record.attemptOrdinal !== 'number'
+    || !Number.isSafeInteger(record.attemptOrdinal)
+    || record.attemptOrdinal !== failedAttemptOrdinal
+  ) return undefined;
+  return record.notification;
 }

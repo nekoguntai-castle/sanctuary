@@ -624,6 +624,14 @@ export class WorkerJobQueue {
     return true;
   }
 
+  isQueueWorkerRunning(queueName: string): boolean {
+    return this.initialized && (this.queues.get(queueName)?.worker.isRunning() ?? false);
+  }
+
+  hasRegisteredHandler(queueName: string, jobName: string): boolean {
+    return this.handlers.has(`${queueName}:${jobName}`);
+  }
+
   /**
    * Register a callback for when a specific job completes on a queue.
    * Uses the BullMQ Worker 'completed' event.

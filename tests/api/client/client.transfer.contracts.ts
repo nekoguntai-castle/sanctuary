@@ -494,6 +494,25 @@ export const registerApiClientTransferContracts = () => {
       expect(mockDownloadBlob).toHaveBeenCalledWith(blob, "backup.tar.gz");
     });
 
+    it("should serialize an explicit download confirmation body", async () => {
+      const blob = new Blob(["support-package"]);
+      mockFetch.mockResolvedValue(okBlobResponse(blob));
+
+      await apiClient.download("/admin/support-package", undefined, {
+        method: "POST",
+        body: { confirmShareableAggregate: true },
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/admin/support-package"),
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ confirmShareableAggregate: true }),
+          headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        }),
+      );
+    });
+
     it("should not retry custom POST download transport failures", async () => {
       mockFetch.mockRejectedValue(new TypeError("ambiguous completion"));
 

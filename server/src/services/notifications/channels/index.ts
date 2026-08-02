@@ -37,8 +37,16 @@ export type {
   ConsolidationSuggestionNotification,
   AIInsightNotification,
   NotificationResult,
+  NotificationDispatchContext,
   ChannelCapabilities,
 } from './types';
+export type {
+  NotificationFailureClass,
+  NotificationOutcome,
+  SafeChannelOutcome,
+  SafeNotificationOutcome,
+} from '../outcomes';
+export { summarizeSafeNotificationOutcome, toSafeChannelOutcome } from '../outcomes';
 
 // Export individual handlers for direct use if needed
 export { telegramChannelHandler } from './telegram';

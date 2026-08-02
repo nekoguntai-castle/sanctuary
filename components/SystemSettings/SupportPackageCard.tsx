@@ -1,9 +1,31 @@
-import React from 'react';
-import { LifeBuoy, Download, ShieldAlert } from 'lucide-react';
+import React, { useState } from 'react';
+import { LifeBuoy, Download } from 'lucide-react';
 
 import { Button } from '../ui/Button';
+import { ErrorAlert } from '../ui/ErrorAlert';
+import { NoticeAlert } from '../ui/NoticeAlert';
+import { downloadSupportPackage } from '../../src/api/admin/supportPackage';
+
+const PRIVACY_NOTICE =
+  'Aggregate counts and coarse activity windows can still reveal operational activity on small deployments. Share the file only with your intended support party. Packages created by version 0.8.56 are not safe to share.';
 
 export const SupportPackageCard: React.FC = () => {
+  const [confirmed, setConfirmed] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const download = async () => {
+    setDownloading(true);
+    setError(null);
+    try {
+      await downloadSupportPackage();
+    } catch {
+      setError('The privacy-safe support package could not be generated.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="surface-elevated rounded-xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
@@ -22,21 +44,29 @@ export const SupportPackageCard: React.FC = () => {
         {/* Body */}
         <div className="p-6 space-y-4">
           <p className="text-sm text-sanctuary-600 dark:text-sanctuary-400">
-            Support package downloads are temporarily unavailable while privacy-safe
-            diagnostics are being implemented.
+            Download aggregate notification diagnostics with source and freshness
+            information. The package excludes identities, wallet and transaction data,
+            credentials, message content, endpoints, payloads, and raw errors.
           </p>
 
-          <div className="flex items-start space-x-2 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 text-warning-800 dark:text-warning-300">
-            <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
-            <span className="text-sm">
-              Existing support packages may contain sensitive configuration. Do not
-              generate or share one until the privacy-safe format is available.
-            </span>
-          </div>
+          <NoticeAlert message={PRIVACY_NOTICE} tone="warning" />
 
-          <Button variant="primary" size="sm" disabled>
+          <label className="flex items-start gap-2 text-sm text-sanctuary-700 dark:text-sanctuary-300">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(event) => setConfirmed(event.target.checked)}
+              className="w-4 h-4 mt-0.5 rounded border-sanctuary-300 dark:border-sanctuary-600 text-primary-600 focus:ring-primary-500 surface-secondary"
+            />
+            I understand this package contains aggregate operational activity and confirm
+            that I intend to generate the shareable aggregate profile.
+          </label>
+
+          <ErrorAlert message={error} className="mb-0" />
+
+          <Button variant="primary" size="sm" disabled={!confirmed || downloading} onClick={download}>
             <Download className="w-4 h-4 mr-2" />
-            Download Unavailable
+            {downloading ? 'Generating…' : 'Download Support Package'}
           </Button>
         </div>
       </div>

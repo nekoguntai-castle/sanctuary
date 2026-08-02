@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => {
     initialize: vi.fn(),
     getRegisteredJobs: vi.fn(),
     isHealthy: vi.fn(),
+    isQueueWorkerRunning: vi.fn(),
+    hasRegisteredHandler: vi.fn(),
     getHealth: vi.fn(),
     getRecurringHeartbeatSnapshot: vi.fn(),
     inspectRecurringSchedules: vi.fn(),
@@ -41,6 +43,7 @@ const mocks = vi.hoisted(() => {
   let healthProvider:
     | { getHealth: () => Promise<unknown>; getMetrics: () => Promise<unknown> }
     | undefined;
+  let diagnosticsProvider: (() => Promise<unknown> | unknown) | undefined;
 
   const WorkerJobQueue = vi.fn(function WorkerJobQueueMock() {
     return queueInstance;
@@ -49,9 +52,20 @@ const mocks = vi.hoisted(() => {
     electrumCallbacks = opts;
     return electrumInstance;
   });
-  const startHealthServer = vi.fn((opts: { healthProvider: typeof healthProvider }) => {
+  const startHealthServer = vi.fn((opts: {
+    healthProvider: typeof healthProvider;
+    diagnostics?: { getSnapshot: () => Promise<unknown> | unknown };
+  }) => {
     healthProvider = opts.healthProvider;
+    diagnosticsProvider = opts.diagnostics?.getSnapshot;
     return healthServerHandle;
+  });
+  const heartbeatInstance = {
+    start: vi.fn(),
+    stop: vi.fn(),
+  };
+  const WorkerHeartbeatWriter = vi.fn(function WorkerHeartbeatWriterMock() {
+    return heartbeatInstance;
   });
 
   const getConfig = vi.fn(() => ({
@@ -70,6 +84,13 @@ const mocks = vi.hoisted(() => {
       priceDataRetentionDays: 30,
       feeEstimateRetentionDays: 7,
     },
+    worker: {
+      diagnosticsSecret: 's'.repeat(32),
+      diagnosticsTimeoutMs: 3000,
+      diagnosticsMaxBodyBytes: 1024,
+      diagnosticsMaxConcurrentRequests: 2,
+      diagnosticsAuthWindowMs: 60_000,
+    },
     features: {
       treasuryAutopilot: false,
     },
@@ -83,11 +104,16 @@ const mocks = vi.hoisted(() => {
     WorkerJobQueue,
     ElectrumSubscriptionManager,
     startHealthServer,
+    heartbeatInstance,
+    WorkerHeartbeatWriter,
     getConfig,
     registerWorkerJobs: vi.fn(),
     initializeOpenTelemetry: vi.fn(),
     connectWithRetry: vi.fn(),
     disconnect: vi.fn(),
+    startDatabaseHealthCheck: vi.fn(),
+    stopDatabaseHealthCheck: vi.fn(),
+    getLastDatabaseHealth: vi.fn(),
     initializeDistributedLock: vi.fn(),
     initializeRedis: vi.fn(),
     shutdownRedis: vi.fn(),
@@ -108,6 +134,7 @@ const mocks = vi.hoisted(() => {
     },
     getElectrumCallbacks: () => electrumCallbacks,
     getHealthProvider: () => healthProvider,
+    getDiagnosticsProvider: () => diagnosticsProvider,
   };
 });
 
@@ -130,6 +157,17 @@ vi.mock('../../../src/utils/errors', () => ({
 vi.mock('../../../src/models/prisma', () => ({
   connectWithRetry: mocks.connectWithRetry,
   disconnect: mocks.disconnect,
+  startDatabaseHealthCheck: mocks.startDatabaseHealthCheck,
+  stopDatabaseHealthCheck: mocks.stopDatabaseHealthCheck,
+  getLastDatabaseHealth: mocks.getLastDatabaseHealth,
+}));
+
+vi.mock('../../../src/services/telegram/api', () => ({
+  getTelegramTransportDiagnostics: () => ({
+    lastSuccessAt: null,
+    lastFailureAt: null,
+    lastFailureClass: 'none',
+  }),
 }));
 
 vi.mock('../../../src/infrastructure', () => ({
@@ -158,6 +196,10 @@ vi.mock('../../../src/worker/healthServer', () => ({
   startHealthServer: mocks.startHealthServer,
 }));
 
+vi.mock('../../../src/services/workerHeartbeatRegistry', () => ({
+  WorkerHeartbeatWriter: mocks.WorkerHeartbeatWriter,
+}));
+
 vi.mock('../../../src/worker/jobs', () => ({
   registerWorkerJobs: mocks.registerWorkerJobs,
 }));
@@ -184,6 +226,7 @@ describe('worker entrypoint', () => {
     mocks.initializeOpenTelemetry.mockResolvedValue(undefined);
     mocks.connectWithRetry.mockResolvedValue(undefined);
     mocks.disconnect.mockResolvedValue(undefined);
+    mocks.getLastDatabaseHealth.mockReturnValue(true);
     mocks.initializeRedis.mockResolvedValue(undefined);
     mocks.shutdownRedis.mockResolvedValue(undefined);
     mocks.isRedisConnected.mockReturnValue(true);
@@ -193,6 +236,8 @@ describe('worker entrypoint', () => {
     mocks.queueInstance.initialize.mockResolvedValue(undefined);
     mocks.queueInstance.getRegisteredJobs.mockReturnValue(['check-stale-wallets']);
     mocks.queueInstance.isHealthy.mockReturnValue(true);
+    mocks.queueInstance.isQueueWorkerRunning.mockReturnValue(true);
+    mocks.queueInstance.hasRegisteredHandler.mockReturnValue(true);
     mocks.queueInstance.getHealth.mockResolvedValue({ queues: { sync: { size: 0 } } });
     mocks.queueInstance.getRecurringHeartbeatSnapshot.mockImplementation(
       async (definitions: Array<{ schedulerId: string; freshness?: unknown }>) => ({
@@ -239,6 +284,8 @@ describe('worker entrypoint', () => {
     mocks.electrumInstance.reconcileSubscriptions.mockResolvedValue(undefined);
 
     mocks.healthServerHandle.close.mockResolvedValue(undefined);
+    mocks.heartbeatInstance.start.mockReturnValue(undefined);
+    mocks.heartbeatInstance.stop.mockResolvedValue(undefined);
 
     mocks.mockFeatureFlagService.initialize.mockResolvedValue(undefined);
     mocks.mockFeatureFlagService.isEnabled.mockResolvedValue(false);
@@ -613,6 +660,7 @@ describe('worker entrypoint', () => {
       concurrency: 5,
       queues: ['sync', 'notifications', 'confirmations', 'maintenance'],
     });
+    expect(mocks.startDatabaseHealthCheck).toHaveBeenCalledOnce();
 
     const healthProvider = mocks.getHealthProvider();
     expect(healthProvider).toBeDefined();
@@ -658,6 +706,25 @@ describe('worker entrypoint', () => {
         completionTimes: expect.any(Object),
       },
     });
+
+    const diagnosticsProvider = mocks.getDiagnosticsProvider();
+    expect(diagnosticsProvider).toBeDefined();
+    expect(diagnosticsProvider?.()).toEqual(
+      expect.objectContaining({
+        protocolVersion: 1,
+        notificationPipeline: {
+          consumerRunning: true,
+          transactionHandlerRegistered: true,
+        },
+        redis: { state: 'connected' },
+        database: { state: 'connected' },
+        notificationTelemetryWriter: {
+          observation: 'observed',
+          circuit: 'closed',
+          droppedEvents: 'zero',
+        },
+      }),
+    );
     mocks.queueInstance.getHealth.mockResolvedValueOnce(undefined);
     mocks.electrumInstance.getHealthMetrics.mockReturnValueOnce(undefined);
     await expect(healthProvider?.getMetrics()).resolves.toEqual({
@@ -732,6 +799,7 @@ describe('worker entrypoint', () => {
     expect(clearIntervalSpy).toHaveBeenCalledWith(intervalHandle);
     expect(mocks.electrumInstance.reconcileSubscriptions).toHaveBeenCalledTimes(2);
     expect(mocks.shutdownDistributedLock).toHaveBeenCalledTimes(1);
+    expect(mocks.stopDatabaseHealthCheck).toHaveBeenCalledOnce();
     expect(mocks.logger.error).toHaveBeenCalledWith(
       'Error closing health server',
       expect.objectContaining({ error: expect.any(String) })

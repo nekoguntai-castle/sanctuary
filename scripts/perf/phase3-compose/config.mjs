@@ -263,6 +263,7 @@ function buildComposeEnv({
     ENCRYPTION_KEY: 'phase3-compose-benchmark-encryption-key-32-chars',
     ENCRYPTION_SALT: 'phase3-compose-benchmark-encryption-salt',
     GATEWAY_SECRET: 'phase3-compose-benchmark-gateway-secret-32-characters',
+    WORKER_DIAGNOSTICS_SECRET: 'phase3-compose-benchmark-worker-diagnostics-secret-32-characters',
     LLM_EGRESS_PROXY_SECRET: 'phase3-compose-benchmark-llm-egress-proxy-secret-32-characters',
     HTTP_PORT: httpPort,
     HTTPS_PORT: httpsPort,

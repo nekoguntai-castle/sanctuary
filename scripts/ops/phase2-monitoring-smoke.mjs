@@ -187,7 +187,11 @@ function collectPortBindings() {
       {
         cwd: repoRoot,
         encoding: 'utf8',
-        env: process.env,
+        env: {
+          ...process.env,
+          WORKER_DIAGNOSTICS_SECRET: process.env.WORKER_DIAGNOSTICS_SECRET
+            || 'phase2-monitoring-worker-diagnostics-secret-32-characters',
+        },
         stdio: ['ignore', 'pipe', 'pipe'],
       }
     );

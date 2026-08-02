@@ -24,7 +24,7 @@ describe('downloadSupportPackage', () => {
     expect(mockDownload).toHaveBeenCalledWith(
       '/admin/support-package',
       undefined,
-      { method: 'POST' }
+      { method: 'POST', body: { confirmShareableAggregate: true } }
     );
   });
 

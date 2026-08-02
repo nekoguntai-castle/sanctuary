@@ -147,6 +147,15 @@ export function buildWorkerHealthConfig(
     healthUrl: parseStringEnv('WORKER_HEALTH_URL', `http://${defaultWorkerHost}:${workerHealthPort}/health`),
     healthTimeoutMs: parseIntegerEnv('WORKER_HEALTH_TIMEOUT_MS', 3000),
     healthCheckIntervalMs: parseIntegerEnv('WORKER_HEALTH_CHECK_INTERVAL_MS', 10000),
+    diagnosticsUrl: parseStringEnv(
+      'WORKER_DIAGNOSTICS_URL',
+      `http://${defaultWorkerHost}:${workerHealthPort}/internal/diagnostics/v1/snapshot`,
+    ),
+    diagnosticsSecret: parseStringEnv('WORKER_DIAGNOSTICS_SECRET'),
+    diagnosticsTimeoutMs: parseIntegerEnv('WORKER_DIAGNOSTICS_TIMEOUT_MS', 3000),
+    diagnosticsMaxBodyBytes: parseIntegerEnv('WORKER_DIAGNOSTICS_MAX_BODY_BYTES', 1024),
+    diagnosticsMaxConcurrentRequests: parseIntegerEnv('WORKER_DIAGNOSTICS_MAX_CONCURRENT', 2),
+    diagnosticsAuthWindowMs: parseIntegerEnv('WORKER_DIAGNOSTICS_AUTH_WINDOW_MS', 60_000),
   };
 }
 

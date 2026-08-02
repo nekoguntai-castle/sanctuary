@@ -55,5 +55,32 @@ describe('config env section builders', () => {
   it('uses the production worker host only for production worker health defaults', () => {
     expect(buildWorkerHealthConfig('production', 3002).healthUrl).toBe('http://worker:3002/health');
     expect(buildWorkerHealthConfig('test', 3002).healthUrl).toBe('http://localhost:3002/health');
+    expect(buildWorkerHealthConfig('production', 3002).diagnosticsUrl).toBe(
+      'http://worker:3002/internal/diagnostics/v1/snapshot',
+    );
+  });
+
+  it('uses bounded worker diagnostics defaults when no overrides are configured', () => {
+    vi.stubEnv('WORKER_HEALTH_URL', '');
+    vi.stubEnv('WORKER_HEALTH_TIMEOUT_MS', '');
+    vi.stubEnv('WORKER_HEALTH_CHECK_INTERVAL_MS', '');
+    vi.stubEnv('WORKER_DIAGNOSTICS_URL', '');
+    vi.stubEnv('WORKER_DIAGNOSTICS_SECRET', '');
+    vi.stubEnv('WORKER_DIAGNOSTICS_TIMEOUT_MS', '');
+    vi.stubEnv('WORKER_DIAGNOSTICS_MAX_BODY_BYTES', '');
+    vi.stubEnv('WORKER_DIAGNOSTICS_MAX_CONCURRENT', '');
+    vi.stubEnv('WORKER_DIAGNOSTICS_AUTH_WINDOW_MS', '');
+
+    expect(buildWorkerHealthConfig('production', 3002)).toEqual({
+      healthUrl: 'http://worker:3002/health',
+      healthTimeoutMs: 3000,
+      healthCheckIntervalMs: 10000,
+      diagnosticsUrl: 'http://worker:3002/internal/diagnostics/v1/snapshot',
+      diagnosticsSecret: '',
+      diagnosticsTimeoutMs: 3000,
+      diagnosticsMaxBodyBytes: 1024,
+      diagnosticsMaxConcurrentRequests: 2,
+      diagnosticsAuthWindowMs: 60_000,
+    });
   });
 });

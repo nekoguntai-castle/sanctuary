@@ -195,6 +195,12 @@ export const WorkerConfigSchema = z.object({
   healthUrl: z.string().min(1),
   healthTimeoutMs: z.number().int().min(100).max(60000),
   healthCheckIntervalMs: z.number().int().min(1000).max(300000),
+  diagnosticsUrl: z.string().url(),
+  diagnosticsSecret: z.string(),
+  diagnosticsTimeoutMs: z.number().int().min(100).max(60000),
+  diagnosticsMaxBodyBytes: z.number().int().min(128).max(16384),
+  diagnosticsMaxConcurrentRequests: z.number().int().min(1).max(16),
+  diagnosticsAuthWindowMs: z.number().int().min(1000).max(300000),
   concurrency: z.number().int().min(1).max(50),
 });
 

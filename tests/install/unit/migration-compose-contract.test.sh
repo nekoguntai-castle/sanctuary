@@ -11,12 +11,13 @@ export JWT_SECRET="${JWT_SECRET:-contract-jwt-secret-with-enough-length}"
 export ENCRYPTION_KEY="${ENCRYPTION_KEY:-contract-encryption-key-with-enough-length}"
 export ENCRYPTION_SALT="${ENCRYPTION_SALT:-contract-encryption-salt}"
 export GATEWAY_SECRET="${GATEWAY_SECRET:-contract-gateway-secret}"
+export WORKER_DIAGNOSTICS_SECRET="${WORKER_DIAGNOSTICS_SECRET:-contract-worker-diagnostics-secret-with-enough-length}"
 export LLM_EGRESS_PROXY_SECRET="${LLM_EGRESS_PROXY_SECRET:-contract-llm-secret}"
 
 assert_compose_contract() {
     local compose_file="$1"
     local rendered
-    rendered="$(docker compose -f "$compose_file" config --format json)"
+    rendered="$(docker compose -f "$compose_file" --profile mcp config --format json)"
 
     COMPOSE_JSON="$rendered" node <<'NODE'
 const config = JSON.parse(process.env.COMPOSE_JSON);
@@ -44,6 +45,9 @@ for (const consumer of ['worker', 'migrate']) {
   if (services[consumer]?.image !== services.backend.image) {
     throw new Error(`${consumer} must reuse the backend image`);
   }
+}
+if (services.mcp?.environment?.WORKER_DIAGNOSTICS_SECRET !== process.env.WORKER_DIAGNOSTICS_SECRET) {
+  throw new Error('mcp must receive the production diagnostics credential required by shared config');
 }
 NODE
 }

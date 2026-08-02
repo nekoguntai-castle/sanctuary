@@ -1,12 +1,14 @@
 import type { Job } from 'bullmq';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  DeadLetterQueue,
   createMemoryDeadLetterQueue,
   recordElectrumFailure,
   recordPushFailure,
   recordSyncFailure,
   recordTransactionFailure,
 } from '../../../src/services/deadLetterQueue';
+import { MemoryDeadLetterStore } from '../../../src/services/memoryDeadLetterStore';
 
 function exhaustedJob(overrides: Partial<Job> = {}): Job {
   return {
@@ -131,6 +133,55 @@ describe('DeadLetterQueue', () => {
         options: expect.objectContaining({ attempts: 3 }),
       }),
     }));
+  });
+
+  it('persists notification aggregate classification beside the operational DLQ record', async () => {
+    const aggregateRecorder = vi.fn().mockResolvedValue(undefined);
+    const store = new MemoryDeadLetterStore();
+    const queue = new DeadLetterQueue(() => store, aggregateRecorder);
+    const poison = 'wallet-secret txid-secret provider-secret';
+    const job = exhaustedJob({
+      name: 'transaction-notify',
+      data: { walletId: poison, txid: poison },
+      attemptsMade: 5,
+      progress: {
+        version: 1,
+        attemptOrdinal: 5,
+        notification: { failureClass: 'authentication' },
+      },
+    });
+
+    const id = await queue.addExhaustedJob(
+      'notification',
+      'notifications',
+      job,
+      poison,
+    );
+
+    expect(aggregateRecorder).toHaveBeenCalledWith({
+      jobFamily: 'transaction',
+      failureClass: 'authentication',
+      attempts: 'four_to_five',
+    });
+    expect(JSON.stringify(aggregateRecorder.mock.calls)).not.toContain(poison);
+  });
+
+  it('returns canonical DLQ success when aggregate persistence is unavailable', async () => {
+    const aggregateRecorder = vi.fn().mockRejectedValue(
+      new Error('redis://user:secret@host payload poison'),
+    );
+    const store = new MemoryDeadLetterStore();
+    const queue = new DeadLetterQueue(() => store, aggregateRecorder);
+
+    const id = await queue.addExhaustedJob(
+      'notification',
+      'notifications',
+      exhaustedJob({ name: 'transaction-notify' }),
+      'operational failure',
+    );
+
+    await expect(queue.get(id)).resolves.toEqual(expect.objectContaining({ id }));
+    expect(aggregateRecorder).toHaveBeenCalledTimes(1);
   });
 
   it('derives a stable fallback identity for exhausted jobs without a BullMQ ID', async () => {

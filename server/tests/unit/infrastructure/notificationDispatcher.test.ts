@@ -9,6 +9,7 @@ const mockQueueAdd = vi.fn().mockResolvedValue({
   remove: mockJobRemove,
 });
 const mockQueueClose = vi.fn().mockResolvedValue(undefined);
+const mockRecordNotificationTelemetry = vi.hoisted(() => vi.fn());
 
 vi.mock("bullmq", () => ({
   Queue: vi.fn(function MockQueue() {
@@ -34,6 +35,10 @@ vi.mock("../../../src/utils/logger", () => ({
     debug: vi.fn(),
     error: vi.fn(),
   }),
+}));
+
+vi.mock("../../../src/services/notifications/telemetry", () => ({
+  recordNotificationTelemetry: mockRecordNotificationTelemetry,
 }));
 
 import {
@@ -86,7 +91,7 @@ describe("notificationDispatcher", () => {
     return shutdownNotificationDispatcher();
   });
 
-  it("queues a transaction notification and returns true", async () => {
+  it("queues a transaction notification and returns a safe resolved outcome", async () => {
     const result = await queueTransactionNotification({
       walletId: "w1",
       txid: "tx1",
@@ -94,7 +99,19 @@ describe("notificationDispatcher", () => {
       amount: "100000",
     });
 
-    expect(result).toBe(true);
+    expect(result).toEqual({
+      outcome: "resolved",
+      failureClass: "none",
+      deduplication: "unknown",
+    });
+    expect(mockRecordNotificationTelemetry).toHaveBeenCalledWith({
+      family: "transaction",
+      stage: "enqueue_resolved",
+      path: "queued",
+      channel: "none",
+      outcome: "none",
+      failureClass: "none",
+    });
     expect(mockQueueAdd).toHaveBeenCalledWith(
       "transaction-notify",
       { walletId: "w1", txid: "tx1", type: "received", amount: "100000" },
@@ -371,7 +388,7 @@ describe("notificationDispatcher", () => {
     expect(mockQueueAdd).not.toHaveBeenCalled();
   });
 
-  it("returns false when Redis is not connected", async () => {
+  it("classifies disconnected Redis without exposing connection details", async () => {
     vi.mocked(isRedisConnected).mockReturnValueOnce(false);
 
     const result = await queueTransactionNotification({
@@ -381,11 +398,21 @@ describe("notificationDispatcher", () => {
       amount: "100000",
     });
 
-    expect(result).toBe(false);
+    expect(result).toEqual({
+      outcome: "failed",
+      failureClass: "redis_unavailable",
+      deduplication: "unknown",
+    });
+    expect(mockRecordNotificationTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: "enqueue_failed",
+        failureClass: "redis_unavailable",
+      }),
+    );
     expect(mockQueueAdd).not.toHaveBeenCalled();
   });
 
-  it("returns false when Redis client is null", async () => {
+  it("classifies a missing Redis client as unavailable", async () => {
     vi.mocked(getRedisClient).mockReturnValueOnce(null as any);
 
     const result = await queueTransactionNotification({
@@ -395,7 +422,17 @@ describe("notificationDispatcher", () => {
       amount: "100000",
     });
 
-    expect(result).toBe(false);
+    expect(result).toEqual({
+      outcome: "failed",
+      failureClass: "redis_unavailable",
+      deduplication: "unknown",
+    });
+    expect(mockRecordNotificationTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: "enqueue_failed",
+        failureClass: "redis_unavailable",
+      }),
+    );
   });
 
   it("returns false when consolidation suggestion queue add fails", async () => {
@@ -414,7 +451,7 @@ describe("notificationDispatcher", () => {
     expect(result).toBe(false);
   });
 
-  it("returns false and logs warning when queue add fails", async () => {
+  it("classifies queue-add failures without returning the thrown detail", async () => {
     // First call succeeds to create the queue
     await queueTransactionNotification({
       walletId: "w1",
@@ -433,7 +470,17 @@ describe("notificationDispatcher", () => {
       amount: "200",
     });
 
-    expect(result).toBe(false);
+    expect(result).toEqual({
+      outcome: "failed",
+      failureClass: "queue_add_failed",
+      deduplication: "unknown",
+    });
+    expect(mockRecordNotificationTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stage: "enqueue_failed",
+        failureClass: "queue_add_failed",
+      }),
+    );
   });
 
   it("shutdownNotificationDispatcher closes the queue", async () => {

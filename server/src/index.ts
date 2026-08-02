@@ -61,6 +61,11 @@ import { deadLetterQueue } from './services/deadLetterQueue';
 import { initializeCacheInvalidation, shutdownCacheInvalidation } from './services/cacheInvalidation';
 import { updateActiveStatsMetrics } from './observability/metrics/helpers';
 import { getActiveStats } from './repositories/maintenanceRepository';
+import {
+  initializeNotificationTelemetry,
+  shutdownNotificationTelemetry,
+} from './services/notifications/telemetry';
+import { shutdownNotificationDeadLetterAggregateWriter } from './services/notifications/deadLetterAggregates';
 
 const log = createLogger('SERVER');
 const COARSE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -251,6 +256,7 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
       initializeRedis(), // Redis init
     ]);
     initializeDistributedLock('redis-required');
+    initializeNotificationTelemetry('api');
 
     // Phase 2: Initialize services that need Redis (parallel)
     log.info('Initializing Redis-dependent services...');
@@ -402,6 +408,10 @@ const handleShutdown = async (signal: string, exitCode: 0 | 1 = 0) => {
 
   // Shutdown Redis WebSocket bridge
   await shutdownRedisBridge();
+
+  // Close the isolated best-effort telemetry connection before shared Redis.
+  await shutdownNotificationTelemetry();
+  shutdownNotificationDeadLetterAggregateWriter();
 
   // Shutdown Redis infrastructure
   await shutdownRedis();

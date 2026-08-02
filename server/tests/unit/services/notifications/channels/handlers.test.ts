@@ -37,6 +37,8 @@ describe('notification channel handlers', () => {
         usersNotified: 2,
         attempted: 2,
         errors: [],
+        outcome: 'accepted',
+        failureClass: 'none',
       });
 
       const result = await telegramChannelHandler.notifyTransactions('wallet-1', [
@@ -62,6 +64,9 @@ describe('notification channel handlers', () => {
         success: true,
         channelId: 'telegram',
         usersNotified: 2,
+        errors: undefined,
+        outcome: 'accepted',
+        failureClass: 'none',
       });
     });
 
@@ -70,6 +75,8 @@ describe('notification channel handlers', () => {
         usersNotified: 0,
         attempted: 1,
         errors: ['Chat not found'],
+        outcome: 'rejected',
+        failureClass: 'provider_rejected',
       });
 
       const result = await telegramChannelHandler.notifyTransactions('wallet-1', [
@@ -81,7 +88,32 @@ describe('notification channel handlers', () => {
         channelId: 'telegram',
         usersNotified: 0,
         errors: ['Chat not found'],
+        outcome: 'rejected',
+        failureClass: 'provider_rejected',
       });
+    });
+
+    it.each([
+      {
+        summary: { usersNotified: 0, attempted: 1, errors: ['legacy failure'] },
+        expected: { outcome: 'ambiguous', failureClass: 'unknown' },
+      },
+      {
+        summary: { usersNotified: 1, attempted: 1, errors: [] },
+        expected: { outcome: 'accepted', failureClass: 'none' },
+      },
+      {
+        summary: { usersNotified: 0, attempted: 0, errors: [] },
+        expected: { outcome: 'no_recipients', failureClass: 'none' },
+      },
+    ])('derives safe fields from legacy Telegram summary %#', async ({ summary, expected }) => {
+      mockTelegramService.notifyNewTransactions.mockResolvedValueOnce(summary);
+
+      const result = await telegramChannelHandler.notifyTransactions('wallet-legacy', [
+        { txid: 'c'.repeat(64), type: 'received', amount: 1n },
+      ]);
+
+      expect(result).toMatchObject(expected);
     });
 
     it('returns failed result when transaction notifications throw', async () => {
@@ -336,6 +368,8 @@ describe('notification channel handlers', () => {
         success: true,
         channelId: 'push',
         usersNotified: 1,
+        outcome: 'ambiguous',
+        failureClass: 'unknown',
       });
     });
 

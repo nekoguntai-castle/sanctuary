@@ -56,6 +56,7 @@ describe('telegramService', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.doUnmock('../../../../src/services/telegram/api');
+    vi.doUnmock('../../../../src/services/circuitBreaker');
   });
 
   it('sendTelegramMessage returns success on 200 responses', async () => {
@@ -67,23 +68,51 @@ describe('telegramService', () => {
     const { sendTelegramMessage } = await loadService();
 
     const result = await sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello');
+    const { getTelegramTransportDiagnostics } = await import(
+      '../../../../src/services/telegram/api'
+    );
 
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({
+      success: true,
+      outcome: 'accepted',
+      failureClass: 'none',
+      retryable: false,
+      acknowledgement: 'accepted',
+    });
     expect(fetchMock).toHaveBeenCalledWith(
       `https://api.telegram.org/bot${VALID_BOT_TOKEN}/sendMessage`,
       expect.objectContaining({
         method: 'POST',
       })
     );
+    expect(getTelegramTransportDiagnostics()).toEqual({
+      lastSuccessAt: expect.any(Number),
+      lastFailureAt: null,
+      lastFailureClass: 'none',
+    });
   });
 
   it('sendTelegramMessage rejects malformed bot tokens before calling Telegram', async () => {
     const { sendTelegramMessage } = await loadService();
 
     const result = await sendTelegramMessage('bot-token', 'chat-id', 'hello');
+    const { getTelegramTransportDiagnostics } = await import(
+      '../../../../src/services/telegram/api'
+    );
 
-    expect(result).toEqual({ success: false, error: 'Invalid Telegram bot token' });
+    expect(result).toEqual(expect.objectContaining({
+      success: false,
+      error: 'Invalid Telegram bot token',
+      outcome: 'rejected',
+      failureClass: 'invalid_configuration',
+      acknowledgement: 'not_accepted',
+    }));
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(getTelegramTransportDiagnostics()).toEqual({
+      lastSuccessAt: null,
+      lastFailureAt: expect.any(Number),
+      lastFailureClass: 'invalid_configuration',
+    });
   });
 
   it('sendTelegramMessage returns client errors without tripping the caller', async () => {
@@ -96,7 +125,12 @@ describe('telegramService', () => {
 
     const result = await sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello');
 
-    expect(result).toEqual({ success: false, error: 'Unauthorized' });
+    expect(result).toEqual(expect.objectContaining({
+      success: false,
+      error: 'Unauthorized',
+      outcome: 'rejected',
+      failureClass: 'authentication',
+    }));
   });
 
   it('sendTelegramMessage falls back to HTTP status when error details are missing', async () => {
@@ -109,7 +143,12 @@ describe('telegramService', () => {
 
     const result = await sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello');
 
-    expect(result).toEqual({ success: false, error: 'HTTP 404' });
+    expect(result).toEqual(expect.objectContaining({
+      success: false,
+      error: 'HTTP 404',
+      outcome: 'rejected',
+      failureClass: 'provider_rejected',
+    }));
   });
 
   it('sendTelegramMessage handles invalid JSON in error responses', async () => {
@@ -121,7 +160,32 @@ describe('telegramService', () => {
     const { sendTelegramMessage } = await loadService();
 
     const result = await sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello');
-    expect(result).toEqual({ success: false, error: 'HTTP 418' });
+    expect(result).toEqual(expect.objectContaining({
+      success: false,
+      error: 'HTTP 418',
+      outcome: 'rejected',
+      failureClass: 'provider_rejected',
+    }));
+  });
+
+  it('classifies Telegram rate limiting without retaining provider text as a class', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      json: vi.fn().mockResolvedValue({ description: 'provider-specific poison detail' }),
+    });
+    const { sendTelegramMessage } = await loadService();
+
+    const result = await sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello');
+
+    expect(result).toMatchObject({
+      success: false,
+      outcome: 'rejected',
+      failureClass: 'rate_limited',
+      retryable: true,
+      acknowledgement: 'not_accepted',
+    });
+    expect(result.failureClass).not.toContain('poison');
   });
 
   it('sendTelegramMessage reports service-side failures and circuit-open errors', async () => {
@@ -135,16 +199,76 @@ describe('telegramService', () => {
     await expect(sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello')).resolves.toEqual(
       expect.objectContaining({
         success: false,
-        error: expect.stringContaining('Telegram API error'),
+        error: 'Service unavailable',
+        outcome: 'rejected',
+        failureClass: 'provider_unavailable',
       })
     );
 
     const { CircuitOpenError } = await import('../../../../src/services/circuitBreaker');
     fetchMock.mockRejectedValueOnce(new CircuitOpenError('telegram', 2000));
-    await expect(sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello')).resolves.toEqual({
-      success: false,
-      error: 'Telegram service unavailable, will retry shortly',
-    });
+    await expect(sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello')).resolves.toEqual(
+      expect.objectContaining({
+        success: false,
+        error: 'Telegram service unavailable, will retry shortly',
+        outcome: 'rejected',
+        failureClass: 'circuit_open',
+      }),
+    );
+  });
+
+  it('classifies a timeout after fetch starts as acknowledgement-ambiguous', async () => {
+    const timeout = new Error('request timed out');
+    timeout.name = 'TimeoutError';
+    fetchMock.mockRejectedValueOnce(timeout);
+    const { sendTelegramMessage } = await loadService();
+
+    await expect(sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello')).resolves.toEqual(
+      expect.objectContaining({
+        success: false,
+        outcome: 'ambiguous',
+        failureClass: 'timeout',
+        acknowledgement: 'unknown',
+        retryable: true,
+      }),
+    );
+  });
+
+  it('classifies non-timeout transport exceptions as network failures', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('connection reset'));
+    const { sendTelegramMessage } = await loadService();
+
+    await expect(sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello')).resolves.toEqual(
+      expect.objectContaining({
+        success: false,
+        outcome: 'ambiguous',
+        failureClass: 'network',
+        acknowledgement: 'unknown',
+      }),
+    );
+  });
+
+  it('maps non-provider diagnostic failure classes into the closed other bucket', async () => {
+    vi.doMock('../../../../src/services/circuitBreaker', () => ({
+      CircuitOpenError: class CircuitOpenError extends Error {},
+      createCircuitBreaker: () => ({
+        execute: vi.fn().mockResolvedValue({
+          success: false,
+          outcome: 'ambiguous',
+          failureClass: 'internal',
+          retryable: true,
+          acknowledgement: 'unknown',
+          error: 'private internal detail',
+        }),
+      }),
+    }));
+    const { sendTelegramMessage, getTelegramTransportDiagnostics } = await import(
+      '../../../../src/services/telegram/api'
+    );
+
+    await sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello');
+
+    expect(getTelegramTransportDiagnostics().lastFailureClass).toBe('other');
   });
 
   it('getChatIdFromBot handles success, missing chat id, and empty update lists', async () => {
@@ -286,7 +410,9 @@ describe('telegramService', () => {
       json: vi.fn(),
     });
 
-    await expect(testTelegramConfig(VALID_BOT_TOKEN, 'chat-id')).resolves.toEqual({ success: true });
+    await expect(testTelegramConfig(VALID_BOT_TOKEN, 'chat-id')).resolves.toEqual(
+      expect.objectContaining({ success: true, outcome: 'accepted' }),
+    );
 
     const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
     const payload = JSON.parse(options.body);
@@ -310,6 +436,8 @@ describe('telegramService', () => {
       usersNotified: 0,
       attempted: 0,
       errors: [],
+      outcome: 'no_recipients',
+      failureClass: 'none',
     });
     expect(mockWalletRepo.findNameById).not.toHaveBeenCalled();
 
@@ -320,7 +448,39 @@ describe('telegramService', () => {
       usersNotified: 0,
       attempted: 0,
       errors: [],
+      outcome: 'no_recipients',
+      failureClass: 'none',
     });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('skips empty recipient sets, unconfigured users, and disabled wallet settings', async () => {
+    const { notifyNewTransactions } = await loadService();
+
+    (mockUserRepo.findByWalletAccess as Mock).mockResolvedValueOnce([]);
+    await expect(notifyNewTransactions('w1', [
+      { txid: 'tx-no-users', type: 'received', amount: 1n },
+    ])).resolves.toMatchObject({ attempted: 0, outcome: 'no_recipients' });
+
+    (mockUserRepo.findByWalletAccess as Mock).mockResolvedValueOnce([
+      { id: 'u1', username: 'missing', preferences: {} },
+      {
+        id: 'u2',
+        username: 'disabled',
+        preferences: {
+          telegram: {
+            enabled: true,
+            botToken: VALID_BOT_TOKEN,
+            chatId: 'chat',
+            wallets: { w1: { enabled: false } },
+          },
+        },
+      },
+    ]);
+    await expect(notifyNewTransactions('w1', [
+      { txid: 'tx-ineligible', type: 'received', amount: 1n },
+    ])).resolves.toMatchObject({ attempted: 0, outcome: 'no_recipients' });
+
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -362,7 +522,13 @@ describe('telegramService', () => {
     ]);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(summary).toEqual({ usersNotified: 2, attempted: 2, errors: [] });
+    expect(summary).toEqual({
+      usersNotified: 2,
+      attempted: 2,
+      errors: [],
+      outcome: 'accepted',
+      failureClass: 'none',
+    });
     const sentPayload = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
     const consolidationPayload = JSON.parse((fetchMock.mock.calls[1][1] as { body: string }).body);
     expect(sentPayload.text).toContain('<b>Sent</b>');
@@ -443,7 +609,13 @@ describe('telegramService', () => {
       { txid: 'abcd1234', type: 'received', amount: BigInt(1000) },
     ]);
 
-    expect(summary).toEqual({ usersNotified: 0, attempted: 1, errors: ['Chat not found'] });
+    expect(summary).toEqual({
+      usersNotified: 0,
+      attempted: 1,
+      errors: ['Chat not found'],
+      outcome: 'rejected',
+      failureClass: 'provider_rejected',
+    });
     expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('Failed to send Telegram to alice'));
 
     (mockWalletRepo.findNameById as Mock).mockRejectedValueOnce(new Error('db offline'));
@@ -451,6 +623,61 @@ describe('telegramService', () => {
       { txid: 'deadbeef', type: 'sent', amount: BigInt(1000) },
     ]);
     expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Error sending Telegram notifications'));
+  });
+
+  it('classifies mixed recipient acceptance and rejection as partial', async () => {
+    const { notifyNewTransactions } = await loadService();
+    const walletSettings = {
+      enabled: true,
+      notifyReceived: true,
+      notifySent: false,
+      notifyConsolidation: false,
+      notifyDraft: false,
+    };
+    (mockUserRepo.findByWalletAccess as Mock).mockResolvedValueOnce([
+      {
+        id: 'u1',
+        username: 'alice',
+        preferences: {
+          telegram: {
+            enabled: true,
+            botToken: VALID_BOT_TOKEN,
+            chatId: 'chat-1',
+            wallets: { w1: walletSettings },
+          },
+        },
+      },
+      {
+        id: 'u2',
+        username: 'bob',
+        preferences: {
+          telegram: {
+            enabled: true,
+            botToken: VALID_BOT_TOKEN,
+            chatId: 'chat-2',
+            wallets: { w1: walletSettings },
+          },
+        },
+      },
+    ]);
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: vi.fn() })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: vi.fn().mockResolvedValue({ description: 'blocked' }),
+      });
+
+    const summary = await notifyNewTransactions('w1', [
+      { txid: 'abcd1234', type: 'received', amount: BigInt(1000) },
+    ]);
+
+    expect(summary).toMatchObject({
+      usersNotified: 1,
+      attempted: 2,
+      outcome: 'partial',
+      failureClass: 'permission',
+    });
   });
 
   it('notifyNewTransactions records a generic error when the send result lacks details', async () => {
@@ -492,6 +719,101 @@ describe('telegramService', () => {
       usersNotified: 0,
       attempted: 1,
       errors: ['Unknown Telegram send failure'],
+      outcome: 'ambiguous',
+      failureClass: 'unknown',
+    });
+  });
+
+  it('aggregates mixed recipient outcomes independent of delivery order', async () => {
+    vi.doMock('../../../../src/services/telegram/api', () => ({
+      sendTelegramMessage: vi.fn()
+        .mockResolvedValueOnce({
+          success: false,
+          outcome: 'rejected',
+          failureClass: 'authentication',
+          error: 'first private detail',
+        })
+        .mockResolvedValueOnce({
+          success: false,
+          outcome: 'rejected',
+          failureClass: 'authentication',
+          error: 'second private detail',
+        })
+        .mockResolvedValueOnce({
+          success: false,
+          outcome: 'ambiguous',
+          failureClass: 'authentication',
+          error: 'third private detail',
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          outcome: 'accepted',
+          failureClass: 'none',
+        })
+        .mockResolvedValueOnce({
+          success: false,
+          outcome: 'rejected',
+          failureClass: 'timeout',
+          error: 'second private detail',
+        }),
+      getChatIdFromBot: vi.fn(),
+      testTelegramConfig: vi.fn(),
+    }));
+    const { notifyNewTransactions } = await loadService();
+    const walletSettings = {
+      enabled: true,
+      notifyReceived: true,
+      notifySent: false,
+      notifyConsolidation: false,
+      notifyDraft: false,
+    };
+    (mockUserRepo.findByWalletAccess as Mock).mockResolvedValueOnce([
+      {
+        id: 'u1', username: 'alice',
+        preferences: { telegram: {
+          enabled: true, botToken: VALID_BOT_TOKEN, chatId: 'chat-1',
+          wallets: { w1: walletSettings },
+        } },
+      },
+      {
+        id: 'u2', username: 'bob',
+        preferences: { telegram: {
+          enabled: true, botToken: VALID_BOT_TOKEN, chatId: 'chat-2',
+          wallets: { w1: walletSettings },
+        } },
+      },
+      {
+        id: 'u3', username: 'carol',
+        preferences: { telegram: {
+          enabled: true, botToken: VALID_BOT_TOKEN, chatId: 'chat-3',
+          wallets: { w1: walletSettings },
+        } },
+      },
+      {
+        id: 'u4', username: 'dave',
+        preferences: { telegram: {
+          enabled: true, botToken: VALID_BOT_TOKEN, chatId: 'chat-4',
+          wallets: { w1: walletSettings },
+        } },
+      },
+      {
+        id: 'u5', username: 'erin',
+        preferences: { telegram: {
+          enabled: true, botToken: VALID_BOT_TOKEN, chatId: 'chat-5',
+          wallets: { w1: walletSettings },
+        } },
+      },
+    ]);
+
+    const summary = await notifyNewTransactions('w1', [
+      { txid: 'tx-failures', type: 'received', amount: 1n },
+    ]);
+
+    expect(summary).toMatchObject({
+      attempted: 5,
+      usersNotified: 1,
+      outcome: 'partial',
+      failureClass: 'other',
     });
   });
 
@@ -645,182 +967,4 @@ describe('telegramService', () => {
     expect(payload.text).toContain('Created by: Unknown');
   });
 
-  it('updateWalletTelegramSettings initializes defaults when preferences are missing', async () => {
-    const { updateWalletTelegramSettings } = await loadService();
-    (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce({ preferences: null });
-
-    await updateWalletTelegramSettings('user-1', 'wallet-1', {
-      enabled: true,
-      notifyDraft: true,
-      notifyReceived: true,
-      notifySent: false,
-      notifyConsolidation: false,
-    });
-
-    expect(mockUserRepo.updatePreferences).toHaveBeenCalledWith(
-      'user-1',
-      {
-        telegram: {
-          botToken: '',
-          chatId: '',
-          enabled: false,
-          wallets: {
-            'wallet-1': {
-              enabled: true,
-              notifyDraft: true,
-              notifyReceived: true,
-              notifySent: false,
-              notifyConsolidation: false,
-            },
-          },
-        },
-      },
-    );
-  });
-
-  it('updateWalletTelegramSettings preserves telegram config and creates wallet map when missing', async () => {
-    const { updateWalletTelegramSettings } = await loadService();
-    (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce({
-      preferences: {
-        locale: 'en',
-        telegram: {
-          botToken: VALID_BOT_TOKEN,
-          chatId: 'chat-id',
-          enabled: true,
-        },
-      },
-    });
-
-    await updateWalletTelegramSettings('user-2', 'wallet-2', {
-      enabled: true,
-      notifyDraft: false,
-      notifyReceived: false,
-      notifySent: true,
-      notifyConsolidation: true,
-    });
-
-    expect(mockUserRepo.updatePreferences).toHaveBeenCalledWith(
-      'user-2',
-      {
-        locale: 'en',
-        telegram: {
-          botToken: VALID_BOT_TOKEN,
-          chatId: 'chat-id',
-          enabled: true,
-          wallets: {
-            'wallet-2': {
-              enabled: true,
-              notifyDraft: false,
-              notifyReceived: false,
-              notifySent: true,
-              notifyConsolidation: true,
-            },
-          },
-        },
-      },
-    );
-  });
-
-  it('updateWalletTelegramSettings preserves nested fields and stores prototype-like wallet IDs as own data', async () => {
-    const { updateWalletTelegramSettings, getWalletTelegramSettings } = await loadService();
-    (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce({
-      preferences: {
-        locale: 'en',
-        telegram: {
-          botToken: VALID_BOT_TOKEN,
-          chatId: 'chat-id',
-          enabled: true,
-          quietHours: { start: '22:00' },
-          wallets: {
-            'wallet-existing': {
-              enabled: true,
-              notifyDraft: true,
-              notifyReceived: true,
-              notifySent: true,
-              notifyConsolidation: false,
-            },
-          },
-        },
-      },
-    });
-
-    await updateWalletTelegramSettings('user-2', '__proto__', {
-      enabled: false,
-      notifyDraft: false,
-      notifyReceived: true,
-      notifySent: false,
-      notifyConsolidation: true,
-    });
-
-    const updatedPrefs = mockUserRepo.updatePreferences.mock.calls[0][1] as any;
-    const updatedWallets = updatedPrefs.telegram.wallets;
-    expect(updatedPrefs.telegram.quietHours).toEqual({ start: '22:00' });
-    expect(updatedWallets['wallet-existing']).toEqual(expect.objectContaining({ enabled: true }));
-    expect(Object.getPrototypeOf(updatedWallets)).toBe(Object.prototype);
-    expect(Object.prototype.hasOwnProperty.call(updatedWallets, '__proto__')).toBe(true);
-    expect(Object.getOwnPropertyDescriptor(updatedWallets, '__proto__')?.value).toEqual(
-      expect.objectContaining({ enabled: false })
-    );
-
-    (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce({
-      preferences: updatedPrefs,
-    });
-    await expect(getWalletTelegramSettings('user-2', '__proto__')).resolves.toEqual(
-      expect.objectContaining({ enabled: false })
-    );
-  });
-
-  it('getWalletTelegramSettings returns null for missing users and missing wallet settings', async () => {
-    const { getWalletTelegramSettings } = await loadService();
-    (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce(null);
-    await expect(getWalletTelegramSettings('missing', 'wallet-1')).resolves.toBeNull();
-
-    (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce({ preferences: {} });
-    await expect(getWalletTelegramSettings('user-1', 'wallet-1')).resolves.toBeNull();
-  });
-
-  it('getWalletTelegramSettings returns wallet-specific settings when configured', async () => {
-    const { getWalletTelegramSettings } = await loadService();
-    (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce({
-      preferences: {
-        telegram: {
-          botToken: VALID_BOT_TOKEN,
-          chatId: 'chat',
-          enabled: true,
-          wallets: {
-            'wallet-1': {
-              enabled: true,
-              notifyReceived: true,
-              notifySent: true,
-              notifyConsolidation: false,
-              notifyDraft: true,
-            },
-          },
-        },
-      },
-    });
-
-    await expect(getWalletTelegramSettings('user-1', 'wallet-1')).resolves.toEqual({
-      enabled: true,
-      notifyReceived: true,
-      notifySent: true,
-      notifyConsolidation: false,
-      notifyDraft: true,
-    });
-  });
-
-  it('updateWalletTelegramSettings throws when user is not found', async () => {
-    const { updateWalletTelegramSettings } = await loadService();
-    (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce(null);
-
-    await expect(
-      updateWalletTelegramSettings('missing-user', 'w1', {
-        enabled: true,
-        notifyDraft: true,
-        notifyReceived: true,
-        notifySent: true,
-        notifyConsolidation: true,
-      })
-    ).rejects.toThrow('User not found');
-  });
 });

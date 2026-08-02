@@ -213,6 +213,9 @@ describe('feature flag admin + worker integration', () => {
     vi.doMock('../../../src/models/prisma', () => ({
       connectWithRetry: vi.fn(async () => undefined),
       disconnect: vi.fn(async () => undefined),
+      getLastDatabaseHealth: vi.fn(() => true),
+      startDatabaseHealthCheck: vi.fn(),
+      stopDatabaseHealthCheck: vi.fn(),
     }));
 
     vi.doMock('../../../src/infrastructure', () => ({

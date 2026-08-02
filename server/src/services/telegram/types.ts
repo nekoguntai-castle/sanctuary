@@ -4,6 +4,11 @@
  * Shared type definitions for the Telegram notification service.
  */
 
+import type {
+  NotificationFailureClass,
+  NotificationOutcome,
+} from '../notifications/outcomes';
+
 /** Shape of a Telegram Bot API error response */
 export interface TelegramErrorResponse {
   ok: false;
@@ -33,6 +38,18 @@ export interface TelegramNotificationSummary {
   usersNotified: number;
   attempted: number;
   errors: string[];
+  outcome: NotificationOutcome;
+  failureClass: NotificationFailureClass;
+}
+
+export interface TelegramTransportResult {
+  success: boolean;
+  outcome: Extract<NotificationOutcome, 'accepted' | 'rejected' | 'ambiguous'>;
+  failureClass: NotificationFailureClass;
+  retryable: boolean;
+  acknowledgement: 'accepted' | 'not_accepted' | 'unknown';
+  /** Compatibility-only operational detail. Never persist or export this field. */
+  error?: string;
 }
 
 export interface TelegramConfig {

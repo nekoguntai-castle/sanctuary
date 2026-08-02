@@ -9,7 +9,12 @@
  *   2. Register in channels/index.ts
  */
 
-import { notificationChannelRegistry, type TransactionNotification, type DraftNotification } from './channels';
+import {
+  notificationChannelRegistry,
+  type DraftNotification,
+  type NotificationResult,
+  type TransactionNotification,
+} from './channels';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('NOTIFY:SVC');
@@ -33,15 +38,16 @@ export type DraftData = DraftNotification;
 export async function notifyNewTransactions(
   walletId: string,
   transactions: TransactionData[]
-): Promise<void> {
-  if (transactions.length === 0) return;
+): Promise<NotificationResult[]> {
+  if (transactions.length === 0) return [];
 
   log.debug(`Sending notifications for ${transactions.length} transactions in wallet ${walletId}`);
 
   // Dispatch to all registered channels via registry
   const results = await notificationChannelRegistry.notifyTransactions(
     walletId,
-    transactions as TransactionNotification[]
+    transactions as TransactionNotification[],
+    { executionPath: 'inline' },
   );
 
   // Log results
@@ -50,6 +56,8 @@ export async function notifyNewTransactions(
       log.error(`${result.channelId} notification failed: ${result.errors.join(', ')}`);
     }
   }
+
+  return results;
 }
 
 /**

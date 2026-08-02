@@ -17,6 +17,12 @@ export {
 import './system';
 import './health';
 import './config';
+import './notificationEligibility';
+import './notificationQueue';
+import './notificationWorker';
+import './notificationWorkerFleet';
+import './notificationTelemetry';
+import './notificationDeadLetters';
 import './circuitBreakers';
 import './deadLetterQueue';
 import './telegram';

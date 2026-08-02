@@ -5,6 +5,13 @@ import type {
 import { notificationChannelRegistry } from '../../services/notifications/channels';
 import type { ConsolidationSuggestionNotification } from '../../services/notifications/channels';
 import { notificationJobResultsTotal } from '../../observability/metrics/infrastructureMetrics';
+import {
+  summarizeSafeNotificationOutcome,
+  type NotificationFailureClass,
+  type NotificationOutcome,
+  type SafeChannelOutcome,
+} from '../../services/notifications/outcomes';
+import type { Job } from 'bullmq';
 
 export type NotificationJobMetricResult =
   | 'success'
@@ -20,7 +27,27 @@ export type NotificationResultLike = {
   channelId?: string;
   usersNotified: number;
   errors?: string[];
+  outcome?: NotificationOutcome;
+  failureClass?: NotificationFailureClass;
 };
+
+export interface SafeTransactionJobResult extends NotifyJobResult {
+  version: 1;
+  outcome: NotificationOutcome;
+  failureClass: NotificationFailureClass;
+  channelOutcomes: SafeChannelOutcome[];
+  errors?: never;
+}
+
+export interface SafeNotificationJobProgress {
+  version: 1;
+  attemptOrdinal: number;
+  notification: {
+    outcome: NotificationOutcome;
+    failureClass: NotificationFailureClass;
+    channels: SafeChannelOutcome[];
+  };
+}
 
 export class NotificationJobDispatchError extends Error {
   constructor(message: string) {
@@ -91,6 +118,51 @@ export function createNotificationJobFailure(
   fallbackMessage: string
 ): Error {
   return new NotificationJobDispatchError(summary.errors?.join('; ') || fallbackMessage);
+}
+
+export function buildSafeTransactionJobResult(
+  results: NotificationResultLike[],
+  legacySummary: NotifyJobResult,
+): SafeTransactionJobResult {
+  const safe = summarizeSafeNotificationOutcome(results);
+
+  return {
+    version: 1,
+    success: legacySummary.success,
+    channelsNotified: legacySummary.channelsNotified,
+    outcome: safe.outcome,
+    failureClass: safe.failureClass,
+    channelOutcomes: safe.channels,
+  };
+}
+
+export async function persistSafeNotificationProgress(
+  job: Job,
+  result: SafeTransactionJobResult,
+): Promise<void> {
+  const attemptOrdinal = currentAttemptOrdinal(job.attemptsMade);
+  if (attemptOrdinal === undefined) return;
+  const progress: SafeNotificationJobProgress = {
+    version: 1,
+    attemptOrdinal,
+    notification: {
+      outcome: result.outcome,
+      failureClass: result.failureClass,
+      channels: result.channelOutcomes,
+    },
+  };
+
+  try {
+    await job.updateProgress(progress);
+  } catch {
+    // Progress is best-effort evidence. Delivery retry semantics must not depend on it.
+    return;
+  }
+}
+
+function currentAttemptOrdinal(attemptsMade: number): number | undefined {
+  if (!Number.isSafeInteger(attemptsMade) || attemptsMade < 0) return undefined;
+  return attemptsMade + 1;
 }
 
 export function buildConsolidationSuggestion(

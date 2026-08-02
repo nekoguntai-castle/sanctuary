@@ -1,0 +1,195 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { collectorMap, mockQueue, mockWorker, mockFleet, mockTelemetryRead } =
+  vi.hoisted(() => ({
+    collectorMap: new Map<string, () => Promise<unknown>>(),
+    mockQueue: vi.fn(),
+    mockWorker: vi.fn(),
+    mockFleet: vi.fn(),
+    mockTelemetryRead: vi.fn(),
+  }));
+
+vi.mock("../../../../src/services/supportPackage/collectors/registry", () => ({
+  registerShareableCollector: (
+    name: string,
+    definition: { collect: () => Promise<unknown> },
+  ) => collectorMap.set(name, definition.collect),
+}));
+vi.mock("../../../../src/infrastructure/workerQueueReader", () => ({
+  readNotificationQueue: (...args: unknown[]) => mockQueue(...args),
+}));
+vi.mock("../../../../src/services/workerDiagnosticsClient", () => ({
+  requestWorkerDiagnostics: (...args: unknown[]) => mockWorker(...args),
+}));
+vi.mock(
+  "../../../../src/services/workerHeartbeatRegistry",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../../../src/services/workerHeartbeatRegistry")
+      >();
+    return {
+      ...actual,
+      WorkerHeartbeatReader: class {
+        read = mockFleet;
+      },
+    };
+  },
+);
+vi.mock(
+  "../../../../src/services/notifications/telemetryReader",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../../../src/services/notifications/telemetryReader")
+      >();
+    return {
+      ...actual,
+      NotificationTelemetryReader: class {
+        read = mockTelemetryRead;
+      },
+    };
+  },
+);
+
+import "../../../../src/services/supportPackage/collectors/notificationQueue";
+import "../../../../src/services/supportPackage/collectors/notificationWorker";
+import "../../../../src/services/supportPackage/collectors/notificationWorkerFleet";
+import "../../../../src/services/supportPackage/collectors/notificationTelemetry";
+import {
+  notificationQueueSchema,
+  notificationWorkerSchema,
+} from "../../../../src/services/supportPackage/collectors/notificationRuntimeSchemas";
+import { notificationTelemetrySnapshotSchema } from "../../../../src/services/notifications/telemetryReader";
+import { NOTIFICATION_QUEUE_STATES } from "../../../../src/internal/workerQueues";
+import { workerFleetSnapshotSchema } from "../../../../src/services/workerHeartbeatRegistry";
+
+function unavailableQueue() {
+  return {
+    consistency: "approximate_non_atomic",
+    retention: {
+      contractVersion: 1,
+      producerCompatibility: "unknown",
+      families: Object.fromEntries(
+        ["transaction", "draft", "consolidation", "webhook"].map((family) => [
+          family,
+          {
+            classification:
+              family === "webhook" ? "immediate_removal" : "uniform",
+            completed:
+              family === "webhook"
+                ? { kind: "immediate_removal" }
+                : { kind: "count", count: 500 },
+            failed:
+              family === "webhook"
+                ? { kind: "immediate_removal" }
+                : { kind: "count", count: 250 },
+            retainedAge: { status: "unsupported" },
+          },
+        ]),
+      ),
+    },
+    paused: { status: "unavailable" },
+    states: Object.fromEntries(
+      NOTIFICATION_QUEUE_STATES.map((state) => [
+        state,
+        {
+          count: { status: "unavailable" },
+          oldestAge: { status: "unavailable" },
+        },
+      ]),
+    ),
+  };
+}
+
+function unavailableTelemetry() {
+  const window = {
+    observation: "unavailable",
+    coverage: "unavailable",
+    records: [],
+    truncated: false,
+    droppedDimensionBucket: "zero",
+    sources: {
+      api: { observation: "unavailable" },
+      worker: { observation: "unavailable" },
+    },
+  };
+  return {
+    version: 1,
+    localWriter: { observation: "unavailable" },
+    windows: { fiveMinutes: window, oneHour: window, twentyFourHours: window },
+  };
+}
+
+describe("notification runtime support collectors", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("keeps failed queue reads unavailable rather than converting them to zero", async () => {
+    mockQueue.mockResolvedValue(unavailableQueue());
+    const result = await collectorMap.get("notificationQueue")?.();
+    expect(notificationQueueSchema.safeParse(result).success).toBe(true);
+    expect(JSON.stringify(result)).not.toContain('"value":0');
+  });
+
+  it("preserves mixed-version worker unsupported state", async () => {
+    mockWorker.mockResolvedValue({ status: "unsupported" });
+    const result = await collectorMap.get("notificationWorker")?.();
+    expect(result).toEqual({ status: "unsupported" });
+    expect(notificationWorkerSchema.safeParse(result).success).toBe(true);
+  });
+
+  it("exports only aggregate fleet capability and fails partial coverage closed", async () => {
+    mockFleet.mockResolvedValue({
+      version: 1,
+      observation: "observed",
+      coverage: "degraded",
+      workerCount: "2-5",
+      oldestHeartbeatAge: "<1m",
+      restartObserved: true,
+      notificationConsumer: "mixed_or_unknown",
+      transactionHandler: "all_running",
+      telemetryWriterCircuit: "mixed_or_unknown",
+      telemetryDroppedEvents: "mixed_or_unknown",
+      telegramLastSuccessAge: "mixed_or_unknown",
+      telegramLastFailureAge: "mixed_or_unknown",
+      telegramFailureClass: "mixed_or_unknown",
+      telegramCircuit: "any_open",
+      retentionContract: "mixed_version",
+    });
+    const result = await collectorMap.get("notificationWorkerFleet")?.();
+    expect(workerFleetSnapshotSchema.safeParse(result).success).toBe(true);
+    expect(JSON.stringify(result)).not.toMatch(
+      /replicaId|bootEpoch":"|hostname|workerId/i,
+    );
+  });
+
+  it("omits factual fleet fields when the shared registry is unavailable", async () => {
+    mockFleet.mockResolvedValue({
+      version: 1,
+      observation: "unavailable",
+      coverage: "unavailable",
+    });
+    const result = await collectorMap.get("notificationWorkerFleet")?.();
+    expect(workerFleetSnapshotSchema.safeParse(result).success).toBe(true);
+    expect(result).toEqual({
+      version: 1,
+      observation: "unavailable",
+      coverage: "unavailable",
+    });
+    expect(
+      workerFleetSnapshotSchema.safeParse({
+        ...result,
+        workerCount: "0",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("exports no event records when rolling telemetry is unavailable", async () => {
+    mockTelemetryRead.mockResolvedValue(unavailableTelemetry());
+    const result = await collectorMap.get("notificationTelemetry")?.();
+    expect(notificationTelemetrySnapshotSchema.safeParse(result).success).toBe(
+      true,
+    );
+    expect(JSON.stringify(result)).not.toMatch(/wallet|user|txid|jobId/i);
+  });
+});

@@ -212,6 +212,7 @@ describe('models/prisma behavior', () => {
 
     await expect(mod.connectWithRetry()).resolves.toBeUndefined();
     expect(connectMock).toHaveBeenCalledTimes(1);
+    expect(mod.getLastDatabaseHealth()).toBe(true);
     processOnSpy.mockRestore();
   });
 
@@ -250,7 +251,9 @@ describe('models/prisma behavior', () => {
       .mockRejectedValueOnce(new Error('info down'));
 
     await expect(mod.checkDatabaseHealth()).resolves.toBe(true);
+    expect(mod.getLastDatabaseHealth()).toBe(true);
     await expect(mod.checkDatabaseHealth()).resolves.toBe(false);
+    expect(mod.getLastDatabaseHealth()).toBe(false);
 
     const healthyInfo = await mod.getDatabaseInfo();
     expect(healthyInfo.connected).toBe(true);
@@ -410,6 +413,7 @@ describe('models/prisma behavior', () => {
     await mod.disconnect();
 
     expect(disconnectMock).toHaveBeenCalledTimes(1);
+    expect(mod.getLastDatabaseHealth()).toBe(false);
     processOnSpy.mockRestore();
   });
 

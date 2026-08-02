@@ -26,6 +26,7 @@ const mockNotificationChannelRegistry = {
 const mockNotificationJobResultsTotal = {
   inc: vi.fn(),
 };
+const mockRecordNotificationTelemetry = vi.fn();
 
 vi.resetModules();
 
@@ -62,6 +63,10 @@ vi.doMock('../../../../src/observability/metrics/infrastructureMetrics', () => (
   notificationJobResultsTotal: mockNotificationJobResultsTotal,
 }));
 
+vi.doMock('../../../../src/services/notifications/telemetry', () => ({
+  recordNotificationTelemetry: mockRecordNotificationTelemetry,
+}));
+
 export type {
   TransactionNotifyJobData,
   DraftNotifyJobData,
@@ -73,6 +78,7 @@ export {
   mockPrisma,
   mockNotificationChannelRegistry,
   mockNotificationJobResultsTotal,
+  mockRecordNotificationTelemetry,
 };
 
 export function createMockJob<T>(data: T, opts?: Partial<Job<T>>): Job<T> {
@@ -81,6 +87,7 @@ export function createMockJob<T>(data: T, opts?: Partial<Job<T>>): Job<T> {
     data,
     attemptsMade: 0,
     opts: { attempts: 5 },
+    updateProgress: vi.fn().mockResolvedValue(undefined),
     ...opts,
   } as Job<T>;
 }

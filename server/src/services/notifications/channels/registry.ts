@@ -18,8 +18,11 @@ import type {
   DraftNotification,
   AIInsightNotification,
   ConsolidationSuggestionNotification,
+  NotificationDispatchContext,
   NotificationResult,
 } from './types';
+import { toSafeChannelOutcome } from '../outcomes';
+import { recordNotificationTelemetry } from '../telemetry';
 
 const log = createLogger('NOTIFY:SVC_REGISTRY');
 
@@ -110,7 +113,8 @@ class NotificationChannelRegistry {
    */
   async notifyTransactions(
     walletId: string,
-    transactions: TransactionNotification[]
+    transactions: TransactionNotification[],
+    context?: NotificationDispatchContext,
   ): Promise<NotificationResult[]> {
     if (transactions.length === 0) return [];
 
@@ -127,18 +131,26 @@ class NotificationChannelRegistry {
             success: true,
             channelId: handler.id,
             usersNotified: 0,
+            outcome: 'no_recipients' as const,
+            failureClass: 'none' as const,
           };
         }
 
-        return await handler.notifyTransactions(walletId, enrichedTransactions);
+        const result = await handler.notifyTransactions(walletId, enrichedTransactions);
+        recordTransportOutcome(result, context);
+        return result;
       } catch (err) {
         log.error(`Channel ${handler.id} notification failed`, { error: getErrorMessage(err) });
-        return {
+        const result: NotificationResult = {
           success: false,
           channelId: handler.id,
           usersNotified: 0,
           errors: [getErrorMessage(err)],
+          outcome: 'ambiguous' as const,
+          failureClass: 'internal' as const,
         };
+        recordTransportOutcome(result, context);
+        return result;
       }
     });
 
@@ -152,6 +164,8 @@ class NotificationChannelRegistry {
           channelId: 'unknown',
           usersNotified: 0,
           errors: [result.reason?.message || 'Unknown error'],
+          outcome: 'ambiguous',
+          failureClass: 'internal',
         });
       }
     }
@@ -317,6 +331,31 @@ class NotificationChannelRegistry {
   get count(): number {
     return this.handlers.size;
   }
+}
+
+function recordTransportOutcome(
+  result: NotificationResult,
+  context: NotificationDispatchContext | undefined,
+): void {
+  if (!context) return;
+  const safe = toSafeChannelOutcome(result);
+  recordNotificationTelemetry({
+    family: 'transaction',
+    stage: 'transport_attempted',
+    path: context.executionPath,
+    channel: safe.channel,
+    outcome: safe.outcome,
+    failureClass: safe.failureClass,
+  });
+  if (safe.outcome !== 'accepted' && safe.outcome !== 'partial') return;
+  recordNotificationTelemetry({
+    family: 'transaction',
+    stage: 'transport_accepted',
+    path: context.executionPath,
+    channel: safe.channel,
+    outcome: safe.outcome,
+    failureClass: safe.failureClass,
+  });
 }
 
 async function enrichAgentOperationalTransactions(

@@ -21,15 +21,18 @@ import { draftRepository, transactionRepository, walletRepository } from '../../
 import { notificationChannelRegistry } from '../../services/notifications/channels';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { recordNotificationTelemetry } from '../../services/notifications/telemetry';
 import {
   NotificationJobDispatchError,
   buildConsolidationSuggestion,
+  buildSafeTransactionJobResult,
   createNotificationJobFailure,
   getConsolidationCapableChannelIds,
   getEnabledConsolidationChannelIds,
   getSupportedConsolidationChannelIds,
   recordNotificationJobResult,
   recordNotificationSummary,
+  persistSafeNotificationProgress,
   shouldFailBullMqNotificationJob,
   summarizeNotificationResults,
 } from './notificationJobHelpers';
@@ -56,6 +59,15 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
   handler: async (job: Job<TransactionNotifyJobData>): Promise<NotifyJobResult> => {
     const { walletId, txid, type, amount, feeSats } = job.data;
 
+    recordNotificationTelemetry({
+      family: 'transaction',
+      stage: 'handler_started',
+      path: 'queued',
+      channel: 'none',
+      outcome: 'none',
+      failureClass: 'none',
+    });
+
     log.debug(`Sending transaction notification: ${txid}`, {
       walletId,
       type,
@@ -76,7 +88,8 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
       // Send via all channels
       const results = await notificationChannelRegistry.notifyTransactions(
         walletId,
-        transactions
+        transactions,
+        { executionPath: 'queued' },
       );
 
       const summary = summarizeNotificationResults(
@@ -88,6 +101,7 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
         summary,
         'No transaction notification channels registered'
       );
+      const safeResult = buildSafeTransactionJobResult(results, summary);
 
       // Log failures
       if (summary.errors?.length) {
@@ -108,7 +122,8 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
       }
 
       if (shouldFailBullMqNotificationJob(summary)) {
-        throw createNotificationJobFailure(summary, 'Transaction notification failed');
+        await persistSafeNotificationProgress(job, safeResult);
+        throw new NotificationJobDispatchError('NOTIFICATION_DELIVERY_FAILED');
       }
 
       if (summary.channelsNotified > 0) {
@@ -118,7 +133,7 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
         });
       }
 
-      return summary;
+      return safeResult;
     } catch (error) {
       if (error instanceof NotificationJobDispatchError) {
         throw error;
@@ -131,6 +146,14 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
         attemptsMade: job.attemptsMade,
       });
       recordNotificationJobResult(transactionNotifyJob.name, 'exception');
+      await persistSafeNotificationProgress(job, {
+        version: 1,
+        success: false,
+        channelsNotified: 0,
+        outcome: 'ambiguous',
+        failureClass: 'internal',
+        channelOutcomes: [],
+      });
 
       // Log final failure for monitoring
       if (job.attemptsMade >= (job.opts.attempts ?? 5) - 1) {
@@ -142,7 +165,7 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
         });
       }
 
-      throw error instanceof Error ? error : new Error(errorMsg);
+      throw new NotificationJobDispatchError('NOTIFICATION_INTERNAL_ERROR');
     }
   },
 };

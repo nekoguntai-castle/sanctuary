@@ -16,7 +16,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockDispatcher, mockNotificationService, mockLogger } = vi.hoisted(() => ({
+const { mockDispatcher, mockNotificationService, mockLogger, mockRecordTelemetry } = vi.hoisted(() => ({
   mockDispatcher: {
     queueTransactionNotification: vi.fn(),
     queueDraftNotification: vi.fn(),
@@ -31,10 +31,14 @@ const { mockDispatcher, mockNotificationService, mockLogger } = vi.hoisted(() =>
     warn: vi.fn(),
     error: vi.fn(),
   },
+  mockRecordTelemetry: vi.fn(),
 }));
 
 vi.mock('../../../../src/infrastructure', () => mockDispatcher);
 vi.mock('../../../../src/services/notifications/notificationService', () => mockNotificationService);
+vi.mock('../../../../src/services/notifications/telemetry', () => ({
+  recordNotificationTelemetry: mockRecordTelemetry,
+}));
 vi.mock('../../../../src/utils/logger', () => ({
   createLogger: vi.fn(() => mockLogger),
 }));
@@ -66,6 +70,7 @@ const draftFixture = {
 describe('dispatchTransactionNotifications', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockNotificationService.notifyNewTransactions.mockResolvedValue([]);
   });
 
   it('queues every transaction when Redis is healthy and never falls back to inline', async () => {
@@ -94,6 +99,68 @@ describe('dispatchTransactionNotifications', () => {
       expect.objectContaining({ txid: 'tx-1' }),
       expect.objectContaining({ txid: 'tx-2' }),
     ]));
+    expect(mockRecordTelemetry).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'inline_fallback_attempted',
+      path: 'inline',
+    }));
+    expect(mockRecordTelemetry).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'inline_terminal_outcome',
+      outcome: 'not_registered',
+    }));
+  });
+
+  it('falls back inline for later queue failures instead of silently dropping them', async () => {
+    mockDispatcher.queueTransactionNotification
+      .mockResolvedValueOnce({
+        outcome: 'resolved',
+        failureClass: 'none',
+        deduplication: 'unknown',
+      })
+      .mockResolvedValueOnce({
+        outcome: 'failed',
+        failureClass: 'queue_add_failed',
+        deduplication: 'unknown',
+      });
+    mockNotificationService.notifyNewTransactions.mockResolvedValueOnce([]);
+
+    await dispatchTransactionNotifications('wallet-1', [
+      transactionFixture,
+      { ...transactionFixture, txid: 'tx-2' },
+    ]);
+
+    expect(mockNotificationService.notifyNewTransactions).toHaveBeenCalledTimes(1);
+    expect(mockNotificationService.notifyNewTransactions).toHaveBeenCalledWith(
+      'wallet-1',
+      [expect.objectContaining({ txid: 'tx-2' })],
+    );
+  });
+
+  it('records and contains a later inline fallback failure', async () => {
+    mockDispatcher.queueTransactionNotification
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    mockNotificationService.notifyNewTransactions.mockRejectedValueOnce(
+      new Error('later inline broke'),
+    );
+
+    await expect(dispatchTransactionNotifications('wallet-1', [
+      transactionFixture,
+      { ...transactionFixture, txid: 'tx-2', feeSats: null },
+    ])).resolves.toBeUndefined();
+
+    expect(mockDispatcher.queueTransactionNotification).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ txid: 'tx-2', feeSats: null }),
+    );
+    expect(mockRecordTelemetry).toHaveBeenLastCalledWith(expect.objectContaining({
+      stage: 'inline_terminal_outcome',
+      outcome: 'ambiguous',
+      failureClass: 'internal',
+    }));
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Inline transaction notification failed',
+      expect.objectContaining({ error: 'later inline broke', walletId: 'wallet-1' }),
+    );
   });
 
   it('returns early on empty input without touching either path', async () => {

@@ -33,7 +33,13 @@ import { exitNow } from './utils/processExit';
 // Initialize Prometheus metrics collection for the worker process
 import { metricsService } from './observability/metrics/registry';
 import { updateJobQueueMetrics } from './observability/metrics/helpers';
-import { connectWithRetry, disconnect } from './models/prisma';
+import {
+  connectWithRetry,
+  disconnect,
+  getLastDatabaseHealth,
+  startDatabaseHealthCheck,
+  stopDatabaseHealthCheck,
+} from './models/prisma';
 import {
   getDistributedEventBus,
   initializeDistributedLock,
@@ -48,12 +54,23 @@ import { ElectrumSubscriptionManager, type BitcoinNetwork } from './worker/elect
 import { startHealthServer, type HealthServerHandle } from './worker/healthServer';
 import { registerWorkerJobs } from './worker/jobs';
 import { featureFlagService } from './services/featureFlagService';
+import { circuitBreakerRegistry } from './services/circuitBreaker';
+import { buildWorkerDiagnosticsSnapshot } from './worker/diagnostics/snapshot';
 import {
   RECURRING_SCHEDULE_RECONCILIATION_INTERVAL_MS,
   RecurringScheduleCoordinator,
   inspectRecurringScheduleHealth,
   type RecurringScheduleHealth,
 } from './worker/recurringSchedules';
+import {
+  initializeNotificationTelemetry,
+  getNotificationTelemetryLocalHealth,
+  shutdownNotificationTelemetry,
+} from './services/notifications/telemetry';
+import { shutdownNotificationDeadLetterAggregateWriter } from './services/notifications/deadLetterAggregates';
+import { getTelegramTransportDiagnostics } from './services/telegram/api';
+import { WorkerHeartbeatWriter } from './services/workerHeartbeatRegistry';
+import type { WorkerDiagnosticsResponse } from './internal/workerDiagnostics/protocol';
 
 const log = createLogger('WORKER');
 
@@ -71,12 +88,48 @@ let isShuttingDown = false;
 let shutdownExitCode: 0 | 1 = 0;
 let recurringScheduleCoordinator: RecurringScheduleCoordinator | null = null;
 let workerStartedAt = 0;
+let diagnosticHeartbeat: WorkerHeartbeatWriter | null = null;
 
 // Reconciliation interval - clean up stale subscriptions every 15 minutes
 const RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
 
 function toBullPriority(priority: SyncPriority): number {
   return SYNC_PRIORITY_BULLMQ_PRIORITY[priority];
+}
+
+function getWorkerDiagnosticsSnapshot(
+  workerConcurrency: number,
+): WorkerDiagnosticsResponse {
+  const electrumMetrics = electrumManager?.getHealthMetrics();
+  const telegramHealth = circuitBreakerRegistry.get('telegram')?.getHealth();
+  const telegramTransport = getTelegramTransportDiagnostics();
+  return buildWorkerDiagnosticsSnapshot({
+    workerStartedAt,
+    concurrency: workerConcurrency,
+    redisConnected: isRedisConnected(),
+    databaseConnected: getLastDatabaseHealth() ?? undefined,
+    notificationTelemetryWriter: getNotificationTelemetryLocalHealth(),
+    notificationConsumerRunning:
+      jobQueue?.isQueueWorkerRunning('notifications') ?? false,
+    transactionHandlerRegistered:
+      jobQueue?.hasRegisteredHandler('notifications', 'transaction-notify') ?? false,
+    electrum: {
+      managerRunning: electrumMetrics?.isRunning ?? false,
+      connected: electrumManager?.isConnected() ?? false,
+      subscriptionOwner: electrumMetrics?.isRunning ?? false,
+      subscribedAddresses: electrumMetrics?.totalSubscribedAddresses ?? 0,
+    },
+    telegramCircuit: telegramHealth
+      ? {
+          state: telegramHealth.state,
+          failures: telegramHealth.failures,
+          totalRequests: telegramHealth.totalRequests,
+          lastFailure: telegramTransport.lastFailureAt,
+          lastSuccess: telegramTransport.lastSuccessAt,
+          lastFailureClass: telegramTransport.lastFailureClass,
+        }
+      : undefined,
+  });
 }
 
 // =============================================================================
@@ -93,6 +146,7 @@ async function startWorker(): Promise<void> {
   // Connect to database
   log.info('Connecting to database...');
   await connectWithRetry();
+  startDatabaseHealthCheck();
   log.info('Database connected');
 
   // Initialize Redis (required for worker)
@@ -102,6 +156,7 @@ async function startWorker(): Promise<void> {
     throw new Error('Redis is required for worker - check REDIS_URL');
   }
   initializeDistributedLock('redis-required');
+  initializeNotificationTelemetry('worker');
   log.info('Redis connected');
 
   // Initialize job queue
@@ -163,6 +218,14 @@ async function startWorker(): Promise<void> {
   const workerHostname = os.hostname();
   healthServer = startHealthServer({
     port: healthPort,
+    diagnostics: {
+      secret: config.worker.diagnosticsSecret ?? '',
+      timeoutMs: config.worker.diagnosticsTimeoutMs ?? 3000,
+      maxBodyBytes: config.worker.diagnosticsMaxBodyBytes ?? 1024,
+      maxConcurrentRequests: config.worker.diagnosticsMaxConcurrentRequests ?? 2,
+      authWindowMs: config.worker.diagnosticsAuthWindowMs ?? 60_000,
+      getSnapshot: () => getWorkerDiagnosticsSnapshot(workerConcurrency),
+    },
     healthProvider: {
       getHealth: async () => {
         const scheduleHealth = await getRecurringScheduleHealth();
@@ -202,6 +265,10 @@ async function startWorker(): Promise<void> {
       },
     },
   });
+  diagnosticHeartbeat = new WorkerHeartbeatWriter(
+    () => getWorkerDiagnosticsSnapshot(workerConcurrency),
+  );
+  diagnosticHeartbeat.start();
 
   // Initialize Prometheus metrics service
   metricsService.initialize();
@@ -497,6 +564,15 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
   // Shutdown distributed locking
   shutdownDistributedLock();
 
+  if (diagnosticHeartbeat) {
+    await diagnosticHeartbeat.stop();
+    diagnosticHeartbeat = null;
+  }
+
+  // Close the isolated best-effort telemetry connection before shared Redis.
+  await shutdownNotificationTelemetry();
+  shutdownNotificationDeadLetterAggregateWriter();
+
   // Close Redis
   try {
     await shutdownRedis();
@@ -506,6 +582,7 @@ async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
 
   // Close database
   try {
+    stopDatabaseHealthCheck();
     await disconnect();
   } catch (err) {
     log.error('Error disconnecting database', { error: getErrorMessage(err) });

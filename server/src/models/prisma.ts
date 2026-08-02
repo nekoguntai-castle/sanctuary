@@ -49,6 +49,7 @@ const PRISMA_TRANSACTION_TIMEOUT_OPTIONS = resolvePrismaTransactionTimeoutOption
 const MAX_RETRIES = 5;
 const INITIAL_RETRY_DELAY_MS = 1000;
 const MAX_RETRY_DELAY_MS = 30000;
+let lastDatabaseHealth: boolean | null = null;
 
 // Create PostgreSQL adapter
 const adapter = new PrismaPg({
@@ -166,9 +167,11 @@ export async function connectWithRetry(): Promise<void> {
     try {
       log.info(`Connecting to database (attempt ${attempt}/${MAX_RETRIES})...`);
       await prisma.$connect();
+      lastDatabaseHealth = true;
       log.info('Database connection established');
       return;
     } catch (error) {
+      lastDatabaseHealth = false;
       lastError = error as Error;
       const delay = Math.min(
         INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1),
@@ -200,13 +203,20 @@ export async function connectWithRetry(): Promise<void> {
 export async function checkDatabaseHealth(): Promise<boolean> {
   try {
     await prisma.$queryRaw`SELECT 1`;
+    lastDatabaseHealth = true;
     return true;
   } catch (error) {
+    lastDatabaseHealth = false;
     log.error('Database health check failed', {
       error: getErrorMessage(error),
     });
     return false;
   }
+}
+
+/** Last connection/health fact observed by this process; null until observed. */
+export function getLastDatabaseHealth(): boolean | null {
+  return lastDatabaseHealth;
 }
 
 /**
@@ -260,6 +270,7 @@ export async function disconnect(): Promise<void> {
   }
 
   await prisma.$disconnect();
+  lastDatabaseHealth = false;
   log.info('Database disconnected');
 }
 

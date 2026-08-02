@@ -59,6 +59,12 @@ export const telegramChannelHandler: NotificationChannelHandler = {
         channelId: 'telegram',
         usersNotified: summary.usersNotified,
         errors: summary.errors.length > 0 ? summary.errors : undefined,
+        outcome: summary.outcome ?? (
+          summary.errors.length > 0
+            ? 'ambiguous'
+            : summary.usersNotified > 0 ? 'accepted' : 'no_recipients'
+        ),
+        failureClass: summary.failureClass ?? (summary.errors.length > 0 ? 'unknown' : 'none'),
       };
     } catch (err) {
       return {
@@ -66,6 +72,8 @@ export const telegramChannelHandler: NotificationChannelHandler = {
         channelId: 'telegram',
         usersNotified: 0,
         errors: [getErrorMessage(err)],
+        outcome: 'ambiguous',
+        failureClass: 'internal',
       };
     }
   },

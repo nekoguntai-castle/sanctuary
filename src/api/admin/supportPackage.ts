@@ -11,5 +11,8 @@ import apiClient from '../client';
  * Triggers a browser file download of the JSON file.
  */
 export async function downloadSupportPackage(): Promise<void> {
-  await apiClient.download('/admin/support-package', undefined, { method: 'POST' });
+  await apiClient.download('/admin/support-package', undefined, {
+    method: 'POST',
+    body: { confirmShareableAggregate: true },
+  });
 }

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createdWorkers,
   mockDlqAdd,
+  mockRecordNotificationTelemetry,
   setupWorkerEventHandlers,
   type WorkerJobQueueAccessor,
 } from './workerJobQueueTestHarness';
@@ -124,6 +125,113 @@ export const registerWorkerJobQueueInternalEventContracts = (getQueue: WorkerJob
         }),
         expect.any(Error)
       );
+    });
+
+    it('records safe transaction attempt and terminal outcomes from worker callbacks', () => {
+      const handlers: Record<string, (...args: any[]) => void> = {};
+      const fakeWorker = {
+        on: vi.fn((event: string, handler: (...args: any[]) => void) => {
+          handlers[event] = handler;
+        }),
+      };
+
+      setupWorkerEventHandlers('notifications', fakeWorker as any);
+      handlers.completed?.({
+        name: 'transaction-notify',
+        returnvalue: { outcome: 'accepted', failureClass: 'none' },
+      });
+      handlers.failed?.({
+        name: 'transaction-notify',
+        progress: {
+          version: 1,
+          attemptOrdinal: 5,
+          notification: { outcome: 'rejected', failureClass: 'authentication' },
+        },
+        attemptsMade: 5,
+        opts: { attempts: 5 },
+      }, new Error('provider poison'));
+
+      expect(mockRecordNotificationTelemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stage: 'terminal_completed',
+          outcome: 'accepted',
+          failureClass: 'none',
+        }),
+      );
+      expect(mockRecordNotificationTelemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stage: 'attempt_failed',
+          outcome: 'rejected',
+          failureClass: 'authentication',
+        }),
+      );
+      expect(mockRecordNotificationTelemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stage: 'terminal_failure',
+          outcome: 'rejected',
+          failureClass: 'authentication',
+        }),
+      );
+      expect(JSON.stringify(mockRecordNotificationTelemetry.mock.calls)).not.toContain(
+        'provider poison',
+      );
+    });
+
+    it('does not attribute stale prior-attempt progress to a later crash', () => {
+      const handlers: Record<string, (...args: any[]) => void> = {};
+      const fakeWorker = {
+        on: vi.fn((event: string, handler: (...args: any[]) => void) => {
+          handlers[event] = handler;
+        }),
+      };
+      setupWorkerEventHandlers('notifications', fakeWorker as any);
+
+      handlers.failed?.({
+        name: 'transaction-notify',
+        progress: {
+          version: 1,
+          attemptOrdinal: 1,
+          notification: { outcome: 'rejected', failureClass: 'authentication' },
+        },
+        attemptsMade: 2,
+        opts: { attempts: 5 },
+      }, new Error('later crash poison'));
+
+      expect(mockRecordNotificationTelemetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stage: 'attempt_failed',
+          outcome: 'ambiguous',
+          failureClass: 'unknown',
+        }),
+      );
+      expect(JSON.stringify(mockRecordNotificationTelemetry.mock.calls))
+        .not.toContain('authentication');
+    });
+
+    it('treats missing and primitive attempt progress as ambiguous', () => {
+      const handlers: Record<string, (...args: any[]) => void> = {};
+      const fakeWorker = {
+        on: vi.fn((event: string, handler: (...args: any[]) => void) => {
+          handlers[event] = handler;
+        }),
+      };
+      setupWorkerEventHandlers('notifications', fakeWorker as any);
+
+      for (const progress of [undefined, 'stale-private-progress']) {
+        handlers.failed?.({
+          name: 'transaction-notify',
+          progress,
+          attemptsMade: 1,
+          opts: { attempts: 5 },
+        }, new Error('failure detail'));
+      }
+
+      expect(mockRecordNotificationTelemetry).toHaveBeenCalledTimes(2);
+      expect(mockRecordNotificationTelemetry).toHaveBeenCalledWith(expect.objectContaining({
+        stage: 'attempt_failed',
+        outcome: 'ambiguous',
+        failureClass: 'unknown',
+      }));
     });
 
     it('handles worker events with missing timing and missing job metadata', () => {

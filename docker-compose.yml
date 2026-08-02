@@ -236,6 +236,8 @@ services:
 
       # Worker architecture (single owner for background processing)
       WORKER_HEALTH_URL: ${WORKER_HEALTH_URL:-http://worker:3002/ready}
+      WORKER_DIAGNOSTICS_URL: ${WORKER_DIAGNOSTICS_URL:-http://worker:3002/internal/diagnostics/v1/snapshot}
+      WORKER_DIAGNOSTICS_SECRET: ${WORKER_DIAGNOSTICS_SECRET:?WORKER_DIAGNOSTICS_SECRET is required}
 
       # Electrum Server
       ELECTRUM_HOST: ${ELECTRUM_HOST:-electrum.blockstream.info}
@@ -333,6 +335,8 @@ services:
       # Worker-specific settings
       WORKER_HEALTH_PORT: 3002
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      WORKER_REPLICA_ID: ${WORKER_REPLICA_ID:-}
+      WORKER_DIAGNOSTICS_SECRET: ${WORKER_DIAGNOSTICS_SECRET:?WORKER_DIAGNOSTICS_SECRET is required}
 
       # Bitcoin/Electrum
       BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
@@ -415,6 +419,7 @@ services:
       GATEWAY_SECRET: ${GATEWAY_SECRET:-}
 
       BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
+      WORKER_DIAGNOSTICS_SECRET: ${WORKER_DIAGNOSTICS_SECRET:?WORKER_DIAGNOSTICS_SECRET is required}
       MCP_ENABLED: "true"
       MCP_HOST: 0.0.0.0
       MCP_PORT: 3003

@@ -151,6 +151,12 @@ function buildValidConfig() {
       healthUrl: 'http://localhost:3002/health',
       healthTimeoutMs: 3000,
       healthCheckIntervalMs: 10000,
+      diagnosticsUrl: 'http://localhost:3002/internal/diagnostics/v1/snapshot',
+      diagnosticsSecret: '',
+      diagnosticsTimeoutMs: 3000,
+      diagnosticsMaxBodyBytes: 1024,
+      diagnosticsMaxConcurrentRequests: 2,
+      diagnosticsAuthWindowMs: 60000,
       concurrency: 5,
     },
     logging: {

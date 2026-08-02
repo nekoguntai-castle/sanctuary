@@ -8,6 +8,11 @@ import {
   optionalJsonRequestBody,
 } from './shared';
 
+const supportPackageDownloadResponse = jsonDownloadResponse(
+  'Canonical privacy-validated support package bytes',
+  '#/components/schemas/AdminSupportPackageV2',
+);
+
 export const adminCorePaths = {
   '/admin/version': {
     get: {
@@ -138,13 +143,30 @@ export const adminCorePaths = {
   '/admin/support-package': {
     post: {
       tags: ['Admin'],
-      summary: 'Support package availability',
-      description: 'Support package downloads are disabled until the privacy-safe diagnostic profile is available.',
+      summary: 'Download privacy-safe aggregate support package',
+      description: 'Generates the versioned shareable aggregate profile after explicit acknowledgement of aggregate activity disclosure. No incident selectors are accepted.',
       security: bearerAuth,
+      requestBody: jsonRequestBody('#/components/schemas/AdminSupportPackageRequest'),
       responses: {
+        200: {
+          ...supportPackageDownloadResponse,
+          headers: {
+            ...supportPackageDownloadResponse.headers,
+            'Cache-Control': {
+              schema: { type: 'string', enum: ['no-store'] },
+              description: 'Prevents storage of generated diagnostic bytes.',
+            },
+            'X-Content-Type-Options': {
+              schema: { type: 'string', enum: ['nosniff'] },
+              description: 'Prevents MIME type sniffing of the JSON attachment.',
+            },
+          },
+        },
+        400: apiErrorResponse,
         401: apiErrorResponse,
         403: apiErrorResponse,
-        503: jsonResponse('Support package downloads are temporarily unavailable', '#/components/schemas/AdminSupportPackageUnavailableResponse'),
+        429: jsonResponse('A deployment-wide generation is already active', '#/components/schemas/AdminSupportPackageBusyResponse'),
+        503: jsonResponse('The privacy-safe package could not be generated', '#/components/schemas/AdminSupportPackageUnavailableResponse'),
       },
     },
   },

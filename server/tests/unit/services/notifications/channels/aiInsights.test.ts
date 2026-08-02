@@ -43,6 +43,13 @@ import type { AIInsightNotification } from '../../../../../src/services/notifica
 
 const mockFindMany = mockFindWalletUsersWithPreferences;
 const mockSendTelegram = vi.mocked(telegramApi.sendTelegramMessage);
+const acceptedTelegramResult = {
+  success: true,
+  outcome: 'accepted',
+  failureClass: 'none',
+  retryable: false,
+  acknowledgement: 'accepted',
+} as const;
 
 function makeInsight(overrides?: Partial<AIInsightNotification>): AIInsightNotification {
   return {
@@ -136,7 +143,7 @@ describe('aiInsightsChannelHandler', () => {
   describe('notifyAIInsight', () => {
     it('sends Telegram message to users with intelligence enabled', async () => {
       mockFindMany.mockResolvedValueOnce([makeWalletUser()] as any);
-      mockSendTelegram.mockResolvedValueOnce({ success: true });
+      mockSendTelegram.mockResolvedValueOnce(acceptedTelegramResult);
 
       const result = await aiInsightsChannelHandler.notifyAIInsight!('wallet-1', makeInsight());
 
@@ -209,7 +216,7 @@ describe('aiInsightsChannelHandler', () => {
           },
         },
       })] as any);
-      mockSendTelegram.mockResolvedValueOnce({ success: true });
+      mockSendTelegram.mockResolvedValueOnce(acceptedTelegramResult);
 
       const result = await aiInsightsChannelHandler.notifyAIInsight!(
         'wallet-1',
@@ -227,7 +234,7 @@ describe('aiInsightsChannelHandler', () => {
           },
         },
       })] as any);
-      mockSendTelegram.mockResolvedValueOnce({ success: true });
+      mockSendTelegram.mockResolvedValueOnce(acceptedTelegramResult);
 
       const result = await aiInsightsChannelHandler.notifyAIInsight!(
         'wallet-1',
@@ -245,7 +252,7 @@ describe('aiInsightsChannelHandler', () => {
           },
         },
       })] as any);
-      mockSendTelegram.mockResolvedValueOnce({ success: true });
+      mockSendTelegram.mockResolvedValueOnce(acceptedTelegramResult);
 
       const result = await aiInsightsChannelHandler.notifyAIInsight!(
         'wallet-1',
@@ -284,7 +291,7 @@ describe('aiInsightsChannelHandler', () => {
           },
         },
       })] as any);
-      mockSendTelegram.mockResolvedValueOnce({ success: true });
+      mockSendTelegram.mockResolvedValueOnce(acceptedTelegramResult);
 
       const result = await aiInsightsChannelHandler.notifyAIInsight!('wallet-1', makeInsight());
 
@@ -337,7 +344,7 @@ describe('aiInsightsChannelHandler', () => {
 
       mockSendTelegram
         .mockRejectedValueOnce(new Error('Telegram API timeout'))
-        .mockResolvedValueOnce({ success: true });
+        .mockResolvedValueOnce(acceptedTelegramResult);
 
       const result = await aiInsightsChannelHandler.notifyAIInsight!('wallet-1', makeInsight());
 
@@ -363,7 +370,7 @@ describe('aiInsightsChannelHandler', () => {
         makeWalletUser({ userId: 'user-3', telegram: { enabled: true, botToken: 'tok3', chatId: '789' } }),
       ] as any);
 
-      mockSendTelegram.mockResolvedValue({ success: true });
+      mockSendTelegram.mockResolvedValue(acceptedTelegramResult);
 
       const result = await aiInsightsChannelHandler.notifyAIInsight!('wallet-1', makeInsight());
 
@@ -373,7 +380,7 @@ describe('aiInsightsChannelHandler', () => {
 
     it('formats the message with severity icon and type label', async () => {
       mockFindMany.mockResolvedValueOnce([makeWalletUser()] as any);
-      mockSendTelegram.mockResolvedValueOnce({ success: true });
+      mockSendTelegram.mockResolvedValueOnce(acceptedTelegramResult);
 
       await aiInsightsChannelHandler.notifyAIInsight!(
         'wallet-1',
@@ -404,7 +411,7 @@ describe('aiInsightsChannelHandler', () => {
       ] as const) {
         vi.clearAllMocks();
         mockFindMany.mockResolvedValueOnce([makeWalletUser()] as any);
-        mockSendTelegram.mockResolvedValueOnce({ success: true });
+        mockSendTelegram.mockResolvedValueOnce(acceptedTelegramResult);
 
         await aiInsightsChannelHandler.notifyAIInsight!(
           'wallet-1',
@@ -424,7 +431,7 @@ describe('aiInsightsChannelHandler', () => {
           },
         },
       })] as any);
-      mockSendTelegram.mockResolvedValueOnce({ success: true });
+      mockSendTelegram.mockResolvedValueOnce(acceptedTelegramResult);
 
       await aiInsightsChannelHandler.notifyAIInsight!(
         'wallet-1',

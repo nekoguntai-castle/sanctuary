@@ -736,7 +736,7 @@ export class ApiClient {
   async download(
     endpoint: string,
     filename?: string,
-    options: { method?: string; params?: Record<string, string> } = {},
+    options: { method?: string; params?: Record<string, string>; body?: unknown } = {},
   ): Promise<void> {
     const requestEndpoint = this.appendQueryParams(endpoint, options.params ?? {});
     const url = buildApiUrl(requestEndpoint);
@@ -746,11 +746,14 @@ export class ApiClient {
       blob: Blob;
       resolvedFilename: string;
     }> => {
-      const headers = buildTransferHeaders(undefined, method);
+      const headers = options.body === undefined
+        ? buildTransferHeaders(undefined, method)
+        : buildJsonHeaders(undefined, method);
       const response = await fetch(url, {
         method: options.method || "GET",
         credentials: "include",
         headers,
+        ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
         signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
       });
 
