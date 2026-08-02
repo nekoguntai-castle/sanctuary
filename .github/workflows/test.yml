@@ -310,6 +310,19 @@ jobs:
         working-directory: server
 
     services:
+      # Bounded so concurrent runs cannot compound into host memory pressure.
+      # Five Postgres containers exist per run (quick-backend-tests,
+      # quick-backend-integration-smoke, unit-coverage-shards x2,
+      # full-backend-integration-tests, full-browser-e2e-tests), and `needs:`
+      # only orders jobs WITHIN a run — service containers of other in-flight
+      # runs are live regardless, which is how the integration lane's Postgres
+      # gets OOM-killed and recreated empty mid-run (schema survives, seeded
+      # rows do not, surfacing as bulk 401s). See #606.
+      #
+      # 1g is ~2.5x observed peak (shared_buffers 128M + ~20 backends +
+      # maintenance_work_mem 64M), so it bounds the worst case without making a
+      # cgroup kill likely. shm-size lifts Docker's 64M default, which Postgres
+      # parallel workers can otherwise exhaust.
       postgres:
         image: postgres:16-alpine
         env:
@@ -323,6 +336,9 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --memory 1g
+          --memory-reservation 256m
+          --shm-size 256m
 
     steps:
       - name: Checkout repository
@@ -422,6 +438,9 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --memory 1g
+          --memory-reservation 256m
+          --shm-size 256m
 
     steps:
       - name: Checkout repository
@@ -1210,6 +1229,9 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --memory 1g
+          --memory-reservation 256m
+          --shm-size 256m
 
     steps:
       - name: Checkout repository
@@ -1423,6 +1445,9 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --memory 1g
+          --memory-reservation 256m
+          --shm-size 256m
 
     steps:
       - name: Checkout repository
@@ -2287,6 +2312,9 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --memory 1g
+          --memory-reservation 256m
+          --shm-size 256m
 
       redis:
         image: redis:7-alpine
