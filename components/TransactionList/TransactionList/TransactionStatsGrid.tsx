@@ -24,6 +24,7 @@ export function TransactionStatsGrid({ txStats }: { txStats: TransactionListStat
     // asynchronously after paint. A core utility would be in the initial sheet;
     // this one would not, so the first paint could land with no column template.
     <div
+      data-testid="transaction-stats-grid"
       className="grid gap-3 mb-6"
       style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(9rem, 1fr))' }}
     >

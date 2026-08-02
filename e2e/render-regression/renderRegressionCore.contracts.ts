@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import {
   DEVICE_ID,
@@ -37,6 +37,82 @@ export async function renderDashboardRendersCoreCardsAndNetworkSpecificPlacehold
   await expect(page.getByRole("main").getByText("900,123").last()).toBeVisible();
   await expect(page.getByText("2/3(active/total)")).toBeVisible();
   await expectChromiumMainScreenshot(page, "dashboard-testnet-shell.png");
+
+  expect(unhandledRequests).toEqual([]);
+}
+
+/**
+ * The dashboard's primary row goes two-column only above 1800px, and the whole
+ * e2e suite otherwise runs at 1280x720 — so before this case the two-column
+ * branch, the "wide" content cap, and the auto-fit stats grid at half width had
+ * never rendered in any test.
+ *
+ * Deliberately assertion-only, no screenshot. The three computed-style checks
+ * below are what actually catch a regression here; a baseline PNG would add a
+ * calibration loop and a recharts animation to fight, for no extra coverage.
+ *
+ * The magic numbers are derived, not observed — keep this arithmetic in sync if
+ * the layout constants move:
+ *   main   = 1920 - 256 sidebar (LayoutShell `lg:w-64`)               = 1664
+ *   wrapper= min(1664, 1536 `2xl:max-w-[96rem]`)                      = 1536
+ *   row    = 1536 - 64 (`md:px-8`, 32 each side)                      = 1472
+ *   column = (1472 - 16 `gap-4`) / 2                                  =  728
+ *   card   = 728 - 40 (Card padding `md` = p-5, 20 each side)         =  688
+ *   tracks = auto-fit minmax(144px, 1fr) with 12px gap in 688px       =    4
+ *            (4 -> 4*144 + 3*12 = 612 fits; 5 -> 5*144 + 4*12 = 768 does not)
+ */
+export async function renderDashboardWideViewportRendersTwoColumnPrimaryRow({
+  page,
+}: {
+  page: Page;
+}): Promise<void> {
+  // chromium only, matching expectChromiumMainScreenshot: exact pixel widths and
+  // grid track counts are calibrated for one engine, not a cross-browser
+  // contract. Guarding here rather than with test.skip() keeps the suite free of
+  // disabled tests (scripts/test-hygiene.mjs).
+  if (test.info().project.name !== "chromium") {
+    return;
+  }
+
+  const unhandledRequests = await mockAuthenticatedApi(page);
+
+  await page.goto("/#/");
+  await expect(page.getByText("Bitcoin Price")).toBeVisible();
+
+  const primaryRow = page.getByTestId("dashboard-primary-row");
+  await expect(primaryRow).toBeVisible();
+
+  // Poll rather than assert once: `min-[1800px]:grid-cols-2` is an arbitrary
+  // variant, and Tailwind here is the CDN build whose JIT emits those
+  // asynchronously after first paint.
+  await expect
+    .poll(
+      () =>
+        primaryRow.evaluate(
+          (el) => getComputedStyle(el).gridTemplateColumns.split(" ").length,
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(2);
+
+  // Pins the dashboard route's `contentWidth: "wide"`. Under "default" this
+  // would be 1280 - 64 = 1216.
+  await expect
+    .poll(() => primaryRow.evaluate((el) => el.clientWidth))
+    .toBe(1472);
+
+  // The stats grid is container-relative (auto-fit), not viewport-keyed: it must
+  // step down to 4 tracks inside a half-width column, not stay at the 7 it shows
+  // full width.
+  await expect
+    .poll(() =>
+      primaryRow
+        .getByTestId("transaction-stats-grid")
+        .evaluate(
+          (el) => getComputedStyle(el).gridTemplateColumns.split(" ").length,
+        ),
+    )
+    .toBe(4);
 
   expect(unhandledRequests).toEqual([]);
 }

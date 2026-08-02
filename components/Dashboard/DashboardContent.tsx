@@ -96,7 +96,10 @@ export function DashboardContent({ data }: DashboardContentProps) {
               under the wallet table's ~548px minimum plus the transaction
               table's ~714px. At 1800px+ the "wide" cap gives ~740px columns,
               which both tables clear. */}
-          <div className="grid grid-cols-1 min-[1800px]:grid-cols-2 gap-4 items-start">
+          <div
+            data-testid="dashboard-primary-row"
+            className="grid grid-cols-1 min-[1800px]:grid-cols-2 gap-4 items-start"
+          >
             <div className="animate-fade-in-up-2">
               <WalletSummary
                 selectedNetwork={selectedNetwork}

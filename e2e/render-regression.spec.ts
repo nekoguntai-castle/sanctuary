@@ -51,4 +51,13 @@ test.describe('Route-level rendering regressions', () => {
   test('unknown authenticated route redirects to dashboard', importAuthTests.renderUnknownAuthenticatedRouteRedirectsToDashboard);
   test('expired authenticated session redirects to login when /auth/me returns 401', importAuthTests.renderExpiredAuthenticatedSessionRedirectsToLoginWhenAuthMeReturns401);
   test('unauthenticated root route renders login screen', importAuthTests.renderUnauthenticatedRootRouteRendersLoginScreen);
+
+  // The rest of the suite runs at Desktop Chrome's 1280x720, which is below the
+  // dashboard's 1800px two-column breakpoint. Nested so it inherits
+  // setupRenderRegressionErrorChecks() from the outer describe.
+  test.describe('wide viewport', () => {
+    test.use({ viewport: { width: 1920, height: 1080 } });
+
+    test('dashboard renders a two-column primary row above the 1800px breakpoint', coreTests.renderDashboardWideViewportRendersTwoColumnPrimaryRow);
+  });
 });
