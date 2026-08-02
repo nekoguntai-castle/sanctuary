@@ -1,6 +1,7 @@
 import React from 'react';
 import { Zap } from 'lucide-react';
 import { AnimatedFeeRate } from './AnimatedFeeRate';
+import { Card } from '../ui/Card';
 
 interface FeeEstimate {
   fast: number;
@@ -24,7 +25,7 @@ const TYPICAL_VB = 140;
 export const FeeEstimationCard: React.FC<FeeEstimationCardProps> = ({ fees, formatFeeRate }) => (
   // No stagger class: the telemetry row's `stagger-enter` parent owns the
   // per-child delay via nth-child, which outranks any animate-fade-in-up-*.
-  <div className="surface-elevated rounded-xl p-5 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive">
+  <Card interactive>
     <div className="flex items-center justify-between mb-4">
       <h3 className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">Fee Estimation</h3>
       <Zap className="w-4 h-4 text-warning-500" />
@@ -56,5 +57,5 @@ export const FeeEstimationCard: React.FC<FeeEstimationCardProps> = ({ fees, form
         );
       })}
     </div>
-  </div>
+  </Card>
 );

@@ -50,6 +50,34 @@ describe('ShowMoreToggle', () => {
     expect(button).not.toHaveAttribute('aria-controls');
   });
 
+  it('places the chevron before the label when asked', () => {
+    const { container } = render(
+      <ShowMoreToggle
+        expanded={false}
+        onToggle={vi.fn()}
+        collapsedLabel="Show Transaction Flow"
+        iconPosition="leading"
+      />
+    );
+
+    const button = screen.getByRole('button');
+    const icon = container.querySelector('.lucide-chevron-down')!;
+    // Icon precedes the label text node.
+    expect(button.firstElementChild).toBe(icon);
+  });
+
+  it('accepts rich labels, not just strings', () => {
+    render(
+      <ShowMoreToggle
+        expanded={false}
+        onToggle={vi.fn()}
+        collapsedLabel={<span data-testid="rich-label">Learn more</span>}
+      />
+    );
+
+    expect(screen.getByTestId('rich-label')).toBeInTheDocument();
+  });
+
   it('sets disclosure ARIA when a controlled region id is supplied', () => {
     render(
       <ShowMoreToggle

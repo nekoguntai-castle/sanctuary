@@ -3,6 +3,7 @@ import { Zap, CheckCircle2, XCircle } from 'lucide-react';
 import { TabNetwork } from '../NetworkTabs';
 import { BitcoinStatus } from '../../src/api/bitcoin';
 import { getNetworkColorClass } from '../../src/app/networks';
+import { Card } from '../ui/Card';
 
 type NodeStatusValue = 'unknown' | 'checking' | 'connected' | 'error';
 
@@ -178,7 +179,7 @@ export const NodeStatusCard: React.FC<NodeStatusCardProps> = ({
 }) => (
   // No stagger class: the telemetry row's `stagger-enter` parent owns the
   // per-child delay via nth-child, which outranks any animate-fade-in-up-*.
-  <div className="surface-elevated rounded-xl p-5 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive">
+  <Card interactive>
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center space-x-2">
         <h3 className="text-[11px] font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-[0.08em]">Node Status</h3>
@@ -198,5 +199,5 @@ export const NodeStatusCard: React.FC<NodeStatusCardProps> = ({
         bitcoinStatus={bitcoinStatus}
       />
     )}
-  </div>
+  </Card>
 );

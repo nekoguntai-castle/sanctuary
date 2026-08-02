@@ -8,6 +8,7 @@ import { WalletEmptyState } from '../ui/EmptyState';
 import { TabNetwork } from '../NetworkTabs';
 import { useUserPreference } from '../../hooks/useUserPreference';
 import { ShowMoreToggle } from '../ui/ShowMoreToggle';
+import { Card } from '../ui/Card';
 
 const distributionColors = [
     'bg-primary-500',
@@ -455,7 +456,7 @@ const WalletSummaryImpl: React.FC<WalletSummaryProps> = ({
   const clearHover = () => setHoveredWalletId(null);
 
   return (
-    <div className="surface-elevated rounded-xl p-5 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive">
+    <Card interactive>
        <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100 flex items-center">
              <WalletIcon className="w-5 h-5 mr-2 text-sanctuary-400" />
@@ -486,7 +487,7 @@ const WalletSummaryImpl: React.FC<WalletSummaryProps> = ({
            className="mt-3 w-full"
          />
        )}
-    </div>
+    </Card>
   );
 };
 WalletSummaryImpl.displayName = 'WalletSummary';

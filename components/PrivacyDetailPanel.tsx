@@ -5,10 +5,11 @@
  * for a UTXO when users click on a privacy badge.
  */
 
-import React, { useState, useEffect } from 'react';
-import { X, Shield, AlertTriangle, ChevronDown, ChevronUp, Info, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect, useId } from 'react';
+import { X, Shield, AlertTriangle, Info, ExternalLink } from 'lucide-react';
 import type { UtxoPrivacyInfo, PrivacyFactor } from '../src/api/transactions';
 import { usePriceFreeFormatter } from '../contexts/CurrencyContext';
+import { ShowMoreToggle } from './ui/ShowMoreToggle';
 import {
   normalizePrivacyGrade,
   normalizePrivacyList,
@@ -196,26 +197,31 @@ function PrivacyFactorRow({ factor }: { factor: PrivacyFactor }) {
  */
 function LearnMoreSection() {
   const [isExpanded, setIsExpanded] = useState(false);
+  const contentId = useId();
+  // Same label either way — the chevron carries the state, and `aria-expanded`
+  // announces it.
+  const learnMoreLabel = (
+    <span className="flex items-center gap-2">
+      <Info className="w-4 h-4" />
+      Learn more about Bitcoin privacy
+    </span>
+  );
 
   return (
     <div className="border-t border-sanctuary-200 dark:border-sanctuary-700 pt-4 mt-4">
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between text-sm text-sanctuary-600 dark:text-sanctuary-400 hover:text-sanctuary-800 dark:hover:text-sanctuary-200 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <Info className="w-4 h-4" />
-          <span>Learn more about Bitcoin privacy</span>
-        </div>
-        {isExpanded ? (
-          <ChevronUp className="w-4 h-4" />
-        ) : (
-          <ChevronDown className="w-4 h-4" />
-        )}
-      </button>
+      <ShowMoreToggle
+        expanded={isExpanded}
+        onToggle={() => setIsExpanded(!isExpanded)}
+        collapsedLabel={learnMoreLabel}
+        expandedLabel={learnMoreLabel}
+        controls={contentId}
+        // px-0: Button size="sm" adds px-3, which would indent this row 12px
+        // from both edges while the rest of the panel stays flush.
+        className="w-full justify-between text-sm px-0"
+      />
 
       {isExpanded && (
-        <div className="mt-4 space-y-3 text-sm text-sanctuary-600 dark:text-sanctuary-400 animate-fade-in">
+        <div id={contentId} className="mt-4 space-y-3 text-sm text-sanctuary-600 dark:text-sanctuary-400 animate-fade-in">
           <p>
             <strong className="text-sanctuary-800 dark:text-sanctuary-200">Why privacy matters:</strong>{' '}
             Bitcoin transactions are public and permanent. Without proper privacy practices,

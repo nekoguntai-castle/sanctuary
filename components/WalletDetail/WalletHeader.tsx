@@ -14,6 +14,7 @@ import {
 import type { SyncRetryInfo } from "./types";
 import { WalletBadges } from "./WalletHeaderBadges";
 import { canEditWallet } from "../../utils/walletCapabilities";
+import { Card } from '../ui/Card';
 
 export interface WalletAgentLinkBadge {
   agentId: string;
@@ -52,7 +53,7 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
 }) => (
   <>
     {/* Header Card - Compact */}
-    <div className="surface-elevated rounded-xl p-4 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 relative overflow-hidden">
+    <Card padding="sm" className="relative overflow-hidden">
       <div className="absolute top-0 right-0 p-4 opacity-5 dark:opacity-10 pointer-events-none">
         {getWalletIcon(wallet.type, "w-32 h-32 text-primary-500")}
       </div>
@@ -125,7 +126,7 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </Card>
 
     {/* Initial Sync Banner - shown for newly imported wallets */}
     {!wallet.lastSyncedAt && (syncing || wallet.syncInProgress) && (

@@ -1,6 +1,6 @@
-import React from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useId } from 'react';
 import { TransactionFlowPreview } from '../TransactionFlowPreview';
+import { ShowMoreToggle } from '../ui/ShowMoreToggle';
 import type { FlowPreviewData } from './types';
 
 interface DraftFlowToggleProps {
@@ -15,27 +15,25 @@ export const DraftFlowToggle: React.FC<DraftFlowToggleProps> = ({
   isExpanded,
   flowData,
   onToggleExpand,
-}) => (
+}) => {
+  const flowId = useId();
+
+  // A true disclosure — the flow preview mounts and unmounts — so `controls`
+  // applies here, unlike the truncating callers of ShowMoreToggle.
+  return (
   <>
-    <button
-      onClick={() => onToggleExpand(draftId)}
-      className="w-full mt-3 pt-3 border-t border-sanctuary-200 dark:border-sanctuary-700 flex items-center justify-center gap-1 text-sm text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300 transition-colors"
-    >
-      {isExpanded ? (
-        <>
-          <ChevronUp className="w-4 h-4" />
-          Hide Transaction Flow
-        </>
-      ) : (
-        <>
-          <ChevronDown className="w-4 h-4" />
-          Show Transaction Flow
-        </>
-      )}
-    </button>
+    <ShowMoreToggle
+      expanded={isExpanded}
+      onToggle={() => onToggleExpand(draftId)}
+      collapsedLabel="Show Transaction Flow"
+      expandedLabel="Hide Transaction Flow"
+      iconPosition="leading"
+      controls={flowId}
+      className="w-full mt-3 pt-3 border-t border-sanctuary-200 dark:border-sanctuary-700 rounded-none"
+    />
 
     {isExpanded && (
-      <div className="mt-4">
+      <div id={flowId} className="mt-4">
         <TransactionFlowPreview
           inputs={flowData.inputs}
           outputs={flowData.outputs}
@@ -48,4 +46,5 @@ export const DraftFlowToggle: React.FC<DraftFlowToggleProps> = ({
       </div>
     )}
   </>
-);
+  );
+};

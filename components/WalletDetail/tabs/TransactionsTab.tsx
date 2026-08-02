@@ -14,6 +14,7 @@ import { TransactionsFilterSection } from './TransactionsTab/TransactionsFilterS
 import { TransactionsTabHeader } from './TransactionsTab/TransactionsTabHeader';
 import { getTransactionStatsForList } from './TransactionsTab/transactionStats';
 import type { TransactionsTabProps } from './TransactionsTab/types';
+import { Card } from '../../ui/Card';
 
 export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   walletId,
@@ -48,7 +49,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   const transactionsCount = transactions.length;
 
   return (
-    <div className="surface-elevated rounded-xl p-6 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 animate-fade-in">
+    <Card padding="lg" className="animate-fade-in">
       <TransactionsTabHeader
         walletId={walletId}
         aiEnabled={aiEnabled}
@@ -96,6 +97,6 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         loadingMoreTx={loadingMoreTx}
         onLoadMore={onLoadMore}
       />
-    </div>
+    </Card>
   );
 };

@@ -3,6 +3,7 @@ import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Amount } from '../Amount';
 import { useBalanceHistory } from '../../hooks/queries/useWallets';
 import { useDelayedRender } from '../../hooks/useDelayedRender';
+import { Card } from '../ui/Card';
 
 type Timeframe = '1D' | '1W' | '1M' | '1Y' | 'ALL';
 
@@ -39,7 +40,7 @@ export const BalanceChart: React.FC<BalanceChartProps> = ({
   const { data: chartData } = useBalanceHistory(walletIds, totalBalance, timeframe);
 
   return (
-    <div className="surface-elevated rounded-xl p-4 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800">
+    <Card padding="sm">
       <div className="flex flex-col md:flex-row gap-6">
         <div className="md:w-1/3 flex flex-col justify-between">
           <div>
@@ -91,6 +92,6 @@ export const BalanceChart: React.FC<BalanceChartProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </Card>
   );
 };

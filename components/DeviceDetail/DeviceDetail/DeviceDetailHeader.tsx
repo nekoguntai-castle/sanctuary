@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronDown, Edit2, Save, Trash2, Users, X } from 'lucide-re
 import type { Device, HardwareDevice, HardwareDeviceModel } from '../../../types';
 import { Button } from '../../ui/Button';
 import { getDeviceIcon } from '../../ui/CustomIcons';
+import { Card } from '../../ui/Card';
 
 type DeviceDetailHeaderProps = {
   device: Device;
@@ -56,7 +57,7 @@ export function DeviceDetailHeader({
   return (
     <>
       <BackToDevicesButton onBack={onBack} />
-      <div className="surface-elevated rounded-xl p-6 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800">
+      <Card padding="lg">
         <div className="flex items-start space-x-6">
           <DeviceIconPanel deviceType={device.type} />
           <div className="flex-1">
@@ -90,7 +91,7 @@ export function DeviceDetailHeader({
             {children}
           </div>
         </div>
-      </div>
+      </Card>
     </>
   );
 }

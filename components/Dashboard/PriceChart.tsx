@@ -4,6 +4,7 @@ import { AnimatedPrice } from './PriceChart/AnimatedPrice';
 import { PriceChartBody } from './PriceChart/PriceChartBody';
 import { TimeframeControls } from './PriceChart/TimeframeControls';
 import type { PriceChartProps, PendingTotals } from './PriceChart/types';
+import { Card } from '../ui/Card';
 
 /**
  * Incoming and outgoing are shown separately, never netted — a pending +100k
@@ -50,7 +51,7 @@ export function PriceChart({
   walletCount,
 }: PriceChartProps) {
   return (
-    <div className="surface-elevated rounded-xl p-5 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800">
+    <Card>
       {/* Eyebrow and timeframe share a row — the controls used to occupy a full
           row of their own above the chart. */}
       <div className="flex items-center justify-between gap-4 mb-1">
@@ -79,7 +80,7 @@ export function PriceChart({
           <PriceChartBody chartReady={chartReady} chartData={chartData} />
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 

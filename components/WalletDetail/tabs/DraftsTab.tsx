@@ -10,6 +10,7 @@ import { DraftList } from '../../DraftList';
 import type { WalletType, Address, Quorum } from '../../../types';
 import { getQuorumM, getQuorumN } from '../../../types';
 import { canEditWalletRole } from '../../../utils/walletCapabilities';
+import { Card } from '../../ui/Card';
 
 interface DraftsTabProps {
   walletId: string;
@@ -33,7 +34,7 @@ export const DraftsTab: React.FC<DraftsTabProps> = ({
   onDraftsChange,
 }) => {
   return (
-    <div className="surface-elevated rounded-xl p-6 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 animate-fade-in">
+    <Card padding="lg" className="animate-fade-in">
       <DraftList
         walletId={walletId}
         walletType={walletType}
@@ -43,6 +44,6 @@ export const DraftsTab: React.FC<DraftsTabProps> = ({
         walletName={walletName}
         onDraftsChange={onDraftsChange}
       />
-    </div>
+    </Card>
   );
 };

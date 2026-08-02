@@ -2,6 +2,8 @@ import React, { useId } from 'react';
 import type { ReactNode } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useUserPreference } from '../../hooks/useUserPreference';
+import { Card } from './Card';
+import type { CardPadding } from './Card';
 
 type HeadingLevel = 2 | 3 | 4;
 
@@ -30,13 +32,20 @@ interface CollapsibleSectionProps {
   summary?: ReactNode;
   /**
    * Dot-notation preference path, e.g. 'viewSettings.dashboard.mempoolCollapsed'.
-   * Required: every caller so far wants the choice to persist. A second caller
-   * needing ephemeral collapse should make this optional with a useState
-   * fallback rather than inventing a throwaway preference key.
+   *
+   * Required. An earlier draft made this optional with a `useState` fallback, so
+   * ephemeral disclosures could reuse the component. That needed a placeholder
+   * key to keep the hook call unconditional — and `useUserPreference` writes to
+   * localStorage from a mount effect when logged out, so the placeholder would
+   * have left junk behind. With no caller actually wanting the ephemeral path,
+   * the honest shape is to require a real key; add the fallback properly (a
+   * child component, so the hook can be genuinely conditional) when one appears.
    */
   preferenceKey: string;
   defaultCollapsed?: boolean;
-  /** Card shell classes. */
+  padding?: CardPadding;
+  interactive?: boolean;
+  /** Extra classes for the card shell. */
   className?: string;
   headerClassName?: string;
   children: ReactNode;
@@ -63,7 +72,9 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   summary,
   preferenceKey,
   defaultCollapsed = false,
-  className = 'surface-elevated rounded-xl p-4 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive',
+  padding = 'sm',
+  interactive = true,
+  className = '',
   headerClassName = 'flex items-center justify-between gap-4 px-2 mb-2',
   children,
 }) => {
@@ -73,7 +84,7 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   const Heading = `h${headingLevel}` as const;
 
   return (
-    <section className={className}>
+    <Card as="section" padding={padding} interactive={interactive} className={className}>
       <div className={headerClassName}>
         <div className="flex items-center gap-2 min-w-0">
           <Heading className={headingClassName}>
@@ -98,6 +109,6 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
       <div id={contentId} hidden={collapsed}>
         {children}
       </div>
-    </section>
+    </Card>
   );
 };
