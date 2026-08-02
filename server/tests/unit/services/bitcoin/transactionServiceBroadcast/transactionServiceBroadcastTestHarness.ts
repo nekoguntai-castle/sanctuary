@@ -1,6 +1,10 @@
 import { vi } from 'vitest';
 import { mockPrismaClient, resetPrismaMocks } from '../../../../mocks/prisma';
 import * as bitcoin from 'bitcoinjs-lib';
+import * as ecc from 'tiny-secp256k1';
+import { ECPairFactory } from 'ecpair';
+
+const ECPair = ECPairFactory(ecc);
 
 const transactionServiceBroadcastMocks = vi.hoisted(() => ({
   mockParseDescriptor: vi.fn(),
@@ -75,6 +79,54 @@ export const createRawTxHex = (
     tx.addOutput(bitcoin.address.toOutputScript(address, network), BigInt(value));
   });
   return tx.toHex();
+};
+
+export const createSignedMultisigPayment = (
+  destinationType: 'p2wsh' | 'p2sh-p2wsh',
+  network: bitcoin.Network = bitcoin.networks.testnet
+): { signedPsbtBase64: string; recipient: string; inputTxid: string } => {
+  const signerA = ECPair.fromPrivateKey(Buffer.alloc(32, 1), { network });
+  const signerB = ECPair.fromPrivateKey(Buffer.alloc(32, 2), { network });
+  const multisig = bitcoin.payments.p2ms({
+    m: 2,
+    pubkeys: [Buffer.from(signerA.publicKey), Buffer.from(signerB.publicKey)],
+    network,
+  });
+  const inputPayment = bitcoin.payments.p2wsh({ redeem: multisig, network });
+  const destinationWitness = bitcoin.payments.p2wsh({ redeem: multisig, network });
+  const destination = destinationType === 'p2wsh'
+    ? destinationWitness
+    : bitcoin.payments.p2sh({ redeem: destinationWitness, network });
+  const inputHash = Buffer.alloc(32, 3);
+  const psbt = new bitcoin.Psbt({ network });
+
+  psbt.addInput({
+    hash: inputHash,
+    index: 0,
+    witnessUtxo: { script: inputPayment.output!, value: 100_000n },
+    witnessScript: multisig.output!,
+    bip32Derivation: [
+      {
+        masterFingerprint: Buffer.alloc(4, 1),
+        path: "m/48'/1'/0'/2'/0/0",
+        pubkey: Buffer.from(signerA.publicKey),
+      },
+      {
+        masterFingerprint: Buffer.alloc(4, 2),
+        path: "m/48'/1'/0'/2'/0/0",
+        pubkey: Buffer.from(signerB.publicKey),
+      },
+    ],
+  });
+  psbt.addOutput({ address: destination.address!, value: 90_000n });
+  psbt.signInput(0, signerA);
+  psbt.signInput(0, signerB);
+
+  return {
+    signedPsbtBase64: psbt.toBase64(),
+    recipient: destination.address!,
+    inputTxid: Buffer.from(inputHash).reverse().toString('hex'),
+  };
 };
 
 export const setupTransactionServiceBroadcastMocks = () => {

@@ -448,6 +448,7 @@ export function registerTransactionHttpBroadcastTests(): void {
     mockBroadcastAndSave.mockResolvedValue({
       txid: '9'.repeat(64),
       broadcasted: true,
+      persistenceStatus: 'complete',
     });
 
     const response = await request(app)
@@ -461,6 +462,7 @@ export function registerTransactionHttpBroadcastTests(): void {
     expect(response.body).toEqual({
       txid: '9'.repeat(64),
       broadcasted: true,
+      persistenceStatus: 'complete',
     });
     expect(mockBroadcastAndSave).toHaveBeenCalledWith(
       walletId,
@@ -489,6 +491,7 @@ export function registerTransactionHttpBroadcastTests(): void {
     mockBroadcastAndSave.mockResolvedValue({
       txid: '8'.repeat(64),
       broadcasted: true,
+      persistenceStatus: 'complete',
     });
 
     const response = await request(app)
@@ -501,6 +504,7 @@ export function registerTransactionHttpBroadcastTests(): void {
     expect(response.body).toEqual({
       txid: '8'.repeat(64),
       broadcasted: true,
+      persistenceStatus: 'complete',
     });
     expect(mockBroadcastAndSave).toHaveBeenCalledWith(
       walletId,
@@ -511,6 +515,53 @@ export function registerTransactionHttpBroadcastTests(): void {
         amount: 0,
       })
     );
+  });
+
+  it('returns 202 with the accepted txid when persistence needs reconciliation', async () => {
+    mockGetPSBTInfo.mockReturnValue({
+      fee: 450,
+      outputs: [{ address: 'tb1qdest', value: 25000 }],
+      inputs: [{ txid: 'f'.repeat(64), vout: 1 }],
+    });
+    mockBroadcastAndSave.mockResolvedValue({
+      txid: '7'.repeat(64),
+      broadcasted: true,
+      persistenceStatus: 'pending_reconciliation',
+      persistenceReason: 'post_acceptance_persistence_race',
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/psbt/broadcast`)
+      .send({ signedPsbt: 'cHNi' });
+
+    expect(response.status).toBe(202);
+    expect(response.body).toEqual({
+      txid: '7'.repeat(64),
+      broadcasted: true,
+      persistenceStatus: 'pending_reconciliation',
+      persistenceReason: 'post_acceptance_persistence_race',
+    });
+  });
+
+  it('returns 202 for transaction broadcasts that need persistence reconciliation', async () => {
+    mockSignedPsbtInfo();
+    mockBroadcastAndSave.mockResolvedValue({
+      txid: '6'.repeat(64),
+      broadcasted: true,
+      persistenceStatus: 'pending_reconciliation',
+      persistenceReason: 'post_acceptance_persistence_race',
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({ signedPsbtBase64: 'cHNi' });
+
+    expect(response.status).toBe(202);
+    expect(response.body).toMatchObject({
+      txid: '6'.repeat(64),
+      broadcasted: true,
+      persistenceStatus: 'pending_reconciliation',
+    });
   });
 
   it('rejects invalid PSBT broadcast attempts before node submission', async () => {

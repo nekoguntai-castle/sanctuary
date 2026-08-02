@@ -564,6 +564,7 @@ export const transactionPaths = {
       requestBody: jsonRequestBody('#/components/schemas/TransactionBroadcastRequest'),
       responses: {
         200: jsonResponse('Broadcast result', '#/components/schemas/TransactionBroadcastResponse'),
+        202: jsonResponse('Broadcast accepted; persistence reconciliation pending', '#/components/schemas/TransactionBroadcastResponse'),
         400: apiErrorResponse,
         403: apiErrorResponse,
       },
@@ -699,6 +700,7 @@ export const transactionPaths = {
       requestBody: jsonRequestBody('#/components/schemas/PsbtBroadcastRequest'),
       responses: {
         200: jsonResponse('Broadcast result', '#/components/schemas/PsbtBroadcastResponse'),
+        202: jsonResponse('Broadcast accepted; persistence reconciliation pending', '#/components/schemas/PsbtBroadcastResponse'),
         400: apiErrorResponse,
         403: apiErrorResponse,
       },

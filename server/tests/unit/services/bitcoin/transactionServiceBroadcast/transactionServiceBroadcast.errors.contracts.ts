@@ -18,6 +18,7 @@ export const registerBroadcastEdgeCaseTests = () => {
       });
       (recalculateWalletBalances as Mock).mockResolvedValue(undefined);
       mockPrismaClient.uTXO.update.mockResolvedValue({});
+      mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 1 });
       mockPrismaClient.transaction.create.mockResolvedValue({
         id: 'tx-1',
         txid: 'new-txid-from-broadcast',
@@ -25,6 +26,7 @@ export const registerBroadcastEdgeCaseTests = () => {
         type: 'sent',
       });
       mockPrismaClient.address.findFirst.mockResolvedValue(null);
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'testnet4' });
     });
 
     it('should handle database error during UTXO update', async () => {
@@ -38,14 +40,16 @@ export const registerBroadcastEdgeCaseTests = () => {
         rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
       };
 
-      // Should throw when database update fails
       await expect(
         broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata))
-      ).rejects.toThrow('DB connection lost');
+      ).resolves.toMatchObject({
+        broadcasted: true,
+        persistenceStatus: 'pending_reconciliation',
+      });
     });
 
     it('should handle database error during transaction create', async () => {
-      mockPrismaClient.transaction.create.mockRejectedValueOnce(new Error('Constraint violation'));
+      mockPrismaClient.transaction.createMany.mockRejectedValueOnce(new Error('Constraint violation'));
 
       const metadata = {
         recipient,
@@ -57,7 +61,7 @@ export const registerBroadcastEdgeCaseTests = () => {
 
       await expect(
         broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata))
-      ).rejects.toThrow('Constraint violation');
+      ).resolves.toMatchObject({ persistenceStatus: 'pending_reconciliation' });
     });
 
     it('should handle empty UTXO array in metadata', async () => {

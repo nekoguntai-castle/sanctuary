@@ -26,7 +26,8 @@ export const setupBroadcastAndSaveDefaults = () => {
   // Mock UTXO update
   mockPrismaClient.uTXO.update.mockResolvedValue({});
 
-  // Mock transaction create
+  // Mock sender transaction insert
+  mockPrismaClient.transaction.createMany.mockResolvedValue({ count: 1 });
   mockPrismaClient.transaction.create.mockResolvedValue({
     id: 'tx-1',
     txid: 'new-txid-from-broadcast',
@@ -40,4 +41,5 @@ export const setupBroadcastAndSaveDefaults = () => {
 
   // Mock address lookup for consolidation detection
   mockPrismaClient.address.findFirst.mockResolvedValue(null);
+  mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'testnet4' });
 };

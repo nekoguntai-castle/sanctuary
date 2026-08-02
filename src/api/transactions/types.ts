@@ -124,6 +124,8 @@ export type BroadcastTransactionRequest = BroadcastTransactionMetadata & (
 export interface BroadcastTransactionResponse {
   txid: string;
   broadcasted: boolean;
+  persistenceStatus: 'complete' | 'pending_reconciliation';
+  persistenceReason?: 'post_acceptance_persistence_race';
 }
 
 export interface EstimateTransactionRequest {

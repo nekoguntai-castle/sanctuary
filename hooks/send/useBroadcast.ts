@@ -25,6 +25,7 @@ const log = createLogger('Broadcast');
 
 type CurrencyFormatter = (amount: number) => string;
 type ShowSuccess = (message: string, title?: string) => void;
+type ShowWarning = (message: string, title?: string) => void;
 
 interface BroadcastPayloadBase {
   isMultisig: boolean;
@@ -174,6 +175,13 @@ const showBroadcastSuccess = (
   );
 };
 
+const showBroadcastReconciliationWarning = (showWarning: ShowWarning, txid: string): void => {
+  showWarning(
+    `Transaction accepted with TXID ${txid}. Sanctuary is reconciling local wallet records; do not broadcast it again.`,
+    'Transaction Accepted'
+  );
+};
+
 const refetchBroadcastCaches = async (walletId: string): Promise<void> => {
   // Refetch React Query caches so Dashboard updates immediately.
   // invalidateQueries only marks as stale and can race with navigate().
@@ -228,7 +236,7 @@ export function useBroadcast({
 }: UseBroadcastDeps): UseBroadcastResult {
   const navigate = useNavigate();
   const { format } = usePriceFreeFormatter();
-  const { showSuccess } = useErrorHandler();
+  const { showSuccess, showWarning } = useErrorHandler();
   const { playEventSound } = useNotificationSound();
 
   // Broadcast signed transaction
@@ -265,8 +273,12 @@ export function useBroadcast({
         utxos: txData.utxos,
       }));
 
-      showBroadcastSuccess(showSuccess, format, broadcastResult.txid, state.outputs.length, effectiveAmount, txData.fee);
-      playEventSound('send');
+      if (broadcastResult.persistenceStatus === 'pending_reconciliation') {
+        showBroadcastReconciliationWarning(showWarning, broadcastResult.txid);
+      } else {
+        showBroadcastSuccess(showSuccess, format, broadcastResult.txid, state.outputs.length, effectiveAmount, txData.fee);
+        playEventSound('send');
+      }
       await refetchBroadcastCaches(walletId);
       navigate(`/wallets/${walletId}`);
       return true;
@@ -277,7 +289,7 @@ export function useBroadcast({
     } finally {
       setIsBroadcasting(false);
     }
-  }, [walletId, txData, unsignedPsbt, signedRawTx, state, format, showSuccess, playEventSound, navigate, wallet.type, setIsBroadcasting, setError]);
+  }, [walletId, txData, unsignedPsbt, signedRawTx, state, format, showSuccess, showWarning, playEventSound, navigate, wallet.type, setIsBroadcasting, setError]);
 
   return { broadcastTransaction };
 }

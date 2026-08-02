@@ -434,22 +434,22 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "server/src/services/bitcoin/transactions/internalReceiving.ts",
-      "functionName": "createInternalReceivingTransactions",
-      "issue": "non-terminal-catch",
-      "count": 3,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
-      "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
-    },
-    {
-      "file": "server/src/services/bitcoin/transactions/persistTransaction.ts",
-      "functionName": "persistTransaction",
+      "file": "server/src/services/bitcoin/transactions/broadcasting.ts",
+      "functionName": "recalculateAcceptedWalletBalance",
       "issue": "non-terminal-catch",
       "count": 1,
-      "reason": "Legacy non-terminal catch baseline; this gate blocks new unreviewed safety-path catches and stale entries.",
+      "reason": "Balance repair runs after node acceptance and database commit; failure is logged for reconciliation and must not turn an accepted transaction into a retryable send error.",
       "owner": "fund-safety",
-      "targetRemovalSlice": "fail-closed-safety-follow-up"
+      "targetRemovalSlice": "intentional-post-acceptance-boundary"
+    },
+    {
+      "file": "server/src/services/bitcoin/transactions/broadcasting.ts",
+      "functionName": "emitAcceptedTransactionEvent",
+      "issue": "non-terminal-catch",
+      "count": 1,
+      "reason": "Realtime event emission runs after node acceptance and database commit; listener failure must not turn an accepted transaction into a retryable send error.",
+      "owner": "fund-safety",
+      "targetRemovalSlice": "intentional-post-acceptance-boundary"
     },
     {
       "file": "server/src/services/bitcoin/transactions/psbtInputConstruction.ts",

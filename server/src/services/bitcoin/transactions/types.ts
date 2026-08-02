@@ -87,6 +87,8 @@ export interface CreateBatchTransactionResult {
 export interface BroadcastResult {
   txid: string;
   broadcasted: boolean;
+  persistenceStatus: 'complete' | 'pending_reconciliation';
+  persistenceReason?: 'post_acceptance_persistence_race';
 }
 
 /**

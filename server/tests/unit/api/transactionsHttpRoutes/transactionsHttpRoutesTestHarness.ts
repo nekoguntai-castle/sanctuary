@@ -217,6 +217,7 @@ export function setupTransactionHttpRouteHooks(): void {
     mockBroadcastAndSave.mockResolvedValue({
       txid: 'a'.repeat(64),
       broadcasted: true,
+      persistenceStatus: 'complete',
     });
     mockEstimateTransaction.mockResolvedValue({
       fee: 120,

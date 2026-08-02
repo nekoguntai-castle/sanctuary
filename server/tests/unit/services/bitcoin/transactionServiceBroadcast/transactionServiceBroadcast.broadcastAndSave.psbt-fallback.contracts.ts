@@ -4,7 +4,14 @@ import {
   withBroadcastNetwork,
 } from './transactionServiceBroadcast.broadcastAndSave.shared';
 import { expect, it, vi } from 'vitest';
-import { createRawTxHex, flushPromises, mockEmitTransactionReceived, mockEmitTransactionSent, mockNotifyNewTransactions } from './transactionServiceBroadcastTestHarness';
+import {
+  createRawTxHex,
+  createSignedMultisigPayment,
+  flushPromises,
+  mockEmitTransactionReceived,
+  mockEmitTransactionSent,
+  mockNotifyNewTransactions,
+} from './transactionServiceBroadcastTestHarness';
 import * as bitcoin from 'bitcoinjs-lib';
 import { broadcastAndSave } from '../../../../../src/services/bitcoin/transactionService';
 import { recalculateWalletBalances } from '../../../../../src/services/bitcoin/blockchain';
@@ -13,6 +20,73 @@ import { mockPrismaClient } from '../../../../mocks/prisma';
 import { sampleUtxos, testnetAddresses } from '../../../../fixtures/bitcoin';
 
 export const registerBroadcastAndSavePsbtFallbackContracts = () => {
+  it.each(['p2wsh', 'p2sh-p2wsh'] as const)(
+    'persists a pending internal receive from a signed multisig PSBT paying %s',
+    async (destinationType) => {
+      const receivingWalletId = `receiving-${destinationType}`;
+      const payment = createSignedMultisigPayment(destinationType);
+
+      mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'testnet' });
+      mockPrismaClient.uTXO.findMany.mockResolvedValue([{
+        txid: payment.inputTxid,
+        vout: 0,
+        walletId,
+        address: recipient,
+        amount: 100_000n,
+      }]);
+      mockPrismaClient.address.findMany.mockImplementation((query: any) => {
+        if (query?.where?.walletId === walletId) {
+          return Promise.resolve([{ address: recipient, derivationPath: 'm/48/0/0/0' }]);
+        }
+        if (query?.where?.walletId?.not === walletId) {
+          return Promise.resolve([{ walletId: receivingWalletId, address: payment.recipient }]);
+        }
+        return Promise.resolve([]);
+      });
+      mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
+      mockPrismaClient.transaction.create
+        .mockResolvedValueOnce({ id: 'sender-transaction', walletId, type: 'sent' });
+      mockPrismaClient.transaction.createManyAndReturn
+        .mockResolvedValueOnce([{ id: 'receiver-transaction' }]);
+
+      const result = await broadcastAndSave(walletId, payment.signedPsbtBase64, withBroadcastNetwork({
+        recipient: payment.recipient,
+        amount: 90_000,
+        fee: 10_000,
+        label: 'sender-private-label',
+        utxos: [{ txid: payment.inputTxid, vout: 0 }],
+      }));
+
+      expect(result.broadcasted).toBe(true);
+      expect(mockPrismaClient.transaction.createManyAndReturn).toHaveBeenCalledWith({
+        data: [expect.objectContaining({
+          walletId: receivingWalletId,
+          type: 'received',
+          amount: 90_000n,
+          confirmations: 0,
+          blockHeight: null,
+        })],
+        skipDuplicates: true,
+        select: { id: true },
+      });
+      expect(mockPrismaClient.transactionOutput.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({
+          transactionId: 'receiver-transaction',
+          address: payment.recipient,
+          amount: 90_000n,
+          outputType: 'recipient',
+          isOurs: true,
+        })],
+        skipDuplicates: true,
+      });
+      expect(mockEmitTransactionReceived).toHaveBeenCalledWith(expect.objectContaining({
+        walletId: receivingWalletId,
+        address: payment.recipient,
+        amount: 90_000n,
+      }));
+    }
+  );
+
   it('should broadcast from signed PSBT and exercise finalization branches', async () => {
     const finalizeInput = vi.fn();
     const extractedRawTx = '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000';
@@ -161,7 +235,7 @@ export const registerBroadcastAndSavePsbtFallbackContracts = () => {
     fromHexSpy.mockRestore();
   });
 
-  it('should use empty address fallback when internal mapping references a missing output address', async () => {
+  it('should ignore ownership records that do not match a transaction output', async () => {
     const rawTxHex = createRawTxHex([{ address: recipient, value: 30_000 }]);
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ network: 'testnet' });
     mockPrismaClient.address.findMany.mockImplementation((query: any) => {
@@ -185,12 +259,7 @@ export const registerBroadcastAndSavePsbtFallbackContracts = () => {
 
     await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
-    expect(mockEmitTransactionReceived).toHaveBeenCalledWith(
-      expect.objectContaining({
-        walletId: 'receiving-wallet-id',
-        address: '',
-      })
-    );
+    expect(mockEmitTransactionReceived).not.toHaveBeenCalled();
   });
 
   it('should parse fallback outputs and create pending receive records for internal wallets', async () => {

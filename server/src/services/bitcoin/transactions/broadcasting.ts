@@ -10,7 +10,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { broadcastTransaction, recalculateWalletBalances } from '../blockchain';
 import { createLogger } from '../../../utils/logger';
-import { getErrorMessage } from '../../../utils/errors';
+import { getErrorMessage, isPrismaError } from '../../../utils/errors';
 import { eventService } from '../../eventService';
 import { transactionBroadcastsTotal } from '../../../observability/metrics';
 import { parseMultisigScript, finalizeMultisigInput } from '../psbtBuilder';
@@ -19,6 +19,79 @@ import type { TransactionInputMetadata, TransactionOutputMetadata, BroadcastResu
 import type { BitcoinNetwork } from '../networks';
 
 const log = createLogger('BITCOIN:SVC_TX_BROADCAST');
+const MAX_PERSISTENCE_ATTEMPTS = 3;
+
+const isRetryablePersistenceConflict = (error: unknown): boolean => {
+  if (!isPrismaError(error)) return false;
+  if (error.code === 'P2034') return true;
+  const driverAdapterError = error.meta?.driverAdapterError as
+    | { cause?: { kind?: unknown } }
+    | undefined;
+  return error.code === 'P2010'
+    && driverAdapterError?.cause?.kind === 'TransactionWriteConflict';
+};
+
+const persistAcceptedTransaction = async (
+  walletId: string,
+  txid: string,
+  rawTx: string,
+  metadata: Parameters<typeof persistTransaction>[3],
+): Promise<Awaited<ReturnType<typeof persistTransaction>> | null> => {
+  for (let attempt = 1; attempt <= MAX_PERSISTENCE_ATTEMPTS; attempt += 1) {
+    try {
+      return await persistTransaction(walletId, txid, rawTx, metadata);
+    } catch (error) {
+      if (isRetryablePersistenceConflict(error) && attempt < MAX_PERSISTENCE_ATTEMPTS) {
+        log.warn('Retrying accepted transaction persistence after write conflict', {
+          txid,
+          walletId,
+          attempt,
+        });
+        continue;
+      }
+      log.error('Accepted transaction requires persistence reconciliation', {
+        txid,
+        walletId,
+        attempt,
+        error: getErrorMessage(error),
+      });
+      return null;
+    }
+  }
+
+  /* v8 ignore next -- the bounded loop always returns */
+  return null;
+};
+
+const recalculateAcceptedWalletBalance = async (walletId: string, txid: string): Promise<void> => {
+  try {
+    await recalculateWalletBalances(walletId);
+  } catch (error) {
+    log.warn('Accepted transaction balance reconciliation deferred', {
+      txid,
+      walletId,
+      error: getErrorMessage(error),
+    });
+  }
+};
+
+const emitAcceptedTransactionEvent = (
+  eventName: 'sent' | 'received',
+  txid: string,
+  walletId: string,
+  emit: () => void,
+): void => {
+  try {
+    emit();
+  } catch (error) {
+    log.warn('Accepted transaction event emission failed', {
+      eventName,
+      txid,
+      walletId,
+      error: getErrorMessage(error),
+    });
+  }
+};
 
 /**
  * Broadcast a signed transaction and save to database.
@@ -67,7 +140,15 @@ export async function broadcastAndSave(
 
   transactionBroadcastsTotal.inc({ status: 'success' });
 
-  const persisted = await persistTransaction(walletId, txid, rawTx, metadata);
+  const persisted = await persistAcceptedTransaction(walletId, txid, rawTx, metadata);
+  if (!persisted) {
+    return {
+      txid,
+      broadcasted: true,
+      persistenceStatus: 'pending_reconciliation',
+      persistenceReason: 'post_acceptance_persistence_race',
+    };
+  }
 
   if (metadata.draftId && persisted.unlockedCount > 0) {
     log.debug(`Released ${persisted.unlockedCount} UTXO locks for draft ${metadata.draftId}`);
@@ -78,7 +159,7 @@ export async function broadcastAndSave(
   }
 
   // Recalculate running balances for all affected wallets
-  await recalculateWalletBalances(walletId);
+  await recalculateAcceptedWalletBalance(walletId, txid);
 
   if (persisted.mainTransactionCreated) {
     // Send notifications for the broadcast transaction (Telegram + Push)
@@ -97,26 +178,34 @@ export async function broadcastAndSave(
     /* v8 ignore stop */
 
     // Emit transaction sent event for real-time updates
-    eventService.emitTransactionSent({
-      walletId,
-      txid,
-      amount: BigInt(metadata.amount),
-      fee: BigInt(metadata.fee),
-      recipients: [{ address: metadata.recipient, amount: BigInt(metadata.amount) }],
-      rawTx,
+    emitAcceptedTransactionEvent('sent', txid, walletId, () => {
+      eventService.emitTransactionSent({
+        walletId,
+        txid,
+        amount: BigInt(metadata.amount),
+        fee: BigInt(metadata.fee),
+        recipients: [{ address: metadata.recipient, amount: BigInt(metadata.amount) }],
+        rawTx,
+      });
     });
   }
 
-  for (const receivingTx of persisted.createdReceivingTransactions) {
-    await recalculateWalletBalances(receivingTx.walletId);
+  for (const receivingTx of persisted.receivingTransactions) {
+    await recalculateAcceptedWalletBalance(receivingTx.walletId, txid);
+
+    if (receivingTx.status === 'existing') {
+      continue;
+    }
 
     // Emit transaction received event for real-time updates
-    eventService.emitTransactionReceived({
-      walletId: receivingTx.walletId,
-      txid,
-      amount: BigInt(receivingTx.amount),
-      address: receivingTx.address,
-      confirmations: 0,
+    emitAcceptedTransactionEvent('received', txid, receivingTx.walletId, () => {
+      eventService.emitTransactionReceived({
+        walletId: receivingTx.walletId,
+        txid,
+        amount: BigInt(receivingTx.amount),
+        address: receivingTx.address,
+        confirmations: 0,
+      });
     });
 
     // Send notifications for the receiving wallet.
@@ -136,6 +225,7 @@ export async function broadcastAndSave(
   return {
     txid,
     broadcasted: true,
+    persistenceStatus: 'complete',
   };
 }
 

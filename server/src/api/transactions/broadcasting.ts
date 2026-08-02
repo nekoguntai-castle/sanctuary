@@ -569,6 +569,8 @@ const handlePsbtBroadcast = async (
     return {
       txid: result.txid,
       broadcasted: result.broadcasted,
+      persistenceStatus: result.persistenceStatus,
+      ...(result.persistenceReason && { persistenceReason: result.persistenceReason }),
     };
   } catch (error) {
     /* v8 ignore start -- broadcast failure audit path is covered at service boundary */
@@ -588,7 +590,8 @@ const handlePsbtBroadcast = async (
 router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
   const body = parseTransactionRequestBody(MobileTransactionBroadcastRequestSchema, req.body);
-  res.json(await handleTransactionBroadcast(req, walletId, body));
+  const result = await handleTransactionBroadcast(req, walletId, body);
+  res.status(result.persistenceStatus === 'pending_reconciliation' ? 202 : 200).json(result);
 }));
 
 /**
@@ -598,7 +601,8 @@ router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('ed
 router.post('/wallets/:walletId/psbt/broadcast', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
   const body = parseTransactionRequestBody(MobilePsbtBroadcastRequestSchema, req.body);
-  res.json(await handlePsbtBroadcast(req, walletId, body));
+  const result = await handlePsbtBroadcast(req, walletId, body);
+  res.status(result.persistenceStatus === 'pending_reconciliation' ? 202 : 200).json(result);
 }));
 
 export default router;

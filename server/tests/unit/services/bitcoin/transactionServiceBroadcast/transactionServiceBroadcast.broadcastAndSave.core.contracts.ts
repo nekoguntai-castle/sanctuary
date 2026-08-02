@@ -33,20 +33,20 @@ export const registerBroadcastAndSaveCoreContracts = () => {
     expect(result.broadcasted).toBe(true);
     expect(result.txid).toBeDefined();
     expect(mockPrismaClient.uTXO.update).toHaveBeenCalled();
-    expect(mockPrismaClient.transaction.create).toHaveBeenCalled();
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalled();
 
     // Verify the transaction was created with correct data
     // Note: For sent transactions, amount is stored as negative (amount + fee)
-    expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        data: [expect.objectContaining({
           walletId,
           type: 'sent',
           amount: BigInt(-51000), // -(50000 + 1000 fee)
           fee: BigInt(1000),
           label: 'Test payment',
           memo: 'Testing broadcast',
-        }),
+        })],
       })
     );
   });
@@ -118,11 +118,11 @@ export const registerBroadcastAndSaveCoreContracts = () => {
     await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
     // Transaction should be created with type 'consolidation'
-    expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+    expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        data: [expect.objectContaining({
           type: 'consolidation',
-        }),
+        })],
       })
     );
   });

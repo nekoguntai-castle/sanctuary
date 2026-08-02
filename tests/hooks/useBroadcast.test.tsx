@@ -4,6 +4,7 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   showSuccess: vi.fn(),
+  showWarning: vi.fn(),
   playEventSound: vi.fn(),
   format: vi.fn((sats: number) => `${sats} sats`),
   broadcastTransaction: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock('react-router-dom', () => ({
 vi.mock('../../hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({
     showSuccess: mocks.showSuccess,
+    showWarning: mocks.showWarning,
   }),
 }));
 
@@ -103,7 +105,11 @@ function createDeps(overrides: Partial<Parameters<typeof useBroadcast>[0]> = {})
 describe('useBroadcast', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.broadcastTransaction.mockResolvedValue({ txid: 'f'.repeat(64) });
+    mocks.broadcastTransaction.mockResolvedValue({
+      txid: 'f'.repeat(64),
+      broadcasted: true,
+      persistenceStatus: 'complete',
+    });
     mocks.deleteDraft.mockResolvedValue(undefined);
     mocks.refetchQueries.mockResolvedValue(undefined);
     mocks.invalidateQueries.mockResolvedValue(undefined);
@@ -341,6 +347,33 @@ describe('useBroadcast', () => {
       draftId: 'draft-1',
     }));
     expect(mocks.deleteDraft).not.toHaveBeenCalled();
+    expect(mocks.navigate).toHaveBeenCalledWith('/wallets/wallet-1');
+  });
+
+  it('warns without a success sound when accepted persistence needs reconciliation', async () => {
+    const txid = 'e'.repeat(64);
+    mocks.broadcastTransaction.mockResolvedValueOnce({
+      txid,
+      broadcasted: true,
+      persistenceStatus: 'pending_reconciliation',
+      persistenceReason: 'post_acceptance_persistence_race',
+    });
+    const deps = createDeps();
+    const { result } = renderHook(() => useBroadcast(deps));
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.broadcastTransaction();
+    });
+
+    expect(ok).toBe(true);
+    expect(mocks.showWarning).toHaveBeenCalledWith(
+      expect.stringContaining(txid),
+      'Transaction Accepted'
+    );
+    expect(mocks.showSuccess).not.toHaveBeenCalled();
+    expect(mocks.playEventSound).not.toHaveBeenCalled();
+    expect(mocks.refetchQueries).toHaveBeenCalled();
     expect(mocks.navigate).toHaveBeenCalledWith('/wallets/wallet-1');
   });
 

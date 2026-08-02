@@ -377,8 +377,10 @@ export const transactionSchemas = {
     properties: {
       txid: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' },
       broadcasted: { type: 'boolean' },
+      persistenceStatus: { type: 'string', enum: ['complete', 'pending_reconciliation'] },
+      persistenceReason: { type: 'string', enum: ['post_acceptance_persistence_race'] },
     },
-    required: ['txid', 'broadcasted'],
+    required: ['txid', 'broadcasted', 'persistenceStatus'],
   },
   PsbtCreateRequest: {
     type: 'object',
@@ -432,8 +434,10 @@ export const transactionSchemas = {
     properties: {
       txid: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' },
       broadcasted: { type: 'boolean' },
+      persistenceStatus: { type: 'string', enum: ['complete', 'pending_reconciliation'] },
+      persistenceReason: { type: 'string', enum: ['post_acceptance_persistence_race'] },
     },
-    required: ['txid', 'broadcasted'],
+    required: ['txid', 'broadcasted', 'persistenceStatus'],
   },
   RawTransactionResponse: {
     type: 'object',

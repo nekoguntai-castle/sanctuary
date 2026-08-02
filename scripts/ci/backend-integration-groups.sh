@@ -33,6 +33,7 @@ list_group_specs() {
         tests/integration/flows/authIntentConcurrency.integration.test.ts \
         tests/integration/flows/auth.integration.test.ts \
         tests/integration/flows/coinControl.integration.test.ts \
+        tests/integration/flows/internalReceivingPersistence.integration.test.ts \
         tests/integration/flows/labels.integration.test.ts \
         tests/integration/flows/payjoin.integration.test.ts \
         tests/integration/flows/security.integration.test.ts \

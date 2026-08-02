@@ -7,10 +7,13 @@
  */
 
 import { withTransaction } from '../../../models/prisma';
+import { randomUUID } from 'node:crypto';
 import { createLogger } from '../../../utils/logger';
-import { isUniqueConstraintError } from './helpers';
 import { storeTransactionInputs, storeTransactionOutputs } from './storeTransactionIO';
-import { createInternalReceivingTransactions } from './internalReceiving';
+import {
+  createInternalReceivingTransactions,
+  type InternalReceivingOutcome,
+} from './internalReceiving';
 import { BROADCAST_DRAFT_RETENTION_POLICY } from './broadcastContracts';
 import type { TransactionInputMetadata, TransactionOutputMetadata } from './types';
 
@@ -40,7 +43,7 @@ export async function persistTransaction(
   mainTransactionCreated: boolean;
   unlockedCount: number;
   draftArchived: boolean;
-  createdReceivingTransactions: Array<{ walletId: string; amount: number; address: string }>;
+  receivingTransactions: InternalReceivingOutcome[];
 }> {
   return withTransaction(async (tx) => {
     // Mark UTXOs as spent
@@ -126,50 +129,38 @@ export async function persistTransaction(
       ? -metadata.fee
       : -(metadata.amount + metadata.fee);
 
-    let txRecord: Awaited<ReturnType<typeof tx.transaction.create>>;
-    let mainTransactionCreated = true;
-
-    try {
-      txRecord = await tx.transaction.create({
-        data: {
-          txid,
-          walletId,
-          type: txType,
-          amount: BigInt(txAmount),
-          fee: BigInt(metadata.fee),
-          confirmations: 0,
-          label: labelToUse,
-          memo: memoToUse,
-          blockHeight: null,
-          blockTime: null,
-          replacementForTxid,
-          rbfStatus: 'active',
-          rawTx,
-          counterpartyAddress: metadata.recipient,
-        },
+    const newTransactionId = randomUUID();
+    const insertResult = await tx.transaction.createMany({
+      data: [{
+        id: newTransactionId,
+        txid,
+        walletId,
+        type: txType,
+        amount: BigInt(txAmount),
+        fee: BigInt(metadata.fee),
+        confirmations: 0,
+        label: labelToUse,
+        memo: memoToUse,
+        blockHeight: null,
+        blockTime: null,
+        replacementForTxid,
+        rbfStatus: 'active',
+        rawTx,
+        counterpartyAddress: metadata.recipient,
+      }],
+      skipDuplicates: true,
+    });
+    const mainTransactionCreated = insertResult.count > 0;
+    const txRecord = mainTransactionCreated
+      ? { id: newTransactionId }
+      : await tx.transaction.findUnique({
+        where: { txid_walletId: { txid, walletId } },
+        select: { id: true },
       });
-    } catch (error) {
-      // Race-safe idempotency: if another sync/process inserted this tx first,
-      // reuse that record instead of failing after successful broadcast.
-      if (!isUniqueConstraintError(error)) {
-        throw error;
-      }
-
-      const existingTxRecord = await tx.transaction.findUnique({
-        where: {
-          txid_walletId: {
-            txid,
-            walletId,
-          },
-        },
-      });
-
-      if (!existingTxRecord) {
-        throw error;
-      }
-
-      txRecord = existingTxRecord;
-      mainTransactionCreated = false;
+    if (!txRecord) {
+      throw new Error(`Unable to resolve broadcast transaction ${txid} for wallet ${walletId}`);
+    }
+    if (!mainTransactionCreated) {
       log.warn(`Transaction ${txid} already existed for wallet ${walletId} during broadcast save`);
     }
 
@@ -180,16 +171,14 @@ export async function persistTransaction(
     await storeTransactionOutputs(tx, txRecord.id, txid, walletId, rawTx, metadata, !!isConsolidation);
 
     // Create pending received transactions for internal wallets
-    const createdReceivingTransactions = await createInternalReceivingTransactions(
-      tx, txid, walletId, rawTx, metadata
-    );
+    const receivingTransactions = await createInternalReceivingTransactions(tx, txid, walletId, rawTx);
 
     return {
       txType: txType as 'sent' | 'consolidation',
       mainTransactionCreated,
       unlockedCount,
       draftArchived,
-      createdReceivingTransactions,
+      receivingTransactions,
     };
   });
 }

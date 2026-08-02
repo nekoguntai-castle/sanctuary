@@ -35,10 +35,6 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
   });
 
   it('should handle recalculateWalletBalances error gracefully', async () => {
-    // recalculateWalletBalances throws but broadcast should still complete
-    // Note: The actual behavior depends on implementation - if recalculateWalletBalances
-    // is called with await, errors will propagate. If it's fire-and-forget, they won't.
-    // This test documents the expected behavior.
     (recalculateWalletBalances as Mock).mockRejectedValueOnce(new Error('Balance calculation failed'));
 
     const metadata = {
@@ -49,21 +45,9 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
       rawTxHex: '0100000001c997a5e56e104102fa209c6a852dd90660a20b2d9c352423edce25857fcd3704000000004847304402204e45e16932b8af514961a1d3a1a25fdf3f4f7732e9d624c6c61548ab5fb8cd410220181522ec8eca07de4860a4acdd12909d831cc56cbbac4622082221a8768d1d0901ffffffff0100000000000000000000000000',
     };
 
-    // The broadcast should either succeed or throw depending on implementation
-    // If recalculateWalletBalances errors are caught, broadcast succeeds
-    // If they propagate, broadcast throws
-    try {
-      const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
-      // If we get here, the implementation catches balance calculation errors
-      expect(result.broadcasted).toBe(true);
-      expect(result.txid).toBeDefined();
-    } catch (error) {
-      // If we get here, balance calculation errors propagate
-      // This is also valid behavior - the test documents it
-      expect((error as Error).message).toContain('Balance calculation failed');
-    }
+    const result = await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
-    // Verify recalculateWalletBalances was called
+    expect(result).toMatchObject({ broadcasted: true, persistenceStatus: 'complete' });
     expect(recalculateWalletBalances).toHaveBeenCalledWith(walletId);
   });
 
@@ -108,13 +92,13 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
       );
 
       // Verify new transaction created with correct fields
-      expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
+          data: [expect.objectContaining({
             replacementForTxid: originalTxid,
             rbfStatus: 'active',
             label: 'Original payment label', // Preserved from original
-          }),
+          })],
         })
       );
     });
@@ -142,11 +126,11 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
 
       await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
-      expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
+          data: [expect.objectContaining({
             label: 'Important payment',
-          }),
+          })],
         })
       );
     });
@@ -174,11 +158,11 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
 
       await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
-      expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
+          data: [expect.objectContaining({
             label: 'New explicit label',
-          }),
+          })],
         })
       );
     });
@@ -202,12 +186,12 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
       await expect(broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata))).resolves.toBeDefined();
 
       // Should still create the new transaction with replacementForTxid
-      expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
+          data: [expect.objectContaining({
             replacementForTxid: nonExistentTxid,
             rbfStatus: 'active',
-          }),
+          })],
         })
       );
 
@@ -229,12 +213,12 @@ export const registerBroadcastAndSaveFailureAndRbfContracts = () => {
       await broadcastAndSave(walletId, undefined, withBroadcastNetwork(metadata));
 
       // Should create transaction without RBF fields
-      expect(mockPrismaClient.transaction.create).toHaveBeenCalledWith(
+      expect(mockPrismaClient.transaction.createMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
+          data: [expect.objectContaining({
             replacementForTxid: undefined,
             rbfStatus: 'active',
-          }),
+          })],
         })
       );
 
