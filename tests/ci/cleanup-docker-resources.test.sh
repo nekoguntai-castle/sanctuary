@@ -89,11 +89,16 @@ if [ "${1:-}" = "ps" ] && [ "${2:-}" = "-a" ] && [ "${3:-}" = "--format" ]; then
         sanctuary-ci-current \
         unrelated-project
       ;;
-    '{{.ID}}\t{{.Names}}\t{{.Status}}')
-      printf 'task-exited\tFORGEJO-ACTIONS-TASK-old\tExited (0) 2 hours ago\n'
-      printf 'task-running\tFORGEJO-ACTIONS-TASK-current\tUp 3 minutes\n'
-      printf 'task-dead\tGITEA-ACTIONS-TASK-dead\tDead\n'
-      printf 'ordinary\tordinary-container\tExited (0) 2 hours ago\n'
+    '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.CreatedAt}}')
+      old_at="$(date -d '30 days ago' '+%Y-%m-%d %H:%M:%S %z %Z')"
+      new_at="$(date -d '1 minute ago' '+%Y-%m-%d %H:%M:%S %z %Z')"
+      printf 'task-exited\tFORGEJO-ACTIONS-TASK-old\tExited (0) 2 hours ago\t%s\n' "$old_at"
+      printf 'task-running\tFORGEJO-ACTIONS-TASK-current\tUp 3 minutes\t%s\n' "$new_at"
+      printf 'task-dead\tGITEA-ACTIONS-TASK-dead\tDead\t%s\n' "$old_at"
+      printf 'task-young\tFORGEJO-ACTIONS-TASK-inflight\tExited (0) 1 minute ago\t%s\n' "$new_at"
+      printf 'task-restarting\tFORGEJO-ACTIONS-TASK-bouncing\tRestarting (1) 5 seconds ago\t%s\n' "$old_at"
+      printf 'task-undated\tFORGEJO-ACTIONS-TASK-undated\tExited (0) 2 hours ago\tnot-a-date\n'
+      printf 'ordinary\tordinary-container\tExited (0) 2 hours ago\t%s\n' "$old_at"
       ;;
   esac
   exit 0
@@ -196,6 +201,12 @@ test_runner_leftovers_cleanup() {
   assert_contains "$calls" "rm -f task-exited task-dead" \
     "runner cleanup should remove non-running action containers"
   assert_not_contains "$calls" "task-running" "runner cleanup should keep running action containers"
+  assert_not_contains "$calls" "task-young" \
+    "runner cleanup must not remove a recently created container: it may belong to an in-flight job"
+  assert_not_contains "$calls" "task-restarting" \
+    "runner cleanup must not remove a Restarting container: that is an active state, not a leftover"
+  assert_not_contains "$calls" "task-undated" \
+    "runner cleanup must fail safe when container age cannot be determined"
   assert_contains "$calls" "network rm workflow-empty" \
     "runner cleanup should remove empty workflow networks"
   assert_not_contains "$calls" "network rm workflow-busy" \

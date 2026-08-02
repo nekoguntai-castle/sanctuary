@@ -237,21 +237,71 @@ verify_prefix_empty() {
   return "$failed"
 }
 
+# Only containers older than this are eligible for removal. The runner reuses the
+# FORGEJO-ACTIONS-TASK-* / GITEA-ACTIONS-TASK-* naming for containers belonging to
+# IN-FLIGHT jobs, and this sweep is not scoped by Compose project, so without an
+# age gate a concurrent run's container can be removed out from under it — the
+# runner then recreates it empty, which is indistinguishable from a mid-run wipe.
+# See #606.
+runner_leftover_min_age_seconds="${SANCTUARY_RUNNER_LEFTOVER_MIN_AGE_SECONDS:-7200}"
+
+# Seconds since the container was created, or empty when it cannot be determined.
+container_age_seconds() {
+  local created="$1"
+  local created_epoch now_epoch normalized
+
+  # Docker renders CreatedAt as '2026-08-01 11:42:02 -1000 HST'. GNU date cannot
+  # parse the trailing zone abbreviation after a numeric offset, so keep only
+  # date, time and offset.
+  normalized="$(printf '%s' "$created" | awk '{print $1, $2, $3}')"
+  created_epoch="$(date -d "$normalized" +%s 2>/dev/null || true)"
+  [ -n "$created_epoch" ] || return 0
+
+  now_epoch="$(date +%s)"
+  printf '%s' "$((now_epoch - created_epoch))"
+}
+
 cleanup_action_containers() {
-  local id names status
+  local id names status created age
   local -a stale_ids=()
 
-  while IFS=$'\t' read -r id names status; do
+  # Every runner-named container considered is reported with the decision taken.
+  # This is the only place that observes runner container naming, and whether the
+  # runner applies the ACTIONS-TASK prefix to SERVICE containers (not just job
+  # containers) decides whether this sweep could ever have removed a live
+  # database. Logging it makes the next run answer that question. See #606.
+  echo "cleanup-docker-resources: runner leftover sweep (min age ${runner_leftover_min_age_seconds}s)"
+
+  while IFS=$'\t' read -r id names status created; do
     [ -n "${id:-}" ] && [ -n "${names:-}" ] || continue
     case "$names" in
       FORGEJO-ACTIONS-TASK-*|GITEA-ACTIONS-TASK-*) ;;
       *) continue ;;
     esac
+    # Restarting and Paused are ACTIVE states, not leftovers. A healthcheck can
+    # bounce a healthy service container through Restarting; removing it there
+    # kills a live job's database.
     case "$status" in
-      Up*|Running*|Created*) continue ;;
+      Up*|Running*|Created*|Restarting*|Paused*)
+        echo "  keep    $names ($status) — active"
+        continue
+        ;;
     esac
+
+    age="$(container_age_seconds "${created:-}")"
+    if [ -z "$age" ]; then
+      # Fail safe: never remove a container whose age cannot be established.
+      warn "skipping $names: could not determine container age from '${created:-}'"
+      continue
+    fi
+    if [ "$age" -lt "$runner_leftover_min_age_seconds" ]; then
+      echo "  keep    $names ($status) — ${age}s old, under the age gate"
+      continue
+    fi
+
+    echo "  remove  $names ($status) — ${age}s old"
     stale_ids+=("$id")
-  done < <(docker_query ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}' 2>/dev/null || true)
+  done < <(docker_query ps -a --format '{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.CreatedAt}}' 2>/dev/null || true)
 
   remove_ids container "${stale_ids[@]}"
 }
