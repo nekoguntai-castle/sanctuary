@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { getAddressBalanceLabel } from '../../../../../components/WalletDetail/tabs/AddressesTab/addressDisplay';
-import { isChangeAddress, splitAddresses } from '../../../../../components/WalletDetail/tabs/AddressesTab/addressModel';
-import type { Address } from '../../../../../types';
+import { getAddressBalanceLabel } from '../../../../../src/components/WalletDetail/tabs/AddressesTab/addressDisplay';
+import { isChangeAddress, splitAddresses } from '../../../../../src/components/WalletDetail/tabs/AddressesTab/addressModel';
+import type { Address } from '../../../../../src/types';
 
 function address(overrides: Partial<Address>): Address {
   return {

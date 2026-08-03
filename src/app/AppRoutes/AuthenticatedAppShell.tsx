@@ -1,6 +1,6 @@
-import { ChangePasswordModal } from '../../../components/ChangePasswordModal';
-import { Layout } from '../../../components/Layout';
-import { NotificationContainer } from '../../../components/NotificationToast';
+import { ChangePasswordModal } from '../../components/ChangePasswordModal';
+import { Layout } from '../../components/Layout';
+import { NotificationContainer } from '../../components/NotificationToast';
 import { AnimatedBackgroundLayer } from './AnimatedBackgroundLayer';
 import { AppRouteSwitch } from './AppRouteSwitch';
 import type { AppRoutesController } from './types';

@@ -1,10 +1,10 @@
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { FlowPreview } from '../../../components/TransactionList/FlowPreview';
+import { FlowPreview } from '../../../src/components/TransactionList/FlowPreview';
 
 const flowPreviewPropsSpy = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../components/TransactionFlowPreview', () => ({
+vi.mock('../../../src/components/TransactionFlowPreview', () => ({
   TransactionFlowPreview: (props: any) => {
     flowPreviewPropsSpy(props);
     return <div data-testid="tx-flow-preview" />;

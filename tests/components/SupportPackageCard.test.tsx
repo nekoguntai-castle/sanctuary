@@ -1,10 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SupportPackageCard } from '../../components/SystemSettings/SupportPackageCard';
+import { SupportPackageCard } from '../../src/components/SystemSettings/SupportPackageCard';
 import * as supportPackageApi from '../../src/api/admin/supportPackage';
 
-vi.mock('../../hooks/queries/useWallets', () => ({
+vi.mock('../../src/hooks/queries/useWallets', () => ({
   useWallets: () => ({
     data: [
       { id: 'sender-1', name: 'Sender wallet' },

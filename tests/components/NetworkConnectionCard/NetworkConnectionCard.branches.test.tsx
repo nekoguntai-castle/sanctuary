@@ -2,10 +2,10 @@ import { act,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { NetworkConnectionCard } from '../../../components/NetworkConnectionCard/NetworkConnectionCard';
+import { NetworkConnectionCard } from '../../../src/components/NetworkConnectionCard/NetworkConnectionCard';
 import * as adminApi from '../../../src/api/admin';
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -21,7 +21,7 @@ vi.mock('../../../src/api/admin', () => ({
   reorderElectrumServers: vi.fn(),
 }));
 
-vi.mock('../../../components/NetworkConnectionCard/SingletonConfig', () => ({
+vi.mock('../../../src/components/NetworkConnectionCard/SingletonConfig', () => ({
   SingletonConfig: ({ onTestSingleton, testStatus, testMessage }: any) => (
     <div>
       <button type="button" onClick={onTestSingleton}>trigger-singleton-test</button>
@@ -31,7 +31,7 @@ vi.mock('../../../components/NetworkConnectionCard/SingletonConfig', () => ({
   ),
 }));
 
-vi.mock('../../../components/NetworkConnectionCard/PoolConfig', () => ({
+vi.mock('../../../src/components/NetworkConnectionCard/PoolConfig', () => ({
   PoolConfig: (props: any) => (
     <div>
       <button type="button" onClick={props.onAddServer}>trigger-add-server</button>

@@ -1,7 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getSidebarNetworkAvailability } from '../../../components/Layout/useLayoutController';
-import { useSidebarNetworkAvailability } from '../../../components/Layout/useSidebarNetworkAvailability';
+import { getSidebarNetworkAvailability } from '../../../src/components/Layout/useLayoutController';
+import { useSidebarNetworkAvailability } from '../../../src/components/Layout/useSidebarNetworkAvailability';
 import * as bitcoinApi from '../../../src/api/bitcoin';
 
 vi.mock('../../../src/api/bitcoin', () => ({

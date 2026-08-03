@@ -11,7 +11,7 @@ import {
 } from './useWebSocketTestHarness';
 import {
   useWalletLogs,
-} from '../../../hooks/websocket';
+} from '../../../src/hooks/websocket';
 
 const resetUseWalletLogsHarness = (): void => {
   vi.clearAllMocks();

@@ -7,8 +7,8 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import React,{ ReactNode } from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { NotificationBell,NotificationPanel } from '../../components/NotificationPanel';
-import { AppNotificationProvider,useAppNotifications } from '../../contexts/AppNotificationContext';
+import { NotificationBell,NotificationPanel } from '../../src/components/NotificationPanel';
+import { AppNotificationProvider,useAppNotifications } from '../../src/contexts/AppNotificationContext';
 
 // Mock react-router-dom
 const mockNavigate = vi.fn();
@@ -17,7 +17,7 @@ vi.mock('react-router-dom', () => ({
 }));
 
 // Mock the logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: vi.fn(() => ({
     debug: vi.fn(),
     info: vi.fn(),

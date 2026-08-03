@@ -1,5 +1,5 @@
 /**
- * Tests for hooks/queries/useBitcoin.ts
+ * Tests for src/hooks/queries/useBitcoin.ts
  *
  * Tests React Query hooks for Bitcoin data fetching.
  */
@@ -13,7 +13,7 @@ bitcoinKeys,
 useBitcoinStatus,
 useFeeEstimates,
 useMempoolData,
-} from '../../../hooks/queries/useBitcoin';
+} from '../../../src/hooks/queries/useBitcoin';
 import * as bitcoinApi from '../../../src/api/bitcoin';
 
 // Mock the bitcoin API

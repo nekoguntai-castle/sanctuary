@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { SettingsSubTabs } from '../../../../../components/WalletDetail/tabs/settings/SettingsSubTabs';
+import { SettingsSubTabs } from '../../../../../src/components/WalletDetail/tabs/settings/SettingsSubTabs';
 
 describe('SettingsSubTabs', () => {
   it('renders all settings tab buttons', () => {

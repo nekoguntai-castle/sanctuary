@@ -1,9 +1,9 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { useWalletWebSocket } from '../../../../components/WalletDetail/hooks/useWalletWebSocket';
-import { useWalletEvents } from '../../../../hooks/websocket';
+import { useWalletWebSocket } from '../../../../src/components/WalletDetail/hooks/useWalletWebSocket';
+import { useWalletEvents } from '../../../../src/hooks/websocket';
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -12,12 +12,12 @@ vi.mock('../../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../../hooks/websocket', () => ({
+vi.mock('../../../../src/hooks/websocket', () => ({
   useWalletEvents: vi.fn(),
 }));
 
 const addNotification = vi.fn();
-vi.mock('../../../../contexts/NotificationContext', () => ({
+vi.mock('../../../../src/contexts/NotificationContext', () => ({
   useNotifications: () => ({
     addNotification,
   }),

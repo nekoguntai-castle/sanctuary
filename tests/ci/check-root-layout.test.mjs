@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { test } from "node:test";
 
 import {
@@ -228,6 +228,31 @@ test("real Git inventory collapses nested paths and ignores untracked files", ()
 
 test("the real repository classification is complete", () => {
   const result = runCheck();
-  assert.deepEqual(result.counts, { total: 67, files: 42, directories: 25 });
+  assert.deepEqual(result.counts, { total: 56, files: 39, directories: 17 });
   assert.deepEqual(result.errors, []);
+});
+
+test("live code has no relative reference back into a retired frontend root", () => {
+  const retiredRoots = new Set([
+    "components",
+    "contexts",
+    "hooks",
+    "providers",
+    "services",
+    "themes",
+    "types",
+    "utils",
+  ]);
+  const codeExtensions = /\.(?:cjs|cts|js|jsx|mjs|mts|ts|tsx)$/;
+  const errors = [];
+  for (const file of listTrackedFiles().filter((path) => codeExtensions.test(path))) {
+    const source = readFileSync(file, "utf8");
+    for (const match of source.matchAll(/(['"`])((?:\.\.?\/)[^'"`\n]+)\1/g)) {
+      const specifier = match[2].split(/[?#]/, 1)[0];
+      const target = posix.normalize(posix.join(posix.dirname(file), specifier));
+      const root = target.split("/", 1)[0];
+      if (retiredRoots.has(root)) errors.push(`${file}: ${specifier} resolves into retired root ${root}/`);
+    }
+  }
+  assert.deepEqual(errors, []);
 });

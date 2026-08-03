@@ -1,5 +1,5 @@
-import type { DeviceWithWallets } from '../../../components/cells/DeviceCells';
-import type { HardwareDeviceModel, TableColumnConfig } from '../../../types';
+import type { DeviceWithWallets } from '../../../src/components/cells/DeviceCells';
+import type { HardwareDeviceModel, TableColumnConfig } from '../../../src/types';
 
 export const baseColumn: TableColumnConfig = { id: 'label', label: 'Label' };
 

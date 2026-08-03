@@ -1,0 +1,60 @@
+import React from 'react';
+import { useLocation } from 'react-router-dom';
+import { ConsoleDrawer } from '../ConsoleDrawer';
+import { SidebarContent } from './SidebarContent';
+import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
+import { LayoutShell } from './LayoutShell';
+import { LayoutProps } from './types';
+import { useLayoutController } from './useLayoutController';
+import { resolvePageContentWidth } from '../../app/resolvePageContentWidth';
+
+export const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme }) => {
+  const controller = useLayoutController();
+  const contentWidth = resolvePageContentWidth(useLocation().pathname);
+
+  const sidebarContent = (
+    <SidebarContent
+      user={controller.user}
+      wallets={controller.activeWallets}
+      devices={controller.activeDevices}
+      selectedNetwork={controller.selectedNetwork}
+      setSelectedNetwork={controller.setSelectedNetwork}
+      networkAvailability={controller.networkAvailability}
+      expanded={controller.expanded}
+      darkMode={darkMode}
+      toggleTheme={toggleTheme}
+      toggleSection={controller.toggleSection}
+      logout={controller.logout}
+      getWalletCount={controller.getWalletCount}
+      getDeviceCount={controller.getDeviceCount}
+      onVersionClick={controller.handleVersionClick}
+      onOpenConsole={controller.openConsole}
+      onOpenShortcuts={controller.openKeyboardShortcuts}
+      capabilities={controller.capabilities}
+    />
+  );
+
+  return (
+    <>
+      <LayoutShell
+        controller={controller}
+        sidebarContent={sidebarContent}
+        contentWidth={contentWidth}
+      >
+        {children}
+      </LayoutShell>
+      <ConsoleDrawer
+        isOpen={controller.isConsoleOpen}
+        onClose={controller.closeConsole}
+        wallets={controller.activeWallets}
+        selectedNetwork={controller.selectedNetwork}
+        isAdmin={!!controller.user?.isAdmin}
+      />
+      <KeyboardShortcutsModal
+        show={controller.showKeyboardShortcutsModal}
+        consoleAvailable={!!controller.capabilities.console}
+        onClose={controller.closeKeyboardShortcuts}
+      />
+    </>
+  );
+};

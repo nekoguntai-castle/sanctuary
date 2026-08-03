@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ConfigurableTable } from '../../../components/ui/ConfigurableTable';
-import type { TableColumnConfig } from '../../../types';
+import { ConfigurableTable } from '../../../src/components/ui/ConfigurableTable';
+import type { TableColumnConfig } from '../../../src/types';
 
 vi.mock('lucide-react', () => ({
   ChevronUp: () => <span data-testid="chevron-up" />,

@@ -1,5 +1,5 @@
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { downloadBinary,downloadBlob,downloadText } from '../../utils/download';
+import { downloadBinary,downloadBlob,downloadText } from '../../src/utils/download';
 
 describe('download utility', () => {
   beforeEach(() => {

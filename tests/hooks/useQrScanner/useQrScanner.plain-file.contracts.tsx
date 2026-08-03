@@ -2,7 +2,7 @@ import { act } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
 import { renderUseQrScanner } from './useQrScannerTestHarness';
-import { parseDeviceJson } from '../../../services/deviceParsers';
+import { parseDeviceJson } from '../../../src/services/deviceParsers';
 
 export function registerPlainJsonQrScanningContracts() {
   it('should parse plain JSON QR code successfully', () => {

@@ -6,10 +6,10 @@ import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { WalletList } from '../../components/WalletList';
-import * as CurrencyContext from '../../contexts/CurrencyContext';
-import * as UserContext from '../../contexts/UserContext';
-import * as useWalletsHook from '../../hooks/queries/useWallets';
+import { WalletList } from '../../src/components/WalletList';
+import * as CurrencyContext from '../../src/contexts/CurrencyContext';
+import * as UserContext from '../../src/contexts/UserContext';
+import * as useWalletsHook from '../../src/hooks/queries/useWallets';
 
 // Mock navigate
 const mockNavigate = vi.fn();
@@ -26,15 +26,15 @@ vi.mock('react-router-dom', async () => {
 });
 
 // Mock contexts
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock('../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
 }));
 
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: vi.fn(),
 }));
 
-vi.mock('../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: activeNetworkMock.selectedNetwork,
     isMainnet: activeNetworkMock.selectedNetwork === 'mainnet',
@@ -43,7 +43,7 @@ vi.mock('../../contexts/ActiveNetworkContext', () => ({
 }));
 
 // Mock hooks
-vi.mock('../../hooks/queries/useWallets', () => ({
+vi.mock('../../src/hooks/queries/useWallets', () => ({
   useWallets: vi.fn(),
   useBalanceHistory: vi.fn(),
   useInvalidateAllWallets: vi.fn(),
@@ -51,7 +51,7 @@ vi.mock('../../hooks/queries/useWallets', () => ({
   useWalletSparklines: vi.fn().mockReturnValue({}),
 }));
 
-vi.mock('../../hooks/useDelayedRender', () => ({
+vi.mock('../../src/hooks/useDelayedRender', () => ({
   useDelayedRender: () => true,
 }));
 
@@ -66,7 +66,7 @@ vi.mock('recharts', () => ({
 }));
 
 // Mock child components
-vi.mock('../../components/NetworkTabs', () => ({
+vi.mock('../../src/components/NetworkTabs', () => ({
   NetworkTabs: ({ selectedNetwork, onNetworkChange }: any) => (
     <div data-testid="network-tabs">
       <button data-testid="mainnet-tab" onClick={() => onNetworkChange('mainnet')}>Mainnet</button>
@@ -76,11 +76,11 @@ vi.mock('../../components/NetworkTabs', () => ({
   ),
 }));
 
-vi.mock('../../components/NetworkSyncActions', () => ({
+vi.mock('../../src/components/NetworkSyncActions', () => ({
   NetworkSyncActions: () => <div data-testid="sync-actions">Sync Actions</div>,
 }));
 
-vi.mock('../../components/ui/ConfigurableTable', () => ({
+vi.mock('../../src/components/ui/ConfigurableTable', () => ({
   ConfigurableTable: ({ data }: any) => (
     <div data-testid="configurable-table">
       {data.map((item: any) => (
@@ -90,7 +90,7 @@ vi.mock('../../components/ui/ConfigurableTable', () => ({
   ),
 }));
 
-vi.mock('../../components/Amount', () => ({
+vi.mock('../../src/components/Amount', () => ({
   Amount: ({ sats }: { sats: number }) => <span data-testid="amount">{sats} sats</span>,
 }));
 

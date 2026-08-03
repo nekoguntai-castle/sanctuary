@@ -10,7 +10,7 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-vi.mock('../../contexts/SidebarContext', () => ({
+vi.mock('../../src/contexts/SidebarContext', () => ({
   useSidebar: () => ({ refreshSidebar: mockRefreshSidebar }),
 }));
 
@@ -19,7 +19,7 @@ vi.mock('../../src/api/devices', () => ({
   mergeDeviceAccounts: (request: unknown) => mockMergeDeviceAccounts(request),
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock('../../utils/logger', () => ({
   }),
 }));
 
-import { useDeviceSave } from '../../hooks/useDeviceSave';
+import { useDeviceSave } from '../../src/hooks/useDeviceSave';
 
 describe('useDeviceSave branch coverage', () => {
   beforeEach(() => {

@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { EncryptionKeyDisplay } from '../../../components/BackupRestore/EncryptionKeyDisplay';
+import { EncryptionKeyDisplay } from '../../../src/components/BackupRestore/EncryptionKeyDisplay';
 
 describe('EncryptionKeyDisplay branch coverage', () => {
   const encryptionKeys = {

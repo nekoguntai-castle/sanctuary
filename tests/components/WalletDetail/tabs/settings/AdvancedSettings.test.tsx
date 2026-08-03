@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { AdvancedSettings } from '../../../../../components/WalletDetail/tabs/settings/AdvancedSettings';
-import { WalletType } from '../../../../../types';
+import { AdvancedSettings } from '../../../../../src/components/WalletDetail/tabs/settings/AdvancedSettings';
+import { WalletType } from '../../../../../src/types';
 
 const baseWallet = {
   id: 'wallet-1',

@@ -6,7 +6,7 @@ import {
   mockUpdateSystemSettings,
   enabledSettings,
 } from './AISettingsTestHarness';
-import AISettings from '../../../components/AISettings';
+import AISettings from '../../../src/components/AISettings';
 
 export function registerAISettingsSaveConfigurationContracts() {
   describe('Save Configuration', () => {

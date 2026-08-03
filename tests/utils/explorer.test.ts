@@ -4,7 +4,7 @@ getAddressExplorerUrl,
 getBlockExplorerUrl,
 getExplorerUrl,
 getTxExplorerUrl,
-} from '../../utils/explorer';
+} from '../../src/utils/explorer';
 
 describe('getExplorerUrl', () => {
   describe('Mainnet URLs', () => {

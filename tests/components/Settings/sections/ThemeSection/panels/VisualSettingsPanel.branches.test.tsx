@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { VisualSettingsPanel } from '../../../../../../components/Settings/sections/ThemeSection/panels/VisualSettingsPanel';
+import { VisualSettingsPanel } from '../../../../../../src/components/Settings/sections/ThemeSection/panels/VisualSettingsPanel';
 
 const renderPanel = (
   overrides: Partial<React.ComponentProps<typeof VisualSettingsPanel>> = {},

@@ -6,7 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PriceProviderDiagnostics } from "../../components/PriceProviderDiagnostics";
+import { PriceProviderDiagnostics } from "../../src/components/PriceProviderDiagnostics";
 import * as priceApi from "../../src/api/price";
 
 vi.mock("../../src/api/price", () => ({

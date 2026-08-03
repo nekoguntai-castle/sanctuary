@@ -1,11 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { PendingTransfersPanel } from '../../../components/PendingTransfersPanel/PendingTransfersPanel';
-import { useTransferActions } from '../../../components/PendingTransfersPanel/useTransferActions';
-import type { Transfer } from '../../../types';
+import { PendingTransfersPanel } from '../../../src/components/PendingTransfersPanel/PendingTransfersPanel';
+import { useTransferActions } from '../../../src/components/PendingTransfersPanel/useTransferActions';
+import type { Transfer } from '../../../src/types';
 
-vi.mock('../../../components/PendingTransfersPanel/useTransferActions');
-vi.mock('../../../components/PendingTransfersPanel/TransferConfirmationModal', () => ({
+vi.mock('../../../src/components/PendingTransfersPanel/useTransferActions');
+vi.mock('../../../src/components/PendingTransfersPanel/TransferConfirmationModal', () => ({
   TransferConfirmationModal: ({
     onClose,
     onAccept,
@@ -20,7 +20,7 @@ vi.mock('../../../components/PendingTransfersPanel/TransferConfirmationModal', (
   ),
 }));
 
-vi.mock('../../../components/PendingTransfersPanel/TransferCard', () => ({
+vi.mock('../../../src/components/PendingTransfersPanel/TransferCard', () => ({
   TransferCard: ({
     transfer,
     variant,

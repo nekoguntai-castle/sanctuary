@@ -1,9 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { DeviceAccountsSection } from '../../../components/DeviceDetail/DeviceDetail/DeviceAccountsSection';
+import { DeviceAccountsSection } from '../../../src/components/DeviceDetail/DeviceDetail/DeviceAccountsSection';
 
-vi.mock('../../../components/DeviceDetail/accounts/AddAccountFlow', () => ({
+vi.mock('../../../src/components/DeviceDetail/accounts/AddAccountFlow', () => ({
   AddAccountFlow: () => <div data-testid="add-account-flow" />,
 }));
 
@@ -11,7 +11,7 @@ const activeNetworkMock = vi.hoisted(() => ({
   selectedNetwork: 'mainnet' as 'mainnet' | 'testnet3' | 'testnet4' | 'signet',
 }));
 
-vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: activeNetworkMock.selectedNetwork,
     isMainnet: activeNetworkMock.selectedNetwork === 'mainnet',

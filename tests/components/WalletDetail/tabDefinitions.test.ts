@@ -8,7 +8,7 @@ import {
   isWalletDetailTab,
   resolveWalletDetailTab,
   walletDetailTabDefinitions,
-} from '../../../components/WalletDetail/tabDefinitions';
+} from '../../../src/components/WalletDetail/tabDefinitions';
 
 describe('wallet detail tab definitions', () => {
   it('keeps tab order, labels, and default tab in the registry', () => {

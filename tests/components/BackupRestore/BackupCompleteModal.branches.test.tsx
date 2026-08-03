@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { BackupCompleteModal } from '../../../components/BackupRestore/BackupCompleteModal';
+import { BackupCompleteModal } from '../../../src/components/BackupRestore/BackupCompleteModal';
 
 const encryptionKeys = {
   encryptionKey: 'enc-key-123',

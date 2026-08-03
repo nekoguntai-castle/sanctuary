@@ -6,7 +6,7 @@
 
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import type { DeviceAccount } from '../../../types';
+import type { DeviceAccount } from '../../../src/types';
 
 // Mock lucide-react icons
 vi.mock('lucide-react', () => ({
@@ -14,7 +14,7 @@ vi.mock('lucide-react', () => ({
 }));
 
 // Import after mocks
-import { AccountList } from '../../../components/DeviceDetail/AccountList';
+import { AccountList } from '../../../src/components/DeviceDetail/AccountList';
 
 // Test data
 const mockAccounts: DeviceAccount[] = [

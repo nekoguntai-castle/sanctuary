@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { loadHardwareWalletRuntime } from '../../services/hardwareWallet/loader';
+import { loadHardwareWalletRuntime } from '../../src/services/hardwareWallet/loader';
 
 describe('hardwareWallet loader', () => {
   it('caches the runtime module promise', async () => {

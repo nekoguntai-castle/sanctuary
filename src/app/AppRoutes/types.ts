@@ -1,4 +1,4 @@
-import type { Notification } from '../../../components/NotificationToast';
+import type { Notification } from '../../components/NotificationToast';
 
 export interface AppPreferenceState {
   isDarkMode: boolean;

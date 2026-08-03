@@ -12,7 +12,7 @@ decodeHex,
 extractBBQrData,
 isBBQr,
 parseBBQrHeader,
-} from '../../services/bbqr';
+} from '../../src/services/bbqr';
 
 describe('BBQr helpers', () => {
   it('detects BBQr prefixes', () => {

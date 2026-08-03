@@ -2,7 +2,7 @@ import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { PendingTxDot } from '../../../components/BlockVisualizer/PendingTxDot';
+import { PendingTxDot } from '../../../src/components/BlockVisualizer/PendingTxDot';
 import type { PendingTransaction } from '../../../src/types';
 
 vi.mock('lucide-react', () => ({

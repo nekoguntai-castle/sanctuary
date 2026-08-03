@@ -1,12 +1,12 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { ConnectionMethodSelector } from '../../../components/ConnectDevice/ConnectionMethodSelector';
+import { ConnectionMethodSelector } from '../../../src/components/ConnectDevice/ConnectionMethodSelector';
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   getDeviceIcon: () => <span data-testid="device-icon" />,
 }));
 
-vi.mock('../../../components/ConnectDevice/DeviceModelSelector', () => ({
+vi.mock('../../../src/components/ConnectDevice/DeviceModelSelector', () => ({
   renderCapabilities: () => <span data-testid="capability-pill">capability</span>,
 }));
 

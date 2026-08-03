@@ -17,7 +17,7 @@ vi.mock('../../src/api/ai', () => ({
 }));
 
 // Mock the logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Import component after mocks
-import { AIQueryInput,default as AIQueryInputDefault } from '../../components/AIQueryInput';
+import { AIQueryInput,default as AIQueryInputDefault } from '../../src/components/AIQueryInput';
 
 // Test data
 const testWalletId = 'wallet-test-001';

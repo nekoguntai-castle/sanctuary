@@ -121,19 +121,15 @@ services:
   # Frontend Tests
   # ============================================
   frontend-test:
-    image: node:24-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps
     container_name: sanctuary-frontend-test
     working_dir: /app
     volumes:
-      - ./src:/app/src:ro
-      - ./components:/app/components:ro
-      - ./hooks:/app/hooks:ro
-      - ./tests:/app/tests:ro
-      - ./package.json:/app/package.json:ro
-      - ./package-lock.json:/app/package-lock.json:ro
-      - ./vitest.config.ts:/app/vitest.config.ts:ro
-      - ./tsconfig.json:/app/tsconfig.json:ro
-      - ./node_modules:/app/node_modules:ro
+      - .:/app
+      - /app/node_modules
     command: npm run test:run
     networks:
       - test-network
@@ -142,20 +138,15 @@ services:
   # Frontend Tests with Coverage
   # ============================================
   frontend-coverage:
-    image: node:24-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps
     container_name: sanctuary-frontend-coverage
     working_dir: /app
     volumes:
-      - ./src:/app/src:ro
-      - ./components:/app/components:ro
-      - ./hooks:/app/hooks:ro
-      - ./tests:/app/tests:ro
-      - ./package.json:/app/package.json:ro
-      - ./package-lock.json:/app/package-lock.json:ro
-      - ./vitest.config.ts:/app/vitest.config.ts:ro
-      - ./tsconfig.json:/app/tsconfig.json:ro
-      - ./node_modules:/app/node_modules:ro
-      - ./coverage:/app/coverage
+      - .:/app
+      - /app/node_modules
     command: npm run test:coverage
     networks:
       - test-network

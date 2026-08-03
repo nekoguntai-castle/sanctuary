@@ -1,6 +1,6 @@
 import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { WebSocketStatsCard } from '../../../components/SystemSettings/WebSocketStatsCard';
+import { WebSocketStatsCard } from '../../../src/components/SystemSettings/WebSocketStatsCard';
 import * as adminApi from '../../../src/api/admin';
 
 vi.mock('../../../src/api/admin', () => ({

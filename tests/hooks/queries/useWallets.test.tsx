@@ -14,7 +14,7 @@ useUpdateWalletSyncStatus,
 useWalletSparklines,
 useWallets,
 walletKeys,
-} from '../../../hooks/queries/useWallets';
+} from '../../../src/hooks/queries/useWallets';
 
 vi.mock('../../../src/api/wallets', () => ({
   getWallets: vi.fn(),

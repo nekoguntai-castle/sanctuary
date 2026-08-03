@@ -730,6 +730,7 @@ jobs:
           node tests/ci/check-github-action-runtimes.test.mjs
           node tests/ci/check-npm-deprecations.test.mjs
           node tests/ci/check-root-layout.test.mjs
+          node tests/ci/docker-compose-test-contract.test.mjs
           node tests/ci/provider-context-node.test.mjs
           # Phase 1-7 portability tests + leak gate.
           bash tests/ci/provider-context.test.sh

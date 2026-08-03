@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { WalletGridView } from '../../../components/WalletList/WalletGridView';
+import { WalletGridView } from '../../../src/components/WalletList/WalletGridView';
 
 const mockNavigate = vi.fn();
 const mockFormat = vi.fn((value: number) => `BTC ${value}`);
@@ -11,11 +11,11 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   getWalletIcon: () => <span data-testid="wallet-icon" />,
 }));
 
-vi.mock('../../../contexts/CurrencyContext', () => ({
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
   useCurrency: () => ({
     format: mockFormat,
     formatFiat: mockFormatFiat,

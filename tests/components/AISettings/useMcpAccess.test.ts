@@ -3,7 +3,7 @@ import {
   getMcpKeyLifecycle,
   localDateTimeToIso,
   parseWalletScopeInput,
-} from '../../../components/AISettings/hooks/useMcpAccess';
+} from '../../../src/components/AISettings/hooks/useMcpAccess';
 
 describe('useMcpAccess helpers', () => {
   it('normalizes wallet scope input', () => {

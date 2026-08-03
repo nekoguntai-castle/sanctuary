@@ -3,8 +3,8 @@ import {
 createSingleAccount,
 parseFileContent,
 processImportedAccounts,
-} from '../../../../components/DeviceDetail/accounts/accountImportUtils';
-import type { DeviceAccount } from '../../../../services/deviceParsers';
+} from '../../../../src/components/DeviceDetail/accounts/accountImportUtils';
+import type { DeviceAccount } from '../../../../src/services/deviceParsers';
 
 const makeParsedAccount = (overrides: Partial<DeviceAccount> = {}): DeviceAccount => ({
   purpose: 'single_sig',

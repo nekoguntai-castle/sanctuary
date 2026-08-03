@@ -1,9 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { UTXOGarden } from '../../../components/UTXOList/UTXOGarden';
-import type { UTXO } from '../../../types';
+import { UTXOGarden } from '../../../src/components/UTXOList/UTXOGarden';
+import type { UTXO } from '../../../src/types';
 
-vi.mock('../../../utils/utxoAge', () => ({
+vi.mock('../../../src/utils/utxoAge', () => ({
   calculateUTXOAge: () => ({ displayText: '5d', category: 'fresh' }),
 }));
 

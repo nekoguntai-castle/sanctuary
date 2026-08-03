@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react';
 import type { AppPreferenceState } from './types';
 
 const AnimatedBackground = lazy(async () => ({
-  default: (await import('../../../components/AnimatedBackground')).AnimatedBackground,
+  default: (await import('../../components/AnimatedBackground')).AnimatedBackground,
 }));
 
 interface AnimatedBackgroundLayerProps {

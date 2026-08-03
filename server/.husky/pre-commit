@@ -668,7 +668,7 @@ run_ui_consistency_agent() {
         return 0
     fi
 
-    UI_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^(components/|hooks/|contexts/).*\.tsx$' || true)
+    UI_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^src/(components|hooks|contexts)/.*\.tsx$' || true)
     if [ -z "$UI_FILES" ]; then
         return 0
     fi
@@ -688,7 +688,7 @@ CODEBASE PATTERNS:
 - Tailwind CSS with 'sanctuary' and 'primary' custom palettes, dark mode via dark: prefix
 - IMPORTANT: the 'primary', 'warning', 'success', 'sent', 'shared' palettes have INVERTED dark-mode scales: low numbers (50-200) = dark, high numbers (800-950) = light. Do NOT flag dark:bg-primary-100 as wrong. 'sanctuary', 'emerald', 'rose' use standard Tailwind scales.
 - Custom pixel sizes text-[9px], text-[10px], text-[11px] are INTENTIONAL for compact UI. Do NOT flag them.
-- Shared components live under components/; buttons/cards/modals have established patterns.
+- Shared components live under src/components/; buttons/cards/modals have established patterns.
 
 RUBRIC CONCERNS:
 - pattern_adherence: does the change fit existing component/layout patterns?
@@ -897,7 +897,7 @@ fi
 
 # Check for staged files in different areas
 BACKEND_CHANGED=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^server/' || true)
-FRONTEND_CHANGED=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^(src/|components/|hooks/|tests/)' || true)
+FRONTEND_CHANGED=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^(src/|tests/)' || true)
 
 # Timeout for test runs (2 minutes)
 TEST_TIMEOUT=120

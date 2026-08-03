@@ -83,14 +83,14 @@ printf '%s\n' "$@" > "$STUB_OUT"
 EOF
   chmod +x "$stub_dir/npx"
 
-  write_plan "$tmp/plan-c.json" frontend_unit true components/Foo.tsx components/Bar.tsx
+  write_plan "$tmp/plan-c.json" frontend_unit true src/components/Foo.tsx src/components/Bar.tsx
 
   STUB_OUT="$tmp/npx.args" PATH="$stub_dir:$PATH" \
     bash "$RUN_LANE" frontend_unit --plan "$tmp/plan-c.json" >/dev/null 2>&1
   local args
   args="$(cat "$tmp/npx.args")"
   case "$args" in
-    *vitest*related*--run*--passWithNoTests*components/Foo.tsx*components/Bar.tsx*)
+    *vitest*related*--run*--passWithNoTests*src/components/Foo.tsx*src/components/Bar.tsx*)
       ;;
     *)
       fail "unexpected npx args for change-scoped frontend run:\n$args"
@@ -124,7 +124,7 @@ EOF
   "base_sha": "a",
   "head_sha": "b",
   "lanes": {
-    "frontend_unit": { "run": true, "files": ["components/X.tsx"] }
+    "frontend_unit": { "run": true, "files": ["src/components/X.tsx"] }
   }
 }
 EOF

@@ -5,9 +5,9 @@ import {
   mockUrRegistryDecoder,
   renderUseQrScanner,
 } from './useQrScannerTestHarness';
-import { parseDeviceJson } from '../../../services/deviceParsers';
-import { generateMissingFieldsWarning } from '../../../utils/deviceConnection';
-import { getUrType } from '../../../utils/urDeviceDecoder';
+import { parseDeviceJson } from '../../../src/services/deviceParsers';
+import { generateMissingFieldsWarning } from '../../../src/utils/deviceConnection';
+import { getUrType } from '../../../src/utils/urDeviceDecoder';
 
 export function registerExtractedFieldsAndWarningsContracts() {
   it('should set extractedFields correctly for complete data', () => {

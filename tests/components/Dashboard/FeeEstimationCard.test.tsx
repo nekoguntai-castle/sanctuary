@@ -1,12 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { FeeEstimationCard } from '../../../components/Dashboard/FeeEstimationCard';
+import { FeeEstimationCard } from '../../../src/components/Dashboard/FeeEstimationCard';
 
 vi.mock('lucide-react', () => ({
   Zap: () => <span data-testid="zap-icon" />,
 }));
 
-vi.mock('../../../components/Dashboard/AnimatedFeeRate', () => ({
+vi.mock('../../../src/components/Dashboard/AnimatedFeeRate', () => ({
   AnimatedFeeRate: ({ value }: { value: string }) => (
     <span data-testid="animated-fee-rate">{value}</span>
   ),

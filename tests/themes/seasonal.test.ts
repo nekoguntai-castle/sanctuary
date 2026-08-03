@@ -12,7 +12,7 @@ getSeasonalColors,
 getSeasonName,
 seasonalPalettes,
 type Season,
-} from '../../themes/seasonal';
+} from '../../src/themes/seasonal';
 
 describe('Season Detection', () => {
   describe('getCurrentSeason - Northern Hemisphere', () => {

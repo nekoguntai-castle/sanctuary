@@ -1,11 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useWalletSync } from "../../../../components/WalletDetail/hooks/useWalletSync";
-import { useErrorHandler } from "../../../../hooks/useErrorHandler";
+import { useWalletSync } from "../../../../src/components/WalletDetail/hooks/useWalletSync";
+import { useErrorHandler } from "../../../../src/hooks/useErrorHandler";
 import * as syncApi from "../../../../src/api/sync";
 import * as walletsApi from "../../../../src/api/wallets";
 
-vi.mock("../../../../utils/logger", () => ({
+vi.mock("../../../../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock("../../../../src/api/wallets", async (importOriginal) => {
   };
 });
 
-vi.mock("../../../../hooks/useErrorHandler", () => ({
+vi.mock("../../../../src/hooks/useErrorHandler", () => ({
   useErrorHandler: vi.fn(),
 }));
 

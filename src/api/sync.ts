@@ -7,7 +7,7 @@
 import apiClient from './client';
 import type { NetworkType as BitcoinNetworkType } from '@sanctuary/shared/constants/bitcoin';
 import { DEFAULT_SYNC_PRIORITY, type SyncPriority } from '@sanctuary/shared/constants/sync';
-import type { WalletLogEntry } from '../../hooks/websocket';
+import type { WalletLogEntry } from '../hooks/websocket';
 
 export interface SyncStatus {
   lastSyncedAt: string | null;

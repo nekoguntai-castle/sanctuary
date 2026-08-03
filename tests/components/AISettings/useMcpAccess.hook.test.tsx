@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useMcpAccess } from '../../../components/AISettings/hooks/useMcpAccess';
+import { useMcpAccess } from '../../../src/components/AISettings/hooks/useMcpAccess';
 
 const mockGetMcpServerStatus = vi.fn();
 const mockListMcpApiKeys = vi.fn();
@@ -17,7 +17,7 @@ vi.mock('../../../src/api/admin', () => ({
   revokeMcpApiKey: (keyId: string) => mockRevokeMcpApiKey(keyId),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     error: vi.fn(),
   }),

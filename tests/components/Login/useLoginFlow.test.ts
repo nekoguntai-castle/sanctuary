@@ -13,7 +13,7 @@ const mockUserContextState = {
   isLoading: false,
 };
 
-vi.mock('../../../contexts/UserContext', () => ({
+vi.mock('../../../src/contexts/UserContext', () => ({
   useUser: () => ({
     login: mockLogin,
     register: mockRegister,
@@ -33,7 +33,7 @@ vi.mock('../../../src/api/auth', () => ({
 }));
 
 // Must import after mocks are defined
-import { useLoginFlow } from '../../../components/Login/useLoginFlow';
+import { useLoginFlow } from '../../../src/components/Login/useLoginFlow';
 import { getRegistrationStatus } from '../../../src/api/auth';
 
 describe('useLoginFlow', () => {

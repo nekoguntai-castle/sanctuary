@@ -2,12 +2,12 @@ import { act,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { Layout } from '../../components/Layout/Layout';
-import * as AppNotificationContext from '../../contexts/AppNotificationContext';
-import * as UserContext from '../../contexts/UserContext';
-import * as useDevicesHooks from '../../hooks/queries/useDevices';
-import * as useWalletsHooks from '../../hooks/queries/useWallets';
-import * as appCapabilitiesHooks from '../../hooks/useAppCapabilities';
+import { Layout } from '../../src/components/Layout/Layout';
+import * as AppNotificationContext from '../../src/contexts/AppNotificationContext';
+import * as UserContext from '../../src/contexts/UserContext';
+import * as useDevicesHooks from '../../src/hooks/queries/useDevices';
+import * as useWalletsHooks from '../../src/hooks/queries/useWallets';
+import * as appCapabilitiesHooks from '../../src/hooks/useAppCapabilities';
 import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import * as draftsApi from '../../src/api/drafts';
@@ -17,11 +17,11 @@ const activeNetworkMock = vi.hoisted(() => ({
   setSelectedNetwork: vi.fn(),
 }));
 
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: vi.fn(),
 }));
 
-vi.mock('../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: activeNetworkMock.selectedNetwork,
     isMainnet: activeNetworkMock.selectedNetwork === 'mainnet',
@@ -29,19 +29,19 @@ vi.mock('../../contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../contexts/AppNotificationContext', () => ({
+vi.mock('../../src/contexts/AppNotificationContext', () => ({
   useAppNotifications: vi.fn(),
 }));
 
-vi.mock('../../hooks/queries/useWallets', () => ({
+vi.mock('../../src/hooks/queries/useWallets', () => ({
   useWallets: vi.fn(),
 }));
 
-vi.mock('../../hooks/queries/useDevices', () => ({
+vi.mock('../../src/hooks/queries/useDevices', () => ({
   useDevices: vi.fn(),
 }));
 
-vi.mock('../../hooks/useAppCapabilities', () => ({
+vi.mock('../../src/hooks/useAppCapabilities', () => ({
   useAppCapabilities: vi.fn(() => ({ console: true, intelligence: false })),
 }));
 
@@ -57,11 +57,11 @@ vi.mock('../../src/api/drafts', () => ({
   getDrafts: vi.fn(),
 }));
 
-vi.mock('../../utils/errorHandler', () => ({
+vi.mock('../../src/utils/errorHandler', () => ({
   logError: vi.fn(),
 }));
 
-vi.mock('../../components/Layout/SidebarContent', () => ({
+vi.mock('../../src/components/Layout/SidebarContent', () => ({
   SidebarContent: ({
     onVersionClick,
     onOpenConsole,
@@ -90,7 +90,7 @@ vi.mock('../../components/Layout/SidebarContent', () => ({
   ),
 }));
 
-vi.mock('../../components/ConsoleDrawer', () => ({
+vi.mock('../../src/components/ConsoleDrawer', () => ({
   ConsoleDrawer: ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => (
     <div data-testid="console-drawer" data-open={String(isOpen)}>
       {isOpen ? <button onClick={onClose}>close-console</button> : null}
@@ -98,7 +98,7 @@ vi.mock('../../components/ConsoleDrawer', () => ({
   ),
 }));
 
-vi.mock('../../components/Layout/AboutModal', () => ({
+vi.mock('../../src/components/Layout/AboutModal', () => ({
   AboutModal: ({
     show,
     onClose,
@@ -119,7 +119,7 @@ vi.mock('../../components/Layout/AboutModal', () => ({
     ) : null,
 }));
 
-vi.mock('../../components/Layout/KeyboardShortcutsModal', () => ({
+vi.mock('../../src/components/Layout/KeyboardShortcutsModal', () => ({
   KeyboardShortcutsModal: ({
     show,
     onClose,

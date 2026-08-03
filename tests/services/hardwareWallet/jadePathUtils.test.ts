@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { jadePathToArray } from '../../../services/hardwareWallet/adapters/jadePathUtils';
+import { jadePathToArray } from '../../../src/services/hardwareWallet/adapters/jadePathUtils';
 
 describe('jadePathToArray', () => {
   const HARDENED = 0x80000000;

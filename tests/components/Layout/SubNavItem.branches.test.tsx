@@ -1,6 +1,6 @@
 import { render,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { SubNavItem } from '../../../components/Layout/SubNavItem';
+import { SubNavItem } from '../../../src/components/Layout/SubNavItem';
 
 const routerState = vi.hoisted(() => ({ pathname: '/initial' }));
 
@@ -13,7 +13,7 @@ vi.mock('react-router-dom', () => ({
   useLocation: () => ({ pathname: routerState.pathname }),
 }));
 
-vi.mock('../../../components/NotificationBadge', () => ({
+vi.mock('../../../src/components/NotificationBadge', () => ({
   NotificationBadge: ({ count, severity }: any) => (
     <span data-testid="badge">
       {severity}:{count}

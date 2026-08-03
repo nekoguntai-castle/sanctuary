@@ -1,7 +1,7 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import type { Device } from '../../../types';
+import type { Device } from '../../../src/types';
 
 const {
   mockNavigate,
@@ -39,14 +39,14 @@ vi.mock('../../../src/api/devices', () => ({
   deleteDevice: mockDeleteDevice,
 }));
 
-vi.mock('../../../contexts/UserContext', () => ({
+vi.mock('../../../src/contexts/UserContext', () => ({
   useUser: () => ({
     user: currentUser,
     updatePreferences: mockUpdatePreferences,
   }),
 }));
 
-vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: 'mainnet',
     isMainnet: true,
@@ -54,7 +54,7 @@ vi.mock('../../../contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../../hooks/useLoadingState', () => ({
+vi.mock('../../../src/hooks/useLoadingState', () => ({
   useLoadingState: () => ({
     loading: false,
     execute: async (fn: () => Promise<void>) => {
@@ -63,11 +63,11 @@ vi.mock('../../../hooks/useLoadingState', () => ({
   }),
 }));
 
-vi.mock('../../../utils/errorHandler', () => ({
+vi.mock('../../../src/utils/errorHandler', () => ({
   extractErrorMessage: extractErrorMessageMock,
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -76,22 +76,22 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../components/DeviceList/EmptyState', () => ({
+vi.mock('../../../src/components/DeviceList/EmptyState', () => ({
   EmptyState: () => <div data-testid="empty-state">EMPTY</div>,
 }));
 
-vi.mock('../../../components/columns/deviceColumns', () => ({
+vi.mock('../../../src/components/columns/deviceColumns', () => ({
   DEVICE_COLUMNS: [],
   DEFAULT_DEVICE_COLUMN_ORDER: ['label', 'type', 'fingerprint'],
   DEFAULT_DEVICE_VISIBLE_COLUMNS: ['label', 'type', 'fingerprint'],
   mergeDeviceColumnOrder: (order?: string[]) => order || ['label', 'type', 'fingerprint'],
 }));
 
-vi.mock('../../../components/cells/DeviceCells', () => ({
+vi.mock('../../../src/components/cells/DeviceCells', () => ({
   createDeviceCellRenderers: vi.fn(() => ({})),
 }));
 
-vi.mock('../../../components/DeviceList/DeviceListHeader', () => ({
+vi.mock('../../../src/components/DeviceList/DeviceListHeader', () => ({
   DeviceListHeader: ({
     setViewMode,
     setOwnershipFilter,
@@ -115,7 +115,7 @@ vi.mock('../../../components/DeviceList/DeviceListHeader', () => ({
   ),
 }));
 
-vi.mock('../../../components/ui/ConfigurableTable', () => ({
+vi.mock('../../../src/components/ui/ConfigurableTable', () => ({
   ConfigurableTable: ({
     data,
     keyExtractor,
@@ -145,7 +145,7 @@ vi.mock('../../../components/ui/ConfigurableTable', () => ({
   ),
 }));
 
-vi.mock('../../../components/DeviceList/DeviceGroupedView', () => ({
+vi.mock('../../../src/components/DeviceList/DeviceGroupedView', () => ({
   DeviceGroupedView: ({
     groupedDevices,
     getDeviceDisplayName,
@@ -185,7 +185,7 @@ vi.mock('../../../components/DeviceList/DeviceGroupedView', () => ({
   },
 }));
 
-import { DeviceList } from '../../../components/DeviceList/DeviceList';
+import { DeviceList } from '../../../src/components/DeviceList/DeviceList';
 
 const makeUser = (devicesPrefs: Record<string, unknown>) => ({
   id: 'user-1',

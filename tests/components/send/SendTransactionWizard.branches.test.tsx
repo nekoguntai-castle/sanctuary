@@ -3,14 +3,14 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { SendTransactionWizard } from '../../../components/send/SendTransactionWizard';
-import { WalletType } from '../../../types';
+import { SendTransactionWizard } from '../../../src/components/send/SendTransactionWizard';
+import { WalletType } from '../../../src/types';
 
 const useSendTransactionMock = vi.hoisted(() => vi.fn());
 const useSendTransactionActionsMock = vi.hoisted(() => vi.fn());
 const useHardwareWalletMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -19,24 +19,24 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../contexts/send', () => ({
+vi.mock('../../../src/contexts/send', () => ({
   SendTransactionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useSendTransaction: () => useSendTransactionMock(),
 }));
 
-vi.mock('../../../hooks/send/useSendTransactionActions', () => ({
+vi.mock('../../../src/hooks/send/useSendTransactionActions', () => ({
   useSendTransactionActions: (args: any) => useSendTransactionActionsMock(args),
 }));
 
-vi.mock('../../../hooks/useHardwareWallet', () => ({
+vi.mock('../../../src/hooks/useHardwareWallet', () => ({
   useHardwareWallet: () => useHardwareWalletMock(),
 }));
 
-vi.mock('../../../components/send/WizardNavigation', () => ({
+vi.mock('../../../src/components/send/WizardNavigation', () => ({
   WizardNavigation: () => <div data-testid="wizard-nav" />,
 }));
 
-vi.mock('../../../components/send/steps', () => ({
+vi.mock('../../../src/components/send/steps', () => ({
   TypeSelection: () => <div data-testid="type-step" />,
   OutputsStep: () => <div data-testid="outputs-step" />,
   ReviewStep: (props: any) => (

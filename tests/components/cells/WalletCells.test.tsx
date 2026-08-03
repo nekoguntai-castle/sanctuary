@@ -1,7 +1,7 @@
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { createWalletCellRenderers,type WalletWithPending } from '../../../components/cells/WalletCells';
-import type { TableColumnConfig } from '../../../types';
+import { createWalletCellRenderers,type WalletWithPending } from '../../../src/components/cells/WalletCells';
+import type { TableColumnConfig } from '../../../src/types';
 
 vi.mock('lucide-react', () => ({
   RefreshCw: () => <span data-testid="refresh-icon" />,
@@ -13,7 +13,7 @@ vi.mock('lucide-react', () => ({
   ArrowUpRight: () => <span data-testid="outgoing-icon" />,
 }));
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   getWalletIcon: (_type: string, _className?: string) => <span data-testid="wallet-icon" />,
 }));
 

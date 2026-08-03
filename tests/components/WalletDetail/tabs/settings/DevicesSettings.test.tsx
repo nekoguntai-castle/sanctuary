@@ -1,11 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { DevicesSettings } from '../../../../../components/WalletDetail/tabs/settings/DevicesSettings';
-import { WalletType } from '../../../../../types';
-import type { Device, Wallet } from '../../../../../types';
+import { DevicesSettings } from '../../../../../src/components/WalletDetail/tabs/settings/DevicesSettings';
+import { WalletType } from '../../../../../src/types';
+import type { Device, Wallet } from '../../../../../src/types';
 
-vi.mock('../../../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../../../src/components/ui/CustomIcons', () => ({
   getDeviceIcon: (_type: string, className: string) => (
     <span data-testid="device-icon" className={className} />
   ),

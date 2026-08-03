@@ -1,6 +1,6 @@
 import { act,renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { useAIConnectionStatus } from '../../../../components/AISettings/hooks/useAIConnectionStatus';
+import { useAIConnectionStatus } from '../../../../src/components/AISettings/hooks/useAIConnectionStatus';
 import * as aiApi from '../../../../src/api/ai';
 import { ApiError } from '../../../../src/api/client';
 
@@ -16,7 +16,7 @@ vi.mock('../../../../src/api/ai', () => ({
   testAIConnection: vi.fn(),
 }));
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => loggerSpies,
 }));
 

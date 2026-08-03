@@ -5,12 +5,12 @@
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { TransferOwnershipModal } from '../../components/TransferOwnershipModal';
+import { TransferOwnershipModal } from '../../src/components/TransferOwnershipModal';
 import * as authApi from '../../src/api/auth';
 import { ApiError } from '../../src/api/client';
 import * as transfersApi from '../../src/api/transfers';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

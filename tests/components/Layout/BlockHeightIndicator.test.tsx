@@ -1,13 +1,13 @@
 import { render, screen, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BlockHeightIndicator } from '../../../components/Layout/BlockHeightIndicator';
+import { BlockHeightIndicator } from '../../../src/components/Layout/BlockHeightIndicator';
 import * as bitcoinApi from '../../../src/api/bitcoin';
 
 vi.mock('../../../src/api/bitcoin', () => ({
   getStatus: vi.fn(),
 }));
 
-vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: 'mainnet',
     isMainnet: true,
@@ -15,7 +15,7 @@ vi.mock('../../../contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { PasswordForm } from '../../../components/Account/PasswordForm';
+import { PasswordForm } from '../../../src/components/Account/PasswordForm';
 
 const buildProps = (overrides: Partial<React.ComponentProps<typeof PasswordForm>> = {}) => ({
   currentPassword: 'old-pass',

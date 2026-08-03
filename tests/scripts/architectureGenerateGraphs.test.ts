@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -54,5 +55,11 @@ describe('generate-graphs helpers', () => {
     expect(markdown).toContain('title: Fixture module graph');
     expect(markdown).toContain('## How to read this graph');
     expect(markdown).toContain('flowchart LR\nA-->B');
+  });
+
+  it('keeps frontend feature groups visible beneath the canonical src root', () => {
+    const graph = readFileSync('docs/architecture/generated/frontend.md', 'utf8');
+    expect(graph).toContain('["AILabelSuggestion"]');
+    expect(graph).toContain('["WalletDetail"]');
   });
 });

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { WalletWebhookRow } from '../../../../components/WalletDetail/webhooks/WalletWebhookRow';
-import type { WalletWebhookDelivery, WalletWebhookEndpoint } from '../../../../types';
+import { WalletWebhookRow } from '../../../../src/components/WalletDetail/webhooks/WalletWebhookRow';
+import type { WalletWebhookDelivery, WalletWebhookEndpoint } from '../../../../src/types';
 
 describe('WalletWebhookRow', () => {
   it('renders endpoint metadata and emits basic row actions', () => {

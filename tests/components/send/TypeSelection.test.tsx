@@ -5,11 +5,11 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { TypeSelection } from '../../../components/send/steps/TypeSelection';
-import * as SendContext from '../../../contexts/send';
+import { TypeSelection } from '../../../src/components/send/steps/TypeSelection';
+import * as SendContext from '../../../src/contexts/send';
 
 // Mock the context
-vi.mock('../../../contexts/send', () => ({
+vi.mock('../../../src/contexts/send', () => ({
   useSendTransaction: vi.fn(),
 }));
 

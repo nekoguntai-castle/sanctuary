@@ -9,7 +9,7 @@ import {
   hasPsbtMagicBytes,
   hasPsbtMagicText,
   hexTextToBytes,
-} from '../../utils/psbtFormat';
+} from '../../src/utils/psbtFormat';
 
 describe('psbtFormat', () => {
   it('detects PSBT magic bytes separately from strict BIP-174 binary magic', () => {

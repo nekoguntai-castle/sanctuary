@@ -11,7 +11,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { NetworkConnectionCard } from "../../components/NetworkConnectionCard";
+import { NetworkConnectionCard } from "../../src/components/NetworkConnectionCard";
 import * as adminApi from "../../src/api/admin";
 
 // Mock API

@@ -1,5 +1,5 @@
 import { describe,expect,it,vi } from 'vitest';
-import { SOUND_PRESETS } from '../../hooks/soundPresets';
+import { SOUND_PRESETS } from '../../src/hooks/soundPresets';
 
 type MockAudioParam = {
   value: number;

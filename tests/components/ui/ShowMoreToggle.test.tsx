@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ShowMoreToggle } from '../../../components/ui/ShowMoreToggle';
+import { ShowMoreToggle } from '../../../src/components/ui/ShowMoreToggle';
 
 describe('ShowMoreToggle', () => {
   it('renders the collapsed label with a down chevron and fires onToggle', async () => {

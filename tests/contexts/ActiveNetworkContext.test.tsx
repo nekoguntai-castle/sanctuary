@@ -5,14 +5,14 @@ import {
   ActiveNetworkProvider,
   useActiveNetwork,
   useOptionalActiveNetwork,
-} from '../../contexts/ActiveNetworkContext';
+} from '../../src/contexts/ActiveNetworkContext';
 
 const preferenceState = vi.hoisted(() => ({
   storedNetwork: 'mainnet' as unknown,
   setStoredNetwork: vi.fn(),
 }));
 
-vi.mock('../../hooks/useUserPreference', () => ({
+vi.mock('../../src/hooks/useUserPreference', () => ({
   useUserPreference: () => [
     preferenceState.storedNetwork,
     preferenceState.setStoredNetwork,

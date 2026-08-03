@@ -1,6 +1,6 @@
 import { beforeEach, vi } from 'vitest';
 
-import { DeviceDetail } from '../../../components/DeviceDetail';
+import { DeviceDetail } from '../../../src/components/DeviceDetail';
 
 const deviceDetailMocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -52,8 +52,8 @@ vi.mock('@yudiel/react-qr-scanner', () => ({
   ),
 }));
 
-vi.mock('../../../components/DeviceDetail/index', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../components/DeviceDetail/index')>();
+vi.mock('../../../src/components/DeviceDetail/index', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/components/DeviceDetail/index')>();
   return {
     ...actual,
     ManualAccountForm: () => <div data-testid="manual-account-form" />,
@@ -62,7 +62,7 @@ vi.mock('../../../components/DeviceDetail/index', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../components/TransferOwnershipModal', () => ({
+vi.mock('../../../src/components/TransferOwnershipModal', () => ({
   TransferOwnershipModal: ({ onTransferInitiated, onClose }: any) => (
     <div data-testid="transfer-modal">
       <button onClick={onTransferInitiated}>Initiate transfer</button>
@@ -71,7 +71,7 @@ vi.mock('../../../components/TransferOwnershipModal', () => ({
   ),
 }));
 
-vi.mock('../../../components/PendingTransfersPanel', () => ({
+vi.mock('../../../src/components/PendingTransfersPanel', () => ({
   PendingTransfersPanel: ({ onTransferComplete }: any) => (
     <div data-testid="pending-transfers">
       <button onClick={onTransferComplete}>Complete transfer</button>
@@ -79,15 +79,15 @@ vi.mock('../../../components/PendingTransfersPanel', () => ({
   ),
 }));
 
-vi.mock('../../../services/deviceParsers', () => ({
+vi.mock('../../../src/services/deviceParsers', () => ({
   parseDeviceJson: deviceDetailMocks.parseDeviceJson,
 }));
 
-vi.mock('../../../services/hardwareWallet/environment', () => ({
+vi.mock('../../../src/services/hardwareWallet/environment', () => ({
   isSecureContext: () => deviceDetailMocks.isSecureContext(),
 }));
 
-vi.mock('../../../services/hardwareWallet/runtime', () => ({
+vi.mock('../../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: deviceDetailMocks.hardwareConnect,
     getAllXpubs: deviceDetailMocks.hardwareGetAllXpubs,
@@ -95,7 +95,7 @@ vi.mock('../../../services/hardwareWallet/runtime', () => ({
   },
 }));
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   getDeviceIcon: () => <span data-testid="device-icon" />,
   getWalletIcon: () => <span data-testid="wallet-icon" />,
 }));
@@ -122,13 +122,13 @@ vi.mock('lucide-react', () => ({
   AlertTriangle: () => <span data-testid="alert-triangle-icon" />,
 }));
 
-vi.mock('../../../contexts/UserContext', () => ({
+vi.mock('../../../src/contexts/UserContext', () => ({
   useUser: () => ({
     user: mockCurrentUser,
   }),
 }));
 
-vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: 'mainnet',
     isMainnet: true,
@@ -156,7 +156,7 @@ vi.mock('../../../src/api/admin', () => ({
   getGroups: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

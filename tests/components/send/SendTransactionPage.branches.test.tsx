@@ -1,8 +1,8 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SendTransactionPage } from "../../../components/send/SendTransactionPage";
-import * as UserContext from "../../../contexts/UserContext";
+import { SendTransactionPage } from "../../../src/components/send/SendTransactionPage";
+import * as UserContext from "../../../src/contexts/UserContext";
 import * as bitcoinApi from "../../../src/api/bitcoin";
 import * as devicesApi from "../../../src/api/devices";
 import * as transactionsApi from "../../../src/api/transactions";
@@ -41,7 +41,7 @@ const wizardMockHelpers = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../../../utils/logger", () => ({
+vi.mock("../../../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -58,11 +58,11 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("../../../contexts/UserContext", () => ({
+vi.mock("../../../src/contexts/UserContext", () => ({
   useUser: vi.fn(),
 }));
 
-vi.mock("../../../hooks/useErrorHandler", () => ({
+vi.mock("../../../src/hooks/useErrorHandler", () => ({
   useErrorHandler: () => ({
     showInfo: showInfoMock,
     handleError: vi.fn(),
@@ -87,7 +87,7 @@ vi.mock("../../../src/api/devices", () => ({
   getDevices: vi.fn(),
 }));
 
-vi.mock("../../../components/send/SendTransactionWizard", () => ({
+vi.mock("../../../src/components/send/SendTransactionWizard", () => ({
   SendTransactionWizard: (props: any) => {
     const values = [
       ...wizardMockHelpers.getLoadedDataValues(props),

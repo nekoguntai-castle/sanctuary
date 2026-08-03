@@ -18,7 +18,7 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mocks.navigate,
 }));
 
-vi.mock('../../hooks/useErrorHandler', () => ({
+vi.mock('../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({
     showSuccess: mocks.showSuccess,
   }),
@@ -29,11 +29,11 @@ vi.mock('../../src/api/drafts', () => ({
   updateDraft: mocks.updateDraft,
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => mocks.logger,
 }));
 
-import { useDraftManagement } from '../../hooks/send/useDraftManagement';
+import { useDraftManagement } from '../../src/hooks/send/useDraftManagement';
 import { ApiError } from '../../src/api/client';
 
 const baseTxData = {

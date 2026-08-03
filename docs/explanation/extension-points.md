@@ -8,9 +8,9 @@ Primary surface: `src/app/appRoutes.tsx`
 
 Consumers:
 
-- `App.tsx`
-- `components/Layout/SidebarContent.tsx`
-- `hooks/useAppCapabilities.ts`
+- `src/App.tsx`
+- `src/components/Layout/SidebarContent.tsx`
+- `src/hooks/useAppCapabilities.ts`
 - `src/app/capabilities.ts`
 - `tests/src/app/appRoutes.test.ts`
 
@@ -25,20 +25,20 @@ Guardrails:
 
 - Keep route IDs, paths, sidebar labels, lazy components, fallback behavior, and redirects in the route manifest.
 - Do not add a separate static sidebar route list unless the route is intentionally not navigable.
-- Put gated route requirements in `requiredCapabilities` and capability availability mapping in `hooks/useAppCapabilities.ts`.
-- Keep sidebar filtering generic through `src/app/capabilities.ts` instead of adding feature-specific checks to `components/Layout/SidebarContent.tsx`.
-- If routes need authorization later, add explicit access metadata to the manifest instead of scattering checks in `App.tsx`.
+- Put gated route requirements in `requiredCapabilities` and capability availability mapping in `src/hooks/useAppCapabilities.ts`.
+- Keep sidebar filtering generic through `src/app/capabilities.ts` instead of adding feature-specific checks to `src/components/Layout/SidebarContent.tsx`.
+- If routes need authorization later, add explicit access metadata to the manifest instead of scattering checks in `src/App.tsx`.
 - Run `npx vitest run tests/src/app/appRoutes.test.ts tests/src/app/capabilities.test.ts tests/components/Layout/SidebarContent.branches.test.tsx tests/hooks/useAppCapabilities.test.ts`.
 
 ## Wallet Detail Tabs
 
-Primary surface: `components/WalletDetail/tabDefinitions.ts`
+Primary surface: `src/components/WalletDetail/tabDefinitions.ts`
 
 Consumers:
 
-- `components/WalletDetail/TabBar.tsx`
-- `components/WalletDetail/WalletDetail.tsx`
-- `components/WalletDetail/types.ts`
+- `src/components/WalletDetail/TabBar.tsx`
+- `src/components/WalletDetail/WalletDetail.tsx`
+- `src/components/WalletDetail/types.ts`
 - `tests/components/WalletDetail/tabDefinitions.test.ts`
 - `tests/components/WalletDetail.test.tsx`
 - `tests/components/WalletDetail.wrapper.test.tsx`
@@ -60,21 +60,21 @@ Guardrails:
 
 Primary surfaces:
 
-- `themes/patterns.ts`
-- `themes/backgroundCategories.ts`
-- `themes/types.ts`
-- `components/Settings/sections/ThemeSection/iconMaps.ts`
-- `components/Settings/sections/ThemeSection/AppearanceTab.tsx`
-- `components/Settings/sections/ThemeSection/panels/BackgroundsPanel.tsx`
-- `components/AnimatedBackground.tsx`
-- `components/animatedPatterns.ts`
+- `src/themes/patterns.ts`
+- `src/themes/backgroundCategories.ts`
+- `src/themes/types.ts`
+- `src/components/Settings/sections/ThemeSection/iconMaps.ts`
+- `src/components/Settings/sections/ThemeSection/AppearanceTab.tsx`
+- `src/components/Settings/sections/ThemeSection/panels/BackgroundsPanel.tsx`
+- `src/components/AnimatedBackground.tsx`
+- `src/components/animatedPatterns.ts`
 
 Supporting implementation surfaces:
 
-- `components/animations`
+- `src/components/animations`
 - `index.html`
-- `types/ui.ts`
-- `themes/README.md`
+- `src/types/ui.ts`
+- `src/themes/README.md`
 
 Use this when:
 
@@ -86,11 +86,11 @@ Use this when:
 
 Guardrails:
 
-- `themes/patterns.ts` is the global background metadata source of truth.
+- `src/themes/patterns.ts` is the global background metadata source of truth.
 - Registered backgrounds need categories and an `iconKey`.
-- Animated backgrounds must have a matching loader module under `components/animations` by the existing naming convention.
+- Animated backgrounds must have a matching loader module under `src/components/animations` by the existing naming convention.
 - Static CSS-backed backgrounds should be registered before being user-selectable.
-- `components/animatedPatterns.ts` is a compatibility re-export, not a second registry.
+- `src/components/animatedPatterns.ts` is a compatibility re-export, not a second registry.
 - Settings category filtering should use the visible background set, not a global-only map.
 - Persisted preferences should remain tolerant of unknown strings and fall back safely.
 - Run `npx vitest run tests/components/AnimatedBackground.test.tsx tests/components/AnimatedBackground.lazyLoading.test.tsx tests/themes/backgroundCategories.test.ts tests/themes/index.test.ts tests/themes/registry.test.ts tests/components/ThemeSection.test.tsx tests/components/Settings/sections/ThemeSection/AppearanceTab.branches.test.tsx tests/components/Settings/sections/ThemeSection/panels/BackgroundsPanel.branches.test.tsx`.
@@ -248,7 +248,7 @@ When adding a new domain extension point, prefer matching one of these local reg
 
 The login logo glow-ring cleanup touches:
 
-- `components/Login/LoginLogoContainer.tsx`
+- `src/components/Login/LoginLogoContainer.tsx`
 - `index.html`
 - `tests/components/Login/LoginLogoContainer.test.tsx`
 

@@ -4,7 +4,7 @@ import {
 } from './intelligenceTabsTestHarness';
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ChatMessage } from '../../../components/Intelligence/tabs/ChatMessage';
+import { ChatMessage } from '../../../src/components/Intelligence/tabs/ChatMessage';
 
 describe('ChatMessage', () => {
   beforeEach(() => {

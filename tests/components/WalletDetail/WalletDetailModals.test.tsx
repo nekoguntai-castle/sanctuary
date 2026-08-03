@@ -1,21 +1,21 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { WalletDetailModals } from '../../../components/WalletDetail/WalletDetailModals';
+import { WalletDetailModals } from '../../../src/components/WalletDetail/WalletDetailModals';
 
 // Mock all modal sub-components
-vi.mock('../../../components/TransactionExportModal', () => ({
+vi.mock('../../../src/components/TransactionExportModal', () => ({
   TransactionExportModal: ({ walletName }: { walletName: string }) => (
     <div data-testid="transaction-export-modal">{walletName}</div>
   ),
 }));
 
-vi.mock('../../../components/TransferOwnershipModal', () => ({
+vi.mock('../../../src/components/TransferOwnershipModal', () => ({
   TransferOwnershipModal: ({ resourceName }: { resourceName: string }) => (
     <div data-testid="transfer-modal">{resourceName}</div>
   ),
 }));
 
-vi.mock('../../../components/WalletDetail/modals', () => ({
+vi.mock('../../../src/components/WalletDetail/modals', () => ({
   DeleteModal: () => <div data-testid="delete-modal">Delete</div>,
   ReceiveModal: () => <div data-testid="receive-modal">Receive</div>,
   ExportModal: () => <div data-testid="export-modal">Export</div>,

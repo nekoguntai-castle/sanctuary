@@ -6,7 +6,7 @@ import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderToString } from 'react-dom/server';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { Monitoring } from '../../components/Monitoring';
+import { Monitoring } from '../../src/components/Monitoring';
 import * as adminApi from '../../src/api/admin';
 
 // Mock API

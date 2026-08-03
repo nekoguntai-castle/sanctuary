@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { PoolConfig } from '../../../components/NetworkConnectionCard/PoolConfig';
+import { PoolConfig } from '../../../src/components/NetworkConnectionCard/PoolConfig';
 
 const renderPoolConfig = (
   overrides: Partial<React.ComponentProps<typeof PoolConfig>> = {},

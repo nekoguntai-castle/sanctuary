@@ -7,7 +7,7 @@
 
 import { act,renderHook,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import type { HardwareDeviceModel } from '../../types';
+import type { HardwareDeviceModel } from '../../src/types';
 
 // Mock getDeviceModels API
 const mockGetDeviceModels = vi.fn();
@@ -17,7 +17,7 @@ vi.mock('../../src/api/devices', () => ({
 }));
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Import after mocks
-import { useDeviceModels } from '../../hooks/useDeviceModels';
+import { useDeviceModels } from '../../src/hooks/useDeviceModels';
 
 // Test data
 const mockModels: HardwareDeviceModel[] = [

@@ -5,11 +5,11 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { FeeSelector } from '../../../components/send/FeeSelector';
-import type { FeeEstimate } from '../../../types';
+import { FeeSelector } from '../../../src/components/send/FeeSelector';
+import type { FeeEstimate } from '../../../src/types';
 
 // Mock BlockVisualizer
-vi.mock('../../../components/BlockVisualizer', () => ({
+vi.mock('../../../src/components/BlockVisualizer', () => ({
   BlockVisualizer: ({ onBlockClick, compact }: { onBlockClick?: (rate: number) => void; compact: boolean }) => (
     <div data-testid="block-visualizer" data-compact={compact.toString()}>
       <button data-testid="block-click" onClick={() => onBlockClick?.(15)}>Click Block</button>

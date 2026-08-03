@@ -1,5 +1,5 @@
 import { describe,expect,it,vi } from 'vitest';
-import { formatApiTransaction,formatApiUtxo } from '../../../components/WalletDetail/mappers';
+import { formatApiTransaction,formatApiUtxo } from '../../../src/components/WalletDetail/mappers';
 
 describe('WalletDetail mappers', () => {
   describe('formatApiTransaction', () => {

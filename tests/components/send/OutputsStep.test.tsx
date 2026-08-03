@@ -5,22 +5,22 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { OutputsStep } from '../../../components/send/steps/OutputsStep';
-import * as CurrencyContext from '../../../contexts/CurrencyContext';
-import * as SendContext from '../../../contexts/send';
+import { OutputsStep } from '../../../src/components/send/steps/OutputsStep';
+import * as CurrencyContext from '../../../src/contexts/CurrencyContext';
+import * as SendContext from '../../../src/contexts/send';
 import * as TransactionsApi from '../../../src/api/transactions';
 
 // Mock the context
-vi.mock('../../../contexts/send', () => ({
+vi.mock('../../../src/contexts/send', () => ({
   useSendTransaction: vi.fn(),
 }));
 
-vi.mock('../../../contexts/CurrencyContext', () => ({
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
 }));
 
 // Mock child components
-vi.mock('../../../components/send/OutputRow', () => ({
+vi.mock('../../../src/components/send/OutputRow', () => ({
   OutputRow: ({ index, output, onAddressChange, onAmountChange }: any) => (
     <div data-testid={`output-row-${index}`}>
       <input
@@ -37,7 +37,7 @@ vi.mock('../../../components/send/OutputRow', () => ({
   ),
 }));
 
-vi.mock('../../../components/send/FeeSelector', () => ({
+vi.mock('../../../src/components/send/FeeSelector', () => ({
   FeeSelector: ({ feeRate, setFeeRate }: any) => (
     <div data-testid="fee-selector">
       <span data-testid="fee-rate">{feeRate}</span>
@@ -46,7 +46,7 @@ vi.mock('../../../components/send/FeeSelector', () => ({
   ),
 }));
 
-vi.mock('../../../components/send/AdvancedOptions', () => ({
+vi.mock('../../../src/components/send/AdvancedOptions', () => ({
   AdvancedOptions: ({ enableRBF, setEnableRBF }: any) => (
     <div data-testid="advanced-options">
       <input
@@ -59,15 +59,15 @@ vi.mock('../../../components/send/AdvancedOptions', () => ({
   ),
 }));
 
-vi.mock('../../../components/send/WizardNavigation', () => ({
+vi.mock('../../../src/components/send/WizardNavigation', () => ({
   WizardNavigation: () => <div data-testid="wizard-navigation">Navigation</div>,
 }));
 
-vi.mock('../../../components/SpendPrivacyCard', () => ({
+vi.mock('../../../src/components/SpendPrivacyCard', () => ({
   default: () => <div data-testid="spend-privacy-card">Privacy Card</div>,
 }));
 
-vi.mock('../../../components/PrivacyBadge', () => ({
+vi.mock('../../../src/components/PrivacyBadge', () => ({
   PrivacyBadge: () => <span data-testid="privacy-badge">Badge</span>,
 }));
 

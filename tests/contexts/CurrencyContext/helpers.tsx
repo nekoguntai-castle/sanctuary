@@ -15,8 +15,8 @@ import { expect, vi } from "vitest";
 import {
   CurrencyProvider,
   useCurrency,
-} from "../../../contexts/CurrencyContext";
-import { UserProvider } from "../../../contexts/UserContext";
+} from "../../../src/contexts/CurrencyContext";
+import { UserProvider } from "../../../src/contexts/UserContext";
 import * as authApi from "../../../src/api/auth";
 import { ApiError } from "../../../src/api/client";
 import * as priceApi from "../../../src/api/price";

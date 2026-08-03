@@ -5,7 +5,7 @@
  */
 
 import { describe,expect,it } from 'vitest';
-import { truncateAddress } from '../../utils/formatters';
+import { truncateAddress } from '../../src/utils/formatters';
 
 describe('Formatters', () => {
   describe('truncateAddress', () => {

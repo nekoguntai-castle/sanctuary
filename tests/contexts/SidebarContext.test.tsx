@@ -8,7 +8,7 @@
 import { act,renderHook } from '@testing-library/react';
 import { ReactNode } from 'react';
 import { describe,expect,it } from 'vitest';
-import { SidebarProvider,useSidebar } from '../../contexts/SidebarContext';
+import { SidebarProvider,useSidebar } from '../../src/contexts/SidebarContext';
 
 describe('SidebarContext', () => {
   const wrapper = ({ children }: { children: ReactNode }) => (

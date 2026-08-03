@@ -1,8 +1,8 @@
 import { act,renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { useAddressLabels } from '../../../../components/WalletDetail/hooks/useAddressLabels';
+import { useAddressLabels } from '../../../../src/components/WalletDetail/hooks/useAddressLabels';
 import * as labelsApi from '../../../../src/api/labels';
-import type { Label } from '../../../../types';
+import type { Label } from '../../../../src/types';
 
 vi.mock('../../../../src/api/labels', () => ({
   setAddressLabels: vi.fn(),

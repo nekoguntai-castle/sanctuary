@@ -19,7 +19,7 @@ const mockUser = {
   twoFactorEnabled: false,
 };
 
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: () => ({
     user: mockUser,
     updateUser: mockUpdateUser,
@@ -45,7 +45,7 @@ vi.mock('../../src/api/twoFactor', () => ({
 }));
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -57,7 +57,7 @@ vi.mock('../../utils/logger', () => ({
 const mockCopyToClipboard = vi.fn();
 
 // Mock clipboard utility
-vi.mock('../../utils/clipboard', () => ({
+vi.mock('../../src/utils/clipboard', () => ({
   copyToClipboard: (...args: unknown[]) => mockCopyToClipboard(...args),
 }));
 
@@ -79,7 +79,7 @@ vi.mock('lucide-react', () => ({
 }));
 
 // Mock Button component
-vi.mock('../../components/ui/Button', () => ({
+vi.mock('../../src/components/ui/Button', () => ({
   Button: ({ children, type, disabled, isLoading, onClick, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { isLoading?: boolean }) => (
     <button type={type as 'button' | 'submit' | 'reset' | undefined} disabled={disabled || isLoading} onClick={onClick} {...props}>
       {children}
@@ -88,7 +88,7 @@ vi.mock('../../components/ui/Button', () => ({
 }));
 
 async function renderAccount() {
-  const { Account } = await import('../../components/Account');
+  const { Account } = await import('../../src/components/Account');
   render(<Account />);
 }
 
@@ -104,7 +104,7 @@ describe('Account Component', () => {
   });
 
   it('should render user information', async () => {
-    const { Account } = await import('../../components/Account');
+    const { Account } = await import('../../src/components/Account');
 
     render(<Account />);
 
@@ -113,7 +113,7 @@ describe('Account Component', () => {
   });
 
   it('should render password change section', async () => {
-    const { Account } = await import('../../components/Account');
+    const { Account } = await import('../../src/components/Account');
 
     render(<Account />);
 
@@ -125,7 +125,7 @@ describe('Account Component', () => {
   });
 
   it('should render 2FA section', async () => {
-    const { Account } = await import('../../components/Account');
+    const { Account } = await import('../../src/components/Account');
 
     render(<Account />);
 
@@ -135,7 +135,7 @@ describe('Account Component', () => {
   });
 
   it('should have a change password button', async () => {
-    const { Account } = await import('../../components/Account');
+    const { Account } = await import('../../src/components/Account');
 
     render(<Account />);
 
@@ -151,7 +151,7 @@ describe('Account Component - Password Input Visibility', () => {
   });
 
   it('should have eye icons for password visibility toggle', async () => {
-    const { Account } = await import('../../components/Account');
+    const { Account } = await import('../../src/components/Account');
 
     render(<Account />);
 
@@ -169,7 +169,7 @@ describe('Account Component - 2FA Setup', () => {
   });
 
   it('should show setup button when 2FA is disabled', async () => {
-    const { Account } = await import('../../components/Account');
+    const { Account } = await import('../../src/components/Account');
 
     render(<Account />);
 
@@ -182,7 +182,7 @@ describe('Account Component - 2FA Setup', () => {
       qrCodeDataUrl: 'data:image/png;base64,mockQRCode',
     });
 
-    const { Account } = await import('../../components/Account');
+    const { Account } = await import('../../src/components/Account');
     const user = userEvent.setup();
 
     render(<Account />);
@@ -200,7 +200,7 @@ describe('Account Component - 2FA Enabled State', () => {
   it('should render account component with twoFactorEnabled flag', async () => {
     // This test verifies the component can render with different 2FA states
     // The actual 2FA enabled UI is complex and depends on modal state
-    const { Account } = await import('../../components/Account');
+    const { Account } = await import('../../src/components/Account');
 
     render(<Account />);
 

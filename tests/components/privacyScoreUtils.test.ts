@@ -3,7 +3,7 @@ import {
   normalizePrivacyGrade,
   normalizePrivacyList,
   normalizePrivacyScore,
-} from '../../components/privacyScoreUtils';
+} from '../../src/components/privacyScoreUtils';
 
 describe('privacyScoreUtils', () => {
   describe('normalizePrivacyGrade', () => {

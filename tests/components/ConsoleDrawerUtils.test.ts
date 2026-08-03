@@ -25,7 +25,7 @@ import {
   sortSessionsByUpdatedAt,
   summarizeTrace,
   turnsToMessages,
-} from "../../components/ConsoleDrawer/consoleDrawerUtils";
+} from "../../src/components/ConsoleDrawer/consoleDrawerUtils";
 import { ApiError } from "../../src/api/client";
 import type {
   ConsolePromptHistory,

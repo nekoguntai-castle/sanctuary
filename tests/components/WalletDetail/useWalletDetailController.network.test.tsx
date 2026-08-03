@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useWalletDetailController } from '../../../components/WalletDetail/useWalletDetailController';
+import { useWalletDetailController } from '../../../src/components/WalletDetail/useWalletDetailController';
 
 const controllerState = vi.hoisted(() => ({
   activeNetwork: 'mainnet' as 'mainnet' | 'testnet3' | 'testnet4' | 'signet',
@@ -19,14 +19,14 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../../../contexts/AppNotificationContext', () => ({
+vi.mock('../../../src/contexts/AppNotificationContext', () => ({
   useAppNotifications: () => ({
     addNotification: vi.fn(),
     removeNotificationsByType: vi.fn(),
   }),
 }));
 
-vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: controllerState.activeNetwork,
     isMainnet: controllerState.activeNetwork === 'mainnet',
@@ -34,30 +34,30 @@ vi.mock('../../../contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../../contexts/UserContext', () => ({
+vi.mock('../../../src/contexts/UserContext', () => ({
   useUser: () => ({ user: { id: 'user-1', isAdmin: false } }),
 }));
 
-vi.mock('../../../hooks/queries/useBitcoin', () => ({
+vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
   useBitcoinStatus: (network?: string) => {
     controllerState.bitcoinStatusNetworks.push(network);
     return { data: { confirmationThreshold: 1, deepConfirmationThreshold: 6 } };
   },
 }));
 
-vi.mock('../../../hooks/queries/useWalletLabels', () => ({
+vi.mock('../../../src/hooks/queries/useWalletLabels', () => ({
   useWalletLabels: () => ({ data: [] }),
 }));
 
-vi.mock('../../../hooks/useAIStatus', () => ({
+vi.mock('../../../src/hooks/useAIStatus', () => ({
   useAIStatus: () => ({ enabled: false }),
 }));
 
-vi.mock('../../../hooks/useErrorHandler', () => ({
+vi.mock('../../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({ handleError: vi.fn() }),
 }));
 
-vi.mock('../../../hooks/websocket', () => ({
+vi.mock('../../../src/hooks/websocket', () => ({
   useWalletLogs: () => ({
     logs: [],
     isPaused: false,
@@ -67,7 +67,7 @@ vi.mock('../../../hooks/websocket', () => ({
   }),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletData', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletData', () => ({
   useWalletData: () => ({
     wallet: {
       id: 'wallet-1',
@@ -119,7 +119,7 @@ vi.mock('../../../components/WalletDetail/hooks/useWalletData', () => ({
   }),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletSync', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletSync', () => ({
   useWalletSync: () => ({
     syncing: false,
     setSyncing: vi.fn(),
@@ -132,7 +132,7 @@ vi.mock('../../../components/WalletDetail/hooks/useWalletSync', () => ({
   }),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useTransactionFilters', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useTransactionFilters', () => ({
   useTransactionFilters: () => ({
     filters: {},
     setTypeFilter: vi.fn(),
@@ -146,7 +146,7 @@ vi.mock('../../../components/WalletDetail/hooks/useTransactionFilters', () => ({
   }),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useAITransactionFilter', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useAITransactionFilter', () => ({
   useAITransactionFilter: () => ({
     aiQueryFilter: null,
     setAiQueryFilter: vi.fn(),
@@ -155,7 +155,7 @@ vi.mock('../../../components/WalletDetail/hooks/useAITransactionFilter', () => (
   }),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletSharing', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletSharing', () => ({
   useWalletSharing: () => ({
     userSearchQuery: '',
     userSearchResults: [],
@@ -176,7 +176,7 @@ vi.mock('../../../components/WalletDetail/hooks/useWalletSharing', () => ({
   }),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useAddressLabels', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useAddressLabels', () => ({
   useAddressLabels: () => ({
     editingAddressId: null,
     availableLabels: [],
@@ -189,7 +189,7 @@ vi.mock('../../../components/WalletDetail/hooks/useAddressLabels', () => ({
   }),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useUtxoActions', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useUtxoActions', () => ({
   useUtxoActions: () => ({
     selectedUtxos: new Set(),
     pendingFreezeIds: new Set(['pending-controller-utxo']),
@@ -199,7 +199,7 @@ vi.mock('../../../components/WalletDetail/hooks/useUtxoActions', () => ({
   }),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletMutations', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletMutations', () => ({
   useWalletMutations: () => ({
     isEditingName: false,
     setIsEditingName: vi.fn(),
@@ -209,22 +209,22 @@ vi.mock('../../../components/WalletDetail/hooks/useWalletMutations', () => ({
   }),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletDetailTabs', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletDetailTabs', () => ({
   useWalletDetailTabs: () => ({
     setActiveTab: vi.fn(),
     visibleActiveTab: 'tx',
   }),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletAgentLinks', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletAgentLinks', () => ({
   useWalletAgentLinks: () => [],
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletWebSocket', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletWebSocket', () => ({
   useWalletWebSocket: vi.fn(),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletDetailAddressActions', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletDetailAddressActions', () => ({
   useWalletDetailAddressActions: () => ({
     handleLoadMoreAddressPage: vi.fn(),
     handleGenerateMoreAddresses: vi.fn(),
@@ -232,11 +232,11 @@ vi.mock('../../../components/WalletDetail/hooks/useWalletDetailAddressActions', 
   }),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletDraftNotifications', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletDraftNotifications', () => ({
   useWalletDraftNotifications: () => vi.fn(),
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletDetailModalState', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletDetailModalState', () => ({
   useWalletDetailModalState: () => ({}),
 }));
 

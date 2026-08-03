@@ -8,10 +8,10 @@
 import { act,renderHook } from '@testing-library/react';
 import { ReactNode } from 'react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { NotificationProvider,useNotifications } from '../../contexts/NotificationContext';
+import { NotificationProvider,useNotifications } from '../../src/contexts/NotificationContext';
 
 // Mock the generateNotificationId function
-vi.mock('../../components/NotificationToast', () => ({
+vi.mock('../../src/components/NotificationToast', () => ({
   generateNotificationId: vi.fn(() => `id-${Math.random().toString(36).substr(2, 9)}`),
 }));
 

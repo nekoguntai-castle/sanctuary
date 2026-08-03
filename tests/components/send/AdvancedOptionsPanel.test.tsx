@@ -1,7 +1,7 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { AdvancedOptionsPanel } from '../../../components/send/steps/OutputsStep/AdvancedOptionsPanel';
+import { AdvancedOptionsPanel } from '../../../src/components/send/steps/OutputsStep/AdvancedOptionsPanel';
 
 vi.mock('lucide-react', () => ({
   ChevronDown: () => <span data-testid="chevron-down" />,
@@ -9,7 +9,7 @@ vi.mock('lucide-react', () => ({
   Settings2: () => <span data-testid="settings-icon" />,
 }));
 
-vi.mock('../../../components/send/AdvancedOptions', () => ({
+vi.mock('../../../src/components/send/AdvancedOptions', () => ({
   AdvancedOptions: (props: {
     setShowAdvanced: (show: boolean) => void;
     enableRBF: boolean;

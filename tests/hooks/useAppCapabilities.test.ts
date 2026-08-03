@@ -1,14 +1,14 @@
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { useAppCapabilities } from '../../hooks/useAppCapabilities';
-import { useConsoleAvailability } from '../../hooks/useConsoleAvailability';
-import { useIntelligenceStatus } from '../../hooks/useIntelligenceStatus';
+import { useAppCapabilities } from '../../src/hooks/useAppCapabilities';
+import { useConsoleAvailability } from '../../src/hooks/useConsoleAvailability';
+import { useIntelligenceStatus } from '../../src/hooks/useIntelligenceStatus';
 
-vi.mock('../../hooks/useConsoleAvailability', () => ({
+vi.mock('../../src/hooks/useConsoleAvailability', () => ({
   useConsoleAvailability: vi.fn(),
 }));
 
-vi.mock('../../hooks/useIntelligenceStatus', () => ({
+vi.mock('../../src/hooks/useIntelligenceStatus', () => ({
   useIntelligenceStatus: vi.fn(),
 }));
 

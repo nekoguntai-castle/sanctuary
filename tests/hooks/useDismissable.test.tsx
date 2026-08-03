@@ -1,7 +1,7 @@
 import { fireEvent, render } from '@testing-library/react';
 import { useRef } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { useDismissable } from '../../hooks/useDismissable';
+import { useDismissable } from '../../src/hooks/useDismissable';
 
 function Probe({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);

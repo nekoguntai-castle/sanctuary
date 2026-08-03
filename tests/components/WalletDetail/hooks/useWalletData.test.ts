@@ -1,8 +1,8 @@
 import { act,renderHook,waitFor } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { useWalletData } from '../../../../components/WalletDetail/hooks/useWalletData';
-import { useAppNotifications } from '../../../../contexts/AppNotificationContext';
-import { useErrorHandler } from '../../../../hooks/useErrorHandler';
+import { useWalletData } from '../../../../src/components/WalletDetail/hooks/useWalletData';
+import { useAppNotifications } from '../../../../src/contexts/AppNotificationContext';
+import { useErrorHandler } from '../../../../src/hooks/useErrorHandler';
 import * as adminApi from '../../../../src/api/admin';
 import * as authApi from '../../../../src/api/auth';
 import * as bitcoinApi from '../../../../src/api/bitcoin';
@@ -11,7 +11,7 @@ import * as devicesApi from '../../../../src/api/devices';
 import * as draftsApi from '../../../../src/api/drafts';
 import * as transactionsApi from '../../../../src/api/transactions';
 import * as walletsApi from '../../../../src/api/wallets';
-import type { Wallet } from '../../../../types';
+import type { Wallet } from '../../../../src/types';
 
 const mockNavigate = vi.fn();
 const mockHandleError = vi.fn();
@@ -27,7 +27,7 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -36,19 +36,19 @@ vi.mock('../../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../../utils/errorHandler', () => ({
+vi.mock('../../../../src/utils/errorHandler', () => ({
   logError: (...args: unknown[]) => mockLogError(...args),
 }));
 
-vi.mock('../../../../hooks/useErrorHandler', () => ({
+vi.mock('../../../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: vi.fn(),
 }));
 
-vi.mock('../../../../contexts/AppNotificationContext', () => ({
+vi.mock('../../../../src/contexts/AppNotificationContext', () => ({
   useAppNotifications: vi.fn(),
 }));
 
-vi.mock('../../../../components/WalletDetail/mappers', () => ({
+vi.mock('../../../../src/components/WalletDetail/mappers', () => ({
   formatApiTransaction: vi.fn((tx: any, walletId: string) => ({
     id: tx.id || tx.txid || 'tx-id',
     walletId,

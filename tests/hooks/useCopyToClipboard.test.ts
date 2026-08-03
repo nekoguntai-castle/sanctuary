@@ -6,14 +6,14 @@
 
 import { act,renderHook } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
+import { useCopyToClipboard } from '../../src/hooks/useCopyToClipboard';
 
 // Mock the clipboard utility
-vi.mock('../../utils/clipboard', () => ({
+vi.mock('../../src/utils/clipboard', () => ({
   copyToClipboard: vi.fn(),
 }));
 
-import { copyToClipboard } from '../../utils/clipboard';
+import { copyToClipboard } from '../../src/utils/clipboard';
 
 const mockCopyToClipboard = vi.mocked(copyToClipboard);
 

@@ -9,27 +9,27 @@
 import { render, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
-import { UTXORow } from '../../../components/UTXOList/UTXORow';
-import type { UTXO } from '../../../types';
+import { UTXORow } from '../../../src/components/UTXOList/UTXORow';
+import type { UTXO } from '../../../src/types';
 import type { UtxoPrivacyInfo } from '../../../src/api/transactions';
 
 // Spy on a deep child via the same mock pattern as UTXORow.test.tsx so the
 // memo behavior is observable as a call count.
 const amountRenderSpy = vi.fn();
-vi.mock('../../../components/Amount', () => ({
+vi.mock('../../../src/components/Amount', () => ({
   Amount: ({ sats }: { sats: number }) => {
     amountRenderSpy();
     return <span data-testid="amount">{sats}</span>;
   },
 }));
-vi.mock('../../../components/PrivacyBadge', () => ({
+vi.mock('../../../src/components/PrivacyBadge', () => ({
   PrivacyBadge: ({ score }: { score: number }) => <span>{score}</span>,
 }));
-vi.mock('../../../utils/explorer', () => ({
+vi.mock('../../../src/utils/explorer', () => ({
   getAddressExplorerUrl: (a: string) => `https://explorer.test/address/${a}`,
   getTxExplorerUrl: (t: string) => `https://explorer.test/tx/${t}`,
 }));
-vi.mock('../../../utils/utxoAge', () => ({
+vi.mock('../../../src/utils/utxoAge', () => ({
   calculateUTXOAge: () => ({ displayText: '3d', category: 'fresh' }),
   getAgeCategoryColor: () => 'text-green-500',
 }));

@@ -9,7 +9,7 @@ import {
   useDeleteWalletLabel,
   useInvalidateWalletLabels,
   walletLabelKeys,
-} from '../../../hooks/queries/useWalletLabels';
+} from '../../../src/hooks/queries/useWalletLabels';
 
 vi.mock('../../../src/api/labels', () => ({
   getLabels: vi.fn().mockResolvedValue([

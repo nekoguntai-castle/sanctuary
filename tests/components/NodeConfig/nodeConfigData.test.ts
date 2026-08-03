@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ElectrumServer, NodeConfig } from '../../../types';
+import type { ElectrumServer, NodeConfig } from '../../../src/types';
 import {
   getExternalServicesSummary,
   getNetworksSummary,
@@ -7,7 +7,7 @@ import {
   getServersForNetwork,
   replaceServersForNetwork,
   shouldShowCustomProxy,
-} from '../../../components/NodeConfig/nodeConfigData';
+} from '../../../src/components/NodeConfig/nodeConfigData';
 
 const servers = [
   server('main-2', 'mainnet', 2),

@@ -6,7 +6,7 @@ import {
 useBalanceHistory,
 usePendingTransactions,
 useRecentTransactions,
-} from '../../hooks/queries/useWallets';
+} from '../../src/hooks/queries/useWallets';
 
 // Mock the API modules
 vi.mock('../../src/api/transactions', () => ({

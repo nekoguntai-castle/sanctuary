@@ -15,6 +15,12 @@ recorded baseline or lowered past the bounded target. CI pins the immutable
 baseline and bounded target. Reviewers own the monotonic-ceiling comparison
 because each intentional migration changes the checked-in ceiling itself.
 
+The frontend source-root migration lowered the ceiling to 56. `src/` is now the
+sole frontend source root, and shared ambient declarations live in
+`shared/types/ambient-modules.d.ts`. The root `config/popular-models.json` path
+remains an external compatibility contract because released clients fetch its
+raw GitHub URL; it can move only after those clients no longer depend on it.
+
 ## Path migration checklist
 
 For every root entry moved or retired, search the old path across all of these

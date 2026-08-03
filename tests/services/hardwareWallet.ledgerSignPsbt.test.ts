@@ -32,7 +32,7 @@ vi.mock("bitcoinjs-lib", () => ({
   },
 }));
 
-vi.mock("../../utils/logger", () => ({
+vi.mock("../../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -41,7 +41,7 @@ vi.mock("../../utils/logger", () => ({
   }),
 }));
 
-import { signPsbt } from "../../services/hardwareWallet/adapters/ledger/signPsbt";
+import { signPsbt } from "../../src/services/hardwareWallet/adapters/ledger/signPsbt";
 
 function makeLedgerPsbt(path = "m/84'/0'/0'/0/0") {
   return {

@@ -3,17 +3,17 @@ import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ConsoleResults } from "../../components/ConsoleResults";
+import { ConsoleResults } from "../../src/components/ConsoleResults";
 import {
   dedupeConsoleTransactions,
   sortConsoleTransactions,
   summarizeConsoleTransactionFilters,
-} from "../../components/ConsoleResults/transactionResults";
-import { useWallets } from "../../hooks/queries/useWallets";
+} from "../../src/components/ConsoleResults/transactionResults";
+import { useWallets } from "../../src/hooks/queries/useWallets";
 import { getTransactions } from "../../src/api/transactions";
-import type { Transaction, Wallet } from "../../types";
+import type { Transaction, Wallet } from "../../src/types";
 
-vi.mock("../../hooks/queries/useWallets", () => ({
+vi.mock("../../src/hooks/queries/useWallets", () => ({
   useWallets: vi.fn(),
 }));
 
@@ -21,7 +21,7 @@ vi.mock("../../src/api/transactions", () => ({
   getTransactions: vi.fn(),
 }));
 
-vi.mock("../../components/TransactionList", () => ({
+vi.mock("../../src/components/TransactionList", () => ({
   TransactionList: ({
     transactions,
     onWalletClick,

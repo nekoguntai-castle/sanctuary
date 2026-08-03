@@ -1,10 +1,10 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { UTXOTab } from '../../../../components/WalletDetail/tabs/UTXOTab';
+import { UTXOTab } from '../../../../src/components/WalletDetail/tabs/UTXOTab';
 
 const capturedProps: Array<Record<string, unknown>> = [];
 
-vi.mock('../../../../components/UTXOList', () => ({
+vi.mock('../../../../src/components/UTXOList', () => ({
   UTXOList: (props: Record<string, unknown>) => {
     capturedProps.push(props);
     return <div data-testid="utxo-list" />;

@@ -4,8 +4,8 @@ import {
   calculateDustThreshold,
   isDustUtxo,
   getSpendCost,
-} from '../../../components/UTXOList/dustUtils';
-import type { UTXO } from '../../../types';
+} from '../../../src/components/UTXOList/dustUtils';
+import type { UTXO } from '../../../src/types';
 
 const makeUtxo = (amount: number, scriptType?: string): UTXO => ({
   txid: 'abc123',

@@ -15,7 +15,7 @@ useDeleteDevice,
 useDevice,
 useDevices,
 useInvalidateDevices,
-} from '../../../hooks/queries/useDevices';
+} from '../../../src/hooks/queries/useDevices';
 
 // Mock the devices API
 vi.mock('../../../src/api/devices', () => ({

@@ -1,7 +1,7 @@
 /** Privacy-safe support package API and local artifact handling. */
 
 import apiClient from '../client';
-import { downloadBlob } from '../../../utils/download';
+import { downloadBlob } from '../../utils/download';
 
 export interface IncidentProfileRequest {
   txid: string;

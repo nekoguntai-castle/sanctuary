@@ -1,11 +1,11 @@
 import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { NodeConfig } from '../../components/NodeConfig';
+import { NodeConfig } from '../../src/components/NodeConfig';
 import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import { DEFAULT_NODE_MEMPOOL_ESTIMATOR } from '@sanctuary/shared/constants/nodeConfig';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -29,7 +29,7 @@ vi.mock('../../src/api/bitcoin', () => ({
   getStatus: vi.fn(),
 }));
 
-vi.mock('../../components/NodeConfig/ExternalServicesSection', () => ({
+vi.mock('../../src/components/NodeConfig/ExternalServicesSection', () => ({
   ExternalServicesSection: ({
     summary,
     onToggle,
@@ -44,7 +44,7 @@ vi.mock('../../components/NodeConfig/ExternalServicesSection', () => ({
   ),
 }));
 
-vi.mock('../../components/NodeConfig/NetworkConnectionsSection', () => ({
+vi.mock('../../src/components/NodeConfig/NetworkConnectionsSection', () => ({
   NetworkConnectionsSection: ({
     summary,
     onToggle,
@@ -59,7 +59,7 @@ vi.mock('../../components/NodeConfig/NetworkConnectionsSection', () => ({
   ),
 }));
 
-vi.mock('../../components/NodeConfig/ProxyTorSection', () => ({
+vi.mock('../../src/components/NodeConfig/ProxyTorSection', () => ({
   ProxyTorSection: ({
     nodeConfig,
     summary,

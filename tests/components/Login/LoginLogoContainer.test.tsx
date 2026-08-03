@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { LoginLogoContainer } from '../../../components/Login/LoginLogoContainer';
+import { LoginLogoContainer } from '../../../src/components/Login/LoginLogoContainer';
 
 describe('LoginLogoContainer', () => {
   it('renders children and glow ring', () => {

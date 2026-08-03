@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { GroupPanel } from '../../../components/UsersGroups/GroupPanel';
+import { GroupPanel } from '../../../src/components/UsersGroups/GroupPanel';
 import type { AdminGroup } from '../../../src/api/admin';
 
 const makeGroup = (overrides: Partial<AdminGroup> = {}): AdminGroup => ({

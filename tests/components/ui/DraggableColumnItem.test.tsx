@@ -1,8 +1,8 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach,describe,expect,it,vi } from 'vitest';
-import { DraggableColumnItem } from '../../../components/ui/DraggableColumnItem';
-import type { TableColumnConfig } from '../../../types';
+import { DraggableColumnItem } from '../../../src/components/ui/DraggableColumnItem';
+import type { TableColumnConfig } from '../../../src/types';
 
 const sortableState = vi.hoisted(() => ({
   isDragging: false,

@@ -16,7 +16,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, '.'),
+      '@': path.resolve(__dirname, './src'),
       // Frontend: alias the workspace package at SOURCE (not dist) so vitest
       // instruments shared/**/*.ts files for coverage. Server/gateway aliases
       // point at dist for runtime parity; frontend prioritizes coverage.
@@ -31,19 +31,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'json-summary', 'lcov'],
-      include: [
-        'App.tsx',
-        'index.tsx',
-        'hooks/**/*.{ts,tsx}',
-        'components/**/*.{ts,tsx}',
-        'utils/**/*.ts',
-        'contexts/**/*.{ts,tsx}',
-        'src/**/*.ts',
-        'services/**/*.ts',
-        'shared/**/*.ts',
-        'providers/**/*.{ts,tsx}',
-        'themes/**/*.ts',
-      ],
+      include: ['src/**/*.{ts,tsx}', 'shared/**/*.ts'],
       exclude: [
         '**/*.test.{ts,tsx}',
         '**/tests/**',
@@ -57,25 +45,26 @@ export default defineConfig({
         'llm-egress-proxy/src/**',
         // Canvas animation internals are covered indirectly through AnimatedBackground
         // registry/dispatch tests and guarded by tests/config/coveragePolicy.test.ts.
-        'components/animations/**',
-        'src/types/**/*.ts',
+        'src/components/animations/**',
+        'src/types/ui.ts',
+        'src/types/user.ts',
         'shared/types/**/*.ts',
         // Server/gateway contract helpers are covered by their package-level tests,
         // not by the frontend coverage gate.
         'shared/schemas/mobileApiRequests.ts',
         'shared/utils/gatewayAuth.ts',
         // Type-only and barrel-export files with no executable logic
-        'components/**/types.ts',
-        'components/**/index.ts',
-        'components/**/index.tsx',
-        'contexts/**/index.ts',
-        'hooks/**/types.ts',
-        'hooks/**/index.ts',
+        'src/components/**/types.ts',
+        'src/components/**/index.ts',
+        'src/components/**/index.tsx',
+        'src/contexts/**/index.ts',
+        'src/hooks/**/types.ts',
+        'src/hooks/**/index.ts',
         // React Query hook definitions are factory-generated closures with no custom logic
-        'hooks/queries/useWalletLabels.ts',
-        'services/**/types.ts',
-        'services/**/index.ts',
-        'themes/types.ts',
+        'src/hooks/queries/useWalletLabels.ts',
+        'src/services/**/types.ts',
+        'src/services/**/index.ts',
+        'src/themes/types.ts',
         'src/api/**/types.ts',
         'src/api/**/index.ts',
       ],

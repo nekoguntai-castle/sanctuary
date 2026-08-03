@@ -10,8 +10,8 @@ import { describe,expect,it } from 'vitest';
 import {
 ACCOUNT_TYPE_CONFIG,
 getAccountTypeInfo
-} from '../../../components/DeviceDetail/accountTypes';
-import type { DeviceAccount } from '../../../types';
+} from '../../../src/components/DeviceDetail/accountTypes';
+import type { DeviceAccount } from '../../../src/types';
 
 describe('ACCOUNT_TYPE_CONFIG', () => {
   describe('Configuration Validity', () => {

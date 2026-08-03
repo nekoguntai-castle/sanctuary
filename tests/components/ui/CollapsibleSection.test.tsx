@@ -2,11 +2,11 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CollapsibleSection } from '../../../components/ui/CollapsibleSection';
+import { CollapsibleSection } from '../../../src/components/ui/CollapsibleSection';
 
 const mockPreferences = new Map<string, unknown>();
 
-vi.mock('../../../hooks/useUserPreference', async () => {
+vi.mock('../../../src/hooks/useUserPreference', async () => {
   const { useState } = await import('react');
   return {
     useUserPreference: (key: string, defaultValue: unknown) => {

@@ -33,7 +33,7 @@ vi.mock('lucide-react', () => ({
 }));
 
 // Mock Button
-vi.mock('../../../../components/ui/Button', () => ({
+vi.mock('../../../../src/components/ui/Button', () => ({
   Button: ({
     children,
     onClick,
@@ -55,7 +55,7 @@ vi.mock('../../../../components/ui/Button', () => ({
 const mockCopy = vi.fn();
 const mockIsCopied = vi.fn().mockReturnValue(false);
 
-vi.mock('../../../../hooks/useCopyToClipboard', () => ({
+vi.mock('../../../../src/hooks/useCopyToClipboard', () => ({
   useCopyToClipboard: () => ({
     copy: mockCopy,
     isCopied: mockIsCopied,
@@ -76,14 +76,14 @@ vi.mock('../../../../src/api/wallets', () => ({
 }));
 
 // Mock types
-vi.mock('../../../../types', () => ({
+vi.mock('../../../../src/types', () => ({
   isMultisigType: (type: string) => type.includes('multisig'),
   getQuorumM: (quorum: number | null) => quorum ?? 2,
   getQuorumN: (_quorum: number | null, total: number | null) => total ?? 3,
 }));
 
 // Mock logger
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -96,7 +96,7 @@ vi.mock('../../../../utils/logger', () => ({
 import {
 ExportModal,
 generateMultisigConfigText,
-} from '../../../../components/WalletDetail/modals/ExportModal';
+} from '../../../../src/components/WalletDetail/modals/ExportModal';
 
 describe('ExportModal', () => {
   const singleSigProps = {

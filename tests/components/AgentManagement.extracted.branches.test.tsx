@@ -3,10 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactElement } from 'react';
-import { ActiveKeyList } from '../../components/AgentManagement/AgentManagement/ActiveKeyList';
-import { AgentFormModal } from '../../components/AgentManagement/AgentManagement/AgentFormModal';
-import { canAdvanceCreateStep } from '../../components/AgentManagement/AgentManagement/AgentFormSections';
-import { AgentHeader } from '../../components/AgentManagement/AgentManagement/AgentHeader';
+import { ActiveKeyList } from '../../src/components/AgentManagement/AgentManagement/ActiveKeyList';
+import { AgentFormModal } from '../../src/components/AgentManagement/AgentManagement/AgentFormModal';
+import { canAdvanceCreateStep } from '../../src/components/AgentManagement/AgentManagement/AgentFormSections';
+import { AgentHeader } from '../../src/components/AgentManagement/AgentManagement/AgentHeader';
 import {
   canSubmitAgentForm,
   getFundingWallets,
@@ -19,12 +19,12 @@ import {
   toDeviceOptions,
   toUserOptions,
   toWalletOptions,
-} from '../../components/AgentManagement/AgentManagement/formOptions';
+} from '../../src/components/AgentManagement/AgentManagement/formOptions';
 import {
   createInitialAgentForm,
   DEFAULT_AGENT_FORM,
   type AgentFormState,
-} from '../../components/AgentManagement/AgentManagement/formState';
+} from '../../src/components/AgentManagement/AgentManagement/formState';
 import {
   getActiveAgentKeys,
   getAgentInfoBlocks,
@@ -32,7 +32,7 @@ import {
   getPolicySummary,
   getTimelineSummary,
   isAgentRevoked,
-} from '../../components/AgentManagement/AgentManagement/agentRowModel';
+} from '../../src/components/AgentManagement/AgentManagement/agentRowModel';
 import type { AgentApiKeyMetadata, AgentManagementOptions, WalletAgentMetadata } from '../../src/api/admin';
 
 const activeApiKey: AgentApiKeyMetadata = {

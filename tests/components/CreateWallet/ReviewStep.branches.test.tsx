@@ -1,8 +1,8 @@
 import { render,screen } from '@testing-library/react';
 import React from 'react';
 import { describe,expect,it } from 'vitest';
-import { ReviewStep } from '../../../components/CreateWallet/ReviewStep';
-import { WalletType } from '../../../types';
+import { ReviewStep } from '../../../src/components/CreateWallet/ReviewStep';
+import { WalletType } from '../../../src/types';
 
 const devices = [
   { id: 'd1', label: 'Ledger One', type: 'ledger' },

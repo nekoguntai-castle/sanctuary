@@ -8,8 +8,7 @@
 //
 // CLI: node scripts/codemod/rewrite-shared-imports.mjs [--dry-run] [paths...]
 // Default paths: server/src, server/tests, gateway/src, gateway/tests, tests
-// plus the frontend tree (App.tsx + components, contexts, hooks, services,
-// src, themes, utils, e2e — anywhere @shared/* appears).
+// plus the frontend tree (src and e2e — anywhere @shared/* appears).
 //
 // One-shot script — delete after Phase D merges.
 
@@ -28,15 +27,7 @@ const DEFAULT_TARGETS = [
   'gateway/src',
   'gateway/tests',
   'tests',
-  'App.tsx',
-  'components',
-  'contexts',
-  'hooks',
-  'services',
   'src',
-  'themes',
-  'types',
-  'utils',
   'e2e',
   'scripts',
 ];

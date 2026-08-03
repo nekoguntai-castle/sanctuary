@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../hooks/useHardwareWallet', () => ({
+vi.mock('../../src/hooks/useHardwareWallet', () => ({
   useHardwareWallet: () => mocks.hardwareWallet,
 }));
 
@@ -26,11 +26,11 @@ vi.mock('../../src/api/drafts', () => ({
   updateDraft: mocks.updateDraft,
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => mocks.logger,
 }));
 
-import { useUsbSigning } from '../../hooks/send/useUsbSigning';
+import { useUsbSigning } from '../../src/hooks/send/useUsbSigning';
 
 const descriptorWithXpub =
   'wsh(sortedmulti(2,[A1B2C3D4/48h/0h/0h/2h]xpub123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz/0/*))';

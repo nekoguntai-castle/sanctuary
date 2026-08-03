@@ -6,14 +6,14 @@ import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { ImportWallet } from '../../components/ImportWallet';
-import * as useWalletsHooks from '../../hooks/queries/useWallets';
-import * as hardwareWalletEnvironment from '../../services/hardwareWallet/environment';
-import * as hardwareWallet from '../../services/hardwareWallet/runtime';
+import { ImportWallet } from '../../src/components/ImportWallet';
+import * as useWalletsHooks from '../../src/hooks/queries/useWallets';
+import * as hardwareWalletEnvironment from '../../src/services/hardwareWallet/environment';
+import * as hardwareWallet from '../../src/services/hardwareWallet/runtime';
 import * as walletsApi from '../../src/api/wallets';
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -38,22 +38,22 @@ vi.mock('../../src/api/wallets', () => ({
   importWallet: vi.fn(),
 }));
 
-vi.mock('../../services/hardwareWallet/runtime', () => ({
+vi.mock('../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: vi.fn(),
     getXpub: vi.fn(),
   },
 }));
 
-vi.mock('../../services/hardwareWallet/environment', () => ({
+vi.mock('../../src/services/hardwareWallet/environment', () => ({
   isSecureContext: vi.fn(),
 }));
 
-vi.mock('../../hooks/queries/useWallets', () => ({
+vi.mock('../../src/hooks/queries/useWallets', () => ({
   useImportWallet: vi.fn(),
 }));
 
-vi.mock('../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: 'mainnet',
     isMainnet: true,

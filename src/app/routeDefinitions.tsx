@@ -20,7 +20,7 @@ import {
   ListSkeleton,
   SettingsSkeleton,
   WalletDetailSkeleton,
-} from "../../components/ui/Skeleton";
+} from "../components/ui/Skeleton";
 import type {
   AppNavItem,
   AppRedirectRoute,

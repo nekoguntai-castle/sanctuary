@@ -1,6 +1,6 @@
 import { render, screen, act } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { AnimatedFeeRate } from '../../../components/Dashboard/AnimatedFeeRate';
+import { AnimatedFeeRate } from '../../../src/components/Dashboard/AnimatedFeeRate';
 
 const expectNoTransitionClass = (container: HTMLElement): void => {
   const span = container.querySelector('span');

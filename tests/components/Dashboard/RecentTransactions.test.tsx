@@ -1,7 +1,7 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { RecentTransactions } from '../../../components/Dashboard/RecentTransactions';
+import { RecentTransactions } from '../../../src/components/Dashboard/RecentTransactions';
 
 const mockNavigate = vi.fn();
 const mockTransactionList = vi.fn();
@@ -14,7 +14,7 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../../../components/TransactionList', () => ({
+vi.mock('../../../src/components/TransactionList', () => ({
   TransactionList: (props: any) => {
     mockTransactionList(props);
     return (

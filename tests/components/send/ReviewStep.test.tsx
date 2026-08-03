@@ -5,11 +5,11 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { ReviewStep } from '../../../components/send/steps/ReviewStep';
-import * as CurrencyContext from '../../../contexts/CurrencyContext';
-import * as SendContext from '../../../contexts/send';
+import { ReviewStep } from '../../../src/components/send/steps/ReviewStep';
+import * as CurrencyContext from '../../../src/contexts/CurrencyContext';
+import * as SendContext from '../../../src/contexts/send';
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -19,25 +19,25 @@ vi.mock('../../../utils/logger', () => ({
 }));
 
 // Mock the contexts
-vi.mock('../../../contexts/send', () => ({
+vi.mock('../../../src/contexts/send', () => ({
   useSendTransaction: vi.fn(),
 }));
 
-vi.mock('../../../contexts/CurrencyContext', () => ({
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
   usePriceFreeFormatter: vi.fn(),
 }));
 
 // Mock child components
-vi.mock('../../../components/TransactionFlowPreview', () => ({
+vi.mock('../../../src/components/TransactionFlowPreview', () => ({
   TransactionFlowPreview: () => <div data-testid="tx-flow-preview">Flow Preview</div>,
 }));
 
-vi.mock('../../../components/FiatDisplay', () => ({
+vi.mock('../../../src/components/FiatDisplay', () => ({
   FiatDisplay: ({ sats }: { sats: number }) => <span data-testid="fiat-display">${(sats / 100000000 * 50000).toFixed(2)}</span>,
 }));
 
-vi.mock('../../../components/qr', () => ({
+vi.mock('../../../src/components/qr', () => ({
   QRSigningModal: ({ isOpen, onClose, onSignedPsbt }: any) =>
     isOpen ? (
       <div data-testid="qr-signing-modal">
@@ -47,7 +47,7 @@ vi.mock('../../../components/qr', () => ({
     ) : null,
 }));
 
-vi.mock('../../../components/ui/Button', () => ({
+vi.mock('../../../src/components/ui/Button', () => ({
   Button: ({ children, onClick, disabled, isLoading, className }: any) => (
     <button onClick={onClick} disabled={disabled || isLoading} className={className}>
       {isLoading ? 'Loading...' : children}

@@ -55,7 +55,7 @@ extractAccountPath,
 getOutputType,
 getSimpleType,
 getXpubType,
-} from '../../../services/hardwareWallet/adapters/bitbox/pathUtils';
+} from '../../../src/services/hardwareWallet/adapters/bitbox/pathUtils';
 
 describe('bitbox pathUtils branch coverage', () => {
   beforeEach(() => {

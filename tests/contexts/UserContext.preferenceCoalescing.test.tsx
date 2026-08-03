@@ -1,15 +1,15 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserProvider, useUser } from '../../contexts/UserContext';
+import { UserProvider, useUser } from '../../src/contexts/UserContext';
 import * as authApi from '../../src/api/auth';
 import {
   PREFERENCE_WRITE_DEBOUNCE_MS,
   PREFERENCE_WRITE_MAX_WAIT_MS,
-} from '../../contexts/useUserPreferenceMutation';
+} from '../../src/contexts/useUserPreferenceMutation';
 import { mockUser } from './UserContext.test.fixtures';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

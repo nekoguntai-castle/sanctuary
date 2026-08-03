@@ -1,8 +1,8 @@
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { processBBQr } from '../../../hooks/qr/bbqrDecoder';
-import * as bbqrService from '../../../services/bbqr';
-import * as deviceParsers from '../../../services/deviceParsers';
-import type { DeviceAccount } from '../../../services/deviceParsers';
+import { processBBQr } from '../../../src/hooks/qr/bbqrDecoder';
+import * as bbqrService from '../../../src/services/bbqr';
+import * as deviceParsers from '../../../src/services/deviceParsers';
+import type { DeviceAccount } from '../../../src/services/deviceParsers';
 
 const decoderInstance = vi.hoisted(() => ({
   receivePart: vi.fn(),
@@ -15,7 +15,7 @@ const decoderInstance = vi.hoisted(() => ({
   decode: vi.fn(),
 }));
 
-vi.mock('../../../services/bbqr', () => ({
+vi.mock('../../../src/services/bbqr', () => ({
   BBQrDecoder: vi.fn(function MockBBQrDecoder() {
     return decoderInstance;
   }),
@@ -25,11 +25,11 @@ vi.mock('../../../services/bbqr', () => ({
   },
 }));
 
-vi.mock('../../../services/deviceParsers', () => ({
+vi.mock('../../../src/services/deviceParsers', () => ({
   parseDeviceJson: vi.fn(),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

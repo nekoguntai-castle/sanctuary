@@ -5,7 +5,7 @@ import {
   replaceProviderProfile,
   stripProviderCredentialState,
   toCredentialStatusText,
-} from '../../../components/AISettings/providerProfileModel';
+} from '../../../src/components/AISettings/providerProfileModel';
 
 describe('AI provider profile model', () => {
   it('builds a default profile from legacy endpoint and model settings', () => {

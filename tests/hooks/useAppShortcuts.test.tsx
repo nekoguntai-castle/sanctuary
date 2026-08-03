@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   useAppShortcuts,
   type AppShortcutBinding,
-} from '../../hooks/useAppShortcuts';
+} from '../../src/hooks/useAppShortcuts';
 
 function dispatchConsoleShortcut(target: EventTarget = window): KeyboardEvent {
   const event = new KeyboardEvent('keydown', {

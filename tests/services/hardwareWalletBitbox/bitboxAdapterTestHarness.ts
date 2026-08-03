@@ -108,7 +108,7 @@ vi.mock("bitcoinjs-lib", () => ({
   },
 }));
 
-vi.mock("../../../utils/logger", () => ({
+vi.mock("../../../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -127,7 +127,7 @@ vi.mock("@sanctuary/shared/utils/bitcoin", async (importOriginal) => {
 });
 
 type BitBoxAdapterConstructor =
-  typeof import("../../../services/hardwareWallet/adapters/bitbox").BitBoxAdapter;
+  typeof import("../../../src/services/hardwareWallet/adapters/bitbox").BitBoxAdapter;
 type BitBoxAdapterInstance = InstanceType<BitBoxAdapterConstructor>;
 
 const originalWindow = globalThis.window;
@@ -152,7 +152,7 @@ export const bitcoinLib = bitcoin;
 export function setupBitBoxAdapterTestHarness(): void {
   beforeAll(async () => {
     const module =
-      await import("../../../services/hardwareWallet/adapters/bitbox");
+      await import("../../../src/services/hardwareWallet/adapters/bitbox");
     BitBoxAdapter = module.BitBoxAdapter;
   });
 

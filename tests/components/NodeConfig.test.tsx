@@ -1,5 +1,5 @@
 /**
- * Tests for components/NodeConfig.tsx
+ * Tests for src/components/NodeConfig.tsx
  *
  * Tests the node configuration UI including external services,
  * network connections, and proxy/Tor settings.
@@ -7,13 +7,13 @@
 
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { NodeConfig } from '../../components/NodeConfig';
+import { NodeConfig } from '../../src/components/NodeConfig';
 import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import { DEFAULT_NODE_MEMPOOL_ESTIMATOR } from '@sanctuary/shared/constants/nodeConfig';
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -39,7 +39,7 @@ vi.mock('../../src/api/bitcoin', () => ({
 }));
 
 // Mock NetworkConnectionCard since it's complex
-vi.mock('../../components/NetworkConnectionCard', () => ({
+vi.mock('../../src/components/NetworkConnectionCard', () => ({
   NetworkConnectionCard: ({ network }: { network: string }) => (
     <div data-testid={`network-card-${network}`}>Network Card: {network}</div>
   ),

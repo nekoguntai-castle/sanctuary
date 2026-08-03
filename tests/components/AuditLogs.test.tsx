@@ -5,7 +5,7 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { AuditLogs } from '../../components/AuditLogs';
+import { AuditLogs } from '../../src/components/AuditLogs';
 import * as adminApi from '../../src/api/admin';
 
 // Mock API

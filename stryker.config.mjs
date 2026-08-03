@@ -18,8 +18,8 @@ export default {
 
   // Focus on critical files for mutation testing
   mutate: [
-    'hooks/**/*.ts',
-    'utils/**/*.ts',
+    'src/hooks/**/*.ts',
+    'src/utils/**/*.ts',
     'shared/**/*.ts',
     '!**/*.test.ts',
     '!**/*.d.ts',

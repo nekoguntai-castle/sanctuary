@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { SignerSelectionStep } from '../../../components/CreateWallet/SignerSelectionStep';
-import { WalletType } from '../../../types';
+import { SignerSelectionStep } from '../../../src/components/CreateWallet/SignerSelectionStep';
+import { WalletType } from '../../../src/types';
 
 const navigateMock = vi.fn();
 
@@ -9,7 +9,7 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => navigateMock,
 }));
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   getDeviceIcon: () => <span data-testid="device-icon" />,
 }));
 

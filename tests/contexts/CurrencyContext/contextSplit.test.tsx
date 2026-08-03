@@ -18,8 +18,8 @@ import {
   CurrencyProvider,
   useBtcPrice,
   useCurrencySettings,
-} from '../../../contexts/CurrencyContext';
-import { UserProvider } from '../../../contexts/UserContext';
+} from '../../../src/contexts/CurrencyContext';
+import { UserProvider } from '../../../src/contexts/UserContext';
 import * as priceApi from '../../../src/api/price';
 import { makeAggregatedPrice, setupDefaultMocks } from './helpers';
 

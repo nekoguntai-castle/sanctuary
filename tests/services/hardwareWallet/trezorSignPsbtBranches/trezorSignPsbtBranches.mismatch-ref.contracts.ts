@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import * as h from './trezorSignPsbtBranchesTestHarness';
-import { signPsbtWithTrezor } from '../../../../services/hardwareWallet/adapters/trezor/signPsbt';
+import { signPsbtWithTrezor } from '../../../../src/services/hardwareWallet/adapters/trezor/signPsbt';
 
 export function registerTrezorSignPsbtMismatchRefContracts() {
   it('handles mixed multisig matching: builds for matched inputs and warns on non-matching secondary derivations', async () => {

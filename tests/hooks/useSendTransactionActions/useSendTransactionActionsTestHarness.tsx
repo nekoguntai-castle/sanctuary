@@ -1,8 +1,8 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, vi } from 'vitest';
 
-import type { TransactionState } from '../../../contexts/send/types';
-import { useSendTransactionActions } from '../../../hooks/send/useSendTransactionActions';
+import type { TransactionState } from '../../../src/contexts/send/types';
+import { useSendTransactionActions } from '../../../src/hooks/send/useSendTransactionActions';
 import { ApiError } from '../../../src/api/client';
 
 const sendTransactionActionMocks = vi.hoisted(() => ({
@@ -41,7 +41,7 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => sendTransactionActionMocks.navigate,
 }));
 
-vi.mock('../../../contexts/CurrencyContext', () => ({
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
   useCurrency: () => ({
     format: (sats: number) => `${sats} sats`,
   }),
@@ -51,7 +51,7 @@ vi.mock('../../../contexts/CurrencyContext', () => ({
   }),
 }));
 
-vi.mock('../../../hooks/useErrorHandler', () => ({
+vi.mock('../../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({
     handleError: sendTransactionActionMocks.handleError,
     showSuccess: sendTransactionActionMocks.showSuccess,
@@ -59,13 +59,13 @@ vi.mock('../../../hooks/useErrorHandler', () => ({
   }),
 }));
 
-vi.mock('../../../hooks/useNotificationSound', () => ({
+vi.mock('../../../src/hooks/useNotificationSound', () => ({
   useNotificationSound: () => ({
     playEventSound: sendTransactionActionMocks.playEventSound,
   }),
 }));
 
-vi.mock('../../../hooks/useHardwareWallet', () => ({
+vi.mock('../../../src/hooks/useHardwareWallet', () => ({
   useHardwareWallet: () => sendTransactionActionMocks.hardwareWallet,
 }));
 
@@ -85,18 +85,18 @@ vi.mock('../../../src/api/payjoin', () => ({
   attemptPayjoin: sendTransactionActionMocks.attemptPayjoin,
 }));
 
-vi.mock('../../../providers/QueryProvider', () => ({
+vi.mock('../../../src/providers/QueryProvider', () => ({
   queryClient: {
     refetchQueries: sendTransactionActionMocks.refetchQueries,
     invalidateQueries: sendTransactionActionMocks.invalidateQueries,
   },
 }));
 
-vi.mock('../../../utils/download', () => ({
+vi.mock('../../../src/utils/download', () => ({
   downloadBinary: sendTransactionActionMocks.downloadBinary,
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

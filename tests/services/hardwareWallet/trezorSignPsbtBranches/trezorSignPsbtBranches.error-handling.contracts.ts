@@ -1,7 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { expect, it, vi } from 'vitest';
 import * as h from './trezorSignPsbtBranchesTestHarness';
-import { signPsbtWithTrezor } from '../../../../services/hardwareWallet/adapters/trezor/signPsbt';
+import { signPsbtWithTrezor } from '../../../../src/services/hardwareWallet/adapters/trezor/signPsbt';
 
 export function registerTrezorSignPsbtErrorHandlingContracts() {
   it('maps known device error messages to user-facing errors', async () => {

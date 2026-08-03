@@ -1,8 +1,8 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { ProxyTorSection } from '../../../components/NodeConfig/ProxyTorSection';
+import { ProxyTorSection } from '../../../src/components/NodeConfig/ProxyTorSection';
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),

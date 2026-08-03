@@ -2,7 +2,7 @@ import {
   Suspense,
   type ReactElement,
 } from "react";
-import { ErrorBoundary } from "../../components/ErrorBoundary";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import type {
   AppNavItem,
   AppNavSection,

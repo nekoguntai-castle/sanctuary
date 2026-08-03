@@ -36,7 +36,7 @@ vi.mock('../../src/api/admin', () => ({
 }));
 
 // Mock NotificationContext
-vi.mock('../../contexts/NotificationContext', () => ({
+vi.mock('../../src/contexts/NotificationContext', () => ({
   useNotification: () => ({
     showSuccess: vi.fn(),
     showError: vi.fn(),
@@ -46,7 +46,7 @@ vi.mock('../../contexts/NotificationContext', () => ({
 }));
 
 // Mock WebSocket context
-vi.mock('../../contexts/WalletWebSocketContext', () => ({
+vi.mock('../../src/contexts/WalletWebSocketContext', () => ({
   useWalletWebSocket: () => ({
     isConnected: false,
     subscribe: vi.fn(),
@@ -55,7 +55,7 @@ vi.mock('../../contexts/WalletWebSocketContext', () => ({
 }));
 
 // Mock the notification sound hook
-vi.mock('../../hooks/useNotificationSound', () => ({
+vi.mock('../../src/hooks/useNotificationSound', () => ({
   useNotificationSound: () => ({
     playEventSound: vi.fn(),
     testSound: vi.fn(),
@@ -206,7 +206,7 @@ describe('Dashboard renders without infinite loops', () => {
     });
 
     // If the Dashboard has infinite re-render issues, this will timeout or throw
-    const renderPromise = import('../../components/Dashboard').then(
+    const renderPromise = import('../../src/components/Dashboard').then(
       ({ Dashboard }) => {
         // Wrap in try-catch to handle render errors gracefully
         try {
@@ -239,7 +239,7 @@ describe('Dashboard renders without infinite loops', () => {
 
 describe('Memoization patterns for wallet data', () => {
   it('useMemo should receive array from hook', async () => {
-    const { useRecentTransactions } = await import('../../hooks/queries/useWallets');
+    const { useRecentTransactions } = await import('../../src/hooks/queries/useWallets');
 
     function TestWrapper({ children }: { children: React.ReactNode }) {
       const queryClient = new QueryClient({

@@ -1,9 +1,9 @@
 import { fireEvent,render,screen,waitFor,within } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { PendingTransfersPanel } from '../../components/PendingTransfersPanel';
+import { PendingTransfersPanel } from '../../src/components/PendingTransfersPanel';
 import { ApiError } from '../../src/api/client';
 import * as transfersApi from '../../src/api/transfers';
-import type { Transfer } from '../../types';
+import type { Transfer } from '../../src/types';
 
 vi.mock('../../src/api/transfers', () => ({
   getTransfers: vi.fn(),
@@ -13,7 +13,7 @@ vi.mock('../../src/api/transfers', () => ({
   confirmTransfer: vi.fn(),
 }));
 
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: () => ({
     user: {
       id: 'current-user',

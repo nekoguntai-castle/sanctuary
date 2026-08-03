@@ -1,7 +1,7 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { BlockVisualizer } from '../../components/BlockVisualizer';
+import { BlockVisualizer } from '../../src/components/BlockVisualizer';
 import type { PendingTransaction } from '../../src/types';
 
 vi.mock('lucide-react', () => ({

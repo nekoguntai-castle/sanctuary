@@ -11,18 +11,18 @@
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Intelligence } from '../../components/Intelligence/Intelligence';
+import { Intelligence } from '../../src/components/Intelligence/Intelligence';
 
 const mockUseWallets = vi.fn();
 const activeNetworkState = vi.hoisted(() => ({
   selectedNetwork: 'mainnet' as 'mainnet' | 'testnet3' | 'signet',
 }));
 
-vi.mock('../../hooks/queries/useWallets', () => ({
+vi.mock('../../src/hooks/queries/useWallets', () => ({
   useWallets: () => mockUseWallets(),
 }));
 
-vi.mock('../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: activeNetworkState.selectedNetwork,
     isMainnet: activeNetworkState.selectedNetwork === 'mainnet',
@@ -59,7 +59,7 @@ vi.mock('../../src/api/intelligence', () => ({
   getIntelligenceStatus: vi.fn().mockResolvedValue({ available: true, ollamaConfigured: true }),
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

@@ -1,9 +1,9 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { afterEach,describe,expect,it,vi } from 'vitest';
-import { MAX_FILE_SIZE,MAX_INPUT_SIZE } from '../../../components/ImportWallet/importHelpers';
+import { MAX_FILE_SIZE,MAX_INPUT_SIZE } from '../../../src/components/ImportWallet/importHelpers';
 import {
 DescriptorInput,
-} from '../../../components/ImportWallet/steps/DescriptorInput';
+} from '../../../src/components/ImportWallet/steps/DescriptorInput';
 
 type DescriptorInputProps = React.ComponentProps<typeof DescriptorInput>;
 

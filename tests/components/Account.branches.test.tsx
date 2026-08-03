@@ -1,7 +1,7 @@
 import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { Account } from '../../components/Account';
+import { Account } from '../../src/components/Account';
 import { ApiError } from '../../src/api/client';
 
 const mockState = vi.hoisted(() => ({
@@ -20,7 +20,7 @@ const mockState = vi.hoisted(() => ({
   copyToClipboard: vi.fn(),
 }));
 
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: () => ({
     user: mockState.user,
     updateUser: vi.fn(),
@@ -38,7 +38,7 @@ vi.mock('../../src/api/twoFactor', () => ({
   regenerateBackupCodes: (...args: unknown[]) => mockState.regenerateBackupCodes(...args),
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -47,11 +47,11 @@ vi.mock('../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../utils/clipboard', () => ({
+vi.mock('../../src/utils/clipboard', () => ({
   copyToClipboard: (...args: unknown[]) => mockState.copyToClipboard(...args),
 }));
 
-vi.mock('../../components/Account/PasswordForm', () => ({
+vi.mock('../../src/components/Account/PasswordForm', () => ({
   PasswordForm: ({ passwordError, passwordSuccess, onToggleShowCurrentPassword, onToggleShowNewPassword, onToggleShowConfirmPassword }: any) => (
     <div>
       <button type="button" onClick={onToggleShowCurrentPassword}>toggle-current-password</button>
@@ -63,7 +63,7 @@ vi.mock('../../components/Account/PasswordForm', () => ({
   ),
 }));
 
-vi.mock('../../components/Account/TwoFactorSection', () => ({
+vi.mock('../../src/components/Account/TwoFactorSection', () => ({
   TwoFactorSection: (props: any) => (
     <div>
       <button type="button" onClick={props.onStartSetup}>start-setup</button>
@@ -75,7 +75,7 @@ vi.mock('../../components/Account/TwoFactorSection', () => ({
   ),
 }));
 
-vi.mock('../../components/Account/SetupTwoFactorModal', () => ({
+vi.mock('../../src/components/Account/SetupTwoFactorModal', () => ({
   SetupTwoFactorModal: (props: any) => (
     <div data-testid="setup-modal">
       <button type="button" onClick={() => props.onSetupVerifyCodeChange('12345')}>set-short-code</button>
@@ -93,7 +93,7 @@ vi.mock('../../components/Account/SetupTwoFactorModal', () => ({
   ),
 }));
 
-vi.mock('../../components/Account/DisableTwoFactorModal', () => ({
+vi.mock('../../src/components/Account/DisableTwoFactorModal', () => ({
   DisableTwoFactorModal: (props: any) => (
     <div data-testid="disable-modal">
       <button type="button" onClick={() => props.onDisablePasswordChange('account-pass')}>set-disable-password</button>
@@ -105,7 +105,7 @@ vi.mock('../../components/Account/DisableTwoFactorModal', () => ({
   ),
 }));
 
-vi.mock('../../components/Account/BackupCodesModal', () => ({
+vi.mock('../../src/components/Account/BackupCodesModal', () => ({
   BackupCodesModal: (props: any) => (
     <div data-testid="backup-codes-modal">
       <button type="button" onClick={() => props.onDisablePasswordChange('account-pass')}>set-regen-password</button>

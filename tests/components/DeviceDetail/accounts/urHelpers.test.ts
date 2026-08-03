@@ -7,14 +7,14 @@ const loggerSpies = vi.hoisted(() => ({
 }));
 const parseDeviceJsonMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => loggerSpies,
 }));
 
-vi.mock('../../../../services/deviceParsers', () => ({
+vi.mock('../../../../src/services/deviceParsers', () => ({
   parseDeviceJson: parseDeviceJsonMock,
 }));
-vi.mock('../../../../services/deviceParsers/index', () => ({
+vi.mock('../../../../src/services/deviceParsers/index', () => ({
   parseDeviceJson: parseDeviceJsonMock,
 }));
 
@@ -71,7 +71,7 @@ import {
 extractFingerprintFromHdKey,
 extractFromUrResult,
 normalizeDerivationPath,
-} from '../../../../components/DeviceDetail/accounts/urHelpers';
+} from '../../../../src/components/DeviceDetail/accounts/urHelpers';
 
 const makePathComponent = (index: number, hardened: boolean) => ({
   getIndex: () => index,

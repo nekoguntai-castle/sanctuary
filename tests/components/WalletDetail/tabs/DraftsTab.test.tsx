@@ -1,13 +1,13 @@
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { DraftsTab } from '../../../../components/WalletDetail/tabs/DraftsTab';
-import { WalletType } from '../../../../types';
+import { DraftsTab } from '../../../../src/components/WalletDetail/tabs/DraftsTab';
+import { WalletType } from '../../../../src/types';
 
 const mockRefs = vi.hoisted(() => ({
   draftListProps: null as any,
 }));
 
-vi.mock('../../../../components/DraftList', () => ({
+vi.mock('../../../../src/components/DraftList', () => ({
   DraftList: (props: any) => {
     mockRefs.draftListProps = props;
     return <div data-testid="draft-list" />;

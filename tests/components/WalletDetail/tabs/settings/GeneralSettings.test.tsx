@@ -1,9 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { GeneralSettings } from '../../../../../components/WalletDetail/tabs/settings/GeneralSettings';
-import { WalletType } from '../../../../../types';
+import { GeneralSettings } from '../../../../../src/components/WalletDetail/tabs/settings/GeneralSettings';
+import { WalletType } from '../../../../../src/types';
 
-vi.mock('../../../../../components/LabelManager', () => ({
+vi.mock('../../../../../src/components/LabelManager', () => ({
   LabelManager: ({ walletId }: { walletId: string }) => (
     <div data-testid="label-manager">{walletId}</div>
   ),

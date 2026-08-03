@@ -1,5 +1,5 @@
 /**
- * Tests for contexts/send/types.ts
+ * Tests for src/contexts/send/types.ts
  *
  * Tests state serialization/deserialization and wizard step navigation helpers.
  */
@@ -16,7 +16,7 @@ WIZARD_STEPS,
 type SerializableTransactionState,
 type TransactionState,
 type WizardStep,
-} from '../../contexts/send/types';
+} from '../../src/contexts/send/types';
 
 describe('send/types', () => {
   // Helper to create a minimal transaction state

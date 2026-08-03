@@ -1,10 +1,10 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { RestorePanel } from '../../../components/BackupRestore/RestorePanel';
+import { RestorePanel } from '../../../src/components/BackupRestore/RestorePanel';
 import type { SanctuaryBackup } from '../../../src/api/admin';
 
-vi.mock('../../../components/ui/Button', () => ({
+vi.mock('../../../src/components/ui/Button', () => ({
   Button: ({ children, onClick, disabled, variant, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string }) => (
     <button onClick={onClick} disabled={disabled} data-variant={variant} {...props}>
       {children}

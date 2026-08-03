@@ -25,11 +25,11 @@ vi.mock('../../../src/api/client', () => {
   return { ApiError };
 });
 
-vi.mock('../../../contexts/UserContext', () => ({
+vi.mock('../../../src/contexts/UserContext', () => ({
   useUser: () => ({ user: { id: 'user-1' } }),
 }));
 
-import { useTransferActions } from '../../../components/PendingTransfersPanel/useTransferActions';
+import { useTransferActions } from '../../../src/components/PendingTransfersPanel/useTransferActions';
 import { ApiError } from '../../../src/api/client';
 
 const makeTransfer = (overrides = {}) => ({

@@ -1,12 +1,12 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { MempoolSection } from '../../../components/Dashboard/MempoolSection';
+import { MempoolSection } from '../../../src/components/Dashboard/MempoolSection';
 
 const mockRefresh = vi.fn();
 const mockConfigureNode = vi.fn();
 
-vi.mock('../../../components/BlockVisualizer', () => ({
+vi.mock('../../../src/components/BlockVisualizer', () => ({
   BlockVisualizer: ({ blocks }: { blocks: unknown[] }) => (
     <div data-testid="block-visualizer">blocks:{blocks.length}</div>
   ),
@@ -24,7 +24,7 @@ vi.mock('lucide-react', () => ({
 const mockPreferences = new Map<string, unknown>();
 
 // Stateful so collapse/expand actually re-renders, matching the real hook.
-vi.mock('../../../hooks/useUserPreference', async () => {
+vi.mock('../../../src/hooks/useUserPreference', async () => {
   const { useState } = await import('react');
   return {
     useUserPreference: (key: string, defaultValue: unknown) => {

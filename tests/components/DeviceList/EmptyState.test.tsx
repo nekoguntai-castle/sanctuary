@@ -2,7 +2,7 @@ import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { EmptyState } from '../../../components/DeviceList/EmptyState';
+import { EmptyState } from '../../../src/components/DeviceList/EmptyState';
 
 const mockNavigate = vi.fn();
 
@@ -15,7 +15,7 @@ vi.mock('lucide-react', () => ({
   Plus: () => <span data-testid="plus-icon" />,
 }));
 
-vi.mock('../../../components/ui/Button', () => ({
+vi.mock('../../../src/components/ui/Button', () => ({
   Button: ({ children, onClick, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button onClick={onClick} {...props}>{children}</button>
   ),

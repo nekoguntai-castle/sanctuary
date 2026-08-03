@@ -1,7 +1,7 @@
 import { beforeEach, vi } from 'vitest';
 
-import { WalletDetail } from '../../../components/WalletDetail';
-import { WalletType } from '../../../types';
+import { WalletDetail } from '../../../src/components/WalletDetail';
+import { WalletType } from '../../../src/types';
 
 const walletDetailMocks = vi.hoisted(() => ({
   routeId: 'wallet-1' as string | undefined,
@@ -50,7 +50,7 @@ const walletDetailMocks = vi.hoisted(() => ({
 export const mocks = walletDetailMocks;
 export const WalletDetailComponent = WalletDetail;
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -69,20 +69,20 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../../../hooks/useErrorHandler', () => ({
+vi.mock('../../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({
     handleError: walletDetailMocks.handleError,
     showSuccess: vi.fn(),
   }),
 }));
 
-vi.mock('../../../contexts/UserContext', () => ({
+vi.mock('../../../src/contexts/UserContext', () => ({
   useUser: () => ({
     user: walletDetailMocks.user,
   }),
 }));
 
-vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: 'mainnet',
     isMainnet: true,
@@ -90,14 +90,14 @@ vi.mock('../../../contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../../contexts/AppNotificationContext', () => ({
+vi.mock('../../../src/contexts/AppNotificationContext', () => ({
   useAppNotifications: () => ({
     addNotification: walletDetailMocks.addAppNotification,
     removeNotificationsByType: walletDetailMocks.removeNotificationsByType,
   }),
 }));
 
-vi.mock('../../../hooks/queries/useBitcoin', () => ({
+vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
   useBitcoinStatus: () => ({
     data: {
       confirmationThreshold: 2,
@@ -107,13 +107,13 @@ vi.mock('../../../hooks/queries/useBitcoin', () => ({
   }),
 }));
 
-vi.mock('../../../hooks/useAIStatus', () => ({
+vi.mock('../../../src/hooks/useAIStatus', () => ({
   useAIStatus: () => ({
     enabled: true,
   }),
 }));
 
-vi.mock('../../../hooks/queries/useWalletLabels', () => ({
+vi.mock('../../../src/hooks/queries/useWalletLabels', () => ({
   useWalletLabels: () => ({
     data: [
       { id: 'label-1', name: 'Known Label', walletId: 'wallet-1', color: '#000', createdAt: '', updatedAt: '' },
@@ -123,37 +123,37 @@ vi.mock('../../../hooks/queries/useWalletLabels', () => ({
   }),
 }));
 
-vi.mock('../../../hooks/websocket', () => ({
+vi.mock('../../../src/hooks/websocket', () => ({
   useWalletLogs: () => walletDetailMocks.walletLogsState,
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletData', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletData', () => ({
   useWalletData: () => walletDetailMocks.walletDataState,
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletSync', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletSync', () => ({
   useWalletSync: (args: any) => {
     walletDetailMocks.walletSyncHookArgs = args;
     return walletDetailMocks.walletSyncState;
   },
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletSharing', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletSharing', () => ({
   useWalletSharing: (args: any) => {
     walletDetailMocks.walletSharingHookArgs = args;
     return walletDetailMocks.walletSharingState;
   },
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useAITransactionFilter', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useAITransactionFilter', () => ({
   useAITransactionFilter: () => walletDetailMocks.aiFilterState,
 }));
 
-vi.mock('../../../components/WalletDetail/hooks/useWalletWebSocket', () => ({
+vi.mock('../../../src/components/WalletDetail/hooks/useWalletWebSocket', () => ({
   useWalletWebSocket: (...args: any[]) => walletDetailMocks.walletWebSocketState(...args),
 }));
 
-vi.mock('../../../components/WalletDetail/WalletHeader', () => ({
+vi.mock('../../../src/components/WalletDetail/WalletHeader', () => ({
   WalletHeader: (props: any) => (
     <div data-testid="wallet-header">
       <span data-testid="wallet-agent-links">{props.agentLinks?.map((link: any) => `${link.role}:${link.linkedWalletName}`).join('|') || 'none'}</span>
@@ -166,7 +166,7 @@ vi.mock('../../../components/WalletDetail/WalletHeader', () => ({
   ),
 }));
 
-vi.mock('../../../components/WalletDetail/LogTab', () => ({
+vi.mock('../../../src/components/WalletDetail/LogTab', () => ({
   LogTab: (props: any) => (
     <div data-testid="log-tab">
       <button onClick={props.onTogglePause}>log-pause</button>
@@ -177,7 +177,7 @@ vi.mock('../../../components/WalletDetail/LogTab', () => ({
   ),
 }));
 
-vi.mock('../../../components/WalletDetail/tabs', () => ({
+vi.mock('../../../src/components/WalletDetail/tabs', () => ({
   TransactionsTab: (props: any) => (
     <div data-testid="transactions-tab">
       <span>{props.highlightTxId || 'no-highlight'}</span>
@@ -251,7 +251,7 @@ vi.mock('../../../components/WalletDetail/tabs', () => ({
   ),
 }));
 
-vi.mock('../../../components/WalletDetail/modals', () => ({
+vi.mock('../../../src/components/WalletDetail/modals', () => ({
   DeleteModal: (props: any) => (
     <div data-testid="delete-modal">
       <button onClick={props.onConfirm}>delete-confirm</button>
@@ -286,7 +286,7 @@ vi.mock('../../../components/WalletDetail/modals', () => ({
     ) : null,
 }));
 
-vi.mock('../../../components/TransactionExportModal', () => ({
+vi.mock('../../../src/components/TransactionExportModal', () => ({
   TransactionExportModal: (props: any) => (
     <div data-testid="tx-export-modal">
       <button onClick={props.onClose}>tx-export-close</button>
@@ -294,7 +294,7 @@ vi.mock('../../../components/TransactionExportModal', () => ({
   ),
 }));
 
-vi.mock('../../../components/TransferOwnershipModal', () => ({
+vi.mock('../../../src/components/TransferOwnershipModal', () => ({
   TransferOwnershipModal: (props: any) => (
     <div data-testid="transfer-modal">
       <button onClick={props.onTransferInitiated}>transfer-confirm</button>

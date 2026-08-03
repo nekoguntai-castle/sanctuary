@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
-import { ConsoleDrawer } from "../../components/ConsoleDrawer";
+import { ConsoleDrawer } from "../../src/components/ConsoleDrawer";
 import {
   completedTurn,
   consoleApi,

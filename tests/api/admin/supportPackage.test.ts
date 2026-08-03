@@ -18,7 +18,7 @@ vi.mock('../../../src/api/client', () => ({
     post: mocks.post,
   },
 }));
-vi.mock('../../../utils/download', () => ({
+vi.mock('../../../src/utils/download', () => ({
   downloadBlob: mocks.downloadBlob,
 }));
 

@@ -34,7 +34,6 @@ RUN npm --workspace shared run build
 # Build gateway.
 COPY gateway/tsconfig.json ./gateway/
 COPY gateway/src ./gateway/src
-COPY global.d.ts ./
 
 WORKDIR /repo/gateway
 RUN npm run build

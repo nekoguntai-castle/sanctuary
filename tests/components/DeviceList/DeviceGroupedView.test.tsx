@@ -1,8 +1,8 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { DeviceGroupedView } from '../../../components/DeviceList/DeviceGroupedView';
-import type { Device,HardwareDeviceModel } from '../../../types';
+import { DeviceGroupedView } from '../../../src/components/DeviceList/DeviceGroupedView';
+import type { Device,HardwareDeviceModel } from '../../../src/types';
 
 const mockNavigate = vi.fn();
 
@@ -36,7 +36,7 @@ const {
   getDeviceIconMock: vi.fn(() => <span data-testid="device-type-icon" />),
   getWalletIconMock: vi.fn(() => <span data-testid="wallet-type-icon" />),
 }));
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   getDeviceIcon: getDeviceIconMock,
   getWalletIcon: getWalletIconMock,
 }));

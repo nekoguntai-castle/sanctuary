@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { SidebarNetworkSelector } from '../../../components/Layout/SidebarContent/SidebarNetworkSelector';
+import { SidebarNetworkSelector } from '../../../src/components/Layout/SidebarContent/SidebarNetworkSelector';
 
 describe('SidebarNetworkSelector', () => {
   const availability = { mainnet: true, testnet3: true, testnet4: true, signet: true };

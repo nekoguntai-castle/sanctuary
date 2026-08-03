@@ -1,7 +1,7 @@
 import { act,fireEvent,render,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { NetworkSyncActions } from '../../components/NetworkSyncActions';
-import { TabNetwork } from '../../components/NetworkTabs';
+import { NetworkSyncActions } from '../../src/components/NetworkSyncActions';
+import { TabNetwork } from '../../src/components/NetworkTabs';
 
 // Mock the sync API
 vi.mock('../../src/api/sync', () => ({

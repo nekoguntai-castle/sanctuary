@@ -2,7 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { appRedirectRoutes, appRouteDefinitions, renderAppRouteElement } from '../appRoutes';
 import type { AppRedirectRoute, AppRouteDefinition } from '../appRoutes';
 import { getRequiredCapabilityGateState } from '../capabilities';
-import { useAppCapabilityStates } from '../../../hooks/useAppCapabilities';
+import { useAppCapabilityStates } from '../../hooks/useAppCapabilities';
 
 export function AppRouteSwitch() {
   return (

@@ -1423,8 +1423,8 @@ DOCKER_BUILD_WORKFLOW="$REPO_ROOT/.github/workflows/docker-build.yml"
 
 for docker_input in \
   "'public/**'" \
-  "'types/**'" \
-  "'global.d.ts'" \
+  "'src/**'" \
+  "'shared/**'" \
   "'metadata.json'" \
   "'gateway/package.json'"; do
   assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
@@ -1432,6 +1432,30 @@ for docker_input in \
     "$docker_input" \
     2
 done
+
+for retired_frontend_input in \
+  "'App.tsx'" \
+  "'index.tsx'" \
+  "'global.d.ts'" \
+  "'components/**'" \
+  "'contexts/**'" \
+  "'hooks/**'" \
+  "'providers/**'" \
+  "'services/**'" \
+  "'themes/**'" \
+  "'types/**'" \
+  "'utils/**'"; do
+  assert_not_contains "$DOCKER_BUILD_WORKFLOW" \
+    "docker-build omits retired frontend input $retired_frontend_input" \
+    "$retired_frontend_input"
+done
+
+assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
+  "verify-vectors canonical frontend triggers" \
+  "'src/services/hardwareWallet/**'" \
+  "'src/hooks/send/useQrSigning.ts'" \
+  "'src/hooks/send/useUsbSigning.ts'" \
+  "'src/hooks/send/useSendTransactionActions.ts'"
 
 assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build image-scope diagnostics" \
@@ -1521,6 +1545,13 @@ assert_named_job_step_config_rejected \
 
 # --- quality workflow diagnostic coverage -----------------------------------
 QUALITY_WORKFLOW="$REPO_ROOT/.github/workflows/quality.yml"
+
+assert_contains_in_order "$QUALITY_WORKFLOW" \
+  "quality frontend Compose contract" \
+  "Run CI classifier tests" \
+  "node tests/ci/check-root-layout.test.mjs" \
+  "node tests/ci/docker-compose-test-contract.test.mjs" \
+  "node tests/ci/provider-context-node.test.mjs"
 
 assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality workflow sink env" \

@@ -56,8 +56,8 @@ main() {
 
   # Add a frontend + backend file so the planner has something interesting
   # to classify.
-  mkdir -p "$repo/components" "$repo/server/src/services"
-  printf 'export const X = 1\n' > "$repo/components/X.tsx"
+  mkdir -p "$repo/src/components" "$repo/server/src/services"
+  printf 'export const X = 1\n' > "$repo/src/components/X.tsx"
   printf 'export const helper = true\n' > "$repo/server/src/services/helper.ts"
   git -C "$repo" add -A
   git -C "$repo" commit -qm 'mixed change'
@@ -149,8 +149,8 @@ main() {
     if (!p.lanes.frontend_unit.run) { console.error("expected frontend_unit.run=true"); process.exit(1); }
     if (!p.lanes.backend_unit.run)  { console.error("expected backend_unit.run=true"); process.exit(1); }
     if (p.lanes.gateway_unit.run)   { console.error("expected gateway_unit.run=false"); process.exit(1); }
-    if (!p.lanes.frontend_unit.files.includes("components/X.tsx")) {
-      console.error("expected components/X.tsx in frontend_unit files");
+    if (!p.lanes.frontend_unit.files.includes("src/components/X.tsx")) {
+      console.error("expected src/components/X.tsx in frontend_unit files");
       process.exit(1);
     }
     if (!p.lanes.backend_unit.files.includes("server/src/services/helper.ts")) {

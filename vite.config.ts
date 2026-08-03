@@ -49,7 +49,7 @@ export default defineConfig(() => {
       ],
       resolve: {
         alias: {
-          '@': path.resolve(__dirname, '.'),
+          '@': path.resolve(__dirname, './src'),
           // Frontend prod build: alias the workspace package at SOURCE so
           // tree-shaking + sourcemaps stay aligned with shared/**/*.ts.
           '@sanctuary/shared': path.resolve(__dirname, './shared'),
@@ -64,7 +64,7 @@ export default defineConfig(() => {
         // 100 % `bitbox02-api`. Per `npm run build:analyze` (2026-06) it is NOT
         // in the initial preload set — it loads only when a user actually
         // connects a BitBox02 device, via the dynamic import in
-        // services/hardwareWallet/runtime.ts. ledger-*.js (~920 KB) and
+        // src/services/hardwareWallet/runtime.ts. ledger-*.js (~920 KB) and
         // trezor-*.js (~530 KB) are similarly lazy. The ceiling stays above
         // the lib chunk so the warning fires only on a real regression — i.e.
         // something *new* getting pulled into a 5+ MB chunk, or one of the
@@ -81,7 +81,7 @@ export default defineConfig(() => {
             // - @ngraveio/bc-ur + @keystonehq/*: circular dependencies
             // - Hardware wallet SDKs (bitbox02-api/@ledgerhq/@trezor): WASM /
             //   USB transport / complex init; relies on the dynamic-import
-            //   loaders in services/hardwareWallet/runtime.ts.
+            //   loaders in src/services/hardwareWallet/runtime.ts.
             manualChunks(id) {
               if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/') || id.includes('/node_modules/react-router-dom/')) {
                 return 'vendor-react';

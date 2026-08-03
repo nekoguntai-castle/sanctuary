@@ -79,7 +79,7 @@ vi.mock("bitcoinjs-lib", () => ({
   },
 }));
 
-vi.mock("../../utils/logger", () => ({
+vi.mock("../../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -97,7 +97,7 @@ vi.mock("@sanctuary/shared/utils/bitcoin", async (importOriginal) => {
   };
 });
 
-import { LedgerAdapter } from "../../services/hardwareWallet/adapters/ledger";
+import { LedgerAdapter } from "../../src/services/hardwareWallet/adapters/ledger";
 
 const originalWindow = globalThis.window;
 const originalNavigator = globalThis.navigator;

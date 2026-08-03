@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { BalanceCell, PendingCell } from '../../../components/cells/WalletCells/PendingCells';
+import { BalanceCell, PendingCell } from '../../../src/components/cells/WalletCells/PendingCells';
 
 describe('PendingCells', () => {
   it('renders a dash when no pending data exists', () => {

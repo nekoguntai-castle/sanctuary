@@ -1,6 +1,6 @@
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it } from 'vitest';
-import { HealthHistoryBlocks } from '../../../components/NetworkConnectionCard/HealthHistoryBlocks';
+import { HealthHistoryBlocks } from '../../../src/components/NetworkConnectionCard/HealthHistoryBlocks';
 import type { HealthCheckResult } from '../../../src/api/bitcoin';
 
 const makeCheck = (overrides: Partial<HealthCheckResult> = {}): HealthCheckResult => ({

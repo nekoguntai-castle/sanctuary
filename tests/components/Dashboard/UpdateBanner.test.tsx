@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { UpdateBanner } from '../../../components/Dashboard/UpdateBanner';
+import { UpdateBanner } from '../../../src/components/Dashboard/UpdateBanner';
 
 vi.mock('lucide-react', () => ({
   Download: () => <span data-testid="download-icon" />,

@@ -1,5 +1,5 @@
-import type { User } from '../../../types';
-import { isAnimatedBackgroundPattern } from '../../../themes/patterns';
+import type { User } from '../../types';
+import { isAnimatedBackgroundPattern } from '../../themes/patterns';
 import type { AppPreferenceState } from './types';
 
 export function getAppPreferenceState(user: User | null): AppPreferenceState {

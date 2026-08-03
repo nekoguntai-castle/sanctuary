@@ -13,7 +13,7 @@ vi.mock('cbor-x', () => ({
   decode: vi.fn(),
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock('../../utils/logger', () => ({
   }),
 }));
 
-import { JadeAdapter } from '../../services/hardwareWallet/adapters/jade';
+import { JadeAdapter } from '../../src/services/hardwareWallet/adapters/jade';
 
 const originalWindow = globalThis.window;
 const originalNavigator = globalThis.navigator;

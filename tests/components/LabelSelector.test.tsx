@@ -1,5 +1,5 @@
 /**
- * Tests for components/LabelSelector.tsx
+ * Tests for src/components/LabelSelector.tsx
  *
  * Tests the label selector component including dropdown mode, inline mode,
  * label CRUD operations, and the LabelBadges component.
@@ -8,10 +8,10 @@
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { LabelBadges,LabelSelector } from '../../components/LabelSelector';
+import { LabelBadges,LabelSelector } from '../../src/components/LabelSelector';
 import type { Label } from '../../src/api/labels';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -27,7 +27,7 @@ const mockCreateMutateAsync = vi.fn();
 let mockUseWalletLabelsReturn: { data: Label[] | undefined; isLoading: boolean; error: unknown };
 let mockCreateMutationReturn: { mutateAsync: typeof mockCreateMutateAsync; isPending: boolean; error: unknown; reset: () => void };
 
-vi.mock('../../hooks/queries/useWalletLabels', () => ({
+vi.mock('../../src/hooks/queries/useWalletLabels', () => ({
   useWalletLabels: () => mockUseWalletLabelsReturn,
   useCreateWalletLabel: () => mockCreateMutationReturn,
 }));

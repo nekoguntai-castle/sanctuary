@@ -6,7 +6,7 @@ import {
   getPreferencePathValue,
   getPreferencePatchKeys,
   mergePreferencePatch,
-} from '../../utils/preferencePaths';
+} from '../../src/utils/preferencePaths';
 
 describe('preference path utilities', () => {
   it('reads nested preference values by dot path', () => {

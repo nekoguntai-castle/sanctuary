@@ -1,27 +1,27 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { AppProviders } from '../../providers/AppProviders';
+import { AppProviders } from '../../src/providers/AppProviders';
 
-vi.mock('../../providers/QueryProvider', () => ({
+vi.mock('../../src/providers/QueryProvider', () => ({
   QueryProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="query-provider">{children}</div>,
 }));
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   UserProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="user-provider">{children}</div>,
 }));
-vi.mock('../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../src/contexts/ActiveNetworkContext', () => ({
   ActiveNetworkProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="active-network-provider">{children}</div>,
 }));
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock('../../src/contexts/CurrencyContext', () => ({
   CurrencyProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="currency-provider">{children}</div>,
 }));
-vi.mock('../../contexts/NotificationContext', () => ({
+vi.mock('../../src/contexts/NotificationContext', () => ({
   NotificationProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="notification-provider">{children}</div>,
 }));
-vi.mock('../../contexts/AppNotificationContext', () => ({
+vi.mock('../../src/contexts/AppNotificationContext', () => ({
   AppNotificationProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="app-notification-provider">{children}</div>,
 }));
-vi.mock('../../contexts/SidebarContext', () => ({
+vi.mock('../../src/contexts/SidebarContext', () => ({
   SidebarProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="sidebar-provider">{children}</div>,
 }));
 

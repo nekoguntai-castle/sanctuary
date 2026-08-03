@@ -8,13 +8,13 @@ import {
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useTransactionLabelMutations } from "../../../components/TransactionList/hooks/useTransactionLabelMutations";
-import { useTransactionList } from "../../../components/TransactionList/hooks/useTransactionList";
-import { useTransactionSelection } from "../../../components/TransactionList/hooks/useTransactionSelection";
+import { useTransactionLabelMutations } from "../../../src/components/TransactionList/hooks/useTransactionLabelMutations";
+import { useTransactionList } from "../../../src/components/TransactionList/hooks/useTransactionList";
+import { useTransactionSelection } from "../../../src/components/TransactionList/hooks/useTransactionSelection";
 import * as bitcoinApi from "../../../src/api/bitcoin";
 import * as labelsApi from "../../../src/api/labels";
 import * as transactionsApi from "../../../src/api/transactions";
-import type { Label, Transaction } from "../../../types";
+import type { Label, Transaction } from "../../../src/types";
 
 vi.mock("../../../src/api/bitcoin", () => ({
   getStatus: vi.fn(),

@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AgentWalletDashboard } from '../../components/AgentWalletDashboard';
+import { AgentWalletDashboard } from '../../src/components/AgentWalletDashboard';
 import * as adminApi from '../../src/api/admin';
 
 vi.mock('../../src/api/admin', () => ({

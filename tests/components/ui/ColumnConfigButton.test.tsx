@@ -2,7 +2,7 @@ import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { ColumnConfigButton } from '../../../components/ui/ColumnConfigButton';
+import { ColumnConfigButton } from '../../../src/components/ui/ColumnConfigButton';
 
 vi.mock('lucide-react', () => ({
   Columns: () => <span data-testid="columns-icon" />,
@@ -67,7 +67,7 @@ vi.mock('@dnd-kit/sortable', () => ({
   verticalListSortingStrategy: {},
 }));
 
-vi.mock('../../../components/ui/DraggableColumnItem', () => ({
+vi.mock('../../../src/components/ui/DraggableColumnItem', () => ({
   DraggableColumnItem: ({ column, isVisible, onToggle }: any) => (
     <button type="button" onClick={() => onToggle(column.id, !isVisible)}>
       {column.label}:{isVisible ? 'on' : 'off'}

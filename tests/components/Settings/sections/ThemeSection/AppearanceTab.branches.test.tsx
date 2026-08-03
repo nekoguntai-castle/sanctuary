@@ -1,18 +1,18 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { AppearanceTab } from '../../../../../components/Settings/sections/ThemeSection/AppearanceTab';
+import { AppearanceTab } from '../../../../../src/components/Settings/sections/ThemeSection/AppearanceTab';
 
 const mockUpdatePreferences = vi.fn();
 let mockUser: any = null;
 
-vi.mock('../../../../../contexts/UserContext', () => ({
+vi.mock('../../../../../src/contexts/UserContext', () => ({
   useUser: () => ({
     user: mockUser,
     updatePreferences: mockUpdatePreferences,
   }),
 }));
 
-vi.mock('../../../../../themes', () => ({
+vi.mock('../../../../../src/themes', () => ({
   Season: ['spring', 'summer', 'fall', 'winter'],
   themeRegistry: {
     getAllMetadata: () => [
@@ -26,7 +26,7 @@ vi.mock('../../../../../themes', () => ({
   },
 }));
 
-vi.mock('../../../../../components/Settings/sections/ThemeSection/panels/ColorThemePanel', () => ({
+vi.mock('../../../../../src/components/Settings/sections/ThemeSection/panels/ColorThemePanel', () => ({
   ColorThemePanel: ({ currentTheme, onSelect }: any) => (
     <div>
       <span data-testid="current-theme">{currentTheme}</span>
@@ -37,7 +37,7 @@ vi.mock('../../../../../components/Settings/sections/ThemeSection/panels/ColorTh
   ),
 }));
 
-vi.mock('../../../../../components/Settings/sections/ThemeSection/panels/BackgroundsPanel', () => ({
+vi.mock('../../../../../src/components/Settings/sections/ThemeSection/panels/BackgroundsPanel', () => ({
   BackgroundsPanel: ({
     currentBg,
     staticBackgrounds,
@@ -64,7 +64,7 @@ vi.mock('../../../../../components/Settings/sections/ThemeSection/panels/Backgro
   ),
 }));
 
-vi.mock('../../../../../components/Settings/sections/ThemeSection/panels/VisualSettingsPanel', () => ({
+vi.mock('../../../../../src/components/Settings/sections/ThemeSection/panels/VisualSettingsPanel', () => ({
   VisualSettingsPanel: ({
     isDark,
     flyoutOpacity,

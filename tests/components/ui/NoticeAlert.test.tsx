@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { NoticeAlert } from '../../../components/ui/NoticeAlert';
+import { NoticeAlert } from '../../../src/components/ui/NoticeAlert';
 
 describe('NoticeAlert', () => {
   it('renders nothing when message is missing or empty', () => {

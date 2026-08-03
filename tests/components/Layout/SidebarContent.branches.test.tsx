@@ -2,7 +2,7 @@ import { fireEvent,render,screen } from '@testing-library/react';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { SidebarContent } from '../../../components/Layout/SidebarContent';
+import { SidebarContent } from '../../../src/components/Layout/SidebarContent';
 import { hasRequiredCapabilities } from '../../../src/app/capabilities';
 
 const { defaultHasRequiredCapabilities } = vi.hoisted(() => ({
@@ -18,7 +18,7 @@ const { defaultHasRequiredCapabilities } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../../components/Layout/NavItem', () => ({
+vi.mock('../../../src/components/Layout/NavItem', () => ({
   NavItem: ({ label, onToggle }: any) => (
     <button type="button" onClick={onToggle}>
       {label}
@@ -26,7 +26,7 @@ vi.mock('../../../components/Layout/NavItem', () => ({
   ),
 }));
 
-vi.mock('../../../components/Layout/SubNavItem', () => ({
+vi.mock('../../../src/components/Layout/SubNavItem', () => ({
   SubNavItem: ({ label, to, activeColorClass, badgeCount, icon }: any) => (
     <div
       data-testid="subnav-item"
@@ -41,15 +41,15 @@ vi.mock('../../../components/Layout/SubNavItem', () => ({
   ),
 }));
 
-vi.mock('../../../components/NotificationPanel', () => ({
+vi.mock('../../../src/components/NotificationPanel', () => ({
   NotificationBell: () => <span data-testid="notification-bell" />,
 }));
 
-vi.mock('../../../components/Layout/BlockHeightIndicator', () => ({
+vi.mock('../../../src/components/Layout/BlockHeightIndicator', () => ({
   BlockHeightIndicator: () => <span data-testid="block-height-indicator" />,
 }));
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   SanctuaryLogo: ({ className }: any) => <span data-testid="logo" className={className} />,
   getWalletIcon: (_type: any, className: string) => <span data-testid="wallet-icon" data-class={className} />,
   getDeviceIcon: (_type: any, className: string) => <span data-testid="device-icon" data-class={className} />,

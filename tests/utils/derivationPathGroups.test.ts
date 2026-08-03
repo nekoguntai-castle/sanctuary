@@ -7,7 +7,7 @@ import {
   isTestnetSignetDerivationPath,
   networkGroupMatchesNetwork,
   splitTestnetSignetAccounts,
-} from "../../utils/derivationPathGroups";
+} from "../../src/utils/derivationPathGroups";
 
 describe("derivationPathGroups", () => {
   it("detects coin-type 1 paths as testnet/signet paths", () => {

@@ -16,7 +16,7 @@ vi.mock('../../src/api/ai', () => ({
   listModels: () => mockListModels(),
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -25,11 +25,11 @@ vi.mock('../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../hooks/useAIStatus', () => ({
+vi.mock('../../src/hooks/useAIStatus', () => ({
   invalidateAIStatusCache: vi.fn(),
 }));
 
-vi.mock('../../components/AISettings/hooks/useAIConnectionStatus', () => ({
+vi.mock('../../src/components/AISettings/hooks/useAIConnectionStatus', () => ({
   useAIConnectionStatus: () => ({
     aiStatus: 'idle',
     aiStatusMessage: '',
@@ -37,7 +37,7 @@ vi.mock('../../components/AISettings/hooks/useAIConnectionStatus', () => ({
   }),
 }));
 
-vi.mock('../../components/AISettings/tabs/StatusTab', () => ({
+vi.mock('../../src/components/AISettings/tabs/StatusTab', () => ({
   StatusTab: (props: any) => (
     <div data-testid="mock-status-tab">
       <button onClick={props.onToggleAI}>toggle-ai</button>
@@ -48,7 +48,7 @@ vi.mock('../../components/AISettings/tabs/StatusTab', () => ({
   ),
 }));
 
-vi.mock('../../components/AISettings/tabs/SettingsTab', () => ({
+vi.mock('../../src/components/AISettings/tabs/SettingsTab', () => ({
   SettingsTab: (props: any) => (
     <div data-testid="mock-settings-tab">
       <button onClick={() => props.onSelectModel('manual-model:1b')}>select-model</button>
@@ -58,7 +58,7 @@ vi.mock('../../components/AISettings/tabs/SettingsTab', () => ({
   ),
 }));
 
-vi.mock('../../components/AISettings/tabs/ModelsTab', () => ({
+vi.mock('../../src/components/AISettings/tabs/ModelsTab', () => ({
   ModelsTab: (props: any) => (
     <div data-testid="mock-models-tab">
       <button onClick={() => props.onModelChange('typed-model')}>type-model</button>
@@ -70,7 +70,7 @@ vi.mock('../../components/AISettings/tabs/ModelsTab', () => ({
   ),
 }));
 
-vi.mock('../../components/AISettings/components/EnableModal', () => ({
+vi.mock('../../src/components/AISettings/components/EnableModal', () => ({
   EnableModal: (props: any) =>
     props.showEnableModal ? (
       <div data-testid="enable-modal">
@@ -80,7 +80,7 @@ vi.mock('../../components/AISettings/components/EnableModal', () => ({
     ) : null,
 }));
 
-import AISettings from '../../components/AISettings';
+import AISettings from '../../src/components/AISettings';
 
 function setDefaultMocks() {
   mockGetSystemSettings.mockResolvedValue({

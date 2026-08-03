@@ -1,11 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ExternalServicesSection } from "../../../components/NodeConfig/ExternalServicesSection";
-import type { NodeConfig } from "../../../types";
+import { ExternalServicesSection } from "../../../src/components/NodeConfig/ExternalServicesSection";
+import type { NodeConfig } from "../../../src/types";
 import { DEFAULT_NODE_MEMPOOL_ESTIMATOR } from "@sanctuary/shared/constants/nodeConfig";
 
-vi.mock("../../../components/PriceProviderDiagnostics", () => ({
+vi.mock("../../../src/components/PriceProviderDiagnostics", () => ({
   PriceProviderDiagnostics: () => (
     <div data-testid="price-provider-diagnostics">
       Price provider diagnostics

@@ -1,5 +1,5 @@
 /**
- * Tests for contexts/send/stepValidation.ts
+ * Tests for src/contexts/send/stepValidation.ts
  *
  * Tests validation rules for each wizard step.
  */
@@ -14,8 +14,8 @@ stepValidators,
 validateOutputsStep,
 validateReviewStep,
 validateTypeStep,
-} from '../../contexts/send/stepValidation';
-import type { TransactionState,WizardStep } from '../../contexts/send/types';
+} from '../../src/contexts/send/stepValidation';
+import type { TransactionState,WizardStep } from '../../src/contexts/send/types';
 
 describe('stepValidation', () => {
   // Helper to create a minimal transaction state

@@ -17,7 +17,7 @@ import {
 } from './useWebSocketTestHarness';
 import {
   useWebSocketQueryInvalidation,
-} from '../../../hooks/websocket';
+} from '../../../src/hooks/websocket';
 
 function resetUseWebSocketQueryInvalidationHarness(): void {
   vi.clearAllMocks();

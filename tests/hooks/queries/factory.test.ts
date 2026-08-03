@@ -1,5 +1,5 @@
 /**
- * Tests for hooks/queries/factory.ts
+ * Tests for src/hooks/queries/factory.ts
  *
  * Tests the generic React Query hook factories: createQueryKeys, createListQuery,
  * createDetailQuery, createMutation, and createInvalidateAll.
@@ -15,7 +15,7 @@ import {
   createDetailQuery,
   createMutation,
   createInvalidateAll,
-} from '../../../hooks/queries/factory';
+} from '../../../src/hooks/queries/factory';
 
 function createWrapper() {
   const queryClient = new QueryClient({

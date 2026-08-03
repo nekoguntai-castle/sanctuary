@@ -20,7 +20,7 @@
  * alone is sufficient for correctness", for the correctness proof.
  */
 
-import { createLogger } from '../../utils/logger';
+import { createLogger } from '../utils/logger';
 import { ACCESS_EXPIRES_AT_HEADER, attachCsrfHeader } from './authPolicy';
 import { getApiBaseUrl, joinApiBaseUrl } from './baseUrl';
 

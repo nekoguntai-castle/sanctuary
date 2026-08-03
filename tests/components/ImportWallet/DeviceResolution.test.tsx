@@ -2,10 +2,10 @@ import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { DeviceResolutionStep } from '../../../components/ImportWallet/DeviceResolution';
+import { DeviceResolutionStep } from '../../../src/components/ImportWallet/DeviceResolution';
 import type { ImportValidationResult } from '../../../src/api/wallets';
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   SingleSigIcon: (props: React.HTMLAttributes<HTMLSpanElement>) => (
     <span data-testid="single-sig-icon" {...props} />
   ),

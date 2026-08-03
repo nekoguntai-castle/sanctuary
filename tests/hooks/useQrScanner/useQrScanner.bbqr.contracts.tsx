@@ -5,8 +5,8 @@ import {
   mockBbqrDecoder,
   renderUseQrScanner,
 } from './useQrScannerTestHarness';
-import { isBBQr } from '../../../services/bbqr';
-import { parseDeviceJson } from '../../../services/deviceParsers';
+import { isBBQr } from '../../../src/services/bbqr';
+import { parseDeviceJson } from '../../../src/services/deviceParsers';
 
 export function registerBbqrFormatProcessingContracts() {
   it('should detect and process BBQr JSON format', () => {

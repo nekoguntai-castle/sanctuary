@@ -1,10 +1,10 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { DraftRow } from '../../../components/DraftList/DraftRow';
-import type { DraftRowProps } from '../../../components/DraftList/types';
+import { DraftRow } from '../../../src/components/DraftList/DraftRow';
+import type { DraftRowProps } from '../../../src/components/DraftList/types';
 import type { DraftTransaction } from '../../../src/api/drafts';
-import { WalletType } from '../../../types';
+import { WalletType } from '../../../src/types';
 
 const getExpirationInfoMock = vi.hoisted(() => vi.fn());
 const getFeeWarningMock = vi.hoisted(() => vi.fn());
@@ -12,7 +12,7 @@ const getFlowPreviewDataMock = vi.hoisted(() => vi.fn());
 const isExpiredMock = vi.hoisted(() => vi.fn());
 const formatDateMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../components/DraftList/utils', () => ({
+vi.mock('../../../src/components/DraftList/utils', () => ({
   getExpirationInfo: (...args: unknown[]) => getExpirationInfoMock(...args),
   getFeeWarning: (...args: unknown[]) => getFeeWarningMock(...args),
   getFlowPreviewData: (...args: unknown[]) => getFlowPreviewDataMock(...args),
@@ -20,21 +20,21 @@ vi.mock('../../../components/DraftList/utils', () => ({
   formatDate: (...args: unknown[]) => formatDateMock(...args),
 }));
 
-vi.mock('../../../components/Amount', () => ({
+vi.mock('../../../src/components/Amount', () => ({
   Amount: ({ sats }: { sats: number }) => <span>{`amount:${sats}`}</span>,
 }));
 
-vi.mock('../../../components/FiatDisplay', () => ({
+vi.mock('../../../src/components/FiatDisplay', () => ({
   FiatDisplaySubtle: ({ sats }: { sats: number }) => <span>{`fiat:${sats}`}</span>,
 }));
 
-vi.mock('../../../components/TransactionFlowPreview', () => ({
+vi.mock('../../../src/components/TransactionFlowPreview', () => ({
   TransactionFlowPreview: ({ inputs, outputs }: { inputs: unknown[]; outputs: unknown[] }) => (
     <div data-testid="flow-preview">{`flow:${inputs.length}->${outputs.length}`}</div>
   ),
 }));
 
-vi.mock('../../../utils/formatters', () => ({
+vi.mock('../../../src/utils/formatters', () => ({
   truncateAddress: (address: string) => `tr(${address})`,
 }));
 

@@ -6,7 +6,7 @@ import {
 import type { AIInsight } from './intelligenceTabsTestHarness';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { InsightCard } from '../../../components/Intelligence/tabs/InsightCard';
+import { InsightCard } from '../../../src/components/Intelligence/tabs/InsightCard';
 
 describe('InsightCard', () => {
   const defaultProps = {

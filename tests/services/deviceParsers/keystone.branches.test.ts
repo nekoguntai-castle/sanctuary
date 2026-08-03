@@ -2,7 +2,7 @@ import { describe,expect,it } from 'vitest';
 import {
 keystoneMultisigParser,
 keystoneStandardParser,
-} from '../../../services/deviceParsers/parsers/keystone';
+} from '../../../src/services/deviceParsers/parsers/keystone';
 
 describe('keystoneStandardParser branch coverage', () => {
   it('rejects non-keystone or non-BTC payloads in canParse', () => {

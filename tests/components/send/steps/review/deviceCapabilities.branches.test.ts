@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { getDeviceCapabilities } from '../../../../../components/send/steps/review/deviceCapabilities';
+import { getDeviceCapabilities } from '../../../../../src/components/send/steps/review/deviceCapabilities';
 
 describe('deviceCapabilities branch coverage', () => {
   it('covers all special-case branches inside the air-gapped QR condition chain', () => {

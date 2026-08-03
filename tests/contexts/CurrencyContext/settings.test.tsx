@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../../../src/api/auth";
 import * as priceApi from "../../../src/api/price";
-import { useUser } from "../../../contexts/UserContext";
+import { useUser } from "../../../src/contexts/UserContext";
 import {
   TestConsumer,
   authenticatedUser,
@@ -11,7 +11,7 @@ import {
   setupDefaultMocks,
 } from "./helpers";
 
-vi.mock("../../../utils/logger", () => ({
+vi.mock("../../../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

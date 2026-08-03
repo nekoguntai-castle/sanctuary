@@ -16,7 +16,7 @@ vi.mock('../../src/api/ai', () => ({
 }));
 
 // Mock the logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -26,8 +26,8 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Import component after mocks
-import { AILabelSuggestion } from '../../components/AILabelSuggestion';
-import { Transaction } from '../../types';
+import { AILabelSuggestion } from '../../src/components/AILabelSuggestion';
+import { Transaction } from '../../src/types';
 
 // Test transaction data
 const mockTransaction: Transaction = {

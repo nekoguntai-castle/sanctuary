@@ -8,17 +8,17 @@ import {
 import type { ReactNode } from 'react';
 import { MemoryRouter, useSearchParams } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { useTransactionList } from '../../../components/TransactionList/hooks/useTransactionList';
+import { useTransactionList } from '../../../src/components/TransactionList/hooks/useTransactionList';
 import {
   isAbortError,
   removeExpectedTxParam,
   selectionErrorMessage,
-} from '../../../components/TransactionList/hooks/selectionResolution';
+} from '../../../src/components/TransactionList/hooks/selectionResolution';
 import * as bitcoinApi from '../../../src/api/bitcoin';
 import * as labelsApi from '../../../src/api/labels';
 import type { TransactionStats } from '../../../src/api/transactions';
 import * as transactionsApi from '../../../src/api/transactions';
-import type { Label,Transaction } from '../../../types';
+import type { Label,Transaction } from '../../../src/types';
 
 vi.mock('../../../src/api/bitcoin', () => ({
   getStatus: vi.fn(),
@@ -33,7 +33,7 @@ vi.mock('../../../src/api/transactions', () => ({
   getTransaction: vi.fn(),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),

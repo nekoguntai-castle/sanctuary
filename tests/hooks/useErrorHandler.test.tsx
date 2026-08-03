@@ -10,9 +10,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   NotificationProvider,
   useNotifications,
-} from "../../contexts/NotificationContext";
-import { AppNotificationProvider } from "../../contexts/AppNotificationContext";
-import { useErrorHandler } from "../../hooks/useErrorHandler";
+} from "../../src/contexts/NotificationContext";
+import { AppNotificationProvider } from "../../src/contexts/AppNotificationContext";
+import { useErrorHandler } from "../../src/hooks/useErrorHandler";
 import { ApiError } from "../../src/api/client";
 
 // Create a wrapper that provides both notification contexts (useErrorHandler uses useNotify which needs both)

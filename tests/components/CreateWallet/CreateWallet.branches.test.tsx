@@ -2,7 +2,7 @@ import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { CreateWallet } from '../../../components/CreateWallet';
+import { CreateWallet } from '../../../src/components/CreateWallet';
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -23,19 +23,19 @@ vi.mock('../../../src/api/devices', () => ({
   getDevices: (...args: any[]) => mocks.getDevices(...args),
 }));
 
-vi.mock('../../../hooks/queries/useWallets', () => ({
+vi.mock('../../../src/hooks/queries/useWallets', () => ({
   useCreateWallet: () => ({
     mutateAsync: (...args: any[]) => mocks.mutateAsync(...args),
   }),
 }));
 
-vi.mock('../../../hooks/useErrorHandler', () => ({
+vi.mock('../../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({
     handleError: mocks.handleError,
   }),
 }));
 
-vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: 'mainnet',
     isMainnet: true,
@@ -43,7 +43,7 @@ vi.mock('../../../contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -52,11 +52,11 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../utils/errorHandler', () => ({
+vi.mock('../../../src/utils/errorHandler', () => ({
   logError: vi.fn(),
 }));
 
-vi.mock('../../../components/ui/Button', () => ({
+vi.mock('../../../src/components/ui/Button', () => ({
   Button: ({ children, onClick, isLoading, disabled: _disabled, ...props }: any) => (
     <button onClick={onClick} {...props}>
       {isLoading ? 'loading' : children}
@@ -64,7 +64,7 @@ vi.mock('../../../components/ui/Button', () => ({
   ),
 }));
 
-vi.mock('../../../components/CreateWallet/WalletTypeStep', () => ({
+vi.mock('../../../src/components/CreateWallet/WalletTypeStep', () => ({
   WalletTypeStep: ({ setWalletType }: any) => (
     <div data-testid="wallet-type-step">
       <button onClick={() => setWalletType('single_sig')}>pick-single</button>
@@ -73,7 +73,7 @@ vi.mock('../../../components/CreateWallet/WalletTypeStep', () => ({
   ),
 }));
 
-vi.mock('../../../components/CreateWallet/SignerSelectionStep', () => ({
+vi.mock('../../../src/components/CreateWallet/SignerSelectionStep', () => ({
   SignerSelectionStep: ({
     walletType,
     compatibleDevices,
@@ -99,7 +99,7 @@ vi.mock('../../../components/CreateWallet/SignerSelectionStep', () => ({
   },
 }));
 
-vi.mock('../../../components/CreateWallet/ConfigurationStep', () => ({
+vi.mock('../../../src/components/CreateWallet/ConfigurationStep', () => ({
   ConfigurationStep: ({ setWalletName }: any) => (
     <div data-testid="config-step">
       <button onClick={() => setWalletName('Branch Wallet')}>set-name</button>
@@ -107,7 +107,7 @@ vi.mock('../../../components/CreateWallet/ConfigurationStep', () => ({
   ),
 }));
 
-vi.mock('../../../components/CreateWallet/ReviewStep', () => ({
+vi.mock('../../../src/components/CreateWallet/ReviewStep', () => ({
   ReviewStep: () => <div data-testid="review-step">review</div>,
 }));
 

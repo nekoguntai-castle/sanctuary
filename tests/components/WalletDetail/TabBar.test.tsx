@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { TabBar } from '../../../components/WalletDetail/TabBar';
+import { TabBar } from '../../../src/components/WalletDetail/TabBar';
 
 describe('TabBar', () => {
   it('renders viewer tabs without drafts/access and maps tx/utxo labels', () => {

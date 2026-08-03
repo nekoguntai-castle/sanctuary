@@ -11,8 +11,8 @@ extractErrorMessage,
 isAuthError,
 isNotFoundError,
 logError,
-} from '../../utils/errorHandler';
-import { Logger } from '../../utils/logger';
+} from '../../src/utils/errorHandler';
+import { Logger } from '../../src/utils/logger';
 
 describe('errorHandler', () => {
   describe('extractErrorMessage', () => {

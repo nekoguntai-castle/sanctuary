@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { DisableTwoFactorModal } from '../../../components/Account/DisableTwoFactorModal';
+import { DisableTwoFactorModal } from '../../../src/components/Account/DisableTwoFactorModal';
 
 const buildProps = (
   overrides: Partial<React.ComponentProps<typeof DisableTwoFactorModal>> = {}

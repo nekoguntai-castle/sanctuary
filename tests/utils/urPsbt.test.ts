@@ -1,10 +1,10 @@
 /**
- * Tests for utils/urPsbt.ts
+ * Tests for src/utils/urPsbt.ts
  */
 
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -113,7 +113,7 @@ getDecodedPsbt,
 getPsbtFragmentCount,
 getUrType,
 isUrFormat,
-} from '../../utils/urPsbt';
+} from '../../src/utils/urPsbt';
 
 /** Testable decoder interface that exposes mock-settable properties for test manipulation */
 interface TestableDecoder {

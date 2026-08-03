@@ -59,23 +59,23 @@ const makeMockAdapterClass = (type: 'ledger' | 'trezor' | 'bitbox' | 'jade') => 
   };
 };
 
-vi.mock('../../services/hardwareWallet/adapters/ledger', () => ({
+vi.mock('../../src/services/hardwareWallet/adapters/ledger', () => ({
   LedgerAdapter: makeMockAdapterClass('ledger'),
 }));
 
-vi.mock('../../services/hardwareWallet/adapters/trezor', () => ({
+vi.mock('../../src/services/hardwareWallet/adapters/trezor', () => ({
   TrezorAdapter: makeMockAdapterClass('trezor'),
 }));
 
-vi.mock('../../services/hardwareWallet/adapters/bitbox', () => ({
+vi.mock('../../src/services/hardwareWallet/adapters/bitbox', () => ({
   BitBoxAdapter: makeMockAdapterClass('bitbox'),
 }));
 
-vi.mock('../../services/hardwareWallet/adapters/jade', () => ({
+vi.mock('../../src/services/hardwareWallet/adapters/jade', () => ({
   JadeAdapter: makeMockAdapterClass('jade'),
 }));
 
-import { getConnectedDevices,hardwareWalletService } from '../../services/hardwareWallet/runtime';
+import { getConnectedDevices,hardwareWalletService } from '../../src/services/hardwareWallet/runtime';
 
 describe('hardwareWallet runtime', () => {
   beforeEach(async () => {

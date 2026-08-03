@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { QrScannerPanel } from '../../../components/ConnectDevice/QrScannerPanel';
+import { QrScannerPanel } from '../../../src/components/ConnectDevice/QrScannerPanel';
 
 const scannerPropsSpy = vi.fn();
 

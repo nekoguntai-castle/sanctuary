@@ -9,7 +9,7 @@ getNetworkPoolMin,
 getNetworkSingletonHost,
 getNetworkSingletonPort,
 getNetworkSingletonSsl,
-} from '../../../components/NetworkConnectionCard/networkConfigHelpers';
+} from '../../../src/components/NetworkConnectionCard/networkConfigHelpers';
 
 const cfg = {
   testnetEnabled: true,

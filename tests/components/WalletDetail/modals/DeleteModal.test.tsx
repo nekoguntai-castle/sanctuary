@@ -16,7 +16,7 @@ vi.mock('lucide-react', () => ({
 }));
 
 // Mock Button component
-vi.mock('../../../../components/ui/Button', () => ({
+vi.mock('../../../../src/components/ui/Button', () => ({
   Button: ({
     children,
     onClick,
@@ -42,7 +42,7 @@ vi.mock('../../../../components/ui/Button', () => ({
 }));
 
 // Import after mocks
-import { DeleteModal } from '../../../../components/WalletDetail/modals/DeleteModal';
+import { DeleteModal } from '../../../../src/components/WalletDetail/modals/DeleteModal';
 
 describe('DeleteModal', () => {
   const defaultProps = {

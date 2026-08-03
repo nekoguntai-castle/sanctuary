@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { useWalletSelection } from '../../../components/Intelligence/IntelligenceShell/useWalletSelection';
+import { useWalletSelection } from '../../../src/components/Intelligence/IntelligenceShell/useWalletSelection';
 
 describe('useWalletSelection', () => {
   it('selects the first visible wallet and clears selection when none remain', () => {

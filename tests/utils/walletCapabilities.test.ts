@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canEditWallet, canEditWalletRole } from '../../utils/walletCapabilities';
+import { canEditWallet, canEditWalletRole } from '../../src/utils/walletCapabilities';
 
 describe('walletCapabilities', () => {
   it('derives edit capability from valid wallet roles', () => {

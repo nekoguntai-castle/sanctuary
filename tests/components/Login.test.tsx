@@ -18,7 +18,7 @@ const mockCancel2FA = vi.fn();
 const mockClearError = vi.fn();
 const mockClearNotice = vi.fn();
 
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: () => ({
     login: mockLogin,
     register: mockRegister,
@@ -48,13 +48,13 @@ vi.mock('lucide-react', () => ({
 }));
 
 // Mock custom icons
-vi.mock('../../components/ui/CustomIcons', () => ({
+vi.mock('../../src/components/ui/CustomIcons', () => ({
   SanctuaryLogo: () => <span data-testid="sanctuary-logo" />,
   SanctuaryShieldLogo: ({ ready }: { ready?: boolean }) => <span data-testid="sanctuary-shield-logo" data-ready={ready} />,
 }));
 
 // Mock Button component
-vi.mock('../../components/ui/Button', () => ({
+vi.mock('../../src/components/ui/Button', () => ({
   Button: ({ children, type, isLoading, disabled, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { isLoading?: boolean }) => (
     <button type={type as 'button' | 'submit' | 'reset' | undefined} disabled={disabled || isLoading} {...props}>
       {isLoading ? 'Loading...' : children}
@@ -95,7 +95,7 @@ describe('Login Component', () => {
   });
 
   it('should render login form by default', async () => {
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
 
     await renderLogin(Login);
 
@@ -106,7 +106,7 @@ describe('Login Component', () => {
   });
 
   it('should display registration toggle when enabled', async () => {
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
 
     await renderLogin(Login);
 
@@ -116,7 +116,7 @@ describe('Login Component', () => {
   });
 
   it('should toggle to register mode when clicked', async () => {
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
     const user = userEvent.setup();
 
     await renderLogin(Login);
@@ -130,7 +130,7 @@ describe('Login Component', () => {
   });
 
   it('should call login on form submit in login mode', async () => {
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
     const user = userEvent.setup();
 
     await renderLogin(Login);
@@ -148,7 +148,7 @@ describe('Login Component', () => {
   });
 
   it('should call register on form submit in register mode', async () => {
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
     const user = userEvent.setup();
 
     await renderLogin(Login);
@@ -172,7 +172,7 @@ describe('Login Component', () => {
   });
 
   it('should check API health status on mount', async () => {
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
 
     await renderLogin(Login);
 
@@ -187,7 +187,7 @@ describe('Login Component', () => {
 
   it('should display API connected status', async () => {
     mockFetch.mockResolvedValue({ ok: true });
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
 
     await renderLogin(Login);
 
@@ -198,7 +198,7 @@ describe('Login Component', () => {
 
   it('should treat 401 health response as connected', async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 401 });
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
 
     await renderLogin(Login);
 
@@ -209,7 +209,7 @@ describe('Login Component', () => {
 
   it('should show API error for non-401 unsuccessful responses', async () => {
     mockFetch.mockResolvedValue({ ok: false, status: 500 });
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
 
     await renderLogin(Login);
 
@@ -221,7 +221,7 @@ describe('Login Component', () => {
   it('should disable registration when registration status lookup fails', async () => {
     mockFetch.mockResolvedValue({ ok: true, status: 200 });
     vi.mocked(getRegistrationStatus).mockRejectedValueOnce(new Error('reg status failed'));
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
 
     await renderLogin(Login);
 
@@ -233,7 +233,7 @@ describe('Login Component', () => {
 
   it('should display API error status on fetch failure', async () => {
     mockFetch.mockRejectedValue(new Error('Network error'));
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
 
     await renderLogin(Login);
 
@@ -243,7 +243,7 @@ describe('Login Component', () => {
   });
 
   it('should clear form fields when toggling modes', async () => {
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
     const user = userEvent.setup();
 
     await renderLogin(Login);
@@ -264,7 +264,7 @@ describe('Login Component', () => {
   });
 
   it('should require email before submitting registration', async () => {
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
     const user = userEvent.setup();
 
     await renderLogin(Login);
@@ -300,7 +300,7 @@ describe('Login Component', () => {
       })),
     });
 
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
     await renderLogin(Login);
 
     expect(document.documentElement.classList.contains('dark')).toBe(true);
@@ -327,7 +327,7 @@ describe('Login Component', () => {
       })),
     });
 
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
     await renderLogin(Login);
 
     expect(document.documentElement.classList.contains('dark')).toBe(false);
@@ -363,7 +363,7 @@ describe('Login Component - 2FA Flow', () => {
 
   it('should display 2FA verification screen when pending', async () => {
     // Override the mock for this test
-    vi.doMock('../../contexts/UserContext', () => ({
+    vi.doMock('../../src/contexts/UserContext', () => ({
       useUser: () => ({
         login: mockLogin,
         register: mockRegister,
@@ -380,7 +380,7 @@ describe('Login Component - 2FA Flow', () => {
 
     // Need to reimport to get the mocked version
     vi.resetModules();
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
 
     await renderLogin(Login);
 
@@ -389,7 +389,7 @@ describe('Login Component - 2FA Flow', () => {
   });
 
   it('should call verify2FA on 2FA form submit', async () => {
-    vi.doMock('../../contexts/UserContext', () => ({
+    vi.doMock('../../src/contexts/UserContext', () => ({
       useUser: () => ({
         login: mockLogin,
         register: mockRegister,
@@ -405,7 +405,7 @@ describe('Login Component - 2FA Flow', () => {
     }));
 
     vi.resetModules();
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
     const user = userEvent.setup();
 
     await renderLogin(Login);
@@ -421,7 +421,7 @@ describe('Login Component - 2FA Flow', () => {
   });
 
   it('should call cancel2FA when back button clicked', async () => {
-    vi.doMock('../../contexts/UserContext', () => ({
+    vi.doMock('../../src/contexts/UserContext', () => ({
       useUser: () => ({
         login: mockLogin,
         register: mockRegister,
@@ -437,7 +437,7 @@ describe('Login Component - 2FA Flow', () => {
     }));
 
     vi.resetModules();
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
     const user = userEvent.setup();
 
     await renderLogin(Login);
@@ -467,7 +467,7 @@ describe('Login Component - Error Display', () => {
   });
 
   it('should display error message when error exists', async () => {
-    vi.doMock('../../contexts/UserContext', () => ({
+    vi.doMock('../../src/contexts/UserContext', () => ({
       useUser: () => ({
         login: mockLogin,
         register: mockRegister,
@@ -483,7 +483,7 @@ describe('Login Component - Error Display', () => {
     }));
 
     vi.resetModules();
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
 
     await renderLogin(Login);
 
@@ -523,7 +523,7 @@ describe('Login Component - Loading branches', () => {
     );
 
     vi.resetModules();
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
     const user = userEvent.setup();
     await renderLogin(Login);
 
@@ -545,7 +545,7 @@ describe('Login Component - Loading branches', () => {
     // UserContext as well. Override the mock on this test to put the
     // form into the 2FA state and return an error, then trigger the
     // 2FA verify to exercise the local loading branch.
-    vi.doMock('../../contexts/UserContext', () => ({
+    vi.doMock('../../src/contexts/UserContext', () => ({
       useUser: () => ({
         login: mockLogin,
         register: mockRegister,
@@ -566,7 +566,7 @@ describe('Login Component - Loading branches', () => {
     );
 
     vi.resetModules();
-    const { Login: LoginWith2FA } = await import('../../components/Login');
+    const { Login: LoginWith2FA } = await import('../../src/components/Login');
     const user = userEvent.setup();
     await renderLogin(LoginWith2FA);
 
@@ -588,7 +588,7 @@ describe('Login Component - Loading branches', () => {
     // Reset the UserContext mock to the default (no 2FA pending). The
     // previous test vi.doMock'd it into a 2FA-pending state and those
     // doMocks persist across tests until explicitly overridden.
-    vi.doMock('../../contexts/UserContext', () => ({
+    vi.doMock('../../src/contexts/UserContext', () => ({
       useUser: () => ({
         login: mockLogin,
         register: mockRegister,
@@ -609,7 +609,7 @@ describe('Login Component - Loading branches', () => {
     );
 
     vi.resetModules();
-    const { Login } = await import('../../components/Login');
+    const { Login } = await import('../../src/components/Login');
     const user = userEvent.setup();
     await renderLogin(Login);
 

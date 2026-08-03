@@ -14,7 +14,7 @@ const setLoggerEnvOverride = (env?: Record<string, unknown>) => {
 
 const importFreshLogger = async () => {
   vi.resetModules();
-  return import('../../utils/logger');
+  return import('../../src/utils/logger');
 };
 
 const importFreshLoggerWithoutWindow = async () => {
@@ -29,7 +29,7 @@ const importFreshLoggerWithoutWindow = async () => {
   });
 
   try {
-    return await import('../../utils/logger');
+    return await import('../../src/utils/logger');
   } finally {
     if (hadWindow) {
       Object.defineProperty(globalThis, 'window', {

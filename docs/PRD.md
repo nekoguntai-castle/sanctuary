@@ -456,7 +456,7 @@ HTTP_PORT=8080
 | Component | Lines |
 |-----------|------:|
 | Backend (server/) | 146,834 |
-| Frontend (components/) | 55,729 |
+| Frontend (src/components/) | 55,729 |
 | Mobile Gateway | 2,183 |
 | Shared utilities | 1,106 |
 

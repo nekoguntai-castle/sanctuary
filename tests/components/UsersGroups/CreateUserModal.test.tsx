@@ -1,9 +1,9 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { CreateUserModal } from '../../../components/UsersGroups/CreateUserModal';
+import { CreateUserModal } from '../../../src/components/UsersGroups/CreateUserModal';
 
-vi.mock('../../../components/UsersGroups/PasswordRequirements', () => ({
+vi.mock('../../../src/components/UsersGroups/PasswordRequirements', () => ({
   PasswordRequirements: ({ password }: { password: string }) => (
     <div data-testid="password-requirements">{password.length}</div>
   ),

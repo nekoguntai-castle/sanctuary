@@ -3,7 +3,7 @@ import {
   DeviceAccountPurpose,
   WalletScriptType,
 } from '@sanctuary/shared/constants/walletIdentity';
-import { WalletType } from '../../../types';
+import { WalletType } from '../../../src/types';
 import {
   buildCreateWalletPayload,
   getCompatibleDevices,
@@ -12,7 +12,7 @@ import {
   getRequiredAccountPurpose,
   hasCompatibleAccount,
   hasCompatibleNetworkAccount,
-} from '../../../components/CreateWallet/createWalletData';
+} from '../../../src/components/CreateWallet/createWalletData';
 
 const singleMainnetDevice = {
   id: 'single-mainnet',

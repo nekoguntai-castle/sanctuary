@@ -13,13 +13,6 @@ on:
     paths:
       - 'src/**'
       - 'index.html'
-      - 'components/**'
-      - 'hooks/**'
-      - 'contexts/**'
-      - 'providers/**'
-      - 'services/**'
-      - 'themes/**'
-      - 'utils/**'
       - 'shared/**'
       - 'tests/**'
       - '!tests/*.md'

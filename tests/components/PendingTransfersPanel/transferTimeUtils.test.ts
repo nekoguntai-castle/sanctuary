@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
-import { formatTimeAgo, formatExpiry } from '../../../components/PendingTransfersPanel/transferTimeUtils';
+import { formatTimeAgo, formatExpiry } from '../../../src/components/PendingTransfersPanel/transferTimeUtils';
 
 describe('transferTimeUtils', () => {
   beforeEach(() => {

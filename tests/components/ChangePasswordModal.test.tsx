@@ -5,12 +5,12 @@
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { ChangePasswordModal } from '../../components/ChangePasswordModal';
+import { ChangePasswordModal } from '../../src/components/ChangePasswordModal';
 import * as authApi from '../../src/api/auth';
 import { ApiError } from '../../src/api/client';
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),

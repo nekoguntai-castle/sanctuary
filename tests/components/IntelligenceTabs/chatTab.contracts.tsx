@@ -6,7 +6,7 @@ import {
 import type { AIConversation } from './intelligenceTabsTestHarness';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ChatTab } from '../../../components/Intelligence/tabs/ChatTab';
+import { ChatTab } from '../../../src/components/Intelligence/tabs/ChatTab';
 import * as intelligenceApi from '../../../src/api/intelligence';
 
 describe('ChatTab', () => {

@@ -2,8 +2,8 @@ import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { SigningFlow } from '../../../components/send/steps/review/SigningFlow';
-import type { Device } from '../../../types';
+import { SigningFlow } from '../../../src/components/send/steps/review/SigningFlow';
+import type { Device } from '../../../src/types';
 
 const createDevice = (overrides: Partial<Device> = {}): Device => ({
   id: 'device-1',

@@ -1,16 +1,16 @@
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
 
-vi.mock('../../components/ConnectDevice/index', () => ({
+vi.mock('../../src/components/ConnectDevice/index', () => ({
   ConnectDevice: () => <div>Mock ConnectDevice</div>,
 }));
 
-vi.mock('../../components/TransactionList/index', () => ({
+vi.mock('../../src/components/TransactionList/index', () => ({
   TransactionList: () => <div>Mock TransactionList</div>,
 }));
 
-import { ConnectDevice } from '../../components/ConnectDevice';
-import { TransactionList } from '../../components/TransactionList';
+import { ConnectDevice } from '../../src/components/ConnectDevice';
+import { TransactionList } from '../../src/components/TransactionList';
 
 describe('wrapper re-exports', () => {
   it('re-exports ConnectDevice', () => {

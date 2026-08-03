@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import type React from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { vi } from "vitest";
-import { ConsoleDrawer } from "../../components/ConsoleDrawer";
+import { ConsoleDrawer } from "../../src/components/ConsoleDrawer";
 import * as consoleApi from "../../src/api/console";
 
 export { consoleApi };

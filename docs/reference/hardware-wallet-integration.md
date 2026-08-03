@@ -41,7 +41,7 @@ Sanctuary uses a **registry pattern** with pluggable adapters to support multipl
 ### File Structure
 
 ```
-services/hardwareWallet/
+src/services/hardwareWallet/
 ├── index.ts              # Exports singleton service, registers adapters
 ├── service.ts            # HardwareWalletService class
 ├── types.ts              # TypeScript interfaces
@@ -534,7 +534,7 @@ Jade requires BIP32 paths as arrays with hardened indices OR'd with 0x80000000:
 
 ## Adding a New Device Adapter
 
-1. Create adapter file in `services/hardwareWallet/adapters/`:
+1. Create adapter file in `src/services/hardwareWallet/adapters/`:
 
 ```typescript
 // adapters/mydevice.ts

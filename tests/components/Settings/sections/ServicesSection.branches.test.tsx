@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ServicesTab } from "../../../../components/Settings/sections/ServicesSection";
+import { ServicesTab } from "../../../../src/components/Settings/sections/ServicesSection";
 
 const state = vi.hoisted(() => ({
   priceProvider: "auto",
@@ -10,7 +10,7 @@ const state = vi.hoisted(() => ({
 const mockSetPriceProvider = vi.fn();
 const mockRefreshPrice = vi.fn();
 
-vi.mock("../../../../contexts/CurrencyContext", () => ({
+vi.mock("../../../../src/contexts/CurrencyContext", () => ({
   useCurrency: () => ({
     priceProvider: state.priceProvider,
     setPriceProvider: mockSetPriceProvider,

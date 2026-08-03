@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { DetailsTab } from '../../../../components/DeviceDetail/tabs/DetailsTab';
+import { DetailsTab } from '../../../../src/components/DeviceDetail/tabs/DetailsTab';
 
 const { mockNavigate } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
@@ -10,7 +10,7 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-vi.mock('../../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../../src/components/ui/CustomIcons', () => ({
   getWalletIcon: (type: string, className: string) => <span className={className}>icon-{type}</span>,
 }));
 

@@ -1,5 +1,5 @@
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { formatAction,formatRelativeTime } from '../../../components/AuditLogs/constants';
+import { formatAction,formatRelativeTime } from '../../../src/components/AuditLogs/constants';
 
 describe('AuditLogs constants branch coverage', () => {
   beforeEach(() => {

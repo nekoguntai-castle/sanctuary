@@ -1,6 +1,6 @@
 import { act,fireEvent,render,screen } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { NetworkTabs,TabNetwork } from '../../components/NetworkTabs';
+import { NetworkTabs,TabNetwork } from '../../src/components/NetworkTabs';
 
 const originalDocumentFonts = Object.getOwnPropertyDescriptor(document, 'fonts');
 

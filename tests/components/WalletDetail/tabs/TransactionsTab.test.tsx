@@ -1,19 +1,19 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { TransactionsTab } from '../../../../components/WalletDetail/tabs/TransactionsTab';
+import { TransactionsTab } from '../../../../src/components/WalletDetail/tabs/TransactionsTab';
 
 const mockRefs = vi.hoisted(() => ({
   txListProps: null as any,
 }));
 
-vi.mock('../../../../components/TransactionList', () => ({
+vi.mock('../../../../src/components/TransactionList', () => ({
   TransactionList: (props: any) => {
     mockRefs.txListProps = props;
     return <div data-testid="transaction-list" />;
   },
 }));
 
-vi.mock('../../../../components/AIQueryInput', () => ({
+vi.mock('../../../../src/components/AIQueryInput', () => ({
   AIQueryInput: ({ onQueryResult }: { onQueryResult: (result: any) => void }) => (
     <button type="button" onClick={() => onQueryResult({ type: 'summary', aggregation: null })}>
       Run AI Query
@@ -21,11 +21,11 @@ vi.mock('../../../../components/AIQueryInput', () => ({
   ),
 }));
 
-vi.mock('../../../../hooks/queries/useWalletLabels', () => ({
+vi.mock('../../../../src/hooks/queries/useWalletLabels', () => ({
   useWalletLabels: () => ({ data: [], isLoading: false }),
 }));
 
-vi.mock('../../../../components/WalletDetail/tabs/TransactionFilterBar', () => ({
+vi.mock('../../../../src/components/WalletDetail/tabs/TransactionFilterBar', () => ({
   TransactionFilterBar: () => <div data-testid="filter-bar" />,
 }));
 

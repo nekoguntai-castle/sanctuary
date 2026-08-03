@@ -16,7 +16,7 @@ vi.mock('react-router-dom', () => ({
 
 // Mock SidebarContext
 const mockRefreshSidebar = vi.fn();
-vi.mock('../../contexts/SidebarContext', () => ({
+vi.mock('../../src/contexts/SidebarContext', () => ({
   useSidebar: () => ({
     refreshSidebar: mockRefreshSidebar,
   }),
@@ -33,7 +33,7 @@ vi.mock('../../src/api/devices', () => ({
 }));
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -43,7 +43,7 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Import after mocks
-import { useDeviceSave } from '../../hooks/useDeviceSave';
+import { useDeviceSave } from '../../src/hooks/useDeviceSave';
 import type { CreateDeviceRequest } from '../../src/api/devices';
 
 // Test data

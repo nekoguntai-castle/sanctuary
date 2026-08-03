@@ -1,18 +1,18 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useAIFeatureToggle } from '../../../../components/AISettings/hooks/useAIFeatureToggle';
-import { invalidateAIStatusCache } from '../../../../hooks/useAIStatus';
+import { useAIFeatureToggle } from '../../../../src/components/AISettings/hooks/useAIFeatureToggle';
+import { invalidateAIStatusCache } from '../../../../src/hooks/useAIStatus';
 import * as adminApi from '../../../../src/api/admin';
 
 vi.mock('../../../../src/api/admin', () => ({
   updateSystemSettings: vi.fn(),
 }));
 
-vi.mock('../../../../hooks/useAIStatus', () => ({
+vi.mock('../../../../src/hooks/useAIStatus', () => ({
   invalidateAIStatusCache: vi.fn(),
 }));
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

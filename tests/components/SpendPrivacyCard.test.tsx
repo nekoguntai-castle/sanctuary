@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 
-import SpendPrivacyCard from '../../components/SpendPrivacyCard';
+import SpendPrivacyCard from '../../src/components/SpendPrivacyCard';
 import type { SpendPrivacyAnalysis } from '../../src/api/transactions';
 
 describe('SpendPrivacyCard', () => {

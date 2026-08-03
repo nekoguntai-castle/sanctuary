@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { DisplayTab } from '../../../../components/Settings/sections/DisplaySection';
+import { DisplayTab } from '../../../../src/components/Settings/sections/DisplaySection';
 
 const {
   state,
@@ -18,7 +18,7 @@ const {
   mockSetUnit: vi.fn(),
 }));
 
-vi.mock('../../../../contexts/CurrencyContext', () => {
+vi.mock('../../../../src/contexts/CurrencyContext', () => {
   const value = () => ({
     showFiat: state.showFiat,
     fiatCurrency: state.fiatCurrency,

@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DeviceDetail } from '../../../components/DeviceDetail';
+import { DeviceDetail } from '../../../src/components/DeviceDetail';
 import * as devicesApi from '../../../src/api/devices';
 
 const { mockNavigate, useDeviceDataMock, loggerSpies } = vi.hoisted(() => ({
@@ -20,31 +20,31 @@ vi.mock('react-router-dom', () => ({
   useParams: () => ({ id: 'dev-1' }),
 }));
 
-vi.mock('../../../components/DeviceDetail/hooks/useDeviceData', () => ({
+vi.mock('../../../src/components/DeviceDetail/hooks/useDeviceData', () => ({
   useDeviceData: () => useDeviceDataMock(),
 }));
 
-vi.mock('../../../components/DeviceDetail/DeviceDetail/DeviceAccountsSection', () => ({
+vi.mock('../../../src/components/DeviceDetail/DeviceDetail/DeviceAccountsSection', () => ({
   DeviceAccountsSection: () => <div data-testid="device-accounts" />,
 }));
 
-vi.mock('../../../components/DeviceDetail/DeviceDetail/DeviceDetailTabs', () => ({
+vi.mock('../../../src/components/DeviceDetail/DeviceDetail/DeviceDetailTabs', () => ({
   DeviceDetailTabs: () => <div data-testid="device-tabs" />,
 }));
 
-vi.mock('../../../components/DeviceDetail/DeviceDetail/DeviceDetailTabContent', () => ({
+vi.mock('../../../src/components/DeviceDetail/DeviceDetail/DeviceDetailTabContent', () => ({
   DeviceDetailTabContent: () => <div data-testid="device-tab-content" />,
 }));
 
-vi.mock('../../../components/DeviceDetail/DeviceDetail/DeviceTransferModal', () => ({
+vi.mock('../../../src/components/DeviceDetail/DeviceDetail/DeviceTransferModal', () => ({
   DeviceTransferModal: () => <div data-testid="device-transfer-modal" />,
 }));
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   getDeviceIcon: () => <span data-testid="device-icon" />,
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => loggerSpies,
 }));
 

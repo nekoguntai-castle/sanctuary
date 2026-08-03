@@ -9,7 +9,7 @@ getLogLevel,
 isLevelEnabled,
 LogLevel,
 setLogLevel,
-} from '../../utils/logger';
+} from '../../src/utils/logger';
 
 describe('logger utility', () => {
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;

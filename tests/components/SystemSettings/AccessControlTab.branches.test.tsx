@@ -1,6 +1,6 @@
 import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { AccessControlTab } from '../../../components/SystemSettings/AccessControlTab';
+import { AccessControlTab } from '../../../src/components/SystemSettings/AccessControlTab';
 import * as adminApi from '../../../src/api/admin';
 
 vi.mock('../../../src/api/admin', () => ({

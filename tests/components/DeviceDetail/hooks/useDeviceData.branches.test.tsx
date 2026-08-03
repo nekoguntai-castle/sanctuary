@@ -1,10 +1,10 @@
 import { act,renderHook,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { useDeviceData } from '../../../../components/DeviceDetail/hooks/useDeviceData';
+import { useDeviceData } from '../../../../src/components/DeviceDetail/hooks/useDeviceData';
 import * as adminApi from '../../../../src/api/admin';
 import * as authApi from '../../../../src/api/auth';
 import * as devicesApi from '../../../../src/api/devices';
-import { WalletType } from '../../../../types';
+import { WalletType } from '../../../../src/types';
 
 const useUserMock = vi.hoisted(() => vi.fn());
 const loggerSpies = vi.hoisted(() => ({
@@ -14,11 +14,11 @@ const loggerSpies = vi.hoisted(() => ({
   info: vi.fn(),
 }));
 
-vi.mock('../../../../contexts/UserContext', () => ({
+vi.mock('../../../../src/contexts/UserContext', () => ({
   useUser: () => useUserMock(),
 }));
 
-vi.mock('../../../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: 'mainnet',
     isMainnet: true,
@@ -26,7 +26,7 @@ vi.mock('../../../../contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => loggerSpies,
 }));
 

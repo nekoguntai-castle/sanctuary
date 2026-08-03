@@ -8,12 +8,12 @@
 import { render,screen } from '@testing-library/react';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { WalletStats } from '../../components/WalletStats';
-import { useCurrency } from '../../contexts/CurrencyContext';
-import type { Transaction,UTXO } from '../../types';
+import { WalletStats } from '../../src/components/WalletStats';
+import { useCurrency } from '../../src/contexts/CurrencyContext';
+import type { Transaction,UTXO } from '../../src/types';
 
 // Mock the CurrencyContext
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock('../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(() => ({
     getFiatValue: vi.fn((sats: number) => sats / 100_000),
     btcPrice: 50000,
@@ -29,7 +29,7 @@ vi.mock('../../contexts/CurrencyContext', () => ({
 }));
 
 // Mock useDelayedRender to return true immediately
-vi.mock('../../hooks/useDelayedRender', () => ({
+vi.mock('../../src/hooks/useDelayedRender', () => ({
   useDelayedRender: vi.fn(() => true),
 }));
 

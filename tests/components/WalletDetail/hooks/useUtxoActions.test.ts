@@ -1,8 +1,8 @@
 import { act,renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { useUtxoActions } from '../../../../components/WalletDetail/hooks/useUtxoActions';
+import { useUtxoActions } from '../../../../src/components/WalletDetail/hooks/useUtxoActions';
 import * as transactionsApi from '../../../../src/api/transactions';
-import { logError } from '../../../../utils/errorHandler';
+import { logError } from '../../../../src/utils/errorHandler';
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -21,7 +21,7 @@ const loggerSpies = vi.hoisted(() => ({
   error: vi.fn(),
 }));
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => loggerSpies,
 }));
 
@@ -29,7 +29,7 @@ vi.mock('../../../../src/api/transactions', () => ({
   freezeUTXO: vi.fn(),
 }));
 
-vi.mock('../../../../utils/errorHandler', () => ({
+vi.mock('../../../../src/utils/errorHandler', () => ({
   logError: vi.fn(),
 }));
 

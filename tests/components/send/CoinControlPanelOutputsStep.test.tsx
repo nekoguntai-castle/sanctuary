@@ -1,8 +1,8 @@
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { CoinControlPanel } from '../../../components/send/steps/OutputsStep/CoinControlPanel';
+import { CoinControlPanel } from '../../../src/components/send/steps/OutputsStep/CoinControlPanel';
 
-vi.mock('../../../components/send/steps/OutputsStep/UtxoRow', () => ({
+vi.mock('../../../src/components/send/steps/OutputsStep/UtxoRow', () => ({
   UtxoRow: ({ utxo }: { utxo: { txid: string; vout: number } }) => (
     <div data-testid={`utxo-row-${utxo.txid}:${utxo.vout}`} />
   ),

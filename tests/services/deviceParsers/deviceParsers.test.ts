@@ -15,14 +15,14 @@
  * Multisig test values (Zpub/Ypub) are test-only placeholder values for format parsing tests.
  */
 
-import { deviceParserRegistry,parseDeviceData,parseDeviceJson } from '../../../services/deviceParsers';
-import { bitboxParser } from '../../../services/deviceParsers/parsers/bitbox';
-import { coldcardFlatParser } from '../../../services/deviceParsers/parsers/coldcardFlat';
-import { coldcardNestedParser } from '../../../services/deviceParsers/parsers/coldcardNested';
-import { descriptorJsonParser,descriptorStringParser } from '../../../services/deviceParsers/parsers/descriptor';
-import { genericJsonParser,plainXpubParser,simpleColdcardParser } from '../../../services/deviceParsers/parsers/generic';
-import { keystoneMultisigParser,keystoneStandardParser } from '../../../services/deviceParsers/parsers/keystone';
-import { ledgerParser } from '../../../services/deviceParsers/parsers/ledger';
+import { deviceParserRegistry,parseDeviceData,parseDeviceJson } from '../../../src/services/deviceParsers';
+import { bitboxParser } from '../../../src/services/deviceParsers/parsers/bitbox';
+import { coldcardFlatParser } from '../../../src/services/deviceParsers/parsers/coldcardFlat';
+import { coldcardNestedParser } from '../../../src/services/deviceParsers/parsers/coldcardNested';
+import { descriptorJsonParser,descriptorStringParser } from '../../../src/services/deviceParsers/parsers/descriptor';
+import { genericJsonParser,plainXpubParser,simpleColdcardParser } from '../../../src/services/deviceParsers/parsers/generic';
+import { keystoneMultisigParser,keystoneStandardParser } from '../../../src/services/deviceParsers/parsers/keystone';
+import { ledgerParser } from '../../../src/services/deviceParsers/parsers/ledger';
 
 describe('Device Parser Registry', () => {
   describe('Coldcard Nested Format Parser', () => {

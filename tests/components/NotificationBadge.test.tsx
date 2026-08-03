@@ -6,7 +6,7 @@
 
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it } from 'vitest';
-import { NotificationBadge,NotificationDot } from '../../components/NotificationBadge';
+import { NotificationBadge,NotificationDot } from '../../src/components/NotificationBadge';
 
 describe('NotificationBadge', () => {
   describe('rendering', () => {

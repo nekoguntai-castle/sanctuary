@@ -6,12 +6,12 @@ import {
   WEBHOOK_PAYLOAD_PROFILE_MAPPED_JSON,
   WEBHOOK_VALUATION_MODE_OPTIONAL,
 } from '../../../../shared/constants/webhooks';
-import { WalletWebhookForm } from '../../../../components/WalletDetail/webhooks/WalletWebhookForm';
+import { WalletWebhookForm } from '../../../../src/components/WalletDetail/webhooks/WalletWebhookForm';
 import {
   DEFAULT_HMAC_CONFIG,
   defaultForm,
   type WebhookFormState,
-} from '../../../../components/WalletDetail/webhooks/model';
+} from '../../../../src/components/WalletDetail/webhooks/model';
 
 describe('WalletWebhookForm', () => {
   it('emits changes for basic webhook fields and create actions', () => {

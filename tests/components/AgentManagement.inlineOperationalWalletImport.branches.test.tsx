@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { InlineOperationalWalletImport } from '../../components/AgentManagement/AgentManagement/InlineOperationalWalletImport';
+import { InlineOperationalWalletImport } from '../../src/components/AgentManagement/AgentManagement/InlineOperationalWalletImport';
 import * as walletsApi from '../../src/api/wallets';
 import type { AgentOptionWallet } from '../../src/api/admin';
 

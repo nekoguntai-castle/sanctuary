@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { renderHook, act } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { FeatureTable, useFeatureTableConfig } from '../../../components/ui/FeatureTable';
-import type { TableColumnConfig } from '../../../types';
+import { FeatureTable, useFeatureTableConfig } from '../../../src/components/ui/FeatureTable';
+import type { TableColumnConfig } from '../../../src/types';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -10,7 +10,7 @@ import type { TableColumnConfig } from '../../../types';
 
 const mockPreferences = new Map<string, unknown>();
 
-vi.mock('../../../hooks/useUserPreference', () => ({
+vi.mock('../../../src/hooks/useUserPreference', () => ({
   useUserPreference: vi.fn((key: string, defaultValue: unknown) => {
     const value = mockPreferences.has(key) ? mockPreferences.get(key) : defaultValue;
     const setter = vi.fn((newVal: unknown) => mockPreferences.set(key, newVal));
@@ -18,7 +18,7 @@ vi.mock('../../../hooks/useUserPreference', () => ({
   }),
 }));
 
-vi.mock('../../../components/ui/ConfigurableTable', () => ({
+vi.mock('../../../src/components/ui/ConfigurableTable', () => ({
   ConfigurableTable: vi.fn((props: Record<string, unknown>) => (
     <div data-testid="configurable-table">
       {JSON.stringify({

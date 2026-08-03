@@ -1289,9 +1289,16 @@ This command starts the dedicated test database container, runs Prisma migration
 
 ```
 sanctuary/
-├── components/        # React components
-├── contexts/          # React context providers
-├── hooks/             # Custom React hooks
+├── src/               # Frontend application source
+│   ├── api/           # Frontend API client
+│   ├── components/    # React components
+│   ├── contexts/      # React context providers
+│   ├── hooks/         # Custom React hooks
+│   ├── providers/     # Application providers
+│   ├── services/      # Frontend services (hardware wallet, etc.)
+│   ├── themes/        # Color theme definitions
+│   ├── types/         # Frontend types
+│   └── utils/         # Frontend utilities
 ├── shared/            # Shared code across frontend, backend, gateway
 │   ├── types/         # Logger, WebSocket, Bitcoin type definitions
 │   ├── constants/     # Bitcoin constants (SATS_PER_BTC, address patterns)
@@ -1312,10 +1319,6 @@ sanctuary/
 │       ├── middleware/ # Auth, rate limiting, logging
 │       ├── routes/     # Proxy routes to backend
 │       └── services/   # Push notifications (FCM/APNs)
-├── src/
-│   └── api/           # Frontend API client
-├── services/          # Frontend services (hardware wallet, etc.)
-├── themes/            # Color theme definitions
 ├── assets/            # Logo, screenshots, architecture diagram
 ├── docker/            # Docker configuration files
 └── docker-compose.yml

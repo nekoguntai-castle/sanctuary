@@ -1,6 +1,6 @@
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it } from 'vitest';
-import { ImportReview } from '../../../components/ImportWallet/ImportReview';
+import { ImportReview } from '../../../src/components/ImportWallet/ImportReview';
 import type { ImportValidationResult } from '../../../src/api/wallets';
 
 const createValidationResult = (

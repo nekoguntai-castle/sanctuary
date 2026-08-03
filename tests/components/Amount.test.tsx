@@ -6,10 +6,10 @@
 
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { Amount } from '../../components/Amount';
+import { Amount } from '../../src/components/Amount';
 
 // Mock the CurrencyContext
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock('../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(() => ({
     format: vi.fn((sats: number, options?: { forceSats?: boolean }) => {
       if (options?.forceSats) {

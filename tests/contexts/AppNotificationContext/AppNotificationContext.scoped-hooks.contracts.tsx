@@ -5,7 +5,7 @@ import {
   useAppNotifications,
   useDeviceNotifications,
   useWalletNotifications,
-} from '../../../contexts/AppNotificationContext';
+} from '../../../src/contexts/AppNotificationContext';
 import { wrapper } from './AppNotificationContextTestHarness';
 
 export const registerAppNotificationScopedHookContracts = () => {

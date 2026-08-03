@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { EditUserModal } from '../../../components/UsersGroups/EditUserModal';
+import { EditUserModal } from '../../../src/components/UsersGroups/EditUserModal';
 
 describe('EditUserModal branch coverage', () => {
   const buildUser = (overrides: Partial<any> = {}) => ({

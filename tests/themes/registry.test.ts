@@ -1,5 +1,5 @@
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import type { ThemeDefinition } from '../../themes/types';
+import type { ThemeDefinition } from '../../src/themes/types';
 
 const { mockLogWarn, mockLogError, mockGetCurrentSeason, mockGetSeasonalColors, mockGetSeasonName, mockGetSeasonalBackground } = vi.hoisted(() => ({
   mockLogWarn: vi.fn(),
@@ -23,7 +23,7 @@ const { mockLogWarn, mockLogError, mockGetCurrentSeason, mockGetSeasonalColors, 
   mockGetSeasonalBackground: vi.fn((season: string) => `bg-${season}`),
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -32,14 +32,14 @@ vi.mock('../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../themes/seasonal', () => ({
+vi.mock('../../src/themes/seasonal', () => ({
   getCurrentSeason: mockGetCurrentSeason,
   getSeasonalColors: mockGetSeasonalColors,
   getSeasonName: mockGetSeasonName,
   getSeasonalBackground: mockGetSeasonalBackground,
 }));
 
-import { themeRegistry } from '../../themes/registry';
+import { themeRegistry } from '../../src/themes/registry';
 
 function createRegistry() {
   return new ((themeRegistry as any).constructor)();

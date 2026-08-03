@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { coldcardFlatParser } from '../../../services/deviceParsers/parsers/coldcardFlat';
+import { coldcardFlatParser } from '../../../src/services/deviceParsers/parsers/coldcardFlat';
 
 describe('coldcardFlatParser branch coverage', () => {
   it('rejects non-flat data and partial xpub/derivation pairs', () => {

@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { Toggle } from '../../../components/ui/Toggle';
+import { Toggle } from '../../../src/components/ui/Toggle';
 
 describe('Toggle', () => {
   it('uses custom classes and reports the next checked state', async () => {

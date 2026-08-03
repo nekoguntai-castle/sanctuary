@@ -2,13 +2,13 @@ import { render,screen,within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { TransactionList } from '../../../components/TransactionList/TransactionList';
-import { getOwnAddressValue } from '../../../components/TransactionList/TransactionList/detailsModel';
-import type { Transaction } from '../../../types';
+import { TransactionList } from '../../../src/components/TransactionList/TransactionList';
+import { getOwnAddressValue } from '../../../src/components/TransactionList/TransactionList/detailsModel';
+import type { Transaction } from '../../../src/types';
 
 const useTransactionListMock = vi.fn();
 
-vi.mock('../../../contexts/CurrencyContext', () => {
+vi.mock('../../../src/contexts/CurrencyContext', () => {
   const value = {
     format: (value: number) => `${value.toLocaleString()} sats`,
     unit: 'sats',
@@ -19,18 +19,18 @@ vi.mock('../../../contexts/CurrencyContext', () => {
   };
 });
 
-vi.mock('../../../hooks/useAIStatus', () => ({
+vi.mock('../../../src/hooks/useAIStatus', () => ({
   useAIStatus: () => ({
     enabled: true,
     loading: false,
   }),
 }));
 
-vi.mock('../../../components/TransactionList/hooks/useTransactionList', () => ({
+vi.mock('../../../src/components/TransactionList/hooks/useTransactionList', () => ({
   useTransactionList: (args: unknown) => useTransactionListMock(args),
 }));
 
-vi.mock('../../../components/Amount', () => ({
+vi.mock('../../../src/components/Amount', () => ({
   Amount: ({
     sats = 0,
     showSign,
@@ -77,7 +77,7 @@ vi.mock('lucide-react', () => ({
   X: () => <span data-testid="x-icon" />,
 }));
 
-vi.mock('../../../components/TransactionList/TransactionRow', () => ({
+vi.mock('../../../src/components/TransactionList/TransactionRow', () => ({
   TransactionRow: ({ tx, onTxClick }: { tx: Transaction; onTxClick: (t: Transaction) => void }) => (
     <>
       <td>
@@ -87,7 +87,7 @@ vi.mock('../../../components/TransactionList/TransactionRow', () => ({
   ),
 }));
 
-vi.mock('../../../components/TransactionList/ActionMenu', () => ({
+vi.mock('../../../src/components/TransactionList/ActionMenu', () => ({
   ActionMenu: ({ onClose }: { onClose: () => void }) => (
     <button data-testid="action-close" onClick={onClose}>
       close-from-action
@@ -95,11 +95,11 @@ vi.mock('../../../components/TransactionList/ActionMenu', () => ({
   ),
 }));
 
-vi.mock('../../../components/TransactionList/FlowPreview', () => ({
+vi.mock('../../../src/components/TransactionList/FlowPreview', () => ({
   FlowPreview: () => <div data-testid="flow-preview" />,
 }));
 
-vi.mock('../../../components/TransactionList/LabelEditor', () => ({
+vi.mock('../../../src/components/TransactionList/LabelEditor', () => ({
   LabelEditor: ({
     canEdit,
     aiEnabled,

@@ -1,5 +1,5 @@
 /**
- * Tests for components/PayjoinSection.tsx
+ * Tests for src/components/PayjoinSection.tsx
  *
  * Tests the Payjoin toggle component including eligibility fetching,
  * status pills, tooltip display, and education modal.
@@ -7,7 +7,7 @@
 
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { PayjoinSection } from '../../components/PayjoinSection';
+import { PayjoinSection } from '../../src/components/PayjoinSection';
 import * as payjoinApi from '../../src/api/payjoin';
 
 // Mock the payjoin API

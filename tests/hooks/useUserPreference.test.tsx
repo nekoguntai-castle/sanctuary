@@ -8,13 +8,13 @@
 
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useUserPreference } from '../../hooks/useUserPreference';
+import { useUserPreference } from '../../src/hooks/useUserPreference';
 
 const mockUpdatePreferences = vi.fn();
 let mockUser: any = null;
 let mockPreferences: any = null;
 
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useCurrentUser: () => mockUser,
   useUserPreferences: () => ({
     preferences: mockPreferences,
@@ -22,7 +22,7 @@ vi.mock('../../contexts/UserContext', () => ({
   }),
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

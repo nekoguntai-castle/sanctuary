@@ -437,7 +437,7 @@ Phase 4 introduced cross-tab coordination for the refresh flow. Two primitives a
 
 ### Release gate
 
-See `docs/reference/release-gates.md` "Browser auth cookies and refresh flow" — the cookie/CSRF/refresh-flow test suite must run on any PR that touches `src/api/client.ts`, `src/api/refresh.ts`, `contexts/UserContext.tsx`, `services/websocket.ts`, `server/src/middleware/auth.ts`, `server/src/middleware/csrf.ts`, `server/src/api/auth/*`, or `server/src/websocket/auth.ts`.
+See `docs/reference/release-gates.md` "Browser auth cookies and refresh flow" — the cookie/CSRF/refresh-flow test suite must run on any PR that touches `src/api/client.ts`, `src/api/refresh.ts`, `src/contexts/UserContext.tsx`, `src/services/websocket.ts`, `server/src/middleware/auth.ts`, `server/src/middleware/csrf.ts`, `server/src/api/auth/*`, or `server/src/websocket/auth.ts`.
 
 ## Gateway Audit Failures
 

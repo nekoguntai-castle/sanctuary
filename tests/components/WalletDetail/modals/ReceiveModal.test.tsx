@@ -9,7 +9,7 @@ import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import type { Address } from '../../../../types';
+import type { Address } from '../../../../src/types';
 
 // Mock QRCodeSVG
 vi.mock('qrcode.react', () => ({
@@ -33,7 +33,7 @@ vi.mock('lucide-react', () => ({
 }));
 
 // Mock Button
-vi.mock('../../../../components/ui/Button', () => ({
+vi.mock('../../../../src/components/ui/Button', () => ({
   Button: ({
     children,
     onClick,
@@ -50,7 +50,7 @@ vi.mock('../../../../components/ui/Button', () => ({
 }));
 
 // Mock PayjoinSection
-vi.mock('../../../../components/PayjoinSection', () => ({
+vi.mock('../../../../src/components/PayjoinSection', () => ({
   PayjoinSection: ({
     enabled,
     onToggle,
@@ -79,7 +79,7 @@ vi.mock('../../../../components/PayjoinSection', () => ({
 const mockCopy = vi.fn();
 const mockIsCopied = vi.fn().mockReturnValue(false);
 
-vi.mock('../../../../hooks/useCopyToClipboard', () => ({
+vi.mock('../../../../src/hooks/useCopyToClipboard', () => ({
   useCopyToClipboard: () => ({
     copy: mockCopy,
     isCopied: mockIsCopied,
@@ -100,7 +100,7 @@ vi.mock('../../../../src/api/payjoin', () => ({
 }));
 
 // Mock logger
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -110,7 +110,7 @@ vi.mock('../../../../utils/logger', () => ({
 }));
 
 // Import after mocks
-import { ReceiveModal } from '../../../../components/WalletDetail/modals/ReceiveModal';
+import { ReceiveModal } from '../../../../src/components/WalletDetail/modals/ReceiveModal';
 import * as payjoinApi from '../../../../src/api/payjoin';
 
 // Test data

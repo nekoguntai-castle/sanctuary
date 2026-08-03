@@ -2,7 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { EmptyState, WalletEmptyState, DeviceEmptyState } from '../../../components/ui/EmptyState';
+import { EmptyState, WalletEmptyState, DeviceEmptyState } from '../../../src/components/ui/EmptyState';
 
 function renderWithRouter(ui: React.ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);

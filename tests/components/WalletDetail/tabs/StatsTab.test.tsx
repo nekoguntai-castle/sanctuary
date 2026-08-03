@@ -1,12 +1,12 @@
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { StatsTab } from '../../../../components/WalletDetail/tabs/StatsTab';
+import { StatsTab } from '../../../../src/components/WalletDetail/tabs/StatsTab';
 
 const mockRefs = vi.hoisted(() => ({
   walletStatsProps: null as any,
 }));
 
-vi.mock('../../../../components/WalletStats', () => ({
+vi.mock('../../../../src/components/WalletStats', () => ({
   WalletStats: (props: any) => {
     mockRefs.walletStatsProps = props;
     return <div data-testid="wallet-stats" />;

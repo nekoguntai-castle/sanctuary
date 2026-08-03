@@ -46,7 +46,7 @@ vi.mock('../../../src/api/ai', () => ({
 }));
 
 // Mock logger
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -56,7 +56,7 @@ vi.mock('../../../utils/logger', () => ({
 }));
 
 // Mock useAIStatus hook
-vi.mock('../../../hooks/useAIStatus', () => ({
+vi.mock('../../../src/hooks/useAIStatus', () => ({
   invalidateAIStatusCache: vi.fn(),
 }));
 

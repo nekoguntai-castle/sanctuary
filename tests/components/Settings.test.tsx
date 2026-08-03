@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock CurrencyContext
 const mockSetCurrency = vi.fn();
-vi.mock("../../contexts/CurrencyContext", () => ({
+vi.mock("../../src/contexts/CurrencyContext", () => ({
   useCurrency: () => ({
     currency: "USD",
     setCurrency: mockSetCurrency,
@@ -35,7 +35,7 @@ vi.mock("../../contexts/CurrencyContext", () => ({
 
 // Mock UserContext
 const mockUpdatePreferences = vi.fn().mockResolvedValue({});
-vi.mock("../../contexts/UserContext", () => ({
+vi.mock("../../src/contexts/UserContext", () => ({
   useUser: () => ({
     user: {
       id: "user-123",
@@ -57,7 +57,7 @@ vi.mock("../../contexts/UserContext", () => ({
 }));
 
 // Mock notification sound hook
-vi.mock("../../hooks/useNotificationSound", () => ({
+vi.mock("../../src/hooks/useNotificationSound", () => ({
   useNotificationSound: () => ({
     enabled: true,
     toggle: vi.fn(),
@@ -84,7 +84,7 @@ vi.mock("../../src/api/client", () => ({
 }));
 
 // Mock logger
-vi.mock("../../utils/logger", () => ({
+vi.mock("../../src/utils/logger", () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -94,12 +94,12 @@ vi.mock("../../utils/logger", () => ({
 }));
 
 // Mock error handler
-vi.mock("../../utils/errorHandler", () => ({
+vi.mock("../../src/utils/errorHandler", () => ({
   logError: vi.fn().mockReturnValue("Error message"),
 }));
 
 // Mock theme registry with all methods used by Settings component
-vi.mock("../../themes", () => ({
+vi.mock("../../src/themes", () => ({
   themeRegistry: {
     getTheme: vi.fn().mockReturnValue({
       id: "sanctuary",
@@ -124,7 +124,7 @@ vi.mock("../../themes", () => ({
 }));
 
 // Mock background categories
-vi.mock("../../themes/backgroundCategories", () => ({
+vi.mock("../../src/themes/backgroundCategories", () => ({
   CATEGORIES: [],
   BACKGROUND_CATEGORIES: [],
   getCategoriesForBackground: vi.fn().mockReturnValue([]),
@@ -198,7 +198,7 @@ vi.mock("lucide-react", () => ({
 }));
 
 // Mock Button component
-vi.mock("../../components/ui/Button", () => ({
+vi.mock("../../src/components/ui/Button", () => ({
   Button: ({
     children,
     onClick,
@@ -211,14 +211,14 @@ vi.mock("../../components/ui/Button", () => ({
   ),
 }));
 
-vi.mock("../../components/PriceProviderDiagnostics", () => ({
+vi.mock("../../src/components/PriceProviderDiagnostics", () => ({
   PriceProviderDiagnostics: () => (
     <div data-testid="price-provider-diagnostics">Diagnostics</div>
   ),
 }));
 
 // Mock custom icons
-vi.mock("../../components/ui/CustomIcons", () => ({
+vi.mock("../../src/components/ui/CustomIcons", () => ({
   SanctuaryLogo: () => <span data-testid="sanctuary-logo" />,
   SatsIcon: () => <span data-testid="sats-icon" />,
 }));
@@ -229,7 +229,7 @@ describe("Settings Component", () => {
   });
 
   it("should render settings component", async () => {
-    const { Settings } = await import("../../components/Settings");
+    const { Settings } = await import("../../src/components/Settings");
 
     render(<Settings />);
 
@@ -238,7 +238,7 @@ describe("Settings Component", () => {
   });
 
   it("should display settings tabs", async () => {
-    const { Settings } = await import("../../components/Settings");
+    const { Settings } = await import("../../src/components/Settings");
 
     render(<Settings />);
 
@@ -247,7 +247,7 @@ describe("Settings Component", () => {
   });
 
   it("labels all tab buttons for icon-only mobile layouts", async () => {
-    const { Settings } = await import("../../components/Settings");
+    const { Settings } = await import("../../src/components/Settings");
 
     render(<Settings />);
 
@@ -265,7 +265,7 @@ describe("Settings Component", () => {
   });
 
   it("should display theme options", async () => {
-    const { Settings } = await import("../../components/Settings");
+    const { Settings } = await import("../../src/components/Settings");
 
     render(<Settings />);
 
@@ -273,7 +273,7 @@ describe("Settings Component", () => {
   });
 
   it("should display notification sound toggle", async () => {
-    const { Settings } = await import("../../components/Settings");
+    const { Settings } = await import("../../src/components/Settings");
 
     render(<Settings />);
 
@@ -281,7 +281,7 @@ describe("Settings Component", () => {
   });
 
   it("should display appearance tab content", async () => {
-    const { Settings } = await import("../../components/Settings");
+    const { Settings } = await import("../../src/components/Settings");
 
     render(<Settings />);
 
@@ -290,7 +290,7 @@ describe("Settings Component", () => {
   });
 
   it("should display season options", async () => {
-    const { Settings } = await import("../../components/Settings");
+    const { Settings } = await import("../../src/components/Settings");
 
     render(<Settings />);
 
@@ -304,7 +304,7 @@ describe("Settings - Tab Navigation", () => {
   });
 
   it("should render with default appearance tab", async () => {
-    const { Settings } = await import("../../components/Settings");
+    const { Settings } = await import("../../src/components/Settings");
 
     render(<Settings />);
 

@@ -1,10 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import * as accountImportUtils from "../../../../../components/DeviceDetail/accounts/accountImportUtils";
+import * as accountImportUtils from "../../../../../src/components/DeviceDetail/accounts/accountImportUtils";
 import {
   getDeviceTypeFromDeviceModel,
   useAddAccountFlow,
-} from "../../../../../components/DeviceDetail/accounts/hooks/useAddAccountFlow";
+} from "../../../../../src/components/DeviceDetail/accounts/hooks/useAddAccountFlow";
 
 const parseDeviceJsonMock = vi.hoisted(() => vi.fn());
 const connectMock = vi.hoisted(() => vi.fn());
@@ -120,11 +120,11 @@ vi.mock("@keystonehq/bc-ur-registry", () => {
   return { URRegistryDecoder };
 });
 
-vi.mock("../../../../../services/deviceParsers", () => ({
+vi.mock("../../../../../src/services/deviceParsers", () => ({
   parseDeviceJson: parseDeviceJsonMock,
 }));
 
-vi.mock("../../../../../services/hardwareWallet/runtime", () => ({
+vi.mock("../../../../../src/services/hardwareWallet/runtime", () => ({
   hardwareWalletService: {
     connect: connectMock,
     getAllXpubs: getAllXpubsMock,
@@ -144,12 +144,12 @@ vi.mock("../../../../../src/api/devices", () => ({
   addDeviceAccount: addDeviceAccountMock,
 }));
 
-vi.mock("../../../../../components/DeviceDetail/accounts/urHelpers", () => ({
+vi.mock("../../../../../src/components/DeviceDetail/accounts/urHelpers", () => ({
   extractFromUrResult: extractFromUrResultMock,
   normalizeDerivationPath: normalizeDerivationPathMock,
 }));
 
-vi.mock("../../../../../utils/logger", () => ({
+vi.mock("../../../../../src/utils/logger", () => ({
   createLogger: () => loggerSpies,
 }));
 

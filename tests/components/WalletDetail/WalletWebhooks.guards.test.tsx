@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { WalletWebhooks } from '../../../components/WalletDetail/WalletWebhooks';
+import { WalletWebhooks } from '../../../src/components/WalletDetail/WalletWebhooks';
 
 const {
   mockListWalletWebhooks,
@@ -22,13 +22,13 @@ vi.mock('../../../src/api/wallets', () => ({
   replayWalletWebhookDelivery: vi.fn(),
 }));
 
-vi.mock('../../../components/WalletDetail/webhooks/WalletWebhookForm', () => ({
+vi.mock('../../../src/components/WalletDetail/webhooks/WalletWebhookForm', () => ({
   WalletWebhookForm: ({ onCreate }: { onCreate: () => void }) => (
     <button type="button" onClick={onCreate}>Force create</button>
   ),
 }));
 
-vi.mock('../../../components/WalletDetail/webhooks/WalletWebhookRow', () => ({
+vi.mock('../../../src/components/WalletDetail/webhooks/WalletWebhookRow', () => ({
   WalletWebhookRow: ({ onRotateSecret }: { onRotateSecret: () => void }) => (
     <button type="button" onClick={onRotateSecret}>Force rotate</button>
   ),

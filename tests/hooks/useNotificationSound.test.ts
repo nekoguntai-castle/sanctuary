@@ -11,10 +11,10 @@ import {
 getSoundPresets,
 SOUND_EVENTS,
 useNotificationSound
-} from '../../hooks/useNotificationSound';
+} from '../../src/hooks/useNotificationSound';
 
 // Mock the logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: vi.fn(() => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -36,12 +36,12 @@ const mockUser: any = {
   },
 };
 
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: vi.fn(() => ({ user: mockUser })),
 }));
 
 // Import useUser so we can modify its return value
-import { useUser } from '../../contexts/UserContext';
+import { useUser } from '../../src/contexts/UserContext';
 
 // Mock Web Audio API
 const mockOscillator = {

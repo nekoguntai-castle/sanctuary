@@ -39,7 +39,7 @@ vi.mock("../../src/api/client", () => ({
   },
 }));
 
-vi.mock("../../utils/logger", () => ({
+vi.mock("../../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -48,7 +48,7 @@ vi.mock("../../utils/logger", () => ({
   }),
 }));
 
-import { TrezorAdapter } from "../../services/hardwareWallet/adapters/trezor";
+import { TrezorAdapter } from "../../src/services/hardwareWallet/adapters/trezor";
 
 describe("TrezorAdapter class", () => {
   beforeEach(() => {

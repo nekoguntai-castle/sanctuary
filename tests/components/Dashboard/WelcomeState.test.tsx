@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { WelcomeState } from '../../../components/Dashboard/WelcomeState';
+import { WelcomeState } from '../../../src/components/Dashboard/WelcomeState';
 
 vi.mock('react-router-dom', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => (

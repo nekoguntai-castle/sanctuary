@@ -1,10 +1,10 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { TransactionRow } from '../../../components/TransactionList/TransactionRow';
-import type { Transaction,Wallet } from '../../../types';
+import { TransactionRow } from '../../../src/components/TransactionList/TransactionRow';
+import type { Transaction,Wallet } from '../../../src/types';
 
-vi.mock('../../../components/Amount', () => ({
+vi.mock('../../../src/components/Amount', () => ({
   Amount: ({
     sats = 0,
     showSign,
@@ -14,7 +14,7 @@ vi.mock('../../../components/Amount', () => ({
   }) => <span data-testid="amount">{showSign && sats > 0 ? '+' : ''}{String(sats)}</span>,
 }));
 
-vi.mock('../../../components/LabelSelector', () => ({
+vi.mock('../../../src/components/LabelSelector', () => ({
   LabelBadges: ({ labels }: { labels: Array<{ id: string; name: string }> }) => (
     <span data-testid="label-badges">{labels.length}</span>
   ),

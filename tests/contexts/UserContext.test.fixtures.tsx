@@ -1,4 +1,4 @@
-import { useUser } from '../../contexts/UserContext';
+import { useUser } from '../../src/contexts/UserContext';
 
 export const mockUser = {
   id: 'user-1',

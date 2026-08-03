@@ -3,8 +3,8 @@ import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import {
   applyNetworkSearchParam,
   resolveInitialNetwork,
-} from '../../../components/Dashboard/hooks/dashboardDataModel';
-import { useDashboardData } from '../../../components/Dashboard/hooks/useDashboardData';
+} from '../../../src/components/Dashboard/hooks/dashboardDataModel';
+import { useDashboardData } from '../../../src/components/Dashboard/hooks/useDashboardData';
 
 const mockNavigate = vi.fn();
 const mockSetSearchParams = vi.fn();
@@ -62,7 +62,7 @@ vi.mock('../../../src/api/admin', () => ({
   checkVersion: (...args: any[]) => mockCheckVersion(...args),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     warn: (...args: any[]) => mockLoggerWarn(...args),
     info: vi.fn(),
@@ -71,7 +71,7 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../hooks/websocket', () => ({
+vi.mock('../../../src/hooks/websocket', () => ({
   useWebSocket: () => ({
     connected: wsConnected,
     state: wsState,
@@ -85,13 +85,13 @@ vi.mock('../../../hooks/websocket', () => ({
   },
 }));
 
-vi.mock('../../../contexts/NotificationContext', () => ({
+vi.mock('../../../src/contexts/NotificationContext', () => ({
   useNotifications: () => ({
     addNotification: mockAddNotification,
   }),
 }));
 
-vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: activeNetworkState,
     isMainnet: activeNetworkState === 'mainnet',
@@ -99,13 +99,13 @@ vi.mock('../../../contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../../hooks/useNotificationSound', () => ({
+vi.mock('../../../src/hooks/useNotificationSound', () => ({
   useNotificationSound: () => ({
     playEventSound: mockPlayEventSound,
   }),
 }));
 
-vi.mock('../../../hooks/queries/useWallets', () => ({
+vi.mock('../../../src/hooks/queries/useWallets', () => ({
   useWallets: () => ({ data: walletsData, isLoading: walletsLoading }),
   useRecentTransactions: () => ({ data: recentTxData, isLoading: txLoading }),
   usePendingTransactions: () => ({ data: pendingTxData }),
@@ -114,7 +114,7 @@ vi.mock('../../../hooks/queries/useWallets', () => ({
   useBalanceHistory: () => ({ data: balanceHistoryData }),
 }));
 
-vi.mock('../../../hooks/queries/useBitcoin', () => ({
+vi.mock('../../../src/hooks/queries/useBitcoin', () => ({
   useFeeEstimates: () => ({ data: feeEstimatesData, isLoading: feesLoading }),
   useBitcoinStatus: (network: string) => {
     bitcoinStatusNetworks.push(network);
@@ -131,15 +131,15 @@ vi.mock('../../../hooks/queries/useBitcoin', () => ({
   },
 }));
 
-vi.mock('../../../contexts/CurrencyContext', () => ({
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
   useCurrency: () => currencyState,
 }));
 
-vi.mock('../../../contexts/UserContext', () => ({
+vi.mock('../../../src/contexts/UserContext', () => ({
   useUser: () => userState,
 }));
 
-vi.mock('../../../hooks/useDelayedRender', () => ({
+vi.mock('../../../src/hooks/useDelayedRender', () => ({
   useDelayedRender: () => delayedRenderReady,
 }));
 

@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import App from "../App";
+import App from "../src/App";
 
-vi.mock("../utils/logger", () => ({
+vi.mock("../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -28,7 +28,7 @@ const {
   mockUseAppCapabilityStates: vi.fn(),
 }));
 
-vi.mock("../hooks/websocket", () => ({
+vi.mock("../src/hooks/websocket", () => ({
   useWebSocketQueryInvalidation: (...args: unknown[]) =>
     mockUseWebSocketQueryInvalidation(...args),
 }));
@@ -42,20 +42,20 @@ vi.mock("../src/api/auth", () => ({
   getCurrentUser: (...args: unknown[]) => mockGetCurrentUser(...args),
 }));
 
-vi.mock("../hooks/useAppCapabilities", () => ({
+vi.mock("../src/hooks/useAppCapabilities", () => ({
   useAppCapabilities: vi.fn(() => ({ console: true, intelligence: true })),
   useAppCapabilityStates: (...args: unknown[]) =>
     mockUseAppCapabilityStates(...args),
 }));
 
-vi.mock("../contexts/UserContext", () => ({
+vi.mock("../src/contexts/UserContext", () => ({
   UserProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
   useUser: (...args: unknown[]) => mockUseUser(...args),
 }));
 
-vi.mock("../contexts/ActiveNetworkContext", () => ({
+vi.mock("../src/contexts/ActiveNetworkContext", () => ({
   ActiveNetworkProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
@@ -66,38 +66,38 @@ vi.mock("../contexts/ActiveNetworkContext", () => ({
   }),
 }));
 
-vi.mock("../contexts/NotificationContext", () => ({
+vi.mock("../src/contexts/NotificationContext", () => ({
   NotificationProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
   useNotifications: (...args: unknown[]) => mockUseNotifications(...args),
 }));
 
-vi.mock("../contexts/CurrencyContext", () => ({
+vi.mock("../src/contexts/CurrencyContext", () => ({
   CurrencyProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
 }));
 
-vi.mock("../contexts/AppNotificationContext", () => ({
+vi.mock("../src/contexts/AppNotificationContext", () => ({
   AppNotificationProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
 }));
 
-vi.mock("../contexts/SidebarContext", () => ({
+vi.mock("../src/contexts/SidebarContext", () => ({
   SidebarProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
 }));
 
-vi.mock("../providers/QueryProvider", () => ({
+vi.mock("../src/providers/QueryProvider", () => ({
   QueryProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
 }));
 
-vi.mock("../components/Layout", () => ({
+vi.mock("../src/components/Layout", () => ({
   Layout: ({
     children,
     toggleTheme,
@@ -115,113 +115,113 @@ vi.mock("../components/Layout", () => ({
   ),
 }));
 
-vi.mock("../components/Login", () => ({
+vi.mock("../src/components/Login", () => ({
   Login: () => <div>Login Screen</div>,
 }));
 
-vi.mock("../components/Dashboard", () => ({
+vi.mock("../src/components/Dashboard", () => ({
   Dashboard: () => <div>Dashboard Page</div>,
 }));
 
-vi.mock("../components/WalletList", () => ({
+vi.mock("../src/components/WalletList", () => ({
   WalletList: () => <div>Wallet List</div>,
 }));
 
-vi.mock("../components/WalletDetail", () => ({
+vi.mock("../src/components/WalletDetail", () => ({
   WalletDetail: () => <div>Wallet Detail</div>,
 }));
 
-vi.mock("../components/ConsoleResults", () => ({
+vi.mock("../src/components/ConsoleResults", () => ({
   ConsoleResults: () => <div>Console Results Page</div>,
 }));
 
-vi.mock("../components/send", () => ({
+vi.mock("../src/components/send", () => ({
   SendTransactionPage: () => <div>Send Transaction Page</div>,
 }));
 
-vi.mock("../components/CreateWallet", () => ({
+vi.mock("../src/components/CreateWallet", () => ({
   CreateWallet: () => <div>Create Wallet Page</div>,
 }));
 
-vi.mock("../components/ImportWallet", () => ({
+vi.mock("../src/components/ImportWallet", () => ({
   ImportWallet: () => <div>Import Wallet Page</div>,
 }));
 
-vi.mock("../components/DeviceList", () => ({
+vi.mock("../src/components/DeviceList", () => ({
   DeviceList: () => <div>Device List Page</div>,
 }));
 
-vi.mock("../components/DeviceDetail", () => ({
+vi.mock("../src/components/DeviceDetail", () => ({
   DeviceDetail: () => <div>Device Detail Page</div>,
 }));
 
-vi.mock("../components/ConnectDevice", () => ({
+vi.mock("../src/components/ConnectDevice", () => ({
   ConnectDevice: () => <div>Connect Device Page</div>,
 }));
 
-vi.mock("../components/Settings", () => ({
+vi.mock("../src/components/Settings", () => ({
   Settings: () => <div>Settings Page</div>,
 }));
 
-vi.mock("../components/Account", () => ({
+vi.mock("../src/components/Account", () => ({
   Account: () => <div>Account Page</div>,
 }));
 
-vi.mock("../components/NodeConfig", () => ({
+vi.mock("../src/components/NodeConfig", () => ({
   NodeConfig: () => <div>Node Config Page</div>,
 }));
 
-vi.mock("../components/UsersGroups", () => ({
+vi.mock("../src/components/UsersGroups", () => ({
   UsersGroups: () => <div>Users Groups Page</div>,
 }));
 
-vi.mock("../components/SystemSettings", () => ({
+vi.mock("../src/components/SystemSettings", () => ({
   SystemSettings: () => <div>System Settings Page</div>,
 }));
 
-vi.mock("../components/Variables", () => ({
+vi.mock("../src/components/Variables", () => ({
   Variables: () => <div>Variables Page</div>,
 }));
 
-vi.mock("../components/BackupRestore", () => ({
+vi.mock("../src/components/BackupRestore", () => ({
   BackupRestore: () => <div>Backup Restore Page</div>,
 }));
 
-vi.mock("../components/AuditLogs", () => ({
+vi.mock("../src/components/AuditLogs", () => ({
   AuditLogs: () => <div>Audit Logs Page</div>,
 }));
 
-vi.mock("../components/AISettings", () => ({
+vi.mock("../src/components/AISettings", () => ({
   default: () => <div>AI Settings Page</div>,
 }));
 
-vi.mock("../components/Monitoring", () => ({
+vi.mock("../src/components/Monitoring", () => ({
   default: () => <div>Monitoring Page</div>,
 }));
 
-vi.mock("../components/FeatureFlags", () => ({
+vi.mock("../src/components/FeatureFlags", () => ({
   FeatureFlags: () => <div>Feature Flags Page</div>,
 }));
 
-vi.mock("../components/Intelligence", () => ({
+vi.mock("../src/components/Intelligence", () => ({
   Intelligence: () => <div>Intelligence Page</div>,
 }));
 
-vi.mock("../components/AgentWalletDashboard", () => ({
+vi.mock("../src/components/AgentWalletDashboard", () => ({
   AgentWalletDashboard: () => <div>Agent Wallets Page</div>,
 }));
 
-vi.mock("../components/AgentManagement", () => ({
+vi.mock("../src/components/AgentManagement", () => ({
   AgentManagement: () => <div>Wallet Agents Page</div>,
 }));
 
-vi.mock("../components/NotificationToast", () => ({
+vi.mock("../src/components/NotificationToast", () => ({
   NotificationContainer: ({ notifications }: { notifications: unknown[] }) => (
     <div data-testid="notification-count">{notifications.length}</div>
   ),
 }));
 
-vi.mock("../components/AnimatedBackground", () => ({
+vi.mock("../src/components/AnimatedBackground", () => ({
   AnimatedBackground: ({
     pattern,
     darkMode,
@@ -240,7 +240,7 @@ vi.mock("../components/AnimatedBackground", () => ({
   ),
 }));
 
-vi.mock("../components/ChangePasswordModal", () => ({
+vi.mock("../src/components/ChangePasswordModal", () => ({
   ChangePasswordModal: ({
     onPasswordChanged,
   }: {

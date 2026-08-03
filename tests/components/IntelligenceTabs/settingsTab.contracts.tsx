@@ -1,7 +1,7 @@
 import './intelligenceTabsTestHarness';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SettingsTab } from '../../../components/Intelligence/tabs/SettingsTab';
+import { SettingsTab } from '../../../src/components/Intelligence/tabs/SettingsTab';
 import * as intelligenceApi from '../../../src/api/intelligence';
 
 describe('SettingsTab', () => {

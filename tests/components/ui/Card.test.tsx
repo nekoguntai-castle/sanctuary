@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { Card } from '../../../components/ui/Card';
+import { Card } from '../../../src/components/ui/Card';
 
 describe('Card', () => {
   it('renders a div with the medium padding shell by default', () => {

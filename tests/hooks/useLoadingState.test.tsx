@@ -7,7 +7,7 @@
 
 import { act,renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { useAsyncAction,useLoadingState } from '../../hooks/useLoadingState';
+import { useAsyncAction,useLoadingState } from '../../src/hooks/useLoadingState';
 
 describe('useLoadingState', () => {
   beforeEach(() => {

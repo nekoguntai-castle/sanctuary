@@ -1,8 +1,8 @@
 import { fireEvent,render,screen,waitFor,within } from '@testing-library/react';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { NotificationPanel } from '../../components/NotificationPanel';
-import { AppNotificationProvider,useAppNotifications } from '../../contexts/AppNotificationContext';
+import { NotificationPanel } from '../../src/components/NotificationPanel';
+import { AppNotificationProvider,useAppNotifications } from '../../src/contexts/AppNotificationContext';
 
 const mockNavigate = vi.fn();
 
@@ -10,7 +10,7 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

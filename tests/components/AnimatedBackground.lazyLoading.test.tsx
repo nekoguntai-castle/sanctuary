@@ -33,7 +33,7 @@ const { snowfallImportGate, useSakuraPetalsMock } = vi.hoisted(() => {
 });
 
 // Mock registry-backed animated detection to include a fake pattern with no matching animation file
-vi.mock('../../themes/patterns', () => {
+vi.mock('../../src/themes/patterns', () => {
   const patterns = ['sakura-petals', 'snowfall', 'fireflies', 'test-nonexistent'] as const;
   const patternSet = new Set<string>(patterns);
   return {
@@ -43,23 +43,23 @@ vi.mock('../../themes/patterns', () => {
 });
 
 // sakuraPetals: valid mock (happy path / cancelled test)
-vi.mock('../../components/animations/sakuraPetals.ts', () => ({
+vi.mock('../../src/components/animations/sakuraPetals.ts', () => ({
   useSakuraPetals: useSakuraPetalsMock,
 }));
 
 // snowfall: async factory rejects after delay, reaching .catch() handler
 // The import gate allows unmount tests to set cancelled=true before the catch fires
-vi.mock('../../components/animations/snowfall.ts', async () => {
+vi.mock('../../src/components/animations/snowfall.ts', async () => {
   await snowfallImportGate.current.promise;
   throw new Error('Module load failed');
 });
 
 // fireflies: exports a non-function (else branch in hookCandidate check)
-vi.mock('../../components/animations/fireflies.ts', () => ({
+vi.mock('../../src/components/animations/fireflies.ts', () => ({
   useFireflies: 'not-a-function',
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -68,7 +68,7 @@ vi.mock('../../utils/logger', () => ({
   }),
 }));
 
-import { AnimatedBackground } from '../../components/AnimatedBackground';
+import { AnimatedBackground } from '../../src/components/AnimatedBackground';
 
 /** Flush microtasks and pending React state updates */
 const flushAsync = () => act(async () => {

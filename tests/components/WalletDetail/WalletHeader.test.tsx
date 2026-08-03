@@ -1,9 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { WalletHeader } from "../../../components/WalletDetail/WalletHeader";
-import { WalletType } from "../../../types";
+import { WalletHeader } from "../../../src/components/WalletDetail/WalletHeader";
+import { WalletType } from "../../../src/types";
 
-vi.mock("../../../components/Amount", () => ({
+vi.mock("../../../src/components/Amount", () => ({
   Amount: ({ sats }: { sats: number }) => (
     <div data-testid="amount">{sats}</div>
   ),

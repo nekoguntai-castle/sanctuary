@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import './AISettingsTestHarness';
-import AISettings from '../../../components/AISettings';
+import AISettings from '../../../src/components/AISettings';
 
 export function registerAISettingsFeaturesSectionContracts() {
   describe('AI Features Section', () => {

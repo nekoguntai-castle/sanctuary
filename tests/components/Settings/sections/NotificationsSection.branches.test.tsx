@@ -1,13 +1,13 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { NotificationsTab } from '../../../../components/Settings/sections/NotificationsSection';
+import { NotificationsTab } from '../../../../src/components/Settings/sections/NotificationsSection';
 
-vi.mock('../../../../components/Settings/sections/SoundSection', () => ({
+vi.mock('../../../../src/components/Settings/sections/SoundSection', () => ({
   NotificationSoundSettings: () => <div data-testid="sound-content">Sound Content</div>,
 }));
 
-vi.mock('../../../../components/Settings/sections/TelegramSection', () => ({
+vi.mock('../../../../src/components/Settings/sections/TelegramSection', () => ({
   TelegramSettings: () => <div data-testid="telegram-content">Telegram Content</div>,
 }));
 

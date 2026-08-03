@@ -20,21 +20,22 @@ const EXPECTED_FRONTEND_COVERAGE_EXCLUDES = [
   '**/dist/**',
   '**/node_modules/**',
   'llm-egress-proxy/src/**',
-  'components/animations/**',
-  'src/types/**/*.ts',
+  'src/components/animations/**',
+  'src/types/ui.ts',
+  'src/types/user.ts',
   'shared/types/**/*.ts',
   'shared/schemas/mobileApiRequests.ts',
   'shared/utils/gatewayAuth.ts',
-  'components/**/types.ts',
-  'components/**/index.ts',
-  'components/**/index.tsx',
-  'contexts/**/index.ts',
-  'hooks/**/types.ts',
-  'hooks/**/index.ts',
-  'hooks/queries/useWalletLabels.ts',
-  'services/**/types.ts',
-  'services/**/index.ts',
-  'themes/types.ts',
+  'src/components/**/types.ts',
+  'src/components/**/index.ts',
+  'src/components/**/index.tsx',
+  'src/contexts/**/index.ts',
+  'src/hooks/**/types.ts',
+  'src/hooks/**/index.ts',
+  'src/hooks/queries/useWalletLabels.ts',
+  'src/services/**/types.ts',
+  'src/services/**/index.ts',
+  'src/themes/types.ts',
   'src/api/**/types.ts',
   'src/api/**/index.ts',
 ];
@@ -60,21 +61,22 @@ describe('frontend coverage policy', () => {
 
     expect(sourcePathExcludes).toEqual([
       'llm-egress-proxy/src/**',
-      'components/animations/**',
-      'src/types/**/*.ts',
+      'src/components/animations/**',
+      'src/types/ui.ts',
+      'src/types/user.ts',
       'shared/types/**/*.ts',
       'shared/schemas/mobileApiRequests.ts',
       'shared/utils/gatewayAuth.ts',
-      'components/**/types.ts',
-      'components/**/index.ts',
-      'components/**/index.tsx',
-      'contexts/**/index.ts',
-      'hooks/**/types.ts',
-      'hooks/**/index.ts',
-      'hooks/queries/useWalletLabels.ts',
-      'services/**/types.ts',
-      'services/**/index.ts',
-      'themes/types.ts',
+      'src/components/**/types.ts',
+      'src/components/**/index.ts',
+      'src/components/**/index.tsx',
+      'src/contexts/**/index.ts',
+      'src/hooks/**/types.ts',
+      'src/hooks/**/index.ts',
+      'src/hooks/queries/useWalletLabels.ts',
+      'src/services/**/types.ts',
+      'src/services/**/index.ts',
+      'src/themes/types.ts',
       'src/api/**/types.ts',
       'src/api/**/index.ts',
     ]);
@@ -83,7 +85,7 @@ describe('frontend coverage policy', () => {
   it('retains animation registry coverage through AnimatedBackground tests', () => {
     const animationTestSource = fs.readFileSync(animatedBackgroundTestPath, 'utf8');
 
-    expect(animationTestSource).toMatch(/vi\.mock\('\.\.\/\.\.\/components\/animations\/[^']+'/);
+    expect(animationTestSource).toMatch(/vi\.mock\('\.\.\/\.\.\/src\/components\/animations\/[^']+'/);
     expect(animationTestSource).toContain('Pattern Registry Consistency');
   });
 

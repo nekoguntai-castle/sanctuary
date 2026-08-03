@@ -2,7 +2,7 @@ import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { Dashboard } from '../../../components/Dashboard/Dashboard';
+import { Dashboard } from '../../../src/components/Dashboard/Dashboard';
 
 vi.mock('react-router-dom', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
@@ -16,11 +16,11 @@ const mocks = vi.hoisted(() => ({
   refreshMempoolData: vi.fn(),
 }));
 
-vi.mock('../../../components/Dashboard/hooks/useDashboardData', () => ({
+vi.mock('../../../src/components/Dashboard/hooks/useDashboardData', () => ({
   useDashboardData: () => mocks.dashboardData,
 }));
 
-vi.mock('../../../components/NetworkTabs', () => ({
+vi.mock('../../../src/components/NetworkTabs', () => ({
   NetworkTabs: (props: any) => (
     <button data-testid="network-tabs" onClick={() => props.onNetworkChange('testnet')}>
       {props.selectedNetwork}:{props.walletCounts.mainnet}
@@ -28,7 +28,7 @@ vi.mock('../../../components/NetworkTabs', () => ({
   ),
 }));
 
-vi.mock('../../../components/Dashboard/MempoolSection', () => ({
+vi.mock('../../../src/components/Dashboard/MempoolSection', () => ({
   MempoolSection: (props: any) => (
     <div data-testid="mempool-section">
       {props.selectedNetwork}:{props.wsState}:{props.nodeStatus}
@@ -39,7 +39,7 @@ vi.mock('../../../components/Dashboard/MempoolSection', () => ({
   ),
 }));
 
-vi.mock('../../../components/Dashboard/PriceChart', () => ({
+vi.mock('../../../src/components/Dashboard/PriceChart', () => ({
   AnimatedPrice: ({ value, symbol }: { value: number | null; symbol: string }) => (
     <div data-testid="animated-price">
       {value === null ? `${symbol}-----` : `${symbol}${value}`}
@@ -52,7 +52,7 @@ vi.mock('../../../components/Dashboard/PriceChart', () => ({
   ),
 }));
 
-vi.mock('../../../components/Dashboard/WalletSummary', () => ({
+vi.mock('../../../src/components/Dashboard/WalletSummary', () => ({
   WalletSummary: (props: any) => (
     <div data-testid="wallet-summary">
       {props.selectedNetwork}:{props.totalBalance}
@@ -60,7 +60,7 @@ vi.mock('../../../components/Dashboard/WalletSummary', () => ({
   ),
 }));
 
-vi.mock('../../../components/Dashboard/RecentTransactions', () => ({
+vi.mock('../../../src/components/Dashboard/RecentTransactions', () => ({
   RecentTransactions: (props: any) => (
     <div data-testid="recent-transactions">
       {props.recentTx.length}:{props.wallets.length}:{props.confirmationThreshold}:{props.deepConfirmationThreshold}

@@ -1,10 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { QueuedSummaryBlock } from '../../../components/BlockVisualizer/QueuedSummaryBlock';
+import { QueuedSummaryBlock } from '../../../src/components/BlockVisualizer/QueuedSummaryBlock';
 import type { PendingTransaction } from '../../../src/types';
 
-vi.mock('../../../components/BlockVisualizer/PendingTxDot', () => ({
+vi.mock('../../../src/components/BlockVisualizer/PendingTxDot', () => ({
   PendingTxDot: ({
     tx,
     explorerUrl,

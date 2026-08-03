@@ -11,7 +11,7 @@ DEFAULT_DEVICE_VISIBLE_COLUMNS,
 DEVICE_COLUMNS,
 getDeviceColumnsInOrder,
 mergeDeviceColumnOrder,
-} from '../../components/columns/deviceColumns';
+} from '../../src/components/columns/deviceColumns';
 
 describe('deviceColumns', () => {
   describe('mergeDeviceColumnOrder', () => {

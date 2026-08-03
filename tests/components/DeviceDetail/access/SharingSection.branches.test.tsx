@@ -1,7 +1,7 @@
 import { fireEvent,render,screen,within } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { SharingSection } from '../../../../components/DeviceDetail/access/SharingSection';
-import type { DeviceShareInfo } from '../../../../types';
+import { SharingSection } from '../../../../src/components/DeviceDetail/access/SharingSection';
+import type { DeviceShareInfo } from '../../../../src/types';
 
 const baseProps = {
   isOwner: true,

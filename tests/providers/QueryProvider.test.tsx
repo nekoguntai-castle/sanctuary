@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { render,screen } from '@testing-library/react';
 import React from 'react';
 import { describe,expect,it } from 'vitest';
-import { QueryProvider,getQueryClient } from '../../providers/QueryProvider';
+import { QueryProvider,getQueryClient } from '../../src/providers/QueryProvider';
 
 const ClientProbe: React.FC = () => {
   const client = useQueryClient();

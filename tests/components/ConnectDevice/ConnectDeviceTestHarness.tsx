@@ -33,33 +33,33 @@ vi.mock('../../../src/api/devices', () => ({
   mergeDeviceAccounts: connectDeviceMocks.mergeDeviceAccounts,
 }));
 
-vi.mock('../../../services/deviceParsers', () => ({
+vi.mock('../../../src/services/deviceParsers', () => ({
   parseDeviceJson: connectDeviceMocks.parseDeviceJson,
   parseDeviceData: vi.fn(),
 }));
 
-vi.mock('../../../services/bbqr', () => ({
+vi.mock('../../../src/services/bbqr', () => ({
   BBQrDecoder: vi.fn(),
   isBBQr: vi.fn().mockReturnValue(false),
   BBQrFileTypes: {},
   BBQrEncodings: {},
 }));
 
-vi.mock('../../../services/hardwareWallet/runtime', () => ({
+vi.mock('../../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: connectDeviceMocks.hardwareWalletService,
 }));
 
-vi.mock('../../../services/hardwareWallet/environment', () => ({
+vi.mock('../../../src/services/hardwareWallet/environment', () => ({
   isSecureContext: connectDeviceMocks.isSecureContext,
 }));
 
-vi.mock('../../../contexts/SidebarContext', () => ({
+vi.mock('../../../src/contexts/SidebarContext', () => ({
   useSidebar: () => ({
     refreshSidebar: vi.fn(),
   }),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     error: vi.fn(),
@@ -94,11 +94,11 @@ vi.mock('lucide-react', () => ({
   AlertTriangle: () => <span data-testid="alert-triangle-icon" />,
 }));
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   getDeviceIcon: (name: string, className?: string) => <span data-testid={`device-icon-${name}`} className={className} />,
 }));
 
-vi.mock('../../../components/ui/Button', () => ({
+vi.mock('../../../src/components/ui/Button', () => ({
   Button: ({ children, onClick, disabled, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button onClick={onClick} disabled={disabled} {...props}>
       {children}
@@ -176,7 +176,7 @@ const createWrapper = () => {
 };
 
 export const renderConnectDevice = async () => {
-  const { ConnectDevice } = await import('../../../components/ConnectDevice');
+  const { ConnectDevice } = await import('../../../src/components/ConnectDevice');
 
   const result = render(<ConnectDevice />, { wrapper: createWrapper() });
 

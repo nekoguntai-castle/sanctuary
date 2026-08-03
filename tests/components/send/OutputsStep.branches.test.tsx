@@ -1,11 +1,11 @@
 import { act,render,screen,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { OutputsStep } from '../../../components/send/steps/OutputsStep';
-import * as CurrencyContext from '../../../contexts/CurrencyContext';
-import * as SendContext from '../../../contexts/send';
+import { OutputsStep } from '../../../src/components/send/steps/OutputsStep';
+import * as CurrencyContext from '../../../src/contexts/CurrencyContext';
+import * as SendContext from '../../../src/contexts/send';
 import * as txApi from '../../../src/api/transactions';
-import * as bip21 from '../../../utils/bip21Parser';
-import * as validate from '../../../utils/validateAddress';
+import * as bip21 from '../../../src/utils/bip21Parser';
+import * as validate from '../../../src/utils/validateAddress';
 
 const capture = vi.hoisted(() => ({
   outputRows: [] as any[],
@@ -21,23 +21,23 @@ const loggerSpies = vi.hoisted(() => ({
   error: vi.fn(),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => loggerSpies,
 }));
 
-vi.mock('../../../contexts/send', () => ({
+vi.mock('../../../src/contexts/send', () => ({
   useSendTransaction: vi.fn(),
 }));
 
-vi.mock('../../../contexts/CurrencyContext', () => ({
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
 }));
 
-vi.mock('../../../utils/bip21Parser', () => ({
+vi.mock('../../../src/utils/bip21Parser', () => ({
   parseBip21Uri: vi.fn(),
 }));
 
-vi.mock('../../../utils/validateAddress', () => ({
+vi.mock('../../../src/utils/validateAddress', () => ({
   validateAddress: vi.fn(),
   addressMatchesNetwork: vi.fn(),
 }));
@@ -47,35 +47,35 @@ vi.mock('../../../src/api/transactions', () => ({
   getWalletPrivacy: vi.fn(),
 }));
 
-vi.mock('../../../components/send/OutputRow', () => ({
+vi.mock('../../../src/components/send/OutputRow', () => ({
   OutputRow: (props: any) => {
     capture.outputRows[props.index] = props;
     return <div data-testid={`output-row-${props.index}`} />;
   },
 }));
 
-vi.mock('../../../components/send/steps/OutputsStep/CoinControlPanel', () => ({
+vi.mock('../../../src/components/send/steps/OutputsStep/CoinControlPanel', () => ({
   CoinControlPanel: (props: any) => {
     capture.coinProps = props;
     return <div data-testid="coin-control-panel" />;
   },
 }));
 
-vi.mock('../../../components/send/steps/OutputsStep/FeePanel', () => ({
+vi.mock('../../../src/components/send/steps/OutputsStep/FeePanel', () => ({
   FeePanel: (props: any) => {
     capture.feeProps = props;
     return <div data-testid="fee-panel" />;
   },
 }));
 
-vi.mock('../../../components/send/steps/OutputsStep/AdvancedOptionsPanel', () => ({
+vi.mock('../../../src/components/send/steps/OutputsStep/AdvancedOptionsPanel', () => ({
   AdvancedOptionsPanel: (props: any) => {
     capture.advancedProps = props;
     return <div data-testid="advanced-panel" />;
   },
 }));
 
-vi.mock('../../../components/send/WizardNavigation', () => ({
+vi.mock('../../../src/components/send/WizardNavigation', () => ({
   WizardNavigation: () => <div data-testid="wizard-nav" />,
 }));
 

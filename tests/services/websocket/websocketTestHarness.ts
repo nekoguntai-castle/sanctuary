@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 
-import type { WebSocketEvent } from '../../../services/websocket';
+import type { WebSocketEvent } from '../../../src/services/websocket';
 
 // Mock WebSocket
 export class MockWebSocket {

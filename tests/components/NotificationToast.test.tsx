@@ -5,7 +5,7 @@ NotificationContainer,
 NotificationToast,
 generateNotificationId,
 type Notification,
-} from '../../components/NotificationToast';
+} from '../../src/components/NotificationToast';
 
 vi.mock('lucide-react', () => ({
   X: () => <span data-testid="x-icon" />,

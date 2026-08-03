@@ -5,7 +5,7 @@ import {
 } from './intelligenceTabsTestHarness';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { InsightsTab } from '../../../components/Intelligence/tabs/InsightsTab';
+import { InsightsTab } from '../../../src/components/Intelligence/tabs/InsightsTab';
 import * as intelligenceApi from '../../../src/api/intelligence';
 
 describe('InsightsTab', () => {

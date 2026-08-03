@@ -6,8 +6,8 @@ SanctuaryShieldLogo,
 SatsIcon,
 getDeviceIcon,
 getWalletIcon,
-} from '../../../components/ui/CustomIcons';
-import { HardwareDevice,WalletType } from '../../../types';
+} from '../../../src/components/ui/CustomIcons';
+import { HardwareDevice,WalletType } from '../../../src/types';
 
 function iconTypeName(icon: any): string {
   if (!icon) return 'unknown';

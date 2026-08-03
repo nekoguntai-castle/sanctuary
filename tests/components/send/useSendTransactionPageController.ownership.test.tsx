@@ -1,11 +1,11 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadSendTransactionPageData } from '../../../components/send/SendTransactionPage/loadSendTransactionPageData';
+import { loadSendTransactionPageData } from '../../../src/components/send/SendTransactionPage/loadSendTransactionPageData';
 import type {
   LoadedSendTransactionPageData,
   SendTransactionLoadResult,
-} from '../../../components/send/SendTransactionPage/types';
-import { useSendTransactionPageController } from '../../../components/send/SendTransactionPage/useSendTransactionPageController';
+} from '../../../src/components/send/SendTransactionPage/types';
+import { useSendTransactionPageController } from '../../../src/components/send/SendTransactionPage/useSendTransactionPageController';
 
 const routeMocks = vi.hoisted(() => ({
   locationState: null as Record<string, unknown> | null,
@@ -21,18 +21,18 @@ vi.mock('react-router-dom', () => ({
   useParams: () => routeMocks.params,
 }));
 
-vi.mock('../../../contexts/UserContext', () => ({
+vi.mock('../../../src/contexts/UserContext', () => ({
   useUser: () => ({ isLoading: false, user: routeMocks.user }),
 }));
 
-vi.mock('../../../hooks/useErrorHandler', () => ({
+vi.mock('../../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({
     handleError: vi.fn(),
     showInfo: routeMocks.showInfo,
   }),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     error: vi.fn(),
@@ -41,7 +41,7 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../components/send/SendTransactionPage/loadSendTransactionPageData', () => ({
+vi.mock('../../../src/components/send/SendTransactionPage/loadSendTransactionPageData', () => ({
   loadSendTransactionPageData: vi.fn(),
 }));
 

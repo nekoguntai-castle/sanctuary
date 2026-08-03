@@ -7,7 +7,7 @@
 
 import { act,renderHook } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { useDelayedRender } from '../../hooks/useDelayedRender';
+import { useDelayedRender } from '../../src/hooks/useDelayedRender';
 
 describe('useDelayedRender', () => {
   beforeEach(() => {

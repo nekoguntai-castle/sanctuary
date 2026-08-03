@@ -5,10 +5,10 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { TransactionExportModal } from '../../components/TransactionExportModal';
+import { TransactionExportModal } from '../../src/components/TransactionExportModal';
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),

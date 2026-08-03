@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isConsolidation } from '../../utils/transaction';
+import { isConsolidation } from '../../src/utils/transaction';
 
 describe('isConsolidation', () => {
   it('returns true when tx.type is consolidation', () => {

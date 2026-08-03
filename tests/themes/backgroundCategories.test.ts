@@ -10,12 +10,12 @@ CATEGORIES,
 getBackgroundsByCategory,
 getCategoriesForBackground,
 searchBackgrounds,
-} from '../../themes/backgroundCategories';
-import type { BackgroundCategory } from '../../themes/backgroundCategories';
-import { globalPatterns,isRegisteredBackgroundPattern } from '../../themes/patterns';
+} from '../../src/themes/backgroundCategories';
+import type { BackgroundCategory } from '../../src/themes/backgroundCategories';
+import { globalPatterns,isRegisteredBackgroundPattern } from '../../src/themes/patterns';
 import { Image as ImageIcon,Sparkles } from 'lucide-react';
-import { bgIconMap,getBackgroundPatternIcon } from '../../components/Settings/sections/ThemeSection/iconMaps';
-import type { BackgroundOption } from '../../types';
+import { bgIconMap,getBackgroundPatternIcon } from '../../src/components/Settings/sections/ThemeSection/iconMaps';
+import type { BackgroundOption } from '../../src/types';
 
 describe('Background Categories', () => {
   describe('CATEGORIES constant', () => {

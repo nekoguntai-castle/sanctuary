@@ -7,11 +7,18 @@
 FROM node:24-alpine AS deps
 WORKDIR /app
 
-# Install Python and build tools for native modules (required for @trezor/connect-web usb dependency)
-RUN apk add --no-cache python3 make g++ linux-headers eudev-dev
+# Install shell, Python, and build tools used by native dependencies and the
+# repository-wide frontend test contract.
+RUN apk add --no-cache bash python3 make g++ linux-headers eudev-dev
 
-# Copy package files first (best cache layer)
+# Copy every npm workspace manifest before installation so the dependency layer
+# matches a root `npm ci` without copying application source.
 COPY package*.json ./
+COPY shared ./shared
+COPY server/package.json ./server/
+COPY server/prisma ./server/prisma
+COPY server/.husky ./server/.husky
+COPY gateway/package.json ./gateway/
 
 # Install dependencies
 RUN npm ci
@@ -24,7 +31,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/package*.json ./
 
-# Copy source files (server/ excluded via .dockerignore)
+# Copy application source after the reusable dependency layer.
 COPY . .
 
 # Build argument for API URL (can be overridden at build time)

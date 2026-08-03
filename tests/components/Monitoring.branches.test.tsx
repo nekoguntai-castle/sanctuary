@@ -1,7 +1,7 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { Monitoring } from '../../components/Monitoring';
+import { Monitoring } from '../../src/components/Monitoring';
 import * as adminApi from '../../src/api/admin';
 
 const state = vi.hoisted(() => ({
@@ -20,7 +20,7 @@ vi.mock('../../src/api/admin', () => ({
 
 // Keep loading false in these focused tests so UI remains visible while async work runs.
 let loadingHookCall = 0;
-vi.mock('../../hooks/useLoadingState', () => ({
+vi.mock('../../src/hooks/useLoadingState', () => ({
   useLoadingState: () => {
     loadingHookCall += 1;
     const branch = ((loadingHookCall - 1) % 3) + 1;
@@ -55,7 +55,7 @@ vi.mock('../../hooks/useLoadingState', () => ({
   },
 }));
 
-vi.mock('../../components/Monitoring/ServiceCard', () => ({
+vi.mock('../../src/components/Monitoring/ServiceCard', () => ({
   ServiceCard: ({ service, onToggleAnonymous }: any) => (
     <div data-testid={`service-${service.id}`}>
       <button data-testid={`toggle-${service.id}`} onClick={() => onToggleAnonymous?.()}>
@@ -65,7 +65,7 @@ vi.mock('../../components/Monitoring/ServiceCard', () => ({
   ),
 }));
 
-vi.mock('../../components/Monitoring/EditUrlModal', () => ({
+vi.mock('../../src/components/Monitoring/EditUrlModal', () => ({
   EditUrlModal: ({ service, onSave }: any) => (
     <div>
       <span data-testid="modal-service">{service ? service.id : 'none'}</span>

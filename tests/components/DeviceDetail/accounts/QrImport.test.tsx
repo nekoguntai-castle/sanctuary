@@ -2,14 +2,14 @@ import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { QrImport } from '../../../../components/DeviceDetail/accounts/QrImport';
-import { isSecureContext } from '../../../../services/hardwareWallet/environment';
+import { QrImport } from '../../../../src/components/DeviceDetail/accounts/QrImport';
+import { isSecureContext } from '../../../../src/services/hardwareWallet/environment';
 
 vi.mock('@yudiel/react-qr-scanner', () => ({
   Scanner: () => <div data-testid="qr-scanner" />,
 }));
 
-vi.mock('../../../../services/hardwareWallet/environment', () => ({
+vi.mock('../../../../src/services/hardwareWallet/environment', () => ({
   isSecureContext: vi.fn(() => true),
 }));
 

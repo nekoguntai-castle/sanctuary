@@ -26,14 +26,14 @@ vi.mock('../../src/api/admin', () => ({
 
 // Mock notification context
 const mockAddNotification = vi.fn();
-vi.mock('../../contexts/AppNotificationContext', () => ({
+vi.mock('../../src/contexts/AppNotificationContext', () => ({
   useAppNotifications: () => ({
     addNotification: mockAddNotification,
   }),
 }));
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     error: vi.fn(),
@@ -44,7 +44,7 @@ vi.mock('../../utils/logger', () => ({
 
 const mockDownloadText = vi.fn();
 const mockDownloadBlob = vi.fn();
-vi.mock('../../utils/download', () => ({
+vi.mock('../../src/utils/download', () => ({
   downloadText: (...args: unknown[]) => mockDownloadText(...args),
   downloadBlob: (...args: unknown[]) => mockDownloadBlob(...args),
 }));
@@ -73,7 +73,7 @@ vi.mock('lucide-react', () => ({
 }));
 
 // Mock Button component
-vi.mock('../../components/ui/Button', () => ({
+vi.mock('../../src/components/ui/Button', () => ({
   Button: ({ children, onClick, disabled, variant, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string }) => (
     <button onClick={onClick} disabled={disabled} data-variant={variant} {...props}>
       {children}
@@ -138,7 +138,7 @@ describe('BackupRestore Component', () => {
   });
 
   it('should render backup tab by default', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
 
     await renderBackupRestore(BackupRestore);
 
@@ -148,7 +148,7 @@ describe('BackupRestore Component', () => {
   });
 
   it('should switch to restore tab when clicked', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
 
     await renderBackupRestore(BackupRestore);
@@ -171,7 +171,7 @@ describe('BackupRestore Component', () => {
   });
 
   it('should show encryption keys section', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
 
     await renderBackupRestore(BackupRestore);
 
@@ -182,7 +182,7 @@ describe('BackupRestore Component', () => {
   });
 
   it('should show password prompt for encryption keys', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
 
     await renderBackupRestore(BackupRestore);
 
@@ -192,7 +192,7 @@ describe('BackupRestore Component', () => {
   });
 
   it('should toggle include cache checkbox', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
 
     await renderBackupRestore(BackupRestore);
@@ -215,7 +215,7 @@ describe('BackupRestore Component', () => {
   });
 
   it('should allow entering backup description', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
 
     await renderBackupRestore(BackupRestore);
@@ -230,7 +230,7 @@ describe('BackupRestore Component', () => {
     const mockBlob = new Blob(['{}'], { type: 'application/json' });
     mockCreateBackup.mockResolvedValue(mockBlob);
 
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
 
     // Mock URL.createObjectURL and revokeObjectURL
@@ -253,7 +253,7 @@ describe('BackupRestore Component', () => {
   });
 
   it('should show warning in restore tab', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
 
     await renderBackupRestore(BackupRestore);
@@ -268,7 +268,7 @@ describe('BackupRestore Component', () => {
   });
 
   it('should show file upload area in restore tab', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
 
     await renderBackupRestore(BackupRestore);
@@ -283,7 +283,7 @@ describe('BackupRestore Component', () => {
   });
 
   it('should show about backups info when on backup tab', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
 
     await renderBackupRestore(BackupRestore);
 
@@ -292,7 +292,7 @@ describe('BackupRestore Component', () => {
   });
 
   it('should show about restore info when on restore tab', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
 
     await renderBackupRestore(BackupRestore);
@@ -320,7 +320,7 @@ describe('BackupRestore Component - Encryption Keys', () => {
   });
 
   it('should display masked encryption keys after password confirmation', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
 
     await renderBackupRestore(BackupRestore);
@@ -338,7 +338,7 @@ describe('BackupRestore Component - Encryption Keys', () => {
   it('should handle encryption key loading error gracefully', async () => {
     mockGetEncryptionKeys.mockRejectedValue(new Error('Incorrect password'));
 
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
 
     await renderBackupRestore(BackupRestore);
@@ -352,7 +352,7 @@ describe('BackupRestore Component - Encryption Keys', () => {
   it('should show fallback message when non-Error is thrown during key reveal', async () => {
     mockGetEncryptionKeys.mockRejectedValue('unexpected-string-error');
 
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
 
     await renderBackupRestore(BackupRestore);
@@ -376,7 +376,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
   });
 
   it('copies and reveals encryption keys and downloads key file', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
     await revealEncryptionKeys(user);
@@ -396,7 +396,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
 
   it('shows backup error when create backup API fails', async () => {
     mockCreateBackup.mockRejectedValueOnce(new Error('Backup failed on server'));
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
 
@@ -406,7 +406,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
 
   it('shows post-backup key reminder modal and persists dismissal', async () => {
     mockCreateBackup.mockResolvedValueOnce(new Blob(['{}'], { type: 'application/json' }));
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
     // Reveal encryption keys first so the modal can display
@@ -424,7 +424,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
   });
 
   it('handles invalid JSON backup upload format', async () => {
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
 
@@ -452,7 +452,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
       data: {},
     };
 
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
 
@@ -486,7 +486,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
       data: {},
     };
 
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
     const toLocaleStringSpy = vi
       .spyOn(Date.prototype, 'toLocaleString')
@@ -522,7 +522,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
       data: {},
     };
 
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
 
@@ -556,7 +556,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
       data: {},
     };
 
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
 
@@ -600,7 +600,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
       data: {},
     };
 
-    const { BackupRestore } = await import('../../components/BackupRestore');
+    const { BackupRestore } = await import('../../src/components/BackupRestore');
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
 

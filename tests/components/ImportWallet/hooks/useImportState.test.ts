@@ -1,6 +1,6 @@
 import { act,renderHook } from '@testing-library/react';
 import { describe,expect,it } from 'vitest';
-import { useImportState } from '../../../../components/ImportWallet/hooks/useImportState';
+import { useImportState } from '../../../../src/components/ImportWallet/hooks/useImportState';
 
 describe('useImportState', () => {
   it('resets validation state via resetValidation', () => {

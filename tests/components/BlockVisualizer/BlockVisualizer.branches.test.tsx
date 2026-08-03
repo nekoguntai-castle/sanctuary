@@ -1,7 +1,7 @@
 import { act,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import type { BlockData } from '../../../components/BlockVisualizer/types';
+import type { BlockData } from '../../../src/components/BlockVisualizer/types';
 import type { PendingTransaction } from '../../../src/types';
 
 const {
@@ -14,17 +14,17 @@ const {
   getStuckTxsMock: vi.fn<() => PendingTransaction[]>(() => []),
 }));
 
-vi.mock('../../../components/BlockVisualizer/blockUtils', () => ({
+vi.mock('../../../src/components/BlockVisualizer/blockUtils', () => ({
   parseFeeRange: parseFeeRangeMock,
   getTxsForBlock: getTxsForBlockMock,
   getStuckTxs: getStuckTxsMock,
 }));
 
-vi.mock('../../../components/BlockVisualizer/BlockAnimationStyles', () => ({
+vi.mock('../../../src/components/BlockVisualizer/BlockAnimationStyles', () => ({
   BlockAnimationStyles: () => <div data-testid="anim-styles" />,
 }));
 
-vi.mock('../../../components/BlockVisualizer/QueuedSummaryBlock', () => ({
+vi.mock('../../../src/components/BlockVisualizer/QueuedSummaryBlock', () => ({
   QueuedSummaryBlock: ({
     summary,
     stuckTxs,
@@ -38,7 +38,7 @@ vi.mock('../../../components/BlockVisualizer/QueuedSummaryBlock', () => ({
   ),
 }));
 
-vi.mock('../../../components/BlockVisualizer/Block', () => ({
+vi.mock('../../../src/components/BlockVisualizer/Block', () => ({
   Block: ({
     block,
     onClick,
@@ -68,7 +68,7 @@ vi.mock('lucide-react', () => ({
   ArrowRight: () => <span data-testid="arrow-right" />,
 }));
 
-import { BlockVisualizer } from '../../../components/BlockVisualizer/BlockVisualizer';
+import { BlockVisualizer } from '../../../src/components/BlockVisualizer/BlockVisualizer';
 
 const makeBlock = (overrides: Partial<BlockData>): BlockData => ({
   height: 'mempool',

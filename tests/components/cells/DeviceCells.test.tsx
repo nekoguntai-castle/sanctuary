@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { createDeviceCellRenderers } from '../../../components/cells/DeviceCells';
+import { createDeviceCellRenderers } from '../../../src/components/cells/DeviceCells';
 import {
   baseColumn,
   baseDevice,
@@ -17,7 +17,7 @@ vi.mock('lucide-react', () => ({
   HardDrive: () => <span data-testid="drive-icon" />,
 }));
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   getDeviceIcon: (_name: string, _className?: string) => <span data-testid="device-icon" />,
   getWalletIcon: (_type: string, _className?: string) => <span data-testid="wallet-icon" />,
 }));

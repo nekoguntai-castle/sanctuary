@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { FileUploadPanel } from '../../../components/ConnectDevice/FileUploadPanel';
+import { FileUploadPanel } from '../../../src/components/ConnectDevice/FileUploadPanel';
 
 const baseModel = {
   id: 'coldcard-mk4',

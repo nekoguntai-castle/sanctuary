@@ -5,7 +5,7 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { UsersGroups } from '../../components/UsersGroups';
+import { UsersGroups } from '../../src/components/UsersGroups';
 import * as adminApi from '../../src/api/admin';
 
 // Mock API
@@ -21,7 +21,7 @@ vi.mock('../../src/api/admin', () => ({
 }));
 
 // Mock error handler
-vi.mock('../../hooks/useErrorHandler', () => ({
+vi.mock('../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({
     handleError: vi.fn(),
     showSuccess: vi.fn(),

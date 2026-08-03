@@ -3,12 +3,12 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserProvider, useUser } from '../../contexts/UserContext';
+import { UserProvider, useUser } from '../../src/contexts/UserContext';
 import * as authApi from '../../src/api/auth';
 import { ApiError } from '../../src/api/client';
 import { mockUser, TestConsumer } from './UserContext.test.fixtures';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -36,7 +36,7 @@ vi.mock('../../src/api/refresh', () => ({
   triggerLogout: vi.fn(),
 }));
 
-vi.mock('../../themes', () => ({
+vi.mock('../../src/themes', () => ({
   themeRegistry: {
     applyTheme: vi.fn(),
     applyPattern: vi.fn(),

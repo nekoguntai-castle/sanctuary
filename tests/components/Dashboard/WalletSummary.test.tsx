@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { WalletSummary } from '../../../components/Dashboard/WalletSummary';
+import { WalletSummary } from '../../../src/components/Dashboard/WalletSummary';
 
 const mockNavigate = vi.fn();
 
@@ -15,7 +15,7 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../../../components/Amount', () => ({
+vi.mock('../../../src/components/Amount', () => ({
   Amount: ({ sats }: { sats: number }) => <span data-testid="amount">{sats}</span>,
 }));
 
@@ -23,7 +23,7 @@ const mockPreferences = new Map<string, unknown>();
 
 // Stateful mock: the real hook re-renders on write, and the expand/collapse
 // assertions depend on that. A plain map-backed stub would never re-render.
-vi.mock('../../../hooks/useUserPreference', async () => {
+vi.mock('../../../src/hooks/useUserPreference', async () => {
   const { useState } = await import('react');
   return {
     useUserPreference: (key: string, defaultValue: unknown) => {

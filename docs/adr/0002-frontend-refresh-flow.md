@@ -6,14 +6,14 @@
 - **Owner:** TBD
 - **Supersedes:** none
 - **Superseded by:** none
-- **Related:** `docs/adr/0001-browser-auth-token-storage.md` (HttpOnly cookie migration), `src/api/authPolicy.ts`, `src/api/client.ts`, `server/src/api/auth/tokens.ts`, `contexts/UserContext.tsx`
+- **Related:** `docs/adr/0001-browser-auth-token-storage.md` (HttpOnly cookie migration), `src/api/authPolicy.ts`, `src/api/client.ts`, `server/src/api/auth/tokens.ts`, `src/contexts/UserContext.tsx`
 
 ## Context
 
 The Sanctuary web frontend has **no refresh flow at all** today:
 
 - `src/api/client.ts` does not implement a 401 interceptor and does not call `/api/v1/auth/refresh`. A repository-wide grep for `/auth/refresh`, `refreshToken`, or `refreshAccessToken` returns zero hits outside `gateway/`, `server/`, and the test/docs files.
-- `contexts/UserContext.tsx` does not handle token expiry. There is no scheduled refresh, no expiry tracking, and no visible UX for token expiry.
+- `src/contexts/UserContext.tsx` does not handle token expiry. There is no scheduled refresh, no expiry tracking, and no visible UX for token expiry.
 - `server/src/api/auth/tokens.ts:28-81` implements `POST /api/v1/auth/refresh` with refresh-token rotation, but it only has gateway/mobile callers. The browser path never exercises it.
 
 The practical consequence is that a Sanctuary web user gets logged out silently 1 hour after login. Every API call after that point fails with 401, the UI surfaces opaque errors, and the only remedy is a manual page refresh + re-login. This is bad UX and a security smell: a user mid-task who hits silent expiry is more likely to take a less safe re-authentication shortcut (autofilling a password manager on a degraded page state, leaving devtools open, etc.).
@@ -228,7 +228,7 @@ This work merges into ADR 0001's Phase 4 (frontend), which becomes the largest p
    - Note: there is intentionally no `refresh-start` event. Earlier drafts of this ADR used `refresh-start` as a "stop, another tab is refreshing" signal; that approach was rejected because BroadcastChannel is async pub/sub and does not provide mutual exclusion.
 
 7. **Frontend logout flow.**
-   - `contexts/UserContext.tsx` wraps the logout call so it: clears the scheduled refresh timer, broadcasts `logout-broadcast`, redirects to login.
+   - `src/contexts/UserContext.tsx` wraps the logout call so it: clears the scheduled refresh timer, broadcasts `logout-broadcast`, redirects to login.
    - Both terminal refresh failure (401 on `/auth/refresh`) and explicit user logout share this path.
 
 8. **Test setup.**
@@ -291,7 +291,7 @@ These are deliberately left open. They should be answered before implementation 
 - `RefreshFailedError` vs `RefreshTransientError` distinction: terminal auth failure (401 on `/auth/refresh`, revoked refresh token) triggers `logout-broadcast` and rejects with `RefreshFailedError`; server errors (500, network) reject with `RefreshTransientError` so the caller can retry without evicting credentials.
 - Proactive refresh: every successful auth response parses `X-Access-Expires-At` and schedules `setTimeout` for `expiresAt - REFRESH_LEAD_TIME_MS`. Previous timers are cleared before scheduling a new one.
 - Reactive refresh: `src/api/client.ts:request` intercepts 401s, awaits `refreshAccessToken()`, and replays the request once. Exempt list is only the four credential-presentation endpoints (`/auth/login`, `/auth/register`, `/auth/2fa/verify`, `/auth/refresh`). The retry is bounded to one attempt; a second 401 surfaces as a normal error and triggers the logout flow.
-- `contexts/UserContext.tsx` — boot calls `/auth/me` unconditionally and hydrates from its response (refresh interceptor recovers valid-session on 401 transparently). Logout is async, calls the backend revocation, then calls `triggerLogout()` which fires `logout-broadcast`.
+- `src/contexts/UserContext.tsx` — boot calls `/auth/me` unconditionally and hydrates from its response (refresh interceptor recovers valid-session on 401 transparently). Logout is async, calls the backend revocation, then calls `triggerLogout()` which fires `logout-broadcast`.
 
 **Test scaffolding (`tests/setup.ts`):**
 - `navigator.locks` mock: Map of held lock names with FIFO waiters per name, supports `mode: 'exclusive'`, supports multi-instance "tab" simulation by sharing the Map across module imports. Installed via `Object.defineProperty(globalThis.navigator, 'locks', ...)` — **do not replace the whole `navigator` object**, react-dom reads `navigator.userAgent` during render and will crash.

@@ -5,16 +5,16 @@ const mocks = vi.hoisted(() => ({
   useQrScanner: vi.fn(),
 }));
 
-vi.mock('../../hooks/send/useSendTransactionActions', () => ({
+vi.mock('../../src/hooks/send/useSendTransactionActions', () => ({
   useSendTransactionActions: mocks.useSendTransactionActions,
 }));
 
-vi.mock('../../hooks/qr/useQrScanner', () => ({
+vi.mock('../../src/hooks/qr/useQrScanner', () => ({
   useQrScanner: mocks.useQrScanner,
 }));
 
-import { useQrScanner } from '../../hooks/qr/useQrScanner';
-import { useSendTransactionActions } from '../../hooks/send/useSendTransactionActions';
+import { useQrScanner } from '../../src/hooks/qr/useQrScanner';
+import { useSendTransactionActions } from '../../src/hooks/send/useSendTransactionActions';
 
 describe('hooks re-export shims', () => {
   it('re-exports useSendTransactionActions', () => {

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useNotifications } from '../../../contexts/NotificationContext';
-import { useUser } from '../../../contexts/UserContext';
-import { useWebSocketQueryInvalidation } from '../../../hooks/websocket';
+import { useNotifications } from '../../contexts/NotificationContext';
+import { useUser } from '../../contexts/UserContext';
+import { useWebSocketQueryInvalidation } from '../../hooks/websocket';
 import * as authApi from '../../api/auth';
-import { createLogger } from '../../../utils/logger';
+import { createLogger } from '../../utils/logger';
 import { reloadCurrentDocument } from '../browserNavigation';
 import { getAppPreferenceState } from './preferences';
 import type { AppRoutesController } from './types';

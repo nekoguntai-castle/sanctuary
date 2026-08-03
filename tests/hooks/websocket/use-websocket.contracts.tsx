@@ -17,7 +17,7 @@ import {
 } from './useWebSocketTestHarness';
 import {
   useWebSocket,
-} from '../../../hooks/websocket';
+} from '../../../src/hooks/websocket';
 
 export function registerUseWebSocketTests(): void {
   describe('useWebSocket', () => {

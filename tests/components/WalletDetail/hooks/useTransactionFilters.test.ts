@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { useTransactionFilters } from '../../../../components/WalletDetail/hooks/useTransactionFilters';
-import type { Transaction } from '../../../../types';
+import { useTransactionFilters } from '../../../../src/components/WalletDetail/hooks/useTransactionFilters';
+import type { Transaction } from '../../../../src/types';
 
 // ---------------------------------------------------------------------------
 // Helpers

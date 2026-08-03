@@ -5,11 +5,11 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 import {
 DEFAULT_WALLET_COLUMN_ORDER,
 DEFAULT_WALLET_VISIBLE_COLUMNS,
-} from '../../components/columns/walletColumns';
-import { WalletList } from '../../components/WalletList/WalletList';
-import * as CurrencyContext from '../../contexts/CurrencyContext';
-import * as UserContext from '../../contexts/UserContext';
-import * as useWalletsHook from '../../hooks/queries/useWallets';
+} from '../../src/components/columns/walletColumns';
+import { WalletList } from '../../src/components/WalletList/WalletList';
+import * as CurrencyContext from '../../src/contexts/CurrencyContext';
+import * as UserContext from '../../src/contexts/UserContext';
+import * as useWalletsHook from '../../src/hooks/queries/useWallets';
 
 const mockNavigate = vi.fn();
 const activeNetworkMock = vi.hoisted(() => ({
@@ -25,15 +25,15 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock('../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
 }));
 
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: vi.fn(),
 }));
 
-vi.mock('../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: activeNetworkMock.selectedNetwork,
     isMainnet: activeNetworkMock.selectedNetwork === 'mainnet',
@@ -41,14 +41,14 @@ vi.mock('../../contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../hooks/queries/useWallets', () => ({
+vi.mock('../../src/hooks/queries/useWallets', () => ({
   useWallets: vi.fn(),
   useInvalidateAllWallets: vi.fn(),
   usePendingTransactions: vi.fn(),
   useWalletSparklines: vi.fn().mockReturnValue({}),
 }));
 
-vi.mock('../../components/NetworkTabs', () => ({
+vi.mock('../../src/components/NetworkTabs', () => ({
   NetworkTabs: ({ selectedNetwork, onNetworkChange }: any) => (
     <div data-testid="network-tabs">
       <span data-testid="selected-network">{selectedNetwork}</span>
@@ -59,7 +59,7 @@ vi.mock('../../components/NetworkTabs', () => ({
   ),
 }));
 
-vi.mock('../../components/NetworkSyncActions', () => ({
+vi.mock('../../src/components/NetworkSyncActions', () => ({
   NetworkSyncActions: ({ onSyncStarted }: any) => (
     <button data-testid="sync-start" onClick={onSyncStarted}>
       sync-start
@@ -67,7 +67,7 @@ vi.mock('../../components/NetworkSyncActions', () => ({
   ),
 }));
 
-vi.mock('../../components/ui/ConfigurableTable', () => ({
+vi.mock('../../src/components/ui/ConfigurableTable', () => ({
   ConfigurableTable: ({ data, sortBy, sortOrder, onSort, onRowClick, keyExtractor }: any) => (
     <div data-testid="configurable-table">
       <span data-testid="table-sort">{`${sortBy}-${sortOrder}`}</span>
@@ -80,7 +80,7 @@ vi.mock('../../components/ui/ConfigurableTable', () => ({
   ),
 }));
 
-vi.mock('../../components/ui/ColumnConfigButton', () => ({
+vi.mock('../../src/components/ui/ColumnConfigButton', () => ({
   ColumnConfigButton: ({
     onOrderChange,
     onVisibilityChange,
@@ -99,7 +99,7 @@ vi.mock('../../components/ui/ColumnConfigButton', () => ({
   ),
 }));
 
-vi.mock('../../components/WalletList/BalanceChart', () => ({
+vi.mock('../../src/components/WalletList/BalanceChart', () => ({
   BalanceChart: ({ totalBalance, walletCount, selectedNetwork }: any) => (
     <div data-testid="balance-chart">
       {`${selectedNetwork}:${walletCount}:${totalBalance}`}
@@ -107,7 +107,7 @@ vi.mock('../../components/WalletList/BalanceChart', () => ({
   ),
 }));
 
-vi.mock('../../components/WalletList/WalletGridView', () => ({
+vi.mock('../../src/components/WalletList/WalletGridView', () => ({
   WalletGridView: ({ wallets, pendingByWallet }: any) => (
     <div data-testid="wallet-grid">
       <span data-testid="wallet-order">{wallets.map((w: any) => w.id).join(',')}</span>

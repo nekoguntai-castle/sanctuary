@@ -3,7 +3,7 @@ import {
 isHardwareWalletSupported,
 isSecureContext,
 isWebUSBSupported,
-} from '../../services/hardwareWallet/environment';
+} from '../../src/services/hardwareWallet/environment';
 
 describe('hardwareWallet environment helpers', () => {
   afterEach(() => {

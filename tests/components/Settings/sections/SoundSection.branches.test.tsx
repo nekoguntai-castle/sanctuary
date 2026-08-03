@@ -2,7 +2,7 @@ import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { NotificationSoundSettings } from '../../../../components/Settings/sections/SoundSection';
+import { NotificationSoundSettings } from '../../../../src/components/Settings/sections/SoundSection';
 
 const mockState = vi.hoisted(() => ({
   user: {
@@ -27,14 +27,14 @@ const mockState = vi.hoisted(() => ({
   } as Record<string, { enabled: boolean; sound: string }>,
 }));
 
-vi.mock('../../../../contexts/UserContext', () => ({
+vi.mock('../../../../src/contexts/UserContext', () => ({
   useUser: () => ({
     user: mockState.user,
     updatePreferences: mockState.updatePreferences,
   }),
 }));
 
-vi.mock('../../../../hooks/useNotificationSound', () => ({
+vi.mock('../../../../src/hooks/useNotificationSound', () => ({
   useNotificationSound: () => ({
     playSound: mockState.playSound,
     soundPresets: [

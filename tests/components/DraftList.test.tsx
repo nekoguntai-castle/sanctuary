@@ -6,13 +6,13 @@ import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { DraftList } from '../../components/DraftList';
-import * as CurrencyContext from '../../contexts/CurrencyContext';
+import { DraftList } from '../../src/components/DraftList';
+import * as CurrencyContext from '../../src/contexts/CurrencyContext';
 import * as draftsApi from '../../src/api/drafts';
-import { WalletType } from '../../types';
-import * as downloadUtils from '../../utils/download';
+import { WalletType } from '../../src/types';
+import * as downloadUtils from '../../src/utils/download';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock('react-router-dom', async () => {
 });
 
 // Mock contexts
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock('../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
   usePriceFreeFormatter: vi.fn(),
 }));
@@ -44,20 +44,20 @@ vi.mock('../../src/api/drafts', () => ({
   updateDraft: vi.fn(),
 }));
 
-vi.mock('../../utils/download', () => ({
+vi.mock('../../src/utils/download', () => ({
   downloadBlob: vi.fn(),
 }));
 
 // Mock child components
-vi.mock('../../components/TransactionFlowPreview', () => ({
+vi.mock('../../src/components/TransactionFlowPreview', () => ({
   TransactionFlowPreview: () => <div data-testid="flow-preview">Flow Preview</div>,
 }));
 
-vi.mock('../../components/Amount', () => ({
+vi.mock('../../src/components/Amount', () => ({
   Amount: ({ sats }: { sats: number }) => <span data-testid="amount">{sats}</span>,
 }));
 
-vi.mock('../../components/FiatDisplay', () => ({
+vi.mock('../../src/components/FiatDisplay', () => ({
   FiatDisplaySubtle: () => <span data-testid="fiat">$50.00</span>,
 }));
 

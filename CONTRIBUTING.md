@@ -216,9 +216,8 @@ When you add or change an entry point that crosses a service boundary (e.g. a ne
 sanctuary/                  # monorepo root
   server/                   # Node.js/Express backend (API, business logic, Bitcoin)
   gateway/                  # Mobile API gateway (rate limiting, push notifications)
-  components/, hooks/, src/ # React/Vite frontend (lives at root of monorepo)
-  llm-egress-proxy/                 # LLM egress proxy service
-  themes/                   # Theme definitions
+  src/                      # React/Vite frontend (components, hooks, themes)
+  llm-egress-proxy/         # LLM egress proxy service
   docs/                     # Project documentation (Diataxis framework)
     explanation/            # Conceptual: why things work this way
     how-to/                 # Procedural: step-by-step guides

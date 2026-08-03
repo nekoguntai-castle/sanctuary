@@ -3,14 +3,14 @@
  */
 
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import type { DeviceParser } from '../../../services/deviceParsers/types';
+import type { DeviceParser } from '../../../src/services/deviceParsers/types';
 
 const { mockDebug, mockWarn } = vi.hoisted(() => ({
   mockDebug: vi.fn(),
   mockWarn: vi.fn(),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: (...args: unknown[]) => mockDebug(...args),
     info: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-import { DeviceParserRegistry } from '../../../services/deviceParsers/registry';
+import { DeviceParserRegistry } from '../../../src/services/deviceParsers/registry';
 
 function makeParser(
   id: string,

@@ -1,6 +1,6 @@
 import { render,screen } from '@testing-library/react';
 import { describe,expect,it } from 'vitest';
-import { StatCards } from '../../../components/AuditLogs/StatCards';
+import { StatCards } from '../../../src/components/AuditLogs/StatCards';
 
 describe('AuditLogs StatCards branch coverage', () => {
   it('renders known category color mapping and formatted counts', () => {

@@ -5,16 +5,16 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { WizardNavigation } from '../../../components/send/WizardNavigation';
-import * as SendContext from '../../../contexts/send';
+import { WizardNavigation } from '../../../src/components/send/WizardNavigation';
+import * as SendContext from '../../../src/contexts/send';
 
 // Mock the context
-vi.mock('../../../contexts/send', () => ({
+vi.mock('../../../src/contexts/send', () => ({
   useSendTransaction: vi.fn(),
 }));
 
 // Mock Button component
-vi.mock('../../../components/ui/Button', () => ({
+vi.mock('../../../src/components/ui/Button', () => ({
   Button: ({ children, onClick, disabled, isLoading, variant, className }: any) => (
     <button
       onClick={onClick}

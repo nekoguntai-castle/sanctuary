@@ -9,7 +9,7 @@ import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import type { Device,HardwareDeviceModel } from '../../types';
+import type { Device,HardwareDeviceModel } from '../../src/types';
 
 // Mock react-router-dom
 const mockNavigate = vi.fn();
@@ -45,14 +45,14 @@ const resetUserPreferences = () => {
     },
   };
 };
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: () => ({
     user: mockUser,
     updatePreferences: mockUpdatePreferences,
   }),
 }));
 
-vi.mock('../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: 'mainnet',
     isMainnet: true,
@@ -74,7 +74,7 @@ vi.mock('../../src/api/devices', () => ({
 }));
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -100,20 +100,20 @@ vi.mock('lucide-react', () => ({
 }));
 
 // Mock custom icons
-vi.mock('../../components/ui/CustomIcons', () => ({
+vi.mock('../../src/components/ui/CustomIcons', () => ({
   getDeviceIcon: () => <span data-testid="device-icon" />,
   getWalletIcon: () => <span data-testid="wallet-icon" />,
 }));
 
 // Mock Button
-vi.mock('../../components/ui/Button', () => ({
+vi.mock('../../src/components/ui/Button', () => ({
   Button: ({ children, onClick, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button onClick={onClick} {...props}>{children}</button>
   ),
 }));
 
 // Mock ConfigurableTable
-vi.mock('../../components/ui/ConfigurableTable', () => ({
+vi.mock('../../src/components/ui/ConfigurableTable', () => ({
   ConfigurableTable: ({
     data,
     onRowClick,
@@ -140,7 +140,7 @@ vi.mock('../../components/ui/ConfigurableTable', () => ({
 }));
 
 // Mock ColumnConfigButton
-vi.mock('../../components/ui/ColumnConfigButton', () => ({
+vi.mock('../../src/components/ui/ColumnConfigButton', () => ({
   ColumnConfigButton: ({
     onOrderChange,
     onVisibilityChange,
@@ -160,7 +160,7 @@ vi.mock('../../components/ui/ColumnConfigButton', () => ({
 }));
 
 // Mock device column utilities
-vi.mock('../../components/columns/deviceColumns', () => ({
+vi.mock('../../src/components/columns/deviceColumns', () => ({
   DEVICE_COLUMNS: [],
   DEFAULT_DEVICE_COLUMN_ORDER: ['label', 'type', 'fingerprint'],
   DEFAULT_DEVICE_VISIBLE_COLUMNS: ['label', 'type', 'fingerprint'],
@@ -168,7 +168,7 @@ vi.mock('../../components/columns/deviceColumns', () => ({
 }));
 
 // Mock cell renderers
-vi.mock('../../components/cells/DeviceCells', () => ({
+vi.mock('../../src/components/cells/DeviceCells', () => ({
   createDeviceCellRenderers: () => ({}),
 }));
 
@@ -232,7 +232,7 @@ describe('DeviceList Component', () => {
   it('should render empty state when no devices', async () => {
     mockGetDevices.mockResolvedValue([]);
 
-    const { DeviceList } = await import('../../components/DeviceList');
+    const { DeviceList } = await import('../../src/components/DeviceList');
 
     render(<DeviceList />);
 
@@ -248,7 +248,7 @@ describe('DeviceList Component', () => {
     ];
     mockGetDevices.mockResolvedValue(devices);
 
-    const { DeviceList } = await import('../../components/DeviceList');
+    const { DeviceList } = await import('../../src/components/DeviceList');
 
     render(<DeviceList />);
 
@@ -261,7 +261,7 @@ describe('DeviceList Component', () => {
   it('should render add device button', async () => {
     mockGetDevices.mockResolvedValue([]);
 
-    const { DeviceList } = await import('../../components/DeviceList');
+    const { DeviceList } = await import('../../src/components/DeviceList');
 
     render(<DeviceList />);
 
@@ -280,7 +280,7 @@ describe('DeviceList - View Modes', () => {
   });
 
   it('should render list view by default', async () => {
-    const { DeviceList } = await import('../../components/DeviceList');
+    const { DeviceList } = await import('../../src/components/DeviceList');
 
     render(<DeviceList />);
 
@@ -304,7 +304,7 @@ describe('DeviceList - Ownership Filter', () => {
     ];
     mockGetDevices.mockResolvedValue(devices);
 
-    const { DeviceList } = await import('../../components/DeviceList');
+    const { DeviceList } = await import('../../src/components/DeviceList');
 
     render(<DeviceList />);
 
@@ -327,7 +327,7 @@ describe('DeviceList - Device Actions', () => {
     const devices = [createMockDevice({ id: 'device-123' })];
     mockGetDevices.mockResolvedValue(devices);
 
-    const { DeviceList } = await import('../../components/DeviceList');
+    const { DeviceList } = await import('../../src/components/DeviceList');
     const user = userEvent.setup();
 
     render(<DeviceList />);
@@ -352,7 +352,7 @@ describe('DeviceList - Column Configuration', () => {
   });
 
   it('should render column configuration button', async () => {
-    const { DeviceList } = await import('../../components/DeviceList');
+    const { DeviceList } = await import('../../src/components/DeviceList');
 
     render(<DeviceList />);
 
@@ -362,7 +362,7 @@ describe('DeviceList - Column Configuration', () => {
   });
 
   it('updates preferences for column order, visibility, reset, and sort changes', async () => {
-    const { DeviceList } = await import('../../components/DeviceList');
+    const { DeviceList } = await import('../../src/components/DeviceList');
     const user = userEvent.setup();
 
     render(<DeviceList />);
@@ -447,7 +447,7 @@ describe('DeviceList - Grouped Mode Actions', () => {
       }),
     ]);
 
-    const { DeviceList } = await import('../../components/DeviceList');
+    const { DeviceList } = await import('../../src/components/DeviceList');
     render(<DeviceList />);
 
     await waitFor(() => {
@@ -484,7 +484,7 @@ describe('DeviceList - Grouped Mode Actions', () => {
       }),
     ]);
 
-    const { DeviceList } = await import('../../components/DeviceList');
+    const { DeviceList } = await import('../../src/components/DeviceList');
     render(<DeviceList />);
 
     await waitFor(() => {
@@ -516,7 +516,7 @@ describe('DeviceList - Preference Controls', () => {
 
   it('updates preferences from ownership and view mode controls', async () => {
     const user = userEvent.setup();
-    const { DeviceList } = await import('../../components/DeviceList');
+    const { DeviceList } = await import('../../src/components/DeviceList');
     render(<DeviceList />);
 
     await waitFor(() => {
@@ -553,7 +553,7 @@ describe('DeviceList - Preference Controls', () => {
 
   it('navigates to connect page from connect new device button', async () => {
     const user = userEvent.setup();
-    const { DeviceList } = await import('../../components/DeviceList');
+    const { DeviceList } = await import('../../src/components/DeviceList');
     render(<DeviceList />);
 
     await waitFor(() => {

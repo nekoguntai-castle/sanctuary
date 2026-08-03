@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { AgentManagement } from '../../components/AgentManagement';
+import { AgentManagement } from '../../src/components/AgentManagement';
 import * as adminApi from '../../src/api/admin';
 import * as walletsApi from '../../src/api/wallets';
 

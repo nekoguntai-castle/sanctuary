@@ -4,7 +4,24 @@
  * Tests for the Quorum helper functions and other type utilities.
  */
 
-import { getQuorumM,getQuorumN,Quorum } from '../types';
+import {
+  getQuorumM,
+  getQuorumN,
+  getWalletTypeLabel,
+  Quorum,
+  WalletType,
+} from '../src/types';
+
+describe('Wallet type labels', () => {
+  it.each([
+    [undefined, 'Unknown'],
+    [WalletType.MULTI_SIG, 'Multisig'],
+    [WalletType.SINGLE_SIG, 'Single Sig'],
+    ['watch_only', 'watch_only'],
+  ])('labels %s as %s', (type, expected) => {
+    expect(getWalletTypeLabel(type)).toBe(expected);
+  });
+});
 
 describe('Quorum Helper Functions', () => {
   describe('getQuorumM', () => {

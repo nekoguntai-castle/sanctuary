@@ -1,7 +1,7 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { ImportWallet } from '../../../components/ImportWallet/ImportWallet';
+import { ImportWallet } from '../../../src/components/ImportWallet/ImportWallet';
 
 const mockNavigate = vi.fn();
 const mockUseImportState = vi.fn();
@@ -9,7 +9,7 @@ const mockUseImportWallet = vi.fn();
 const mockValidateImportData = vi.fn();
 const mockBuildDescriptorFromXpub = vi.fn();
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -26,11 +26,11 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../../../hooks/queries/useWallets', () => ({
+vi.mock('../../../src/hooks/queries/useWallets', () => ({
   useImportWallet: () => mockUseImportWallet(),
 }));
 
-vi.mock('../../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: 'mainnet',
     isMainnet: true,
@@ -38,12 +38,12 @@ vi.mock('../../../contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../../components/ImportWallet/hooks/useImportState', () => ({
+vi.mock('../../../src/components/ImportWallet/hooks/useImportState', () => ({
   useImportState: () => mockUseImportState(),
 }));
 
-vi.mock('../../../components/ImportWallet/importHelpers', async () => {
-  const actual = await vi.importActual('../../../components/ImportWallet/importHelpers');
+vi.mock('../../../src/components/ImportWallet/importHelpers', async () => {
+  const actual = await vi.importActual('../../../src/components/ImportWallet/importHelpers');
   return {
     ...actual,
     buildDescriptorFromXpub: (...args: unknown[]) => mockBuildDescriptorFromXpub(...args),
@@ -51,32 +51,32 @@ vi.mock('../../../components/ImportWallet/importHelpers', async () => {
   };
 });
 
-vi.mock('../../../components/ImportWallet/steps/FormatSelection', () => ({
+vi.mock('../../../src/components/ImportWallet/steps/FormatSelection', () => ({
   FormatSelection: () => <div data-testid="step-format-selection" />,
 }));
 
-vi.mock('../../../components/ImportWallet/steps/DescriptorInput', () => ({
+vi.mock('../../../src/components/ImportWallet/steps/DescriptorInput', () => ({
   DescriptorInput: () => <div data-testid="step-descriptor-input" />,
 }));
 
-vi.mock('../../../components/ImportWallet/steps/HardwareImport', () => ({
+vi.mock('../../../src/components/ImportWallet/steps/HardwareImport', () => ({
   HardwareImport: () => <div data-testid="step-hardware-import" />,
 }));
 
-vi.mock('../../../components/ImportWallet/steps/QrScanStep', () => ({
+vi.mock('../../../src/components/ImportWallet/steps/QrScanStep', () => ({
   QrScanStep: () => <div data-testid="step-qr-scan" />,
 }));
 
-vi.mock('../../../components/ImportWallet/DeviceResolution', () => ({
+vi.mock('../../../src/components/ImportWallet/DeviceResolution', () => ({
   DeviceResolutionStep: () => <div data-testid="step-device-resolution" />,
 }));
 
-vi.mock('../../../components/ImportWallet/ImportReview', () => ({
+vi.mock('../../../src/components/ImportWallet/ImportReview', () => ({
   ImportReview: () => <div data-testid="step-import-review" />,
 }));
 
 // Branch tests need to click guarded paths, so this mock intentionally ignores `disabled`.
-vi.mock('../../../components/ui/Button', () => ({
+vi.mock('../../../src/components/ui/Button', () => ({
   Button: ({
     onClick,
     children,

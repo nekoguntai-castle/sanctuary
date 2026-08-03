@@ -1,17 +1,17 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { AddAccountFlow } from '../../../../components/DeviceDetail/accounts/AddAccountFlow';
+import { AddAccountFlow } from '../../../../src/components/DeviceDetail/accounts/AddAccountFlow';
 
 const setAddAccountMethodMock = vi.hoisted(() => vi.fn());
 const setAddAccountErrorMock = vi.hoisted(() => vi.fn());
 const resetImportStateMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../../services/hardwareWallet/environment', () => ({
+vi.mock('../../../../src/services/hardwareWallet/environment', () => ({
   isSecureContext: () => true,
 }));
 
-vi.mock('../../../../components/DeviceDetail/accounts/hooks/useAddAccountFlow', () => ({
+vi.mock('../../../../src/components/DeviceDetail/accounts/hooks/useAddAccountFlow', () => ({
   getDeviceTypeFromDeviceModel: () => 'ledger',
   useAddAccountFlow: () => ({
     addAccountMethod: 'unexpected-method',

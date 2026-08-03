@@ -12,7 +12,7 @@ import { registerUseWebSocketEventTests } from './websocket/use-websocket-event.
 import { registerUseWebSocketQueryInvalidationTests } from './websocket/use-websocket-query-invalidation.contracts';
 import { registerUseWebSocketTests } from './websocket/use-websocket.contracts';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { SettingsTab } from '../../../../components/WalletDetail/tabs/SettingsTab';
-import { WalletType,type Device } from '../../../../types';
+import { SettingsTab } from '../../../../src/components/WalletDetail/tabs/SettingsTab';
+import { WalletType,type Device } from '../../../../src/types';
 
 const navigateMock = vi.fn();
 
@@ -13,23 +13,23 @@ vi.mock('react-router-dom', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../../components/LabelManager', () => ({
+vi.mock('../../../../src/components/LabelManager', () => ({
   LabelManager: () => <div data-testid="label-manager">Label manager</div>,
 }));
 
-vi.mock('../../../../components/WalletDetail/WalletTelegramSettings', () => ({
+vi.mock('../../../../src/components/WalletDetail/WalletTelegramSettings', () => ({
   WalletTelegramSettings: () => <div data-testid="wallet-telegram-settings">Telegram settings</div>,
 }));
 
-vi.mock('../../../../components/WalletDetail/WalletWebhooks', () => ({
+vi.mock('../../../../src/components/WalletDetail/WalletWebhooks', () => ({
   WalletWebhooks: () => <div data-testid="wallet-webhooks">Webhook settings</div>,
 }));
 
-vi.mock('../../../../components/WalletDetail/WalletAutopilotSettings', () => ({
+vi.mock('../../../../src/components/WalletDetail/WalletAutopilotSettings', () => ({
   WalletAutopilotSettings: () => <div data-testid="wallet-autopilot-settings">Autopilot settings</div>,
 }));
 
-vi.mock('../../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../../src/components/ui/CustomIcons', () => ({
   getDeviceIcon: () => <span data-testid="device-icon">icon</span>,
 }));
 

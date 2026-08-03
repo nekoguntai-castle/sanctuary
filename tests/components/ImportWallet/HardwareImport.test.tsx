@@ -1,16 +1,16 @@
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import type { XpubData } from '../../../components/ImportWallet/hooks/useImportState';
+import type { XpubData } from '../../../src/components/ImportWallet/hooks/useImportState';
 import {
 HardwareImport,
-} from '../../../components/ImportWallet/steps/HardwareImport';
+} from '../../../src/components/ImportWallet/steps/HardwareImport';
 
 const mockConnect = vi.fn();
 const mockGetXpub = vi.fn();
 const mockIsSecureContext = vi.fn();
 
-vi.mock('../../../services/hardwareWallet/runtime', () => ({
+vi.mock('../../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: (...args: unknown[]) => mockConnect(...args),
     getXpub: (...args: unknown[]) => mockGetXpub(...args),
@@ -18,11 +18,11 @@ vi.mock('../../../services/hardwareWallet/runtime', () => ({
   DeviceType: {},
 }));
 
-vi.mock('../../../services/hardwareWallet/environment', () => ({
+vi.mock('../../../src/services/hardwareWallet/environment', () => ({
   isSecureContext: () => mockIsSecureContext(),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -31,7 +31,7 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../components/ui/Button', () => ({
+vi.mock('../../../src/components/ui/Button', () => ({
   Button: ({
     children,
     onClick,

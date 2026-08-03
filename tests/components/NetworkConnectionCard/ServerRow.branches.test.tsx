@@ -1,10 +1,10 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { ServerRow } from '../../../components/NetworkConnectionCard/ServerRow';
-import type { ElectrumServer } from '../../../types';
+import { ServerRow } from '../../../src/components/NetworkConnectionCard/ServerRow';
+import type { ElectrumServer } from '../../../src/types';
 
-vi.mock('../../../components/NetworkConnectionCard/HealthHistoryBlocks', () => ({
+vi.mock('../../../src/components/NetworkConnectionCard/HealthHistoryBlocks', () => ({
   HealthHistoryBlocks: ({ history, maxBlocks }: { history: unknown[]; maxBlocks: number }) => (
     <div data-testid="health-history">{`history:${history.length}:${maxBlocks}`}</div>
   ),

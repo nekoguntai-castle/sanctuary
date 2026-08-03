@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { BitcoinPriceCard } from '../../../components/Dashboard/BitcoinPriceCard';
+import { BitcoinPriceCard } from '../../../src/components/Dashboard/BitcoinPriceCard';
 
 vi.mock('lucide-react', () => ({
   TrendingUp: () => <span data-testid="trending-up" />,
@@ -8,7 +8,7 @@ vi.mock('lucide-react', () => ({
   Bitcoin: () => <span data-testid="bitcoin-icon" />,
 }));
 
-vi.mock('../../../components/Dashboard/PriceChart', () => ({
+vi.mock('../../../src/components/Dashboard/PriceChart', () => ({
   AnimatedPrice: ({ value, symbol }: { value: number | null; symbol: string }) => (
     <span data-testid="animated-price">{value !== null ? `${symbol}${value}` : '---'}</span>
   ),

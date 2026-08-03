@@ -4,7 +4,7 @@ vi.mock('@sanctuary/shared/utils/bitcoin', () => ({
   normalizeDerivationPath: vi.fn(() => 'm'),
 }));
 
-import { normalizeDerivationPath } from '../../utils/deviceConnection';
+import { normalizeDerivationPath } from '../../src/utils/deviceConnection';
 
 describe('deviceConnection branch fallback', () => {
   it('returns normalized value directly when path has fewer than two segments', () => {

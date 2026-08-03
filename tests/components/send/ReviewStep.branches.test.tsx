@@ -1,9 +1,9 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { ReviewStep } from '../../../components/send/steps/ReviewStep';
-import * as CurrencyContext from '../../../contexts/CurrencyContext';
-import * as SendContext from '../../../contexts/send';
+import { ReviewStep } from '../../../src/components/send/steps/ReviewStep';
+import * as CurrencyContext from '../../../src/contexts/CurrencyContext';
+import * as SendContext from '../../../src/contexts/send';
 import { lookupAddresses } from '../../../src/api/bitcoin';
 
 const capture = vi.hoisted(() => ({
@@ -20,15 +20,15 @@ const loggerSpies = vi.hoisted(() => ({
   error: vi.fn(),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => loggerSpies,
 }));
 
-vi.mock('../../../contexts/send', () => ({
+vi.mock('../../../src/contexts/send', () => ({
   useSendTransaction: vi.fn(),
 }));
 
-vi.mock('../../../contexts/CurrencyContext', () => ({
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
   usePriceFreeFormatter: vi.fn(),
 }));
@@ -37,14 +37,14 @@ vi.mock('../../../src/api/bitcoin', () => ({
   lookupAddresses: vi.fn(),
 }));
 
-vi.mock('../../../components/send/steps/review/TransactionSummary', () => ({
+vi.mock('../../../src/components/send/steps/review/TransactionSummary', () => ({
   TransactionSummary: (props: any) => {
     capture.summaryProps = props;
     return <div data-testid="summary" />;
   },
 }));
 
-vi.mock('../../../components/send/steps/review/SigningFlow', () => {
+vi.mock('../../../src/components/send/steps/review/SigningFlow', () => {
   function createUploadEvent(files: File[]) {
     return { target: { files } };
   }
@@ -120,7 +120,7 @@ vi.mock('../../../components/send/steps/review/SigningFlow', () => {
   return { SigningFlow };
 });
 
-vi.mock('../../../components/send/steps/review/UsbSigning', () => ({
+vi.mock('../../../src/components/send/steps/review/UsbSigning', () => ({
   UsbSigning: ({ onFileUpload, fileInputRef }: any) => {
     fileInputRef.current = { value: 'before-usb-upload' };
     return (
@@ -149,11 +149,11 @@ vi.mock('../../../components/send/steps/review/UsbSigning', () => ({
   },
 }));
 
-vi.mock('../../../components/send/steps/review/QrSigning', () => ({
+vi.mock('../../../src/components/send/steps/review/QrSigning', () => ({
   QrSigning: () => <div data-testid="qr-signing" />,
 }));
 
-vi.mock('../../../components/send/steps/review/DraftActions', () => ({
+vi.mock('../../../src/components/send/steps/review/DraftActions', () => ({
   DraftActions: (props: any) => {
     capture.draftProps = props;
     return <div data-testid="draft-actions" />;

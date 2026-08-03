@@ -6,14 +6,14 @@ import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { SendTransactionWizard } from '../../../components/send/SendTransactionWizard';
-import * as SendContext from '../../../contexts/send';
-import * as useHardwareWalletHook from '../../../hooks/useHardwareWallet';
-import * as useSendTransactionActionsHook from '../../../hooks/send/useSendTransactionActions';
-import { WalletType } from '../../../types';
+import { SendTransactionWizard } from '../../../src/components/send/SendTransactionWizard';
+import * as SendContext from '../../../src/contexts/send';
+import * as useHardwareWalletHook from '../../../src/hooks/useHardwareWallet';
+import * as useSendTransactionActionsHook from '../../../src/hooks/send/useSendTransactionActions';
+import { WalletType } from '../../../src/types';
 
 // Mock logger
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -23,22 +23,22 @@ vi.mock('../../../utils/logger', () => ({
 }));
 
 // Mock context
-vi.mock('../../../contexts/send', () => ({
+vi.mock('../../../src/contexts/send', () => ({
   SendTransactionProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   useSendTransaction: vi.fn(),
 }));
 
 // Mock hooks
-vi.mock('../../../hooks/send/useSendTransactionActions', () => ({
+vi.mock('../../../src/hooks/send/useSendTransactionActions', () => ({
   useSendTransactionActions: vi.fn(),
 }));
 
-vi.mock('../../../hooks/useHardwareWallet', () => ({
+vi.mock('../../../src/hooks/useHardwareWallet', () => ({
   useHardwareWallet: vi.fn(),
 }));
 
 // Mock step components
-vi.mock('../../../components/send/steps', () => ({
+vi.mock('../../../src/components/send/steps', () => ({
   TypeSelection: () => <div data-testid="type-selection">Type Selection</div>,
   OutputsStep: () => <div data-testid="outputs-step">Outputs Step</div>,
   ReviewStep: (props: any) => (
@@ -57,7 +57,7 @@ vi.mock('../../../components/send/steps', () => ({
   ),
 }));
 
-vi.mock('../../../components/send/WizardNavigation', () => ({
+vi.mock('../../../src/components/send/WizardNavigation', () => ({
   WizardNavigation: () => <div data-testid="wizard-nav">Navigation</div>,
 }));
 

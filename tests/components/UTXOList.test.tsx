@@ -5,18 +5,18 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { UTXOList } from '../../components/UTXOList';
-import * as CurrencyContext from '../../contexts/CurrencyContext';
-import * as useBitcoinHooks from '../../hooks/queries/useBitcoin';
+import { UTXOList } from '../../src/components/UTXOList';
+import * as CurrencyContext from '../../src/contexts/CurrencyContext';
+import * as useBitcoinHooks from '../../src/hooks/queries/useBitcoin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 
 // Mock contexts and hooks
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock('../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
   usePriceFreeFormatter: vi.fn(),
 }));
 
-vi.mock('../../hooks/queries/useBitcoin', () => ({
+vi.mock('../../src/hooks/queries/useBitcoin', () => ({
   useFeeEstimates: vi.fn(),
 }));
 
@@ -25,17 +25,17 @@ vi.mock('../../src/api/bitcoin', () => ({
 }));
 
 // Mock child components
-vi.mock('../../components/Amount', () => ({
+vi.mock('../../src/components/Amount', () => ({
   Amount: ({ sats }: { sats: number }) => <span data-testid="amount">{sats}</span>,
 }));
 
-vi.mock('../../components/PrivacyBadge', () => ({
+vi.mock('../../src/components/PrivacyBadge', () => ({
   PrivacyBadge: ({ score }: { score: number }) => (
     <span data-testid="privacy-badge">{score}</span>
   ),
 }));
 
-vi.mock('../../components/PrivacyDetailPanel', () => ({
+vi.mock('../../src/components/PrivacyDetailPanel', () => ({
   PrivacyDetailPanel: () => <div data-testid="privacy-panel">Privacy Panel</div>,
 }));
 

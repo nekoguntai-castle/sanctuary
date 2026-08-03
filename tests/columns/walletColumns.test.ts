@@ -11,7 +11,7 @@ DEFAULT_WALLET_VISIBLE_COLUMNS,
 getWalletColumnsInOrder,
 mergeWalletColumnOrder,
 WALLET_COLUMNS,
-} from '../../components/columns/walletColumns';
+} from '../../src/components/columns/walletColumns';
 
 describe('walletColumns', () => {
   describe('mergeWalletColumnOrder', () => {

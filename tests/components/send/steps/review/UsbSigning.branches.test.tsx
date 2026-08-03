@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { UsbSigning } from '../../../../../components/send/steps/review/UsbSigning';
+import { UsbSigning } from '../../../../../src/components/send/steps/review/UsbSigning';
 
 describe('UsbSigning branch coverage', () => {
   it('does not set signing state when onSignWithDevice is missing', () => {

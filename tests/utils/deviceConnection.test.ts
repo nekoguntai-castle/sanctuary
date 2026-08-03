@@ -9,7 +9,7 @@ import {
   isDeviceConnectivityMethod,
   isMethodAvailable,
   normalizeDerivationPath,
-} from "../../utils/deviceConnection";
+} from "../../src/utils/deviceConnection";
 
 describe("deviceConnection utilities", () => {
   it("maps hardware models to known device types", () => {

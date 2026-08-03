@@ -6,7 +6,7 @@ const clientApiMocks = vi.hoisted(() => ({
   mockScheduleRefreshFromHeader: vi.fn(),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../utils/download', () => ({
+vi.mock('../../../src/utils/download', () => ({
   downloadBlob: (...args: unknown[]) => clientApiMocks.mockDownloadBlob(...args),
 }));
 

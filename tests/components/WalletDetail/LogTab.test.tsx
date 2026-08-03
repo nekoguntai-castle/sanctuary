@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { LogTab } from '../../../components/WalletDetail/LogTab';
+import { LogTab } from '../../../src/components/WalletDetail/LogTab';
 
 describe('LogTab', () => {
   const baseProps = {

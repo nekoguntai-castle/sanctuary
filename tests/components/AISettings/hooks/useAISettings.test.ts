@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useAISettings } from '../../../../components/AISettings/hooks/useAISettings';
+import { useAISettings } from '../../../../src/components/AISettings/hooks/useAISettings';
 import * as adminApi from '../../../../src/api/admin';
 import * as aiApi from '../../../../src/api/ai';
 import { ApiError } from '../../../../src/api/client';
@@ -16,7 +16,7 @@ vi.mock('../../../../src/api/ai', () => ({
   detectProvider: vi.fn(),
 }));
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

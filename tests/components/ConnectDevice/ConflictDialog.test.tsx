@@ -1,7 +1,7 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { ConflictDialog } from '../../../components/ConnectDevice/ConflictDialog';
+import { ConflictDialog } from '../../../src/components/ConnectDevice/ConflictDialog';
 
 function createConflictData(overrides: Record<string, unknown> = {}) {
   return {

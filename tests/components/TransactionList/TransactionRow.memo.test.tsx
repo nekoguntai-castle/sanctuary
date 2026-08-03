@@ -10,17 +10,17 @@
 import { render, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useState } from 'react';
-import { TransactionRow } from '../../../components/TransactionList/TransactionRow';
-import type { Transaction, Wallet } from '../../../types';
+import { TransactionRow } from '../../../src/components/TransactionList/TransactionRow';
+import type { Transaction, Wallet } from '../../../src/types';
 
 const amountRenderSpy = vi.fn();
-vi.mock('../../../components/Amount', () => ({
+vi.mock('../../../src/components/Amount', () => ({
   Amount: ({ sats = 0 }: { sats?: number }) => {
     amountRenderSpy();
     return <span data-testid="amount">{String(sats)}</span>;
   },
 }));
-vi.mock('../../../components/LabelSelector', () => ({
+vi.mock('../../../src/components/LabelSelector', () => ({
   LabelBadges: ({ labels }: { labels: Array<{ id: string; name: string }> }) => (
     <span>{labels.length}</span>
   ),

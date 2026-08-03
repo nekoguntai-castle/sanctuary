@@ -5,7 +5,7 @@ import {
   isMultisigDerivationPath,
   isMultisigSigningRequest,
   isUnsupportedMultisigHardwareSigner,
-} from '../../services/hardwareWallet/signingSupport';
+} from '../../src/services/hardwareWallet/signingSupport';
 
 describe('hardware wallet signing support guards', () => {
   it('classifies only Ledger and BitBox as unsupported multisig USB signers', () => {

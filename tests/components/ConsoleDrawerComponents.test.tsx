@@ -2,11 +2,11 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
-import { ConsoleMessageList } from "../../components/ConsoleDrawer/ConsoleMessageList";
-import { ConsoleScopeSelector } from "../../components/ConsoleDrawer/ConsoleScopeSelector";
-import { MAX_WALLET_SET_SCOPE_WALLETS } from "../../components/ConsoleDrawer/consoleDrawerUtils";
-import type { ConsoleMessage } from "../../components/ConsoleDrawer/types";
-import { KeyboardShortcutsModal } from "../../components/Layout/KeyboardShortcutsModal";
+import { ConsoleMessageList } from "../../src/components/ConsoleDrawer/ConsoleMessageList";
+import { ConsoleScopeSelector } from "../../src/components/ConsoleDrawer/ConsoleScopeSelector";
+import { MAX_WALLET_SET_SCOPE_WALLETS } from "../../src/components/ConsoleDrawer/consoleDrawerUtils";
+import type { ConsoleMessage } from "../../src/components/ConsoleDrawer/types";
+import { KeyboardShortcutsModal } from "../../src/components/Layout/KeyboardShortcutsModal";
 
 function turnMessages(
   id: string,

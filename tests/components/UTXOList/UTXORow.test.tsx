@@ -1,25 +1,25 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { UTXORow } from '../../../components/UTXOList/UTXORow';
-import type { UTXO } from '../../../types';
+import { UTXORow } from '../../../src/components/UTXOList/UTXORow';
+import type { UTXO } from '../../../src/types';
 import type { UtxoPrivacyInfo } from '../../../src/api/transactions';
 
-vi.mock('../../../components/Amount', () => ({
+vi.mock('../../../src/components/Amount', () => ({
   Amount: ({ sats }: { sats: number }) => <span data-testid="amount">{sats}</span>,
 }));
 
-vi.mock('../../../components/PrivacyBadge', () => ({
+vi.mock('../../../src/components/PrivacyBadge', () => ({
   PrivacyBadge: ({ score, onClick }: { score: number; onClick?: () => void }) => (
     <span data-testid="privacy-badge" onClick={onClick}>{score}</span>
   ),
 }));
 
-vi.mock('../../../utils/explorer', () => ({
+vi.mock('../../../src/utils/explorer', () => ({
   getAddressExplorerUrl: (addr: string) => `https://explorer.test/address/${addr}`,
   getTxExplorerUrl: (txid: string) => `https://explorer.test/tx/${txid}`,
 }));
 
-vi.mock('../../../utils/utxoAge', () => ({
+vi.mock('../../../src/utils/utxoAge', () => ({
   calculateUTXOAge: () => ({ displayText: '3d', category: 'fresh' }),
   getAgeCategoryColor: () => 'text-green-500',
 }));

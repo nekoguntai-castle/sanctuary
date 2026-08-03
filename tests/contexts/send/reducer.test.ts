@@ -2,12 +2,12 @@ import { describe,expect,it } from 'vitest';
 import {
 createInitialState,
 transactionReducer,
-} from '../../../contexts/send/reducer';
+} from '../../../src/contexts/send/reducer';
 import type {
 OutputEntry,
 TransactionAction,
 WizardStep
-} from '../../../contexts/send/types';
+} from '../../../src/contexts/send/types';
 import { registerOutputManagementReducerContracts } from './reducer/reducer.output.contracts';
 
 describe('transactionReducer', () => {

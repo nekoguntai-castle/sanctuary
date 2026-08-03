@@ -1,8 +1,8 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { SingletonConfig } from '../../../components/NetworkConnectionCard/SingletonConfig';
-import type { PresetServer } from '../../../components/NetworkConnectionCard/types';
+import { SingletonConfig } from '../../../src/components/NetworkConnectionCard/SingletonConfig';
+import type { PresetServer } from '../../../src/components/NetworkConnectionCard/types';
 
 vi.mock('lucide-react', () => ({
   Loader2: (props: React.SVGProps<SVGSVGElement>) => <svg data-testid="loader-icon" {...props} />,

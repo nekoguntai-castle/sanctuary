@@ -10,18 +10,18 @@ UserProvider,
 useTwoFactor,
 useUser,
 useUserPreferences,
-} from '../../contexts/UserContext';
+} from '../../src/contexts/UserContext';
 import * as authApi from '../../src/api/auth';
 import { ApiError } from '../../src/api/client';
 import * as twoFactorApi from '../../src/api/twoFactor';
-import type { User } from '../../types';
+import type { User } from '../../src/types';
 import {
   mockTwoFactorResponse,
   mockUser,
   TestConsumer,
 } from './UserContext.test.fixtures';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -60,7 +60,7 @@ vi.mock('../../src/api/refresh', () => ({
 }));
 
 // Mock theme registry
-vi.mock('../../themes', () => ({
+vi.mock('../../src/themes', () => ({
   themeRegistry: {
     applyTheme: vi.fn(),
     applyPattern: vi.fn(),
@@ -739,7 +739,7 @@ describe('UserContext', () => {
     describe('Theme application', () => {
     beforeEach(async () => {
       // Clear theme registry mocks before each theme test
-      const { themeRegistry } = await import('../../themes');
+      const { themeRegistry } = await import('../../src/themes');
       vi.mocked(themeRegistry.applyTheme).mockClear();
       vi.mocked(themeRegistry.applyPattern).mockClear();
       vi.mocked(themeRegistry.applyPatternOpacity).mockClear();
@@ -751,7 +751,7 @@ describe('UserContext', () => {
     });
 
     it('applies user theme preferences', async () => {
-      const { themeRegistry } = await import('../../themes');
+      const { themeRegistry } = await import('../../src/themes');
 
       vi.mocked(authApi.getCurrentUser).mockResolvedValue(mockUser);
 
@@ -770,7 +770,7 @@ describe('UserContext', () => {
     });
 
     it('applies light mode when darkMode is false', async () => {
-      const { themeRegistry } = await import('../../themes');
+      const { themeRegistry } = await import('../../src/themes');
 
       const lightUser = {
         ...mockUser,

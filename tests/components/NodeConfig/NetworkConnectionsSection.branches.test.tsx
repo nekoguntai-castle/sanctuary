@@ -1,8 +1,8 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { NetworkConnectionsSection } from '../../../components/NodeConfig/NetworkConnectionsSection';
+import { NetworkConnectionsSection } from '../../../src/components/NodeConfig/NetworkConnectionsSection';
 
-vi.mock('../../../components/NetworkConnectionCard', () => ({
+vi.mock('../../../src/components/NetworkConnectionCard', () => ({
   NetworkConnectionCard: ({ network, servers, onConfigChange, onServersChange, onTestConnection }: any) => (
     <div data-testid="network-connection-card">
       <div data-testid="network-server-count">{servers.length}</div>

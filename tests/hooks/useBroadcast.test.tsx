@@ -24,20 +24,20 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mocks.navigate,
 }));
 
-vi.mock('../../hooks/useErrorHandler', () => ({
+vi.mock('../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({
     showSuccess: mocks.showSuccess,
     showWarning: mocks.showWarning,
   }),
 }));
 
-vi.mock('../../hooks/useNotificationSound', () => ({
+vi.mock('../../src/hooks/useNotificationSound', () => ({
   useNotificationSound: () => ({
     playEventSound: mocks.playEventSound,
   }),
 }));
 
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock('../../src/contexts/CurrencyContext', () => ({
   useCurrency: () => ({
     format: mocks.format,
   }),
@@ -55,7 +55,7 @@ vi.mock('../../src/api/drafts', () => ({
   deleteDraft: mocks.deleteDraft,
 }));
 
-vi.mock('../../providers/QueryProvider', () => ({
+vi.mock('../../src/providers/QueryProvider', () => ({
   queryClient: {
     refetchQueries: mocks.refetchQueries,
     invalidateQueries: mocks.invalidateQueries,
@@ -68,11 +68,11 @@ vi.mock('bitcoinjs-lib', () => ({
   },
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => mocks.logger,
 }));
 
-import { useBroadcast } from '../../hooks/send/useBroadcast';
+import { useBroadcast } from '../../src/hooks/send/useBroadcast';
 
 const baseTxData = {
   psbtBase64: 'signed-psbt',

@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { ModalWrapper } from '../../../components/ui/ModalWrapper';
+import { ModalWrapper } from '../../../src/components/ui/ModalWrapper';
 
 describe('ModalWrapper', () => {
   it('renders title and children', () => {

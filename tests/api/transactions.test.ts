@@ -23,7 +23,7 @@ vi.mock('../../src/api/client', () => ({
 }));
 
 // Mock downloadBlob
-vi.mock('../../utils/download', () => ({
+vi.mock('../../src/utils/download', () => ({
   downloadBlob: vi.fn(),
 }));
 

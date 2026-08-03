@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { formatModelSize } from '../../../components/AISettings/utils';
+import { formatModelSize } from '../../../src/components/AISettings/utils';
 
 describe('AISettings utils branch coverage', () => {
   it('covers both GB and MB formatting branches', () => {

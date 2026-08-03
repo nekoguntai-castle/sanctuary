@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   invalidateIntelligenceStatus,
   useIntelligenceStatus,
-} from '../../hooks/useIntelligenceStatus';
+} from '../../src/hooks/useIntelligenceStatus';
 import * as intelligenceApi from '../../src/api/intelligence';
 
 vi.mock('../../src/api/intelligence', () => ({

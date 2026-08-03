@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Settings } from "../../components/Settings";
+import { Settings } from "../../src/components/Settings";
 import * as authApi from "../../src/api/auth";
 
 const mockState = vi.hoisted(() => {
@@ -43,14 +43,14 @@ const mockState = vi.hoisted(() => {
   };
 });
 
-vi.mock("../../contexts/UserContext", () => ({
+vi.mock("../../src/contexts/UserContext", () => ({
   useUser: () => ({
     user: mockState.user,
     updatePreferences: mockState.updatePreferences,
   }),
 }));
 
-vi.mock("../../contexts/CurrencyContext", () => {
+vi.mock("../../src/contexts/CurrencyContext", () => {
   const value = () => ({
     currency: "USD",
     setCurrency: vi.fn(),
@@ -83,13 +83,13 @@ vi.mock("../../contexts/CurrencyContext", () => {
   };
 });
 
-vi.mock("../../components/PriceProviderDiagnostics", () => ({
+vi.mock("../../src/components/PriceProviderDiagnostics", () => ({
   PriceProviderDiagnostics: () => (
     <div data-testid="price-provider-diagnostics">Diagnostics</div>
   ),
 }));
 
-vi.mock("../../hooks/useNotificationSound", () => ({
+vi.mock("../../src/hooks/useNotificationSound", () => ({
   useNotificationSound: () => ({
     playSound: mockState.playSound,
     soundPresets: [
@@ -124,7 +124,7 @@ vi.mock("../../src/api/client", () => ({
   },
 }));
 
-vi.mock("../../utils/logger", () => ({
+vi.mock("../../src/utils/logger", () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -133,11 +133,11 @@ vi.mock("../../utils/logger", () => ({
   }),
 }));
 
-vi.mock("../../utils/errorHandler", () => ({
+vi.mock("../../src/utils/errorHandler", () => ({
   logError: (...args: unknown[]) => mockState.logError(...args),
 }));
 
-vi.mock("../../themes", () => ({
+vi.mock("../../src/themes", () => ({
   themeRegistry: {
     getAllMetadata: vi.fn().mockReturnValue([
       {
@@ -159,7 +159,7 @@ vi.mock("../../themes", () => ({
   Season: ["spring", "summer", "fall", "winter"],
 }));
 
-vi.mock("../../themes/backgroundCategories", () => ({
+vi.mock("../../src/themes/backgroundCategories", () => ({
   CATEGORIES: [
     { id: "all", label: "All", icon: "All" },
     { id: "favorites", label: "Favorites", icon: "Fav" },
@@ -168,7 +168,7 @@ vi.mock("../../themes/backgroundCategories", () => ({
   getCategoriesForBackground: vi.fn().mockReturnValue([]),
 }));
 
-vi.mock("../../components/ui/Button", () => ({
+vi.mock("../../src/components/ui/Button", () => ({
   Button: ({
     children,
     onClick,
@@ -184,7 +184,7 @@ vi.mock("../../components/ui/Button", () => ({
   ),
 }));
 
-vi.mock("../../components/ui/CustomIcons", () => ({
+vi.mock("../../src/components/ui/CustomIcons", () => ({
   SanctuaryLogo: () => <span data-testid="sanctuary-logo" />,
   SatsIcon: () => <span data-testid="sats-icon" />,
 }));

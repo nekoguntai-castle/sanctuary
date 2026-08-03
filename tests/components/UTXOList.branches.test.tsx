@@ -1,11 +1,11 @@
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { UTXOList } from '../../components/UTXOList';
-import * as currencyContext from '../../contexts/CurrencyContext';
-import * as bitcoinHooks from '../../hooks/queries/useBitcoin';
+import { UTXOList } from '../../src/components/UTXOList';
+import * as currencyContext from '../../src/contexts/CurrencyContext';
+import * as bitcoinHooks from '../../src/hooks/queries/useBitcoin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -14,12 +14,12 @@ vi.mock('../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock('../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
   usePriceFreeFormatter: vi.fn(),
 }));
 
-vi.mock('../../hooks/queries/useBitcoin', () => ({
+vi.mock('../../src/hooks/queries/useBitcoin', () => ({
   useFeeEstimates: vi.fn(),
 }));
 
@@ -27,11 +27,11 @@ vi.mock('../../src/api/bitcoin', () => ({
   getStatus: vi.fn(),
 }));
 
-vi.mock('../../components/Amount', () => ({
+vi.mock('../../src/components/Amount', () => ({
   Amount: ({ sats }: { sats: number }) => <span>{sats}</span>,
 }));
 
-vi.mock('../../components/PrivacyBadge', () => ({
+vi.mock('../../src/components/PrivacyBadge', () => ({
   PrivacyBadge: ({
     score,
     onClick,
@@ -45,7 +45,7 @@ vi.mock('../../components/PrivacyBadge', () => ({
   ),
 }));
 
-vi.mock('../../components/PrivacyDetailPanel', () => ({
+vi.mock('../../src/components/PrivacyDetailPanel', () => ({
   PrivacyDetailPanel: ({
     utxo,
     onClose,

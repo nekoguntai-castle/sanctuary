@@ -1,5 +1,5 @@
 /**
- * Tests for components/PrivacyDetailPanel.tsx
+ * Tests for src/components/PrivacyDetailPanel.tsx
  *
  * Tests the privacy detail bottom sheet panel including score display,
  * factors list, warnings, and learn more section.
@@ -7,11 +7,11 @@
 
 import { act,fireEvent,render,screen } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { PrivacyDetailPanel } from '../../components/PrivacyDetailPanel';
+import { PrivacyDetailPanel } from '../../src/components/PrivacyDetailPanel';
 import type { UtxoPrivacyInfo } from '../../src/api/transactions';
 
 // Mock useCurrency
-vi.mock('../../contexts/CurrencyContext', () => {
+vi.mock('../../src/contexts/CurrencyContext', () => {
   const value = {
     format: (amount: number) => `${amount} sats`,
     unit: 'sats',

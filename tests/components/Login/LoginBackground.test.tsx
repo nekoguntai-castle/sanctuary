@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { LoginBackground } from '../../../components/Login/LoginBackground';
+import { LoginBackground } from '../../../src/components/Login/LoginBackground';
 
-vi.mock('../../../components/AnimatedBackground', () => ({
+vi.mock('../../../src/components/AnimatedBackground', () => ({
   default: ({ pattern }: { pattern: string }) => (
     <div data-testid="animated-bg">{pattern}</div>
   ),

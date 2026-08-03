@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { NodeStatusCard } from '../../../components/Dashboard/NodeStatusCard';
+import { NodeStatusCard } from '../../../src/components/Dashboard/NodeStatusCard';
 
 vi.mock('lucide-react', () => ({
   Zap: () => <span data-testid="zap-icon" />,

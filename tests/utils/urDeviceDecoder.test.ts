@@ -1,6 +1,6 @@
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -12,7 +12,7 @@ vi.mock('../../utils/logger', () => ({
 const { parseDeviceJsonMock } = vi.hoisted(() => ({
   parseDeviceJsonMock: vi.fn(),
 }));
-vi.mock('../../services/deviceParsers', () => ({
+vi.mock('../../src/services/deviceParsers', () => ({
   parseDeviceJson: parseDeviceJsonMock,
 }));
 
@@ -124,7 +124,7 @@ extractFromUrBytesContent,
 extractFromUrResult,
 getUrType,
 isUrFormat,
-} from '../../utils/urDeviceDecoder';
+} from '../../src/utils/urDeviceDecoder';
 
 describe('urDeviceDecoder', () => {
   beforeEach(() => {

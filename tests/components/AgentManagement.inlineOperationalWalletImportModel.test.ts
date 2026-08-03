@@ -5,7 +5,7 @@ import {
   getRawKeyFallbackFingerprint,
   getRawKeyDescription,
   normalizeOperationalImportData,
-} from '../../components/AgentManagement/AgentManagement/inlineOperationalWalletImportModel';
+} from '../../src/components/AgentManagement/AgentManagement/inlineOperationalWalletImportModel';
 
 describe('inlineOperationalWalletImportModel', () => {
   const fundingWallet = {

@@ -63,7 +63,7 @@ vi.mock('../../src/api/devices', () => ({
 
 // Mock wallets API
 const mockMutateAsync = vi.fn().mockResolvedValue({ id: 'new-wallet-id', name: 'Test Wallet' });
-vi.mock('../../hooks/queries/useWallets', () => ({
+vi.mock('../../src/hooks/queries/useWallets', () => ({
   useCreateWallet: () => ({
     mutateAsync: mockMutateAsync,
     isPending: false,
@@ -72,13 +72,13 @@ vi.mock('../../hooks/queries/useWallets', () => ({
 }));
 
 // Mock error handler
-vi.mock('../../hooks/useErrorHandler', () => ({
+vi.mock('../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({
     handleError: vi.fn(),
   }),
 }));
 
-vi.mock('../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: 'mainnet',
     isMainnet: true,
@@ -87,7 +87,7 @@ vi.mock('../../contexts/ActiveNetworkContext', () => ({
 }));
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     error: vi.fn(),
@@ -97,7 +97,7 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Mock error handler util
-vi.mock('../../utils/errorHandler', () => ({
+vi.mock('../../src/utils/errorHandler', () => ({
   logError: vi.fn(),
 }));
 
@@ -117,14 +117,14 @@ vi.mock('lucide-react', () => ({
 }));
 
 // Mock custom icons
-vi.mock('../../components/ui/CustomIcons', () => ({
+vi.mock('../../src/components/ui/CustomIcons', () => ({
   SingleSigIcon: ({ className }: { className?: string }) => <span data-testid="single-sig-icon" className={className} />,
   MultiSigIcon: ({ className }: { className?: string }) => <span data-testid="multi-sig-icon" className={className} />,
   getDeviceIcon: () => <span data-testid="device-icon" />,
 }));
 
 // Mock Button component
-vi.mock('../../components/ui/Button', () => ({
+vi.mock('../../src/components/ui/Button', () => ({
   Button: ({ children, onClick, disabled, isLoading, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { isLoading?: boolean }) => (
     <button onClick={onClick} disabled={disabled || isLoading} {...props}>
       {isLoading ? 'Loading...' : children}
@@ -159,7 +159,7 @@ describe('CreateWallet Component', () => {
   });
 
   it('should render step 1 with wallet type selection', async () => {
-    const { CreateWallet } = await import('../../components/CreateWallet');
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
 
     await renderCreateWallet(CreateWallet);
 
@@ -169,7 +169,7 @@ describe('CreateWallet Component', () => {
   });
 
   it('should highlight single-sig option when selected', async () => {
-    const { CreateWallet } = await import('../../components/CreateWallet');
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
     const user = userEvent.setup();
 
     await renderCreateWallet(CreateWallet);
@@ -181,7 +181,7 @@ describe('CreateWallet Component', () => {
   });
 
   it('should highlight multi-sig option when selected', async () => {
-    const { CreateWallet } = await import('../../components/CreateWallet');
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
     const user = userEvent.setup();
 
     await renderCreateWallet(CreateWallet);
@@ -193,7 +193,7 @@ describe('CreateWallet Component', () => {
   });
 
   it('should advance to step 2 when wallet type selected and Next clicked', async () => {
-    const { CreateWallet } = await import('../../components/CreateWallet');
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
     const user = userEvent.setup();
 
     await renderCreateWallet(CreateWallet);
@@ -213,7 +213,7 @@ describe('CreateWallet Component', () => {
   });
 
   it('should filter devices by wallet type compatibility', async () => {
-    const { CreateWallet } = await import('../../components/CreateWallet');
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
     const user = userEvent.setup();
 
     await renderCreateWallet(CreateWallet);
@@ -234,7 +234,7 @@ describe('CreateWallet Component', () => {
   });
 
   it('should show warning for incompatible devices', async () => {
-    const { CreateWallet } = await import('../../components/CreateWallet');
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
     const user = userEvent.setup();
 
     await renderCreateWallet(CreateWallet);
@@ -254,7 +254,7 @@ describe('CreateWallet Component', () => {
   });
 
   it('should allow device selection in single-sig mode', async () => {
-    const { CreateWallet } = await import('../../components/CreateWallet');
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
     const user = userEvent.setup();
 
     await renderCreateWallet(CreateWallet);
@@ -287,7 +287,7 @@ describe('CreateWallet Component - Multi-step Navigation', () => {
   });
 
   it('should go back to previous step when Back is clicked', async () => {
-    const { CreateWallet } = await import('../../components/CreateWallet');
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
     const user = userEvent.setup();
 
     await renderCreateWallet(CreateWallet);
@@ -310,7 +310,7 @@ describe('CreateWallet Component - Multi-step Navigation', () => {
   });
 
   it('should complete full wallet creation flow', async () => {
-    const { CreateWallet } = await import('../../components/CreateWallet');
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
     const user = userEvent.setup();
 
     await renderCreateWallet(CreateWallet);
@@ -364,14 +364,14 @@ describe('CreateWallet Component - Multi-sig Validation', () => {
 
   it('should require at least 2 devices for multisig', async () => {
     const mockHandleError = vi.fn();
-    vi.doMock('../../hooks/useErrorHandler', () => ({
+    vi.doMock('../../src/hooks/useErrorHandler', () => ({
       useErrorHandler: () => ({
         handleError: mockHandleError,
       }),
     }));
 
     vi.resetModules();
-    const { CreateWallet } = await import('../../components/CreateWallet');
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
     const user = userEvent.setup();
 
     await renderCreateWallet(CreateWallet);
@@ -401,7 +401,7 @@ describe('CreateWallet Component - Multi-sig Validation', () => {
   });
 
   it('should allow proceeding with 2+ devices for multisig', async () => {
-    const { CreateWallet } = await import('../../components/CreateWallet');
+    const { CreateWallet } = await import('../../src/components/CreateWallet');
     const user = userEvent.setup();
 
     await renderCreateWallet(CreateWallet);

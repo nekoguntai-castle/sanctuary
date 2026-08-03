@@ -1,7 +1,7 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll,beforeEach,describe,expect,it,vi } from 'vitest';
-import { ConnectDevice } from '../../../components/ConnectDevice/ConnectDevice';
+import { ConnectDevice } from '../../../src/components/ConnectDevice/ConnectDevice';
 
 const mockNavigate = vi.fn();
 const parseDeviceJsonMock = vi.hoisted(() => vi.fn());
@@ -75,42 +75,42 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../../../services/deviceParsers', () => ({
+vi.mock('../../../src/services/deviceParsers', () => ({
   parseDeviceJson: (...args: unknown[]) => parseDeviceJsonMock(...args),
 }));
 
-vi.mock('../../../services/hardwareWallet', () => ({
+vi.mock('../../../src/services/hardwareWallet', () => ({
   isSecureContext: () => false,
 }));
 
-vi.mock('../../../hooks/useDeviceModels', () => ({
+vi.mock('../../../src/hooks/useDeviceModels', () => ({
   useDeviceModels: () => hookState.models,
 }));
 
-vi.mock('../../../hooks/useDeviceSave', () => ({
+vi.mock('../../../src/hooks/useDeviceSave', () => ({
   useDeviceSave: () => hookState.save,
 }));
 
-vi.mock('../../../hooks/qr/useQrScanner', () => ({
+vi.mock('../../../src/hooks/qr/useQrScanner', () => ({
   useQrScanner: () => hookState.qr,
 }));
 
-vi.mock('../../../hooks/useDeviceConnection', () => ({
+vi.mock('../../../src/hooks/useDeviceConnection', () => ({
   useDeviceConnection: () => hookState.usb,
 }));
 
-vi.mock('../../../utils/deviceConnection', () => ({
+vi.mock('../../../src/utils/deviceConnection', () => ({
   getAvailableMethods: () => ['usb', 'sd_card', 'qr_code', 'manual'],
   normalizeDerivationPath: (path: string) => `norm:${path}`,
 }));
 
-vi.mock('../../../components/ConnectDevice/DeviceModelSelector', () => ({
+vi.mock('../../../src/components/ConnectDevice/DeviceModelSelector', () => ({
   DeviceModelSelector: ({ onSelectModel }: any) => (
     <button onClick={() => onSelectModel(hookState.model)}>select-model</button>
   ),
 }));
 
-vi.mock('../../../components/ConnectDevice/ConnectionMethodSelector', () => ({
+vi.mock('../../../src/components/ConnectDevice/ConnectionMethodSelector', () => ({
   ConnectionMethodSelector: ({ onSelectMethod }: any) => (
     <div>
       <button onClick={() => onSelectMethod('usb')}>method-usb</button>
@@ -121,13 +121,13 @@ vi.mock('../../../components/ConnectDevice/ConnectionMethodSelector', () => ({
   ),
 }));
 
-vi.mock('../../../components/ConnectDevice/UsbConnectionPanel', () => ({
+vi.mock('../../../src/components/ConnectDevice/UsbConnectionPanel', () => ({
   UsbConnectionPanel: ({ onConnect, selectedModel }: any) => (
     <button onClick={onConnect}>{`usb-panel-${selectedModel.name}`}</button>
   ),
 }));
 
-vi.mock('../../../components/ConnectDevice/QrScannerPanel', () => ({
+vi.mock('../../../src/components/ConnectDevice/QrScannerPanel', () => ({
   QrScannerPanel: ({ selectedModel, onStopCamera }: any) => (
     <div>
       <span>{`qr-panel-${selectedModel.name}`}</span>
@@ -136,7 +136,7 @@ vi.mock('../../../components/ConnectDevice/QrScannerPanel', () => ({
   ),
 }));
 
-vi.mock('../../../components/ConnectDevice/FileUploadPanel', () => ({
+vi.mock('../../../src/components/ConnectDevice/FileUploadPanel', () => ({
   FileUploadPanel: ({ onFileUpload }: any) => (
     <div>
       <button
@@ -161,7 +161,7 @@ vi.mock('../../../components/ConnectDevice/FileUploadPanel', () => ({
   ),
 }));
 
-vi.mock('../../../components/ConnectDevice/DeviceDetailsForm', () => ({
+vi.mock('../../../src/components/ConnectDevice/DeviceDetailsForm', () => ({
   DeviceDetailsForm: ({ formData, onFormDataChange, onToggleAccount, onToggleQrDetails, onSave, warning }: any) => (
     <div>
       <div data-testid="form-label">{formData.label}</div>
@@ -235,7 +235,7 @@ vi.mock('../../../components/ConnectDevice/DeviceDetailsForm', () => ({
   ),
 }));
 
-vi.mock('../../../components/ConnectDevice/ConflictDialog', () => ({
+vi.mock('../../../src/components/ConnectDevice/ConflictDialog', () => ({
   ConflictDialog: ({ onMerge, onViewExisting, onCancel }: any) => (
     <div>
       <button onClick={onMerge}>merge-device</button>
@@ -245,7 +245,7 @@ vi.mock('../../../components/ConnectDevice/ConflictDialog', () => ({
   ),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

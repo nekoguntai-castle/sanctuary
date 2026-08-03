@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { filterDevicesByNetwork } from '../../utils/networkScopedDevices';
+import { filterDevicesByNetwork } from '../../src/utils/networkScopedDevices';
 
 describe('networkScopedDevices', () => {
   it('keeps devices visible when derivation paths match the selected network even without matching wallet links', () => {

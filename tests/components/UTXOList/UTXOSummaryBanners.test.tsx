@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { UTXOSummaryBanners } from '../../../components/UTXOList/UTXOSummaryBanners';
+import { UTXOSummaryBanners } from '../../../src/components/UTXOList/UTXOSummaryBanners';
 
 const format = (sats: number) => `${sats} sats`;
 

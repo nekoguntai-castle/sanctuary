@@ -64,7 +64,7 @@ vi.mock('@ngraveio/bc-ur', () => ({
   },
 }));
 
-vi.mock('../../../services/bbqr', () => ({
+vi.mock('../../../src/services/bbqr', () => ({
   BBQrDecoder: class MockBBQrDecoder {
     receivePart = (...args: unknown[]) => mockBbqrDecoder.receivePart(...args);
     getError = () => mockBbqrDecoder.getError();
@@ -92,22 +92,22 @@ vi.mock('../../../services/bbqr', () => ({
   },
 }));
 
-vi.mock('../../../services/deviceParsers', () => ({
+vi.mock('../../../src/services/deviceParsers', () => ({
   parseDeviceJson: vi.fn(),
 }));
 
-vi.mock('../../../utils/urDeviceDecoder', () => ({
+vi.mock('../../../src/utils/urDeviceDecoder', () => ({
   extractFromUrResult: vi.fn(),
   extractFromUrBytesContent: vi.fn(),
   getUrType: vi.fn(),
 }));
 
-vi.mock('../../../utils/deviceConnection', () => ({
+vi.mock('../../../src/utils/deviceConnection', () => ({
   normalizeDerivationPath: vi.fn((path: string) => path),
   generateMissingFieldsWarning: vi.fn(() => null),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -116,15 +116,15 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-import { useQrScanner } from '../../../hooks/qr/useQrScanner';
-import { isBBQr } from '../../../services/bbqr';
-import { parseDeviceJson } from '../../../services/deviceParsers';
-import { generateMissingFieldsWarning } from '../../../utils/deviceConnection';
+import { useQrScanner } from '../../../src/hooks/qr/useQrScanner';
+import { isBBQr } from '../../../src/services/bbqr';
+import { parseDeviceJson } from '../../../src/services/deviceParsers';
+import { generateMissingFieldsWarning } from '../../../src/utils/deviceConnection';
 import {
   extractFromUrBytesContent,
   extractFromUrResult,
   getUrType,
-} from '../../../utils/urDeviceDecoder';
+} from '../../../src/utils/urDeviceDecoder';
 
 export function renderUseQrScanner() {
   return renderHook(() => useQrScanner());

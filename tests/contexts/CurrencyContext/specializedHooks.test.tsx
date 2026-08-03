@@ -7,12 +7,12 @@ import {
   useCurrencyFormatter,
   useCurrencySettings,
   usePriceFreeFormatter,
-} from "../../../contexts/CurrencyContext";
-import { usePriceContext } from "../../../contexts/PriceContext";
-import { useCurrencyPreferencesContext } from "../../../contexts/CurrencyPreferencesContext";
+} from "../../../src/contexts/CurrencyContext";
+import { usePriceContext } from "../../../src/contexts/PriceContext";
+import { useCurrencyPreferencesContext } from "../../../src/contexts/CurrencyPreferencesContext";
 import { renderWithProviders, setupDefaultMocks } from "./helpers";
 
-vi.mock("../../../utils/logger", () => ({
+vi.mock("../../../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

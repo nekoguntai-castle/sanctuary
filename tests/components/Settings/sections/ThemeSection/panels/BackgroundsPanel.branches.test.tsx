@@ -1,9 +1,9 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { BackgroundsPanel } from '../../../../../../components/Settings/sections/ThemeSection/panels/BackgroundsPanel';
+import { BackgroundsPanel } from '../../../../../../src/components/Settings/sections/ThemeSection/panels/BackgroundsPanel';
 
-vi.mock('../../../../../../themes', () => ({
+vi.mock('../../../../../../src/themes', () => ({
   Season: ['spring', 'summer', 'fall', 'winter'],
   themeRegistry: {
     getCurrentSeason: vi.fn(() => 'spring'),
@@ -13,7 +13,7 @@ vi.mock('../../../../../../themes', () => ({
   },
 }));
 
-vi.mock('../../../../../../themes/backgroundCategories', () => ({
+vi.mock('../../../../../../src/themes/backgroundCategories', () => ({
   CATEGORIES: [
     { id: 'all', label: 'All', icon: 'A' },
     { id: 'favorites', label: 'Favorites', icon: 'F' },

@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   createInitialState,
   transactionReducer,
-} from '../../../../contexts/send/reducer';
+} from '../../../../src/contexts/send/reducer';
 import type {
   OutputEntry,
   TransactionAction,
-} from '../../../../contexts/send/types';
+} from '../../../../src/contexts/send/types';
 
 export const registerOutputManagementReducerContracts = () => {
   describe('Output management actions', () => {

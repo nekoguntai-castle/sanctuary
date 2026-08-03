@@ -1,9 +1,9 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { BackupCodesModal } from '../../../components/Account/BackupCodesModal';
+import { BackupCodesModal } from '../../../src/components/Account/BackupCodesModal';
 
-vi.mock('../../../components/Account/BackupCodesGrid', () => ({
+vi.mock('../../../src/components/Account/BackupCodesGrid', () => ({
   BackupCodesGrid: ({
     backupCodes,
     copiedCode,

@@ -1,7 +1,7 @@
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { QRSigningModal } from '../../../components/qr/QRSigningModal';
+import { QRSigningModal } from '../../../src/components/qr/QRSigningModal';
 
 vi.mock('lucide-react', () => ({
   X: () => <span data-testid="x-icon" />,
@@ -15,7 +15,7 @@ vi.mock('lucide-react', () => ({
   AlertCircle: () => <span data-testid="alert-icon" />,
 }));
 
-vi.mock('../../../components/qr/AnimatedQRCode', () => ({
+vi.mock('../../../src/components/qr/AnimatedQRCode', () => ({
   AnimatedQRCode: () => <div data-testid="animated-qr" />,
 }));
 
@@ -41,7 +41,7 @@ vi.mock('@yudiel/react-qr-scanner', () => ({
   ),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -70,7 +70,7 @@ const {
   mockIsUrFormat: vi.fn((_content: string) => true),
 }));
 
-vi.mock('../../../utils/urPsbt', () => ({
+vi.mock('../../../src/utils/urPsbt', () => ({
   createPsbtDecoder: mockCreateDecoder,
   feedDecoderPart: mockFeedDecoderPart,
   getDecodedPsbt: mockGetDecodedPsbt,

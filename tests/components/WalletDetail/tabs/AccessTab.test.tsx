@@ -1,8 +1,8 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { AccessTab } from '../../../../components/WalletDetail/tabs/AccessTab';
+import { AccessTab } from '../../../../src/components/WalletDetail/tabs/AccessTab';
 
-vi.mock('../../../../components/PendingTransfersPanel', () => ({
+vi.mock('../../../../src/components/PendingTransfersPanel', () => ({
   PendingTransfersPanel: () => <div data-testid="pending-transfers">Pending Transfers</div>,
 }));
 

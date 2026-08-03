@@ -2,9 +2,9 @@ import { act,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { AnimatedPrice,PriceChart } from '../../../components/Dashboard/PriceChart';
+import { AnimatedPrice,PriceChart } from '../../../src/components/Dashboard/PriceChart';
 
-vi.mock('../../../components/Amount', () => ({
+vi.mock('../../../src/components/Amount', () => ({
   Amount: ({ sats }: { sats: number }) => <span data-testid="amount">{sats}</span>,
 }));
 

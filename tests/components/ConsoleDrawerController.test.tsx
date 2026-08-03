@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useConsoleDrawerController } from "../../components/ConsoleDrawer/useConsoleDrawerController";
+import { useConsoleDrawerController } from "../../src/components/ConsoleDrawer/useConsoleDrawerController";
 import * as consoleApi from "../../src/api/console";
 
 vi.mock("../../src/api/console", () => ({

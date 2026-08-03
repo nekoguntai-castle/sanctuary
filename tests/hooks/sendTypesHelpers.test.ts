@@ -9,16 +9,16 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => mocks.logger,
 }));
 
 import {
 extractXpubsFromDescriptor,
 getHardwareWalletType,
-} from '../../hooks/send/types';
+} from '../../src/hooks/send/types';
 
-describe('hooks/send/types helpers', () => {
+describe('src/hooks/send/types helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

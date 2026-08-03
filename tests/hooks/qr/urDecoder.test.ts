@@ -48,12 +48,12 @@ vi.mock('@keystonehq/bc-ur-registry', () => ({
 const mockExtractFromUrResult = vi.fn();
 const mockExtractFromUrBytesContent = vi.fn();
 
-vi.mock('../../../utils/urDeviceDecoder', () => ({
+vi.mock('../../../src/utils/urDeviceDecoder', () => ({
   extractFromUrResult: (...args: unknown[]) => mockExtractFromUrResult(...args),
   extractFromUrBytesContent: (...args: unknown[]) => mockExtractFromUrBytesContent(...args),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -62,7 +62,7 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-import { processUrBytes,processUrRegistry } from '../../../hooks/qr/urDecoder';
+import { processUrBytes,processUrRegistry } from '../../../src/hooks/qr/urDecoder';
 
 function createCallbacks() {
   const createScanResult = vi.fn((xpub: string, fingerprint?: string, path?: string) => ({ xpub, fingerprint, path }));

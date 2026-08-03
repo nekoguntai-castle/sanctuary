@@ -1,12 +1,12 @@
 import { act,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { WalletTelegramSettings } from '../../../components/WalletDetail/WalletTelegramSettings';
-import { useUser } from '../../../contexts/UserContext';
+import { WalletTelegramSettings } from '../../../src/components/WalletDetail/WalletTelegramSettings';
+import { useUser } from '../../../src/contexts/UserContext';
 import { ApiError } from '../../../src/api/client';
 import * as walletsApi from '../../../src/api/wallets';
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../contexts/UserContext', () => ({
+vi.mock('../../../src/contexts/UserContext', () => ({
   useUser: vi.fn(),
 }));
 

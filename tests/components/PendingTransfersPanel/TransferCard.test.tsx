@@ -1,9 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { TransferCard } from '../../../components/PendingTransfersPanel/TransferCard';
-import type { Transfer } from '../../../types';
+import { TransferCard } from '../../../src/components/PendingTransfersPanel/TransferCard';
+import type { Transfer } from '../../../src/types';
 
-vi.mock('../../../components/PendingTransfersPanel/transferTimeUtils', () => ({
+vi.mock('../../../src/components/PendingTransfersPanel/transferTimeUtils', () => ({
   formatTimeAgo: (d: string) => `${d} ago`,
   formatExpiry: (d: string) => `expires ${d}`,
 }));

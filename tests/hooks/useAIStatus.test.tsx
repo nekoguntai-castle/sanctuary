@@ -16,7 +16,7 @@ vi.mock('../../src/api/ai', () => ({
 }));
 
 // Import hook after mocks
-import { invalidateAIStatusCache,useAIStatus } from '../../hooks/useAIStatus';
+import { invalidateAIStatusCache,useAIStatus } from '../../src/hooks/useAIStatus';
 
 describe('useAIStatus', () => {
   beforeEach(() => {

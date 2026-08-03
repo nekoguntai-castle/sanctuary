@@ -1,10 +1,10 @@
 import React from "react";
 import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useCurrency } from "../../../contexts/CurrencyContext";
+import { useCurrency } from "../../../src/contexts/CurrencyContext";
 import { renderWithProviders, setupDefaultMocks } from "./helpers";
 
-vi.mock("../../../utils/logger", () => ({
+vi.mock("../../../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

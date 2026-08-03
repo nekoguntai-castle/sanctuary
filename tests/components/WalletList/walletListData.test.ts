@@ -10,7 +10,7 @@ import {
   sortWallets,
   totalWalletBalance,
   walletIds,
-} from '../../../components/WalletList/walletListData';
+} from '../../../src/components/WalletList/walletListData';
 
 const wallets = [
   { id: 'alpha', name: 'Alpha', type: 'single_sig', balance: 300, network: 'mainnet', deviceCount: 2 },

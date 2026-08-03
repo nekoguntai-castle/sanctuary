@@ -3,7 +3,7 @@ import {
   extractAccountPath,
   inferScriptTypeFromPath,
   isTestnetPath,
-} from "../../../services/hardwareWallet/pathUtils";
+} from "../../../src/services/hardwareWallet/pathUtils";
 
 describe("isTestnetPath", () => {
   it("returns true for testnet path with coin type 1", () => {

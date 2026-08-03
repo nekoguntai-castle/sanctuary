@@ -1,10 +1,10 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { DeviceModelSelector,renderCapabilities } from '../../../components/ConnectDevice/DeviceModelSelector';
+import { DeviceModelSelector,renderCapabilities } from '../../../src/components/ConnectDevice/DeviceModelSelector';
 import type { HardwareDeviceModel } from '../../../src/api/devices';
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   getDeviceIcon: () => <span data-testid="device-icon" />,
 }));
 

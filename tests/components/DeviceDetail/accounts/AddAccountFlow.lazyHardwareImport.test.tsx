@@ -1,15 +1,15 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { AddAccountFlow } from '../../../../components/DeviceDetail/accounts/AddAccountFlow';
+import { AddAccountFlow } from '../../../../src/components/DeviceDetail/accounts/AddAccountFlow';
 
 const hardwareModuleImportSpy = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../../services/hardwareWallet/environment', () => ({
+vi.mock('../../../../src/services/hardwareWallet/environment', () => ({
   isSecureContext: () => true,
 }));
 
-vi.mock('../../../../services/hardwareWallet/runtime', () => {
+vi.mock('../../../../src/services/hardwareWallet/runtime', () => {
   hardwareModuleImportSpy();
   return {
     hardwareWalletService: {
@@ -26,11 +26,11 @@ vi.mock('../../../../src/api/devices', () => ({
   addDeviceAccount: vi.fn(),
 }));
 
-vi.mock('../../../../services/deviceParsers', () => ({
+vi.mock('../../../../src/services/deviceParsers', () => ({
   parseDeviceJson: vi.fn(() => null),
 }));
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

@@ -31,22 +31,22 @@ vi.mock('@trezor/connect-web', () => ({
   },
 }));
 
-vi.mock('../../../../services/hardwareWallet/adapters/trezor/pathUtils', () => ({
+vi.mock('../../../../src/services/hardwareWallet/adapters/trezor/pathUtils', () => ({
   getTrezorScriptType: (...args: unknown[]) => mockGetTrezorScriptType(...args),
   pathToAddressN: (...args: unknown[]) => mockPathToAddressN(...args),
   validateSatoshiAmount: (...args: unknown[]) => mockValidateSatoshiAmount(...args),
 }));
 
-vi.mock('../../../../services/hardwareWallet/adapters/trezor/multisig', () => ({
+vi.mock('../../../../src/services/hardwareWallet/adapters/trezor/multisig', () => ({
   buildTrezorMultisig: (...args: unknown[]) => mockBuildTrezorMultisig(...args),
   isMultisigInput: (...args: unknown[]) => mockIsMultisigInput(...args),
 }));
 
-vi.mock('../../../../services/hardwareWallet/adapters/trezor/refTxs', () => ({
+vi.mock('../../../../src/services/hardwareWallet/adapters/trezor/refTxs', () => ({
   fetchRefTxs: (...args: unknown[]) => mockFetchRefTxs(...args),
 }));
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

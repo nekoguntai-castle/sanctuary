@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { TransactionFilterBar } from '../../../../components/WalletDetail/tabs/TransactionFilterBar';
-import type { TransactionFilters } from '../../../../components/WalletDetail/hooks/useTransactionFilters';
-import type { Label } from '../../../../types';
+import { TransactionFilterBar } from '../../../../src/components/WalletDetail/tabs/TransactionFilterBar';
+import type { TransactionFilters } from '../../../../src/components/WalletDetail/hooks/useTransactionFilters';
+import type { Label } from '../../../../src/types';
 
 vi.mock('lucide-react', () => ({
   ArrowDownLeft: () => <span data-testid="icon-arrow-down-left" />,

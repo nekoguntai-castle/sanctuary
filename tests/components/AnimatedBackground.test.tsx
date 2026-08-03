@@ -12,11 +12,11 @@ const { useSakuraPetalsMock, useFirefliesMock } = vi.hoisted(() => ({
   useFirefliesMock: vi.fn(),
 }));
 
-vi.mock('../../components/animations/sakuraPetals.ts', () => ({
+vi.mock('../../src/components/animations/sakuraPetals.ts', () => ({
   useSakuraPetals: useSakuraPetalsMock,
 }));
 
-vi.mock('../../components/animations/fireflies.ts', () => ({
+vi.mock('../../src/components/animations/fireflies.ts', () => ({
   useFireflies: useFirefliesMock,
 }));
 
@@ -25,10 +25,10 @@ ANIMATED_PATTERNS,
 AnimatedBackground,
 AnimatedPatternId,
 isAnimatedPattern,
-} from '../../components/AnimatedBackground';
-import { globalPatterns } from '../../themes/patterns';
+} from '../../src/components/AnimatedBackground';
+import { globalPatterns } from '../../src/themes/patterns';
 
-const animationModules = import.meta.glob('../../components/animations/*.ts');
+const animationModules = import.meta.glob('../../src/components/animations/*.ts');
 
 const toCamelCase = (pattern: string): string => {
   const [firstPart, ...remainingParts] = pattern.split('-');

@@ -1,7 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { expect, it } from 'vitest';
 import * as h from './trezorSignPsbtBranchesTestHarness';
-import { signPsbtWithTrezor } from '../../../../services/hardwareWallet/adapters/trezor/signPsbt';
+import { signPsbtWithTrezor } from '../../../../src/services/hardwareWallet/adapters/trezor/signPsbt';
 
 export function registerTrezorSignPsbtSignatureExtractionContracts() {
   it('extracts multisig signatures into partialSig and avoids duplicates', async () => {

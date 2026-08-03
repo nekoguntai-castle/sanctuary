@@ -30,19 +30,11 @@ const PACKAGES = [
     name: 'frontend',
     title: 'Frontend',
     cwd: repoRoot,
-    presenceCheck: ['App.tsx', 'src'],
-    globs: [
-      'App.tsx',
-      'components/**/*.{ts,tsx}',
-      'contexts/**/*.{ts,tsx}',
-      'hooks/**/*.{ts,tsx}',
-      'services/**/*.{ts,tsx}',
-      'src/**/*.{ts,tsx}',
-      'themes/**/*.{ts,tsx}',
-      'utils/**/*.{ts,tsx}',
-      'shared/**/*.ts',
-    ],
-    collapse: '^[^/]+/[^/]+/',
+    presenceCheck: ['src'],
+    globs: ['src/**/*.{ts,tsx}', 'shared/**/*.ts'],
+    // Preserve the feature-level groups that were visible before the frontend
+    // moved beneath src/. Shared files remain individually visible.
+    collapse: '^[^/]+/[^/]+/[^/]+/',
   },
   {
     name: 'server',

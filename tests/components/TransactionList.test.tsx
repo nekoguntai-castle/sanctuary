@@ -13,7 +13,7 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import * as labelsApi from '../../src/api/labels';
 import * as transactionsApi from '../../src/api/transactions';
-import type { Transaction,Wallet } from '../../types';
+import type { Transaction,Wallet } from '../../src/types';
 
 // TransactionList -> useTransactionList -> useSearchParams requires a Router.
 // Wrap every render in a MemoryRouter (default at "/"); pass { wrapper } to seed
@@ -24,7 +24,7 @@ const render = (
 ) => rtlRender(ui, { wrapper: MemoryRouter, ...options });
 
 // Mock the CurrencyContext
-vi.mock('../../contexts/CurrencyContext', () => {
+vi.mock('../../src/contexts/CurrencyContext', () => {
   const value = {
     format: (sats: number) => `${sats.toLocaleString()} sats`,
     btcPrice: 50000,
@@ -38,7 +38,7 @@ vi.mock('../../contexts/CurrencyContext', () => {
 });
 
 // Mock AI status hook
-vi.mock('../../hooks/useAIStatus', () => ({
+vi.mock('../../src/hooks/useAIStatus', () => ({
   useAIStatus: () => ({
     enabled: false,
     loading: false,
@@ -60,7 +60,7 @@ vi.mock('../../src/api/transactions', () => ({
 }));
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -70,12 +70,12 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Mock explorer utility
-vi.mock('../../utils/explorer', () => ({
+vi.mock('../../src/utils/explorer', () => ({
   getTxExplorerUrl: vi.fn((txid: string, _network: string, explorerUrl: string) => `${explorerUrl}/tx/${txid}`),
 }));
 
 // Mock Amount component
-vi.mock('../../components/Amount', () => ({
+vi.mock('../../src/components/Amount', () => ({
   Amount: ({ sats }: { sats?: number }) => <span data-testid="amount">{sats?.toLocaleString() ?? 0} sats</span>,
   default: ({ sats }: { sats?: number }) => <span data-testid="amount">{sats?.toLocaleString() ?? 0} sats</span>,
 }));
@@ -122,21 +122,21 @@ vi.mock('lucide-react', () => ({
 }));
 
 // Mock child components
-vi.mock('../../components/TransactionActions', () => ({
+vi.mock('../../src/components/TransactionActions', () => ({
   TransactionActions: () => <div data-testid="transaction-actions" />,
 }));
 
-vi.mock('../../components/TransactionFlowPreview', () => ({
+vi.mock('../../src/components/TransactionFlowPreview', () => ({
   TransactionFlowPreview: () => <div data-testid="transaction-flow-preview" />,
 }));
 
-vi.mock('../../components/LabelSelector', () => ({
+vi.mock('../../src/components/LabelSelector', () => ({
   LabelBadges: ({ labels }: { labels: unknown[] }) => (
     <div data-testid="label-badges">{labels?.length || 0} labels</div>
   ),
 }));
 
-vi.mock('../../components/AILabelSuggestion', () => ({
+vi.mock('../../src/components/AILabelSuggestion', () => ({
   AILabelSuggestion: () => <div data-testid="ai-label-suggestion" />,
 }));
 
@@ -175,7 +175,7 @@ describe('TransactionList Component', () => {
   });
 
   it('should render empty state when no transactions', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
 
     render(<TransactionList transactions={[]} />);
 
@@ -184,7 +184,7 @@ describe('TransactionList Component', () => {
   });
 
   it('should render transactions in the list', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [
       createMockTransaction({ id: 'tx-1', txid: 'txid1', amount: 100000 }),
       createMockTransaction({ id: 'tx-2', txid: 'txid2', amount: 200000 }),
@@ -197,7 +197,7 @@ describe('TransactionList Component', () => {
   });
 
   it('should filter out replaced transactions (RBF)', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [
       createMockTransaction({ id: 'tx-1', amount: 100000, rbfStatus: 'active' }),
       createMockTransaction({ id: 'tx-2', amount: 200000, rbfStatus: 'replaced' }),
@@ -212,7 +212,7 @@ describe('TransactionList Component', () => {
   });
 
   it('should display receive icon for incoming transactions', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [createMockTransaction({ type: 'receive' })];
 
     render(<TransactionList transactions={transactions} />);
@@ -224,7 +224,7 @@ describe('TransactionList Component', () => {
   });
 
   it('should display send icon for outgoing transactions', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [createMockTransaction({ type: 'sent', amount: -50000 })];
 
     render(<TransactionList transactions={transactions} />);
@@ -236,7 +236,7 @@ describe('TransactionList Component', () => {
   });
 
   it('should show wallet badge when showWalletBadge is true', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [createMockTransaction()];
 
     render(
@@ -251,7 +251,7 @@ describe('TransactionList Component', () => {
   });
 
   it('should call onTransactionClick when transaction is clicked', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const onTransactionClick = vi.fn();
     const transactions = [createMockTransaction()];
 
@@ -273,7 +273,7 @@ describe('TransactionList Component', () => {
   });
 
   it('should highlight transaction when highlightedTxId matches', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [
       createMockTransaction({ id: 'tx-1' }),
       createMockTransaction({ id: 'tx-2' }),
@@ -298,7 +298,7 @@ describe('TransactionList - Confirmations Display', () => {
   });
 
   it('should show pending icon for unconfirmed transactions', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [createMockTransaction({ confirmations: 0 })];
 
     render(<TransactionList transactions={transactions} confirmationThreshold={1} />);
@@ -307,7 +307,7 @@ describe('TransactionList - Confirmations Display', () => {
   });
 
   it('should show confirmed icon for confirmed transactions', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [createMockTransaction({ confirmations: 3 })];
 
     render(<TransactionList transactions={transactions} confirmationThreshold={1} />);
@@ -318,7 +318,7 @@ describe('TransactionList - Confirmations Display', () => {
   });
 
   it('should show deeply confirmed status for transactions above threshold', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [createMockTransaction({ confirmations: 10 })];
 
     render(
@@ -339,7 +339,7 @@ describe('TransactionList - Labels', () => {
   });
 
   it('should display labels on transactions', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [
       createMockTransaction({
         labels: [{ id: 'label-1', walletId: 'wallet-1', name: 'Personal', color: '#ff0000' }],
@@ -352,7 +352,7 @@ describe('TransactionList - Labels', () => {
   });
 
   it('should allow editing labels when canEdit is true', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [createMockTransaction()];
 
     render(<TransactionList transactions={transactions} canEdit={true} />);
@@ -362,7 +362,7 @@ describe('TransactionList - Labels', () => {
   });
 
   it('should not allow editing labels when canEdit is false', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [createMockTransaction()];
 
     render(<TransactionList transactions={transactions} canEdit={false} />);
@@ -378,7 +378,7 @@ describe('TransactionList - Transaction Stats', () => {
   });
 
   it('should display transaction stats when provided', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [createMockTransaction()];
     const stats = {
       totalCount: 10,
@@ -402,7 +402,7 @@ describe('TransactionList - Transaction Stats', () => {
   });
 
   it('should calculate running balance when walletBalance is provided', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const transactions = [
       createMockTransaction({ amount: 100000 }),
       createMockTransaction({ amount: 50000 }),
@@ -433,7 +433,7 @@ describe('TransactionList - Additional behaviors', () => {
   } as Transaction;
 
   it('filters out replaced transactions', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const { getAllByTestId } = render(
       <TransactionList
         transactions={[
@@ -450,7 +450,7 @@ describe('TransactionList - Additional behaviors', () => {
     const user = userEvent.setup();
     const onWalletClick = vi.fn();
     const onTransactionClick = vi.fn();
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
 
     render(
       <TransactionList
@@ -469,7 +469,7 @@ describe('TransactionList - Additional behaviors', () => {
 
   it('opens transaction details modal and shows pending actions for unconfirmed tx', async () => {
     const user = userEvent.setup();
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     vi.mocked(transactionsApi.getTransaction).mockResolvedValueOnce({
       inputs: [{ txid: 'prev', vout: 0, address: 'bc1qin', amount: 10000 }],
       outputs: [{ address: 'bc1qout', amount: 9000, outputType: 'external' }],
@@ -492,7 +492,7 @@ describe('TransactionList - Additional behaviors', () => {
 
   it('does not show pending actions for confirmed tx', async () => {
     const user = userEvent.setup();
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
 
     render(<TransactionList transactions={[{ ...baseTx, confirmations: 6 }]} />);
 
@@ -505,7 +505,7 @@ describe('TransactionList - Additional behaviors', () => {
 
   it('copies txid to clipboard from details modal', async () => {
     const user = userEvent.setup();
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const writeTextMock = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: writeTextMock },
@@ -527,7 +527,7 @@ describe('TransactionList - Additional behaviors', () => {
 
   it('falls back to document.execCommand when clipboard API fails', async () => {
     const user = userEvent.setup();
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const execSpy = vi.fn().mockReturnValue(true);
     Object.defineProperty(document, 'execCommand', {
       value: execSpy,
@@ -553,7 +553,7 @@ describe('TransactionList - Additional behaviors', () => {
   it('loads labels, toggles selection, and saves label updates', async () => {
     const user = userEvent.setup();
     const onLabelsChange = vi.fn();
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
 
     render(
       <TransactionList
@@ -584,7 +584,7 @@ describe('TransactionList - Additional behaviors', () => {
 
   it('hides label edit controls in modal when canEdit is false', async () => {
     const user = userEvent.setup();
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
 
     render(<TransactionList transactions={[baseTx]} canEdit={false} />);
 
@@ -596,7 +596,7 @@ describe('TransactionList - Additional behaviors', () => {
   });
 
   it('uses provided transactionStats values instead of calculating from rows', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
 
     render(
       <TransactionList
@@ -621,7 +621,7 @@ describe('TransactionList - Additional behaviors', () => {
   });
 
   it('shows balance column and balanceAfter values when walletBalance is provided', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
 
     render(
       <TransactionList
@@ -657,7 +657,7 @@ describe('TransactionList - Master-detail split (#52)', () => {
   });
 
   it('shows the split layout with an empty detail pane when it owns selection and nothing is selected', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const { container } = render(<TransactionList transactions={[baseTx]} />);
 
     // Master column opts into the tablet split row.
@@ -672,7 +672,7 @@ describe('TransactionList - Master-detail split (#52)', () => {
 
   it('swaps the empty pane for the responsive detail host once a transaction is selected', async () => {
     const user = userEvent.setup();
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     render(<TransactionList transactions={[baseTx]} />);
 
     await user.click(screen.getByTestId('transaction-row').querySelectorAll('td')[0]);
@@ -686,7 +686,7 @@ describe('TransactionList - Master-detail split (#52)', () => {
   });
 
   it('renders no detail host when a caller owns selection via onTransactionClick', async () => {
-    const { TransactionList } = await import('../../components/TransactionList');
+    const { TransactionList } = await import('../../src/components/TransactionList');
     const onTransactionClick = vi.fn();
     const { container } = render(
       <TransactionList transactions={[baseTx]} onTransactionClick={onTransactionClick} />

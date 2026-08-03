@@ -94,23 +94,23 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "false"
   assert_exact_output "$output_file" "test_files" ""
 
-  mkdir -p "$repo_dir/components/ForcePush"
-  printf 'export const ForcePushed = () => null;\n' > "$repo_dir/components/ForcePush/ForcePushed.tsx"
-  git -C "$repo_dir" add components/ForcePush/ForcePushed.tsx
+  mkdir -p "$repo_dir/src/components/ForcePush"
+  printf 'export const ForcePushed = () => null;\n' > "$repo_dir/src/components/ForcePush/ForcePushed.tsx"
+  git -C "$repo_dir" add src/components/ForcePush/ForcePushed.tsx
   git -C "$repo_dir" commit -qm "old pr head"
   local old_pr_head
   old_pr_head="$(git -C "$repo_dir" rev-parse HEAD)"
 
   git -C "$repo_dir" reset -q --soft "$base_sha"
   printf '# Follow-up\n' > "$repo_dir/tasks.md"
-  git -C "$repo_dir" add components/ForcePush/ForcePushed.tsx tasks.md
+  git -C "$repo_dir" add src/components/ForcePush/ForcePushed.tsx tasks.md
   git -C "$repo_dir" commit -qm "amended pr head"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$old_pr_head" "$head_sha" "$output_file" "pull_request"
   assert_exact_output "$output_file" "frontend_changed" "true"
   assert_exact_output "$output_file" "render_changed" "true"
-  assert_contains_output "$output_file" "frontend_files" "components/ForcePush/ForcePushed.tsx"
+  assert_contains_output "$output_file" "frontend_files" "src/components/ForcePush/ForcePushed.tsx"
 
   base_sha="$head_sha"
   mkdir -p "$repo_dir/server/src/services"
@@ -361,9 +361,9 @@ EOF_DOC
   assert_contains_output "$output_file" "test_files" "tests/components/example.test.tsx"
 
   base_sha="$head_sha"
-  mkdir -p "$repo_dir/services/hardwareWallet"
-  printf 'export const helper = true;\n' > "$repo_dir/services/hardwareWallet/service.ts"
-  git -C "$repo_dir" add services/hardwareWallet/service.ts
+  mkdir -p "$repo_dir/src/services/hardwareWallet"
+  printf 'export const helper = true;\n' > "$repo_dir/src/services/hardwareWallet/service.ts"
+  git -C "$repo_dir" add src/services/hardwareWallet/service.ts
   git -C "$repo_dir" commit -qm "frontend service helper"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
@@ -387,9 +387,9 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "false"
 
   base_sha="$head_sha"
-  mkdir -p "$repo_dir/components/Dashboard"
-  printf 'export const Dashboard = () => null;\n' > "$repo_dir/components/Dashboard/Dashboard.tsx"
-  git -C "$repo_dir" add components/Dashboard/Dashboard.tsx
+  mkdir -p "$repo_dir/src/components/Dashboard"
+  printf 'export const Dashboard = () => null;\n' > "$repo_dir/src/components/Dashboard/Dashboard.tsx"
+  git -C "$repo_dir" add src/components/Dashboard/Dashboard.tsx
   git -C "$repo_dir" commit -qm "visual component"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 

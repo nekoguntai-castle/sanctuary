@@ -6,7 +6,7 @@
  */
 
 import { describe,expect,it } from 'vitest';
-import { isBip21Uri,parseBip21Uri } from '../../utils/bip21Parser';
+import { isBip21Uri,parseBip21Uri } from '../../src/utils/bip21Parser';
 
 describe('BIP21 Parser', () => {
   describe('parseBip21Uri', () => {

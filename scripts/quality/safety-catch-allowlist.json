@@ -569,7 +569,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "services/hardwareWallet/adapters/bitbox/bitboxAdapter.ts",
+      "file": "src/services/hardwareWallet/adapters/bitbox/bitboxAdapter.ts",
       "functionName": "connect",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -578,7 +578,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "services/hardwareWallet/adapters/bitbox/bitboxAdapter.ts",
+      "file": "src/services/hardwareWallet/adapters/bitbox/bitboxAdapter.ts",
       "functionName": "disconnect",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -587,7 +587,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "services/hardwareWallet/adapters/bitbox/pathUtils.ts",
+      "file": "src/services/hardwareWallet/adapters/bitbox/pathUtils.ts",
       "functionName": "getOutputType",
       "issue": "non-terminal-catch",
       "count": 2,
@@ -596,7 +596,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "services/hardwareWallet/adapters/jade.ts",
+      "file": "src/services/hardwareWallet/adapters/jade.ts",
       "functionName": "readResponse",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -605,7 +605,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "services/hardwareWallet/adapters/jade.ts",
+      "file": "src/services/hardwareWallet/adapters/jade.ts",
       "functionName": "disconnect",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -614,7 +614,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "services/hardwareWallet/adapters/ledger/ledgerAdapter.ts",
+      "file": "src/services/hardwareWallet/adapters/ledger/ledgerAdapter.ts",
       "functionName": "connect",
       "issue": "non-terminal-catch",
       "count": 4,
@@ -623,7 +623,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "services/hardwareWallet/adapters/ledger/ledgerAdapter.ts",
+      "file": "src/services/hardwareWallet/adapters/ledger/ledgerAdapter.ts",
       "functionName": "disconnect",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -632,7 +632,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "services/hardwareWallet/adapters/trezor/refTxs.ts",
+      "file": "src/services/hardwareWallet/adapters/trezor/refTxs.ts",
       "functionName": "fetchRefTxs",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -641,7 +641,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "services/hardwareWallet/adapters/trezor/signPsbtSignatures.ts",
+      "file": "src/services/hardwareWallet/adapters/trezor/signPsbtSignatures.ts",
       "functionName": "applyTrezorMultisigSignatures",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -650,7 +650,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "services/hardwareWallet/service.ts",
+      "file": "src/services/hardwareWallet/service.ts",
       "functionName": "getDevices",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -659,7 +659,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "services/hardwareWallet/service.ts",
+      "file": "src/services/hardwareWallet/service.ts",
       "functionName": "connect",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -668,7 +668,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "services/hardwareWallet/service.ts",
+      "file": "src/services/hardwareWallet/service.ts",
       "functionName": "getAllXpubsWithFailures",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -677,7 +677,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "hooks/send/useBroadcast.ts",
+      "file": "src/hooks/send/useBroadcast.ts",
       "functionName": "logMultisigPsbtSignatures",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -686,7 +686,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "hooks/send/useQrSigning.ts",
+      "file": "src/hooks/send/useQrSigning.ts",
       "functionName": "persistUploadedSignatureToDraft",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -695,7 +695,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "hooks/send/useQrSigning.ts",
+      "file": "src/hooks/send/useQrSigning.ts",
       "functionName": "persistQrSignatureToDraft",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -704,7 +704,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "hooks/send/useSendTransactionActions.ts",
+      "file": "src/hooks/send/useSendTransactionActions.ts",
       "functionName": "applyPayjoinIfNeeded",
       "issue": "non-terminal-catch",
       "count": 1,
@@ -713,7 +713,7 @@
       "targetRemovalSlice": "fail-closed-safety-follow-up"
     },
     {
-      "file": "hooks/send/useUsbSigning.ts",
+      "file": "src/hooks/send/useUsbSigning.ts",
       "functionName": "persistDeviceSignatureToDraft",
       "issue": "non-terminal-catch",
       "count": 1,

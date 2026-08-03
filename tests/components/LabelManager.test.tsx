@@ -6,10 +6,10 @@
 
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { LabelManager } from '../../components/LabelManager';
-import type { Label } from '../../types';
+import { LabelManager } from '../../src/components/LabelManager';
+import type { Label } from '../../src/types';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -32,7 +32,7 @@ let mockCreateMutationReturn: { mutateAsync: typeof mockCreateMutateAsync; isPen
 let mockUpdateMutationReturn: { mutateAsync: typeof mockUpdateMutateAsync; isPending: boolean; error: unknown; reset: typeof mockUpdateReset };
 let mockDeleteMutationReturn: { mutateAsync: typeof mockDeleteMutateAsync; isPending: boolean; error: unknown; reset: typeof mockDeleteReset };
 
-vi.mock('../../hooks/queries/useWalletLabels', () => ({
+vi.mock('../../src/hooks/queries/useWalletLabels', () => ({
   useWalletLabels: () => mockUseWalletLabelsReturn,
   useCreateWalletLabel: () => mockCreateMutationReturn,
   useUpdateWalletLabel: () => mockUpdateMutationReturn,

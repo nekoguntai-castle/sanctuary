@@ -17,18 +17,18 @@ The SPA communicates with the backend server over HTTP and WebSocket. It is a wa
 
 | Layer | Location | Responsibility |
 |-------|----------|----------------|
-| Entry | `index.tsx`, `App.tsx` | Theme init, router, provider composition |
+| Entry | `src/main.tsx`, `src/App.tsx` | Theme init, router, provider composition |
 | Route definitions | `src/app/appRoutes.tsx` | Lazy-loaded page map, nav metadata, capability guards |
-| Provider tree | `providers/AppProviders.tsx` | Ordered context composition |
-| Pages / components | `components/` | Feature UI; each feature in its own subdirectory |
-| Data hooks | `hooks/queries/` | React Query wrappers for server data |
-| WebSocket hooks | `hooks/websocket/` | Real-time event subscriptions |
+| Provider tree | `src/providers/AppProviders.tsx` | Ordered context composition |
+| Pages / components | `src/components/` | Feature UI; each feature in its own subdirectory |
+| Data hooks | `src/hooks/queries/` | React Query wrappers for server data |
+| WebSocket hooks | `src/hooks/websocket/` | Real-time event subscriptions |
 | API module | `src/api/` | Per-resource typed fetch wrappers |
 | API client | `src/api/client.ts` | Base fetch: auth, CSRF, retry, timeout |
 | Auth policy | `src/api/authPolicy.ts` | Cookie/CSRF rules, 401-refresh decisions |
-| WebSocket service | `services/websocket.ts` | Singleton `WebSocketClient`, reconnect, subscriptions |
-| Theme system | `themes/` | Registry, 14 themes, CSS variable injection |
-| Shared types | `types/`, `shared/` | Domain types shared with server |
+| WebSocket service | `src/services/websocket.ts` | Singleton `WebSocketClient`, reconnect, subscriptions |
+| Theme system | `src/themes/` | Registry, 14 themes, CSS variable injection |
+| Shared types | `src/types/`, `shared/` | Domain types shared with server |
 
 ---
 
@@ -36,7 +36,7 @@ The SPA communicates with the backend server over HTTP and WebSocket. It is a wa
 
 ```mermaid
 graph TD
-    A[index.tsx] --> B[App.tsx / HashRouter]
+    A[src/main.tsx] --> B[src/App.tsx / HashRouter]
     B --> C[AppProviders]
     C --> D[QueryProvider]
     D --> E[UserProvider]
@@ -49,10 +49,10 @@ graph TD
     I -->|unauthenticated| K[Login]
 
     J --> L[Lazy-loaded Page Component]
-    L --> M[hooks/queries/*]
-    L --> N[hooks/websocket/*]
+    L --> M[src/hooks/queries/*]
+    L --> N[src/hooks/websocket/*]
     M --> O[src/api/*.ts]
-    N --> P[services/websocket.ts]
+    N --> P[src/services/websocket.ts]
     O --> Q[src/api/client.ts]
     Q -->|HTTP + cookies| R[Backend API]
     P -->|WebSocket + cookie| R
@@ -96,7 +96,7 @@ Capability guards (`AppCapability` in `src/app/capabilities.ts`) gate nav items 
 
 ## Provider Tree
 
-Provider order is load-bearing. See `providers/AppProviders.tsx`:
+Provider order is load-bearing. See `src/providers/AppProviders.tsx`:
 
 ```
 QueryProvider          → React Query cache (singleton QueryClient)
@@ -114,18 +114,18 @@ QueryProvider          → React Query cache (singleton QueryClient)
 Global state uses React Context only — no Redux or Zustand. Server state is managed exclusively by **React Query** (`@tanstack/react-query`):
 
 - `staleTime: 30s`, `gcTime: 5min`, no automatic refetch on focus/reconnect
-- Cache is invalidated by WebSocket events via `useWebSocketQueryInvalidation` (mounted in `App.tsx`)
-- Query key factories live in `hooks/queries/factory.ts`
+- Cache is invalidated by WebSocket events via `useWebSocketQueryInvalidation` (mounted in `src/App.tsx`)
+- Query key factories live in `src/hooks/queries/factory.ts`
 
 Context responsibilities:
 
 | Context | File | State |
 |---------|------|-------|
-| `UserContext` | `contexts/UserContext.tsx` | Auth user, 2FA pending, login/logout |
-| `CurrencyContext` | `contexts/CurrencyContext.tsx` | BTC price, currency formatting |
-| `NotificationContext` | `contexts/NotificationContext.tsx` | Toast notifications |
-| `AppNotificationContext` | `contexts/AppNotificationContext.tsx` | Badge alerts |
-| `SidebarContext` | `contexts/SidebarContext.tsx` | Sidebar refresh triggers |
+| `UserContext` | `src/contexts/UserContext.tsx` | Auth user, 2FA pending, login/logout |
+| `CurrencyContext` | `src/contexts/CurrencyContext.tsx` | BTC price, currency formatting |
+| `NotificationContext` | `src/contexts/NotificationContext.tsx` | Toast notifications |
+| `AppNotificationContext` | `src/contexts/AppNotificationContext.tsx` | Badge alerts |
+| `SidebarContext` | `src/contexts/SidebarContext.tsx` | Sidebar refresh triggers |
 
 ---
 
@@ -198,7 +198,7 @@ Key points:
 
 ## WebSocket
 
-`services/websocket.ts` is a singleton `WebSocketClient` that manages connection lifecycle. Components subscribe via hooks in `hooks/websocket/`:
+`src/services/websocket.ts` is a singleton `WebSocketClient` that manages connection lifecycle. Components subscribe via hooks in `src/hooks/websocket/`:
 
 | Hook | Purpose |
 |------|---------|
@@ -241,7 +241,7 @@ The `sanctuary-*` palette maps to `--color-bg-*` CSS variables — it is the str
 
 ### Theme Registry
 
-`themes/registry.ts` exports `themeRegistry` which manages 14 themes (Sanctuary, Serenity, Forest, Cyber, Sunrise, Ocean, and others). On login, `UserContext` calls `themeRegistry.applyTheme(theme, mode, contrastLevel)` which injects CSS variables into `:root`. Adding a new theme: create `themes/<name>/index.ts` exporting a `ThemeDefinition` and register it in `themes/index.ts`.
+`src/themes/registry.ts` exports `themeRegistry` which manages 14 themes (Sanctuary, Serenity, Forest, Cyber, Sunrise, Ocean, and others). On login, `UserContext` calls `themeRegistry.applyTheme(theme, mode, contrastLevel)` which injects CSS variables into `:root`. Adding a new theme: create `src/themes/<name>/index.ts` exporting a `ThemeDefinition` and register it in `src/themes/index.ts`.
 
 ---
 
@@ -250,10 +250,9 @@ The `sanctuary-*` palette maps to `--color-bg-*` CSS variables — it is the str
 ```
 (monorepo root)
 ├── index.html              # Tailwind CDN config + palette token definitions
-├── index.tsx               # Entry point: theme init → ReactDOM.createRoot
-├── App.tsx                 # HashRouter, AppProviders, AppRoutes, auth gate
-├── App.tsx
 ├── src/
+│   ├── main.tsx            # Entry point: theme init → ReactDOM.createRoot
+│   ├── App.tsx             # HashRouter, AppProviders, AppRoutes, auth gate
 │   ├── api/                # API client + per-resource fetch modules
 │   │   ├── client.ts       # Base client (auth, CSRF, retry)
 │   │   ├── authPolicy.ts   # CSRF/refresh policy (no side effects)
@@ -263,18 +262,18 @@ The `sanctuary-*` palette maps to `--color-bg-*` CSS variables — it is the str
 │   │   ├── appRoutes.tsx   # Route + nav definitions
 │   │   ├── capabilities.ts # Feature flag types
 │   │   └── browserNavigation.ts
-│   └── types/              # API response types
-├── components/             # Feature UI components (one subdirectory per feature)
-├── contexts/               # React context providers
-├── hooks/
-│   ├── queries/            # React Query data hooks
-│   └── websocket/          # WebSocket event hooks
-├── providers/
-│   ├── AppProviders.tsx    # Provider composition tree
-│   └── QueryProvider.tsx   # React Query client
-├── services/
-│   └── websocket.ts        # WebSocketClient singleton
-├── themes/                 # Theme registry + 14 theme definitions
-├── types/                  # Shared domain types
-└── utils/                  # logger, errors, safeJson, download helpers
+│   ├── components/         # Feature UI components
+│   ├── contexts/           # React context providers
+│   ├── hooks/
+│   │   ├── queries/        # React Query data hooks
+│   │   └── websocket/      # WebSocket event hooks
+│   ├── providers/
+│   │   ├── AppProviders.tsx
+│   │   └── QueryProvider.tsx
+│   ├── services/
+│   │   └── websocket.ts    # WebSocketClient singleton
+│   ├── themes/             # Theme registry + theme definitions
+│   ├── types/              # Frontend-facing domain and API types
+│   └── utils/              # logger, errors, safeJson, download helpers
+└── shared/                 # Cross-package contracts and utilities
 ```

@@ -9,7 +9,7 @@ import {
 PrivacyBadge,
 PrivacyScoreCard,
 WalletPrivacySummary,
-} from '../../components/PrivacyBadge';
+} from '../../src/components/PrivacyBadge';
 
 describe('PrivacyBadge', () => {
   describe('rendering', () => {

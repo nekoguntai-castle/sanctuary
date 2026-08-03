@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { useTabsA11y } from '../../../components/ui/useTabsA11y';
+import { useTabsA11y } from '../../../src/components/ui/useTabsA11y';
 
 type DemoTab = 'alpha' | 'beta' | 'gamma';
 

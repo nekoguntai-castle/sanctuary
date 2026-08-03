@@ -2,14 +2,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 const productionSource = [
-  'App.tsx',
-  'components/**/*.{ts,tsx}',
-  'contexts/**/*.{ts,tsx}',
-  'hooks/**/*.{ts,tsx}',
-  'services/**/*.{ts,tsx}',
   'src/**/*.{ts,tsx}',
-  'themes/**/*.{ts,tsx}',
-  'utils/**/*.{ts,tsx}',
   'shared/**/*.ts',
   'server/src/**/*.ts',
   'gateway/src/**/*.ts',

@@ -5,8 +5,8 @@ getBlockColors,
 getStuckTxs,
 getTxsForBlock,
 parseFeeRange,
-} from '../../../components/BlockVisualizer/blockUtils';
-import type { BlockData } from '../../../components/BlockVisualizer/types';
+} from '../../../src/components/BlockVisualizer/blockUtils';
+import type { BlockData } from '../../../src/components/BlockVisualizer/types';
 import type { PendingTransaction } from '../../../src/types';
 
 const makeTx = (feeRate: number): PendingTransaction => ({

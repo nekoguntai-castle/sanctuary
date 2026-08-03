@@ -5,16 +5,7 @@ import path from 'node:path';
 const root = process.env.QUALITY_ROOT ?? process.cwd();
 const errors = [];
 
-const browserRoots = [
-  'App.tsx',
-  'components',
-  'contexts',
-  'hooks',
-  'services',
-  'src',
-  'themes',
-  'utils',
-];
+const browserRoots = ['src'];
 
 const codeFilePattern = /\.(?:ts|tsx|js|jsx)$/;
 const excludedPathSegments = [

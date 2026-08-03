@@ -1,6 +1,6 @@
 import { act,renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { useWebSocketQueryInvalidation } from '../../../hooks/websocket/useWebSocketQueryInvalidation';
+import { useWebSocketQueryInvalidation } from '../../../src/hooks/websocket/useWebSocketQueryInvalidation';
 
 const mockState = vi.hoisted(() => {
   const listeners = new Map<string, Set<(event: any) => void>>();
@@ -28,7 +28,7 @@ const mockState = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../../hooks/websocket/useWebSocket', () => ({
+vi.mock('../../../src/hooks/websocket/useWebSocket', () => ({
   useWebSocket: () => ({
     connected: true,
     subscribeBatch: mockState.subscribeBatch,
@@ -36,14 +36,14 @@ vi.mock('../../../hooks/websocket/useWebSocket', () => ({
   }),
 }));
 
-vi.mock('../../../services/websocket', () => ({
+vi.mock('../../../src/services/websocket', () => ({
   websocketClient: {
     on: (...args: unknown[]) => mockState.on(...args as [string, (event: any) => void]),
     off: (...args: unknown[]) => mockState.off(...args as [string, (event: any) => void]),
   },
 }));
 
-vi.mock('../../../providers/QueryProvider', () => ({
+vi.mock('../../../src/providers/QueryProvider', () => ({
   getQueryClient: () => mockState.queryClientValue,
 }));
 

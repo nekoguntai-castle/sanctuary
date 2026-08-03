@@ -12,8 +12,8 @@ import {
 SendTransactionProvider,
 useSendTransaction,
 useSendTransactionDispatch,
-} from '../../../contexts/send/SendTransactionContext';
-import type { Device,FeeEstimate,UTXO,Wallet } from '../../../types';
+} from '../../../src/contexts/send/SendTransactionContext';
+import type { Device,FeeEstimate,UTXO,Wallet } from '../../../src/types';
 
 // Test fixtures
 const mockWallet: Wallet = {

@@ -8,7 +8,7 @@ calculateUTXOAge,
 getAgeCategoryColor,
 getAgeRecommendation,
 type UTXOAge,
-} from '../../utils/utxoAge';
+} from '../../src/utils/utxoAge';
 
 describe('utxoAge utilities', () => {
   describe('calculateUTXOAge', () => {

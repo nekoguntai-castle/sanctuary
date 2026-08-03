@@ -14,7 +14,7 @@ SANCTUARY_CI_CLASSIFY_FILES_LIB_LOADED=1
 
 is_frontend_file() {
   case "$1" in
-    App.tsx|index.html|index.tsx|src/*|components/*|hooks/*|contexts/*|providers/*|services/*|themes/*|utils/*|shared/*|vitest.config.ts|vitest.coverage-shard.config.ts|scripts/ci/frontend-coverage-*.sh|package.json|package-lock.json|tests/*.ts|tests/*.tsx|tests/*.mts|tests/*.cts|tests/*.js|tests/*.jsx|tests/*.mjs|tests/*.cjs|tests/*.json)
+    index.html|src/*|shared/*|vitest.config.ts|vitest.coverage-shard.config.ts|scripts/ci/frontend-coverage-*.sh|package.json|package-lock.json|tests/*.ts|tests/*.tsx|tests/*.mts|tests/*.cts|tests/*.js|tests/*.jsx|tests/*.mjs|tests/*.cjs|tests/*.json)
       return 0
       ;;
   esac
@@ -96,10 +96,10 @@ is_e2e_file() {
 
 is_browser_smoke_file() {
   case "$1" in
-    App.tsx|index.tsx|index.html|playwright.config.ts)
+    src/App.tsx|src/main.tsx|index.html|playwright.config.ts)
       return 0
       ;;
-    src/app/*|src/api/*|components/Layout/*|components/Login/*|components/DraftList/*|components/AuditLogs/*|components/Monitoring/*|components/WalletDetail/*)
+    src/app/*|src/api/*|src/components/Layout/*|src/components/Login/*|src/components/DraftList/*|src/components/AuditLogs/*|src/components/Monitoring/*|src/components/WalletDetail/*)
       return 0
       ;;
     e2e/*)
@@ -122,10 +122,10 @@ is_browser_smoke_file() {
 
 is_render_file() {
   case "$1" in
-    App.tsx|index.tsx|index.html|package.json|package-lock.json|playwright.config.ts)
+    src/App.tsx|src/main.tsx|index.html|package.json|package-lock.json|playwright.config.ts)
       return 0
       ;;
-    src/app/*|components/*|hooks/*|contexts/*|providers/*|themes/*|utils/*)
+    src/app/*|src/components/*|src/hooks/*|src/contexts/*|src/providers/*|src/themes/*|src/utils/*)
       return 0
       ;;
     e2e/render-regression.spec.ts|e2e/render-regression/*|e2e/render-regression.spec.ts-snapshots/*)
@@ -143,7 +143,7 @@ is_build_file() {
     Dockerfile|server/Dockerfile|vite.config.*|tsconfig*.json|server/tsconfig*.json)
       return 0
       ;;
-    App.tsx|index.tsx|index.html|server/src/index.ts|server/prisma/*)
+    src/App.tsx|src/main.tsx|index.html|server/src/index.ts|server/prisma/*)
       return 0
       ;;
   esac

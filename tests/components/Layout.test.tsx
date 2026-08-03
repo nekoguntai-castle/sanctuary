@@ -6,11 +6,11 @@ import { cleanup,render,screen,waitFor,within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { Layout } from '../../components/Layout';
-import * as AppNotificationContext from '../../contexts/AppNotificationContext';
-import * as UserContext from '../../contexts/UserContext';
-import * as useDevicesHooks from '../../hooks/queries/useDevices';
-import * as useWalletsHooks from '../../hooks/queries/useWallets';
+import { Layout } from '../../src/components/Layout';
+import * as AppNotificationContext from '../../src/contexts/AppNotificationContext';
+import * as UserContext from '../../src/contexts/UserContext';
+import * as useDevicesHooks from '../../src/hooks/queries/useDevices';
+import * as useWalletsHooks from '../../src/hooks/queries/useWallets';
 import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import * as draftsApi from '../../src/api/drafts';
@@ -21,11 +21,11 @@ const activeNetworkMock = vi.hoisted(() => ({
 }));
 
 // Mock context hooks
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: vi.fn(),
 }));
 
-vi.mock('../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: activeNetworkMock.selectedNetwork,
     isMainnet: activeNetworkMock.selectedNetwork === 'mainnet',
@@ -33,20 +33,20 @@ vi.mock('../../contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../contexts/AppNotificationContext', () => ({
+vi.mock('../../src/contexts/AppNotificationContext', () => ({
   useAppNotifications: vi.fn(),
 }));
 
 // Mock query hooks
-vi.mock('../../hooks/queries/useWallets', () => ({
+vi.mock('../../src/hooks/queries/useWallets', () => ({
   useWallets: vi.fn(),
 }));
 
-vi.mock('../../hooks/queries/useDevices', () => ({
+vi.mock('../../src/hooks/queries/useDevices', () => ({
   useDevices: vi.fn(),
 }));
 
-vi.mock('../../hooks/useAppCapabilities', () => ({
+vi.mock('../../src/hooks/useAppCapabilities', () => ({
   useAppCapabilities: () => ({ console: true, intelligence: false }),
 }));
 
@@ -64,18 +64,18 @@ vi.mock('../../src/api/drafts', () => ({
 }));
 
 // Mock child components
-vi.mock('../../components/NotificationPanel', () => ({
+vi.mock('../../src/components/NotificationPanel', () => ({
   NotificationBell: () => <button data-testid="notification-bell">Notifications</button>,
 }));
 
-vi.mock('../../components/NotificationBadge', () => ({
+vi.mock('../../src/components/NotificationBadge', () => ({
   NotificationBadge: ({ count }: { count: number }) => <span data-testid="notification-badge">{count}</span>,
 }));
 
 // Mock BlockHeightIndicator to avoid late async state updates from
 // bitcoinApi.getStatus that fire after each test ends, producing act() warnings
 // and console output during vitest worker teardown.
-vi.mock('../../components/Layout/BlockHeightIndicator', () => ({
+vi.mock('../../src/components/Layout/BlockHeightIndicator', () => ({
   BlockHeightIndicator: () => <div data-testid="block-height-indicator" />,
 }));
 

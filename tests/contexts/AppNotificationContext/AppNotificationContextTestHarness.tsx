@@ -1,9 +1,9 @@
 import { ReactNode } from 'react';
 import { vi } from 'vitest';
 
-import { AppNotificationProvider } from '../../../contexts/AppNotificationContext';
+import { AppNotificationProvider } from '../../../src/contexts/AppNotificationContext';
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: vi.fn(() => ({
     debug: vi.fn(),
     info: vi.fn(),

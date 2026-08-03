@@ -1,7 +1,7 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { AuditLogs } from '../../components/AuditLogs';
+import { AuditLogs } from '../../src/components/AuditLogs';
 import * as adminApi from '../../src/api/admin';
 
 const mockState = vi.hoisted(() => ({
@@ -29,19 +29,19 @@ vi.mock('../../src/api/admin', () => ({
   getAuditLogStats: vi.fn(),
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => mockState.logger,
 }));
 
-vi.mock('../../components/AuditLogs/StatCards', () => ({
+vi.mock('../../src/components/AuditLogs/StatCards', () => ({
   StatCards: () => <div data-testid="stat-cards" />,
 }));
 
-vi.mock('../../components/AuditLogs/FilterPanel', () => ({
+vi.mock('../../src/components/AuditLogs/FilterPanel', () => ({
   FilterPanel: () => <div data-testid="filter-panel" />,
 }));
 
-vi.mock('../../components/AuditLogs/LogTable', () => ({
+vi.mock('../../src/components/AuditLogs/LogTable', () => ({
   LogTable: ({ onSelectLog }: { onSelectLog: (log: unknown) => void }) => (
     <button data-testid="open-log-detail" onClick={() => onSelectLog(mockState.selectedLog)}>
       Open Detail
@@ -49,7 +49,7 @@ vi.mock('../../components/AuditLogs/LogTable', () => ({
   ),
 }));
 
-vi.mock('../../components/AuditLogs/LogDetailModal', () => ({
+vi.mock('../../src/components/AuditLogs/LogDetailModal', () => ({
   LogDetailModal: ({ log, onClose }: { log: unknown; onClose: () => void }) => (
     log ? (
       <div data-testid="log-detail-modal">

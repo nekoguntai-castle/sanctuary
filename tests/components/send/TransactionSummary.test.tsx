@@ -1,14 +1,14 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { TransactionSummary } from '../../../components/send/steps/review/TransactionSummary';
+import { TransactionSummary } from '../../../src/components/send/steps/review/TransactionSummary';
 
-vi.mock('../../../components/TransactionFlowPreview', () => ({
+vi.mock('../../../src/components/TransactionFlowPreview', () => ({
   TransactionFlowPreview: (props: any) => (
     <div data-testid="tx-flow-preview">{props.isEstimate ? 'estimate' : 'final'}</div>
   ),
 }));
 
-vi.mock('../../../components/FiatDisplay', () => ({
+vi.mock('../../../src/components/FiatDisplay', () => ({
   FiatDisplay: ({ sats }: { sats: number }) => <span>{`fiat:${sats}`}</span>,
 }));
 

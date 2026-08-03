@@ -1,11 +1,11 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { AddressesTab } from '../../../../components/WalletDetail/tabs/AddressesTab';
+import { AddressesTab } from '../../../../src/components/WalletDetail/tabs/AddressesTab';
 
 const copyMock = vi.fn();
 const isCopiedMock = vi.fn((_value?: string) => false);
 
-vi.mock('../../../../contexts/CurrencyContext', () => {
+vi.mock('../../../../src/contexts/CurrencyContext', () => {
   const value = {
     format: (value: number) => `${value} sats`,
     unit: 'sats',
@@ -16,7 +16,7 @@ vi.mock('../../../../contexts/CurrencyContext', () => {
   };
 });
 
-vi.mock('../../../../hooks/useCopyToClipboard', () => ({
+vi.mock('../../../../src/hooks/useCopyToClipboard', () => ({
   useCopyToClipboard: () => ({
     copy: copyMock,
     isCopied: isCopiedMock,

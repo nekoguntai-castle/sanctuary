@@ -5,9 +5,9 @@
  */
 
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { copyToClipboard } from '../../utils/clipboard';
+import { copyToClipboard } from '../../src/utils/clipboard';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

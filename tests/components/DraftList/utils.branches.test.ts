@@ -5,7 +5,7 @@ getExpirationInfo,
 getFeeWarning,
 getFlowPreviewData,
 isExpired,
-} from '../../../components/DraftList/utils';
+} from '../../../src/components/DraftList/utils';
 import type { DraftTransaction } from '../../../src/api/drafts';
 
 const makeDraft = (overrides: Partial<DraftTransaction> = {}): DraftTransaction => ({

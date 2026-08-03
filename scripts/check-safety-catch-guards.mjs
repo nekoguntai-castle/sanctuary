@@ -22,10 +22,10 @@ const scanRoots = [
   'server/src/services/backupService',
   'server/src/middleware',
   'server/src/services/accessControl.ts',
-  'services/hardwareWallet',
-  'services/deviceParsers',
-  'hooks/send',
-  'contexts/send',
+  'src/services/hardwareWallet',
+  'src/services/deviceParsers',
+  'src/hooks/send',
+  'src/contexts/send',
   'scripts/release',
 ];
 

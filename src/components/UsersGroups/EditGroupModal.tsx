@@ -1,0 +1,107 @@
+import React, { useState, useEffect } from 'react';
+import { Button } from '../ui/Button';
+import { ErrorAlert } from '../ui/ErrorAlert';
+import { Input } from '../ui/Input';
+import { ModalWrapper } from '../ui/ModalWrapper';
+import { AdminUser, AdminGroup } from '../../api/admin';
+
+interface EditGroupModalProps {
+  group: AdminGroup | null;
+  users: AdminUser[];
+  isUpdating: boolean;
+  error: string | null;
+  onClose: () => void;
+  onUpdate: (data: { name: string; memberIds: string[] }) => void;
+}
+
+/**
+ * Modal dialog for editing an existing group's name and members.
+ */
+export const EditGroupModal: React.FC<EditGroupModalProps> = ({
+  group,
+  users,
+  isUpdating,
+  error,
+  onClose,
+  onUpdate,
+}) => {
+  const [groupName, setGroupName] = useState('');
+  const [memberIds, setMemberIds] = useState<string[]>([]);
+
+  // Populate form when group changes
+  useEffect(() => {
+    if (group) {
+      setGroupName(group.name);
+      setMemberIds(group.members.map(m => m.userId));
+    }
+  }, [group]);
+
+  if (!group) return null;
+
+  const toggleMember = (userId: string) => {
+    setMemberIds(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  const handleUpdate = () => {
+    onUpdate({ name: groupName, memberIds });
+  };
+
+  return (
+    <ModalWrapper title="Edit Group" onClose={onClose}>
+      <ErrorAlert message={error} />
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">Group Name</label>
+          <Input
+            type="text"
+            value={groupName}
+            onChange={(e) => setGroupName(e.target.value)}
+            autoFocus
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-2">Members</label>
+          <div className="max-h-48 overflow-y-auto border border-sanctuary-200 dark:border-sanctuary-700 rounded-lg">
+            {users.length === 0 ? (
+              <p className="p-3 text-sm text-sanctuary-400 text-center">No users available</p>
+            ) : (
+              users.map(user => (
+                <label
+                  key={user.id}
+                  className="flex items-center p-3 hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800 cursor-pointer border-b border-sanctuary-100 dark:border-sanctuary-800 last:border-b-0"
+                >
+                  <input
+                    type="checkbox"
+                    checked={memberIds.includes(user.id)}
+                    onChange={() => toggleMember(user.id)}
+                    className="w-4 h-4 rounded border-sanctuary-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span className="ml-3 text-sm text-sanctuary-700 dark:text-sanctuary-300">{user.username}</span>
+                  {user.isAdmin && (
+                    <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(admin)</span>
+                  )}
+                </label>
+              ))
+            )}
+          </div>
+          <p className="mt-1 text-xs text-sanctuary-400">
+            {memberIds.length} member{memberIds.length !== 1 ? 's' : ''} selected
+          </p>
+        </div>
+      </div>
+
+      <div className="flex justify-end space-x-3 mt-6">
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button onClick={handleUpdate} isLoading={isUpdating} disabled={!groupName.trim()}>
+          Save Changes
+        </Button>
+      </div>
+    </ModalWrapper>
+  );
+};

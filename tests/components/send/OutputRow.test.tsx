@@ -1,11 +1,11 @@
 import { act,fireEvent,render,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 
-import { OutputRow,OutputRowProps } from '../../../components/send/OutputRow';
-import type { OutputEntry,WalletAddress } from '../../../contexts/send/types';
+import { OutputRow,OutputRowProps } from '../../../src/components/send/OutputRow';
+import type { OutputEntry,WalletAddress } from '../../../src/contexts/send/types';
 
 // Mock the CurrencyContext for FiatDisplaySubtle
-vi.mock('../../../contexts/CurrencyContext', () => ({
+vi.mock('../../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(() => ({
     formatFiat: vi.fn((sats: number) => sats > 0 ? `$${(sats / 100000 * 50).toFixed(2)}` : null),
   })),

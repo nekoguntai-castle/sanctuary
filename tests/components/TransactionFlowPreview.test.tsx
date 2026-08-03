@@ -1,10 +1,10 @@
 import { render,screen } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { TransactionFlowPreview } from '../../components/TransactionFlowPreview';
+import { TransactionFlowPreview } from '../../src/components/TransactionFlowPreview';
 
 const mockFormatFiat = vi.hoisted(() => vi.fn((sats: number): string | null => `$${(sats / 100000).toFixed(2)}`));
 
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock('../../src/contexts/CurrencyContext', () => ({
   useCurrency: () => ({
     format: (sats: number) => `${sats} sats`,
     formatFiat: mockFormatFiat,

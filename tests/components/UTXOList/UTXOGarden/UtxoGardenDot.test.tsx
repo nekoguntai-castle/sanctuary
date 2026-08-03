@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { UtxoGardenDot } from '../../../../components/UTXOList/UTXOGarden/UtxoGardenDot';
-import type { UtxoGardenDotModel } from '../../../../components/UTXOList/UTXOGarden/types';
+import { UtxoGardenDot } from '../../../../src/components/UTXOList/UTXOGarden/UtxoGardenDot';
+import type { UtxoGardenDotModel } from '../../../../src/components/UTXOList/UTXOGarden/types';
 
 const makeModel = (overrides: Partial<UtxoGardenDotModel> = {}): UtxoGardenDotModel => ({
   id: 'utxo-1',

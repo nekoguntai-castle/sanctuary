@@ -2,7 +2,7 @@ import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { NodeConfig } from '../../components/NodeConfig';
+import { NodeConfig } from '../../src/components/NodeConfig';
 import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import { DEFAULT_NODE_MEMPOOL_ESTIMATOR } from '@sanctuary/shared/constants/nodeConfig';
@@ -11,7 +11,7 @@ const mockNetworkCardTestArgs = vi.hoisted(() => ({
   calls: [] as Array<{ network: string; host: string; port: number; ssl: boolean }>,
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock('../../src/api/bitcoin', () => ({
   getStatus: vi.fn(),
 }));
 
-vi.mock('../../components/NetworkConnectionCard', () => ({
+vi.mock('../../src/components/NetworkConnectionCard', () => ({
   NetworkConnectionCard: ({ network, servers, onServersChange, onTestConnection }: any) => {
     const [testResult, setTestResult] = React.useState('');
     return (

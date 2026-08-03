@@ -1,6 +1,6 @@
 import { act,renderHook } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { useBackupHandlers } from '../../../components/BackupRestore/hooks/useBackupHandlers';
+import { useBackupHandlers } from '../../../src/components/BackupRestore/hooks/useBackupHandlers';
 import * as adminApi from '../../../src/api/admin';
 
 const notificationSpies = vi.hoisted(() => ({
@@ -25,16 +25,16 @@ vi.mock('../../../src/api/admin', () => ({
   restoreBackup: vi.fn(),
 }));
 
-vi.mock('../../../contexts/AppNotificationContext', () => ({
+vi.mock('../../../src/contexts/AppNotificationContext', () => ({
   useAppNotifications: () => notificationSpies,
 }));
 
-vi.mock('../../../utils/download', () => ({
+vi.mock('../../../src/utils/download', () => ({
   downloadText: (...args: unknown[]) => downloadSpies.downloadText(...args),
   downloadBlob: (...args: unknown[]) => downloadSpies.downloadBlob(...args),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => loggerSpies,
 }));
 

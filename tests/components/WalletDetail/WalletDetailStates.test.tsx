@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { LoadingState, ErrorState } from '../../../components/WalletDetail/WalletDetailStates';
+import { LoadingState, ErrorState } from '../../../src/components/WalletDetail/WalletDetailStates';
 
 describe('WalletDetailStates', () => {
   describe('LoadingState', () => {

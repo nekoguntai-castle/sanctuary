@@ -83,8 +83,8 @@ main() {
   base="$(git -C "$repo" rev-parse HEAD)"
 
   # ---- Frontend-only PR ----------------------------------------------------
-  mkdir -p "$repo/components"
-  printf 'export const X = 1\n' > "$repo/components/X.tsx"
+  mkdir -p "$repo/src/components"
+  printf 'export const X = 1\n' > "$repo/src/components/X.tsx"
   git -C "$repo" add -A
   git -C "$repo" commit -qm 'frontend change'
   local head
@@ -96,7 +96,7 @@ main() {
   assert_eq "PR coverage_required=false" "false" "$(json_query "$plan" coverage_required)"
   assert_eq "PR full_scan=false" "false" "$(json_query "$plan" full_scan)"
   assert_eq "frontend_unit run" "true" "$(json_query "$plan" lanes.frontend_unit.run)"
-  assert_eq "frontend_unit files" '["components/X.tsx"]' "$(json_query "$plan" lanes.frontend_unit.files)"
+  assert_eq "frontend_unit files" '["src/components/X.tsx"]' "$(json_query "$plan" lanes.frontend_unit.files)"
   assert_eq "backend_unit not run" "false" "$(json_query "$plan" lanes.backend_unit.run)"
 
   # ---- Push to main: tier=full + coverage required -------------------------

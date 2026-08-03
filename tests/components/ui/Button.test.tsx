@@ -8,7 +8,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { Button } from '../../../components/ui/Button';
+import { Button } from '../../../src/components/ui/Button';
 
 describe('Button', () => {
   it('renders children and is enabled by default', () => {

@@ -18,7 +18,7 @@ vi.mock('lucide-react', () => ({
 import {
 ManualAccountForm,
 type ManualAccountData,
-} from '../../../components/DeviceDetail/ManualAccountForm';
+} from '../../../src/components/DeviceDetail/ManualAccountForm';
 
 describe('ManualAccountForm', () => {
   const defaultAccount: ManualAccountData = {

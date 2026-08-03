@@ -1,12 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { EnableModal } from "../../components/AISettings/components/EnableModal";
-import { McpAccessTab } from "../../components/AISettings/tabs/McpAccessTab";
-import { ModelsTab } from "../../components/AISettings/tabs/ModelsTab";
-import { ModelSelectionControls } from "../../components/AISettings/tabs/SettingsTabModelControls";
-import { SettingsTab } from "../../components/AISettings/tabs/SettingsTab";
-import { StatusTab } from "../../components/AISettings/tabs/StatusTab";
+import { EnableModal } from "../../src/components/AISettings/components/EnableModal";
+import { McpAccessTab } from "../../src/components/AISettings/tabs/McpAccessTab";
+import { ModelsTab } from "../../src/components/AISettings/tabs/ModelsTab";
+import { ModelSelectionControls } from "../../src/components/AISettings/tabs/SettingsTabModelControls";
+import { SettingsTab } from "../../src/components/AISettings/tabs/SettingsTab";
+import { StatusTab } from "../../src/components/AISettings/tabs/StatusTab";
 
 describe("EnableModal", () => {
   const baseProps = {

@@ -1,5 +1,5 @@
 /**
- * Tests for components/Variables.tsx
+ * Tests for src/components/Variables.tsx
  *
  * Tests the system variables settings component including loading,
  * form inputs, validation, and saving.
@@ -7,7 +7,7 @@
 
 import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { Variables } from '../../components/Variables';
+import { Variables } from '../../src/components/Variables';
 import * as adminApi from '../../src/api/admin';
 
 // Mock the admin API

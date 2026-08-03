@@ -3,7 +3,7 @@ import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import {
 NotificationToast,
 type Notification,
-} from '../../components/NotificationToast';
+} from '../../src/components/NotificationToast';
 
 vi.mock('lucide-react', () => ({
   X: () => <span data-testid="icon-x" />,

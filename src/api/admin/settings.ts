@@ -5,7 +5,7 @@
  */
 
 import apiClient from '../client';
-import { NodeConfig, ElectrumServer } from '../../../types';
+import { NodeConfig, ElectrumServer } from '../../types';
 import type { SystemSettings, SystemSettingsUpdate } from './types';
 
 // ========================================

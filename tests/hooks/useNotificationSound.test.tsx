@@ -1,12 +1,12 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { useNotificationSound } from '../../hooks/useNotificationSound';
+import { useNotificationSound } from '../../src/hooks/useNotificationSound';
 
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: vi.fn(),
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock('../../utils/logger', () => ({
   }),
 }));
 
-import * as UserContext from '../../contexts/UserContext';
+import * as UserContext from '../../src/contexts/UserContext';
 
 const mockUseUser = vi.mocked(UserContext.useUser);
 

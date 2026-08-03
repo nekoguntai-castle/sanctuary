@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { coldcardNestedParser } from '../../../services/deviceParsers/parsers/coldcardNested';
+import { coldcardNestedParser } from '../../../src/services/deviceParsers/parsers/coldcardNested';
 
 describe('coldcardNestedParser branch coverage', () => {
   it('detects nested format and confidence branch based on xfp length', () => {

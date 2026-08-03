@@ -6,14 +6,14 @@ import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter,Route,Routes } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { WalletDetail } from '../../components/WalletDetail';
-import * as AppNotificationContext from '../../contexts/AppNotificationContext';
-import * as CurrencyContext from '../../contexts/CurrencyContext';
-import * as NotificationContext from '../../contexts/NotificationContext';
-import * as UserContext from '../../contexts/UserContext';
-import * as useBitcoinHooks from '../../hooks/queries/useBitcoin';
-import * as useAIStatusHook from '../../hooks/useAIStatus';
-import * as useWebSocketHooks from '../../hooks/websocket';
+import { WalletDetail } from '../../src/components/WalletDetail';
+import * as AppNotificationContext from '../../src/contexts/AppNotificationContext';
+import * as CurrencyContext from '../../src/contexts/CurrencyContext';
+import * as NotificationContext from '../../src/contexts/NotificationContext';
+import * as UserContext from '../../src/contexts/UserContext';
+import * as useBitcoinHooks from '../../src/hooks/queries/useBitcoin';
+import * as useAIStatusHook from '../../src/hooks/useAIStatus';
+import * as useWebSocketHooks from '../../src/hooks/websocket';
 import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import * as devicesApi from '../../src/api/devices';
@@ -21,7 +21,7 @@ import * as draftsApi from '../../src/api/drafts';
 import * as transactionsApi from '../../src/api/transactions';
 import * as walletsApi from '../../src/api/wallets';
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -31,11 +31,11 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Mock all context hooks
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: vi.fn(),
 }));
 
-vi.mock('../../contexts/ActiveNetworkContext', () => ({
+vi.mock('../../src/contexts/ActiveNetworkContext', () => ({
   useActiveNetwork: () => ({
     selectedNetwork: 'mainnet',
     isMainnet: true,
@@ -43,43 +43,43 @@ vi.mock('../../contexts/ActiveNetworkContext', () => ({
   }),
 }));
 
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock('../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
 }));
 
-vi.mock('../../contexts/NotificationContext', () => ({
+vi.mock('../../src/contexts/NotificationContext', () => ({
   useNotifications: vi.fn(),
 }));
 
-vi.mock('../../contexts/AppNotificationContext', () => ({
+vi.mock('../../src/contexts/AppNotificationContext', () => ({
   useAppNotifications: vi.fn(),
 }));
 
-vi.mock('../../hooks/queries/useBitcoin', () => ({
+vi.mock('../../src/hooks/queries/useBitcoin', () => ({
   useBitcoinStatus: vi.fn(),
 }));
 
-vi.mock('../../hooks/websocket', () => ({
+vi.mock('../../src/hooks/websocket', () => ({
   useWalletEvents: vi.fn(),
   useWalletLogs: vi.fn(),
 }));
 
-vi.mock('../../hooks/useAIStatus', () => ({
+vi.mock('../../src/hooks/useAIStatus', () => ({
   useAIStatus: vi.fn(),
 }));
 
-vi.mock('../../hooks/queries/useWalletLabels', () => ({
+vi.mock('../../src/hooks/queries/useWalletLabels', () => ({
   useWalletLabels: () => ({ data: [], isLoading: false }),
 }));
 
-vi.mock('../../hooks/useErrorHandler', () => ({
+vi.mock('../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({
     handleError: vi.fn(),
     showSuccess: vi.fn(),
   }),
 }));
 
-vi.mock('../../hooks/useCopyToClipboard', () => ({
+vi.mock('../../src/hooks/useCopyToClipboard', () => ({
   useCopyToClipboard: () => ({
     copy: vi.fn(),
     isCopied: () => false,
@@ -147,35 +147,35 @@ vi.mock('../../src/api/admin', () => ({
 }));
 
 // Mock child components
-vi.mock('../../components/TransactionList', () => ({
+vi.mock('../../src/components/TransactionList', () => ({
   TransactionList: () => <div data-testid="transaction-list">Transactions</div>,
 }));
 
-vi.mock('../../components/UTXOList', () => ({
+vi.mock('../../src/components/UTXOList', () => ({
   UTXOList: () => <div data-testid="utxo-list">UTXOs</div>,
 }));
 
-vi.mock('../../components/WalletStats', () => ({
+vi.mock('../../src/components/WalletStats', () => ({
   WalletStats: () => <div data-testid="wallet-stats">Stats</div>,
 }));
 
-vi.mock('../../components/DraftList', () => ({
+vi.mock('../../src/components/DraftList', () => ({
   DraftList: () => <div data-testid="draft-list">Drafts</div>,
 }));
 
-vi.mock('../../components/LabelManager', () => ({
+vi.mock('../../src/components/LabelManager', () => ({
   LabelManager: () => <div data-testid="label-manager">Labels</div>,
 }));
 
-vi.mock('../../components/PayjoinSection', () => ({
+vi.mock('../../src/components/PayjoinSection', () => ({
   PayjoinSection: () => <div data-testid="payjoin-section">Payjoin</div>,
 }));
 
-vi.mock('../../components/AIQueryInput', () => ({
+vi.mock('../../src/components/AIQueryInput', () => ({
   AIQueryInput: () => <div data-testid="ai-query">AI Query</div>,
 }));
 
-vi.mock('../../components/Amount', () => ({
+vi.mock('../../src/components/Amount', () => ({
   Amount: ({ value }: { value: number }) => <span data-testid="amount">{value}</span>,
 }));
 

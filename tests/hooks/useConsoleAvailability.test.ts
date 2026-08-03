@@ -1,9 +1,9 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useConsoleAvailability } from '../../hooks/useConsoleAvailability';
-import { useAIStatus } from '../../hooks/useAIStatus';
+import { useConsoleAvailability } from '../../src/hooks/useConsoleAvailability';
+import { useAIStatus } from '../../src/hooks/useAIStatus';
 
-vi.mock('../../hooks/useAIStatus', () => ({
+vi.mock('../../src/hooks/useAIStatus', () => ({
   useAIStatus: vi.fn(),
 }));
 

@@ -1,5 +1,5 @@
 /**
- * Tests for components/qr/AnimatedQRCode.tsx
+ * Tests for src/components/qr/AnimatedQRCode.tsx
  *
  * Tests the animated QR code component for displaying PSBT data
  * using UR fountain codes.
@@ -7,10 +7,10 @@
 
 import { act,render,screen } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { AnimatedQRCode } from '../../../components/qr/AnimatedQRCode';
-import * as urPsbt from '../../../utils/urPsbt';
+import { AnimatedQRCode } from '../../../src/components/qr/AnimatedQRCode';
+import * as urPsbt from '../../../src/utils/urPsbt';
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -20,7 +20,7 @@ vi.mock('../../../utils/logger', () => ({
 }));
 
 // Mock the urPsbt module
-vi.mock('../../../utils/urPsbt', () => ({
+vi.mock('../../../src/utils/urPsbt', () => ({
   encodePsbtToUrFrames: vi.fn(),
 }));
 

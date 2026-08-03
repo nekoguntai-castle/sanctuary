@@ -28,7 +28,7 @@ vi.mock('lucide-react', () => ({
 const mockCopy = vi.fn();
 const mockIsCopied = vi.fn().mockReturnValue(false);
 
-vi.mock('../../../../hooks/useCopyToClipboard', () => ({
+vi.mock('../../../../src/hooks/useCopyToClipboard', () => ({
   useCopyToClipboard: () => ({
     copy: mockCopy,
     isCopied: mockIsCopied,
@@ -36,7 +36,7 @@ vi.mock('../../../../hooks/useCopyToClipboard', () => ({
 }));
 
 // Import after mocks
-import { AddressQRModal } from '../../../../components/WalletDetail/modals/AddressQRModal';
+import { AddressQRModal } from '../../../../src/components/WalletDetail/modals/AddressQRModal';
 
 describe('AddressQRModal', () => {
   const testAddress = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';

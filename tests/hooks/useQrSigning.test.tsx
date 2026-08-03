@@ -1,6 +1,6 @@
 import { act,renderHook } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { useQrSigning } from '../../hooks/send/useQrSigning';
+import { useQrSigning } from '../../src/hooks/send/useQrSigning';
 
 const mocks = vi.hoisted(() => ({
   updateDraft: vi.fn(),
@@ -18,11 +18,11 @@ vi.mock('../../src/api/drafts', () => ({
   updateDraft: mocks.updateDraft,
 }));
 
-vi.mock('../../utils/download', () => ({
+vi.mock('../../src/utils/download', () => ({
   downloadBinary: mocks.downloadBinary,
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => mocks.logger,
 }));
 

@@ -349,7 +349,7 @@ import type {
   WalletWebhookUpdateInput,
   WalletTelegramSettings,
   AutopilotStatus,
-} from '../../types';
+} from '../types';
 
 /**
  * Get Telegram notification settings for a wallet

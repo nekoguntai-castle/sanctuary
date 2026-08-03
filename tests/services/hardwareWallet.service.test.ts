@@ -9,7 +9,7 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 
 const mockPost = vi.fn();
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -24,8 +24,8 @@ vi.mock('../../src/api/client', () => ({
   },
 }));
 
-import { HardwareWalletService,createHardwareWalletService } from '../../services/hardwareWallet/service';
-import type { DeviceAdapter,DeviceType,HardwareWalletDevice } from '../../services/hardwareWallet/types';
+import { HardwareWalletService,createHardwareWalletService } from '../../src/services/hardwareWallet/service';
+import type { DeviceAdapter,DeviceType,HardwareWalletDevice } from '../../src/services/hardwareWallet/types';
 
 function createMockAdapter(
   type: DeviceType,

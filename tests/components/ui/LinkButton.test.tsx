@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
-import { LinkButton } from '../../../components/ui/LinkButton';
+import { LinkButton } from '../../../src/components/ui/LinkButton';
 
 describe('LinkButton', () => {
   it('renders a small secondary link by default', () => {

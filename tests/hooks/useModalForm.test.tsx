@@ -7,9 +7,9 @@
 
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useModalForm } from '../../hooks/useModalForm';
+import { useModalForm } from '../../src/hooks/useModalForm';
 
-vi.mock('../../utils/errorHandler', () => ({
+vi.mock('../../src/utils/errorHandler', () => ({
   extractErrorMessage: vi.fn((err: unknown) => err instanceof Error ? err.message : String(err)),
 }));
 

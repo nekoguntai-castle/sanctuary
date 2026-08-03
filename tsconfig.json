@@ -25,7 +25,7 @@
     "allowJs": true,
     "jsx": "react-jsx",
     "paths": {
-      "@/*": ["./*"],
+      "@/*": ["./src/*"],
       "@sanctuary/shared/*": ["./shared/*"]
     },
     "allowImportingTsExtensions": true,

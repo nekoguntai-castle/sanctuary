@@ -40,7 +40,7 @@ Replace-By-Fee allows you to speed up stuck transactions by creating a replaceme
 - `POST /api/v1/bitcoin/transaction/:txid/rbf` - Create RBF transaction
 
 #### Frontend Component
-- **File**: `components/TransactionActions.tsx`
+- **File**: `src/components/TransactionActions.tsx`
 - Shows RBF button on unconfirmed outgoing transactions
 - Displays current fee rate and minimum new fee rate
 - Creates replacement transaction with higher fee
@@ -67,7 +67,7 @@ Child-Pays-For-Parent allows you to speed up transactions by spending from them 
 - `POST /api/v1/bitcoin/transaction/cpfp` - Create CPFP transaction
 
 #### Frontend Component
-- **File**: `components/TransactionActions.tsx`
+- **File**: `src/components/TransactionActions.tsx`
 - Shows CPFP button on unconfirmed incoming transactions
 - Calculates effective fee rate for parent + child package
 - Creates child transaction spending from parent
@@ -94,7 +94,7 @@ Send to multiple recipients in a single transaction, saving significant fees.
 - `POST /api/v1/wallets/:walletId/transactions/batch` - Create batch transaction scoped to wallet
 
 #### Frontend Component
-- **File**: `components/BatchSend.tsx`
+- **File**: `src/components/BatchSend.tsx`
 - Full UI for batch sending
 - Add/remove multiple recipients
 - Shows fee comparison and savings
@@ -151,8 +151,8 @@ Spend from specific UTXOs and get privacy impact analysis before you sign.
 
 #### Frontend Components
 - **Files**:
-  - `components/send/steps/OutputsStep/CoinControlPanel.tsx`
-  - `components/SpendPrivacyCard.tsx`
+  - `src/components/send/steps/OutputsStep/CoinControlPanel.tsx`
+  - `src/components/SpendPrivacyCard.tsx`
 
 #### How It Works
 1. Users can select specific UTXOs to spend (`selectedUtxoIds`)
@@ -170,8 +170,8 @@ Optional change-splitting to reduce address clustering and improve spend privacy
 
 #### Frontend Components
 - **Files**:
-  - `components/send/AdvancedOptions.tsx`
-  - `components/DraftList.tsx`
+  - `src/components/send/AdvancedOptions.tsx`
+  - `src/components/DraftList.tsx`
 
 #### How It Works
 1. If enabled, change is split into multiple outputs (decoys)
@@ -196,9 +196,9 @@ Receiver mode is still feature-gated. The current receiver proposal adds the rec
 
 #### Frontend Components
 - **Files**:
-  - `components/PayjoinSection.tsx`
-  - `components/WalletDetail.tsx`
-  - `components/send/steps/OutputsStep.tsx`
+  - `src/components/PayjoinSection.tsx`
+  - `src/components/WalletDetail.tsx`
+  - `src/components/send/steps/OutputsStep.tsx`
 
 #### How It Works
 1. Receiver generates a BIP21 URI with `pj=` param

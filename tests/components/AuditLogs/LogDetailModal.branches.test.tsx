@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { LogDetailModal } from '../../../components/AuditLogs/LogDetailModal';
+import { LogDetailModal } from '../../../src/components/AuditLogs/LogDetailModal';
 
 const baseLog = {
   id: 'log-1',

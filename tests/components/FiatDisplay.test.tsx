@@ -6,14 +6,14 @@ FiatDisplay,
 FiatDisplayBlock,
 FiatDisplayInline,
 FiatDisplaySubtle,
-} from '../../components/FiatDisplay';
+} from '../../src/components/FiatDisplay';
 
 // Mock the CurrencyContext
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock('../../src/contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
 }));
 
-import { useCurrency } from '../../contexts/CurrencyContext';
+import { useCurrency } from '../../src/contexts/CurrencyContext';
 
 const mockUseCurrency = useCurrency as ReturnType<typeof vi.fn>;
 

@@ -44,7 +44,6 @@ RUN npm --workspace shared run build
 COPY server/tsconfig.json ./server/
 COPY server/scripts ./server/scripts
 COPY server/src ./server/src
-COPY global.d.ts ./
 
 WORKDIR /repo/server
 RUN npm run build

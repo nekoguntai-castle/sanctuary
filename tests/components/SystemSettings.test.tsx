@@ -5,7 +5,7 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { SystemSettings } from '../../components/SystemSettings';
+import { SystemSettings } from '../../src/components/SystemSettings';
 import * as adminApi from '../../src/api/admin';
 
 // Mock API

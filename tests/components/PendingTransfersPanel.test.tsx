@@ -1,5 +1,5 @@
 /**
- * Tests for components/PendingTransfersPanel.tsx
+ * Tests for src/components/PendingTransfersPanel.tsx
  *
  * Tests the pending transfers panel including incoming transfers,
  * outgoing transfers, confirmation modals, and action handlers.
@@ -7,9 +7,9 @@
 
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { PendingTransfersPanel } from '../../components/PendingTransfersPanel';
+import { PendingTransfersPanel } from '../../src/components/PendingTransfersPanel';
 import * as transfersApi from '../../src/api/transfers';
-import type { Transfer } from '../../types';
+import type { Transfer } from '../../src/types';
 
 // Mock the transfers API
 vi.mock('../../src/api/transfers', () => ({
@@ -21,7 +21,7 @@ vi.mock('../../src/api/transfers', () => ({
 }));
 
 // Mock useUser
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: () => ({
     user: {
       id: 'current-user',

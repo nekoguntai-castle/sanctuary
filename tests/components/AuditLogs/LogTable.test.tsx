@@ -2,7 +2,7 @@ import { render,screen,within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { LogTable } from '../../../components/AuditLogs/LogTable';
+import { LogTable } from '../../../src/components/AuditLogs/LogTable';
 import type { AuditLogEntry } from '../../../src/api/admin';
 
 const makeLog = (overrides: Partial<AuditLogEntry> = {}): AuditLogEntry => ({

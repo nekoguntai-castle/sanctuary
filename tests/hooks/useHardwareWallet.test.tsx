@@ -27,7 +27,7 @@ const mockSignPSBT = vi.fn();
 const mockGetDevices = vi.fn();
 const mockIsConnected = vi.fn();
 
-vi.mock('../../services/hardwareWallet/runtime', () => ({
+vi.mock('../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: (type?: string) => mockConnect(type),
     disconnect: () => mockDisconnect(),
@@ -39,11 +39,11 @@ vi.mock('../../services/hardwareWallet/runtime', () => ({
   getConnectedDevices: () => mockGetDevices(),
 }));
 
-vi.mock('../../services/hardwareWallet/environment', () => ({
+vi.mock('../../src/services/hardwareWallet/environment', () => ({
   isHardwareWalletSupported: vi.fn(() => true),
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -53,7 +53,7 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Import hook after mocks
-import { useHardwareWallet } from '../../hooks/useHardwareWallet';
+import { useHardwareWallet } from '../../src/hooks/useHardwareWallet';
 
 describe('useHardwareWallet', () => {
   const mockDevice: MockDevice = {

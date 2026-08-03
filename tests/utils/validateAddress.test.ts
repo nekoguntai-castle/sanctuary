@@ -6,7 +6,7 @@ getAddressType,
 isMainnetAddress,
 isTestnetAddress,
 validateAddress,
-} from '../../utils/validateAddress';
+} from '../../src/utils/validateAddress';
 
 describe('validateAddress', () => {
   describe('Valid mainnet addresses', () => {

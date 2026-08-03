@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
-import { AboutModal } from '../../../components/Layout/AboutModal';
+import { AboutModal } from '../../../src/components/Layout/AboutModal';
 
 vi.mock('qrcode.react', () => ({
   QRCodeSVG: ({ value, size }: { value: string; size: number }) => (
@@ -9,7 +9,7 @@ vi.mock('qrcode.react', () => ({
   ),
 }));
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   SanctuaryLogo: (props: React.SVGProps<SVGSVGElement>) => <svg data-testid="logo" {...props} />,
 }));
 

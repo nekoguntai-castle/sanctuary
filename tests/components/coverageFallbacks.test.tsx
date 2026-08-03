@@ -1,32 +1,32 @@
 import { render, renderHook, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { AgentOverridesModal } from '../../components/AgentManagement/AgentOverridesModal';
+import { AgentOverridesModal } from '../../src/components/AgentManagement/AgentOverridesModal';
 import {
   formatAlertLimit,
   formatLimit,
   formatNumberLimit,
   formatWalletType,
-} from '../../components/AgentManagement/formatters';
-import { CreateWalletStepContent } from '../../components/CreateWallet/CreateWalletStepContent';
-import { SignerCompatibilityWarning } from '../../components/CreateWallet/SignerCompatibilityWarning';
-import { ImportWalletFooter } from '../../components/ImportWallet/ImportWalletFooter';
-import { ImportWalletStepContent } from '../../components/ImportWallet/ImportWalletStepContent';
-import { QrScannerCard } from '../../components/ImportWallet/steps/QrScanSections';
-import { BundledTorContainerCard } from '../../components/NodeConfig/BundledTorContainerCard';
-import { useElectrumServerControls } from '../../components/NodeConfig/useElectrumServerControls';
-import { useProxyTorControls } from '../../components/NodeConfig/useProxyTorControls';
-import { RBFModal } from '../../components/TransactionActions/RBFModal';
-import { WalletDetailTabContent } from '../../components/WalletDetail/WalletDetailTabContent';
+} from '../../src/components/AgentManagement/formatters';
+import { CreateWalletStepContent } from '../../src/components/CreateWallet/CreateWalletStepContent';
+import { SignerCompatibilityWarning } from '../../src/components/CreateWallet/SignerCompatibilityWarning';
+import { ImportWalletFooter } from '../../src/components/ImportWallet/ImportWalletFooter';
+import { ImportWalletStepContent } from '../../src/components/ImportWallet/ImportWalletStepContent';
+import { QrScannerCard } from '../../src/components/ImportWallet/steps/QrScanSections';
+import { BundledTorContainerCard } from '../../src/components/NodeConfig/BundledTorContainerCard';
+import { useElectrumServerControls } from '../../src/components/NodeConfig/useElectrumServerControls';
+import { useProxyTorControls } from '../../src/components/NodeConfig/useProxyTorControls';
+import { RBFModal } from '../../src/components/TransactionActions/RBFModal';
+import { WalletDetailTabContent } from '../../src/components/WalletDetail/WalletDetailTabContent';
 import {
   getDisplayReceiveAddresses,
   getPayjoinUriOptions,
   shouldFetchUnusedReceiveAddresses,
-} from '../../components/WalletDetail/modals/receiveModalData';
-import { getSharedUsers } from '../../components/WalletDetail/tabs/access/accessTabData';
-import { WalletBalance } from '../../components/WalletList/WalletGridCardBalance';
-import { useDeviceListPreferences } from '../../components/DeviceList/useDeviceListPreferences';
-import { useWalletDraftNotifications } from '../../components/WalletDetail/hooks/useWalletDraftNotifications';
+} from '../../src/components/WalletDetail/modals/receiveModalData';
+import { getSharedUsers } from '../../src/components/WalletDetail/tabs/access/accessTabData';
+import { WalletBalance } from '../../src/components/WalletList/WalletGridCardBalance';
+import { useDeviceListPreferences } from '../../src/components/DeviceList/useDeviceListPreferences';
+import { useWalletDraftNotifications } from '../../src/components/WalletDetail/hooks/useWalletDraftNotifications';
 import * as adminApi from '../../src/api/admin';
 
 const mockUseUser = vi.hoisted(() => vi.fn());
@@ -35,7 +35,7 @@ vi.mock('@yudiel/react-qr-scanner', () => ({
   Scanner: () => <div data-testid="qr-scanner" />,
 }));
 
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: mockUseUser,
 }));
 

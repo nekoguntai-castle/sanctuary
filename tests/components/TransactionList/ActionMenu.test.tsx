@@ -1,15 +1,15 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { ActionMenu } from '../../../components/TransactionList/ActionMenu';
-import type { Transaction,Wallet } from '../../../types';
-import { getTxExplorerUrl } from '../../../utils/explorer';
+import { ActionMenu } from '../../../src/components/TransactionList/ActionMenu';
+import type { Transaction,Wallet } from '../../../src/types';
+import { getTxExplorerUrl } from '../../../src/utils/explorer';
 
-vi.mock('../../../utils/explorer', () => ({
+vi.mock('../../../src/utils/explorer', () => ({
   getTxExplorerUrl: vi.fn(() => 'https://explorer.example/tx/mock'),
 }));
 
-vi.mock('../../../components/TransactionActions', () => ({
+vi.mock('../../../src/components/TransactionActions', () => ({
   TransactionActions: ({
     isReceived,
     onActionComplete,

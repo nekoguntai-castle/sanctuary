@@ -7,7 +7,7 @@
 
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { usePaginatedList } from '../../hooks/usePaginatedList';
+import { usePaginatedList } from '../../src/hooks/usePaginatedList';
 
 describe('usePaginatedList', () => {
   describe('initial state', () => {

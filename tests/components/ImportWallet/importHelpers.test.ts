@@ -6,7 +6,7 @@ getDerivationPath,
 scriptTypeOptions,
 validateImportData,
 validateInputData,
-} from '../../../components/ImportWallet/importHelpers';
+} from '../../../src/components/ImportWallet/importHelpers';
 import { ApiError } from '../../../src/api/client';
 import * as walletsApi from '../../../src/api/wallets';
 

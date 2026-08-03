@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe,expect,it,vi } from 'vitest';
-import { NavItem } from '../../../components/Layout/NavItem';
+import { NavItem } from '../../../src/components/Layout/NavItem';
 
 vi.mock('lucide-react', () => ({
   ChevronDown: () => <span data-testid="chevron-down" />,

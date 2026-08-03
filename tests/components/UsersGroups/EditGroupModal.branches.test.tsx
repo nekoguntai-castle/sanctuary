@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { EditGroupModal } from '../../../components/UsersGroups/EditGroupModal';
+import { EditGroupModal } from '../../../src/components/UsersGroups/EditGroupModal';
 
 const baseGroup = {
   id: 'group-1',

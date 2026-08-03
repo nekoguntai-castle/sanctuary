@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { sanctuaryTheme } from '../../themes/sanctuary';
+import { sanctuaryTheme } from '../../src/themes/sanctuary';
 
 describe('sanctuary theme', () => {
   it('uses zen gold for primary action colors', () => {

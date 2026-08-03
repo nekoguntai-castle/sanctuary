@@ -93,7 +93,7 @@ Package-scoped docs live next to their code — not in `docs/`. Start at each pa
 - [gateway](https://github.com/nekoguntai-castle/sanctuary/blob/main/gateway/README.md) — mobile API gateway ([architecture](../gateway/ARCHITECTURE.md))
 - React/Vite frontend — lives at the monorepo root (no subdirectory). See [`docs/reference/frontend-architecture.md`](reference/frontend-architecture.md).
 - [llm-egress-proxy](https://github.com/nekoguntai-castle/sanctuary/blob/main/llm-egress-proxy/README.md) — LLM egress proxy service ([architecture](../llm-egress-proxy/ARCHITECTURE.md))
-- [themes](https://github.com/nekoguntai-castle/sanctuary/blob/main/themes/README.md) — theme system reference
+- [themes](https://github.com/nekoguntai-castle/sanctuary/blob/main/src/themes/README.md) — theme system reference
 
 ## Documentation standards
 

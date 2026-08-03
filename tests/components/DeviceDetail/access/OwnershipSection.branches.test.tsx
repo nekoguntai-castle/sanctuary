@@ -1,6 +1,6 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { OwnershipSection } from '../../../../components/DeviceDetail/access/OwnershipSection';
+import { OwnershipSection } from '../../../../src/components/DeviceDetail/access/OwnershipSection';
 
 describe('OwnershipSection branch coverage', () => {
   it('uses shared owner info when present and shows transfer action for owners', () => {

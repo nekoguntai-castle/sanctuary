@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { AppearanceTab } from '../../components/Settings/sections/ThemeSection';
+import { AppearanceTab } from '../../src/components/Settings/sections/ThemeSection';
 
 const mockUpdatePreferences = vi.fn();
 
@@ -17,14 +17,14 @@ let mockUser: {
   };
 } | null = null;
 
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock('../../src/contexts/UserContext', () => ({
   useUser: () => ({
     user: mockUser,
     updatePreferences: mockUpdatePreferences,
   }),
 }));
 
-vi.mock('../../themes', () => ({
+vi.mock('../../src/themes', () => ({
   Season: ['spring', 'summer', 'fall', 'winter'],
   themeRegistry: {
     getAllMetadata: vi.fn(() => [
@@ -44,7 +44,7 @@ vi.mock('../../themes', () => ({
   },
 }));
 
-vi.mock('../../themes/backgroundCategories', () => ({
+vi.mock('../../src/themes/backgroundCategories', () => ({
   CATEGORIES: [
     { id: 'all', label: 'All', icon: 'A' },
     { id: 'favorites', label: 'Favorites', icon: 'F' },
@@ -52,7 +52,7 @@ vi.mock('../../themes/backgroundCategories', () => ({
   ],
 }));
 
-vi.mock('../../components/ui/CustomIcons', () => ({
+vi.mock('../../src/components/ui/CustomIcons', () => ({
   SanctuaryLogo: () => <span data-testid="sanctuary-logo" />,
   SatsIcon: () => <span data-testid="sats-icon" />,
 }));

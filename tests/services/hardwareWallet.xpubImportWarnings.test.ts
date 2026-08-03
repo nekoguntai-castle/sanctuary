@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildNoNewUsbAccountsMessage,
   buildSkippedXpubWarning,
-} from "../../services/hardwareWallet/xpubImportWarnings";
-import type { XpubFetchFailure } from "../../services/hardwareWallet/service";
+} from "../../src/services/hardwareWallet/xpubImportWarnings";
+import type { XpubFetchFailure } from "../../src/services/hardwareWallet/service";
 
 const failure = (
   name: string,

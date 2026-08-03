@@ -1,8 +1,8 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { QrSigning } from '../../../components/send/steps/review/QrSigning';
+import { QrSigning } from '../../../src/components/send/steps/review/QrSigning';
 
-vi.mock('../../../components/qr', () => ({
+vi.mock('../../../src/components/qr', () => ({
   QRSigningModal: (props: any) => (
     <div data-testid="qr-signing-modal">
       <div>{props.psbtBase64}</div>

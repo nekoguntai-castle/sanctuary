@@ -88,7 +88,7 @@ is_docs_only_file() {
 
 is_both_image_file() {
   case "$1" in
-    .github/workflows/docker-build.yml|.dockerignore|global.d.ts|package.json|package-lock.json|shared/*|docker-compose.yml|docker-compose.*.yml)
+    .github/workflows/docker-build.yml|.dockerignore|package.json|package-lock.json|shared/*|docker-compose.yml|docker-compose.*.yml)
       return 0
       ;;
   esac
@@ -97,7 +97,7 @@ is_both_image_file() {
 
 is_frontend_image_file() {
   case "$1" in
-    App.tsx|index.html|index.tsx|src/*|components/*|contexts/*|hooks/*|providers/*|public/*|services/*|themes/*|types/*|utils/*)
+    index.html|src/*|public/*)
       return 0
       ;;
     Dockerfile|metadata.json|tsconfig*.json|vite*.ts)

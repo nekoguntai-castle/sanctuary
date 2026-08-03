@@ -1,21 +1,21 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { TwoFactorScreen } from '../../../components/Login/TwoFactorScreen';
+import { TwoFactorScreen } from '../../../src/components/Login/TwoFactorScreen';
 
-vi.mock('../../../components/Login/LoginBackground', () => ({
+vi.mock('../../../src/components/Login/LoginBackground', () => ({
   LoginBackground: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="login-bg">{children}</div>
   ),
 }));
 
-vi.mock('../../../components/Login/LoginLogoContainer', () => ({
+vi.mock('../../../src/components/Login/LoginLogoContainer', () => ({
   LoginLogoContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="login-logo-container">{children}</div>
   ),
 }));
 
-vi.mock('../../../components/ui/CustomIcons', () => ({
+vi.mock('../../../src/components/ui/CustomIcons', () => ({
   SanctuaryShieldLogo: ({ ready }: { ready?: boolean }) => (
     <span data-testid="sanctuary-shield-logo" data-ready={ready} />
   ),

@@ -7,13 +7,13 @@
 
 import { act,renderHook,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import type { HardwareDeviceModel } from '../../types';
+import type { HardwareDeviceModel } from '../../src/types';
 
 // Mock hardware wallet service
 const mockConnect = vi.fn();
 const mockGetAllXpubs = vi.fn();
 
-vi.mock('../../services/hardwareWallet/runtime', () => ({
+vi.mock('../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: (type: unknown) => mockConnect(type),
     getAllXpubs: (callback: unknown) => mockGetAllXpubs(callback),
@@ -27,7 +27,7 @@ vi.mock('../../services/hardwareWallet/runtime', () => ({
 }));
 
 // Mock device type helper
-vi.mock('../../utils/deviceConnection', () => ({
+vi.mock('../../src/utils/deviceConnection', () => ({
   getDeviceTypeFromModel: (model: HardwareDeviceModel) => {
     if (model.slug.includes('coldcard')) return 'coldcard';
     if (model.slug.includes('ledger')) return 'ledger';
@@ -37,7 +37,7 @@ vi.mock('../../utils/deviceConnection', () => ({
 }));
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -47,7 +47,7 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Import after mocks
-import { useDeviceConnection } from '../../hooks/useDeviceConnection';
+import { useDeviceConnection } from '../../src/hooks/useDeviceConnection';
 
 // Test data
 const mockModel: HardwareDeviceModel = {

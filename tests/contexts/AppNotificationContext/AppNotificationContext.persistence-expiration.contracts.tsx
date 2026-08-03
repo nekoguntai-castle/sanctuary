@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { useAppNotifications } from '../../../contexts/AppNotificationContext';
+import { useAppNotifications } from '../../../src/contexts/AppNotificationContext';
 import { wrapper } from './AppNotificationContextTestHarness';
 
 export const registerAppNotificationPersistenceExpirationContracts = () => {

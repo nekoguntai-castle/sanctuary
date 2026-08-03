@@ -3,7 +3,7 @@ import {
 fetchAuxiliaryData,
 loadAddressPage,
 loadGroups,
-} from '../../../../components/WalletDetail/hooks/walletDataLoaders';
+} from '../../../../src/components/WalletDetail/hooks/walletDataLoaders';
 import * as adminApi from '../../../../src/api/admin';
 import * as authApi from '../../../../src/api/auth';
 import * as bitcoinApi from '../../../../src/api/bitcoin';
@@ -40,17 +40,17 @@ vi.mock('../../../../src/api/admin', () => ({
   getGroups: vi.fn(),
 }));
 
-vi.mock('../../../../components/WalletDetail/mappers', () => ({
+vi.mock('../../../../src/components/WalletDetail/mappers', () => ({
   formatApiTransaction: vi.fn((tx: any) => ({ id: tx.id || tx.txid || 'tx' })),
   formatApiUtxo: vi.fn((utxo: any) => ({ id: utxo.id || `${utxo.txid || 'tx'}:${utxo.vout || 0}` })),
 }));
 
-vi.mock('../../../../components/WalletDetail/hooks/walletDataFormatters', () => ({
+vi.mock('../../../../src/components/WalletDetail/hooks/walletDataFormatters', () => ({
   formatWalletFromApi: vi.fn((wallet: any) => wallet),
   formatDevicesForWallet: vi.fn(() => [{ id: 'device-1' }]),
 }));
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -59,7 +59,7 @@ vi.mock('../../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../../utils/errorHandler', () => ({
+vi.mock('../../../../src/utils/errorHandler', () => ({
   logError: vi.fn(),
 }));
 

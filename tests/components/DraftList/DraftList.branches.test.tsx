@@ -2,10 +2,10 @@ import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { DraftList } from '../../../components/DraftList/DraftList';
+import { DraftList } from '../../../src/components/DraftList/DraftList';
 import * as draftsApi from '../../../src/api/drafts';
-import { WalletType } from '../../../types';
-import * as downloadUtils from '../../../utils/download';
+import { WalletType } from '../../../src/types';
+import * as downloadUtils from '../../../src/utils/download';
 
 const mockNavigate = vi.fn();
 let uploadFileFactory: () => File = () =>
@@ -23,7 +23,7 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../../../contexts/CurrencyContext', () => {
+vi.mock('../../../src/contexts/CurrencyContext', () => {
   const value = {
     format: (value: number) => `${value} sats`,
     unit: 'sats',
@@ -40,11 +40,11 @@ vi.mock('../../../src/api/drafts', () => ({
   updateDraft: vi.fn(),
 }));
 
-vi.mock('../../../utils/download', () => ({
+vi.mock('../../../src/utils/download', () => ({
   downloadBlob: vi.fn(),
 }));
 
-vi.mock('../../../components/DraftList/DraftRow', () => ({
+vi.mock('../../../src/components/DraftList/DraftRow', () => ({
   DraftRow: ({
     draft,
     isExpanded,
@@ -71,7 +71,7 @@ vi.mock('../../../components/DraftList/DraftRow', () => ({
   ),
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

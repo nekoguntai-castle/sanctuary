@@ -10,7 +10,7 @@ import {
   extractFromUrBytesContent,
   extractFromUrResult,
   getUrType,
-} from '../../../utils/urDeviceDecoder';
+} from '../../../src/utils/urDeviceDecoder';
 
 export function registerUrFormatProcessingContracts() {
   it('falls back to unknown UR type when detector returns null', () => {

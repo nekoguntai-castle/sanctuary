@@ -14,10 +14,10 @@ describe('index bootstrap branch coverage', () => {
     const render = vi.fn();
     const createRoot = vi.fn(() => ({ render }));
 
-    vi.doMock('../themes', () => ({
+    vi.doMock('../src/themes', () => ({
       initializeThemes,
     }));
-    vi.doMock('../App', () => ({
+    vi.doMock('../src/App', () => ({
       default: () => <div>Mock App</div>,
     }));
     vi.doMock('react-dom/client', () => ({
@@ -25,7 +25,7 @@ describe('index bootstrap branch coverage', () => {
       createRoot,
     }));
 
-    await import('../index');
+    await import('../src/main');
 
     expect(initializeThemes).toHaveBeenCalledTimes(1);
     expect(createRoot).toHaveBeenCalledWith(document.getElementById('root'));
@@ -36,10 +36,10 @@ describe('index bootstrap branch coverage', () => {
     const initializeThemes = vi.fn();
     const createRoot = vi.fn();
 
-    vi.doMock('../themes', () => ({
+    vi.doMock('../src/themes', () => ({
       initializeThemes,
     }));
-    vi.doMock('../App', () => ({
+    vi.doMock('../src/App', () => ({
       default: () => <div>Mock App</div>,
     }));
     vi.doMock('react-dom/client', () => ({
@@ -49,7 +49,7 @@ describe('index bootstrap branch coverage', () => {
 
     let thrown: unknown;
     try {
-      await import('../index');
+      await import('../src/main');
     } catch (error) {
       thrown = error;
     }

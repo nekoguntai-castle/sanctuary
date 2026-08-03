@@ -1,5 +1,5 @@
-import { Login } from '../../../components/Login';
-import { DashboardSkeleton } from '../../../components/ui/Skeleton';
+import { Login } from '../../components/Login';
+import { DashboardSkeleton } from '../../components/ui/Skeleton';
 import { AuthenticatedAppShell } from './AuthenticatedAppShell';
 import { useAppRoutesController } from './useAppRoutesController';
 

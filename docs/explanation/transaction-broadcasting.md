@@ -156,7 +156,7 @@ const estimate = await transactionsApi.estimateTransaction(walletId, {
 });
 ```
 
-#### 2. SendTransaction Component (`components/SendTransaction.tsx`)
+#### 2. SendTransaction Component (`src/components/SendTransaction.tsx`)
 
 Updated to use the new transaction flow:
 

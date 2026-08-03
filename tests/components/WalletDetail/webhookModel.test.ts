@@ -18,7 +18,7 @@ import {
   parseEventTypes,
   parseJsonObject,
   type WebhookFormState,
-} from '../../../components/WalletDetail/webhooks/model';
+} from '../../../src/components/WalletDetail/webhooks/model';
 
 describe('wallet webhook form model', () => {
   it('derives default built-in values from shared webhook constants', () => {

@@ -1,7 +1,7 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { QrScanStep } from '../../../components/ImportWallet/steps/QrScanStep';
+import { QrScanStep } from '../../../src/components/ImportWallet/steps/QrScanStep';
 
 let scannerProps: {
   onScan: (result: { rawValue: string }[]) => void;
@@ -33,11 +33,11 @@ vi.mock('@ngraveio/bc-ur', () => ({
   },
 }));
 
-vi.mock('../../../services/hardwareWallet/environment', () => ({
+vi.mock('../../../src/services/hardwareWallet/environment', () => ({
   isSecureContext: () => secureContext,
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     error: vi.fn(),
@@ -46,7 +46,7 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../components/ui/Button', () => ({
+vi.mock('../../../src/components/ui/Button', () => ({
   Button: ({
     children,
     onClick,

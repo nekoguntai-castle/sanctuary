@@ -82,7 +82,7 @@ main() {
   create_repo "$repo_dir"
   base_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
-  commit_file "$repo_dir" "components/WalletList.tsx" "export const WalletList = () => null;" "frontend component"
+  commit_file "$repo_dir" "src/components/WalletList.tsx" "export const WalletList = () => null;" "frontend component"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_images "$output_file" "true" "false"
@@ -142,13 +142,13 @@ main() {
   assert_images "$output_file" "true" "false"
 
   base_sha="$head_sha"
-  commit_file "$repo_dir" "types/wallet.ts" "export type Wallet = {};" "root frontend type"
+  commit_file "$repo_dir" "src/types/wallet.ts" "export type Wallet = {};" "frontend type"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_images "$output_file" "true" "false"
 
   base_sha="$head_sha"
-  commit_file "$repo_dir" "global.d.ts" "declare const __BUILD__: string;" "frontend global types"
+  commit_file "$repo_dir" "shared/types/ambient-modules.d.ts" "declare const __BUILD__: string;" "shared ambient types"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_images "$output_file" "true" "true"

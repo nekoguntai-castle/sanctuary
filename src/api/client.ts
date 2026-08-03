@@ -32,8 +32,8 @@
  * - Cookie-based authentication (no token in JavaScript memory)
  */
 
-import { createLogger } from "../../utils/logger";
-import { downloadBlob } from "../../utils/download";
+import { createLogger } from "../utils/logger";
+import { downloadBlob } from "../utils/download";
 import { getApiBaseUrl, joinApiBaseUrl } from "./baseUrl";
 import {
   refreshAccessToken,

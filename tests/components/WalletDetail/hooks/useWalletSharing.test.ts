@@ -1,13 +1,13 @@
 import { act,renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { useWalletSharing } from '../../../../components/WalletDetail/hooks/useWalletSharing';
-import { useAppNotifications } from '../../../../contexts/AppNotificationContext';
-import { useErrorHandler } from '../../../../hooks/useErrorHandler';
+import { useWalletSharing } from '../../../../src/components/WalletDetail/hooks/useWalletSharing';
+import { useAppNotifications } from '../../../../src/contexts/AppNotificationContext';
+import { useErrorHandler } from '../../../../src/hooks/useErrorHandler';
 import * as authApi from '../../../../src/api/auth';
 import * as devicesApi from '../../../../src/api/devices';
 import * as walletsApi from '../../../../src/api/wallets';
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -40,15 +40,15 @@ vi.mock('../../../../src/api/auth', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../../hooks/useErrorHandler', () => ({
+vi.mock('../../../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: vi.fn(),
 }));
 
-vi.mock('../../../../contexts/AppNotificationContext', () => ({
+vi.mock('../../../../src/contexts/AppNotificationContext', () => ({
   useAppNotifications: vi.fn(),
 }));
 
-vi.mock('../../../../utils/errorHandler', () => ({
+vi.mock('../../../../src/utils/errorHandler', () => ({
   logError: vi.fn(),
 }));
 

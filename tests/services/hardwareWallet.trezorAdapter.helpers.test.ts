@@ -26,7 +26,7 @@ vi.mock("../../src/api/client", () => ({
   },
 }));
 
-vi.mock("../../utils/logger", () => ({
+vi.mock("../../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -42,11 +42,11 @@ import {
   getTrezorScriptType,
   isBip48MultisigPath,
   validateSatoshiAmount,
-} from "../../services/hardwareWallet/adapters/trezor";
+} from "../../src/services/hardwareWallet/adapters/trezor";
 import {
   buildTrezorInputs,
   buildTrezorOutputs,
-} from "../../services/hardwareWallet/adapters/trezor/signPsbtPayloads";
+} from "../../src/services/hardwareWallet/adapters/trezor/signPsbtPayloads";
 
 describe("Trezor helper functions", () => {
   it("validates satoshi amounts for number and bigint", () => {

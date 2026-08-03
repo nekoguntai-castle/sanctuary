@@ -16,7 +16,7 @@ import {
   isKeyActive,
   metadataString,
   orderAgentWalletRows,
-} from '../../../components/AgentWalletDashboard/agentWalletDashboardModel';
+} from '../../../src/components/AgentWalletDashboard/agentWalletDashboardModel';
 
 function makeAgent(overrides: Partial<WalletAgentMetadata> = {}): WalletAgentMetadata {
   return {

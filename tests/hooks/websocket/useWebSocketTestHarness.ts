@@ -54,7 +54,7 @@ const {
   };
 });
 
-vi.mock('../../../services/websocket', () => ({
+vi.mock('../../../src/services/websocket', () => ({
   websocketClient: {
     connect: (...args: any[]) => mockConnect(...args),
     disconnect: (...args: any[]) => mockDisconnect(...args),
@@ -82,7 +82,7 @@ vi.mock('../../../src/api/sync', () => ({
   getWalletLogs: (...args: any[]) => mockGetWalletLogs(...args),
 }));
 
-vi.mock('../../../providers/QueryProvider', () => ({
+vi.mock('../../../src/providers/QueryProvider', () => ({
   queryClient: mockQueryClient,
   getQueryClient: () => mockQueryClient,
 }));
@@ -91,11 +91,11 @@ vi.mock('../../../providers/QueryProvider', () => ({
 const flushPromises = () => new Promise<void>(resolve => queueMicrotask(resolve));
 
 // Import hooks after mocks.
-import { useWalletEvents } from '../../../hooks/websocket/useWalletEvents';
-import { useWalletLogs } from '../../../hooks/websocket/useWalletLogs';
-import { useWebSocket } from '../../../hooks/websocket/useWebSocket';
-import { useWebSocketEvent } from '../../../hooks/websocket/useWebSocketEvent';
-import { useWebSocketQueryInvalidation } from '../../../hooks/websocket/useWebSocketQueryInvalidation';
+import { useWalletEvents } from '../../../src/hooks/websocket/useWalletEvents';
+import { useWalletLogs } from '../../../src/hooks/websocket/useWalletLogs';
+import { useWebSocket } from '../../../src/hooks/websocket/useWebSocket';
+import { useWebSocketEvent } from '../../../src/hooks/websocket/useWebSocketEvent';
+import { useWebSocketQueryInvalidation } from '../../../src/hooks/websocket/useWebSocketQueryInvalidation';
 
 export {
   act,

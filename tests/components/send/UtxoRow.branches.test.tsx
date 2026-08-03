@@ -1,13 +1,13 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { UtxoRow } from '../../../components/send/steps/OutputsStep/UtxoRow';
+import { UtxoRow } from '../../../src/components/send/steps/OutputsStep/UtxoRow';
 
-vi.mock('../../../utils/utxoAge', () => ({
+vi.mock('../../../src/utils/utxoAge', () => ({
   calculateUTXOAge: () => ({ category: 'aged', shortText: '2d' }),
   getAgeCategoryColor: () => 'text-sanctuary-500',
 }));
 
-vi.mock('../../../components/PrivacyBadge', () => ({
+vi.mock('../../../src/components/PrivacyBadge', () => ({
   PrivacyBadge: () => <span data-testid="privacy-badge">privacy</span>,
 }));
 

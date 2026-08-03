@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { WalletWebhooks } from '../../../components/WalletDetail/WalletWebhooks';
+import { WalletWebhooks } from '../../../src/components/WalletDetail/WalletWebhooks';
 
 const {
   mockListWalletWebhooks,

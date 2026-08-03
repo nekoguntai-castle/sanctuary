@@ -6,13 +6,13 @@ import { fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { TransactionActions } from '../../components/TransactionActions';
+import { TransactionActions } from '../../src/components/TransactionActions';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import * as draftsApi from '../../src/api/drafts';
 import * as transactionsApi from '../../src/api/transactions';
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),

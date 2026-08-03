@@ -1,9 +1,9 @@
 import { act,renderHook,waitFor } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { useTransactionComposition } from '../../../components/send/steps/OutputsStep/hooks/useTransactionComposition';
+import { useTransactionComposition } from '../../../src/components/send/steps/OutputsStep/hooks/useTransactionComposition';
 import * as txApi from '../../../src/api/transactions';
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

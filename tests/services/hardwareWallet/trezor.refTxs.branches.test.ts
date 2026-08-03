@@ -1,6 +1,6 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { fetchRefTxs } from '../../../services/hardwareWallet/adapters/trezor/refTxs';
+import { fetchRefTxs } from '../../../src/services/hardwareWallet/adapters/trezor/refTxs';
 
 const {
   mockApiGet,
@@ -16,7 +16,7 @@ vi.mock('../../../src/api/client', () => ({
   },
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),

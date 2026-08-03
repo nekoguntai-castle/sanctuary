@@ -15,8 +15,8 @@ import type {
   RegisterResponse,
   TwoFactorRequiredResponse,
 } from '@sanctuary/shared/types/api';
-import type { TelegramConfig, WalletTelegramSettings } from '../../types';
-import { createLogger } from '../../utils/logger';
+import type { TelegramConfig, WalletTelegramSettings } from '../types';
+import { createLogger } from '../utils/logger';
 
 const log = createLogger('AuthApi');
 

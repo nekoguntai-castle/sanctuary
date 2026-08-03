@@ -20,6 +20,6 @@
       "@sanctuary/shared/*": ["../shared/dist/*"]
     }
   },
-  "include": ["src/**/*", "../global.d.ts"],
+  "include": ["src/**/*", "../shared/types/ambient-modules.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

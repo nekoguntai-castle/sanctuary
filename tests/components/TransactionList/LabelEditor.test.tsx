@@ -1,10 +1,10 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { LabelEditor } from '../../../components/TransactionList/LabelEditor';
-import type { Label,Transaction } from '../../../types';
+import { LabelEditor } from '../../../src/components/TransactionList/LabelEditor';
+import type { Label,Transaction } from '../../../src/types';
 
-vi.mock('../../../components/AILabelSuggestion', () => ({
+vi.mock('../../../src/components/AILabelSuggestion', () => ({
   AILabelSuggestion: ({
     existingLabels,
     onSuggestionAccepted,

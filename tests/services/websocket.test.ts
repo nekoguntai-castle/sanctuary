@@ -8,7 +8,7 @@
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -25,8 +25,8 @@ import {
   resetMockWebSocketInstances,
 } from './websocket/websocketTestHarness';
 import { WebSocketChannels } from '@sanctuary/shared/types/websocket';
-import type { EventCallback } from '../../services/websocket';
-import { WebSocketClient } from '../../services/websocket';
+import type { EventCallback } from '../../src/services/websocket';
+import { WebSocketClient } from '../../src/services/websocket';
 
 describe('WebSocketClient', () => {
   let client: WebSocketClient;
@@ -752,7 +752,7 @@ describe('WebSocketClient', () => {
       vi.resetModules();
       vi.stubEnv('VITE_WS_URL', 'ws://configured.example/ws');
 
-      const mod = await import('../../services/websocket');
+      const mod = await import('../../src/services/websocket');
       expect((mod.websocketClient as any).url).toBe('ws://configured.example/ws');
 
       vi.unstubAllEnvs();
@@ -768,7 +768,7 @@ describe('WebSocketClient', () => {
         },
       } as any);
 
-      const mod = await import('../../services/websocket');
+      const mod = await import('../../src/services/websocket');
       expect((mod.websocketClient as any).url).toBe('wss://secure.example/ws');
 
       vi.unstubAllGlobals();

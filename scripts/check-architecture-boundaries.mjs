@@ -6,14 +6,7 @@ import { collectImportStatements } from './quality/import-parser.mjs';
 const root = process.env.QUALITY_ROOT ?? process.cwd();
 const codeFilePattern = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/;
 const sourceRoots = [
-  'App.tsx',
-  'components',
-  'contexts',
-  'hooks',
-  'services',
   'src',
-  'themes',
-  'utils',
   'shared',
   'server/src',
   'gateway/src',
@@ -30,22 +23,12 @@ const excludedSegments = [
 ];
 const exceptionFile = 'scripts/quality/architecture-boundary-exceptions.json';
 
-const browserRootPrefixes = [
-  'components/',
-  'contexts/',
-  'hooks/',
-  'services/',
-  'src/',
-  'themes/',
-  'utils/',
-];
-
 function normalize(filePath) {
   return filePath.split(path.sep).join('/');
 }
 
 function isBrowserRuntimePath(relativePath) {
-  return relativePath === 'App.tsx' || browserRootPrefixes.some((prefix) => relativePath.startsWith(prefix));
+  return relativePath.startsWith('src/');
 }
 
 function isExcluded(relativePath) {
@@ -232,9 +215,9 @@ function isBrowserApiAdapter(file) {
 
 function isBrowserApiStateTarget(target) {
   return (
-    target.startsWith('components/') ||
-    target.startsWith('contexts/') ||
-    target.startsWith('hooks/')
+    target.startsWith('src/components/') ||
+    target.startsWith('src/contexts/') ||
+    target.startsWith('src/hooks/')
   );
 }
 

@@ -6,7 +6,7 @@
     "files": 42,
     "directories": 25
   },
-  "maximumEntries": 67,
+  "maximumEntries": 56,
   "targetMaxEntries": 45,
   "classifications": {
     "conventional": [
@@ -24,11 +24,8 @@
     ],
     "generated": ["package-lock.json"],
     "project": [
-      "App.tsx",
       "assets",
-      "components",
       "config",
-      "contexts",
       "docker",
       "docker-compose.monitoring.yml",
       "docker-compose.prod.yml",
@@ -40,27 +37,19 @@
       "docs",
       "e2e",
       "gateway",
-      "global.d.ts",
-      "hooks",
       "index.html",
-      "index.tsx",
       "install.sh",
       "llm-egress-proxy",
       "metadata.json",
-      "providers",
       "public",
       "README.template.md",
       "server",
-      "services",
       "shared",
       "src",
       "start.sh",
       "tasks",
       "tests",
-      "themes",
-      "types",
       "uninstall.sh",
-      "utils",
       "website"
     ],
     "tooling": [

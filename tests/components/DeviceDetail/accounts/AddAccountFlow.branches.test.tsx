@@ -1,7 +1,7 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
-import { AddAccountFlow } from '../../../../components/DeviceDetail/accounts/AddAccountFlow';
+import { AddAccountFlow } from '../../../../src/components/DeviceDetail/accounts/AddAccountFlow';
 
 const parseDeviceJsonMock = vi.hoisted(() => vi.fn());
 const connectMock = vi.hoisted(() => vi.fn());
@@ -107,15 +107,15 @@ vi.mock('@keystonehq/bc-ur-registry', () => {
   return { URRegistryDecoder };
 });
 
-vi.mock('../../../../services/deviceParsers', () => ({
+vi.mock('../../../../src/services/deviceParsers', () => ({
   parseDeviceJson: parseDeviceJsonMock,
 }));
 
-vi.mock('../../../../services/hardwareWallet/environment', () => ({
+vi.mock('../../../../src/services/hardwareWallet/environment', () => ({
   isSecureContext: () => isSecureContextMock(),
 }));
 
-vi.mock('../../../../services/hardwareWallet/runtime', () => ({
+vi.mock('../../../../src/services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: connectMock,
     getAllXpubs: getAllXpubsMock,
@@ -135,16 +135,16 @@ vi.mock('../../../../src/api/devices', () => ({
   addDeviceAccount: addDeviceAccountMock,
 }));
 
-vi.mock('../../../../components/DeviceDetail/accounts/urHelpers', () => ({
+vi.mock('../../../../src/components/DeviceDetail/accounts/urHelpers', () => ({
   extractFromUrResult: extractFromUrResultMock,
   normalizeDerivationPath: normalizeDerivationPathMock,
 }));
 
-vi.mock('../../../../utils/logger', () => ({
+vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => loggerSpies,
 }));
 
-vi.mock('../../../../components/DeviceDetail/ManualAccountForm', () => ({
+vi.mock('../../../../src/components/DeviceDetail/ManualAccountForm', () => ({
   ManualAccountForm: ({ account, onChange, onSubmit }: any) => (
     <div data-testid="manual-form">
       <button
@@ -158,7 +158,7 @@ vi.mock('../../../../components/DeviceDetail/ManualAccountForm', () => ({
   ),
 }));
 
-vi.mock('../../../../components/DeviceDetail/accounts/ImportReview', () => ({
+vi.mock('../../../../src/components/DeviceDetail/accounts/ImportReview', () => ({
   ImportReview: ({ parsedAccounts, setSelectedParsedAccounts, onAddParsedAccounts }: any) => (
     <div data-testid="import-review">
       <div>Accounts: {parsedAccounts.length}</div>
@@ -168,7 +168,7 @@ vi.mock('../../../../components/DeviceDetail/accounts/ImportReview', () => ({
   ),
 }));
 
-vi.mock('../../../../components/DeviceDetail/accounts/UsbImport', () => ({
+vi.mock('../../../../src/components/DeviceDetail/accounts/UsbImport', () => ({
   UsbImport: ({ onConnect, usbProgress }: any) => (
     <div data-testid="usb-import">
       <button type="button" onClick={onConnect}>Connect Device</button>
@@ -177,7 +177,7 @@ vi.mock('../../../../components/DeviceDetail/accounts/UsbImport', () => ({
   ),
 }));
 
-vi.mock('../../../../components/DeviceDetail/accounts/FileImport', () => ({
+vi.mock('../../../../src/components/DeviceDetail/accounts/FileImport', () => ({
   FileImport: ({ onFileUpload }: any) => (
     <div data-testid="file-import">
       <button
@@ -190,7 +190,7 @@ vi.mock('../../../../components/DeviceDetail/accounts/FileImport', () => ({
   ),
 }));
 
-vi.mock('../../../../components/DeviceDetail/accounts/QrImport', () => ({
+vi.mock('../../../../src/components/DeviceDetail/accounts/QrImport', () => ({
   QrImport: ({ onQrScan, onCameraError, setQrMode, cameraError }: any) => (
     <div data-testid="qr-import">
       <button type="button" onClick={() => onQrScan([{ rawValue: 'ur:bytes/mock' }])}>Scan UR Bytes</button>

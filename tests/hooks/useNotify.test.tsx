@@ -8,9 +8,9 @@
 import { act, renderHook } from '@testing-library/react';
 import { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NotificationProvider, useNotifications } from '../../contexts/NotificationContext';
-import { AppNotificationProvider, useAppNotifications } from '../../contexts/AppNotificationContext';
-import { useNotify } from '../../hooks/useNotify';
+import { NotificationProvider, useNotifications } from '../../src/contexts/NotificationContext';
+import { AppNotificationProvider, useAppNotifications } from '../../src/contexts/AppNotificationContext';
+import { useNotify } from '../../src/hooks/useNotify';
 
 const createWrapper = () => {
   return ({ children }: { children: ReactNode }) => (

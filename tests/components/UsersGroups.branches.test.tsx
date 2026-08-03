@@ -1,7 +1,7 @@
 import { render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { UsersGroups } from '../../components/UsersGroups';
+import { UsersGroups } from '../../src/components/UsersGroups';
 import * as adminApi from '../../src/api/admin';
 
 vi.mock('../../src/api/admin', () => ({
@@ -15,13 +15,13 @@ vi.mock('../../src/api/admin', () => ({
   deleteGroup: vi.fn(),
 }));
 
-vi.mock('../../hooks/useErrorHandler', () => ({
+vi.mock('../../src/hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({
     handleError: vi.fn(),
   }),
 }));
 
-vi.mock('../../utils/logger', () => ({
+vi.mock('../../src/utils/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -30,7 +30,7 @@ vi.mock('../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../components/UsersGroups/UserPanel', () => ({
+vi.mock('../../src/components/UsersGroups/UserPanel', () => ({
   UserPanel: ({ users, onCreateUser, onEditUser, onDeleteUser }: any) => (
     <div data-testid="mock-user-panel">
       <button onClick={onCreateUser}>open-create-user</button>
@@ -40,7 +40,7 @@ vi.mock('../../components/UsersGroups/UserPanel', () => ({
   ),
 }));
 
-vi.mock('../../components/UsersGroups/GroupPanel', () => ({
+vi.mock('../../src/components/UsersGroups/GroupPanel', () => ({
   GroupPanel: ({ groups, newGroup, onNewGroupChange, onCreateGroup, onEditGroup, onDeleteGroup }: any) => (
     <div data-testid="mock-group-panel">
       <span data-testid="new-group-value">{newGroup}</span>
@@ -53,7 +53,7 @@ vi.mock('../../components/UsersGroups/GroupPanel', () => ({
   ),
 }));
 
-vi.mock('../../components/UsersGroups/CreateUserModal', () => ({
+vi.mock('../../src/components/UsersGroups/CreateUserModal', () => ({
   CreateUserModal: ({ isOpen, onCreate, onClose }: any) =>
     isOpen ? (
       <div data-testid="mock-create-user-modal">
@@ -86,7 +86,7 @@ vi.mock('../../components/UsersGroups/CreateUserModal', () => ({
     ) : null,
 }));
 
-vi.mock('../../components/UsersGroups/EditUserModal', () => ({
+vi.mock('../../src/components/UsersGroups/EditUserModal', () => ({
   EditUserModal: ({ user, onUpdate, onClose }: any) => (
     <div data-testid="mock-edit-user-modal">
       <span data-testid="editing-user-state">{user ? 'set' : 'empty'}</span>
@@ -147,7 +147,7 @@ vi.mock('../../components/UsersGroups/EditUserModal', () => ({
   ),
 }));
 
-vi.mock('../../components/UsersGroups/EditGroupModal', () => ({
+vi.mock('../../src/components/UsersGroups/EditGroupModal', () => ({
   EditGroupModal: ({ group, onUpdate, onClose }: any) => (
     <div data-testid="mock-edit-group-modal">
       <span data-testid="editing-group-state">{group ? 'set' : 'empty'}</span>

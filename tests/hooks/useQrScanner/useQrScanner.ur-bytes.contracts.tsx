@@ -8,7 +8,7 @@ import {
 import {
   extractFromUrBytesContent,
   getUrType,
-} from '../../../utils/urDeviceDecoder';
+} from '../../../src/utils/urDeviceDecoder';
 
 export function registerUrBytesFormatProcessingContracts() {
   it('should detect and process ur:bytes format', () => {

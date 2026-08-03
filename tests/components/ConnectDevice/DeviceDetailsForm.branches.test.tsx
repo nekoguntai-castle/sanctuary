@@ -1,7 +1,7 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import { describe,expect,it,vi } from 'vitest';
-import { DeviceDetailsForm } from '../../../components/ConnectDevice/DeviceDetailsForm';
-import type { DeviceDetailsFormProps } from '../../../components/ConnectDevice/types';
+import { DeviceDetailsForm } from '../../../src/components/ConnectDevice/DeviceDetailsForm';
+import type { DeviceDetailsFormProps } from '../../../src/components/ConnectDevice/types';
 
 const selectedModel = {
   id: 'model-1',
