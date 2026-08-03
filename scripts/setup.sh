@@ -616,6 +616,8 @@ generate_ssl_certificates() {
 # Secret Loading and Generation
 # ============================================
 load_or_generate_secrets() {
+    local requested_offline_version="${SANCTUARY_OFFLINE_VERSION:-}"
+
     # Check for .env.local migration (backwards compatibility)
     if [ -f "$LEGACY_LOCAL_ENV_FILE" ] && [ ! -f "$ENV_FILE" ]; then
         echo -e "${YELLOW}!${NC} Migrating secrets from .env.local to $ENV_FILE"
@@ -629,6 +631,14 @@ load_or_generate_secrets() {
         set -a
         source "$ENV_FILE"
         set +a
+    fi
+
+    # Existing runtime metadata describes the previous installation. An
+    # explicit offline invocation must replace it with the accepted bundle's
+    # identity so later restarts stay in no-build/no-pull mode.
+    if [ "$OPT_OFFLINE" = true ]; then
+        SANCTUARY_INSTALL_MODE=offline
+        SANCTUARY_OFFLINE_VERSION="$requested_offline_version"
     fi
 
     # Use existing secrets from environment, or generate new ones

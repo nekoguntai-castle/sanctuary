@@ -1281,6 +1281,41 @@ test_setup_script_supports_offline_mode() {
     fi
 }
 
+test_setup_offline_mode_overrides_existing_online_metadata() {
+    local test_root env_file
+    test_root=$(mktemp -d "${TMPDIR:-/tmp}/sanctuary-offline-metadata-test.XXXXXX")
+    env_file="$test_root/sanctuary.env"
+
+    cat > "$env_file" <<'EOF'
+JWT_SECRET=test-jwt-secret
+ENCRYPTION_KEY=test-encryption-key
+ENCRYPTION_SALT=test-encryption-salt
+GATEWAY_SECRET=test-gateway-secret
+WORKER_DIAGNOSTICS_SECRET=0000000000000000000000000000000000000000000000000000000000000000
+POSTGRES_PASSWORD=test-postgres-password
+LLM_EGRESS_PROXY_SECRET=0000000000000000000000000000000000000000000000000000000000000000
+REDIS_PASSWORD=test-redis-password
+SANCTUARY_INSTALL_MODE=online
+SANCTUARY_OFFLINE_VERSION=
+EOF
+
+    SANCTUARY_RUNTIME_DIR="$test_root" \
+    SANCTUARY_ENV_FILE="$env_file" \
+    SANCTUARY_SSL_DIR="$test_root/ssl" \
+    SANCTUARY_INSTALL_MODE=offline \
+    SANCTUARY_OFFLINE_VERSION=v0.8.58-rc.9 \
+        bash "$SETUP_SCRIPT" --offline --force --non-interactive --no-start --skip-ssl --skip-prereqs \
+        >/dev/null 2>&1
+
+    local result=0
+    grep -qx 'SANCTUARY_INSTALL_MODE=offline' "$env_file" || result=1
+    grep -qx 'SANCTUARY_OFFLINE_VERSION=v0.8.58-rc.9' "$env_file" || result=1
+    find "$test_root" -type f -delete
+    find "$test_root" -type l -delete
+    find "$test_root" -depth -type d -empty -delete
+    return "$result"
+}
+
 test_start_script_refuses_offline_rebuild() {
     if grep -q "SANCTUARY_INSTALL_MODE" "$START_SCRIPT" \
         && grep -q "SANCTUARY_ALLOW_OFFLINE_REBUILD" "$START_SCRIPT" \
@@ -2023,6 +2058,7 @@ main() {
     run_test "install script has upgrade backup guidance" test_install_script_has_upgrade_backup_guidance
     run_test "install script supports offline bundle" test_install_script_supports_offline_bundle
     run_test "setup script supports offline mode" test_setup_script_supports_offline_mode
+    run_test "setup offline mode overrides existing online metadata" test_setup_offline_mode_overrides_existing_online_metadata
     run_test "start script refuses offline rebuild" test_start_script_refuses_offline_rebuild
     run_test "install script has health check timeout" test_install_script_has_health_check_timeout
     run_test "install script passes --upgrade flag" test_install_script_passes_upgrade_flag
