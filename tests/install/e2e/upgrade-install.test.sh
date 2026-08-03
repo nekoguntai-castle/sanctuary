@@ -33,6 +33,7 @@ source "$SCRIPT_DIR/../utils/upgrade-two-factor-auth-helpers.sh"
 source "$SCRIPT_DIR/../utils/upgrade-two-factor-verification-helpers.sh"
 source "$SCRIPT_DIR/../utils/upgrade-notification-helpers.sh"
 source "$SCRIPT_DIR/../utils/upgrade-assertions.sh"
+source "$SCRIPT_DIR/../utils/upgrade-transaction-migration-helpers.sh"
 source "$SCRIPT_DIR/../utils/collect-upgrade-artifacts.sh"
 
 # ============================================
@@ -176,6 +177,8 @@ TEST_WALLET_AGENT_ID=""
 TEST_LABEL_NAME="upgrade-fixture-label"
 TEST_SETTING_KEY="upgrade.fixture.marker"
 TEST_NODE_CONFIG_ID=""
+TEST_REPAIR_TRANSACTION_ID=""
+TEST_TRIGGER_TRANSACTION_ID=""
 NOTIFICATION_TEST_TXID="upgrade-notification-${TEST_ID}"
 
 # Phase 6 cookie auth: the backend sets HttpOnly sanctuary_access +
@@ -637,6 +640,10 @@ test_create_pre_upgrade_data() {
         return 1
     fi
 
+    if ! seed_transaction_migration_fixture; then
+        return 1
+    fi
+
     log_success "Test data created (password changed to test password, 2FA enabled)"
     return 0
 }
@@ -655,11 +662,7 @@ test_capture_pre_upgrade_state() {
         ORIGINAL_ENCRYPTION_SALT="$ENCRYPTION_SALT"
         ORIGINAL_GATEWAY_SECRET="$GATEWAY_SECRET"
         ORIGINAL_POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
-        log_info "Captured JWT_SECRET: ${ORIGINAL_JWT_SECRET:0:8}..."
-        log_info "Captured ENCRYPTION_KEY: ${ORIGINAL_ENCRYPTION_KEY:0:8}..."
-        log_info "Captured ENCRYPTION_SALT: ${ORIGINAL_ENCRYPTION_SALT:0:8}..."
-        log_info "Captured GATEWAY_SECRET: ${ORIGINAL_GATEWAY_SECRET:0:8}..."
-        log_info "Captured POSTGRES_PASSWORD: ${ORIGINAL_POSTGRES_PASSWORD:0:8}..."
+        log_info "Captured required upgrade secrets"
     else
         log_error "Runtime env not found"
         return 1
@@ -1184,36 +1187,26 @@ test_verify_secrets_preserved() {
 
     if [ "$JWT_SECRET" != "$ORIGINAL_JWT_SECRET" ]; then
         log_error "JWT_SECRET changed after upgrade"
-        log_error "  Original: ${ORIGINAL_JWT_SECRET:0:8}..."
-        log_error "  Current:  ${JWT_SECRET:0:8}..."
         return 1
     fi
 
     if [ "$ENCRYPTION_KEY" != "$ORIGINAL_ENCRYPTION_KEY" ]; then
         log_error "ENCRYPTION_KEY changed after upgrade"
-        log_error "  Original: ${ORIGINAL_ENCRYPTION_KEY:0:8}..."
-        log_error "  Current:  ${ENCRYPTION_KEY:0:8}..."
         return 1
     fi
 
     if [ "$ENCRYPTION_SALT" != "$ORIGINAL_ENCRYPTION_SALT" ]; then
         log_error "ENCRYPTION_SALT changed after upgrade"
-        log_error "  Original: ${ORIGINAL_ENCRYPTION_SALT:0:8}..."
-        log_error "  Current:  ${ENCRYPTION_SALT:0:8}..."
         return 1
     fi
 
     if [ "$GATEWAY_SECRET" != "$ORIGINAL_GATEWAY_SECRET" ]; then
         log_error "GATEWAY_SECRET changed after upgrade"
-        log_error "  Original: ${ORIGINAL_GATEWAY_SECRET:0:8}..."
-        log_error "  Current:  ${GATEWAY_SECRET:0:8}..."
         return 1
     fi
 
     if [ "$POSTGRES_PASSWORD" != "$ORIGINAL_POSTGRES_PASSWORD" ]; then
         log_error "POSTGRES_PASSWORD changed after upgrade"
-        log_error "  Original: ${ORIGINAL_POSTGRES_PASSWORD:0:8}..."
-        log_error "  Current:  ${POSTGRES_PASSWORD:0:8}..."
         return 1
     fi
 
@@ -1305,6 +1298,10 @@ test_verify_data_preserved() {
 
 test_verify_representative_app_state_preserved() {
     verify_representative_app_state_preserved
+}
+
+test_verify_transaction_migrations() {
+    verify_transaction_migrations
 }
 
 # ============================================
@@ -1803,6 +1800,7 @@ main() {
     run_test "Verify Fixture Runtime Shape" test_verify_fixture_runtime_shape
     run_test "Verify Data Preserved" test_verify_data_preserved
     run_test "Verify Representative App State Preserved" test_verify_representative_app_state_preserved
+    run_test "Verify Transaction Migrations" test_verify_transaction_migrations
     run_test "Verify 2FA Preserved" test_verify_two_factor_preserved
     run_test "Verify Multiple 2FA Users Preserved" test_verify_multiple_two_factor_users_preserved
     run_test "Verify 2FA Backup Code Preserved" test_verify_two_factor_backup_code_preserved

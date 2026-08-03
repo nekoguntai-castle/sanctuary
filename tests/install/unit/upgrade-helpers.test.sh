@@ -711,7 +711,7 @@ test_install_workflow_uses_run_scoped_ssl_dirs() {
     "install workflow checkout steps should not pre-clean shared runner workspaces"
 }
 
-test_install_and_release_workflows_use_global_e2e_concurrency() {
+test_release_tag_workflows_use_distinct_concurrency_groups() {
   local install_contents
   local rc_contents
   local failures=0
@@ -719,16 +719,43 @@ test_install_and_release_workflows_use_global_e2e_concurrency() {
   install_contents="$(cat "$PROJECT_ROOT/.github/workflows/install-test.yml")"
   rc_contents="$(cat "$PROJECT_ROOT/.github/workflows/release-candidate.yml")"
 
-  assert_contains "$install_contents" "'sanctuary-runner-e2e-workflow'" \
-    "install workflow should use global non-PR E2E workflow concurrency" || failures=1
-  assert_contains "$rc_contents" "group: sanctuary-runner-e2e-workflow" \
-    "release-candidate workflow should use the same global E2E concurrency key" || failures=1
-  assert_not_contains "$install_contents" 'group: sanctuary-runner-e2e-${{ github.ref }}' \
-    "install E2E job concurrency should not be ref-scoped" || failures=1
-  assert_not_contains "$rc_contents" 'group: sanctuary-runner-e2e-${{ github.ref }}' \
-    "release-candidate E2E job concurrency should not be ref-scoped" || failures=1
+  assert_contains "$install_contents" "startsWith(github.ref, 'refs/tags/v')" \
+    "install workflow should isolate release tags from unrelated non-PR runs" || failures=1
+  assert_contains "$install_contents" "format('sanctuary-install-release-{0}', github.ref)" \
+    "install workflow should give each release tag a stable concurrency group" || failures=1
+  assert_contains "$rc_contents" 'group: sanctuary-release-candidate-${{ github.ref }}' \
+    "release-candidate workflow should use a tag-scoped group distinct from install-test" || failures=1
+  assert_not_contains "$rc_contents" "group: sanctuary-runner-e2e-workflow" \
+    "release-candidate workflow should not compete with install-test for one pending slot" || failures=1
 
   return "$failures"
+}
+
+test_upgrade_harness_covers_historical_transaction_migrations() {
+  local contents
+  local failures=0
+
+  contents="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
+
+  assert_contains "$contents" 'source "$SCRIPT_DIR/../utils/upgrade-transaction-migration-helpers.sh"' \
+    "upgrade harness should load transaction migration fixtures" || failures=1
+  assert_contains "$contents" "seed_transaction_migration_fixture" \
+    "upgrade harness should seed v0.8.57 transaction rows before migration" || failures=1
+  assert_contains "$contents" "test_verify_transaction_migrations" \
+    "upgrade harness should verify historical rows after migration" || failures=1
+  assert_contains "$contents" 'run_test "Verify Transaction Migrations" test_verify_transaction_migrations' \
+    "upgrade suite should execute transaction migration verification" || failures=1
+
+  return "$failures"
+}
+
+test_upgrade_harness_never_logs_secret_prefixes() {
+  local contents
+
+  contents="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
+
+  assert_not_contains "$contents" ':0:8}' \
+    "upgrade diagnostics must not print partial values from secret variables"
 }
 
 test_runner_lock_helper_uses_cross_uid_writable_locks() {
@@ -981,6 +1008,35 @@ test_browser_refresh_smoke_sends_csrf_header() {
     "refresh request should send the current CSRF token"
 }
 
+test_support_package_smoke_confirms_shareable_aggregate() {
+  local curl_calls="$TEST_TMP_DIR/support-curl-calls.txt"
+
+  COOKIE_JAR="$TEST_TMP_DIR/cookies.txt"
+  CSRF_TOKEN="csrf-for-support"
+
+  log_info() { :; }
+  log_error() { echo "$*" >&2; }
+  curl() {
+    printf '%s\n' "$*" >> "$curl_calls"
+    printf '{"version":"2.0.0","profile":"shareable_aggregate","generatedAt":"2026-08-02T12:30:00.000Z","serverVersion":"0.8.58","collectors":{},"meta":{"totalDurationMs":1,"succeeded":[],"failed":[]}}'
+  }
+
+  assert_support_package_generation "https://localhost:9443"
+  local result=$?
+  local calls
+  calls="$(cat "$curl_calls")"
+
+  unset -f log_info log_error curl
+
+  if [ "$result" -ne 0 ]; then
+    echo -e "${RED}ASSERTION FAILED:${NC} support package smoke should accept a valid response"
+    return 1
+  fi
+
+  assert_contains "$calls" '-d {"confirmShareableAggregate":true}' \
+    "support package request should explicitly confirm shareable aggregate disclosure"
+}
+
 test_cleanup_compose_projects_by_prefix_skips_current_project() {
   local call_log="$TEST_TMP_DIR/docker-calls.log"
   local original_path="$PATH"
@@ -1104,7 +1160,9 @@ main() {
   run_test "upgrade harness sources extracted helpers" test_upgrade_harness_sources_extracted_helpers
   run_test "upgrade harness restart fallback is opt-in" test_upgrade_harness_restart_fallback_is_opt_in
   run_test "install workflow uses run-scoped ssl dirs" test_install_workflow_uses_run_scoped_ssl_dirs
-  run_test "install and release workflows use global e2e concurrency" test_install_and_release_workflows_use_global_e2e_concurrency
+  run_test "release tag workflows use distinct concurrency groups" test_release_tag_workflows_use_distinct_concurrency_groups
+  run_test "upgrade harness covers historical transaction migrations" test_upgrade_harness_covers_historical_transaction_migrations
+  run_test "upgrade harness never logs secret prefixes" test_upgrade_harness_never_logs_secret_prefixes
   run_test "runner lock helper uses cross-UID writable locks" test_runner_lock_helper_uses_cross_uid_writable_locks
   run_test "upgrade network defaults respect overrides" test_upgrade_network_defaults_respect_overrides
   run_test "invalid fixture is rejected" test_invalid_fixture_is_rejected
@@ -1122,6 +1180,7 @@ main() {
   run_test "exit cleanup trap runs on normal exit" test_exit_cleanup_trap_runs_on_normal_exit
   run_test "exit cleanup trap preserves failure status" test_exit_cleanup_trap_preserves_failure_status
   run_test "browser refresh smoke sends csrf header" test_browser_refresh_smoke_sends_csrf_header
+  run_test "support package smoke confirms shareable aggregate" test_support_package_smoke_confirms_shareable_aggregate
 
   echo ""
   echo "Total:  $TESTS_RUN"

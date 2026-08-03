@@ -61,10 +61,11 @@ assert_support_package_generation() {
     support_response=$(curl -k -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST \
         -H "Content-Type: application/json" \
         -H "X-CSRF-Token: $CSRF_TOKEN" \
-        -d '{}' \
+        -d '{"confirmShareableAggregate":true}' \
         "$base_url/api/v1/admin/support-package")
 
-    if ! echo "$support_response" | grep -q '"version":"1.0.0"'; then
+    if ! echo "$support_response" | grep -q '"version":"2.0.0"' ||
+        ! echo "$support_response" | grep -q '"profile":"shareable_aggregate"'; then
         log_error "Support package generation failed"
         log_error "Response: ${support_response:0:400}"
         return 1

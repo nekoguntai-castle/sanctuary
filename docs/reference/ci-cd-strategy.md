@@ -323,6 +323,14 @@ Initial targets:
 
 ## Diagnostic harness for Docker-backed install jobs
 
+Release tags use distinct workflow-level concurrency groups for
+`install-test.yml` and `release-candidate.yml`, and each install release tag is
+also isolated from scheduled and `main` install runs. GitHub-style concurrency
+keeps only one pending run per group; sharing a group caused all three v0.8.58
+release-candidate validations to be replaced before their jobs started. The
+runner's capacity limit and the shared cross-workflow locks remain the owners of
+Docker serialization.
+
 The Docker-backed install jobs in `install-test.yml` and `release-candidate.yml`
 run through a diagnostic logging harness so failures that happen *before* a
 test body executes (Docker readiness, isolated workspace setup, port

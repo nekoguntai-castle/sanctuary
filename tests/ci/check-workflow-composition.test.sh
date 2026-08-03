@@ -272,14 +272,10 @@ assert_contains_in_order "$RC" \
   "SANCTUARY_CI_LOG_SINK_TOKEN"
 
 assert_contains_in_order "$RC" \
-  "release-candidate global E2E workflow concurrency" \
+  "release-candidate tag-scoped workflow concurrency" \
   "concurrency:" \
-  "group: sanctuary-runner-e2e-workflow" \
+  'group: sanctuary-release-candidate-${{ github.ref }}' \
   "cancel-in-progress: false"
-
-assert_not_contains "$RC" \
-  "release-candidate E2E concurrency must not be ref-scoped" \
-  'group: sanctuary-runner-e2e-${{ github.ref }}'
 
 assert_not_contains "$RC" \
   "release-candidate checkout must not use raw input ref" \
@@ -353,15 +349,13 @@ assert_contains_in_order "$IT" \
   "SANCTUARY_CI_LOG_SINK_TOKEN"
 
 assert_contains_in_order "$IT" \
-  "install-test global non-PR E2E workflow concurrency" \
+  "install-test release-tag workflow concurrency" \
   "concurrency:" \
   "github.event_name == 'pull_request'" \
+  "startsWith(github.ref, 'refs/tags/v')" \
+  "format('sanctuary-install-release-{0}', github.ref)" \
   "'sanctuary-runner-e2e-workflow'" \
   'cancel-in-progress: ${{ github.event_name == '\''pull_request'\'' }}'
-
-assert_not_contains "$IT" \
-  "install-test E2E concurrency must not be ref-scoped" \
-  'group: sanctuary-runner-e2e-${{ github.ref }}'
 
 assert_contains_in_order "$IT" \
   "install-test unit diagnostics" \

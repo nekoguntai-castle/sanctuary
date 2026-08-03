@@ -69,10 +69,12 @@ permissions:
   contents: read
 
 concurrency:
-  # Share one global key with non-PR install-test.yml runs so release
-  # validation cannot overlap expensive DIND-backed install/upgrade work
-  # from another workflow run on the same runner.
-  group: sanctuary-runner-e2e-workflow
+  # Keep each candidate out of install-test.yml's concurrency group. GitHub-style
+  # concurrency retains only one pending run per group, so the two workflows
+  # triggered by the same RC tag otherwise cancel one another before jobs start.
+  # The shared runner's capacity and the cross-workflow runner locks serialize
+  # Docker-backed work without coupling their pending slots.
+  group: sanctuary-release-candidate-${{ github.ref }}
   cancel-in-progress: false
 
 env:
