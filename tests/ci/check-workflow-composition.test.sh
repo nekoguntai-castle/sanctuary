@@ -135,6 +135,23 @@ assert_cache_calls_use_wrapper() {
   fi
 }
 
+assert_no_unsupported_workflow_permissions() {
+  local matches
+
+  matches="$(
+    git -C "$REPO_ROOT" grep -nE '^[[:space:]]*permissions:' -- \
+      .github/workflows || true
+  )"
+  if [ -z "$matches" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: shared workflows omit unsupported Forgejo permissions"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("unsupported permissions fields found in shared workflows: $matches")
+    echo "FAIL: shared workflows omit unsupported Forgejo permissions" >&2
+  fi
+}
+
 node24_runner_report() {
   awk '
       function finish_job() {
@@ -1366,6 +1383,7 @@ assert_jobs_use_node24_runners \
 
 assert_runner_parser_rejects_post_comment_drift
 assert_cache_calls_use_wrapper
+assert_no_unsupported_workflow_permissions
 
 for workflow_path in \
   "$REPO_ROOT"/.github/workflows/*.yml \

@@ -65,9 +65,6 @@ on:
         default: false
         type: boolean
 
-permissions:
-  contents: read
-
 concurrency:
   # Keep each candidate out of install-test.yml's concurrency group. GitHub-style
   # concurrency retains only one pending run per group, so the two workflows

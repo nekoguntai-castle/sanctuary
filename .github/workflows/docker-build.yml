@@ -90,9 +90,6 @@ on:
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:  # Allow manual trigger
 
-permissions:
-  contents: read
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -151,8 +148,6 @@ jobs:
     if: needs.detect-image-scope.outputs.frontend_image == 'true'
     runs-on: ubuntu-22.04
     needs: [detect-image-scope]
-    permissions:
-      contents: read
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-frontend
 
@@ -191,8 +186,6 @@ jobs:
       (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
     runs-on: ubuntu-22.04
     needs: [detect-image-scope, build-frontend]
-    permissions:
-      contents: read
     env:
       DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-backend
 

@@ -109,9 +109,6 @@ on:
           - notification-delivery
           - optional-profiles
 
-permissions:
-  contents: read
-
 concurrency:
   # PRs keep the branch-scoped cancel behavior because Docker-backed jobs
   # do not run there. Release tags get their own pending slot so an unrelated

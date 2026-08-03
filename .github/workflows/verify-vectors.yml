@@ -50,9 +50,6 @@ on:
       - 'scripts/ci/write-diagnostic-summary.sh'
       - '.github/workflows/verify-vectors.yml'
 
-permissions:
-  contents: read
-
 env:
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
