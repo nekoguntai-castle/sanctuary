@@ -1,0 +1,24 @@
+jobs:
+  build-frontend:
+    steps:
+      - name: Build backend
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        with:
+          push: false
+          outputs: type=cacheonly
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend,ignore-error=true
+
+  build-backend:
+    steps:
+      - name: Build frontend
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        env:
+          outputs: type=cacheonly
+        with:
+          push: false
+      - uses: example/unnamed-sibling@deadbeef
+        with:
+          outputs: type=cacheonly
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend,ignore-error=true

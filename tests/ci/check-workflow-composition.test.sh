@@ -118,6 +118,169 @@ assert_occurrence_count() {
   fi
 }
 
+assert_active_yaml_line_count() {
+  local file="$1"
+  local label="$2"
+  local needle="$3"
+  local expected="$4"
+  local actual
+
+  actual="$(
+    awk -v needle="$needle" '
+      {
+        trimmed = $0
+        sub(/^[[:space:]]*/, "", trimmed)
+        sub(/[[:space:]]+$/, "", trimmed)
+        if (trimmed == needle) {
+          count += 1
+        }
+      }
+      END { print count + 0 }
+    ' "$file"
+  )"
+
+  if [ "$actual" -eq "$expected" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: expected $expected active lines for $needle, found $actual")
+    echo "FAIL: $label" >&2
+  fi
+}
+
+extract_named_job_step() {
+  local file="$1"
+  local job_name="$2"
+  local step_name="$3"
+
+  awk -v job="$job_name" -v step="$step_name" '
+      {
+        trimmed = $0
+        sub(/^[[:space:]]*/, "", trimmed)
+        first_non_space = match($0, /[^ ]/)
+        indent = first_non_space > 0 ? first_non_space - 1 : length($0)
+      }
+      !in_job && $0 == "  " job ":" {
+        in_job = 1
+        next
+      }
+      in_job && $0 ~ /^  [[:alnum:]_-]+:$/ {
+        exit
+      }
+      in_job && !in_step && trimmed == "- name: " step {
+        in_step = 1
+        step_indent = indent
+        print
+        next
+      }
+      in_step && indent == step_indent && trimmed ~ /^- / {
+        exit
+      }
+      in_step {
+        print
+      }
+      END {
+        if (!in_job || !in_step) {
+          exit 2
+        }
+      }
+    ' "$file"
+}
+
+extract_step_with_mapping() {
+  awk '
+    {
+      trimmed = $0
+      sub(/^[[:space:]]*/, "", trimmed)
+      first_non_space = match($0, /[^ ]/)
+      indent = first_non_space > 0 ? first_non_space - 1 : length($0)
+    }
+    !in_with && trimmed == "with:" {
+      in_with = 1
+      with_indent = indent
+      next
+    }
+    in_with && indent <= with_indent {
+      exit
+    }
+    in_with {
+      print
+    }
+    END {
+      if (!in_with) {
+        exit 2
+      }
+    }
+  '
+}
+
+contains_active_yaml_line() {
+  local needle="$1"
+  awk -v needle="$needle" '
+    {
+      trimmed = $0
+      sub(/^[[:space:]]*/, "", trimmed)
+      sub(/[[:space:]]+$/, "", trimmed)
+      if (trimmed == needle) {
+        found = 1
+      }
+    }
+    END { exit found ? 0 : 1 }
+  '
+}
+
+named_job_step_has_config() {
+  local file="$1"
+  local job_name="$2"
+  local step_name="$3"
+  local action_line="$4"
+  shift 4
+  local with_lines=("$@")
+  local step
+  local with_mapping
+
+  [ -f "$file" ] || return 1
+  step="$(extract_named_job_step "$file" "$job_name" "$step_name")" || return 1
+  printf '%s\n' "$step" | contains_active_yaml_line "$action_line" || return 1
+  with_mapping="$(printf '%s\n' "$step" | extract_step_with_mapping)" || return 1
+
+  local line
+  for line in "${with_lines[@]}"; do
+    printf '%s\n' "$with_mapping" | contains_active_yaml_line "$line" || return 1
+  done
+}
+
+assert_named_job_step_config() {
+  local file="$1"
+  local label="$2"
+  shift 2
+
+  if named_job_step_has_config "$file" "$@"; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: expected active action and with configuration not found")
+    echo "FAIL: $label" >&2
+  fi
+}
+
+assert_named_job_step_config_rejected() {
+  local file="$1"
+  local label="$2"
+  shift 2
+
+  if named_job_step_has_config "$file" "$@"; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: invalid fixture unexpectedly satisfied active configuration")
+    echo "FAIL: $label" >&2
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  fi
+}
+
 assert_cache_calls_use_wrapper() {
   local matches
 
@@ -1213,6 +1376,16 @@ assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "scripts/ci/wait-for-docker.sh" \
   "Set up Docker Buildx"
 
+assert_named_job_step_config "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build frontend cache-only output" \
+  "build-frontend" \
+  "Build frontend" \
+  "uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f" \
+  "push: false" \
+  "outputs: type=cacheonly" \
+  "cache-from: type=gha,scope=frontend" \
+  "cache-to: type=gha,mode=max,scope=frontend,ignore-error=true"
+
 assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build backend endpoint resolution" \
   "build-backend:" \
@@ -1220,6 +1393,54 @@ assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/wait-for-docker.log"' \
   "scripts/ci/wait-for-docker.sh" \
   "Set up Docker Buildx"
+
+assert_named_job_step_config "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build backend cache-only output" \
+  "build-backend" \
+  "Build backend" \
+  "uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f" \
+  "push: false" \
+  "outputs: type=cacheonly" \
+  "cache-from: type=gha,scope=backend" \
+  "cache-to: type=gha,mode=max,scope=backend,ignore-error=true"
+
+assert_active_yaml_line_count "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build validation action count" \
+  "uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f" \
+  2
+
+assert_active_yaml_line_count "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build cache-only validation outputs" \
+  "outputs: type=cacheonly" \
+  2
+
+assert_not_contains "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build validation does not load images" \
+  "load: true"
+
+assert_not_contains "$DOCKER_BUILD_WORKFLOW" \
+  "docker-build validation does not push images" \
+  "push: true"
+
+assert_named_job_step_config_rejected \
+  "$REPO_ROOT/tests/ci/fixtures/docker-build-swapped-steps.yml" \
+  "docker-build step assertions reject cross-job matches" \
+  "build-frontend" \
+  "Build frontend" \
+  "uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f" \
+  "push: false" \
+  "outputs: type=cacheonly"
+
+assert_named_job_step_config_rejected \
+  "$REPO_ROOT/tests/ci/fixtures/docker-build-swapped-steps.yml" \
+  "docker-build step assertions reject non-with and sibling matches" \
+  "build-backend" \
+  "Build frontend" \
+  "uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f" \
+  "push: false" \
+  "outputs: type=cacheonly" \
+  "cache-from: type=gha,scope=frontend" \
+  "cache-to: type=gha,mode=max,scope=frontend,ignore-error=true"
 
 # --- quality workflow diagnostic coverage -----------------------------------
 QUALITY_WORKFLOW="$REPO_ROOT/.github/workflows/quality.yml"
