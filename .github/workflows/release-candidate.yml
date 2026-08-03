@@ -323,7 +323,7 @@ jobs:
       cancel-in-progress: false
     needs: [validation-info, fresh-install-test]
     continue-on-error: true  # Non-blocking - failures are warnings
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       COMPOSE_PROJECT_NAME: sanctuary-rc-health-${{ github.run_id }}
       HTTPS_PORT: '15643'
@@ -488,7 +488,7 @@ jobs:
     needs: [validation-info, fresh-install-test, container-health-test]
     if: always() && needs.fresh-install-test.result == 'success'
     continue-on-error: true  # Non-blocking - failures are warnings
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       COMPOSE_PROJECT_NAME: sanctuary-rc-auth-${{ github.run_id }}
       HTTPS_PORT: '15743'

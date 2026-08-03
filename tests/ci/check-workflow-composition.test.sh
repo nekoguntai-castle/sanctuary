@@ -296,6 +296,13 @@ assert_occurrence_count "$RC" \
   'export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET' \
   2
 
+assert_contains_in_order "$RC" \
+  "release-candidate isolated stack jobs allow a full DIND build window" \
+  "container-health-test:" \
+  "timeout-minutes: 30" \
+  "auth-flow-test:" \
+  "timeout-minutes: 30"
+
 assert_not_contains "$RC" \
   "release-candidate checkout must not use raw input ref" \
   '${{ github.event.inputs.ref || inputs.ref || '\''main'\'' }}'
