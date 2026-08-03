@@ -37,14 +37,10 @@ on:
       - 'package*.json'
       - 'server/package*.json'
       - 'gateway/package*.json'
-      - 'vite.config.ts'
-      - 'tsconfig*.json'
+      - 'config/tooling/**'
       - 'server/tsconfig*.json'
-      - 'vitest.config.ts'
-      - 'vitest.coverage-shard.config.ts'
       - 'server/vitest.config.ts'
       - 'gateway/vitest.config.ts'
-      - 'playwright.config.ts'
       - 'docker/frontend/Dockerfile'
       - 'server/Dockerfile'
       - '.github/mutation-baseline.json'
@@ -214,11 +210,12 @@ jobs:
             done
             npm run typecheck:app
             npm run typecheck:tests
+            npm run typecheck:all
             related_files=()
             if [ -n "$FRONTEND_FILES" ]; then
               read -r -a related_files <<< "$FRONTEND_FILES"
             fi
-            npx vitest related --run --passWithNoTests --pool threads --maxWorkers=2 --no-file-parallelism "${related_files[@]}"
+            npx vitest related --config config/tooling/vitest.config.ts --run --passWithNoTests --pool threads --maxWorkers=2 --no-file-parallelism "${related_files[@]}"
           '
 
       - name: Write quick frontend diagnostic summary
@@ -1646,6 +1643,7 @@ jobs:
         target:
           - app-typecheck
           - test-typecheck
+          - all-typecheck
 
     steps:
       - name: Checkout repository
@@ -1679,6 +1677,15 @@ jobs:
           scripts/ci/retry-command.sh "frontend test typecheck"
           scripts/ci/time-command.sh "frontend test typecheck"
           npm run typecheck:tests
+
+      - name: Run catch-all frontend workspace typecheck
+        if: matrix.target == 'all-typecheck'
+        run: >
+          scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/all-typecheck.log"
+          scripts/ci/with-runner-lock.sh node-toolchain
+          scripts/ci/retry-command.sh "frontend catch-all typecheck"
+          scripts/ci/time-command.sh "frontend catch-all typecheck"
+          npm run typecheck:all
 
       - name: Write frontend typecheck diagnostic summary
         if: always()

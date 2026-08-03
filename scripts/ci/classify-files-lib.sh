@@ -14,7 +14,7 @@ SANCTUARY_CI_CLASSIFY_FILES_LIB_LOADED=1
 
 is_frontend_file() {
   case "$1" in
-    index.html|src/*|shared/*|vitest.config.ts|vitest.coverage-shard.config.ts|scripts/ci/frontend-coverage-*.sh|package.json|package-lock.json|tests/*.ts|tests/*.tsx|tests/*.mts|tests/*.cts|tests/*.js|tests/*.jsx|tests/*.mjs|tests/*.cjs|tests/*.json)
+    index.html|src/*|shared/*|config/tooling/vitest*.ts|scripts/ci/frontend-coverage-*.sh|package.json|package-lock.json|tests/*.ts|tests/*.tsx|tests/*.mts|tests/*.cts|tests/*.js|tests/*.jsx|tests/*.mjs|tests/*.cjs|tests/*.json)
       return 0
       ;;
   esac
@@ -87,7 +87,7 @@ is_llm_egress_proxy_file() {
 
 is_e2e_file() {
   case "$1" in
-    e2e/*|playwright.config.ts)
+    e2e/*|config/tooling/playwright.config.ts)
       return 0
       ;;
   esac
@@ -96,7 +96,7 @@ is_e2e_file() {
 
 is_browser_smoke_file() {
   case "$1" in
-    src/App.tsx|src/main.tsx|index.html|playwright.config.ts)
+    src/App.tsx|src/main.tsx|index.html|config/tooling/playwright.config.ts)
       return 0
       ;;
     src/app/*|src/api/*|src/components/Layout/*|src/components/Login/*|src/components/DraftList/*|src/components/AuditLogs/*|src/components/Monitoring/*|src/components/WalletDetail/*)
@@ -122,7 +122,7 @@ is_browser_smoke_file() {
 
 is_render_file() {
   case "$1" in
-    src/App.tsx|src/main.tsx|index.html|package.json|package-lock.json|playwright.config.ts)
+    src/App.tsx|src/main.tsx|index.html|package.json|package-lock.json|config/tooling/playwright.config.ts)
       return 0
       ;;
     src/app/*|src/components/*|src/hooks/*|src/contexts/*|src/providers/*|src/themes/*|src/utils/*)
@@ -140,7 +140,7 @@ is_build_file() {
     package.json|package-lock.json|server/package.json|server/package-lock.json)
       return 0
       ;;
-    docker/frontend/Dockerfile|server/Dockerfile|vite.config.*|tsconfig*.json|server/tsconfig*.json)
+    docker/frontend/Dockerfile|server/Dockerfile|config/tooling/vite.config.*|config/tooling/vite.nodePolyfills.ts|config/tooling/tsconfig*.json|server/tsconfig*.json)
       return 0
       ;;
     src/App.tsx|src/main.tsx|index.html|server/src/index.ts|server/prisma/*)
@@ -185,7 +185,7 @@ is_full_scan_trigger_file() {
     package.json|package-lock.json|server/package.json|server/package-lock.json|gateway/package.json|gateway/package-lock.json|llm-egress-proxy/package.json|llm-egress-proxy/package-lock.json)
       return 0
       ;;
-    vitest.config.*|vitest.coverage-shard.config.ts|server/vitest.config.*|gateway/vitest.config.*|llm-egress-proxy/vitest.config.*|tsconfig*.json|server/tsconfig*.json|gateway/tsconfig*.json)
+    config/tooling/*|server/vitest.config.*|gateway/vitest.config.*|llm-egress-proxy/vitest.config.*|server/tsconfig*.json|gateway/tsconfig*.json)
       return 0
       ;;
     .github/workflows/*.yml|.github/workflows/*.yaml|.github/actions/*/action.yml)

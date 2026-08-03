@@ -1,4 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const PLAYWRIGHT_PORT = Number(process.env.PLAYWRIGHT_PORT ?? 5173);
 const DEFAULT_BASE_URL = `http://localhost:${PLAYWRIGHT_PORT}`;
@@ -12,16 +16,17 @@ const BASE_URL = process.env.BASE_URL || DEFAULT_BASE_URL;
  * Run headed: npm run test:e2e:headed
  */
 export default defineConfig({
-  testDir: './e2e',
+  testDir: path.join(repoRoot, 'e2e'),
+  outputDir: path.join(repoRoot, 'test-results'),
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: [
     ['line'],
-    ['html', { outputFolder: 'playwright-report' }],
-    ['junit', { outputFile: 'playwright-results.xml' }],
-    ['./scripts/ci/playwright-timing-reporter.cjs'],
+    ['html', { outputFolder: path.join(repoRoot, 'playwright-report') }],
+    ['junit', { outputFile: path.join(repoRoot, 'playwright-results.xml') }],
+    [path.join(repoRoot, 'scripts/ci/playwright-timing-reporter.cjs')],
   ],
 
   use: {
@@ -65,5 +70,6 @@ export default defineConfig({
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
+    cwd: repoRoot,
   },
 });

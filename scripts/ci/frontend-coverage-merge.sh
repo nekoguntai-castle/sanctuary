@@ -60,7 +60,10 @@ main() {
   done
 
   rm -rf coverage
-  "$vitest_bin" run --coverage --mergeReports "$MERGE_REPORTS_DIR"
+  "$vitest_bin" run \
+    --config config/tooling/vitest.config.ts \
+    --coverage \
+    --mergeReports "$MERGE_REPORTS_DIR"
 
   if [ ! -f coverage/coverage-summary.json ]; then
     fail 'expected merged frontend coverage summary at coverage/coverage-summary.json'

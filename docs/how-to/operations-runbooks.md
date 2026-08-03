@@ -370,9 +370,9 @@ Verification:
 
 ```bash
 cd server
-npx vitest run tests/unit/api/agent-wallet-funding-smoke.test.ts
-npx vitest run tests/unit/services/agentFundingPolicy.test.ts tests/unit/services/agentFundingDraftValidation.test.ts
-npx vitest run tests/unit/api/agent-routes.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/api/mobile-agent-drafts-routes.test.ts
+npm run test:run -- tests/unit/api/agent-wallet-funding-smoke.test.ts
+npm run test:run -- tests/unit/services/agentFundingPolicy.test.ts tests/unit/services/agentFundingDraftValidation.test.ts
+npm run test:run -- tests/unit/api/agent-routes.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/api/mobile-agent-drafts-routes.test.ts
 ```
 
 Backup and restore checks:

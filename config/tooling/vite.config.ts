@@ -5,9 +5,11 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import { nodePolyfillsWithoutDeprecatedEsbuild } from './vite.nodePolyfills';
 
 const ANALYZE = process.env.ANALYZE === '1';
+const repoRoot = path.resolve(__dirname, '../..');
 
 export default defineConfig(() => {
     return {
+      root: repoRoot,
       server: {
         port: 3000,
         host: '0.0.0.0',
@@ -49,10 +51,10 @@ export default defineConfig(() => {
       ],
       resolve: {
         alias: {
-          '@': path.resolve(__dirname, './src'),
+          '@': path.join(repoRoot, 'src'),
           // Frontend prod build: alias the workspace package at SOURCE so
           // tree-shaking + sourcemaps stay aligned with shared/**/*.ts.
-          '@sanctuary/shared': path.resolve(__dirname, './shared'),
+          '@sanctuary/shared': path.join(repoRoot, 'shared'),
         }
       },
       optimizeDeps: {

@@ -104,6 +104,18 @@ classify_full_scan_trigger_file() {
   if is_build_file "$file"; then
     build_changed=true
   fi
+
+  if is_e2e_file "$file"; then
+    e2e_changed=true
+  fi
+
+  if is_browser_smoke_file "$file"; then
+    browser_smoke_changed=true
+  fi
+
+  if is_render_file "$file"; then
+    render_changed=true
+  fi
 }
 
 if [ "$event_name" = "schedule" ] || [ "$event_name" = "workflow_dispatch" ]; then

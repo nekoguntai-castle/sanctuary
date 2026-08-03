@@ -3,7 +3,10 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { nodePolyfillsWithoutDeprecatedEsbuild } from './vite.nodePolyfills';
 
+const repoRoot = path.resolve(__dirname, '../..');
+
 export default defineConfig({
+  root: repoRoot,
   plugins: [
     react(),
     nodePolyfillsWithoutDeprecatedEsbuild({
@@ -16,11 +19,11 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.join(repoRoot, 'src'),
       // Frontend: alias the workspace package at SOURCE (not dist) so vitest
       // instruments shared/**/*.ts files for coverage. Server/gateway aliases
       // point at dist for runtime parity; frontend prioritizes coverage.
-      '@sanctuary/shared': path.resolve(__dirname, './shared'),
+      '@sanctuary/shared': path.join(repoRoot, 'shared'),
     },
   },
   test: {

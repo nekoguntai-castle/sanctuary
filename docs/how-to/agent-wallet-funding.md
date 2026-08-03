@@ -128,10 +128,10 @@ Run these targeted checks when changing the flow:
 
 ```bash
 cd server
-npx vitest run tests/unit/api/agent-wallet-funding-smoke.test.ts
-npx vitest run tests/unit/api/agent-routes.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/api/mobile-agent-drafts-routes.test.ts
-npx vitest run tests/unit/services/agentFundingDraftValidation.test.ts tests/unit/services/agentFundingPolicy.test.ts tests/unit/services/mobileAgentDraftService.test.ts
-npx vitest run tests/unit/services/backupService.test.ts
+npm run test:run -- tests/unit/api/agent-wallet-funding-smoke.test.ts
+npm run test:run -- tests/unit/api/agent-routes.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/api/mobile-agent-drafts-routes.test.ts
+npm run test:run -- tests/unit/services/agentFundingDraftValidation.test.ts tests/unit/services/agentFundingPolicy.test.ts tests/unit/services/mobileAgentDraftService.test.ts
+npm run test:run -- tests/unit/services/backupService.test.ts
 npm run build
 ```
 

@@ -5,7 +5,7 @@ name: Code Quality
 # - audit:    high/critical npm advisory gate across every package lockfile
 # - deprecations: exact, expiring inventory for npm's lockfile-backed warnings
 # - root layout: exhaustive tracked-root classification and non-increasing ceiling
-# - gitleaks: secret scanning (layered over .gitleaks.toml allowlist)
+# - gitleaks: secret scanning (layered over config/tooling/gitleaks.toml allowlist)
 # - semgrep:  Forgejo-compatible SAST gate for new Semgrep ERROR findings
 # - actionlint: workflow syntax/expression validation with Forgejo action URL allowlist
 # - lizard:   cyclomatic complexity (McCabe, NIST SP 500-235 thresholds)
@@ -356,13 +356,15 @@ jobs:
           ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/gitleaks.log" bash -euo pipefail <<'QUALITY_GITLEAKS'
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             /tmp/gitleaks git . \
-              --config .gitleaks.toml \
+              --config config/tooling/gitleaks.toml \
+              --gitleaks-ignore-path config/tooling/gitleaksignore \
               --redact \
               --no-banner \
               --log-opts "--no-merges --first-parent ${BASE_SHA}^..${HEAD_SHA}"
           else
             /tmp/gitleaks git . \
-              --config .gitleaks.toml \
+              --config config/tooling/gitleaks.toml \
+              --gitleaks-ignore-path config/tooling/gitleaksignore \
               --redact \
               --no-banner \
               --log-opts -1
@@ -878,7 +880,7 @@ jobs:
         uses: ./.github/actions/setup-node-toolchain
 
       - name: Run jscpd
-        # Uses .jscpd.json at the repo root. Config owns threshold and
+        # Uses config/tooling/jscpd.json. Config owns threshold and
         # exclusions. Installing via npx keeps the repo devDependencies
         # lean; pin to a known-good major version to avoid drift.
         env:

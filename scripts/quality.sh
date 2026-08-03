@@ -254,8 +254,12 @@ run_gitleaks() {
   ensure_gitleaks_bin
 
   "$GITLEAKS_BIN_RESOLVED" version
-  "$GITLEAKS_BIN_RESOLVED" detect --source . --no-git --redact --config .gitleaks.toml
-  "$GITLEAKS_BIN_RESOLVED" git . --config .gitleaks.toml --redact --no-banner --log-opts "$GITLEAKS_LOG_OPTS"
+  "$GITLEAKS_BIN_RESOLVED" detect --source . --no-git --redact \
+    --config config/tooling/gitleaks.toml \
+    --gitleaks-ignore-path config/tooling/gitleaksignore
+  "$GITLEAKS_BIN_RESOLVED" git . --redact --no-banner --log-opts "$GITLEAKS_LOG_OPTS" \
+    --config config/tooling/gitleaks.toml \
+    --gitleaks-ignore-path config/tooling/gitleaksignore
   export GITLEAKS_BIN="$GITLEAKS_BIN_RESOLVED"
   bash scripts/gitleaks-tracked-tree.sh
 }

@@ -25,7 +25,7 @@ function config(overrides = {}) {
     schemaVersion: 1,
     baseline: { total: 67, files: 42, directories: 25 },
     maximumEntries: 67,
-    targetMaxEntries: 45,
+    targetMaxEntries: 35,
     classifications: {
       conventional: ["README.md"],
       generated: [],
@@ -134,14 +134,14 @@ test("rejects malformed schemas, counts, categories, and paths", () => {
   );
   assert.throws(
     () => parseConfig(config({ targetMaxEntries: 66 })),
-    /targetMaxEntries must remain 45/,
+    /targetMaxEntries must remain 35/,
   );
   assert.throws(
     () => parseConfig(config({ maximumEntries: 68 })),
     /cannot exceed/,
   );
   assert.throws(
-    () => parseConfig(config({ maximumEntries: 44 })),
+    () => parseConfig(config({ maximumEntries: 34 })),
     /cannot be below/,
   );
   const missingCategory = config();
@@ -171,13 +171,13 @@ test("JSON Schema pins the baseline and target while bounding the migration ceil
     description:
       "Current non-increasing ceiling; lower this after each atomic path migration.",
     type: "integer",
-    minimum: 45,
+    minimum: 35,
     maximum: 67,
   });
   assert.deepEqual(schema.properties.targetMaxEntries, {
     description:
       "Bounded final target retained independently from the current migration ceiling.",
-    const: 45,
+    const: 35,
   });
 });
 
@@ -228,7 +228,7 @@ test("real Git inventory collapses nested paths and ignores untracked files", ()
 
 test("the real repository classification is complete", () => {
   const result = runCheck();
-  assert.deepEqual(result.counts, { total: 50, files: 33, directories: 17 });
+  assert.deepEqual(result.counts, { total: 35, files: 18, directories: 17 });
   assert.deepEqual(result.errors, []);
 });
 

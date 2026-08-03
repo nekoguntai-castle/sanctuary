@@ -116,7 +116,7 @@ Operational note: scheduled `Test Suite` runs share the same `main` concurrency 
 
 Run focused commands before pushing:
 
-- Frontend/UI: `npm run typecheck:app`, `npm run typecheck:tests`, and focused `npx vitest run ...`.
+- Frontend/UI: `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:all`, and focused `npm run test:run -- ...`.
 - Backend: `cd server && npm run typecheck:tests` and focused `npx vitest run ...`.
 - Gateway: `cd gateway && npm run test:run` or focused gateway tests.
 - Docker/install: relevant `tests/install/*` scripts when practical.
@@ -126,7 +126,7 @@ so Forgejo Actions is a protection layer, not the first place basic package
 coverage/build failures are discovered:
 
 - Gateway changes: `cd gateway && npm run test:coverage && npm run build`.
-- LLM egress proxy changes: `npm --prefix llm-egress-proxy run build` plus `npx vitest run tests/llm-egress-proxy`.
+- LLM egress proxy changes: `npm --prefix llm-egress-proxy run build` plus `npm run test:run -- tests/llm-egress-proxy`.
 - Server security, Bitcoin, auth, access-control, or shared-service changes: focused tests, `npm run typecheck:server:tests`, and the broader changed-server test gate when paths are critical.
 - Frontend changes: strict app/test typechecks plus the relevant coverage command for the changed surface.
 

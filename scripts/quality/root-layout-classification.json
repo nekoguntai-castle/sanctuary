@@ -6,8 +6,8 @@
     "files": 42,
     "directories": 25
   },
-  "maximumEntries": 50,
-  "targetMaxEntries": 45,
+  "maximumEntries": 35,
+  "targetMaxEntries": 35,
   "classifications": {
     "conventional": [
       ".dockerignore",
@@ -47,23 +47,8 @@
       "website"
     ],
     "tooling": [
-      ".dependency-cruiser.cjs",
-      ".gitleaks.toml",
-      ".gitleaksignore",
-      ".jscpd.json",
-      "eslint.config.js",
-      "playwright.config.ts",
       "scripts",
-      "stryker.config.mjs",
-      "tools",
-      "tsconfig.app.json",
-      "tsconfig.json",
-      "tsconfig.scripts.json",
-      "tsconfig.tests.json",
-      "vite.config.ts",
-      "vite.nodePolyfills.ts",
-      "vitest.config.ts",
-      "vitest.coverage-shard.config.ts"
+      "tools"
     ]
   }
 }

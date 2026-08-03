@@ -105,7 +105,7 @@ sudo install -m 0640 -o 1001 -g 1001 /etc/letsencrypt/live/yourdomain/privkey.pe
 After migration, the full working-tree secret scan should be clean:
 
 ```bash
-gitleaks detect --source . --no-git --redact --config .gitleaks.toml
+gitleaks detect --source . --no-git --redact --config config/tooling/gitleaks.toml --gitleaks-ignore-path config/tooling/gitleaksignore
 ```
 
 Tracked-tree and latest-commit scans should remain clean as separate checks.

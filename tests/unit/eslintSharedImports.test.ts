@@ -10,8 +10,7 @@
 import { describe, expect, it } from 'vitest';
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — eslint.config.js is plain JS without types
-import config from '../../eslint.config.js';
+import config from '../../config/tooling/eslint.config.js';
 
 describe('Phase F1c: ESLint shared/ import patterns', () => {
   it('production source block does not over-match the workspace specifier', () => {

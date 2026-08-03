@@ -5,7 +5,7 @@
 # specifier nor via relative paths. This script greps llm-egress-proxy's source
 # tree for any such reference and exits non-zero if found.
 #
-# The ESLint rule in eslint.config.js (Phase F2) catches this at lint
+# The ESLint rule in config/tooling/eslint.config.js (Phase F2) catches this at lint
 # time; this script is a belt-and-suspenders gate that fires even when
 # eslint is not available (CI lanes that skip the lint job, fast smoke
 # checks, etc.).

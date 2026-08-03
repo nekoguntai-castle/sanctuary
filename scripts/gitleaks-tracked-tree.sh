@@ -22,6 +22,7 @@ done < <(git ls-files -z)
 "$GITLEAKS_BIN" detect \
   --no-git \
   --source "$SCAN_DIR" \
-  --config "$ROOT/.gitleaks.toml" \
+  --config "$ROOT/config/tooling/gitleaks.toml" \
+  --gitleaks-ignore-path "$ROOT/config/tooling/gitleaksignore" \
   --redact \
   --no-banner

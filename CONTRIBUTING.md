@@ -33,7 +33,7 @@ Run the full local validation. Do not rely on CI to catch failures.
 cd server && npx tsc --noEmit && npx vitest run
 
 # Frontend
-cd .. && npx tsc --noEmit && npx vitest run
+cd .. && npm run typecheck:app && npm run typecheck:tests && npm run typecheck:all && npm run test:run
 
 # LLM egress proxy
 npm --prefix llm-egress-proxy run build
@@ -44,7 +44,7 @@ When targeting coverage thresholds, run coverage locally:
 
 ```bash
 cd server && npx vitest run --coverage  # backend: 99% threshold
-npx vitest run --coverage               # frontend: 100% threshold
+npm run test:coverage                   # frontend: 100% threshold
 npm --prefix llm-egress-proxy run test:coverage # LLM egress proxy: package-local baseline gate
 ```
 
@@ -66,7 +66,7 @@ The recording lands in `tmp/appmap/` (gitignored). Open the file in the AppMap V
 Before committing multi-file changes, verify:
 
 - [ ] Correct API calls and field names
-- [ ] No TypeScript errors (`npx tsc --noEmit` in affected packages)
+- [ ] No TypeScript errors (`npm run typecheck:app`, `npm run typecheck:tests`, and `npm run typecheck:all` for the frontend workspace; package-local typechecks elsewhere)
 - [ ] Test expectations match the actual behavior
 - [ ] No CI proof artifacts (phase2-\*/phase3-\* files) in `docs/plans/`
 

@@ -100,7 +100,7 @@ is_frontend_image_file() {
     index.html|src/*|public/*)
       return 0
       ;;
-    docker/frontend/Dockerfile|metadata.json|tsconfig*.json|vite*.ts)
+    docker/frontend/Dockerfile|metadata.json|config/tooling/tsconfig*.json|config/tooling/vite*.ts)
       return 0
       ;;
     docker/nginx/nginx.conf|docker/nginx/default.conf.template|docker/nginx/default-ssl.conf.template|docker/nginx/docker-entrypoint.sh)

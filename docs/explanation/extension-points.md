@@ -28,7 +28,7 @@ Guardrails:
 - Put gated route requirements in `requiredCapabilities` and capability availability mapping in `src/hooks/useAppCapabilities.ts`.
 - Keep sidebar filtering generic through `src/app/capabilities.ts` instead of adding feature-specific checks to `src/components/Layout/SidebarContent.tsx`.
 - If routes need authorization later, add explicit access metadata to the manifest instead of scattering checks in `src/App.tsx`.
-- Run `npx vitest run tests/src/app/appRoutes.test.ts tests/src/app/capabilities.test.ts tests/components/Layout/SidebarContent.branches.test.tsx tests/hooks/useAppCapabilities.test.ts`.
+- Run `npm run test:run -- tests/src/app/appRoutes.test.ts tests/src/app/capabilities.test.ts tests/components/Layout/SidebarContent.branches.test.tsx tests/hooks/useAppCapabilities.test.ts`.
 
 ## Wallet Detail Tabs
 
@@ -54,7 +54,7 @@ Guardrails:
 - Keep tab IDs, labels, role visibility, default tab, and badge metadata in the registry.
 - `WalletDetail.tsx` may keep the content switch for now. Only extend the registry to render tab content when there is a real optional-tab use case.
 - Validate router-provided tab state through the registry and fall back when a requested tab is hidden.
-- Run `npx vitest run tests/components/WalletDetail/tabDefinitions.test.ts tests/components/WalletDetail/TabBar.test.tsx tests/components/WalletDetail.test.tsx tests/components/WalletDetail.wrapper.test.tsx`.
+- Run `npm run test:run -- tests/components/WalletDetail/tabDefinitions.test.ts tests/components/WalletDetail/TabBar.test.tsx tests/components/WalletDetail.test.tsx tests/components/WalletDetail.wrapper.test.tsx`.
 
 ## Backgrounds And Themes
 
@@ -93,7 +93,7 @@ Guardrails:
 - `src/components/animatedPatterns.ts` is a compatibility re-export, not a second registry.
 - Settings category filtering should use the visible background set, not a global-only map.
 - Persisted preferences should remain tolerant of unknown strings and fall back safely.
-- Run `npx vitest run tests/components/AnimatedBackground.test.tsx tests/components/AnimatedBackground.lazyLoading.test.tsx tests/themes/backgroundCategories.test.ts tests/themes/index.test.ts tests/themes/registry.test.ts tests/components/ThemeSection.test.tsx tests/components/Settings/sections/ThemeSection/AppearanceTab.branches.test.tsx tests/components/Settings/sections/ThemeSection/panels/BackgroundsPanel.branches.test.tsx`.
+- Run `npm run test:run -- tests/components/AnimatedBackground.test.tsx tests/components/AnimatedBackground.lazyLoading.test.tsx tests/themes/backgroundCategories.test.ts tests/themes/index.test.ts tests/themes/registry.test.ts tests/components/ThemeSection.test.tsx tests/components/Settings/sections/ThemeSection/AppearanceTab.branches.test.tsx tests/components/Settings/sections/ThemeSection/panels/BackgroundsPanel.branches.test.tsx`.
 
 Open design item:
 

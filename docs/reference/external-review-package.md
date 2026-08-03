@@ -80,7 +80,7 @@ rather than proving full hardware-in-loop confidence.
 Docs and site checks:
 
 ```bash
-npx vitest run tests/docs/readme-links.test.ts tests/docs/remarkMermaidClickRewrite.test.ts
+npm run test:run -- tests/docs/readme-links.test.ts tests/docs/remarkMermaidClickRewrite.test.ts
 npm run docs:build
 git diff --check
 ```

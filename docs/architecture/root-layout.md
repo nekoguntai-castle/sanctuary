@@ -1,7 +1,7 @@
 # Repository root layout
 
 Sanctuary's tracked root baseline is **67 entries: 42 files and 25 directories**.
-The original **at most 45 entries** target is an interim checkpoint. Final
+The original **at most 45 entries** target was an interim checkpoint. Final
 convergence requires **at most 10 loose files and 12 directories**, measured
 separately. These targets are not standalone deletion quotas: every tracked root
 entry must also be explicitly classified in
@@ -11,7 +11,7 @@ generated artifact, project-owned entry, or tool-owned configuration.
 The quality gate fails for an unclassified addition, a stale or duplicate
 classification, or growth beyond the checked-in `maximumEntries` ceiling. The
 ceiling starts at 67 and must be lowered after each atomic path migration. The
-current schema still records 45 as the interim total-entry target; the final
+current schema records the achieved 35-entry ceiling; the final
 contract will replace that checkpoint with separate file and directory caps. CI
 pins the immutable baseline and current migration ceiling. Reviewers own the
 monotonic-ceiling comparison because each intentional migration changes the
@@ -22,6 +22,9 @@ the frontend image definition to `docker/frontend/Dockerfile` lowered it to 55.
 Consolidating optional and test Compose overlays under `docker/compose/` lowered
 the ceiling to 50 while retaining repository-root path resolution through
 explicit `--project-directory` arguments.
+Moving the repository-wide tool configuration into `config/tooling/` lowered
+the ceiling to 35 (18 files and 17 directories); every tool is invoked with an
+explicit config path rather than relying on root-directory discovery.
 `src/` is now the sole frontend source root, and shared ambient declarations
 live in `shared/types/ambient-modules.d.ts`. The root
 `config/popular-models.json` path remains an external compatibility contract

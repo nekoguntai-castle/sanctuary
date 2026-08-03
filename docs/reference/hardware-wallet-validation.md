@@ -39,7 +39,7 @@ Run these before connecting hardware:
 ```bash
 npm --prefix scripts/verify-addresses run verify
 npm --prefix scripts/verify-psbt run verify
-npx vitest run tests/services/hardwareWallet.trezorAdapter.test.ts tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.jadeAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts
+npm run test:run -- tests/services/hardwareWallet.trezorAdapter.test.ts tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.jadeAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts
 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts
 npm run typecheck:app
 npm run typecheck:tests
@@ -98,7 +98,7 @@ multisig PSBT signing requests before constructing wallet-policy or
 `btcSignSimple` payloads. The focused evidence is:
 
 ```bash
-npx vitest run tests/services/hardwareWallet.signingSupport.test.ts tests/hooks/useUsbSigning.test.tsx tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts
+npm run test:run -- tests/services/hardwareWallet.signingSupport.test.ts tests/hooks/useUsbSigning.test.tsx tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts
 ```
 
 ## Script Matrix

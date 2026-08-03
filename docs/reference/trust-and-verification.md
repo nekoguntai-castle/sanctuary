@@ -50,9 +50,9 @@ Run the smallest command set that matches the claim being reviewed.
 | Descriptor/xpub import safety | `npm --prefix server run test -- --run tests/unit/services/bitcoin/descriptorParser.test.ts` |
 | Safety catch guard | `npm run check:safety-catch-guards` |
 | Hardware fixture replay | `REQUIRE_HARDWARE_SIGNED_FIXTURES=1 npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts` |
-| Hardware unsupported-row product blocks | `npx vitest run tests/services/hardwareWallet.signingSupport.test.ts tests/hooks/useUsbSigning.test.tsx tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts` |
+| Hardware unsupported-row product blocks | `npm run test:run -- tests/services/hardwareWallet.signingSupport.test.ts tests/hooks/useUsbSigning.test.tsx tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts` |
 | Address vectors | `npm --prefix scripts/verify-addresses run verify` |
-| Docs links and Mermaid rewrite tests | `npx vitest run tests/docs/readme-links.test.ts tests/docs/remarkMermaidClickRewrite.test.ts` |
+| Docs links and Mermaid rewrite tests | `npm run test:run -- tests/docs/readme-links.test.ts tests/docs/remarkMermaidClickRewrite.test.ts` |
 
 The hardware fixture replay command is expected to remain a pending full gate
 until physical artifacts are captured or the unsupported rows are product-blocked

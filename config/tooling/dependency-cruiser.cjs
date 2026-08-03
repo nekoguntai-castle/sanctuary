@@ -28,6 +28,6 @@ module.exports = {
       ],
     },
     includeOnly: '^(src/|shared/)',
-    tsConfig: { fileName: 'tsconfig.app.json' },
+    tsConfig: { fileName: 'config/tooling/tsconfig.app.json' },
   },
 };

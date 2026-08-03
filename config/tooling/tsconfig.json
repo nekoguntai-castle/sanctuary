@@ -25,17 +25,17 @@
     "allowJs": true,
     "jsx": "react-jsx",
     "paths": {
-      "@/*": ["./src/*"],
-      "@sanctuary/shared/*": ["./shared/*"]
+      "@/*": ["../../src/*"],
+      "@sanctuary/shared/*": ["../../shared/*"]
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
   "exclude": [
-    "node_modules",
-    "server",
-    "gateway",
-    "llm-egress-proxy",
-    "scripts/verify-addresses"
+    "../../node_modules",
+    "../../server",
+    "../../gateway",
+    "../../llm-egress-proxy",
+    "../../scripts/verify-addresses"
   ]
 }

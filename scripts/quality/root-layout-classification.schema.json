@@ -29,12 +29,12 @@
     "maximumEntries": {
       "description": "Current non-increasing ceiling; lower this after each atomic path migration.",
       "type": "integer",
-      "minimum": 45,
+      "minimum": 35,
       "maximum": 67
     },
     "targetMaxEntries": {
       "description": "Bounded final target retained independently from the current migration ceiling.",
-      "const": 45
+      "const": 35
     },
     "classifications": {
       "type": "object",

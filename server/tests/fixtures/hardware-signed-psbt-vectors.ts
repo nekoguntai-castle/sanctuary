@@ -143,7 +143,7 @@ export const MULTISIG_HARDWARE_SIGNED_NEGATIVE_CONTROLS: HardwareSignedNegativeC
 export const REQUIRED_HARDWARE_SIGNED_SOFTWARE_GATES = [
   'npm --prefix scripts/verify-addresses run verify',
   'npm --prefix scripts/verify-psbt run verify',
-  'npx vitest run tests/services/hardwareWallet.trezorAdapter.test.ts tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.jadeAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts',
+  'npm run test:run -- tests/services/hardwareWallet.trezorAdapter.test.ts tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.jadeAdapter.test.ts tests/services/hardwareWallet.bitboxAdapter.test.ts',
   'npm --prefix server run test -- --run tests/unit/services/bitcoin/psbt.hardware-signed-vectors.test.ts',
   'npm run typecheck:app',
   'npm run typecheck:tests',

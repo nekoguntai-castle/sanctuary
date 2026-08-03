@@ -12,7 +12,7 @@ export default {
   reporters: ['html', 'clear-text', 'progress'],
   testRunner: 'vitest',
   vitest: {
-    configFile: 'vitest.config.ts',
+    configFile: 'config/tooling/vitest.config.ts',
   },
   coverageAnalysis: 'perTest',
 

@@ -273,15 +273,16 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "false"
 
   base_sha="$head_sha"
-  printf 'export default {};\n' > "$repo_dir/vitest.coverage-shard.config.ts"
-  git -C "$repo_dir" add vitest.coverage-shard.config.ts
+  mkdir -p "$repo_dir/config/tooling"
+  printf 'export default {};\n' > "$repo_dir/config/tooling/vitest.coverage-shard.config.ts"
+  git -C "$repo_dir" add config/tooling/vitest.coverage-shard.config.ts
   git -C "$repo_dir" commit -qm "frontend coverage shard config"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_exact_output "$output_file" "full_scan" "true"
   assert_exact_output "$output_file" "frontend_changed" "true"
-  assert_contains_output "$output_file" "frontend_files" "vitest.coverage-shard.config.ts"
+  assert_contains_output "$output_file" "frontend_files" "config/tooling/vitest.coverage-shard.config.ts"
   assert_exact_output "$output_file" "backend_changed" "false"
   assert_exact_output "$output_file" "backend_integration_changed" "false"
   assert_exact_output "$output_file" "gateway_changed" "false"
@@ -400,8 +401,9 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "false"
 
   base_sha="$head_sha"
-  printf 'export default {};\n' > "$repo_dir/vite.config.ts"
-  git -C "$repo_dir" add vite.config.ts
+  mkdir -p "$repo_dir/config/tooling"
+  printf 'export default {};\n' > "$repo_dir/config/tooling/vite.config.ts"
+  git -C "$repo_dir" add config/tooling/vite.config.ts
   git -C "$repo_dir" commit -qm "build config"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
@@ -427,8 +429,9 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "false"
 
   base_sha="$head_sha"
-  printf 'export default {};\n' > "$repo_dir/playwright.config.ts"
-  git -C "$repo_dir" add playwright.config.ts
+  mkdir -p "$repo_dir/config/tooling"
+  printf 'export default {};\n' > "$repo_dir/config/tooling/playwright.config.ts"
+  git -C "$repo_dir" add config/tooling/playwright.config.ts
   git -C "$repo_dir" commit -qm "playwright config"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 

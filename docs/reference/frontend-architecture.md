@@ -62,15 +62,15 @@ graph TD
 
 ## Build System
 
-**Vite** (`vite.config.ts`) builds the SPA with:
+**Vite** (`config/tooling/vite.config.ts`) builds the SPA with:
 
 - `@vitejs/plugin-react` — JSX transform
-- `vite-plugin-node-polyfills` (custom variant in `vite.nodePolyfills.ts`) — polyfills `process`, `stream`, `util`, and `Buffer` for hardware-wallet SDKs that assume a Node environment
+- `vite-plugin-node-polyfills` (custom variant in `config/tooling/vite.nodePolyfills.ts`) — polyfills `process`, `stream`, `util`, and `Buffer` for hardware-wallet SDKs that assume a Node environment
 - Path alias `@` → monorepo root, `@shared` → `shared/`
-- Conservative manual chunk splitting: only `vendor-react` (React + ReactDOM + react-router-dom) and `vendor-query` (@tanstack/react-query) are split. `lucide-react`, `recharts`, and hardware-wallet SDKs (`@ngraveio/bc-ur`, `@keystonehq/*`) are intentionally left in the main bundle due to barrel-export, circular-dependency, and WASM initialization constraints documented in `vite.config.ts`.
+- Conservative manual chunk splitting: only `vendor-react` (React + ReactDOM + react-router-dom) and `vendor-query` (@tanstack/react-query) are split. `lucide-react`, `recharts`, and hardware-wallet SDKs (`@ngraveio/bc-ur`, `@keystonehq/*`) are intentionally left in the main bundle due to barrel-export, circular-dependency, and WASM initialization constraints documented in `config/tooling/vite.config.ts`.
 - `chunkSizeWarningLimit: 5500` — suppressed; splitting was attempted and reverted (commit `0ff0bc0`)
 
-**TypeScript** — project references via `tsconfig.app.json`, `tsconfig.tests.json`, `tsconfig.scripts.json`.
+**TypeScript** — explicit projects live under `config/tooling/`: strict app, test, and script configs plus `tsconfig.all.json`, which preserves catch-all coverage for E2E and tool configuration files without relying on root discovery.
 
 **Tailwind CSS** — configured inline in `index.html` via the CDN script tag; palette tokens map to CSS custom properties (see Theme System below).
 

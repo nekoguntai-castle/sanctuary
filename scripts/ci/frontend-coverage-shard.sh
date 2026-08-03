@@ -52,7 +52,7 @@ run_vitest_shard_once() {
     --maxWorkers=1 \
     --no-file-parallelism \
     --coverage \
-    --config vitest.coverage-shard.config.ts \
+    --config config/tooling/vitest.coverage-shard.config.ts \
     --shard "${shard_index}/${shard_total}"
 }
 

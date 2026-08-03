@@ -14,7 +14,7 @@ const IMMUTABLE_BASELINE = Object.freeze({
   files: 42,
   directories: 25,
 });
-const BOUNDED_TARGET = 45;
+const BOUNDED_TARGET = 35;
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);

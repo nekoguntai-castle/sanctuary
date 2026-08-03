@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "../../shared/types/ambient-modules.d.ts",
+    "../../scripts/**/*.ts"
+  ],
+  "exclude": [
+    "../../node_modules",
+    "../../server",
+    "../../gateway",
+    "../../llm-egress-proxy",
+    "../../tests",
+    "../../e2e",
+    "../../scripts/verify-addresses"
+  ]
+}

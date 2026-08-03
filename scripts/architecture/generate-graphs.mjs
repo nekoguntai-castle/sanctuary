@@ -6,8 +6,8 @@
  *   — markdown wrapper containing the Mermaid block, so the file renders
  *   inline on GitHub *and* is picked up by Docusaurus as a doc page.
  *
- * Each package is scanned with its own `.dependency-cruiser.cjs` config
- * (auto-discovered from the cwd). Output is checked for staleness in CI by
+ * Each package is scanned with its explicitly owned dependency-cruiser config.
+ * Output is checked for staleness in CI by
  * `.github/workflows/architecture.yml`.
  */
 
@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..');
 const generatedDir = path.join(repoRoot, 'docs', 'architecture', 'generated');
-const depcruiseConfigName = '.dependency-cruiser.cjs';
+const frontendDepcruiseConfig = path.join(repoRoot, 'config', 'tooling', 'dependency-cruiser.cjs');
 
 // `--collapse` groups nodes by directory prefix so the rendered Mermaid stays
 // readable; without it every individual `.ts` file becomes its own node.
@@ -32,6 +32,7 @@ const PACKAGES = [
     cwd: repoRoot,
     presenceCheck: ['src'],
     globs: ['src/**/*.{ts,tsx}', 'shared/**/*.ts'],
+    configFile: frontendDepcruiseConfig,
     // Preserve the feature-level groups that were visible before the frontend
     // moved beneath src/. Shared files remain individually visible.
     collapse: '^[^/]+/[^/]+/[^/]+/',
@@ -42,6 +43,7 @@ const PACKAGES = [
     cwd: path.join(repoRoot, 'server'),
     presenceCheck: ['src'],
     globs: ['src/**/*.ts'],
+    configFile: path.join(repoRoot, 'server', '.dependency-cruiser.cjs'),
     collapse: '^src/[^/]+/',
   },
   {
@@ -50,6 +52,7 @@ const PACKAGES = [
     cwd: path.join(repoRoot, 'gateway'),
     presenceCheck: ['src'],
     globs: ['src/**/*.ts'],
+    configFile: path.join(repoRoot, 'gateway', '.dependency-cruiser.cjs'),
     collapse: '^src/[^/]+/',
   },
 ];
@@ -128,14 +131,21 @@ async function loadDependencyCruiser() {
 }
 
 async function getCruiseOptions(pkg, extractOptions) {
-  const configFile = path.join(pkg.cwd, depcruiseConfigName);
+  const configFile = pkg.configFile;
   if (!existsSync(configFile)) {
     throw new Error(`generate-graphs: ${pkg.name}: missing ${path.relative(repoRoot, configFile)}`);
   }
 
   const options = await extractOptions(configFile);
+  const tsConfig = options.tsConfig?.fileName
+    ? {
+        ...options.tsConfig,
+        fileName: path.resolve(pkg.cwd, options.tsConfig.fileName),
+      }
+    : options.tsConfig;
   return {
     ...options,
+    tsConfig,
     baseDir: pkg.cwd,
     collapse: pkg.collapse,
     outputType: 'mermaid',

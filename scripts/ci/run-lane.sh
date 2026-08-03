@@ -157,7 +157,7 @@ run_vitest_in() {
 
 case "$lane" in
   frontend_unit)
-    run_vitest_in .
+    run_vitest_in . --config config/tooling/vitest.config.ts
     ;;
   backend_unit)
     run_vitest_in server \
@@ -177,13 +177,13 @@ case "$lane" in
     (cd server && exec npm run test:critical-mutation)
     ;;
   browser_smoke)
-    exec npx playwright test --project=chromium --grep '@smoke|browser-smoke'
+    exec npx playwright test --config config/tooling/playwright.config.ts --project=chromium --grep '@smoke|browser-smoke'
     ;;
   render_regression)
-    exec npx playwright test --project=chromium e2e/render-regression.spec.ts
+    exec npx playwright test --config config/tooling/playwright.config.ts --project=chromium e2e/render-regression.spec.ts
     ;;
   e2e_full)
-    exec npx playwright test
+    exec npx playwright test --config config/tooling/playwright.config.ts
     ;;
   build)
     exec npm run build

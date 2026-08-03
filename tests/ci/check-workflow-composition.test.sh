@@ -883,6 +883,15 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   "npm run typecheck:tests"
 
 assert_contains_in_order "$TEST_WORKFLOW" \
+  "full frontend catch-all typecheck retry composition" \
+  "full-frontend-typechecks:" \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/all-typecheck.log"' \
+  "scripts/ci/with-runner-lock.sh node-toolchain" \
+  'scripts/ci/retry-command.sh "frontend catch-all typecheck"' \
+  'scripts/ci/time-command.sh "frontend catch-all typecheck"' \
+  "npm run typecheck:all"
+
+assert_contains_in_order "$TEST_WORKFLOW" \
   "full frontend typecheck diagnostic upload" \
   "Write frontend typecheck diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Frontend Typecheck (${{ matrix.target }})"' \
@@ -1079,7 +1088,7 @@ assert_contains_in_order "$TEST_WORKFLOW" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/quick-frontend.log"' \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-command.sh "quick frontend isolated checks"' \
-  "npx vitest related --run --passWithNoTests" \
+  "npx vitest related --config config/tooling/vitest.config.ts --run --passWithNoTests" \
   "Write quick frontend diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Quick Frontend"' \
   "Upload quick frontend diagnostics" \

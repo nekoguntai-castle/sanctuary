@@ -8,7 +8,7 @@ on:
       - '**/ARCHITECTURE.md'
       - 'docs/**'
       - 'CONTRIBUTING.md'
-      - '.dependency-cruiser.cjs'
+      - 'config/tooling/dependency-cruiser.cjs'
       - 'server/.dependency-cruiser.cjs'
       - 'gateway/.dependency-cruiser.cjs'
       - 'scripts/architecture/**'

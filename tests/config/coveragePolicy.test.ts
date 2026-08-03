@@ -7,8 +7,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '../..');
 
-const vitestConfigPath = path.join(projectRoot, 'vitest.config.ts');
-const coverageShardConfigPath = path.join(projectRoot, 'vitest.coverage-shard.config.ts');
+const vitestConfigPath = path.join(projectRoot, 'config/tooling/vitest.config.ts');
+const coverageShardConfigPath = path.join(projectRoot, 'config/tooling/vitest.coverage-shard.config.ts');
 const animatedBackgroundTestPath = path.join(projectRoot, 'tests/components/AnimatedBackground.test.tsx');
 
 const EXPECTED_FRONTEND_COVERAGE_EXCLUDES = [
@@ -45,7 +45,7 @@ function readCoverageExcludesFromConfig(): string[] {
   const excludeBlockMatch = source.match(/exclude:\s*\[([\s\S]*?)\][\s\S]*?reportsDirectory:/m);
 
   if (!excludeBlockMatch) {
-    throw new Error('Unable to locate coverage.exclude block in vitest.config.ts');
+    throw new Error('Unable to locate coverage.exclude block in config/tooling/vitest.config.ts');
   }
 
   return Array.from(excludeBlockMatch[1].matchAll(/'([^']+)'/g), match => match[1]);
