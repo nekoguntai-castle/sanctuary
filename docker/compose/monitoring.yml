@@ -6,7 +6,7 @@
 # Provides centralized logging, metrics, alerting, and distributed tracing.
 #
 # Usage:
-#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+#   docker compose --project-directory . -f docker-compose.yml -f docker/compose/monitoring.yml up -d
 #
 # Access:
 #   - Monitoring ports bind to 127.0.0.1 by default. Set

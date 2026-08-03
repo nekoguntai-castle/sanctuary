@@ -7,20 +7,20 @@
 #
 # Usage:
 #   # Run all tests
-#   docker compose -f docker-compose.test.yml run --rm test-all
+#   docker compose --project-directory . -f docker/compose/test.yml run --rm test-all
 #
 #   # Run backend tests only
-#   docker compose -f docker-compose.test.yml run --rm backend-test
+#   docker compose --project-directory . -f docker/compose/test.yml run --rm backend-test
 #
 #   # Run frontend tests only
-#   docker compose -f docker-compose.test.yml run --rm frontend-test
+#   docker compose --project-directory . -f docker/compose/test.yml run --rm frontend-test
 #
 #   # Run with coverage
-#   docker compose -f docker-compose.test.yml run --rm backend-coverage
-#   docker compose -f docker-compose.test.yml run --rm frontend-coverage
+#   docker compose --project-directory . -f docker/compose/test.yml run --rm backend-coverage
+#   docker compose --project-directory . -f docker/compose/test.yml run --rm frontend-coverage
 #
 #   # Clean up
-#   docker compose -f docker-compose.test.yml down -v
+#   docker compose --project-directory . -f docker/compose/test.yml down -v
 #
 # =============================================
 

@@ -6,7 +6,7 @@
     "files": 42,
     "directories": 25
   },
-  "maximumEntries": 55,
+  "maximumEntries": 50,
   "targetMaxEntries": 45,
   "classifications": {
     "conventional": [
@@ -26,11 +26,6 @@
       "assets",
       "config",
       "docker",
-      "docker-compose.monitoring.yml",
-      "docker-compose.prod.yml",
-      "docker-compose.ssl.yml",
-      "docker-compose.test.yml",
-      "docker-compose.tor.yml",
       "docker-compose.yml",
       "DOCKER.md",
       "docs",

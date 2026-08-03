@@ -52,22 +52,38 @@ log_debug() {
 # Docker Helper Functions
 # ============================================
 
+resolve_compose_overlay() {
+    local project_dir="$1"
+    local overlay="$2"
+    local canonical="$project_dir/docker/compose/$overlay.yml"
+    local legacy="$project_dir/docker-compose.$overlay.yml"
+
+    if [ -f "$canonical" ]; then
+        printf '%s\n' "$canonical"
+    elif [ -f "$legacy" ]; then
+        printf '%s\n' "$legacy"
+    else
+        return 1
+    fi
+}
+
 run_project_compose() {
     local project_dir="${1:-.}"
+    local overlay_file
     shift
 
-    local -a compose_cmd=(docker compose)
+    local -a compose_cmd=(docker compose --project-directory "$project_dir")
     if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
         compose_cmd+=(-p "$COMPOSE_PROJECT_NAME")
     fi
     compose_cmd+=(-f "$project_dir/docker-compose.yml")
 
-    if [ "${ENABLE_MONITORING:-no}" = "yes" ] && [ -f "$project_dir/docker-compose.monitoring.yml" ]; then
-        compose_cmd+=(-f "$project_dir/docker-compose.monitoring.yml")
+    if [ "${ENABLE_MONITORING:-no}" = "yes" ] && overlay_file="$(resolve_compose_overlay "$project_dir" monitoring)"; then
+        compose_cmd+=(-f "$overlay_file")
     fi
 
-    if [ "${ENABLE_TOR:-no}" = "yes" ] && [ -f "$project_dir/docker-compose.tor.yml" ]; then
-        compose_cmd+=(-f "$project_dir/docker-compose.tor.yml")
+    if [ "${ENABLE_TOR:-no}" = "yes" ] && overlay_file="$(resolve_compose_overlay "$project_dir" tor)"; then
+        compose_cmd+=(-f "$overlay_file")
     fi
 
     "${compose_cmd[@]}" "$@"

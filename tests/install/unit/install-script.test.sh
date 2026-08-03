@@ -1120,6 +1120,7 @@ EOF
 
     output=$(
         SANCTUARY_ENV_FILE="$env_file" \
+        LLM_EGRESS_PROXY_SECRET= \
         PATH="$fixture_dir/bin:$PATH" \
         bash "$START_SCRIPT" --help 2>&1
     ) || {
@@ -1368,7 +1369,7 @@ test_setup_script_recovers_corrupt_buildkit_cache() {
         "setup.sh build wrapper should detect cache-corruption failures" || return 1
     assert_contains "$build_body" "recover_docker_builder_cache" \
         "setup.sh should recover corrupt Docker builder cache before retrying" || return 1
-    assert_contains "$build_body" "docker compose \$COMPOSE_FILES build --no-cache" \
+    assert_contains "$build_body" 'docker compose "${COMPOSE_FILE_ARGS[@]}" build --no-cache' \
         "setup.sh should retry corrupt BuildKit failures with a clean no-cache build" || return 1
 
     local detector_body
@@ -1416,7 +1417,7 @@ if [ "$1" = "compose" ]; then
     shift
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            -f|--file)
+            -f|--file|--project-directory)
                 shift 2
                 ;;
             *)

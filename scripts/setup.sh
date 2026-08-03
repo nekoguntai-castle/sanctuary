@@ -940,7 +940,7 @@ run_compose_build() {
 
     start_epoch="$(ci_epoch_seconds)"
     set +e
-    docker compose $COMPOSE_FILES build $build_args 2>&1 | tee "$build_log"
+    docker compose "${COMPOSE_FILE_ARGS[@]}" build $build_args 2>&1 | tee "$build_log"
     status=${PIPESTATUS[0]}
     set -e
     end_epoch="$(ci_epoch_seconds)"
@@ -963,7 +963,7 @@ run_compose_build() {
 
     start_epoch="$(ci_epoch_seconds)"
     set +e
-    docker compose $COMPOSE_FILES build --no-cache 2>&1 | tee -a "$build_log"
+    docker compose "${COMPOSE_FILE_ARGS[@]}" build --no-cache 2>&1 | tee -a "$build_log"
     status=${PIPESTATUS[0]}
     set -e
     end_epoch="$(ci_epoch_seconds)"
@@ -989,10 +989,11 @@ start_services() {
     cd "$PROJECT_DIR"
     export_runtime_environment
 
-    # Build compose files list
-    COMPOSE_FILES="-f docker-compose.yml"
-    [ "$OPT_ENABLE_MONITORING" = "yes" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.monitoring.yml"
-    [ "$OPT_ENABLE_TOR" = "yes" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.tor.yml"
+    # Build compose file arguments with an explicit project root so relative
+    # paths inside nested overlays retain their repository-root meaning.
+    COMPOSE_FILE_ARGS=(--project-directory "$PROJECT_DIR" -f "$PROJECT_DIR/docker-compose.yml")
+    [ "$OPT_ENABLE_MONITORING" = "yes" ] && COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/monitoring.yml")
+    [ "$OPT_ENABLE_TOR" = "yes" ] && COMPOSE_FILE_ARGS+=(-f "$PROJECT_DIR/docker/compose/tor.yml")
 
     if [ "$OPT_OFFLINE" = true ]; then
         validate_offline_images
@@ -1019,9 +1020,9 @@ start_services() {
     echo "Starting containers..."
 
     if [ "$OPT_OFFLINE" = true ]; then
-        docker compose $COMPOSE_FILES up $(compose_up_no_build_args) postgres
+        docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args) postgres
     else
-        docker compose $COMPOSE_FILES up $(compose_up_after_build_args) postgres
+        docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_after_build_args) postgres
     fi
     SANCTUARY_PROJECT_DIR="$PROJECT_DIR" bash "$PROJECT_DIR/scripts/reconcile-postgres-password.sh"
 
@@ -1036,7 +1037,7 @@ start_services() {
         # Use --wait to wait for health checks before returning. The build phase
         # above is the only place setup is allowed to build images; startup must
         # not silently run a second build with different retry behavior.
-        if docker compose $COMPOSE_FILES up $UP_ARGS; then
+        if docker compose "${COMPOSE_FILE_ARGS[@]}" up $UP_ARGS; then
             FRONTEND_RUNNING=true
             WORKER_RUNNING=true
         else
@@ -1054,9 +1055,9 @@ start_services() {
     else
         # Fallback for older docker compose versions
         if [ "$OPT_OFFLINE" = true ]; then
-            docker compose $COMPOSE_FILES up $(compose_up_no_build_args)
+            docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_no_build_args)
         else
-            docker compose $COMPOSE_FILES up $(compose_up_after_build_args)
+            docker compose "${COMPOSE_FILE_ARGS[@]}" up $(compose_up_after_build_args)
         fi
         USED_WAIT_FLAG=false
     fi

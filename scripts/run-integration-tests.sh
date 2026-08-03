@@ -4,7 +4,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-COMPOSE_FILE="$PROJECT_ROOT/docker-compose.test.yml"
+COMPOSE_FILE="$PROJECT_ROOT/docker/compose/test.yml"
+COMPOSE_ARGS=(--project-directory "$PROJECT_ROOT" -f "$COMPOSE_FILE")
 TEST_DB_CONTAINER="sanctuary-test-db"
 
 source "$SCRIPT_DIR/integration-test-defaults.sh"
@@ -16,7 +17,7 @@ cleanup() {
     return
   fi
 
-  docker compose -f "$COMPOSE_FILE" down --remove-orphans >/dev/null 2>&1 || true
+  docker compose "${COMPOSE_ARGS[@]}" down --remove-orphans >/dev/null 2>&1 || true
 }
 
 require_command() {
@@ -37,7 +38,7 @@ fi
 trap cleanup EXIT INT TERM
 
 echo "Starting integration test database..."
-docker compose -f "$COMPOSE_FILE" up -d test-db >/dev/null
+docker compose "${COMPOSE_ARGS[@]}" up -d test-db >/dev/null
 
 echo "Waiting for PostgreSQL health..."
 start_time="$(date +%s)"
@@ -57,7 +58,7 @@ while true; do
 
   if [[ "$elapsed_seconds" -ge "$DB_HEALTH_TIMEOUT_SECONDS" ]]; then
     echo "Timed out waiting for test-db health after ${DB_HEALTH_TIMEOUT_SECONDS}s."
-    docker compose -f "$COMPOSE_FILE" logs --no-color --tail 120 test-db || true
+    docker compose "${COMPOSE_ARGS[@]}" logs --no-color --tail 120 test-db || true
     exit 1
   fi
 

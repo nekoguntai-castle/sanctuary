@@ -88,7 +88,7 @@ is_docs_only_file() {
 
 is_both_image_file() {
   case "$1" in
-    .github/workflows/docker-build.yml|.dockerignore|package.json|package-lock.json|shared/*|docker-compose.yml|docker-compose.*.yml)
+    .github/workflows/docker-build.yml|.dockerignore|package.json|package-lock.json|shared/*|docker-compose.yml|docker/compose/*)
       return 0
       ;;
   esac

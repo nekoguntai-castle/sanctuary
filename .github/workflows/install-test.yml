@@ -9,7 +9,7 @@ on:
     paths:
       - 'install.sh'
       - 'docker-compose.yml'
-      - 'docker-compose.*.yml'
+      - 'docker/compose/**'
       - 'server/Dockerfile'
       - 'server/prisma/**'
       - 'docker/**'
@@ -41,7 +41,7 @@ on:
     paths:
       - 'install.sh'
       - 'docker-compose.yml'
-      - 'docker-compose.*.yml'
+      - 'docker/compose/**'
       - 'server/Dockerfile'
       - 'server/prisma/**'
       - 'docker/**'

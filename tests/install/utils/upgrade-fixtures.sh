@@ -65,16 +65,21 @@ apply_optional_profile_isolation_defaults() {
 isolate_legacy_optional_profile_compose() {
     local project_dir="$1"
     local target_project_dir="${2:-}"
-    local tor_compose="$project_dir/docker-compose.tor.yml"
-    local target_tor_compose="$target_project_dir/docker-compose.tor.yml"
+    local tor_compose
+    local target_tor_compose=""
 
-    if [ "$UPGRADE_EXPECT_OPTIONAL_PROFILES" != "true" ] || [ ! -f "$tor_compose" ]; then
+    tor_compose="$(resolve_compose_overlay "$project_dir" tor 2>/dev/null || true)"
+    if [ -n "$target_project_dir" ]; then
+        target_tor_compose="$(resolve_compose_overlay "$target_project_dir" tor 2>/dev/null || true)"
+    fi
+
+    if [ "$UPGRADE_EXPECT_OPTIONAL_PROFILES" != "true" ] || [ -z "$tor_compose" ]; then
         return 0
     fi
 
     if grep -q '^    command: -l "sanctuary_payjoin:80:backend:3001"$' "$tor_compose" \
         && [ -n "$target_project_dir" ] \
-        && [ -f "$target_tor_compose" ]; then
+        && [ -n "$target_tor_compose" ]; then
         cp "$target_tor_compose" "$tor_compose"
         return 0
     fi

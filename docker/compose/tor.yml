@@ -9,7 +9,7 @@
 # enabling Payjoin (BIP78) receives without exposing your IP.
 #
 # Usage:
-#   docker compose -f docker-compose.yml -f docker-compose.tor.yml up -d
+#   docker compose --project-directory . -f docker-compose.yml -f docker/compose/tor.yml up -d
 #
 # Or enable via install.sh or start.sh:
 #   ./start.sh --with-tor

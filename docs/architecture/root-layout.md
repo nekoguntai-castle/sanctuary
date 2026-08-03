@@ -19,6 +19,9 @@ checked-in ceiling itself.
 
 The frontend source-root migration lowered the ceiling to 56, and relocating
 the frontend image definition to `docker/frontend/Dockerfile` lowered it to 55.
+Consolidating optional and test Compose overlays under `docker/compose/` lowered
+the ceiling to 50 while retaining repository-root path resolution through
+explicit `--project-directory` arguments.
 `src/` is now the sole frontend source root, and shared ambient declarations
 live in `shared/types/ambient-modules.d.ts`. The root
 `config/popular-models.json` path remains an external compatibility contract

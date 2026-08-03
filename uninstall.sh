@@ -113,12 +113,12 @@ fi
 echo ""
 echo "Stopping and removing containers..."
 
-# Stop main containers
-docker compose down --remove-orphans 2>/dev/null || true
-
-# Stop optional compose files
-docker compose -f docker-compose.monitoring.yml down 2>/dev/null || true
-docker compose -f docker-compose.tor.yml down 2>/dev/null || true
+# Stop the main and optional stacks as one Compose project. Explicitly pinning
+# the project directory preserves relative paths in the nested overlays.
+COMPOSE_FILE_ARGS=(--project-directory "$SCRIPT_DIR" -f "$SCRIPT_DIR/docker-compose.yml")
+[ -f "$SCRIPT_DIR/docker/compose/monitoring.yml" ] && COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/monitoring.yml")
+[ -f "$SCRIPT_DIR/docker/compose/tor.yml" ] && COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/tor.yml")
+docker compose "${COMPOSE_FILE_ARGS[@]}" down --remove-orphans 2>/dev/null || true
 
 if [ "$KEEP_DATA" = false ]; then
     echo "Removing Docker volumes..."

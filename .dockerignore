@@ -33,6 +33,7 @@ docker/nginx/ssl/*.pem
 LICENSE
 .dockerignore
 Dockerfile*
+/docker/compose/
 
 # Test files
 coverage

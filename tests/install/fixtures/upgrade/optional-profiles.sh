@@ -3,8 +3,11 @@
 UPGRADE_FIXTURE_LABEL="optional-profiles"
 
 upgrade_fixture_before_source_install() {
+    local monitoring_compose
+
     enable_upgrade_monitoring
-    patch_upgrade_monitoring_compose_isolation "$PROJECT_ROOT/docker-compose.monitoring.yml"
+    monitoring_compose="$(resolve_compose_overlay "$PROJECT_ROOT" monitoring)"
+    patch_upgrade_monitoring_compose_isolation "$monitoring_compose"
     return 0
 }
 
@@ -13,7 +16,10 @@ upgrade_fixture_after_source_install() {
 }
 
 upgrade_fixture_before_upgrade() {
-    patch_upgrade_monitoring_compose_isolation "$TARGET_PROJECT_ROOT/docker-compose.monitoring.yml"
+    local monitoring_compose
+
+    monitoring_compose="$(resolve_compose_overlay "$TARGET_PROJECT_ROOT" monitoring)"
+    patch_upgrade_monitoring_compose_isolation "$monitoring_compose"
 }
 
 upgrade_fixture_after_upgrade() {

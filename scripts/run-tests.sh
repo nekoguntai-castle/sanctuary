@@ -43,6 +43,7 @@ NC='\033[0m'
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+TEST_COMPOSE_ARGS=(--project-directory "$PROJECT_ROOT" -f "$PROJECT_ROOT/docker/compose/test.yml")
 
 # Default options
 USE_DOCKER=false
@@ -167,7 +168,7 @@ if [ "$USE_DOCKER" = true ]; then
 
     if [ "$INTEGRATION_MODE" = true ]; then
         # Run integration tests with database in Docker
-        docker compose -f docker-compose.test.yml run --rm backend-test sh -c "
+        docker compose "${TEST_COMPOSE_ARGS[@]}" run --rm backend-test sh -c "
             npx prisma generate &&
             npx prisma migrate deploy &&
             npm run test:integration -- --ci
@@ -176,9 +177,9 @@ if [ "$USE_DOCKER" = true ]; then
         if [ "$RUN_BACKEND" = true ] && [ "$RUN_FRONTEND" = true ]; then
             npm run test:docker:coverage
         elif [ "$RUN_BACKEND" = true ]; then
-            docker compose -f docker-compose.test.yml run --rm backend-coverage
+            docker compose "${TEST_COMPOSE_ARGS[@]}" run --rm backend-coverage
         else
-            docker compose -f docker-compose.test.yml run --rm frontend-coverage
+            docker compose "${TEST_COMPOSE_ARGS[@]}" run --rm frontend-coverage
         fi
     else
         if [ "$RUN_BACKEND" = true ] && [ "$RUN_FRONTEND" = true ]; then

@@ -178,7 +178,7 @@ docker compose build --no-cache backend
 For production, use the production override file:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose --project-directory . -f docker-compose.yml -f docker/compose/prod.yml up -d
 ```
 
 This adds:

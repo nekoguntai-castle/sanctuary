@@ -183,7 +183,7 @@ function collectPortBindings() {
   try {
     const raw = execFileSync(
       'docker',
-      ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.monitoring.yml', 'config', '--format', 'json'],
+      ['compose', '--project-directory', repoRoot, '-f', 'docker-compose.yml', '-f', 'docker/compose/monitoring.yml', 'config', '--format', 'json'],
       {
         cwd: repoRoot,
         encoding: 'utf8',

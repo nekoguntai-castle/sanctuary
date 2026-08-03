@@ -22,7 +22,7 @@ export const MonitoringDisabledBanner: React.FC<MonitoringDisabledBannerProps> =
             To enable monitoring, start Sanctuary with the monitoring compose file:
           </p>
           <code className="block mt-2 text-xs font-mono bg-warning-100 dark:bg-warning-900/40 p-2 rounded text-warning-800 dark:text-warning-200">
-            docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+            docker compose --project-directory . -f docker-compose.yml -f docker/compose/monitoring.yml up -d
           </code>
         </div>
       </div>

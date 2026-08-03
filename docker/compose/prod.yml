@@ -1,7 +1,7 @@
 # =============================================
 # Production Overrides for Sanctuary
 # =============================================
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Usage: docker compose --project-directory . -f docker-compose.yml -f docker/compose/prod.yml up -d
 # =============================================
 
 services:

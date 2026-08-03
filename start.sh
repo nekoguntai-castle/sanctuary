@@ -300,34 +300,46 @@ set_start_flags() {
     fi
 }
 
+configure_compose_files() {
+    local include_monitoring="${1:-no}"
+    local include_tor="${2:-no}"
+
+    COMPOSE_FILE_ARGS=(--project-directory "$SCRIPT_DIR" -f "$SCRIPT_DIR/docker-compose.yml")
+    [ "$include_monitoring" = "yes" ] && COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/monitoring.yml")
+    [ "$include_tor" = "yes" ] && COMPOSE_FILE_ARGS+=(-f "$SCRIPT_DIR/docker/compose/tor.yml")
+    return 0
+}
+
 start_compose_stack() {
-    local compose_files="$1"
-    local profiles="$2"
-    local up_flags="$3"
+    local profiles="$1"
+    local up_flags="$2"
     local postgres_up_flags="-d"
 
     if [ "$IS_OFFLINE_INSTALL" = true ] && docker compose up --help 2>&1 | grep -q -- '--pull'; then
         postgres_up_flags="$postgres_up_flags --pull never"
     fi
 
-    docker compose $compose_files $profiles up $postgres_up_flags postgres
+    docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $postgres_up_flags postgres
     SANCTUARY_PROJECT_DIR="$SCRIPT_DIR" bash "$SCRIPT_DIR/scripts/reconcile-postgres-password.sh"
-    docker compose $compose_files $profiles up $up_flags
+    docker compose "${COMPOSE_FILE_ARGS[@]}" $profiles up $up_flags
 }
+
+configure_compose_files
 
 case "${1:-}" in
     --stop)
         echo "Stopping Sanctuary..."
         # Stop monitoring stack if running
         if docker ps --format '{{.Names}}' | grep -qE '.*-(grafana|loki|promtail)'; then
-            docker compose -f docker-compose.yml -f docker-compose.monitoring.yml --profile mcp down
+            configure_compose_files yes no
+            docker compose "${COMPOSE_FILE_ARGS[@]}" --profile mcp down
         else
-            docker compose --profile mcp down
+            docker compose "${COMPOSE_FILE_ARGS[@]}" --profile mcp down
         fi
         echo "Sanctuary stopped."
         ;;
     --logs)
-        docker compose logs -f
+        docker compose "${COMPOSE_FILE_ARGS[@]}" logs -f
         ;;
     --with-ai)
         echo "Starting Sanctuary..."
@@ -337,7 +349,7 @@ case "${1:-}" in
         echo "      then configure its endpoint in Admin → AI Settings."
         echo ""
         set_start_flags
-        start_compose_stack "" "$MCP_PROFILE" "$UP_FLAGS"
+        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -355,7 +367,7 @@ case "${1:-}" in
         echo "Create an MCP API key from Admin before connecting an LLM client."
         echo ""
         set_start_flags
-        start_compose_stack "" "--profile mcp" "$UP_FLAGS"
+        start_compose_stack "--profile mcp" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo "MCP endpoint: http://${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}/mcp"
@@ -366,7 +378,8 @@ case "${1:-}" in
         echo "Note: First-time setup will download monitoring images (~500MB total)."
         echo ""
         set_start_flags
-        start_compose_stack "-f docker-compose.yml -f docker-compose.monitoring.yml" "$MCP_PROFILE" "$UP_FLAGS"
+        configure_compose_files yes no
+        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -383,7 +396,8 @@ case "${1:-}" in
         echo "Note: First-time setup will download the Tor image (~50MB)."
         echo ""
         set_start_flags
-        start_compose_stack "-f docker-compose.yml -f docker-compose.tor.yml" "$MCP_PROFILE" "$UP_FLAGS"
+        configure_compose_files no yes
+        start_compose_stack "$MCP_PROFILE" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -437,18 +451,16 @@ case "${1:-}" in
         [ "$ENABLE_TOR" = "yes" ] && HAS_TOR="yes"
         [ "$ENABLE_MCP" = "yes" ] && HAS_MCP="yes"
 
-        COMPOSE_FILES="-f docker-compose.yml"
-        [ "$HAS_MONITORING" = "yes" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.monitoring.yml"
-        [ "$HAS_TOR" = "yes" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.tor.yml"
+        configure_compose_files "$HAS_MONITORING" "$HAS_TOR"
 
         # Force clean rebuild to ensure all code changes are included
         echo "Building fresh images (no cache)..."
-        docker compose $COMPOSE_FILES build --no-cache
+        docker compose "${COMPOSE_FILE_ARGS[@]}" build --no-cache
 
         PROFILES=""
         [ "$HAS_MCP" = "yes" ] && PROFILES="$PROFILES --profile mcp"
 
-        start_compose_stack "$COMPOSE_FILES" "$PROFILES" "-d"
+        start_compose_stack "$PROFILES" "-d"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         ;;
@@ -500,16 +512,14 @@ case "${1:-}" in
         [ "$ENABLE_TOR" = "yes" ] && HAS_TOR="yes"
         [ "$ENABLE_MCP" = "yes" ] && HAS_MCP="yes"
 
-        COMPOSE_FILES="-f docker-compose.yml"
-        [ "$HAS_MONITORING" = "yes" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.monitoring.yml"
-        [ "$HAS_TOR" = "yes" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.tor.yml"
+        configure_compose_files "$HAS_MONITORING" "$HAS_TOR"
 
         set_start_flags
 
         PROFILES=""
         [ "$HAS_MCP" = "yes" ] && PROFILES="$PROFILES --profile mcp"
 
-        start_compose_stack "$COMPOSE_FILES" "$PROFILES" "$UP_FLAGS"
+        start_compose_stack "$PROFILES" "$UP_FLAGS"
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         ;;

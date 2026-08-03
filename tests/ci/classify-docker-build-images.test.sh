@@ -124,6 +124,12 @@ main() {
   assert_images "$output_file" "true" "true"
 
   base_sha="$head_sha"
+  commit_file "$repo_dir" "docker/compose/prod.yml" "services: {}" "compose overlay"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "true"
+
+  base_sha="$head_sha"
   commit_file "$repo_dir" "public/favicon.svg" "<svg />" "public asset"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"

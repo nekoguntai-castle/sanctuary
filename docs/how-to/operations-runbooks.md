@@ -22,7 +22,7 @@ Phase 2 proof artifacts were last generated 2026-04-12 through 2026-04-15 and ar
 
 ## Monitoring Exposure
 
-The optional monitoring stack in `docker-compose.monitoring.yml` binds host ports to `127.0.0.1` by default through `MONITORING_BIND_ADDR`.
+The optional monitoring stack in `docker/compose/monitoring.yml` binds host ports to `127.0.0.1` by default through `MONITORING_BIND_ADDR`.
 
 Default local endpoints:
 
@@ -69,7 +69,7 @@ Use different controls for different exposures:
 Start the local monitoring stack before running the smoke:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d prometheus alertmanager grafana loki jaeger promtail
+docker compose --project-directory . -f docker-compose.yml -f docker/compose/monitoring.yml up -d prometheus alertmanager grafana loki jaeger promtail
 npm run ops:monitoring:phase2
 ```
 
@@ -84,7 +84,7 @@ JAEGER_UI_PORT=16687 \
 JAEGER_OTLP_GRPC_PORT=14317 \
 JAEGER_OTLP_HTTP_PORT=14318 \
 LOKI_PORT=13100 \
-docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d prometheus alertmanager grafana loki jaeger promtail
+docker compose --project-directory . -f docker-compose.yml -f docker/compose/monitoring.yml up -d prometheus alertmanager grafana loki jaeger promtail
 
 MONITORING_BIND_ADDR=127.0.0.1 \
 GRAFANA_PORT=13000 \
@@ -127,7 +127,7 @@ Run these before drilling into a specific alert:
 
 ```bash
 docker compose ps
-docker compose -f docker-compose.yml -f docker-compose.monitoring.yml ps
+docker compose --project-directory . -f docker-compose.yml -f docker/compose/monitoring.yml ps
 docker compose logs --tail=200 backend
 docker compose logs --tail=200 worker
 docker compose logs --tail=200 gateway
@@ -314,7 +314,7 @@ npm run test:ops:phase2
 Expected behavior:
 
 - The disposable PostgreSQL backup/restore drill creates, validates, deletes, restores, and rechecks representative rows.
-- The test database uses `docker-compose.test.yml` and the defaults from `scripts/integration-test-defaults.sh`.
+- The test database uses `docker/compose/test.yml` and the defaults from `scripts/integration-test-defaults.sh`.
 
 Mitigation:
 

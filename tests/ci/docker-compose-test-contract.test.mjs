@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-const compose = readFileSync('docker-compose.test.yml', 'utf8');
+const compose = readFileSync('docker/compose/test.yml', 'utf8');
 const frontendDockerfile = 'docker/frontend/Dockerfile';
 const dockerfile = readFileSync(frontendDockerfile, 'utf8');
 

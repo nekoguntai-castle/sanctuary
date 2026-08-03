@@ -499,9 +499,9 @@ test_legacy_optional_profile_compose_can_use_target_tor_overlay() {
   local source_checkout="$TEST_TMP_DIR/source"
   local target_checkout="$TEST_TMP_DIR/target"
   local source_tor_compose="$source_checkout/docker-compose.tor.yml"
-  local target_tor_compose="$target_checkout/docker-compose.tor.yml"
+  local target_tor_compose="$target_checkout/docker/compose/tor.yml"
 
-  mkdir -p "$source_checkout" "$target_checkout"
+  mkdir -p "$source_checkout" "$target_checkout/docker/compose"
   cat > "$source_tor_compose" <<'EOF'
 services:
   tor:
@@ -534,7 +534,7 @@ EOF
 
 test_tor_compose_uses_supported_hidden_service_config() {
   local contents
-  contents="$(cat "$PROJECT_ROOT/docker-compose.tor.yml")"
+  contents="$(cat "$PROJECT_ROOT/docker/compose/tor.yml")"
 
   assert_contains "$contents" "sed -i '/^StrictNodes /d; /^ExitNodes /d'" \
     "Tor compose should clear stale exit-node options before configuring hidden service"

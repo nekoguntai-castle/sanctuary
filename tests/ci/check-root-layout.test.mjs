@@ -228,7 +228,7 @@ test("real Git inventory collapses nested paths and ignores untracked files", ()
 
 test("the real repository classification is complete", () => {
   const result = runCheck();
-  assert.deepEqual(result.counts, { total: 55, files: 38, directories: 17 });
+  assert.deepEqual(result.counts, { total: 50, files: 33, directories: 17 });
   assert.deepEqual(result.errors, []);
 });
 
