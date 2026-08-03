@@ -58,7 +58,7 @@ function drawTiledSanctuaryBackground(
       ctx.save();
       ctx.translate(cx, cy);
 
-      // Draw sanctuary logo matching SVG paths from index.html
+      // Draw sanctuary logo matching SVG paths from src/index.html
       // Path: M12 2L2 7l10 5 10-5-10-5z (top diamond)
       ctx.beginPath();
       ctx.moveTo(12 * scale, 2 * scale);

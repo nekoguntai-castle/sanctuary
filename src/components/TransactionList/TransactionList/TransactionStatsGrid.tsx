@@ -20,7 +20,7 @@ export function TransactionStatsGrid({ txStats }: { txStats: TransactionListStat
     // minimum — "Consolidations" at text-xs uppercase plus its icon and px-3.
     //
     // Inline style, not a `grid-cols-[...]` arbitrary utility: Tailwind here is
-    // the CDN build (index.html), whose JIT emits arbitrary utilities
+    // the CDN build (src/index.html), whose JIT emits arbitrary utilities
     // asynchronously after paint. A core utility would be in the initial sheet;
     // this one would not, so the first paint could land with no column template.
     <div

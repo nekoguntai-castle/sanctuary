@@ -36,7 +36,7 @@ backups/
 *.dump
 sanctuary-backup-*.json
 
-# AppMap recordings (local-only debugging aid; see CONTRIBUTING.md)
+# AppMap recordings (local-only debugging aid; see .github/CONTRIBUTING.md)
 tmp/appmap/
 **/.appmap/
 

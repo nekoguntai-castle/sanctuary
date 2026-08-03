@@ -7,7 +7,7 @@ on:
       - '**/*.tsx'
       - '**/ARCHITECTURE.md'
       - 'docs/**'
-      - 'CONTRIBUTING.md'
+      - '.github/CONTRIBUTING.md'
       - 'config/tooling/dependency-cruiser.cjs'
       - 'server/.dependency-cruiser.cjs'
       - 'gateway/.dependency-cruiser.cjs'

@@ -21,7 +21,6 @@ npm-debug.log*
 # Environment files (use Docker env instead)
 .env
 .env.*
-!.env.example
 
 # Runtime TLS material belongs outside the source checkout
 docker/nginx/ssl/*.pem

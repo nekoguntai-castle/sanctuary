@@ -25,6 +25,12 @@ explicit `--project-directory` arguments.
 Moving the repository-wide tool configuration into `config/tooling/` lowered
 the ceiling to 35 (18 files and 17 directories); every tool is invoked with an
 explicit config path rather than relying on root-directory discovery.
+Relocating ancillary documentation, the environment template, the README
+template, and the Vite HTML entry—and retiring duplicate Node and unused hosted-
+editor metadata—reduced the tracked root to 27 entries: the final 10-file
+allowlist and 17 directories. The total ceiling remains at the 35-entry
+checkpoint until the directory-owner migrations land; the real-repository test
+already pins the exact loose-file inventory so it cannot regress meanwhile.
 `src/` is now the sole frontend source root, and shared ambient declarations
 live in `shared/types/ambient-modules.d.ts`. The root
 `config/popular-models.json` path remains an external compatibility contract

@@ -78,7 +78,7 @@ Use the analysis script to diagnose performance issues:
 
 ```bash
 # Copy the example environment file
-cp .env.example .env
+cp config/env/.env.example .env
 
 # Edit the configuration (REQUIRED: change JWT_SECRET and POSTGRES_PASSWORD)
 nano .env

@@ -1434,13 +1434,22 @@ for docker_input in \
   "'public/**'" \
   "'src/**'" \
   "'shared/**'" \
-  "'metadata.json'" \
   "'gateway/package.json'"; do
   assert_occurrence_count "$DOCKER_BUILD_WORKFLOW" \
     "docker-build triggers for $docker_input" \
     "$docker_input" \
     2
 done
+
+for retired_root_input in "'index.html'" "'metadata.json'"; do
+  assert_not_contains "$DOCKER_BUILD_WORKFLOW" \
+    "docker-build omits retired root input $retired_root_input" \
+    "$retired_root_input"
+done
+
+assert_not_contains "$TEST_WORKFLOW" \
+  "test workflow omits retired root HTML entry trigger" \
+  "'index.html'"
 
 assert_not_contains "$DOCKER_BUILD_WORKFLOW" \
   "docker-build omits retired root frontend Dockerfile trigger" \

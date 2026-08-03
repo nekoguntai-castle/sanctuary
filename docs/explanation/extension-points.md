@@ -72,7 +72,7 @@ Primary surfaces:
 Supporting implementation surfaces:
 
 - `src/components/animations`
-- `index.html`
+- `src/index.html`
 - `src/types/ui.ts`
 - `src/themes/README.md`
 
@@ -249,7 +249,7 @@ When adding a new domain extension point, prefer matching one of these local reg
 The login logo glow-ring cleanup touches:
 
 - `src/components/Login/LoginLogoContainer.tsx`
-- `index.html`
+- `src/index.html`
 - `tests/components/Login/LoginLogoContainer.test.tsx`
 
 Keep that change separate when reviewing or committing the extensibility work.

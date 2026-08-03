@@ -122,7 +122,7 @@ No user-blocking product decisions are required before implementation.
 
 - [ ] Inventory hard-coded hex/RGBA values in chart and transaction-flow components.
 - [ ] Add narrowly scoped theme tokens for chart axes, chart grid, chart tooltip, chart series, flow inputs, flow outputs, flow fees, and flow surfaces.
-- [ ] Use existing theme conventions in `index.html`; preserve inverted dark-mode scale rules for the established token families.
+- [ ] Use existing theme conventions in `src/index.html`; preserve inverted dark-mode scale rules for the established token families.
 - [ ] Update chart and flow components to consume CSS variables or existing semantic classes instead of raw color literals.
 - [ ] Leave user-selected label colors and other intentional data palettes alone.
 - [ ] Add or update tests where components expose color values through props; otherwise rely on build, lint, and rendered regression checks.

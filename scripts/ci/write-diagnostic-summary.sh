@@ -16,7 +16,7 @@
 # in `::group::` blocks) to STDERR so the failure is visible in the runner's
 # step output without depending on the artifacts API. Successful logs are
 # never echoed. Logs exceeding the inline cap are still complete in the
-# uploaded artifact. See CONTRIBUTING.md ("Diagnosing CI failures").
+# uploaded artifact. See .github/CONTRIBUTING.md ("Diagnosing CI failures").
 
 set -euo pipefail
 

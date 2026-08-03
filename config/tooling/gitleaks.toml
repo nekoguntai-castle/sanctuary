@@ -55,7 +55,7 @@ paths = [
   '''e2e/admin-operations\.spec\.ts''',
   '''e2e/render-regression\.spec\.ts''',
   '''e2e/render-regression/renderRegressionHarness\.ts''',
-  # .env.example ships default placeholders, not real secrets.
+  # config/env/.env.example ships default placeholders, not real secrets.
   '''\.env\.example$''',
   '''server/\.env\.example$''',
   # Prisma client generated output never contains secrets and trips

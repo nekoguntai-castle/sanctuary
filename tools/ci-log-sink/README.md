@@ -221,7 +221,7 @@ obsolete. A `404 page not found` means it's still needed.
    ```bash
    rm ~/.config/sanctuary/ci-log-sink-token
    ```
-7. **Update `CONTRIBUTING.md`** "Diagnosing CI failures" section to
+7. **Update `.github/CONTRIBUTING.md`** "Diagnosing CI failures" section to
    point at the native Forgejo API instead of the LAN sink. Remove
    the cross-reference to this README.
 8. **Verify CI still produces visible failures inline.** The

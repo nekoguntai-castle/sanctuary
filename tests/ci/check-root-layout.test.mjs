@@ -228,8 +228,39 @@ test("real Git inventory collapses nested paths and ignores untracked files", ()
 
 test("the real repository classification is complete", () => {
   const result = runCheck();
-  assert.deepEqual(result.counts, { total: 35, files: 18, directories: 17 });
+  assert.deepEqual(result.counts, { total: 27, files: 10, directories: 17 });
   assert.deepEqual(result.errors, []);
+});
+
+test("the real repository retains only intentional loose-file contracts", () => {
+  const inventory = runCheck().inventory;
+  assert.deepEqual(
+    inventory.filter(({ kind }) => kind === "file").map(({ path }) => path),
+    [
+      ".dockerignore",
+      ".gitignore",
+      ".nvmrc",
+      "docker-compose.yml",
+      "install.sh",
+      "package-lock.json",
+      "package.json",
+      "README.md",
+      "start.sh",
+      "uninstall.sh",
+    ],
+  );
+  for (const retired of [
+    ".env.example",
+    ".node-version",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "DOCKER.md",
+    "index.html",
+    "metadata.json",
+    "README.template.md",
+  ]) {
+    assert.ok(!inventory.some(({ path }) => path === retired), retired);
+  }
 });
 
 test("live code has no relative reference back into a retired frontend root", () => {

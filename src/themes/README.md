@@ -177,7 +177,7 @@ To add a global background:
 
 1. Add the pattern entry in `src/themes/patterns.ts`.
 2. Add categories and an `iconKey` in the metadata maps in `src/themes/patterns.ts`.
-3. Add static CSS in `index.html` or an animation hook in `src/components/animations`.
+3. Add static CSS in `src/index.html` or an animation hook in `src/components/animations`.
 4. Update seasonal defaults in `src/themes/seasonal/index.ts` only if the background should be a seasonal default.
 5. Run the focused background tests.
 

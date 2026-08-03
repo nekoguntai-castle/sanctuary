@@ -2,7 +2,7 @@
 
 Navigation index for the curated documentation published to the Docusaurus site. The structure follows the [Diátaxis](https://diataxis.fr/) framework (explanation, how-to, reference) with architecture and ADR sections alongside. Planning, idea, archive, package README/API, and release-history docs remain repository documents and are linked to GitHub from here when useful.
 
-If you're new here, start with the root [`README.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/README.md) for what Sanctuary is, then [`CONTRIBUTING.md`](../CONTRIBUTING.md) for how to contribute.
+If you're new here, start with the root [`README.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/README.md) for what Sanctuary is, then [`.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md) for how to contribute.
 
 ## Product
 
@@ -30,6 +30,7 @@ Procedural guides for operators and developers.
 - [MCP server](how-to/mcp-server.md) — direct read-only MCP endpoint setup for loopback and advanced LAN clients
 - [Migrate from retired packaged deployments](how-to/migrate-from-packaged-deployments.md) — move an existing packaged deployment to the supported source or offline path
 - [Runtime secrets](how-to/runtime-secrets.md) — runtime secret management
+- [Docker deployment](how-to/docker.md) — container build, runtime, HTTPS, and troubleshooting guidance
 
 ## Reference
 
@@ -46,6 +47,7 @@ Lookup tables, checklists, and specs.
 - [Release gates](reference/release-gates.md) — release criteria and verification checklist
 - [Privacy-safe support package](reference/privacy-safe-support-package.md) — schema, provenance, retention, telemetry counting, and version compatibility
 - [Upgrade PostgreSQL auth drift findings](reference/upgrade-postgres-auth-drift-findings.md) — incident notes, reliable checks, and manual recovery
+- [Changelog](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/reference/changelog.md) — repository-only release history
 
 ## Architecture Decision Records
 
@@ -97,8 +99,8 @@ Package-scoped docs live next to their code — not in `docs/`. Start at each pa
 
 ## Documentation standards
 
-- **File naming:** kebab-case except canonical root files (`README.md`, `CLAUDE.md`, `DOCKER.md`, `CONTRIBUTING.md`, `CHANGELOG.md`) and per-package `README.md`/`ARCHITECTURE.md`.
+- **File naming:** kebab-case except community files under `.github/` and per-package `README.md`/`ARCHITECTURE.md`.
 - **Link style:** repo-root-relative for cross-package links, package-relative within a package.
 - **Diagrams:** Mermaid only (rendered natively by GitHub).
-- **Frontmatter:** none. ADRs use structured headings for metadata.
-- **CI proof artifacts:** deleted on PR merge, not committed. See `CONTRIBUTING.md` for the lifecycle rule.
+- **Frontmatter:** only when a published document needs a stable route contract. ADRs use structured headings for metadata.
+- **CI proof artifacts:** deleted on PR merge, not committed. See `.github/CONTRIBUTING.md` for the lifecycle rule.

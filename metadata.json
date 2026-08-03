@@ -1,7 +1,0 @@
-{
-  "name": "Sanctuary",
-  "description": "A minimalistic, zen-focused Bitcoin wallet interface inspired by Specter Desktop. Features multi-wallet support, hardware device integration, coin control (UTXO management), and comprehensive transaction labeling.",
-  "requestFramePermissions": [
-    "camera"
-  ]
-}

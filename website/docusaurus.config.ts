@@ -25,7 +25,7 @@ const PUBLISHED_DOCS_INCLUDE = [
   'server/ARCHITECTURE.md',
   'gateway/ARCHITECTURE.md',
   'llm-egress-proxy/ARCHITECTURE.md',
-  'CONTRIBUTING.md',
+  '.github/CONTRIBUTING.md',
 ] as const;
 
 const INTERNAL_MERMAID_DOC_ROUTES = {
@@ -73,7 +73,7 @@ const config: Config = {
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
           include: [...PUBLISHED_DOCS_INCLUDE],
-          exclude: ['**/node_modules/**', '**/_*.md'],
+          exclude: ['**/node_modules/**', '**/_*.md', 'docs/reference/changelog.md'],
           editUrl: ({ docPath }) => `${REPO_URL}/edit/main/${docPath}`,
           beforeDefaultRemarkPlugins: [
             [

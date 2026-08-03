@@ -1871,11 +1871,11 @@ test_setup_script_persists_llm_egress_policy_env() {
 # Unit Tests: .env.example
 # ============================================
 
-ENV_EXAMPLE="$PROJECT_ROOT/.env.example"
+ENV_EXAMPLE="$PROJECT_ROOT/config/env/.env.example"
 FRESH_INSTALL_TEST="$PROJECT_ROOT/tests/install/e2e/fresh-install.test.sh"
 
 test_env_example_exists() {
-    assert_file_exists "$ENV_EXAMPLE" ".env.example should exist in project root"
+    assert_file_exists "$ENV_EXAMPLE" "config/env/.env.example should exist"
 }
 
 test_env_example_has_all_required_secrets() {

@@ -154,6 +154,12 @@ main() {
   assert_images "$output_file" "true" "false"
 
   base_sha="$head_sha"
+  commit_file "$repo_dir" "src/index.html" '<script type="module" src="/main.tsx"></script>' "frontend html entry"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_images "$output_file" "true" "false"
+
+  base_sha="$head_sha"
   commit_file "$repo_dir" "shared/types/ambient-modules.d.ts" "declare const __BUILD__: string;" "shared ambient types"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
@@ -161,12 +167,6 @@ main() {
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "config/tooling/vite.nodePolyfills.ts" "export const polyfills = [];" "vite helper"
-  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
-  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_images "$output_file" "true" "false"
-
-  base_sha="$head_sha"
-  commit_file "$repo_dir" "metadata.json" '{"name":"Sanctuary"}' "frontend metadata"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_images "$output_file" "true" "false"
@@ -196,7 +196,7 @@ main() {
   assert_images "$output_file" "false" "false"
 
   base_sha="$head_sha"
-  commit_file "$repo_dir" "CHANGELOG.md" "# Release notes" "root docs"
+  commit_file "$repo_dir" "docs/reference/changelog.md" "# Release notes" "release notes"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_images "$output_file" "false" "false"

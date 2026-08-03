@@ -6,13 +6,21 @@ import { nodePolyfillsWithoutDeprecatedEsbuild } from './vite.nodePolyfills';
 
 const ANALYZE = process.env.ANALYZE === '1';
 const repoRoot = path.resolve(__dirname, '../..');
+const frontendRoot = path.join(repoRoot, 'src');
+const buildOutput = path.join(repoRoot, 'dist');
 
 export default defineConfig(() => {
     return {
-      root: repoRoot,
+      root: frontendRoot,
+      envDir: repoRoot,
+      publicDir: path.join(repoRoot, 'public'),
+      cacheDir: path.join(repoRoot, 'node_modules/.vite'),
       server: {
         port: 3000,
         host: '0.0.0.0',
+        fs: {
+          allow: [repoRoot],
+        },
         watch: {
           usePolling: true,
           interval: 1000,
@@ -37,13 +45,13 @@ export default defineConfig(() => {
         ...(ANALYZE
           ? [
               visualizer({
-                filename: 'dist/stats.html',
+                filename: path.join(buildOutput, 'stats.html'),
                 gzipSize: true,
                 brotliSize: true,
                 template: 'treemap',
               }),
               visualizer({
-                filename: 'dist/stats.json',
+                filename: path.join(buildOutput, 'stats.json'),
                 template: 'raw-data',
               }),
             ]
@@ -62,6 +70,8 @@ export default defineConfig(() => {
         include: ['regenerator-runtime/runtime'],
       },
       build: {
+        outDir: buildOutput,
+        emptyOutDir: true,
         // Chunk-size warning ceiling. The largest chunk is `lib-*.js` ≈ 5.0 MB,
         // 100 % `bitbox02-api`. Per `npm run build:analyze` (2026-06) it is NOT
         // in the initial preload set — it loads only when a user actually

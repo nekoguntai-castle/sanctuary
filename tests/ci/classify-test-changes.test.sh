@@ -375,6 +375,18 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "false"
 
   base_sha="$head_sha"
+  printf '<script type="module" src="/main.tsx"></script>\n' > "$repo_dir/src/index.html"
+  git -C "$repo_dir" add src/index.html
+  git -C "$repo_dir" commit -qm "frontend html entry"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "frontend_changed" "true"
+  assert_exact_output "$output_file" "browser_smoke_changed" "true"
+  assert_exact_output "$output_file" "render_changed" "true"
+  assert_exact_output "$output_file" "build_changed" "true"
+
+  base_sha="$head_sha"
   mkdir -p "$repo_dir/src/api"
   printf 'export const login = true;\n' > "$repo_dir/src/api/auth.ts"
   git -C "$repo_dir" add src/api/auth.ts

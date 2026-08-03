@@ -43,7 +43,7 @@ interface WalletSummaryProps {
   totalBalance: number;
 }
 
-// Tooltip styles are now in index.html as .tooltip-popup and .tooltip-arrow
+// Tooltip styles are in src/index.html as .tooltip-popup and .tooltip-arrow
 
 function getSyncTooltipText(w: Wallet): string {
   if (w.syncInProgress) return 'Syncing in progress\u2026';

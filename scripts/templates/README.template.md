@@ -266,7 +266,7 @@ Sanctuary is a **watch-only wallet coordinator** that helps you manage Bitcoin w
 
 > The diagram source file is available at [`assets/architecture.drawio`](assets/architecture.drawio) and can be edited with [draw.io](https://app.diagrams.net/).
 
-> **Living architecture docs:** the [C4-model diagrams in `docs/architecture/`](docs/architecture/) (Context, Container, Component) plus auto-generated `dependency-cruiser` module graphs render natively on GitHub (every node is a clickable Mermaid link to source). Forgejo CI validates the diagrams and builds the Docusaurus site without publishing it. When adding a new subsystem or cross-service entry point, update the relevant diagram in the same PR — see [`CONTRIBUTING.md`](CONTRIBUTING.md#architecture-diagrams).
+> **Living architecture docs:** the [C4-model diagrams in `docs/architecture/`](docs/architecture/) (Context, Container, Component) plus auto-generated `dependency-cruiser` module graphs render natively on GitHub (every node is a clickable Mermaid link to source). Forgejo CI validates the diagrams and builds the Docusaurus site without publishing it. When adding a new subsystem or cross-service entry point, update the relevant diagram in the same PR — see [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md#architecture-diagrams).
 
 **Components:**
 

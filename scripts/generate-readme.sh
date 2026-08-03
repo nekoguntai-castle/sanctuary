@@ -8,7 +8,7 @@ PLATFORM="${1:-github}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
-TEMPLATE="$REPO_ROOT/README.template.md"
+TEMPLATE="$REPO_ROOT/scripts/templates/README.template.md"
 OUTPUT="$REPO_ROOT/README.md"
 
 if [[ ! -f "$TEMPLATE" ]]; then

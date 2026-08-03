@@ -270,7 +270,7 @@ LAN MCP and LAN LLM are deployment features as much as application features.
 
 Implementation notes:
 
-- Update `.env.example`, `start.sh`, `docker-compose.yml`, and `docker-compose.ghcr.yml` together.
+- Update `config/env/.env.example`, `start.sh`, and the applicable Compose files together.
 - Add explicit profiles/modes for loopback-only MCP, LAN MCP, bundled Ollama, host Ollama, LAN Ollama, and authenticated provider endpoint.
 - Document network requirements separately for direct MCP clients and for the LLM egress proxy calling a LAN LLM.
 - Keep default exposure conservative: MCP loopback-only, LLM egress proxy not host-published, and no cloud/LAN egress unless configured.
@@ -822,7 +822,7 @@ Tasks:
 - Add standards-aligned `401` behavior where practical, including `WWW-Authenticate: Bearer`, without claiming full OAuth support yet.
 - Add a `.well-known` or docs note only if it truthfully reflects the auth implementation. Do not fake OAuth protected-resource support.
 - Require explicit LAN configuration in docs: `MCP_BIND_ADDRESS`, `MCP_ALLOWED_HOSTS`, firewall expectations, and client URL examples.
-- Add MCP environment variables to `.env.example`.
+- Add MCP environment variables to `config/env/.env.example`.
 - Add MCP support to `docker-compose.ghcr.yml` or explicitly document that prebuilt-image deployments do not support MCP until that file is updated.
 - Protect or limit `/metrics` when MCP is LAN-bound. Keep `/health` minimal and non-sensitive.
 - Add optional allowed IP/CIDR checks for MCP keys.

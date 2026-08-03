@@ -72,7 +72,7 @@ graph TD
 
 **TypeScript** — explicit projects live under `config/tooling/`: strict app, test, and script configs plus `tsconfig.all.json`, which preserves catch-all coverage for E2E and tool configuration files without relying on root discovery.
 
-**Tailwind CSS** — configured inline in `index.html` via the CDN script tag; palette tokens map to CSS custom properties (see Theme System below).
+**Tailwind CSS** — configured inline in `src/index.html` via the CDN script tag; palette tokens map to CSS custom properties (see Theme System below).
 
 ---
 
@@ -249,7 +249,7 @@ The `sanctuary-*` palette maps to `--color-bg-*` CSS variables — it is the str
 
 ```
 (monorepo root)
-├── index.html              # Tailwind CDN config + palette token definitions
+├── index.html              # Vite entry, Tailwind CDN config, and palette tokens
 ├── src/
 │   ├── main.tsx            # Entry point: theme init → ReactDOM.createRoot
 │   ├── App.tsx             # HashRouter, AppProviders, AppRoutes, auth gate

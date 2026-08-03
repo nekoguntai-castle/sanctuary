@@ -1,3 +1,7 @@
+---
+slug: /CONTRIBUTING
+---
+
 # Contributing to Sanctuary
 
 ## Quick start
@@ -8,7 +12,7 @@
 ./start.sh --stop       # Stop all services
 ```
 
-Read [`server/ARCHITECTURE.md`](server/ARCHITECTURE.md) before recommending architectural changes. The pattern you need likely already exists.
+Read [`server/ARCHITECTURE.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/server/ARCHITECTURE.md) before recommending architectural changes. The pattern you need likely already exists.
 
 ## Development workflow
 
@@ -22,7 +26,7 @@ Read [`server/ARCHITECTURE.md`](server/ARCHITECTURE.md) before recommending arch
 
 All services run inside Docker. Never use `npm run dev`, `npm run preview`, `npm run start`, or `npx vite` on the host. Use `./start.sh` exclusively.
 
-Never use inline environment variables with `docker compose`. Runtime secrets live outside the repository; see [`docs/how-to/runtime-secrets.md`](docs/how-to/runtime-secrets.md).
+Never use inline environment variables with `docker compose`. Runtime secrets live outside the repository; see [`docs/how-to/runtime-secrets.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/how-to/runtime-secrets.md).
 
 ### Before committing
 
@@ -52,7 +56,7 @@ Run `git commit` in the foreground; pre-commit hooks run validation whose feedba
 
 ### Investigating runtime call paths (AppMap)
 
-Static diagrams in [`docs/architecture/`](docs/architecture/) and the dependency-cruiser graphs they reference cannot see HTTP/WebSocket calls between services — they only know about imports. When you need to understand what *actually* runs end-to-end (e.g. "which path did this notification take?"), record an AppMap of the failing test:
+Static diagrams in [`docs/architecture/`](https://github.com/nekoguntai-castle/sanctuary/tree/main/docs/architecture) and the dependency-cruiser graphs they reference cannot see HTTP/WebSocket calls between services — they only know about imports. When you need to understand what *actually* runs end-to-end (e.g. "which path did this notification take?"), record an AppMap of the failing test:
 
 ```bash
 cd server
@@ -88,7 +92,7 @@ Write a non-regression test first, then fix the bug.
 
 ### Theme system
 
-The dark mode theme uses inverted color scales for `primary`, `warning`, `success`, `sent`, and `shared` palettes. In dark mode, low numbers (50-200) are dark and high numbers (800-950) are light -- the opposite of standard Tailwind. `sanctuary-*`, `emerald-*`, and `rose-*` follow standard Tailwind conventions. See [`docs/reference/frontend-architecture.md`](docs/reference/frontend-architecture.md) for full details.
+The dark mode theme uses inverted color scales for `primary`, `warning`, `success`, `sent`, and `shared` palettes. In dark mode, low numbers (50-200) are dark and high numbers (800-950) are light -- the opposite of standard Tailwind. `sanctuary-*`, `emerald-*`, and `rose-*` follow standard Tailwind conventions. See [`docs/reference/frontend-architecture.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/reference/frontend-architecture.md) for full details.
 
 Small font sizes (`text-[9px]`, `text-[10px]`, `text-[11px]`) are intentional for the compact UI. Do not replace them with named Tailwind sizes.
 
@@ -145,17 +149,17 @@ See [`.claude/commands/release.md`](https://github.com/nekoguntai-castle/sanctua
 
 ### Standards
 
-- **File naming:** kebab-case for all docs except the canonical root set (`README.md`, `CLAUDE.md`, `DOCKER.md`, `CONTRIBUTING.md`, `CHANGELOG.md`) and per-package `README.md`/`ARCHITECTURE.md`.
+- **File naming:** kebab-case except recognized community files under `.github/` and per-package `README.md`/`ARCHITECTURE.md`.
 - **Diagrams:** Mermaid only (GitHub renders natively).
 - **Links:** repo-root-relative for cross-package, package-relative within a package.
-- **Frontmatter:** none.
+- **Frontmatter:** only when a published document needs a stable route contract.
 
-See [`docs/README.md`](docs/README.md) for the full docs index and per-doc-type section requirements.
+See [`docs/README.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/README.md) for the full docs index and per-doc-type section requirements.
 
 ### Lifecycle rules
 
 1. **Write** a doc when a PR introduces a new subsystem, changes a public API, or makes an architectural decision.
-2. **Update** architecture docs alongside the code change that invalidates them. Every release PR updates [`CHANGELOG.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/CHANGELOG.md).
+2. **Update** architecture docs alongside the code change that invalidates them. Every release PR updates [`docs/reference/changelog.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/reference/changelog.md).
 3. **Archive** (move to `docs/archive/`) when a system is superseded but history has value.
 4. **Delete** CI run proofs and PR-scoped test artifacts when the PR merges. Auto-generated phase2-\*/phase3-\* proof files are PR artifacts, not repository documents. Do not commit them to `docs/plans/`.
 
@@ -165,7 +169,7 @@ For decisions with non-obvious tradeoffs, create an ADR in `docs/adr/` using the
 
 ### Living docs (Docusaurus)
 
-The curated docs under [`docs/architecture/`](docs/architecture/README.md), selected [`docs/explanation/`](docs/explanation/address-derivation.md), [`docs/how-to/`](docs/how-to/agent-wallet-funding.md), [`docs/reference/`](docs/reference/ci-cd-strategy.md), [`docs/adr/`](docs/adr/0001-browser-auth-token-storage.md), selected per-service `ARCHITECTURE.md` files, [`docs/PRD.md`](docs/PRD.md), [`docs/README.md`](docs/README.md), and this `CONTRIBUTING.md` form the Docusaurus documentation set. Planning, idea, archive, package README/API, and release-history docs remain repository documents. [`.github/workflows/architecture.yml`](.github/workflows/architecture.yml) validates the source markdown and proves the Docusaurus production build on Forgejo; it does not deploy the result.
+The curated docs under [`docs/architecture/`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/architecture/README.md), selected [`docs/explanation/`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/explanation/address-derivation.md), [`docs/how-to/`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/how-to/agent-wallet-funding.md), [`docs/reference/`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/reference/ci-cd-strategy.md), [`docs/adr/`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/adr/0001-browser-auth-token-storage.md), selected per-service `ARCHITECTURE.md` files, [`docs/PRD.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/PRD.md), [`docs/README.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/README.md), and this `.github/CONTRIBUTING.md` form the Docusaurus documentation set. Planning, idea, archive, package README/API, and release-history docs remain repository documents. [`workflows/architecture.yml`](https://github.com/nekoguntai-castle/sanctuary/blob/main/.github/workflows/architecture.yml) validates the source markdown and proves the Docusaurus production build on Forgejo; it does not deploy the result.
 
 Local commands:
 
@@ -181,7 +185,7 @@ npm run docs:build    # production build to website/build
 | Script | What it produces | What stale-fails CI |
 |---|---|---|
 | `npm run arch:graphs` | Module dependency graphs per package (`docs/architecture/generated/{frontend,server,gateway}.md`) using `dependency-cruiser`. | Module added/moved/deleted without committing the regenerated graph. |
-| `npm run arch:calls` | Function-level call graphs for opt-in subsystems listed in [`docs/architecture/calls.config.json`](docs/architecture/calls.config.json) (`docs/architecture/generated/calls/<name>.md`). Surfaces new entry points to existing pipelines — the bug class that motivated this whole system. | New function/method added or removed inside a tracked subsystem without committing the regenerated call graph. |
+| `npm run arch:calls` | Function-level call graphs for opt-in subsystems listed in [`docs/architecture/calls.config.json`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/architecture/calls.config.json) (`docs/architecture/generated/calls/<name>.md`). Surfaces new entry points to existing pipelines — the bug class that motivated this whole system. | New function/method added or removed inside a tracked subsystem without committing the regenerated call graph. |
 | `npm run arch:lint` | Validates every `click NodeId href "path"` (and `path#symbol`) directive in any Mermaid block. Hrefs may use `#symbol` to pin to a specific exported function/class/method/const; the symbol is cross-checked against the source file with the TypeScript compiler API. | Source file referenced by a click href is renamed or deleted; or a pinned symbol is renamed/removed. |
 | `node scripts/architecture/detect-drift.mjs` (CI only, warn-only) | Compares the PR's changed files against the file→diagram reference index. If a diagram references a touched file but the diagram itself wasn't modified, emits a `::warning::` and a job-summary entry. | Never — warn-only; reviewer decides if the diagram needs an update. |
 
@@ -200,7 +204,7 @@ Run `npm run arch:calls` and commit the new `docs/architecture/generated/calls/<
 
 ### Architecture diagrams
 
-Diagrams live in [`docs/architecture/`](docs/architecture/) and follow the [C4 model](https://c4model.com/) (Context → Container → Component). All diagrams are Mermaid so GitHub renders them inline *and* Docusaurus renders them in the site with svg-pan-zoom for drill-down. Click handlers (`click NodeId href "..."`) navigate to docs or source; the Docusaurus build keeps doc-to-doc clicks inside the site and rewrites source-code clicks to absolute GitHub URLs via [`website/src/plugins/remark-mermaid-click-rewrite.mjs`](website/src/plugins/remark-mermaid-click-rewrite.mjs), so the same source works in both renderings.
+Diagrams live in [`docs/architecture/`](https://github.com/nekoguntai-castle/sanctuary/tree/main/docs/architecture) and follow the [C4 model](https://c4model.com/) (Context → Container → Component). All diagrams are Mermaid so GitHub renders them inline *and* Docusaurus renders them in the site with svg-pan-zoom for drill-down. Click handlers (`click NodeId href "..."`) navigate to docs or source; the Docusaurus build keeps doc-to-doc clicks inside the site and rewrites source-code clicks to absolute GitHub URLs via [`website/src/plugins/remark-mermaid-click-rewrite.mjs`](https://github.com/nekoguntai-castle/sanctuary/blob/main/website/src/plugins/remark-mermaid-click-rewrite.mjs), so the same source works in both renderings.
 
 When you add or change an entry point that crosses a service boundary (e.g. a new caller of `notificationDispatcher`, a new gateway route, a new external integration):
 

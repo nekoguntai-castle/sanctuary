@@ -12,7 +12,6 @@ on:
       - main
     paths:
       - 'src/**'
-      - 'index.html'
       - 'shared/**'
       - 'tests/**'
       - '!tests/*.md'
