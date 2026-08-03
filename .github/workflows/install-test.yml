@@ -659,6 +659,7 @@ jobs:
 
             ENCRYPTION_SALT=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
             GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+            WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)
             POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
             LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32)
             REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
@@ -673,7 +674,8 @@ jobs:
 
             # Start containers
             JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" ENCRYPTION_SALT="$ENCRYPTION_SALT" \
-              GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+              GATEWAY_SECRET="$GATEWAY_SECRET" WORKER_DIAGNOSTICS_SECRET="$WORKER_DIAGNOSTICS_SECRET" \
+              POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
               LLM_EGRESS_PROXY_SECRET="$LLM_EGRESS_PROXY_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
               SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
               HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
@@ -802,6 +804,7 @@ jobs:
 
             ENCRYPTION_SALT=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
             GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+            WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)
             POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
             LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32)
             REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
@@ -816,7 +819,8 @@ jobs:
 
             # Start containers with higher rate limits for testing
             JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" ENCRYPTION_SALT="$ENCRYPTION_SALT" \
-              GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+              GATEWAY_SECRET="$GATEWAY_SECRET" WORKER_DIAGNOSTICS_SECRET="$WORKER_DIAGNOSTICS_SECRET" \
+              POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
               LLM_EGRESS_PROXY_SECRET="$LLM_EGRESS_PROXY_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
               SANCTUARY_SSL_DIR="$SANCTUARY_SSL_DIR" SANCTUARY_COMPOSE_SSL_DIR="$SANCTUARY_COMPOSE_SSL_DIR" \
               HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \

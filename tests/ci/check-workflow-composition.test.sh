@@ -286,6 +286,16 @@ assert_contains_in_order "$RC" \
   "auth-flow-test:" \
   "runs-on: [ubuntu-22.04, x300-canary]"
 
+assert_occurrence_count "$RC" \
+  "every release-candidate ad hoc stack generates the diagnostics secret" \
+  'WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)' \
+  2
+
+assert_occurrence_count "$RC" \
+  "every release-candidate ad hoc stack exports the diagnostics secret" \
+  'export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET' \
+  2
+
 assert_not_contains "$RC" \
   "release-candidate checkout must not use raw input ref" \
   '${{ github.event.inputs.ref || inputs.ref || '\''main'\'' }}'
@@ -392,6 +402,16 @@ assert_contains_in_order "$IT" \
   "WORKER_DIAGNOSTICS_SECRET=\$(openssl rand -hex 32)" \
   'WORKER_DIAGNOSTICS_SECRET="$WORKER_DIAGNOSTICS_SECRET"' \
   "docker compose up -d --build"
+
+assert_occurrence_count "$IT" \
+  "every install-test ad hoc stack generates the diagnostics secret" \
+  'WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)' \
+  3
+
+assert_occurrence_count "$IT" \
+  "every install-test ad hoc stack supplies the diagnostics secret" \
+  'WORKER_DIAGNOSTICS_SECRET="$WORKER_DIAGNOSTICS_SECRET"' \
+  3
 
 assert_contains_in_order "$IT" \
   "install-test unit diagnostics" \

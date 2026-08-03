@@ -379,6 +379,7 @@ jobs:
 
           ENCRYPTION_SALT=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
           GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
+          WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)
           POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
           LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32)
           REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
@@ -395,7 +396,7 @@ jobs:
           export SANCTUARY_COMPOSE_SSL_DIR
           mkdir -p "$SANCTUARY_SSL_DIR"
           ./docker/nginx/ssl/generate-certs.sh localhost
-          export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET POSTGRES_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
+          export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
           cd "${{ github.workspace }}"
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log" \
             scripts/ci/with-runner-lock.sh e2e \
@@ -543,6 +544,7 @@ jobs:
 
           ENCRYPTION_SALT=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
           GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
+          WORKER_DIAGNOSTICS_SECRET=$(openssl rand -hex 32)
           POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
           LLM_EGRESS_PROXY_SECRET=$(openssl rand -hex 32)
           REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
@@ -560,7 +562,7 @@ jobs:
           mkdir -p "$SANCTUARY_SSL_DIR"
           ./docker/nginx/ssl/generate-certs.sh localhost
           # Raise auth rate limits for stressy auth-flow test sequences
-          export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET POSTGRES_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
+          export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET WORKER_DIAGNOSTICS_SECRET POSTGRES_PASSWORD LLM_EGRESS_PROXY_SECRET REDIS_PASSWORD
           export RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100
           cd "${{ github.workspace }}"
           scripts/ci/run-with-log.sh "$JOB_LOG_DIR/start-containers.log" \
