@@ -277,6 +277,15 @@ assert_contains_in_order "$RC" \
   'group: sanctuary-release-candidate-${{ github.ref }}' \
   "cancel-in-progress: false"
 
+assert_contains_in_order "$RC" \
+  "release-candidate Docker jobs require the DIND runner" \
+  "fresh-install-test:" \
+  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "container-health-test:" \
+  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "auth-flow-test:" \
+  "runs-on: [ubuntu-22.04, x300-canary]"
+
 assert_not_contains "$RC" \
   "release-candidate checkout must not use raw input ref" \
   '${{ github.event.inputs.ref || inputs.ref || '\''main'\'' }}'
@@ -356,6 +365,33 @@ assert_contains_in_order "$IT" \
   "format('sanctuary-install-release-{0}', github.ref)" \
   "'sanctuary-runner-e2e-workflow'" \
   'cancel-in-progress: ${{ github.event_name == '\''pull_request'\'' }}'
+
+assert_contains_in_order "$IT" \
+  "install-test Docker jobs require the DIND runner" \
+  "fresh-install-test:" \
+  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "install-script-test:" \
+  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "install-stack-smoke:" \
+  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "container-health-test:" \
+  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "auth-flow-test:" \
+  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "upgrade-baseline-test:" \
+  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "upgrade-extended-fixture-test:" \
+  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "upgrade-extended-test:" \
+  "runs-on: [ubuntu-22.04, x300-canary]" \
+  "docker-resource-cleanup:" \
+  "runs-on: [ubuntu-22.04, x300-canary]"
+
+assert_contains_in_order "$IT" \
+  "install stack supplies the diagnostics secret" \
+  "WORKER_DIAGNOSTICS_SECRET=\$(openssl rand -hex 32)" \
+  'WORKER_DIAGNOSTICS_SECRET="$WORKER_DIAGNOSTICS_SECRET"' \
+  "docker compose up -d --build"
 
 assert_contains_in_order "$IT" \
   "install-test unit diagnostics" \

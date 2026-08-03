@@ -328,8 +328,13 @@ Release tags use distinct workflow-level concurrency groups for
 also isolated from scheduled and `main` install runs. GitHub-style concurrency
 keeps only one pending run per group; sharing a group caused all three v0.8.58
 release-candidate validations to be replaced before their jobs started. The
-runner's capacity limit and the shared cross-workflow locks remain the owners of
-Docker serialization.
+Docker-backed jobs use run-scoped projects and ports on the DIND runner so the
+two workflows can coexist without coupling their pending slots.
+
+Docker-backed install and release jobs also require the organization's
+`x300-canary` runner label. That label selects the Docker-in-Docker runner whose
+daemon socket can be mounted into the production `docker-proxy` service;
+rootless Podman runners cannot satisfy that compose contract.
 
 The Docker-backed install jobs in `install-test.yml` and `release-candidate.yml`
 run through a diagnostic logging harness so failures that happen *before* a

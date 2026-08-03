@@ -1,3 +1,4 @@
 self-hosted-runner:
   labels:
     - ubuntu-20.04
+    - x300-canary
