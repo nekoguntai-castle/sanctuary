@@ -261,22 +261,3 @@ PY
 
 mv "$INDEX_TMP" "$DIAGNOSTIC_DIR/diagnostic-index.md"
 ci_emit_summary < "$SUMMARY_TMP"
-
-# WORKAROUND publish step — see tools/ci-log-sink/README.md.
-# Publishes failed-log tails to the LAN log sink so investigators (human or
-# LLM agent) can fetch them via plain HTTP without browser / session-cookie
-# access to Forgejo. Exists because Forgejo 15.0.1 lacks the Gitea-upstream
-# /actions/jobs/<id>/logs endpoint; remove this block (and the publish
-# script) once Forgejo gains that endpoint. No-op when
-# SANCTUARY_CI_LOG_SINK_URL is unset.
-# JOB_SAFE_NAME is derived from the title argument: lowercased, every
-# unsafe character replaced with `-`, leading/trailing dashes stripped.
-JOB_SAFE_NAME="$(
-  printf '%s' "$TITLE" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -e 's/[^a-z0-9._-]\{1,\}/-/g' -e 's/^-\{1,\}//' -e 's/-\{1,\}$//'
-)"
-if [ -z "$JOB_SAFE_NAME" ]; then
-  JOB_SAFE_NAME="ci"
-fi
-"$SCRIPT_DIR/publish-failed-logs.sh" "$DIAGNOSTIC_DIR" "$JOB_SAFE_NAME" || true

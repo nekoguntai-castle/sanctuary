@@ -58,8 +58,7 @@ check_rule "outbound API mutation" \
 unexpected_secrets="$(
   find_policy_files |
     sort -z |
-    xargs -0 grep -nE '\$\{\{[[:space:]]*secrets\.[A-Za-z0-9_]+' 2>/dev/null |
-    grep -v 'secrets\.SANCTUARY_CI_LOG_SINK_TOKEN' || true
+    xargs -0 grep -nE '\$\{\{[[:space:]]*secrets\.[A-Za-z0-9_]+' 2>/dev/null || true
 )"
 if [ -n "$unexpected_secrets" ]; then
   echo "workflow policy violation (non-diagnostic secret):" >&2

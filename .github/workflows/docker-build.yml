@@ -28,7 +28,6 @@ on:
       - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/redactor.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
-      - 'scripts/ci/publish-failed-logs.sh'
       - '.github/workflows/docker-build.yml'
   pull_request:
     branches:
@@ -54,7 +53,6 @@ on:
       - 'scripts/ci/wait-for-docker.sh'
       - 'scripts/ci/redactor.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
-      - 'scripts/ci/publish-failed-logs.sh'
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:  # Allow manual trigger
 
@@ -66,8 +64,6 @@ env:
   GIT_CONFIG_COUNT: '1'
   GIT_CONFIG_KEY_0: init.defaultBranch
   GIT_CONFIG_VALUE_0: main
-  SANCTUARY_CI_LOG_SINK_URL: ${{ vars.SANCTUARY_CI_LOG_SINK_URL }}
-  SANCTUARY_CI_LOG_SINK_TOKEN: ${{ secrets.SANCTUARY_CI_LOG_SINK_TOKEN }}
 
 jobs:
   detect-image-scope:

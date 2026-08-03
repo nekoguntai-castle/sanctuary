@@ -80,8 +80,6 @@ env:
   GIT_CONFIG_VALUE_0: main
   HTTPS_PORT: 8443
   HTTP_PORT: 8080
-  SANCTUARY_CI_LOG_SINK_URL: ${{ vars.SANCTUARY_CI_LOG_SINK_URL }}
-  SANCTUARY_CI_LOG_SINK_TOKEN: ${{ secrets.SANCTUARY_CI_LOG_SINK_TOKEN }}
   # Share the runner-lock namespace with test.yml / install-test.yml so the
   # node-toolchain (cleanup) and e2e locks here actually serialize against
   # those workflows' lock-takers on the shared self-hosted runner.

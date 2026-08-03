@@ -508,11 +508,6 @@ assert_contains_in_order "$RC" \
   "auth-flow.test.sh"
 
 assert_contains_in_order "$RC" \
-  "release-candidate sink env" \
-  "SANCTUARY_CI_LOG_SINK_URL" \
-  "SANCTUARY_CI_LOG_SINK_TOKEN"
-
-assert_contains_in_order "$RC" \
   "release-candidate tag-scoped workflow concurrency" \
   "concurrency:" \
   'group: sanctuary-release-candidate-${{ github.ref }}' \
@@ -637,11 +632,6 @@ assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgra
 assert_named_job_step_not_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
   "install-test baseline wrapper leaves graceful teardown to the test" \
   'docker compose down'
-
-assert_contains_in_order "$IT" \
-  "install-test sink env" \
-  "SANCTUARY_CI_LOG_SINK_URL" \
-  "SANCTUARY_CI_LOG_SINK_TOKEN"
 
 assert_contains_in_order "$IT" \
   "install-test release-tag workflow concurrency" \
@@ -868,6 +858,16 @@ assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
 assert_not_contains "$ARCHITECTURE_WORKFLOW" \
   "architecture workflow retired website path" \
   "website/"
+
+assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+  "architecture failure bundle stays in the diagnostic artifact" \
+  "Collect architecture diagnostics on failure" \
+  'diagnostic_dir="$GITHUB_WORKSPACE/.tmp/ci-diagnostics/architecture"' \
+  'git diff -- docs/architecture/generated > "$diagnostic_dir/full-diff.txt"' \
+  'cp "$source" "$diagnostic_dir/${graph}.regenerated.md"' \
+  '"$diagnostic_dir/env.txt"' \
+  "Write architecture diagnostic summary" \
+  "Upload architecture diagnostics"
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "architecture diagnostic summary upload" \
@@ -1401,8 +1401,6 @@ assert_contains_in_order "$VV" \
 
 assert_contains_in_order "$VV" \
   "verify-vectors diagnostic summary upload" \
-  "SANCTUARY_CI_LOG_SINK_URL" \
-  "SANCTUARY_CI_LOG_SINK_TOKEN" \
   "Write vector diagnostic summary" \
   'scripts/ci/write-diagnostic-summary.sh "$DIAGNOSTIC_DIR" "Verify Bitcoin Vectors"' \
   "Upload vector diagnostics" \
@@ -1512,8 +1510,6 @@ assert_contains_in_order "$REPO_ROOT/.github/workflows/verify-vectors.yml" \
 
 assert_contains_in_order "$DOCKER_BUILD_WORKFLOW" \
   "docker-build image-scope diagnostics" \
-  "SANCTUARY_CI_LOG_SINK_URL" \
-  "SANCTUARY_CI_LOG_SINK_TOKEN" \
   "detect-image-scope:" \
   'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/docker-build-detect-image-scope' \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/classify-image-scope.log" bash scripts/ci/classify-docker-build-images.sh' \
@@ -1606,11 +1602,6 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "node tests/ci/check-root-layout.test.mjs" \
   "node tests/ci/docker-compose-test-contract.test.mjs" \
   "node tests/ci/provider-context-node.test.mjs"
-
-assert_contains_in_order "$QUALITY_WORKFLOW" \
-  "quality workflow sink env" \
-  "SANCTUARY_CI_LOG_SINK_URL" \
-  "SANCTUARY_CI_LOG_SINK_TOKEN"
 
 assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality determine-scope diagnostics" \
@@ -1786,6 +1777,14 @@ for workflow_path in \
     "$workflow configures Git's initial branch once" \
     "GIT_CONFIG_KEY_0: init.defaultBranch" \
     1
+  assert_not_contains \
+    "$workflow_path" \
+    "$workflow no longer wires the retired LAN log sink" \
+    "SANCTUARY_CI_LOG_SINK_"
+  assert_not_contains \
+    "$workflow_path" \
+    "$workflow no longer calls the retired LAN log publisher" \
+    "publish-failed-logs.sh"
 done
 
 # --- summary ----------------------------------------------------------------

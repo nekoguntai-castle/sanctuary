@@ -20,7 +20,6 @@ on:
       - 'scripts/ci/cleanup-docker-resources.sh'
       - 'scripts/ci/install-test-ports.sh'
       - 'scripts/ci/provider-context.sh'
-      - 'scripts/ci/publish-failed-logs.sh'
       - 'scripts/ci/redactor.sh'
       - 'scripts/ci/run-in-isolated-workspace.sh'
       - 'scripts/ci/run-extended-upgrade-fixtures.sh'
@@ -52,7 +51,6 @@ on:
       - 'scripts/ci/cleanup-docker-resources.sh'
       - 'scripts/ci/install-test-ports.sh'
       - 'scripts/ci/provider-context.sh'
-      - 'scripts/ci/publish-failed-logs.sh'
       - 'scripts/ci/redactor.sh'
       - 'scripts/ci/run-in-isolated-workspace.sh'
       - 'scripts/ci/run-extended-upgrade-fixtures.sh'
@@ -129,8 +127,6 @@ env:
   HTTP_PORT: 8080
   COMPOSE_BAKE: 'false'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
-  SANCTUARY_CI_LOG_SINK_URL: ${{ vars.SANCTUARY_CI_LOG_SINK_URL }}
-  SANCTUARY_CI_LOG_SINK_TOKEN: ${{ secrets.SANCTUARY_CI_LOG_SINK_TOKEN }}
 
 jobs:
   # ============================================

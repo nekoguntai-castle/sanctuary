@@ -177,6 +177,17 @@ else
   [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
 fi
 
+# ----- 6. retired LAN publisher -------------------------------------------
+prev_fail=$FAIL
+start_test "retired LAN publisher is absent from the diagnostic path"
+if [ -e "$REPO_ROOT/scripts/ci/publish-failed-logs.sh" ]; then
+  end_test_fail "retired publisher script still exists"
+else
+  assert_not_contains "$SUMMARY_SCRIPT" "publish-failed-logs.sh" "summary no longer invokes retired publisher" || true
+  assert_not_contains "$SUMMARY_SCRIPT" "SANCTUARY_CI_LOG_SINK" "summary no longer depends on retired sink environment" || true
+  [ "$FAIL" -eq "$prev_fail" ] && end_test_pass
+fi
+
 # ----- summary ------------------------------------------------------------
 echo
 echo "===================="

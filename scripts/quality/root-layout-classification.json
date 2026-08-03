@@ -34,9 +34,6 @@
       "tests",
       "uninstall.sh"
     ],
-    "tooling": [
-      "scripts",
-      "tools"
-    ]
+    "tooling": ["scripts"]
   }
 }

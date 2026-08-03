@@ -30,8 +30,6 @@ env:
   GIT_CONFIG_VALUE_0: main
   NODE_VERSION: '24'
   SANCTUARY_RUNNER_LOCK_DIR: ${{ github.workspace }}/.tmp/runner-locks-v2
-  SANCTUARY_CI_LOG_SINK_URL: ${{ vars.SANCTUARY_CI_LOG_SINK_URL }}
-  SANCTUARY_CI_LOG_SINK_TOKEN: ${{ secrets.SANCTUARY_CI_LOG_SINK_TOKEN }}
 
 jobs:
   build:
@@ -129,64 +127,50 @@ jobs:
           fi
           INNER
 
-      - name: Publish stale-graph snapshot to LAN sink on failure
-        if: failure() && env.SANCTUARY_CI_LOG_SINK_URL != ''
+      - name: Collect architecture diagnostics on failure
+        if: failure()
+        continue-on-error: true
         run: |
           set -euo pipefail
-          cd "$ARCH_WORKDIR"
-          run_id="${GITHUB_RUN_ID:-unknown}"
-          base="${SANCTUARY_CI_LOG_SINK_URL%/}/runs/${run_id}/architecture"
-          auth_tmp="$(mktemp)"
-          trap 'rm -f "$auth_tmp"' EXIT
-          if [ -n "${SANCTUARY_CI_LOG_SINK_TOKEN:-}" ]; then
-            printf 'Authorization: Bearer %s\n' "$SANCTUARY_CI_LOG_SINK_TOKEN" > "$auth_tmp"
-            CURL_AUTH=(-H @"$auth_tmp")
-          else
-            CURL_AUTH=()
+          diagnostic_dir="$GITHUB_WORKSPACE/.tmp/ci-diagnostics/architecture"
+          mkdir -p "$diagnostic_dir"
+
+          if [ -z "${ARCH_WORKDIR:-}" ] || [ ! -d "$ARCH_WORKDIR" ]; then
+            {
+              echo "BREADCRUMB: the isolated architecture workspace was not created."
+              echo "Inspect checkout and workspace-preparation output in the native job log."
+            } > "$diagnostic_dir/BREADCRUMB-UPSTREAM-FAILURE.txt"
+            exit 0
           fi
-          # Bundle every diagnostic file the run produced
+
+          cd "$ARCH_WORKDIR"
           shopt -s nullglob
-          log_files=(.tmp/ci-diagnostics/architecture/*.log)
+          log_files=("$diagnostic_dir"/*.log)
           shopt -u nullglob
           if [ ${#log_files[@]} -eq 0 ]; then
-            # BREADCRUMB: no run-with-log.sh wrappers produced output. That means
-            # the failure was UPSTREAM of any wrapped step — typically a workflow
-            # shell parse error or a step that crashed before `run-with-log.sh`
-            # could open its log file. DO NOT chase test/build-output theories;
-            # check the actionlint shellcheck output and the previous step's raw
-            # YAML for unmatched quotes, missing heredoc delimiters, etc.
             {
-              echo "BREADCRUMB: .tmp/ci-diagnostics/architecture/ contains zero *.log files."
-              echo "Cause: the run-with-log.sh wrapper never executed — failure"
-              echo "is upstream of any wrapped step. Inspect the workflow YAML"
-              echo "and the runner step output for shell parse errors."
+              echo "BREADCRUMB: no run-with-log.sh wrapper produced a log file."
+              echo "The failure occurred before a wrapped command; inspect the native job log."
               echo "ARCH_WORKDIR=$ARCH_WORKDIR"
               echo "pwd=$(pwd)"
-              ls -la .tmp/ci-diagnostics/architecture/ 2>&1 || true
-            } > /tmp/BREADCRUMB-UPSTREAM-FAILURE.txt
-            curl -fsS -X PUT --data-binary @/tmp/BREADCRUMB-UPSTREAM-FAILURE.txt "${CURL_AUTH[@]}" "${base}/BREADCRUMB-UPSTREAM-FAILURE.txt" || true
-          else
-            for log in "${log_files[@]}"; do
-              name=$(basename "$log")
-              curl -fsS -X PUT --data-binary @"$log" "${CURL_AUTH[@]}" "${base}/${name}" || true
-            done
+            } > "$diagnostic_dir/BREADCRUMB-UPSTREAM-FAILURE.txt"
           fi
-          # Full git diff + regenerated artifacts
-          git diff -- docs/architecture/generated > /tmp/full-diff.txt 2>&1 || true
-          curl -fsS -X PUT --data-binary @/tmp/full-diff.txt "${CURL_AUTH[@]}" "${base}/full-diff.txt" || true
-          if [ -f docs/architecture/generated/frontend.md ]; then
-            curl -fsS -X PUT --data-binary @docs/architecture/generated/frontend.md "${CURL_AUTH[@]}" "${base}/frontend.regenerated.md" || true
-          fi
-          if [ -f docs/architecture/generated/server.md ]; then
-            curl -fsS -X PUT --data-binary @docs/architecture/generated/server.md "${CURL_AUTH[@]}" "${base}/server.regenerated.md" || true
-          fi
-          if [ -f docs/architecture/generated/gateway.md ]; then
-            curl -fsS -X PUT --data-binary @docs/architecture/generated/gateway.md "${CURL_AUTH[@]}" "${base}/gateway.regenerated.md" || true
-          fi
-          # Workspace ls + env
-          { ls -la .tmp/ci-diagnostics/architecture/ 2>&1; echo "---"; node --version; npm --version; uname -a; pwd; } > /tmp/env.txt 2>&1
-          curl -fsS -X PUT --data-binary @/tmp/env.txt "${CURL_AUTH[@]}" "${base}/env.txt" || true
-          echo "Published architecture diagnostics to ${base}/"
+
+          git diff -- docs/architecture/generated > "$diagnostic_dir/full-diff.txt" 2>&1 || true
+          for graph in frontend server gateway; do
+            source="docs/architecture/generated/${graph}.md"
+            if [ -f "$source" ]; then
+              cp "$source" "$diagnostic_dir/${graph}.regenerated.md"
+            fi
+          done
+          {
+            ls -la "$diagnostic_dir" 2>&1
+            echo "---"
+            node --version
+            npm --version
+            uname -a
+            pwd
+          } > "$diagnostic_dir/env.txt" 2>&1
 
       - name: Typecheck Docusaurus site
         env:
