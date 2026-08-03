@@ -1565,6 +1565,11 @@ assert_contains_in_order "$QUALITY_WORKFLOW" \
   "quality dependency audit diagnostics" \
   "dependency-audit:" \
   'DIAGNOSTIC_DIR: ${{ github.workspace }}/.tmp/ci-diagnostics/quality-dependency-audit' \
+  'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-deprecations.log"' \
+  'source "$source_workspace/scripts/ci/redactor.sh"' \
+  "npm ci --ignore-scripts --audit=false --fund=false" \
+  'redact_file "$install_log" "$DIAGNOSTIC_DIR/npm-deprecation-install.log"' \
+  "node scripts/ci/check-npm-deprecations.mjs" \
   'scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-audit.log"' \
   "node scripts/ci/npm-audit-gate.mjs" \
   "Write dependency audit diagnostic summary" \

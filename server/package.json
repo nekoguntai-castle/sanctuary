@@ -12,8 +12,7 @@
   "overrides": {
     "@hono/node-server": "1.19.14",
     "hono": "4.12.26",
-    "protobufjs": "7.6.4",
-    "uuid": "14.0.0"
+    "protobufjs": "7.6.4"
   },
   "scripts": {
     "postinstall": "prisma generate",

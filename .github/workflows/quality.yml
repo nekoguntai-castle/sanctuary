@@ -3,6 +3,7 @@ name: Code Quality
 # Universal quality signals that aren't covered by the main test workflow:
 # - lint:     repo-owned TypeScript policy gate for production source
 # - audit:    high/critical npm advisory gate across every package lockfile
+# - deprecations: exact, expiring inventory for npm's lockfile-backed warnings
 # - gitleaks: secret scanning (layered over .gitleaks.toml allowlist)
 # - semgrep:  Forgejo-compatible SAST gate for new Semgrep ERROR findings
 # - actionlint: workflow syntax/expression validation with Forgejo action URL allowlist
@@ -226,6 +227,36 @@ jobs:
 
       - name: Verify Node.js toolchain
         uses: ./.github/actions/setup-node-toolchain
+
+      - name: Check npm deprecation inventory
+        run: |
+          ${{ github.workspace }}/scripts/ci/run-with-log.sh "$DIAGNOSTIC_DIR/npm-deprecations.log" bash -euo pipefail <<'QUALITY_NPM_DEPRECATIONS'
+          source_workspace="${GITHUB_WORKSPACE:-$PWD}"
+          source "$source_workspace/scripts/ci/redactor.sh"
+          warning_tmp_parent="${RUNNER_TEMP:-/tmp}"
+          mkdir -p "$warning_tmp_parent"
+          warning_workdir="$(mktemp -d "$warning_tmp_parent/sanctuary-npm-deprecations.XXXXXX")"
+          trap 'rm -rf "$warning_workdir" || echo "::warning::Could not fully remove npm-deprecation temp workspace"' EXIT
+
+          git clone --quiet --no-hardlinks "$source_workspace" "$warning_workdir/repo"
+          cd "$warning_workdir/repo"
+          install_log="$warning_workdir/npm-ci.log"
+          for attempt in 1 2 3; do
+            echo "npm deprecation clean install, attempt $attempt"
+            if npm ci --ignore-scripts --audit=false --fund=false --cache "$warning_workdir/.npm-cache" >"$install_log" 2>&1; then
+              break
+            else
+              install_status="$?"
+            fi
+            cat "$install_log"
+            if [ "$attempt" -eq 3 ]; then
+              exit "$install_status"
+            fi
+            sleep $((attempt * 10))
+          done
+          redact_file "$install_log" "$DIAGNOSTIC_DIR/npm-deprecation-install.log"
+          node scripts/ci/check-npm-deprecations.mjs --install-log "$install_log"
+          QUALITY_NPM_DEPRECATIONS
 
       - name: Run npm audit
         run: |
@@ -614,6 +645,7 @@ jobs:
           bash -n scripts/ci/backend-integration-groups.sh
           bash -n scripts/ci/prepare-integration-db.sh
           node --check scripts/ci/check-integration-db.mjs
+          node --check scripts/ci/check-npm-deprecations.mjs
           bash -n scripts/ci/frontend-coverage-shard.sh
           bash -n scripts/ci/frontend-coverage-merge.sh
           bash -n scripts/ci/install-test-ports.sh
@@ -686,6 +718,7 @@ jobs:
           bash -n tests/ci/workflows-test-only.test.sh
           # Node CI helper tests.
           node tests/ci/check-github-action-runtimes.test.mjs
+          node tests/ci/check-npm-deprecations.test.mjs
           node tests/ci/provider-context-node.test.mjs
           # Phase 1-7 portability tests + leak gate.
           bash tests/ci/provider-context.test.sh
