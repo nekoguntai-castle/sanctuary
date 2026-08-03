@@ -13,7 +13,7 @@
     "../../server",
     "../../gateway",
     "../../llm-egress-proxy",
-    "../../website",
+    "../../docs/site",
     "../../scripts/verify-addresses"
   ]
 }

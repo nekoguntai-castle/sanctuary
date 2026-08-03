@@ -146,7 +146,7 @@ Verification:
 - `npm run arch:graphs`
 - `npm run arch:calls`
 - `git diff --exit-code -- docs/architecture/generated`
-- `npm --prefix website run typecheck`
+- `npm --prefix docs/site run typecheck`
 - `npm run docs:build`
 - `npm run quality:lizard`
 - `npm run typecheck`
@@ -180,7 +180,7 @@ Verification:
 - `npm --prefix server audit --json`
 - `npm --prefix gateway audit --json`
 - `npm --prefix llm-egress-proxy audit --json`
-- `npm --prefix website audit --json`
+- `npm --prefix docs/site audit --json`
 - `npm --prefix scripts/verify-addresses audit --json`
 - `npm --prefix scripts/verify-psbt audit --json`
 - Package-manager lockfile diff review if dependencies change.

@@ -844,6 +844,17 @@ fi
 ARCHITECTURE_WORKFLOW="$REPO_ROOT/.github/workflows/architecture.yml"
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+  "architecture docs-site trigger coverage" \
+  "docs/**"
+
+assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
+  "architecture docs-site install composition" \
+  "Install dependencies (application workspaces and docs site)" \
+  'scripts/ci/retry-command.sh "docs-site npm ci"' \
+  "npm --prefix docs/site ci" \
+  '.npm-cache/docs-site'
+
+assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "architecture docs typecheck retry composition" \
   "Typecheck Docusaurus site" \
   "SANCTUARY_RETRY_ATTEMPTS: '5'" \
@@ -852,7 +863,11 @@ assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "scripts/ci/with-runner-lock.sh node-toolchain" \
   'scripts/ci/retry-command.sh "docs typecheck"' \
   'scripts/ci/time-command.sh "docs typecheck"' \
-  "npm --prefix website run typecheck"
+  "npm --prefix docs/site run typecheck"
+
+assert_not_contains "$ARCHITECTURE_WORKFLOW" \
+  "architecture workflow retired website path" \
+  "website/"
 
 assert_contains_in_order "$ARCHITECTURE_WORKFLOW" \
   "architecture diagnostic summary upload" \

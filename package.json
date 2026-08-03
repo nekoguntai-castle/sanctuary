@@ -90,8 +90,8 @@
     "arch:calls": "node scripts/architecture/extract-call-graphs.mjs",
     "arch:lint": "node scripts/architecture/lint-diagrams.mjs",
     "arch:check": "npm run arch:graphs && npm run arch:calls && git diff --exit-code -- docs/architecture/generated && npm run arch:lint",
-    "docs:start": "cd website && npm start",
-    "docs:build": "cd website && npm run build"
+    "docs:start": "npm --prefix docs/site run start",
+    "docs:build": "npm --prefix docs/site run build"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

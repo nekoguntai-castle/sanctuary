@@ -32,8 +32,7 @@
       "start.sh",
       "tasks",
       "tests",
-      "uninstall.sh",
-      "website"
+      "uninstall.sh"
     ],
     "tooling": [
       "scripts",

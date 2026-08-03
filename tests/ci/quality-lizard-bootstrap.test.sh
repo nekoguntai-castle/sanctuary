@@ -22,6 +22,7 @@ main() {
   local fake_bin="$TEST_TEMP_DIR/bin"
   local counter="$TEST_TEMP_DIR/venv-counter"
   local pip_counter="$TEST_TEMP_DIR/pip-counter"
+  local args_log="$TEST_TEMP_DIR/lizard-args"
   mkdir -p "$fake_bin"
   printf '0' >"$counter"
   printf '0' >"$pip_counter"
@@ -72,6 +73,7 @@ if [ "${1:-}" = "--version" ]; then
   exit 0
 fi
 
+printf '%s\n' "$@" >"${LIZARD_ARGS_LOG:?}"
 echo 'stub lizard scan'
 exit 0
 LIZARDEOF
@@ -90,6 +92,7 @@ PYEOF
     PATH="$fake_bin:$PATH" \
       LIZARD_VENV_COUNTER="$counter" \
       LIZARD_PIP_COUNTER="$pip_counter" \
+      LIZARD_ARGS_LOG="$args_log" \
       QUALITY_TOOLS_DIR="$TEST_TEMP_DIR/quality-tools" \
       SANCTUARY_RETRY_DELAY_SECONDS=0 \
       bash scripts/quality/lizard-only.sh
@@ -104,6 +107,12 @@ PYEOF
     fail 'expected retry helper to report the second lizard bootstrap attempt'
   grep -Fq 'Quality gate passed.' "$output" ||
     fail 'expected lizard-only quality gate to pass after retry'
+  grep -Fxq './docs/site/node_modules/*' "$args_log" ||
+    fail 'expected lizard to exclude nested docs-site dependencies'
+  grep -Fxq './docs/site/build/*' "$args_log" ||
+    fail 'expected lizard to exclude generated docs-site output'
+  grep -Fxq './docs/site/.docusaurus/*' "$args_log" ||
+    fail 'expected lizard to exclude Docusaurus intermediate output'
 
   echo 'quality lizard bootstrap regression checks passed'
 }

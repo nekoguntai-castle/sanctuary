@@ -36,6 +36,10 @@ Moving repository media under `docs/assets/`, browser specifications under
 to 24 entries: 10 files and 14 directories. The explicit Vite, Playwright,
 TypeScript, Docker, and CI classifier paths preserve the three owners' runtime
 and test semantics.
+Moving the standalone Docusaurus package under `docs/site/` reduces the tracked
+root to 23 entries: 10 files and 13 directories. Its own manifest and lockfile
+remain a package boundary, while explicit build, audit, typecheck, security-scan,
+and repository-root source paths preserve its behavior.
 `src/` is now the sole frontend source root, and shared ambient declarations
 live in `shared/types/ambient-modules.d.ts`. The root
 `config/popular-models.json` path remains an external compatibility contract

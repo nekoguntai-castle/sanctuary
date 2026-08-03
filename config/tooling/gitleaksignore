@@ -8,4 +8,4 @@ e2132322bd8e1b8fb461ed0707aa39d0c6d73579:extension/dist/background/service-worke
 # Ignored generated Docusaurus HTML false positive. The source markdown
 # (`docs/reference/hardware-wallet-integration.md`) and Docusaurus intermediate
 # JSON scan clean; this fingerprint only suppresses the local built artifact.
-website/build/docs/reference/hardware-wallet-integration.html:generic-api-key:248
+docs/site/build/docs/reference/hardware-wallet-integration.html:generic-api-key:248

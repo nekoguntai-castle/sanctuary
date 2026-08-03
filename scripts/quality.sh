@@ -277,9 +277,12 @@ run_lizard() {
     -T nloc=200 \
     -x './node_modules/*' \
     -x './*/node_modules/*' \
+    -x './docs/site/node_modules/*' \
     -x './dist/*' \
     -x './*/dist/*' \
     -x './build/*' \
+    -x './docs/site/build/*' \
+    -x './docs/site/.docusaurus/*' \
     -x './coverage/*' \
     -x './*/coverage/*' \
     -x './server/src/generated/*' \

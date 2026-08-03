@@ -2,11 +2,26 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  DEFAULT_TARGETS,
   evaluateReports,
   findLockPaths,
   parseExceptionConfig,
   runAuditTarget,
 } from '../../scripts/ci/npm-audit-gate.mjs';
+
+test('default audit targets keep the standalone docs site at its canonical path', () => {
+  assert.deepEqual(
+    DEFAULT_TARGETS.find(({ label }) => label === 'docs-site'),
+    {
+      label: 'docs-site',
+      cwd: 'docs/site',
+      lockfile: 'docs/site/package-lock.json',
+      roots: [''],
+      args: ['audit', '--json'],
+    },
+  );
+  assert.equal(DEFAULT_TARGETS.some(({ label, cwd }) => label === 'website' || cwd === 'website'), false);
+});
 
 const NOW = new Date('2026-07-30T18:00:00.000Z');
 const GHSA_A = 'GHSA-mh99-v99m-4gvg';

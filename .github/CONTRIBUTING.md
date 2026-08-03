@@ -174,8 +174,8 @@ The curated docs under [`docs/architecture/`](https://github.com/nekoguntai-cast
 Local commands:
 
 ```bash
-npm run docs:start    # dev server with hot reload (cd website && npm start)
-npm run docs:build    # production build to website/build
+npm run docs:start    # dev server with hot reload from docs/site
+npm run docs:build    # production build to docs/site/build
 ```
 
 ### Keeping architecture docs in sync
@@ -204,7 +204,7 @@ Run `npm run arch:calls` and commit the new `docs/architecture/generated/calls/<
 
 ### Architecture diagrams
 
-Diagrams live in [`docs/architecture/`](https://github.com/nekoguntai-castle/sanctuary/tree/main/docs/architecture) and follow the [C4 model](https://c4model.com/) (Context → Container → Component). All diagrams are Mermaid so GitHub renders them inline *and* Docusaurus renders them in the site with svg-pan-zoom for drill-down. Click handlers (`click NodeId href "..."`) navigate to docs or source; the Docusaurus build keeps doc-to-doc clicks inside the site and rewrites source-code clicks to absolute GitHub URLs via [`website/src/plugins/remark-mermaid-click-rewrite.mjs`](https://github.com/nekoguntai-castle/sanctuary/blob/main/website/src/plugins/remark-mermaid-click-rewrite.mjs), so the same source works in both renderings.
+Diagrams live in [`docs/architecture/`](https://github.com/nekoguntai-castle/sanctuary/tree/main/docs/architecture) and follow the [C4 model](https://c4model.com/) (Context → Container → Component). All diagrams are Mermaid so GitHub renders them inline *and* Docusaurus renders them in the site with svg-pan-zoom for drill-down. Click handlers (`click NodeId href "..."`) navigate to docs or source; the Docusaurus build keeps doc-to-doc clicks inside the site and rewrites source-code clicks to absolute GitHub URLs via [`docs/site/src/plugins/remark-mermaid-click-rewrite.mjs`](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/site/src/plugins/remark-mermaid-click-rewrite.mjs), so the same source works in both renderings.
 
 When you add or change an entry point that crosses a service boundary (e.g. a new caller of `notificationDispatcher`, a new gateway route, a new external integration):
 

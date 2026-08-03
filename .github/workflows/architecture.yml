@@ -16,7 +16,6 @@ on:
       - 'scripts/ci/retry-command.sh'
       - 'scripts/ci/run-with-log.sh'
       - 'scripts/ci/write-diagnostic-summary.sh'
-      - 'website/**'
       - '.github/workflows/architecture.yml'
   push:
     branches: [main]
@@ -58,7 +57,7 @@ jobs:
           echo "ARCH_WORKDIR=$ARCH_WORKDIR" >> "$GITHUB_ENV"
           echo "ARCH_ROOT=$ARCH_ROOT" >> "$GITHUB_ENV"
 
-      - name: Install dependencies (root, server, gateway, website)
+      - name: Install dependencies (application workspaces and docs site)
         run: |
           DIAGNOSTIC_DIR=".tmp/ci-diagnostics/architecture"
           mkdir -p "$DIAGNOSTIC_DIR"
@@ -72,9 +71,9 @@ jobs:
           cd "$ARCH_WORKDIR"
           # Phase B: root npm ci installs all workspaces (shared, server, gateway).
           # Per-package npm ci is redundant and broken because workspace deps
-          # don't publish to the npm registry. website remains standalone.
+          # don't publish to the npm registry. The docs site remains standalone.
           scripts/ci/retry-command.sh "root npm ci" npm ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/root"
-          scripts/ci/retry-command.sh "website npm ci" npm --prefix website ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/website"
+          scripts/ci/retry-command.sh "docs-site npm ci" npm --prefix docs/site ci --audit=false --fund=false --cache "$ARCH_WORKDIR/.npm-cache/docs-site"
           INNER
 
       - name: Lint diagram click hrefs
@@ -197,7 +196,7 @@ jobs:
             scripts/ci/with-runner-lock.sh node-toolchain bash <<'INNER'
           set -euo pipefail
           cd "$ARCH_WORKDIR"
-          scripts/ci/retry-command.sh "docs typecheck" scripts/ci/time-command.sh "docs typecheck" npm --prefix website run typecheck
+          scripts/ci/retry-command.sh "docs typecheck" scripts/ci/time-command.sh "docs typecheck" npm --prefix docs/site run typecheck
           INNER
 
       - name: Build Docusaurus site

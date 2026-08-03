@@ -47,8 +47,8 @@ export default function remarkMermaidClickRewrite(options = {}) {
   const branch = options.branch ?? 'main';
   const siteBaseUrl = options.siteBaseUrl ?? '/';
   const internalDocRoutes = options.internalDocRoutes ?? {};
-  // The plugin is invoked with cwd = website/ during build; repo root is the parent.
-  const repoRoot = options.repoRoot ?? path.resolve(process.cwd(), '..');
+  // The plugin is invoked with cwd = docs/site/ during build; repo root is two levels up.
+  const repoRoot = options.repoRoot ?? path.resolve(process.cwd(), '../..');
   if (!repoUrl) throw new Error('remark-mermaid-click-rewrite: repoUrl is required');
 
   return (tree, file) => {

@@ -17,4 +17,4 @@ docs/adr/**                     @nekoguntai
 # catches, so warrant the same review.
 scripts/architecture/**         @nekoguntai
 .github/workflows/architecture.yml  @nekoguntai
-website/                        @nekoguntai
+docs/site/                      @nekoguntai

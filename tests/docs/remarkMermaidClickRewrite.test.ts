@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import remarkMermaidClickRewrite from '../../website/src/plugins/remark-mermaid-click-rewrite.mjs';
+import { describe, expect, it, vi } from 'vitest';
+import remarkMermaidClickRewrite from '../../docs/site/src/plugins/remark-mermaid-click-rewrite.mjs';
 
 function rewriteMermaid(value: string) {
   const codeNode = { type: 'code', lang: 'mermaid', value };
@@ -19,6 +19,28 @@ function rewriteMermaid(value: string) {
 }
 
 describe('remarkMermaidClickRewrite', () => {
+  it('defaults the repository root to two levels above the docs-site working directory', () => {
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue('/repo/docs/site');
+    try {
+      const codeNode = {
+        type: 'code',
+        lang: 'mermaid',
+        value: 'click Source href "../../server/src/index.ts" "View source"',
+      };
+      const transform = remarkMermaidClickRewrite({
+        repoUrl: 'https://github.com/acme/sanctuary',
+      });
+
+      transform({ type: 'root', children: [codeNode] }, { path: '/repo/docs/architecture/README.md' });
+
+      expect(codeNode.value).toBe(
+        'click Source href "https://github.com/acme/sanctuary/blob/main/server/src/index.ts" "View source"',
+      );
+    } finally {
+      cwd.mockRestore();
+    }
+  });
+
   it('keeps curated doc clicks inside the Docusaurus site and preserves hashes', () => {
     const rewritten = rewriteMermaid('click API href "./containers.md#gateway" "Open diagram"');
 

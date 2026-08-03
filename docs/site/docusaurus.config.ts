@@ -68,8 +68,8 @@ const config: Config = {
       'classic',
       {
         docs: {
-          // Source markdown from the repo, not from website/docs.
-          path: '..',
+          // Source markdown from the repository root, not from docs/site/docs.
+          path: '../..',
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
           include: [...PUBLISHED_DOCS_INCLUDE],
