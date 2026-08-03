@@ -112,6 +112,33 @@ upgrade_validate_extended_fixture_selection() {
     done
 }
 
+upgrade_finish_with_cleanup() {
+    local original_status="$1"
+    local cleanup_function="$2"
+    local project_label="${3:-upgrade fixture}"
+    local cleanup_status=0
+
+    if "$cleanup_function"; then
+        cleanup_status=0
+    else
+        cleanup_status="$?"
+    fi
+
+    if [ "$original_status" -ne 0 ]; then
+        if [ "$cleanup_status" -ne 0 ]; then
+            echo "::warning::Label fallback could not fully clean $project_label" >&2
+        fi
+        return "$original_status"
+    fi
+
+    if [ "$cleanup_status" -ne 0 ]; then
+        echo "::error::Label fallback could not fully clean $project_label" >&2
+        return "$cleanup_status"
+    fi
+
+    return 0
+}
+
 upgrade_sanitize_label() {
     local raw="$1"
     local lower sanitized hash prefix

@@ -379,13 +379,11 @@ jobs:
         if: always() && github.event_name != 'pull_request' && github.event.inputs.keep_containers != 'true'
         run: |
           project="${COMPOSE_PROJECT_NAME:-}"
-          if [ -d "${SANCTUARY_INSTALL_WORKSPACE:-}" ]; then
-            cd "$SANCTUARY_INSTALL_WORKSPACE"
+          if [ -z "$project" ]; then
+            echo "::error::COMPOSE_PROJECT_NAME is required for fresh-install cleanup"
+            exit 1
           fi
-          docker compose down -v --remove-orphans || true
-          if [ -n "$project" ]; then
-            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
-          fi
+          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
 
       - name: Cleanup isolated install workspace
         if: always() && github.event_name != 'pull_request'
@@ -582,13 +580,11 @@ jobs:
         if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true' && github.event.inputs.keep_containers != 'true'
         run: |
           project="${COMPOSE_PROJECT_NAME:-}"
-          if [ -d "${SANCTUARY_STACK_WORKSPACE:-}" ]; then
-            cd "$SANCTUARY_STACK_WORKSPACE"
+          if [ -z "$project" ]; then
+            echo "::error::COMPOSE_PROJECT_NAME is required for stack cleanup"
+            exit 1
           fi
-          docker compose down -v --remove-orphans || true
-          if [ -n "$project" ]; then
-            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
-          fi
+          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
 
       - name: Cleanup isolated stack workspace
         if: always() && env.USE_FRESH_INSTALL_STACK_COVERAGE != 'true'
@@ -725,13 +721,11 @@ jobs:
         if: always()
         run: |
           project="${COMPOSE_PROJECT_NAME:-}"
-          if [ -d "${SANCTUARY_HEALTH_WORKSPACE:-}" ]; then
-            cd "$SANCTUARY_HEALTH_WORKSPACE"
+          if [ -z "$project" ]; then
+            echo "::error::COMPOSE_PROJECT_NAME is required for health cleanup"
+            exit 1
           fi
-          docker compose down -v --remove-orphans || true
-          if [ -n "$project" ]; then
-            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
-          fi
+          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
 
       - name: Cleanup isolated health workspace
         if: always()
@@ -872,13 +866,11 @@ jobs:
         if: always()
         run: |
           project="${COMPOSE_PROJECT_NAME:-}"
-          if [ -d "${SANCTUARY_AUTH_WORKSPACE:-}" ]; then
-            cd "$SANCTUARY_AUTH_WORKSPACE"
+          if [ -z "$project" ]; then
+            echo "::error::COMPOSE_PROJECT_NAME is required for auth cleanup"
+            exit 1
           fi
-          docker compose down -v --remove-orphans || true
-          if [ -n "$project" ]; then
-            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
-          fi
+          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
 
       - name: Cleanup isolated auth workspace
         if: always()
@@ -990,27 +982,29 @@ jobs:
             rm -f "$port_env"
 
             cleanup() {
-              docker compose down -v --remove-orphans || true
-              bash scripts/ci/cleanup-docker-resources.sh --project "$COMPOSE_PROJECT_NAME" || true
+              bash "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/cleanup-docker-resources.sh" --project "$COMPOSE_PROJECT_NAME" --verify-empty
             }
             trap cleanup EXIT
 
+            local status
             local log_path="${JOB_LOG_DIR}/upgrade-baseline-${source_label}.log"
             if "${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${GITHUB_WORKSPACE}}/scripts/ci/run-with-log.sh" "$log_path" \
                  scripts/ci/with-runner-lock.sh e2e \
                  scripts/ci/time-command.sh "upgrade baseline ${source_ref} baseline" \
                  ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture baseline --verbose; then
-              cleanup
-              trap - EXIT
-              return 0
+              status=0
+            else
+              status="$?"
+              docker compose ps || true
+              docker compose logs --tail 50 postgres 2>&1 || true
+              docker compose logs --tail 100 backend 2>&1 || true
             fi
-
-            docker compose ps || true
-            docker compose logs --tail 50 postgres 2>&1 || true
-            docker compose logs --tail 100 backend 2>&1 || true
-            cleanup
             trap - EXIT
-            return 1
+            if upgrade_finish_with_cleanup "$status" cleanup "$COMPOSE_PROJECT_NAME"; then
+              return 0
+            else
+              return "$?"
+            fi
           }
 
           IFS=',' read -ra selected_refs <<< "$UPGRADE_BASELINE_REFS"
@@ -1210,12 +1204,13 @@ jobs:
         with:
           clean: false
 
+      - name: Check Docker
+        run: |
+          scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log" \
+            scripts/ci/wait-for-docker.sh
+
       - name: Sweep runner leftovers
         run: |
-          if ! docker info >/dev/null 2>&1; then
-            echo "::warning::Docker is not available; skipping runner leftover cleanup"
-            exit 0
-          fi
           bash scripts/ci/cleanup-docker-resources.sh --runner-leftovers || \
             echo "::warning::Runner leftover cleanup did not complete"
 

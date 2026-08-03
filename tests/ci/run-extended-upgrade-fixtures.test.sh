@@ -40,6 +40,14 @@ main() {
     fail 'expected unknown option to fail'
   fi
 
+  grep -Fq -- '--project "$COMPOSE_PROJECT_NAME" --verify-empty' "$SCRIPT" ||
+    fail 'expected extended upgrade wrapper to verify exact label cleanup'
+  grep -Fq 'upgrade_finish_with_cleanup "$status" cleanup "$COMPOSE_PROJECT_NAME"' "$SCRIPT" ||
+    fail 'expected extended upgrade wrapper to preserve fixture status through cleanup'
+  if grep -Fq 'docker compose down' "$SCRIPT"; then
+    fail 'extended upgrade wrapper must leave graceful Compose teardown to the test'
+  fi
+
   echo "extended upgrade fixture helper checks passed"
 }
 

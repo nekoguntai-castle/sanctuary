@@ -188,6 +188,50 @@ extract_named_job_step() {
     ' "$file"
 }
 
+assert_named_job_step_contains() {
+  local file="$1"
+  local job_name="$2"
+  local step_name="$3"
+  local label="$4"
+  local needle="$5"
+  local step_body
+
+  if ! step_body="$(extract_named_job_step "$file" "$job_name" "$step_name")"; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: could not extract $job_name/$step_name from $file")
+    echo "FAIL: $label" >&2
+  elif grep -Fq -- "$needle" <<< "$step_body"; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: expected $job_name/$step_name to contain: $needle")
+    echo "FAIL: $label" >&2
+  fi
+}
+
+assert_named_job_step_not_contains() {
+  local file="$1"
+  local job_name="$2"
+  local step_name="$3"
+  local label="$4"
+  local needle="$5"
+  local step_body
+
+  if ! step_body="$(extract_named_job_step "$file" "$job_name" "$step_name")"; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: could not extract $job_name/$step_name from $file")
+    echo "FAIL: $label" >&2
+  elif grep -Fq -- "$needle" <<< "$step_body"; then
+    FAIL=$((FAIL + 1))
+    FAILURES+=("$label: forbidden text found in $job_name/$step_name: $needle")
+    echo "FAIL: $label" >&2
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  fi
+}
+
 extract_step_with_mapping() {
   awk '
     {
@@ -531,11 +575,20 @@ assert_contains_in_order "$RC" \
 assert_contains_in_order "$RC" \
   "release-candidate exact cleanup verification" \
   "fresh-install-test:" \
-  'cleanup-docker-resources.sh --project "$project" --verify-empty' \
+  '--project "$project" --verify-empty' \
   "container-health-test:" \
-  'cleanup-docker-resources.sh --project "$project" --verify-empty' \
+  '--project "$project" --verify-empty' \
   "auth-flow-test:" \
-  'cleanup-docker-resources.sh --project "$project" --verify-empty'
+  '--project "$project" --verify-empty'
+
+for rc_job in fresh-install-test container-health-test auth-flow-test; do
+  assert_named_job_step_contains "$RC" "$rc_job" "Cleanup" \
+    "release-candidate $rc_job uses exact label cleanup" \
+    '--project "$project" --verify-empty'
+  assert_named_job_step_not_contains "$RC" "$rc_job" "Cleanup" \
+    "release-candidate $rc_job has one cleanup owner" \
+    'docker compose down'
+done
 
 # release-candidate.yml deliberately does not run an upgrade matrix or
 # upgrade-full-recovery job — install-test.yml's serialized chain owns
@@ -565,6 +618,25 @@ assert_contains_in_order "$IT" \
   "scripts/ci/with-runner-lock.sh e2e" \
   "scripts/ci/time-command.sh" \
   "upgrade-install.test.sh --mode core"
+
+for install_job in fresh-install-test install-stack-smoke container-health-test auth-flow-test; do
+  assert_named_job_step_contains "$IT" "$install_job" "Cleanup" \
+    "install-test $install_job uses exact label cleanup" \
+    '--project "$project" --verify-empty'
+  assert_named_job_step_not_contains "$IT" "$install_job" "Cleanup" \
+    "install-test $install_job has one cleanup owner" \
+    'docker compose down'
+done
+
+assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+  "install-test baseline wrapper verifies label cleanup" \
+  '--project "$COMPOSE_PROJECT_NAME" --verify-empty'
+assert_named_job_step_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+  "install-test baseline wrapper preserves fixture status through cleanup" \
+  'upgrade_finish_with_cleanup "$status" cleanup "$COMPOSE_PROJECT_NAME"'
+assert_named_job_step_not_contains "$IT" "upgrade-baseline-test" "Run baseline upgrades sequentially" \
+  "install-test baseline wrapper leaves graceful teardown to the test" \
+  'docker compose down'
 
 assert_contains_in_order "$IT" \
   "install-test sink env" \
@@ -724,6 +796,11 @@ assert_contains_in_order "$IT" \
 assert_contains_in_order "$IT" \
   "install-test cleanup DIND telemetry" \
   "docker-resource-cleanup:" \
+  "Check Docker" \
+  'scripts/ci/run-with-log.sh "$JOB_LOG_DIR/check-docker.log"' \
+  "scripts/ci/wait-for-docker.sh" \
+  "Sweep runner leftovers" \
+  "--runner-leftovers" \
   "Verify current-run Docker cleanup" \
   "--verify-empty" \
   "Post-cleanup DIND diagnostics" \

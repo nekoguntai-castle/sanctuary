@@ -1136,6 +1136,50 @@ EOF
     "cleanup should still run before the failure exits"
 }
 
+cleanup_status_success() {
+  return 0
+}
+
+cleanup_status_failure() {
+  return 9
+}
+
+test_upgrade_finish_preserves_failed_fixture_status() {
+  local exit_code
+
+  set +e
+  upgrade_finish_with_cleanup 7 cleanup_status_success test-project
+  exit_code=$?
+  set -e
+
+  assert_equals "7" "$exit_code" \
+    "successful cleanup must preserve the failed fixture status"
+}
+
+test_upgrade_finish_preserves_failure_when_cleanup_fails() {
+  local exit_code
+
+  set +e
+  upgrade_finish_with_cleanup 7 cleanup_status_failure test-project >/dev/null 2>&1
+  exit_code=$?
+  set -e
+
+  assert_equals "7" "$exit_code" \
+    "cleanup failure must not replace the original fixture failure"
+}
+
+test_upgrade_finish_fails_successful_fixture_on_cleanup_failure() {
+  local exit_code
+
+  set +e
+  upgrade_finish_with_cleanup 0 cleanup_status_failure test-project >/dev/null 2>&1
+  exit_code=$?
+  set -e
+
+  assert_equals "9" "$exit_code" \
+    "cleanup failure must fail an otherwise successful fixture"
+}
+
 main() {
   echo ""
   echo "Upgrade Helper Unit Tests"
@@ -1179,6 +1223,9 @@ main() {
   run_test "upgrade cleanup disables restart policy" test_disable_compose_project_restart_policy_updates_project_containers
   run_test "exit cleanup trap runs on normal exit" test_exit_cleanup_trap_runs_on_normal_exit
   run_test "exit cleanup trap preserves failure status" test_exit_cleanup_trap_preserves_failure_status
+  run_test "upgrade cleanup preserves failed fixture status" test_upgrade_finish_preserves_failed_fixture_status
+  run_test "upgrade cleanup preserves failure when cleanup fails" test_upgrade_finish_preserves_failure_when_cleanup_fails
+  run_test "upgrade cleanup fails successful fixture on cleanup failure" test_upgrade_finish_fails_successful_fixture_on_cleanup_failure
   run_test "browser refresh smoke sends csrf header" test_browser_refresh_smoke_sends_csrf_header
   run_test "support package smoke confirms shareable aggregate" test_support_package_smoke_confirms_shareable_aggregate
 

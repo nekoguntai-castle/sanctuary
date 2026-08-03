@@ -80,6 +80,7 @@ run_fixture() {
       run_id="$SANCTUARY_CI_EXTENDED_UPGRADE_RUN_ID"
       original_workspace="${SANCTUARY_CI_ORIGINAL_WORKSPACE:-${SANCTUARY_CI_WORKSPACE_OVERRIDE:-$PWD}}"
       original_workspace="$(cd "$original_workspace" && pwd -P)"
+      source tests/install/utils/upgrade-selection.sh
 
       export COMPOSE_PROJECT_NAME="sanctuary-ci-upgrade-${run_id}-${source_label}-${fixture}"
       export SANCTUARY_UPGRADE_SOURCE_REF="$source_ref"
@@ -96,20 +97,26 @@ run_fixture() {
       rm -f "$port_env"
 
       cleanup() {
-        docker compose down -v --remove-orphans || true
-        bash scripts/ci/cleanup-docker-resources.sh --project "$COMPOSE_PROJECT_NAME" || true
+        bash "$original_workspace/scripts/ci/cleanup-docker-resources.sh" --project "$COMPOSE_PROJECT_NAME" --verify-empty
       }
       trap cleanup EXIT
 
+      status=0
       if scripts/ci/with-runner-lock.sh e2e scripts/ci/time-command.sh "upgrade extended ${source_ref} ${fixture}" ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "$fixture" --verbose; then
-        exit 0
+        status=0
+      else
+        status="$?"
+        docker compose ps || true
+        docker compose logs --tail 50 postgres 2>&1 || true
+        docker compose logs --tail 100 backend 2>&1 || true
       fi
 
-      status="$?"
-      docker compose ps || true
-      docker compose logs --tail 50 postgres 2>&1 || true
-      docker compose logs --tail 100 backend 2>&1 || true
-      exit "$status"
+      trap - EXIT
+      if upgrade_finish_with_cleanup "$status" cleanup "$COMPOSE_PROJECT_NAME"; then
+        exit 0
+      else
+        exit "$?"
+      fi
     '
   ) || status="$?"
   echo "::endgroup::"

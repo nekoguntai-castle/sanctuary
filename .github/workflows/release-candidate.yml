@@ -271,22 +271,22 @@ jobs:
         if: always()
         run: |
           project="${COMPOSE_PROJECT_NAME:-}"
-          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
-          docker compose down -v --remove-orphans || true
+          if [ -z "$project" ]; then
+            echo "::error::COMPOSE_PROJECT_NAME is required for release-candidate cleanup"
+            exit 1
+          fi
           # Do NOT use `docker system prune`: it sweeps STOPPED containers on the
           # shared daemon and can delete a concurrent job's Postgres `services:`
           # container (e.g. test.yml's backend-integration lane), which Forgejo
           # recreates empty — that job's schema then vanishes mid-run
           # ("table public.users does not exist"). `builder prune` only touches
-          # buildkit cache, never containers/networks/volumes; the project-scoped
-          # `docker compose down -v` above and `cleanup-docker-resources.sh
-          # --project` below fully reclaim this RC stack. Mirrors install-test.yml.
+          # buildkit cache, never containers/networks/volumes. Exact project-label
+          # cleanup below reclaims this RC stack without reparsing a deleted
+          # runtime environment. Mirrors install-test.yml.
           SANCTUARY_RUNNER_LOCK_TIMEOUT_SECONDS=120 \
             "${{ github.workspace }}/scripts/ci/with-runner-lock.sh" node-toolchain \
             docker builder prune -f || true
-          if [ -n "$project" ]; then
-            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
-          fi
+          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
 
       - name: Post-cleanup diagnostics
         if: always()
@@ -446,11 +446,11 @@ jobs:
         if: always()
         run: |
           project="${COMPOSE_PROJECT_NAME:-}"
-          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
-          docker compose down -v --remove-orphans || true
-          if [ -n "$project" ]; then
-            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
+          if [ -z "$project" ]; then
+            echo "::error::COMPOSE_PROJECT_NAME is required for container-health cleanup"
+            exit 1
           fi
+          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
 
       - name: Post-cleanup diagnostics
         if: always()
@@ -613,11 +613,11 @@ jobs:
         if: always()
         run: |
           project="${COMPOSE_PROJECT_NAME:-}"
-          cd "${SANCTUARY_INSTALL_WORKSPACE:-.}" || true
-          docker compose down -v --remove-orphans || true
-          if [ -n "$project" ]; then
-            bash scripts/ci/cleanup-docker-resources.sh --project "$project" --verify-empty
+          if [ -z "$project" ]; then
+            echo "::error::COMPOSE_PROJECT_NAME is required for auth-flow cleanup"
+            exit 1
           fi
+          bash "${{ github.workspace }}/scripts/ci/cleanup-docker-resources.sh" --project "$project" --verify-empty
 
       - name: Post-cleanup diagnostics
         if: always()
